@@ -1,0 +1,14 @@
+[package]
+name = "constraint_list"
+version = "2.1.8"
+authors = ["Costa Group UCM","iden3"]
+edition = "2018"
+
+
+[dependencies]
+constraint_writers = { path = "../constraint_writers" }
+circom_algebra = { path = "../circom_algebra" }
+program_structure = { path = "../program_structure" }
+json = "0.12.4"
+threadpool = "1.0"
+num_cpus = "1.0"
