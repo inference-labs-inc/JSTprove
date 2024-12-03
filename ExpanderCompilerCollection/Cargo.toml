@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = [ "circuit-std-rs","expander_compiler", "expander_compiler/ec_go_lib"]
+
+[profile.test]
+opt-level = 3
+
+[profile.dev]
+opt-level = 3
+
+
+[workspace.dependencies]
+ark-std = "0.4.0"
+rand = "0.8.5"
+chrono = "0.4"
+clap = { version = "4.1", features = ["derive"] }
+ethnum = "1.5.0"
+tiny-keccak = { version = "2.0", features = ["keccak"] }
+halo2curves = { git = "https://github.com/PolyhedraZK/halo2curves", default-features = false, features = [
+    "bits",
+] }
+arith = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev" }
+expander_config = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev", package = "config" }
+expander_circuit = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev", package = "circuit" }
+gkr = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev" }
+gf2 = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev" }
+mersenne31 = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev" }
+expander_transcript = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev", package = "transcript" }
+

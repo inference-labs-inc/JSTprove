@@ -1,0 +1,35 @@
+[package]
+name = "expander_compiler"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+ark-std.workspace = true
+rand.workspace = true
+chrono.workspace = true
+clap.workspace = true
+ethnum.workspace = true
+halo2curves.workspace = true
+tiny-keccak.workspace = true
+expander_config.workspace = true
+expander_circuit.workspace = true
+gkr.workspace = true
+arith.workspace = true
+gf2.workspace = true
+mersenne31.workspace = true
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+
+[[bin]]
+name = "trivial_circuit"
+path = "bin/trivial_circuit.rs"
+
+[[bin]]
+name = "testing"
+path = "bin/testing.rs"
+
+[[bin]]
+name = "reward"
+path = "bin/reward.rs"

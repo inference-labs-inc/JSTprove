@@ -1,0 +1,17 @@
+[package]
+name = "circuit-std-rs"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+expander_compiler = { path = "../expander_compiler"}
+
+ark-std.workspace = true
+rand.workspace = true
+expander_config.workspace = true
+expander_circuit.workspace = true
+gkr.workspace = true
+arith.workspace = true
+gf2.workspace = true
+mersenne31.workspace = true

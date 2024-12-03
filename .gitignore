@@ -1,0 +1,5 @@
+inputs/
+output/
+proofs/
+temp/
+.venv/

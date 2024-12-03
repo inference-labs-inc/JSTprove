@@ -1,0 +1,155 @@
+name: ci
+
+on: [push, pull_request]
+
+env:
+  RUSTFLAGS: "-Dwarnings"
+  RUST_BACKTRACE: 1
+
+jobs:
+  build-rust:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "expander_compiler -> expander_compiler/target"
+          # The prefix cache key, this can be changed to start a new cache manually.
+          prefix-key: "mpi-v5.0.5" # update me if brew formula changes to a new version
+      - if: matrix.os == 'macos-latest'
+        run: brew install openmpi
+      - if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install libopenmpi-dev -y
+      - name: Build
+        run: cargo build --release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.os }}
+          path: target/release/libec_go_lib.*
+
+  upload-rust:
+    needs: [build-rust, test-rust, test-rust-avx512, lint]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+          pattern: build-*
+          merge-multiple: true
+
+      - name: Push built libs to another branch
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          git checkout --orphan rust-built-libs
+          cp artifacts/libec_go_lib.* ./
+          rm ./libec_go_lib.d
+          git rm --cached -r .
+          git add ./libec_go_lib.* -f
+          git commit -m "Add built libs"
+          git push -f --set-upstream origin rust-built-libs
+
+  test-rust:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: styfle/cancel-workflow-action@0.11.0
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "expander_compiler -> expander_compiler/target"
+          # The prefix cache key, this can be changed to start a new cache manually.
+          prefix-key: "mpi-v5.0.5" # update me if brew formula changes to a new version
+      - if: matrix.os == 'macos-latest'
+        run: brew install openmpi
+      - if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install libopenmpi-dev -y
+      - run: cargo test
+
+  test-rust-avx512:
+    runs-on: 7950x3d
+    steps:
+      - uses: styfle/cancel-workflow-action@0.11.0
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "expander_compiler -> expander_compiler/target"
+          # The prefix cache key, this can be changed to start a new cache manually.
+          prefix-key: "mpi-v5.0.5" # update me if brew formula changes to a new version
+      - run: RUSTFLAGS="-C target-cpu=native -C target-feature=+avx512f" cargo test
+
+  test-go:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    needs: build-rust
+    steps:
+      - uses: styfle/cancel-workflow-action@0.11.0
+      - uses: actions/checkout@v4
+      - name: Setup Go 1.21.x
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21.x'
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+          pattern: build-${{ matrix.os }}
+          merge-multiple: true
+      - if: matrix.os == 'macos-latest'
+        run: brew install openmpi
+      - if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install libopenmpi-dev -y
+      - run: |
+          mkdir -p ~/.cache/ExpanderCompilerCollection
+          cp artifacts/libec_go_lib.* ~/.cache/ExpanderCompilerCollection
+          cd ecgo
+          go test ./test/
+  
+  test-go-keccak-full:
+    runs-on: ubuntu-latest
+    needs: build-rust
+    steps:
+      - uses: styfle/cancel-workflow-action@0.11.0
+      - uses: actions/checkout@v4
+      - name: Setup Go 1.21.x
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21.x'
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+          pattern: build-ubuntu-latest
+          merge-multiple: true
+      - run: |
+          sudo apt-get update && sudo apt-get install libopenmpi-dev -y
+          mkdir -p ~/.cache/ExpanderCompilerCollection
+          cp artifacts/libec_go_lib.* ~/.cache/ExpanderCompilerCollection
+          cd ecgo
+          go run examples/keccak_full/main.go
+
+  lint:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: brew install openmpi
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy

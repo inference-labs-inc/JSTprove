@@ -1,0 +1,17 @@
+[package]
+name = "ec_go_lib"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+rand.workspace = true
+expander_config.workspace = true
+expander_circuit.workspace = true
+gkr.workspace = true
+arith.workspace = true
+expander_transcript.workspace = true
+expander_compiler = {path = "../" }
+libc = "0.2.155"

@@ -1,0 +1,11 @@
+# generated artifact
+*.txt
+__*
+target
+libec_go_lib.*
+
+# dev IDE
+.idea
+.vscode
+.code
+.DS_Store
