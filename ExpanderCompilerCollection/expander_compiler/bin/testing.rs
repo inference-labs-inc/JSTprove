@@ -8,25 +8,104 @@ use clap::{Command, Arg};
 
 
 
-const BATCH_SIZE: usize = 256;
+const LENGTH: usize = 256;
 
 
 
 declare_circuit!(Circuit {
-    input: [[Variable; 18]; BATCH_SIZE],
-    output: [[Variable; 18]; BATCH_SIZE],
+    input: [[Variable; LENGTH]; 2],
+    output: [Variable; LENGTH],
 });
 
 impl<C: Config> Define<C> for Circuit<Variable> {
     // Default circuit for now, ensures input and output are equal
     fn define(&self, api: &mut API<C>) {
         // Iterate over each input/output pair (one per batch)
-        for i in 0..BATCH_SIZE {
-            for j in 0..18 { 
-                // Compare each input variable (self.p[i][j]) with the corresponding output (self.out[i][j])
-                api.assert_is_equal(self.input[i][j].clone(), self.output[i][j].clone());
-            }
+        for i in 0..LENGTH {
+            let out = api.add(self.input[0][i].clone(),self.input[1][i].clone());
+            api.assert_is_equal(out.clone(), self.output[i].clone());
         }
+    }
+}
+
+mod io_reader {
+    use ethnum::U256;
+    use std::io::Read;
+    use arith::FieldForECC;
+    use serde::Deserialize;
+
+    use crate::LENGTH;
+
+    use super::Circuit;
+
+    use expander_compiler::frontend::*;
+
+    #[derive(Deserialize)]
+    #[derive(Clone)]
+    pub(crate) struct InputData {
+        pub(crate) inputs_1: Vec<u64>,
+        pub(crate) inputs_2: Vec<u64>,
+    }
+
+    #[derive(Deserialize)]
+    #[derive(Clone)]
+    pub(crate) struct OutputData {
+        pub(crate) outputs: Vec<u64>,
+    }
+
+    pub(crate) fn input_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
+    where
+    GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
+    {
+        // Read the JSON file into a string
+        let mut file = std::fs::File::open(file_path).expect("Unable to open file");
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)
+            .expect("Unable to read file");
+
+
+        // Deserialize the JSON into the InputData struct
+        let data: InputData = serde_json::from_str(&contents).unwrap();
+
+
+        // Assign inputs to assignment
+        let u8_vars = [
+            data.inputs_1, data.inputs_2
+        ];
+
+        for (j, var_vec) in u8_vars.iter().enumerate() {
+            for (k, &var) in var_vec.iter().enumerate() {
+            // For each u8 variable, store it directly as a `u64` in the BN254 field (BN254 can handle u64)
+                assignment.input[j][k] = C::CircuitField::from_u256(U256::from(var)) ; // Treat the u8 as a u64 for BN254
+            }
+
+        }
+        // Return the assignment
+        assignment
+    }
+
+    pub(crate) fn output_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
+    where
+    GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
+    {
+        // Read the JSON file into a string
+        let mut file = std::fs::File::open(file_path).expect("Unable to open file");
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)
+            .expect("Unable to read file");
+
+
+        // Deserialize the JSON into the InputData struct
+        let data: OutputData = serde_json::from_str(&contents).unwrap();
+
+        // Assign inputs to assignment
+
+        for k in 0..LENGTH {
+            // For each u8 variable, store it directly as a `u64` in the BN254 field (BN254 can handle u64)
+            assignment.output[k] = C::CircuitField::from_u256(U256::from(data.outputs[k])) ; // Treat the u8 as a u64 for BN254
+
+        }
+        assignment
     }
 }
 
@@ -131,167 +210,6 @@ fn run_bn254() {
     run_main::<BN254Config, BN254ConfigSha2>();
     run_main::<BN254Config, BN254ConfigKeccak>();
 }
-
-
-
-mod io_reader {
-    use ethnum::U256;
-    use std::io::Read;
-    use arith::FieldForECC;
-    use serde::Deserialize;
-
-    use super::Circuit;
-
-    use expander_compiler::frontend::*;
-
-    #[derive(Deserialize)]
-    #[derive(Clone)]
-    pub(crate) struct InputData {
-        pub(crate) RATE_OF_DECAY: u64,
-        pub(crate) RATE_OF_RECOVERY: u64,
-        pub(crate) FLATTENING_COEFFICIENT: u64,
-        pub(crate) PROOF_SIZE_THRESHOLD: u64,
-        pub(crate) PROOF_SIZE_WEIGHT: u64,
-        pub(crate) RESPONSE_TIME_WEIGHT: u64,
-        pub(crate) MAXIMUM_RESPONSE_TIME_DECIMAL: u64,
-        pub(crate) maximum_score: Vec<u64>,
-        pub(crate) previous_score: Vec<u64>,
-        pub(crate) verified: Vec<u64>,
-        pub(crate) proof_size: Vec<u64>,
-        pub(crate) response_time: Vec<u64>,
-        pub(crate) maximum_response_time: Vec<u64>,
-        pub(crate) minimum_response_time: Vec<u64>,
-        pub(crate) block_number: Vec<u64>,
-        pub(crate) validator_uid: Vec<u64>,
-        pub(crate) miner_uid: Vec<u64>,
-        pub(crate) scaling: u64,
-    }
-
-    #[derive(Deserialize)]
-    #[derive(Clone)]
-    pub(crate) struct OutputData {
-        pub(crate) RATE_OF_DECAY: u64,
-        pub(crate) RATE_OF_RECOVERY: u64,
-        pub(crate) FLATTENING_COEFFICIENT: u64,
-        pub(crate) PROOF_SIZE_THRESHOLD: u64,
-        pub(crate) PROOF_SIZE_WEIGHT: u64,
-        pub(crate) RESPONSE_TIME_WEIGHT: u64,
-        pub(crate) MAXIMUM_RESPONSE_TIME_DECIMAL: u64,
-        pub(crate) maximum_score: Vec<u64>,
-        pub(crate) previous_score: Vec<u64>,
-        pub(crate) verified: Vec<u64>,
-        pub(crate) proof_size: Vec<u64>,
-        pub(crate) response_time: Vec<u64>,
-        pub(crate) maximum_response_time: Vec<u64>,
-        pub(crate) minimum_response_time: Vec<u64>,
-        pub(crate) block_number: Vec<u64>,
-        pub(crate) validator_uid: Vec<u64>,
-        pub(crate) miner_uid: Vec<u64>,
-        pub(crate) scaling: u64,
-    }
-
-    pub(crate) fn input_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
-    where
-    GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
-    {
-        // Read the JSON file into a string
-        let mut file = std::fs::File::open(file_path).expect("Unable to open file");
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)
-            .expect("Unable to read file");
-
-
-        // Deserialize the JSON into the InputData struct
-        let data: InputData = serde_json::from_str(&contents).unwrap();
-
-        // Initialize the circuit assignment
-    
-
-        // assignment = setup_output(assignment, input_data.clone());
-
-        // Map the first 7 `u8` variables in the circuit
-        let u8_vars = [
-            data.RATE_OF_DECAY, data.RATE_OF_RECOVERY, data.FLATTENING_COEFFICIENT, data.PROOF_SIZE_THRESHOLD,
-            data.PROOF_SIZE_WEIGHT, data.RESPONSE_TIME_WEIGHT, data.MAXIMUM_RESPONSE_TIME_DECIMAL,
-        ];
-
-        for (k, &var) in u8_vars.iter().enumerate() {
-            // For each u8 variable, store it directly as a `u64` in the BN254 field (BN254 can handle u64)
-            assignment.input[0][k] = C::CircuitField::from_u256(U256::from(var)) ; // Treat the u8 as a u64 for BN254
-
-        }
-
-        // Map each `Vec<u64>` variable (var8 to var18) in the circuit
-        let vec_vars = [
-            data.maximum_score, data.previous_score, data.verified, data.proof_size,
-            data.response_time, data.maximum_response_time, data.minimum_response_time, data.block_number,
-            data.validator_uid, data.miner_uid
-        ];
-        for (k, var_vec) in vec_vars.iter().enumerate() {
-            // Each `Vec<u64>` corresponds to a sequence of u64 values
-            for (i, &var) in var_vec.iter().enumerate() {
-                // Directly assign each u32 to the corresponding position in the `assignment.p`
-                assignment.input[i][7 + k] = C::CircuitField::from_u256(U256::from(var));
-            }
-        }
-
-        assignment.input[0][17] = C::CircuitField::from_u256(U256::from(data.scaling)); // Store var18 as BN254
-        // Return the assignment wrapped in a Result
-        assignment
-    }
-
-    pub(crate) fn output_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
-    where
-    GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
-    {
-        // Read the JSON file into a string
-        let mut file = std::fs::File::open(file_path).expect("Unable to open file");
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)
-            .expect("Unable to read file");
-
-
-        // Deserialize the JSON into the InputData struct
-        let data: OutputData = serde_json::from_str(&contents).unwrap();
-
-        // Initialize the circuit assignment
-    
-
-        // assignment = setup_output(assignment, input_data.clone());
-
-        // Map the first 7 `u8` variables in the circuit
-        let u8_vars = [
-            data.RATE_OF_DECAY, data.RATE_OF_RECOVERY, data.FLATTENING_COEFFICIENT, data.PROOF_SIZE_THRESHOLD,
-            data.PROOF_SIZE_WEIGHT, data.RESPONSE_TIME_WEIGHT, data.MAXIMUM_RESPONSE_TIME_DECIMAL,
-        ];
-
-        for (k, &var) in u8_vars.iter().enumerate() {
-            // For each u8 variable, store it directly as a `u64` in the BN254 field (BN254 can handle u64)
-            assignment.output[0][k] = C::CircuitField::from_u256(U256::from(var)) ; // Treat the u8 as a u64 for BN254
-
-        }
-
-        // Map each `Vec<u64>` variable (var8 to var18) in the circuit
-        let vec_vars = [
-            data.maximum_score, data.previous_score, data.verified, data.proof_size,
-            data.response_time, data.maximum_response_time, data.minimum_response_time, data.block_number,
-            data.validator_uid, data.miner_uid
-        ];
-        for (k, var_vec) in vec_vars.iter().enumerate() {
-            // Each `Vec<u64>` corresponds to a sequence of u64 values
-            for (i, &var) in var_vec.iter().enumerate() {
-                // Directly assign each u32 to the corresponding position in the `assignment.p`
-                assignment.output[i][7 + k] = C::CircuitField::from_u256(U256::from(var));
-            }
-        }
-
-        assignment.output[0][17] = C::CircuitField::from_u256(U256::from(data.scaling)); // Store var18 as BN254
-        // Return the assignment wrapped in a Result
-        assignment
-    }
-}
-
-
 
 fn main(){
     run_gf2();

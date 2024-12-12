@@ -27,3 +27,5 @@ type_analysis/target/
 
 circom/reward_opt.r1cs
 circom/reward_opt.sym
+
+*.pyc

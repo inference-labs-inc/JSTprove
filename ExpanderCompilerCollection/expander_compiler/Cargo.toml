@@ -1,27 +1,3 @@
-[package]
-name = "expander_compiler"
-version = "0.1.0"
-edition = "2021"
-
-
-[dependencies]
-ark-std.workspace = true
-rand.workspace = true
-chrono.workspace = true
-clap.workspace = true
-ethnum.workspace = true
-halo2curves.workspace = true
-tiny-keccak.workspace = true
-expander_config.workspace = true
-expander_circuit.workspace = true
-gkr.workspace = true
-arith.workspace = true
-gf2.workspace = true
-mersenne31.workspace = true
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-
-
 [[bin]]
 name = "trivial_circuit"
 path = "bin/trivial_circuit.rs"
@@ -33,3 +9,54 @@ path = "bin/testing.rs"
 [[bin]]
 name = "reward"
 path = "bin/reward.rs"
+
+[package]
+name = "expander_compiler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde_json = "1.0"
+
+[dependencies.ark-std]
+workspace = true
+
+[dependencies.rand]
+workspace = true
+
+[dependencies.chrono]
+workspace = true
+
+[dependencies.clap]
+workspace = true
+
+[dependencies.ethnum]
+workspace = true
+
+[dependencies.halo2curves]
+workspace = true
+
+[dependencies.tiny-keccak]
+workspace = true
+
+[dependencies.expander_config]
+workspace = true
+
+[dependencies.expander_circuit]
+workspace = true
+
+[dependencies.gkr]
+workspace = true
+
+[dependencies.arith]
+workspace = true
+
+[dependencies.gf2]
+workspace = true
+
+[dependencies.mersenne31]
+workspace = true
+
+[dependencies.serde]
+version = "1.0"
+features = [ "derive",]
