@@ -1,5 +1,11 @@
 # Testing Environment
 
+## Setup python environment
+
+```
+pip install -r requirements.txt
+```
+
 ## Python Testing
 
 To create a file in ECC to build circuits with, run:
