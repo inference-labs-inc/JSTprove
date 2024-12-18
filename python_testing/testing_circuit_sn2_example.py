@@ -113,24 +113,7 @@ class RewardTests():
         # Set output into json
 
         outputs = {
-            'RATE_OF_DECAY': int(self.scaling * self.RATE_OF_DECAY.item()),
-            'RATE_OF_RECOVERY': int(self.scaling * self.RATE_OF_RECOVERY.item()),
-            'FLATTENING_COEFFICIENT':int(self.scaling * self.FLATTENING_COEFFICIENT.item()),
-            'PROOF_SIZE_WEIGHT': int(self.scaling * self.PROOF_SIZE_WEIGHT.item()),
-            'PROOF_SIZE_THRESHOLD': int(self.scaling * self.PROOF_SIZE_THRESHOLD.item()),
-            'RESPONSE_TIME_WEIGHT': int(self.scaling * self.RESPONSE_TIME_WEIGHT.item()),
-            'MAXIMUM_RESPONSE_TIME_DECIMAL': int(self.scaling * self.MAXIMUM_RESPONSE_TIME_DECIMAL.item()),
-            'maximum_score': [int(i) for i in torch.mul(self.maximum_score,self.scaling).tolist()],
-            'previous_score': [int(i) for i in torch.mul(self.previous_score,self.scaling).tolist()],
-            'verified': self.verified.int().tolist(),
-            'proof_size': [int(i)*self.scaling for i in self.proof_size.tolist()],
-            'response_time': [int(i) for i in torch.mul(self.response_time,self.scaling).tolist()],
-            'maximum_response_time': [int(i) for i in torch.mul(self.maximum_response_time,self.scaling).tolist()],
-            'minimum_response_time': [int(i) for i in torch.mul(self.minimum_response_time,self.scaling).tolist()],
-            'block_number': self.block_number.int().tolist(),
-            'validator_uid': self.validator_uid.int().tolist(),
-            'miner_uid': self.miner_uid.int().tolist(),
-            'scaling': self.scaling,
+            'rate_of_change': [int(i) for i in rate_of_change.tolist()],
         }
 
         to_json(inputs, input_file)

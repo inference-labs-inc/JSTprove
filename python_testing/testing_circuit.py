@@ -7,19 +7,39 @@ from python_testing.utils.helper_functions import get_files, to_json, prove_and_
 class BaseTests():
     #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
     def __init__(self):
-        self.name = "testing"
         super().__init__()
-        self.scaling = 100000000
+        '''
+        #######################################################################################################
+        #################################### This is the block for changes ####################################
+        #######################################################################################################
+        '''
+        # Specify
+        self.name = "testing"
+        
+        # Function input generation
+
         self.inputs_1 = torch.randint(low=0, high=100, size=(256,))
         self.inputs_2 = torch.randint(low=0, high=100, size=(256,))
-    
+        # self.scaling = 100000000
+        '''
+        #######################################################################################################
+        #######################################################################################################
+        #######################################################################################################
+        '''
+
     
     def base_testing(self, input_folder:str, proof_folder: str, temp_folder: str, circuit_folder:str, proof_system: ZKProofSystems, output_folder: str = None):
 
-        # This is the function to run
+        # NO NEED TO CHANGE!
         witness_file, input_file, proof_path, public_path, verification_key, circuit_name, output_file = get_files(
             input_folder, proof_folder, temp_folder, circuit_folder, self.name, output_folder, proof_system)
         
+
+        '''
+        #######################################################################################################
+        #################################### This is the block for changes ####################################
+        #######################################################################################################
+        '''
         ## Perform calculation here
 
         outputs = torch.add(self.inputs_1,self.inputs_2)
@@ -32,7 +52,15 @@ class BaseTests():
         outputs = {
             'outputs': [int(i) for i in outputs.tolist()],
         }
+        '''
+        #######################################################################################################
+        #######################################################################################################
+        #######################################################################################################
+        '''
 
+
+
+        # NO NEED TO CHANGE anything below here!
         to_json(inputs, input_file)
 
         # Write output to json

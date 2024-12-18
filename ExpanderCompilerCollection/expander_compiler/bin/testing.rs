@@ -6,20 +6,30 @@ use expander_config::{
 };
 use clap::{Command, Arg};
 
-
+// :)
 
 const LENGTH: usize = 256;
 
+/*
+        #######################################################################################################
+        #################################### This is the block for changes ####################################
+        #######################################################################################################
+ */
 
-
+// Specify input and output structure
+// This will indicate the input layer and output layer of the circuit, so be careful with how it is defined
+// Later, we define how the inputs get read into the input layer
 declare_circuit!(Circuit {
     input: [[Variable; LENGTH]; 2],
     output: [Variable; LENGTH],
 });
 
+//This is where the circuit is defined. We can refactor out some modular components to this, but this is where it is put together
 impl<C: Config> Define<C> for Circuit<Variable> {
-    // Default circuit for now, ensures input and output are equal
+
+    // Default circuit for now
     fn define(&self, api: &mut API<C>) {
+
         // Iterate over each input/output pair (one per batch)
         for i in 0..LENGTH {
             let out = api.add(self.input[0][i].clone(),self.input[1][i].clone());
@@ -27,6 +37,11 @@ impl<C: Config> Define<C> for Circuit<Variable> {
         }
     }
 }
+/*
+        #######################################################################################################
+        #######################################################################################################
+        #######################################################################################################
+ */
 
 mod io_reader {
     use ethnum::U256;
@@ -39,7 +54,13 @@ mod io_reader {
     use super::Circuit;
 
     use expander_compiler::frontend::*;
+    /*
+        #######################################################################################################
+        #################################### This is the block for changes ####################################
+        #######################################################################################################
+    */
 
+    //This is the data structure for the input data to be read in from the json file
     #[derive(Deserialize)]
     #[derive(Clone)]
     pub(crate) struct InputData {
@@ -47,12 +68,14 @@ mod io_reader {
         pub(crate) inputs_2: Vec<u64>,
     }
 
+    //This is the data structure for the output data to be read in from the json file
     #[derive(Deserialize)]
     #[derive(Clone)]
     pub(crate) struct OutputData {
         pub(crate) outputs: Vec<u64>,
     }
 
+    // Read in input data from json file. Here, we focus on reading the inputs into the input layer of the circuit in a way that makes sense to us
     pub(crate) fn input_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
     where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
@@ -75,15 +98,14 @@ mod io_reader {
 
         for (j, var_vec) in u8_vars.iter().enumerate() {
             for (k, &var) in var_vec.iter().enumerate() {
-            // For each u8 variable, store it directly as a `u64` in the BN254 field (BN254 can handle u64)
-                assignment.input[j][k] = C::CircuitField::from_u256(U256::from(var)) ; // Treat the u8 as a u64 for BN254
+                assignment.input[j][k] = C::CircuitField::from_u256(U256::from(var)) ; // Treat the u8 as a u64 for Field
             }
-
         }
         // Return the assignment
         assignment
     }
 
+    // Read in output data from json file. Here, we focus on reading the outputs into the output layer of the circuit in a way that makes sense to us
     pub(crate) fn output_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
     where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
@@ -101,12 +123,15 @@ mod io_reader {
         // Assign inputs to assignment
 
         for k in 0..LENGTH {
-            // For each u8 variable, store it directly as a `u64` in the BN254 field (BN254 can handle u64)
-            assignment.output[k] = C::CircuitField::from_u256(U256::from(data.outputs[k])) ; // Treat the u8 as a u64 for BN254
-
+            assignment.output[k] = C::CircuitField::from_u256(U256::from(data.outputs[k])) ; // Treat the u8 as a u64 for Field
         }
         assignment
     }
+    /*
+        #######################################################################################################
+        #######################################################################################################
+        #######################################################################################################
+    */
 }
 
 fn run_main<C: Config, GKRC>()
