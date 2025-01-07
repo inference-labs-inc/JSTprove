@@ -649,6 +649,7 @@ dependencies = [
  "gkr",
  "halo2curves",
  "mersenne31",
+ "peakmem-alloc",
  "rand",
  "serde",
  "serde_json",
@@ -1404,6 +1405,12 @@ name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
+name = "peakmem-alloc"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5eb7428a977a472465aced57d8d2335d6167c0ce9c05c283fd6faed3d8d948f6"
 
 [[package]]
 name = "percent-encoding"

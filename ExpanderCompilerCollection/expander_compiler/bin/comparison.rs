@@ -5,48 +5,83 @@ use expander_config::{
     M31ExtConfigSha2,
 };
 use clap::{Command, Arg};
+use extra::UnconstrainedAPI;
+
 use peakmem_alloc::*;
 use std::alloc::System;
 use std::mem;
 use std::time::{Instant};
 
-// :)
 #[global_allocator]
 static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
+// static GLOBAL_PARTIAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
+
 const LENGTH: usize = 256;
 
-/*
-        #######################################################################################################
-        #################################### This is the block for changes ####################################
-        #######################################################################################################
- */
 
-// Specify input and output structure
-// This will indicate the input layer and output layer of the circuit, so be careful with how it is defined
-// Later, we define how the inputs get read into the input layer
+
 declare_circuit!(Circuit {
     input: [[Variable; LENGTH]; 2],
     output: [Variable; LENGTH],
 });
 
-//This is where the circuit is defined. We can refactor out some modular components to this, but this is where it is put together
+// Version 1
+fn to_binary_v1<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
+    let mut res = Vec::new();
+    for i in 0..n_bits {
+        let y = api.unconstrained_shift_r(x, i as u32);
+        res.push(api.unconstrained_bit_and(y, 1));
+    }
+    res
+}
+
+fn from_binary<C: Config>(api: &mut API<C>, bits: Vec<Variable>) -> Variable {
+    let mut res = api.constant(0);
+    for i in 0..bits.len() {
+        let coef = 1 << i;
+        let cur = api.mul(coef, bits[i]);
+        res = api.add(res, cur);
+    }
+    res
+}
+
+// Version 2
+fn to_binary<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
+    let mut res = Vec::new();
+    let mut count = api.constant(0);
+    for i in 0..n_bits {
+        let y = api.unconstrained_shift_r(x, i as u32);
+        res.push(api.unconstrained_bit_and(y, 1));
+        //Check that value is binary
+        let bin_check = api.sub(1,res[i]);
+        let bin_check2 = api.mul(bin_check,res[i]);
+        api.assert_is_zero(bin_check2);
+
+        //keep running total
+        // Not sure if this next line can be used?
+        let coef = 1 << i;
+        let cur = api.mul(coef, res[i]);
+        count = api.add(count, cur);
+    }
+    api.assert_is_equal(count, x);
+    res
+}
+
 impl<C: Config> Define<C> for Circuit<Variable> {
-
-    // Default circuit for now
+    // Default circuit for now, ensures input and output are equal
     fn define(&self, api: &mut API<C>) {
+        for i in 0..1{
+            for i in 0..LENGTH {
+                // Iterate over each input/output pair (one per batch)
+                // let bits = to_binary_v1(api, self.input[0][i], 32);
+                // let x = from_binary(api, bits);
+                // api.assert_is_equal(x, self.input[0][i]);
 
-        // Iterate over each input/output pair (one per batch)
-        for i in 0..LENGTH {
-            let out = api.add(self.input[0][i].clone(),self.input[1][i].clone());
-            api.assert_is_equal(out.clone(), self.output[i].clone());
+                let bits = to_binary(api, self.input[0][i], 32);
+            }
         }
     }
 }
-/*
-        #######################################################################################################
-        #######################################################################################################
-        #######################################################################################################
- */
 
 mod io_reader {
     use ethnum::U256;
@@ -59,13 +94,7 @@ mod io_reader {
     use super::Circuit;
 
     use expander_compiler::frontend::*;
-    /*
-        #######################################################################################################
-        #################################### This is the block for changes ####################################
-        #######################################################################################################
-    */
 
-    //This is the data structure for the input data to be read in from the json file
     #[derive(Deserialize)]
     #[derive(Clone)]
     pub(crate) struct InputData {
@@ -73,14 +102,12 @@ mod io_reader {
         pub(crate) inputs_2: Vec<u64>,
     }
 
-    //This is the data structure for the output data to be read in from the json file
     #[derive(Deserialize)]
     #[derive(Clone)]
     pub(crate) struct OutputData {
-        pub(crate) outputs: Vec<u64>,
+        pub(crate) outputs: Vec<i64>,
     }
 
-    // Read in input data from json file. Here, we focus on reading the inputs into the input layer of the circuit in a way that makes sense to us
     pub(crate) fn input_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
     where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
@@ -103,14 +130,15 @@ mod io_reader {
 
         for (j, var_vec) in u8_vars.iter().enumerate() {
             for (k, &var) in var_vec.iter().enumerate() {
-                assignment.input[j][k] = C::CircuitField::from_u256(U256::from(var)) ; // Treat the u8 as a u64 for Field
+            // For each u8 variable, store it directly as a `u64` in the BN254 field (BN254 can handle u64)
+                assignment.input[j][k] = C::CircuitField::from_u256(U256::from(var)) ; // Treat the u8 as a u64 for BN254
             }
+
         }
         // Return the assignment
         assignment
     }
 
-    // Read in output data from json file. Here, we focus on reading the outputs into the output layer of the circuit in a way that makes sense to us
     pub(crate) fn output_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
     where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
@@ -128,15 +156,16 @@ mod io_reader {
         // Assign inputs to assignment
 
         for k in 0..LENGTH {
-            assignment.output[k] = C::CircuitField::from_u256(U256::from(data.outputs[k])) ; // Treat the u8 as a u64 for Field
+            // For each u8 variable, store it directly as a `u64` in the BN254 field (BN254 can handle u64)
+            if data.outputs[k] == -1 {
+                assignment.output[k] = C::CircuitField::from_u256(U256::from(0 as u8)) -  C::CircuitField::from_u256(U256::from(1 as u8)); // Treat the u8 as a u64 for BN254
+            }
+            else{
+                assignment.output[k] = C::CircuitField::from_u256(U256::from(data.outputs[k] as u64)) ; // Treat the u8 as a u64 for BN254
+            }
         }
         assignment
     }
-    /*
-        #######################################################################################################
-        #######################################################################################################
-        #######################################################################################################
-    */
 }
 
 fn run_main<C: Config, GKRC>()
@@ -144,7 +173,7 @@ where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>,
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    let start = Instant::now(); 
+    let start = Instant::now();
     let matches = Command::new("File Copier")
         .version("1.0")
         .about("Copies content from input file to output file")
@@ -207,7 +236,6 @@ where
     let mut prover = gkr::Prover::new(&config);
     prover.prepare_mem(&expander_circuit);
     let (claimed_v, proof) = prover.prove(&mut expander_circuit);
-
     println!("Proved");
     // verify
     let verifier = gkr::Verifier::new(&config);
@@ -218,7 +246,6 @@ where
         &proof
     ));
     println!("Verified");
-
     println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
     println!(
         "Peak Memory used Overall : {:.2}", 
@@ -226,7 +253,6 @@ where
     );
     let duration = start.elapsed();
     println!("Time elapsed: {}.{} seconds", duration.as_secs(), duration.subsec_millis())
-
 }
 
 //#[test]
@@ -251,7 +277,7 @@ fn run_bn254() {
 }
 
 fn main(){
-    run_gf2();
+    // run_gf2();
     run_m31();
     run_bn254();
 }
