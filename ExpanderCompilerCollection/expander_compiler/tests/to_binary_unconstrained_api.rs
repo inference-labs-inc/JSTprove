@@ -29,6 +29,7 @@ impl Define<M31Config> for Circuit<Variable> {
         let bits = to_binary(builder, self.input, 8);
         let x = from_binary(builder, bits);
         builder.assert_is_equal(x, self.input);
+    
     }
 }
 
