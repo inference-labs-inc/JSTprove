@@ -180,7 +180,7 @@ class ReLU():
 
         # outputs = torch.where(self.inputs_1 > self.inputs_2, torch.tensor(1), 
         #              torch.where(self.inputs_1 == self.inputs_2, torch.tensor(0), torch.tensor(-1)))
-        inputs_3 = torch.mul(torch.sub(torch.mul(self.inputs_2,2),1),self.inputs_1)
+        inputs_3 = torch.mul(torch.sub(1, torch.mul(self.inputs_2,2)),self.inputs_1)
         outputs = torch.relu(inputs_3)
 
         ## Define inputs and outputs
