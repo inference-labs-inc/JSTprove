@@ -13,46 +13,9 @@ use std::fmt::write;
 use std::{array, mem};
 use std::time::{Instant};
 
-use csv::{WriterBuilder, ReaderBuilder};
-use serde::Serialize;
+use csv::{ReaderBuilder};
+
 use std::{error::Error, fs::OpenOptions, io::Write};
-
-#[derive(Serialize)]
-struct Metrics {
-    experiment_name: String,
-    proof_size: usize,
-    max_mem: f32,
-    proof_time: u128,
-}
-
-
-fn write_metrics(metrics: Vec<Metrics>){
-    let file_path = "analysis/metrics_output.csv";
-    
-    // Open the file with the option to append (create if it doesn't exist)
-    let file = OpenOptions::new()
-        .create(true)       // Create the file if it doesn't exist
-        .append(true)       // Append to the file
-        .open(file_path).unwrap();
-
-    let mut wtr = WriterBuilder::new().has_headers(false).from_writer(file);
-
-    // If the file is empty (no headers), write headers
-    let metadata = std::fs::metadata(file_path).unwrap();
-    if metadata.len() == 0 {
-        wtr.write_record(&["experiment_name", "proof_size", "max_mem", "proof_time"]);
-    }
-
-
-    // Loop through each setting, collect metrics, and append to CSV
-    for m in metrics {
-
-        wtr.serialize(m);
-    }
-
-    wtr.flush();
-    println!("Metrics have been appended to {}", file_path);
-}
 
 
 #[global_allocator]
@@ -121,7 +84,7 @@ fn to_binary_constrained<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize
 // fn to_binary<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
 fn to_binary_fixed_length<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
     // let mut res = Vec::new();
-    let mut res= vec![x; n_bits];
+    let mut res= vec![Variable::default(); n_bits];
     for i in 0..n_bits {
         let y = api.unconstrained_shift_r(x, i as u32);
         // res.push(api.unconstrained_bit_and(y, 1));
@@ -142,8 +105,8 @@ fn from_binary_fixed_length<C: Config>(api: &mut API<C>, bits: Vec<Variable> ) -
 }
 
 // Version 2
-fn to_binary_constrained_fixed_length<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> [Variable; N]{
-    let mut res = [x; N];
+fn to_binary_constrained_fixed_length<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
+    let mut res = vec![Variable::default(); N];
     let mut count = api.constant(0);
     for i in 0..n_bits {
         let y = api.unconstrained_shift_r(x, i as u32);
@@ -165,7 +128,7 @@ fn to_binary_constrained_fixed_length<C: Config>(api: &mut API<C>, x: Variable, 
 }
 // Array
 fn to_binary_constrained_array<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> [Variable; N] {
-    let mut res =[x; N];
+    let mut res =[Variable::default(); N];
     let mut count = api.constant(0);
     for i in 0..n_bits {
         let y = api.unconstrained_shift_r(x, i as u32);
@@ -188,7 +151,7 @@ fn to_binary_constrained_array<C: Config>(api: &mut API<C>, x: Variable, n_bits:
 
 fn to_binary_array<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> [Variable; N] {
     // let mut res = Vec::new();
-    let mut res = [x; N];
+    let mut res = [Variable::default(); N];
     for i in 0..n_bits {
         let y = api.unconstrained_shift_r(x, i as u32);
         // res.push(api.unconstrained_bit_and(y, 1));
@@ -256,55 +219,57 @@ fn from_binary_capacity<C: Config>(api: &mut API<C>, bits: Vec<Variable> ) -> Va
 impl<C: Config> Define<C> for Circuit<Variable> {
     // Default circuit for now, ensures input and output are equal
     fn define(&self, api: &mut API<C>) {
-        if arraytype == 0{
-            for i in 0..LENGTH {
-                // Iterate over each input/output pair (one per batch)
-                if constrained == 0{
-                    let bits = to_binary(api, self.input[0][i], 32);
-                    let x = from_binary(api, bits);
-                    api.assert_is_equal(x, self.input[0][i]);
-                }
-                else{
-                    let bits = to_binary_constrained(api, self.input[0][i], 32);
-                }
-            }
-        }
-        else if arraytype == 1{
-            for i in 0..LENGTH {
-                // Iterate over each input/output pair (one per batch)
-                if constrained == 0{
-                    let bits = to_binary_fixed_length(api, self.input[0][i], 32);
-                    let x = from_binary_fixed_length(api, bits);
-                    api.assert_is_equal(x, self.input[0][i]);
-                }
-                else{
-                    let bits = to_binary_constrained_fixed_length(api, self.input[0][i], 32);
+        for a in 0..20{
+            if arraytype == 0{
+                for i in 0..LENGTH {
+                    // Iterate over each input/output pair (one per batch)
+                    if constrained == 0{
+                        let bits = to_binary(api, self.input[0][i], 32);
+                        let x = from_binary(api, bits);
+                        api.assert_is_equal(x, self.input[0][i]);
+                    }
+                    else{
+                        let bits = to_binary_constrained(api, self.input[0][i], 32);
+                    }
                 }
             }
-        }
-        else if arraytype == 2{
-            for i in 0..LENGTH {
-                // Iterate over each input/output pair (one per batch)
-                if constrained == 0{
-                    let bits = to_binary_array(api, self.input[0][i], 32);
-                    let x = from_binary_array(api, bits);
-                    api.assert_is_equal(x, self.input[0][i]);
-                }
-                else{
-                    let bits = to_binary_constrained_array(api, self.input[0][i], 32);
+            else if arraytype == 1{
+                for i in 0..LENGTH {
+                    // Iterate over each input/output pair (one per batch)
+                    if constrained == 0{
+                        let bits = to_binary_fixed_length(api, self.input[0][i], 32);
+                        let x = from_binary_fixed_length(api, bits);
+                        api.assert_is_equal(x, self.input[0][i]);
+                    }
+                    else{
+                        let bits = to_binary_constrained_fixed_length(api, self.input[0][i], 32);
+                    }
                 }
             }
-        }
-        else if arraytype == 3{
-            for i in 0..LENGTH {
-                // Iterate over each input/output pair (one per batch)
-                if constrained == 0{
-                    let bits = to_binary_capacity(api, self.input[0][i], 32);
-                    let x = from_binary_capacity(api, bits);
-                    api.assert_is_equal(x, self.input[0][i]);
+            else if arraytype == 2{
+                for i in 0..LENGTH {
+                    // Iterate over each input/output pair (one per batch)
+                    if constrained == 0{
+                        let bits = to_binary_array(api, self.input[0][i], 32);
+                        let x = from_binary_array(api, bits);
+                        api.assert_is_equal(x, self.input[0][i]);
+                    }
+                    else{
+                        let bits = to_binary_constrained_array(api, self.input[0][i], 32);
+                    }
                 }
-                else{
-                    let bits = to_binary_constrained_capacity(api, self.input[0][i], 32);
+            }
+            else if arraytype == 3{
+                for i in 0..LENGTH {
+                    // Iterate over each input/output pair (one per batch)
+                    if constrained == 0{
+                        let bits = to_binary_capacity(api, self.input[0][i], 32);
+                        let x = from_binary_capacity(api, bits);
+                        api.assert_is_equal(x, self.input[0][i]);
+                    }
+                    else{
+                        let bits = to_binary_constrained_capacity(api, self.input[0][i], 32);
+                    }
                 }
             }
         }
@@ -485,14 +450,56 @@ where
     );
     
     println!("Time elapsed: {}.{} seconds", duration.as_secs(), duration.subsec_millis());
-    let metrics = Metrics{
+    let metrics = MetricsWriting::Metrics{
         experiment_name: experiment_name.to_string(),
         proof_size: size,
         max_mem: memory as f32 / (1024.0 * 1024.0),
         proof_time: duration.as_millis()
     };
 
-    write_metrics(vec![metrics]);
+    MetricsWriting::write_metrics(vec![metrics]);
+}
+
+mod MetricsWriting {
+    use csv::WriterBuilder;
+    use serde::Serialize;
+    use std::fs::OpenOptions;
+
+    #[derive(Serialize)]
+    pub(crate) struct Metrics {
+        pub(crate) experiment_name: String,
+        pub(crate) proof_size: usize,
+        pub(crate) max_mem: f32,
+        pub(crate) proof_time: u128,
+    }
+
+    pub(crate) fn write_metrics(metrics: Vec<Metrics>){
+        let file_path = "analysis/metrics_output.csv";
+    
+        // Open the file with the option to append (create if it doesn't exist)
+        let file = OpenOptions::new()
+            .create(true)       // Create the file if it doesn't exist
+            .append(true)       // Append to the file
+            .open(file_path).unwrap();
+
+        let mut wtr = WriterBuilder::new().has_headers(false).from_writer(file);
+
+        // If the file is empty (no headers), write headers
+        let metadata = std::fs::metadata(file_path).unwrap();
+        if metadata.len() == 0 {
+            wtr.write_record(&["experiment_name", "proof_size", "max_mem", "proof_time"]);
+        }
+
+
+        // Loop through each setting, collect metrics, and append to CSV
+        for m in metrics {
+
+            wtr.serialize(m);
+        }
+
+        wtr.flush();
+        println!("Metrics have been appended to {}", file_path);
+    }
 }
 
 //#[test]
@@ -517,30 +524,32 @@ fn run_bn254(experiment_name:&String) {
 }
 
 fn main(){
-    let mut array_type = "";
-    if arraytype == 0{
-        array_type = "variablevector";
+    for i in 0..25{
+        let mut array_type = "";
+        if arraytype == 0{
+            array_type = "variablevector";
+        }
+        else if arraytype == 1 {
+            array_type = "fixedvector";
+        }
+        else if arraytype == 2{
+            array_type = "array";
+        }
+        else {
+            array_type = "vectorcapacity";
+        }
+        let mut con = "";
+        if constrained == 0 {
+            con = "ecc";
+        }
+        else{
+            con = "IL";
+        }
+        let experiment_name1: String = format!("to_binary_m31_{}_{}",array_type,con);
+        
+        // run_gf2();
+        run_m31(&experiment_name1);
+        let experiment_name2: String = format!("to_binary_bn254_{}_{}",array_type,con);
+        run_bn254(&experiment_name2);
     }
-    else if arraytype == 1 {
-        array_type = "fixedvector";
-    }
-    else if arraytype == 2{
-        array_type = "array";
-    }
-    else {
-        array_type = "vectorcapacity";
-    }
-    let mut con = "";
-    if constrained == 0 {
-        con = "ecc";
-    }
-    else{
-        con = "IL";
-    }
-    let experiment_name1: String = format!("to_binary_m31_{}_{}",array_type,con);
-    
-    // run_gf2();
-    run_m31(&experiment_name1);
-    let experiment_name2: String = format!("to_binary_bn254_{}_{}",array_type,con);
-    run_bn254(&experiment_name2);
 }
