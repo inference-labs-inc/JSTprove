@@ -85,7 +85,7 @@ class Comparison():
         
         # Function input generation
 
-        self.inputs_1 = torch.randint(low=0, high=100000000, size=(256,))
+        self.inputs_1 = torch.randint(low=0, high=2**21, size=(256,))
         self.inputs_2 = torch.randint(low=0, high=1, size=(256,))
         # self.scaling = 100000000
         '''
@@ -180,7 +180,7 @@ class ReLU():
 
         # outputs = torch.where(self.inputs_1 > self.inputs_2, torch.tensor(1), 
         #              torch.where(self.inputs_1 == self.inputs_2, torch.tensor(0), torch.tensor(-1)))
-        inputs_3 = torch.mul(torch.sub(torch.mul(self.inputs_2,2),1),self.inputs_1)
+        inputs_3 = torch.mul(torch.sub(1, torch.mul(self.inputs_2,2)),self.inputs_1)
         outputs = torch.relu(inputs_3)
 
         ## Define inputs and outputs
@@ -219,7 +219,7 @@ if __name__ == "__main__":
     input_folder = "inputs"
     circuit_folder = ""
     #Rework inputs to function
-    test_circuit = Comparison()
-    # test_circuit = ReLU()
+    # test_circuit = Comparison()
+    test_circuit = ReLU()
     test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, proof_system, output_folder)
 
