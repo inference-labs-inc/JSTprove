@@ -18,6 +18,10 @@ path = "bin/comparison.rs"
 name = "relu"
 path = "bin/relu.rs"
 
+[[bin]]
+name = "gemm"
+path = "bin/gemm.rs"
+
 [package]
 name = "expander_compiler"
 version = "0.1.0"
