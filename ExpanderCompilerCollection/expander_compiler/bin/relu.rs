@@ -13,7 +13,10 @@ use std::time::{Instant};
 // :)
 #[global_allocator]
 static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
-const LENGTH: usize = 256;
+const SIZE1: usize = 28;
+const SIZE2: usize = 28;
+const SIZE3: usize = 16;
+
 
 /*
         #######################################################################################################
@@ -25,8 +28,9 @@ const LENGTH: usize = 256;
 // This will indicate the input layer and output layer of the circuit, so be careful with how it is defined
 // Later, we define how the inputs get read into the input layer
 declare_circuit!(Circuit {
-    input: [[Variable; LENGTH]; 2],
-    output: [Variable; LENGTH],
+    input: [[[Variable; SIZE1]; SIZE2];SIZE3],
+    sign: [[[Variable; SIZE1]; SIZE2];SIZE3],
+    output: [[[Variable; SIZE1]; SIZE2];SIZE3],
 });
 
 // Assume 0 is negative and 1 is positive
@@ -34,19 +38,51 @@ fn relu<C: Config>(api: &mut API<C>, x: Variable, sign: Variable) -> Variable {
     let sign_2 = api.sub(1, sign);
     api.mul(x,sign_2)
 }
+fn relu_simple_call<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Variable> {
+    let mut out = Vec::new();
+    let length = x.len()/2;
+    for k in 0..length{
+        out.push(relu(api, x[k], x[k+length]));
+        // let sign_2 = api.sub(1, x[k + length]);
+        // out.push(api.mul(x[k],sign_2));
+    }
+    out
+}
 
 impl<C: Config> Define<C> for Circuit<Variable> {
     // Default circuit for now, ensures input and output are equal
     fn define(&self, api: &mut API<C>) {
-            for i in 0..LENGTH {
-                // Iterate over each input/output pair (one per batch)
-                let x = relu(api, self.input[0][i], self.input[1][i]);
-                api.assert_is_equal(x, self.output[i]);
+            for i in 0..self.input.len() {
+                for j in 0..self.input[i].len(){
+                    let mut vec1 = self.input[i][j].to_vec();
+                    let mut vec2 = self.sign[i][j].to_vec();
+                    vec1.append(&mut vec2);
+                    let x = api.memorized_simple_call(relu_simple_call, &vec1);
 
-                // let bits = to_binary_constrained(api, self.input[0][i], 32)
+                    for k in 0..self.input[i][j].len(){
+                        api.assert_is_equal(x[k], self.output[i][j][k]);
+
+                }
+            }
         }
     }
 }
+
+// impl<C: Config> Define<C> for Circuit<Variable> {
+//     // Default circuit for now, ensures input and output are equal
+//     fn define(&self, api: &mut API<C>) {
+//             for i in 0..self.input.len() {
+//                 for j in 0..self.input[i].len(){
+//                     for k in 0..self.input[i][j].len(){
+//                         // Iterate over each input/output pair (one per batch)
+//                         let x = relu(api, self.input[i][j][k], self.sign[i][j][k]);
+//                         api.assert_is_equal(x, self.output[i][j][k]);
+
+//                 }
+//             }
+//         }
+//     }
+// }
 /*
         #######################################################################################################
         #######################################################################################################
@@ -58,8 +94,6 @@ mod io_reader {
     use std::io::Read;
     use arith::FieldForECC;
     use serde::Deserialize;
-
-    use crate::LENGTH;
 
     use super::Circuit;
 
@@ -74,15 +108,15 @@ mod io_reader {
     #[derive(Deserialize)]
     #[derive(Clone)]
     pub(crate) struct InputData {
-        pub(crate) inputs_1: Vec<u64>,
-        pub(crate) inputs_2: Vec<u64>,
+        pub(crate) inputs_1: Vec<Vec<Vec<u64>>>,
+        pub(crate) inputs_2: Vec<Vec<Vec<u64>>>,
     }
 
     //This is the data structure for the output data to be read in from the json file
     #[derive(Deserialize)]
     #[derive(Clone)]
     pub(crate) struct OutputData {
-        pub(crate) outputs: Vec<u64>,
+        pub(crate) outputs: Vec<Vec<Vec<u64>>>,
     }
 
     // Read in input data from json file. Here, we focus on reading the inputs into the input layer of the circuit in a way that makes sense to us
@@ -102,15 +136,33 @@ mod io_reader {
 
 
         // Assign inputs to assignment
-        let u8_vars = [
-            data.inputs_1, data.inputs_2
-        ];
+        
 
-        for (j, var_vec) in u8_vars.iter().enumerate() {
-            for (k, &var) in var_vec.iter().enumerate() {
-                assignment.input[j][k] = C::CircuitField::from_u256(U256::from(var)) ; // Treat the u8 as a u64 for Field
+        for (i,var_vec_vec) in data.inputs_1.iter().enumerate(){
+            for (j, var_vec) in var_vec_vec.iter().enumerate(){
+                for (k, &var) in var_vec.iter().enumerate(){
+                    assignment.input[i][j][k] = C::CircuitField::from_u256(U256::from(var)) ; // Treat the u8 as a u64 for Field
+
+                }
             }
         }
+
+        for (i,var_vec_vec) in data.inputs_2.iter().enumerate(){
+            for (j, var_vec) in var_vec_vec.iter().enumerate(){
+                for (k, &var) in var_vec.iter().enumerate(){
+                    assignment.sign[i][j][k] = C::CircuitField::from_u256(U256::from(var)) ; // Treat the u8 as a u64 for Field
+
+                }
+            }
+        }
+        // let u8_vars = [
+        //     data.inputs_1, data.inputs_2
+        // ];
+        // for (j, var_vec) in u8_vars.iter().enumerate() {
+        //     for (k, &var) in var_vec.iter().enumerate() {
+        //         assignment.input[j][k] = C::CircuitField::from_u256(U256::from(var)) ; // Treat the u8 as a u64 for Field
+        //     }
+        // }
         // Return the assignment
         assignment
     }
@@ -132,8 +184,13 @@ mod io_reader {
 
         // Assign inputs to assignment
 
-        for k in 0..LENGTH {
-            assignment.output[k] = C::CircuitField::from_u256(U256::from(data.outputs[k])) ; // Treat the u8 as a u64 for Field
+        for (i,var_vec_vec) in data.outputs.iter().enumerate(){
+            for (j, var_vec) in var_vec_vec.iter().enumerate(){
+                for (k, &var) in var_vec.iter().enumerate(){
+                    assignment.output[i][j][k] = C::CircuitField::from_u256(U256::from(var)) ; // Treat the u8 as a u64 for Field
+
+                }
+            }
         }
         assignment
     }
@@ -256,7 +313,7 @@ fn run_bn254() {
 }
 
 fn main(){
-    run_gf2();
+    // run_gf2();
     run_m31();
     run_bn254();
 }
