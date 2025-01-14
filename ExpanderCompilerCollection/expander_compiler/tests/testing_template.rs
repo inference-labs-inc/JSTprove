@@ -38,8 +38,6 @@ mod io_reader {
     use arith::FieldForECC;
     use serde::Deserialize;
 
-    use crate::LENGTH;
-
     use super::Circuit;
 
     use expander_compiler::frontend::*;
@@ -101,9 +99,9 @@ mod io_reader {
         let data: OutputData = serde_json::from_str(&contents).unwrap();
 
         // Assign inputs to assignment
-        for k in 0..LENGTH {
+        for (k, &var) in data.outputs.iter().enumerate() {
             // For each u8 variable, store it directly as a `u64` in the BN254 field (BN254 can handle u64)
-            assignment.output[k] = C::CircuitField::from_u256(U256::from(data.outputs[k])) ; // Make sure var in this line, lines up with the innermost loop variable name
+            assignment.output[k] = C::CircuitField::from_u256(U256::from(var)) ; // Make sure var in this line, lines up with the innermost loop variable name
         }
         assignment
     }
