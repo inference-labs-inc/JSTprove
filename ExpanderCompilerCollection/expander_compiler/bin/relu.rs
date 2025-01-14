@@ -31,7 +31,7 @@ declare_circuit!(Circuit {
 
 // Assume 0 is negative and 1 is positive
 fn relu<C: Config>(api: &mut API<C>, x: Variable, sign: Variable) -> Variable {
-    let sign_2 = api.sub(1,sign);
+    let sign_2 = api.sub(1, sign);
     api.mul(x,sign_2)
 }
 
