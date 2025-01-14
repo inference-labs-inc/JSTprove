@@ -17,12 +17,18 @@ class BaseTests():
         
         # Function input generation
 
-        self.input_a = torch.randint(low=0, high=100, size=(256,256))
-        self.input_b = torch.randint(low=0, high=100, size=(256,256))
-        self.input_c = torch.randint(low=0, high=100, size=(256,1))
-        self.input_alpha = torch.randint(low=0, high=100, size=(1,)).item()
-        self.input_beta = torch.randint(low=0, high=100, size=(1,)).item()
-        # self.scaling = 100000000
+        '''
+        Matrix a has shape (m, n)
+        Matrix b has shape (n, k)
+        matmul(a,b) has shape (m, k)
+        '''
+
+        N_ROWS_a: int = 256; # m
+        N_COLS_a: int = 256; # n
+        N_COLS_b: int = 1; # k
+
+        self.input_a = torch.randint(low=0, high=100, size=(N_ROWS_a,N_COLS_a)) # (m, n) array of random integers between 0 and 100
+        self.input_b = torch.randint(low=0, high=100, size=(N_COLS_a,N_COLS_b)) # (n, k) array of random integers between 0 and 100
         
         '''
         #######################################################################################################
@@ -45,31 +51,16 @@ class BaseTests():
         '''
         ## Perform calculation here
 
-        def _gemm11(a, b, c, alpha, beta):  # type: ignore
-            o = np.dot(a.T, b.T) * alpha
-            if c is not None and beta != 0:
-                o += c * beta
-            return o
-
-        c_matrix = self.input_c.numpy() if self.input_c else None
-
-        outputs = _gemm11(self.input_a.numpy(), 
-                          self.input_b.numpy(), 
-                          c_matrix, 
-                          self.input_alpha, 
-                          self.input_beta) 
+        vanilla_matrix_product = torch.matmul(self.input_a, self.input_b)
 
         ## Define inputs and outputs
         inputs = {
-            'input_a': [int(i) for i in self.input_a.tolist()],
-            'input_b': [int(i) for i in self.input_b.tolist()],          
-            'input_alpha': [int(i) for i in self.input_alpha.tolist()],
-            'input_beta': [int(i) for i in self.input_beta.tolist()],
+            'input_a': self.input_a.tolist(),
+            'input_b': self.input_b.tolist(),          
             }
-        if c is not None:
-            inputs['input_c'] = [int(i) for i in self.input_c.tolist()],
+        
         outputs = {
-            'outputs': [int(i) for i in outputs.tolist()],
+            'matrix_product': vanilla_matrix_product.tolist(),
         }
         '''
         #######################################################################################################
