@@ -73,11 +73,11 @@ impl<C: Config> Define<C> for Circuit<Variable> {
         for i in 0..1{
             for i in 0..LENGTH {
                 // Iterate over each input/output pair (one per batch)
-                // let bits = to_binary_v1(api, self.input[0][i], 32);
-                // let x = from_binary(api, bits);
-                // api.assert_is_equal(x, self.input[0][i]);
+                let bits = to_binary_v1(api, self.input[0][i], 32);
+                let x = from_binary(api, bits);
+                api.assert_is_equal(x, self.input[0][i]);
 
-                let bits = to_binary(api, self.input[0][i], 32);
+                // let bits = to_binary(api, self.input[0][i], 32);
             }
         }
     }

@@ -7,23 +7,35 @@ use expander_config::{
 use clap::{Command, Arg};
 
 
+/* 
+Matrix a has shape (m, n)
+Matrix b has shape (n, k)
+matmul(a,b) has shape (m, k)
+*/
 
-const LENGTH: usize = 256;
+const N_ROWS_A: usize = 256; // m
+const N_COLS_A: usize = 256; // n
+const N_COLS_B: usize = 1; // k
 
 
 
 declare_circuit!(Circuit {
-    input: [[Variable; LENGTH]; 2],
-    output: [Variable; LENGTH],
+    input_a: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
+    input_b: [[Variable; N_COLS_B]; N_COLS_A], // shape (n, k)
+    output: [[Variable; N_COLS_B]; N_ROWS_A], // shape (m, k)
 });
 
 impl<C: Config> Define<C> for Circuit<Variable> {
-    // Default circuit for now, ensures input and output are equal
     fn define(&self, api: &mut API<C>) {
-        // Iterate over each input/output pair (one per batch)
-        for i in 0..LENGTH {
-            let out = api.add(self.input[0][i].clone(),self.input[1][i].clone());
-            api.assert_is_equal(out.clone(), self.output[i].clone());
+        for i in 0..N_ROWS_A {
+            for j in 0..N_COLS_B {
+                let mut row_col_product: Variable = api.constant(0);
+                for k in 0..N_COLS_A {
+                    let element_product = api.mul(self.input_a[i][k], self.input_b[k][j]);
+                    row_col_product = api.add(row_col_product, element_product);
+                }
+                api.assert_is_equal(self.output[i][j], row_col_product);               
+            }
         }
     }
 }
@@ -34,8 +46,6 @@ mod io_reader {
     use arith::FieldForECC;
     use serde::Deserialize;
 
-    use crate::LENGTH;
-
     use super::Circuit;
 
     use expander_compiler::frontend::*;
@@ -43,14 +53,14 @@ mod io_reader {
     #[derive(Deserialize)]
     #[derive(Clone)]
     pub(crate) struct InputData {
-        pub(crate) inputs_1: Vec<u64>,
-        pub(crate) inputs_2: Vec<u64>,
+        pub(crate) input_a: Vec<Vec<u64>>, // Shape (m, n) // Question: type Variable? // Alternative (if dimensions known in advance): [[Variable; N_COLS_A]; N_ROWS_A],
+        pub(crate) input_b: Vec<Vec<u64>>, // Shape (n, k) // Question: type Variable? // Alternative (if dimensions known in advance): [[Variable; N_COLS_B]; N_COLS_A],
     }
 
     #[derive(Deserialize)]
     #[derive(Clone)]
     pub(crate) struct OutputData {
-        pub(crate) outputs: Vec<u64>,
+        pub(crate) output: Vec<Vec<u64>>, //  Shape (m, k) // Question: type Variable? // Alternative (if dimensions known in advance): [[Variable; N_COLS_B]; N_ROWS_A],
     }
 
     pub(crate) fn input_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
@@ -69,17 +79,19 @@ mod io_reader {
 
 
         // Assign inputs to assignment
-        let u8_vars = [
-            data.inputs_1, data.inputs_2
-        ];
 
-        for (j, var_vec) in u8_vars.iter().enumerate() {
-            for (k, &var) in var_vec.iter().enumerate() {
-            // For each u8 variable, store it directly as a `u64` in the BN254 field (BN254 can handle u64)
-                assignment.input[j][k] = C::CircuitField::from_u256(U256::from(var)) ; // Treat the u8 as a u64 for BN254
+        for (i, row) in data.input_a.iter().enumerate() {
+            for (j, &element) in row.iter().enumerate() {
+                assignment.input_a[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
             }
-
         }
+
+        for (i, row) in data.input_b.iter().enumerate() {
+            for (j, &element) in row.iter().enumerate() {
+                assignment.input_b[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
+            }
+        }
+
         // Return the assignment
         assignment
     }
@@ -100,10 +112,10 @@ mod io_reader {
 
         // Assign inputs to assignment
 
-        for k in 0..LENGTH {
-            // For each u8 variable, store it directly as a `u64` in the BN254 field (BN254 can handle u64)
-            assignment.output[k] = C::CircuitField::from_u256(U256::from(data.outputs[k])) ; // Treat the u8 as a u64 for BN254
-
+        for (i, row) in data.output.iter().enumerate() {
+            for (j, &element) in row.iter().enumerate() {
+                assignment.output[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
+            }
         }
         assignment
     }
