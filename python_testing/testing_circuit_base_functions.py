@@ -85,7 +85,7 @@ class Comparison():
         
         # Function input generation
 
-        self.inputs_1 = torch.randint(low=0, high=100000000, size=(256,))
+        self.inputs_1 = torch.randint(low=0, high=2**21, size=(256,))
         self.inputs_2 = torch.randint(low=0, high=1, size=(256,))
         # self.scaling = 100000000
         '''
@@ -213,12 +213,13 @@ class ReLU():
     
 if __name__ == "__main__":
     proof_system = ZKProofSystems.Expander
-    proof_folder = "proofs"
+    proof_folder = "analysis"
     output_folder = "output"
     temp_folder = "temp"
     input_folder = "inputs"
     circuit_folder = ""
     #Rework inputs to function
+    # test_circuit = Comparison()
     test_circuit = ReLU()
     test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, proof_system, output_folder)
 
