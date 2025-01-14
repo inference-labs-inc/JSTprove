@@ -26,7 +26,7 @@ declare_circuit!(Circuit {
 });
 
 // Version 1
-fn to_binary_v1<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
+fn to_binary_ecc<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
     let mut res = Vec::new();
     for i in 0..n_bits {
         let y = api.unconstrained_shift_r(x, i as u32);

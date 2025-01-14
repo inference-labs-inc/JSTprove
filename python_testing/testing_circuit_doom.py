@@ -142,31 +142,45 @@ class Doom():
 
 class ReLU():
     #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
-    def __init__(self):
+    def __init__(self, twos_complement = False):
         super().__init__()
         '''
         #######################################################################################################
         #################################### This is the block for changes ####################################
         #######################################################################################################
         '''
-        # Specify
-        self.name = "relu"
-        
-        # Function input generation
+        self.twos_complement = twos_complement
+        if twos_complement:
+            # Specify
+            self.name = "relu"
+            
+            # Function input generation
 
-        self.inputs_1 = torch.randint(low=0, high=100000000, size=(256,))
-        self.inputs_2 = torch.randint(low=0, high=2, size=(256,))
-        self.outputs = None
-        self.scaling = 2 ** 21
+            self.inputs_1 = torch.randint(low=0, high=100000000, size=(256,))
+            self.inputs_2 = torch.randint(low=0, high=2, size=(256,))
+            self.outputs = None
+            self.scaling = 2 ** 21
+        else:
+            # Specify
+            self.name = "relu_twos_comp"
+            
+            # Function input generation
+
+            self.inputs_1 = torch.randint(low=0, high=100000000, size=(256,))
+            self.outputs = None
+            self.scaling = 2 ** 21
         '''
         #######################################################################################################
         #######################################################################################################
         #######################################################################################################
         '''
 
-    def convert_to_relu_form(self,):
-        self.inputs_2 = (self.inputs_1 < 0).int()
-        self.inputs_1 = torch.mul(torch.abs(self.inputs_1), self.scaling)
+    def convert_to_relu_form(self):
+        if not self.twos_complement:
+            self.inputs_2 = (self.inputs_1 < 0).int()
+            self.inputs_1 = torch.mul(torch.abs(self.inputs_1), self.scaling)
+        else:
+            
 
     
     def base_testing(self, input_folder:str, proof_folder: str, temp_folder: str, circuit_folder:str, proof_system: ZKProofSystems, output_folder: str = None):

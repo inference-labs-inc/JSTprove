@@ -1,4 +1,3 @@
-
 use expander_compiler::frontend::*;
 use expander_config::{
     BN254ConfigKeccak, BN254ConfigSha2, GF2ExtConfigKeccak, GF2ExtConfigSha2, M31ExtConfigKeccak,
@@ -9,14 +8,158 @@ use peakmem_alloc::*;
 use std::alloc::System;
 use std::mem;
 use std::time::{Instant};
+use extra::UnconstrainedAPI;
+
 
 #[global_allocator]
 static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
-
 const SIZE1: usize = 28;
 const SIZE2: usize = 28;
 const SIZE3: usize = 16;
 
+
+/*
+        #######################################################################################################
+        #################################### This is the block for changes ####################################
+        #######################################################################################################
+ */
+
+// Specify input and output structure
+// This will indicate the input layer and output layer of the circuit, so be careful with how it is defined
+// Later, we define how the inputs get read into the input layer
+
+// Version 1
+fn to_binary_ecc<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
+    let mut res = Vec::new();
+    for i in 0..n_bits {
+        let y = api.unconstrained_shift_r(x, i as u32);
+        res.push(api.unconstrained_bit_and(y, 1));
+    }
+    res
+}
+
+fn from_binary<C: Config>(api: &mut API<C>, bits: Vec<Variable>) -> Variable {
+    let mut res = api.constant(0);
+    for i in 0..bits.len() {
+        let coef = 1 << i;
+        let cur = api.mul(coef, bits[i]);
+        res = api.add(res, cur);
+    }
+    res
+}
+
+// Version 2
+fn to_binary<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
+    let mut res = Vec::new();
+    let mut count = api.constant(0);
+    for i in 0..n_bits {
+        let y = api.unconstrained_shift_r(x, i as u32);
+        res.push(api.unconstrained_bit_and(y, 1));
+        //Check that value is binary
+        let bin_check = api.sub(1,res[i]);
+        let bin_check2 = api.mul(bin_check,res[i]);
+        api.assert_is_zero(bin_check2);
+
+        //keep running total
+        // Not sure if this next line can be used?
+        let coef = 1 << i;
+        let cur = api.mul(coef, res[i]);
+        count = api.add(count, cur);
+    }
+    api.assert_is_equal(count, x);
+    res
+}
+
+fn get_sign_simple<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Variable> {
+    let mut out: Vec<Variable> = Vec::with_capacity(x.len());
+    for i in 0..x.len(){
+        out.push(to_binary(api, x[i], 32)[0]);
+    }
+    out
+}
+
+
+// Assume 1 is negative and 0 is positive
+fn relu_single<C: Config>(api: &mut API<C>, x: Variable, sign: Variable) -> Variable {
+    let sign_2 = api.sub(1, sign);
+    api.mul(x,sign_2)
+}
+
+
+fn relu_simple_call<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Variable> {
+    let mut out = Vec::new();
+    let length = x.len()/2;
+    for k in 0..length{
+        out.push(relu_single(api, x[k], x[k+length]));
+        // let sign_2 = api.sub(1, x[k + length]);
+        // out.push(api.mul(x[k],sign_2));
+    }
+    out
+}
+
+
+
+//V1 loops through each layer of the matrix and computes relu on individual basis
+fn relu_twos_v1<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X]) -> [[[Variable; Z]; Y]; X] {
+    for i in 0..input.len() {
+        for j in 0..input[i].len(){
+            for k in 0..input[i][j].len(){
+                // Iterate over each input/output pair (one per batch)
+                let sign = to_binary(api, input[i][j][k], 32);
+                let x = relu_single(api, input[i][j][k], sign[0]);
+                api.assert_is_equal(x, output[i][j][k]);
+            }
+        }
+    }
+    output
+}
+// memorized_simple call on last dimension of array
+fn relu_v2<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X],sign: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X]) -> [[[Variable; Z]; Y]; X] {
+    for i in 0..input.len() {
+        for j in 0..input[i].len(){
+            let mut vec1 = input[i][j].to_vec();
+            let mut vec2 = sign[i][j].to_vec();
+            vec1.append(&mut vec2);
+            let x = api.memorized_simple_call(relu_simple_call, &vec1);
+            // let x = relu_simple_call(api, &vec1);
+
+
+            for k in 0..input[i][j].len(){
+                api.assert_is_equal(x[k], output[i][j][k]);
+
+            }
+        }
+    }
+    output
+}
+
+//V3 involves flattening the matrix entirely and feeding into memorized_simple call
+fn relu_v3<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X],sign: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X]) -> [[[Variable; Z]; Y]; X] {
+// Flatten the two 3D matrices
+        let flattened: Vec<Variable> = input.iter()
+            .flat_map(|i| i.iter())
+            .flat_map(|j| j.iter())
+            .chain(sign.iter().flat_map(|i| i.iter()).flat_map(|j| j.iter()))
+            .cloned()
+            .collect();
+
+        // Determine the dimensions of the 3D matrix
+        let out = api.memorized_simple_call(relu_simple_call, &flattened);
+        // let x = relu_simple_call(api, &vec1);
+        // let mut reshaped: Vec<Vec<Vec<Variable>>> = Vec::with_capacity(x);
+
+        // let mut iter = flattened.into_iter();
+        let mut iter = out.into_iter();
+
+        for i in 0..output.len() {
+            for j in 0..output[i].len(){
+                for k in 0..output[i][j].len(){
+                    api.assert_is_equal(iter.next().unwrap(), output[i][j][k]);
+                }
+        }
+    }
+    output
+}
 
 
 declare_circuit!(Circuit {
@@ -27,11 +170,16 @@ impl<C: Config> Define<C> for Circuit<Variable> {
     // Default circuit for now, ensures input and output are equal
     fn define(&self, api: &mut API<C>) {
         
-        // let out = relu_v1(api, self.input, self.sign, self.output);
-        let out = relu_v2(api, self.input, self.output);
+        let out = relu_twos_v1(api, self.input, self.output);
+        // let out = relu_v2(api, self.input, self.sign, self.output);
         // let out = relu_v3(api, self.input, self.sign, self.output);
     }
 }
+/*
+        #######################################################################################################
+        #######################################################################################################
+        #######################################################################################################
+ */
 
 mod io_reader {
     use ethnum::U256;
@@ -42,19 +190,28 @@ mod io_reader {
     use super::Circuit;
 
     use expander_compiler::frontend::*;
+    /*
+        #######################################################################################################
+        #################################### This is the block for changes ####################################
+        #######################################################################################################
+    */
 
+    //This is the data structure for the input data to be read in from the json file
     #[derive(Deserialize)]
     #[derive(Clone)]
     pub(crate) struct InputData {
         pub(crate) inputs_1: Vec<Vec<Vec<u64>>>,
+        pub(crate) inputs_2: Vec<Vec<Vec<u64>>>,
     }
 
+    //This is the data structure for the output data to be read in from the json file
     #[derive(Deserialize)]
     #[derive(Clone)]
     pub(crate) struct OutputData {
         pub(crate) outputs: Vec<Vec<Vec<u64>>>,
     }
 
+    // Read in input data from json file. Here, we focus on reading the inputs into the input layer of the circuit in a way that makes sense to us
     pub(crate) fn input_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
     where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
@@ -68,6 +225,8 @@ mod io_reader {
 
         // Deserialize the JSON into the InputData struct
         let data: InputData = serde_json::from_str(&contents).unwrap();
+        // Assign inputs to assignment
+        
 
         for (i,var_vec_vec) in data.inputs_1.iter().enumerate(){
             for (j, var_vec) in var_vec_vec.iter().enumerate(){
@@ -76,10 +235,10 @@ mod io_reader {
                 }
             }
         }
-        // Return the assignment
         assignment
     }
 
+    // Read in output data from json file. Here, we focus on reading the outputs into the output layer of the circuit in a way that makes sense to us
     pub(crate) fn output_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
     where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
@@ -99,12 +258,18 @@ mod io_reader {
         for (i,var_vec_vec) in data.outputs.iter().enumerate(){
             for (j, var_vec) in var_vec_vec.iter().enumerate(){
                 for (k, &var) in var_vec.iter().enumerate(){
-                    assignment.input[i][j][k] = C::CircuitField::from_u256(U256::from(var)); 
+                    assignment.output[i][j][k] = C::CircuitField::from_u256(U256::from(var)) ;
+
                 }
             }
         }
         assignment
     }
+    /*
+        #######################################################################################################
+        #######################################################################################################
+        #######################################################################################################
+    */
 }
 
 fn run_main<C: Config, GKRC>()
@@ -186,6 +351,7 @@ where
         &proof
     ));
     println!("Verified");
+
     println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
     println!(
         "Peak Memory used Overall : {:.2}", 
@@ -214,7 +380,7 @@ fn run_m31() {
 #[allow(dead_code)]
 fn run_bn254() {
     run_main::<BN254Config, BN254ConfigSha2>();
-    run_main::<BN254Config, BN254ConfigKeccak>();
+    // run_main::<BN254Config, BN254ConfigKeccak>();
 }
 
 fn main(){
