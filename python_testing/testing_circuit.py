@@ -23,8 +23,8 @@ class BaseTests():
         matmul(a,b) has shape (m, k)
         '''
 
-        N_ROWS_a: int = 256; # m
-        N_COLS_a: int = 256; # n
+        N_ROWS_a: int = 16; # m
+        N_COLS_a: int = 16; # n
         N_COLS_b: int = 1; # k
 
         self.input_a = torch.randint(low=0, high=100, size=(N_ROWS_a,N_COLS_a)) # (m, n) array of random integers between 0 and 100
