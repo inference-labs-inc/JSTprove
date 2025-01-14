@@ -9,14 +9,27 @@ use extra::UnconstrainedAPI;
 
 use peakmem_alloc::*;
 use std::alloc::System;
-use std::mem;
+use std::fmt::write;
+use std::{array, mem};
 use std::time::{Instant};
+
+use csv::{ReaderBuilder};
+
+use std::{error::Error, fs::OpenOptions, io::Write};
+
 
 #[global_allocator]
 static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
 // static GLOBAL_PARTIAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
 
 const LENGTH: usize = 256;
+//0 is variable length vector, 1 is fixed length vector, 2 is array 
+const arraytype: usize = 3;
+
+// 0 is unconstrained default provided by ecc, 1 is our constrained version
+const constrained: usize = 1;
+
+const N:usize = 32;
 
 
 
@@ -26,7 +39,7 @@ declare_circuit!(Circuit {
 });
 
 // Version 1
-fn to_binary_v1<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
+fn to_binary<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
     let mut res = Vec::new();
     for i in 0..n_bits {
         let y = api.unconstrained_shift_r(x, i as u32);
@@ -46,7 +59,7 @@ fn from_binary<C: Config>(api: &mut API<C>, bits: Vec<Variable>) -> Variable {
 }
 
 // Version 2
-fn to_binary<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
+fn to_binary_constrained<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
     let mut res = Vec::new();
     let mut count = api.constant(0);
     for i in 0..n_bits {
@@ -67,17 +80,197 @@ fn to_binary<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Var
     res
 }
 
+// Version 1
+// fn to_binary<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
+fn to_binary_fixed_length<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
+    // let mut res = Vec::new();
+    let mut res= vec![Variable::default(); n_bits];
+    for i in 0..n_bits {
+        let y = api.unconstrained_shift_r(x, i as u32);
+        // res.push(api.unconstrained_bit_and(y, 1));
+        res[i] = api.unconstrained_bit_and(y, 1);
+        
+    }
+    res
+}
+
+fn from_binary_fixed_length<C: Config>(api: &mut API<C>, bits: Vec<Variable> ) -> Variable {
+    let mut res = api.constant(0);
+    for i in 0..bits.len() {
+        let coef = 1 << i;
+        let cur = api.mul(coef, bits[i]);
+        res = api.add(res, cur);
+    }
+    res
+}
+
+// Version 2
+fn to_binary_constrained_fixed_length<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
+    let mut res = vec![Variable::default(); N];
+    let mut count = api.constant(0);
+    for i in 0..n_bits {
+        let y = api.unconstrained_shift_r(x, i as u32);
+        res[i] = api.unconstrained_bit_and(y, 1);
+
+        //Check that value is binary
+        let bin_check = api.sub(1,res[i]);
+        let bin_check2 = api.mul(bin_check,res[i]);
+        api.assert_is_zero(bin_check2);
+
+        //keep running total
+        // Not sure if this next line can be used?
+        let coef = 1 << i;
+        let cur = api.mul(coef, res[i]);
+        count = api.add(count, cur);
+    }
+    api.assert_is_equal(count, x);
+    res
+}
+// Array
+fn to_binary_constrained_array<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> [Variable; N] {
+    let mut res =[Variable::default(); N];
+    let mut count = api.constant(0);
+    for i in 0..n_bits {
+        let y = api.unconstrained_shift_r(x, i as u32);
+        res[i] = api.unconstrained_bit_and(y, 1);
+
+        //Check that value is binary
+        let bin_check = api.sub(1,res[i]);
+        let bin_check2 = api.mul(bin_check,res[i]);
+        api.assert_is_zero(bin_check2);
+
+        //keep running total
+        // Not sure if this next line can be used?
+        let coef = 1 << i;
+        let cur = api.mul(coef, res[i]);
+        count = api.add(count, cur);
+    }
+    api.assert_is_equal(count, x);
+    res
+}
+
+fn to_binary_array<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> [Variable; N] {
+    // let mut res = Vec::new();
+    let mut res = [Variable::default(); N];
+    for i in 0..n_bits {
+        let y = api.unconstrained_shift_r(x, i as u32);
+        // res.push(api.unconstrained_bit_and(y, 1));
+        res[i] = api.unconstrained_bit_and(y, 1);
+        
+    }
+    res
+}
+
+fn from_binary_array<C: Config>(api: &mut API<C>, bits: [Variable; N] ) -> Variable {
+    let mut res = api.constant(0);
+    for i in 0..bits.len() {
+        let coef = 1 << i;
+        let cur = api.mul(coef, bits[i]);
+        res = api.add(res, cur);
+    }
+    res
+}
+// Capacity Vector
+fn to_binary_constrained_capacity<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
+    let mut res = Vec::with_capacity(n_bits);
+    let mut count = api.constant(0);
+    for i in 0..n_bits {
+        let y = api.unconstrained_shift_r(x, i as u32);
+        res.push(api.unconstrained_bit_and(y, 1));
+
+        //Check that value is binary
+        let bin_check = api.sub(1,res[i]);
+        let bin_check2 = api.mul(bin_check,res[i]);
+        api.assert_is_zero(bin_check2);
+
+        //keep running total
+        // Not sure if this next line can be used?
+        let coef = 1 << i;
+        let cur = api.mul(coef, res[i]);
+        count = api.add(count, cur);
+    }
+    api.assert_is_equal(count, x);
+    res
+}
+
+fn to_binary_capacity<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
+    // let mut res = Vec::new();
+    let mut res = Vec::with_capacity(n_bits);
+    for i in 0..n_bits {
+        let y = api.unconstrained_shift_r(x, i as u32);
+        // res.push(api.unconstrained_bit_and(y, 1));
+        res.push(api.unconstrained_bit_and(y, 1));
+        
+    }
+    res
+}
+
+fn from_binary_capacity<C: Config>(api: &mut API<C>, bits: Vec<Variable> ) -> Variable {
+    let mut res = api.constant(0);
+    for i in 0..bits.len() {
+        let coef = 1 << i;
+        let cur = api.mul(coef, bits[i]);
+        res = api.add(res, cur);
+    }
+    res
+}
+
+
 impl<C: Config> Define<C> for Circuit<Variable> {
     // Default circuit for now, ensures input and output are equal
     fn define(&self, api: &mut API<C>) {
-        for i in 0..1{
-            for i in 0..LENGTH {
-                // Iterate over each input/output pair (one per batch)
-                let bits = to_binary_v1(api, self.input[0][i], 32);
-                let x = from_binary(api, bits);
-                api.assert_is_equal(x, self.input[0][i]);
-
-                // let bits = to_binary(api, self.input[0][i], 32);
+        for a in 0..20{
+            if arraytype == 0{
+                for i in 0..LENGTH {
+                    // Iterate over each input/output pair (one per batch)
+                    if constrained == 0{
+                        let bits = to_binary(api, self.input[0][i], 32);
+                        let x = from_binary(api, bits);
+                        api.assert_is_equal(x, self.input[0][i]);
+                    }
+                    else{
+                        let bits = to_binary_constrained(api, self.input[0][i], 32);
+                    }
+                }
+            }
+            else if arraytype == 1{
+                for i in 0..LENGTH {
+                    // Iterate over each input/output pair (one per batch)
+                    if constrained == 0{
+                        let bits = to_binary_fixed_length(api, self.input[0][i], 32);
+                        let x = from_binary_fixed_length(api, bits);
+                        api.assert_is_equal(x, self.input[0][i]);
+                    }
+                    else{
+                        let bits = to_binary_constrained_fixed_length(api, self.input[0][i], 32);
+                    }
+                }
+            }
+            else if arraytype == 2{
+                for i in 0..LENGTH {
+                    // Iterate over each input/output pair (one per batch)
+                    if constrained == 0{
+                        let bits = to_binary_array(api, self.input[0][i], 32);
+                        let x = from_binary_array(api, bits);
+                        api.assert_is_equal(x, self.input[0][i]);
+                    }
+                    else{
+                        let bits = to_binary_constrained_array(api, self.input[0][i], 32);
+                    }
+                }
+            }
+            else if arraytype == 3{
+                for i in 0..LENGTH {
+                    // Iterate over each input/output pair (one per batch)
+                    if constrained == 0{
+                        let bits = to_binary_capacity(api, self.input[0][i], 32);
+                        let x = from_binary_capacity(api, bits);
+                        api.assert_is_equal(x, self.input[0][i]);
+                    }
+                    else{
+                        let bits = to_binary_constrained_capacity(api, self.input[0][i], 32);
+                    }
+                }
             }
         }
     }
@@ -168,7 +361,7 @@ mod io_reader {
     }
 }
 
-fn run_main<C: Config, GKRC>()
+fn run_main<C: Config, GKRC>(experiment_name: &String)
 where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>,
 {
@@ -245,39 +438,118 @@ where
         &claimed_v,
         &proof
     ));
+    let duration = start.elapsed();
+    let memory = GLOBAL.get_peak_memory();
+    let size = mem::size_of_val(&proof) + mem::size_of_val(&claimed_v);
+    
     println!("Verified");
-    println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
+    println!("Size of proof: {} bytes", size);
     println!(
         "Peak Memory used Overall : {:.2}", 
-        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+        memory as f64 / (1024.0 * 1024.0)
     );
-    let duration = start.elapsed();
-    println!("Time elapsed: {}.{} seconds", duration.as_secs(), duration.subsec_millis())
+    
+    println!("Time elapsed: {}.{} seconds", duration.as_secs(), duration.subsec_millis());
+    let metrics = MetricsWriting::Metrics{
+        experiment_name: experiment_name.to_string(),
+        proof_size: size,
+        max_mem: memory as f32 / (1024.0 * 1024.0),
+        proof_time: duration.as_millis()
+    };
+
+    MetricsWriting::write_metrics(vec![metrics]);
+}
+
+mod MetricsWriting {
+    use csv::WriterBuilder;
+    use serde::Serialize;
+    use std::fs::OpenOptions;
+
+    #[derive(Serialize)]
+    pub(crate) struct Metrics {
+        pub(crate) experiment_name: String,
+        pub(crate) proof_size: usize,
+        pub(crate) max_mem: f32,
+        pub(crate) proof_time: u128,
+    }
+
+    pub(crate) fn write_metrics(metrics: Vec<Metrics>){
+        let file_path = "analysis/metrics_output.csv";
+    
+        // Open the file with the option to append (create if it doesn't exist)
+        let file = OpenOptions::new()
+            .create(true)       // Create the file if it doesn't exist
+            .append(true)       // Append to the file
+            .open(file_path).unwrap();
+
+        let mut wtr = WriterBuilder::new().has_headers(false).from_writer(file);
+
+        // If the file is empty (no headers), write headers
+        let metadata = std::fs::metadata(file_path).unwrap();
+        if metadata.len() == 0 {
+            wtr.write_record(&["experiment_name", "proof_size", "max_mem", "proof_time"]);
+        }
+
+
+        // Loop through each setting, collect metrics, and append to CSV
+        for m in metrics {
+
+            wtr.serialize(m);
+        }
+
+        wtr.flush();
+        println!("Metrics have been appended to {}", file_path);
+    }
 }
 
 //#[test]
 #[allow(dead_code)]
-fn run_gf2() {
-    run_main::<GF2Config, GF2ExtConfigSha2>();
-    run_main::<GF2Config, GF2ExtConfigKeccak>();
+fn run_gf2(experiment_name:&String) {
+    run_main::<GF2Config, GF2ExtConfigSha2>(&experiment_name);
+    run_main::<GF2Config, GF2ExtConfigKeccak>(&experiment_name);
 }
 
 //#[test]
 #[allow(dead_code)]
-fn run_m31() {
-    run_main::<M31Config, M31ExtConfigSha2>();
-    run_main::<M31Config, M31ExtConfigKeccak>();
+fn run_m31(experiment_name:&String) {
+    run_main::<M31Config, M31ExtConfigSha2>(&experiment_name);
+    run_main::<M31Config, M31ExtConfigKeccak>(&experiment_name);
 }
 
 //#[test]
 #[allow(dead_code)]
-fn run_bn254() {
-    run_main::<BN254Config, BN254ConfigSha2>();
-    run_main::<BN254Config, BN254ConfigKeccak>();
+fn run_bn254(experiment_name:&String) {
+    run_main::<BN254Config, BN254ConfigSha2>(&experiment_name);
+    run_main::<BN254Config, BN254ConfigKeccak>(&experiment_name);
 }
 
 fn main(){
-    // run_gf2();
-    run_m31();
-    run_bn254();
+    for i in 0..25{
+        let mut array_type = "";
+        if arraytype == 0{
+            array_type = "variablevector";
+        }
+        else if arraytype == 1 {
+            array_type = "fixedvector";
+        }
+        else if arraytype == 2{
+            array_type = "array";
+        }
+        else {
+            array_type = "vectorcapacity";
+        }
+        let mut con = "";
+        if constrained == 0 {
+            con = "ecc";
+        }
+        else{
+            con = "IL";
+        }
+        let experiment_name1: String = format!("to_binary_m31_{}_{}",array_type,con);
+        
+        // run_gf2();
+        run_m31(&experiment_name1);
+        let experiment_name2: String = format!("to_binary_bn254_{}_{}",array_type,con);
+        run_bn254(&experiment_name2);
+    }
 }
