@@ -18,6 +18,10 @@ path = "bin/comparison.rs"
 name = "relu"
 path = "bin/relu.rs"
 
+[[bin]]
+name = "relu_twos_comp"
+path = "bin/relu_twos_comp.rs"
+
 [package]
 name = "expander_compiler"
 version = "0.1.0"

@@ -5,9 +5,13 @@ use expander_config::{
     M31ExtConfigSha2,
 };
 use clap::{Command, Arg};
+use peakmem_alloc::*;
+use std::alloc::System;
+use std::mem;
+use std::time::{Instant};
 
-
-
+#[global_allocator]
+static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
 const LENGTH: usize = 256;
 
 
@@ -68,18 +72,16 @@ mod io_reader {
         let data: InputData = serde_json::from_str(&contents).unwrap();
 
 
-        // Assign inputs to assignment
-        let u8_vars = [
-            data.inputs_1, data.inputs_2
-        ];
+        for (k, &var) in data.inputs_1.iter().enumerate() {
+        // For each u8 variable, store it directly as a `u64` in the BN254 field (BN254 can handle u64)
+            assignment.input[0][k] = C::CircuitField::from_u256(U256::from(var)) ; // Make sure var in this line, lines up with the innermost loop variable name
+        }
 
-        for (j, var_vec) in u8_vars.iter().enumerate() {
-            for (k, &var) in var_vec.iter().enumerate() {
+        for (k, &var) in data.inputs_2.iter().enumerate() {
             // For each u8 variable, store it directly as a `u64` in the BN254 field (BN254 can handle u64)
-                assignment.input[j][k] = C::CircuitField::from_u256(U256::from(var)) ; // Treat the u8 as a u64 for BN254
+                assignment.input[1][k] = C::CircuitField::from_u256(U256::from(var)) ; // Make sure var in this line, lines up with the innermost loop variable name
             }
 
-        }
         // Return the assignment
         assignment
     }
@@ -99,11 +101,9 @@ mod io_reader {
         let data: OutputData = serde_json::from_str(&contents).unwrap();
 
         // Assign inputs to assignment
-
         for k in 0..LENGTH {
             // For each u8 variable, store it directly as a `u64` in the BN254 field (BN254 can handle u64)
-            assignment.output[k] = C::CircuitField::from_u256(U256::from(data.outputs[k])) ; // Treat the u8 as a u64 for BN254
-
+            assignment.output[k] = C::CircuitField::from_u256(U256::from(data.outputs[k])) ; // Make sure var in this line, lines up with the innermost loop variable name
         }
         assignment
     }
@@ -113,7 +113,8 @@ fn run_main<C: Config, GKRC>()
 where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>,
 {
-
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now(); 
     let matches = Command::new("File Copier")
         .version("1.0")
         .about("Copies content from input file to output file")
@@ -187,6 +188,13 @@ where
         &proof
     ));
     println!("Verified");
+    println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
+    println!(
+        "Peak Memory used Overall : {:.2}", 
+        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+    );
+    let duration = start.elapsed();
+    println!("Time elapsed: {}.{} seconds", duration.as_secs(), duration.subsec_millis())
 
 }
 
