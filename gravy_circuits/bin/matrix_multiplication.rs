@@ -5,6 +5,7 @@ use expander_config::{
     M31ExtConfigSha2,
 };
 use clap::{Command, Arg};
+<<<<<<< HEAD:gravy_circuits/bin/matrix_multiplication.rs
 use peakmem_alloc::*;
 use std::alloc::System;
 use std::mem;
@@ -13,16 +14,38 @@ use std::time::{Instant};
 #[global_allocator]
 static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
 /* 
+<<<<<<<< HEAD:gravy_circuits/bin/matrix_multiplication.rs
 Step 1: vanilla matrix multiplication of two matrices of compatible dimensions.
+========
+>>>>>>>> e776d47 (renamed files. added scaled matrix product):ExpanderCompilerCollection/expander_compiler/bin/gemm.rs
+=======
+
+
+/* 
+Step 1: vanilla matrix multiplication of two matrices of compatible dimensions.
+>>>>>>> e776d47 (renamed files. added scaled matrix product):ExpanderCompilerCollection/expander_compiler/bin/matrix_multiplication.rs
 matrix a has shape (m, n)
 matrix b has shape (n, k)
 matrix product ab has shape (m, k)
 */
 
+<<<<<<< HEAD:gravy_circuits/bin/matrix_multiplication.rs
+<<<<<<<< HEAD:gravy_circuits/bin/matrix_multiplication.rs
 const N_ROWS_A: usize = 1; // m
 const N_COLS_A: usize = 256; // n
 const N_ROWS_B: usize = 256; // n
 const N_COLS_B: usize = 128; // k
+========
+=======
+>>>>>>> e776d47 (renamed files. added scaled matrix product):ExpanderCompilerCollection/expander_compiler/bin/matrix_multiplication.rs
+const N_ROWS_A: usize = 3; // m
+const N_COLS_A: usize = 4; // n
+const N_ROWS_B: usize = 4; // n
+const N_COLS_B: usize = 2; // k
+<<<<<<< HEAD:gravy_circuits/bin/matrix_multiplication.rs
+>>>>>>>> e776d47 (renamed files. added scaled matrix product):ExpanderCompilerCollection/expander_compiler/bin/gemm.rs
+=======
+>>>>>>> e776d47 (renamed files. added scaled matrix product):ExpanderCompilerCollection/expander_compiler/bin/matrix_multiplication.rs
 
 declare_circuit!(Circuit {
     matrix_a: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
@@ -30,7 +53,10 @@ declare_circuit!(Circuit {
     matrix_product_ab: [[Variable; N_COLS_B]; N_ROWS_A], // shape (m, k)
 });
 
+<<<<<<< HEAD:gravy_circuits/bin/matrix_multiplication.rs
 
+=======
+>>>>>>> e776d47 (renamed files. added scaled matrix product):ExpanderCompilerCollection/expander_compiler/bin/matrix_multiplication.rs
 impl<C: Config> Define<C> for Circuit<Variable> {
     fn define(&self, api: &mut API<C>) {      
         for i in 0..N_ROWS_A {
@@ -142,8 +168,12 @@ fn run_main<C: Config, GKRC>()
 where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>,
 {
+<<<<<<< HEAD:gravy_circuits/bin/matrix_multiplication.rs
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now(); 
+=======
+
+>>>>>>> e776d47 (renamed files. added scaled matrix product):ExpanderCompilerCollection/expander_compiler/bin/matrix_multiplication.rs
     let matches = Command::new("File Copier")
         .version("1.0")
         .about("Copies content from input file to output file")
@@ -212,6 +242,7 @@ where
     ));
     println!("Verified");
 
+<<<<<<< HEAD:gravy_circuits/bin/matrix_multiplication.rs
     println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
     println!(
         "Peak Memory used Overall : {:.2}", 
@@ -220,6 +251,8 @@ where
     let duration = start.elapsed();
     println!("Time elapsed: {}.{} seconds", duration.as_secs(), duration.subsec_millis())
 
+=======
+>>>>>>> e776d47 (renamed files. added scaled matrix product):ExpanderCompilerCollection/expander_compiler/bin/matrix_multiplication.rs
 }
 
 //#[test]
@@ -244,7 +277,13 @@ fn run_bn254() {
 }
 
 fn main(){
+<<<<<<< HEAD:gravy_circuits/bin/matrix_multiplication.rs
     // run_gf2();
     run_m31();
     // run_bn254();
+=======
+    run_gf2();
+    run_m31();
+    run_bn254();
+>>>>>>> e776d47 (renamed files. added scaled matrix product):ExpanderCompilerCollection/expander_compiler/bin/matrix_multiplication.rs
 }

@@ -13,15 +13,9 @@ class BaseTests():
         #######################################################################################################
         '''
         # Specify
-        self.name = "gemm"
+        self.name = "matrix_multiplication"
         
         # Function input generation
-
-        '''
-        matrix a has shape (m, n)
-        matrix b has shape (n, k)
-        matrix product ab has shape (m, k)
-        '''
 
         N_ROWS_A: int = 3; # m
         N_COLS_A: int = 4; # n

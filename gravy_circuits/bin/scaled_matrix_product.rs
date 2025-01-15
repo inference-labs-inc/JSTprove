@@ -34,9 +34,9 @@ impl<C: Config> Define<C> for Circuit<Variable> {
                 let mut scaled_row_col_product: Variable = api.constant(0);
                 for k in 0..N_COLS_A {
                     let element_product = api.mul(self.matrix_a[i][k], self.matrix_b[k][j]);
-                    scaled_row_col_product = api.add(scaled_row_col_product, element_product);                   
+                    scaled_row_col_product = api.add(scaled_row_col_product, element_product);
+                    scaled_row_col_product = api.mul(scaled_row_col_product, self.alpha);
                 }
-                scaled_row_col_product = api.mul(scaled_row_col_product, self.alpha);
                 api.assert_is_equal(self.scaled_matrix_product_alpha_ab[i][j], scaled_row_col_product);               
             }
         }
