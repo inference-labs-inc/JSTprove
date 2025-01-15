@@ -18,9 +18,7 @@ chrono = "0.4"
 clap = { version = "4.1", features = ["derive"] }
 ethnum = "1.5.0"
 tiny-keccak = { version = "2.0", features = ["keccak"] }
-halo2curves = { git = "https://github.com/PolyhedraZK/halo2curves", default-features = false, features = [
-    "bits",
-] }
+halo2curves = { git = "https://github.com/PolyhedraZK/halo2curves", default-features = false, features = ["bits",] }
 arith = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev" }
 mpi_config = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev" }
 gkr_field_config = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev" }
