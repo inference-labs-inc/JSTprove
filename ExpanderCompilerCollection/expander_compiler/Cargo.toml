@@ -30,6 +30,10 @@ path = "bin/matrix_multiplication.rs"
 name = "scaled_matrix_product"
 path = "bin/scaled_matrix_product.rs"
 
+[[bin]]
+name = "scaled_matrix_product_sum"
+path = "bin/scaled_matrix_product_sum.rs"
+
 [package]
 name = "expander_compiler"
 version = "0.1.0"
