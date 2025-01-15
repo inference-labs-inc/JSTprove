@@ -18,17 +18,18 @@ class BaseTests():
         # Function input generation
 
         '''
-        Matrix a has shape (m, n)
-        Matrix b has shape (n, k)
-        matmul(a,b) has shape (m, k)
+        matrix a has shape (m, n)
+        matrix b has shape (n, k)
+        matrix product ab has shape (m, k)
         '''
 
-        N_ROWS_a: int = 16; # m
-        N_COLS_a: int = 16; # n
-        N_COLS_b: int = 1; # k
+        N_ROWS_A: int = 3; # m
+        N_COLS_A: int = 4; # n
+        N_ROWS_B: int = 4; # n
+        N_COLS_B: int = 2; # k
 
-        self.input_a = torch.randint(low=0, high=100, size=(N_ROWS_a,N_COLS_a)) # (m, n) array of random integers between 0 and 100
-        self.input_b = torch.randint(low=0, high=100, size=(N_COLS_a,N_COLS_b)) # (n, k) array of random integers between 0 and 100
+        self.matrix_a = torch.randint(low=0, high=100, size=(N_ROWS_A,N_COLS_A)) # (m, n) array of random integers between 0 and 100
+        self.matrix_b = torch.randint(low=0, high=100, size=(N_ROWS_B,N_COLS_B)) # (n, k) array of random integers between 0 and 100
         
         '''
         #######################################################################################################
@@ -51,16 +52,16 @@ class BaseTests():
         '''
         ## Perform calculation here
 
-        vanilla_matrix_product = torch.matmul(self.input_a, self.input_b)
+        matrix_product_ab = torch.matmul(self.matrix_a, self.matrix_b)
 
         ## Define inputs and outputs
         inputs = {
-            'input_a': self.input_a.tolist(),
-            'input_b': self.input_b.tolist(),          
+            'matrix_a': self.matrix_a.tolist(),
+            'matrix_b': self.matrix_b.tolist(),          
             }
         
         outputs = {
-            'matrix_product': vanilla_matrix_product.tolist(),
+            'matrix_product_ab': matrix_product_ab.tolist(),
         }
         '''
         #######################################################################################################
