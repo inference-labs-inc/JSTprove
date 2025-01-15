@@ -131,11 +131,11 @@ class Doom():
         input_folder = "inputs"
         circuit_folder = ""
         #Rework inputs to function
-        test_circuit = ReLU()
+        test_circuit = ReLU(twos_complement=True)
         test_circuit.inputs_1 = self.layers["conv1_relu"].inputs
         test_circuit.outputs = self.layers["conv1_relu"].outputs
         test_circuit.convert_to_relu_form()
-        test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, proof_system, output_folder)
+        # test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, proof_system, output_folder)
 
 
 
@@ -175,12 +175,22 @@ class ReLU():
         #######################################################################################################
         '''
 
-    def convert_to_relu_form(self):
+    def convert_to_relu_form(self, num_bits = 32):
+
+        def twos_comp(val, bits):
+            """compute the 2's complement of int value val"""
+            return int(f"{val & ((1 << bits) - 1):0{bits}b}", 2)
+
+        
+
         if not self.twos_complement:
             self.inputs_2 = (self.inputs_1 < 0).int()
             self.inputs_1 = torch.mul(torch.abs(self.inputs_1), self.scaling)
         else:
-            
+            self.inputs_1 = torch.mul(self.inputs_1, self.scaling).int()
+            self.inputs_1 =  torch.tensor([twos_comp(val.item(), num_bits) for val in self.inputs_1.flatten()]).reshape(self.inputs_1.shape)
+
+
 
     
     def base_testing(self, input_folder:str, proof_folder: str, temp_folder: str, circuit_folder:str, proof_system: ZKProofSystems, output_folder: str = None):
