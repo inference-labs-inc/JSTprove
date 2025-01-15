@@ -34,6 +34,23 @@ class ZKProofsExpander():
         assert isinstance(input_file, str)
         assert isinstance(output_file, str)
 
+        # Set RUSTFLAGS to target a specific CPU architecture
+        # os.environ["RUSTFLAGS"] = "-C target-cpu=haswell"
+        # os.environ["RUSTFLAGS"] = "-C target-cpu=x86-64"
+        # os.environ["RUSTFLAGS"] = "-C target-feature=-avx,-avx2"
+        # os.environ["RUSTFLAGS"] = "-C target-cpu=haswell -C target-feature=+avx,-avx2"
+
+
+        # # Run cargo clean with manifest path
+        # clean_command = ["cargo", "clean", "--manifest-path", self.toml_path]
+        # logging.info("Running cargo clean to remove old build artifacts.")
+        # res_clean = ExecutableHelperFunctions.run_process(clean_command, die_on_error=True)
+        # if res_clean.returncode == 0:
+        #     logging.info("cargo clean completed successfully.")
+        # else:
+        #     logging.error(f"cargo clean failed with return code: {res_clean.returncode}")
+        #     return  # Exit early if clean fails
+
         # Default run of file
         executable_to_run = ["cargo", "run", "--bin", self.circuit_file]
 
@@ -50,7 +67,7 @@ class ZKProofsExpander():
         res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=False)
         if res.returncode == 0:
             logging.info(f"Circuit Compiled with return code: {res.returncode}")
-
+            # Do not log here; run_process already handles logging errors.
 
 class ZKProofsCircom():
     def __init__(self, circuit_file: str):
@@ -169,17 +186,16 @@ class ExecutableHelperFunctions():
     @staticmethod
     def run_process(executable: List[str], die_on_error:bool =True, shell = False):
         try:
-            # If output is reading weirdlt, change capture_output to True, add `text=True` and print the output
-            res = subprocess.run(executable, check=True, capture_output=False, shell=shell)
-            # print("STDOUT:", res.stdout)
-            # print("STDERR:", res.stderr)
+            # Capture output by setting capture_output=True
+            res = subprocess.run(executable, check=True, capture_output=False, shell=shell, text=True)
             return res
         except subprocess.CalledProcessError as err:
-            logging.error(f"{err} {err.stderr.decode('utf8')}")
-            # logging.error(f"ARGS {err.args}")
-            logging.error(err.output.decode('utf8'))
+            # Log the error message from stderr
+            stderr_output = err.stderr if err.stderr else "No stderr output"
+            logging.error(f"Error: {err} {stderr_output}")
             if die_on_error:
-                sys.exit()
+                # sys.exit()
+                raise
             return err
         
     @staticmethod
@@ -206,6 +222,7 @@ class ExecutableHelperFunctions():
         except subprocess.CalledProcessError as err:
             logging.error(f"{err} {err.stderr.decode('utf8')}")
             logging.error(err.output.decode('utf8'))
+            logging.debug(f"Running command: {' '.join(executable)}")
             if die_on_error:
                 sys.exit()
             return err
