@@ -8,33 +8,34 @@ use clap::{Command, Arg};
 
 
 /* 
-Matrix a has shape (m, n)
-Matrix b has shape (n, k)
-matmul(a,b) has shape (m, k)
+Matrix A has shape (m, n)
+Matrix B has shape (n, k)
+Matrix product AB has shape (m, k)
 */
 
-const N_ROWS_A: usize = 16; // m
-const N_COLS_A: usize = 16; // n
-const N_COLS_B: usize = 1; // k
+const N_ROWS_A: usize = 3; // m
+const N_COLS_A: usize = 4; // n
+const N_ROWS_B: usize = 4; // n
+const N_COLS_B: usize = 2; // k
 
 
 
 declare_circuit!(Circuit {
-    input_a: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
-    input_b: [[Variable; N_COLS_B]; N_COLS_A], // shape (n, k)
-    matrix_product: [[Variable; N_COLS_B]; N_ROWS_A], // shape (m, k)
+    matrix_a: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
+    matrix_b: [[Variable; N_COLS_B]; N_ROWS_B], // shape (n, k)
+    matrix_product_ab: [[Variable; N_COLS_B]; N_ROWS_A], // shape (m, k)
 });
 
 impl<C: Config> Define<C> for Circuit<Variable> {
-    fn define(&self, api: &mut API<C>) {
+    fn define(&self, api: &mut API<C>) {      
         for i in 0..N_ROWS_A {
             for j in 0..N_COLS_B {
                 let mut row_col_product: Variable = api.constant(0);
                 for k in 0..N_COLS_A {
-                    let element_product = api.mul(self.input_a[i][k], self.input_b[k][j]);
+                    let element_product = api.mul(self.matrix_a[i][k], self.matrix_b[k][j]);
                     row_col_product = api.add(row_col_product, element_product);
                 }
-                api.assert_is_equal(self.matrix_product[i][j], row_col_product);               
+                api.assert_is_equal(self.matrix_product_ab[i][j], row_col_product);               
             }
         }
     }
@@ -53,14 +54,14 @@ mod io_reader {
     #[derive(Deserialize)]
     #[derive(Clone)]
     pub(crate) struct InputData {
-        pub(crate) input_a: Vec<Vec<u64>>, // Shape (m, n) // Question: type Variable? // Alternative (if dimensions known in advance): [[Variable; N_COLS_A]; N_ROWS_A],
-        pub(crate) input_b: Vec<Vec<u64>>, // Shape (n, k) // Question: type Variable? // Alternative (if dimensions known in advance): [[Variable; N_COLS_B]; N_COLS_A],
+        pub(crate) matrix_a: Vec<Vec<u64>>, // Shape (m, n) // Question: type Variable? // Alternative (if dimensions known in advance): [[Variable; N_COLS_A]; N_ROWS_A],
+        pub(crate) matrix_b: Vec<Vec<u64>>, // Shape (n, k) // Question: type Variable? // Alternative (if dimensions known in advance): [[Variable; N_COLS_B]; N_ROWS_B],
     }
 
     #[derive(Deserialize)]
     #[derive(Clone)]
     pub(crate) struct OutputData {
-        pub(crate) matrix_product: Vec<Vec<u64>>, //  Shape (m, k) // Question: type Variable? // Alternative (if dimensions known in advance): [[Variable; N_COLS_B]; N_ROWS_A],
+        pub(crate) matrix_product_ab: Vec<Vec<u64>>, //  Shape (m, k) // Question: type Variable? // Alternative (if dimensions known in advance): [[Variable; N_COLS_B]; N_ROWS_A],
     }
 
     pub(crate) fn input_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
@@ -80,15 +81,23 @@ mod io_reader {
 
         // Assign inputs to assignment
 
-        for (i, row) in data.input_a.iter().enumerate() {
+        let rows_a = data.matrix_a.len();  
+        let cols_a = if rows_a > 0 { data.matrix_a[0].len() } else { 0 };  
+        println!("matrix a shape: ({}, {})", rows_a, cols_a);  
+        
+        for (i, row) in data.matrix_a.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
-                assignment.input_a[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
+                assignment.matrix_a[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
             }
         }
 
-        for (i, row) in data.input_b.iter().enumerate() {
+        let rows_b = data.matrix_b.len();  
+        let cols_b = if rows_b > 0 { data.matrix_b[0].len() } else { 0 };  
+        println!("matrix b shape: ({}, {})", rows_b, cols_b); 
+
+        for (i, row) in data.matrix_b.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
-                assignment.input_b[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
+                assignment.matrix_b[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
             }
         }
 
@@ -111,10 +120,13 @@ mod io_reader {
         let data: OutputData = serde_json::from_str(&contents).unwrap();
 
         // Assign inputs to assignment
+        let rows_ab = data.matrix_product_ab.len();  
+        let cols_ab = if rows_ab > 0 { data.matrix_product_ab[0].len() } else { 0 };  
+        println!("matrix product ab shape: ({}, {})", rows_ab, cols_ab); 
 
-        for (i, row) in data.matrix_product.iter().enumerate() {
+        for (i, row) in data.matrix_product_ab.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_product[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
+                assignment.matrix_product_ab[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
             }
         }
         assignment
