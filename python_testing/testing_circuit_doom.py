@@ -135,7 +135,7 @@ class Doom():
         test_circuit.inputs_1 = self.layers["conv1_relu"].inputs
         test_circuit.outputs = self.layers["conv1_relu"].outputs
         test_circuit.convert_to_relu_form()
-        # test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, proof_system, output_folder)
+        test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, proof_system, output_folder)
 
 
 
@@ -150,7 +150,7 @@ class ReLU():
         #######################################################################################################
         '''
         self.twos_complement = twos_complement
-        if twos_complement:
+        if not twos_complement:
             # Specify
             self.name = "relu"
             
@@ -209,29 +209,43 @@ class ReLU():
 
         # outputs = torch.where(self.inputs_1 > self.inputs_2, torch.tensor(1), 
         #              torch.where(self.inputs_1 == self.inputs_2, torch.tensor(0), torch.tensor(-1)))
-        if self.outputs == None:
-            inputs_3 = torch.mul(torch.sub(1,torch.mul(self.inputs_2,2)),self.inputs_1)
-            outputs = torch.relu(inputs_3)
+        if self.twos_complement:
+            if self.outputs == None:
+                outputs = torch.where(self.inputs_1 > self.scaling,0,self.inputs_1)
+            else:
+                outputs = torch.mul(self.outputs, self.scaling)
         else:
-            outputs = torch.mul(self.outputs, self.scaling)
+            if self.outputs == None:
+                inputs_3 = torch.mul(torch.sub(1,torch.mul(self.inputs_2,2)),self.inputs_1)
+                outputs = torch.relu(inputs_3)
+            else:
+                outputs = torch.mul(self.outputs, self.scaling)
 
         ## Define inputs and outputs
-        try:
+        if self.twos_complement:
             inputs = {
-                'inputs_1': [int(i) for i in self.inputs_1.tolist()],
-                'inputs_2': [int(i) for i in self.inputs_2.tolist()]
-                }
-            outputs = {
-                'outputs': [int(i) for i in outputs.tolist()],
-            }
-        except:
-            inputs = {
-                'inputs_1': self.inputs_1.int().tolist(),
-                'inputs_2': self.inputs_2.int().tolist()
+                'inputs_1': self.inputs_1.tolist()
                 }
             outputs = {
                 'outputs': outputs.int().tolist(),
             }
+        else:
+            try:
+                inputs = {
+                    'inputs_1': [int(i) for i in self.inputs_1.tolist()],
+                    'inputs_2': [int(i) for i in self.inputs_2.tolist()]
+                    }
+                outputs = {
+                    'outputs': [int(i) for i in outputs.tolist()],
+                }
+            except:
+                inputs = {
+                    'inputs_1': self.inputs_1.int().tolist(),
+                    'inputs_2': self.inputs_2.int().tolist()
+                    }
+                outputs = {
+                    'outputs': outputs.int().tolist(),
+                }
         '''
         #######################################################################################################
         #######################################################################################################

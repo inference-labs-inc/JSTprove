@@ -73,7 +73,7 @@ fn to_binary<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Var
 fn get_sign_simple<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Variable> {
     let mut out: Vec<Variable> = Vec::with_capacity(x.len());
     for i in 0..x.len(){
-        out.push(to_binary(api, x[i], 32)[0]);
+        out.push(to_binary(api, x[i], 32)[31]);
     }
     out
 }
@@ -84,7 +84,6 @@ fn relu_single<C: Config>(api: &mut API<C>, x: Variable, sign: Variable) -> Vari
     let sign_2 = api.sub(1, sign);
     api.mul(x,sign_2)
 }
-
 
 fn relu_simple_call<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Variable> {
     let mut out = Vec::new();
@@ -97,16 +96,25 @@ fn relu_simple_call<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Varia
     out
 }
 
-
+fn relu_simple_call_2<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Variable> {
+    let mut out = Vec::new();
+    let sign = api.memorized_simple_call(get_sign_simple, x);
+    for k in 0..x.len(){
+        out.push(relu_single(api, x[k], sign[k]));
+        // let sign_2 = api.sub(1, x[k + length]);
+        // out.push(api.mul(x[k],sign_2));
+    }
+    out
+}
 
 //V1 loops through each layer of the matrix and computes relu on individual basis
-fn relu_twos_v1<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X]) -> [[[Variable; Z]; Y]; X] {
+fn relu_twos_v1<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X], n_bits: usize) -> [[[Variable; Z]; Y]; X] {
     for i in 0..input.len() {
         for j in 0..input[i].len(){
             for k in 0..input[i][j].len(){
                 // Iterate over each input/output pair (one per batch)
-                let sign = to_binary(api, input[i][j][k], 32);
-                let x = relu_single(api, input[i][j][k], sign[0]);
+                let sign = to_binary(api, input[i][j][k], n_bits);
+                let x = relu_single(api, input[i][j][k], sign[n_bits - 1]);
                 api.assert_is_equal(x, output[i][j][k]);
             }
         }
@@ -114,11 +122,11 @@ fn relu_twos_v1<C: Config, const X: usize, const Y: usize, const Z: usize>(api: 
     output
 }
 // memorized_simple call on last dimension of array
-fn relu_v2<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X],sign: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X]) -> [[[Variable; Z]; Y]; X] {
+fn relu_twos_v2<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X]) -> [[[Variable; Z]; Y]; X] {
     for i in 0..input.len() {
         for j in 0..input[i].len(){
             let mut vec1 = input[i][j].to_vec();
-            let mut vec2 = sign[i][j].to_vec();
+            let mut vec2 = api.memorized_simple_call(get_sign_simple, &input[i][j].to_vec());
             vec1.append(&mut vec2);
             let x = api.memorized_simple_call(relu_simple_call, &vec1);
             // let x = relu_simple_call(api, &vec1);
@@ -133,22 +141,39 @@ fn relu_v2<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut 
     output
 }
 
+//Appears slightly worse than relu twos v2
+fn relu_twos_v2_5<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X]) -> [[[Variable; Z]; Y]; X] {
+    for i in 0..input.len() {
+        for j in 0..input[i].len(){
+            let mut vec1 = input[i][j].to_vec();
+            // let mut vec2 = api.memorized_simple_call(get_sign_simple, &input[i][j].to_vec());
+            // vec1.append(&mut vec2);
+            let x = api.memorized_simple_call(relu_simple_call_2, &input[i][j].to_vec());
+            // let x = relu_simple_call(api, &vec1);
+
+
+            for k in 0..input[i][j].len(){
+                api.assert_is_equal(x[k], output[i][j][k]);
+
+            }
+        }
+    }
+    output
+}
+
+
 //V3 involves flattening the matrix entirely and feeding into memorized_simple call
-fn relu_v3<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X],sign: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X]) -> [[[Variable; Z]; Y]; X] {
+fn relu_twos_v3<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X]) -> [[[Variable; Z]; Y]; X] {
 // Flatten the two 3D matrices
         let flattened: Vec<Variable> = input.iter()
             .flat_map(|i| i.iter())
             .flat_map(|j| j.iter())
-            .chain(sign.iter().flat_map(|i| i.iter()).flat_map(|j| j.iter()))
             .cloned()
             .collect();
 
         // Determine the dimensions of the 3D matrix
-        let out = api.memorized_simple_call(relu_simple_call, &flattened);
-        // let x = relu_simple_call(api, &vec1);
-        // let mut reshaped: Vec<Vec<Vec<Variable>>> = Vec::with_capacity(x);
+        let out = api.memorized_simple_call(relu_simple_call_2, &flattened);
 
-        // let mut iter = flattened.into_iter();
         let mut iter = out.into_iter();
 
         for i in 0..output.len() {
@@ -169,10 +194,12 @@ declare_circuit!(Circuit {
 impl<C: Config> Define<C> for Circuit<Variable> {
     // Default circuit for now, ensures input and output are equal
     fn define(&self, api: &mut API<C>) {
+        let n_bits = 32;
         
-        let out = relu_twos_v1(api, self.input, self.output);
-        // let out = relu_v2(api, self.input, self.sign, self.output);
-        // let out = relu_v3(api, self.input, self.sign, self.output);
+        let out = relu_twos_v1(api, self.input, self.output, n_bits);
+        // let out = relu_twos_v2(api, self.input, self.output, n_bits);
+        // let out = relu_twos_v2_5(api, self.input, self.output, n_bits);
+        // let out = relu_twos_v3(api, self.input, self.output,n_bits);
     }
 }
 /*
@@ -201,7 +228,6 @@ mod io_reader {
     #[derive(Clone)]
     pub(crate) struct InputData {
         pub(crate) inputs_1: Vec<Vec<Vec<u64>>>,
-        pub(crate) inputs_2: Vec<Vec<Vec<u64>>>,
     }
 
     //This is the data structure for the output data to be read in from the json file
