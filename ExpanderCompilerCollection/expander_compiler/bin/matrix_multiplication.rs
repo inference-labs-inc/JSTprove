@@ -8,6 +8,7 @@ use clap::{Command, Arg};
 
 
 /* 
+Step 1: vanilla matrix multiplication of two matrices of compatible dimensions.
 matrix a has shape (m, n)
 matrix b has shape (n, k)
 matrix product ab has shape (m, k)

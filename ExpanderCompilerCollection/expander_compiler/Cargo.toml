@@ -22,6 +22,14 @@ path = "bin/relu.rs"
 name = "gemm"
 path = "bin/gemm.rs"
 
+[[bin]]
+name = "matrix_multiplication"
+path = "bin/matrix_multiplication.rs"
+
+[[bin]]
+name = "scaled_matrix_product"
+path = "bin/scaled_matrix_product.rs"
+
 [package]
 name = "expander_compiler"
 version = "0.1.0"
