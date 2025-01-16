@@ -3,6 +3,13 @@ import torch
 from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
 import os
+from enum import Enum
+
+
+class ConversionType(Enum):
+    DUAL_MATRIX = "dual_matrix"
+    TWOS_COMP = "twos_comp"
+    SIGNED_MAG = "signed_mag"
 
 class LayerInfo():
     def __init__(self, name, input_shape, output_shape, weight_shape = None):
@@ -131,26 +138,26 @@ class Doom():
         input_folder = "inputs"
         circuit_folder = ""
         #Rework inputs to function
-        test_circuit = ReLU(twos_complement=True)
+        test_circuit = ReLU(conversion_type = ConversionType.TWOS_COMP)
         test_circuit.inputs_1 = self.layers["conv1_relu"].inputs
         test_circuit.outputs = self.layers["conv1_relu"].outputs
         test_circuit.convert_to_relu_form()
-        test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, proof_system, output_folder)
+        # test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, proof_system, output_folder)
 
 
 
 
 class ReLU():
     #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
-    def __init__(self, twos_complement = False):
+    def __init__(self, conversion_type):
         super().__init__()
         '''
         #######################################################################################################
         #################################### This is the block for changes ####################################
         #######################################################################################################
         '''
-        self.twos_complement = twos_complement
-        if not twos_complement:
+        self.conversion_type = conversion_type
+        if conversion_type == ConversionType.DUAL_MATRIX:
             # Specify
             self.name = "relu"
             
@@ -160,7 +167,7 @@ class ReLU():
             self.inputs_2 = torch.randint(low=0, high=2, size=(256,))
             self.outputs = None
             self.scaling = 2 ** 21
-        else:
+        elif conversion_type == ConversionType.TWOS_COMP:
             # Specify
             self.name = "relu_twos_comp"
             
@@ -169,6 +176,16 @@ class ReLU():
             self.inputs_1 = torch.randint(low=0, high=100000000, size=(256,))
             self.outputs = None
             self.scaling = 2 ** 21
+
+        elif conversion_type == ConversionType.SIGNED_MAG:
+            self.name = "relu_twos_comp"
+            
+            # Function input generation
+
+            self.inputs_1 = torch.randint(low=0, high=100000000, size=(256,))
+            self.outputs = None
+            self.scaling = 2 ** 21
+
         '''
         #######################################################################################################
         #######################################################################################################
@@ -177,9 +194,18 @@ class ReLU():
 
     def convert_to_relu_form(self, num_bits = 32):
 
-        def twos_comp(val, bits):
+        def twos_comp_integer(val, bits):
             """compute the 2's complement of int value val"""
             return int(f"{val & ((1 << bits) - 1):0{bits}b}", 2)
+        
+        def twos_comp(val, bits):
+            """compute the 2's complement of int value val"""
+            mask = 2**torch.arange(bits - 1, -1, -1).to(val.device, val.dtype)
+            return val.unsqueeze(-1).bitwise_and(mask).ne(0).byte()
+        
+        def bin2dec(b, bits):
+            mask = 2 ** torch.arange(bits - 1, -1, -1).to(b.device, b.dtype)
+            return torch.sum(mask * b, -1)
 
         
 
@@ -188,7 +214,10 @@ class ReLU():
             self.inputs_1 = torch.mul(torch.abs(self.inputs_1), self.scaling)
         else:
             self.inputs_1 = torch.mul(self.inputs_1, self.scaling).int()
-            self.inputs_1 =  torch.tensor([twos_comp(val.item(), num_bits) for val in self.inputs_1.flatten()]).reshape(self.inputs_1.shape)
+            print(self.inputs_1[0][0][1])
+            self.inputs_1 = twos_comp(self.inputs_1, 32)
+            # self.inputs_1 =  torch.tensor([twos_comp(val.item(), num_bits) for val in self.inputs_1.flatten()])
+            print(self.inputs_1[0][0][1])
 
 
 

@@ -179,7 +179,7 @@ mod io_reader {
         for (i,var_vec_vec) in data.inputs_1.iter().enumerate(){
             for (j, var_vec) in var_vec_vec.iter().enumerate(){
                 for (k, &var) in var_vec.iter().enumerate(){
-                    assignment.input[i][j][k] = C::CircuitField::from_u256(U256::from(var)); 
+                    assignment.input[i][j][k] = C::CircuitField::from_u256(U256::from(var));
                 }
             }
         }
