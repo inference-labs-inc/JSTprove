@@ -74,27 +74,15 @@ mod io_reader {
         let data: InputData = serde_json::from_str(&contents).unwrap();
 
 
-        // Assign inputs to assignment
-
-        let rows_a = data.matrix_a.len();  
-        let cols_a = if rows_a > 0 { data.matrix_a[0].len() } else { 0 };  
-        println!("matrix a shape: ({}, {})", rows_a, cols_a);  
-        
-        for (i, row) in data.matrix_a.iter().enumerate() {
-            for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_a[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
-            }
+        for (k, &var) in data.inputs_1.iter().enumerate() {
+        // For each u8 variable, store it directly as a `u64` in the BN254 field (BN254 can handle u64)
+            assignment.input[0][k] = C::CircuitField::from_u256(U256::from(var)) ; // Make sure var in this line, lines up with the innermost loop variable name
         }
 
-        let rows_b = data.matrix_b.len();  
-        let cols_b = if rows_b > 0 { data.matrix_b[0].len() } else { 0 };  
-        println!("matrix b shape: ({}, {})", rows_b, cols_b); 
-
-        for (i, row) in data.matrix_b.iter().enumerate() {
-            for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_b[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
+        for (k, &var) in data.inputs_2.iter().enumerate() {
+            // For each u8 variable, store it directly as a `u64` in the BN254 field (BN254 can handle u64)
+                assignment.input[1][k] = C::CircuitField::from_u256(U256::from(var)) ; // Make sure var in this line, lines up with the innermost loop variable name
             }
-        }
 
         // Return the assignment
         assignment
@@ -132,7 +120,8 @@ fn run_main<C: Config, GKRC>()
 where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>,
 {
-
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now(); 
     let matches = Command::new("File Copier")
         .version("1.0")
         .about("Copies content from input file to output file")
@@ -158,10 +147,13 @@ where
     let n_witnesses = <GKRC::SimdCircuitField as arith::SimdField>::pack_size();
     println!("n_witnesses: {}", n_witnesses);
     let compile_result: CompileResult<C> = compile(&Circuit::default()).unwrap();
-    println!("result compiled");
+
     let assignment = Circuit::<C::CircuitField>::default();
+
     let assignment = io_reader::input_data_from_json::<C, GKRC>(input_path, assignment);
+
     let assignment = io_reader::output_data_from_json::<C, GKRC>(output_path, assignment);
+
     let assignments = vec![assignment; n_witnesses];
     let witness = compile_result
         .witness_solver
@@ -171,6 +163,7 @@ where
     for x in output.iter() {
         assert_eq!(*x, true);
     }
+
     let mut expander_circuit = compile_result
         .layered_circuit
         .export_to_expander::<GKRC>()
@@ -179,11 +172,13 @@ where
         expander_config::GKRScheme::Vanilla,
         expander_config::MPIConfig::new(),
     );
+
     let (simd_input, simd_public_input) = witness.to_simd::<GKRC::SimdCircuitField>();
     println!("{} {}", simd_input.len(), simd_public_input.len());
 
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
+
     // prove
     expander_circuit.evaluate();
     let mut prover = gkr::Prover::new(&config);
@@ -200,6 +195,13 @@ where
         &proof
     ));
     println!("Verified");
+    println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
+    println!(
+        "Peak Memory used Overall : {:.2}", 
+        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+    );
+    let duration = start.elapsed();
+    println!("Time elapsed: {}.{} seconds", duration.as_secs(), duration.subsec_millis())
 
 }
 
