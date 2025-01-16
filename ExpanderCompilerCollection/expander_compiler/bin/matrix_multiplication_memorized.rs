@@ -8,48 +8,101 @@ use clap::{Command, Arg};
 
 
 /* 
-Step 4: general matrix multiplication---scalar times matrix product of two matrices of compatible dimensions, plus scalar times third matrix of campatible dimensions.
-scaling factor alpha is an integer
-scaling factor beta is an integer
+Part 2 (memorization), Step 1: vanilla matrix multiplication of two matrices of compatible dimensions.
 matrix a has shape (m, n)
 matrix b has shape (n, k)
-matrix c has shape (m, k)
-general matrix palpha ab + beta c has shape (m, k)
+matrix product ab has shape (m, k)
 */
 
 const N_ROWS_A: usize = 3; // m
 const N_COLS_A: usize = 4; // n
 const N_ROWS_B: usize = 4; // n
 const N_COLS_B: usize = 2; // k
-const N_ROWS_C: usize = 3; // m
-const N_COLS_C: usize = 2; // k
 
 declare_circuit!(Circuit {
-    alpha: Variable, // scaling factor
-    beta: Variable, // scaling factor
     matrix_a: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
     matrix_b: [[Variable; N_COLS_B]; N_ROWS_B], // shape (n, k)
-    matrix_c: [[Variable; N_COLS_C]; N_ROWS_C], // shape (m, k)
-    gemm: [[Variable; N_COLS_B]; N_ROWS_A], // shape (m, k)
+    matrix_product_ab: [[Variable; N_COLS_B]; N_ROWS_A], // shape (m, k)
 });
 
+/* Original circuit, no memorization 
 impl<C: Config> Define<C> for Circuit<Variable> {
     fn define(&self, api: &mut API<C>) {      
         for i in 0..N_ROWS_A {
             for j in 0..N_COLS_B {
-                let mut gemm_ij: Variable = api.constant(0);
+                let mut row_col_product: Variable = api.constant(0);
                 for k in 0..N_COLS_A {
                     let element_product = api.mul(self.matrix_a[i][k], self.matrix_b[k][j]);
-                    gemm_ij = api.add(gemm_ij, element_product);                                        
+                    row_col_product = api.add(row_col_product, element_product);
                 }
-                gemm_ij = api.mul(gemm_ij, self.alpha);
-                let scaled_c_ij = api.mul(self.beta,self.matrix_c[i][j]);
-                gemm_ij = api.add(scaled_c_ij, gemm_ij);
-                api.assert_is_equal(self.gemm[i][j], gemm_ij);               
+                api.assert_is_equal(self.matrix_product_ab[i][j], row_col_product);               
             }
         }
     }
 }
+*/
+
+/* Memorization, but not in a useful place
+impl<C: Config> Define<C> for Circuit<Variable> {
+    fn define(&self, api: &mut API<C>) {      
+        // Define a sub-circuit for multiplication and memoize it
+        let mul_subcircuit = |api: &mut API<C>, inputs: &Vec<Variable>| -> Vec<Variable> {
+            let product = api.mul(inputs[0].clone(), inputs[1].clone()); // Clone inputs as required
+            vec![product]
+        };
+
+        for i in 0..N_ROWS_A {
+            for j in 0..N_COLS_B {
+                let mut row_col_product: Variable = api.constant(0);
+                for k in 0..N_COLS_A {
+                    // Create Vec<Variable> for the current inputs
+                    let inputs = vec![self.matrix_a[i][k].clone(), self.matrix_b[k][j].clone()];
+                    // Pass a reference to inputs
+                    let product_result = api.memorized_simple_call(mul_subcircuit, &inputs);
+                    row_col_product = api.add(row_col_product, product_result[0].clone());
+                }
+                api.assert_is_equal(self.matrix_product_ab[i][j], row_col_product);               
+            }
+        }
+    }
+}
+*/
+
+// Memorization, in a better place
+impl<C: Config> Define<C> for Circuit<Variable> {
+    fn define(&self, api: &mut API<C>) {
+        // Define a sub-circuit for row-column dot product and memoize it
+        let dot_product_subcircuit = |api: &mut API<C>, inputs: &Vec<Variable>| -> Vec<Variable> {
+            let n = inputs.len() / 2; // Assuming inputs are concatenated row and column
+            let mut sum = api.constant(0);
+            for k in 0..n {
+                let product = api.mul(inputs[k].clone(), inputs[n + k].clone());
+                sum = api.add(sum, product);
+            }
+            vec![sum]
+        };
+
+        for i in 0..N_ROWS_A {
+            for j in 0..N_COLS_B {
+                // Prepare inputs as concatenated row and column
+                let mut inputs: Vec<Variable> = Vec::new();
+                for k in 0..N_COLS_A {
+                    inputs.push(self.matrix_a[i][k].clone());
+                }
+                for k in 0..N_ROWS_B {
+                    inputs.push(self.matrix_b[k][j].clone());
+                }
+
+                // Use MemorizedSimpleCall for the row-column dot product
+                let result = api.memorized_simple_call(dot_product_subcircuit, &inputs);
+                api.assert_is_equal(self.matrix_product_ab[i][j], result[0].clone());
+            }
+        }
+    }
+}
+
+
+
 
 mod io_reader {
     use ethnum::U256;
@@ -64,17 +117,14 @@ mod io_reader {
     #[derive(Deserialize)]
     #[derive(Clone)]
     pub(crate) struct InputData {
-        pub(crate) alpha: u64,
-        pub(crate) beta: u64,
-        pub(crate) matrix_a: Vec<Vec<u64>>, // Shape (m, n)  
-        pub(crate) matrix_b: Vec<Vec<u64>>, // Shape (n, k) 
-        pub(crate) matrix_c: Vec<Vec<u64>>, // Shape (m, k)
+        pub(crate) matrix_a: Vec<Vec<u64>>, // Shape (m, n) // Question: type Variable? // Alternative (if dimensions known in advance): [[Variable; N_COLS_A]; N_ROWS_A],
+        pub(crate) matrix_b: Vec<Vec<u64>>, // Shape (n, k) // Question: type Variable? // Alternative (if dimensions known in advance): [[Variable; N_COLS_B]; N_ROWS_B],
     }
 
     #[derive(Deserialize)]
     #[derive(Clone)]
     pub(crate) struct OutputData {
-        pub(crate) gemm: Vec<Vec<u64>>, // Shape (m, k)
+        pub(crate) matrix_product_ab: Vec<Vec<u64>>, //  Shape (m, k) // Question: type Variable? // Alternative (if dimensions known in advance): [[Variable; N_COLS_B]; N_ROWS_A],
     }
 
     pub(crate) fn input_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
@@ -93,8 +143,6 @@ mod io_reader {
 
 
         // Assign inputs to assignment
-        assignment.alpha = C::CircuitField::from_u256(U256::from(data.alpha));
-        assignment.beta = C::CircuitField::from_u256(U256::from(data.beta));
 
         let rows_a = data.matrix_a.len();  
         let cols_a = if rows_a > 0 { data.matrix_a[0].len() } else { 0 };  
@@ -102,27 +150,17 @@ mod io_reader {
         
         for (i, row) in data.matrix_a.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_a[i][j] = C::CircuitField::from_u256(U256::from(element));
+                assignment.matrix_a[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
             }
         }
 
-        let rows_b = data.matrix_b.len(); 
+        let rows_b = data.matrix_b.len();  
         let cols_b = if rows_b > 0 { data.matrix_b[0].len() } else { 0 };  
         println!("matrix b shape: ({}, {})", rows_b, cols_b); 
 
         for (i, row) in data.matrix_b.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
                 assignment.matrix_b[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
-            }
-        }
-
-        let rows_c = data.matrix_c.len();  
-        let cols_c = if rows_c > 0 { data.matrix_c[0].len() } else { 0 };  
-        println!("matrix c shape: ({}, {})", rows_c, cols_c); 
-
-        for (i, row) in data.matrix_c.iter().enumerate() {
-            for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_c[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
             }
         }
 
@@ -145,13 +183,13 @@ mod io_reader {
         let data: OutputData = serde_json::from_str(&contents).unwrap();
 
         // Assign inputs to assignment
-        let rows_abc = data.gemm.len();  
-        let cols_abc = if rows_abc > 0 { data.gemm[0].len() } else { 0 };  
-        println!("gemm alpha ab + beta c shape: ({}, {})", rows_abc, cols_abc); 
+        let rows_ab = data.matrix_product_ab.len();  
+        let cols_ab = if rows_ab > 0 { data.matrix_product_ab[0].len() } else { 0 };  
+        println!("matrix product ab shape: ({}, {})", rows_ab, cols_ab); 
 
-        for (i, row) in data.gemm.iter().enumerate() {
+        for (i, row) in data.matrix_product_ab.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
-                assignment.gemm[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
+                assignment.matrix_product_ab[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
             }
         }
         assignment
