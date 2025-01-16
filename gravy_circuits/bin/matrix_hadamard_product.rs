@@ -86,7 +86,7 @@ mod io_reader {
             }
         }
 
-        let rows_b = data.matrix_b.len();  
+        let rows_b = data.matrix_b.len(); 
         let cols_b = if rows_b > 0 { data.matrix_b[0].len() } else { 0 };  
         println!("matrix b shape: ({}, {})", rows_b, cols_b); 
 
