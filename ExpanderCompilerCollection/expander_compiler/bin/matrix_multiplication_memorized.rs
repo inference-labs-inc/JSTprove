@@ -28,7 +28,7 @@ matrix product ab has shape (m, k)
 
 const N_ROWS_A: usize = 1; // m
 const N_COLS_A: usize = 1568; // n
-const N_ROWS_B: usize = N_COLS_A; // n
+// const N_ROWS_B: usize = N_COLS_A; // n
 const N_COLS_B: usize = 256; // k
 
 //Define structure of inputs, weights and output
@@ -125,6 +125,41 @@ fn matrix_multplication_naive<C: Config, const M: usize, const N: usize, const K
     out
 }
 
+#[allow(dead_code)]
+fn matrix_multplication_naive2<C: Config, const M: usize, const N: usize, const K: usize>(api: &mut API<C>, matrix_a: [[Variable; N]; M], matrix_b: Vec<Vec<Variable>>) -> [[Variable; K]; M]{
+    let mut out = [[Variable::default(); K]; M];
+    for i in 0..M {
+        for j in 0..K {
+            let mut row_col_product: Variable = api.constant(0);
+            for k in 0..N {
+                let element_product = api.mul(matrix_a[i][k], matrix_b[k][j]);
+                row_col_product = api.add(row_col_product, element_product);
+            }
+            out[i][j] = row_col_product;               
+        }
+    }
+    out
+}
+
+#[allow(dead_code)]
+fn matrix_multplication_naive3<C: Config, const M: usize, const N: usize, const K: usize>(api: &mut API<C>, matrix_a: [[Variable; N]; M], matrix_b: Vec<Vec<Variable>>) -> Vec<Vec<Variable>>{
+    let mut out: Vec<Vec<Variable>> = Vec::new();
+    for i in 0..M {
+        let mut row_out: Vec<Variable> = Vec::new();
+        for j in 0..K {
+            let mut row_col_product: Variable = api.constant(0);
+            for k in 0..N {
+                let element_product = api.mul(matrix_a[i][k], matrix_b[k][j]);
+                row_col_product = api.add(row_col_product, element_product);
+            }
+            row_out.push(row_col_product);
+        }
+        out.push(row_out);
+    }
+    out
+}
+
+
 
 declare_circuit!(Circuit {
     matrix_a: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
@@ -134,16 +169,24 @@ declare_circuit!(Circuit {
 impl<C: Config> Define<C> for Circuit<Variable,> {
     fn define(&self, api: &mut API<C>) {
         // Bring the weights into the circuit as constants
-        let mut weights_matrix_multiplication = [[Variable::default(); N_COLS_B]; N_ROWS_B];
-        for (j,row) in weights.iter().enumerate() {
-            for (k,&element) in row.iter().enumerate() {
-                weights_matrix_multiplication[j][k] = api.constant(element as u32);
-            }
-        }
+        // let mut weights_matrix_multiplication = [[Variable::default(); N_COLS_B]; N_ROWS_B];
+        // for (j,row) in weights.iter().enumerate() {
+        //     for (k,&element) in row.iter().enumerate() {
+        //         weights_matrix_multiplication[j][k] = api.constant(element as u32);
+        //     }
+        // }
+
+        let weights_matrix_multiplication: Vec<Vec<Variable>> = weights.clone()
+            .into_iter()
+            .map(|row| row.into_iter().map(|x| api.constant(x as u32)).collect())
+            .collect();
+
 
         // Compute matrix multiplication
         // let out = matrix_multplication(api, self.matrix_a,  weights_matrix_multiplication);
-        let out = matrix_multplication_naive(api, self.matrix_a,  weights_matrix_multiplication);
+        let out:[[Variable; N_COLS_B]; N_ROWS_A]  = matrix_multplication_naive2(api, self.matrix_a,  weights_matrix_multiplication);
+
+        // let out:Vec<Vec<Variable>>  = matrix_multplication_naive3::<C,N_ROWS_A, N_COLS_A, N_COLS_B>(api, self.matrix_a,  weights_matrix_multiplication);
 
 
         //Assert output of matrix multiplication
