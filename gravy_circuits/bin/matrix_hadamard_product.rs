@@ -132,7 +132,8 @@ fn run_main<C: Config, GKRC>()
 where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>,
 {
-
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now(); 
     let matches = Command::new("File Copier")
         .version("1.0")
         .about("Copies content from input file to output file")
@@ -158,10 +159,13 @@ where
     let n_witnesses = <GKRC::SimdCircuitField as arith::SimdField>::pack_size();
     println!("n_witnesses: {}", n_witnesses);
     let compile_result: CompileResult<C> = compile(&Circuit::default()).unwrap();
-    println!("result compiled");
+
     let assignment = Circuit::<C::CircuitField>::default();
+
     let assignment = io_reader::input_data_from_json::<C, GKRC>(input_path, assignment);
+
     let assignment = io_reader::output_data_from_json::<C, GKRC>(output_path, assignment);
+
     let assignments = vec![assignment; n_witnesses];
     let witness = compile_result
         .witness_solver
@@ -171,6 +175,7 @@ where
     for x in output.iter() {
         assert_eq!(*x, true);
     }
+
     let mut expander_circuit = compile_result
         .layered_circuit
         .export_to_expander::<GKRC>()
@@ -179,11 +184,13 @@ where
         expander_config::GKRScheme::Vanilla,
         expander_config::MPIConfig::new(),
     );
+
     let (simd_input, simd_public_input) = witness.to_simd::<GKRC::SimdCircuitField>();
     println!("{} {}", simd_input.len(), simd_public_input.len());
 
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
+
     // prove
     expander_circuit.evaluate();
     let mut prover = gkr::Prover::new(&config);
@@ -200,6 +207,13 @@ where
         &proof
     ));
     println!("Verified");
+    println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
+    println!(
+        "Peak Memory used Overall : {:.2}", 
+        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+    );
+    let duration = start.elapsed();
+    println!("Time elapsed: {}.{} seconds", duration.as_secs(), duration.subsec_millis())
 
 }
 

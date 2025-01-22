@@ -17,8 +17,10 @@ class BaseTests():
         
         # Function input generation
 
-        self.inputs_1 = torch.randint(low=0, high=100, size=(256,))
-        self.inputs_2 = torch.randint(low=0, high=100, size=(256,))
+        LENGTH = 10000
+
+        self.inputs_1 = torch.randint(low=0, high=100, size=(LENGTH,))
+        self.inputs_2 = torch.randint(low=0, high=100, size=(LENGTH,))
         # self.scaling = 100000000
         '''
         #######################################################################################################
@@ -42,6 +44,11 @@ class BaseTests():
         ## Perform calculation here
 
         outputs = torch.add(self.inputs_1,self.inputs_2)
+        outputs = torch.square(outputs)
+        outputs = torch.square(outputs)
+        outputs = torch.square(outputs)
+        # outputs = torch.square(outputs)
+
 
         ## Define inputs and outputs
         inputs = {
@@ -219,6 +226,7 @@ if __name__ == "__main__":
     circuit_folder = ""
     #Rework inputs to function
     # test_circuit = Comparison()
-    test_circuit = ReLU()
+    # test_circuit = ReLU()
+    test_circuit = BaseTests()
     test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, proof_system, output_folder)
 

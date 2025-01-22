@@ -20,7 +20,7 @@ use expander_compiler::{
 // :)
 #[global_allocator]
 static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
-const LENGTH: usize = 256;
+const LENGTH: usize = 10000;
 
 /*
         #######################################################################################################
@@ -45,7 +45,12 @@ impl<C: Config> Define<C> for Circuit<Variable> {
         // Iterate over each input/output pair (one per batch)
         for i in 0..LENGTH {
             let out = api.add(self.input[0][i].clone(),self.input[1][i].clone());
-            api.assert_is_equal(out.clone(), self.output[i].clone());
+            let out2 = api.mul(&out, &out);
+            let out3 = api.mul(&out2, &out2);
+            let out4 = api.mul(&out3, &out3);
+            // let out4 = out;
+
+            api.assert_is_equal(out4.clone(), self.output[i].clone());
         }
     }
 }
