@@ -105,6 +105,7 @@ mod io_reader {
             for (j, &element) in row.iter().enumerate() {
                 assignment.matrix_b[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
             }
+
         }
 
         // Return the assignment
@@ -139,12 +140,12 @@ mod io_reader {
     }
 }
 
-fn run_main<C: Config, GKRC>()
+fn run_main<C: Config, GKRC>(experiment_name: &String)
 where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>,
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    let start = Instant::now(); 
+    let start = Instant::now();
     let matches = Command::new("File Copier")
         .version("1.0")
         .about("Copies content from input file to output file")
@@ -172,7 +173,9 @@ where
     let compile_result: CompileResult<C> = compile(&Circuit::default()).unwrap();
     println!("result compiled");
     let assignment = Circuit::<C::CircuitField>::default();
+
     let assignment = io_reader::input_data_from_json::<C, GKRC>(input_path, assignment);
+
     let assignment = io_reader::output_data_from_json::<C, GKRC>(output_path, assignment);
     let assignments = vec![assignment; n_witnesses];
     let witness = compile_result
@@ -183,6 +186,7 @@ where
     for x in output.iter() {
         assert_eq!(*x, true);
     }
+
     let mut expander_circuit = compile_result
         .layered_circuit
         .export_to_expander::<GKRC>()
@@ -191,17 +195,18 @@ where
         expander_config::GKRScheme::Vanilla,
         expander_config::MPIConfig::new(),
     );
+
     let (simd_input, simd_public_input) = witness.to_simd::<GKRC::SimdCircuitField>();
     println!("{} {}", simd_input.len(), simd_public_input.len());
 
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
+
     // prove
     expander_circuit.evaluate();
     let mut prover = gkr::Prover::new(&config);
     prover.prepare_mem(&expander_circuit);
     let (claimed_v, proof) = prover.prove(&mut expander_circuit);
-
     println!("Proved");
     // verify
     let verifier = gkr::Verifier::new(&config);
@@ -211,39 +216,118 @@ where
         &claimed_v,
         &proof
     ));
+    let duration = start.elapsed();
+    let memory = GLOBAL.get_peak_memory();
+    let size = mem::size_of_val(&proof) + mem::size_of_val(&claimed_v);
+    
     println!("Verified");
     println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
     println!(
         "Peak Memory used Overall : {:.2}", 
-        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+        memory as f64 / (1024.0 * 1024.0)
     );
-    let duration = start.elapsed();
-    println!("Time elapsed: {}.{} seconds", duration.as_secs(), duration.subsec_millis())
+    
+    println!("Time elapsed: {}.{} seconds", duration.as_secs(), duration.subsec_millis());
+    let metrics = MetricsWriting::Metrics{
+        experiment_name: experiment_name.to_string(),
+        proof_size: size,
+        max_mem: memory as f32 / (1024.0 * 1024.0),
+        proof_time: duration.as_millis()
+    };
+
+    MetricsWriting::write_metrics(vec![metrics]);
+}
+
+mod MetricsWriting {
+    use csv::WriterBuilder;
+    use serde::Serialize;
+    use std::fs::OpenOptions;
+
+    #[derive(Serialize)]
+    pub(crate) struct Metrics {
+        pub(crate) experiment_name: String,
+        pub(crate) proof_size: usize,
+        pub(crate) max_mem: f32,
+        pub(crate) proof_time: u128,
+    }
+
+    pub(crate) fn write_metrics(metrics: Vec<Metrics>){
+        let file_path = "analysis/metrics_output.csv";
+    
+        // Open the file with the option to append (create if it doesn't exist)
+        let file = OpenOptions::new()
+            .create(true)       // Create the file if it doesn't exist
+            .append(true)       // Append to the file
+            .open(file_path).unwrap();
+
+        let mut wtr = WriterBuilder::new().has_headers(false).from_writer(file);
+
+        // If the file is empty (no headers), write headers
+        let metadata = std::fs::metadata(file_path).unwrap();
+        if metadata.len() == 0 {
+            wtr.write_record(&["experiment_name", "proof_size", "max_mem", "proof_time"]);
+        }
+
+
+        // Loop through each setting, collect metrics, and append to CSV
+        for m in metrics {
+
+            wtr.serialize(m);
+        }
+
+        wtr.flush();
+        println!("Metrics have been appended to {}", file_path);
+    }
 }
 
 //#[test]
 #[allow(dead_code)]
-fn run_gf2() {
-    run_main::<GF2Config, GF2ExtConfigSha2>();
-    run_main::<GF2Config, GF2ExtConfigKeccak>();
+fn run_gf2(experiment_name:&String) {
+    run_main::<GF2Config, GF2ExtConfigSha2>(&experiment_name);
+    run_main::<GF2Config, GF2ExtConfigKeccak>(&experiment_name);
 }
 
 //#[test]
 #[allow(dead_code)]
-fn run_m31() {
-    run_main::<M31Config, M31ExtConfigSha2>();
-    run_main::<M31Config, M31ExtConfigKeccak>();
+fn run_m31(experiment_name:&String) {
+    run_main::<M31Config, M31ExtConfigSha2>(&experiment_name);
+    run_main::<M31Config, M31ExtConfigKeccak>(&experiment_name);
 }
 
 //#[test]
 #[allow(dead_code)]
-fn run_bn254() {
-    run_main::<BN254Config, BN254ConfigSha2>();
-    run_main::<BN254Config, BN254ConfigKeccak>();
+fn run_bn254(experiment_name:&String) {
+    run_main::<BN254Config, BN254ConfigSha2>(&experiment_name);
+    run_main::<BN254Config, BN254ConfigKeccak>(&experiment_name);
 }
 
 fn main(){
-    // run_gf2();
-    // run_m31();
-    run_bn254();
+    for i in 0..25{
+        let mut array_type = "";
+        if arraytype == 0{
+            array_type = "variablevector";
+        }
+        else if arraytype == 1 {
+            array_type = "fixedvector";
+        }
+        else if arraytype == 2{
+            array_type = "array";
+        }
+        else {
+            array_type = "vectorcapacity";
+        }
+        let mut con = "";
+        if constrained == 0 {
+            con = "ecc";
+        }
+        else{
+            con = "IL";
+        }
+        let experiment_name1: String = format!("to_binary_m31_{}_{}",array_type,con);
+        
+        // run_gf2();
+        run_m31(&experiment_name1);
+        let experiment_name2: String = format!("to_binary_bn254_{}_{}",array_type,con);
+        run_bn254(&experiment_name2);
+    }
 }
