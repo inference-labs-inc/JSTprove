@@ -4,17 +4,13 @@ use expander_config::{
     BN254ConfigKeccak, BN254ConfigSha2, GF2ExtConfigKeccak, GF2ExtConfigSha2, M31ExtConfigKeccak,
     M31ExtConfigSha2,
 };
-use arith::{Field, FieldForECC};
-use ethnum::U256;
 
 
 use clap::{Command, Arg};
-use internal::DumpLoadVariables;
 use peakmem_alloc::*;
 use std::alloc::System;
 use std::mem;
-use std::path::{Path, PathBuf};
-use std::time::{Instant};
+use std::time::Instant;
 use serde::Deserialize;
 use lazy_static::lazy_static;
 
@@ -55,18 +51,18 @@ struct OutputData {
 } 
 
 // This reads the weights json into a string
-const weights_file: &str = include_str!("../../../weights/matrix_multiplication_memorized_weights.json");
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/matrix_multiplication_memorized_weights.json");
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
 // Weights will be read in
 lazy_static! {
     static ref weights: Vec<Vec<u64>> = {
-        let x: WeightsData = serde_json::from_str(weights_file).expect("JSON was not well-formatted");
+        let x: WeightsData = serde_json::from_str(MATRIX_WEIGHTS_FILE).expect("JSON was not well-formatted");
         
         let mut y: Vec<Vec<u64>> = Vec::new();
-        for (i, row) in x.matrix_b.iter().enumerate() {
+        for (_, row) in x.matrix_b.iter().enumerate() {
             let mut z: Vec<u64> = Vec::new();
-            for (j, &element) in row.iter().enumerate() {
+            for (_, &element) in row.iter().enumerate() {
                 z.push(element);
             }
             // println!("{}", row.len());
@@ -78,6 +74,57 @@ lazy_static! {
 
 }
 
+#[allow(dead_code)]
+fn product_sub_circuit<C: Config>(api: &mut API<C>, inputs: &Vec<Variable>) -> Vec<Variable>  {
+    let n = inputs.len()/2; // Assuming inputs are concatenated row and column
+    // let mut out: Vec<Variable> = Vec::new();
+    let mut sum = api.constant(0);
+
+    for k in 0..n {
+        let x = api.mul(inputs[k], inputs[n + k]);
+        sum = api.add(sum, x);
+    }
+    vec![sum]
+}
+
+#[allow(dead_code)]
+fn matrix_multplication<C: Config, const M: usize, const N: usize, const K: usize>(api: &mut API<C>, matrix_a: [[Variable; N]; M], matrix_b: [[Variable; K]; N]) -> [[Variable; K]; M]{
+    let mut out = [[Variable::default(); K]; M];
+    for i in 0..M {
+        for j in 0..K {
+            // Prepare inputs as concatenated row and column
+            // api.add(C::CircuitField::from(weights[0][0] as u32),self.matrix_a[0][0]);
+            let mut inputs: Vec<Variable> = Vec::new();
+            for k in 0..N {
+                inputs.push(matrix_a[i][k]);
+            }
+            for k in 0..N {
+                inputs.push(matrix_b[k][j]);
+            }
+            // Use MemorizedSimpleCall for the row-column dot product
+            out[i][j] = api.memorized_simple_call(product_sub_circuit, &inputs)[0];
+            // api.assert_is_equal(self.matrix_product_ab[i][j], prod[0]);
+        }
+    }
+    out
+}
+
+#[allow(dead_code)]
+fn matrix_multplication_naive<C: Config, const M: usize, const N: usize, const K: usize>(api: &mut API<C>, matrix_a: [[Variable; N]; M], matrix_b: [[Variable; K]; N]) -> [[Variable; K]; M]{
+    let mut out = [[Variable::default(); K]; M];
+    for i in 0..M {
+        for j in 0..K {
+            let mut row_col_product: Variable = api.constant(0);
+            for k in 0..N {
+                let element_product = api.mul(matrix_a[i][k], matrix_b[k][j]);
+                row_col_product = api.add(row_col_product, element_product);
+            }
+            out[i][j] = row_col_product;               
+        }
+    }
+    out
+}
+
 
 declare_circuit!(Circuit {
     matrix_a: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
@@ -86,44 +133,26 @@ declare_circuit!(Circuit {
 // Memorization, in a better place
 impl<C: Config> Define<C> for Circuit<Variable,> {
     fn define(&self, api: &mut API<C>) {
-
-        // let weights: WeightsData = ||{weights};
-        // Define a sub-circuit for row-column dot product and memoize it
-        let product_sub_circuit = |api: &mut API<C>, inputs: &Vec<Variable>| -> Vec<Variable> {
-            let n = inputs.len()/2; // Assuming inputs are concatenated row and column
-            // let mut out: Vec<Variable> = Vec::new();
-            let mut sum = api.constant(0);
-
-            for k in 0..n {
-                let x = api.mul(inputs[k], inputs[n + k]);
-                sum = api.add(sum, x);
-            }
-            vec![sum]
-        };
-        
-
-        for i in 0..N_ROWS_A {
-            for j in 0..N_COLS_B {
-                // Prepare inputs as concatenated row and column
-                // api.add(C::CircuitField::from(weights[0][0] as u32),self.matrix_a[0][0]);
-                let mut inputs: Vec<Variable> = Vec::new();
-                for k in 0..N_COLS_A {
-                    inputs.push(self.matrix_a[i][k]);
-                }
-                for k in 0..N_ROWS_B {
-                    inputs.push(api.constant(weights[k][j] as u32));
-                }
-
-                // Use MemorizedSimpleCall for the row-column dot product
-                let prod = api.memorized_simple_call(product_sub_circuit, &inputs);
-                // let result = api.memorized_simple_call(sum_sub_circuit, &prod);
-                // let prod = product_sub_circuit(api, &inputs);
-                // let result = sum_sub_circuit(api,  &prod);
-
-
-                api.assert_is_equal(self.matrix_product_ab[i][j], prod[0]);
+        // Bring the weights into the circuit as constants
+        let mut weights_matrix_multiplication = [[Variable::default(); N_COLS_B]; N_ROWS_B];
+        for (j,row) in weights.iter().enumerate() {
+            for (k,&element) in row.iter().enumerate() {
+                weights_matrix_multiplication[j][k] = api.constant(element as u32);
             }
         }
+
+        // Compute matrix multiplication
+        // let out = matrix_multplication(api, self.matrix_a,  weights_matrix_multiplication);
+        let out = matrix_multplication_naive(api, self.matrix_a,  weights_matrix_multiplication);
+
+
+        //Assert output of matrix multiplication
+        for (j,row) in out.iter().enumerate() {
+            for (k,&element) in row.iter().enumerate() {
+                api.assert_is_equal(self.matrix_product_ab[j][k], element);
+            }
+        }
+
     }
 }
 
@@ -131,7 +160,7 @@ mod io_reader {
     use ethnum::U256;
     use std::io::Read;
     use arith::FieldForECC;
-    use serde::{de::DeserializeOwned, Deserialize};
+    use serde::de::DeserializeOwned;
 
 
     use super::{Circuit, InputData, OutputData};
