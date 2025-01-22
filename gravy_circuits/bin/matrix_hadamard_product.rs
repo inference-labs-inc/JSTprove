@@ -13,11 +13,11 @@ matrix a has shape (m, n)
 matrix b has shape (m, n)
 matrix hadamard product has shape (m, n)
 */
+const N_ROWS_A: usize = 1; // m
+const N_COLS_A: usize = 1568; // n
+const N_ROWS_B: usize = 1568; // n
+const N_COLS_B: usize = 256; // k
 
-const N_ROWS_A: usize = 1000; // m
-const N_COLS_A: usize = 17; // n
-const N_ROWS_B: usize = 1000; // m
-const N_COLS_B: usize = 17; // n
 
 declare_circuit!(Circuit {
     matrix_a: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
@@ -85,8 +85,8 @@ mod io_reader {
                 assignment.matrix_a[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
             }
         }
-
         let rows_b = data.matrix_b.len(); 
+
         let cols_b = if rows_b > 0 { data.matrix_b[0].len() } else { 0 };  
         println!("matrix b shape: ({}, {})", rows_b, cols_b); 
 
@@ -134,6 +134,7 @@ where
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now(); 
+
     let matches = Command::new("File Copier")
         .version("1.0")
         .about("Copies content from input file to output file")
@@ -160,12 +161,10 @@ where
     println!("n_witnesses: {}", n_witnesses);
     let compile_result: CompileResult<C> = compile(&Circuit::default()).unwrap();
 
+    println!("result compiled");
     let assignment = Circuit::<C::CircuitField>::default();
-
     let assignment = io_reader::input_data_from_json::<C, GKRC>(input_path, assignment);
-
     let assignment = io_reader::output_data_from_json::<C, GKRC>(output_path, assignment);
-
     let assignments = vec![assignment; n_witnesses];
     let witness = compile_result
         .witness_solver
@@ -184,13 +183,11 @@ where
         expander_config::GKRScheme::Vanilla,
         expander_config::MPIConfig::new(),
     );
-
     let (simd_input, simd_public_input) = witness.to_simd::<GKRC::SimdCircuitField>();
     println!("{} {}", simd_input.len(), simd_public_input.len());
 
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
-
     // prove
     expander_circuit.evaluate();
     let mut prover = gkr::Prover::new(&config);
