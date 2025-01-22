@@ -18,9 +18,9 @@ class BaseTests():
         
         # Function input generation
 
-        N_ROWS_A: int = 3; # m
-        N_COLS_A: int = 4; # n
-        N_ROWS_B: int = 4; # n
+        N_ROWS_A: int = 256; # m
+        N_COLS_A: int = 256; # n
+        N_ROWS_B: int = 256; # n
         N_COLS_B: int = 2; # k
 
         self.matrix_a = torch.randint(low=0, high=100, size=(N_ROWS_A,N_COLS_A)) # (m, n) array of random integers between 0 and 100

@@ -4,8 +4,24 @@ use expander_config::{
     BN254ConfigKeccak, BN254ConfigSha2, GF2ExtConfigKeccak, GF2ExtConfigSha2, M31ExtConfigKeccak,
     M31ExtConfigSha2,
 };
-use clap::{Command, Arg};
+use arith::{Field, FieldForECC};
+use ethnum::U256;
 
+
+use clap::{Command, Arg};
+use internal::DumpLoadVariables;
+use peakmem_alloc::*;
+use std::alloc::System;
+use std::mem;
+use std::path::{Path, PathBuf};
+use std::time::{Instant};
+use serde::Deserialize;
+use lazy_static::lazy_static;
+
+
+
+#[global_allocator]
+static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
 
 /* 
 Part 2 (memorization), Step 1: vanilla matrix multiplication of two matrices of compatible dimensions.
@@ -14,163 +30,159 @@ matrix b has shape (n, k)
 matrix product ab has shape (m, k)
 */
 
-const N_ROWS_A: usize = 3; // m
-const N_COLS_A: usize = 4; // n
-const N_ROWS_B: usize = 4; // n
-const N_COLS_B: usize = 2; // k
+const N_ROWS_A: usize = 1; // m
+const N_COLS_A: usize = 1568; // n
+const N_ROWS_B: usize = N_COLS_A; // n
+const N_COLS_B: usize = 256; // k
+
+//Define structure of inputs, weights and output
+#[derive(Deserialize)]
+#[derive(Clone)]
+struct WeightsData {
+    matrix_b: Vec<Vec<u64>>,
+} 
+
+#[derive(Deserialize)]
+#[derive(Clone)]
+struct InputData {
+    matrix_a: Vec<Vec<u64>>,
+} 
+
+#[derive(Deserialize)]
+#[derive(Clone)]
+struct OutputData {
+    matrix_product_ab: Vec<Vec<u64>>,
+} 
+
+// This reads the weights json into a string
+const weights_file: &str = include_str!("../../../weights/matrix_multiplication_memorized_weights.json");
+
+//lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
+// Weights will be read in
+lazy_static! {
+    static ref weights: Vec<Vec<u64>> = {
+        let x: WeightsData = serde_json::from_str(weights_file).expect("JSON was not well-formatted");
+        
+        let mut y: Vec<Vec<u64>> = Vec::new();
+        for (i, row) in x.matrix_b.iter().enumerate() {
+            let mut z: Vec<u64> = Vec::new();
+            for (j, &element) in row.iter().enumerate() {
+                z.push(element);
+            }
+            // println!("{}", row.len());
+            y.push(z);
+        }
+        // println!("{}", y.len());
+        y
+        };
+
+}
+
 
 declare_circuit!(Circuit {
     matrix_a: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
-    matrix_b: [[Variable; N_COLS_B]; N_ROWS_B], // shape (n, k)
     matrix_product_ab: [[Variable; N_COLS_B]; N_ROWS_A], // shape (m, k)
 });
-
-/* Original circuit, no memorization 
-impl<C: Config> Define<C> for Circuit<Variable> {
-    fn define(&self, api: &mut API<C>) {      
-        for i in 0..N_ROWS_A {
-            for j in 0..N_COLS_B {
-                let mut row_col_product: Variable = api.constant(0);
-                for k in 0..N_COLS_A {
-                    let element_product = api.mul(self.matrix_a[i][k], self.matrix_b[k][j]);
-                    row_col_product = api.add(row_col_product, element_product);
-                }
-                api.assert_is_equal(self.matrix_product_ab[i][j], row_col_product);               
-            }
-        }
-    }
-}
-*/
-
-/* Memorization, but not in a useful place
-impl<C: Config> Define<C> for Circuit<Variable> {
-    fn define(&self, api: &mut API<C>) {      
-        // Define a sub-circuit for multiplication and memoize it
-        let mul_subcircuit = |api: &mut API<C>, inputs: &Vec<Variable>| -> Vec<Variable> {
-            let product = api.mul(inputs[0].clone(), inputs[1].clone()); // Clone inputs as required
-            vec![product]
-        };
-
-        for i in 0..N_ROWS_A {
-            for j in 0..N_COLS_B {
-                let mut row_col_product: Variable = api.constant(0);
-                for k in 0..N_COLS_A {
-                    // Create Vec<Variable> for the current inputs
-                    let inputs = vec![self.matrix_a[i][k].clone(), self.matrix_b[k][j].clone()];
-                    // Pass a reference to inputs
-                    let product_result = api.memorized_simple_call(mul_subcircuit, &inputs);
-                    row_col_product = api.add(row_col_product, product_result[0].clone());
-                }
-                api.assert_is_equal(self.matrix_product_ab[i][j], row_col_product);               
-            }
-        }
-    }
-}
-*/
-
 // Memorization, in a better place
-impl<C: Config> Define<C> for Circuit<Variable> {
+impl<C: Config> Define<C> for Circuit<Variable,> {
     fn define(&self, api: &mut API<C>) {
+
+        // let weights: WeightsData = ||{weights};
         // Define a sub-circuit for row-column dot product and memoize it
-        let dot_product_subcircuit = |api: &mut API<C>, inputs: &Vec<Variable>| -> Vec<Variable> {
-            let n = inputs.len() / 2; // Assuming inputs are concatenated row and column
+        let product_sub_circuit = |api: &mut API<C>, inputs: &Vec<Variable>| -> Vec<Variable> {
+            let n = inputs.len()/2; // Assuming inputs are concatenated row and column
+            // let mut out: Vec<Variable> = Vec::new();
             let mut sum = api.constant(0);
+
             for k in 0..n {
-                let product = api.mul(inputs[k].clone(), inputs[n + k].clone());
-                sum = api.add(sum, product);
+                let x = api.mul(inputs[k], inputs[n + k]);
+                sum = api.add(sum, x);
             }
             vec![sum]
         };
+        
 
         for i in 0..N_ROWS_A {
             for j in 0..N_COLS_B {
                 // Prepare inputs as concatenated row and column
+                // api.add(C::CircuitField::from(weights[0][0] as u32),self.matrix_a[0][0]);
                 let mut inputs: Vec<Variable> = Vec::new();
                 for k in 0..N_COLS_A {
-                    inputs.push(self.matrix_a[i][k].clone());
+                    inputs.push(self.matrix_a[i][k]);
                 }
                 for k in 0..N_ROWS_B {
-                    inputs.push(self.matrix_b[k][j].clone());
+                    inputs.push(api.constant(weights[k][j] as u32));
                 }
 
                 // Use MemorizedSimpleCall for the row-column dot product
-                let result = api.memorized_simple_call(dot_product_subcircuit, &inputs);
-                api.assert_is_equal(self.matrix_product_ab[i][j], result[0].clone());
+                let prod = api.memorized_simple_call(product_sub_circuit, &inputs);
+                // let result = api.memorized_simple_call(sum_sub_circuit, &prod);
+                // let prod = product_sub_circuit(api, &inputs);
+                // let result = sum_sub_circuit(api,  &prod);
+
+
+                api.assert_is_equal(self.matrix_product_ab[i][j], prod[0]);
             }
         }
     }
 }
-
-
-
 
 mod io_reader {
     use ethnum::U256;
     use std::io::Read;
     use arith::FieldForECC;
-    use serde::Deserialize;
+    use serde::{de::DeserializeOwned, Deserialize};
 
-    use super::Circuit;
+
+    use super::{Circuit, InputData, OutputData};
 
     use expander_compiler::frontend::*;
+    /*
+        #######################################################################################################
+        #################################### This is the block for changes ####################################
+        #######################################################################################################
+    */
 
-    #[derive(Deserialize)]
-    #[derive(Clone)]
-    pub(crate) struct InputData {
-        pub(crate) matrix_a: Vec<Vec<u64>>, // Shape (m, n) // Question: type Variable? // Alternative (if dimensions known in advance): [[Variable; N_COLS_A]; N_ROWS_A],
-        pub(crate) matrix_b: Vec<Vec<u64>>, // Shape (n, k) // Question: type Variable? // Alternative (if dimensions known in advance): [[Variable; N_COLS_B]; N_ROWS_B],
-    }
+    //This is the data structure for the input data to be read in from the json file
 
-    #[derive(Deserialize)]
-    #[derive(Clone)]
-    pub(crate) struct OutputData {
-        pub(crate) matrix_product_ab: Vec<Vec<u64>>, //  Shape (m, k) // Question: type Variable? // Alternative (if dimensions known in advance): [[Variable; N_COLS_B]; N_ROWS_A],
-    }
-
+    // Read in input data from json file. Here, we focus on reading the inputs into the input layer of the circuit in a way that makes sense to us
     pub(crate) fn input_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
     where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
     {
         // Read the JSON file into a string
-        let mut file = std::fs::File::open(file_path).expect("Unable to open file");
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)
-            .expect("Unable to read file");
-
-
-        // Deserialize the JSON into the InputData struct
-        let data: InputData = serde_json::from_str(&contents).unwrap();
-
-
-        // Assign inputs to assignment
-
-        let rows_a = data.matrix_a.len();  
-        let cols_a = if rows_a > 0 { data.matrix_a[0].len() } else { 0 };  
-        println!("matrix a shape: ({}, {})", rows_a, cols_a);  
-        
-        for (i, row) in data.matrix_a.iter().enumerate() {
+        let input_data: InputData = read_data_from_json(file_path);
+        for (i, row) in input_data.matrix_a.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_a[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
+                assignment.matrix_a[i][j] = C::CircuitField::from(element as u32) ;
             }
         }
-
-        let rows_b = data.matrix_b.len();  
-        let cols_b = if rows_b > 0 { data.matrix_b[0].len() } else { 0 };  
-        println!("matrix b shape: ({}, {})", rows_b, cols_b); 
-
-        for (i, row) in data.matrix_b.iter().enumerate() {
-            for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_b[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
-            }
-        }
-
         // Return the assignment
         assignment
     }
 
+    // Read in output data from json file. Here, we focus on reading the outputs into the output layer of the circuit in a way that makes sense to us
     pub(crate) fn output_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
     where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
+    {
+        // Read the JSON file into a string
+        let input_data: OutputData = read_data_from_json(file_path);
+        for (i, row) in input_data.matrix_product_ab.iter().enumerate() {
+            for (j, &element) in row.iter().enumerate() {
+                assignment.matrix_product_ab[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
+            }
+        }
+        // Return the assignment
+        assignment
+    }
+    /*
+        #######################################################################################################
+        #######################################################################################################
+        #######################################################################################################
+    */
+    pub(crate) fn read_data_from_json<I>(file_path: &str) -> I
+    where I: DeserializeOwned
     {
         // Read the JSON file into a string
         let mut file = std::fs::File::open(file_path).expect("Unable to open file");
@@ -180,19 +192,9 @@ mod io_reader {
 
 
         // Deserialize the JSON into the InputData struct
-        let data: OutputData = serde_json::from_str(&contents).unwrap();
+        let data: I = serde_json::from_str(&contents).unwrap();
 
-        // Assign inputs to assignment
-        let rows_ab = data.matrix_product_ab.len();  
-        let cols_ab = if rows_ab > 0 { data.matrix_product_ab[0].len() } else { 0 };  
-        println!("matrix product ab shape: ({}, {})", rows_ab, cols_ab); 
-
-        for (i, row) in data.matrix_product_ab.iter().enumerate() {
-            for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_product_ab[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
-            }
-        }
-        assignment
+        data
     }
 }
 
@@ -201,6 +203,8 @@ where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>,
 {
 
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now(); 
     let matches = Command::new("File Copier")
         .version("1.0")
         .about("Copies content from input file to output file")
@@ -227,9 +231,11 @@ where
     println!("n_witnesses: {}", n_witnesses);
     let compile_result: CompileResult<C> = compile(&Circuit::default()).unwrap();
     println!("result compiled");
+
     let assignment = Circuit::<C::CircuitField>::default();
     let assignment = io_reader::input_data_from_json::<C, GKRC>(input_path, assignment);
     let assignment = io_reader::output_data_from_json::<C, GKRC>(output_path, assignment);
+
     let assignments = vec![assignment; n_witnesses];
     let witness = compile_result
         .witness_solver
@@ -269,6 +275,13 @@ where
     ));
     println!("Verified");
 
+    println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
+    println!(
+        "Peak Memory used Overall : {:.2}", 
+        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+    );
+    let duration = start.elapsed();
+    println!("Time elapsed: {}.{} seconds", duration.as_secs(), duration.subsec_millis())
 }
 
 //#[test]
@@ -293,7 +306,7 @@ fn run_bn254() {
 }
 
 fn main(){
-    run_gf2();
-    run_m31();
+    // run_gf2();
+    // run_m31();
     run_bn254();
 }

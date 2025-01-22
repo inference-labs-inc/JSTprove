@@ -670,6 +670,7 @@ dependencies = [
  "gf2",
  "gkr",
  "halo2curves",
+ "lazy_static",
  "mersenne31",
  "peakmem-alloc",
  "rand",

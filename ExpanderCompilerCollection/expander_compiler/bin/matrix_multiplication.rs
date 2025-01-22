@@ -5,8 +5,13 @@ use expander_config::{
     M31ExtConfigSha2,
 };
 use clap::{Command, Arg};
+use peakmem_alloc::*;
+use std::alloc::System;
+use std::mem;
+use std::time::{Instant};
 
-
+#[global_allocator]
+static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
 /* 
 Step 1: vanilla matrix multiplication of two matrices of compatible dimensions.
 matrix a has shape (m, n)
@@ -14,10 +19,10 @@ matrix b has shape (n, k)
 matrix product ab has shape (m, k)
 */
 
-const N_ROWS_A: usize = 3; // m
-const N_COLS_A: usize = 4; // n
-const N_ROWS_B: usize = 4; // n
-const N_COLS_B: usize = 2; // k
+const N_ROWS_A: usize = 1; // m
+const N_COLS_A: usize = 1568; // n
+const N_ROWS_B: usize = N_COLS_A; // n
+const N_COLS_B: usize = 1568; // k
 
 declare_circuit!(Circuit {
     matrix_a: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
@@ -136,7 +141,8 @@ fn run_main<C: Config, GKRC>()
 where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>,
 {
-
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now(); 
     let matches = Command::new("File Copier")
         .version("1.0")
         .about("Copies content from input file to output file")
@@ -205,6 +211,14 @@ where
     ));
     println!("Verified");
 
+    println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
+    println!(
+        "Peak Memory used Overall : {:.2}", 
+        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+    );
+    let duration = start.elapsed();
+    println!("Time elapsed: {}.{} seconds", duration.as_secs(), duration.subsec_millis())
+
 }
 
 //#[test]
@@ -229,7 +243,7 @@ fn run_bn254() {
 }
 
 fn main(){
-    run_gf2();
+    // run_gf2();
     run_m31();
-    run_bn254();
+    // run_bn254();
 }

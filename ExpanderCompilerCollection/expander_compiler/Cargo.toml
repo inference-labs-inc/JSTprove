@@ -38,6 +38,12 @@ path = "bin/scaled_matrix_product_sum.rs"
 name = "matrix_multiplication_memorized"
 path = "bin/matrix_multiplication_memorized.rs"
 
+
+[[bin]]
+name = "mat_mult_testing_1"
+path = "bin/mat_mult_testing_1.rs"
+
+
 [package]
 name = "expander_compiler"
 version = "0.1.0"
@@ -47,9 +53,12 @@ edition = "2021"
 serde_json = "1.0"
 peakmem-alloc = "0.3.0"
 csv = "1.1"
+lazy_static = "1.4"
 
 [dependencies.ark-std]
 workspace = true
+
+
 
 [dependencies.rand]
 workspace = true

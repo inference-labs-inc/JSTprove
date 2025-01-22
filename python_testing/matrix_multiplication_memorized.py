@@ -18,13 +18,13 @@ class BaseTests():
         
         # Function input generation
 
-        N_ROWS_A: int = 3; # m
-        N_COLS_A: int = 4; # n
-        N_ROWS_B: int = 4; # n
-        N_COLS_B: int = 2; # k
+        N_ROWS_A: int = 1; # m
+        N_COLS_A: int = 1568; # n
+        N_ROWS_B: int = N_COLS_A; # n
+        N_COLS_B: int = 256; # k
 
-        self.matrix_a = torch.randint(low=0, high=100, size=(N_ROWS_A,N_COLS_A)) # (m, n) array of random integers between 0 and 100
-        self.matrix_b = torch.randint(low=0, high=100, size=(N_ROWS_B,N_COLS_B)) # (n, k) array of random integers between 0 and 100
+        self.matrix_a = torch.randint(low=0, high=2**21, size=(N_ROWS_A,N_COLS_A)) # (m, n) array of random integers between 0 and 100
+        self.matrix_b = torch.randint(low=0, high=2**21, size=(N_ROWS_B,N_COLS_B)) # (n, k) array of random integers between 0 and 100
         
         '''
         #######################################################################################################
@@ -36,10 +36,9 @@ class BaseTests():
     def base_testing(self, input_folder:str, proof_folder: str, temp_folder: str, circuit_folder:str, proof_system: ZKProofSystems, output_folder: str = None):
 
         # NO NEED TO CHANGE!
-        witness_file, input_file, proof_path, public_path, verification_key, circuit_name, output_file = get_files(
-            input_folder, proof_folder, temp_folder, circuit_folder, self.name, output_folder, proof_system)
+        witness_file, input_file, proof_path, public_path, verification_key, circuit_name, weights_file, output_file = get_files(
+            input_folder, proof_folder, temp_folder, circuit_folder, weights_folder, self.name, output_folder, proof_system)
         
-
         '''
         #######################################################################################################
         #################################### This is the block for changes ####################################
@@ -52,8 +51,11 @@ class BaseTests():
         ## Define inputs and outputs
         inputs = {
             'matrix_a': self.matrix_a.tolist(),
-            'matrix_b': self.matrix_b.tolist(),          
             }
+        
+        weights = {
+            'matrix_b': self.matrix_b.tolist(),          
+        }
         
         outputs = {
             'matrix_product_ab': matrix_product_ab.tolist(),
@@ -74,6 +76,8 @@ class BaseTests():
         # Write output to json
         to_json(outputs, output_file)
 
+        to_json(weights, weights_file)
+
         ## Run the circuit
         prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file)
 
@@ -84,6 +88,7 @@ if __name__ == "__main__":
     output_folder = "output"
     temp_folder = "temp"
     input_folder = "inputs"
+    weights_folder = "weights"
     circuit_folder = ""
     #Rework inputs to function
     test_circuit = BaseTests()
