@@ -38,6 +38,18 @@ path = "bin/scaled_matrix_product_sum.rs"
 name = "matrix_multiplication_memorized"
 path = "bin/matrix_multiplication_memorized.rs"
 
+[[bin]]
+name = "matrix_addition"
+path = "bin/matrix_addition.rs"
+
+[[bin]]
+name = "matrix_hadamard_product"
+path = "bin/matrix_hadamard_product.rs"
+
+[[bin]]
+name = "matrix_multiplication_block_decomposition"
+path = "bin/matrix_multiplication_block_decomposition.rs"
+
 [package]
 name = "expander_compiler"
 version = "0.1.0"

@@ -14,17 +14,17 @@ class BaseTests():
         #######################################################################################################
         '''
         # Specify
-        self.name = "matrix_multiplication"
+        self.name = "matrix_addition"
         
         # Function input generation
 
-        N_ROWS_A: int = 1; # m
-        N_COLS_A: int = 1568; # n
-        N_ROWS_B: int = 1568; # n
-        N_COLS_B: int = 256; # k
+        N_ROWS_A: int = 17571; # m
+        N_COLS_A: int = 1; # n
+        N_ROWS_B: int = 17571; # m
+        N_COLS_B: int = 1; # n
 
         self.matrix_a = torch.randint(low=0, high=100, size=(N_ROWS_A,N_COLS_A)) # (m, n) array of random integers between 0 and 100
-        self.matrix_b = torch.randint(low=0, high=100, size=(N_ROWS_B,N_COLS_B)) # (n, k) array of random integers between 0 and 100
+        self.matrix_b = torch.randint(low=0, high=100, size=(N_ROWS_B,N_COLS_B)) # (m, n) array of random integers between 0 and 100
         
         '''
         #######################################################################################################
@@ -47,7 +47,7 @@ class BaseTests():
         '''
         ## Perform calculation here
 
-        matrix_product_ab = torch.matmul(self.matrix_a, self.matrix_b)
+        matrix_sum_ab = torch.add(self.matrix_a, self.matrix_b)
 
         ## Define inputs and outputs
         inputs = {
@@ -56,7 +56,7 @@ class BaseTests():
             }
         
         outputs = {
-            'matrix_product_ab': matrix_product_ab.tolist(),
+            'matrix_sum_ab': matrix_sum_ab.tolist(),
         }
         '''
         #######################################################################################################
