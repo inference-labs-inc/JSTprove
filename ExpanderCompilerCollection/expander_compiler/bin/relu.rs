@@ -24,7 +24,7 @@ const LENGTH: usize = 256;
 // Specify input and output structure
 // This will indicate the input layer and output layer of the circuit, so be careful with how it is defined
 // Later, we define how the inputs get read into the input layer
-declare_circuit!(Circuit {
+declare_circuit!(ReLUCircuit {
     input: [[Variable; LENGTH]; 2],
     output: [Variable; LENGTH],
 });
@@ -35,7 +35,7 @@ fn relu<C: Config>(api: &mut API<C>, x: Variable, sign: Variable) -> Variable {
     api.mul(x,sign_2)
 }
 
-impl<C: Config> Define<C> for Circuit<Variable> {
+impl<C: Config> Define<C> for ReLUCircuit<Variable> {
     // Default circuit for now, ensures input and output are equal
     fn define(&self, api: &mut API<C>) {
             for i in 0..LENGTH {
@@ -61,7 +61,7 @@ mod io_reader {
 
     use crate::LENGTH;
 
-    use super::Circuit;
+    use super::ReLUCircuit;
 
     use expander_compiler::frontend::*;
     /*
@@ -86,7 +86,7 @@ mod io_reader {
     }
 
     // Read in input data from json file. Here, we focus on reading the inputs into the input layer of the circuit in a way that makes sense to us
-    pub(crate) fn input_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
+    pub(crate) fn input_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: ReLUCircuit<<C as Config>::CircuitField>) -> ReLUCircuit<<C as expander_compiler::frontend::Config>::CircuitField>
     where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
     {
@@ -116,7 +116,7 @@ mod io_reader {
     }
 
     // Read in output data from json file. Here, we focus on reading the outputs into the output layer of the circuit in a way that makes sense to us
-    pub(crate) fn output_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
+    pub(crate) fn output_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: ReLUCircuit<<C as Config>::CircuitField>) -> ReLUCircuit<<C as expander_compiler::frontend::Config>::CircuitField>
     where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
     {
@@ -174,9 +174,9 @@ where
 
     let n_witnesses = <GKRC::SimdCircuitField as arith::SimdField>::pack_size();
     println!("n_witnesses: {}", n_witnesses);
-    let compile_result: CompileResult<C> = compile(&Circuit::default()).unwrap();
+    let compile_result: CompileResult<C> = compile(&ReLUCircuit::default()).unwrap();
 
-    let assignment = Circuit::<C::CircuitField>::default();
+    let assignment = ReLUCircuit::<C::CircuitField>::default();
 
     let assignment = io_reader::input_data_from_json::<C, GKRC>(input_path, assignment);
 
