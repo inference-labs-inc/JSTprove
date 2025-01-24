@@ -88,7 +88,7 @@ fn product_sub_circuit<C: Config>(api: &mut API<C>, inputs: &Vec<Variable>) -> V
 }
 
 #[allow(dead_code)]
-fn matrix_multplication<C: Config, const M: usize, const N: usize, const K: usize>(api: &mut API<C>, matrix_a: [[Variable; N]; M], matrix_b: [[Variable; K]; N]) -> [[Variable; K]; M]{
+fn matrix_multplication<C: Config, const M: usize, const N: usize, const K: usize>(api: &mut API<C>, matrix_a: [[Variable; N]; M], matrix_b: Vec<Vec<Variable>>) -> [[Variable; K]; M]{
     let mut out = [[Variable::default(); K]; M];
     for i in 0..M {
         for j in 0..K {
@@ -183,7 +183,7 @@ impl<C: Config> Define<C> for Circuit<Variable,> {
 
 
         // Compute matrix multiplication
-        // let out = matrix_multplication(api, self.matrix_a,  weights_matrix_multiplication);
+        // let out:[[Variable; 256]; 1] = matrix_multplication(api, self.matrix_a,  weights_matrix_multiplication);
         let out:[[Variable; N_COLS_B]; N_ROWS_A]  = matrix_multplication_naive2(api, self.matrix_a,  weights_matrix_multiplication);
 
         // let out:Vec<Vec<Variable>>  = matrix_multplication_naive3::<C,N_ROWS_A, N_COLS_A, N_COLS_B>(api, self.matrix_a,  weights_matrix_multiplication);
