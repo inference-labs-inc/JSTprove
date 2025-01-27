@@ -173,7 +173,9 @@ class ReLU():
             
             # Function input generation
 
-            self.inputs_1 = torch.randint(low=-2**21, high=2**21, size=(1000,))
+            # self.inputs_1 = torch.randint(low=-2**21, high=2**21, size=(1000,))
+            self.inputs_1 = torch.randint(low=-2**31, high=2**31, size=(10000,))
+
             self.outputs = None
             self.scaling = 2 ** 21
 

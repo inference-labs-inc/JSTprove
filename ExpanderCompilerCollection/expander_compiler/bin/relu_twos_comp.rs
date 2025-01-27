@@ -16,7 +16,7 @@ use extra::UnconstrainedAPI;
 
 #[global_allocator]
 static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
-const SIZE1: usize = 1000;
+const SIZE1: usize = 10000;
 const SIZE2: usize = 1;
 const SIZE3: usize = 1;
 
@@ -105,7 +105,9 @@ fn to_binary_2s<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<
     // The following code to generate new_x is tested and confirmed works
     let (new_x, sign) = to_int_for_twos_comp(api, x, n_bits);
 
-    let mut bits = to_binary(api, new_x, n_bits - 1);
+    let mut bits = to_binary_ecc(api, new_x, n_bits - 1);
+
+    bits.push(sign);
 
     bits
     // //1
@@ -223,8 +225,8 @@ fn relu_twos_v1<C: Config, const X: usize, const Y: usize, const Z: usize>(api: 
 
 
                 let bits = to_binary_2s(api, input[i][j][k], n_bits);
-                // let total = from_binary_2s(api, &bits, n_bits);
-                // api.assert_is_equal(total, input[i][j][k]);
+                let total = from_binary_2s(api, &bits, n_bits);
+                api.assert_is_equal(total, input[i][j][k]);
                 // let x = relu_single(api, input[i][j][k], bits[n_bits - 1]);
                 // api.assert_is_equal(bits, output[i][j][k]);
                 // api.assert_is_equal(x, output[i][j][k]);
@@ -322,8 +324,8 @@ impl<C: Config> Define<C> for Circuit<Variable> {
     fn define(&self, api: &mut API<C>) {
         let n_bits = 32;
         
-        // let out = relu_twos_v1(api, self.input, self.output, n_bits);
-        let out = test_twos_comp_int_verion(api, self.input, self.output, n_bits);
+        let out = relu_twos_v1(api, self.input, self.output, n_bits);
+        // let out = test_twos_comp_int_verion(api, self.input, self.output, n_bits);
 
         // let out = relu_twos_v2(api, self.input, self.output, n_bits);
         // let out = relu_twos_v2_5(api, self.input, self.output, n_bits);
