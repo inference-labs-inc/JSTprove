@@ -1,3 +1,6 @@
+use ark_std::test_rng;
+use ethnum::intrinsics::signed;
+use ethnum::u256;
 use expander_compiler::frontend::*;
 use expander_config::{
     BN254ConfigKeccak, BN254ConfigSha2, GF2ExtConfigKeccak, GF2ExtConfigSha2, M31ExtConfigKeccak,
@@ -13,9 +16,9 @@ use extra::UnconstrainedAPI;
 
 #[global_allocator]
 static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
-const SIZE1: usize = 28;
-const SIZE2: usize = 28;
-const SIZE3: usize = 16;
+const SIZE1: usize = 1000;
+const SIZE2: usize = 1;
+const SIZE3: usize = 1;
 
 
 /*
@@ -75,39 +78,61 @@ fn to_binary<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Var
 //If x > p/2
 // Then, take the negation of x
 
-fn to_binary_2s<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
-    let mut res = Vec::new();
-    let half = api.unconstrained_pow(2,128);
+fn to_int_for_twos_comp<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> (Variable, Variable){
+
+    let half = api.unconstrained_pow(2,n_bits as u32);
     //is 1 if x is neg, 0 if x is pos
-    let sign = api.unconstrained_greater(x, half);
-
-    //1
-    let mut carry = api.unconstrained_bit_and(1,1);
+    let sign = api.unconstrained_greater_eq(x, half);
     // Still need to add the multiplication of negative 1
+    // let bit_max = api.unconstrained_pow(2,n_bits as u32);
 
-    for i in 0..n_bits {
-        let y = api.unconstrained_shift_r(x, i as u32);
+    let twos_comp_add = api.unconstrained_add(x, half);
+    let x_if_negative = api.unconstrained_mul(sign, twos_comp_add);
+
+    let regular_x_add = api.unconstrained_bit_xor(1, sign);
+    let x_if_positive = api.unconstrained_mul(regular_x_add, x);
+
+    let new_x = api.unconstrained_add(x_if_negative, x_if_positive);
+
+    return (new_x, sign);
+
+}
+
+fn to_binary_2s<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
+    // let mut res = Vec::new();
+    
+    
+    // The following code to generate new_x is tested and confirmed works
+    let (new_x, sign) = to_int_for_twos_comp(api, x, n_bits);
+
+    let mut bits = to_binary(api, new_x, n_bits - 1);
+
+    bits
+    // //1
+    // let mut carry = api.unconstrained_bit_and(1,1);
+
+    // for i in 0..n_bits {
+    //     let y = api.unconstrained_shift_r(x, i as u32);
         
-        //if sign is 0 then we want sign_0_cond to transfer to sign_0, otherwise sign_0 should be 0
-        let sign_0_cond = api.unconstrained_bit_and(y, 1);
-        let sign_0_temp = api.unconstrained_bit_xor(1, sign);
-        let sign_0 = api.unconstrained_bit_and(sign_0_cond, sign_0_temp);
+    //     //if sign is 0 then we want sign_0_cond to transfer to sign_0, otherwise sign_0 should be 0
+    //     let sign_0_cond = api.unconstrained_bit_and(y, 1);
+    //     let sign_0_temp = api.unconstrained_bit_xor(1, sign);
+    //     let sign_0 = api.unconstrained_bit_and(sign_0_cond, sign_0_temp);
 
-        //if sign is 1, then we want sign_1_cond to transfer to sign_1, otherwise sign_1 should be 0
-        let sign_1_cond = api.unconstrained_bit_and(y, 0);
-        //Adder component
-        let s_1 = api.unconstrained_bit_xor(sign_1_cond, carry);
-        carry = api.unconstrained_bit_and(sign_1_cond, carry);
+    //     //if sign is 1, then we want sign_1_cond to transfer to sign_1, otherwise sign_1 should be 0
+    //     let sign_1_cond = api.unconstrained_bit_and(y, 0);
+    //     //Adder component
+    //     let s_1 = api.unconstrained_bit_xor(sign_1_cond, carry);
+    //     carry = api.unconstrained_bit_and(sign_1_cond, carry);
 
-        //This will be 1 if sign is 0 and zero if sign is 1
-        let sign_1_temp = api.unconstrained_bit_xor(1, sign);
-        let sign_1 = api.unconstrained_bit_and(s_1, sign_1_temp);
+    //     //This will be 1 if sign is 0 and zero if sign is 1
+    //     let sign_1_temp = api.unconstrained_bit_xor(1, sign);
+    //     let sign_1 = api.unconstrained_bit_and(s_1, sign_1_temp);
 
-        let res_sign = api.unconstrained_bit_or(sign_0, sign_1);
-        res.push(res_sign);
-    }
+    //     let res_sign = api.unconstrained_bit_or(sign_0, sign_1);
+    //     res.push(res_sign);
+    // }
     //adder to add 1, if sign is negative
-    res
 }
 
 fn binary_check<C: Config>(api: &mut API<C>, bits: &Vec<Variable>) {
@@ -198,15 +223,30 @@ fn relu_twos_v1<C: Config, const X: usize, const Y: usize, const Z: usize>(api: 
 
 
                 let bits = to_binary_2s(api, input[i][j][k], n_bits);
-                let total = from_binary_2s(api, &bits, n_bits);
-                api.assert_is_equal(total, input[i][j][k]);
-                let x = relu_single(api, input[i][j][k], bits[n_bits - 1]);
+                // let total = from_binary_2s(api, &bits, n_bits);
+                // api.assert_is_equal(total, input[i][j][k]);
+                // let x = relu_single(api, input[i][j][k], bits[n_bits - 1]);
+                // api.assert_is_equal(bits, output[i][j][k]);
                 // api.assert_is_equal(x, output[i][j][k]);
             }
         }
     }
     output
 }
+
+//V1 loops through each layer of the matrix and computes relu on individual basis
+fn test_twos_comp_int_verion<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X], n_bits: usize) -> [[[Variable; Z]; Y]; X] {
+    for i in 0..input.len() {
+        for j in 0..input[i].len(){
+            for k in 0..input[i][j].len(){
+                let (new_x, sign) = to_int_for_twos_comp(api, input[i][j][k], n_bits);
+                api.assert_is_equal(new_x, output[i][j][k]);
+            }
+        }
+    }
+    output
+}
+
 // memorized_simple call on last dimension of array
 fn relu_twos_v2<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X]) -> [[[Variable; Z]; Y]; X] {
     for i in 0..input.len() {
@@ -282,7 +322,9 @@ impl<C: Config> Define<C> for Circuit<Variable> {
     fn define(&self, api: &mut API<C>) {
         let n_bits = 32;
         
-        let out = relu_twos_v1(api, self.input, self.output, n_bits);
+        // let out = relu_twos_v1(api, self.input, self.output, n_bits);
+        let out = test_twos_comp_int_verion(api, self.input, self.output, n_bits);
+
         // let out = relu_twos_v2(api, self.input, self.output, n_bits);
         // let out = relu_twos_v2_5(api, self.input, self.output, n_bits);
         // let out = relu_twos_v3(api, self.input, self.output,n_bits);
