@@ -142,7 +142,7 @@ class Doom():
         test_circuit.inputs_1 = self.layers["conv1_relu"].inputs
         test_circuit.outputs = self.layers["conv1_relu"].outputs
         test_circuit.convert_to_relu_form()
-        # test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, proof_system, output_folder)
+        test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, proof_system, output_folder)
 
 
 
@@ -206,18 +206,62 @@ class ReLU():
         def bin2dec(b, bits):
             mask = 2 ** torch.arange(bits - 1, -1, -1).to(b.device, b.dtype)
             return torch.sum(mask * b, -1)
+        
+        def test(inputs):
+            def to_binary_2s(x, n_bits):
+                res = []
+                for i in range(n_bits):
+                
+                    y = x >> i
+                    res.append(y & 1)
+                return res
+            
+
+            def binary_check(bits):
+                for i in range(len(bits)):
+                    bin_check = 1 - bits[i]
+                    x = bin_check * bits[i]
+                    assert(x == 0)
+
+            def from_binary_2s(bits, n_bits):
+                res = 0
+                length = n_bits - 1
+                for i in range(length):
+                    coef = 1 << i
+                    cur = coef * bits[i]
+                    res = res + cur
+                binary_check(bits)
+                cur = 1 << length * bits[length]
+                temp = 0
+                out = temp - cur
+                return out + res
+            
+            for i in range(len(inputs)):
+                for j in range(len(inputs[i])):
+                    for k in range(len(inputs[i][j])):
+                        bits = to_binary_2s(inputs[i][j][k], 32)
+                        total = from_binary_2s(bits, 32)
+                        assert(total, inputs[i][j][k])
+
+                
 
         
 
-        if not self.twos_complement:
+        if self.conversion_type ==ConversionType.DUAL_MATRIX:
             self.inputs_2 = (self.inputs_1 < 0).int()
             self.inputs_1 = torch.mul(torch.abs(self.inputs_1), self.scaling)
-        else:
+        elif self.conversion_type:
             self.inputs_1 = torch.mul(self.inputs_1, self.scaling).int()
-            print(self.inputs_1[0][0][1])
-            self.inputs_1 = twos_comp(self.inputs_1, 32)
+            test(self.inputs_1)
+            raise
+            # print(self.inputs_1[0][0][2])
+            # self.inputs_1 = twos_comp(self.inputs_1, 32)
             # self.inputs_1 =  torch.tensor([twos_comp(val.item(), num_bits) for val in self.inputs_1.flatten()])
-            print(self.inputs_1[0][0][1])
+            # print(self.inputs_1[0][0][2])
+
+
+        else:
+            pass
 
 
 
@@ -238,12 +282,12 @@ class ReLU():
 
         # outputs = torch.where(self.inputs_1 > self.inputs_2, torch.tensor(1), 
         #              torch.where(self.inputs_1 == self.inputs_2, torch.tensor(0), torch.tensor(-1)))
-        if self.twos_complement:
+        if self.conversion_type == ConversionType.TWOS_COMP:
             if self.outputs == None:
                 outputs = torch.where(self.inputs_1 > self.scaling,0,self.inputs_1)
             else:
                 outputs = torch.mul(self.outputs, self.scaling)
-        else:
+        elif self.conversion_type == ConversionType.DUAL_MATRIX:
             if self.outputs == None:
                 inputs_3 = torch.mul(torch.sub(1,torch.mul(self.inputs_2,2)),self.inputs_1)
                 outputs = torch.relu(inputs_3)
@@ -251,14 +295,14 @@ class ReLU():
                 outputs = torch.mul(self.outputs, self.scaling)
 
         ## Define inputs and outputs
-        if self.twos_complement:
+        if self.conversion_type == ConversionType.TWOS_COMP:
             inputs = {
                 'inputs_1': self.inputs_1.tolist()
                 }
             outputs = {
                 'outputs': outputs.int().tolist(),
             }
-        else:
+        elif self.conversion_type == ConversionType.DUAL_MATRIX:
             try:
                 inputs = {
                     'inputs_1': [int(i) for i in self.inputs_1.tolist()],

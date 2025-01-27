@@ -69,6 +69,73 @@ fn to_binary<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Var
     api.assert_is_equal(count, x);
     res
 }
+//Version 3
+
+//What do we want?
+//If x > p/2
+// Then, take the negation of x
+
+fn to_binary_2s<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
+    let mut res = Vec::new();
+    let half = api.unconstrained_pow(2,128);
+    //is 1 if x is neg, 0 if x is pos
+    let sign = api.unconstrained_greater(x, half);
+
+    //1
+    let mut carry = api.unconstrained_bit_and(1,1);
+    // Still need to add the multiplication of negative 1
+
+    for i in 0..n_bits {
+        let y = api.unconstrained_shift_r(x, i as u32);
+        
+        //if sign is 0 then we want sign_0_cond to transfer to sign_0, otherwise sign_0 should be 0
+        let sign_0_cond = api.unconstrained_bit_and(y, 1);
+        let sign_0_temp = api.unconstrained_bit_xor(1, sign);
+        let sign_0 = api.unconstrained_bit_and(sign_0_cond, sign_0_temp);
+
+        //if sign is 1, then we want sign_1_cond to transfer to sign_1, otherwise sign_1 should be 0
+        let sign_1_cond = api.unconstrained_bit_and(y, 0);
+        //Adder component
+        let s_1 = api.unconstrained_bit_xor(sign_1_cond, carry);
+        carry = api.unconstrained_bit_and(sign_1_cond, carry);
+
+        //This will be 1 if sign is 0 and zero if sign is 1
+        let sign_1_temp = api.unconstrained_bit_xor(1, sign);
+        let sign_1 = api.unconstrained_bit_and(s_1, sign_1_temp);
+
+        let res_sign = api.unconstrained_bit_or(sign_0, sign_1);
+        res.push(res_sign);
+    }
+    //adder to add 1, if sign is negative
+    res
+}
+
+fn binary_check<C: Config>(api: &mut API<C>, bits: &Vec<Variable>) {
+    // let mut out: Vec<Variable> = Vec::new();
+    for i in 0..bits.len(){
+        let bin_check = api.sub(1,bits[i]);
+        let x = api.mul(bin_check,bits[i]);
+        api.assert_is_zero(x);
+        // out.push(api.mul(bin_check,bits[i]));
+    }
+}
+
+fn from_binary_2s<C: Config>(api: &mut API<C>, bits: &Vec<Variable>, n_bits: usize) -> Variable {
+    let mut res = api.constant(0);
+    let length = n_bits - 1;
+    for i in 0..length {
+        let coef = 1 << i;
+        let cur = api.mul(coef, bits[i]);
+        res = api.add(res, cur);
+    }
+    binary_check(api, bits);
+    let cur = api.mul(1 << length,bits[length]);
+    // let temp = api.constant(0);
+    let out = api.neg(cur);
+    api.add(out, res)
+}
+
+
 
 fn get_sign_simple<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Variable> {
     let mut out: Vec<Variable> = Vec::with_capacity(x.len());
@@ -113,9 +180,28 @@ fn relu_twos_v1<C: Config, const X: usize, const Y: usize, const Z: usize>(api: 
         for j in 0..input[i].len(){
             for k in 0..input[i][j].len(){
                 // Iterate over each input/output pair (one per batch)
-                let sign = to_binary(api, input[i][j][k], n_bits);
-                let x = relu_single(api, input[i][j][k], sign[n_bits - 1]);
-                api.assert_is_equal(x, output[i][j][k]);
+
+                
+                // let temp = api.neg(input[i][j][k]);
+                
+                //If input is negative, this will be positive
+                //if input is positive, this will be negative
+                // let a = api.sub(zero, input[i][j][k]);
+                // //If input is negative, output is 0
+                // //if input is positive, output is input
+
+
+                // // let a = api.sub(temp, output[i][j][k]);
+
+                // let b = api.mul(a, output[i][j][k]);
+                // api.assert_is_zero(b);
+
+
+                let bits = to_binary_2s(api, input[i][j][k], n_bits);
+                let total = from_binary_2s(api, &bits, n_bits);
+                api.assert_is_equal(total, input[i][j][k]);
+                let x = relu_single(api, input[i][j][k], bits[n_bits - 1]);
+                // api.assert_is_equal(x, output[i][j][k]);
             }
         }
     }
@@ -210,7 +296,7 @@ impl<C: Config> Define<C> for Circuit<Variable> {
 
 mod io_reader {
     use ethnum::U256;
-    use std::io::Read;
+    use std::{io::Read, ops::Neg};
     use arith::FieldForECC;
     use serde::Deserialize;
 
@@ -227,7 +313,7 @@ mod io_reader {
     #[derive(Deserialize)]
     #[derive(Clone)]
     pub(crate) struct InputData {
-        pub(crate) inputs_1: Vec<Vec<Vec<u64>>>,
+        pub(crate) inputs_1: Vec<Vec<Vec<i64>>>,
     }
 
     //This is the data structure for the output data to be read in from the json file
@@ -257,7 +343,13 @@ mod io_reader {
         for (i,var_vec_vec) in data.inputs_1.iter().enumerate(){
             for (j, var_vec) in var_vec_vec.iter().enumerate(){
                 for (k, &var) in var_vec.iter().enumerate(){
-                    assignment.input[i][j][k] = C::CircuitField::from_u256(U256::from(var)); 
+                    if var < 0{
+                        assignment.input[i][j][k] = C::CircuitField::from(var.abs() as u32).neg();
+                    }
+                    else{
+                        assignment.input[i][j][k] = C::CircuitField::from(var.abs() as u32);
+                    }
+                    // assignment.input[i][j][k] = C::CircuitField::from_u256(U256::from(var)); 
                 }
             }
         }
@@ -284,7 +376,7 @@ mod io_reader {
         for (i,var_vec_vec) in data.outputs.iter().enumerate(){
             for (j, var_vec) in var_vec_vec.iter().enumerate(){
                 for (k, &var) in var_vec.iter().enumerate(){
-                    assignment.output[i][j][k] = C::CircuitField::from_u256(U256::from(var)) ;
+                    assignment.output[i][j][k] = C::CircuitField::from_u256(U256::from(var));
 
                 }
             }
