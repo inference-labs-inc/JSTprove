@@ -174,7 +174,7 @@ class ReLU():
             # Function input generation
 
             # self.inputs_1 = torch.randint(low=-2**21, high=2**21, size=(1000,))
-            self.inputs_1 = torch.randint(low=-2**31, high=2**31, size=(10000,))
+            self.inputs_1 = torch.randint(low=-2**31, high=2**31, size=(16,8,4))
 
             self.outputs = None
             self.scaling = 2 ** 21
@@ -286,10 +286,7 @@ class ReLU():
         #              torch.where(self.inputs_1 == self.inputs_2, torch.tensor(0), torch.tensor(-1)))
         if self.conversion_type == ConversionType.TWOS_COMP:
             if self.outputs == None:
-                # outputs = torch.where(self.inputs_1 > self.scaling,0,self.inputs_1)
-                outputs = torch.where(self.inputs_1 < 0 ,torch.add(2**32,self.inputs_1),self.inputs_1)
-                # outputs = 2**32 + self.inputs_1
-                # outputs = torch.abs(self.inputs_1)
+                outputs = torch.relu(self.inputs_1)
             else:
                 outputs = torch.mul(self.outputs, self.scaling)
         elif self.conversion_type == ConversionType.DUAL_MATRIX:
@@ -302,10 +299,10 @@ class ReLU():
         ## Define inputs and outputs
         if self.conversion_type == ConversionType.TWOS_COMP:
             inputs = {
-                'inputs_1': [[self.inputs_1.tolist()]]
+                'inputs_1': self.inputs_1.tolist()
                 }
             outputs = {
-                'outputs': [[outputs.tolist()]],
+                'outputs': outputs.tolist(),
             }
         elif self.conversion_type == ConversionType.DUAL_MATRIX:
             try:
