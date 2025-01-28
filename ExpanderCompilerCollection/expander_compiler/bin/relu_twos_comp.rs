@@ -1,3 +1,6 @@
+use ark_std::test_rng;
+use ethnum::intrinsics::signed;
+use ethnum::u256;
 use expander_compiler::frontend::*;
 use expander_config::{
     BN254ConfigKeccak, BN254ConfigSha2, GF2ExtConfigKeccak, GF2ExtConfigSha2, M31ExtConfigKeccak,
@@ -69,6 +72,72 @@ fn to_binary<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Var
     api.assert_is_equal(count, x);
     res
 }
+//Version 3
+
+//What do we want?
+//If x > p/2
+// Then, take the negation of x
+
+fn to_int_for_twos_comp<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Variable{
+
+    let half = api.unconstrained_pow(2,n_bits as u32);
+    //is 1 if x is neg, 0 if x is pos
+    let sign = api.unconstrained_greater_eq(x, half);
+    // Still need to add the multiplication of negative 1
+    // let bit_max = api.unconstrained_pow(2,n_bits as u32);
+
+    let twos_comp_add = api.unconstrained_add(x, half);
+    let x_if_negative = api.unconstrained_mul(sign, twos_comp_add);
+
+    let regular_x_add = api.unconstrained_bit_xor(1, sign);
+    let x_if_positive = api.unconstrained_mul(regular_x_add, x);
+
+    let new_x = api.unconstrained_add(x_if_negative, x_if_positive);
+
+    return new_x;
+
+}
+
+fn to_binary_2s<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
+    // let mut res = Vec::new();
+    
+    
+    // The following code to generate new_x is tested and confirmed works
+    let new_x = to_int_for_twos_comp(api, x, n_bits);
+
+    let bits = to_binary_ecc(api, new_x, n_bits );
+
+    // bits.push(sign);
+
+    bits
+}
+
+fn binary_check<C: Config>(api: &mut API<C>, bits: &Vec<Variable>) {
+    // let mut out: Vec<Variable> = Vec::new();
+    for i in 0..bits.len(){
+        let bin_check = api.sub(1,bits[i]);
+        let x = api.mul(bin_check,bits[i]);
+        api.assert_is_zero(x);
+        // out.push(api.mul(bin_check,bits[i]));
+    }
+}
+
+fn from_binary_2s<C: Config>(api: &mut API<C>, bits: &Vec<Variable>, n_bits: usize) -> Variable {
+    let mut res = api.constant(0);
+    let length = n_bits - 1;
+    for i in 0..length {
+        let coef = 1 << i;
+        let cur = api.mul(coef, bits[i]);
+        res = api.add(res, cur);
+    }
+    binary_check(api, bits);
+    let cur = api.mul(1 << length,bits[length]);
+    // let temp = api.constant(0);
+    let out = api.neg(cur);
+    api.add(out, res)
+}
+
+
 
 fn get_sign_simple<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Variable> {
     let mut out: Vec<Variable> = Vec::with_capacity(x.len());
@@ -107,20 +176,61 @@ fn relu_simple_call_2<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Var
     out
 }
 
+
 //V1 loops through each layer of the matrix and computes relu on individual basis
-fn relu_twos_v1<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X], n_bits: usize) -> [[[Variable; Z]; Y]; X] {
+fn relu_twos_v1<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], n_bits: usize) -> Vec<Vec<Vec<Variable>>> {
+    // let mut out: Vec<Vec<Vec<Variable>>> = Vec::new();
+    let mut out: Vec<Variable> = Vec::new();
+
+    for i in 0..input.len() {
+        // let mut out_1:Vec<Vec<Variable>> = Vec::new();
+        for j in 0..input[i].len(){
+            // let mut out_2:Vec<Variable> = Vec::new();
+            for k in 0..input[i][j].len(){
+                // Iterate over each input/output pair (one per batch)
+
+                // Get the twos compliment binary representation
+                let bits = to_binary_2s(api, input[i][j][k], n_bits);
+                //Add constraints to ensure that the bitstring is correct
+                let total = from_binary_2s(api, &bits, n_bits);
+                api.assert_is_equal(total, input[i][j][k]);
+
+                // Perform relu using sign bit
+                let x = relu_single(api, input[i][j][k], bits[n_bits - 1]);
+                // out_2.push(x);
+                out.push(x);
+            }
+            // out_1.push(out_2);
+        }
+        // out.push(out_1)
+    }
+    // out;
+    let (layers, rows, cols) = (X,Y,Z);
+
+    // First chunk into rows (each row has `cols` elements)
+    let reshaped_3d: Vec<Vec<Vec<Variable>>> = out
+        .chunks(cols)  // Chunks into rows of size `cols`
+        .map(|chunk| chunk.to_vec())  // Convert rows into Vec<Variable>
+        .collect::<Vec<Vec<Variable>>>()  // Collect the rows into a Vec<Vec<Variable>>
+        .chunks(rows)  // Now chunk the rows into layers of size `rows`
+        .map(|chunk| chunk.to_vec())  // Convert each layer of rows into Vec<Vec<Variable>>
+        .collect();
+    reshaped_3d
+}
+
+//V1 loops through each layer of the matrix and computes relu on individual basis
+fn test_twos_comp_int_verion<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X], n_bits: usize) -> [[[Variable; Z]; Y]; X] {
     for i in 0..input.len() {
         for j in 0..input[i].len(){
             for k in 0..input[i][j].len(){
-                // Iterate over each input/output pair (one per batch)
-                let sign = to_binary(api, input[i][j][k], n_bits);
-                let x = relu_single(api, input[i][j][k], sign[n_bits - 1]);
-                api.assert_is_equal(x, output[i][j][k]);
+                let new_x = to_int_for_twos_comp(api, input[i][j][k], n_bits);
+                api.assert_is_equal(new_x, output[i][j][k]);
             }
         }
     }
     output
 }
+
 // memorized_simple call on last dimension of array
 fn relu_twos_v2<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X]) -> [[[Variable; Z]; Y]; X] {
     for i in 0..input.len() {
@@ -196,10 +306,20 @@ impl<C: Config> Define<C> for Circuit<Variable> {
     fn define(&self, api: &mut API<C>) {
         let n_bits = 32;
         
-        let out = relu_twos_v1(api, self.input, self.output, n_bits);
+        let out = relu_twos_v1(api, self.input, n_bits);
+        // let out = test_twos_comp_int_verion(api, self.input, self.output, n_bits);
         // let out = relu_twos_v2(api, self.input, self.output, n_bits);
         // let out = relu_twos_v2_5(api, self.input, self.output, n_bits);
         // let out = relu_twos_v3(api, self.input, self.output,n_bits);
+
+    
+        for i in 0..SIZE3{
+            for j in 0..SIZE2{
+                for k in 0..SIZE1{
+                    api.assert_is_equal(self.output[i][j][k], out[i][j][k]);
+                }
+            }
+        }
     }
 }
 /*
@@ -210,7 +330,7 @@ impl<C: Config> Define<C> for Circuit<Variable> {
 
 mod io_reader {
     use ethnum::U256;
-    use std::io::Read;
+    use std::{io::Read, ops::Neg};
     use arith::FieldForECC;
     use serde::Deserialize;
 
@@ -227,7 +347,7 @@ mod io_reader {
     #[derive(Deserialize)]
     #[derive(Clone)]
     pub(crate) struct InputData {
-        pub(crate) inputs_1: Vec<Vec<Vec<u64>>>,
+        pub(crate) inputs_1: Vec<Vec<Vec<i64>>>,
     }
 
     //This is the data structure for the output data to be read in from the json file
@@ -257,7 +377,13 @@ mod io_reader {
         for (i,var_vec_vec) in data.inputs_1.iter().enumerate(){
             for (j, var_vec) in var_vec_vec.iter().enumerate(){
                 for (k, &var) in var_vec.iter().enumerate(){
-                    assignment.input[i][j][k] = C::CircuitField::from_u256(U256::from(var)); 
+                    if var < 0{
+                        assignment.input[i][j][k] = C::CircuitField::from(var.abs() as u32).neg();
+                    }
+                    else{
+                        assignment.input[i][j][k] = C::CircuitField::from(var.abs() as u32);
+                    }
+                    // assignment.input[i][j][k] = C::CircuitField::from_u256(U256::from(var)); 
                 }
             }
         }
@@ -284,7 +410,7 @@ mod io_reader {
         for (i,var_vec_vec) in data.outputs.iter().enumerate(){
             for (j, var_vec) in var_vec_vec.iter().enumerate(){
                 for (k, &var) in var_vec.iter().enumerate(){
-                    assignment.output[i][j][k] = C::CircuitField::from_u256(U256::from(var)) ;
+                    assignment.output[i][j][k] = C::CircuitField::from_u256(U256::from(var));
 
                 }
             }
