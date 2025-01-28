@@ -254,8 +254,6 @@ class ReLU():
             self.inputs_1 = torch.mul(torch.abs(self.inputs_1), self.scaling)
         elif self.conversion_type:
             self.inputs_1 = torch.mul(self.inputs_1, self.scaling).int()
-            test(self.inputs_1)
-            raise
             # print(self.inputs_1[0][0][2])
             # self.inputs_1 = twos_comp(self.inputs_1, 32)
             # self.inputs_1 =  torch.tensor([twos_comp(val.item(), num_bits) for val in self.inputs_1.flatten()])
@@ -299,10 +297,10 @@ class ReLU():
         ## Define inputs and outputs
         if self.conversion_type == ConversionType.TWOS_COMP:
             inputs = {
-                'inputs_1': self.inputs_1.tolist()
+                'inputs_1': self.inputs_1.int().tolist()
                 }
             outputs = {
-                'outputs': outputs.tolist(),
+                'outputs': outputs.int().tolist(),
             }
         elif self.conversion_type == ConversionType.DUAL_MATRIX:
             try:
@@ -341,20 +339,20 @@ class ReLU():
 
     
 if __name__ == "__main__":
-    # Doom().run_circuit()
+    Doom().run_circuit()
 
 
     
     
 
     
-    proof_system = ZKProofSystems.Expander
-    proof_folder = "analysis"
-    output_folder = "output"
-    temp_folder = "temp"
-    input_folder = "inputs"
-    circuit_folder = ""
-    #Rework inputs to function
-    test_circuit = ReLU(conversion_type = ConversionType.TWOS_COMP)
-    test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, proof_system, output_folder)
+    # proof_system = ZKProofSystems.Expander
+    # proof_folder = "analysis"
+    # output_folder = "output"
+    # temp_folder = "temp"
+    # input_folder = "inputs"
+    # circuit_folder = ""
+    # #Rework inputs to function
+    # test_circuit = ReLU(conversion_type = ConversionType.TWOS_COMP)
+    # test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, proof_system, output_folder)
 

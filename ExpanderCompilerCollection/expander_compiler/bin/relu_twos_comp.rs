@@ -16,8 +16,8 @@ use extra::UnconstrainedAPI;
 
 #[global_allocator]
 static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
-const SIZE1: usize = 4;
-const SIZE2: usize = 8;
+const SIZE1: usize = 28;
+const SIZE2: usize = 28;
 const SIZE3: usize = 16;
 
 
