@@ -80,7 +80,7 @@ fn to_binary<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Var
 
 fn to_int_for_twos_comp<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Variable{
 
-    let half = api.unconstrained_pow(2,n_bits as u32);
+    let half = api.unconstrained_pow(2,n_bits as u32); // TO DO correction: n_bits should be n_bits - 1 here.  
     //is 1 if x is neg, 0 if x is pos
     let sign = api.unconstrained_greater_eq(x, half);
     // Still need to add the multiplication of negative 1
