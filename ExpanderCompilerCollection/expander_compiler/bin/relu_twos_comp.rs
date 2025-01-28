@@ -78,7 +78,7 @@ fn to_binary<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Var
 //If x > p/2
 // Then, take the negation of x
 
-fn to_int_for_twos_comp<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> (Variable, Variable){
+fn to_int_for_twos_comp<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Variable{
 
     let half = api.unconstrained_pow(2,n_bits as u32);
     //is 1 if x is neg, 0 if x is pos
@@ -94,7 +94,7 @@ fn to_int_for_twos_comp<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize)
 
     let new_x = api.unconstrained_add(x_if_negative, x_if_positive);
 
-    return (new_x, sign);
+    return new_x;
 
 }
 
@@ -103,11 +103,11 @@ fn to_binary_2s<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<
     
     
     // The following code to generate new_x is tested and confirmed works
-    let (new_x, sign) = to_int_for_twos_comp(api, x, n_bits);
+    let new_x = to_int_for_twos_comp(api, x, n_bits);
 
-    let mut bits = to_binary_ecc(api, new_x, n_bits - 1);
+    let bits = to_binary_ecc(api, new_x, n_bits );
 
-    bits.push(sign);
+    // bits.push(sign);
 
     bits
 }
@@ -223,7 +223,7 @@ fn test_twos_comp_int_verion<C: Config, const X: usize, const Y: usize, const Z:
     for i in 0..input.len() {
         for j in 0..input[i].len(){
             for k in 0..input[i][j].len(){
-                let (new_x, sign) = to_int_for_twos_comp(api, input[i][j][k], n_bits);
+                let new_x = to_int_for_twos_comp(api, input[i][j][k], n_bits);
                 api.assert_is_equal(new_x, output[i][j][k]);
             }
         }
