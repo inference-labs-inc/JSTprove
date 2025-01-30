@@ -80,20 +80,8 @@ fn to_binary<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Var
 
 fn to_int_for_twos_comp<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Variable{
 
-    let half = api.unconstrained_pow(2,n_bits as u32);
-    //is 1 if x is neg, 0 if x is pos
-    let sign = api.unconstrained_greater_eq(x, half);
-    // Still need to add the multiplication of negative 1
-    // let bit_max = api.unconstrained_pow(2,n_bits as u32);
-
-    let twos_comp_add = api.unconstrained_add(x, half);
-    let x_if_negative = api.unconstrained_mul(sign, twos_comp_add);
-
-    let regular_x_add = api.unconstrained_bit_xor(1, sign);
-    let x_if_positive = api.unconstrained_mul(regular_x_add, x);
-
-    let new_x = api.unconstrained_add(x_if_negative, x_if_positive);
-
+    let half = api.unconstrained_pow(2,(n_bits - 1) as u32);
+    let new_x = api.unconstrained_add(x, half);
     return new_x;
 
 }
@@ -105,7 +93,8 @@ fn to_binary_2s<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<
     // The following code to generate new_x is tested and confirmed works
     let new_x = to_int_for_twos_comp(api, x, n_bits);
 
-    let bits = to_binary_ecc(api, new_x, n_bits );
+    let mut bits = to_binary_ecc(api, new_x, n_bits );
+    bits[n_bits-1] = api.unconstrained_bit_xor(1, bits[n_bits - 1]);
 
     // bits.push(sign);
 
@@ -455,6 +444,16 @@ where
     let n_witnesses = <GKRC::SimdCircuitField as arith::SimdField>::pack_size();
     println!("n_witnesses: {}", n_witnesses);
     let compile_result: CompileResult<C> = compile(&Circuit::default()).unwrap();
+
+    println!(
+        "Peak Memory used Overall : {:.2}", 
+        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+    );
+    let duration = start.elapsed();
+    println!("Time elapsed: {}.{} seconds", duration.as_secs(), duration.subsec_millis());
+
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now(); 
 
     let assignment = Circuit::<C::CircuitField>::default();
 
