@@ -8,7 +8,7 @@ use clap::{Command, Arg};
 use peakmem_alloc::*;
 use std::alloc::System;
 use std::mem;
-use std::time::{Instant};
+use std::time::Instant;
 use expander_compiler::field::Field;
 use expander_compiler::frontend::{compile, BN254Config, CompileResult, Define, M31Config};
 use expander_compiler::utils::serde::Serde;

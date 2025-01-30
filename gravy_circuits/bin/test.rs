@@ -1,14 +1,11 @@
 
 use expander_compiler::frontend::*;
-use expander_config::{
-    BN254ConfigKeccak, BN254ConfigSha2, GF2ExtConfigKeccak, GF2ExtConfigSha2, M31ExtConfigKeccak,
-    M31ExtConfigSha2,
-};
 use clap::{Command, Arg};
 use peakmem_alloc::*;
 use std::alloc::System;
 use std::mem;
-use std::time::{Instant};
+use std::time::Instant;
+
 
 #[global_allocator]
 static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
@@ -55,9 +52,7 @@ mod io_reader {
         pub(crate) outputs: Vec<u64>,
     }
 
-    pub(crate) fn input_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
-    where
-    GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
+    pub(crate) fn input_data_from_json<C: Config>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
     {
         // Read the JSON file into a string
         let mut file = std::fs::File::open(file_path).expect("Unable to open file");
@@ -84,9 +79,7 @@ mod io_reader {
         assignment
     }
 
-    pub(crate) fn output_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
-    where
-    GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
+    pub(crate) fn output_data_from_json<C: Config>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
     {
         // Read the JSON file into a string
         let mut file = std::fs::File::open(file_path).expect("Unable to open file");
@@ -107,9 +100,7 @@ mod io_reader {
     }
 }
 
-fn run_main<C: Config, GKRC>()
-where
-    GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>,
+fn run_main<C: Config>()
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now(); 
@@ -135,57 +126,55 @@ where
 
 
 
-    let n_witnesses = <GKRC::SimdCircuitField as arith::SimdField>::pack_size();
-    println!("n_witnesses: {}", n_witnesses);
     let compile_result: CompileResult<C> = compile(&Circuit::default()).unwrap();
+    let CompileResult {
+        witness_solver,
+        layered_circuit,
+    } = compile_result;
 
-    let assignment = Circuit::<C::CircuitField>::default();
+    let mut assignment = Circuit::<C::CircuitField>::default();
 
-    let assignment = io_reader::input_data_from_json::<C, GKRC>(input_path, assignment);
+    let assignment = io_reader::input_data_from_json::<C>(input_path, assignment);
 
-    let assignment = io_reader::output_data_from_json::<C, GKRC>(output_path, assignment);
+    let assignment = io_reader::output_data_from_json::<C>(output_path, assignment);
 
-    let assignments = vec![assignment; n_witnesses];
-    let witness = compile_result
-        .witness_solver
+    let assignments = vec![assignment; 1];
+    let witness = witness_solver
         .solve_witnesses(&assignments)
         .unwrap();
-    let output = compile_result.layered_circuit.run(&witness);
+    let output = layered_circuit.run(&witness);
     for x in output.iter() {
         assert_eq!(*x, true);
     }
 
-    let mut expander_circuit = compile_result
-        .layered_circuit
-        .export_to_expander::<GKRC>()
+    let mut expander_circuit = layered_circuit
+        .export_to_expander::<<C>::DefaultGKRFieldConfig>()
         .flatten();
-    let config = expander_config::Config::<GKRC>::new(
+    let config = expander_config::Config::<<C>::DefaultGKRConfig>::new(
         expander_config::GKRScheme::Vanilla,
-        expander_config::MPIConfig::new(),
+        mpi_config::MPIConfig::new(),
     );
 
-    let (simd_input, simd_public_input) = witness.to_simd::<GKRC::SimdCircuitField>();
+    let (simd_input, simd_public_input) =
+        witness.to_simd::<<C>::DefaultSimdField>();
     println!("{} {}", simd_input.len(), simd_public_input.len());
-
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
 
     // prove
     expander_circuit.evaluate();
-    let mut prover = gkr::Prover::new(&config);
-    prover.prepare_mem(&expander_circuit);
-    let (claimed_v, proof) = prover.prove(&mut expander_circuit);
+    let (claimed_v, proof) = gkr::executor::prove(&mut expander_circuit, &config);
 
-    println!("Proved");
     // verify
-    let verifier = gkr::Verifier::new(&config);
-    assert!(verifier.verify(
+    assert!(gkr::executor::verify(
         &mut expander_circuit,
-        &simd_public_input,
-        &claimed_v,
-        &proof
+        &config,
+        &proof,
+        &claimed_v
     ));
+
     println!("Verified");
+
     println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
     println!(
         "Peak Memory used Overall : {:.2}", 
@@ -199,22 +188,19 @@ where
 //#[test]
 #[allow(dead_code)]
 fn run_gf2() {
-    run_main::<GF2Config, GF2ExtConfigSha2>();
-    run_main::<GF2Config, GF2ExtConfigKeccak>();
+    run_main::<GF2Config>();
 }
 
 //#[test]
 #[allow(dead_code)]
 fn run_m31() {
-    run_main::<M31Config, M31ExtConfigSha2>();
-    run_main::<M31Config, M31ExtConfigKeccak>();
+    run_main::<M31Config>();
 }
 
 //#[test]
 #[allow(dead_code)]
 fn run_bn254() {
-    run_main::<BN254Config, BN254ConfigSha2>();
-    run_main::<BN254Config, BN254ConfigKeccak>();
+    run_main::<BN254Config>();
 }
 
 fn main(){

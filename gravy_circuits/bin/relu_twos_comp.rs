@@ -1,12 +1,7 @@
 use expander_compiler::frontend::*;
-// use expander_config::{
-//     BN254ConfigKeccak, BN254ConfigSha2, GF2ExtConfigKeccak, GF2ExtConfigSha2, M31ExtConfigKeccak,
-//     M31ExtConfigSha2,
-// };
 use clap::{Command, Arg};
 use peakmem_alloc::*;
 use std::alloc::System;
-use std::mem;
 use std::time::Instant;
 use extra::UnconstrainedAPI;
 
@@ -16,7 +11,6 @@ static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
 const SIZE1: usize = 28;
 const SIZE2: usize = 28;
 const SIZE3: usize = 16;
-
 
 /*
         #######################################################################################################
@@ -41,18 +35,23 @@ fn to_binary_ecc<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec
 fn to_int_for_twos_comp<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Variable{
 
     let half = api.unconstrained_pow(2,n_bits as u32);
-    //is 1 if x is neg, 0 if x is pos
-    let sign = api.unconstrained_greater_eq(x, half);
-    // Still need to add the multiplication of negative 1
-    // let bit_max = api.unconstrained_pow(2,n_bits as u32);
+    // //is 1 if x is neg, 0 if x is pos
+    // let sign = api.unconstrained_greater_eq(x, half);
+    // // Still need to add the multiplication of negative 1
+    // // let bit_max = api.unconstrained_pow(2,n_bits as u32);
 
-    let twos_comp_add = api.unconstrained_add(x, half);
-    let x_if_negative = api.unconstrained_mul(sign, twos_comp_add);
+    // let twos_comp_add = api.unconstrained_add(x, half);
+    // let x_if_negative = api.unconstrained_mul(sign, twos_comp_add);
 
-    let regular_x_add = api.unconstrained_bit_xor(1, sign);
-    let x_if_positive = api.unconstrained_mul(regular_x_add, x);
+    // let regular_x_add = api.unconstrained_bit_xor(1, sign);
+    // let x_if_positive = api.unconstrained_mul(regular_x_add, x);
 
-    let new_x = api.unconstrained_add(x_if_negative, x_if_positive);
+    // let new_x = api.unconstrained_add(x_if_negative, x_if_positive);
+
+    let add_num = api.unconstrained_pow(2,(n_bits - 1) as u32);
+
+    let new_x = api.unconstrained_add(x, add_num);
+
 
     return new_x;
 
@@ -79,17 +78,20 @@ fn binary_check<C: Config>(api: &mut API<C>, bits: &Vec<Variable>) {
 
 fn from_binary_2s<C: Config>(api: &mut API<C>, bits: &Vec<Variable>, n_bits: usize) -> Variable {
     let mut res = api.constant(0);
-    let length = n_bits - 1;
+    let length = n_bits;
     for i in 0..length {
         let coef = 1 << i;
+        api.assert_is_bool(bits[i]);
         let cur = api.mul(coef, bits[i]);
         res = api.add(res, cur);
     }
-    binary_check(api, bits); 
-    let cur = api.mul(1 << length,bits[length]);
-    // let temp = api.constant(0);
-    let out = api.neg(cur);
-    api.add(out, res)
+    // api.assert_is_bool(bits[length]);
+
+    // let cur = api.mul(1 << length,bits[length]);
+    // // let temp = api.constant(0);
+    // let out = api.neg(cur);
+    // api.add(out, res)
+    res
 }
 fn from_binary_2s_simple<C: Config>(api: &mut API<C>, bits: &Vec<Variable>) -> Vec<Variable> {
     // let n_bits = bits [0];
@@ -112,7 +114,7 @@ fn get_sign_simple<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Variab
 // Assume 1 is negative and 0 is positive
 fn relu_single<C: Config>(api: &mut API<C>, x: Variable, sign: Variable) -> Variable {
     let sign_2 = api.sub(1, sign);
-    api.mul(x,sign_2)
+    api.mul(x,sign)
 }
 
 fn relu_simple_call<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Variable> {
@@ -196,7 +198,9 @@ fn relu_twos_v2<C: Config, const X: usize, const Y: usize, const Z: usize>(api: 
                 let bits = to_binary_2s(api, input[i][j][k], n_bits);
                 //Add constraints to ensure that the bitstring is correct
                 let total = api.memorized_simple_call(from_binary_2s_simple, &bits);
-                api.assert_is_equal(total[0], input[i][j][k]);
+
+                let comp = api.add(input[i][j][k], 1 << (n_bits - 1));
+                api.assert_is_equal(total[0], comp);
 
                 // // Perform relu using sign bit
                 let x = relu_single(api, input[i][j][k], bits[n_bits - 1]);

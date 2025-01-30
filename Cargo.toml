@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "gravy_circuits", 
-    "ExpanderCompilerCollection/circuit-std-rs","ExpanderCompilerCollection/expander_compiler", "ExpanderCompilerCollection/expander_compiler/ec_go_lib"
 ]
 
 resolver = "2"
@@ -32,5 +31,6 @@ gf2 = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev" }
 mersenne31 = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev" }
 expander_transcript = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev", package = "transcript" }
 crosslayer_prototype = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev"}
+expander_compiler = {git = "https://github.com/PolyhedraZK/ExpanderCompilerCollection"}
 
 
