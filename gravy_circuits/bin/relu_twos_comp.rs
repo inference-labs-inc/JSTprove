@@ -3,14 +3,13 @@ use clap::{Command, Arg};
 use peakmem_alloc::*;
 use std::alloc::System;
 use std::time::Instant;
-use extra::UnconstrainedAPI;
+#[path = "../src/relu.rs"]
+pub mod relu;
 
 
 #[global_allocator]
 static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
-const SIZE1: usize = 28;
-const SIZE2: usize = 28;
-const SIZE3: usize = 16;
+
 
 /*
         #######################################################################################################
@@ -21,262 +20,9 @@ const SIZE3: usize = 16;
 // Specify input and output structure
 // This will indicate the input layer and output layer of the circuit, so be careful with how it is defined
 // Later, we define how the inputs get read into the input layer
-
-// Version 1
-fn to_binary_ecc<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
-    let mut res = Vec::new();
-    for i in 0..n_bits {
-        let y = api.unconstrained_shift_r(x, i as u32);
-        res.push(api.unconstrained_bit_and(y, 1));
-    }
-    res
-}
-
-fn to_int_for_twos_comp<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Variable{
-
-    let half = api.unconstrained_pow(2,n_bits as u32);
-    // //is 1 if x is neg, 0 if x is pos
-    // let sign = api.unconstrained_greater_eq(x, half);
-    // // Still need to add the multiplication of negative 1
-    // // let bit_max = api.unconstrained_pow(2,n_bits as u32);
-
-    // let twos_comp_add = api.unconstrained_add(x, half);
-    // let x_if_negative = api.unconstrained_mul(sign, twos_comp_add);
-
-    // let regular_x_add = api.unconstrained_bit_xor(1, sign);
-    // let x_if_positive = api.unconstrained_mul(regular_x_add, x);
-
-    // let new_x = api.unconstrained_add(x_if_negative, x_if_positive);
-
-    let add_num = api.unconstrained_pow(2,(n_bits - 1) as u32);
-
-    let new_x = api.unconstrained_add(x, add_num);
-
-
-    return new_x;
-
-}
-
-fn to_binary_2s<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
-    // The following code to generate new_x is tested and confirmed works
-    let new_x = to_int_for_twos_comp(api, x, n_bits);
-
-    let bits = to_binary_ecc(api, new_x, n_bits );
-
-    bits
-}
-
-fn binary_check<C: Config>(api: &mut API<C>, bits: &Vec<Variable>) {
-    // let mut out: Vec<Variable> = Vec::new();
-    for i in 0..bits.len(){
-        let bin_check = api.sub(1,bits[i]);
-        let x = api.mul(bin_check,bits[i]);
-        api.assert_is_zero(x);
-        // out.push(api.mul(bin_check,bits[i]));
-    }
-}
-
-fn from_binary_2s<C: Config>(api: &mut API<C>, bits: &Vec<Variable>, n_bits: usize) -> Variable {
-    let mut res = api.constant(0);
-    let length = n_bits;
-    for i in 0..length {
-        let coef = 1 << i;
-        api.assert_is_bool(bits[i]);
-        let cur = api.mul(coef, bits[i]);
-        res = api.add(res, cur);
-    }
-    // api.assert_is_bool(bits[length]);
-
-    // let cur = api.mul(1 << length,bits[length]);
-    // // let temp = api.constant(0);
-    // let out = api.neg(cur);
-    // api.add(out, res)
-    res
-}
-fn from_binary_2s_simple<C: Config>(api: &mut API<C>, bits: &Vec<Variable>) -> Vec<Variable> {
-    // let n_bits = bits [0];
-    // bits.remove(0);
-    vec![from_binary_2s(api, bits, 32)]
-}
-
-
-
-
-fn get_sign_simple<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Variable> {
-    let mut out: Vec<Variable> = Vec::with_capacity(x.len());
-    for i in 0..x.len(){
-        out.push(to_binary_ecc(api, x[i], 32)[31]);
-    }
-    out
-}
-
-
-// Assume 1 is negative and 0 is positive
-fn relu_single<C: Config>(api: &mut API<C>, x: Variable, sign: Variable) -> Variable {
-    let sign_2 = api.sub(1, sign);
-    api.mul(x,sign)
-}
-
-fn relu_simple_call<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Variable> {
-    let mut out = Vec::new();
-    let length = x.len()/2;
-    for k in 0..length{
-        out.push(relu_single(api, x[k], x[k+length]));
-        // let sign_2 = api.sub(1, x[k + length]);
-        // out.push(api.mul(x[k],sign_2));
-    }
-    out
-}
-
-fn relu_simple_call_2<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Variable> {
-    let mut out = Vec::new();
-    let sign = api.memorized_simple_call(get_sign_simple, x);
-    for k in 0..x.len(){
-        out.push(relu_single(api, x[k], sign[k]));
-        // let sign_2 = api.sub(1, x[k + length]);
-        // out.push(api.mul(x[k],sign_2));
-    }
-    out
-}
-
-
-//V1 loops through each layer of the matrix and computes relu on individual basis
-fn relu_twos_v1<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], n_bits: usize) -> Vec<Vec<Vec<Variable>>> {
-    // let mut out: Vec<Vec<Vec<Variable>>> = Vec::new();
-    let mut out: Vec<Vec<Vec<Variable>>> = Vec::new();
-
-    for i in 0..input.len() {
-        let mut out_1:Vec<Vec<Variable>> = Vec::new();
-        for j in 0..input[i].len(){
-            let mut out_2:Vec<Variable> = Vec::new();
-            for k in 0..input[i][j].len(){
-                // Iterate over each input/output pair (one per batch)
-
-                // Get the twos compliment binary representation
-                let bits = to_binary_2s(api, input[i][j][k], n_bits);
-                //Add constraints to ensure that the bitstring is correct
-                let total = from_binary_2s(api, &bits, n_bits);
-                api.assert_is_equal(total, input[i][j][k]);
-
-                // // Perform relu using sign bit
-                let x = relu_single(api, input[i][j][k], bits[n_bits - 1]);
-                // out_2.push(x);
-                out_2.push(x);
-            }
-            out_1.push(out_2);
-        }
-        out.push(out_1)
-    }
-    out
-}
-
-//V1 loops through each layer of the matrix and computes relu on individual basis
-fn test_twos_comp_int_verion<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X], n_bits: usize) -> [[[Variable; Z]; Y]; X] {
-    for i in 0..input.len() {
-        for j in 0..input[i].len(){
-            for k in 0..input[i][j].len(){
-                let new_x = to_int_for_twos_comp(api, input[i][j][k], n_bits);
-                api.assert_is_equal(new_x, output[i][j][k]);
-            }
-        }
-    }
-    output
-}
-
-// memorized_simple call on last dimension of array
-fn relu_twos_v2<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], n_bits: usize) -> Vec<Vec<Vec<Variable>>> {
-    let mut out: Vec<Vec<Vec<Variable>>> = Vec::new();
-
-    for i in 0..input.len() {
-        let mut out_1:Vec<Vec<Variable>> = Vec::new();
-        for j in 0..input[i].len(){
-            let mut out_2:Vec<Variable> = Vec::new();
-            for k in 0..input[i][j].len(){
-                // Iterate over each input/output pair (one per batch)
-
-                // Get the twos compliment binary representation
-                let bits = to_binary_2s(api, input[i][j][k], n_bits);
-                //Add constraints to ensure that the bitstring is correct
-                let total = api.memorized_simple_call(from_binary_2s_simple, &bits);
-
-                let comp = api.add(input[i][j][k], 1 << (n_bits - 1));
-                api.assert_is_equal(total[0], comp);
-
-                // // Perform relu using sign bit
-                let x = relu_single(api, input[i][j][k], bits[n_bits - 1]);
-                // out_2.push(x);
-                out_2.push(x);
-            }
-            out_1.push(out_2);
-        }
-        out.push(out_1)
-    }
-    out
-    
-    
-    // for i in 0..input.len() {
-    //     for j in 0..input[i].len(){
-    //         let mut vec1 = input[i][j].to_vec();
-    //         let mut vec2 = api.memorized_simple_call(get_sign_simple, &input[i][j].to_vec());
-    //         vec1.append(&mut vec2);
-    //         let x = api.memorized_simple_call(relu_simple_call, &vec1);
-    //         // let x = relu_simple_call(api, &vec1);
-
-
-    //         for k in 0..input[i][j].len(){
-    //             api.assert_is_equal(x[k], output[i][j][k]);
-
-    //         }
-    //     }
-    // }
-    // output
-}
-
-//Appears slightly worse than relu twos v2
-fn relu_twos_v2_5<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X]) -> [[[Variable; Z]; Y]; X] {
-    for i in 0..input.len() {
-        for j in 0..input[i].len(){
-            // let mut vec1 = input[i][j].to_vec();
-            // let mut vec2 = api.memorized_simple_call(get_sign_simple, &input[i][j].to_vec());
-            // vec1.append(&mut vec2);
-            let x = api.memorized_simple_call(relu_simple_call_2, &input[i][j].to_vec());
-            // let x = relu_simple_call(api, &vec1);
-
-
-            for k in 0..input[i][j].len(){
-                api.assert_is_equal(x[k], output[i][j][k]);
-
-            }
-        }
-    }
-    output
-}
-
-
-//V3 involves flattening the matrix entirely and feeding into memorized_simple call
-fn relu_twos_v3<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X]) -> [[[Variable; Z]; Y]; X] {
-// Flatten the two 3D matrices
-        let flattened: Vec<Variable> = input.iter()
-            .flat_map(|i| i.iter())
-            .flat_map(|j| j.iter())
-            .cloned()
-            .collect();
-
-        // Determine the dimensions of the 3D matrix
-        let out = api.memorized_simple_call(relu_simple_call_2, &flattened);
-
-        let mut iter = out.into_iter();
-
-        for i in 0..output.len() {
-            for j in 0..output[i].len(){
-                for k in 0..output[i][j].len(){
-                    api.assert_is_equal(iter.next().unwrap(), output[i][j][k]);
-                }
-        }
-    }
-    output
-}
-
+const SIZE1: usize = 28;
+const SIZE2: usize = 28;
+const SIZE3: usize = 16;
 
 declare_circuit!(Circuit {
     input: [[[Variable; SIZE1]; SIZE2]; SIZE3],
@@ -286,12 +32,14 @@ impl<C: Config> Define<C> for Circuit<Variable> {
     // Default circuit for now, ensures input and output are equal
     fn define(&self, api: &mut API<C>) {
         let n_bits = 32;
-        
-        // let out = relu_twos_v1(api, self.input, n_bits);
-        // let out = test_twos_comp_int_verion(api, self.input, self.output, n_bits);
-        let out = relu_twos_v2(api, self.input, n_bits);
-        // let out = relu_twos_v2_5(api, self.input, self.output, n_bits);
-        // let out = relu_twos_v3(api, self.input, self.output,n_bits);
+
+
+
+        // let out = relu::relu_3d_naive(api, self.input,n_bits);
+
+        let out = relu::relu_3d_v2(api, self.input, n_bits);
+        // let out = relu::relu_3d_v3(api, self.input);
+
 
     
         for i in 0..SIZE3{
