@@ -1,0 +1,3 @@
+[submodule "ExpanderCompilerCollection"]
+	path = ExpanderCompilerCollection
+	url = https://github.com/PolyhedraZK/ExpanderCompilerCollection.git
