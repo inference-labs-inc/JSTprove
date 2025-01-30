@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "circuits", 
+    "gravy_circuits", 
     "ExpanderCompilerCollection/circuit-std-rs","ExpanderCompilerCollection/expander_compiler", "ExpanderCompilerCollection/expander_compiler/ec_go_lib"
 ]
 

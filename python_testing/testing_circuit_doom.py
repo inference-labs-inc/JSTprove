@@ -1,4 +1,3 @@
-from circom.reward_fn import generate_sample_inputs
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
@@ -174,7 +173,7 @@ class ReLU():
             # Function input generation
 
             # self.inputs_1 = torch.randint(low=-2**21, high=2**21, size=(1000,))
-            self.inputs_1 = torch.randint(low=-2**31, high=2**31, size=(16,2,2))
+            self.inputs_1 = torch.randint(low=-2**31, high=2**31, size=(16,4,2))
 
             self.outputs = None
             self.scaling = 2 ** 21

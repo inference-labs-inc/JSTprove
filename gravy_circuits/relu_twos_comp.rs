@@ -1,16 +1,13 @@
-use ark_std::test_rng;
-use ethnum::intrinsics::signed;
-use ethnum::u256;
 use expander_compiler::frontend::*;
-use expander_config::{
-    BN254ConfigKeccak, BN254ConfigSha2, GF2ExtConfigKeccak, GF2ExtConfigSha2, M31ExtConfigKeccak,
-    M31ExtConfigSha2,
-};
+// use expander_config::{
+//     BN254ConfigKeccak, BN254ConfigSha2, GF2ExtConfigKeccak, GF2ExtConfigSha2, M31ExtConfigKeccak,
+//     M31ExtConfigSha2,
+// };
 use clap::{Command, Arg};
 use peakmem_alloc::*;
 use std::alloc::System;
 use std::mem;
-use std::time::{Instant};
+use std::time::Instant;
 use extra::UnconstrainedAPI;
 
 
@@ -41,62 +38,31 @@ fn to_binary_ecc<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec
     res
 }
 
-fn from_binary<C: Config>(api: &mut API<C>, bits: Vec<Variable>) -> Variable {
-    let mut res = api.constant(0);
-    for i in 0..bits.len() {
-        let coef = 1 << i;
-        let cur = api.mul(coef, bits[i]);
-        res = api.add(res, cur);
-    }
-    res
-}
-
-// Version 2
-fn to_binary<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
-    let mut res = Vec::new();
-    let mut count = api.constant(0);
-    for i in 0..n_bits {
-        let y = api.unconstrained_shift_r(x, i as u32);
-        res.push(api.unconstrained_bit_and(y, 1));
-        //Check that value is binary
-        let bin_check = api.sub(1,res[i]);
-        let bin_check2 = api.mul(bin_check,res[i]);
-        api.assert_is_zero(bin_check2);
-
-        //keep running total
-        // Not sure if this next line can be used?
-        let coef = 1 << i;
-        let cur = api.mul(coef, res[i]);
-        count = api.add(count, cur);
-    }
-    api.assert_is_equal(count, x);
-    res
-}
-//Version 3
-
-//What do we want?
-//If x > p/2
-// Then, take the negation of x
-
 fn to_int_for_twos_comp<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Variable{
 
-    let half = api.unconstrained_pow(2,(n_bits - 1) as u32);
-    let new_x = api.unconstrained_add(x, half);
+    let half = api.unconstrained_pow(2,n_bits as u32);
+    //is 1 if x is neg, 0 if x is pos
+    let sign = api.unconstrained_greater_eq(x, half);
+    // Still need to add the multiplication of negative 1
+    // let bit_max = api.unconstrained_pow(2,n_bits as u32);
+
+    let twos_comp_add = api.unconstrained_add(x, half);
+    let x_if_negative = api.unconstrained_mul(sign, twos_comp_add);
+
+    let regular_x_add = api.unconstrained_bit_xor(1, sign);
+    let x_if_positive = api.unconstrained_mul(regular_x_add, x);
+
+    let new_x = api.unconstrained_add(x_if_negative, x_if_positive);
+
     return new_x;
 
 }
 
 fn to_binary_2s<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
-    // let mut res = Vec::new();
-    
-    
     // The following code to generate new_x is tested and confirmed works
     let new_x = to_int_for_twos_comp(api, x, n_bits);
 
-    let mut bits = to_binary_ecc(api, new_x, n_bits );
-    bits[n_bits-1] = api.unconstrained_bit_xor(1, bits[n_bits - 1]);
-
-    // bits.push(sign);
+    let bits = to_binary_ecc(api, new_x, n_bits );
 
     bits
 }
@@ -119,19 +85,25 @@ fn from_binary_2s<C: Config>(api: &mut API<C>, bits: &Vec<Variable>, n_bits: usi
         let cur = api.mul(coef, bits[i]);
         res = api.add(res, cur);
     }
-    binary_check(api, bits);
+    binary_check(api, bits); 
     let cur = api.mul(1 << length,bits[length]);
     // let temp = api.constant(0);
     let out = api.neg(cur);
     api.add(out, res)
 }
+fn from_binary_2s_simple<C: Config>(api: &mut API<C>, bits: &Vec<Variable>) -> Vec<Variable> {
+    // let n_bits = bits [0];
+    // bits.remove(0);
+    vec![from_binary_2s(api, bits, 32)]
+}
+
 
 
 
 fn get_sign_simple<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Variable> {
     let mut out: Vec<Variable> = Vec::with_capacity(x.len());
     for i in 0..x.len(){
-        out.push(to_binary(api, x[i], 32)[31]);
+        out.push(to_binary_ecc(api, x[i], 32)[31]);
     }
     out
 }
@@ -169,12 +141,12 @@ fn relu_simple_call_2<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Var
 //V1 loops through each layer of the matrix and computes relu on individual basis
 fn relu_twos_v1<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], n_bits: usize) -> Vec<Vec<Vec<Variable>>> {
     // let mut out: Vec<Vec<Vec<Variable>>> = Vec::new();
-    let mut out: Vec<Variable> = Vec::new();
+    let mut out: Vec<Vec<Vec<Variable>>> = Vec::new();
 
     for i in 0..input.len() {
-        // let mut out_1:Vec<Vec<Variable>> = Vec::new();
+        let mut out_1:Vec<Vec<Variable>> = Vec::new();
         for j in 0..input[i].len(){
-            // let mut out_2:Vec<Variable> = Vec::new();
+            let mut out_2:Vec<Variable> = Vec::new();
             for k in 0..input[i][j].len(){
                 // Iterate over each input/output pair (one per batch)
 
@@ -184,27 +156,16 @@ fn relu_twos_v1<C: Config, const X: usize, const Y: usize, const Z: usize>(api: 
                 let total = from_binary_2s(api, &bits, n_bits);
                 api.assert_is_equal(total, input[i][j][k]);
 
-                // Perform relu using sign bit
+                // // Perform relu using sign bit
                 let x = relu_single(api, input[i][j][k], bits[n_bits - 1]);
                 // out_2.push(x);
-                out.push(x);
+                out_2.push(x);
             }
-            // out_1.push(out_2);
+            out_1.push(out_2);
         }
-        // out.push(out_1)
+        out.push(out_1)
     }
-    // out;
-    let (layers, rows, cols) = (X,Y,Z);
-
-    // First chunk into rows (each row has `cols` elements)
-    let reshaped_3d: Vec<Vec<Vec<Variable>>> = out
-        .chunks(cols)  // Chunks into rows of size `cols`
-        .map(|chunk| chunk.to_vec())  // Convert rows into Vec<Variable>
-        .collect::<Vec<Vec<Variable>>>()  // Collect the rows into a Vec<Vec<Variable>>
-        .chunks(rows)  // Now chunk the rows into layers of size `rows`
-        .map(|chunk| chunk.to_vec())  // Convert each layer of rows into Vec<Vec<Variable>>
-        .collect();
-    reshaped_3d
+    out
 }
 
 //V1 loops through each layer of the matrix and computes relu on individual basis
@@ -221,30 +182,57 @@ fn test_twos_comp_int_verion<C: Config, const X: usize, const Y: usize, const Z:
 }
 
 // memorized_simple call on last dimension of array
-fn relu_twos_v2<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X]) -> [[[Variable; Z]; Y]; X] {
+fn relu_twos_v2<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], n_bits: usize) -> Vec<Vec<Vec<Variable>>> {
+    let mut out: Vec<Vec<Vec<Variable>>> = Vec::new();
+
     for i in 0..input.len() {
+        let mut out_1:Vec<Vec<Variable>> = Vec::new();
         for j in 0..input[i].len(){
-            let mut vec1 = input[i][j].to_vec();
-            let mut vec2 = api.memorized_simple_call(get_sign_simple, &input[i][j].to_vec());
-            vec1.append(&mut vec2);
-            let x = api.memorized_simple_call(relu_simple_call, &vec1);
-            // let x = relu_simple_call(api, &vec1);
-
-
+            let mut out_2:Vec<Variable> = Vec::new();
             for k in 0..input[i][j].len(){
-                api.assert_is_equal(x[k], output[i][j][k]);
+                // Iterate over each input/output pair (one per batch)
 
+                // Get the twos compliment binary representation
+                let bits = to_binary_2s(api, input[i][j][k], n_bits);
+                //Add constraints to ensure that the bitstring is correct
+                let total = api.memorized_simple_call(from_binary_2s_simple, &bits);
+                api.assert_is_equal(total[0], input[i][j][k]);
+
+                // // Perform relu using sign bit
+                let x = relu_single(api, input[i][j][k], bits[n_bits - 1]);
+                // out_2.push(x);
+                out_2.push(x);
             }
+            out_1.push(out_2);
         }
+        out.push(out_1)
     }
-    output
+    out
+    
+    
+    // for i in 0..input.len() {
+    //     for j in 0..input[i].len(){
+    //         let mut vec1 = input[i][j].to_vec();
+    //         let mut vec2 = api.memorized_simple_call(get_sign_simple, &input[i][j].to_vec());
+    //         vec1.append(&mut vec2);
+    //         let x = api.memorized_simple_call(relu_simple_call, &vec1);
+    //         // let x = relu_simple_call(api, &vec1);
+
+
+    //         for k in 0..input[i][j].len(){
+    //             api.assert_is_equal(x[k], output[i][j][k]);
+
+    //         }
+    //     }
+    // }
+    // output
 }
 
 //Appears slightly worse than relu twos v2
 fn relu_twos_v2_5<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], output: [[[Variable; Z]; Y]; X]) -> [[[Variable; Z]; Y]; X] {
     for i in 0..input.len() {
         for j in 0..input[i].len(){
-            let mut vec1 = input[i][j].to_vec();
+            // let mut vec1 = input[i][j].to_vec();
             // let mut vec2 = api.memorized_simple_call(get_sign_simple, &input[i][j].to_vec());
             // vec1.append(&mut vec2);
             let x = api.memorized_simple_call(relu_simple_call_2, &input[i][j].to_vec());
@@ -295,9 +283,9 @@ impl<C: Config> Define<C> for Circuit<Variable> {
     fn define(&self, api: &mut API<C>) {
         let n_bits = 32;
         
-        let out = relu_twos_v1(api, self.input, n_bits);
+        // let out = relu_twos_v1(api, self.input, n_bits);
         // let out = test_twos_comp_int_verion(api, self.input, self.output, n_bits);
-        // let out = relu_twos_v2(api, self.input, self.output, n_bits);
+        let out = relu_twos_v2(api, self.input, n_bits);
         // let out = relu_twos_v2_5(api, self.input, self.output, n_bits);
         // let out = relu_twos_v3(api, self.input, self.output,n_bits);
 
@@ -347,9 +335,7 @@ mod io_reader {
     }
 
     // Read in input data from json file. Here, we focus on reading the inputs into the input layer of the circuit in a way that makes sense to us
-    pub(crate) fn input_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
-    where
-    GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
+    pub(crate) fn input_data_from_json<C: Config>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
     {
         // Read the JSON file into a string
         let mut file = std::fs::File::open(file_path).expect("Unable to open file");
@@ -380,9 +366,7 @@ mod io_reader {
     }
 
     // Read in output data from json file. Here, we focus on reading the outputs into the output layer of the circuit in a way that makes sense to us
-    pub(crate) fn output_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
-    where
-    GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
+    pub(crate) fn output_data_from_json<C: Config>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
     {
         // Read the JSON file into a string
         let mut file = std::fs::File::open(file_path).expect("Unable to open file");
@@ -413,9 +397,7 @@ mod io_reader {
     */
 }
 
-fn run_main<C: Config, GKRC>()
-where
-    GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>,
+fn run_main<C: Config>()
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now(); 
@@ -441,10 +423,7 @@ where
 
 
 
-    let n_witnesses = <GKRC::SimdCircuitField as arith::SimdField>::pack_size();
-    println!("n_witnesses: {}", n_witnesses);
     let compile_result: CompileResult<C> = compile(&Circuit::default()).unwrap();
-
     println!(
         "Peak Memory used Overall : {:.2}", 
         GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
@@ -454,56 +433,55 @@ where
 
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now(); 
+    let CompileResult {
+        witness_solver,
+        layered_circuit,
+    } = compile_result;
 
     let assignment = Circuit::<C::CircuitField>::default();
 
-    let assignment = io_reader::input_data_from_json::<C, GKRC>(input_path, assignment);
+    let assignment = io_reader::input_data_from_json::<C>(input_path, assignment);
 
-    let assignment = io_reader::output_data_from_json::<C, GKRC>(output_path, assignment);
+    let assignment = io_reader::output_data_from_json::<C>(output_path, assignment);
 
-    let assignments = vec![assignment; n_witnesses];
-    let witness = compile_result
-        .witness_solver
+    let assignments = vec![assignment; 1];
+    let witness = witness_solver
         .solve_witnesses(&assignments)
         .unwrap();
-    let output = compile_result.layered_circuit.run(&witness);
+    let output = layered_circuit.run(&witness);
     for x in output.iter() {
         assert_eq!(*x, true);
     }
 
-    let mut expander_circuit = compile_result
-        .layered_circuit
-        .export_to_expander::<GKRC>()
+    let mut expander_circuit = layered_circuit
+        .export_to_expander::<<C>::DefaultGKRFieldConfig>()
         .flatten();
-    let config = expander_config::Config::<GKRC>::new(
+    let config = expander_config::Config::<<C>::DefaultGKRConfig>::new(
         expander_config::GKRScheme::Vanilla,
-        expander_config::MPIConfig::new(),
+        mpi_config::MPIConfig::new(),
     );
 
-    let (simd_input, simd_public_input) = witness.to_simd::<GKRC::SimdCircuitField>();
+    let (simd_input, simd_public_input) =
+        witness.to_simd::<<C>::DefaultSimdField>();
     println!("{} {}", simd_input.len(), simd_public_input.len());
-
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
 
     // prove
     expander_circuit.evaluate();
-    let mut prover = gkr::Prover::new(&config);
-    prover.prepare_mem(&expander_circuit);
-    let (claimed_v, proof) = prover.prove(&mut expander_circuit);
+    let (claimed_v, proof) = gkr::executor::prove(&mut expander_circuit, &config);
 
-    println!("Proved");
     // verify
-    let verifier = gkr::Verifier::new(&config);
-    assert!(verifier.verify(
+    assert!(gkr::executor::verify(
         &mut expander_circuit,
-        &simd_public_input,
-        &claimed_v,
-        &proof
+        &config,
+        &proof,
+        &claimed_v
     ));
+
     println!("Verified");
 
-    println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
+    // println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
     println!(
         "Peak Memory used Overall : {:.2}", 
         GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
@@ -516,22 +494,19 @@ where
 //#[test]
 #[allow(dead_code)]
 fn run_gf2() {
-    run_main::<GF2Config, GF2ExtConfigSha2>();
-    run_main::<GF2Config, GF2ExtConfigKeccak>();
+    run_main::<GF2Config>();
 }
 
 //#[test]
 #[allow(dead_code)]
 fn run_m31() {
-    run_main::<M31Config, M31ExtConfigSha2>();
-    run_main::<M31Config, M31ExtConfigKeccak>();
+    run_main::<M31Config>();
 }
 
 //#[test]
 #[allow(dead_code)]
 fn run_bn254() {
-    run_main::<BN254Config, BN254ConfigSha2>();
-    // run_main::<BN254Config, BN254ConfigKeccak>();
+    run_main::<BN254Config>();
 }
 
 fn main(){

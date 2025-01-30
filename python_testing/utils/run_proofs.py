@@ -31,16 +31,20 @@ class ZKProofsExpander():
 
 
     def run_proof(self, input_file: str, output_file: str):
+        # executable_to_run = ["cargo", "build", "--release"]
+        # res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=False)
         assert isinstance(input_file, str)
         assert isinstance(output_file, str)
 
         # Default run of file
-        executable_to_run = ["cargo", "run", "--bin", self.circuit_file]
+        # executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
 
         # Add path to toml
-        executable_to_run.append("--manifest-path")
-        executable_to_run.append(f"{self.toml_path}")
-
+        executable_to_run = ["cargo", "run", "--bin", self.circuit_file]
+        # executable_to_run.append("--manifest-path")
+        # executable_to_run.append(f"{self.toml_path}")
+        executable_to_run.append("--release")
+         
         # Add inputs
         executable_to_run.append(input_file)
 
