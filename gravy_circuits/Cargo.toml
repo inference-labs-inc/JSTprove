@@ -1,0 +1,47 @@
+[package]
+name = "circuits"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+ark-std.workspace = true
+rand.workspace = true
+chrono.workspace = true
+clap.workspace = true
+ethnum.workspace = true
+halo2curves.workspace = true
+tiny-keccak.workspace = true
+mpi_config.workspace = true
+gkr_field_config.workspace = true
+expander_config.workspace = true
+expander_circuit.workspace = true
+expander_transcript.workspace = true
+gkr.workspace = true
+arith.workspace = true
+gf2.workspace = true
+mersenne31.workspace = true
+crosslayer_prototype.workspace = true
+serde_json = "1.0"
+peakmem-alloc = "0.3.0"
+expander_compiler.workspace = true
+
+[dev-dependencies]
+rayon = "1.9"
+sha2 = "0.10.8"
+[dependencies.serde]
+version = "1.0"
+features = [ "derive",]
+
+
+[[bin]]
+name = "testing"
+path = "bin/testing.rs"
+
+[[bin]]
+name = "relu_twos_comp"
+path = "bin/relu_twos_comp.rs"
+
+[[bin]]
+name = "relu_dual"
+path = "bin/relu_dual.rs"

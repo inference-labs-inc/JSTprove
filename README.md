@@ -1,5 +1,7 @@
 # Testing Environment
 
+After cloning the repository, make sure taht the submodule is updated -git submodule update --init --recursive
+
 ## Setup python environment
 
 ```

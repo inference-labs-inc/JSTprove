@@ -1,4 +1,3 @@
-from circom.reward_fn import generate_sample_inputs
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
@@ -150,7 +149,7 @@ class ReLU():
         #######################################################################################################
         '''
         # Specify
-        self.name = "relu"
+        self.name = "relu_dual"
         
         # Function input generation
 
