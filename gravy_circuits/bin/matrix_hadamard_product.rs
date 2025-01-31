@@ -14,9 +14,9 @@ matrix b has shape (m, n)
 matrix hadamard product has shape (m, n)
 */
 const N_ROWS_A: usize = 1; // m
-const N_COLS_A: usize = 1568; // n
-const N_ROWS_B: usize = 1568; // n
-const N_COLS_B: usize = 256; // k
+const N_COLS_A: usize = 256; // n
+const N_ROWS_B: usize = 256; // n
+const N_COLS_B: usize = 128; // k
 
 
 declare_circuit!(Circuit {
@@ -24,6 +24,7 @@ declare_circuit!(Circuit {
     matrix_b: [[Variable; N_COLS_B]; N_ROWS_B], // shape (n, n)
     matrix_hadamard_ab: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
 });
+
 
 impl<C: Config> Define<C> for Circuit<Variable> {
     fn define(&self, api: &mut API<C>) {      
