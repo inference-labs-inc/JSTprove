@@ -43,6 +43,17 @@ path = "bin/matrix_multiplication_memorized.rs"
 name = "mat_mult_testing_1"
 path = "bin/mat_mult_testing_1.rs"
 
+[[bin]]
+name = "matrix_addition"
+path = "bin/matrix_addition.rs"
+
+[[bin]]
+name = "matrix_hadamard_product"
+path = "bin/matrix_hadamard_product.rs"
+
+[[bin]]
+name = "matrix_multiplication_block_decomposition"
+path = "bin/matrix_multiplication_block_decomposition.rs"
 
 [package]
 name = "expander_compiler"
