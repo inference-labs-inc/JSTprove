@@ -5,10 +5,11 @@ use peakmem_alloc::*;
 use std::alloc::System;
 use std::time::Instant;
 use serde::Deserialize;
-use std::io::Read;
-
 use ethnum::U256;
+use std::{io::Read, ops::Neg};
 use arith::FieldForECC;
+
+use expander_compiler::frontend::*;
 #[path = "../src/relu.rs"]
 pub mod relu;
 
@@ -81,6 +82,7 @@ impl<C: Config>IOReader<C> for FileReader{
     // fn read_inputs(&mut self, file_path: &str, mut assignment: &mut Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
     fn read_inputs(&mut self, file_path: &str, mut assignment: Self::CircuitType) -> Self::CircuitType
     {
+        println!("{}", file_path);
         // Read the JSON file into a string
         let mut file = std::fs::File::open(file_path).expect("Unable to open file");
         let mut contents = String::new();
@@ -181,7 +183,7 @@ fn run_main<C: Config>()
     let mut input_reader = FileReader{path: input_path.clone()};
     let mut output_reader = FileReader{path: output_path.clone()};
     let assignment = <FileReader as IOReader<C>>::read_inputs(&mut input_reader,input_path, assignment);
-    let assignment = <FileReader as IOReader<C>>::read_inputs(&mut output_reader,input_path, assignment);
+    let assignment = <FileReader as IOReader<C>>::read_outputs(&mut output_reader,output_path, assignment);
 
     let assignments = vec![assignment; 1];
     let witness = witness_solver
