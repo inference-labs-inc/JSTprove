@@ -58,8 +58,6 @@ class ZKProofsExpander():
 
         # Add path to toml
         executable_to_run = ["cargo", "run", "--bin", self.circuit_file]
-        # executable_to_run.append("--manifest-path")
-        # executable_to_run.append(f"{self.toml_path}")
         executable_to_run.append("--release")
          
         # Add inputs

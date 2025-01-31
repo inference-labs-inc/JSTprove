@@ -101,7 +101,7 @@ mod io_reader {
 
         for (j, var_vec) in u8_vars.iter().enumerate() {
             for (k, &var) in var_vec.iter().enumerate() {
-                assignment.input[j][k] = C::CircuitField::from_u256(U256::from(var)) ; // Treat the u8 as a u64 for Field
+                assignment.input[j][k] = C::CircuitField::from_u256(U256::from(var)); // Treat the u8 as a u64 for Field
             }
         }
         // Return the assignment

@@ -1,10 +1,19 @@
 use expander_compiler::frontend::*;
 use clap::{Command, Arg};
+use io_reader::{FileReader, IOReader};
 use peakmem_alloc::*;
 use std::alloc::System;
 use std::time::Instant;
+use serde::Deserialize;
+use std::io::Read;
+
+use ethnum::U256;
+use arith::FieldForECC;
 #[path = "../src/relu.rs"]
 pub mod relu;
+
+#[path = "../src/io_reader.rs"]
+pub mod io_reader;
 
 
 #[global_allocator]
@@ -57,37 +66,20 @@ impl<C: Config> Define<C> for Circuit<Variable> {
         #######################################################################################################
  */
 
-mod io_reader {
-    use ethnum::U256;
-    use std::{io::Read, ops::Neg};
-    use arith::FieldForECC;
-    use serde::Deserialize;
 
-    use super::Circuit;
-
-    use expander_compiler::frontend::*;
-    /*
-        #######################################################################################################
-        #################################### This is the block for changes ####################################
-        #######################################################################################################
-    */
-
-    //This is the data structure for the input data to be read in from the json file
-    #[derive(Deserialize)]
-    #[derive(Clone)]
-    pub(crate) struct InputData {
-        pub(crate) inputs_1: Vec<Vec<Vec<i64>>>,
-    }
-
-    //This is the data structure for the output data to be read in from the json file
-    #[derive(Deserialize)]
-    #[derive(Clone)]
-    pub(crate) struct OutputData {
-        pub(crate) outputs: Vec<Vec<Vec<u64>>>,
-    }
-
-    // Read in input data from json file. Here, we focus on reading the inputs into the input layer of the circuit in a way that makes sense to us
-    pub(crate) fn input_data_from_json<C: Config>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
+#[derive(Deserialize)]
+#[derive(Clone)]
+struct OutputData {
+    outputs: Vec<Vec<Vec<u64>>>,
+}
+#[derive(Deserialize)]
+#[derive(Clone)]struct InputData {
+    inputs_1: Vec<Vec<Vec<i64>>>,
+}
+impl<C: Config>IOReader<C> for FileReader{
+    type CircuitType = Circuit<<C as Config>::CircuitField>;
+    // fn read_inputs(&mut self, file_path: &str, mut assignment: &mut Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
+    fn read_inputs(&mut self, file_path: &str, mut assignment: Self::CircuitType) -> Self::CircuitType
     {
         // Read the JSON file into a string
         let mut file = std::fs::File::open(file_path).expect("Unable to open file");
@@ -116,9 +108,7 @@ mod io_reader {
         }
         assignment
     }
-
-    // Read in output data from json file. Here, we focus on reading the outputs into the output layer of the circuit in a way that makes sense to us
-    pub(crate) fn output_data_from_json<C: Config>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
+    fn read_outputs(&mut self, file_path: &str, mut assignment: Self::CircuitType) -> Self::CircuitType
     {
         // Read the JSON file into a string
         let mut file = std::fs::File::open(file_path).expect("Unable to open file");
@@ -142,11 +132,6 @@ mod io_reader {
         }
         assignment
     }
-    /*
-        #######################################################################################################
-        #######################################################################################################
-        #######################################################################################################
-    */
 }
 
 fn run_main<C: Config>()
@@ -191,10 +176,12 @@ fn run_main<C: Config>()
     } = compile_result;
 
     let assignment = Circuit::<C::CircuitField>::default();
-
-    let assignment = io_reader::input_data_from_json::<C>(input_path, assignment);
-
-    let assignment = io_reader::output_data_from_json::<C>(output_path, assignment);
+    // let assignment = io_reader::input_data_from_json::<C>(input_path, assignment);
+    // let assignment = io_reader::output_data_from_json::<C>(output_path, assignment);
+    let mut input_reader = FileReader{path: input_path.clone()};
+    let mut output_reader = FileReader{path: output_path.clone()};
+    let assignment = <FileReader as IOReader<C>>::read_inputs(&mut input_reader,input_path, assignment);
+    let assignment = <FileReader as IOReader<C>>::read_inputs(&mut output_reader,input_path, assignment);
 
     let assignments = vec![assignment; 1];
     let witness = witness_solver

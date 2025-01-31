@@ -1,21 +1,15 @@
 
 use expander_compiler::frontend::*;
-use expander_config::{
-    BN254ConfigKeccak, BN254ConfigSha2, GF2ExtConfigKeccak, GF2ExtConfigSha2, M31ExtConfigKeccak,
-    M31ExtConfigSha2,
-};
 use clap::{Command, Arg};
 use extra::UnconstrainedAPI;
 
 use peakmem_alloc::*;
 use std::alloc::System;
-use std::fmt::write;
-use std::{array, mem};
-use std::time::{Instant};
+use std::mem;
+use std::time::Instant;
 
-use csv::{ReaderBuilder};
+// use csv::{ReaderBuilder};
 
-use std::{error::Error, fs::OpenOptions, io::Write};
 
 
 #[global_allocator]
@@ -301,9 +295,7 @@ mod io_reader {
         pub(crate) outputs: Vec<i64>,
     }
 
-    pub(crate) fn input_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
-    where
-    GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
+    pub(crate) fn input_data_from_json<C: Config>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
     {
         // Read the JSON file into a string
         let mut file = std::fs::File::open(file_path).expect("Unable to open file");
@@ -332,9 +324,7 @@ mod io_reader {
         assignment
     }
 
-    pub(crate) fn output_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
-    where
-    GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
+    pub(crate) fn output_data_from_json<C: Config>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
     {
         // Read the JSON file into a string
         let mut file = std::fs::File::open(file_path).expect("Unable to open file");
@@ -361,9 +351,7 @@ mod io_reader {
     }
 }
 
-fn run_main<C: Config, GKRC>(experiment_name: &String)
-where
-    GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>,
+fn run_main<C: Config>(experiment_name: &String)
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
@@ -389,17 +377,17 @@ where
 
 
 
-    let n_witnesses = <GKRC::SimdCircuitField as arith::SimdField>::pack_size();
-    println!("n_witnesses: {}", n_witnesses);
+    // let n_witnesses = <GKRC::SimdCircuitField as arith::SimdField>::pack_size();
+    // println!("n_witnesses: {}", n_witnesses);
     let compile_result: CompileResult<C> = compile(&Circuit::default()).unwrap();
 
     let assignment = Circuit::<C::CircuitField>::default();
 
-    let assignment = io_reader::input_data_from_json::<C, GKRC>(input_path, assignment);
+    let assignment = io_reader::input_data_from_json::<C>(input_path, assignment);
 
-    let assignment = io_reader::output_data_from_json::<C, GKRC>(output_path, assignment);
+    let assignment = io_reader::output_data_from_json::<C>(output_path, assignment);
 
-    let assignments = vec![assignment; n_witnesses];
+    let assignments = vec![assignment; 1];
     let witness = compile_result
         .witness_solver
         .solve_witnesses(&assignments)
@@ -411,7 +399,7 @@ where
 
     let mut expander_circuit = compile_result
         .layered_circuit
-        .export_to_expander::<GKRC>()
+        .export_to_expander()
         .flatten();
     let config = expander_config::Config::<GKRC>::new(
         expander_config::GKRScheme::Vanilla,

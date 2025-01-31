@@ -74,17 +74,6 @@ mod io_reader {
         let data: InputData = serde_json::from_str(&contents).unwrap();
 
 
-<<<<<<< HEAD:gravy_circuits/bin/matrix_addition.rs
-        for (k, &var) in data.inputs_1.iter().enumerate() {
-        // For each u8 variable, store it directly as a `u64` in the BN254 field (BN254 can handle u64)
-            assignment.input[0][k] = C::CircuitField::from_u256(U256::from(var)) ; // Make sure var in this line, lines up with the innermost loop variable name
-        }
-
-        for (k, &var) in data.inputs_2.iter().enumerate() {
-            // For each u8 variable, store it directly as a `u64` in the BN254 field (BN254 can handle u64)
-                assignment.input[1][k] = C::CircuitField::from_u256(U256::from(var)) ; // Make sure var in this line, lines up with the innermost loop variable name
-            }
-=======
         // Assign inputs to assignment
 
         let rows_a = data.matrix_a.len();  
@@ -106,7 +95,6 @@ mod io_reader {
                 assignment.matrix_b[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
             }
         }
->>>>>>> 852e8c2 (experimenting with array sizes, matrix addition, hadamard product):ExpanderCompilerCollection/expander_compiler/bin/matrix_addition.rs
 
         // Return the assignment
         assignment
@@ -144,12 +132,8 @@ fn run_main<C: Config, GKRC>()
 where
     GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>,
 {
-<<<<<<< HEAD:gravy_circuits/bin/matrix_addition.rs
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now(); 
-=======
-
->>>>>>> 852e8c2 (experimenting with array sizes, matrix addition, hadamard product):ExpanderCompilerCollection/expander_compiler/bin/matrix_addition.rs
     let matches = Command::new("File Copier")
         .version("1.0")
         .about("Copies content from input file to output file")
@@ -175,20 +159,10 @@ where
     let n_witnesses = <GKRC::SimdCircuitField as arith::SimdField>::pack_size();
     println!("n_witnesses: {}", n_witnesses);
     let compile_result: CompileResult<C> = compile(&Circuit::default()).unwrap();
-<<<<<<< HEAD:gravy_circuits/bin/matrix_addition.rs
-
-    let assignment = Circuit::<C::CircuitField>::default();
-
-    let assignment = io_reader::input_data_from_json::<C, GKRC>(input_path, assignment);
-
-    let assignment = io_reader::output_data_from_json::<C, GKRC>(output_path, assignment);
-
-=======
     println!("result compiled");
     let assignment = Circuit::<C::CircuitField>::default();
     let assignment = io_reader::input_data_from_json::<C, GKRC>(input_path, assignment);
     let assignment = io_reader::output_data_from_json::<C, GKRC>(output_path, assignment);
->>>>>>> 852e8c2 (experimenting with array sizes, matrix addition, hadamard product):ExpanderCompilerCollection/expander_compiler/bin/matrix_addition.rs
     let assignments = vec![assignment; n_witnesses];
     let witness = compile_result
         .witness_solver
@@ -198,10 +172,6 @@ where
     for x in output.iter() {
         assert_eq!(*x, true);
     }
-<<<<<<< HEAD:gravy_circuits/bin/matrix_addition.rs
-
-=======
->>>>>>> 852e8c2 (experimenting with array sizes, matrix addition, hadamard product):ExpanderCompilerCollection/expander_compiler/bin/matrix_addition.rs
     let mut expander_circuit = compile_result
         .layered_circuit
         .export_to_expander::<GKRC>()
@@ -210,19 +180,11 @@ where
         expander_config::GKRScheme::Vanilla,
         expander_config::MPIConfig::new(),
     );
-<<<<<<< HEAD:gravy_circuits/bin/matrix_addition.rs
-
-=======
->>>>>>> 852e8c2 (experimenting with array sizes, matrix addition, hadamard product):ExpanderCompilerCollection/expander_compiler/bin/matrix_addition.rs
     let (simd_input, simd_public_input) = witness.to_simd::<GKRC::SimdCircuitField>();
     println!("{} {}", simd_input.len(), simd_public_input.len());
 
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
-<<<<<<< HEAD:gravy_circuits/bin/matrix_addition.rs
-
-=======
->>>>>>> 852e8c2 (experimenting with array sizes, matrix addition, hadamard product):ExpanderCompilerCollection/expander_compiler/bin/matrix_addition.rs
     // prove
     expander_circuit.evaluate();
     let mut prover = gkr::Prover::new(&config);
@@ -239,7 +201,6 @@ where
         &proof
     ));
     println!("Verified");
-<<<<<<< HEAD:gravy_circuits/bin/matrix_addition.rs
     println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
     println!(
         "Peak Memory used Overall : {:.2}", 
@@ -247,8 +208,6 @@ where
     );
     let duration = start.elapsed();
     println!("Time elapsed: {}.{} seconds", duration.as_secs(), duration.subsec_millis())
-=======
->>>>>>> 852e8c2 (experimenting with array sizes, matrix addition, hadamard product):ExpanderCompilerCollection/expander_compiler/bin/matrix_addition.rs
 
 }
 
