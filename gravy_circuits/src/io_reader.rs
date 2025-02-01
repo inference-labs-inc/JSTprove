@@ -4,9 +4,16 @@ use std::{io::Read, ops::Neg};
 use arith::FieldForECC;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
+use expander_compiler::frontend::{internal::DumpLoadTwoVariables, *};
 
-pub trait IOReader<C: Config> {
-    type CircuitType;
+pub trait IOReader<C: Config, CircuitType> 
+where
+    CircuitType: Default + 
+    // DumpLoadTwoVariables<Variable> +
+    DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
+    // + expander_compiler::frontend::Define<C> 
+    + Clone
+    {
 
     fn read_data_from_json<I>(file_path: &str) -> I
     where I: DeserializeOwned
@@ -26,13 +33,13 @@ pub trait IOReader<C: Config> {
     fn read_inputs(
         &mut self,
         file_path: &str,
-        assignment: Self::CircuitType, // Mutate the concrete `Circuit` type
-    ) -> Self::CircuitType;
+        assignment: CircuitType, // Mutate the concrete `Circuit` type
+    ) -> CircuitType;
     fn read_outputs(
         &mut self,
         file_path: &str,
-        assignment:  Self::CircuitType, // Mutate the concrete `Circuit` type
-    ) -> Self::CircuitType;
+        assignment:  CircuitType, // Mutate the concrete `Circuit` type
+    ) -> CircuitType;
 }
 
 pub struct FileReader {

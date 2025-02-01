@@ -9,16 +9,20 @@ use ethnum::U256;
 use std::{io::Read, ops::Neg};
 use arith::FieldForECC;
 
-use expander_compiler::frontend::*;
+// use expander_compiler::frontend::*;
+use expander_compiler::frontend::{internal::DumpLoadTwoVariables, *};
+
 #[path = "../src/relu.rs"]
 pub mod relu;
 
 #[path = "../src/io_reader.rs"]
 pub mod io_reader;
+#[path = "../src/main_runner.rs"]
+pub mod main_runner;
 
 
-#[global_allocator]
-static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
+// #[global_allocator]
+// static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
 
 
 /*
@@ -34,11 +38,11 @@ const SIZE1: usize = 28;
 const SIZE2: usize = 28;
 const SIZE3: usize = 16;
 
-declare_circuit!(Circuit {
+declare_circuit!(ReLUTwosCircuit {
     input: [[[Variable; SIZE1]; SIZE2]; SIZE3],
     output: [[[Variable; SIZE1]; SIZE2]; SIZE3],
 });
-impl<C: Config> Define<C> for Circuit<Variable> {
+impl<C: Config> Define<C> for ReLUTwosCircuit<Variable> {
     // Default circuit for now, ensures input and output are equal
     fn define(&self, api: &mut API<C>) {
         let n_bits = 32;
@@ -77,12 +81,14 @@ struct OutputData {
 #[derive(Clone)]struct InputData {
     inputs_1: Vec<Vec<Vec<i64>>>,
 }
-impl<C: Config>IOReader<C> for FileReader{
-    type CircuitType = Circuit<<C as Config>::CircuitField>;
+impl<C: Config>IOReader<C, ReLUTwosCircuit<C::CircuitField>> for FileReader
+// where ReLUTwosCircuit<<C as expander_compiler::frontend::Config>::CircuitField>: expander_compiler::frontend::Define<C> +
+// DumpLoadTwoVariables<expander_compiler::frontend::Variable>
+// where ReLUTwosCircuit<expander_compiler::frontend::Variable>: DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
+{
     // fn read_inputs(&mut self, file_path: &str, mut assignment: &mut Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
-    fn read_inputs(&mut self, file_path: &str, mut assignment: Self::CircuitType) -> Self::CircuitType
+    fn read_inputs(&mut self, file_path: &str, mut assignment: ReLUTwosCircuit<C::CircuitField>) -> ReLUTwosCircuit<C::CircuitField>
     {
-        println!("{}", file_path);
         // Read the JSON file into a string
         let mut file = std::fs::File::open(file_path).expect("Unable to open file");
         let mut contents = String::new();
@@ -110,7 +116,7 @@ impl<C: Config>IOReader<C> for FileReader{
         }
         assignment
     }
-    fn read_outputs(&mut self, file_path: &str, mut assignment: Self::CircuitType) -> Self::CircuitType
+    fn read_outputs(&mut self, file_path: &str, mut assignment: ReLUTwosCircuit<C::CircuitField>) -> ReLUTwosCircuit<C::CircuitField>
     {
         // Read the JSON file into a string
         let mut file = std::fs::File::open(file_path).expect("Unable to open file");
@@ -136,122 +142,13 @@ impl<C: Config>IOReader<C> for FileReader{
     }
 }
 
-fn run_main<C: Config>()
-{
-    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    let start = Instant::now(); 
-    let matches = Command::new("File Copier")
-        .version("1.0")
-        .about("Copies content from input file to output file")
-        .arg(
-            Arg::new("input")
-                .help("The input file to read from")
-                .required(true)  // This argument is required
-                .index(1),       // Positional argument (first argument)
-        )
-        .arg(
-            Arg::new("output")
-                .help("The output file to write to")
-                .required(true)  // This argument is also required
-                .index(2),       // Positional argument (second argument)
-        )
-        .get_matches();
-
-    let input_path = matches.get_one::<String>("input").unwrap();// "inputs/reward_input.json"
-    let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
-
-
-
-    let compile_result: CompileResult<C> = compile(&Circuit::default()).unwrap();
-    println!(
-        "Peak Memory used Overall : {:.2}", 
-        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
-    );
-    let duration = start.elapsed();
-    println!("Time elapsed: {}.{} seconds", duration.as_secs(), duration.subsec_millis());
-
-    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    let start = Instant::now(); 
-    let CompileResult {
-        witness_solver,
-        layered_circuit,
-    } = compile_result;
-
-    let assignment = Circuit::<C::CircuitField>::default();
-    // let assignment = io_reader::input_data_from_json::<C>(input_path, assignment);
-    // let assignment = io_reader::output_data_from_json::<C>(output_path, assignment);
-    let mut input_reader = FileReader{path: input_path.clone()};
-    let mut output_reader = FileReader{path: output_path.clone()};
-    let assignment = <FileReader as IOReader<C>>::read_inputs(&mut input_reader,input_path, assignment);
-    let assignment = <FileReader as IOReader<C>>::read_outputs(&mut output_reader,output_path, assignment);
-
-    let assignments = vec![assignment; 1];
-    let witness = witness_solver
-        .solve_witnesses(&assignments)
-        .unwrap();
-    let output = layered_circuit.run(&witness);
-    for x in output.iter() {
-        assert_eq!(*x, true);
-    }
-
-    let mut expander_circuit = layered_circuit
-        .export_to_expander::<<C>::DefaultGKRFieldConfig>()
-        .flatten();
-    let config = expander_config::Config::<<C>::DefaultGKRConfig>::new(
-        expander_config::GKRScheme::Vanilla,
-        mpi_config::MPIConfig::new(),
-    );
-
-    let (simd_input, simd_public_input) =
-        witness.to_simd::<<C>::DefaultSimdField>();
-    println!("{} {}", simd_input.len(), simd_public_input.len());
-    expander_circuit.layers[0].input_vals = simd_input;
-    expander_circuit.public_input = simd_public_input.clone();
-
-    // prove
-    expander_circuit.evaluate();
-    let (claimed_v, proof) = gkr::executor::prove(&mut expander_circuit, &config);
-
-    // verify
-    assert!(gkr::executor::verify(
-        &mut expander_circuit,
-        &config,
-        &proof,
-        &claimed_v
-    ));
-
-    println!("Verified");
-
-    // println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
-    println!(
-        "Peak Memory used Overall : {:.2}", 
-        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
-    );
-    let duration = start.elapsed();
-    println!("Time elapsed: {}.{} seconds", duration.as_secs(), duration.subsec_millis())
-
-}
-
-//#[test]
-#[allow(dead_code)]
-fn run_gf2() {
-    run_main::<GF2Config>();
-}
-
-//#[test]
-#[allow(dead_code)]
-fn run_m31() {
-    run_main::<M31Config>();
-}
-
-//#[test]
-#[allow(dead_code)]
-fn run_bn254() {
-    run_main::<BN254Config>();
-}
-
 fn main(){
+    // let assignment = Circuit::<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>::default();
     // run_gf2();
     // run_m31();
-    run_bn254();
+    let mut file_reader = FileReader{path: String::new()};
+    main_runner::run_bn254::<ReLUTwosCircuit<Variable>,
+                            ReLUTwosCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
+                            _>(&mut file_reader);
+
 }
