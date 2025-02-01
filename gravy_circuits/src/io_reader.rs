@@ -1,10 +1,7 @@
-use ethnum::U256;
 use expander_compiler::frontend::Config;
-use std::{io::Read, ops::Neg};
-use arith::FieldForECC;
-use serde::Deserialize;
+use std::io::Read;
 use serde::de::DeserializeOwned;
-use expander_compiler::frontend::{internal::DumpLoadTwoVariables, *};
+use expander_compiler::frontend::internal::DumpLoadTwoVariables;
 
 pub trait IOReader<C: Config, CircuitType> 
 where
