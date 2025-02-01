@@ -49,4 +49,3 @@ path = "bin/relu_dual.rs"
 [[bin]]
 name = "matrix_addition"
 path = "bin/matrix_addition.rs"
-
