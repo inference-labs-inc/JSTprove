@@ -51,7 +51,7 @@ struct OutputData {
 } 
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/matrix_multiplication_memorized_weights.json");
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/matrix_multiplication_weights.json");
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
 // Weights will be read in
