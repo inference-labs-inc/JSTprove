@@ -14,7 +14,7 @@ class BaseTests():
         #######################################################################################################
         '''
         # Specify
-        self.name = "matrix_multiplication_memorized"
+        self.name = "matrix_multiplication"
         
         # Function input generation
 
