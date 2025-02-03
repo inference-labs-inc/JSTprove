@@ -1,10 +1,17 @@
-
 use expander_compiler::frontend::*;
-use expander_config::{
-    BN254ConfigKeccak, BN254ConfigSha2, GF2ExtConfigKeccak, GF2ExtConfigSha2, M31ExtConfigKeccak,
-    M31ExtConfigSha2,
-};
-use clap::{Command, Arg};
+use io_reader::{FileReader, IOReader};
+use serde::Deserialize;
+use ethnum::U256;
+// use std::ops::Neg;
+use arith::FieldForECC;
+
+#[path = "../src/matrix_computation.rs"]
+pub mod matrix_computation;
+
+#[path = "../src/io_reader.rs"]
+pub mod io_reader;
+#[path = "../src/main_runner.rs"]
+pub mod main_runner;
 
 
 /* 
@@ -27,6 +34,7 @@ declare_circuit!(Circuit {
     scaled_matrix_product_alpha_ab: [[Variable; N_COLS_B]; N_ROWS_A], // shape (m, k)
 });
 
+//Still to factor this out
 impl<C: Config> Define<C> for Circuit<Variable> {
     fn define(&self, api: &mut API<C>) {      
         for i in 0..N_ROWS_A {
@@ -43,43 +51,26 @@ impl<C: Config> Define<C> for Circuit<Variable> {
     }
 }
 
-mod io_reader {
-    use ethnum::U256;
-    use std::io::Read;
-    use arith::FieldForECC;
-    use serde::Deserialize;
+#[derive(Deserialize)]
+#[derive(Clone)]
+struct InputData {
+    alpha: u64,
+    matrix_a: Vec<Vec<u64>>, // Shape (m, n)  
+    matrix_b: Vec<Vec<u64>>, // Shape (n, k) 
+}
 
-    use super::Circuit;
+//This is the data structure for the output data to be read in from the json file
+#[derive(Deserialize)]
+#[derive(Clone)]
+struct OutputData {
+    scaled_matrix_product_alpha_ab: Vec<Vec<u64>>, 
+}
 
-    use expander_compiler::frontend::*;
-
-    #[derive(Deserialize)]
-    #[derive(Clone)]
-    pub(crate) struct InputData {
-        pub(crate) alpha: u64,
-        pub(crate) matrix_a: Vec<Vec<u64>>, // Shape (m, n)  
-        pub(crate) matrix_b: Vec<Vec<u64>>, // Shape (n, k) 
-    }
-
-    #[derive(Deserialize)]
-    #[derive(Clone)]
-    pub(crate) struct OutputData {
-        pub(crate) scaled_matrix_product_alpha_ab: Vec<Vec<u64>>, 
-    }
-
-    pub(crate) fn input_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
-    where
-    GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
+impl<C: Config>IOReader<C, Circuit<C::CircuitField>> for FileReader
+{
+    fn read_inputs(&mut self, file_path: &str, mut assignment: Circuit<C::CircuitField>) -> Circuit<C::CircuitField>
     {
-        // Read the JSON file into a string
-        let mut file = std::fs::File::open(file_path).expect("Unable to open file");
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)
-            .expect("Unable to read file");
-
-
-        // Deserialize the JSON into the InputData struct
-        let data: InputData = serde_json::from_str(&contents).unwrap();
+        let data: InputData = <FileReader as IOReader<C, Circuit<_>>>::read_data_from_json::<InputData>(file_path); 
 
 
         // Assign inputs to assignment
@@ -108,20 +99,10 @@ mod io_reader {
         // Return the assignment
         assignment
     }
-
-    pub(crate) fn output_data_from_json<C: Config, GKRC>(file_path: &str, mut assignment: Circuit<<C as Config>::CircuitField>) -> Circuit<<C as expander_compiler::frontend::Config>::CircuitField>
-    where
-    GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>, 
+    fn read_outputs(&mut self, file_path: &str, mut assignment: Circuit<C::CircuitField>) -> Circuit<C::CircuitField>
     {
-        // Read the JSON file into a string
-        let mut file = std::fs::File::open(file_path).expect("Unable to open file");
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)
-            .expect("Unable to read file");
-
-
-        // Deserialize the JSON into the InputData struct
-        let data: OutputData = serde_json::from_str(&contents).unwrap();
+    
+        let data: OutputData = <FileReader as IOReader<C, Circuit<_>>>::read_data_from_json::<OutputData>(file_path); 
 
         // Assign inputs to assignment
         let rows_ab = data.scaled_matrix_product_alpha_ab.len();  
@@ -137,104 +118,18 @@ mod io_reader {
     }
 }
 
-fn run_main<C: Config, GKRC>()
-where
-    GKRC: expander_config::GKRConfig<CircuitField = C::CircuitField>,
-{
-
-    let matches = Command::new("File Copier")
-        .version("1.0")
-        .about("Copies content from input file to output file")
-        .arg(
-            Arg::new("input")
-                .help("The input file to read from")
-                .required(true)  // This argument is required
-                .index(1),       // Positional argument (first argument)
-        )
-        .arg(
-            Arg::new("output")
-                .help("The output file to write to")
-                .required(true)  // This argument is also required
-                .index(2),       // Positional argument (second argument)
-        )
-        .get_matches();
-
-    let input_path = matches.get_one::<String>("input").unwrap();// "inputs/reward_input.json"
-    let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
-
-
-
-    let n_witnesses = <GKRC::SimdCircuitField as arith::SimdField>::pack_size();
-    println!("n_witnesses: {}", n_witnesses);
-    let compile_result: CompileResult<C> = compile(&Circuit::default()).unwrap();
-    println!("result compiled");
-    let assignment = Circuit::<C::CircuitField>::default();
-    let assignment = io_reader::input_data_from_json::<C, GKRC>(input_path, assignment);
-    let assignment = io_reader::output_data_from_json::<C, GKRC>(output_path, assignment);
-    let assignments = vec![assignment; n_witnesses];
-    let witness = compile_result
-        .witness_solver
-        .solve_witnesses(&assignments)
-        .unwrap();
-    let output = compile_result.layered_circuit.run(&witness);
-    for x in output.iter() {
-        assert_eq!(*x, true);
-    }
-    let mut expander_circuit = compile_result
-        .layered_circuit
-        .export_to_expander::<GKRC>()
-        .flatten();
-    let config = expander_config::Config::<GKRC>::new(
-        expander_config::GKRScheme::Vanilla,
-        expander_config::MPIConfig::new(),
-    );
-    let (simd_input, simd_public_input) = witness.to_simd::<GKRC::SimdCircuitField>();
-    println!("{} {}", simd_input.len(), simd_public_input.len());
-
-    expander_circuit.layers[0].input_vals = simd_input;
-    expander_circuit.public_input = simd_public_input.clone();
-    // prove
-    expander_circuit.evaluate();
-    let mut prover = gkr::Prover::new(&config);
-    prover.prepare_mem(&expander_circuit);
-    let (claimed_v, proof) = prover.prove(&mut expander_circuit);
-
-    println!("Proved");
-    // verify
-    let verifier = gkr::Verifier::new(&config);
-    assert!(verifier.verify(
-        &mut expander_circuit,
-        &simd_public_input,
-        &claimed_v,
-        &proof
-    ));
-    println!("Verified");
-
-}
-
-//#[test]
-#[allow(dead_code)]
-fn run_gf2() {
-    run_main::<GF2Config, GF2ExtConfigSha2>();
-    run_main::<GF2Config, GF2ExtConfigKeccak>();
-}
-
-//#[test]
-#[allow(dead_code)]
-fn run_m31() {
-    run_main::<M31Config, M31ExtConfigSha2>();
-    run_main::<M31Config, M31ExtConfigKeccak>();
-}
-
-//#[test]
-#[allow(dead_code)]
-fn run_bn254() {
-    run_main::<BN254Config, BN254ConfigSha2>();
-    run_main::<BN254Config, BN254ConfigKeccak>();
-}
+/*
+        #######################################################################################################
+        #####################################  Shouldn't need to change  ######################################
+        #######################################################################################################
+*/
 
 fn main(){
-    run_gf2();
-    run_m31();
-    run_bn254();
+    let mut file_reader = FileReader{path: String::new()};
+    // run_gf2();
+    // run_m31();
+    main_runner::run_bn254::<Circuit<Variable>,
+    Circuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
+                            _>(&mut file_reader);
+
 }
