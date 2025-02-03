@@ -67,3 +67,7 @@ path = "bin/scaled_matrix_product.rs"
 [[bin]]
 name = "scaled_matrix_product_sum"
 path = "bin/scaled_matrix_product_sum.rs"
+
+[[bin]]
+name = "gemm"
+path = "bin/gemm.rs"

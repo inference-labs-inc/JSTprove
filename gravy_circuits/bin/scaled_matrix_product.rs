@@ -1,5 +1,6 @@
 use expander_compiler::frontend::*;
 use io_reader::{FileReader, IOReader};
+use matrix_computation::scaled_matrix_product;
 use serde::Deserialize;
 use ethnum::U256;
 // use std::ops::Neg;
@@ -34,18 +35,14 @@ declare_circuit!(Circuit {
     scaled_matrix_product_alpha_ab: [[Variable; N_COLS_B]; N_ROWS_A], // shape (m, k)
 });
 
+
 //Still to factor this out
 impl<C: Config> Define<C> for Circuit<Variable> {
-    fn define(&self, api: &mut API<C>) {      
+    fn define(&self, api: &mut API<C>) {  
+        let scaled_matrix_product = scaled_matrix_product(api, self.matrix_a, self.matrix_b, self.alpha); 
         for i in 0..N_ROWS_A {
             for j in 0..N_COLS_B {
-                let mut scaled_row_col_product: Variable = api.constant(0);
-                for k in 0..N_COLS_A {
-                    let element_product = api.mul(self.matrix_a[i][k], self.matrix_b[k][j]);
-                    scaled_row_col_product = api.add(scaled_row_col_product, element_product);                   
-                }
-                scaled_row_col_product = api.mul(scaled_row_col_product, self.alpha);
-                api.assert_is_equal(self.scaled_matrix_product_alpha_ab[i][j], scaled_row_col_product);               
+                api.assert_is_equal(self.scaled_matrix_product_alpha_ab[i][j], scaled_matrix_product[i][j]);               
             }
         }
     }

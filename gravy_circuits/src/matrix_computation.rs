@@ -182,3 +182,54 @@ pub fn two_d_array_to_vec<const M: usize, const N: usize>(matrix:[[Variable; N];
     .map(|row| row.to_vec())
     .collect()                               
 }
+
+pub fn gemm<C: Config, const M: usize, const N: usize, const K: usize>(api: &mut API<C>, matrix_a: [[Variable; N]; M], matrix_b: [[Variable; K]; N], matrix_c: [[Variable; K]; M],alpha: Variable, beta: Variable) -> [[Variable; K]; M]{
+    let mut array:[[Variable; K]; M]  = [[Variable::default(); K]; M]; // or [[Variable::default(); N]; M]
+    for i in 0..M {
+        for j in 0..K {
+            let mut gemm_ij: Variable = api.constant(0);
+            for k in 0..N {
+                let element_product = api.mul(matrix_a[i][k], matrix_b[k][j]);
+                gemm_ij = api.add(gemm_ij, element_product);                                        
+            }
+            gemm_ij = api.mul(gemm_ij, alpha);
+            let scaled_c_ij = api.mul(beta,matrix_c[i][j]);
+            gemm_ij = api.add(scaled_c_ij, gemm_ij);
+            array[i][j] = gemm_ij;
+            }
+    }
+    array
+}
+
+pub fn scaled_matrix_product_sum<C: Config, const M: usize, const N: usize, const K: usize>(api: &mut API<C>, matrix_a: [[Variable; N]; M], matrix_b: [[Variable; K]; N], matrix_c: [[Variable; K]; M],alpha: Variable) -> [[Variable; K]; M]{
+    let mut array:[[Variable; K]; M]  = [[Variable::default(); K]; M]; // or [[Variable::default(); N]; M]
+    for i in 0..M {
+        for j in 0..K {
+            let mut scaled_row_col_product_sum: Variable = api.constant(0);
+            for k in 0..N {
+                let element_product = api.mul(matrix_a[i][k], matrix_b[k][j]);
+                scaled_row_col_product_sum = api.add(scaled_row_col_product_sum, element_product);                                      
+            }
+            scaled_row_col_product_sum = api.mul(scaled_row_col_product_sum, alpha);
+            scaled_row_col_product_sum = api.add(scaled_row_col_product_sum, matrix_c[i][j]);
+            array[i][j] = scaled_row_col_product_sum;        
+        }
+    }
+    array
+}
+
+pub fn scaled_matrix_product<C: Config, const M: usize, const N: usize, const K: usize>(api: &mut API<C>, matrix_a: [[Variable; N]; M], matrix_b: [[Variable; K]; N], alpha: Variable) -> [[Variable; K]; M]{
+    let mut array:[[Variable; K]; M]  = [[Variable::default(); K]; M]; // or [[Variable::default(); N]; M]
+    for i in 0..M {
+        for j in 0..K {
+            let mut scaled_row_col_product: Variable = api.constant(0);
+            for k in 0..N {
+                let element_product = api.mul(matrix_a[i][k], matrix_b[k][j]);
+                scaled_row_col_product = api.add(scaled_row_col_product, element_product);                   
+            }
+            scaled_row_col_product = api.mul(scaled_row_col_product, alpha);
+            array[i][j] = scaled_row_col_product;            
+        }
+    }
+    array
+}

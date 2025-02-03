@@ -1,5 +1,6 @@
 use expander_compiler::frontend::*;
 use io_reader::{FileReader, IOReader};
+use matrix_computation::scaled_matrix_product_sum;
 use serde::Deserialize;
 use ethnum::U256;
 // use std::ops::Neg;
@@ -39,17 +40,11 @@ declare_circuit!(Circuit {
 
 // Still to factor this
 impl<C: Config> Define<C> for Circuit<Variable> {
-    fn define(&self, api: &mut API<C>) {      
+    fn define(&self, api: &mut API<C>) {   
+        let scaled_row_col_product_sum_array = scaled_matrix_product_sum(api, self.matrix_a, self.matrix_b, self.matrix_c, self.alpha); 
         for i in 0..N_ROWS_A {
             for j in 0..N_COLS_B {
-                let mut scaled_row_col_product_sum: Variable = api.constant(0);
-                for k in 0..N_COLS_A {
-                    let element_product = api.mul(self.matrix_a[i][k], self.matrix_b[k][j]);
-                    scaled_row_col_product_sum = api.add(scaled_row_col_product_sum, element_product);                                      
-                }
-                scaled_row_col_product_sum = api.mul(scaled_row_col_product_sum, self.alpha);
-                scaled_row_col_product_sum = api.add(scaled_row_col_product_sum, self.matrix_c[i][j]);
-                api.assert_is_equal(self.scaled_matrix_product_sum_alpha_ab_plus_c[i][j], scaled_row_col_product_sum);               
+                api.assert_is_equal(self.scaled_matrix_product_sum_alpha_ab_plus_c[i][j], scaled_row_col_product_sum_array[i][j]);               
             }
         }
     }
