@@ -1,22 +1,20 @@
 # Testing Environment
 
-After cloning the repository, make sure taht the submodule is updated -git submodule update --init --recursive
-
 ## Setup python environment
 
 ```
 pip install -r requirements.txt
 ```
 
+## Building Structure
+
+The development/building process will involve working in two different areas of the codebase. We will begin with the python testing files. 
+
+In `python_testing` directory, we will build the python representation of the code. With this, we can test the function we are trying to circuitize line by line for easier development. Additionally, through this code, we will write the inputs and outputs (and weights if applicable) of our function/circuit to file, so that the rust circuit can read this in. Next we will call our rust code to compile the circuit, run the witness and prove and verify the given inputs and outputs. For this process, use `python_testing/testing_circuits_base_functions.py` as an example/template.
+
+In `gravy_circuits` directory, we will build the Expander circuits in rust for proving. We can follow the template in `gravy_circuits/bin/testing.rs`. The templates have been designed to make the development process as easy as possible. The helper functions are in `gravy_circuits/src/`. For creating circuits, we must define the inputs and outpsuts structure of the circuits. We must then specify how these get read into the circuit. Finally, we must design the circuit
+
 ## Python Testing
-
-To create a file in ECC to build circuits with, run:
-
-```
-python -m python_testing.file_creator [circuit_name]
-```
-
-This will create a rust file in `ExpanderCompilerCollection/expander_compiler/bin/[circuit_name].rs` and adjust the relevant cargo.toml file, in order to make this code callable
 
 To run testing environment in python:
 
@@ -28,10 +26,7 @@ python -m python_testing.testing_circuit
 
 The circuit creation process involves working with two (or three) files. 
 
-1. Create the circuit file using 
-```
-python -m python_testing.file_creator [circuit_name] 
-```
+1. Create the circuit file using `gravy_circuits/bin/testing.rs` as a template. The binary should belong in `gravy_circuits/bin/`. Add the name of the circuit and path to the binary in `gravy_circuits/Cargo.toml`
 
 2. Work in `python_testing/testing_circuit`
 
@@ -67,5 +62,10 @@ Relevent files to explore -> `python_testing/testing_circuit_sn2_example.py` and
 Run the proof generation with:
 
 ```
-cargo run --bin testing --manifest-path ExpanderCompilerCollection/Cargo.toml inputs/reward_input.json output/reward_output.json
+cargo run --bin testing --release inputs/reward_input.json output/reward_output.json
 ```
+
+
+## Important note
+
+We must run the cargo files with release for reasonable time process

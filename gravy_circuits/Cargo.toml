@@ -25,10 +25,12 @@ crosslayer_prototype.workspace = true
 serde_json = "1.0"
 peakmem-alloc = "0.3.0"
 expander_compiler.workspace = true
+lazy_static = "1.4"
 
 [dev-dependencies]
 rayon = "1.9"
 sha2 = "0.10.8"
+
 [dependencies.serde]
 version = "1.0"
 features = [ "derive",]
@@ -45,3 +47,27 @@ path = "bin/relu_twos_comp.rs"
 [[bin]]
 name = "relu_dual"
 path = "bin/relu_dual.rs"
+
+[[bin]]
+name = "matrix_addition"
+path = "bin/matrix_addition.rs"
+
+[[bin]]
+name = "matrix_hadamard_product"
+path = "bin/matrix_hadamard_product.rs"
+
+[[bin]]
+name = "matrix_multiplication"
+path = "bin/matrix_multiplication.rs"
+
+[[bin]]
+name = "scaled_matrix_product"
+path = "bin/scaled_matrix_product.rs"
+
+[[bin]]
+name = "scaled_matrix_product_sum"
+path = "bin/scaled_matrix_product_sum.rs"
+
+[[bin]]
+name = "gemm"
+path = "bin/gemm.rs"

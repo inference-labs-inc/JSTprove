@@ -29,11 +29,12 @@ def prove_and_verify(witness_file, input_file, proof_path, public_path, verifica
         circuit.proof(witness_file,proof_path, public_path)
         circuit.verify(verification_key, public_path, proof_path)
 
-def get_files(input_folder, proof_folder, temp_folder, circuit_folder, name, output_folder, proof_system):
+def get_files(input_folder, proof_folder, temp_folder, circuit_folder, weights_folder, name, output_folder, proof_system):
     create_folder(input_folder)
     create_folder(proof_folder)
     create_folder(temp_folder)
     create_folder(output_folder)
+    create_folder(weights_folder)
     # self._create_folder(circuit_folder)
 
     witness_file = os.path.join(temp_folder,f"{name}_witness.wtns")
@@ -41,6 +42,7 @@ def get_files(input_folder, proof_folder, temp_folder, circuit_folder, name, out
     proof_path = os.path.join(proof_folder,f"{name}_proof.json")
     public_path = os.path.join(proof_folder,f"{name}_public.json")
     verification_key = os.path.join(temp_folder,f"{name}_verification_key.json")
+    weights_path = os.path.join(weights_folder,f"{name}_weights.json")
     if proof_system == ZKProofSystems.Circom:
         circuit_name = os.path.join(circuit_folder,f"{name}.circom")
     elif proof_system == ZKProofSystems.Expander:
@@ -49,7 +51,7 @@ def get_files(input_folder, proof_folder, temp_folder, circuit_folder, name, out
         raise NotImplementedError
 
     output_file = os.path.join(output_folder,f"{name}_output.json")
-    return witness_file,input_file,proof_path,public_path,verification_key,circuit_name, output_file
+    return witness_file,input_file,proof_path,public_path,verification_key,circuit_name, weights_path, output_file
 
 def create_folder(directory: str):
     if not os.path.exists(directory):

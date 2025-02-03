@@ -17,8 +17,10 @@ class BaseTests():
         
         # Function input generation
 
-        self.inputs_1 = torch.randint(low=0, high=100, size=(256,))
-        self.inputs_2 = torch.randint(low=0, high=100, size=(256,))
+        LENGTH = 10000
+
+        self.inputs_1 = torch.randint(low=0, high=100, size=(LENGTH,))
+        self.inputs_2 = torch.randint(low=0, high=100, size=(LENGTH,))
         # self.scaling = 100000000
         '''
         #######################################################################################################
@@ -27,11 +29,11 @@ class BaseTests():
         '''
 
     
-    def base_testing(self, input_folder:str, proof_folder: str, temp_folder: str, circuit_folder:str, proof_system: ZKProofSystems, output_folder: str = None):
+    def base_testing(self, input_folder:str, proof_folder: str, temp_folder: str, circuit_folder:str, weights_folder:str,  proof_system: ZKProofSystems, output_folder: str = None):
 
         # NO NEED TO CHANGE!
-        witness_file, input_file, proof_path, public_path, verification_key, circuit_name, output_file = get_files(
-            input_folder, proof_folder, temp_folder, circuit_folder, self.name, output_folder, proof_system)
+        witness_file, input_file, proof_path, public_path, verification_key, circuit_name, _, output_file = get_files(
+            input_folder, proof_folder, temp_folder, circuit_folder, weights_folder,self.name, output_folder, proof_system)
         
 
         '''
@@ -42,6 +44,11 @@ class BaseTests():
         ## Perform calculation here
 
         outputs = torch.add(self.inputs_1,self.inputs_2)
+        outputs = torch.square(outputs)
+        outputs = torch.square(outputs)
+        outputs = torch.square(outputs)
+        # outputs = torch.square(outputs)
+
 
         ## Define inputs and outputs
         inputs = {
@@ -84,7 +91,7 @@ class Comparison():
         
         # Function input generation
 
-        self.inputs_1 = torch.randint(low=0, high=100000000, size=(256,))
+        self.inputs_1 = torch.randint(low=0, high=2**21, size=(256,))
         self.inputs_2 = torch.randint(low=0, high=1, size=(256,))
         # self.scaling = 100000000
         '''
@@ -212,12 +219,15 @@ class ReLU():
     
 if __name__ == "__main__":
     proof_system = ZKProofSystems.Expander
-    proof_folder = "proofs"
+    proof_folder = "analysis"
     output_folder = "output"
     temp_folder = "temp"
     input_folder = "inputs"
     circuit_folder = ""
+    weights_folder = "weights"
     #Rework inputs to function
-    test_circuit = ReLU()
-    test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, proof_system, output_folder)
+    # test_circuit = Comparison()
+    # test_circuit = ReLU()
+    test_circuit = BaseTests()
+    test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, weights_folder, proof_system, output_folder)
 
