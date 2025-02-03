@@ -44,9 +44,9 @@ path = "bin/testing.rs"
 name = "relu_twos_comp"
 path = "bin/relu_twos_comp.rs"
 
-#[[bin]]
-#name = "relu_dual"
-#path = "bin/relu_dual.rs"
+[[bin]]
+name = "relu_dual"
+path = "bin/relu_dual.rs"
 
 [[bin]]
 name = "matrix_addition"
