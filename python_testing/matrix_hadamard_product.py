@@ -18,10 +18,10 @@ class BaseTests():
         
         # Function input generation
 
-        N_ROWS_A: int = 1000; # m
-        N_COLS_A: int = 17; # n
-        N_ROWS_B: int = 1000; # m
-        N_COLS_B: int = 17; # n
+        N_ROWS_A: int = 256; # m
+        N_COLS_A: int = 10; # n
+        N_ROWS_B: int = 256; # m
+        N_COLS_B: int = 10; # n
 
         self.matrix_a = torch.randint(low=0, high=100, size=(N_ROWS_A,N_COLS_A)) # (m, n) array of random integers between 0 and 100
         self.matrix_b = torch.randint(low=0, high=100, size=(N_ROWS_B,N_COLS_B)) # (m, n) array of random integers between 0 and 100
@@ -87,5 +87,5 @@ if __name__ == "__main__":
     circuit_folder = ""
     #Rework inputs to function
     test_circuit = BaseTests()
-    test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder,  circuit_folder, proof_system, output_folder)
+    test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
 
