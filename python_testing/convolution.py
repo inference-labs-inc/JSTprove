@@ -52,16 +52,16 @@ class Convolution():
         #######################################################################################################
         '''
 
-    # def conv_run(self, X, W, B, auto_pad, dilations, group, kernel_shape, pads, strides):
-    #     if dilations is None:
-    #         dilations = [1 for s in X.shape[2:]]
-    #     if kernel_shape is None:
-    #         kernel_shape = W.shape[2:]
-    #     if pads is None:
-    #         pads = [0 for s in X.shape[2:]] * 2
-    #     if strides is None:
-    #         strides = [1 for s in X.shape[2:]]
-    #     return X
+    def conv_run(self, X, W, B, auto_pad, dilations, group, kernel_shape, pads, strides):
+        if dilations is None:
+            dilations = [1 for s in X.shape[2:]]
+        if kernel_shape is None:
+            kernel_shape = W.shape[2:]
+        if pads is None:
+            pads = [0 for s in X.shape[2:]] * 2
+        if strides is None:
+            strides = [1 for s in X.shape[2:]]
+        return X
     
 
     def base_testing(self, input_folder:str, proof_folder: str, temp_folder: str, weights_folder:str, circuit_folder:str, proof_system: ZKProofSystems, output_folder: str = None):
@@ -80,16 +80,15 @@ class Convolution():
             ## Perform calculation here
             pads = (1,1,1,1)
             #Ensure that onnx representation matches torch model
-            output = _conv_implementation(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape,pads, self.strides)
+            output_onnx = _conv_implementation(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape,pads, self.strides)
             total_out = torch.conv2d(self.input_arr, self.weights, self.bias,self.strides,self.pads, self.dilation, self.group)
-            for i in range(len(output)):  # Iterate over the first dimension
-                for j in range(len(output[i])):  # Iterate over the second dimension
-                    for k in range(len(output[i][j])):  # Iterate over the third dimension
-                        for l in range(len(output[i][j][k])):  # Iterate over the fourth dimension
-                            assert abs(total_out[i][j][k][l] - output[i][j][k][l]) < 0.000000001
+            for i in range(len(output_onnx)):  # Iterate over the first dimension
+                for j in range(len(output_onnx[i])):  # Iterate over the second dimension
+                    for k in range(len(output_onnx[i][j])):  # Iterate over the third dimension
+                        for l in range(len(output_onnx[i][j][k])):  # Iterate over the fourth dimension
+                            assert abs(total_out[i][j][k][l] - output_onnx[i][j][k][l]) < 0.000000001
 
-            # print(total_out[0][0][0][0] - output[0][0][0][0])
-            raise
+            output = self.conv_run(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape,pads, self.strides)
 
             # matrix_product_ab = torch.conv2d(self.matrix_a, self.matrix_b)
 
@@ -99,17 +98,18 @@ class Convolution():
                 }
             
             weights = {
-                'conv1_weights': self.weights.tolist(),
-                'conv1_bias': self.bias.tolist(),
+                'weights': self.weights.tolist(),
+                'bias': self.bias.tolist(),
                 'strides': self.strides,
-                'kernel_shape': self.kernel_shape,
-                'group': self.group,
+                'kernel_shape': self.kernel_shape.tolist(),
+                'group': self.group.tolist(),
                 'dilation': self.dilation,
-                'pads': self.pads
+                'pads': self.pads,
+                'input_shape': self.input_arr.shape
             }
             
             outputs = {
-                'matrix_product_ab': output.tolist(),
+                'conv_out': output.tolist(),
             }
             '''
             #######################################################################################################
