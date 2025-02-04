@@ -61,11 +61,31 @@ class Doom():
             tensor_data = torch.tensor([float(d) for d in data])
         return tensor_data
     
-    def read_weights(self, layer_name, base_dir="doom_data"):
+    def read_weights(self, layer_name, base_dir="doom_weights", is_weights = True):
         """Reads the weights for the layers of the model from files."""
         # layer_files = [f for f in os.listdir(base_dir) if "weights" in f]  # Assuming weights are in files named with 'weights'
+        if is_weights:
+            prefix = f"{base_dir}/weight"
+        else:
+            prefix = f"{base_dir}/bias"
 
-        prefix = f"{base_dir}/weight"
+        file_name = f"{prefix}_{layer_name}.txt"
+
+        if ("input" in layer_name) or ("output" in layer_name) or ("relu" in layer_name) or ("reshape" in layer_name):
+            print("This layer should not have weights")
+            return
+        
+        if not os.path.exists(file_name):
+            print("Weights do not exist for this layer")
+            return
+
+        weight_tensor = self.read_tensor_from_file(file_name)
+        self.layers[layer_name].update_weights(weight_tensor)
+        print(f"Read weights for layer {layer_name}: {weight_tensor.shape}")
+
+    def read_layer_shape(self, layer_name, base_dir="doom_weights"):
+
+        prefix = f"{base_dir}/layer"
 
         file_name = f"{prefix}_{layer_name}.txt"
 

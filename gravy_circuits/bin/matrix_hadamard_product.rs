@@ -40,7 +40,6 @@ impl<C: Config> Define<C> for MatHadamardCircuit<Variable> {
         let element_prod = matrix_hadamard_product(api, self.matrix_a, self.matrix_b);    
         for i in 0..N_ROWS_A {
             for j in 0..N_COLS_A {
-                
                 api.assert_is_equal(self.matrix_hadamard_ab[i][j], element_prod[i][j]); 
                 }                          
             }
@@ -59,7 +58,6 @@ struct InputData {
 struct OutputData {
     matrix_hadamard_ab: Vec<Vec<u64>>, //  Shape (m, n) 
 }
-
 impl<C: Config>IOReader<C, MatHadamardCircuit<C::CircuitField>> for FileReader
 {
     fn read_inputs(&mut self, file_path: &str, mut assignment: MatHadamardCircuit<C::CircuitField>) -> MatHadamardCircuit<C::CircuitField>
