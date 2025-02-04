@@ -3,6 +3,7 @@ from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
 import os
 from enum import Enum
+import sys
 
 import numpy as np
 
@@ -43,7 +44,7 @@ class Convolution():
         self.kernel_shape = torch.tensor([3,3])
         self.group = torch.tensor([1])
         self.dilation = (1,1)
-        self.pads = (1,1)
+        self.pads = (1,1,1,1)
 
         
         '''
@@ -61,7 +62,72 @@ class Convolution():
             pads = [0 for s in X.shape[2:]] * 2
         if strides is None:
             strides = [1 for s in X.shape[2:]]
-        return X
+
+        if X.shape[1] != W.shape[1] * group or W.shape[0] % group != 0:
+            raise ValueError(
+                f"Shape inconsistencies, X.shape={X.shape}, W.shape={W.shape}, group={group}, "
+                f"W should be {(W.shape[0], X.shape[1] // group, np.prod(W.shape[1:]) // X.shape[1] * group)}."
+        )
+        if len(X.shape) == 4:
+            sN, sC, sH, sW = X.shape
+            # M, C_group, kH, kW = W.shape
+            kh, kw = kernel_shape
+            sth, stw = strides
+
+            h_out = int(((sH - kh + pads[0] + pads[2]) / sth) + 1)
+            w_out = int(((sW - kw + pads[1] + pads[3]) / stw) + 1)
+
+            h0, w0 = pads[0], pads[1]
+            oh, ow = -1 * (kh % 2), -1 * (kw % 2)
+            bh, bw = -h0, -w0
+            eh, ew = h_out * sth, w_out * stw
+            res = np.zeros((X.shape[0], W.shape[0], h_out, w_out))  # type: ignore[assignment]
+            if B is not None:
+                res[:, :, :, :] = B.reshape((1, -1, 1, 1))  # type: ignore
+
+
+            for n in range(sN):
+                for nw in range(W.shape[0]):
+                    for c in range(sC):
+                        w = W[nw : nw + 1, c : c + 1]
+                        for io in range(bh, eh, sth):
+                            hr = (io - bh) // sth
+                            if hr >= h_out:
+                                continue
+                            i = io + kh % 2
+                            ih1, ih2 = max(0, i + oh), min(i + oh + kh, sH)
+                            for jo in range(bw, ew, stw):
+                                wr = (jo - bw) // stw
+                                if wr >= w_out:
+                                    continue
+                                j = jo + kw % 2
+                                iw1, iw2 = max(0, j + ow), min(j + ow + kw, sW)
+                                img = X[n : n + 1, c : c + 1, ih1:ih2, iw1:iw2]
+                                if img.shape != w.shape:
+                                    jh1, jh2 = (
+                                        max(-oh - i, 0),
+                                        min(kh, kh + sH - (i + oh + kh)),
+                                    )
+                                    jw1, jw2 = (
+                                        max(-ow - j, 0),
+                                        min(kw, kw + sW - (j + ow + kw)),
+                                    )
+                                    w_ = w[:1, :1, jh1:jh2, jw1:jw2]
+                                    if img.shape != w_.shape:
+                                        raise RuntimeError(
+                                            f"Unexpected shape {img.shape} != {w_.shape}, oh={oh}, ow={ow}, "
+                                            f"i={i}, j={j}, kh={kh}, kw={kw}, sH={sH}, sW={sW}, sth={sth}, stw={stw}."
+                                        )
+                                    s = np.dot(img.reshape((1, -1)), w_.reshape((-1, 1)))[
+                                        0, 0
+                                    ]  # (img * w_).sum()
+                                else:
+                                    s = np.dot(img.reshape((1, -1)), w.reshape((-1, 1)))[
+                                        0, 0
+                                    ]  # (img * w).sum()
+                                res[n, nw, hr, wr] += s  # type: ignore
+
+            return X
     
 
     def base_testing(self, input_folder:str, proof_folder: str, temp_folder: str, weights_folder:str, circuit_folder:str, proof_system: ZKProofSystems, output_folder: str = None):
@@ -78,17 +144,23 @@ class Convolution():
 
 
             ## Perform calculation here
-            pads = (1,1,1,1)
+            pads = (1,1)
             #Ensure that onnx representation matches torch model
-            output_onnx = _conv_implementation(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape,pads, self.strides)
-            total_out = torch.conv2d(self.input_arr, self.weights, self.bias,self.strides,self.pads, self.dilation, self.group)
+            output_onnx = _conv_implementation(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape,self.pads, self.strides)
+            # raise
+            total_out = torch.conv2d(self.input_arr, self.weights, self.bias,self.strides,pads, self.dilation, self.group)
             for i in range(len(output_onnx)):  # Iterate over the first dimension
                 for j in range(len(output_onnx[i])):  # Iterate over the second dimension
                     for k in range(len(output_onnx[i][j])):  # Iterate over the third dimension
                         for l in range(len(output_onnx[i][j][k])):  # Iterate over the fourth dimension
                             assert abs(total_out[i][j][k][l] - output_onnx[i][j][k][l]) < 0.000000001
 
-            output = self.conv_run(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape,pads, self.strides)
+            output = self.conv_run(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape,self.pads, self.strides)
+            # for i in range(len(output_onnx)):  # Iterate over the first dimension
+            #     for j in range(len(output_onnx[i])):  # Iterate over the second dimension
+            #         for k in range(len(output_onnx[i][j])):  # Iterate over the third dimension
+            #             for l in range(len(output_onnx[i][j][k])):  # Iterate over the fourth dimension
+            #                 assert abs(total_out[i][j][k][l] - output[i][j][k][l]) < 0.000000001
 
             # matrix_product_ab = torch.conv2d(self.matrix_a, self.matrix_b)
 
@@ -217,6 +289,7 @@ def _conv_implementation(
         kernel_shape = new_kernel_shape
 
     if auto_pad in {"SAME_LOWER", "SAME_UPPER", "VALID"}:
+        raise
         head = []
         tail = []
         for i in range(len(X.shape) - 2):
