@@ -7,13 +7,6 @@ import sys
 
 import numpy as np
 
-
-
-# class ConversionType(Enum):
-#     DUAL_MATRIX = "dual_matrix"
-#     TWOS_COMP = "twos_comp"
-#     SIGNED_MAG = "signed_mag"
-
 class Convolution():
     #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
     def __init__(self):
@@ -92,6 +85,7 @@ class Convolution():
                         w = W[nw : nw + 1, c : c + 1]
                         for io in range(bh, eh, sth):
                             hr = (io - bh) // sth
+                            # print(hr)
                             if hr >= h_out:
                                 continue
                             i = io + kh % 2
@@ -126,8 +120,50 @@ class Convolution():
                                         0, 0
                                     ]  # (img * w).sum()
                                 res[n, nw, hr, wr] += s  # type: ignore
-
             return X
+        
+    def convolution(input_data, filters):
+        in_channels, H, W = input_data.shape
+        num_filters, filt_channels, kH, kW = filters.shape
+        
+        # Calculate padding size for "same" convolution (assuming stride=1)
+        pad_h = kH // 2  # For kH = 3, pad_h = 1
+        pad_w = kW // 2  # For kW = 3, pad_w = 1
+
+        # Pad the input_data
+        padded_input = np.pad(input_data,
+                            pad_width=((0, 0), (pad_h, pad_h), (pad_w, pad_w)),
+                            mode='constant', constant_values=0)
+        print("PADDED INPUT")
+        print(padded_input)
+        print("FILTERS")
+        print(filters)
+        
+        output = np.zeros((num_filters, H, W))
+
+        # Loop over each filter
+        for f in range(num_filters):
+            # Loop over each row and column of the "cross-sections of the input"
+            for i in range(H):
+                for j in range(W):
+                    # Extract the window from the padded input
+                    window = padded_input[:, i:i + kH, j:j + kW]
+                    # Element-wise multiply the window and the filter, then sum the results
+                    # output[f, i, j] = np.sum(window * filters[f]) # We'd use this if we didn't have to circuitize
+                    # Initialize the output value
+                    output_value = 0
+                    # Loop over input channels (should match filter channels)
+                    for c in range(in_channels):
+                        # Loop over the filter height (3x3 kernel)
+                        for kh in range(kH):
+                            for kw in range(kW):
+                                # Multiply corresponding elements and accumulate
+                                output_value += window[c][kh][kw] * filters[f][c][kh][kw]
+
+                    output[f][i][j] = output_value
+        print("OUTPUT")
+        print(output)
+        return output
     
 
     def base_testing(self, input_folder:str, proof_folder: str, temp_folder: str, weights_folder:str, circuit_folder:str, proof_system: ZKProofSystems, output_folder: str = None):
@@ -146,9 +182,9 @@ class Convolution():
             ## Perform calculation here
             pads = (1,1)
             #Ensure that onnx representation matches torch model
-            output_onnx = _conv_implementation(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape,self.pads, self.strides)
+            output_onnx = _conv_implementation(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape, self.pads, self.strides)
             # raise
-            total_out = torch.conv2d(self.input_arr, self.weights, self.bias,self.strides,pads, self.dilation, self.group)
+            total_out = torch.conv2d(self.input_arr, self.weights, self.bias, self.strides, pads, self.dilation, self.group)
             for i in range(len(output_onnx)):  # Iterate over the first dimension
                 for j in range(len(output_onnx[i])):  # Iterate over the second dimension
                     for k in range(len(output_onnx[i][j])):  # Iterate over the third dimension
@@ -289,7 +325,6 @@ def _conv_implementation(
         kernel_shape = new_kernel_shape
 
     if auto_pad in {"SAME_LOWER", "SAME_UPPER", "VALID"}:
-        raise
         head = []
         tail = []
         for i in range(len(X.shape) - 2):

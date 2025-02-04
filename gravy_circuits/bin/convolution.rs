@@ -1,7 +1,8 @@
 use arith::FieldForECC;
+use convolution_fn::{conv_shape_4, not_yet_implemented_conv, set_default_params};
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use helper_fn::{four_d_array_to_vec, load_circuit_constant};
+use helper_fn::{four_d_array_to_vec, load_circuit_constant, read_4d_weights};
 use io_reader::{FileReader, IOReader};
 use lazy_static::lazy_static;
 #[allow(unused_imports)]
@@ -13,6 +14,8 @@ use matrix_computation::{
 use serde::Deserialize;
 use std::ops::Neg;
 
+#[path = "../src/convolution_fn.rs"]
+pub mod convolution_fn;
 #[path = "../src/matrix_computation.rs"]
 pub mod matrix_computation;
 
@@ -71,154 +74,6 @@ lazy_static! {
     };
 }
 
-fn read_4d_weights<C: Config>(
-    api: &mut API<C>,
-    weights_data: &Vec<Vec<Vec<Vec<i64>>>>,
-) -> Vec<Vec<Vec<Vec<Variable>>>> {
-    let weights: Vec<Vec<Vec<Vec<Variable>>>> = weights_data
-        .clone()
-        .into_iter()
-        .map(|dim1| {
-            dim1.into_iter()
-                .map(|dim2| {
-                    dim2.into_iter()
-                        .map(|dim3| {
-                            dim3.into_iter()
-                                .map(|x| load_circuit_constant(api, x))
-                                .collect()
-                        })
-                        .collect()
-                })
-                .collect()
-        })
-        .collect();
-    weights
-}
-
-//Untested
-fn set_default_params(
-    dilations: &Vec<u32>,
-    kernel_shape: &Vec<u32>,
-    pads: &Vec<u32>,
-    strides: &Vec<u32>,
-    input_shape: &Vec<u32>
-) -> (Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>) {
-    // If dilations is empty, fill it with 1s of the appropriate length
-    let mut dilations_out = dilations.clone();
-    let mut kernel_shape_out = kernel_shape.clone();
-    let mut pads_out = pads.clone();
-    let mut strides_out = strides.clone();
-
-    if dilations.is_empty() {
-        dilations_out = vec![1; input_shape[2..].len()];
-    }
-
-    // If kernel_shape is empty, fill it with W.shape()[2..]
-    if kernel_shape.is_empty() {
-        kernel_shape_out = input_shape[2..].to_vec();
-    }
-
-    // If pads is empty, fill it with 0s, twice the length of X.shape()[2..]
-    if pads.is_empty() {
-        let shape_len = input_shape[2..].len();
-        pads_out = vec![0; shape_len * 2];
-    }
-
-    // If strides is empty, fill it with 1s of the appropriate length
-    if strides.is_empty() {
-        strides_out = vec![1; input_shape[2..].len()];
-    }
-    (dilations_out, kernel_shape_out, pads_out, strides_out)
-}
-
-fn not_yet_implemented_conv(input_shape: &Vec<u32>, group: &Vec<u32>, dilations: &Vec<u32>, ){
-    if input_shape[1] != input_shape[1] * group[0] || input_shape[0] % group[0] != 0 {
-        panic!("Shape inconsistencies");
-    }
-    if group[0] > 1{
-        panic!("Not yet implemented for group > 1");
-    }
-    if (dilations[0] != 1) || (dilations.iter().min() != dilations.iter().max()){
-        panic!("Not yet implemented for this dilation");
-    }
-    if input_shape.len() == 3{
-        panic!("Not yet implemented for Input shape length 3");
-    }
-    if input_shape.len() == 5{
-        panic!("Not yet implemented for Input shape length 5");
-    }
-}
-
-fn conv_shape_4<C: Config>(api: &mut API<C>, x: Vec<Vec<Vec<Vec<Variable>>>>, input_shape: &Vec<u32>, kernel_shape: &Vec<u32>, strides: &Vec<u32>, pads: &Vec<u32>, weights: &Vec<Vec<Vec<Vec<Variable>>>>, bias: &Vec<Variable>) -> Vec<Vec<Vec<Vec<Variable>>>>{
-    if pads.len() < 4{
-        panic!("Pads is not long enough");
-    }
-    let sN = input_shape.get(0).expect("Missing input shape index 0");
-    let sC = input_shape.get(1).expect("Missing input shape index 1");
-    let sH = input_shape.get(2).expect("Missing input shape index 2");
-    let sW = input_shape.get(3).expect("Missing input shape index 3");
-
-    // # M, C_group, kH, kW = W.shape
-    let kh = kernel_shape.get(0).expect("Missing kernel shape index 0");
-    let kw = kernel_shape.get(1).expect("Missing kernel shape index 1");
-
-    let sth = strides.get(0).expect("Missing strides index 0");
-    let stw = strides.get(1).expect("Missing strides index 1");
-
-    //Need to make sure there is no overflow/casting issues here. Dont think there should be
-    let h_out = (sH - kh + pads[0] + pads[2] / sth) + 1;
-    let w_out = ((sW - kw + pads[1] + pads[3]) / stw) + 1;
-
-    let h0 = pads.get(0).expect("Missing pads 0 index");
-    let w0 = pads.get(1).expect("Missing pads 1 index");
-
-    let oh = -1 * (kh % 2) as i32;
-    let ow = -1 * (kw % 2) as i32;
-
-    let bh = -(*h0 as i32);
-    let bw = -(*w0 as i32);
-
-    let eh = h_out * sth;
-    let ew = w_out * stw;
-
-    let mut res: Vec<Vec<Vec<Vec<Variable>>>> = Vec::with_capacity(input_shape[0] as usize);
-    
-    let (shape_0, shape_1, shape_2, shape_3) = (input_shape[0] as usize, weights.len(), h_out, w_out as usize);
-
-    println!("{:?}", bias);
-    if !bias.is_empty(){
-        for _ in 0..shape_0 {
-            let mut dim2 = Vec::with_capacity(shape_1);
-
-            for j in 0..shape_1 {
-                let mut dim3 = Vec::with_capacity(h_out as usize);
-                for _ in 0..shape_2 {
-                    dim3.push(vec![bias[j]; shape_3 as usize]); // Fill with zeros
-                }
-                dim2.push(dim3);
-            }
-            res.push(dim2);
-        }
-        // res[:, :, :, :] = B.reshape((1, -1, 1, 1))  # type: ignore
-    }
-    else{
-        let zero = api.constant(0);
-        for _ in 0..shape_0 {
-            let mut dim2 = Vec::with_capacity(shape_1);
-            for _ in 0..shape_1 {
-                let mut dim3 = Vec::with_capacity(shape_2 as usize);
-                for _ in 0..shape_2 {
-                    dim3.push(vec![zero; shape_3 as usize]); // Fill with zeros
-                }
-                dim2.push(dim3);
-            }
-            res.push(dim2);
-        }
-    }
-    
-
-    x
-}
 
 declare_circuit!(ConvCircuit {
     input_arr: [[[[Variable; DIM4]; DIM3]; DIM2]; DIM1], // shape (m, n)

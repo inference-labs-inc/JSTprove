@@ -27,3 +27,27 @@ pub fn four_d_array_to_vec<const K: usize, const L: usize, const M: usize, const
         )
         .collect()
 }
+
+pub fn read_4d_weights<C: Config>(
+    api: &mut API<C>,
+    weights_data: &Vec<Vec<Vec<Vec<i64>>>>,
+) -> Vec<Vec<Vec<Vec<Variable>>>> {
+    let weights: Vec<Vec<Vec<Vec<Variable>>>> = weights_data
+        .clone()
+        .into_iter()
+        .map(|dim1| {
+            dim1.into_iter()
+                .map(|dim2| {
+                    dim2.into_iter()
+                        .map(|dim3| {
+                            dim3.into_iter()
+                                .map(|x| load_circuit_constant(api, x))
+                                .collect()
+                        })
+                        .collect()
+                })
+                .collect()
+        })
+        .collect();
+    weights
+}
