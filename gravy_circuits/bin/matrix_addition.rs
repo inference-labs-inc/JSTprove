@@ -32,8 +32,8 @@ declare_circuit!(MatAddCircuit {
     matrix_sum_ab: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
 });
 
-impl<C: Config> Define<C> for MatAddCircuit<Variable> {
-    fn define(&self, api: &mut API<C>) {    
+impl<C: Config> GenericDefine<C> for MatAddCircuit<Variable> {
+    fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {  
         let matrix_sum = matrix_computation::matrix_addition(api, self.matrix_a, self.matrix_b);
         for i in 0..N_ROWS_A {
             for j in 0..N_COLS_A {

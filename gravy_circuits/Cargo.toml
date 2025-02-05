@@ -3,7 +3,6 @@ name = "circuits"
 version = "0.1.0"
 edition = "2021"
 
-
 [dependencies]
 ark-std.workspace = true
 rand.workspace = true
@@ -71,3 +70,7 @@ path = "bin/scaled_matrix_product_sum.rs"
 [[bin]]
 name = "gemm"
 path = "bin/gemm.rs"
+
+[[bin]]
+name = "convolution"
+path = "bin/convolution.rs"
