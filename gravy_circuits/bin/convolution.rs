@@ -38,6 +38,8 @@ const DIM2: usize = 4; // n
 const DIM3: usize = 28; // n
 const DIM4: usize = 28; // k
 
+const DIM2OUT: usize = 16;
+
 //Define structure of inputs, weights and output
 #[derive(Deserialize, Clone)]
 struct WeightsData {
@@ -77,7 +79,7 @@ lazy_static! {
 
 declare_circuit!(ConvCircuit {
     input_arr: [[[[Variable; DIM4]; DIM3]; DIM2]; DIM1], // shape (m, n)
-    conv_out: [[[[Variable; DIM4]; DIM3]; DIM2]; DIM1],  // shape (m, k)
+    conv_out: [[[[Variable; DIM4]; DIM3]; DIM2OUT]; DIM1],  // shape (m, k)
 });
 // Memorization, in a better place
 impl<C: Config> Define<C> for ConvCircuit<Variable> {
@@ -104,9 +106,6 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
 
         let out = conv_shape_4(api, input_arr, &WEIGHTS_INPUT.input_shape, &kernel_shape, &strides, &pads, &weights, &bias);
 
-
-
-
         //Assert output of matrix multiplication
         for (j, dim1) in self.conv_out.iter().enumerate() {
             for (k, dim2) in dim1.iter().enumerate() {
@@ -119,6 +118,47 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
         }
     }
 }
+
+// impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
+//     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
+//         // Bring the weights into the circuit as constants
+
+//         let weights = read_4d_weights(api, &WEIGHTS_INPUT.weights);
+//         let bias: Vec<Variable> = WEIGHTS_INPUT
+//             .bias
+//             .clone()
+//             .into_iter()
+//             .map(|x| load_circuit_constant(api, x))
+//             .collect();
+//         let (dilations, kernel_shape, pads, strides) = set_default_params(
+//             &WEIGHTS_INPUT.dilation,
+//             &WEIGHTS_INPUT.kernel_shape,
+//             &WEIGHTS_INPUT.pads,
+//             &WEIGHTS_INPUT.strides,
+//             &WEIGHTS_INPUT.input_shape
+//         );
+//         not_yet_implemented_conv(&WEIGHTS_INPUT.input_shape, &WEIGHTS_INPUT.group, &dilations);
+
+//         let input_arr = four_d_array_to_vec(self.input_arr);
+
+//         let out = conv_shape_4(api, input_arr, &WEIGHTS_INPUT.input_shape, &kernel_shape, &strides, &pads, &weights, &bias);
+
+
+
+
+//         //Assert output of matrix multiplication
+//         for (j, dim1) in self.conv_out.iter().enumerate() {
+//             for (k, dim2) in dim1.iter().enumerate() {
+//                 for (l, dim3) in dim2.iter().enumerate() {
+//                     for (m, dim4) in dim3.iter().enumerate() {
+//                         // api.display("conv_out", self.conv_out[j][k][l][m]);
+//                         api.assert_is_equal(self.conv_out[j][k][l][m], out[j][k][l][m]);
+//                     }
+//                 }
+//             }
+//         }
+//     }
+// }
 
 impl<C: Config> IOReader<C, ConvCircuit<C::CircuitField>> for FileReader {
     fn read_inputs(
@@ -164,10 +204,10 @@ impl<C: Config> IOReader<C, ConvCircuit<C::CircuitField>> for FileReader {
                     for (l, &element) in dim3.iter().enumerate() {
                         if element < 0 {
                             assignment.conv_out[i][j][k][l] =
-                                C::CircuitField::from(element.abs() as u32).neg();
+                                C::CircuitField::from_u256(U256::from(element.abs() as u64)).neg();
                         } else {
                             assignment.conv_out[i][j][k][l] =
-                                C::CircuitField::from(element.abs() as u32);
+                                C::CircuitField::from_u256(U256::from(element.abs() as u64));
                         }
                     }
                 }
@@ -187,4 +227,8 @@ fn main() {
     main_runner::run_bn254::<ConvCircuit<Variable>,
     ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
                             _>(&mut file_reader);
+
+    // main_runner::debug_bn254::<ConvCircuit<Variable>,
+    //                         ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
+    //                                                 _>(&mut file_reader);
 }

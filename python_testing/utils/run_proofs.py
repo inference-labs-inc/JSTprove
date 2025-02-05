@@ -59,12 +59,16 @@ class ZKProofsExpander():
         # Add path to toml
         executable_to_run = ["cargo", "run", "--bin", self.circuit_file]
         executable_to_run.append("--release")
-         
+
         # Add inputs
         executable_to_run.append(input_file)
 
         # Add output
         executable_to_run.append(output_file)
+
+
+
+
 
         res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=False)
         if res.returncode == 0:

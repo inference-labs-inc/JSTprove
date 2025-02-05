@@ -2,6 +2,8 @@ use std::cmp::{max, min};
 
 use expander_compiler::frontend::*;
 
+use crate::matrix_computation::{dot, matrix_multplication};
+
 //Untested
 pub fn set_default_params(
     dilations: &Vec<u32>,
@@ -58,7 +60,7 @@ pub fn not_yet_implemented_conv(input_shape: &Vec<u32>, group: &Vec<u32>, dilati
 
 
 
-fn conv_shape_4_setup_res<C: Config>(api: &mut API<C>, input_shape: &Vec<u32>, bias: &Vec<Variable>, h_out: u32, shape_0: usize, shape_1: usize, shape_2: u32, shape_3: usize) ->  Vec<Vec<Vec<Vec<Variable>>>>{
+fn conv_shape_4_setup_res<C: Config, Builder: RootAPI<C>>(api: &mut Builder, input_shape: &Vec<u32>, bias: &Vec<Variable>, h_out: u32, shape_0: usize, shape_1: usize, shape_2: u32, shape_3: usize) ->  Vec<Vec<Vec<Vec<Variable>>>>{
     let mut res: Vec<Vec<Vec<Vec<Variable>>>> = Vec::with_capacity(input_shape[0] as usize);
     if !bias.is_empty(){
         for _ in 0..shape_0 {
@@ -92,7 +94,40 @@ fn conv_shape_4_setup_res<C: Config>(api: &mut API<C>, input_shape: &Vec<u32>, b
     res
 }
 
-pub fn conv_shape_4<C: Config>(api: &mut API<C>, X: Vec<Vec<Vec<Vec<Variable>>>>, input_shape: &Vec<u32>, kernel_shape: &Vec<u32>, strides: &Vec<u32>, pads: &Vec<u32>, weights: &Vec<Vec<Vec<Vec<Variable>>>>, bias: &Vec<Variable>) -> Vec<Vec<Vec<Vec<Variable>>>>{
+fn have_matching_shapes(x: &Vec<Vec<Vec<Vec<Variable>>>>, y: &Vec<Vec<Vec<Vec<Variable>>>>) -> bool {
+    // Check if the outermost vectors (first dimension) have the same length
+    if x.len() != y.len() {
+        return false;
+    }
+
+    // Check if each of the second-level vectors (second dimension) have the same length
+    for (x_outer, y_outer) in x.iter().zip(y.iter()) {
+        if x_outer.len() != y_outer.len() {
+            return false;
+        }
+
+        // Check if each of the third-level vectors (third dimension) have the same length
+        for (x_mid, y_mid) in x_outer.iter().zip(y_outer.iter()) {
+            if x_mid.len() != y_mid.len() {
+                return false;
+            }
+
+            // Check if each of the fourth-level vectors (fourth dimension) have the same length
+            for (x_innermost, y_innermost) in x_mid.iter().zip(y_mid.iter()) {
+                if x_innermost.len() != y_innermost.len() {
+                    return false;
+                }
+            }
+        }
+    }
+
+    // All dimensions match
+    true
+}
+
+
+
+pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(api: &mut Builder, X: Vec<Vec<Vec<Vec<Variable>>>>, input_shape: &Vec<u32>, kernel_shape: &Vec<u32>, strides: &Vec<u32>, pads: &Vec<u32>, weights: &Vec<Vec<Vec<Vec<Variable>>>>, bias: &Vec<Variable>) -> Vec<Vec<Vec<Vec<Variable>>>>{
     if pads.len() < 4{
         panic!("Pads is not long enough");
     }
@@ -126,7 +161,7 @@ pub fn conv_shape_4<C: Config>(api: &mut API<C>, X: Vec<Vec<Vec<Vec<Variable>>>>
 
     let (shape_0, shape_1, shape_2, shape_3) = (input_shape[0] as usize, weights.len(), h_out, w_out as usize);
 
-    let res = conv_shape_4_setup_res(api, input_shape, bias, h_out, shape_0, shape_1, shape_2, shape_3);
+    let mut res = conv_shape_4_setup_res(api, input_shape, bias, h_out, shape_0, shape_1, shape_2, shape_3);
 
     for n in 0..*sN{
         for nw in 0..weights.len(){
@@ -168,57 +203,69 @@ pub fn conv_shape_4<C: Config>(api: &mut API<C>, X: Vec<Vec<Vec<Vec<Variable>>>>
                             .collect::<Vec<Vec<Vec<Variable>>>>()
                         )
                         .collect::<Vec<Vec<Vec<Vec<Variable>>>>>();
-    //                     iw1, iw2 = max(0, j + ow), min(j + ow + kw, sW)
-    //                     img = X[n : n + 1, c : c + 1, ih1:ih2, iw1:iw2]
+                        
+                        if !have_matching_shapes(&img, &w){
+                            let jh1 = max(-oh - i, 0) as usize;
+                            let jh2 = min(*kh as i32, *kh as i32 + *sH as i32 - (i + oh + *kh as i32)) as usize;
 
+                            let jw1 = max(-ow - j, 0) as usize;
+                            let jw2 = min(*kw as i32, *kw as i32 + *sW as i32 - (j + ow + *kw as i32)) as usize;
+
+                            let w_: Vec<Vec<Vec<Vec<Variable>>>> = w[0..1].iter() // Slice the first dimension (up to index 1)
+                                .map(|x| {
+                                    x[0..1].iter() // Slice the second dimension (up to index 1)
+                                        .map(|y| {
+                                            y[jh1..jh2].iter() // Slice the third dimension from `jh1` to `jh2`
+                                                .map(|z| {
+                                                    z[jw1..jw2].to_vec() // Slice the fourth dimension from `jw1` to `jw2`
+                                                })
+                                                .collect::<Vec<Vec<Variable>>>() // Collect into a Vec<Vec<Variable>>
+                                        })
+                                        .collect::<Vec<Vec<Vec<Variable>>>>() // Collect into a Vec<Vec<Vec<Variable>>>
+                                })
+                                .collect::<Vec<Vec<Vec<Vec<Variable>>>>>(); // Collect into a Vec<Vec<Vec<Vec<Variable>>>>
+                        
+
+                            if !have_matching_shapes(&w_, &img){
+                                panic!("Unexpected shape!! img != w_, oh={oh}, ow={ow}, i={i}, j={j}, kh={kh}, kw={kw}, sH={sH}, sW={sW}, sth={sth}, stw={stw}")
+                            }
+                            let s = flatten_and_perform_dot(api, img, w_);
+                            // api.display("res pre sum", res[n as usize][nw][hr as usize][wr as usize]);
+                            res[n as usize][nw][hr as usize][wr as usize] = api.add( s, res[n as usize][nw][hr as usize][wr as usize]);
+                            api.display("res post_sum", res[n as usize][nw][hr as usize][wr as usize]);
+
+                            
+
+                        }
+                        else{
+                            let s = flatten_and_perform_dot(api, img, w.clone());
+                            res[n as usize][nw][hr as usize][wr as usize] = api.add( s, res[n as usize][nw][hr as usize][wr as usize]);
+                        }
                     }
-
-
                 }
             }
         }
     }
 
-    // for n in range(sN):
-    //     for nw in range(W.shape[0]):
-    //         for c in range(sC):
-    //             w = W[nw : nw + 1, c : c + 1]
-    //             for io in range(bh, eh, sth):
-    //                 hr = (io - bh) // sth
-    //                 # print(hr)
-    //                 if hr >= h_out:
-    //                     continue
-    //                 i = io + kh % 2
-    //                 ih1, ih2 = max(0, i + oh), min(i + oh + kh, sH)
-    //                 for jo in range(bw, ew, stw):
-    //                     wr = (jo - bw) // stw
-    //                     if wr >= w_out:
-    //                         continue
-    //                     j = jo + kw % 2
-    //                     iw1, iw2 = max(0, j + ow), min(j + ow + kw, sW)
-    //                     img = X[n : n + 1, c : c + 1, ih1:ih2, iw1:iw2]
-    //                     if img.shape != w.shape:
-    //                         jh1, jh2 = (
-    //                             max(-oh - i, 0),
-    //                             min(kh, kh + sH - (i + oh + kh)),
-    //                         )
-    //                         jw1, jw2 = (
-    //                             max(-ow - j, 0),
-    //                             min(kw, kw + sW - (j + ow + kw)),
-    //                         )
-    //                         w_ = w[:1, :1, jh1:jh2, jw1:jw2]
-    //                         if img.shape != w_.shape:
-    //                             raise RuntimeError(
-    //                                 f"Unexpected shape {img.shape} != {w_.shape}, oh={oh}, ow={ow}, "
-    //                                 f"i={i}, j={j}, kh={kh}, kw={kw}, sH={sH}, sW={sW}, sth={sth}, stw={stw}."
-    //                             )
-    //                         s = np.dot(img.reshape((1, -1)), w_.reshape((-1, 1)))[
-    //                             0, 0
-    //                         ]  # (img * w_).sum()
-    //                     else:
-    //                         s = np.dot(img.reshape((1, -1)), w.reshape((-1, 1)))[
-    //                             0, 0
-    //                         ]  # (img * w).sum()
-    //                     res[n, nw, hr, wr] += s  # type: ignore
-    X
+    res
+}
+
+fn flatten_and_perform_dot<C: Config, Builder: RootAPI<C>>(api: &mut Builder, img: Vec<Vec<Vec<Vec<Variable>>>>, w_: Vec<Vec<Vec<Vec<Variable>>>>) -> Variable {
+    // let flattened_img: &Vec<Vec<Variable>> = &img[0][0];
+    // let flattened_w_: &Vec<Vec<Variable>> =  &w_[0][0];
+
+    let flattened_img: Vec<Variable> = img.iter() // Iterate over the first dimension
+        .flat_map(|x| x.iter()) // Iterate over the second dimension
+        .flat_map(|y| y.iter()) // Iterate over the third dimension
+        .flat_map(|z| z.iter())
+        .cloned() // Iterate over the fourth dimension
+        .collect();
+    let flattened_w_: Vec<Variable> = w_.iter() // Iterate over the first dimension
+        .flat_map(|x| x.iter()) // Iterate over the second dimension
+        .flat_map(|y| y.iter()) // Iterate over the third dimension
+        .flat_map(|z| z.iter())
+        .cloned() // Iterate over the fourth dimension
+        .collect();
+    let s = dot(api, flattened_img, flattened_w_);
+    s
 }

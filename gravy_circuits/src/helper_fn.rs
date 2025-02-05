@@ -1,6 +1,6 @@
 use expander_compiler::frontend::*;
 
-pub fn load_circuit_constant<C: Config>(api: &mut API<C>, x: i64) -> Variable{
+pub fn load_circuit_constant<C: Config, Builder: RootAPI<C>>(api: &mut Builder, x: i64) -> Variable{
     if x < 0 {
         let y = api.constant(x.abs() as u32);
         api.neg(y)
@@ -28,8 +28,8 @@ pub fn four_d_array_to_vec<const K: usize, const L: usize, const M: usize, const
         .collect()
 }
 
-pub fn read_4d_weights<C: Config>(
-    api: &mut API<C>,
+pub fn read_4d_weights<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
     weights_data: &Vec<Vec<Vec<Vec<i64>>>>,
 ) -> Vec<Vec<Vec<Vec<Variable>>>> {
     let weights: Vec<Vec<Vec<Vec<Variable>>>> = weights_data

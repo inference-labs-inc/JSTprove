@@ -34,6 +34,22 @@ fn product_sub_circuit<C: Config>(api: &mut API<C>, inputs: &Vec<Variable>) -> V
     vec![sum]
 }
 
+pub fn dot<C: Config, Builder: RootAPI<C>>(api: &mut Builder, vector_a: Vec<Variable>, vector_b: Vec<Variable>) -> Variable{
+    let mut row_col_product: Variable = api.constant(0);
+    for k in 0..vector_a.len() {
+        // api.display("vector_a", vector_a[k]);
+        // let temp1 = api.neg(vector_a[k]);
+        // api.display("vector_a_neg", temp1);
+        // api.display("vector_b", vector_b[k]);
+        // let temp2 = api.neg(vector_b[k]);
+        // api.display("vector_b_neg", temp2);
+
+        let element_product = api.mul(vector_a[k], vector_b[k]);
+        row_col_product = api.add(row_col_product, element_product);
+    }
+    row_col_product
+}
+
 pub fn matrix_multplication_array<C: Config, const M: usize, const N: usize, const K: usize>(api: &mut API<C>, matrix_a: [[Variable; N]; M], matrix_b: Vec<Vec<Variable>>) -> [[Variable; K]; M]{
     let mut out = [[Variable::default(); K]; M];
     for i in 0..M {

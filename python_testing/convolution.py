@@ -1,3 +1,4 @@
+import time
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
@@ -115,13 +116,16 @@ class Convolution():
                                     s = np.dot(img.reshape((1, -1)), w_.reshape((-1, 1)))[
                                         0, 0
                                     ]  # (img * w_).sum()
+                                    
                                 else:
                                     s = np.dot(img.reshape((1, -1)), w.reshape((-1, 1)))[
                                         0, 0
                                     ]  # (img * w).sum()
                                 res[n, nw, hr, wr] += s  # type: ignore
-            return X
+
+            return res
         
+
     def convolution(input_data, filters):
         in_channels, H, W = input_data.shape
         num_filters, filt_channels, kH, kW = filters.shape
@@ -161,8 +165,6 @@ class Convolution():
                                 output_value += window[c][kh][kw] * filters[f][c][kh][kw]
 
                     output[f][i][j] = output_value
-        print("OUTPUT")
-        print(output)
         return output
     
 
@@ -201,6 +203,8 @@ class Convolution():
             # matrix_product_ab = torch.conv2d(self.matrix_a, self.matrix_b)
 
             ## Define inputs and outputs
+            # time.sleep(10)
+
             inputs = {
                 'input_arr': self.input_arr.tolist()
                 }
@@ -215,9 +219,8 @@ class Convolution():
                 'pads': self.pads,
                 'input_shape': self.input_arr.shape
             }
-            
             outputs = {
-                'conv_out': output.tolist(),
+                'conv_out': output.astype(np.int64).tolist(),
             }
             '''
             #######################################################################################################
