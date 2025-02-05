@@ -27,10 +27,11 @@ declare_circuit!(Circuit {
 });
 
 //This is where the circuit is defined. We can refactor out some modular components to this, but this is where it is put together
-impl<C: Config> Define<C> for Circuit<Variable> {
+impl<C: Config> GenericDefine<C> for Circuit<Variable> {
 
     // Default circuit for now
-    fn define(&self, api: &mut API<C>) {
+    fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
+
 
         // Iterate over each input/output pair (one per batch)
         for i in 0..LENGTH {

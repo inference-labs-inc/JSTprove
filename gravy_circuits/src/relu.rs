@@ -2,7 +2,7 @@ use expander_compiler::frontend::*;
 use extra::UnconstrainedAPI;
 
 // Version 1
-pub fn to_binary<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
+pub fn to_binary<C: Config, Builder: RootAPI<C>>(api: &mut Builder, x: Variable, n_bits: usize) -> Vec<Variable> {
     let mut res = Vec::new();
     for i in 0..n_bits {
         let y = api.unconstrained_shift_r(x, i as u32);
@@ -11,13 +11,13 @@ pub fn to_binary<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec
     res
 }
 
-fn to_int_for_twos_comp<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Variable{
+fn to_int_for_twos_comp<C: Config, Builder: RootAPI<C>>(api: &mut Builder, x: Variable, n_bits: usize) -> Variable{
     let add_num = api.unconstrained_pow(2,(n_bits - 1) as u32);
     let new_x = api.unconstrained_add(x, add_num);
     return new_x;
 }
 
-fn to_binary_2s<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<Variable> {
+fn to_binary_2s<C: Config, Builder: RootAPI<C>>(api: &mut Builder, x: Variable, n_bits: usize) -> Vec<Variable> {
     // The following code to generate new_x is tested and confirmed works
     let new_x = to_int_for_twos_comp(api, x, n_bits);
     let bits = to_binary(api, new_x, n_bits );
@@ -25,7 +25,7 @@ fn to_binary_2s<C: Config>(api: &mut API<C>, x: Variable, n_bits: usize) -> Vec<
 }
 
 //Assert boolean and add bits confirmation to circuit
-fn from_binary<C: Config>(api: &mut API<C>, bits: &Vec<Variable>, n_bits: usize) -> Variable {
+fn from_binary<C: Config, Builder: RootAPI<C>>(api: &mut Builder, bits: &Vec<Variable>, n_bits: usize) -> Variable {
     let mut res = api.constant(0);
     let length = n_bits;
     for i in 0..length {
@@ -37,17 +37,17 @@ fn from_binary<C: Config>(api: &mut API<C>, bits: &Vec<Variable>, n_bits: usize)
     res
 }
 
-fn from_binary_simple_32<C: Config>(api: &mut API<C>, bits: &Vec<Variable>) -> Vec<Variable> {
+fn from_binary_simple_32<C: Config, Builder: RootAPI<C>>(api: &mut Builder, bits: &Vec<Variable>) -> Vec<Variable> {
     vec![from_binary(api, bits, 32)]
 }
 #[allow(dead_code)]
-fn from_binary_simple_64<C: Config>(api: &mut API<C>, bits: &Vec<Variable>) -> Vec<Variable> {
+fn from_binary_simple_64<C: Config, Builder: RootAPI<C>>(api: &mut Builder, bits: &Vec<Variable>) -> Vec<Variable> {
     vec![from_binary(api, bits, 64)]
 }
 
 
 
-fn relu_simple_call_32<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Variable> {
+fn relu_simple_call_32<C: Config, Builder: RootAPI<C>>(api: &mut Builder, x: &Vec<Variable>) -> Vec<Variable> {
     let mut out: Vec<Variable> = Vec::with_capacity(x.len());
     for i in 0..x.len(){
         let bits = to_binary_2s(api, x[i], 32);
@@ -61,7 +61,7 @@ fn relu_simple_call_32<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Va
     out
 }
 
-// fn relu_simple_call_64<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Variable> {
+// fn relu_simple_call_64<C: Config, Builder: RootAPI<C>>(api: &mut Builder, x: &Vec<Variable>) -> Vec<Variable> {
 //     let mut out: Vec<Variable> = Vec::with_capacity(x.len());
 //     for i in 0..x.len(){
 //         let bits = to_binary_2s(api, x[i], 64);
@@ -77,12 +77,12 @@ fn relu_simple_call_32<C: Config>(api: &mut API<C>, x: &Vec<Variable>) -> Vec<Va
 
 
 // Assume 1 is positive and 0 is positive
-fn relu_single<C: Config>(api: &mut API<C>, x: Variable, sign: Variable) -> Variable {
+fn relu_single<C: Config, Builder: RootAPI<C>>(api: &mut Builder, x: Variable, sign: Variable) -> Variable {
     api.mul(x,sign)
 }
 
 
-fn relu_v2<C: Config>(api: &mut API<C>, input: Variable, n_bits: usize) -> Variable {
+fn relu_v2<C: Config, Builder: RootAPI<C>>(api: &mut Builder, input: Variable, n_bits: usize) -> Variable {
     // Iterate over each input/output pair (one per batch)
     // Get the twos compliment binary representation
     let bits = to_binary_2s(api, input, n_bits);
@@ -98,7 +98,7 @@ fn relu_v2<C: Config>(api: &mut API<C>, input: Variable, n_bits: usize) -> Varia
     relu_single(api, input, bits[n_bits - 1])
 }
 
-fn relu_naive<C: Config>(api: &mut API<C>, input: Variable, n_bits: usize) -> Variable {
+fn relu_naive<C: Config, Builder: RootAPI<C>>(api: &mut Builder, input: Variable, n_bits: usize) -> Variable {
     // Iterate over each input/output pair (one per batch)
     // Get the twos compliment binary representation
     let bits = to_binary_2s(api, input, n_bits);
@@ -121,7 +121,7 @@ fn relu_naive<C: Config>(api: &mut API<C>, input: Variable, n_bits: usize) -> Va
 
 */
 
-pub fn relu_3d_naive<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], n_bits: usize) -> Vec<Vec<Vec<Variable>>> {
+pub fn relu_3d_naive<C: Config, Builder: RootAPI<C>, const X: usize, const Y: usize, const Z: usize>(api: &mut Builder, input: [[[Variable; Z]; Y]; X], n_bits: usize) -> Vec<Vec<Vec<Variable>>> {
     let mut out: Vec<Vec<Vec<Variable>>> = Vec::new();
 
     for i in 0..input.len() {
@@ -139,7 +139,7 @@ pub fn relu_3d_naive<C: Config, const X: usize, const Y: usize, const Z: usize>(
 }
 
 // memorized_simple call on last dimension of array
-pub fn relu_3d_v2<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X], n_bits: usize) -> Vec<Vec<Vec<Variable>>> {
+pub fn relu_3d_v2<C: Config, Builder: RootAPI<C>, const X: usize, const Y: usize, const Z: usize>(api: &mut Builder, input: [[[Variable; Z]; Y]; X], n_bits: usize) -> Vec<Vec<Vec<Variable>>> {
     let mut out: Vec<Vec<Vec<Variable>>> = Vec::new();
 
     for i in 0..input.len() {
@@ -157,7 +157,7 @@ pub fn relu_3d_v2<C: Config, const X: usize, const Y: usize, const Z: usize>(api
 }
 
 //Appears slightly worse than relu twos v2
-pub fn relu_3d_v3<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: [[[Variable; Z]; Y]; X]) -> Vec<Vec<Vec<Variable>>> {
+pub fn relu_3d_v3<C: Config, Builder: RootAPI<C>, const X: usize, const Y: usize, const Z: usize>(api: &mut Builder, input: [[[Variable; Z]; Y]; X]) -> Vec<Vec<Vec<Variable>>> {
     let mut out: Vec<Vec<Vec<Variable>>> = Vec::new();
     for i in 0..input.len() {
         let mut out_1: Vec<Vec<Variable>> = Vec::new();
@@ -169,7 +169,7 @@ pub fn relu_3d_v3<C: Config, const X: usize, const Y: usize, const Z: usize>(api
     out
 }
 
-pub fn relu_1d_naive<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: Vec<Variable>, n_bits: usize) -> Vec<Variable> {
+pub fn relu_1d_naive<C: Config, Builder: RootAPI<C>, const X: usize, const Y: usize, const Z: usize>(api: &mut Builder, input: Vec<Variable>, n_bits: usize) -> Vec<Variable> {
     let mut out: Vec<Variable> = Vec::new();
     for i in 0..input.len(){
         out.push(relu_naive(api, input[i], n_bits));
@@ -178,7 +178,7 @@ pub fn relu_1d_naive<C: Config, const X: usize, const Y: usize, const Z: usize>(
 }
 
 // memorized_simple call on last dimension of array
-pub fn relu_1d_v2<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: Vec<Variable>, n_bits: usize) -> Vec<Variable> {
+pub fn relu_1d_v2<C: Config, Builder: RootAPI<C>, const X: usize, const Y: usize, const Z: usize>(api: &mut Builder, input: Vec<Variable>, n_bits: usize) -> Vec<Variable> {
     let mut out: Vec<Variable> = Vec::new();
     for i in 0..input.len(){
         out.push(relu_v2(api, input[i], n_bits));
@@ -187,7 +187,7 @@ pub fn relu_1d_v2<C: Config, const X: usize, const Y: usize, const Z: usize>(api
 }
 
 // memorized_simple call on last dimension of array
-pub fn relu_1d_v3<C: Config, const X: usize, const Y: usize, const Z: usize>(api: &mut API<C>, input: Vec<Variable>, n_bits: usize) -> Vec<Variable> {
+pub fn relu_1d_v3<C: Config, Builder: RootAPI<C>, const X: usize, const Y: usize, const Z: usize>(api: &mut Builder, input: Vec<Variable>, n_bits: usize) -> Vec<Variable> {
     if n_bits ==32{
         return api.memorized_simple_call(relu_simple_call_32, &input.to_vec());
     }

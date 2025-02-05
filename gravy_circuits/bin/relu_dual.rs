@@ -30,14 +30,14 @@ declare_circuit!(ReLUDualCircuit {
 });
 
 // Assume 0 is negative and 1 is positive
-fn relu<C: Config>(api: &mut API<C>, x: Variable, sign: Variable) -> Variable {
+fn relu<C: Config, Builder: RootAPI<C>>(api: &mut Builder, x: Variable, sign: Variable) -> Variable {
     let sign_2 = api.sub(1, sign);
     api.mul(x,sign_2)
 }
 
-impl<C: Config> Define<C> for ReLUDualCircuit<Variable> {
+impl<C: Config> GenericDefine<C> for ReLUDualCircuit<Variable> {
     // Default circuit for now, ensures input and output are equal
-    fn define(&self, api: &mut API<C>) {
+    fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
             for i in 0..LENGTH {
                 // Iterate over each input/output pair (one per batch)
                 let x = relu(api, self.input[0][i], self.input[1][i]);

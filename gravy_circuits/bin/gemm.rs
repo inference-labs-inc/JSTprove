@@ -42,8 +42,8 @@ declare_circuit!(Circuit {
     gemm: [[Variable; N_COLS_B]; N_ROWS_A], // shape (m, k)
 });
 
-impl<C: Config> Define<C> for Circuit<Variable> {
-    fn define(&self, api: &mut API<C>) {     
+impl<C: Config> GenericDefine<C> for Circuit<Variable> {
+    fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) { 
         let gemm_array = gemm(api, self.matrix_a, self.matrix_b, self.matrix_c, self.alpha, self.beta); 
         for i in 0..N_ROWS_A {
             for j in 0..N_COLS_B {
@@ -141,8 +141,6 @@ impl<C: Config>IOReader<C, Circuit<C::CircuitField>> for FileReader
 
 fn main(){
     let mut file_reader = FileReader{path: String::new()};
-    // run_gf2();
-    // run_m31();
     main_runner::run_bn254::<Circuit<Variable>,
     Circuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
                             _>(&mut file_reader);

@@ -13,7 +13,7 @@ where
     I: IOReader<C, CircuitDefaultType>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitType: Default
         + DumpLoadTwoVariables<Variable>
-        + expander_compiler::frontend::Define<C>
+        + GenericDefine<C>
         + Clone,
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
@@ -41,7 +41,8 @@ where
     let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
     let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
 
-    let compile_result: CompileResult<C> = compile(&CircuitType::default()).unwrap();
+    // let compile_result: CompileResult<C> = compile(&CircuitType::default()).unwrap();
+    let compile_result = compile_generic(&CircuitType::default(), CompileOptions::default()).unwrap();
     println!(
         "Peak Memory used Overall : {:.2}",
         GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
@@ -61,8 +62,6 @@ where
     } = compile_result;
 
     let assignment = CircuitDefaultType::default();
-    // let assignment = io_reader::input_data_from_json::<C>(input_path, assignment);
-    // let assignment = io_reader::output_data_from_json::<C>(output_path, assignment);
     let _input_reader = FileReader {
         path: input_path.clone(),
     };
@@ -204,7 +203,7 @@ where
 
     CircuitType: std::default::Default +
     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-    + expander_compiler::frontend::Define<expander_compiler::frontend::GF2Config>
+    + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::GF2Config>
     + std::clone::Clone,
 {
     run_main::<GF2Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
@@ -218,7 +217,7 @@ where
 
     CircuitType: std::default::Default +
     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-    + expander_compiler::frontend::Define<expander_compiler::frontend::M31Config>
+    + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::M31Config>
     + std::clone::Clone,
 {
     run_main::<M31Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
@@ -232,7 +231,7 @@ where
 
     CircuitType: std::default::Default +
     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-    + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
+    + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::BN254Config>
     + std::clone::Clone,
 {
     run_main::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);

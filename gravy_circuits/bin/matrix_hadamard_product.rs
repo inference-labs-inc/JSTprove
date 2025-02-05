@@ -35,8 +35,8 @@ declare_circuit!(MatHadamardCircuit {
 
 
 
-impl<C: Config> Define<C> for MatHadamardCircuit<Variable> {
-    fn define(&self, api: &mut API<C>) {  
+impl<C: Config> GenericDefine<C> for MatHadamardCircuit<Variable> {
+    fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {  
         let element_prod = matrix_hadamard_product(api, self.matrix_a, self.matrix_b);    
         for i in 0..N_ROWS_A {
             for j in 0..N_COLS_A {

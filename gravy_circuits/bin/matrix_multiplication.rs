@@ -79,8 +79,8 @@ declare_circuit!(MatMultCircuit {
     matrix_product_ab: [[Variable; N_COLS_B]; N_ROWS_A], // shape (m, k)
 });
 // Memorization, in a better place
-impl<C: Config> Define<C> for MatMultCircuit<Variable,> {
-    fn define(&self, api: &mut API<C>) {
+impl<C: Config> GenericDefine<C> for MatMultCircuit<Variable,> {
+    fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         // Bring the weights into the circuit as constants
 
         let weights_matrix_multiplication: Vec<Vec<Variable>> = weights.clone()

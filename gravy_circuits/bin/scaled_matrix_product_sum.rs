@@ -39,8 +39,9 @@ declare_circuit!(Circuit {
 });
 
 // Still to factor this
-impl<C: Config> Define<C> for Circuit<Variable> {
-    fn define(&self, api: &mut API<C>) {   
+impl<C: Config> GenericDefine<C> for Circuit<Variable> {
+    fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
+
         let scaled_row_col_product_sum_array = scaled_matrix_product_sum(api, self.matrix_a, self.matrix_b, self.matrix_c, self.alpha); 
         for i in 0..N_ROWS_A {
             for j in 0..N_COLS_B {
