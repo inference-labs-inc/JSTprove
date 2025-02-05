@@ -1,9 +1,9 @@
+use crate::io_reader::{FileReader, IOReader};
 use clap::{Arg, Command};
 use expander_compiler::frontend::{extra::debug_eval, internal::DumpLoadTwoVariables, *};
 use peakmem_alloc::*;
 use std::alloc::System;
 use std::time::Instant;
-use crate::io_reader::{FileReader, IOReader};
 
 #[global_allocator]
 static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
@@ -11,10 +11,7 @@ static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
 fn run_main<C: Config, I, CircuitType, CircuitDefaultType>(io_reader: &mut I)
 where
     I: IOReader<C, CircuitDefaultType>, // `CircuitType` should be the same type used in the `IOReader` impl
-    CircuitType: Default
-        + DumpLoadTwoVariables<Variable>
-        + GenericDefine<C>
-        + Clone,
+    CircuitType: Default + DumpLoadTwoVariables<Variable> + GenericDefine<C> + Clone,
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
         + Clone,
@@ -42,7 +39,8 @@ where
     let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
 
     // let compile_result: CompileResult<C> = compile(&CircuitType::default()).unwrap();
-    let compile_result = compile_generic(&CircuitType::default(), CompileOptions::default()).unwrap();
+    let compile_result =
+        compile_generic(&CircuitType::default(), CompileOptions::default()).unwrap();
     println!(
         "Peak Memory used Overall : {:.2}",
         GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
@@ -74,7 +72,6 @@ where
     let assignments = vec![assignment; 1];
     let witness = witness_solver.solve_witnesses(&assignments).unwrap();
     let output = layered_circuit.run(&witness);
-
 
     for x in output.iter() {
         assert_eq!(*x, true);
@@ -126,7 +123,8 @@ where
     CircuitType: Default
         + DumpLoadTwoVariables<Variable>
         // + expander_compiler::frontend::Define<C>
-        + Clone + GenericDefine<C>,
+        + Clone
+        + GenericDefine<C>,
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
         + Clone,
@@ -154,7 +152,8 @@ where
     let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
 
     // let compile_result: CompileResult<C> = compile(&CircuitType::default()).unwrap();
-    let compile_result = compile_generic(&CircuitType::default(), CompileOptions::default()).unwrap();
+    let compile_result =
+        compile_generic(&CircuitType::default(), CompileOptions::default()).unwrap();
     println!(
         "Peak Memory used Overall : {:.2}",
         GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
@@ -165,9 +164,6 @@ where
         duration.as_secs(),
         duration.subsec_millis()
     );
-
-    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    let start = Instant::now();
     let CompileResult {
         witness_solver,
         layered_circuit,
@@ -187,7 +183,7 @@ where
 
     let assignments = vec![assignment.clone(); 1];
     let witness = witness_solver.solve_witnesses(&assignments).unwrap();
-    let output = layered_circuit.run(&witness);
+    let _output = layered_circuit.run(&witness);
 
     debug_eval(&CircuitType::default(), &assignment, EmptyHintCaller);
 }
@@ -246,7 +242,7 @@ where
 
     CircuitType: std::default::Default +
     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-    // + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
+// + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
     + std::clone::Clone + GenericDefine<expander_compiler::frontend::BN254Config>,
 {
     run_debug::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);

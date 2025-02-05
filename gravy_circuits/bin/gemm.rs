@@ -1,9 +1,8 @@
-
+use ethnum::U256;
 use expander_compiler::frontend::*;
 use io_reader::{FileReader, IOReader};
 use matrix_computation::gemm;
 use serde::Deserialize;
-use ethnum::U256;
 // use std::ops::Neg;
 use arith::FieldForECC;
 
@@ -15,8 +14,7 @@ pub mod io_reader;
 #[path = "../src/main_runner.rs"]
 pub mod main_runner;
 
-
-/* 
+/*
 Step 4: general matrix multiplication---scalar times matrix product of two matrices of compatible dimensions, plus scalar times third matrix of campatible dimensions.
 scaling factor alpha is an integer
 scaling factor beta is an integer
@@ -34,99 +32,121 @@ const N_ROWS_C: usize = 3; // m
 const N_COLS_C: usize = 2; // k
 
 declare_circuit!(Circuit {
-    alpha: Variable, // scaling factor
-    beta: Variable, // scaling factor
+    alpha: Variable,                            // scaling factor
+    beta: Variable,                             // scaling factor
     matrix_a: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
     matrix_b: [[Variable; N_COLS_B]; N_ROWS_B], // shape (n, k)
     matrix_c: [[Variable; N_COLS_C]; N_ROWS_C], // shape (m, k)
-    gemm: [[Variable; N_COLS_B]; N_ROWS_A], // shape (m, k)
+    gemm: [[Variable; N_COLS_B]; N_ROWS_A],     // shape (m, k)
 });
 
 impl<C: Config> GenericDefine<C> for Circuit<Variable> {
-    fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) { 
-        let gemm_array = gemm(api, self.matrix_a, self.matrix_b, self.matrix_c, self.alpha, self.beta); 
+    fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
+        let gemm_array = gemm(
+            api,
+            self.matrix_a,
+            self.matrix_b,
+            self.matrix_c,
+            self.alpha,
+            self.beta,
+        );
         for i in 0..N_ROWS_A {
             for j in 0..N_COLS_B {
-                api.assert_is_equal(self.gemm[i][j], gemm_array[i][j]);               
+                api.assert_is_equal(self.gemm[i][j], gemm_array[i][j]);
             }
         }
     }
 }
 
-#[derive(Deserialize)]
-#[derive(Clone)]
+#[derive(Deserialize, Clone)]
 struct InputData {
     alpha: u64,
     beta: u64,
-    matrix_a: Vec<Vec<u64>>, // Shape (m, n)  
-    matrix_b: Vec<Vec<u64>>, // Shape (n, k) 
-    matrix_c: Vec<Vec<u64>>, // Shape (n, k) 
+    matrix_a: Vec<Vec<u64>>, // Shape (m, n)
+    matrix_b: Vec<Vec<u64>>, // Shape (n, k)
+    matrix_c: Vec<Vec<u64>>, // Shape (n, k)
 }
 
 //This is the data structure for the output data to be read in from the json file
-#[derive(Deserialize)]
-#[derive(Clone)]
+#[derive(Deserialize, Clone)]
 struct OutputData {
-    gemm: Vec<Vec<u64>>, 
+    gemm: Vec<Vec<u64>>,
 }
 
-impl<C: Config>IOReader<C, Circuit<C::CircuitField>> for FileReader
-{
-    fn read_inputs(&mut self, file_path: &str, mut assignment: Circuit<C::CircuitField>) -> Circuit<C::CircuitField>
-    {
-        let data: InputData = <FileReader as IOReader<C, Circuit<_>>>::read_data_from_json::<InputData>(file_path); 
-
+impl<C: Config> IOReader<C, Circuit<C::CircuitField>> for FileReader {
+    fn read_inputs(
+        &mut self,
+        file_path: &str,
+        mut assignment: Circuit<C::CircuitField>,
+    ) -> Circuit<C::CircuitField> {
+        let data: InputData =
+            <FileReader as IOReader<C, Circuit<_>>>::read_data_from_json::<InputData>(file_path);
 
         // Assign inputs to assignment
-         // Assign inputs to assignment
-         assignment.alpha = C::CircuitField::from_u256(U256::from(data.alpha));
-         assignment.beta = C::CircuitField::from_u256(U256::from(data.beta));
- 
-         let rows_a = data.matrix_a.len();  
-         let cols_a = if rows_a > 0 { data.matrix_a[0].len() } else { 0 };  
-         println!("matrix a shape: ({}, {})", rows_a, cols_a);  
-         
-         for (i, row) in data.matrix_a.iter().enumerate() {
-             for (j, &element) in row.iter().enumerate() {
-                 assignment.matrix_a[i][j] = C::CircuitField::from_u256(U256::from(element));
-             }
-         }
- 
-         let rows_b = data.matrix_b.len(); 
-         let cols_b = if rows_b > 0 { data.matrix_b[0].len() } else { 0 };  
-         println!("matrix b shape: ({}, {})", rows_b, cols_b); 
- 
-         for (i, row) in data.matrix_b.iter().enumerate() {
-             for (j, &element) in row.iter().enumerate() {
-                 assignment.matrix_b[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
-             }
-         }
- 
-         let rows_c = data.matrix_c.len();  
-         let cols_c = if rows_c > 0 { data.matrix_c[0].len() } else { 0 };  
-         println!("matrix c shape: ({}, {})", rows_c, cols_c); 
- 
-         for (i, row) in data.matrix_c.iter().enumerate() {
-             for (j, &element) in row.iter().enumerate() {
-                 assignment.matrix_c[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
-             }
-         }
- 
-         // Return the assignment
-         assignment
+        // Assign inputs to assignment
+        assignment.alpha = C::CircuitField::from_u256(U256::from(data.alpha));
+        assignment.beta = C::CircuitField::from_u256(U256::from(data.beta));
+
+        let rows_a = data.matrix_a.len();
+        let cols_a = if rows_a > 0 {
+            data.matrix_a[0].len()
+        } else {
+            0
+        };
+        println!("matrix a shape: ({}, {})", rows_a, cols_a);
+
+        for (i, row) in data.matrix_a.iter().enumerate() {
+            for (j, &element) in row.iter().enumerate() {
+                assignment.matrix_a[i][j] = C::CircuitField::from_u256(U256::from(element));
+            }
+        }
+
+        let rows_b = data.matrix_b.len();
+        let cols_b = if rows_b > 0 {
+            data.matrix_b[0].len()
+        } else {
+            0
+        };
+        println!("matrix b shape: ({}, {})", rows_b, cols_b);
+
+        for (i, row) in data.matrix_b.iter().enumerate() {
+            for (j, &element) in row.iter().enumerate() {
+                assignment.matrix_b[i][j] = C::CircuitField::from_u256(U256::from(element));
+            }
+        }
+
+        let rows_c = data.matrix_c.len();
+        let cols_c = if rows_c > 0 {
+            data.matrix_c[0].len()
+        } else {
+            0
+        };
+        println!("matrix c shape: ({}, {})", rows_c, cols_c);
+
+        for (i, row) in data.matrix_c.iter().enumerate() {
+            for (j, &element) in row.iter().enumerate() {
+                assignment.matrix_c[i][j] = C::CircuitField::from_u256(U256::from(element));
+            }
+        }
+
+        // Return the assignment
+        assignment
     }
-    fn read_outputs(&mut self, file_path: &str, mut assignment: Circuit<C::CircuitField>) -> Circuit<C::CircuitField>
-    {
-    
-        let data: OutputData = <FileReader as IOReader<C, Circuit<_>>>::read_data_from_json::<OutputData>(file_path); 
+    fn read_outputs(
+        &mut self,
+        file_path: &str,
+        mut assignment: Circuit<C::CircuitField>,
+    ) -> Circuit<C::CircuitField> {
+        let data: OutputData =
+            <FileReader as IOReader<C, Circuit<_>>>::read_data_from_json::<OutputData>(file_path);
         // Assign inputs to assignment
-        let rows_abc = data.gemm.len();  
-        let cols_abc = if rows_abc > 0 { data.gemm[0].len() } else { 0 };  
-        println!("gemm alpha ab + beta c shape: ({}, {})", rows_abc, cols_abc); 
+        let rows_abc = data.gemm.len();
+        let cols_abc = if rows_abc > 0 { data.gemm[0].len() } else { 0 };
+        println!("gemm alpha ab + beta c shape: ({}, {})", rows_abc, cols_abc);
 
         for (i, row) in data.gemm.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
-                assignment.gemm[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
+                assignment.gemm[i][j] = C::CircuitField::from_u256(U256::from(element));
             }
         }
         assignment
@@ -139,10 +159,11 @@ impl<C: Config>IOReader<C, Circuit<C::CircuitField>> for FileReader
         #######################################################################################################
 */
 
-fn main(){
-    let mut file_reader = FileReader{path: String::new()};
+fn main() {
+    let mut file_reader = FileReader {
+        path: String::new(),
+    };
     main_runner::run_bn254::<Circuit<Variable>,
     Circuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
                             _>(&mut file_reader);
-
 }
