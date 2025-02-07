@@ -36,7 +36,7 @@ fn to_binary_2s<C: Config, Builder: RootAPI<C>>(
 }
 
 //Assert boolean and add bits confirmation to circuit
-fn from_binary<C: Config, Builder: RootAPI<C>>(
+pub fn from_binary<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     bits: &Vec<Variable>,
     n_bits: usize,

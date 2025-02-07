@@ -1,3 +1,5 @@
+use std::ops::Neg;
+
 use ethnum::U256;
 use expander_compiler::frontend::*;
 use io_reader::{FileReader, IOReader};
@@ -7,7 +9,7 @@ use matrix_computation::{
     matrix_multplication_naive2, matrix_multplication_naive2_array, matrix_multplication_naive3,
     matrix_multplication_naive3_array, two_d_array_to_vec,
 };
-use quantization::quantize_matrix;
+use quantization::{quantize_matrix, scaling_factor_to_constant};
 use serde::Deserialize;
 // use std::ops::Neg;
 use arith::FieldForECC;
@@ -38,7 +40,7 @@ const N_COLS_B: usize = 256; // k
 //Define structure of inputs, weights and output
 #[derive(Deserialize, Clone)]
 struct WeightsData {
-    matrix_b: Vec<Vec<u64>>,
+    matrix_b: Vec<Vec<i64>>,
     quantized: bool,
     scaling: u64,
     circuit_type: String,
@@ -75,7 +77,14 @@ impl<C: Config> GenericDefine<C> for MatMultCircuit<Variable> {
             .matrix_b
             .clone()
             .into_iter()
-            .map(|row| row.into_iter().map(|x| api.constant(x as u32)).collect())
+            .map(|row| row.into_iter().map(|x| {
+                if x < 0 {
+                    return api.constant(C::CircuitField::from(x.abs() as u32).neg())
+                } else {
+                    return api.constant(C::CircuitField::from(x.abs() as u32))
+                }
+            })
+            .collect())
             .collect();
 
 
@@ -94,8 +103,11 @@ impl<C: Config> GenericDefine<C> for MatMultCircuit<Variable> {
 
         //If test is quantized tests, then add quantization
         if weights.quantized {
-            let scaling = api.constant(weights.scaling as u32);
-            out = quantize_matrix(api, out, scaling);
+            // let scaling = api.constant(weights.scaling as u32);
+            // let scaling_factor = scaling_factor_to_constant(api, )
+            let scaling_factor = 1 << weights.scaling;
+            println!("{}", scaling_factor);
+            out = quantize_matrix(api, out, scaling_factor, weights.scaling as usize);
         }
 
         //Assert output of matrix multiplication

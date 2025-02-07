@@ -3,6 +3,7 @@ import torch
 from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
 from enum import Enum
+import sys
 
 
 class MatMultType(Enum):
@@ -34,10 +35,10 @@ class MatrixMultiplication():
         self.N_ROWS_B: int = self.N_COLS_A; # n
         self.N_COLS_B: int = 256; # k
 
-        self.scaling = 2**21
+        self.scaling = 21
 
-        self.matrix_a = torch.randint(low=0, high=self.scaling, size=(self.N_ROWS_A,self.N_COLS_A)) # (m, n) array of random integers between 0 and 100
-        self.matrix_b = torch.randint(low=0, high=self.scaling, size=(self.N_ROWS_B,self.N_COLS_B)) # (n, k) array of random integers between 0 and 100
+        self.matrix_a = torch.randint(low=0, high=2**self.scaling, size=(self.N_ROWS_A,self.N_COLS_A)) # (m, n) array of random integers between 0 and 100
+        self.matrix_b = torch.randint(low=0, high=2**self.scaling, size=(self.N_ROWS_B,self.N_COLS_B)) # (n, k) array of random integers between 0 and 100
 
         self.quantized = False
         
@@ -112,12 +113,19 @@ class QuantizedMatrixMultiplication(MatrixMultiplication):
         self.quantized = True
     
     def get_inputs_for_circuit(self):
-        matrix_a = torch.mul(self.matrix_a, self.scaling).long()
-        matrix_b = torch.mul(self.matrix_b, self.scaling).long()
+        matrix_a = torch.mul(self.matrix_a, 2**self.scaling).long()
+        matrix_b = torch.mul(self.matrix_b, 2**self.scaling).long()
         matrix_product_ab = torch.matmul(matrix_a, matrix_b)
-        matrix_product_ab = torch.div(matrix_product_ab, self.scaling, rounding_mode="floor")
+        matrix_product_ab = torch.div(matrix_product_ab, 2**self.scaling, rounding_mode="floor").long()
 
-        return (matrix_a, matrix_b, matrix_product_ab.long())
+        #This can show the error term with what we are doing
+        temp_1 = torch.matmul(self.matrix_a, self.matrix_b)
+        temp_1 = torch.mul(temp_1, self.scaling)
+        
+        print(temp_1[0][0].long()/2**21, matrix_product_ab[0][0]/2**21)
+
+
+        return (matrix_a, matrix_b, matrix_product_ab)
 
 
 if __name__ == "__main__":
@@ -129,8 +137,8 @@ if __name__ == "__main__":
     weights_folder = "weights"
     circuit_folder = ""
     #Rework inputs to function
-    test_circuit = MatrixMultiplication(MatMultType.Naive2)
-    test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
+    # test_circuit = MatrixMultiplication(MatMultType.Naive2)
+    # test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
 
     test_circuit = QuantizedMatrixMultiplication(MatMultType.Naive2)
     test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
