@@ -39,9 +39,42 @@ fn div_unconstrained<C: Config, Builder: RootAPI<C>>(
     x: Variable,
     y: u32,
 ) -> (Variable, Variable) {
-    let q = api.unconstrained_int_div(x, y);
-    let rem = api.unconstrained_mod(x, y);
-    (q, rem)
+    //can maybe extract this
+    let middle = C::CircuitField::from_u256(C::CircuitField::MODULUS / 2);
+    let negative_one = C::CircuitField::from(0) - C::CircuitField::from(1);
+
+
+    let is_pos = api.unconstrained_lesser(x, middle);
+
+    //if x is positive
+    let q_pos = api.unconstrained_int_div(x, y);
+    let q_pos = api.unconstrained_mul(q_pos, is_pos);
+
+    //if x is negative
+    // let x_squared = api.unconstrained_pow(x,-1);
+    let x_abs = api.unconstrained_mul(x, negative_one);
+    let q_neg = api.unconstrained_int_div(x_abs, y);
+    let is_neg = api.unconstrained_bit_xor(is_pos, 1);
+    let q_neg_temp = api.unconstrained_mul(q_neg, negative_one);
+    // Unsure why, but I must subtract one here
+    let q_neg_temp = api.unconstrained_add(q_neg_temp, negative_one);
+    let q_neg_out = api.unconstrained_mul(q_neg_temp, is_neg);
+
+
+    let q = api.unconstrained_add(q_pos, q_neg_out);
+    //if a and q are pos
+    let rem_pos = api.unconstrained_mod(x, y);
+    let rem_pos_out = api.unconstrained_mul(rem_pos, is_pos);
+
+    //if a and q are negative then r = a - bq -> r = a + b(-q)
+    let rem_neg = api.unconstrained_mul(y, q);
+    let rem_neg = api.unconstrained_mul(rem_neg, negative_one);
+    let rem_neg = api.unconstrained_add(x, rem_neg);
+    let rem_neg_out = api.unconstrained_mul(is_neg, rem_neg);
+
+    let rem_out = api.unconstrained_add(rem_neg_out, rem_pos_out);
+
+    (q, rem_out)
 }
 
 fn constrain_rem<C: Config, Builder: RootAPI<C>>(

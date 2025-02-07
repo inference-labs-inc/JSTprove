@@ -37,8 +37,8 @@ class MatrixMultiplication():
 
         self.scaling = 21
 
-        self.matrix_a = torch.randint(low=0, high=2**self.scaling, size=(self.N_ROWS_A,self.N_COLS_A)) # (m, n) array of random integers between 0 and 100
-        self.matrix_b = torch.randint(low=0, high=2**self.scaling, size=(self.N_ROWS_B,self.N_COLS_B)) # (n, k) array of random integers between 0 and 100
+        self.matrix_a = torch.randint(low=-2**self.scaling, high=2**self.scaling, size=(self.N_ROWS_A,self.N_COLS_A)) # (m, n) array of random integers between 0 and 100
+        self.matrix_b = torch.randint(low=-2**self.scaling, high=2**self.scaling, size=(self.N_ROWS_B,self.N_COLS_B)) # (n, k) array of random integers between 0 and 100
 
         self.quantized = False
         
@@ -107,8 +107,8 @@ class QuantizedMatrixMultiplication(MatrixMultiplication):
         super().__init__(circuit_type)
 
         # Instead get a value between 0-1
-        self.matrix_a = torch.rand(size=(self.N_ROWS_A,self.N_COLS_A))
-        self.matrix_b = torch.rand(size=(self.N_ROWS_B,self.N_COLS_B))
+        self.matrix_a = torch.rand(size=(self.N_ROWS_A,self.N_COLS_A)) - torch.rand(size=(self.N_ROWS_A,self.N_COLS_A))
+        self.matrix_b = torch.rand(size=(self.N_ROWS_B,self.N_COLS_B)) - torch.rand(size=(self.N_ROWS_B,self.N_COLS_B))
 
         self.quantized = True
     
@@ -122,7 +122,7 @@ class QuantizedMatrixMultiplication(MatrixMultiplication):
         temp_1 = torch.matmul(self.matrix_a, self.matrix_b)
         temp_1 = torch.mul(temp_1, self.scaling)
         
-        print(temp_1[0][0].long()/2**21, matrix_product_ab[0][0]/2**21)
+        print(temp_1[0][0].long(), matrix_product_ab[0][0]/2**21)
 
 
         return (matrix_a, matrix_b, matrix_product_ab)

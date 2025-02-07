@@ -9,7 +9,7 @@ use matrix_computation::{
     matrix_multplication_naive2, matrix_multplication_naive2_array, matrix_multplication_naive3,
     matrix_multplication_naive3_array, two_d_array_to_vec,
 };
-use quantization::{quantize_matrix, scaling_factor_to_constant};
+use quantization::quantize_matrix;
 use serde::Deserialize;
 // use std::ops::Neg;
 use arith::FieldForECC;
@@ -48,12 +48,12 @@ struct WeightsData {
 
 #[derive(Deserialize, Clone)]
 struct InputData {
-    matrix_a: Vec<Vec<u64>>,
+    matrix_a: Vec<Vec<i64>>,
 }
 
 #[derive(Deserialize, Clone)]
 struct OutputData {
-    matrix_product_ab: Vec<Vec<u64>>,
+    matrix_product_ab: Vec<Vec<i64>>,
 }
 
 // This reads the weights json into a string
@@ -113,6 +113,8 @@ impl<C: Config> GenericDefine<C> for MatMultCircuit<Variable> {
         //Assert output of matrix multiplication
         for (j, row) in out.iter().enumerate() {
             for (k, &element) in row.iter().enumerate() {
+                // api.display("out       ", element);
+                // api.display("Out actual", self.matrix_product_ab[j][k]);
                 api.assert_is_equal(self.matrix_product_ab[j][k], element);
             }
         }
@@ -132,7 +134,11 @@ impl<C: Config> IOReader<C, MatMultCircuit<C::CircuitField>> for FileReader {
         // Assign inputs to assignment
         for (i, row) in data.matrix_a.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_a[i][j] = C::CircuitField::from(element as u32);
+                if element < 0 {
+                    assignment.matrix_a[i][j] = C::CircuitField::from(element.abs() as u32).neg();
+                } else {
+                    assignment.matrix_a[i][j] = C::CircuitField::from(element.abs() as u32);
+                }
             }
         }
         // Return the assignment
@@ -149,8 +155,11 @@ impl<C: Config> IOReader<C, MatMultCircuit<C::CircuitField>> for FileReader {
 
         for (i, row) in data.matrix_product_ab.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_product_ab[i][j] =
-                    C::CircuitField::from_u256(U256::from(element));
+                if element < 0 {
+                    assignment.matrix_product_ab[i][j] = C::CircuitField::from_u256(U256::from(element.abs() as u64)).neg();
+                } else {
+                    assignment.matrix_product_ab[i][j] = C::CircuitField::from_u256(U256::from(element.abs() as u64));
+                }
             }
         }
         // Return the assignment
