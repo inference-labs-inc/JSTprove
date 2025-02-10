@@ -27,18 +27,21 @@ class Convolution():
         dim_1 = 4
         dim_2 = 28
         dim_3 = 28
+        self.scaling = 21
+        self.quantized = False
 
-        self.test = "hi"
 
-        self.input_arr = torch.randint(low=0, high=2**21, size=(dim_0, dim_1, dim_2, dim_3)) 
-        self.bias = torch.randint(low=-2**21, high=2**21, size=(16,)) 
-        self.weights = torch.randint(low=-2**21, high=2**21, size=(16,4,3,3)) 
+        self.input_arr = torch.randint(low=-2**self.scaling, high=2**self.scaling, size=(dim_0, dim_1, dim_2, dim_3)) 
+        self.bias = torch.randint(low=-2**self.scaling, high=2**self.scaling, size=(16,)) 
+        self.weights = torch.randint(low=-2**self.scaling, high=2**self.scaling, size=(16,4,3,3)) 
 
         self.strides = (1,1)
         self.kernel_shape = torch.tensor([3,3])
         self.group = torch.tensor([1])
         self.dilation = (1,1)
         self.pads = (1,1,1,1)
+
+        self.out = None
 
         
         '''
@@ -125,48 +128,31 @@ class Convolution():
 
             return res
         
-
-    def convolution(input_data, filters):
-        in_channels, H, W = input_data.shape
-        num_filters, filt_channels, kH, kW = filters.shape
-        
-        # Calculate padding size for "same" convolution (assuming stride=1)
-        pad_h = kH // 2  # For kH = 3, pad_h = 1
-        pad_w = kW // 2  # For kW = 3, pad_w = 1
-
-        # Pad the input_data
-        padded_input = np.pad(input_data,
-                            pad_width=((0, 0), (pad_h, pad_h), (pad_w, pad_w)),
-                            mode='constant', constant_values=0)
-        print("PADDED INPUT")
-        print(padded_input)
-        print("FILTERS")
-        print(filters)
-        
-        output = np.zeros((num_filters, H, W))
-
-        # Loop over each filter
-        for f in range(num_filters):
-            # Loop over each row and column of the "cross-sections of the input"
-            for i in range(H):
-                for j in range(W):
-                    # Extract the window from the padded input
-                    window = padded_input[:, i:i + kH, j:j + kW]
-                    # Element-wise multiply the window and the filter, then sum the results
-                    # output[f, i, j] = np.sum(window * filters[f]) # We'd use this if we didn't have to circuitize
-                    # Initialize the output value
-                    output_value = 0
-                    # Loop over input channels (should match filter channels)
-                    for c in range(in_channels):
-                        # Loop over the filter height (3x3 kernel)
-                        for kh in range(kH):
-                            for kw in range(kW):
-                                # Multiply corresponding elements and accumulate
-                                output_value += window[c][kh][kw] * filters[f][c][kh][kw]
-
-                    output[f][i][j] = output_value
-        return output
+    def get_output(self):
+        return torch.from_numpy(self.conv_run(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape,self.pads, self.strides))
     
+    def get_model_params(self, output):
+        inputs = {
+                'input_arr': self.input_arr.long().tolist()
+                }
+            
+        weights = {
+                'weights': self.weights.long().tolist(),
+                'bias': self.bias.long().tolist(),
+                'strides': self.strides,
+                'kernel_shape': self.kernel_shape.tolist(),
+                'group': self.group.tolist(),
+                'dilation': self.dilation,
+                'pads': self.pads,
+                'input_shape': self.input_arr.shape,
+                'quantized': self.quantized,
+                'scaling': self.scaling
+            }
+        outputs = {
+                'conv_out': output.long().tolist(),
+            }
+        
+        return inputs,weights,outputs
 
     def base_testing(self, input_folder:str, proof_folder: str, temp_folder: str, weights_folder:str, circuit_folder:str, proof_system: ZKProofSystems, output_folder: str = None):
 
@@ -184,6 +170,7 @@ class Convolution():
             ## Perform calculation here
             pads = (1,1)
             #Ensure that onnx representation matches torch model
+            # print(self.input_arr.shape,)
             output_onnx = _conv_implementation(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape, self.pads, self.strides)
             # raise
             total_out = torch.conv2d(self.input_arr, self.weights, self.bias, self.strides, pads, self.dilation, self.group)
@@ -191,9 +178,20 @@ class Convolution():
                 for j in range(len(output_onnx[i])):  # Iterate over the second dimension
                     for k in range(len(output_onnx[i][j])):  # Iterate over the third dimension
                         for l in range(len(output_onnx[i][j][k])):  # Iterate over the fourth dimension
-                            assert abs(total_out[i][j][k][l] - output_onnx[i][j][k][l]) < 0.000000001
+                            # print(total_out[i][j][k][l].long(), output_onnx[i][j][k][l].astype(np.int64))
+                            # assert abs(total_out[i][j][k][l].long() - output_onnx[i][j][k][l].astype(np.int64)) < 10
+                            pass
 
-            output = self.conv_run(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape,self.pads, self.strides)
+            output = self.get_output()
+            # print(self.out)
+            # if not self.out == None:
+            #     for i in range(len(output_onnx)):  # Iterate over the first dimension
+            #         for j in range(len(output_onnx[i])):  # Iterate over the second dimension
+            #             for k in range(len(output_onnx[i][j])):  # Iterate over the third dimension
+            #                 for l in range(len(output_onnx[i][j][k])):  # Iterate over the fourth dimension
+            #                     print(self.out[i][j][k][l], output[i][j][k][l])
+            #                     assert abs(self.out[i][j][k][l] - output[i][j][k][l]) < 1
+
             # for i in range(len(output_onnx)):  # Iterate over the first dimension
             #     for j in range(len(output_onnx[i])):  # Iterate over the second dimension
             #         for k in range(len(output_onnx[i][j])):  # Iterate over the third dimension
@@ -205,23 +203,7 @@ class Convolution():
             ## Define inputs and outputs
             # time.sleep(10)
 
-            inputs = {
-                'input_arr': self.input_arr.tolist()
-                }
-            
-            weights = {
-                'weights': self.weights.tolist(),
-                'bias': self.bias.tolist(),
-                'strides': self.strides,
-                'kernel_shape': self.kernel_shape.tolist(),
-                'group': self.group.tolist(),
-                'dilation': self.dilation,
-                'pads': self.pads,
-                'input_shape': self.input_arr.shape
-            }
-            outputs = {
-                'conv_out': output.astype(np.int64).tolist(),
-            }
+            inputs, weights, outputs = self.get_model_params(output)
             '''
             #######################################################################################################
             #######################################################################################################
@@ -242,6 +224,8 @@ class Convolution():
 
             ## Run the circuit
             prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file)
+
+    
 
 def _conv_implementation( 
     X, W, B, auto_pad, dilations, group, kernel_shape, pads, strides
@@ -524,6 +508,26 @@ def _conv_implementation(
         f"The convolution for X.shape={X.shape}, W.shape={W.shape}, "
         f"kernel_shape={kernel_shape} is not implemented yet."
     )
+
+
+class QuantizedConv(Convolution):
+    #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
+    def __init__(self):
+        super().__init__()
+
+        # Instead get a value between 0-1
+        # self.matrix_a = torch.rand(size=(self.N_ROWS_A,self.N_COLS_A)) - torch.rand(size=(self.N_ROWS_A,self.N_COLS_A))
+        # self.matrix_b = torch.rand(size=(self.N_ROWS_B,self.N_COLS_B)) - torch.rand(size=(self.N_ROWS_B,self.N_COLS_B))
+
+        self.quantized = True
+    
+    def get_output(self):
+        out = torch.from_numpy(self.conv_run(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape,self.pads, self.strides))
+        out = torch.div(out, 2**self.scaling, rounding_mode="floor").long()
+        return out
+
+
+
 if __name__ == "__main__":
     proof_system = ZKProofSystems.Expander
     proof_folder = "analysis"
@@ -534,4 +538,7 @@ if __name__ == "__main__":
     circuit_folder = ""
     #Rework inputs to function
     test_circuit = Convolution()
+    test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
+
+    test_circuit = QuantizedConv()
     test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)

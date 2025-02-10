@@ -40,7 +40,7 @@ where
 
     // let compile_result: CompileResult<C> = compile(&CircuitType::default()).unwrap();
     let compile_result =
-        compile_generic(&CircuitType::default(), CompileOptions::default()).unwrap();
+        compile_generic(&CircuitType::default(), CompileOptions::default().with_mul_fanout_limit(1024)).unwrap();
     println!(
         "Peak Memory used Overall : {:.2}",
         GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)

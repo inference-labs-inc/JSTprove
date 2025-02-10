@@ -12,6 +12,7 @@ use matrix_computation::{
     matrix_multplication_naive3_array, two_d_array_to_vec,
 };
 use quantization::quantize_4d_vector;
+use relu::{relu_3d_v2, relu_4d_vec_v2};
 use serde::Deserialize;
 use std::ops::Neg;
 
@@ -19,6 +20,8 @@ use std::ops::Neg;
 pub mod convolution_fn;
 #[path = "../src/matrix_computation.rs"]
 pub mod matrix_computation;
+#[path = "../src/relu.rs"]
+pub mod relu;
 
 #[path = "../src/quantization.rs"]
 pub mod quantization;
@@ -66,7 +69,7 @@ struct InputData {
 
 #[derive(Deserialize, Clone)]
 struct OutputData {
-    conv_out: Vec<Vec<Vec<Vec<i64>>>>,
+    outputs: Vec<Vec<Vec<Vec<i64>>>>,
 }
 
 // This reads the weights json into a string
@@ -84,12 +87,13 @@ lazy_static! {
 
 declare_circuit!(ConvCircuit {
     input_arr: [[[[Variable; DIM4]; DIM3]; DIM2]; DIM1], // shape (m, n)
-    conv_out: [[[[Variable; DIM4]; DIM3]; DIM2OUT]; DIM1], // shape (m, k)
+    outputs: [[[[Variable; DIM4]; DIM3]; DIM2OUT]; DIM1], // shape (m, k)
 });
 
 // Memorization, in a better place
 impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
+        let n_bits = 32;
         // Bring the weights into the circuit as constants
 
         let weights = read_4d_weights(api, &WEIGHTS_INPUT.weights);
@@ -131,12 +135,17 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
             out = out;
         }
 
+        //Relu 1
+        let out = relu_4d_vec_v2(api, out, n_bits);
+        // let out = relu::relu_3d_v3(api, self.input);
+
+
         //Assert output of matrix multiplication
-        for (j, dim1) in self.conv_out.iter().enumerate() {
+        for (j, dim1) in self.outputs.iter().enumerate() {
             for (k, dim2) in dim1.iter().enumerate() {
                 for (l, dim3) in dim2.iter().enumerate() {
                     for (m, _) in dim3.iter().enumerate() {
-                        api.assert_is_equal(self.conv_out[j][k][l][m], out[j][k][l][m]);
+                        api.assert_is_equal(self.outputs[j][k][l][m], out[j][k][l][m]);
                     }
                 }
             }
@@ -182,15 +191,15 @@ impl<C: Config> IOReader<C, ConvCircuit<C::CircuitField>> for FileReader {
             OutputData,
         >(file_path);
 
-        for (i, dim1) in data.conv_out.iter().enumerate() {
+        for (i, dim1) in data.outputs.iter().enumerate() {
             for (j, dim2) in dim1.iter().enumerate() {
                 for (k, dim3) in dim2.iter().enumerate() {
                     for (l, &element) in dim3.iter().enumerate() {
                         if element < 0 {
-                            assignment.conv_out[i][j][k][l] =
+                            assignment.outputs[i][j][k][l] =
                                 C::CircuitField::from_u256(U256::from(element.abs() as u64)).neg();
                         } else {
-                            assignment.conv_out[i][j][k][l] =
+                            assignment.outputs[i][j][k][l] =
                                 C::CircuitField::from_u256(U256::from(element.abs() as u64));
                         }
                     }

@@ -4,6 +4,8 @@ from python_testing.utils.helper_functions import get_files, to_json, prove_and_
 import os
 from python_testing.relu import ReLU, ConversionType
 
+from python_testing.convolution import Convolution, QuantizedConv
+
 
 
 class LayerInfo():
@@ -15,6 +17,7 @@ class LayerInfo():
         self.inputs = None
         self.outputs = None
         self.weights = None
+        self.bias = None
 
     def update_inputs(self, inputs):
         self.inputs = inputs.reshape(self.input_shape)
@@ -28,14 +31,22 @@ class LayerInfo():
         else:
             self.weights = None
 
+    # def update_weights(self, bias):
+    #     if self.weight_shape:
+    #         self.bias = bias.reshape(self.weight_shape)
+    #     else:
+    #         self.weights = None
+
 
 class Doom():
     def __init__(self):
         self.layers = {}
+
+        self.scaling = 21
         
-        self.layers["input"] = LayerInfo("input", [4, 28, 28], [4, 28, 28])
+        self.layers["input"] = LayerInfo("input", [1, 4, 28, 28], [1, 4, 28, 28])
         
-        self.layers["conv1"] = LayerInfo("conv1", [4, 28, 28], [16,28,28], [16, 4, 3, 3])
+        self.layers["conv1"] = LayerInfo("conv1", [1, 4, 28, 28], [1, 16,28,28], [16, 4, 3, 3])
         self.layers["conv1_relu"] = LayerInfo("conv1_relu", [16,28,28], [16,28,28])
 
         self.layers["conv2"] = LayerInfo("conv2", [16,28,28], [32,14,14], [32, 16, 3, 3])
@@ -80,7 +91,10 @@ class Doom():
             return
 
         weight_tensor = self.read_tensor_from_file(file_name)
-        self.layers[layer_name].update_weights(weight_tensor)
+        if is_weights:
+            self.layers[layer_name].update_weights(weight_tensor)
+        else:
+            self.layers[layer_name].bias = weight_tensor
         print(f"Read weights for layer {layer_name}: {weight_tensor.shape}")
 
     def read_layer_shape(self, layer_name, base_dir="doom_weights"):
@@ -105,9 +119,9 @@ class Doom():
         """Reads the inputs to each layer of the model from text files."""
 
         doom_layers = [
-            "conv1", "conv1_relu", "conv2", "conv2_relu","conv3", "conv3_relu",
+            "input", "conv1", "conv1_relu", "conv2", "conv2_relu","conv3", "conv3_relu",
             "fc1", "fc1_relu", "fc2", 
-            "input", "output", "reshape"]
+            "output"]
         if "input" in layer_name:
             input_layer = layer_name
         else:
@@ -141,11 +155,6 @@ class Doom():
     def run_circuit(self):
         """Simulates running the model by passing inputs through layers with weights."""
         print("Running circuit...")
-        
-        #Relu 1
-        self.read_input("conv1_relu")
-        self.read_output("conv1_relu")
-
         proof_system = ZKProofSystems.Expander
         proof_folder = "analysis"
         output_folder = "output"
@@ -153,12 +162,67 @@ class Doom():
         input_folder = "inputs"
         weights_folder = "weights"
         circuit_folder = ""
+        name = "doom"
+
+        witness_file, input_file, proof_path, public_path, verification_key, circuit_name, weights_file, output_file = get_files(
+                input_folder, proof_folder, temp_folder, circuit_folder, weights_folder, name, output_folder, proof_system)
+
+        
         #Rework inputs to function
+        (conv_1_inputs, conv_1_weights, conv_1_outputs) = self.get_circuit_conv_1()
+        conv_1_output_tensor = torch.IntTensor(conv_1_outputs["conv_out"])
+
+        (relu_inputs, relu_outputs) = self.get_relu_1(conv_1_output_tensor)
+
+        for i in range(conv_1_output_tensor.shape[0]):
+            for j in range(conv_1_output_tensor.shape[1]):
+                for k in range(conv_1_output_tensor.shape[2]):
+                    for l in range(conv_1_output_tensor.shape[3]):
+                        assert(abs(conv_1_output_tensor[i][j][k][l] -  torch.IntTensor(relu_inputs["inputs_1"])[i][j][k][l]) < 10)
+
+
+
+        # NO NEED TO CHANGE anything below here!
+        to_json(conv_1_inputs, input_file)
+
+        # Write output to json
+        to_json(relu_outputs, output_file)
+
+        to_json(conv_1_weights, weights_file)
+
+        ## Run the circuit
+        prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file)
+
+       
+
+    def get_circuit_conv_1(self):
+        self.read_input("conv1")
+        self.read_output("conv1")
+        self.read_weights("conv1")
+        self.read_weights("conv1", is_weights=False)
+        conv1_circuit = QuantizedConv()
+        conv1_circuit.input_arr = torch.mul(self.layers["conv1"].inputs,2**self.scaling).long()
+        conv1_circuit.out = torch.mul(self.layers["conv1"].outputs, 2**self.scaling).long()
+        conv1_circuit.weights = torch.mul(self.layers["conv1"].weights, 2**self.scaling).long()
+        conv1_circuit.bias = torch.mul(self.layers["conv1"].bias, 2**self.scaling).long()
+        conv1_circuit.scaling = self.scaling
+        # conv1_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
+        return conv1_circuit.get_model_params(conv1_circuit.get_output())
+
+    def get_relu_1(self, inputs):
         test_circuit = ReLU(conversion_type = ConversionType.TWOS_COMP)
-        test_circuit.inputs_1 = self.layers["conv1_relu"].inputs
-        test_circuit.outputs = self.layers["conv1_relu"].outputs
-        test_circuit.convert_to_relu_form()
-        test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, weights_folder, proof_system, output_folder)
+        test_circuit.inputs_1 = inputs
+        out = test_circuit.get_outputs()
+        return test_circuit.get_twos_comp_model_data(out)
+        # test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, weights_folder, proof_system, output_folder)
+
+
+
+        
+
+        
+
+    
 
 if __name__ == "__main__":
     Doom().run_circuit()

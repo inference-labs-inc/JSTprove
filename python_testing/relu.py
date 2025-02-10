@@ -126,8 +126,7 @@ class ReLU():
         else:
             pass
 
-
-
+    
     
     def base_testing(self, input_folder:str, proof_folder: str, temp_folder: str, circuit_folder:str, weights_folder:str, proof_system: ZKProofSystems, output_folder: str = None):
 
@@ -159,12 +158,7 @@ class ReLU():
 
         ## Define inputs and outputs
         if self.conversion_type == ConversionType.TWOS_COMP:
-            inputs = {
-                'inputs_1': self.inputs_1.int().tolist()
-                }
-            outputs = {
-                'outputs': outputs.int().tolist(),
-            }
+            self.get_twos_comp_model_data(outputs)
         elif self.conversion_type == ConversionType.DUAL_MATRIX:
             try:
                 inputs = {
@@ -199,6 +193,18 @@ class ReLU():
 
         ## Run the circuit
         prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file)
+
+    def get_outputs(self):
+        return torch.relu(self.inputs_1)
+    
+    def get_twos_comp_model_data(self, out):
+        inputs = {
+                'inputs_1': self.inputs_1.int().tolist()
+                }
+        outputs = {
+                'outputs': out.int().tolist(),
+            }
+        return (inputs, outputs)
 
     
 if __name__ == "__main__":

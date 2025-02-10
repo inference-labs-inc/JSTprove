@@ -289,3 +289,33 @@ pub fn relu_1d_v3<
         panic!("n_bits must be 32");
     }
 }
+
+
+pub fn relu_4d_vec_v2<
+    C: Config,
+    Builder: RootAPI<C>,
+>(
+    api: &mut Builder,
+    input: Vec<Vec<Vec<Vec<Variable>>>>,
+    n_bits: usize,
+) -> Vec<Vec<Vec<Vec<Variable>>>> {
+    let mut out: Vec<Vec<Vec<Vec<Variable>>>> = Vec::new();
+
+    // Iterating over the 4D vector
+    for (i, v3) in input.iter().enumerate() {
+        let mut out_0: Vec<Vec<Vec<Variable>>> = Vec::new();
+        for (j, v2) in v3.iter().enumerate() {
+            let mut out_1: Vec<Vec<Variable>> = Vec::new();
+            for (k, v1) in v2.iter().enumerate() {
+            let mut out_2: Vec<Variable> = Vec::new();
+                for (l, value) in v1.iter().enumerate() {
+                    out_2.push(relu_v2(api, *value, n_bits));
+                }
+            out_1.push(out_2);
+            }
+        out_0.push(out_1);
+        }
+        out.push(out_0);
+    }
+    out
+}
