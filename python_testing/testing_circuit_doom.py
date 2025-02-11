@@ -175,7 +175,7 @@ class Doom():
         weights = {"conv_1_" + key if key not in exclude_keys else key: value for key, value in conv_1_weights.items()}
 
 
-        (relu_inputs, relu_outputs) = self.get_relu_1(conv_1_output_tensor)
+        (relu_inputs, relu_outputs) = self.get_relu(conv_1_output_tensor)
         relu_1_output_tensor = torch.IntTensor(relu_outputs["outputs"])
         relu_1_input_tensor = torch.IntTensor(relu_inputs["inputs_1"])
 
@@ -192,18 +192,40 @@ class Doom():
 
         weights.update(conv_2_weights)
 
-        (relu_2_inputs, relu_2_outputs) = self.get_relu_1(conv_2_output_tensor)
+        (relu_2_inputs, relu_2_outputs) = self.get_relu(conv_2_output_tensor)
         relu_2_output_tensor = torch.IntTensor(relu_2_outputs["outputs"])
         relu_2_input_tensor = torch.IntTensor(relu_2_inputs["inputs_1"])
         # Check inputs of relu is same as outputs of conv
         self.check_4d_eq(relu_2_input_tensor,conv_2_output_tensor)
+
+
+
+        # Conv 3 next
+        (conv_3_inputs, conv_3_weights, conv_3_outputs) = self.get_circuit_conv_3(relu_2_output_tensor)
+        conv_3_input_tensor = torch.IntTensor(conv_3_inputs["input_arr"])
+        conv_3_output_tensor = torch.IntTensor(conv_3_outputs["conv_out"])
+
+        self.check_4d_eq(relu_2_output_tensor,conv_3_input_tensor)
+
+        conv_3_weights = {"conv_3_" + key if key not in exclude_keys else key: value for key, value in conv_3_weights.items()}
+        
+        weights.update(conv_3_weights)
+
+        (relu_3_inputs, relu_3_outputs) = self.get_relu(conv_3_output_tensor)
+        relu_3_output_tensor = torch.IntTensor(relu_3_outputs["outputs"])
+        relu_3_input_tensor = torch.IntTensor(relu_3_inputs["inputs_1"])
+
+        self.check_4d_eq(relu_3_input_tensor,conv_3_output_tensor)
+
+
+
         
 
         # NO NEED TO CHANGE anything below here!
         to_json(conv_1_inputs, input_file)
 
         # Write output to json
-        outputs = {"outputs": value for key, value in relu_2_outputs.items()}
+        outputs = {"outputs": value for key, value in relu_3_outputs.items()}
         to_json(outputs, output_file)
 
         to_json(weights, weights_file)
@@ -233,7 +255,7 @@ class Doom():
         return conv1_circuit.get_model_params(conv1_circuit.get_output())
     
 
-    def get_relu_1(self, inputs):
+    def get_relu(self, inputs):
         test_circuit = ReLU(conversion_type = ConversionType.TWOS_COMP)
         test_circuit.inputs_1 = inputs
         out = test_circuit.get_outputs()
@@ -258,6 +280,21 @@ class Doom():
         conv2_circuit.strides = (2,2)
         # conv1_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
         return conv2_circuit.get_model_params(conv2_circuit.get_output())
+    
+    def get_circuit_conv_3(self, inputs):
+        self.read_input("conv3")
+        self.read_output("conv3")
+        self.read_weights("conv3")
+        self.read_weights("conv3", is_weights=False)
+        layers = self.layers["conv3"]
+        conv3_circuit = QuantizedConv()
+        conv3_circuit.input_arr = inputs
+        conv3_circuit.weights = torch.mul(layers.weights, 2**self.scaling).long()
+        conv3_circuit.bias = torch.mul(layers.bias, 2**self.scaling).long()
+
+        conv3_circuit.scaling = self.scaling
+        conv3_circuit.strides = (2,2)
+        return conv3_circuit.get_model_params(conv3_circuit.get_output())
 
         
 

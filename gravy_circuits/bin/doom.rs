@@ -68,6 +68,14 @@ struct WeightsData {
     conv_2_dilation: Vec<u32>,
     conv_2_pads: Vec<u32>,
     conv_2_input_shape: Vec<u32>,
+    conv_3_weights: Vec<Vec<Vec<Vec<i64>>>>,
+    conv_3_bias: Vec<i64>,
+    conv_3_strides: Vec<u32>,
+    conv_3_kernel_shape: Vec<u32>,
+    conv_3_group: Vec<u32>,
+    conv_3_dilation: Vec<u32>,
+    conv_3_pads: Vec<u32>,
+    conv_3_input_shape: Vec<u32>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -95,7 +103,7 @@ lazy_static! {
 
 declare_circuit!(ConvCircuit {
     input_arr: [[[[Variable; DIM4]; DIM3]; DIM2]; DIM1], // shape (m, n)
-    outputs: [[[[Variable; 14]; 14]; 32]; 1], // shape (m, k)
+    outputs: [[[[Variable; 7]; 7]; 32]; 1], // shape (m, k)
 });
 
 
@@ -120,8 +128,7 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
         // let out = input_arr;
         //Relu 1
         let out = relu_4d_vec_v2(api, out, n_bits);
-        // let out = relu::relu_3d_v3(api, self.input);
-
+        //conv2
         let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv_2_weights);
         let bias: Vec<Variable> = WEIGHTS_INPUT
             .conv_2_bias
@@ -129,17 +136,28 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
             .into_iter()
             .map(|x| load_circuit_constant(api, x))
             .collect();
-        //conv2
         let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv_2_dilation, &WEIGHTS_INPUT.conv_2_kernel_shape, &WEIGHTS_INPUT.conv_2_pads, &WEIGHTS_INPUT.conv_2_strides,&WEIGHTS_INPUT.conv_2_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv_2_group, WEIGHTS_INPUT.quantized);
+        //relu2
+        let out = relu_4d_vec_v2(api, out, n_bits);
+        //conv3
+        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv_3_weights);
+        let bias: Vec<Variable> = WEIGHTS_INPUT
+            .conv_3_bias
+            .clone()
+            .into_iter()
+            .map(|x| load_circuit_constant(api, x))
+            .collect();
+        //conv3
+        let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv_3_dilation, &WEIGHTS_INPUT.conv_3_kernel_shape, &WEIGHTS_INPUT.conv_3_pads, &WEIGHTS_INPUT.conv_3_strides,&WEIGHTS_INPUT.conv_3_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv_3_group, WEIGHTS_INPUT.quantized);
 
         let out = relu_4d_vec_v2(api, out, n_bits);
-
 
         //Assert output of matrix multiplication
         for (j, dim1) in self.outputs.iter().enumerate() {
             for (k, dim2) in dim1.iter().enumerate() {
                 for (l, dim3) in dim2.iter().enumerate() {
                     for (m, _) in dim3.iter().enumerate() {
+                        // println!("{} {} {} {}", dim1, dim2, dim3, dim4)
                         api.assert_is_equal(self.outputs[j][k][l][m], out[j][k][l][m]);
                     }
                 }
