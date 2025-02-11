@@ -167,18 +167,43 @@ class Doom():
         witness_file, input_file, proof_path, public_path, verification_key, circuit_name, weights_file, output_file = get_files(
                 input_folder, proof_folder, temp_folder, circuit_folder, weights_folder, name, output_folder, proof_system)
 
+        exclude_keys = ['quantized', 'scaling']
         
         #Rework inputs to function
         (conv_1_inputs, conv_1_weights, conv_1_outputs) = self.get_circuit_conv_1()
         conv_1_output_tensor = torch.IntTensor(conv_1_outputs["conv_out"])
+        weights = {"conv_1_" + key if key not in exclude_keys else key: value for key, value in conv_1_weights.items()}
+
 
         (relu_inputs, relu_outputs) = self.get_relu_1(conv_1_output_tensor)
+        relu_1_output_tensor = torch.IntTensor(relu_outputs["outputs"])
+        relu_1_input_tensor = torch.IntTensor(relu_inputs["inputs_1"])
+
 
         for i in range(conv_1_output_tensor.shape[0]):
             for j in range(conv_1_output_tensor.shape[1]):
                 for k in range(conv_1_output_tensor.shape[2]):
                     for l in range(conv_1_output_tensor.shape[3]):
-                        assert(abs(conv_1_output_tensor[i][j][k][l] -  torch.IntTensor(relu_inputs["inputs_1"])[i][j][k][l]) < 10)
+                        assert(abs(conv_1_output_tensor[i][j][k][l] -  relu_1_input_tensor[i][j][k][l]) < 1)
+
+        (conv_2_inputs, conv_2_weights, conv_2_outputs) = self.get_circuit_conv_2(relu_1_output_tensor)
+        conv_2_output_tensor = torch.IntTensor(conv_2_outputs["conv_out"])
+        print(conv_2_output_tensor.shape)
+
+
+        for i in range(relu_1_output_tensor.shape[0]):
+            for j in range(relu_1_output_tensor.shape[1]):
+                for k in range(relu_1_output_tensor.shape[2]):
+                    for l in range(relu_1_output_tensor.shape[3]):
+                        assert(abs(relu_1_output_tensor[i][j][k][l] -  torch.IntTensor(conv_2_inputs["input_arr"])[i][j][k][l]) < 1)
+
+        conv_2_weights = {"conv_2_" + key if key not in exclude_keys else key: value for key, value in conv_2_weights.items()}
+
+        weights.update(conv_2_weights)
+        
+        
+
+        
 
 
 
@@ -186,9 +211,10 @@ class Doom():
         to_json(conv_1_inputs, input_file)
 
         # Write output to json
-        to_json(relu_outputs, output_file)
+        outputs = {"outputs": value for key, value in conv_2_outputs.items()}
+        to_json(outputs, output_file)
 
-        to_json(conv_1_weights, weights_file)
+        to_json(weights, weights_file)
 
         ## Run the circuit
         prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file)
@@ -202,12 +228,13 @@ class Doom():
         self.read_weights("conv1", is_weights=False)
         conv1_circuit = QuantizedConv()
         conv1_circuit.input_arr = torch.mul(self.layers["conv1"].inputs,2**self.scaling).long()
-        conv1_circuit.out = torch.mul(self.layers["conv1"].outputs, 2**self.scaling).long()
+        # conv1_circuit.out = torch.mul(self.layers["conv1"].outputs, 2**self.scaling).long()
         conv1_circuit.weights = torch.mul(self.layers["conv1"].weights, 2**self.scaling).long()
         conv1_circuit.bias = torch.mul(self.layers["conv1"].bias, 2**self.scaling).long()
         conv1_circuit.scaling = self.scaling
         # conv1_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
         return conv1_circuit.get_model_params(conv1_circuit.get_output())
+    
 
     def get_relu_1(self, inputs):
         test_circuit = ReLU(conversion_type = ConversionType.TWOS_COMP)
@@ -217,8 +244,23 @@ class Doom():
         # test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, weights_folder, proof_system, output_folder)
 
 
+    def get_circuit_conv_2(self, inputs):
+        self.read_input("conv2")
+        self.read_output("conv2")
+        self.read_weights("conv2")
+        self.read_weights("conv2", is_weights=False)
+        layers = self.layers["conv2"]
+        conv2_circuit = QuantizedConv()
+        # conv1_circuit.input_arr = torch.mul(self.layers["conv1"].inputs,2**self.scaling).long()
+        conv2_circuit.input_arr = inputs
+        # conv2_circuit.out = torch.mul(layers.outputs, 2**self.scaling).long()
+        conv2_circuit.weights = torch.mul(layers.weights, 2**self.scaling).long()
+        conv2_circuit.bias = torch.mul(layers.bias, 2**self.scaling).long()
 
-        
+        conv2_circuit.scaling = self.scaling
+        conv2_circuit.strides = (2,2)
+        # conv1_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
+        return conv2_circuit.get_model_params(conv2_circuit.get_output())
 
         
 

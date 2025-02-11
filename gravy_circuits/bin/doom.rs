@@ -1,5 +1,5 @@
 use arith::FieldForECC;
-use convolution_fn::{conv_shape_4, not_yet_implemented_conv, set_default_params};
+use convolution_fn::{conv_4d_run, conv_shape_4, not_yet_implemented_conv, set_default_params};
 use ethnum::U256;
 use expander_compiler::frontend::*;
 use helper_fn::{four_d_array_to_vec, load_circuit_constant, read_4d_weights};
@@ -50,16 +50,24 @@ const DIM2OUT: usize = 16;
 //Define structure of inputs, weights and output
 #[derive(Deserialize, Clone)]
 struct WeightsData {
-    weights: Vec<Vec<Vec<Vec<i64>>>>,
-    bias: Vec<i64>,
-    strides: Vec<u32>,
-    kernel_shape: Vec<u32>,
-    group: Vec<u32>,
-    dilation: Vec<u32>,
-    pads: Vec<u32>,
-    input_shape: Vec<u32>,
+    conv_1_weights: Vec<Vec<Vec<Vec<i64>>>>,
+    conv_1_bias: Vec<i64>,
+    conv_1_strides: Vec<u32>,
+    conv_1_kernel_shape: Vec<u32>,
+    conv_1_group: Vec<u32>,
+    conv_1_dilation: Vec<u32>,
+    conv_1_pads: Vec<u32>,
+    conv_1_input_shape: Vec<u32>,
     quantized: bool,
     scaling: u64,
+    conv_2_weights: Vec<Vec<Vec<Vec<i64>>>>,
+    conv_2_bias: Vec<i64>,
+    conv_2_strides: Vec<u32>,
+    conv_2_kernel_shape: Vec<u32>,
+    conv_2_group: Vec<u32>,
+    conv_2_dilation: Vec<u32>,
+    conv_2_pads: Vec<u32>,
+    conv_2_input_shape: Vec<u32>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -73,7 +81,7 @@ struct OutputData {
 }
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/convolution_weights.json");
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/doom_weights.json");
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
 // Weights will be read in
@@ -87,8 +95,10 @@ lazy_static! {
 
 declare_circuit!(ConvCircuit {
     input_arr: [[[[Variable; DIM4]; DIM3]; DIM2]; DIM1], // shape (m, n)
-    outputs: [[[[Variable; DIM4]; DIM3]; DIM2OUT]; DIM1], // shape (m, k)
+    outputs: [[[[Variable; 14]; 14]; 32]; 1], // shape (m, k)
 });
+
+
 
 // Memorization, in a better place
 impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
@@ -96,48 +106,33 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
         let n_bits = 32;
         // Bring the weights into the circuit as constants
 
-        let weights = read_4d_weights(api, &WEIGHTS_INPUT.weights);
+        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv_1_weights);
         let bias: Vec<Variable> = WEIGHTS_INPUT
-            .bias
+            .conv_1_bias
             .clone()
             .into_iter()
             .map(|x| load_circuit_constant(api, x))
             .collect();
-        let (dilations, kernel_shape, pads, strides) = set_default_params(
-            &WEIGHTS_INPUT.dilation,
-            &WEIGHTS_INPUT.kernel_shape,
-            &WEIGHTS_INPUT.pads,
-            &WEIGHTS_INPUT.strides,
-            &WEIGHTS_INPUT.input_shape,
-        );
-        not_yet_implemented_conv(&WEIGHTS_INPUT.input_shape, &WEIGHTS_INPUT.group, &dilations);
 
         let input_arr = four_d_array_to_vec(self.input_arr);
 
-        let mut out: Vec<Vec<Vec<Vec<Variable>>>> = conv_shape_4(
-            api,
-            input_arr,
-            &WEIGHTS_INPUT.input_shape,
-            &kernel_shape,
-            &strides,
-            &pads,
-            &weights,
-            &bias,
-        );
-
-        if WEIGHTS_INPUT.quantized{
-            let scaling_factor = 1 << WEIGHTS_INPUT.scaling;
-            println!("{}", scaling_factor);
-            out = quantize_4d_vector(api, out, scaling_factor, WEIGHTS_INPUT.scaling as usize);
-            // panic!("Quantized not yet implemented");
-        }
-        else{
-            out = out;
-        }
-
+        let out = conv_4d_run(api, input_arr, weights, bias,&WEIGHTS_INPUT.conv_1_dilation, &WEIGHTS_INPUT.conv_1_kernel_shape, &WEIGHTS_INPUT.conv_1_pads, &WEIGHTS_INPUT.conv_1_strides,&WEIGHTS_INPUT.conv_1_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv_1_group, WEIGHTS_INPUT.quantized);
+        // let out = input_arr;
         //Relu 1
         let out = relu_4d_vec_v2(api, out, n_bits);
         // let out = relu::relu_3d_v3(api, self.input);
+
+        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv_2_weights);
+        let bias: Vec<Variable> = WEIGHTS_INPUT
+            .conv_2_bias
+            .clone()
+            .into_iter()
+            .map(|x| load_circuit_constant(api, x))
+            .collect();
+        //conv2
+        let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv_2_dilation, &WEIGHTS_INPUT.conv_2_kernel_shape, &WEIGHTS_INPUT.conv_2_pads, &WEIGHTS_INPUT.conv_2_strides,&WEIGHTS_INPUT.conv_2_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv_2_group, WEIGHTS_INPUT.quantized);
+        //relu2
+        let out = relu_4d_vec_v2(api, out, n_bits);
 
 
         //Assert output of matrix multiplication
@@ -152,6 +147,7 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
         }
     }
 }
+
 
 impl<C: Config> IOReader<C, ConvCircuit<C::CircuitField>> for FileReader {
     fn read_inputs(

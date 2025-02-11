@@ -82,7 +82,6 @@ class Convolution():
             if B is not None:
                 res[:, :, :, :] = B.reshape((1, -1, 1, 1))  # type: ignore
 
-
             for n in range(sN):
                 for nw in range(W.shape[0]):
                     for c in range(sC):
@@ -178,19 +177,19 @@ class Convolution():
                 for j in range(len(output_onnx[i])):  # Iterate over the second dimension
                     for k in range(len(output_onnx[i][j])):  # Iterate over the third dimension
                         for l in range(len(output_onnx[i][j][k])):  # Iterate over the fourth dimension
-                            # print(total_out[i][j][k][l].long(), output_onnx[i][j][k][l].astype(np.int64))
-                            # assert abs(total_out[i][j][k][l].long() - output_onnx[i][j][k][l].astype(np.int64)) < 10
-                            pass
+                            print(total_out[i][j][k][l].long(), output_onnx[i][j][k][l].astype(np.int64))
+                            assert abs(total_out[i][j][k][l].long() - output_onnx[i][j][k][l].astype(np.int64)) < 10
+                            # pass
 
             output = self.get_output()
             # print(self.out)
-            # if not self.out == None:
-            #     for i in range(len(output_onnx)):  # Iterate over the first dimension
-            #         for j in range(len(output_onnx[i])):  # Iterate over the second dimension
-            #             for k in range(len(output_onnx[i][j])):  # Iterate over the third dimension
-            #                 for l in range(len(output_onnx[i][j][k])):  # Iterate over the fourth dimension
-            #                     print(self.out[i][j][k][l], output[i][j][k][l])
-            #                     assert abs(self.out[i][j][k][l] - output[i][j][k][l]) < 1
+            if not self.out == None:
+                for i in range(len(output_onnx)):  # Iterate over the first dimension
+                    for j in range(len(output_onnx[i])):  # Iterate over the second dimension
+                        for k in range(len(output_onnx[i][j])):  # Iterate over the third dimension
+                            for l in range(len(output_onnx[i][j][k])):  # Iterate over the fourth dimension
+                                print(self.out[i][j][k][l], output[i][j][k][l])
+                                assert abs(total_out[i][j][k][l].long() - output[i][j][k][l]) < 1
 
             # for i in range(len(output_onnx)):  # Iterate over the first dimension
             #     for j in range(len(output_onnx[i])):  # Iterate over the second dimension

@@ -2,7 +2,11 @@ use std::cmp::{max, min};
 
 use expander_compiler::frontend::*;
 
+use crate::helper_fn::four_d_array_to_vec;
 use crate::matrix_computation::dot;
+
+use crate::quantization::quantize_4d_vector;
+
 
 //Untested
 pub fn set_default_params(
@@ -160,7 +164,7 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
     let stw = strides.get(1).expect("Missing strides index 1");
 
     //Need to make sure there is no overflow/casting issues here. Dont think there should be
-    let h_out = (s_h - kh + pads[0] + pads[2] / sth) + 1;
+    let h_out = ((s_h - kh + pads[0] + pads[2]) / sth) + 1;
     let w_out = ((s_w - kw + pads[1] + pads[3]) / stw) + 1;
 
     let h0 = pads.get(0).expect("Missing pads 0 index");
@@ -192,7 +196,6 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
         shape_2,
         shape_3,
     );
-
     for n in 0..*s_n {
         for nw in 0..weights.len() {
             for c in 0..*s_c {
@@ -207,7 +210,6 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
                         continue;
                     }
                     let i = io + *kh as i32 % 2; // Be careful with where the modulus is
-
                     let ih1 = max(0, i + oh) as usize;
                     let ih2 = min(i + oh + *kh as i32, *s_h as i32) as usize;
 
@@ -272,10 +274,6 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
                             // api.display("res pre sum", res[n as usize][nw][hr as usize][wr as usize]);
                             res[n as usize][nw][hr as usize][wr as usize] =
                                 api.add(s, res[n as usize][nw][hr as usize][wr as usize]);
-                            api.display(
-                                "res post_sum",
-                                res[n as usize][nw][hr as usize][wr as usize],
-                            );
                         } else {
                             let s = flatten_and_perform_dot(api, img, w.clone());
                             res[n as usize][nw][hr as usize][wr as usize] =
@@ -314,4 +312,37 @@ fn flatten_and_perform_dot<C: Config, Builder: RootAPI<C>>(
         .collect();
     let s = dot(api, flattened_img, flattened_w_);
     s
+}
+
+
+pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(api: &mut Builder, input_arr: Vec<Vec<Vec<Vec<Variable>>>> , weights:  Vec<Vec<Vec<Vec<Variable>>>>, bias: Vec<Variable>,dilations_in: &Vec<u32>, kernel_shape_in: &Vec<u32>, pads_in: &Vec<u32>, strides_in: &Vec<u32>, input_shape_in: &Vec<u32>, scaling_in: u64, group_in: &Vec<u32>, quantized:bool) -> Vec<Vec<Vec<Vec<Variable>>>> {
+    let (dilations, kernel_shape, pads, strides) = set_default_params(
+        dilations_in,
+        kernel_shape_in,
+        pads_in,
+        strides_in,
+        input_shape_in,
+    );
+    not_yet_implemented_conv(input_shape_in, group_in, &dilations);
+    let mut out: Vec<Vec<Vec<Vec<Variable>>>> = conv_shape_4(
+        api,
+        input_arr,
+        input_shape_in,
+        &kernel_shape,
+        &strides,
+        &pads,
+        &weights,
+        &bias,
+    );
+
+    if quantized{
+        let scaling_factor = 1 << scaling_in;
+        println!("{}", scaling_factor);
+        out = quantize_4d_vector(api, out, scaling_factor, scaling_in as usize);
+        // panic!("Quantized not yet implemented");
+    }
+    else{
+        out = out;
+    }
+    out
 }
