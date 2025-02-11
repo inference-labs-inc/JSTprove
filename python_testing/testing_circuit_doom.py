@@ -179,39 +179,31 @@ class Doom():
         relu_1_output_tensor = torch.IntTensor(relu_outputs["outputs"])
         relu_1_input_tensor = torch.IntTensor(relu_inputs["inputs_1"])
 
-
-        for i in range(conv_1_output_tensor.shape[0]):
-            for j in range(conv_1_output_tensor.shape[1]):
-                for k in range(conv_1_output_tensor.shape[2]):
-                    for l in range(conv_1_output_tensor.shape[3]):
-                        assert(abs(conv_1_output_tensor[i][j][k][l] -  relu_1_input_tensor[i][j][k][l]) < 1)
+        # Check outputs of conv is same as inputs of relu
+        self.check_4d_eq(conv_1_output_tensor,relu_1_input_tensor)
 
         (conv_2_inputs, conv_2_weights, conv_2_outputs) = self.get_circuit_conv_2(relu_1_output_tensor)
+        conv_2_input_tensor = torch.IntTensor(conv_2_inputs["input_arr"])
         conv_2_output_tensor = torch.IntTensor(conv_2_outputs["conv_out"])
-        print(conv_2_output_tensor.shape)
-
-
-        for i in range(relu_1_output_tensor.shape[0]):
-            for j in range(relu_1_output_tensor.shape[1]):
-                for k in range(relu_1_output_tensor.shape[2]):
-                    for l in range(relu_1_output_tensor.shape[3]):
-                        assert(abs(relu_1_output_tensor[i][j][k][l] -  torch.IntTensor(conv_2_inputs["input_arr"])[i][j][k][l]) < 1)
+        # Check outputs of relu is same as inputs of conv
+        self.check_4d_eq(relu_1_output_tensor,conv_2_input_tensor)
 
         conv_2_weights = {"conv_2_" + key if key not in exclude_keys else key: value for key, value in conv_2_weights.items()}
 
         weights.update(conv_2_weights)
-        
-        
 
+        (relu_2_inputs, relu_2_outputs) = self.get_relu_1(conv_2_output_tensor)
+        relu_2_output_tensor = torch.IntTensor(relu_2_outputs["outputs"])
+        relu_2_input_tensor = torch.IntTensor(relu_2_inputs["inputs_1"])
+        # Check inputs of relu is same as outputs of conv
+        self.check_4d_eq(relu_2_input_tensor,conv_2_output_tensor)
         
-
-
 
         # NO NEED TO CHANGE anything below here!
         to_json(conv_1_inputs, input_file)
 
         # Write output to json
-        outputs = {"outputs": value for key, value in conv_2_outputs.items()}
+        outputs = {"outputs": value for key, value in relu_2_outputs.items()}
         to_json(outputs, output_file)
 
         to_json(weights, weights_file)
@@ -219,7 +211,12 @@ class Doom():
         ## Run the circuit
         prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file)
 
-       
+    def check_4d_eq(self, input_tensor_1, input_tensor_2):
+        for i in range(input_tensor_1.shape[0]):
+            for j in range(input_tensor_1.shape[1]):
+                for k in range(input_tensor_1.shape[2]):
+                    for l in range(input_tensor_1.shape[3]):
+                        assert(abs(input_tensor_1[i][j][k][l] -  input_tensor_2[i][j][k][l]) < 1)
 
     def get_circuit_conv_1(self):
         self.read_input("conv1")

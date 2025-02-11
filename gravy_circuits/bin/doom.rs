@@ -131,7 +131,7 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
             .collect();
         //conv2
         let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv_2_dilation, &WEIGHTS_INPUT.conv_2_kernel_shape, &WEIGHTS_INPUT.conv_2_pads, &WEIGHTS_INPUT.conv_2_strides,&WEIGHTS_INPUT.conv_2_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv_2_group, WEIGHTS_INPUT.quantized);
-        //relu2
+
         let out = relu_4d_vec_v2(api, out, n_bits);
 
 
