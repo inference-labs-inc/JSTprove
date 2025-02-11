@@ -149,8 +149,8 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
             .collect();
         //conv3
         let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv_3_dilation, &WEIGHTS_INPUT.conv_3_kernel_shape, &WEIGHTS_INPUT.conv_3_pads, &WEIGHTS_INPUT.conv_3_strides,&WEIGHTS_INPUT.conv_3_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv_3_group, WEIGHTS_INPUT.quantized);
-
         let out = relu_4d_vec_v2(api, out, n_bits);
+
 
         //Assert output of matrix multiplication
         for (j, dim1) in self.outputs.iter().enumerate() {

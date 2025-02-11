@@ -217,6 +217,9 @@ class Doom():
 
         self.check_4d_eq(relu_3_input_tensor,conv_3_output_tensor)
 
+        # reshape_out = torch.reshape(relu_3_output_tensor, [-1, 1568])
+        # print(reshape_out)
+
 
 
         
@@ -226,6 +229,7 @@ class Doom():
 
         # Write output to json
         outputs = {"outputs": value for key, value in relu_3_outputs.items()}
+        # outputs = {"outputs": reshape_out}
         to_json(outputs, output_file)
 
         to_json(weights, weights_file)
