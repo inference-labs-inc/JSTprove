@@ -44,7 +44,7 @@ class Doom():
     def __init__(self):
         self.layers = {}
 
-        self.scaling = 21
+        self.scaling = 26
         
         self.layers["input"] = LayerInfo("input", [1, 4, 28, 28], [1, 4, 28, 28])
         
@@ -260,6 +260,7 @@ class Doom():
         to_json(conv_1_inputs, input_file)
 
         # Write output to json
+        # outputs = {"outputs": torch.div(torch.tensor(value),2**(self.scaling*2)).tolist() for key, value in gemm_2_outputs.items()}
         outputs = {"outputs": value for key, value in gemm_2_outputs.items()}
         # outputs = {"outputs": reshape_out.tolist()}
         to_json(outputs, output_file)
@@ -268,7 +269,7 @@ class Doom():
         to_json(weights_2, weights_file[:-5] + '2' + weights_file[-5:])
 
 
-        ## Run the circuit
+        # ## Run the circuit
         prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file)
 
     def check_4d_eq(self, input_tensor_1, input_tensor_2):
@@ -292,7 +293,7 @@ class Doom():
         conv1_circuit.input_arr = torch.mul(self.layers["conv1"].inputs,2**self.scaling).long()
         # conv1_circuit.out = torch.mul(self.layers["conv1"].outputs, 2**self.scaling).long()
         conv1_circuit.weights = torch.mul(self.layers["conv1"].weights, 2**self.scaling).long()
-        conv1_circuit.bias = torch.mul(self.layers["conv1"].bias, 2**self.scaling).long()
+        conv1_circuit.bias = torch.mul(self.layers["conv1"].bias, 2**(self.scaling*2)).long()
         conv1_circuit.scaling = self.scaling
         # conv1_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
         return conv1_circuit.get_model_params(conv1_circuit.get_output())
@@ -317,7 +318,7 @@ class Doom():
         conv2_circuit.input_arr = inputs
         # conv2_circuit.out = torch.mul(layers.outputs, 2**self.scaling).long()
         conv2_circuit.weights = torch.mul(layers.weights, 2**self.scaling).long()
-        conv2_circuit.bias = torch.mul(layers.bias, 2**self.scaling).long()
+        conv2_circuit.bias = torch.mul(layers.bias, 2**(self.scaling*2)).long()
 
         conv2_circuit.scaling = self.scaling
         conv2_circuit.strides = (2,2)
@@ -333,7 +334,7 @@ class Doom():
         conv3_circuit = QuantizedConv()
         conv3_circuit.input_arr = inputs
         conv3_circuit.weights = torch.mul(layers.weights, 2**self.scaling).long()
-        conv3_circuit.bias = torch.mul(layers.bias, 2**self.scaling).long()
+        conv3_circuit.bias = torch.mul(layers.bias, 2**(self.scaling*2)).long()
 
         conv3_circuit.scaling = self.scaling
         conv3_circuit.strides = (2,2)
@@ -352,7 +353,7 @@ class Doom():
         mat_mult_circuit.matrix_b = torch.transpose(torch.mul(layers.weights, 2**self.scaling),0,1).long()
         # print(layers.bias.shape)
         # Scale up matrix c, twofold, to account for the multiplication that has just taken place
-        mat_mult_circuit.matrix_c = torch.reshape(torch.mul(layers.bias, 2**(self.scaling*2)), [mat_mult_circuit.matrix_a.shape[0],mat_mult_circuit.matrix_b.shape[1]]).int()
+        mat_mult_circuit.matrix_c = torch.reshape(torch.mul(layers.bias, 2**(self.scaling*2)), [mat_mult_circuit.matrix_a.shape[0],mat_mult_circuit.matrix_b.shape[1]]).long()
         mat_mult_circuit.scaling = self.scaling
         mat_mult_circuit.alpha = torch.tensor(1)
         mat_mult_circuit.beta = torch.tensor(1)
@@ -372,7 +373,7 @@ class Doom():
         mat_mult_circuit2.matrix_b = torch.transpose(torch.mul(layers.weights, 2**self.scaling),0,1).long()
         # print(layers.bias.shape)
         # Scale up matrix c, twofold, to account for the multiplication that has just taken place
-        mat_mult_circuit2.matrix_c = torch.reshape(torch.mul(layers.bias, 2**(self.scaling*2)), [mat_mult_circuit2.matrix_a.shape[0],mat_mult_circuit2.matrix_b.shape[1]]).int()
+        mat_mult_circuit2.matrix_c = torch.reshape(torch.mul(layers.bias, 2**(self.scaling*2)), [mat_mult_circuit2.matrix_a.shape[0],mat_mult_circuit2.matrix_b.shape[1]]).long()
         mat_mult_circuit2.scaling = self.scaling
         mat_mult_circuit2.alpha = torch.tensor(1)
         mat_mult_circuit2.beta = torch.tensor(1)

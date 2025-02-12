@@ -125,6 +125,9 @@ class Convolution():
                                     ]  # (img * w).sum()
                                 res[n, nw, hr, wr] += s  # type: ignore
 
+                                # TODO
+                                # THE BIAS NEEDS TO BE SCALED UP AS WELL!!!!!!
+
             return res
         
     def get_output(self):
