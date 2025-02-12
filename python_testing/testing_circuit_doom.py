@@ -33,12 +33,6 @@ class LayerInfo():
         else:
             self.weights = None
 
-    # def update_weights(self, bias):
-    #     if self.weight_shape:
-    #         self.bias = bias.reshape(self.weight_shape)
-    #     else:
-    #         self.weights = None
-
 
 class Doom():
     def __init__(self):
@@ -171,8 +165,11 @@ class Doom():
 
         exclude_keys = ['quantized', 'scaling']
         
+        input_arr = self.get_inputs()
+
         #Rework inputs to function
-        (conv_1_inputs, conv_1_weights, conv_1_outputs) = self.get_circuit_conv_1()
+        (conv_1_inputs, conv_1_weights, conv_1_outputs) = self.get_circuit_conv(input_arr, "conv1", strides = (1,1))
+        conv_1_input_tensor = torch.IntTensor(conv_1_inputs["input_arr"])
         conv_1_output_tensor = torch.IntTensor(conv_1_outputs["conv_out"])
         weights = {"conv_1_" + key if key not in exclude_keys else key: value for key, value in conv_1_weights.items()}
 
@@ -184,7 +181,7 @@ class Doom():
         # Check outputs of conv is same as inputs of relu
         self.check_4d_eq(conv_1_output_tensor,relu_1_input_tensor)
 
-        (conv_2_inputs, conv_2_weights, conv_2_outputs) = self.get_circuit_conv_2(relu_1_output_tensor)
+        (conv_2_inputs, conv_2_weights, conv_2_outputs) = self.get_circuit_conv(relu_1_output_tensor, "conv2", strides = (2,2))
         conv_2_input_tensor = torch.IntTensor(conv_2_inputs["input_arr"])
         conv_2_output_tensor = torch.IntTensor(conv_2_outputs["conv_out"])
         # Check outputs of relu is same as inputs of conv
@@ -203,7 +200,7 @@ class Doom():
 
 
         # Conv 3 next
-        (conv_3_inputs, conv_3_weights, conv_3_outputs) = self.get_circuit_conv_3(relu_2_output_tensor)
+        (conv_3_inputs, conv_3_weights, conv_3_outputs) = self.get_circuit_conv(relu_2_output_tensor, "conv3", strides = (2,2))
         conv_3_input_tensor = torch.IntTensor(conv_3_inputs["input_arr"])
         conv_3_output_tensor = torch.IntTensor(conv_3_outputs["conv_out"])
 
@@ -220,11 +217,10 @@ class Doom():
         self.check_4d_eq(relu_3_input_tensor,conv_3_output_tensor)
 
         reshape_out = torch.reshape(relu_3_output_tensor, [-1, 1568])
-        # print(reshape_out)
-        # print(type(reshape_out))
 
+        (gemm_1_inputs, gemm_1_weights, gemm_1_outputs) = self.get_layer(reshape_out, "fc1", quant = True)
 
-        (gemm_1_inputs, gemm_1_weights, gemm_1_outputs) = self.get_mat_mult(reshape_out)
+        
         gemm_1_output_tensor = torch.LongTensor(gemm_1_outputs["gemm"])
         gemm_1_input_tensor = torch.LongTensor(gemm_1_inputs["matrix_a"])
 
@@ -233,14 +229,15 @@ class Doom():
         self.check_2d_eq(reshape_out,gemm_1_input_tensor)
         weights.update(gemm_1_weights)
 
-        (relu_4_inputs, relu_4_outputs) = self.get_relu(gemm_1_output_tensor)
+        (relu_4_inputs, relu_4_outputs) = self.get_layer(gemm_1_output_tensor, "relu")
+
         relu_4_output_tensor = torch.IntTensor(relu_4_outputs["outputs"])
         relu_4_input_tensor = torch.IntTensor(relu_4_inputs["inputs_1"])
 
         self.check_2d_eq(relu_4_input_tensor,gemm_1_output_tensor)
 
+        (gemm_2_inputs, gemm_2_weights, gemm_2_outputs) = self.get_layer(relu_4_output_tensor.clone(), "fc2", quant = False)
 
-        (gemm_2_inputs, gemm_2_weights, gemm_2_outputs) = self.get_mat_mult_no_quant(relu_4_output_tensor.clone())
 
 
         gemm_2_output_tensor = torch.LongTensor(gemm_2_outputs["gemm"])
@@ -284,101 +281,70 @@ class Doom():
             for j in range(input_tensor_1.shape[1]):
                 assert(abs(input_tensor_1[i][j] -  input_tensor_2[i][j]) < 1)
 
-    def get_circuit_conv_1(self):
-        self.read_input("conv1")
-        self.read_output("conv1")
-        self.read_weights("conv1")
-        self.read_weights("conv1", is_weights=False)
-        conv1_circuit = QuantizedConv()
-        conv1_circuit.input_arr = torch.mul(self.layers["conv1"].inputs,2**self.scaling).long()
-        # conv1_circuit.out = torch.mul(self.layers["conv1"].outputs, 2**self.scaling).long()
-        conv1_circuit.weights = torch.mul(self.layers["conv1"].weights, 2**self.scaling).long()
-        conv1_circuit.bias = torch.mul(self.layers["conv1"].bias, 2**(self.scaling*2)).long()
-        conv1_circuit.scaling = self.scaling
-        # conv1_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
-        return conv1_circuit.get_model_params(conv1_circuit.get_output())
-    
+
+    def get_layer(self, inputs, layer_name, **kwargs):
+        if layer_name == "input":
+            return self.get_inputs()
+        elif "conv" in layer_name:
+            return self.get_circuit_conv(inputs, layer_name, kwargs.get("strides", (1,1)))
+        elif "relu" in layer_name:
+            return self.get_relu(inputs)
+        elif "fc" in  layer_name:
+            return self.get_mat_mult(inputs, layer_name, kwargs.get("quant", True))
+        else:
+            raise(ValueError("Layer not found"))
+
+
+    def get_inputs(self):
+        self.read_output("input")
+        return torch.mul(self.layers["input"].outputs,2**self.scaling).long()
 
     def get_relu(self, inputs):
-        test_circuit = ReLU(conversion_type = ConversionType.TWOS_COMP)
-        test_circuit.inputs_1 = inputs
-        out = test_circuit.get_outputs()
-        return test_circuit.get_twos_comp_model_data(out)
-        # test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, weights_folder, proof_system, output_folder)
-
-
-    def get_circuit_conv_2(self, inputs):
-        self.read_input("conv2")
-        self.read_output("conv2")
-        self.read_weights("conv2")
-        self.read_weights("conv2", is_weights=False)
-        layers = self.layers["conv2"]
-        conv2_circuit = QuantizedConv()
-        # conv1_circuit.input_arr = torch.mul(self.layers["conv1"].inputs,2**self.scaling).long()
-        conv2_circuit.input_arr = inputs
-        # conv2_circuit.out = torch.mul(layers.outputs, 2**self.scaling).long()
-        conv2_circuit.weights = torch.mul(layers.weights, 2**self.scaling).long()
-        conv2_circuit.bias = torch.mul(layers.bias, 2**(self.scaling*2)).long()
-
-        conv2_circuit.scaling = self.scaling
-        conv2_circuit.strides = (2,2)
-        # conv1_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
-        return conv2_circuit.get_model_params(conv2_circuit.get_output())
+        relu_circuit = ReLU(conversion_type = ConversionType.TWOS_COMP)
+        relu_circuit.inputs_1 = inputs
+        out = relu_circuit.get_outputs()
+        return relu_circuit.get_twos_comp_model_data(out)
     
-    def get_circuit_conv_3(self, inputs):
-        self.read_input("conv3")
-        self.read_output("conv3")
-        self.read_weights("conv3")
-        self.read_weights("conv3", is_weights=False)
-        layers = self.layers["conv3"]
-        conv3_circuit = QuantizedConv()
-        conv3_circuit.input_arr = inputs
-        conv3_circuit.weights = torch.mul(layers.weights, 2**self.scaling).long()
-        conv3_circuit.bias = torch.mul(layers.bias, 2**(self.scaling*2)).long()
+    def get_circuit_conv(self, inputs, layer_name, strides = (1,1)):
+        self.read_input(layer_name)
+        self.read_output(layer_name)
+        self.read_weights(layer_name)
+        self.read_weights(layer_name, is_weights=False)
+        layers = self.layers[layer_name]
+        conv_circuit = QuantizedConv()
+        conv_circuit.input_arr = inputs
+        conv_circuit.weights = torch.mul(layers.weights, 2**self.scaling).long()
+        conv_circuit.bias = torch.mul(layers.bias, 2**(self.scaling*2)).long()
 
-        conv3_circuit.scaling = self.scaling
-        conv3_circuit.strides = (2,2)
-        return conv3_circuit.get_model_params(conv3_circuit.get_output())
+        conv_circuit.scaling = self.scaling
+        conv_circuit.strides = strides
 
-    def get_mat_mult(self, inputs):
-        self.read_input("fc1")
-        self.read_output("fc1")
-        self.read_weights("fc1")
-        self.read_weights("fc1", is_weights=False)
+        return conv_circuit.get_model_params(conv_circuit.get_output())
+    
+    def get_mat_mult(self, inputs, layer, quant = True):
+        self.read_input(layer)
+        self.read_output(layer)
+        self.read_weights(layer)
+        self.read_weights(layer, is_weights=False)
+        layers = self.layers[layer]
 
-        layers = self.layers["fc1"]
+        if quant:
+            mat_mult_circuit = QuantizedGemm()
+        else:
+            mat_mult_circuit = Gemm()
 
-        mat_mult_circuit = QuantizedGemm()
         mat_mult_circuit.matrix_a = inputs.long()
         mat_mult_circuit.matrix_b = torch.transpose(torch.mul(layers.weights, 2**self.scaling),0,1).long()
-        # print(layers.bias.shape)
+
         # Scale up matrix c, twofold, to account for the multiplication that has just taken place
         mat_mult_circuit.matrix_c = torch.reshape(torch.mul(layers.bias, 2**(self.scaling*2)), [mat_mult_circuit.matrix_a.shape[0],mat_mult_circuit.matrix_b.shape[1]]).long()
+        
         mat_mult_circuit.scaling = self.scaling
         mat_mult_circuit.alpha = torch.tensor(1)
         mat_mult_circuit.beta = torch.tensor(1)
+
         gemm = mat_mult_circuit.get_outputs()
         return mat_mult_circuit.get_model_params(gemm)
-    
-    def get_mat_mult_no_quant(self, inputs):
-        self.read_input("fc2")
-        self.read_output("fc2")
-        self.read_weights("fc2")
-        self.read_weights("fc2", is_weights=False)
-
-        layers = self.layers["fc2"]
-
-        mat_mult_circuit2 = Gemm()
-        mat_mult_circuit2.matrix_a = inputs.long()
-        mat_mult_circuit2.matrix_b = torch.transpose(torch.mul(layers.weights, 2**self.scaling),0,1).long()
-        # print(layers.bias.shape)
-        # Scale up matrix c, twofold, to account for the multiplication that has just taken place
-        mat_mult_circuit2.matrix_c = torch.reshape(torch.mul(layers.bias, 2**(self.scaling*2)), [mat_mult_circuit2.matrix_a.shape[0],mat_mult_circuit2.matrix_b.shape[1]]).long()
-        mat_mult_circuit2.scaling = self.scaling
-        mat_mult_circuit2.alpha = torch.tensor(1)
-        mat_mult_circuit2.beta = torch.tensor(1)
-        gemm = mat_mult_circuit2.get_outputs()
-        return mat_mult_circuit2.get_model_params(gemm)
 
         
 

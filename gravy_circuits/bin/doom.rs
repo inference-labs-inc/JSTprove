@@ -190,9 +190,7 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
 
         if WEIGHTS_INPUT.quantized{
             let scaling_factor = 1 << WEIGHTS_INPUT.scaling;
-            println!("{}", scaling_factor);
             out_2d = quantize_2d_vector(api, out_2d, scaling_factor, WEIGHTS_INPUT.scaling as usize);
-            // panic!("Quantized not yet implemented");
         }
 
         let out_2d = relu_2d_vec_v2(api, out_2d, n_bits);
