@@ -5,6 +5,8 @@ import os
 from python_testing.relu import ReLU, ConversionType
 
 from python_testing.convolution import Convolution, QuantizedConv
+# from python_testing.matrix_multiplication import QuantizedMatrixMultiplication
+from python_testing.gemm import QuantizedGemm, Gemm
 
 
 
@@ -217,8 +219,38 @@ class Doom():
 
         self.check_4d_eq(relu_3_input_tensor,conv_3_output_tensor)
 
-        # reshape_out = torch.reshape(relu_3_output_tensor, [-1, 1568])
+        reshape_out = torch.reshape(relu_3_output_tensor, [-1, 1568])
         # print(reshape_out)
+        # print(type(reshape_out))
+
+
+        (gemm_1_inputs, gemm_1_weights, gemm_1_outputs) = self.get_mat_mult(reshape_out)
+        gemm_1_output_tensor = torch.LongTensor(gemm_1_outputs["gemm"])
+        gemm_1_input_tensor = torch.LongTensor(gemm_1_inputs["matrix_a"])
+
+        gemm_1_weights = {"gemm_1_" + key if key not in exclude_keys else key: value for key, value in gemm_1_weights.items()}
+
+        self.check_2d_eq(reshape_out,gemm_1_input_tensor)
+        weights.update(gemm_1_weights)
+
+        (relu_4_inputs, relu_4_outputs) = self.get_relu(gemm_1_output_tensor)
+        relu_4_output_tensor = torch.IntTensor(relu_4_outputs["outputs"])
+        relu_4_input_tensor = torch.IntTensor(relu_4_inputs["inputs_1"])
+
+        self.check_2d_eq(relu_4_input_tensor,gemm_1_output_tensor)
+
+
+        (gemm_2_inputs, gemm_2_weights, gemm_2_outputs) = self.get_mat_mult_no_quant(relu_4_output_tensor.clone())
+
+
+        gemm_2_output_tensor = torch.LongTensor(gemm_2_outputs["gemm"])
+        gemm_2_input_tensor = torch.LongTensor(gemm_2_inputs["matrix_a"])
+
+        gemm_2_weights = {"gemm_2_" + key if key not in exclude_keys else key: value for key, value in gemm_2_weights.items()}
+
+        self.check_2d_eq(relu_4_output_tensor,gemm_2_input_tensor)
+        # weights.update(gemm_2_weights)
+        weights_2 = gemm_2_weights
 
 
 
@@ -228,11 +260,13 @@ class Doom():
         to_json(conv_1_inputs, input_file)
 
         # Write output to json
-        outputs = {"outputs": value for key, value in relu_3_outputs.items()}
-        # outputs = {"outputs": reshape_out}
+        outputs = {"outputs": value for key, value in gemm_2_outputs.items()}
+        # outputs = {"outputs": reshape_out.tolist()}
         to_json(outputs, output_file)
 
         to_json(weights, weights_file)
+        to_json(weights_2, weights_file[:-5] + '2' + weights_file[-5:])
+
 
         ## Run the circuit
         prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file)
@@ -243,6 +277,11 @@ class Doom():
                 for k in range(input_tensor_1.shape[2]):
                     for l in range(input_tensor_1.shape[3]):
                         assert(abs(input_tensor_1[i][j][k][l] -  input_tensor_2[i][j][k][l]) < 1)
+
+    def check_2d_eq(self, input_tensor_1, input_tensor_2):
+        for i in range(input_tensor_1.shape[0]):
+            for j in range(input_tensor_1.shape[1]):
+                assert(abs(input_tensor_1[i][j] -  input_tensor_2[i][j]) < 1)
 
     def get_circuit_conv_1(self):
         self.read_input("conv1")
@@ -299,6 +338,48 @@ class Doom():
         conv3_circuit.scaling = self.scaling
         conv3_circuit.strides = (2,2)
         return conv3_circuit.get_model_params(conv3_circuit.get_output())
+
+    def get_mat_mult(self, inputs):
+        self.read_input("fc1")
+        self.read_output("fc1")
+        self.read_weights("fc1")
+        self.read_weights("fc1", is_weights=False)
+
+        layers = self.layers["fc1"]
+
+        mat_mult_circuit = QuantizedGemm()
+        mat_mult_circuit.matrix_a = inputs.long()
+        mat_mult_circuit.matrix_b = torch.transpose(torch.mul(layers.weights, 2**self.scaling),0,1).long()
+        # print(layers.bias.shape)
+        # Scale up matrix c, twofold, to account for the multiplication that has just taken place
+        mat_mult_circuit.matrix_c = torch.reshape(torch.mul(layers.bias, 2**(self.scaling*2)), [mat_mult_circuit.matrix_a.shape[0],mat_mult_circuit.matrix_b.shape[1]]).int()
+        mat_mult_circuit.scaling = self.scaling
+        mat_mult_circuit.alpha = torch.tensor(1)
+        mat_mult_circuit.beta = torch.tensor(1)
+        gemm = mat_mult_circuit.get_outputs()
+        return mat_mult_circuit.get_model_params(gemm)
+    
+    def get_mat_mult_no_quant(self, inputs):
+        self.read_input("fc2")
+        self.read_output("fc2")
+        self.read_weights("fc2")
+        self.read_weights("fc2", is_weights=False)
+
+        layers = self.layers["fc2"]
+
+        mat_mult_circuit2 = Gemm()
+        mat_mult_circuit2.matrix_a = inputs.long()
+        mat_mult_circuit2.matrix_b = torch.transpose(torch.mul(layers.weights, 2**self.scaling),0,1).long()
+        # print(layers.bias.shape)
+        # Scale up matrix c, twofold, to account for the multiplication that has just taken place
+        mat_mult_circuit2.matrix_c = torch.reshape(torch.mul(layers.bias, 2**(self.scaling*2)), [mat_mult_circuit2.matrix_a.shape[0],mat_mult_circuit2.matrix_b.shape[1]]).int()
+        mat_mult_circuit2.scaling = self.scaling
+        mat_mult_circuit2.alpha = torch.tensor(1)
+        mat_mult_circuit2.beta = torch.tensor(1)
+        gemm = mat_mult_circuit2.get_outputs()
+        return mat_mult_circuit2.get_model_params(gemm)
+
+        
 
         
 

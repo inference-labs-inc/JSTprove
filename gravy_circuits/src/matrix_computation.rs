@@ -14,6 +14,22 @@ pub fn matrix_addition<C: Config, Builder: RootAPI<C>, const M: usize, const N: 
     array
 }
 
+pub fn matrix_addition_vec<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    matrix_a: Vec<Vec<Variable>>,
+    matrix_b: Vec<Vec<Variable>>,
+) -> Vec<Vec<Variable>> {
+    let mut out: Vec<Vec<Variable>> = Vec::new(); // or [[Variable::default(); N]; M]
+    for (i, row_a) in matrix_a.iter().enumerate() {
+        let mut row_out: Vec<Variable> = Vec::new();
+        for (j, value) in row_a.iter().enumerate() {
+            row_out.push(api.add(value, matrix_b[i][j]));
+        }
+        out.push(row_out);
+    }
+    out
+}
+
 pub fn matrix_hadamard_product<C: Config, Builder: RootAPI<C>, const M: usize, const N: usize>(
     api: &mut Builder,
     matrix_a: [[Variable; N]; M],

@@ -4,7 +4,7 @@ from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
 
 
-class BaseTests():
+class Gemm():
     #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
     def __init__(self):
         super().__init__()
@@ -24,6 +24,10 @@ class BaseTests():
         N_COLS_B: int = 2; # k
         N_ROWS_C: int = 3; # m
         N_COLS_C: int = 2; # k
+        
+        self.quantized = False
+
+        self.scaling = 100
 
         self.alpha = torch.randint(0, 100, ())
         self.beta = torch.randint(0, 100, ())
@@ -52,20 +56,10 @@ class BaseTests():
         '''
         ## Perform calculation here
 
-        gemm = self.alpha * torch.matmul(self.matrix_a, self.matrix_b) + self.beta*self.matrix_c
+        gemm = self.get_outputs()
 
         ## Define inputs and outputs
-        inputs = {
-            'alpha' : self.alpha.tolist(),
-            'beta' : self.beta.tolist(),
-            'matrix_a': self.matrix_a.tolist(),
-            'matrix_b': self.matrix_b.tolist(),
-            'matrix_c': self.matrix_c.tolist(),          
-            }
-        
-        outputs = {
-            'gemm' : gemm.tolist(),
-        }
+        inputs, weights, outputs = self.get_model_params(gemm)
         '''
         #######################################################################################################
         #######################################################################################################
@@ -82,9 +76,53 @@ class BaseTests():
         # Write output to json
         to_json(outputs, output_file)
 
+        to_json(weights, weights_file)
+
         ## Run the circuit
         prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file)
 
+    def get_model_params(self, gemm):
+        inputs = {
+            'matrix_a': self.matrix_a.tolist(),  
+            }
+        
+        weights = {
+            'alpha' : self.alpha.tolist(),
+            'beta' : self.beta.tolist(),
+            'weights': self.matrix_b.tolist(),
+            'bias': self.matrix_c.tolist(),  
+            'quantized': self.quantized,
+            'scaling': self.scaling
+        }
+        
+        outputs = {
+            'gemm' : gemm.tolist(),
+        }
+        
+        return inputs,weights,outputs
+
+    def get_outputs(self):
+        gemm = self.matrix_a
+        gemm = self.alpha * torch.matmul(self.matrix_a, self.matrix_b)
+        gemm = gemm + self.beta*self.matrix_c
+        return gemm
+
+
+class QuantizedGemm(Gemm):
+    #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
+    def __init__(self):
+        super().__init__()
+
+        self.quantized = True
+    
+    def get_outputs(self):
+        gemm = self.alpha * torch.matmul(self.matrix_a, self.matrix_b) #+ self.beta*self.matrix_c
+        # gemm = torch.matmul(self.matrix_a, self.matrix_b) #+ self.beta*self.matrix_c
+        gemm = gemm + self.beta*self.matrix_c
+
+        gemm = torch.div(gemm, 2**self.scaling, rounding_mode="floor").long()
+        
+        return gemm
     
 if __name__ == "__main__":
     proof_system = ZKProofSystems.Expander
@@ -95,7 +133,7 @@ if __name__ == "__main__":
     circuit_folder = ""
     weights_folder = "weights"
     #Rework inputs to function
-    test_circuit = BaseTests()
+    test_circuit = Gemm()
     test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
 
 

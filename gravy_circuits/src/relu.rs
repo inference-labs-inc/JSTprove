@@ -319,3 +319,24 @@ pub fn relu_4d_vec_v2<
     }
     out
 }
+
+pub fn relu_2d_vec_v2<
+    C: Config,
+    Builder: RootAPI<C>,
+>(
+    api: &mut Builder,
+    input: Vec<Vec<Variable>>,
+    n_bits: usize,
+) -> Vec<Vec<Variable>> {
+    let mut out: Vec<Vec<Variable>> = Vec::new();
+
+    // Iterating over the 4D vector
+    for (i, v1) in input.iter().enumerate() {
+        let mut out_2: Vec<Variable> = Vec::new();
+            for (l, value) in v1.iter().enumerate() {
+                out_2.push(relu_v2(api, *value, n_bits));
+            }
+            out.push(out_2);
+        }
+    out
+}

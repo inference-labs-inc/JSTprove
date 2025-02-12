@@ -147,6 +147,7 @@ class Convolution():
                 'quantized': self.quantized,
                 'scaling': self.scaling
             }
+        
         outputs = {
                 'conv_out': output.long().tolist(),
             }

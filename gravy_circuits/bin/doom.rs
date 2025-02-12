@@ -2,17 +2,18 @@ use arith::FieldForECC;
 use convolution_fn::{conv_4d_run, conv_shape_4, not_yet_implemented_conv, set_default_params};
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use helper_fn::{four_d_array_to_vec, load_circuit_constant, read_4d_weights};
+use helper_fn::{four_d_array_to_vec, load_circuit_constant, read_2d_weights, read_4d_weights};
 use io_reader::{FileReader, IOReader};
 use lazy_static::lazy_static;
+use matrix_computation::{matrix_addition, matrix_addition_vec};
 #[allow(unused_imports)]
 use matrix_computation::{
     matrix_multplication, matrix_multplication_array, matrix_multplication_naive,
     matrix_multplication_naive2, matrix_multplication_naive2_array, matrix_multplication_naive3,
     matrix_multplication_naive3_array, two_d_array_to_vec,
 };
-use quantization::quantize_4d_vector;
-use relu::{relu_3d_v2, relu_4d_vec_v2};
+use quantization::{quantize_2d_vector, quantize_4d_vector};
+use relu::{relu_2d_vec_v2, relu_3d_v2, relu_4d_vec_v2};
 use serde::Deserialize;
 use std::ops::Neg;
 
@@ -76,6 +77,17 @@ struct WeightsData {
     conv_3_dilation: Vec<u32>,
     conv_3_pads: Vec<u32>,
     conv_3_input_shape: Vec<u32>,
+    gemm_1_alpha: u32,
+    gemm_1_beta: u32,
+    gemm_1_weights: Vec<Vec<i64>>,
+    gemm_1_bias: Vec<Vec<i64>>,
+}
+#[derive(Deserialize, Clone)]
+struct WeightsData2 {
+    gemm_2_alpha: u32,
+    gemm_2_beta: u32,
+    gemm_2_weights: Vec<Vec<i64>>,
+    gemm_2_bias: Vec<Vec<i64>>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -85,11 +97,13 @@ struct InputData {
 
 #[derive(Deserialize, Clone)]
 struct OutputData {
-    outputs: Vec<Vec<Vec<Vec<i64>>>>,
+    outputs: Vec<Vec<i64>>,
 }
 
 // This reads the weights json into a string
 const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/doom_weights.json");
+const MATRIX_WEIGHTS_FILE2: &str = include_str!("../../weights/doom_weights2.json");
+
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
 // Weights will be read in
@@ -101,9 +115,17 @@ lazy_static! {
     };
 }
 
+lazy_static! {
+    static ref WEIGHTS_INPUT2: WeightsData2 = {
+        let x: WeightsData2 =
+            serde_json::from_str(MATRIX_WEIGHTS_FILE2).expect("JSON was not well-formatted");
+        x
+    };
+}
+
 declare_circuit!(ConvCircuit {
     input_arr: [[[[Variable; DIM4]; DIM3]; DIM2]; DIM1], // shape (m, n)
-    outputs: [[[[Variable; 7]; 7]; 32]; 1], // shape (m, k)
+    outputs: [[Variable; 7]; 1], // shape (m, k)
 });
 
 
@@ -151,18 +173,43 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
         let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv_3_dilation, &WEIGHTS_INPUT.conv_3_kernel_shape, &WEIGHTS_INPUT.conv_3_pads, &WEIGHTS_INPUT.conv_3_strides,&WEIGHTS_INPUT.conv_3_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv_3_group, WEIGHTS_INPUT.quantized);
         let out = relu_4d_vec_v2(api, out, n_bits);
 
+        let out_1d: Vec<Variable> = out.iter()
+                .flat_map(|x| x.iter())
+                .flat_map(|x| x.iter())
+                .flat_map(|x| x.iter())
+                .copied()
+                .collect();
 
-        //Assert output of matrix multiplication
+        let out_2d = vec![out_1d];
+
+        let weights = read_2d_weights(api, &WEIGHTS_INPUT.gemm_1_weights);
+        let bias = read_2d_weights(api, &WEIGHTS_INPUT.gemm_1_bias);
+
+        let out_2d = matrix_multplication_naive2(api, out_2d, weights);
+        let mut out_2d = matrix_addition_vec(api, out_2d, bias);
+
+        if WEIGHTS_INPUT.quantized{
+            let scaling_factor = 1 << WEIGHTS_INPUT.scaling;
+            println!("{}", scaling_factor);
+            out_2d = quantize_2d_vector(api, out_2d, scaling_factor, WEIGHTS_INPUT.scaling as usize);
+            // panic!("Quantized not yet implemented");
+        }
+
+        let out_2d = relu_2d_vec_v2(api, out_2d, n_bits);
+
+
+        let weights = read_2d_weights(api, &WEIGHTS_INPUT2.gemm_2_weights);
+        let bias = read_2d_weights(api, &WEIGHTS_INPUT2.gemm_2_bias);
+
+        let out_2d = matrix_multplication_naive2(api, out_2d, weights);
+        let out_2d = matrix_addition_vec(api, out_2d, bias);
+
+
         for (j, dim1) in self.outputs.iter().enumerate() {
-            for (k, dim2) in dim1.iter().enumerate() {
-                for (l, dim3) in dim2.iter().enumerate() {
-                    for (m, _) in dim3.iter().enumerate() {
-                        // println!("{} {} {} {}", dim1, dim2, dim3, dim4)
-                        api.assert_is_equal(self.outputs[j][k][l][m], out[j][k][l][m]);
-                    }
+                for (k, dim2) in dim1.iter().enumerate() {
+                    api.assert_is_equal(self.outputs[j][k], out_2d[j][k]);
                 }
             }
-        }
     }
 }
 
@@ -206,17 +253,13 @@ impl<C: Config> IOReader<C, ConvCircuit<C::CircuitField>> for FileReader {
         >(file_path);
 
         for (i, dim1) in data.outputs.iter().enumerate() {
-            for (j, dim2) in dim1.iter().enumerate() {
-                for (k, dim3) in dim2.iter().enumerate() {
-                    for (l, &element) in dim3.iter().enumerate() {
-                        if element < 0 {
-                            assignment.outputs[i][j][k][l] =
-                                C::CircuitField::from_u256(U256::from(element.abs() as u64)).neg();
-                        } else {
-                            assignment.outputs[i][j][k][l] =
-                                C::CircuitField::from_u256(U256::from(element.abs() as u64));
-                        }
-                    }
+            for (j, &element) in dim1.iter().enumerate() {
+                if element < 0 {
+                    assignment.outputs[i][j] =
+                        C::CircuitField::from_u256(U256::from(element.abs() as u64)).neg();
+                } else {
+                    assignment.outputs[i][j] =
+                        C::CircuitField::from_u256(U256::from(element.abs() as u64));
                 }
             }
         }

@@ -346,3 +346,15 @@ pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(api: &mut Builder, input_arr:
     }
     out
 }
+
+// fn fun_name(api: &mut Builder, scaling_in: u64, quantized: bool, out: &mut Vec<Vec<Vec<Vec<Variable>>>>) {
+//     if quantized{
+//         let scaling_factor = 1 << scaling_in;
+//         println!("{}", scaling_factor);
+//         *out = quantize_4d_vector(api, *out, scaling_factor, scaling_in as usize);
+//         // panic!("Quantized not yet implemented");
+//     }
+//     else{
+//         *out = *out;
+//     }
+// }

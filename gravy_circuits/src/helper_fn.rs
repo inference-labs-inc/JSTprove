@@ -1,14 +1,18 @@
 use expander_compiler::frontend::*;
+use ethnum::U256;
+
 
 pub fn load_circuit_constant<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     x: i64,
 ) -> Variable {
     if x < 0 {
-        let y = api.constant(x.abs() as u32);
+        // let y = api.constant(x.abs() as u32);
+        let y = api.constant(C::CircuitField::from_u256(U256::from(x.abs() as u64)));
         api.neg(y)
     } else {
-        api.constant(x.abs() as u32) // For values greater than 100
+        // api.constant(x.abs() as u32) // For values greater than 100
+        api.constant(C::CircuitField::from_u256(U256::from(x.abs() as u64)))
     }
 }
 
@@ -47,5 +51,21 @@ pub fn read_4d_weights<C: Config, Builder: RootAPI<C>>(
                 .collect()
         })
         .collect();
+    weights
+}
+
+pub fn read_2d_weights<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    weights_data: &Vec<Vec<i64>>,
+) -> Vec<Vec<Variable>> {
+    let weights: Vec<Vec<Variable>> = weights_data
+        .clone()
+        .into_iter()
+        .map(|dim1| {
+            dim1.into_iter()
+                .map(|x| load_circuit_constant(api, x))
+                                .collect()
+                })
+                .collect();
     weights
 }

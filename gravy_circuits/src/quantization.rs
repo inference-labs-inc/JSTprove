@@ -144,3 +144,20 @@ pub fn quantize_4d_vector<C: Config, Builder: RootAPI<C>>(
     }
     out
 }
+
+pub fn quantize_2d_vector<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    input_matrix: Vec<Vec<Variable>>,
+    scaling_factor: u32,
+    scaling: usize
+) -> Vec<Vec<Variable>>{
+    let mut out: Vec<Vec<Variable>> = Vec::new();
+    for (_, dim1) in input_matrix.iter().enumerate() {
+        let mut dim1_out: Vec<Variable> = Vec::new();
+        for (_, &element) in dim1.iter().enumerate() {
+            dim1_out.push(quantize(api, element, scaling_factor, scaling));
+        }
+        out.push(dim1_out);
+    }
+    out
+}

@@ -50,7 +50,6 @@ class MatrixMultiplication():
 
     def get_inputs_for_circuit(self):
         return (self.matrix_a, self.matrix_b, torch.matmul(self.matrix_a, self.matrix_b))
-
     
     def base_testing(self, input_folder:str, proof_folder: str, temp_folder: str, weights_folder:str, circuit_folder:str, proof_system: ZKProofSystems, output_folder: str = None):
 
@@ -68,20 +67,7 @@ class MatrixMultiplication():
         (matrix_a, matrix_b, matrix_product_ab) = self.get_inputs_for_circuit()
 
         ## Define inputs and outputs
-        inputs = {
-            'matrix_a': matrix_a.tolist(),
-            }
-        
-        weights = {
-            'matrix_b': matrix_b.tolist(), 
-            'quantized': self.quantized,
-            'scaling': self.scaling,
-            'circuit_type': self.circuit_type.value
-        }
-        
-        outputs = {
-            'matrix_product_ab': matrix_product_ab.tolist(),
-        }
+        inputs, weights, outputs = self.get_model_params(matrix_a, matrix_b, matrix_product_ab)
         '''
         #######################################################################################################
         #######################################################################################################
@@ -100,6 +86,24 @@ class MatrixMultiplication():
 
         ## Run the circuit
         prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file)
+
+    def get_model_params(self, matrix_a, matrix_b, matrix_product_ab):
+        inputs = {
+            'matrix_a': matrix_a.tolist(),
+            }
+        
+        weights = {
+            'matrix_b': matrix_b.tolist(), 
+            'quantized': self.quantized,
+            'scaling': self.scaling,
+            'circuit_type': self.circuit_type.value
+        }
+        
+        outputs = {
+            'matrix_product_ab': matrix_product_ab.tolist(),
+        }
+        
+        return inputs,weights,outputs
 
 class QuantizedMatrixMultiplication(MatrixMultiplication):
     #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
