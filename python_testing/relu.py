@@ -128,7 +128,7 @@ class ReLU():
 
     
     
-    def base_testing(self, input_folder:str, proof_folder: str, temp_folder: str, circuit_folder:str, weights_folder:str, proof_system: ZKProofSystems, output_folder: str = None):
+    def base_testing(self, input_folder:str, proof_folder: str, temp_folder: str, weights_folder:str, circuit_folder:str,  proof_system: ZKProofSystems, output_folder: str = None):
 
         # NO NEED TO CHANGE!
         witness_file, input_file, proof_path, public_path, verification_key, circuit_name, weights_path, output_file = get_files(
@@ -158,7 +158,7 @@ class ReLU():
 
         ## Define inputs and outputs
         if self.conversion_type == ConversionType.TWOS_COMP:
-            self.get_twos_comp_model_data(outputs)
+            inputs, outputs = self.get_twos_comp_model_data(outputs)
         elif self.conversion_type == ConversionType.DUAL_MATRIX:
             try:
                 inputs = {
@@ -217,5 +217,5 @@ if __name__ == "__main__":
     circuit_folder = ""
     #Rework inputs to function
     test_circuit = ReLU(conversion_type = ConversionType.TWOS_COMP)
-    test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, weights_folder, proof_system, output_folder)
+    test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder,  proof_system, output_folder)
 

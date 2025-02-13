@@ -300,6 +300,34 @@ pub fn gemm<C: Config, const M: usize, const N: usize, const K: usize, Builder: 
     array
 }
 
+pub fn gemm_vec<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    matrix_a: Vec<Vec<Variable>>,
+    matrix_b: Vec<Vec<Variable>>,
+    matrix_c: Vec<Vec<Variable>>,
+    alpha: Variable,
+    beta: Variable,
+) -> Vec<Vec<Variable>> {
+    let mut array: Vec<Vec<Variable>> = Vec::new(); // or [[Variable::default(); N]; M]
+    for (i,dim1) in matrix_a.iter().enumerate() {
+        let mut row_1: Vec<Variable> = Vec::new();
+        for j in 0..matrix_b[0].len() {
+            let mut gemm_ij: Variable = api.constant(0);
+            for k in 0..dim1.len() {
+                let element_product = api.mul(matrix_a[i][k], matrix_b[k][j]);
+                gemm_ij = api.add(gemm_ij, element_product);
+            }
+            gemm_ij = api.mul(gemm_ij, alpha);
+            let scaled_c_ij = api.mul(beta, matrix_c[i][j]);
+            gemm_ij = api.add(scaled_c_ij, gemm_ij);
+            row_1.push(gemm_ij);
+            // array[i][j] = gemm_ij;
+        }
+        array.push(row_1);
+    }
+    array
+}
+
 pub fn scaled_matrix_product_sum<
     C: Config,
     Builder: RootAPI<C>,

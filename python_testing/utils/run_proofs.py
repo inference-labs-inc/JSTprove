@@ -66,11 +66,7 @@ class ZKProofsExpander():
         # Add output
         executable_to_run.append(output_file)
 
-
-
-
-
-        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=False)
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True)
         if res.returncode == 0:
             logging.info(f"Circuit Compiled with return code: {res.returncode}")
             # Do not log here; run_process already handles logging errors.
@@ -200,7 +196,7 @@ class ExecutableHelperFunctions():
             stderr_output = err.stderr if err.stderr else "No stderr output"
             logging.error(f"Error: {err} {stderr_output}")
             if die_on_error:
-                # sys.exit()
+                sys.exit()
                 raise
             return err
         

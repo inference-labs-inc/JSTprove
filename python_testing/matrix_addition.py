@@ -4,7 +4,7 @@ from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
 
 
-class BaseTests():
+class MatrixAddition():
     #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
     def __init__(self):
         super().__init__()
@@ -87,6 +87,6 @@ if __name__ == "__main__":
     weights_folder = "weights"
     circuit_folder = ""
     #Rework inputs to function
-    test_circuit = BaseTests()
+    test_circuit = MatrixAddition()
     test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
 

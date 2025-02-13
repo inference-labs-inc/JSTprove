@@ -83,7 +83,7 @@ class Gemm():
 
     def get_model_params(self, gemm):
         inputs = {
-            'matrix_a': self.matrix_a.tolist(),  
+            'input': self.matrix_a.tolist(),  
             }
         
         weights = {
@@ -117,11 +117,8 @@ class QuantizedGemm(Gemm):
     
     def get_outputs(self):
         gemm = self.alpha * torch.matmul(self.matrix_a, self.matrix_b) #+ self.beta*self.matrix_c
-        # gemm = torch.matmul(self.matrix_a, self.matrix_b) #+ self.beta*self.matrix_c
         gemm = gemm + self.beta*self.matrix_c
-
         gemm = torch.div(gemm, 2**self.scaling, rounding_mode="floor").long()
-        
         return gemm
     
 if __name__ == "__main__":
@@ -132,6 +129,7 @@ if __name__ == "__main__":
     input_folder = "inputs"
     circuit_folder = ""
     weights_folder = "weights"
+
     #Rework inputs to function
     test_circuit = Gemm()
     test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)

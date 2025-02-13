@@ -1,13 +1,18 @@
 use ethnum::U256;
 use expander_compiler::frontend::*;
+use helper_fn::read_2d_weights;
 use io_reader::{FileReader, IOReader};
-use matrix_computation::gemm;
+use matrix_computation::{gemm_vec, two_d_array_to_vec};
 use serde::Deserialize;
 // use std::ops::Neg;
 use arith::FieldForECC;
+use lazy_static::lazy_static;
+
 
 #[path = "../src/matrix_computation.rs"]
 pub mod matrix_computation;
+#[path = "../src/helper_fn.rs"]
+pub mod helper_fn;
 
 #[path = "../src/io_reader.rs"]
 pub mod io_reader;
@@ -23,32 +28,63 @@ matrix b has shape (n, k)
 matrix c has shape (m, k)
 general matrix palpha ab + beta c has shape (m, k)
 */
+#[derive(Deserialize, Clone)]
+struct WeightsData {
+    alpha: u32,
+    beta: u32,
+    weights: Vec<Vec<i64>>,
+    bias: Vec<Vec<i64>>,
+}
+
+#[derive(Deserialize, Clone)]
+struct InputData {
+    input: Vec<Vec<u64>>, // Shape (m, n)
+}
+
+//This is the data structure for the output data to be read in from the json file
+#[derive(Deserialize, Clone)]
+struct OutputData {
+    gemm: Vec<Vec<u64>>,
+}
+
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/gemm_weights.json");
+
+lazy_static! {
+    static ref WEIGHTS_INPUT: WeightsData = {
+        let x: WeightsData =
+            serde_json::from_str(MATRIX_WEIGHTS_FILE).expect("JSON was not well-formatted");
+        x
+    };
+}
 
 const N_ROWS_A: usize = 3; // m
 const N_COLS_A: usize = 4; // n
-const N_ROWS_B: usize = 4; // n
+// const N_ROWS_B: usize = 4; // n
 const N_COLS_B: usize = 2; // k
-const N_ROWS_C: usize = 3; // m
-const N_COLS_C: usize = 2; // k
+// const N_ROWS_C: usize = 3; // m
+// const N_COLS_C: usize = 2; // k
 
-declare_circuit!(Circuit {
-    alpha: Variable,                            // scaling factor
-    beta: Variable,                             // scaling factor
+declare_circuit!(Circuit {                             // scaling factor
     matrix_a: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
-    matrix_b: [[Variable; N_COLS_B]; N_ROWS_B], // shape (n, k)
-    matrix_c: [[Variable; N_COLS_C]; N_ROWS_C], // shape (m, k)
     gemm: [[Variable; N_COLS_B]; N_ROWS_A],     // shape (m, k)
 });
 
 impl<C: Config> GenericDefine<C> for Circuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
-        let gemm_array = gemm(
+
+        let weights = read_2d_weights(api, &WEIGHTS_INPUT.weights);
+        let bias = read_2d_weights(api, &WEIGHTS_INPUT.bias);
+
+        let alpha = api.constant(WEIGHTS_INPUT.alpha);
+        let beta = api.constant(WEIGHTS_INPUT.beta);
+
+        let gemm_array = gemm_vec(
             api,
-            self.matrix_a,
-            self.matrix_b,
-            self.matrix_c,
-            self.alpha,
-            self.beta,
+            two_d_array_to_vec(self.matrix_a),
+            weights,
+            bias,
+            alpha,
+            beta,
         );
         for i in 0..N_ROWS_A {
             for j in 0..N_COLS_B {
@@ -58,20 +94,7 @@ impl<C: Config> GenericDefine<C> for Circuit<Variable> {
     }
 }
 
-#[derive(Deserialize, Clone)]
-struct InputData {
-    alpha: u64,
-    beta: u64,
-    matrix_a: Vec<Vec<u64>>, // Shape (m, n)
-    matrix_b: Vec<Vec<u64>>, // Shape (n, k)
-    matrix_c: Vec<Vec<u64>>, // Shape (n, k)
-}
 
-//This is the data structure for the output data to be read in from the json file
-#[derive(Deserialize, Clone)]
-struct OutputData {
-    gemm: Vec<Vec<u64>>,
-}
 
 impl<C: Config> IOReader<C, Circuit<C::CircuitField>> for FileReader {
     fn read_inputs(
@@ -82,53 +105,19 @@ impl<C: Config> IOReader<C, Circuit<C::CircuitField>> for FileReader {
         let data: InputData =
             <FileReader as IOReader<C, Circuit<_>>>::read_data_from_json::<InputData>(file_path);
 
-        // Assign inputs to assignment
-        // Assign inputs to assignment
-        assignment.alpha = C::CircuitField::from_u256(U256::from(data.alpha));
-        assignment.beta = C::CircuitField::from_u256(U256::from(data.beta));
-
-        let rows_a = data.matrix_a.len();
+        let rows_a = data.input.len();
         let cols_a = if rows_a > 0 {
-            data.matrix_a[0].len()
+            data.input[0].len()
         } else {
             0
         };
         println!("matrix a shape: ({}, {})", rows_a, cols_a);
 
-        for (i, row) in data.matrix_a.iter().enumerate() {
+        for (i, row) in data.input.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
                 assignment.matrix_a[i][j] = C::CircuitField::from_u256(U256::from(element));
             }
         }
-
-        let rows_b = data.matrix_b.len();
-        let cols_b = if rows_b > 0 {
-            data.matrix_b[0].len()
-        } else {
-            0
-        };
-        println!("matrix b shape: ({}, {})", rows_b, cols_b);
-
-        for (i, row) in data.matrix_b.iter().enumerate() {
-            for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_b[i][j] = C::CircuitField::from_u256(U256::from(element));
-            }
-        }
-
-        let rows_c = data.matrix_c.len();
-        let cols_c = if rows_c > 0 {
-            data.matrix_c[0].len()
-        } else {
-            0
-        };
-        println!("matrix c shape: ({}, {})", rows_c, cols_c);
-
-        for (i, row) in data.matrix_c.iter().enumerate() {
-            for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_c[i][j] = C::CircuitField::from_u256(U256::from(element));
-            }
-        }
-
         // Return the assignment
         assignment
     }
