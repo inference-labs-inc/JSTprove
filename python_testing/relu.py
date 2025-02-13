@@ -162,19 +162,19 @@ class ReLU():
         elif self.conversion_type == ConversionType.DUAL_MATRIX:
             try:
                 inputs = {
-                    'inputs_1': [int(i) for i in self.inputs_1.tolist()],
-                    'inputs_2': [int(i) for i in self.inputs_2.tolist()]
+                    'input': [int(i) for i in self.inputs_1.tolist()],
+                    'sign': [int(i) for i in self.inputs_2.tolist()]
                     }
                 outputs = {
-                    'outputs': [int(i) for i in outputs.tolist()],
+                    'output': [int(i) for i in outputs.tolist()],
                 }
             except:
                 inputs = {
-                    'inputs_1': self.inputs_1.int().tolist(),
-                    'inputs_2': self.inputs_2.int().tolist()
+                    'input': self.inputs_1.int().tolist(),
+                    'sign': self.inputs_2.int().tolist()
                     }
                 outputs = {
-                    'outputs': outputs.int().tolist(),
+                    'output': outputs.int().tolist(),
                 }
         '''
         #######################################################################################################
@@ -199,10 +199,10 @@ class ReLU():
     
     def get_twos_comp_model_data(self, out):
         inputs = {
-                'inputs_1': self.inputs_1.int().tolist()
+                'input': self.inputs_1.int().tolist()
                 }
         outputs = {
-                'outputs': out.int().tolist(),
+                'output': out.int().tolist(),
             }
         return (inputs, outputs)
 

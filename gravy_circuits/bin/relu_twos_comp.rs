@@ -56,11 +56,11 @@ impl<C: Config> GenericDefine<C> for ReLUTwosCircuit<Variable> {
 */
 #[derive(Deserialize, Clone)]
 struct OutputData {
-    outputs: Vec<Vec<Vec<u64>>>,
+    output: Vec<Vec<Vec<u64>>>,
 }
 #[derive(Deserialize, Clone)]
 struct InputData {
-    inputs_1: Vec<Vec<Vec<i64>>>,
+    input: Vec<Vec<Vec<i64>>>,
 }
 /*
         ########################################################################################################
@@ -77,7 +77,7 @@ impl<C: Config> IOReader<C, ReLUTwosCircuit<C::CircuitField>> for FileReader {
             InputData,
         >(file_path);
 
-        for (i, var_vec_vec) in data.inputs_1.iter().enumerate() {
+        for (i, var_vec_vec) in data.input.iter().enumerate() {
             for (j, var_vec) in var_vec_vec.iter().enumerate() {
                 for (k, &var) in var_vec.iter().enumerate() {
                     if var < 0 {
@@ -99,7 +99,7 @@ impl<C: Config> IOReader<C, ReLUTwosCircuit<C::CircuitField>> for FileReader {
             OutputData,
         >(file_path);
 
-        for (i, var_vec_vec) in data.outputs.iter().enumerate() {
+        for (i, var_vec_vec) in data.output.iter().enumerate() {
             for (j, var_vec) in var_vec_vec.iter().enumerate() {
                 for (k, &var) in var_vec.iter().enumerate() {
                     assignment.output[i][j][k] = C::CircuitField::from_u256(U256::from(var));

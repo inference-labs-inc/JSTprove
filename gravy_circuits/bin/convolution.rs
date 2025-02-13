@@ -61,12 +61,12 @@ struct WeightsData {
 
 #[derive(Deserialize, Clone)]
 struct InputData {
-    input_arr: Vec<Vec<Vec<Vec<i64>>>>,
+    input: Vec<Vec<Vec<Vec<i64>>>>,
 }
 
 #[derive(Deserialize, Clone)]
 struct OutputData {
-    conv_out: Vec<Vec<Vec<Vec<i64>>>>,
+    output: Vec<Vec<Vec<Vec<i64>>>>,
 }
 
 // This reads the weights json into a string
@@ -155,7 +155,7 @@ impl<C: Config> IOReader<C, ConvCircuit<C::CircuitField>> for FileReader {
         >(file_path);
 
         // Assign inputs to assignment
-        for (i, dim1) in data.input_arr.iter().enumerate() {
+        for (i, dim1) in data.input.iter().enumerate() {
             for (j, dim2) in dim1.iter().enumerate() {
                 for (k, dim3) in dim2.iter().enumerate() {
                     for (l, &element) in dim3.iter().enumerate() {
@@ -182,7 +182,7 @@ impl<C: Config> IOReader<C, ConvCircuit<C::CircuitField>> for FileReader {
             OutputData,
         >(file_path);
 
-        for (i, dim1) in data.conv_out.iter().enumerate() {
+        for (i, dim1) in data.output.iter().enumerate() {
             for (j, dim2) in dim1.iter().enumerate() {
                 for (k, dim3) in dim2.iter().enumerate() {
                     for (l, &element) in dim3.iter().enumerate() {

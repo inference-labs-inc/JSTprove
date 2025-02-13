@@ -44,7 +44,7 @@ struct InputData {
 //This is the data structure for the output data to be read in from the json file
 #[derive(Deserialize, Clone)]
 struct OutputData {
-    gemm: Vec<Vec<u64>>,
+    output: Vec<Vec<u64>>,
 }
 
 const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/gemm_weights.json");
@@ -129,11 +129,11 @@ impl<C: Config> IOReader<C, Circuit<C::CircuitField>> for FileReader {
         let data: OutputData =
             <FileReader as IOReader<C, Circuit<_>>>::read_data_from_json::<OutputData>(file_path);
         // Assign inputs to assignment
-        let rows_abc = data.gemm.len();
-        let cols_abc = if rows_abc > 0 { data.gemm[0].len() } else { 0 };
+        let rows_abc = data.output.len();
+        let cols_abc = if rows_abc > 0 { data.output[0].len() } else { 0 };
         println!("gemm alpha ab + beta c shape: ({}, {})", rows_abc, cols_abc);
 
-        for (i, row) in data.gemm.iter().enumerate() {
+        for (i, row) in data.output.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
                 assignment.gemm[i][j] = C::CircuitField::from_u256(U256::from(element));
             }

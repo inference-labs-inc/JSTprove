@@ -134,7 +134,7 @@ class Convolution():
     
     def get_model_params(self, output):
         inputs = {
-                'input_arr': self.input_arr.long().tolist()
+                'input': self.input_arr.long().tolist()
                 }
             
         weights = {
@@ -151,7 +151,7 @@ class Convolution():
             }
         
         outputs = {
-                'conv_out': output.long().tolist(),
+                'output': output.long().tolist(),
             }
         
         return inputs,weights,outputs

@@ -96,7 +96,7 @@ class Gemm():
         }
         
         outputs = {
-            'gemm' : gemm.tolist(),
+            'output' : gemm.tolist(),
         }
         
         return inputs,weights,outputs

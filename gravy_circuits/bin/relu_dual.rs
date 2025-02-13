@@ -58,14 +58,14 @@ impl<C: Config> GenericDefine<C> for ReLUDualCircuit<Variable> {
 */
 #[derive(Deserialize, Clone)]
 struct InputData {
-    inputs_1: Vec<u64>,
-    inputs_2: Vec<u64>,
+    input: Vec<u64>,
+    sign: Vec<u64>,
 }
 
 //This is the data structure for the output data to be read in from the json file
 #[derive(Deserialize, Clone)]
 struct OutputData {
-    outputs: Vec<u64>,
+    output: Vec<u64>,
 }
 
 impl<C: Config> IOReader<C, ReLUDualCircuit<C::CircuitField>> for FileReader {
@@ -79,7 +79,7 @@ impl<C: Config> IOReader<C, ReLUDualCircuit<C::CircuitField>> for FileReader {
         >(file_path);
 
         // Assign inputs to assignment
-        let u8_vars = [data.inputs_1, data.inputs_2];
+        let u8_vars = [data.input, data.sign];
 
         for (j, var_vec) in u8_vars.iter().enumerate() {
             for (k, &var) in var_vec.iter().enumerate() {
@@ -100,7 +100,7 @@ impl<C: Config> IOReader<C, ReLUDualCircuit<C::CircuitField>> for FileReader {
         >(file_path);
 
         for k in 0..LENGTH {
-            assignment.output[k] = C::CircuitField::from_u256(U256::from(data.outputs[k]));
+            assignment.output[k] = C::CircuitField::from_u256(U256::from(data.output[k]));
             // Treat the u8 as a u64 for Field
         }
         assignment

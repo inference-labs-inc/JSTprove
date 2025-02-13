@@ -173,29 +173,29 @@ class Doom():
 
         #Rework inputs to function
         (conv_1_inputs, conv_1_weights, conv_1_outputs) = self.get_layer(input_arr, "conv1", strides = (1,1))
-        conv_1_input_tensor = torch.IntTensor(conv_1_inputs["input_arr"])
-        conv_1_output_tensor = torch.IntTensor(conv_1_outputs["conv_out"])
+        conv_1_input_tensor = torch.IntTensor(conv_1_inputs["input"])
+        conv_1_output_tensor = torch.IntTensor(conv_1_outputs["output"])
         weights.update({"conv1_" + key if key not in exclude_keys else key: value for key, value in conv_1_weights.items()})
 
 
         (relu_inputs, relu_outputs) = self.get_layer(conv_1_output_tensor, "relu")
-        relu_1_output_tensor = torch.IntTensor(relu_outputs["outputs"])
-        relu_1_input_tensor = torch.IntTensor(relu_inputs["inputs_1"])
+        relu_1_output_tensor = torch.IntTensor(relu_outputs["output"])
+        relu_1_input_tensor = torch.IntTensor(relu_inputs["input"])
 
         # Check outputs of conv is same as inputs of relu
         self.check_4d_eq(conv_1_output_tensor,relu_1_input_tensor)
 
         (conv_2_inputs, conv_2_weights, conv_2_outputs) = self.get_layer(relu_1_output_tensor, "conv2", strides = (2,2))
-        conv_2_input_tensor = torch.IntTensor(conv_2_inputs["input_arr"])
-        conv_2_output_tensor = torch.IntTensor(conv_2_outputs["conv_out"])
+        conv_2_input_tensor = torch.IntTensor(conv_2_inputs["input"])
+        conv_2_output_tensor = torch.IntTensor(conv_2_outputs["output"])
         # Check outputs of relu is same as inputs of conv
         self.check_4d_eq(relu_1_output_tensor,conv_2_input_tensor)
 
         weights.update({"conv2_" + key if key not in exclude_keys else key: value for key, value in conv_2_weights.items()})
 
         (relu_2_inputs, relu_2_outputs) = self.get_layer(conv_2_output_tensor, "relu")
-        relu_2_output_tensor = torch.IntTensor(relu_2_outputs["outputs"])
-        relu_2_input_tensor = torch.IntTensor(relu_2_inputs["inputs_1"])
+        relu_2_output_tensor = torch.IntTensor(relu_2_outputs["output"])
+        relu_2_input_tensor = torch.IntTensor(relu_2_inputs["input"])
         # Check inputs of relu is same as outputs of conv
         self.check_4d_eq(relu_2_input_tensor,conv_2_output_tensor)
 
@@ -204,16 +204,16 @@ class Doom():
         # Conv 3 next
         # (conv_3_inputs, conv_3_weights, conv_3_outputs) = self.get_circuit_conv(relu_2_output_tensor, "conv3", strides = (2,2))
         (conv_3_inputs, conv_3_weights, conv_3_outputs) = self.get_layer(relu_2_output_tensor, "conv3", strides = (2,2))
-        conv_3_input_tensor = torch.IntTensor(conv_3_inputs["input_arr"])
-        conv_3_output_tensor = torch.IntTensor(conv_3_outputs["conv_out"])
+        conv_3_input_tensor = torch.IntTensor(conv_3_inputs["input"])
+        conv_3_output_tensor = torch.IntTensor(conv_3_outputs["output"])
 
         self.check_4d_eq(relu_2_output_tensor,conv_3_input_tensor)
 
         weights.update({"conv3_" + key if key not in exclude_keys else key: value for key, value in conv_3_weights.items()})
 
         (relu_3_inputs, relu_3_outputs) = self.get_layer(conv_3_output_tensor, "relu")
-        relu_3_output_tensor = torch.IntTensor(relu_3_outputs["outputs"])
-        relu_3_input_tensor = torch.IntTensor(relu_3_inputs["inputs_1"])
+        relu_3_output_tensor = torch.IntTensor(relu_3_outputs["output"])
+        relu_3_input_tensor = torch.IntTensor(relu_3_inputs["input"])
 
         self.check_4d_eq(relu_3_input_tensor,conv_3_output_tensor)
 
@@ -222,16 +222,16 @@ class Doom():
         (gemm_1_inputs, gemm_1_weights, gemm_1_outputs) = self.get_layer(reshape_out, "fc1", quant = True)
 
         
-        gemm_1_output_tensor = torch.LongTensor(gemm_1_outputs["gemm"])
-        gemm_1_input_tensor = torch.LongTensor(gemm_1_inputs["matrix_a"])
+        gemm_1_output_tensor = torch.LongTensor(gemm_1_outputs["output"])
+        gemm_1_input_tensor = torch.LongTensor(gemm_1_inputs["input"])
 
         weights.update({"gemm1_" + key if key not in exclude_keys else key: value for key, value in gemm_1_weights.items()})
         self.check_2d_eq(reshape_out,gemm_1_input_tensor)
 
         (relu_4_inputs, relu_4_outputs) = self.get_layer(gemm_1_output_tensor, "relu")
 
-        relu_4_output_tensor = torch.IntTensor(relu_4_outputs["outputs"])
-        relu_4_input_tensor = torch.IntTensor(relu_4_inputs["inputs_1"])
+        relu_4_output_tensor = torch.IntTensor(relu_4_outputs["output"])
+        relu_4_input_tensor = torch.IntTensor(relu_4_inputs["input"])
 
         self.check_2d_eq(relu_4_input_tensor,gemm_1_output_tensor)
 
@@ -239,8 +239,8 @@ class Doom():
 
 
 
-        gemm_2_output_tensor = torch.LongTensor(gemm_2_outputs["gemm"])
-        gemm_2_input_tensor = torch.LongTensor(gemm_2_inputs["matrix_a"])
+        gemm_2_output_tensor = torch.LongTensor(gemm_2_outputs["output"])
+        gemm_2_input_tensor = torch.LongTensor(gemm_2_inputs["input"])
 
         weights_2 = {"gemm2_" + key if key not in exclude_keys else key: value for key, value in gemm_2_weights.items()}
 
@@ -256,7 +256,7 @@ class Doom():
         to_json(conv_1_inputs, input_file)
 
         # Write output to json
-        outputs = {"outputs": value for key, value in gemm_2_outputs.items()}
+        outputs = {"output": value for key, value in gemm_2_outputs.items()}
         # outputs = {"outputs": reshape_out.tolist()}
         to_json(outputs, output_file)
 
