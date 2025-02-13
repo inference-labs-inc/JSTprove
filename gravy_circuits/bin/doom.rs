@@ -1,19 +1,19 @@
 use arith::FieldForECC;
-use convolution_fn::{conv_4d_run, conv_shape_4, not_yet_implemented_conv, set_default_params};
+use convolution_fn::conv_4d_run;
 use ethnum::U256;
 use expander_compiler::frontend::*;
 use helper_fn::{four_d_array_to_vec, load_circuit_constant, read_2d_weights, read_4d_weights};
 use io_reader::{FileReader, IOReader};
 use lazy_static::lazy_static;
-use matrix_computation::{matrix_addition, matrix_addition_vec};
+use matrix_computation::matrix_addition_vec;
 #[allow(unused_imports)]
 use matrix_computation::{
     matrix_multplication, matrix_multplication_array, matrix_multplication_naive,
     matrix_multplication_naive2, matrix_multplication_naive2_array, matrix_multplication_naive3,
     matrix_multplication_naive3_array, two_d_array_to_vec,
 };
-use quantization::{quantize_2d_vector, quantize_4d_vector};
-use relu::{relu_2d_vec_v2, relu_3d_v2, relu_4d_vec_v2};
+use quantization::run_if_quantized_2d;
+use relu::{relu_2d_vec_v2, relu_4d_vec_v2};
 use serde::Deserialize;
 use std::ops::Neg;
 
@@ -46,48 +46,46 @@ const DIM2: usize = 4; // n
 const DIM3: usize = 28; // n
 const DIM4: usize = 28; // k
 
-const DIM2OUT: usize = 16;
-
 //Define structure of inputs, weights and output
 #[derive(Deserialize, Clone)]
 struct WeightsData {
-    conv_1_weights: Vec<Vec<Vec<Vec<i64>>>>,
-    conv_1_bias: Vec<i64>,
-    conv_1_strides: Vec<u32>,
-    conv_1_kernel_shape: Vec<u32>,
-    conv_1_group: Vec<u32>,
-    conv_1_dilation: Vec<u32>,
-    conv_1_pads: Vec<u32>,
-    conv_1_input_shape: Vec<u32>,
+    conv1_weights: Vec<Vec<Vec<Vec<i64>>>>,
+    conv1_bias: Vec<i64>,
+    conv1_strides: Vec<u32>,
+    conv1_kernel_shape: Vec<u32>,
+    conv1_group: Vec<u32>,
+    conv1_dilation: Vec<u32>,
+    conv1_pads: Vec<u32>,
+    conv1_input_shape: Vec<u32>,
     quantized: bool,
     scaling: u64,
-    conv_2_weights: Vec<Vec<Vec<Vec<i64>>>>,
-    conv_2_bias: Vec<i64>,
-    conv_2_strides: Vec<u32>,
-    conv_2_kernel_shape: Vec<u32>,
-    conv_2_group: Vec<u32>,
-    conv_2_dilation: Vec<u32>,
-    conv_2_pads: Vec<u32>,
-    conv_2_input_shape: Vec<u32>,
-    conv_3_weights: Vec<Vec<Vec<Vec<i64>>>>,
-    conv_3_bias: Vec<i64>,
-    conv_3_strides: Vec<u32>,
-    conv_3_kernel_shape: Vec<u32>,
-    conv_3_group: Vec<u32>,
-    conv_3_dilation: Vec<u32>,
-    conv_3_pads: Vec<u32>,
-    conv_3_input_shape: Vec<u32>,
-    gemm_1_alpha: u32,
-    gemm_1_beta: u32,
-    gemm_1_weights: Vec<Vec<i64>>,
-    gemm_1_bias: Vec<Vec<i64>>,
+    conv2_weights: Vec<Vec<Vec<Vec<i64>>>>,
+    conv2_bias: Vec<i64>,
+    conv2_strides: Vec<u32>,
+    conv2_kernel_shape: Vec<u32>,
+    conv2_group: Vec<u32>,
+    conv2_dilation: Vec<u32>,
+    conv2_pads: Vec<u32>,
+    conv2_input_shape: Vec<u32>,
+    conv3_weights: Vec<Vec<Vec<Vec<i64>>>>,
+    conv3_bias: Vec<i64>,
+    conv3_strides: Vec<u32>,
+    conv3_kernel_shape: Vec<u32>,
+    conv3_group: Vec<u32>,
+    conv3_dilation: Vec<u32>,
+    conv3_pads: Vec<u32>,
+    conv3_input_shape: Vec<u32>,
+    gemm1_alpha: u32,
+    gemm1_beta: u32,
+    gemm1_weights: Vec<Vec<i64>>,
+    gemm1_bias: Vec<Vec<i64>>,
 }
 #[derive(Deserialize, Clone)]
 struct WeightsData2 {
-    gemm_2_alpha: u32,
-    gemm_2_beta: u32,
-    gemm_2_weights: Vec<Vec<i64>>,
-    gemm_2_bias: Vec<Vec<i64>>,
+    gemm2_alpha: u32,
+    gemm2_beta: u32,
+    gemm2_weights: Vec<Vec<i64>>,
+    gemm2_bias: Vec<Vec<i64>>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -136,9 +134,13 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
         let n_bits = 32;
         // Bring the weights into the circuit as constants
 
-        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv_1_weights);
+        if WEIGHTS_INPUT.gemm1_alpha != 1 ||WEIGHTS_INPUT.gemm1_beta != 1 || WEIGHTS_INPUT2.gemm2_alpha != 1 || WEIGHTS_INPUT2.gemm2_beta != 1{
+            panic!("Not yet implemented for gemm alpha or beta not equal to 1");
+        }
+
+        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv1_weights);
         let bias: Vec<Variable> = WEIGHTS_INPUT
-            .conv_1_bias
+            .conv1_bias
             .clone()
             .into_iter()
             .map(|x| load_circuit_constant(api, x))
@@ -146,31 +148,31 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
 
         let input_arr = four_d_array_to_vec(self.input_arr);
 
-        let out = conv_4d_run(api, input_arr, weights, bias,&WEIGHTS_INPUT.conv_1_dilation, &WEIGHTS_INPUT.conv_1_kernel_shape, &WEIGHTS_INPUT.conv_1_pads, &WEIGHTS_INPUT.conv_1_strides,&WEIGHTS_INPUT.conv_1_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv_1_group, WEIGHTS_INPUT.quantized);
-        // let out = input_arr;
+        let out = conv_4d_run(api, input_arr, weights, bias,&WEIGHTS_INPUT.conv1_dilation, &WEIGHTS_INPUT.conv1_kernel_shape, &WEIGHTS_INPUT.conv1_pads, &WEIGHTS_INPUT.conv1_strides,&WEIGHTS_INPUT.conv1_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv1_group, WEIGHTS_INPUT.quantized);
+
         //Relu 1
         let out = relu_4d_vec_v2(api, out, n_bits);
         //conv2
-        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv_2_weights);
+        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv2_weights);
         let bias: Vec<Variable> = WEIGHTS_INPUT
-            .conv_2_bias
+            .conv2_bias
             .clone()
             .into_iter()
             .map(|x| load_circuit_constant(api, x))
             .collect();
-        let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv_2_dilation, &WEIGHTS_INPUT.conv_2_kernel_shape, &WEIGHTS_INPUT.conv_2_pads, &WEIGHTS_INPUT.conv_2_strides,&WEIGHTS_INPUT.conv_2_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv_2_group, WEIGHTS_INPUT.quantized);
+        let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv2_dilation, &WEIGHTS_INPUT.conv2_kernel_shape, &WEIGHTS_INPUT.conv2_pads, &WEIGHTS_INPUT.conv2_strides,&WEIGHTS_INPUT.conv2_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv2_group, WEIGHTS_INPUT.quantized);
         //relu2
         let out = relu_4d_vec_v2(api, out, n_bits);
         //conv3
-        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv_3_weights);
+        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv3_weights);
         let bias: Vec<Variable> = WEIGHTS_INPUT
-            .conv_3_bias
+            .conv3_bias
             .clone()
             .into_iter()
             .map(|x| load_circuit_constant(api, x))
             .collect();
         //conv3
-        let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv_3_dilation, &WEIGHTS_INPUT.conv_3_kernel_shape, &WEIGHTS_INPUT.conv_3_pads, &WEIGHTS_INPUT.conv_3_strides,&WEIGHTS_INPUT.conv_3_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv_3_group, WEIGHTS_INPUT.quantized);
+        let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv3_dilation, &WEIGHTS_INPUT.conv3_kernel_shape, &WEIGHTS_INPUT.conv3_pads, &WEIGHTS_INPUT.conv3_strides,&WEIGHTS_INPUT.conv3_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv3_group, WEIGHTS_INPUT.quantized);
         let out = relu_4d_vec_v2(api, out, n_bits);
 
         let out_1d: Vec<Variable> = out.iter()
@@ -182,29 +184,27 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
 
         let out_2d = vec![out_1d];
 
-        let weights = read_2d_weights(api, &WEIGHTS_INPUT.gemm_1_weights);
-        let bias = read_2d_weights(api, &WEIGHTS_INPUT.gemm_1_bias);
+        let weights = read_2d_weights(api, &WEIGHTS_INPUT.gemm1_weights);
+        let bias = read_2d_weights(api, &WEIGHTS_INPUT.gemm1_bias);
 
         let out_2d = matrix_multplication_naive2(api, out_2d, weights);
-        let mut out_2d = matrix_addition_vec(api, out_2d, bias);
+        let out_2d = matrix_addition_vec(api, out_2d, bias);
 
-        if WEIGHTS_INPUT.quantized{
-            let scaling_factor = 1 << WEIGHTS_INPUT.scaling;
-            out_2d = quantize_2d_vector(api, out_2d, scaling_factor, WEIGHTS_INPUT.scaling as usize);
-        }
+        let out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, WEIGHTS_INPUT.quantized, out_2d);
+
 
         let out_2d = relu_2d_vec_v2(api, out_2d, n_bits);
 
 
-        let weights = read_2d_weights(api, &WEIGHTS_INPUT2.gemm_2_weights);
-        let bias = read_2d_weights(api, &WEIGHTS_INPUT2.gemm_2_bias);
+        let weights = read_2d_weights(api, &WEIGHTS_INPUT2.gemm2_weights);
+        let bias = read_2d_weights(api, &WEIGHTS_INPUT2.gemm2_bias);
 
         let out_2d = matrix_multplication_naive2(api, out_2d, weights);
         let out_2d = matrix_addition_vec(api, out_2d, bias);
 
 
         for (j, dim1) in self.outputs.iter().enumerate() {
-                for (k, dim2) in dim1.iter().enumerate() {
+                for (k, _dim2) in dim1.iter().enumerate() {
                     api.assert_is_equal(self.outputs[j][k], out_2d[j][k]);
                 }
             }

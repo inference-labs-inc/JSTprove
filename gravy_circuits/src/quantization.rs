@@ -161,3 +161,19 @@ pub fn quantize_2d_vector<C: Config, Builder: RootAPI<C>>(
     }
     out
 }
+
+pub fn run_if_quantized_4d<C: Config, Builder: RootAPI<C>>(api: &mut Builder, scaling_in: u64, quantized: bool, out: Vec<Vec<Vec<Vec<Variable>>>>) -> Vec<Vec<Vec<Vec<Variable>>>>{
+    if quantized{
+        let scaling_factor = 1 << scaling_in;
+        return quantize_4d_vector(api, out, scaling_factor, scaling_in as usize);
+    }
+    return out
+}
+
+pub fn run_if_quantized_2d<C: Config, Builder: RootAPI<C>>(api: &mut Builder, scaling_in: u64, quantized: bool, out: Vec<Vec<Variable>>) -> Vec<Vec<Variable>>{
+    if quantized{
+        let scaling_factor = 1 << scaling_in;
+        return quantize_2d_vector(api, out, scaling_factor, scaling_in as usize);
+    }
+    return out
+}

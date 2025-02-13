@@ -1,11 +1,8 @@
 use std::cmp::{max, min};
 
 use expander_compiler::frontend::*;
-
-use crate::helper_fn::four_d_array_to_vec;
 use crate::matrix_computation::dot;
-
-use crate::quantization::quantize_4d_vector;
+use crate::quantization::run_if_quantized_4d;
 
 
 //Untested
@@ -324,7 +321,7 @@ pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(api: &mut Builder, input_arr:
         input_shape_in,
     );
     not_yet_implemented_conv(input_shape_in, group_in, &dilations);
-    let mut out: Vec<Vec<Vec<Vec<Variable>>>> = conv_shape_4(
+    let out: Vec<Vec<Vec<Vec<Variable>>>> = conv_shape_4(
         api,
         input_arr,
         input_shape_in,
@@ -335,26 +332,7 @@ pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(api: &mut Builder, input_arr:
         &bias,
     );
 
-    if quantized{
-        let scaling_factor = 1 << scaling_in;
-        println!("{}", scaling_factor);
-        out = quantize_4d_vector(api, out, scaling_factor, scaling_in as usize);
-        // panic!("Quantized not yet implemented");
-    }
-    else{
-        out = out;
-    }
-    out
+    run_if_quantized_4d(api, scaling_in, quantized, out)
 }
 
-// fn fun_name(api: &mut Builder, scaling_in: u64, quantized: bool, out: &mut Vec<Vec<Vec<Vec<Variable>>>>) {
-//     if quantized{
-//         let scaling_factor = 1 << scaling_in;
-//         println!("{}", scaling_factor);
-//         *out = quantize_4d_vector(api, *out, scaling_factor, scaling_in as usize);
-//         // panic!("Quantized not yet implemented");
-//     }
-//     else{
-//         *out = *out;
-//     }
-// }
+

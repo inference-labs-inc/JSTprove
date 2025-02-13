@@ -302,13 +302,13 @@ pub fn relu_4d_vec_v2<
     let mut out: Vec<Vec<Vec<Vec<Variable>>>> = Vec::new();
 
     // Iterating over the 4D vector
-    for (i, v3) in input.iter().enumerate() {
+    for (_, v3) in input.iter().enumerate() {
         let mut out_0: Vec<Vec<Vec<Variable>>> = Vec::new();
-        for (j, v2) in v3.iter().enumerate() {
+        for (_, v2) in v3.iter().enumerate() {
             let mut out_1: Vec<Vec<Variable>> = Vec::new();
-            for (k, v1) in v2.iter().enumerate() {
+            for (_, v1) in v2.iter().enumerate() {
             let mut out_2: Vec<Variable> = Vec::new();
-                for (l, value) in v1.iter().enumerate() {
+                for (_, value) in v1.iter().enumerate() {
                     out_2.push(relu_v2(api, *value, n_bits));
                 }
             out_1.push(out_2);
@@ -331,9 +331,9 @@ pub fn relu_2d_vec_v2<
     let mut out: Vec<Vec<Variable>> = Vec::new();
 
     // Iterating over the 4D vector
-    for (i, v1) in input.iter().enumerate() {
+    for (_, v1) in input.iter().enumerate() {
         let mut out_2: Vec<Variable> = Vec::new();
-            for (l, value) in v1.iter().enumerate() {
+            for (_, value) in v1.iter().enumerate() {
                 out_2.push(relu_v2(api, *value, n_bits));
             }
             out.push(out_2);
