@@ -166,97 +166,61 @@ class Doom():
         exclude_keys = ['quantized', 'scaling']
         
         input_arr = self.get_inputs()
-        inputs = []
-        outputs = []
+        inputs = {"input": input_arr.long().tolist()}
         weights = {}
+        weights_2 = {}
+        input = {}
+        output = {}
         
+        layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "reshape", "fc1", "relu", "fc2"]
 
-        #Rework inputs to function
-        (conv_1_inputs, conv_1_weights, conv_1_outputs) = self.get_layer(input_arr, "conv1", strides = (1,1))
-        conv_1_input_tensor = torch.IntTensor(conv_1_inputs["input"])
-        conv_1_output_tensor = torch.IntTensor(conv_1_outputs["output"])
-        weights.update({"conv1_" + key if key not in exclude_keys else key: value for key, value in conv_1_weights.items()})
+        layer_params = {
+            "conv1": {"strides": (1,1)},
+            "conv2": {"strides": (2,2)},
+            "conv3": {"strides": (2,2)},
+            "fc1": {"quant": True},
+            "fc2": {"quant": False},
+            "reshape": {"shape": [-1,1568]}
 
+        }
+        previous_output_tensor = input_arr
 
-        (relu_inputs, relu_outputs) = self.get_layer(conv_1_output_tensor, "relu")
-        relu_1_output_tensor = torch.IntTensor(relu_outputs["output"])
-        relu_1_input_tensor = torch.IntTensor(relu_inputs["input"])
+        for layer in layers:
+            print(layer)
+            #Rework inputs to function
+            if not layer in "reshape":
+                (input, weight, output) = self.get_layer(input_arr, layer, **layer_params.get(layer, {"": None}))
+                if weight:
+                    if "fc2" in layer:
+                        weights_2.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()})
+                    else:
+                        weights.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()})
 
-        # Check outputs of conv is same as inputs of relu
-        self.check_4d_eq(conv_1_output_tensor,relu_1_input_tensor)
+                input_arr = torch.LongTensor(input["input"])
+                output_tensor = torch.LongTensor(output["output"])
+                try:
+                    self.check_4d_eq(input_arr,previous_output_tensor)
+                except IndexError:
+                    self.check_2d_eq(input_arr,previous_output_tensor)
 
-        (conv_2_inputs, conv_2_weights, conv_2_outputs) = self.get_layer(relu_1_output_tensor, "conv2", strides = (2,2))
-        conv_2_input_tensor = torch.IntTensor(conv_2_inputs["input"])
-        conv_2_output_tensor = torch.IntTensor(conv_2_outputs["output"])
-        # Check outputs of relu is same as inputs of conv
-        self.check_4d_eq(relu_1_output_tensor,conv_2_input_tensor)
+                previous_output_tensor = output_tensor
+                input_arr = output_tensor
+            else:
+                input_arr = torch.reshape(previous_output_tensor, [-1, 1568])
+                previous_output_tensor = input_arr
 
-        weights.update({"conv2_" + key if key not in exclude_keys else key: value for key, value in conv_2_weights.items()})
-
-        (relu_2_inputs, relu_2_outputs) = self.get_layer(conv_2_output_tensor, "relu")
-        relu_2_output_tensor = torch.IntTensor(relu_2_outputs["output"])
-        relu_2_input_tensor = torch.IntTensor(relu_2_inputs["input"])
-        # Check inputs of relu is same as outputs of conv
-        self.check_4d_eq(relu_2_input_tensor,conv_2_output_tensor)
-
-
-
-        # Conv 3 next
-        # (conv_3_inputs, conv_3_weights, conv_3_outputs) = self.get_circuit_conv(relu_2_output_tensor, "conv3", strides = (2,2))
-        (conv_3_inputs, conv_3_weights, conv_3_outputs) = self.get_layer(relu_2_output_tensor, "conv3", strides = (2,2))
-        conv_3_input_tensor = torch.IntTensor(conv_3_inputs["input"])
-        conv_3_output_tensor = torch.IntTensor(conv_3_outputs["output"])
-
-        self.check_4d_eq(relu_2_output_tensor,conv_3_input_tensor)
-
-        weights.update({"conv3_" + key if key not in exclude_keys else key: value for key, value in conv_3_weights.items()})
-
-        (relu_3_inputs, relu_3_outputs) = self.get_layer(conv_3_output_tensor, "relu")
-        relu_3_output_tensor = torch.IntTensor(relu_3_outputs["output"])
-        relu_3_input_tensor = torch.IntTensor(relu_3_inputs["input"])
-
-        self.check_4d_eq(relu_3_input_tensor,conv_3_output_tensor)
-
-        reshape_out = torch.reshape(relu_3_output_tensor, [-1, 1568])
-
-        (gemm_1_inputs, gemm_1_weights, gemm_1_outputs) = self.get_layer(reshape_out, "fc1", quant = True)
-
-        
-        gemm_1_output_tensor = torch.LongTensor(gemm_1_outputs["output"])
-        gemm_1_input_tensor = torch.LongTensor(gemm_1_inputs["input"])
-
-        weights.update({"gemm1_" + key if key not in exclude_keys else key: value for key, value in gemm_1_weights.items()})
-        self.check_2d_eq(reshape_out,gemm_1_input_tensor)
-
-        (relu_4_inputs, relu_4_outputs) = self.get_layer(gemm_1_output_tensor, "relu")
-
-        relu_4_output_tensor = torch.IntTensor(relu_4_outputs["output"])
-        relu_4_input_tensor = torch.IntTensor(relu_4_inputs["input"])
-
-        self.check_2d_eq(relu_4_input_tensor,gemm_1_output_tensor)
-
-        (gemm_2_inputs, gemm_2_weights, gemm_2_outputs) = self.get_layer(relu_4_output_tensor.clone(), "fc2", quant = False)
-
-
-
-        gemm_2_output_tensor = torch.LongTensor(gemm_2_outputs["output"])
-        gemm_2_input_tensor = torch.LongTensor(gemm_2_inputs["input"])
-
-        weights_2 = {"gemm2_" + key if key not in exclude_keys else key: value for key, value in gemm_2_weights.items()}
-
-        self.check_2d_eq(relu_4_output_tensor,gemm_2_input_tensor)
 
         self.read_output("output")
-        for i in range(gemm_2_output_tensor.shape[0]):
-            for j in range(gemm_2_output_tensor.shape[1]):
-                assert(abs(gemm_2_output_tensor[i][j]/(2**(2*self.scaling)) - self.layers["output"].outputs[j]) < 0.001)
+        for i in range(previous_output_tensor.shape[0]):
+            for j in range(previous_output_tensor.shape[1]):
+                assert(abs(previous_output_tensor[i][j]/(2**(2*self.scaling)) - self.layers["output"].outputs[j]) < 0.001)
 
 
         # NO NEED TO CHANGE anything below here!
-        to_json(conv_1_inputs, input_file)
+        to_json(inputs, input_file)
 
         # Write output to json
-        outputs = {"output": value for key, value in gemm_2_outputs.items()}
+        outputs = {"output": value for key, value in output.items()}
         # outputs = {"outputs": reshape_out.tolist()}
         to_json(outputs, output_file)
 
@@ -274,6 +238,7 @@ class Doom():
             for j in range(input_tensor_1.shape[1]):
                 for k in range(input_tensor_1.shape[2]):
                     for l in range(input_tensor_1.shape[3]):
+                        # print(input_tensor_1[i][j][k][l],  input_tensor_2[i][j][k][l])
                         assert(abs(input_tensor_1[i][j][k][l] -  input_tensor_2[i][j][k][l]) < 1)
 
     def check_2d_eq(self, input_tensor_1, input_tensor_2):
@@ -303,11 +268,10 @@ class Doom():
         relu_circuit = ReLU(conversion_type = ConversionType.TWOS_COMP)
         relu_circuit.inputs_1 = inputs
         out = relu_circuit.get_outputs()
-        return relu_circuit.get_twos_comp_model_data(out)
+        input, output = relu_circuit.get_twos_comp_model_data(out)
+        return (input, None, output)
     
     def get_circuit_conv(self, inputs, layer_name, strides = (1,1)):
-        self.read_input(layer_name)
-        self.read_output(layer_name)
         self.read_weights(layer_name)
         self.read_weights(layer_name, is_weights=False)
         layers = self.layers[layer_name]
@@ -322,8 +286,6 @@ class Doom():
         return conv_circuit.get_model_params(conv_circuit.get_output())
     
     def get_mat_mult(self, inputs, layer, quant = True):
-        self.read_input(layer)
-        self.read_output(layer)
         self.read_weights(layer)
         self.read_weights(layer, is_weights=False)
         layers = self.layers[layer]

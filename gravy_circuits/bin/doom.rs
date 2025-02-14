@@ -75,17 +75,21 @@ struct WeightsData {
     conv3_dilation: Vec<u32>,
     conv3_pads: Vec<u32>,
     conv3_input_shape: Vec<u32>,
-    gemm1_alpha: u32,
-    gemm1_beta: u32,
-    gemm1_weights: Vec<Vec<i64>>,
-    gemm1_bias: Vec<Vec<i64>>,
+    fc1_alpha: u32,
+    fc1_beta: u32,
+    fc1_weights: Vec<Vec<i64>>,
+    fc1_bias: Vec<Vec<i64>>,
+    // fc2_alpha: u32,
+    // fc2_beta: u32,
+    // fc2_weights: Vec<Vec<i64>>,
+    // fc2_bias: Vec<Vec<i64>>,
 }
 #[derive(Deserialize, Clone)]
 struct WeightsData2 {
-    gemm2_alpha: u32,
-    gemm2_beta: u32,
-    gemm2_weights: Vec<Vec<i64>>,
-    gemm2_bias: Vec<Vec<i64>>,
+    fc2_alpha: u32,
+    fc2_beta: u32,
+    fc2_weights: Vec<Vec<i64>>,
+    fc2_bias: Vec<Vec<i64>>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -134,8 +138,8 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
         let n_bits = 32;
         // Bring the weights into the circuit as constants
 
-        if WEIGHTS_INPUT.gemm1_alpha != 1 ||WEIGHTS_INPUT.gemm1_beta != 1 || WEIGHTS_INPUT2.gemm2_alpha != 1 || WEIGHTS_INPUT2.gemm2_beta != 1{
-            panic!("Not yet implemented for gemm alpha or beta not equal to 1");
+        if WEIGHTS_INPUT.fc1_alpha != 1 ||WEIGHTS_INPUT.fc1_beta != 1 || WEIGHTS_INPUT2.fc2_alpha != 1 || WEIGHTS_INPUT2.fc2_beta != 1{
+            panic!("Not yet implemented for fc alpha or beta not equal to 1");
         }
 
         let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv1_weights);
@@ -184,8 +188,8 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
 
         let out_2d = vec![out_1d];
 
-        let weights = read_2d_weights(api, &WEIGHTS_INPUT.gemm1_weights);
-        let bias = read_2d_weights(api, &WEIGHTS_INPUT.gemm1_bias);
+        let weights = read_2d_weights(api, &WEIGHTS_INPUT.fc1_weights);
+        let bias = read_2d_weights(api, &WEIGHTS_INPUT.fc1_bias);
 
         let out_2d = matrix_multplication_naive2(api, out_2d, weights);
         let out_2d = matrix_addition_vec(api, out_2d, bias);
@@ -196,8 +200,8 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
         let out_2d = relu_2d_vec_v2(api, out_2d, n_bits);
 
 
-        let weights = read_2d_weights(api, &WEIGHTS_INPUT2.gemm2_weights);
-        let bias = read_2d_weights(api, &WEIGHTS_INPUT2.gemm2_bias);
+        let weights = read_2d_weights(api, &WEIGHTS_INPUT2.fc2_weights);
+        let bias = read_2d_weights(api, &WEIGHTS_INPUT2.fc2_bias);
 
         let out_2d = matrix_multplication_naive2(api, out_2d, weights);
         let out_2d = matrix_addition_vec(api, out_2d, bias);
