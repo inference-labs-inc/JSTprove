@@ -206,7 +206,7 @@ class Doom():
                 previous_output_tensor = output_tensor
                 input_arr = output_tensor
             else:
-                input_arr = torch.reshape(previous_output_tensor, [-1, 1568])
+                input_arr = torch.reshape(previous_output_tensor, layer_params["reshape"]["shape"])
                 previous_output_tensor = input_arr
 
 
