@@ -38,13 +38,13 @@ The circuit creation process involves working with two (or three) files.
   
     d. Define the inputs and outputs, to be sent to json for circuits
 
-3. Go to newly generated circuit file in `ExpanderCompilerCollection/expander_compiler/bin`
+3. Create rust file in `gravy_circuits/bin` and add the relevant binary to the Cargo.toml in `gravy_circuits`
 
     a. Define inputs and outputs, to read into the circuit
 
     b. Define circuit
 
-4. Run ``` python -m python_testing.testing_circuit``` to test the accuracy of the circuit
+4. Run ``` python -m python_testing.circuit_tests``` to test the accuracy of the circuit
 
 TODO: Incorporate proof time, proof size and max memory used results, into the circuit testing 
 
@@ -52,18 +52,10 @@ TODO: Incorporate proof time, proof size and max memory used results, into the c
 
 To run circuit example:
 ```
-python -m python_testing.testing_circuit_sn2_example
+python -m python_testing.matrix_multiplication
 ```
 
-Relevent files to explore -> `python_testing/testing_circuit_sn2_example.py` and `ExpanderCompilerCollection/expander_compiler/bin/reward.rs`
-
-## Expander Compiler Collection
-
-Run the proof generation with:
-
-```
-cargo run --bin testing --release inputs/reward_input.json output/reward_output.json
-```
+Relevent files to explore -> `python_testing/matrix_multiplication.py` and `gravy_circuits/bin/matrix_multiplication.rs`
 
 
 ## Important note

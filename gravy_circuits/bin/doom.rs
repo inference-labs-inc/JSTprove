@@ -79,10 +79,6 @@ struct WeightsData {
     fc1_beta: u32,
     fc1_weights: Vec<Vec<i64>>,
     fc1_bias: Vec<Vec<i64>>,
-    // fc2_alpha: u32,
-    // fc2_beta: u32,
-    // fc2_weights: Vec<Vec<i64>>,
-    // fc2_bias: Vec<Vec<i64>>,
 }
 #[derive(Deserialize, Clone)]
 struct WeightsData2 {
