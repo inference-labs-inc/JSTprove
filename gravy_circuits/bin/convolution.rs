@@ -92,6 +92,11 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         // Bring the weights into the circuit as constants
 
+        let v_plus_one: usize = 32;
+        let two_v: u32 = 1 << (v_plus_one - 1);
+        let scaling_factor = 1 << WEIGHTS_INPUT.scaling;
+        let alpha_2_v = api.mul(scaling_factor, two_v);
+
         let weights = read_4d_weights(api, &WEIGHTS_INPUT.weights);
         let bias: Vec<Variable> = WEIGHTS_INPUT
             .bias
@@ -124,7 +129,7 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
         if WEIGHTS_INPUT.quantized{
             let scaling_factor = 1 << WEIGHTS_INPUT.scaling;
             println!("{}", scaling_factor);
-            out = quantize_4d_vector(api, out, scaling_factor, WEIGHTS_INPUT.scaling as usize);
+            out = quantize_4d_vector(api, out, scaling_factor, WEIGHTS_INPUT.scaling as usize, v_plus_one, two_v, alpha_2_v, false);
             // panic!("Quantized not yet implemented");
         }
         else{

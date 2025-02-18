@@ -42,7 +42,7 @@ const N_COLS_B: usize = 256; // k
 struct WeightsData {
     matrix_b: Vec<Vec<i64>>,
     quantized: bool,
-    scaling: u64,
+    scaling: u32,
     circuit_type: String,
 }
 
@@ -72,6 +72,13 @@ declare_circuit!(MatMultCircuit {
 // Memorization, in a better place
 impl<C: Config> GenericDefine<C> for MatMultCircuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
+        let v_plus_one: usize = 32;
+        let two_v: u32 = 1 << (v_plus_one - 1);
+        let scaling_factor = 1 << weights.scaling;
+        let alpha_2_v = api.mul(scaling_factor, two_v);
+
+
+
         // Bring the weights into the circuit as constants
         let weights_matrix_multiplication: Vec<Vec<Variable>> = weights
             .matrix_b
@@ -105,9 +112,8 @@ impl<C: Config> GenericDefine<C> for MatMultCircuit<Variable> {
         if weights.quantized {
             // let scaling = api.constant(weights.scaling as u32);
             // let scaling_factor = scaling_factor_to_constant(api, )
-            let scaling_factor = 1 << weights.scaling;
             println!("{}", scaling_factor);
-            out = quantize_matrix(api, out, scaling_factor, weights.scaling as usize);
+            out = quantize_matrix(api, out, scaling_factor, weights.scaling as usize, v_plus_one, two_v, alpha_2_v, false);
         }
 
         //Assert output of matrix multiplication

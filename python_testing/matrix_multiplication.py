@@ -140,9 +140,9 @@ if __name__ == "__main__":
     input_folder = "inputs"
     weights_folder = "weights"
     circuit_folder = ""
-    #Rework inputs to function
-    test_circuit = MatrixMultiplication(MatMultType.Naive2)
-    test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
+    # #Rework inputs to function
+    # test_circuit = MatrixMultiplication(MatMultType.Naive2)
+    # test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
 
     test_circuit = QuantizedMatrixMultiplication(MatMultType.Naive2)
     test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
