@@ -113,7 +113,7 @@ impl<C: Config> GenericDefine<C> for MatMultCircuit<Variable> {
             // let scaling = api.constant(weights.scaling as u32);
             // let scaling_factor = scaling_factor_to_constant(api, )
             println!("{}", scaling_factor);
-            out = quantize_matrix(api, out, scaling_factor, weights.scaling as usize, v_plus_one, two_v, alpha_2_v);
+            out = quantize_matrix(api, out, scaling_factor, weights.scaling as usize, v_plus_one, two_v, alpha_2_v, false);
         }
 
         //Assert output of matrix multiplication

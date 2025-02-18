@@ -13,7 +13,7 @@ use matrix_computation::{
     matrix_multplication_naive3_array, two_d_array_to_vec,
 };
 use quantization::run_if_quantized_2d;
-use relu::{relu_2d_vec_v2, relu_4d_vec_v2};
+// use relu::{relu_2d_vec_v2, relu_4d_vec_v2};
 use serde::Deserialize;
 use std::ops::Neg;
 
@@ -158,10 +158,10 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
 
         let input_arr = four_d_array_to_vec(self.input_arr);
 
-        let out = conv_4d_run(api, input_arr, weights, bias,&WEIGHTS_INPUT.conv1_dilation, &WEIGHTS_INPUT.conv1_kernel_shape, &WEIGHTS_INPUT.conv1_pads, &WEIGHTS_INPUT.conv1_strides,&WEIGHTS_INPUT.conv1_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv1_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v);
+        let out = conv_4d_run(api, input_arr, weights, bias,&WEIGHTS_INPUT.conv1_dilation, &WEIGHTS_INPUT.conv1_kernel_shape, &WEIGHTS_INPUT.conv1_pads, &WEIGHTS_INPUT.conv1_strides,&WEIGHTS_INPUT.conv1_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv1_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
 
         //Relu 1
-        let out = relu_4d_vec_v2(api, out, n_bits);
+        // let out = relu_4d_vec_v2(api, out, n_bits);
         //conv2
         let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv2_weights);
         let bias: Vec<Variable> = WEIGHTS_INPUT
@@ -170,9 +170,9 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
             .into_iter()
             .map(|x| load_circuit_constant(api, x))
             .collect();
-        let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv2_dilation, &WEIGHTS_INPUT.conv2_kernel_shape, &WEIGHTS_INPUT.conv2_pads, &WEIGHTS_INPUT.conv2_strides,&WEIGHTS_INPUT.conv2_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv2_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v);
+        let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv2_dilation, &WEIGHTS_INPUT.conv2_kernel_shape, &WEIGHTS_INPUT.conv2_pads, &WEIGHTS_INPUT.conv2_strides,&WEIGHTS_INPUT.conv2_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv2_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
         //relu2
-        let out = relu_4d_vec_v2(api, out, n_bits);
+        // let out = relu_4d_vec_v2(api, out, n_bits);
         //conv3
         let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv3_weights);
         let bias: Vec<Variable> = WEIGHTS_INPUT
@@ -182,8 +182,8 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
             .map(|x| load_circuit_constant(api, x))
             .collect();
         //conv3
-        let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv3_dilation, &WEIGHTS_INPUT.conv3_kernel_shape, &WEIGHTS_INPUT.conv3_pads, &WEIGHTS_INPUT.conv3_strides,&WEIGHTS_INPUT.conv3_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv3_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v);
-        let out = relu_4d_vec_v2(api, out, n_bits);
+        let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv3_dilation, &WEIGHTS_INPUT.conv3_kernel_shape, &WEIGHTS_INPUT.conv3_pads, &WEIGHTS_INPUT.conv3_strides,&WEIGHTS_INPUT.conv3_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv3_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
+        // let out = relu_4d_vec_v2(api, out, n_bits);
 
         let out_1d: Vec<Variable> = out.iter()
                 .flat_map(|x| x.iter())
@@ -200,10 +200,10 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
         let out_2d = matrix_multplication_naive2(api, out_2d, weights);
         let out_2d = matrix_addition_vec(api, out_2d, bias);
 
-        let out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, WEIGHTS_INPUT.quantized, out_2d, v_plus_one, two_v, alpha_2_v);
+        let out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, WEIGHTS_INPUT.quantized, out_2d, v_plus_one, two_v, alpha_2_v, true);
 
 
-        let out_2d = relu_2d_vec_v2(api, out_2d, n_bits);
+        // let out_2d = relu_2d_vec_v2(api, out_2d, n_bits);
 
 
         let weights = read_2d_weights(api, &WEIGHTS_INPUT2.fc2_weights);

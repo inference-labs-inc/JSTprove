@@ -1,9 +1,8 @@
 use std::cmp::{max, min};
 
-use expander_compiler::frontend::*;
 use crate::matrix_computation::dot;
 use crate::quantization::run_if_quantized_4d;
-
+use expander_compiler::frontend::*;
 
 //Untested
 pub fn set_default_params(
@@ -311,8 +310,24 @@ fn flatten_and_perform_dot<C: Config, Builder: RootAPI<C>>(
     s
 }
 
-
-pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(api: &mut Builder, input_arr: Vec<Vec<Vec<Vec<Variable>>>> , weights:  Vec<Vec<Vec<Vec<Variable>>>>, bias: Vec<Variable>,dilations_in: &Vec<u32>, kernel_shape_in: &Vec<u32>, pads_in: &Vec<u32>, strides_in: &Vec<u32>, input_shape_in: &Vec<u32>, scaling_in: u64, group_in: &Vec<u32>, quantized:bool, v_plus_one: usize, two_v: u32, alpha_two_v: Variable) -> Vec<Vec<Vec<Vec<Variable>>>> {
+pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    input_arr: Vec<Vec<Vec<Vec<Variable>>>>,
+    weights: Vec<Vec<Vec<Vec<Variable>>>>,
+    bias: Vec<Variable>,
+    dilations_in: &Vec<u32>,
+    kernel_shape_in: &Vec<u32>,
+    pads_in: &Vec<u32>,
+    strides_in: &Vec<u32>,
+    input_shape_in: &Vec<u32>,
+    scaling_in: u64,
+    group_in: &Vec<u32>,
+    quantized: bool,
+    v_plus_one: usize,
+    two_v: u32,
+    alpha_two_v: Variable,
+    is_relu: bool,
+) -> Vec<Vec<Vec<Vec<Variable>>>> {
     let (dilations, kernel_shape, pads, strides) = set_default_params(
         dilations_in,
         kernel_shape_in,
@@ -332,7 +347,14 @@ pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(api: &mut Builder, input_arr:
         &bias,
     );
 
-    run_if_quantized_4d(api, scaling_in, quantized, out, v_plus_one, two_v, alpha_two_v)
+    run_if_quantized_4d(
+        api,
+        scaling_in,
+        quantized,
+        out,
+        v_plus_one,
+        two_v,
+        alpha_two_v,
+        is_relu,
+    )
 }
-
-

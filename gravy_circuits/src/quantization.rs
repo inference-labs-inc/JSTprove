@@ -12,19 +12,33 @@ fn quantize<C: Config, Builder: RootAPI<C>>(
     v_plus_one: usize,
     two_v: u32,
     alpha_two_v: Variable,
+    is_relu: bool
 ) -> Variable {
     let q = div_unconstrained(api, input_value, scaling_factor);
-    let quotient = div_constrained(
-        api,
-        input_value,
-        scaling_factor,
-        q,
-        scaling,
-        v_plus_one,
-        two_v,
-        alpha_two_v,
-    );
-    quotient
+    if is_relu{
+        return div_constrained_and_relu(
+            api,
+            input_value,
+            scaling_factor,
+            q,
+            scaling,
+            v_plus_one,
+            two_v,
+            alpha_two_v,
+        );
+    }
+    else{
+        return div_constrained(
+            api,
+            input_value,
+            scaling_factor,
+            q,
+            scaling,
+            v_plus_one,
+            two_v,
+            alpha_two_v,
+        );
+    }
 }
 
 pub fn scaling_factor_to_constant<C: Config, Builder: RootAPI<C>>(
@@ -117,18 +131,6 @@ fn div_constrained<C: Config, Builder: RootAPI<C>>(
 
     let d_sharp = api.add(alpha_two_v, x);
 
-
-
-    // // 5.
-    // let q_sharp = api.add(q, two_v);
-    // //6.
-    // let bits = to_binary(api, q_sharp, v_plus_one);
-    // let total = from_binary(api, &bits, v_plus_one);
-    // api.assert_is_equal(q_sharp, total);
-
-    // //7. Note, must incorporate 1 << scaling into the parameters... Also temp can be done outside as well
-    // let d_sharp = api.add(alpha_two_v, x);
-
     //8
     let q_flat = api.unconstrained_int_div(d_sharp, y);
     let rem_flat = api.unconstrained_mod(d_sharp, y);
@@ -143,6 +145,44 @@ fn div_constrained<C: Config, Builder: RootAPI<C>>(
     q
 }
 
+fn div_constrained_and_relu<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    x: Variable,
+    y: u32,
+    q: Variable,
+    scaling: usize,
+    v_plus_one: usize,
+    two_v: u32,
+    alpha_two_v: Variable,
+) -> Variable{
+    //5.
+    let q_sharp = api.add(q, two_v);
+    //6.
+    let bits = to_binary(api, q_sharp, v_plus_one);
+    let total = from_binary(api, &bits, v_plus_one);
+    api.assert_is_equal(q_sharp, total);
+
+
+    //7. Note, must incorporate 1 << scaling into the parameters... Also temp can be done outside as well
+    // let temp = api.mul(two_v, 1 << scaling);
+    // let temp: u64 = two_v as u64 * (1 << scaling);
+
+    let d_sharp = api.add(alpha_two_v, x);
+
+    //8
+    let q_flat = api.unconstrained_int_div(d_sharp, y);
+    let rem_flat = api.unconstrained_mod(d_sharp, y);
+
+    let temp = api.mul(q_flat, y);
+    let temp2 = api.add(temp, rem_flat);
+    api.assert_is_equal(d_sharp, temp2);
+    constrain_rem(api, scaling, rem_flat);
+
+    //9
+    api.assert_is_equal(q_flat, q_sharp);
+    api.mul(q, bits[v_plus_one - 1])
+}
+
 pub fn quantize_matrix<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input_matrix: Vec<Vec<Variable>>,
@@ -151,6 +191,7 @@ pub fn quantize_matrix<C: Config, Builder: RootAPI<C>>(
     v_plus_one: usize,
     two_v: u32,
     alpha_two_v: Variable,
+    is_relu: bool
 ) -> Vec<Vec<Variable>> {
     let mut out: Vec<Vec<Variable>> = Vec::new();
     for (_, row) in input_matrix.iter().enumerate() {
@@ -164,6 +205,7 @@ pub fn quantize_matrix<C: Config, Builder: RootAPI<C>>(
                 v_plus_one,
                 two_v,
                 alpha_two_v,
+                is_relu
             ))
         }
         out.push(row_out);
@@ -179,6 +221,7 @@ pub fn quantize_4d_vector<C: Config, Builder: RootAPI<C>>(
     v_plus_one: usize,
     two_v: u32,
     alpha_two_v: Variable,
+    is_relu: bool
 ) -> Vec<Vec<Vec<Vec<Variable>>>> {
     let mut out: Vec<Vec<Vec<Vec<Variable>>>> = Vec::new();
     for (_, dim1) in input_matrix.iter().enumerate() {
@@ -196,6 +239,7 @@ pub fn quantize_4d_vector<C: Config, Builder: RootAPI<C>>(
                         v_plus_one,
                         two_v,
                         alpha_two_v,
+                        is_relu
                     ));
                 }
                 dim2_out.push(dim3_out);
@@ -215,6 +259,7 @@ pub fn quantize_2d_vector<C: Config, Builder: RootAPI<C>>(
     v_plus_one: usize,
     two_v: u32,
     alpha_two_v: Variable,
+    is_relu: bool
 ) -> Vec<Vec<Variable>> {
     let mut out: Vec<Vec<Variable>> = Vec::new();
     for (_, dim1) in input_matrix.iter().enumerate() {
@@ -228,6 +273,7 @@ pub fn quantize_2d_vector<C: Config, Builder: RootAPI<C>>(
                 v_plus_one,
                 two_v,
                 alpha_two_v,
+                is_relu
             ));
         }
         out.push(dim1_out);
@@ -243,6 +289,7 @@ pub fn run_if_quantized_4d<C: Config, Builder: RootAPI<C>>(
     v_plus_one: usize,
     two_v: u32,
     alpha_two_v: Variable,
+    is_relu: bool
 ) -> Vec<Vec<Vec<Vec<Variable>>>> {
     if quantized {
         let scaling_factor = 1 << scaling_in;
@@ -254,6 +301,7 @@ pub fn run_if_quantized_4d<C: Config, Builder: RootAPI<C>>(
             v_plus_one,
             two_v,
             alpha_two_v,
+            is_relu
         );
     }
     return out;
@@ -267,6 +315,7 @@ pub fn run_if_quantized_2d<C: Config, Builder: RootAPI<C>>(
     v_plus_one: usize,
     two_v: u32,
     alpha_two_v: Variable,
+    is_relu: bool
 ) -> Vec<Vec<Variable>> {
     if quantized {
         let scaling_factor = 1 << scaling_in;
@@ -278,6 +327,7 @@ pub fn run_if_quantized_2d<C: Config, Builder: RootAPI<C>>(
             v_plus_one,
             two_v,
             alpha_two_v,
+            is_relu
         );
     }
     return out;

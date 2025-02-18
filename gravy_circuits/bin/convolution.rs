@@ -129,7 +129,7 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
         if WEIGHTS_INPUT.quantized{
             let scaling_factor = 1 << WEIGHTS_INPUT.scaling;
             println!("{}", scaling_factor);
-            out = quantize_4d_vector(api, out, scaling_factor, WEIGHTS_INPUT.scaling as usize, v_plus_one, two_v, alpha_2_v);
+            out = quantize_4d_vector(api, out, scaling_factor, WEIGHTS_INPUT.scaling as usize, v_plus_one, two_v, alpha_2_v, false);
             // panic!("Quantized not yet implemented");
         }
         else{
