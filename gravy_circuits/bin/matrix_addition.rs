@@ -1,9 +1,10 @@
 use expander_compiler::frontend::*;
+use gkr_field_config::GKRFieldConfig;
 use io_reader::{FileReader, IOReader};
 use serde::Deserialize;
 use ethnum::U256;
 // use std::ops::Neg;
-use arith::FieldForECC;
+// use arith::FieldForECC;
 
 #[path = "../src/matrix_computation.rs"]
 pub mod matrix_computation;
