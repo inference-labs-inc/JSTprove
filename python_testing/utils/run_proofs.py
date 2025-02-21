@@ -189,14 +189,18 @@ class ExecutableHelperFunctions():
     def run_process(executable: List[str], die_on_error:bool =True, shell = False):
         try:
             # Capture output by setting capture_output=True
-            res = subprocess.run(executable, check=True, capture_output=False, shell=shell, text=True)
+            if "pytest" in sys.modules:
+                capture_output = True
+            else:
+                capture_output = False
+            res = subprocess.run(executable, check=True, capture_output=capture_output, shell=shell, text=True)
             return res
         except subprocess.CalledProcessError as err:
             # Log the error message from stderr
             stderr_output = err.stderr if err.stderr else "No stderr output"
             logging.error(f"Error: {err} {stderr_output}")
             if die_on_error:
-                sys.exit()
+                # assert(err)
                 raise
             return err
         
