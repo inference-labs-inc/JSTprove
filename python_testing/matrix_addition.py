@@ -32,6 +32,8 @@ class MatrixAddition():
         #######################################################################################################
         '''
 
+    def get_output(self):
+        return torch.add(self.matrix_a, self.matrix_b)
     
     def base_testing(self, input_folder:str, proof_folder: str, temp_folder: str, weights_folder:str, circuit_folder:str, proof_system: ZKProofSystems, output_folder: str = None):
 
@@ -47,7 +49,7 @@ class MatrixAddition():
         '''
         ## Perform calculation here
 
-        matrix_sum_ab = torch.add(self.matrix_a, self.matrix_b)
+        matrix_sum_ab = self.get_output()
 
         ## Define inputs and outputs
         inputs = {

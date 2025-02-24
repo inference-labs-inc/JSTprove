@@ -48,7 +48,7 @@ class ScaledMatrixProduct():
         '''
         ## Perform calculation here
 
-        scaled_matrix_product_alpha_ab = self.alpha*torch.matmul(self.matrix_a, self.matrix_b)
+        scaled_matrix_product_alpha_ab = self.get_output()
 
         ## Define inputs and outputs
         inputs = {
@@ -78,6 +78,9 @@ class ScaledMatrixProduct():
 
         ## Run the circuit
         prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file)
+
+    def get_output(self):
+        return self.alpha*torch.matmul(self.matrix_a, self.matrix_b)
 
     
 if __name__ == "__main__":

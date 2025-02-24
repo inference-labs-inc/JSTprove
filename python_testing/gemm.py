@@ -27,13 +27,13 @@ class Gemm():
         
         self.quantized = False
 
-        self.scaling = 100
+        self.scaling = 21
 
         self.alpha = torch.randint(0, 100, ())
         self.beta = torch.randint(0, 100, ())
-        self.matrix_a = torch.randint(low=0, high=100, size=(N_ROWS_A,N_COLS_A)) # (m, n) array of random integers between 0 and 100
-        self.matrix_b = torch.randint(low=0, high=100, size=(N_ROWS_B,N_COLS_B)) # (n, k) array of random integers between 0 and 100
-        self.matrix_c = torch.randint(low=0, high=100, size=(N_ROWS_C,N_COLS_C)) # (m, k) array of random integers between 0 and 100
+        self.matrix_a = torch.randint(low=0, high=2**self.scaling, size=(N_ROWS_A,N_COLS_A)) # (m, n) array of random integers between 0 and 100
+        self.matrix_b = torch.randint(low=0, high=2**self.scaling, size=(N_ROWS_B,N_COLS_B)) # (n, k) array of random integers between 0 and 100
+        self.matrix_c = torch.randint(low=0, high=2**self.scaling, size=(N_ROWS_C,N_COLS_C)) # (m, k) array of random integers between 0 and 100
 
         '''
         #######################################################################################################

@@ -35,7 +35,8 @@ class ScaledMatrixProductSum():
         #######################################################################################################
         #######################################################################################################
         '''
-
+    def get_output(self):
+        return self.alpha * torch.matmul(self.matrix_a, self.matrix_b) + self.matrix_c
     
     def base_testing(self, input_folder:str, proof_folder: str, temp_folder: str, weights_folder:str, circuit_folder:str, proof_system: ZKProofSystems, output_folder: str = None):
 
@@ -51,7 +52,7 @@ class ScaledMatrixProductSum():
         '''
         ## Perform calculation here
 
-        scaled_matrix_product_sum_alpha_ab_plus_c = self.alpha * torch.matmul(self.matrix_a, self.matrix_b) + self.matrix_c
+        scaled_matrix_product_sum_alpha_ab_plus_c = self.get_output()
 
         ## Define inputs and outputs
         inputs = {

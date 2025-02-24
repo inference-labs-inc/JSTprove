@@ -18,13 +18,13 @@ class MatrixHadamardProduct():
         
         # Function input generation
 
-        N_ROWS_A: int = 256; # m
-        N_COLS_A: int = 10; # n
-        N_ROWS_B: int = 256; # m
-        N_COLS_B: int = 10; # n
+        self.N_ROWS_A: int = 256; # m
+        self.N_COLS_A: int = 10; # n
+        self.N_ROWS_B: int = 256; # m
+        self.N_COLS_B: int = 10; # n
 
-        self.matrix_a = torch.randint(low=0, high=100, size=(N_ROWS_A,N_COLS_A)) # (m, n) array of random integers between 0 and 100
-        self.matrix_b = torch.randint(low=0, high=100, size=(N_ROWS_B,N_COLS_B)) # (m, n) array of random integers between 0 and 100
+        self.matrix_a = torch.randint(low=0, high=100, size=(self.N_ROWS_A,self.N_COLS_A)) # (m, n) array of random integers between 0 and 100
+        self.matrix_b = torch.randint(low=0, high=100, size=(self.N_ROWS_B,self.N_COLS_B)) # (m, n) array of random integers between 0 and 100
         
         '''
         #######################################################################################################
@@ -51,7 +51,7 @@ class MatrixHadamardProduct():
         ## Define inputs and outputs
         inputs = {
             'matrix_a': self.matrix_a.tolist(),
-            'matrix_b': self.matrix_b.tolist(),          
+            'matrix_b': self.matrix_b.tolist(), 
             }
         
         outputs = {
@@ -75,6 +75,31 @@ class MatrixHadamardProduct():
 
         ## Run the circuit
         prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file)
+class QuantizedMatrixHadamard(MatrixHadamardProduct):
+    #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
+    def __init__(self):
+        super().__init__()
+
+        # Instead get a value between 0-1
+        self.matrix_a = torch.rand(size=(self.N_ROWS_A,self.N_COLS_A)) - torch.rand(size=(self.N_ROWS_A,self.N_COLS_A))
+        self.matrix_b = torch.rand(size=(self.N_ROWS_B,self.N_COLS_B)) - torch.rand(size=(self.N_ROWS_B,self.N_COLS_B))
+
+        self.quantized = True
+    
+    def get_inputs_for_circuit(self):
+        matrix_a = torch.mul(self.matrix_a, 2**self.scaling).long()
+        matrix_b = torch.mul(self.matrix_b, 2**self.scaling).long()
+        matrix_product_ab = torch.matmul(matrix_a, matrix_b)
+        matrix_product_ab = torch.div(matrix_product_ab, 2**self.scaling, rounding_mode="floor").long()
+
+        #This can show the error term with what we are doing
+        temp_1 = torch.matmul(self.matrix_a, self.matrix_b)
+        temp_1 = torch.mul(temp_1, self.scaling)
+        
+        print(temp_1[0][0].long(), matrix_product_ab[0][0]/2**21)
+
+
+        return (matrix_a, matrix_b, matrix_product_ab)
 
     
 if __name__ == "__main__":
