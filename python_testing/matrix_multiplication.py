@@ -41,6 +41,7 @@ class MatrixMultiplication():
         self.matrix_b = torch.randint(low=-2**self.scaling, high=2**self.scaling, size=(self.N_ROWS_B,self.N_COLS_B)) # (n, k) array of random integers between 0 and 100
 
         self.quantized = False
+        self.is_relu = False
         
         '''
         #######################################################################################################
@@ -96,7 +97,8 @@ class MatrixMultiplication():
             'matrix_b': matrix_b.tolist(), 
             'quantized': self.quantized,
             'scaling': self.scaling,
-            'circuit_type': self.circuit_type.value
+            'circuit_type': self.circuit_type.value,
+            'is_relu': self.is_relu
         }
         
         outputs = {
@@ -130,6 +132,35 @@ class QuantizedMatrixMultiplication(MatrixMultiplication):
 
 
         return (matrix_a, matrix_b, matrix_product_ab)
+    
+
+class QuantizedMatrixMultiplicationReLU(MatrixMultiplication):
+    #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
+    def __init__(self, circuit_type: MatMultType = MatMultType.Naive2):
+        super().__init__(circuit_type)
+
+        # Instead get a value between 0-1
+        self.matrix_a = torch.rand(size=(self.N_ROWS_A,self.N_COLS_A)) - torch.rand(size=(self.N_ROWS_A,self.N_COLS_A))
+        self.matrix_b = torch.rand(size=(self.N_ROWS_B,self.N_COLS_B)) - torch.rand(size=(self.N_ROWS_B,self.N_COLS_B))
+
+        self.quantized = True
+        self.is_relu = True
+    
+    def get_inputs_for_circuit(self):
+        matrix_a = torch.mul(self.matrix_a, 2**self.scaling).long()
+        matrix_b = torch.mul(self.matrix_b, 2**self.scaling).long()
+        matrix_product_ab = torch.matmul(matrix_a, matrix_b)
+        matrix_product_ab = torch.div(matrix_product_ab, 2**self.scaling, rounding_mode="floor").long()
+        matrix_product_ab = torch.relu(matrix_product_ab)
+
+        #This can show the error term with what we are doing
+        temp_1 = torch.matmul(self.matrix_a, self.matrix_b)
+        temp_1 = torch.mul(temp_1, self.scaling)
+        
+        print(temp_1[0][0].long(), matrix_product_ab[0][0]/2**21)
+
+
+        return (matrix_a, matrix_b, matrix_product_ab)
 
 
 if __name__ == "__main__":
@@ -146,4 +177,7 @@ if __name__ == "__main__":
 
     test_circuit = QuantizedMatrixMultiplication(MatMultType.Naive2)
     test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
+
+    # test_circuit = QuantizedMatrixMultiplicationReLU(MatMultType.Naive2)
+    # test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
 

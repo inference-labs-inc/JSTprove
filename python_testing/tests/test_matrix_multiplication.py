@@ -3,7 +3,7 @@ from unittest import mock
 import pytest
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems
-from python_testing.matrix_multiplication import MatrixMultiplication, QuantizedMatrixMultiplication
+from python_testing.matrix_multiplication import MatrixMultiplication, QuantizedMatrixMultiplication, QuantizedMatrixMultiplicationReLU
 
 
 proof_system = ZKProofSystems.Expander
@@ -62,6 +62,26 @@ def test_quantized_mat_mult_incorrect_output():
     test_circuit = QuantizedMatrixMultiplication()
     with pytest.raises(subprocess.CalledProcessError) as exc_info:
         with mock.patch.object(QuantizedMatrixMultiplication, 'get_inputs_for_circuit', side_effect=mat_mult_incorrect_output, autospec=True) as mock_get_output:
+            test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
+
+    assert exc_info is not None, "Expected subprocess.CalledProcessError to be raised, but it was not."
+    # Check stderr for the panic message or error message
+    error_message = "assertion `left == right` failed"
+    assert error_message in exc_info.value.stderr, f"Expected to find '{error_message}' in stderr, but got: {exc_info.value.stderr}"
+
+    # Optionally check the stdout if necessary
+    expected_stdout = "built layered circuit"
+    assert expected_stdout in exc_info.value.stdout, f"Expected to find '{expected_stdout}' in stdout, but got: {exc_info.value.stdout}"
+
+def test_mat_mult_base_quantize_and_relu_run():
+    test_circuit = QuantizedMatrixMultiplicationReLU()
+    test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
+
+
+def test_quantized_mat_mult_relu_incorrect_output():
+    test_circuit = QuantizedMatrixMultiplicationReLU()
+    with pytest.raises(subprocess.CalledProcessError) as exc_info:
+        with mock.patch.object(QuantizedMatrixMultiplicationReLU, 'get_inputs_for_circuit', side_effect=mat_mult_incorrect_output, autospec=True) as mock_get_output:
             test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
 
     assert exc_info is not None, "Expected subprocess.CalledProcessError to be raised, but it was not."
