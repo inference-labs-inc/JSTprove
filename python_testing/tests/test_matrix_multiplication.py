@@ -40,6 +40,24 @@ def test_mat_mult_base_quantize_run():
     test_circuit = QuantizedMatrixMultiplication()
     test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
 
+def test_mat_mult_base_quantize_run_ones():
+    test_circuit = QuantizedMatrixMultiplication()
+    test_circuit.matrix_a = torch.ones(test_circuit.matrix_a.shape)
+    test_circuit.matrix_b = torch.ones(test_circuit.matrix_b.shape)
+    # With input of all ones, and this size circuit, we need to reduce the scaling factor to work with the built in 32 v value
+    test_circuit.scaling = 20
+
+    test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
+
+def test_mat_mult_base_quantize_run_negative_ones():
+    test_circuit = QuantizedMatrixMultiplication()
+    test_circuit.matrix_a = torch.full(test_circuit.matrix_a.shape, -1)
+    test_circuit.matrix_b = torch.full(test_circuit.matrix_b.shape, -1)
+    # With input of all ones, and this size circuit, we need to reduce the scaling factor to work with the built in 32 v value
+    test_circuit.scaling = 20
+
+    test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
+
 
 
 def test_mat_mult_incorrect_output():
