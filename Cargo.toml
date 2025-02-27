@@ -30,5 +30,7 @@ mersenne31 = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" 
 expander_transcript = { git = "https://github.com/PolyhedraZK/Expander", branch = "main", package = "transcript" }
 crosslayer_prototype = { git = "https://github.com/PolyhedraZK/Expander", branch = "main"}
 expander_compiler = {git = "https://github.com/PolyhedraZK/ExpanderCompilerCollection"}
+circuit-std-rs = {git = "https://github.com/PolyhedraZK/ExpanderCompilerCollection"}
+
 
 
