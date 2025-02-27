@@ -35,7 +35,7 @@ declare_circuit!(Circuit {
 });
 
 //Still to factor this out
-impl<C: Config> GenericDefine<C> for Circuit<Variable> {
+impl<C: Config> Define<C> for Circuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         let scaled_matrix_product =
             scaled_matrix_product(api, self.matrix_a, self.matrix_b, self.alpha);

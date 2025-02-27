@@ -19,16 +19,16 @@ clap = { version = "4.1", features = ["derive"] }
 ethnum = "1.5.0"
 tiny-keccak = { version = "2.0", features = ["keccak"] }
 halo2curves = { git = "https://github.com/PolyhedraZK/halo2curves", default-features = false, features = ["bits",] }
-arith = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev" }
-mpi_config = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev" }
-gkr_field_config = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev" }
-expander_config = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev", package = "config" }
-expander_circuit = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev", package = "circuit" }
-gkr = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev" }
-gf2 = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev" }
-mersenne31 = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev" }
-expander_transcript = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev", package = "transcript" }
-crosslayer_prototype = { git = "https://github.com/PolyhedraZK/Expander", branch = "dev"}
+arith = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
+mpi_config = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
+gkr_field_config = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
+expander_config = { git = "https://github.com/PolyhedraZK/Expander", branch = "main", package = "config" }
+expander_circuit = { git = "https://github.com/PolyhedraZK/Expander", branch = "main", package = "circuit" }
+gkr = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
+gf2 = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
+mersenne31 = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
+expander_transcript = { git = "https://github.com/PolyhedraZK/Expander", branch = "main", package = "transcript" }
+crosslayer_prototype = { git = "https://github.com/PolyhedraZK/Expander", branch = "main"}
 expander_compiler = {git = "https://github.com/PolyhedraZK/ExpanderCompilerCollection"}
 
 

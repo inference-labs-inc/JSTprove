@@ -70,7 +70,7 @@ declare_circuit!(MatMultCircuit {
     matrix_product_ab: [[Variable; N_COLS_B]; N_ROWS_A], // shape (m, k)
 });
 // Memorization, in a better place
-impl<C: Config> GenericDefine<C> for MatMultCircuit<Variable> {
+impl<C: Config> Define<C> for MatMultCircuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         let v_plus_one: usize = 32;
         let two_v: u32 = 1 << (v_plus_one - 1);

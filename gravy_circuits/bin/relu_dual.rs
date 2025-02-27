@@ -39,7 +39,7 @@ fn relu<C: Config, Builder: RootAPI<C>>(
     api.mul(x, sign_2)
 }
 
-impl<C: Config> GenericDefine<C> for ReLUDualCircuit<Variable> {
+impl<C: Config> Define<C> for ReLUDualCircuit<Variable> {
     // Default circuit for now, ensures input and output are equal
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         for i in 0..LENGTH {

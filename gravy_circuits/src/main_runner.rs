@@ -11,10 +11,10 @@ static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
 fn run_main<C: Config, I, CircuitType, CircuitDefaultType>(io_reader: &mut I)
 where
     I: IOReader<C, CircuitDefaultType>, // `CircuitType` should be the same type used in the `IOReader` impl
-    CircuitType: Default + DumpLoadTwoVariables<Variable> + GenericDefine<C> + Clone,
+    CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone,
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
-        + Clone,
+        + Clone
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
@@ -40,7 +40,7 @@ where
 
     // let compile_result: CompileResult<C> = compile(&CircuitType::default()).unwrap();
     let compile_result =
-        compile_generic(&CircuitType::default(), CompileOptions::default().with_mul_fanout_limit(1024)).unwrap();
+        compile(&CircuitType::default(), CompileOptions::default().with_mul_fanout_limit(1024)).unwrap();
     println!(
         "Peak Memory used Overall : {:.2}",
         GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
@@ -77,9 +77,12 @@ where
         assert_eq!(*x, true);
     }
 
+    // let mut expander_circuit = layered_circuit
+    //     .export_to_expander::<<C>::DefaultGKRFieldConfig>()
+    //     .flatten();
     let mut expander_circuit = layered_circuit
-        .export_to_expander::<<C>::DefaultGKRFieldConfig>()
-        .flatten();
+        .export_to_expander::<C::DefaultGKRFieldConfig>()
+        .flatten::<C::DefaultGKRConfig>();
     let config = expander_config::Config::<<C>::DefaultGKRConfig>::new(
         expander_config::GKRScheme::Vanilla,
         mpi_config::MPIConfig::new(),
@@ -124,7 +127,7 @@ where
         + DumpLoadTwoVariables<Variable>
         // + expander_compiler::frontend::Define<C>
         + Clone
-        + GenericDefine<C>,
+        + Define<C>,
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
         + Clone,
@@ -153,7 +156,7 @@ where
 
     // let compile_result: CompileResult<C> = compile(&CircuitType::default()).unwrap();
     let compile_result =
-        compile_generic(&CircuitType::default(), CompileOptions::default()).unwrap();
+        compile(&CircuitType::default(), CompileOptions::default()).unwrap();
     println!(
         "Peak Memory used Overall : {:.2}",
         GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
@@ -199,10 +202,12 @@ where
 
     CircuitType: std::default::Default +
     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-    + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::GF2Config>
+    + expander_compiler::frontend::Define<expander_compiler::frontend::GF2Config>
     + std::clone::Clone,
 {
     run_main::<GF2Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+    // run_main::<GF2Config, GF2ExtConfigSha2Raw, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+
 }
 
 pub fn run_m31<CircuitType, CircuitDefaultType, Filereader: IOReader<expander_compiler::frontend::M31Config, CircuitDefaultType>>(file_reader: &mut Filereader)
@@ -213,10 +218,12 @@ where
 
     CircuitType: std::default::Default +
     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-    + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::M31Config>
+    + expander_compiler::frontend::Define<expander_compiler::frontend::M31Config>
     + std::clone::Clone,
 {
     run_main::<M31Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+    // run_main::<M31Config, M31ExtConfigSha2Raw, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+
 }
 
 pub fn run_bn254<CircuitType, CircuitDefaultType, Filereader: IOReader<expander_compiler::frontend::BN254Config, CircuitDefaultType>>(file_reader: &mut Filereader)
@@ -227,10 +234,12 @@ where
 
     CircuitType: std::default::Default +
     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-    + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::BN254Config>
+    + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
     + std::clone::Clone,
 {
     run_main::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+    // run_main::<BN254Config, BN254ConfigSha2Hyrax, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+
 }
 
 
@@ -243,7 +252,7 @@ where
     CircuitType: std::default::Default +
     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
 // + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
-    + std::clone::Clone + GenericDefine<expander_compiler::frontend::BN254Config>,
+    + std::clone::Clone + Define<expander_compiler::frontend::BN254Config>,
 {
     run_debug::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
 }

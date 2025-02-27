@@ -129,7 +129,7 @@ declare_circuit!(ConvCircuit {
 
 
 // Memorization, in a better place
-impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
+impl<C: Config> Define<C> for ConvCircuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         let n_bits = 32;
 
