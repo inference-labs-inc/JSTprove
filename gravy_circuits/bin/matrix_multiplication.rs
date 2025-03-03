@@ -13,7 +13,7 @@ use matrix_computation::{
     matrix_multplication_naive3_array, two_d_array_to_vec,
 };
 #[warn(unused_imports)]
-use quantization::{quantize_matrix, quantize_matrix_lookup};
+use quantization::quantize_matrix;
 use serde::Deserialize;
 // use std::ops::Neg;
 use arith::FieldForECC;

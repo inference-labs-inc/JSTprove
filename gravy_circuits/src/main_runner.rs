@@ -40,7 +40,7 @@ where
 
     // let compile_result: CompileResult<C> = compile(&CircuitType::default()).unwrap();
     let compile_result =
-        compile(&CircuitType::default(), CompileOptions::default().with_mul_fanout_limit(1024)).unwrap();
+        compile(&CircuitType::default(), CompileOptions::default()).unwrap();
     println!(
         "Peak Memory used Overall : {:.2}",
         GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
@@ -76,6 +76,19 @@ where
     for x in output.iter() {
         assert_eq!(*x, true);
     }
+    println!("Witness Generated");
+    println!(
+        "Peak Memory used Overall : {:.2}",
+        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+    );
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed: {}.{} seconds",
+        duration.as_secs(),
+        duration.subsec_millis()
+    );
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now();
 
     // let mut expander_circuit = layered_circuit
     //     .export_to_expander::<<C>::DefaultGKRFieldConfig>()
@@ -87,7 +100,6 @@ where
         expander_config::GKRScheme::Vanilla,
         mpi_config::MPIConfig::new(),
     );
-
     let (simd_input, simd_public_input) = witness.to_simd::<<C>::DefaultSimdField>();
     println!("{} {}", simd_input.len(), simd_public_input.len());
     expander_circuit.layers[0].input_vals = simd_input;
@@ -97,7 +109,21 @@ where
     expander_circuit.evaluate();
     let (claimed_v, proof) = gkr::executor::prove(&mut expander_circuit, &config);
 
-    // verify
+    println!("Proven");
+    println!(
+        "Peak Memory used Overall : {:.2}",
+        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+    );
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed: {}.{} seconds",
+        duration.as_secs(),
+        duration.subsec_millis()
+    );
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now();
+
+    // // verify
     assert!(gkr::executor::verify(
         &mut expander_circuit,
         &config,

@@ -113,5 +113,9 @@ fn main(){
     main_runner::run_bn254::<MatAddCircuit<Variable>,
                             MatAddCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
                             _>(&mut file_reader);
+    //                         build::<M31Config>
+    // main_runner::run_m31::<MatAddCircuit<Variable>,
+    //                         MatAddCircuit<build::<M31Config>::CircuitField>,
+    //                         _>(&mut file_reader);
 
 }

@@ -279,7 +279,9 @@ fn main() {
     main_runner::run_bn254::<ConvCircuit<Variable>,
                             ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
                             _>(&mut file_reader);
-
+    // main_runner::run_m31::<ConvCircuit<Variable>,
+    //                         ConvCircuit<<expander_compiler::frontend::M31Config as expander_compiler::frontend::Config>::CircuitField>,
+    //                         _>(&mut file_reader);
     // main_runner::debug_bn254::<ConvCircuit<Variable>,
     //                         ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
     //                                                 _>(&mut file_reader);
