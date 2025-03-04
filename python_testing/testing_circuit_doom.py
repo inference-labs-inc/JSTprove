@@ -38,7 +38,7 @@ class Doom():
     def __init__(self):
         self.layers = {}
 
-        self.scaling = 26
+        self.scaling = 21
         
         self.layers["input"] = LayerInfo("input", [1, 4, 28, 28], [1, 4, 28, 28])
         
