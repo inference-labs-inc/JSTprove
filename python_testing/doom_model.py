@@ -12,30 +12,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from python_testing.utils.pytorch_helpers import ZKModel
 
 
-class LayerInfo():
-    def __init__(self, name, input_shape, output_shape, weight_shape = None):
-        self.name = name
-        self.input_shape = input_shape
-        self.output_shape = output_shape
-        self.weight_shape = weight_shape
-        self.inputs = None
-        self.outputs = None
-        self.weights = None
-        self.bias = None
-
-    def update_inputs(self, inputs):
-        self.inputs = inputs.reshape(self.input_shape)
-
-    def update_outputs(self, outputs):
-        self.outputs = outputs.reshape(self.output_shape)
-
-    def update_weights(self, weights):
-        if self.weight_shape:
-            self.weights = weights.reshape(self.weight_shape)
-        else:
-            self.weights = None
 
 class DoomAgent(nn.Module):
     def __init__(self, n_actions=7):
@@ -69,10 +48,11 @@ class DoomAgent(nn.Module):
             )
             q_values = self.forward(state_tensor)
             return q_values.argmax().item()
-
-class Doom():
-    def __init__(self, file_name = "model/doom_checkpoint.pth"):
+    
+class Doom(ZKModel):
+    def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.layers = {}
+        self.name = "doom"
 
         self.scaling = 21
 
@@ -84,56 +64,13 @@ class Doom():
         self.model = model
         self.input_shape = [1, 4, 28, 28]
 
+        self.input_data_file = "doom_data/doom_input.json"
 
 
-        
-        
-        
-    def read_tensor_from_file(self, file_name):
-        """Reads a tensor from a file and returns it as a PyTorch tensor."""
-        with open(file_name, 'r') as f:
-            data = f.read().split()
-            # Convert data to a float and then to a PyTorch tensor
-            tensor_data = torch.tensor([float(d) for d in data])
-        return tensor_data
-    
-    def read_weights(self, model, layer_name):
-        """Reads the weights for the layers of the model from files."""
-        pass
-
-
-    def read_input(self, file_name = "doom_data/doom_input.json"):
-        """Reads the inputs to each layer of the model from text files."""
-        with open(file_name, 'r') as file:
-            data = json.load(file)
-            return data["input_data"]
-
-
-
-    def read_output(self, model, input_data):
-        """Reads the outputs for each layer of the model from text files."""
-        with torch.no_grad():  # Disable gradient calculation during inference
-            output = model(torch.tensor(input_data))
-            return output
-
-    def run_circuit(self):
-        """Simulates running the model by passing inputs through layers with weights."""
-        print("Running circuit...")
-        proof_system = ZKProofSystems.Expander
-        proof_folder = "analysis"
-        output_folder = "output"
-        temp_folder = "temp"
-        input_folder = "inputs"
-        weights_folder = "weights"
-        circuit_folder = ""
-        name = "doom"
-
-        witness_file, input_file, proof_path, public_path, verification_key, circuit_name, weights_file, output_file = get_files(
-                input_folder, proof_folder, temp_folder, circuit_folder, weights_folder, name, output_folder, proof_system)
-
+    def get_model_params(self):
         exclude_keys = ['quantized', 'scaling']
         
-        input_arr = self.get_inputs().reshape(self.input_shape)
+        input_arr = self.get_inputs(self.input_data_file).reshape(self.input_shape)
         inputs = {"input": input_arr.long().tolist()}
         weights = {}
         weights_2 = {}
@@ -143,17 +80,8 @@ class Doom():
         outputs = self.read_output(self.model, first_inputs)
         
         layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "reshape", "fc1", "relu", "fc2"]
-        l = self.model.__getattr__(layers[0])
+
         previous_output_tensor = input_arr
-        x = self.model.conv1(first_inputs)
-        x = F.relu(x)
-        x = self.model.conv2(x)
-        x = F.relu(x)
-
-        x = self.model.conv3(x)
-
-        x = x.reshape([-1,1568])
-        x = self.model.fc1(x)
 
         for layer in layers:
             layer_params = {layer:{"quant":True}}
@@ -202,122 +130,9 @@ class Doom():
                 x = previous_output_tensor[i][j]/(2**(2*self.scaling)) / outputs[i][j]
                 assert(x < (1 + error_margin))
                 assert(x > (1 - error_margin))
-
-
-
-        # NO NEED TO CHANGE anything below here!
-        to_json(inputs, input_file)
-
-        # Write output to json
-        outputs = {"output": value for key, value in output.items()}
-        # outputs = {"outputs": reshape_out.tolist()}
-        to_json(outputs, output_file)
-
-        to_json(weights, weights_file)
-        to_json(weights_2, weights_file[:-5] + '2' + weights_file[-5:])
-
-
-        # ## Run the circuit
-        prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file)
-
-
-
-    def check_4d_eq(self, input_tensor_1, input_tensor_2):
-        for i in range(input_tensor_1.shape[0]):
-            for j in range(input_tensor_1.shape[1]):
-                for k in range(input_tensor_1.shape[2]):
-                    for l in range(input_tensor_1.shape[3]):
-                        # print(input_tensor_1[i][j][k][l],  input_tensor_2[i][j][k][l])
-                        assert(abs(input_tensor_1[i][j][k][l] -  input_tensor_2[i][j][k][l]) < 1)
-
-    def check_2d_eq(self, input_tensor_1, input_tensor_2):
-        for i in range(input_tensor_1.shape[0]):
-            for j in range(input_tensor_1.shape[1]):
-                assert(abs(input_tensor_1[i][j] -  input_tensor_2[i][j]) < 1)
-
-
-    def get_layer(self, inputs, layer_name, layer, **kwargs):
-        if layer_name == "input":
-            return self.get_inputs()
-        elif "conv" in layer_name:
-            return self.get_circuit_conv(inputs, layer, kwargs.get("strides", (1,1)))
-        elif "relu" in layer_name:
-            return self.get_relu(inputs)
-        elif "fc" in  layer_name:
-            return self.get_mat_mult(inputs, layer, kwargs.get("quant", True))
-        else:
-            raise(ValueError("Layer not found"))
-
-
-    def get_inputs(self):
-        inputs = self.read_input()
-        return torch.mul(torch.tensor(inputs),2**self.scaling).long()
-
-    def get_relu(self, inputs):
-        relu_circuit = ReLU(conversion_type = ConversionType.TWOS_COMP)
-        relu_circuit.inputs_1 = inputs
-        out = relu_circuit.get_outputs()
-        input, output = relu_circuit.get_twos_comp_model_data(out)
-        return (input, None, output)
-    
-    def get_circuit_conv(self, inputs, layer, strides = (1,1)):
-        weights = layer.weight
-        bias = layer.bias
-        # layers = self.layers[layer_name]
-        conv_circuit = QuantizedConv()
-        conv_circuit.input_arr = inputs
-        conv_circuit.weights = torch.mul(weights, 2**self.scaling).long()
-        conv_circuit.bias = torch.mul(bias, 2**(self.scaling*2)).long()
-        
-
-        conv_circuit.scaling = self.scaling
-        conv_circuit.strides = strides
-
-        return conv_circuit.get_model_params(conv_circuit.get_output())
-    
-    def get_mat_mult(self, inputs, layer, quant = True):
-        weights = layer.weight
-        bias = layer.bias
-        # layers = self.layers[layer]
-
-        if quant:
-            mat_mult_circuit = QuantizedGemm()
-        else:
-            mat_mult_circuit = Gemm()
-
-        mat_mult_circuit.matrix_a = inputs.long()
-        mat_mult_circuit.matrix_b = torch.transpose(torch.mul(weights, 2**self.scaling),0,1).long()
-
-        # Scale up matrix c, twofold, to account for the multiplication that has just taken place
-        mat_mult_circuit.matrix_c = torch.reshape(torch.mul(bias, 2**(self.scaling*2)), [mat_mult_circuit.matrix_a.shape[0],mat_mult_circuit.matrix_b.shape[1]]).long()
-        
-        mat_mult_circuit.scaling = self.scaling
-        mat_mult_circuit.alpha = torch.tensor(1)
-        mat_mult_circuit.beta = torch.tensor(1)
-
-        gemm = mat_mult_circuit.get_outputs()
-        return mat_mult_circuit.get_model_params(gemm)
-
-        
+        return inputs,[weights,weights_2],output
 
     
 
 if __name__ == "__main__":
     Doom().run_circuit()
-
-
-    
-    
-
-    
-    # proof_system = ZKProofSystems.Expander
-    # proof_folder = "analysis"
-    # output_folder = "output"
-    # temp_folder = "temp"
-    # input_folder = "inputs"
-    # weights_folder = "weights"
-    # circuit_folder = ""
-    # #Rework inputs to function
-    # test_circuit = ReLU(conversion_type = ConversionType.TWOS_COMP)
-    # test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, weights, proof_system, output_folder)
-

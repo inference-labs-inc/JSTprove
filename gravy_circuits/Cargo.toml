@@ -80,3 +80,7 @@ path = "bin/convolution.rs"
 [[bin]]
 name = "doom"
 path = "bin/doom.rs"
+
+[[bin]]
+name = "doom_2"
+path = "bin/doom_2.rs"
