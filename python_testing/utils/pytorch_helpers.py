@@ -136,7 +136,7 @@ class Layers():
         mat_mult_circuit.matrix_a = inputs.long()
         mat_mult_circuit.matrix_b = torch.transpose(torch.mul(weights, 2**self.scaling),0,1).long()
 
-        # Scale up matrix c, twofold, to account for the multiplication that has just taken place
+        # Scale up matrix c, twofold, to account for the multiplication that has just taken place)
         mat_mult_circuit.matrix_c = torch.reshape(torch.mul(bias, 2**(self.scaling*2)), [mat_mult_circuit.matrix_a.shape[0],mat_mult_circuit.matrix_b.shape[1]]).long()
         
         mat_mult_circuit.scaling = self.scaling
@@ -151,7 +151,7 @@ class ZKModel(Layers, GeneralLayerFunctions):
     def __init__(self):
         raise(NotImplementedError, "Must implement")
 
-    def run_circuit(self):
+    def run_circuit(self, demo = False):
         """Simulates running the model by passing inputs through layers with weights."""
         print("Running circuit...")
         proof_system = ZKProofSystems.Expander
@@ -186,4 +186,4 @@ class ZKModel(Layers, GeneralLayerFunctions):
 
 
         # ## Run the circuit
-        prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file)
+        prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file, demo = demo)

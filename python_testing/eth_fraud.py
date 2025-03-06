@@ -21,6 +21,9 @@ import numpy as np
 from python_testing.utils.pytorch_helpers import ZKModel
 import sys
 
+import warnings
+warnings.filterwarnings("ignore")
+
 ### eth_fraud.py
 import torch.optim as optim
 
@@ -296,6 +299,6 @@ class Eth(ZKModel):
     
 
 if __name__ == "__main__":
-    Eth().run_circuit()
+    Eth().run_circuit(demo = True)
     # main()
 

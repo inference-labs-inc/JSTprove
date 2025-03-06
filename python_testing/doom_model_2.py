@@ -113,15 +113,6 @@ class Doom(ZKModel):
         first_inputs = np.asarray(torch.tensor(self.read_input()).reshape([1,4,28,28])[:,0,:,:].reshape([1,1,28,28]))
         outputs = self.read_output(self.file_name, first_inputs, is_torch=False)
         temp = torch.tensor(self.read_input()).reshape([1,4,28,28])[:,0,:,:].reshape([1,1,28,28])
-        # model = DoomModel()
-        # x = model.conv1(temp)
-        
-        # x = model.relu(x)
-
-        # print(x[0][0][0][0]*(2**self.scaling))
-        # x = model.conv2(x)
-
-        # raise
         
         layers = ["conv1", "relu", "conv2", "relu", "reshape", "fc1", "relu", "fc2"]
         layer_translation = {"fc1": "d1", "fc2": "d2"}
