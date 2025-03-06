@@ -18,8 +18,7 @@ class GeneralLayerFunctions():
             for j in range(input_tensor_1.shape[1]):
                 for k in range(input_tensor_1.shape[2]):
                     for l in range(input_tensor_1.shape[3]):
-                        # print(input_tensor_1[i][j][k][l],  input_tensor_2[i][j][k][l])
-                        assert(abs(input_tensor_1[i][j][k][l] -  input_tensor_2[i][j][k][l]) < 1)
+                        assert(abs(input_tensor_1[i][j][k][l] - input_tensor_2[i][j][k][l]) < 1)
 
     def weights_onnx_to_torch_format(self, onnx_model):
         w_and_b = {}
@@ -108,7 +107,9 @@ class Layers():
         weights = layer.weight
         bias = layer.bias
         # layers = self.layers[layer_name]
+        # conv_circuit = Convolution()
         conv_circuit = QuantizedConv()
+
         conv_circuit.input_arr = inputs
         conv_circuit.weights = torch.mul(weights, 2**self.scaling).long()
         conv_circuit.bias = torch.mul(bias, 2**(self.scaling*2)).long()
@@ -129,10 +130,8 @@ class Layers():
 
         if quant:
             mat_mult_circuit = QuantizedGemm()
-            print("TEST")
         else:
             mat_mult_circuit = Gemm()
-            print("TEST2222")
 
         mat_mult_circuit.matrix_a = inputs.long()
         mat_mult_circuit.matrix_b = torch.transpose(torch.mul(weights, 2**self.scaling),0,1).long()

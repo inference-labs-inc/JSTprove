@@ -117,7 +117,6 @@ class Convolution():
                                     s = np.dot(img.reshape((1, -1)), w_.reshape((-1, 1)))[
                                         0, 0
                                     ]  # (img * w_).sum()
-                                    
                                 else:
                                     s = np.dot(img.reshape((1, -1)), w.reshape((-1, 1)))[
                                         0, 0
@@ -172,7 +171,6 @@ class Convolution():
             ## Perform calculation here
             pads = (1,1)
             #Ensure that onnx representation matches torch model
-            # print(self.input_arr.shape,)
             output_onnx = _conv_implementation(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape, self.pads, self.strides)
             # raise
             total_out = torch.conv2d(self.input_arr, self.weights, self.bias, self.strides, pads, self.dilation, self.group)
