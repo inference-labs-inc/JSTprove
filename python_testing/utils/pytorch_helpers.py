@@ -7,9 +7,9 @@ import onnxruntime as ort
 
 from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
-from python_testing.relu import ReLU, ConversionType
-from python_testing.convolution import Convolution, QuantizedConv
-from python_testing.gemm import QuantizedGemm, Gemm
+from python_testing.circuit_components.relu import ReLU, ConversionType
+from python_testing.circuit_components.convolution import Convolution, QuantizedConv
+from python_testing.circuit_components.gemm import QuantizedGemm, Gemm
 from types import SimpleNamespace
 
 class GeneralLayerFunctions():

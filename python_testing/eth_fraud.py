@@ -9,11 +9,11 @@ import torch
 from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
 import os
-from python_testing.relu import ReLU, ConversionType
+from python_testing.circuit_components.relu import ReLU, ConversionType
 
-from python_testing.convolution import Convolution, QuantizedConv
+from python_testing.circuit_components.convolution import Convolution, QuantizedConv
 # from python_testing.matrix_multiplication import QuantizedMatrixMultiplication
-from python_testing.gemm import QuantizedGemm, Gemm
+from python_testing.circuit_components.gemm import QuantizedGemm, Gemm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -292,12 +292,8 @@ class Eth(ZKModel):
         
         for i in range(previous_output_tensor.shape[0]):
             for j in range(previous_output_tensor.shape[1]):
-                error_margin = 0.1
-                # x = previous_output_tensor[i][j]/(2**(2*self.scaling)) / outputs[i][j]
-                # assert(x < (1 + error_margin))
-                # assert(x > (1 - error_margin))
-                print(outputs[i][j].item(), (previous_output_tensor[i][j]/(2**(2*self.scaling))).item())
-                assert(abs(previous_output_tensor[i][j]/(2**(2*self.scaling)) - outputs[i][j]) < 0.0001)
+                error_margin = 0.0001
+                assert(abs(previous_output_tensor[i][j]/(2**(2*self.scaling)) - outputs[i][j]) < error_margin)
         return inputs,[weights,weights_2],output
 
     
@@ -305,6 +301,6 @@ class Eth(ZKModel):
 if __name__ == "__main__":
     # main()
 
-    # Eth().run_circuit(demo = True)
-    Eth()
+    Eth().run_circuit(demo = True)
+    # Eth()
 

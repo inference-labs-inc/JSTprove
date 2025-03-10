@@ -3,11 +3,11 @@ import torch
 from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
 import os
-from python_testing.relu import ReLU, ConversionType
+from python_testing.circuit_components.relu import ReLU, ConversionType
 
-from python_testing.convolution import Convolution, QuantizedConv
+from python_testing.circuit_components.convolution import Convolution, QuantizedConv
 # from python_testing.matrix_multiplication import QuantizedMatrixMultiplication
-from python_testing.gemm import QuantizedGemm, Gemm
+from python_testing.circuit_components.gemm import QuantizedGemm, Gemm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -100,9 +100,7 @@ class Doom(ZKModel):
     def get_model_params(self):
         exclude_keys = ['quantized', 'scaling']
         
-        input_arr = self.get_inputs(self.input_data_file).reshape([1,4,28,28])[:,0,:,:].reshape([1,1,28,28])
-        print(input_arr[0][0][0][0])
-        
+        input_arr = self.get_inputs(self.input_data_file).reshape([1,4,28,28])[:,0,:,:].reshape([1,1,28,28])        
         
 
         inputs = {"input": input_arr.long().tolist()}
@@ -124,7 +122,6 @@ class Doom(ZKModel):
             if not layer in "reshape":
                 translated_layer = layer_translation.get(layer, layer)
                 l = self.w_and_b.get(translated_layer)
-                print(layer_params.get(layer_translation.get(layer, layer), {"": None}))
                 (input, weight, output) = self.get_layer(input_arr, layer, l, **layer_params.get(translated_layer, {"": None}))
                 if weight:
                     # if "fc2" in layer:

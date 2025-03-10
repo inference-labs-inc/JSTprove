@@ -3,7 +3,7 @@ from unittest import mock
 import pytest
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems
-from python_testing.scaled_matrix_product import ScaledMatrixProduct
+from python_testing.circuit_components.scaled_matrix_product import ScaledMatrixProduct
 
 
 proof_system = ZKProofSystems.Expander

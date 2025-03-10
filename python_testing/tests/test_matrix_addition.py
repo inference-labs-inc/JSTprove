@@ -3,7 +3,7 @@ from unittest import mock
 import pytest
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems
-from python_testing.matrix_addition import MatrixAddition
+from python_testing.circuit_components.matrix_addition import MatrixAddition
 
 
 proof_system = ZKProofSystems.Expander

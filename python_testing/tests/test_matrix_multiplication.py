@@ -3,7 +3,7 @@ from unittest import mock
 import pytest
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems
-from python_testing.matrix_multiplication import MatrixMultiplication, QuantizedMatrixMultiplication
+from python_testing.circuit_components.matrix_multiplication import MatrixMultiplication, QuantizedMatrixMultiplication
 
 
 proof_system = ZKProofSystems.Expander

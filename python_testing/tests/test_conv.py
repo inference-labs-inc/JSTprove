@@ -3,7 +3,7 @@ from unittest import mock
 import pytest
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems
-from python_testing.convolution import Convolution, QuantizedConv
+from python_testing.circuit_components.convolution import Convolution, QuantizedConv
 
 
 proof_system = ZKProofSystems.Expander
