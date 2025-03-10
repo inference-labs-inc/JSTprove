@@ -92,3 +92,7 @@ path = "bin/eth_fraud.rs"
 [[bin]]
 name = "demo_cnn"
 path = "bin/demo_cnn.rs"
+
+[[bin]]
+name = "simple_circuit"
+path = "bin/simple_circuit.rs"

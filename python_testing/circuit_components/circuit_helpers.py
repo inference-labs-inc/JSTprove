@@ -8,8 +8,7 @@ class Circuit():
     def __init__(self):
         raise NotImplementedError("__init__ must be implemented for Class Circuit")
 
-    
-    def base_testing(self, input_folder:str, proof_folder: str, temp_folder: str, weights_folder:str, circuit_folder:str, proof_system: ZKProofSystems, output_folder: str = None):
+    def base_testing(self, input_folder:str = "inputs", proof_folder: str = "analysis", temp_folder: str= "temp", weights_folder:str = "weights", circuit_folder:str = "", proof_system: ZKProofSystems = ZKProofSystems.Expander, output_folder: str = "output"):
 
         # NO NEED TO CHANGE!
         witness_file, input_file, proof_path, public_path, verification_key, circuit_name, weights_file, output_file = get_files(
