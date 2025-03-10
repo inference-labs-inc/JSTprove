@@ -1,4 +1,5 @@
 import torch
+from python_testing.circuit_components.circuit_helpers import Circuit
 from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
 import os
@@ -10,10 +11,9 @@ class ConversionType(Enum):
     TWOS_COMP = "twos_comp"
     SIGNED_MAG = "signed_mag"
 
-class ReLU():
+class ReLU(Circuit):
     #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
     def __init__(self, conversion_type = ConversionType.TWOS_COMP):
-        super().__init__()
         '''
         #######################################################################################################
         #################################### This is the block for changes ####################################
@@ -127,24 +127,7 @@ class ReLU():
         else:
             pass
 
-    
-    
-    def base_testing(self, input_folder:str, proof_folder: str, temp_folder: str, weights_folder:str, circuit_folder:str,  proof_system: ZKProofSystems, output_folder: str = None):
-
-        # NO NEED TO CHANGE!
-        witness_file, input_file, proof_path, public_path, verification_key, circuit_name, weights_path, output_file = get_files(
-            input_folder, proof_folder, temp_folder, circuit_folder, weights_folder, self.name, output_folder, proof_system)
-        
-
-        '''
-        #######################################################################################################
-        #################################### This is the block for changes ####################################
-        #######################################################################################################
-        '''
-        ## Perform calculation here
-
-        # outputs = torch.where(self.inputs_1 > self.inputs_2, torch.tensor(1), 
-        #              torch.where(self.inputs_1 == self.inputs_2, torch.tensor(0), torch.tensor(-1)))
+    def get_model_params(self, outputs):
         if self.conversion_type == ConversionType.TWOS_COMP:
             if self.outputs == None:
                 outputs = self.get_outputs()
@@ -177,23 +160,8 @@ class ReLU():
                 outputs = {
                     'output': outputs.int().tolist(),
                 }
-        '''
-        #######################################################################################################
-        #######################################################################################################
-        #######################################################################################################
-        '''
-
-        # When needed, can specify model parameters into json as well
-
-
-
-        # NO NEED TO CHANGE anything below here!
-        to_json(inputs, input_file)
-        # Write output to json
-        to_json(outputs, output_file)
-
-        ## Run the circuit
-        prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file)
+                
+        return inputs, {}, outputs
 
     def get_outputs(self):
         return torch.relu(self.inputs_1)

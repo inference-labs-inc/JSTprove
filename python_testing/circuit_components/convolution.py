@@ -5,13 +5,14 @@ from python_testing.utils.helper_functions import get_files, to_json, prove_and_
 import os
 from enum import Enum
 import sys
+from python_testing.circuit_components.circuit_helpers import Circuit
+
 
 import numpy as np
 
-class Convolution():
+class Convolution(Circuit):
     #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
     def __init__(self):
-        super().__init__()
         '''
         #######################################################################################################
         #################################### This is the block for changes ####################################
@@ -128,8 +129,27 @@ class Convolution():
 
             return res
         
-    def get_output(self):
-        return torch.from_numpy(self.conv_run(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape,self.pads, self.strides))
+    def get_outputs(self):
+        pads = (1,1)
+        #Ensure that onnx representation matches torch model
+        output_onnx = _conv_implementation(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape, self.pads, self.strides)
+        # raise
+        total_out = torch.conv2d(self.input_arr, self.weights, self.bias, self.strides, pads, self.dilation, self.group)
+        for i in range(len(output_onnx)):  # Iterate over the first dimension
+            for j in range(len(output_onnx[i])):  # Iterate over the second dimension
+                for k in range(len(output_onnx[i][j])):  # Iterate over the third dimension
+                    for l in range(len(output_onnx[i][j][k])):  # Iterate over the fourth dimension
+                        assert abs(total_out[i][j][k][l].long() - output_onnx[i][j][k][l].astype(np.int64)) < 10
+                        # pass
+
+        output = torch.from_numpy(self.conv_run(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape,self.pads, self.strides))
+        if not self.out == None:
+            for i in range(len(output_onnx)):  # Iterate over the first dimension
+                for j in range(len(output_onnx[i])):  # Iterate over the second dimension
+                    for k in range(len(output_onnx[i][j])):  # Iterate over the third dimension
+                        for l in range(len(output_onnx[i][j][k])):  # Iterate over the fourth dimension
+                            assert abs(total_out[i][j][k][l].long() - output[i][j][k][l]) < 1
+        return output
     
     def get_model_params(self, output):
         inputs = {
@@ -154,73 +174,6 @@ class Convolution():
             }
         
         return inputs,weights,outputs
-
-    def base_testing(self, input_folder:str, proof_folder: str, temp_folder: str, weights_folder:str, circuit_folder:str, proof_system: ZKProofSystems, output_folder: str = None):
-
-            # NO NEED TO CHANGE!
-            witness_file, input_file, proof_path, public_path, verification_key, circuit_name, weights_file, output_file = get_files(
-                input_folder, proof_folder, temp_folder, circuit_folder, weights_folder, self.name, output_folder, proof_system)
-            
-            '''
-            #######################################################################################################
-            #################################### This is the block for changes ####################################
-            #######################################################################################################
-            '''
-
-
-            ## Perform calculation here
-            pads = (1,1)
-            #Ensure that onnx representation matches torch model
-            output_onnx = _conv_implementation(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape, self.pads, self.strides)
-            # raise
-            total_out = torch.conv2d(self.input_arr, self.weights, self.bias, self.strides, pads, self.dilation, self.group)
-            for i in range(len(output_onnx)):  # Iterate over the first dimension
-                for j in range(len(output_onnx[i])):  # Iterate over the second dimension
-                    for k in range(len(output_onnx[i][j])):  # Iterate over the third dimension
-                        for l in range(len(output_onnx[i][j][k])):  # Iterate over the fourth dimension
-                            assert abs(total_out[i][j][k][l].long() - output_onnx[i][j][k][l].astype(np.int64)) < 10
-                            # pass
-
-            output = self.get_output()
-            if not self.out == None:
-                for i in range(len(output_onnx)):  # Iterate over the first dimension
-                    for j in range(len(output_onnx[i])):  # Iterate over the second dimension
-                        for k in range(len(output_onnx[i][j])):  # Iterate over the third dimension
-                            for l in range(len(output_onnx[i][j][k])):  # Iterate over the fourth dimension
-                                assert abs(total_out[i][j][k][l].long() - output[i][j][k][l]) < 1
-
-            # for i in range(len(output_onnx)):  # Iterate over the first dimension
-            #     for j in range(len(output_onnx[i])):  # Iterate over the second dimension
-            #         for k in range(len(output_onnx[i][j])):  # Iterate over the third dimension
-            #             for l in range(len(output_onnx[i][j][k])):  # Iterate over the fourth dimension
-            #                 assert abs(total_out[i][j][k][l] - output[i][j][k][l]) < 0.000000001
-
-            # matrix_product_ab = torch.conv2d(self.matrix_a, self.matrix_b)
-
-            ## Define inputs and outputs
-            # time.sleep(10)
-
-            inputs, weights, outputs = self.get_model_params(output)
-            '''
-            #######################################################################################################
-            #######################################################################################################
-            #######################################################################################################
-            '''
-
-            # When needed, can specify model parameters into json as well
-
-
-
-            # NO NEED TO CHANGE anything below here!
-            to_json(inputs, input_file)
-
-            # Write output to json
-            to_json(outputs, output_file)
-
-            to_json(weights, weights_file)
-
-            ## Run the circuit
-            prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file)
 
     
 
@@ -518,7 +471,7 @@ class QuantizedConv(Convolution):
 
         self.quantized = True
     
-    def get_output(self):
+    def get_outputs(self):
         out = torch.from_numpy(self.conv_run(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape,self.pads, self.strides))
         out = torch.div(out, 2**self.scaling, rounding_mode="floor").long()
         return out

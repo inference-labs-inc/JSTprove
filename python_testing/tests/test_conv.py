@@ -33,7 +33,7 @@ def test_convolution_base_quantize_run():
 def test_convolution_incorrect_output():
     test_circuit = Convolution()
     with pytest.raises(subprocess.CalledProcessError) as exc_info:
-        with mock.patch.object(Convolution, 'get_output', side_effect=convolution_incorrect_output, autospec=True) as mock_get_output:
+        with mock.patch.object(Convolution, 'get_outputs', side_effect=convolution_incorrect_output, autospec=True) as mock_get_output:
             test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
 
     assert exc_info is not None, "Expected subprocess.CalledProcessError to be raised, but it was not."
@@ -49,7 +49,7 @@ def test_convolution_incorrect_output():
 def test_quantized_convolution_incorrect_output():
     test_circuit = QuantizedConv()
     with pytest.raises(subprocess.CalledProcessError) as exc_info:
-        with mock.patch.object(QuantizedConv, 'get_output', side_effect=convolution_incorrect_output, autospec=True) as mock_get_output:
+        with mock.patch.object(QuantizedConv, 'get_outputs', side_effect=convolution_incorrect_output, autospec=True) as mock_get_output:
             test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
 
     assert exc_info is not None, "Expected subprocess.CalledProcessError to be raised, but it was not."
