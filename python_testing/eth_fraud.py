@@ -228,6 +228,8 @@ class Eth(ZKModel):
             self.input_data = batch[0][0]
             self.labels = batch[1][0]
             break
+        # torch.onnx.export(model, self.input_data.reshape(self.input_shape), f = "fraud_model.onnx")
+
 
 
     def get_model_params(self):
@@ -291,14 +293,18 @@ class Eth(ZKModel):
         for i in range(previous_output_tensor.shape[0]):
             for j in range(previous_output_tensor.shape[1]):
                 error_margin = 0.1
-                x = previous_output_tensor[i][j]/(2**(2*self.scaling)) / outputs[i][j]
-                assert(x < (1 + error_margin))
-                assert(x > (1 - error_margin))
+                # x = previous_output_tensor[i][j]/(2**(2*self.scaling)) / outputs[i][j]
+                # assert(x < (1 + error_margin))
+                # assert(x > (1 - error_margin))
+                print(outputs[i][j].item(), (previous_output_tensor[i][j]/(2**(2*self.scaling))).item())
+                assert(abs(previous_output_tensor[i][j]/(2**(2*self.scaling)) - outputs[i][j]) < 0.0001)
         return inputs,[weights,weights_2],output
 
     
 
 if __name__ == "__main__":
-    Eth().run_circuit(demo = True)
     # main()
+
+    # Eth().run_circuit(demo = True)
+    Eth()
 

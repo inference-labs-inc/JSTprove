@@ -56,8 +56,7 @@ where
     println!("Generating witness...");
 
 
-    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    let start = Instant::now();
+    
     let CompileResult {
         witness_solver,
         layered_circuit,
@@ -72,6 +71,8 @@ where
     };
     let assignment = io_reader.read_inputs(input_path, assignment);
     let assignment = io_reader.read_outputs(output_path, assignment);
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now();
 
     let assignments = vec![assignment; 1];
     let witness = witness_solver.solve_witnesses(&assignments).unwrap();

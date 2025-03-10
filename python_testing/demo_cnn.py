@@ -30,7 +30,7 @@ class CNNDemo(nn.Module):
         # Default to the shape after conv layers (depends on whether each conv layer is used)
         self.fc_input_dim = 16 * 28 * 28
         if "conv2" in layers:
-            self.fc_input_dim = 16 * 28 * 28
+            self.fc_input_dim = 16 * 14 * 14
         if "conv3" in layers:
             self.fc_input_dim = 16 * 7 * 7
         if "conv4" in layers:
@@ -84,7 +84,7 @@ class CNNDemo(nn.Module):
 
         return x
     
-class Doom(ZKModel):
+class Demo(ZKModel):
     def __init__(self):
         self.layers = {}
         self.name = "demo_cnn"
@@ -96,8 +96,8 @@ class Doom(ZKModel):
         # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu",  "reshape", "fc1"]
 
         # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2"]
-        self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3"]
-        # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
+        # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3"]
+        self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
 
         # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
 
@@ -109,6 +109,9 @@ class Doom(ZKModel):
         self.input_shape = [1, 4, 28, 28]
 
         self.input_data_file = "doom_data/doom_input.json"
+        first_inputs = torch.tensor(self.read_input()).reshape(self.input_shape)
+        # torch.onnx.export(model, first_inputs, f = "demo_cnn_full.onnx")
+        
 
 
 
@@ -182,4 +185,8 @@ class Doom(ZKModel):
     
 
 if __name__ == "__main__":
-    Doom().run_circuit()
+    Demo().run_circuit()
+    # Demo().run_circuit()
+    # Demo().run_circuit()
+    # Demo().run_circuit()
+    # Demo().run_circuit()

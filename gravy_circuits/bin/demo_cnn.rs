@@ -99,10 +99,10 @@ struct WeightsData2 {
     fc3_beta: u32,
     fc3_weights: Vec<Vec<i64>>,
     fc3_bias: Vec<Vec<i64>>,
-    // fc4_alpha: u32,
-    // fc4_beta: u32,
-    // fc4_weights: Vec<Vec<i64>>,
-    // fc4_bias: Vec<Vec<i64>>,
+    fc4_alpha: u32,
+    fc4_beta: u32,
+    fc4_weights: Vec<Vec<i64>>,
+    fc4_bias: Vec<Vec<i64>>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -249,17 +249,17 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
         let out_2d = matrix_multplication_naive2(api, out_2d, weights);
         let out_2d = matrix_addition_vec(api, out_2d, bias);
 
-        // //FC4
-        // let out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, WEIGHTS_INPUT.quantized, out_2d, v_plus_one, two_v, alpha_2_v, true);
-        // if WEIGHTS_INPUT2.fc4_alpha != 1 ||WEIGHTS_INPUT2.fc4_beta != 1 {
-        //     panic!("Not yet implemented for fc alpha or beta not equal to 1");
-        // }
+        //FC4
+        let out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, WEIGHTS_INPUT.quantized, out_2d, v_plus_one, two_v, alpha_2_v, true);
+        if WEIGHTS_INPUT2.fc4_alpha != 1 ||WEIGHTS_INPUT2.fc4_beta != 1 {
+            panic!("Not yet implemented for fc alpha or beta not equal to 1");
+        }
 
-        // let weights = read_2d_weights(api, &WEIGHTS_INPUT2.fc4_weights);
-        // let bias = read_2d_weights(api, &WEIGHTS_INPUT2.fc4_bias);
+        let weights = read_2d_weights(api, &WEIGHTS_INPUT2.fc4_weights);
+        let bias = read_2d_weights(api, &WEIGHTS_INPUT2.fc4_bias);
 
-        // let out_2d = matrix_multplication_naive2(api, out_2d, weights);
-        // let out_2d = matrix_addition_vec(api, out_2d, bias);
+        let out_2d = matrix_multplication_naive2(api, out_2d, weights);
+        let out_2d = matrix_addition_vec(api, out_2d, bias);
 
         // // let out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, WEIGHTS_INPUT.quantized, out_2d, v_plus_one, two_v, alpha_2_v, true);
 
