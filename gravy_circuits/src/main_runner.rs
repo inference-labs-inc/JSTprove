@@ -16,8 +16,7 @@ where
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
         + Clone
 {
-    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    let start = Instant::now();
+    
     let matches = Command::new("File Copier")
         .version("1.0")
         .about("Copies content from input file to output file")
@@ -37,6 +36,9 @@ where
 
     let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
     let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now();
+    println!("Compiling Circuit...");
 
     // let compile_result: CompileResult<C> = compile(&CircuitType::default()).unwrap();
     let compile_result =
@@ -51,9 +53,10 @@ where
         duration.as_secs(),
         duration.subsec_millis()
     );
+    println!("Generating witness...");
 
-    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    let start = Instant::now();
+
+    
     let CompileResult {
         witness_solver,
         layered_circuit,
@@ -68,6 +71,8 @@ where
     };
     let assignment = io_reader.read_inputs(input_path, assignment);
     let assignment = io_reader.read_outputs(output_path, assignment);
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now();
 
     let assignments = vec![assignment; 1];
     let witness = witness_solver.solve_witnesses(&assignments).unwrap();
@@ -87,6 +92,7 @@ where
         duration.as_secs(),
         duration.subsec_millis()
     );
+    println!("Generating proof...");
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
 
@@ -120,6 +126,8 @@ where
         duration.as_secs(),
         duration.subsec_millis()
     );
+    println!("Verifying proof...");
+    // println!("");
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
 

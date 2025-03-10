@@ -30,7 +30,7 @@ class ZKProofsExpander():
         # cargo run --bin testing --manifest-path ExpanderCompilerCollection/Cargo.toml inputs/reward_input.json output/reward_output.json
 
 
-    def run_proof(self, input_file: str, output_file: str):
+    def run_proof(self, input_file: str, output_file: str, demo = False):
         # executable_to_run = ["cargo", "build", "--release"]
         # res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=False)
         assert isinstance(input_file, str)
@@ -66,7 +66,7 @@ class ZKProofsExpander():
         # Add output
         executable_to_run.append(output_file)
 
-        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True)
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
         if res.returncode == 0:
             logging.info(f"Circuit Compiled with return code: {res.returncode}")
             # Do not log here; run_process already handles logging errors.
@@ -186,7 +186,29 @@ class ZKProofsCircom():
         
 class ExecutableHelperFunctions():
     @staticmethod
-    def run_process(executable: List[str], die_on_error:bool =True, shell = False):
+    def filter_compiling_output(command):
+        # Run the command and get real-time output
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        import re
+        # Iterate over stdout and stderr, and print them to the command line
+        for line in process.stdout:
+            # Only print lines that do not contain 'Compiling'
+            # if "Users" not in line:
+                print(re.sub(r'\[.*?\]', '', line), end='')  # Print to the command line (stdout)
+
+        # # Also print stderr (errors) to the command line
+        # for line in process.stderr:
+        #     if "Users" not in line:
+        #         print(re.sub(r'\[.*?\]', '', line), end='')  # Print errors to the command line
+
+        # Wait for the process to complete
+        process.wait()
+        return process
+    @staticmethod
+    def run_process(executable: List[str], die_on_error:bool =True, shell = False, demo = False):
+        if demo:
+            res = ExecutableHelperFunctions.filter_compiling_output(executable)
+            return res
         try:
             # Capture output by setting capture_output=True
             if "pytest" in sys.modules:
