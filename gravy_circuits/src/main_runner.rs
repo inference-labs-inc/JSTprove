@@ -17,13 +17,12 @@ static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
 fn run_main<C: Config, I, CircuitType, CircuitDefaultType>(io_reader: &mut I)
 where
     I: IOReader<C, CircuitDefaultType>, // `CircuitType` should be the same type used in the `IOReader` impl
-    CircuitType: Default + DumpLoadTwoVariables<Variable> + GenericDefine<C> + Clone,
+    CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone,
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
-        + Clone,
+        + Clone
 {
-    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    let start = Instant::now();
+    
     let matches = Command::new("File Copier")
         .version("1.0")
         .about("Copies content from input file to output file")
@@ -43,10 +42,13 @@ where
 
     let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
     let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now();
+    println!("Compiling Circuit...");
 
     // let compile_result: CompileResult<C> = compile(&CircuitType::default()).unwrap();
     let compile_result =
-        compile_generic(&CircuitType::default(), CompileOptions::default()).unwrap();
+        compile(&CircuitType::default(), CompileOptions::default()).unwrap();
     println!(
         "Peak Memory used Overall : {:.2}",
         GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
@@ -57,9 +59,10 @@ where
         duration.as_secs(),
         duration.subsec_millis()
     );
+    println!("Generating witness...");
 
-    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    let start = Instant::now();
+
+    
     let CompileResult {
         witness_solver,
         layered_circuit,
@@ -74,6 +77,8 @@ where
     };
     let assignment = io_reader.read_inputs(input_path, assignment);
     let assignment = io_reader.read_outputs(output_path, assignment);
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now();
 
     let assignments = vec![assignment; 1];
     let witness = witness_solver.solve_witnesses(&assignments).unwrap();
@@ -82,17 +87,28 @@ where
     for x in output.iter() {
         assert_eq!(*x, true);
     }
-
-    
-
+    println!("Witness Generated");
+    println!(
+        "Peak Memory used Overall : {:.2}",
+        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+    );
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed: {}.{} seconds",
+        duration.as_secs(),
+        duration.subsec_millis()
+    );
+    println!("Generating proof...");
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now();
+  
     let mut expander_circuit = layered_circuit
-        .export_to_expander::<<C>::DefaultGKRFieldConfig>()
-        .flatten();
+        .export_to_expander::<C::DefaultGKRFieldConfig>()
+        .flatten::<C::DefaultGKRConfig>();
     let config = expander_config::Config::<<C>::DefaultGKRConfig>::new(
         expander_config::GKRScheme::Vanilla,
         mpi_config::MPIConfig::new(),
     );
-
     let (simd_input, simd_public_input) = witness.to_simd::<<C>::DefaultSimdField>();
     println!("{} {}", simd_input.len(), simd_public_input.len());
     expander_circuit.layers[0].input_vals = simd_input;
@@ -102,7 +118,23 @@ where
     expander_circuit.evaluate();
     let (claimed_v, proof) = gkr::executor::prove(&mut expander_circuit, &config);
 
-    // verify
+    println!("Proven");
+    println!(
+        "Peak Memory used Overall : {:.2}",
+        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+    );
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed: {}.{} seconds",
+        duration.as_secs(),
+        duration.subsec_millis()
+    );
+    println!("Verifying proof...");
+    // println!("");
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now();
+
+    // // verify
     assert!(gkr::executor::verify(
         &mut expander_circuit,
         &config,
@@ -560,7 +592,7 @@ where
         + DumpLoadTwoVariables<Variable>
         // + expander_compiler::frontend::Define<C>
         + Clone
-        + GenericDefine<C>,
+        + Define<C>,
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
         + Clone,
@@ -589,7 +621,7 @@ where
 
     // let compile_result: CompileResult<C> = compile(&CircuitType::default()).unwrap();
     let compile_result =
-        compile_generic(&CircuitType::default(), CompileOptions::default()).unwrap();
+        compile(&CircuitType::default(), CompileOptions::default()).unwrap();
     println!(
         "Peak Memory used Overall : {:.2}",
         GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
@@ -630,28 +662,30 @@ where
 //     CircuitDefaultType: std::default::Default
 //     + DumpLoadTwoVariables<<expander_compiler::frontend::GF2Config as expander_compiler::frontend::Config>::CircuitField>
 //     + std::clone::Clone,
+    CircuitType: std::default::Default +
+    expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
+    + expander_compiler::frontend::Define<expander_compiler::frontend::GF2Config>
+    + std::clone::Clone,
+{
+    run_main::<GF2Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+    // run_main::<GF2Config, GF2ExtConfigSha2Raw, Filereader, CircuitType, CircuitDefaultType>(file_reader);
 
-//     CircuitType: std::default::Default +
-//     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-//     + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::GF2Config>
-//     + std::clone::Clone,
-// {
-//     run_main::<GF2Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
-// }
+}
 
 // pub fn run_m31<CircuitType, CircuitDefaultType, Filereader: IOReader<expander_compiler::frontend::M31Config, CircuitDefaultType>>(file_reader: &mut Filereader)
 // where
 //     CircuitDefaultType: std::default::Default
 //     + DumpLoadTwoVariables<<expander_compiler::frontend::M31Config as expander_compiler::frontend::Config>::CircuitField>
 //     + std::clone::Clone,
+    CircuitType: std::default::Default +
+    expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
+    + expander_compiler::frontend::Define<expander_compiler::frontend::M31Config>
+    + std::clone::Clone,
+{
+    run_main::<M31Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+    // run_main::<M31Config, M31ExtConfigSha2Raw, Filereader, CircuitType, CircuitDefaultType>(file_reader);
 
-//     CircuitType: std::default::Default +
-//     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-//     + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::M31Config>
-//     + std::clone::Clone,
-// {
-//     run_main::<M31Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
-// }
+}
 
 pub fn run_bn254<CircuitType, CircuitDefaultType, Filereader: IOReader<expander_compiler::frontend::BN254Config, CircuitDefaultType>>(file_reader: &mut Filereader)
 where
@@ -661,22 +695,22 @@ where
 
     CircuitType: std::default::Default +
     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-    + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::BN254Config>
-    
+    + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
+    // + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::BN254Config>
     + std::clone::Clone,
 {
+    run_main::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+    // run_main::<BN254Config, BN254ConfigSha2Hyrax, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+  
     // run_main::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
 
-    run_compile_and_serialize::<BN254Config, CircuitType>();
+    // run_compile_and_serialize::<BN254Config, CircuitType>();
 
 
     // run_rest::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
 
-    run_witness_and_proof::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
-    run_verify::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
-    
-
-
+    // run_witness_and_proof::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
+    // run_verify::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
 }
 
 
@@ -688,7 +722,9 @@ where
 
     CircuitType: std::default::Default +
     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-    + std::clone::Clone + GenericDefine<expander_compiler::frontend::BN254Config>,
+    // + std::clone::Clone + GenericDefine<expander_compiler::frontend::BN254Config>,
+// + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
+    + std::clone::Clone + Define<expander_compiler::frontend::BN254Config>,
 {
     run_debug::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
 }

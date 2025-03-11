@@ -15,11 +15,11 @@ def read_outputs_from_json(public_path: str):
         json_data.close()
         return d
 
-def prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system: ZKProofSystems = ZKProofSystems.Expander, output_file = None):
+def prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system: ZKProofSystems = ZKProofSystems.Expander, output_file = None, demo = False):
     if proof_system == ZKProofSystems.Expander:
         assert(output_file is not None, "Output_path must be specified")
         circuit = ZKProofsExpander(circuit_name)
-        circuit.run_proof(input_file, output_file)
+        circuit.run_proof(input_file, output_file, demo)
 
     elif proof_system == ZKProofSystems.Circom:
         circuit = ZKProofsCircom(circuit_name)

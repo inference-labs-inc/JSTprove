@@ -209,6 +209,7 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
                     let ih1 = max(0, i + oh) as usize;
                     let ih2 = min(i + oh + *kh as i32, *s_h as i32) as usize;
 
+
                     for jo in (bw..ew as i32).step_by(*stw as usize) {
                         let wr = (jo - bw) / *stw as i32;
                         if wr >= w_out as i32 {
@@ -219,6 +220,7 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
                         let iw2 = min(j + ow + *kw as i32, *s_w as i32) as usize;
 
                         let n_usize = n as usize;
+                        
                         let img = input_arr[n_usize..n_usize + 1]
                             .iter()
                             .map(|x| {

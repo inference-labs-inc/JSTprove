@@ -129,7 +129,7 @@ declare_circuit!(ConvCircuit {
 
 
 // Memorization, in a better place
-impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
+impl<C: Config> Define<C> for ConvCircuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         let n_bits = 32;
 
@@ -279,7 +279,9 @@ fn main() {
     main_runner::run_bn254::<ConvCircuit<Variable>,
                             ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
                             _>(&mut file_reader);
-
+    // main_runner::run_m31::<ConvCircuit<Variable>,
+    //                         ConvCircuit<<expander_compiler::frontend::M31Config as expander_compiler::frontend::Config>::CircuitField>,
+    //                         _>(&mut file_reader);
     // main_runner::debug_bn254::<ConvCircuit<Variable>,
     //                         ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
     //                                                 _>(&mut file_reader);

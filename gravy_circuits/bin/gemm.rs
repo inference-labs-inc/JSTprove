@@ -3,6 +3,7 @@ use expander_compiler::frontend::*;
 use helper_fn::read_2d_weights;
 use io_reader::{FileReader, IOReader};
 use matrix_computation::{gemm_vec, two_d_array_to_vec};
+use quantization::quantize_matrix;
 use serde::Deserialize;
 // use std::ops::Neg;
 use arith::FieldForECC;
@@ -11,6 +12,9 @@ use lazy_static::lazy_static;
 
 #[path = "../src/matrix_computation.rs"]
 pub mod matrix_computation;
+#[path = "../src/quantization.rs"]
+pub mod quantization;
+
 #[path = "../src/helper_fn.rs"]
 pub mod helper_fn;
 
@@ -34,6 +38,8 @@ struct WeightsData {
     beta: u32,
     weights: Vec<Vec<i64>>,
     bias: Vec<Vec<i64>>,
+    quantized: bool,
+    scaling: u32,
 }
 
 #[derive(Deserialize, Clone)]
@@ -69,8 +75,12 @@ declare_circuit!(Circuit {                             // scaling factor
     gemm: [[Variable; N_COLS_B]; N_ROWS_A],     // shape (m, k)
 });
 
-impl<C: Config> GenericDefine<C> for Circuit<Variable> {
+impl<C: Config> Define<C> for Circuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
+        let v_plus_one: usize = 32;
+        let two_v: u32 = 1 << (v_plus_one - 1);
+        let scaling_factor = 1 << WEIGHTS_INPUT.scaling;
+        let alpha_2_v = api.mul(scaling_factor, two_v);
 
         let weights = read_2d_weights(api, &WEIGHTS_INPUT.weights);
         let bias = read_2d_weights(api, &WEIGHTS_INPUT.bias);
@@ -78,7 +88,7 @@ impl<C: Config> GenericDefine<C> for Circuit<Variable> {
         let alpha = api.constant(WEIGHTS_INPUT.alpha);
         let beta = api.constant(WEIGHTS_INPUT.beta);
 
-        let gemm_array = gemm_vec(
+        let mut gemm_array = gemm_vec(
             api,
             two_d_array_to_vec(self.matrix_a),
             weights,
@@ -86,6 +96,12 @@ impl<C: Config> GenericDefine<C> for Circuit<Variable> {
             alpha,
             beta,
         );
+        if WEIGHTS_INPUT.quantized {
+            // let scaling = api.constant(weights.scaling as u32);
+            // let scaling_factor = scaling_factor_to_constant(api, )
+            gemm_array = quantize_matrix(api, gemm_array, scaling_factor, WEIGHTS_INPUT.scaling as usize, v_plus_one, two_v, alpha_2_v, false);
+        }
+
         for i in 0..N_ROWS_A {
             for j in 0..N_COLS_B {
                 api.assert_is_equal(self.gemm[i][j], gemm_array[i][j]);

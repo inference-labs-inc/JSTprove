@@ -61,3 +61,13 @@ Relevent files to explore -> `python_testing/matrix_multiplication.py` and `grav
 ## Important note
 
 We must run the cargo files with release for reasonable time process
+
+## Common debugging issues
+
+1. Outputs have not been quantized back down
+
+2. Inputs must be converted to int, before process in python
+
+3. Quantized parameter set to false when it should be true
+
+4. Make sure weights being loaded into rust file are from correct circuit (the naming is correct)

@@ -1,14 +1,18 @@
 use std::ops::Neg;
-
+#[allow(unused_imports)]
+use circuit_std_rs::logup::LogUpRangeProofTable;
 use ethnum::U256;
 use expander_compiler::frontend::*;
 use io_reader::{FileReader, IOReader};
+#[allow(unused_imports)]
+use matrix_computation::matrix_multiplication_std;
 #[allow(unused_imports)]
 use matrix_computation::{
     matrix_multplication, matrix_multplication_array, matrix_multplication_naive,
     matrix_multplication_naive2, matrix_multplication_naive2_array, matrix_multplication_naive3,
     matrix_multplication_naive3_array, two_d_array_to_vec,
 };
+#[warn(unused_imports)]
 use quantization::quantize_matrix;
 use serde::Deserialize;
 // use std::ops::Neg;
@@ -70,14 +74,15 @@ declare_circuit!(MatMultCircuit {
     matrix_product_ab: [[Variable; N_COLS_B]; N_ROWS_A], // shape (m, k)
 });
 // Memorization, in a better place
-impl<C: Config> GenericDefine<C> for MatMultCircuit<Variable> {
+impl<C: Config> Define<C> for MatMultCircuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         let v_plus_one: usize = 32;
         let two_v: u32 = 1 << (v_plus_one - 1);
         let scaling_factor = 1 << weights.scaling;
         let alpha_2_v = api.mul(scaling_factor, two_v);
 
-
+        // let mut table_rem: LogUpRangeProofTable =LogUpRangeProofTable::new(21);
+        // table_rem.initial(api);
 
         // Bring the weights into the circuit as constants
         let weights_matrix_multiplication: Vec<Vec<Variable>> = weights
@@ -103,6 +108,7 @@ impl<C: Config> GenericDefine<C> for MatMultCircuit<Variable> {
             "naive1" => matrix_multplication_naive(api, two_d_array_to_vec(self.matrix_a), weights_matrix_multiplication),
             "naive2" => matrix_multplication_naive2(api,two_d_array_to_vec(self.matrix_a),weights_matrix_multiplication),
             "naive3" => matrix_multplication_naive3(api, two_d_array_to_vec(self.matrix_a), weights_matrix_multiplication),
+            // "naive2" => matrix_multiplication_std(api,two_d_array_to_vec(self.matrix_a),weights_matrix_multiplication, two_d_array_to_vec(self.matrix_product_ab)),
             _ => {
                 panic!("No matching circuit_type");
             }
@@ -114,6 +120,9 @@ impl<C: Config> GenericDefine<C> for MatMultCircuit<Variable> {
             // let scaling_factor = scaling_factor_to_constant(api, )
             println!("{}", scaling_factor);
             out = quantize_matrix(api, out, scaling_factor, weights.scaling as usize, v_plus_one, two_v, alpha_2_v, false);
+            // out = quantize_matrix_lookup(api, out, scaling_factor, weights.scaling as usize, v_plus_one, two_v, alpha_2_v, false, &mut table_rem);
+            // table_rem.final_check(api);
+
         }
 
         //Assert output of matrix multiplication

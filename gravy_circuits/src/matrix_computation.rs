@@ -1,5 +1,8 @@
 use expander_compiler::frontend::*;
 
+
+
+
 pub fn matrix_addition<C: Config, Builder: RootAPI<C>, const M: usize, const N: usize>(
     api: &mut Builder,
     matrix_a: [[Variable; N]; M],
@@ -13,6 +16,7 @@ pub fn matrix_addition<C: Config, Builder: RootAPI<C>, const M: usize, const N: 
     }
     array
 }
+
 
 pub fn matrix_addition_vec<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
@@ -71,6 +75,7 @@ pub fn dot<C: Config, Builder: RootAPI<C>>(
     }
     row_col_product
 }
+
 
 pub fn matrix_multplication_array<
     C: Config,
@@ -382,4 +387,111 @@ pub fn scaled_matrix_product<
         }
     }
     array
+}
+
+
+fn matrix_multiply<C: Config>(
+    builder: &mut impl RootAPI<C>,
+    target_mat: &mut [Variable], // target to modify
+    aux_mat: &[Variable],
+    origin_mat: &[Vec<Variable>],
+) {
+    for (i, target_item) in target_mat.iter_mut().enumerate() {
+        for (j, item) in aux_mat.iter().enumerate() {
+            let mul_result = builder.mul(origin_mat[i][j], item);
+            *target_item = builder.add(*target_item, mul_result);
+        }
+    }
+}
+
+// #[allow(clippy::needless_range_loop)]
+// fn matrix_multiply_unconstrained<C: Config, Builder: RootAPI<C>>(
+//     api: &mut Builder,
+//     a: &Vec<Vec<Variable>>,
+//     b: &Vec<Vec<Variable>>,
+//     zero: &Variable
+// ) -> Vec<Vec<Variable>> {
+//     let m1 = a.len();
+//     let n1 = a[0].len();
+//     let m2 = b.len();
+//     let n2 = b[0].len();
+
+//     assert_eq!(n1, m2, "n1 ! = m2 ");
+
+//     // initialize the result matrix
+//     let mut c = vec![vec![*zero; n2]; m1];
+//     // let mut c: Vec<Vec<Variable>> = Vec::new();
+
+
+//     // FIXME: optimize calculating the multiplication for super large matrix.
+//     for i in 0..m1 {
+//         for j in 0..n2 {
+//             for k in 0..n1 {
+//                 let temp = api.unconstrained_mul(a[i][k], b[k][j]);
+//                 c[i][j] = api.unconstrained_add(temp, c[i][j]);
+//             }
+//         }
+//     }
+//     c
+// }
+pub fn matrix_multiplication_std<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    first_mat: Vec<Vec<Variable>>,
+    second_mat: Vec<Vec<Variable>>,
+    result_mat: Vec<Vec<Variable>>
+) -> Vec<Vec<Variable>> {
+    // [m1,n1] represents the first matrix's dimension
+    let m1 = first_mat.len();
+    let n1 = first_mat[0].len();
+
+    // [m2,n2] represents the second matrix's dimension
+    let m2 = second_mat.len();
+    let n2 = second_mat[0].len();
+    let zero = api.constant(0);
+    // let result_mat = matrix_multiply_unconstrained(api, &first_mat, &second_mat, &zero);
+
+    // [r1,r2] represents the result matrix's dimension
+    let r1 = result_mat.len();
+    let r2 = result_mat[0].len();
+    
+
+    api.assert_is_equal(Variable::from(n1), Variable::from(m2));
+    api.assert_is_equal(Variable::from(r1), Variable::from(m1));
+    api.assert_is_equal(Variable::from(r2), Variable::from(n2));
+
+    let loop_count = if C::CircuitField::SIZE == M31::SIZE {
+        3
+    } else {
+        1
+    };
+
+    for _ in 0..loop_count {
+        let randomness = api.get_random_value();
+        let mut aux_mat = Vec::new();
+        let mut challenge = randomness;
+
+        // construct the aux matrix = [1, randomness, randomness^2, ..., randomness^（n-1）]
+        aux_mat.push(Variable::from(1));
+        for _ in 0..n2 - 1 {
+            challenge = api.mul(challenge, randomness);
+            aux_mat.push(challenge);
+        }
+
+        let mut aux_second = vec![zero; m2];
+        let mut aux_first = vec![zero; m1];
+        let mut aux_res = vec![zero; m1];
+
+        // calculate second_mat * aux_mat,
+        matrix_multiply(api, &mut aux_second, &aux_mat, &second_mat);
+        // calculate result_mat * aux_second
+        matrix_multiply(api, &mut aux_res, &aux_mat, &result_mat);
+        // calculate first_mat * aux_second
+        matrix_multiply(api, &mut aux_first, &aux_second, &first_mat);
+
+        // compare aux_first with aux_res
+        for i in 0..m1 {
+            api.assert_is_equal(aux_first[i], aux_res[i]);
+        }
+    }
+    result_mat
 }

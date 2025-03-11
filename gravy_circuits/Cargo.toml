@@ -25,6 +25,7 @@ serde_json = "1.0"
 peakmem-alloc = "0.3.0"
 expander_compiler.workspace = true
 lazy_static = "1.4"
+circuit-std-rs.workspace = true
 
 [dev-dependencies]
 rayon = "1.9"
@@ -33,6 +34,7 @@ sha2 = "0.10.8"
 [dependencies.serde]
 version = "1.0"
 features = [ "derive",]
+
 
 
 [[bin]]
@@ -78,3 +80,19 @@ path = "bin/convolution.rs"
 [[bin]]
 name = "doom"
 path = "bin/doom.rs"
+
+[[bin]]
+name = "doom_2"
+path = "bin/doom_2.rs"
+
+[[bin]]
+name = "eth_fraud"
+path = "bin/eth_fraud.rs"
+
+[[bin]]
+name = "demo_cnn"
+path = "bin/demo_cnn.rs"
+
+[[bin]]
+name = "simple_circuit"
+path = "bin/simple_circuit.rs"

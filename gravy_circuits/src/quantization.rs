@@ -1,3 +1,4 @@
+use circuit_std_rs::logup::LogUpRangeProofTable;
 use expander_compiler::frontend::*;
 use relu::{from_binary, to_binary};
 
@@ -14,31 +15,43 @@ fn quantize<C: Config, Builder: RootAPI<C>>(
     alpha_two_v: Variable,
     is_relu: bool
 ) -> Variable {
-    let q = div_unconstrained(api, input_value, scaling_factor);
-    if is_relu{
-        return div_constrained_and_relu(
-            api,
-            input_value,
-            scaling_factor,
-            q,
-            scaling,
-            v_plus_one,
-            two_v,
-            alpha_two_v,
-        );
-    }
-    else{
-        return div_constrained(
-            api,
-            input_value,
-            scaling_factor,
-            q,
-            scaling,
-            v_plus_one,
-            two_v,
-            alpha_two_v,
-        );
-    }
+    // let q = div_unconstrained(api, input_value, scaling_factor);
+    return div_constrained(
+        api,
+        input_value,
+        scaling_factor,
+        // q,
+        scaling,
+        v_plus_one,
+        two_v,
+        alpha_two_v,
+        is_relu
+    );
+}
+fn quantize_lookup<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    input_value: Variable,
+    scaling_factor: u32,
+    scaling: usize,
+    v_plus_one: usize,
+    two_v: u32,
+    alpha_two_v: Variable,
+    is_relu: bool,
+    table: &mut LogUpRangeProofTable
+) -> Variable {
+    // let q = div_unconstrained(api, input_value, scaling_factor);
+    return div_constrained_lookup(
+        api,
+        input_value,
+        scaling_factor,
+        // q,
+        scaling,
+        v_plus_one,
+        two_v,
+        alpha_two_v,
+        is_relu,
+        table
+    );
 }
 
 pub fn scaling_factor_to_constant<C: Config, Builder: RootAPI<C>>(
@@ -52,135 +65,84 @@ pub fn scaling_factor_to_constant<C: Config, Builder: RootAPI<C>>(
     out
 }
 
-// fn div_hint(x: &[M31], y: [M31]) -> Result<(), Error> {
-//     let t = x[0].to_u256();
-//     for (i, k) in y.iter_mut().enumerate() {
-//         *k = M31::from_u256(t >> i as u32 & 1);
-//     }
-//     Ok(())
-// }
-
-fn div_unconstrained<C: Config, Builder: RootAPI<C>>(
-    api: &mut Builder,
-    x: Variable,
-    y: u32,
-) -> Variable {
-    //can maybe extract this
-    let middle = C::CircuitField::from_u256(C::CircuitField::MODULUS / 2);
-    let negative_one = C::CircuitField::from(0) - C::CircuitField::from(1);
-
-    let is_pos = api.unconstrained_lesser(x, middle);
-
-    //if x is positive
-    let q_pos = api.unconstrained_int_div(x, y);
-    let q_pos = api.unconstrained_mul(q_pos, is_pos);
-
-    //if x is negative
-    // let x_squared = api.unconstrained_pow(x,-1);
-    let x_abs = api.unconstrained_mul(x, negative_one);
-    let q_neg = api.unconstrained_int_div(x_abs, y);
-    let is_neg = api.unconstrained_bit_xor(is_pos, 1);
-    let q_neg_temp = api.unconstrained_mul(q_neg, negative_one);
-    // Unsure why, but I must subtract one here
-    let q_neg_temp = api.unconstrained_add(q_neg_temp, negative_one);
-    let q_neg_out = api.unconstrained_mul(q_neg_temp, is_neg);
-
-    let q = api.unconstrained_add(q_pos, q_neg_out);
-    // //if a and q are pos
-    // let rem_pos = api.unconstrained_mod(x, y);
-    // let rem_pos_out = api.unconstrained_mul(rem_pos, is_pos);
-
-    // //if a and q are negative then r = a - bq -> r = a + b(-q)
-    // let rem_neg = api.unconstrained_mul(y, q);
-    // let rem_neg = api.unconstrained_mul(rem_neg, negative_one);
-    // let rem_neg = api.unconstrained_add(x, rem_neg);
-    // let rem_neg_out = api.unconstrained_mul(is_neg, rem_neg);
-
-    // let rem_out = api.unconstrained_add(rem_neg_out, rem_pos_out);
-
-    q
-}
-
-fn constrain_rem<C: Config, Builder: RootAPI<C>>(api: &mut Builder, scaling: usize, rem: Variable) {
-    let bits = to_binary(api, rem, scaling);
+fn constrain_size<C: Config, Builder: RootAPI<C>>(api: &mut Builder, scaling: usize, val: Variable) {
+    let bits = to_binary(api, val, scaling);
     let total = from_binary(api, &bits, scaling);
-    api.assert_is_equal(total, rem);
+    api.assert_is_equal(total, val);
 }
 
 fn div_constrained<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     x: Variable,
     y: u32,
-    q: Variable,
     scaling: usize,
     v_plus_one: usize,
     two_v: u32,
     alpha_two_v: Variable,
+    is_relu: bool
 ) -> Variable {
-    //5.
-    let q_sharp = api.add(q, two_v);
-    //6.
+
+    //6. 
+    let d_sharp = api.add(alpha_two_v, x);
+
+    //7.
+    let q_sharp = api.unconstrained_int_div(d_sharp, y);
+    let rem_sharp = api.unconstrained_mod(d_sharp, y);
+
+    //Assert that q_sharp is in correct range
     let bits = to_binary(api, q_sharp, v_plus_one);
     let total = from_binary(api, &bits, v_plus_one);
     api.assert_is_equal(q_sharp, total);
 
+    //Ensure remainder sharp is in correct range
+    //Should this be scaling -1?
+    constrain_size(api, scaling, rem_sharp);
 
-    //7. Note, must incorporate 1 << scaling into the parameters... Also temp can be done outside as well
-    // let temp = api.mul(two_v, 1 << scaling);
-    // let temp: u64 = two_v as u64 * (1 << scaling);
-
-    let d_sharp = api.add(alpha_two_v, x);
-
-    //8
-    let q_flat = api.unconstrained_int_div(d_sharp, y);
-    let rem_flat = api.unconstrained_mod(d_sharp, y);
-
-    let temp = api.mul(q_flat, y);
-    let temp2 = api.add(temp, rem_flat);
-    api.assert_is_equal(d_sharp, temp2);
-    constrain_rem(api, scaling, rem_flat);
-
-    //9
-    api.assert_is_equal(q_flat, q_sharp);
-    q
+    let q = api.sub(q_sharp, two_v);
+    if is_relu{
+        return api.mul(q, bits[v_plus_one - 1]);
+    }
+    else{
+        return q;
+    }
 }
 
-fn div_constrained_and_relu<C: Config, Builder: RootAPI<C>>(
+fn div_constrained_lookup<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     x: Variable,
     y: u32,
-    q: Variable,
-    scaling: usize,
+    _scaling: usize,
     v_plus_one: usize,
     two_v: u32,
     alpha_two_v: Variable,
-) -> Variable{
-    //5.
-    let q_sharp = api.add(q, two_v);
-    //6.
+    is_relu: bool,
+    table: &mut LogUpRangeProofTable
+) -> Variable {
+
+    //6. 
+    let d_sharp = api.add(alpha_two_v, x);
+
+    //7.
+    let q_sharp = api.unconstrained_int_div(d_sharp, y);
+    let rem_sharp = api.unconstrained_mod(d_sharp, y);
+
+    //Assert that q_sharp is in correct range
     let bits = to_binary(api, q_sharp, v_plus_one);
     let total = from_binary(api, &bits, v_plus_one);
     api.assert_is_equal(q_sharp, total);
 
+    //Ensure remainder sharp is in correct range
+    //Should this be scaling -1?
+    // constrain_size(api, scaling, rem_sharp);
+    table.rangeproof(api, rem_sharp, y.try_into().unwrap());
 
-    //7. Note, must incorporate 1 << scaling into the parameters... Also temp can be done outside as well
-    // let temp = api.mul(two_v, 1 << scaling);
-    // let temp: u64 = two_v as u64 * (1 << scaling);
-
-    let d_sharp = api.add(alpha_two_v, x);
-
-    //8
-    let q_flat = api.unconstrained_int_div(d_sharp, y);
-    let rem_flat = api.unconstrained_mod(d_sharp, y);
-
-    let temp = api.mul(q_flat, y);
-    let temp2 = api.add(temp, rem_flat);
-    api.assert_is_equal(d_sharp, temp2);
-    constrain_rem(api, scaling, rem_flat);
-
-    //9
-    api.assert_is_equal(q_flat, q_sharp);
-    api.mul(q, bits[v_plus_one - 1])
+    let q = api.sub(q_sharp, two_v);
+    if is_relu{
+        return api.mul(q, bits[v_plus_one - 1]);
+    }
+    else{
+        return q;
+    }
 }
 
 pub fn quantize_matrix<C: Config, Builder: RootAPI<C>>(
@@ -207,6 +169,40 @@ pub fn quantize_matrix<C: Config, Builder: RootAPI<C>>(
                 alpha_two_v,
                 is_relu
             ))
+        }
+        out.push(row_out);
+    }
+    out
+}
+
+pub fn quantize_matrix_lookup<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    input_matrix: Vec<Vec<Variable>>,
+    scaling_factor: u32,
+    scaling: usize,
+    v_plus_one: usize,
+    two_v: u32,
+    alpha_two_v: Variable,
+    is_relu: bool,
+    table: &mut LogUpRangeProofTable
+) -> Vec<Vec<Variable>> {
+    let mut out: Vec<Vec<Variable>> = Vec::new();
+
+    for (_, row) in input_matrix.iter().enumerate() {
+        let mut row_out: Vec<Variable> = Vec::new();
+        for (_, &element) in row.iter().enumerate() {
+            let q = quantize_lookup(
+                api,
+                element,
+                scaling_factor,
+                scaling,
+                v_plus_one,
+                two_v,
+                alpha_two_v,
+                is_relu,
+                table
+            );
+            row_out.push(q);
         }
         out.push(row_out);
     }
@@ -390,6 +386,85 @@ fn div_constrained<C: Config, Builder: RootAPI<C>>(
     let temp2 = api.add(temp, rem);
     api.assert_is_equal(x, temp2);
     constrain_rem(api, scaling, rem);
+    q
+}
+
+    fn div_constrained_old<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    x: Variable,
+    y: u32,
+    q: Variable,
+    scaling: usize,
+    v_plus_one: usize,
+    two_v: u32,
+    alpha_two_v: Variable,
+) -> Variable {
+    //5.
+    let q_sharp = api.add(q, two_v);
+    //6.
+    let bits = to_binary(api, q_sharp, v_plus_one);
+    let total = from_binary(api, &bits, v_plus_one);
+    api.assert_is_equal(q_sharp, total);
+
+
+    //7. Note, must incorporate 1 << scaling into the parameters... Also temp can be done outside as well
+    // let temp = api.mul(two_v, 1 << scaling);
+    // let temp: u64 = two_v as u64 * (1 << scaling);
+
+    let d_sharp = api.add(alpha_two_v, x);
+
+    //8
+    let q_flat = api.unconstrained_int_div(d_sharp, y);
+    let rem_flat = api.unconstrained_mod(d_sharp, y);
+
+    let temp = api.mul(q_flat, y);
+    let temp2 = api.add(temp, rem_flat);
+    api.assert_is_equal(d_sharp, temp2);
+    constrain_rem(api, scaling, rem_flat);
+
+    //9
+    api.assert_is_equal(q_flat, q_sharp);
+    q
+}
+
+    fn div_unconstrained<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    x: Variable,
+    y: u32,
+) -> Variable {
+    //can maybe extract this
+    let middle = C::CircuitField::from_u256(C::CircuitField::MODULUS / 2);
+    let negative_one = C::CircuitField::from(0) - C::CircuitField::from(1);
+
+    let is_pos = api.unconstrained_lesser(x, middle);
+
+    //if x is positive
+    let q_pos = api.unconstrained_int_div(x, y);
+    let q_pos = api.unconstrained_mul(q_pos, is_pos);
+
+    //if x is negative
+    // let x_squared = api.unconstrained_pow(x,-1);
+    let x_abs = api.unconstrained_mul(x, negative_one);
+    let q_neg = api.unconstrained_int_div(x_abs, y);
+    let is_neg = api.unconstrained_bit_xor(is_pos, 1);
+    let q_neg_temp = api.unconstrained_mul(q_neg, negative_one);
+    // Unsure why, but I must subtract one here
+    let q_neg_temp = api.unconstrained_add(q_neg_temp, negative_one);
+    let q_neg_out = api.unconstrained_mul(q_neg_temp, is_neg);
+
+    let q = api.unconstrained_add(q_pos, q_neg_out);
+    // //if a and q are pos
+    // let rem_pos = api.unconstrained_mod(x, y);
+    // let rem_pos_out = api.unconstrained_mul(rem_pos, is_pos);
+
+    // //if a and q are negative then r = a - bq -> r = a + b(-q)
+    // let rem_neg = api.unconstrained_mul(y, q);
+    // let rem_neg = api.unconstrained_mul(rem_neg, negative_one);
+    // let rem_neg = api.unconstrained_add(x, rem_neg);
+    // let rem_neg_out = api.unconstrained_mul(is_neg, rem_neg);
+
+    // let rem_out = api.unconstrained_add(rem_neg_out, rem_pos_out);
+
     q
 }
  */

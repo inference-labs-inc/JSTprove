@@ -1,12 +1,12 @@
 from python_testing.utils.run_proofs import ZKProofSystems
-from python_testing.convolution import Convolution, QuantizedConv
-from python_testing.gemm import Gemm, QuantizedGemm
-from python_testing.matrix_addition import MatrixAddition
-from python_testing.matrix_hadamard_product import MatrixHadamardProduct
-from python_testing.matrix_multiplication import MatrixMultiplication, QuantizedMatrixMultiplication
-from python_testing.relu import ReLU, ConversionType
-from python_testing.scaled_matrix_product_sum import ScaledMatrixProductSum
-from python_testing.scaled_matrix_product import ScaledMatrixProduct
+from python_testing.circuit_components.convolution import Convolution, QuantizedConv
+from python_testing.circuit_components.gemm import Gemm, QuantizedGemm
+from python_testing.circuit_components.matrix_addition import MatrixAddition
+from python_testing.circuit_components.matrix_hadamard_product import MatrixHadamardProduct
+from python_testing.circuit_components.matrix_multiplication import MatrixMultiplication, QuantizedMatrixMultiplication
+from python_testing.circuit_components.relu import ReLU, ConversionType
+from python_testing.circuit_components.scaled_matrix_product_sum import ScaledMatrixProductSum
+from python_testing.circuit_components.scaled_matrix_product import ScaledMatrixProduct
 
 
 

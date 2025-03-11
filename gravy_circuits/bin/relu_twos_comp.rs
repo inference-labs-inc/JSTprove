@@ -31,7 +31,7 @@ declare_circuit!(ReLUTwosCircuit {
     output: [[[Variable; SIZE1]; SIZE2]; SIZE3],
 });
 
-impl<C: Config> GenericDefine<C> for ReLUTwosCircuit<Variable> {
+impl<C: Config> Define<C> for ReLUTwosCircuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         let n_bits = 32;
 
