@@ -159,14 +159,14 @@ where
 
 fn run_compile_and_serialize<C: Config,CircuitType>()
 where
-    CircuitType: Default + DumpLoadTwoVariables<Variable> + GenericDefine<C> + Clone,
+    CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone,
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
     
     // let compile_result: CompileResult<C> = compile(&CircuitType::default()).unwrap();
     let compile_result =
-        compile_generic(&CircuitType::default(), CompileOptions::default().with_mul_fanout_limit(1024)).unwrap();
+        compile(&CircuitType::default(), CompileOptions::default()).unwrap();
     println!(
         "Peak Memory used Overall : {:.2}",
         GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
@@ -253,7 +253,7 @@ where
 
     let mut expander_circuit = layered_circuit
         .export_to_expander::<<C>::DefaultGKRFieldConfig>()
-        .flatten();
+        .flatten::<C::DefaultGKRConfig>();
     let config = expander_config::Config::<<C>::DefaultGKRConfig>::new(
         expander_config::GKRScheme::Vanilla,
         mpi_config::MPIConfig::new(),
@@ -372,7 +372,7 @@ where
 
     let mut expander_circuit = layered_circuit
         .export_to_expander::<<C>::DefaultGKRFieldConfig>()
-        .flatten();
+        .flatten::<C::DefaultGKRConfig>();;
     let config = expander_config::Config::<<C>::DefaultGKRConfig>::new(
         expander_config::GKRScheme::Vanilla,
         mpi_config::MPIConfig::new(),
@@ -450,7 +450,7 @@ where
 
     let mut expander_circuit = layered_circuit
         .export_to_expander::<<C>::DefaultGKRFieldConfig>()
-        .flatten();
+        .flatten::<C::DefaultGKRConfig>();
 
     let file = std::fs::File::open(format!("trivial_witness.txt")).unwrap();
     let reader = std::io::BufReader::new(file);
@@ -536,7 +536,7 @@ where
 
     let mut expander_circuit = layered_circuit
         .export_to_expander::<<C>::DefaultGKRFieldConfig>()
-        .flatten();
+        .flatten::<C::DefaultGKRConfig>();
 
     let file = std::fs::File::open(format!("trivial_witness.txt")).unwrap();
     let reader = std::io::BufReader::new(file);
@@ -657,11 +657,11 @@ where
 
 
 
-// pub fn run_gf2<CircuitType, CircuitDefaultType, Filereader: IOReader<expander_compiler::frontend::GF2Config, CircuitDefaultType>>(file_reader: &mut Filereader)
-// where
-//     CircuitDefaultType: std::default::Default
-//     + DumpLoadTwoVariables<<expander_compiler::frontend::GF2Config as expander_compiler::frontend::Config>::CircuitField>
-//     + std::clone::Clone,
+pub fn run_gf2<CircuitType, CircuitDefaultType, Filereader: IOReader<expander_compiler::frontend::GF2Config, CircuitDefaultType>>(file_reader: &mut Filereader)
+where
+    CircuitDefaultType: std::default::Default
+    + DumpLoadTwoVariables<<expander_compiler::frontend::GF2Config as expander_compiler::frontend::Config>::CircuitField>
+    + std::clone::Clone,
     CircuitType: std::default::Default +
     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
     + expander_compiler::frontend::Define<expander_compiler::frontend::GF2Config>
@@ -672,11 +672,11 @@ where
 
 }
 
-// pub fn run_m31<CircuitType, CircuitDefaultType, Filereader: IOReader<expander_compiler::frontend::M31Config, CircuitDefaultType>>(file_reader: &mut Filereader)
-// where
-//     CircuitDefaultType: std::default::Default
-//     + DumpLoadTwoVariables<<expander_compiler::frontend::M31Config as expander_compiler::frontend::Config>::CircuitField>
-//     + std::clone::Clone,
+pub fn run_m31<CircuitType, CircuitDefaultType, Filereader: IOReader<expander_compiler::frontend::M31Config, CircuitDefaultType>>(file_reader: &mut Filereader)
+where
+    CircuitDefaultType: std::default::Default
+    + DumpLoadTwoVariables<<expander_compiler::frontend::M31Config as expander_compiler::frontend::Config>::CircuitField>
+    + std::clone::Clone,
     CircuitType: std::default::Default +
     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
     + expander_compiler::frontend::Define<expander_compiler::frontend::M31Config>

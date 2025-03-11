@@ -49,7 +49,7 @@ declare_circuit!(TestCircuit {
     matrix_sum_ab: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
 });
 
-impl<C: Config> GenericDefine<C> for TestCircuit<Variable> {
+impl<C: Config> Define<C> for TestCircuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {  
         let matrix_sum = matrix_computation::matrix_hadamard_product(api, self.matrix_a, self.matrix_b);
         for i in 0..N_ROWS_A {
