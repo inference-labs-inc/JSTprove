@@ -1,9 +1,10 @@
 use expander_compiler::frontend::*;
+use gkr_field_config::GKRFieldConfig;
 use io_reader::{FileReader, IOReader};
 use serde::Deserialize;
 use ethnum::U256;
 // use std::ops::Neg;
-use arith::FieldForECC;
+// use arith::FieldForECC;
 
 #[path = "../src/matrix_computation.rs"]
 pub mod matrix_computation;
@@ -42,6 +43,30 @@ impl<C: Config> Define<C> for MatAddCircuit<Variable> {
         }
     }
 }
+declare_circuit!(TestCircuit {
+    matrix_a: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
+    matrix_b: [[Variable; N_COLS_B]; N_ROWS_B], // shape (n, n)
+    matrix_sum_ab: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
+});
+
+impl<C: Config> GenericDefine<C> for TestCircuit<Variable> {
+    fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {  
+        let matrix_sum = matrix_computation::matrix_hadamard_product(api, self.matrix_a, self.matrix_b);
+        for i in 0..N_ROWS_A {
+            for j in 0..N_COLS_A {
+                api.assert_is_equal(self.matrix_sum_ab[i][j], matrix_sum[i][j]); 
+            }                          
+        }
+        // let matrix_sum = matrix_computation::matrix_addition(api, self.matrix_a, self.matrix_b);
+        // for i in 0..N_ROWS_A {
+        //     for j in 0..N_COLS_A {
+        //         api.assert_is_equal(self.matrix_sum_ab[i][j], matrix_sum[i][j]); 
+        //     }                          
+        // }
+    }
+}
+
+
 #[derive(Deserialize)]
 #[derive(Clone)]
 struct InputData {
@@ -54,11 +79,11 @@ struct InputData {
 struct OutputData {
     matrix_sum_ab: Vec<Vec<u64>>, //  Shape (m, n) 
 }
-impl<C: Config>IOReader<C, MatAddCircuit<C::CircuitField>> for FileReader
+impl<C: Config>IOReader<C, TestCircuit<C::CircuitField>> for FileReader
 {
-    fn read_inputs(&mut self, file_path: &str, mut assignment: MatAddCircuit<C::CircuitField>) -> MatAddCircuit<C::CircuitField>
+    fn read_inputs(&mut self, file_path: &str, mut assignment: TestCircuit<C::CircuitField>) -> TestCircuit<C::CircuitField>
     {
-        let data: InputData = <FileReader as IOReader<C, MatAddCircuit<_>>>::read_data_from_json::<InputData>(file_path); 
+        let data: InputData = <FileReader as IOReader<C, TestCircuit<_>>>::read_data_from_json::<InputData>(file_path); 
 
 
         // Assign inputs to assignment
@@ -86,10 +111,10 @@ impl<C: Config>IOReader<C, MatAddCircuit<C::CircuitField>> for FileReader
         // Return the assignment
         assignment
     }
-    fn read_outputs(&mut self, file_path: &str, mut assignment: MatAddCircuit<C::CircuitField>) -> MatAddCircuit<C::CircuitField>
+    fn read_outputs(&mut self, file_path: &str, mut assignment: TestCircuit<C::CircuitField>) -> TestCircuit<C::CircuitField>
     {
 
-        let data: OutputData = <FileReader as IOReader<C, MatAddCircuit<_>>>::read_data_from_json::<OutputData>(file_path); 
+        let data: OutputData = <FileReader as IOReader<C, TestCircuit<_>>>::read_data_from_json::<OutputData>(file_path); 
 
         // Assign inputs to assignment
         let rows_ab = data.matrix_sum_ab.len();  
@@ -111,7 +136,7 @@ fn main(){
     // run_gf2();
     // run_m31();
     main_runner::run_bn254::<MatAddCircuit<Variable>,
-                            MatAddCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
+                            TestCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
                             _>(&mut file_reader);
     //                         build::<M31Config>
     // main_runner::run_m31::<MatAddCircuit<Variable>,
