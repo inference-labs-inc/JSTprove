@@ -1,5 +1,4 @@
 use expander_compiler::frontend::*;
-use gkr_field_config::GKRFieldConfig;
 use io_reader::{FileReader, IOReader};
 use serde::Deserialize;
 use ethnum::U256;

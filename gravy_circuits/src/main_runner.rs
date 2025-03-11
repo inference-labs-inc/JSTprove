@@ -1,14 +1,13 @@
 use crate::io_reader::{FileReader, IOReader};
 use clap::{Arg, Command};
 use expander_compiler::circuit::layered::witness::Witness;
-use expander_compiler::circuit::layered::{Circuit, CrossLayerInputType, NormalInputType};
+use expander_compiler::circuit::layered::{Circuit, NormalInputType};
 use expander_compiler::frontend::{extra::debug_eval, internal::DumpLoadTwoVariables, *};
 use expander_compiler::utils::serde::Serde;
 use gkr_field_config::GKRFieldConfig;
 use peakmem_alloc::*;
 use serde_json::{from_reader, to_writer};
 use std::alloc::System;
-use std::default;
 use std::time::Instant;
 
 #[global_allocator]
@@ -372,7 +371,7 @@ where
 
     let mut expander_circuit = layered_circuit
         .export_to_expander::<<C>::DefaultGKRFieldConfig>()
-        .flatten::<C::DefaultGKRConfig>();;
+        .flatten::<C::DefaultGKRConfig>();
     let config = expander_config::Config::<<C>::DefaultGKRConfig>::new(
         expander_config::GKRScheme::Vanilla,
         mpi_config::MPIConfig::new(),
@@ -410,7 +409,7 @@ where
     )
 }
 
-fn run_verify<C: Config, I, CircuitDefaultType>(io_reader: &mut I)
+fn run_verify<C: Config, I, CircuitDefaultType>()
 where
     I: IOReader<C, CircuitDefaultType>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
@@ -419,25 +418,6 @@ where
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
-    let matches = Command::new("File Copier")
-        .version("1.0")
-        .about("Copies content from input file to output file")
-        .arg(
-            Arg::new("input")
-                .help("The input file to read from")
-                .required(true) // This argument is required
-                .index(1), // Positional argument (first argument)
-        )
-        .arg(
-            Arg::new("output")
-                .help("The output file to write to")
-                .required(true) // This argument is also required
-                .index(2), // Positional argument (second argument)
-        )
-        .get_matches();
-
-    let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
-    let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
 
     let config = expander_config::Config::<<C>::DefaultGKRConfig>::new(
         expander_config::GKRScheme::Vanilla,
@@ -496,7 +476,8 @@ where
         duration.subsec_millis()
     )
 }
-fn run_verify_no_circuit<C: Config, I, CircuitDefaultType>(io_reader: &mut I)
+
+fn run_verify_no_circuit<C: Config, I, CircuitDefaultType>()
 where
     I: IOReader<C, CircuitDefaultType>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
@@ -505,25 +486,6 @@ where
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
-    let matches = Command::new("File Copier")
-        .version("1.0")
-        .about("Copies content from input file to output file")
-        .arg(
-            Arg::new("input")
-                .help("The input file to read from")
-                .required(true) // This argument is required
-                .index(1), // Positional argument (first argument)
-        )
-        .arg(
-            Arg::new("output")
-                .help("The output file to write to")
-                .required(true) // This argument is also required
-                .index(2), // Positional argument (second argument)
-        )
-        .get_matches();
-
-    let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
-    let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
 
     let config = expander_config::Config::<<C>::DefaultGKRConfig>::new(
         expander_config::GKRScheme::Vanilla,
@@ -711,6 +673,29 @@ where
 
     // run_witness_and_proof::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
     // run_verify::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
+}
+
+pub fn run_bn254_seperate<CircuitType, CircuitDefaultType, Filereader: IOReader<expander_compiler::frontend::BN254Config, CircuitDefaultType>>(file_reader: &mut Filereader)
+where
+    CircuitDefaultType: std::default::Default
+    + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>
+    + std::clone::Clone,
+
+    CircuitType: std::default::Default +
+    expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
+    + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
+    // + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::BN254Config>
+    + std::clone::Clone,
+{
+
+    run_compile_and_serialize::<BN254Config, CircuitType>();
+
+
+    run_rest::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
+
+    run_witness_and_proof::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
+    run_verify::<BN254Config, Filereader, CircuitDefaultType>();
+    run_verify_no_circuit::<BN254Config, Filereader, CircuitDefaultType>();
 }
 
 
