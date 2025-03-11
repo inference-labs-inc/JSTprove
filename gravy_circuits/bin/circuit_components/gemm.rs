@@ -10,17 +10,17 @@ use arith::FieldForECC;
 use lazy_static::lazy_static;
 
 
-#[path = "../src/matrix_computation.rs"]
+#[path = "../../src/matrix_computation.rs"]
 pub mod matrix_computation;
-#[path = "../src/quantization.rs"]
+#[path = "../../src/quantization.rs"]
 pub mod quantization;
 
-#[path = "../src/helper_fn.rs"]
+#[path = "../../src/helper_fn.rs"]
 pub mod helper_fn;
 
-#[path = "../src/io_reader.rs"]
+#[path = "../../src/io_reader.rs"]
 pub mod io_reader;
-#[path = "../src/main_runner.rs"]
+#[path = "../../src/main_runner.rs"]
 pub mod main_runner;
 
 /*
@@ -53,7 +53,7 @@ struct OutputData {
     output: Vec<Vec<u64>>,
 }
 
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/gemm_weights.json");
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/gemm_weights.json");
 
 lazy_static! {
     static ref WEIGHTS_INPUT: WeightsData = {

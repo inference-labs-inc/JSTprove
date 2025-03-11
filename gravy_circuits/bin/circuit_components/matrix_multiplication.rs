@@ -19,14 +19,14 @@ use serde::Deserialize;
 use arith::FieldForECC;
 use lazy_static::lazy_static;
 
-#[path = "../src/matrix_computation.rs"]
+#[path = "../../src/matrix_computation.rs"]
 pub mod matrix_computation;
 
-#[path = "../src/io_reader.rs"]
+#[path = "../../src/io_reader.rs"]
 pub mod io_reader;
-#[path = "../src/main_runner.rs"]
+#[path = "../../src/main_runner.rs"]
 pub mod main_runner;
-#[path = "../src/quantization.rs"]
+#[path = "../../src/quantization.rs"]
 pub mod quantization;
 
 /*
@@ -61,7 +61,7 @@ struct OutputData {
 }
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/matrix_multiplication_weights.json");
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/matrix_multiplication_weights.json");
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
 // Weights will be read in

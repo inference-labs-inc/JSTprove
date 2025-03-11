@@ -106,8 +106,6 @@ class Layers():
 
         weights = layer.weight
         bias = layer.bias
-        # layers = self.layers[layer_name]
-        # conv_circuit = Convolution()
         conv_circuit = QuantizedConv()
 
         conv_circuit.input_arr = inputs
@@ -122,7 +120,7 @@ class Layers():
         conv_circuit.dilation = dilation
         conv_circuit.pads = pads
 
-        return conv_circuit.get_model_params(conv_circuit.get_output())
+        return conv_circuit.get_model_params(conv_circuit.get_outputs())
     
     def get_mat_mult(self, inputs, layer, quant = True):
         weights = layer.weight

@@ -5,12 +5,12 @@ use serde::Deserialize;
 // use std::ops::Neg;
 use arith::FieldForECC;
 
-#[path = "../src/relu.rs"]
+#[path = "../../src/relu.rs"]
 pub mod relu;
 
-#[path = "../src/io_reader.rs"]
+#[path = "../../src/io_reader.rs"]
 pub mod io_reader;
-#[path = "../src/main_runner.rs"]
+#[path = "../../src/main_runner.rs"]
 pub mod main_runner;
 
 const LENGTH: usize = 256;

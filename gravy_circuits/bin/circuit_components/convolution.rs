@@ -15,19 +15,21 @@ use quantization::quantize_4d_vector;
 use serde::Deserialize;
 use std::ops::Neg;
 
-#[path = "../src/convolution_fn.rs"]
+
+// pub use src::convolution_fn;
+#[path = "../../src/convolution_fn.rs"]
 pub mod convolution_fn;
-#[path = "../src/matrix_computation.rs"]
+#[path = "../../src/matrix_computation.rs"]
 pub mod matrix_computation;
 
-#[path = "../src/quantization.rs"]
+#[path = "../../src/quantization.rs"]
 pub mod quantization;
 
-#[path = "../src/helper_fn.rs"]
+#[path = "../../src/helper_fn.rs"]
 pub mod helper_fn;
-#[path = "../src/io_reader.rs"]
+#[path = "../../src/io_reader.rs"]
 pub mod io_reader;
-#[path = "../src/main_runner.rs"]
+#[path = "../../src/main_runner.rs"]
 pub mod main_runner;
 
 /*
@@ -70,7 +72,7 @@ struct OutputData {
 }
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/convolution_weights.json");
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/convolution_weights.json");
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
 // Weights will be read in

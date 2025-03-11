@@ -5,12 +5,12 @@ use ethnum::U256;
 // use std::ops::Neg;
 // use arith::FieldForECC;
 
-#[path = "../src/matrix_computation.rs"]
+#[path = "../../src/matrix_computation.rs"]
 pub mod matrix_computation;
 
-#[path = "../src/io_reader.rs"]
+#[path = "../../src/io_reader.rs"]
 pub mod io_reader;
-#[path = "../src/main_runner.rs"]
+#[path = "../../src/main_runner.rs"]
 pub mod main_runner;
 
 
