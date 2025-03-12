@@ -5,12 +5,13 @@ use serde::Deserialize;
 
 
 declare_circuit!(Circuit {
-    input_a: Variable,                       // shape (m, n)
-    input_b: Variable,                       // shape (n, k)
-    output: Variable, // shape (m, k)
+    input_a: Variable,
+    input_b: Variable,
+    output: Variable, 
 });
 
 //Still to factor this out
+
 impl<C: Config> Define<C> for Circuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         let out = api.add(self.input_a, self.input_b);
@@ -60,22 +61,21 @@ impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
         
         assignment
     }
+    fn get_path(&self) -> &str {
+        &self.path
+    }
 }
-
-/*
-        #######################################################################################################
-        #####################################  Shouldn't need to change  ######################################
-        #######################################################################################################
-*/
 
 
 fn main() {
     let mut file_reader = FileReader {
-        path: String::new(),
+        path: "simple_circuit".to_owned(),
     };
-    // run_gf2();
-    // run_m31();
-    main_runner::run_bn254::<Circuit<Variable>,
-    Circuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-                            _>(&mut file_reader);
+    // main_runner::run_bn254::<Circuit<Variable>,
+    // Circuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
+    //                         _>(&mut file_reader);
+
+    main_runner::run_bn254_seperate::<Circuit<Variable>,
+                            Circuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
+                                                    _>(&mut file_reader);
 }

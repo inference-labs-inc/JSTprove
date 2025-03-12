@@ -144,17 +144,14 @@ impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
         }
         assignment
     }
+    fn get_path(&self) -> &str {
+        &self.path
+    }
 }
-
-/*
-        #######################################################################################################
-        #####################################  Shouldn't need to change  ######################################
-        #######################################################################################################
-*/
 
 fn main() {
     let mut file_reader = FileReader {
-        path: String::new(),
+        path: "gemm".to_owned(),
     };
     main_runner::run_bn254::<Circuit<Variable>,
     Circuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,

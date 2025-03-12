@@ -103,17 +103,15 @@ impl<C: Config> IOReader<ReLUTwosCircuit<C::CircuitField>, C> for FileReader {
         }
         assignment
     }
+    fn get_path(&self) -> &str {
+        &self.path
+    }
 }
 
-/*
-        #######################################################################################################
-        #####################################  Shouldn't need to change  ######################################
-        #######################################################################################################
-*/
 
 fn main() {
     let mut file_reader = FileReader {
-        path: String::new(),
+        path: "relu_twos_comp".to_owned(),
     };
     // run_gf2();
     // run_m31();

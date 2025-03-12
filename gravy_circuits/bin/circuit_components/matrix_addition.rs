@@ -121,11 +121,14 @@ impl<C: Config>IOReader<TestCircuit<C::CircuitField>, C> for FileReader
         }
         assignment
     }
+    fn get_path(&self) -> &str {
+        &self.path
+    }
 }
 
 
 fn main(){
-    let mut file_reader = FileReader{path: String::new()};
+    let mut file_reader = FileReader{path: "matrix_addition".to_owned(),};
     // run_gf2();
     // run_m31();
     main_runner::run_bn254::<MatAddCircuit<Variable>,

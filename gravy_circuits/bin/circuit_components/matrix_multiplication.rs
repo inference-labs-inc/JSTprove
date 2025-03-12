@@ -173,11 +173,14 @@ impl<C: Config> IOReader<MatMultCircuit<C::CircuitField>, C> for FileReader {
         // Return the assignment
         assignment
     }
+    fn get_path(&self) -> &str {
+        &self.path
+    }
 }
 
 fn main() {
     let mut file_reader = FileReader {
-        path: String::new(),
+        path: "simple_circuit".to_owned(),
     };
     // run_gf2();
     // run_m31();

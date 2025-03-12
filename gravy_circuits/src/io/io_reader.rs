@@ -37,6 +37,7 @@ where
         file_path: &str,
         assignment: CircuitType, // Mutate the concrete `Circuit` type
     ) -> CircuitType;
+    fn get_path(&self) -> &str;
 }
 
 pub struct FileReader {

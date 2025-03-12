@@ -215,6 +215,9 @@ impl<C: Config> IOReader<ConvCircuit<C::CircuitField>, C> for FileReader {
         // Return the assignment
         assignment
     }
+    fn get_path(&self) -> &str {
+        &self.path
+    }
 }
 
 fn main() {

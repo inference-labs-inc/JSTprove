@@ -149,6 +149,9 @@ impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
         }
         assignment
     }
+    fn get_path(&self) -> &str {
+        &self.path
+    }
 }
 
 /*
@@ -159,7 +162,7 @@ impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
 
 fn main() {
     let mut file_reader = FileReader {
-        path: String::new(),
+        path: "scaled_matrix_product_sum".to_owned(),
     };
     // run_gf2();
     // run_m31();

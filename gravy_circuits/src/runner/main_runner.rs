@@ -1,4 +1,4 @@
-use io_reader::{FileReader, IOReader};
+use io_reader::IOReader;
 use clap::{Arg, Command};
 use expander_compiler::circuit::layered::witness::Witness;
 use expander_compiler::circuit::layered::{Circuit, NormalInputType};
@@ -8,6 +8,7 @@ use gkr_field_config::GKRFieldConfig;
 use peakmem_alloc::*;
 use serde_json::{from_reader, to_writer};
 use std::alloc::System;
+// use std::io::{Read, Write};
 use std::time::Instant;
 
 use crate::io::io_reader;
@@ -73,12 +74,7 @@ where
     } = compile_result;
 
     let assignment = CircuitDefaultType::default();
-    let _input_reader = FileReader {
-        path: input_path.clone(),
-    };
-    let _output_reader = FileReader {
-        path: output_path.clone(),
-    };
+    
     let assignment = io_reader.read_inputs(input_path, assignment);
     let assignment = io_reader.read_outputs(output_path, assignment);
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
@@ -161,7 +157,7 @@ where
     )
 }
 
-fn run_compile_and_serialize<C: Config,CircuitType>()
+fn run_compile_and_serialize<C: Config, CircuitType>(name: &str)
 where
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone,
 {
@@ -177,11 +173,11 @@ where
     );
     let duration = start.elapsed();
 
-    let file = std::fs::File::create(format!("trivial_circuit.txt")).unwrap();
+    let file = std::fs::File::create(format!("{}_circuit.txt", name)).unwrap();
     let writer = std::io::BufWriter::new(file);
     compile_result.layered_circuit.serialize_into(writer).unwrap();
 
-    let file = std::fs::File::create(format!("trivial_witness_solver.txt")).unwrap();
+    let file = std::fs::File::create(format!("{}_witness_solver.txt", name)).unwrap();
     let writer = std::io::BufWriter::new(file);
     compile_result.witness_solver.serialize_into(writer).unwrap();
 
@@ -227,22 +223,22 @@ where
     //     layered_circuit,
     // } = compile_result;
 
-    let file = std::fs::File::open(format!("trivial_witness_solver.txt")).unwrap();
+    let file = std::fs::File::open(format!("{}_witness_solver.txt", io_reader.get_path())).unwrap();
     let reader = std::io::BufReader::new(file);
     let witness_solver = WitnessSolver::<C>::deserialize_from(reader).unwrap();
 
 
-    let file = std::fs::File::open(format!("trivial_circuit.txt")).unwrap();
+    let file = std::fs::File::open(format!("{}_circuit.txt", io_reader.get_path())).unwrap();
     let reader = std::io::BufReader::new(file);
     let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
 
     let assignment = CircuitDefaultType::default();
-    let _input_reader = FileReader {
-        path: input_path.clone(),
-    };
-    let _output_reader = FileReader {
-        path: output_path.clone(),
-    };
+    // let _input_reader = FileReader {
+    //     path: input_path.clone(),
+    // };
+    // let _output_reader = FileReader {
+    //     path: output_path.clone(),
+    // };
     let assignment = io_reader.read_inputs(input_path, assignment);
     let assignment = io_reader.read_outputs(output_path, assignment);
 
@@ -342,29 +338,29 @@ where
     //     layered_circuit,
     // } = compile_result;
 
-    let file = std::fs::File::open(format!("trivial_witness_solver.txt")).unwrap();
+    let file = std::fs::File::open(format!("{}_witness_solver.txt", io_reader.get_path())).unwrap();
     let reader = std::io::BufReader::new(file);
     let witness_solver = WitnessSolver::<C>::deserialize_from(reader).unwrap();
 
 
-    let file = std::fs::File::open(format!("trivial_circuit.txt")).unwrap();
+    let file = std::fs::File::open(format!("{}_circuit.txt", io_reader.get_path())).unwrap();
     let reader = std::io::BufReader::new(file);
     let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
 
     let assignment = CircuitDefaultType::default();
-    let _input_reader = FileReader {
-        path: input_path.clone(),
-    };
-    let _output_reader = FileReader {
-        path: output_path.clone(),
-    };
+    // let _input_reader = FileReader {
+    //     path: input_path.clone(),
+    // };
+    // let _output_reader = FileReader {
+    //     path: output_path.clone(),
+    // };
     let assignment = io_reader.read_inputs(input_path, assignment);
     let assignment = io_reader.read_outputs(output_path, assignment);
 
     let assignments = vec![assignment; 1];
     let witness = witness_solver.solve_witnesses(&assignments).unwrap();
 
-    let file = std::fs::File::create(format!("trivial_witness.txt")).unwrap();
+    let file = std::fs::File::create(format!("{}_witness.txt", io_reader.get_path())).unwrap();
     let writer = std::io::BufWriter::new(file);
     witness.serialize_into(writer).unwrap();
     // layered_circuit.evaluate();
@@ -393,8 +389,10 @@ where
 
     let proof: Vec<u8> = gkr::executor::dump_proof_and_claimed_v(&proof, &claimed_v).map_err(|e| e.to_string()).unwrap();
 
-    let file = std::fs::File::create(format!("trivial_proof.txt")).unwrap();
+    let file = std::fs::File::create(format!("{}_proof.txt", io_reader.get_path())).unwrap();
     let writer = std::io::BufWriter::new(file);
+    // println!("{:?}", proof);
+    // writer.write_all(&proof).unwrap();
     // proof.serialize_into(writer).unwrap();
     to_writer(writer, &proof).unwrap();
 
@@ -414,7 +412,7 @@ where
     )
 }
 
-fn run_verify<C: Config, I, CircuitDefaultType>()
+fn run_verify<C: Config, I, CircuitDefaultType>(name: &str)
 where
     I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
@@ -429,7 +427,7 @@ where
         mpi_config::MPIConfig::new(),
     );
 
-    let file = std::fs::File::open(format!("trivial_circuit.txt")).unwrap();
+    let file = std::fs::File::open(format!("{}_circuit.txt", name)).unwrap();
     let reader = std::io::BufReader::new(file);
     let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
 
@@ -437,7 +435,7 @@ where
         .export_to_expander::<<C>::DefaultGKRFieldConfig>()
         .flatten::<C::DefaultGKRConfig>();
 
-    let file = std::fs::File::open(format!("trivial_witness.txt")).unwrap();
+    let file = std::fs::File::open(format!("{}_witness.txt", name)).unwrap();
     let reader = std::io::BufReader::new(file);
     let witness = Witness::<C>::deserialize_from(reader).unwrap();
     // let witness =
@@ -446,9 +444,14 @@ where
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
 
-    let file = std::fs::File::open(format!("trivial_proof.txt")).unwrap();
+    let file = std::fs::File::open(format!("{}_proof.txt", name)).unwrap();
     let reader = std::io::BufReader::new(file);
     let proof_and_claimed_v: Vec<u8> = from_reader(reader).unwrap();
+    // let mut proof_and_claimed_v = Vec::new();
+    // reader.read_to_end(&mut proof_and_claimed_v).unwrap();
+    // println!("{:?}", proof_and_claimed_v);
+
+
 
 
 
@@ -482,7 +485,7 @@ where
     )
 }
 
-fn run_verify_no_circuit<C: Config, I, CircuitDefaultType>()
+fn run_verify_no_circuit<C: Config, I, CircuitDefaultType>(name: &str)
 where
     I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
@@ -497,7 +500,7 @@ where
         mpi_config::MPIConfig::new(),
     );
 
-    let file = std::fs::File::open(format!("trivial_circuit.txt")).unwrap();
+    let file = std::fs::File::open(format!("{}_circuit.txt", name)).unwrap();
     let reader = std::io::BufReader::new(file);
     let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
 
@@ -505,7 +508,7 @@ where
         .export_to_expander::<<C>::DefaultGKRFieldConfig>()
         .flatten::<C::DefaultGKRConfig>();
 
-    let file = std::fs::File::open(format!("trivial_witness.txt")).unwrap();
+    let file = std::fs::File::open(format!("{}_witness.txt", name)).unwrap();
     let reader = std::io::BufReader::new(file);
     let witness = Witness::<C>::deserialize_from(reader).unwrap();
     // let witness =
@@ -514,7 +517,7 @@ where
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
 
-    let file = std::fs::File::open(format!("trivial_proof.txt")).unwrap();
+    let file = std::fs::File::open(format!("{}_proof.txt", name)).unwrap();
     let reader = std::io::BufReader::new(file);
     let proof_and_claimed_v: Vec<u8> = from_reader(reader).unwrap();
 
@@ -605,12 +608,12 @@ where
     } = compile_result;
 
     let assignment = CircuitDefaultType::default();
-    let _input_reader = FileReader {
-        path: input_path.clone(),
-    };
-    let _output_reader = FileReader {
-        path: output_path.clone(),
-    };
+    // let _input_reader = FileReader {
+    //     path: input_path.clone(),
+    // };
+    // let _output_reader = FileReader {
+    //     path: output_path.clone(),
+    // };
     let assignment = io_reader.read_inputs(input_path, assignment);
     let assignment = io_reader.read_outputs(output_path, assignment);
 
@@ -693,14 +696,19 @@ where
     + std::clone::Clone,
 {
 
-    run_compile_and_serialize::<BN254Config, CircuitType>();
+    run_compile_and_serialize::<BN254Config, CircuitType>(file_reader.get_path());
+    let split_whole_proof = true;
 
+    if split_whole_proof{
+        run_witness_and_proof::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
+        run_verify::<BN254Config, Filereader, CircuitDefaultType>(file_reader.get_path());
+        run_verify_no_circuit::<BN254Config, Filereader, CircuitDefaultType>(file_reader.get_path());
+    }
+    else{
+        run_rest::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
+    }
 
-    run_rest::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
-
-    run_witness_and_proof::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
-    run_verify::<BN254Config, Filereader, CircuitDefaultType>();
-    run_verify_no_circuit::<BN254Config, Filereader, CircuitDefaultType>();
+    
 }
 
 
