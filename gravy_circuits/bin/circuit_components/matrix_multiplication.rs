@@ -180,7 +180,7 @@ impl<C: Config> IOReader<MatMultCircuit<C::CircuitField>, C> for FileReader {
 
 fn main() {
     let mut file_reader = FileReader {
-        path: "simple_circuit".to_owned(),
+        path: "matrix_multiplication".to_owned(),
     };
     // run_gf2();
     // run_m31();

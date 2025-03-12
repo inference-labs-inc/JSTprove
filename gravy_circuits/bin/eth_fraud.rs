@@ -222,7 +222,7 @@ impl<C: Config> IOReader<ConvCircuit<C::CircuitField>, C> for FileReader {
 
 fn main() {
     let mut file_reader = FileReader {
-        path: String::new(),
+        path: "eth_fraud".to_owned(),
     };
     main_runner::run_bn254::<ConvCircuit<Variable>,
                             ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,

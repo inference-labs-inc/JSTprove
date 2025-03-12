@@ -75,6 +75,8 @@ class MatrixHadamardProduct():
 
         ## Run the circuit
         prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file)
+
+        
 class QuantizedMatrixHadamard(MatrixHadamardProduct):
     #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
     def __init__(self):
