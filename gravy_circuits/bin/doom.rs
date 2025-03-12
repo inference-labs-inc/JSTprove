@@ -1,38 +1,23 @@
 use arith::FieldForECC;
-use convolution_fn::conv_4d_run;
+use gravy_circuits::circuit_functions::convolution_fn::conv_4d_run;
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use helper_fn::{four_d_array_to_vec, load_circuit_constant, read_2d_weights, read_4d_weights};
-use io_reader::{FileReader, IOReader};
+use gravy_circuits::circuit_functions::helper_fn::{four_d_array_to_vec, load_circuit_constant, read_2d_weights, read_4d_weights};
+use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use lazy_static::lazy_static;
-use matrix_computation::matrix_addition_vec;
 #[allow(unused_imports)]
-use matrix_computation::{
+use gravy_circuits::circuit_functions::matrix_computation::{
     matrix_multplication, matrix_multplication_array, matrix_multplication_naive,
     matrix_multplication_naive2, matrix_multplication_naive2_array, matrix_multplication_naive3,
-    matrix_multplication_naive3_array, two_d_array_to_vec,
+    matrix_multplication_naive3_array, two_d_array_to_vec, matrix_addition_vec
 };
-use quantization::run_if_quantized_2d;
+use gravy_circuits::circuit_functions::quantization::run_if_quantized_2d;
 // use relu::{relu_2d_vec_v2, relu_4d_vec_v2};
 use serde::Deserialize;
 use std::ops::Neg;
 
-#[path = "../src/convolution_fn.rs"]
-pub mod convolution_fn;
-#[path = "../src/matrix_computation.rs"]
-pub mod matrix_computation;
-#[path = "../src/relu.rs"]
-pub mod relu;
+use gravy_circuits::runner::main_runner;
 
-#[path = "../src/quantization.rs"]
-pub mod quantization;
-
-#[path = "../src/helper_fn.rs"]
-pub mod helper_fn;
-#[path = "../src/io_reader.rs"]
-pub mod io_reader;
-#[path = "../src/main_runner.rs"]
-pub mod main_runner;
 
 /*
 Part 2 (memorization), Step 1: vanilla matrix multiplication of two matrices of compatible dimensions.
@@ -218,13 +203,13 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
 }
 
 
-impl<C: Config> IOReader<C, ConvCircuit<C::CircuitField>> for FileReader {
+impl<C: Config> IOReader<ConvCircuit<C::CircuitField>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
         mut assignment: ConvCircuit<C::CircuitField>,
     ) -> ConvCircuit<C::CircuitField> {
-        let data: InputData = <FileReader as IOReader<C, ConvCircuit<_>>>::read_data_from_json::<
+        let data: InputData = <FileReader as IOReader<ConvCircuit<_>, C>>::read_data_from_json::<
             InputData,
         >(file_path);
 
@@ -252,7 +237,7 @@ impl<C: Config> IOReader<C, ConvCircuit<C::CircuitField>> for FileReader {
         file_path: &str,
         mut assignment: ConvCircuit<C::CircuitField>,
     ) -> ConvCircuit<C::CircuitField> {
-        let data: OutputData = <FileReader as IOReader<C, ConvCircuit<_>>>::read_data_from_json::<
+        let data: OutputData = <FileReader as IOReader<ConvCircuit<_>, C>>::read_data_from_json::<
             OutputData,
         >(file_path);
 

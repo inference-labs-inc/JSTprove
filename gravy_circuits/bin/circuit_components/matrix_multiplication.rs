@@ -3,31 +3,24 @@ use std::ops::Neg;
 use circuit_std_rs::logup::LogUpRangeProofTable;
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use io_reader::{FileReader, IOReader};
+use gravy_circuits::io::io_reader::{FileReader, IOReader};
+// #[allow(unused_imports)]
+// use matrix_computation::matrix_multiplication_std;
 #[allow(unused_imports)]
-use matrix_computation::matrix_multiplication_std;
-#[allow(unused_imports)]
-use matrix_computation::{
+use gravy_circuits::circuit_functions::matrix_computation::{
     matrix_multplication, matrix_multplication_array, matrix_multplication_naive,
     matrix_multplication_naive2, matrix_multplication_naive2_array, matrix_multplication_naive3,
-    matrix_multplication_naive3_array, two_d_array_to_vec,
+    matrix_multplication_naive3_array, two_d_array_to_vec, matrix_multiplication_std
 };
+
 #[warn(unused_imports)]
-use quantization::quantize_matrix;
+use gravy_circuits::circuit_functions::quantization::quantize_matrix;
+use gravy_circuits::runner::main_runner;
 use serde::Deserialize;
 // use std::ops::Neg;
 use arith::FieldForECC;
 use lazy_static::lazy_static;
 
-#[path = "../../src/matrix_computation.rs"]
-pub mod matrix_computation;
-
-#[path = "../../src/io_reader.rs"]
-pub mod io_reader;
-#[path = "../../src/main_runner.rs"]
-pub mod main_runner;
-#[path = "../../src/quantization.rs"]
-pub mod quantization;
 
 /*
 Part 2 (memorization), Step 1: vanilla matrix multiplication of two matrices of compatible dimensions.
@@ -136,13 +129,13 @@ impl<C: Config> Define<C> for MatMultCircuit<Variable> {
     }
 }
 
-impl<C: Config> IOReader<C, MatMultCircuit<C::CircuitField>> for FileReader {
+impl<C: Config> IOReader<MatMultCircuit<C::CircuitField>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
         mut assignment: MatMultCircuit<C::CircuitField>,
     ) -> MatMultCircuit<C::CircuitField> {
-        let data: InputData = <FileReader as IOReader<C, MatMultCircuit<_>>>::read_data_from_json::<
+        let data: InputData = <FileReader as IOReader<MatMultCircuit<_>, C>>::read_data_from_json::<
             InputData,
         >(file_path);
 
@@ -164,7 +157,7 @@ impl<C: Config> IOReader<C, MatMultCircuit<C::CircuitField>> for FileReader {
         file_path: &str,
         mut assignment: MatMultCircuit<C::CircuitField>,
     ) -> MatMultCircuit<C::CircuitField> {
-        let data: OutputData = <FileReader as IOReader<C, MatMultCircuit<_>>>::read_data_from_json::<
+        let data: OutputData = <FileReader as IOReader<MatMultCircuit<_>, C>>::read_data_from_json::<
             OutputData,
         >(file_path);
 

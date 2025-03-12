@@ -1,17 +1,11 @@
 use expander_compiler::frontend::*;
-use io_reader::{FileReader, IOReader};
+use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use serde::Deserialize;
 use ethnum::U256;
 // use std::ops::Neg;
 // use arith::FieldForECC;
-
-#[path = "../../src/matrix_computation.rs"]
-pub mod matrix_computation;
-
-#[path = "../../src/io_reader.rs"]
-pub mod io_reader;
-#[path = "../../src/main_runner.rs"]
-pub mod main_runner;
+use gravy_circuits::circuit_functions::matrix_computation::{matrix_addition, matrix_hadamard_product};
+use gravy_circuits::runner::main_runner;
 
 
 /* 
@@ -34,7 +28,7 @@ declare_circuit!(MatAddCircuit {
 
 impl<C: Config> Define<C> for MatAddCircuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {  
-        let matrix_sum = matrix_computation::matrix_addition(api, self.matrix_a, self.matrix_b);
+        let matrix_sum = matrix_addition(api, self.matrix_a, self.matrix_b);
         for i in 0..N_ROWS_A {
             for j in 0..N_COLS_A {
                 api.assert_is_equal(self.matrix_sum_ab[i][j], matrix_sum[i][j]); 
@@ -50,7 +44,7 @@ declare_circuit!(TestCircuit {
 
 impl<C: Config> Define<C> for TestCircuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {  
-        let matrix_sum = matrix_computation::matrix_hadamard_product(api, self.matrix_a, self.matrix_b);
+        let matrix_sum = matrix_hadamard_product(api, self.matrix_a, self.matrix_b);
         for i in 0..N_ROWS_A {
             for j in 0..N_COLS_A {
                 api.assert_is_equal(self.matrix_sum_ab[i][j], matrix_sum[i][j]); 
@@ -78,11 +72,11 @@ struct InputData {
 struct OutputData {
     matrix_sum_ab: Vec<Vec<u64>>, //  Shape (m, n) 
 }
-impl<C: Config>IOReader<C, TestCircuit<C::CircuitField>> for FileReader
+impl<C: Config>IOReader<TestCircuit<C::CircuitField>, C> for FileReader
 {
     fn read_inputs(&mut self, file_path: &str, mut assignment: TestCircuit<C::CircuitField>) -> TestCircuit<C::CircuitField>
     {
-        let data: InputData = <FileReader as IOReader<C, TestCircuit<_>>>::read_data_from_json::<InputData>(file_path); 
+        let data: InputData = <FileReader as IOReader<TestCircuit<_>, C>>::read_data_from_json::<InputData>(file_path); 
 
 
         // Assign inputs to assignment
@@ -113,7 +107,7 @@ impl<C: Config>IOReader<C, TestCircuit<C::CircuitField>> for FileReader
     fn read_outputs(&mut self, file_path: &str, mut assignment: TestCircuit<C::CircuitField>) -> TestCircuit<C::CircuitField>
     {
 
-        let data: OutputData = <FileReader as IOReader<C, TestCircuit<_>>>::read_data_from_json::<OutputData>(file_path); 
+        let data: OutputData = <FileReader as IOReader<TestCircuit<_>, C>>::read_data_from_json::<OutputData>(file_path); 
 
         // Assign inputs to assignment
         let rows_ab = data.matrix_sum_ab.len();  

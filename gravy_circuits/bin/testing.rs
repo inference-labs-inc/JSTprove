@@ -1,13 +1,10 @@
+use gravy_circuits::{io::io_reader, runner::main_runner};
 use ethnum::U256;
 use expander_compiler::frontend::*;
 use io_reader::{FileReader, IOReader};
 use serde::Deserialize;
 // use std::ops::Neg;
 use arith::FieldForECC;
-#[path = "../src/io_reader.rs"]
-pub mod io_reader;
-#[path = "../src/main_runner.rs"]
-pub mod main_runner;
 // :)
 
 const LENGTH: usize = 10000;

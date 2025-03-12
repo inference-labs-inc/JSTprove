@@ -1,5 +1,5 @@
 [package]
-name = "circuits"
+name = "gravy_circuits"
 version = "0.1.0"
 edition = "2021"
 
@@ -37,9 +37,9 @@ features = [ "derive",]
 
 
 
-[[bin]]
-name = "testing"
-path = "bin/testing.rs"
+# [[bin]]
+# name = "testing"
+# path = "bin/testing.rs"
 
 [[bin]]
 name = "relu_twos_comp"

@@ -1,8 +1,6 @@
 use circuit_std_rs::logup::LogUpRangeProofTable;
 use expander_compiler::frontend::*;
-use relu::{from_binary, to_binary};
-
-pub mod relu;
+use crate::circuit_functions::relu::{from_binary, to_binary};
 
 // Version 1
 fn quantize<C: Config, Builder: RootAPI<C>>(

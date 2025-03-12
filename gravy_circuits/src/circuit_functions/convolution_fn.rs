@@ -1,7 +1,7 @@
 use std::cmp::{max, min};
 
-use crate::matrix_computation::dot;
-use crate::quantization::run_if_quantized_4d;
+use crate::circuit_functions::matrix_computation::dot;
+use crate::circuit_functions::quantization::run_if_quantized_4d;
 use expander_compiler::frontend::*;
 
 //Untested

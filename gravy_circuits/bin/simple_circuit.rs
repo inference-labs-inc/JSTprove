@@ -1,12 +1,7 @@
 use expander_compiler::frontend::*;
-use io_reader::{FileReader, IOReader};
+use gravy_circuits::runner::main_runner;
+use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use serde::Deserialize;
-// use std::ops::Neg;
-
-#[path = "../src/io_reader.rs"]
-pub mod io_reader;
-#[path = "../src/main_runner.rs"]
-pub mod main_runner;
 
 
 declare_circuit!(Circuit {
@@ -36,14 +31,14 @@ struct OutputData {
     output: u32,
 }
 
-impl<C: Config> IOReader<C, Circuit<C::CircuitField>> for FileReader {
+impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
         mut assignment: Circuit<C::CircuitField>,
     ) -> Circuit<C::CircuitField> {
         let data: InputData =
-            <FileReader as IOReader<C, Circuit<_>>>::read_data_from_json::<InputData>(file_path);
+            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<InputData>(file_path);
 
         // Assign inputs to assignment
        assignment.input_a = C::CircuitField::from(data.input_a);
@@ -58,7 +53,7 @@ impl<C: Config> IOReader<C, Circuit<C::CircuitField>> for FileReader {
         mut assignment: Circuit<C::CircuitField>,
     ) -> Circuit<C::CircuitField> {
         let data: OutputData =
-            <FileReader as IOReader<C, Circuit<_>>>::read_data_from_json::<OutputData>(file_path);
+            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<OutputData>(file_path);
 
         // Assign inputs to assignment
         assignment.output = C::CircuitField::from(data.output);
@@ -72,6 +67,7 @@ impl<C: Config> IOReader<C, Circuit<C::CircuitField>> for FileReader {
         #####################################  Shouldn't need to change  ######################################
         #######################################################################################################
 */
+
 
 fn main() {
     let mut file_reader = FileReader {

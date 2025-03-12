@@ -1,27 +1,15 @@
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use helper_fn::read_2d_weights;
-use io_reader::{FileReader, IOReader};
-use matrix_computation::{gemm_vec, two_d_array_to_vec};
-use quantization::quantize_matrix;
+use gravy_circuits::circuit_functions::helper_fn::read_2d_weights;
+use gravy_circuits::io::io_reader::{FileReader, IOReader};
+use gravy_circuits::circuit_functions::matrix_computation::{gemm_vec, two_d_array_to_vec};
+use gravy_circuits::circuit_functions::quantization::quantize_matrix;
 use serde::Deserialize;
 // use std::ops::Neg;
 use arith::FieldForECC;
 use lazy_static::lazy_static;
+use gravy_circuits::runner::main_runner;
 
-
-#[path = "../../src/matrix_computation.rs"]
-pub mod matrix_computation;
-#[path = "../../src/quantization.rs"]
-pub mod quantization;
-
-#[path = "../../src/helper_fn.rs"]
-pub mod helper_fn;
-
-#[path = "../../src/io_reader.rs"]
-pub mod io_reader;
-#[path = "../../src/main_runner.rs"]
-pub mod main_runner;
 
 /*
 Step 4: general matrix multiplication---scalar times matrix product of two matrices of compatible dimensions, plus scalar times third matrix of campatible dimensions.
@@ -112,14 +100,14 @@ impl<C: Config> Define<C> for Circuit<Variable> {
 
 
 
-impl<C: Config> IOReader<C, Circuit<C::CircuitField>> for FileReader {
+impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
         mut assignment: Circuit<C::CircuitField>,
     ) -> Circuit<C::CircuitField> {
         let data: InputData =
-            <FileReader as IOReader<C, Circuit<_>>>::read_data_from_json::<InputData>(file_path);
+            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<InputData>(file_path);
 
         let rows_a = data.input.len();
         let cols_a = if rows_a > 0 {
@@ -143,7 +131,7 @@ impl<C: Config> IOReader<C, Circuit<C::CircuitField>> for FileReader {
         mut assignment: Circuit<C::CircuitField>,
     ) -> Circuit<C::CircuitField> {
         let data: OutputData =
-            <FileReader as IOReader<C, Circuit<_>>>::read_data_from_json::<OutputData>(file_path);
+            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<OutputData>(file_path);
         // Assign inputs to assignment
         let rows_abc = data.output.len();
         let cols_abc = if rows_abc > 0 { data.output[0].len() } else { 0 };

@@ -1,18 +1,13 @@
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use io_reader::{FileReader, IOReader};
-use matrix_computation::matrix_hadamard_product;
+use gravy_circuits::io::io_reader::{FileReader, IOReader};
+use gravy_circuits::circuit_functions::matrix_computation::matrix_hadamard_product;
 use serde::Deserialize;
 // use std::ops::Neg;
 use arith::FieldForECC;
 
-#[path = "../../src/matrix_computation.rs"]
-pub mod matrix_computation;
+use gravy_circuits::runner::main_runner;
 
-#[path = "../../src/io_reader.rs"]
-pub mod io_reader;
-#[path = "../../src/main_runner.rs"]
-pub mod main_runner;
 
 /*
 Step 1: hadamard product of two matrices of compatible dimensions.
@@ -52,14 +47,14 @@ struct InputData {
 struct OutputData {
     matrix_hadamard_ab: Vec<Vec<u64>>, //  Shape (m, n)
 }
-impl<C: Config> IOReader<C, MatHadamardCircuit<C::CircuitField>> for FileReader {
+impl<C: Config> IOReader<MatHadamardCircuit<C::CircuitField>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
         mut assignment: MatHadamardCircuit<C::CircuitField>,
     ) -> MatHadamardCircuit<C::CircuitField> {
         let data: InputData =
-            <FileReader as IOReader<C, MatHadamardCircuit<_>>>::read_data_from_json::<InputData>(
+            <FileReader as IOReader<MatHadamardCircuit<_>, C>>::read_data_from_json::<InputData>(
                 file_path,
             );
 
@@ -102,7 +97,7 @@ impl<C: Config> IOReader<C, MatHadamardCircuit<C::CircuitField>> for FileReader 
         mut assignment: MatHadamardCircuit<C::CircuitField>,
     ) -> MatHadamardCircuit<C::CircuitField> {
         let data: OutputData =
-            <FileReader as IOReader<C, MatHadamardCircuit<_>>>::read_data_from_json::<OutputData>(
+            <FileReader as IOReader<MatHadamardCircuit<_>, C>>::read_data_from_json::<OutputData>(
                 file_path,
             );
 

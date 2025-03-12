@@ -536,37 +536,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "circuits"
-version = "0.1.0"
-dependencies = [
- "arith",
- "ark-std 0.4.0",
- "chrono",
- "circuit",
- "circuit-std-rs",
- "clap",
- "config",
- "crosslayer_prototype",
- "ethnum",
- "expander_compiler",
- "gf2",
- "gkr",
- "gkr_field_config",
- "halo2curves",
- "lazy_static",
- "mersenne31",
- "mpi_config",
- "peakmem-alloc",
- "rand",
- "rayon",
- "serde",
- "serde_json",
- "sha2",
- "tiny-keccak",
- "transcript",
-]
-
-[[package]]
 name = "clang-sys"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1127,6 +1096,37 @@ name = "glob"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8d1add55171497b4705a648c6b583acafb01d58050a51727785f0b2c8e0a2b2"
+
+[[package]]
+name = "gravy_circuits"
+version = "0.1.0"
+dependencies = [
+ "arith",
+ "ark-std 0.4.0",
+ "chrono",
+ "circuit",
+ "circuit-std-rs",
+ "clap",
+ "config",
+ "crosslayer_prototype",
+ "ethnum",
+ "expander_compiler",
+ "gf2",
+ "gkr",
+ "gkr_field_config",
+ "halo2curves",
+ "lazy_static",
+ "mersenne31",
+ "mpi_config",
+ "peakmem-alloc",
+ "rand",
+ "rayon",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tiny-keccak",
+ "transcript",
+]
 
 [[package]]
 name = "group"

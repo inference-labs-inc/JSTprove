@@ -1,17 +1,14 @@
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use io_reader::{FileReader, IOReader};
+use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use serde::Deserialize;
 // use std::ops::Neg;
 use arith::FieldForECC;
 
-#[path = "../../src/relu.rs"]
-pub mod relu;
+// use gravy_circuits::circuit_functions::relu;
 
-#[path = "../../src/io_reader.rs"]
-pub mod io_reader;
-#[path = "../../src/main_runner.rs"]
-pub mod main_runner;
+use gravy_circuits::runner::main_runner;
+
 
 const LENGTH: usize = 256;
 
@@ -68,13 +65,13 @@ struct OutputData {
     output: Vec<u64>,
 }
 
-impl<C: Config> IOReader<C, ReLUDualCircuit<C::CircuitField>> for FileReader {
+impl<C: Config> IOReader<ReLUDualCircuit<C::CircuitField>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
         mut assignment: ReLUDualCircuit<C::CircuitField>,
     ) -> ReLUDualCircuit<C::CircuitField> {
-        let data: InputData = <FileReader as IOReader<C, ReLUDualCircuit<_>>>::read_data_from_json::<
+        let data: InputData = <FileReader as IOReader<ReLUDualCircuit<_>, C>>::read_data_from_json::<
             InputData,
         >(file_path);
 
@@ -95,7 +92,7 @@ impl<C: Config> IOReader<C, ReLUDualCircuit<C::CircuitField>> for FileReader {
         file_path: &str,
         mut assignment: ReLUDualCircuit<C::CircuitField>,
     ) -> ReLUDualCircuit<C::CircuitField> {
-        let data: OutputData = <FileReader as IOReader<C, ReLUDualCircuit<_>>>::read_data_from_json::<
+        let data: OutputData = <FileReader as IOReader<ReLUDualCircuit<_>, C>>::read_data_from_json::<
             OutputData,
         >(file_path);
 

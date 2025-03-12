@@ -1,18 +1,12 @@
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use io_reader::{FileReader, IOReader};
-use matrix_computation::scaled_matrix_product;
+use gravy_circuits::io::io_reader::{FileReader, IOReader};
+use gravy_circuits::circuit_functions::matrix_computation::scaled_matrix_product;
 use serde::Deserialize;
 // use std::ops::Neg;
 use arith::FieldForECC;
 
-#[path = "../../src/matrix_computation.rs"]
-pub mod matrix_computation;
-
-#[path = "../../src/io_reader.rs"]
-pub mod io_reader;
-#[path = "../../src/main_runner.rs"]
-pub mod main_runner;
+use gravy_circuits::runner::main_runner;
 
 /*
 Step 2: scalar times matrix product of two matrices of compatible dimensions.
@@ -63,14 +57,14 @@ struct OutputData {
     scaled_matrix_product_alpha_ab: Vec<Vec<u64>>,
 }
 
-impl<C: Config> IOReader<C, Circuit<C::CircuitField>> for FileReader {
+impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
         mut assignment: Circuit<C::CircuitField>,
     ) -> Circuit<C::CircuitField> {
         let data: InputData =
-            <FileReader as IOReader<C, Circuit<_>>>::read_data_from_json::<InputData>(file_path);
+            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<InputData>(file_path);
 
         // Assign inputs to assignment
         assignment.alpha = C::CircuitField::from_u256(U256::from(data.alpha));
@@ -112,7 +106,7 @@ impl<C: Config> IOReader<C, Circuit<C::CircuitField>> for FileReader {
         mut assignment: Circuit<C::CircuitField>,
     ) -> Circuit<C::CircuitField> {
         let data: OutputData =
-            <FileReader as IOReader<C, Circuit<_>>>::read_data_from_json::<OutputData>(file_path);
+            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<OutputData>(file_path);
 
         // Assign inputs to assignment
         let rows_ab = data.scaled_matrix_product_alpha_ab.len();

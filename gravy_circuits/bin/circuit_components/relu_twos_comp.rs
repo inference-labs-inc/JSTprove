@@ -1,17 +1,12 @@
 use arith::FieldForECC;
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use io_reader::{FileReader, IOReader};
+use gravy_circuits::io::io_reader::{FileReader, IOReader};
+use gravy_circuits::runner::main_runner;
 use serde::Deserialize;
 use std::ops::Neg;
+use gravy_circuits::circuit_functions::relu;
 
-#[path = "../../src/relu.rs"]
-pub mod relu;
-
-#[path = "../../src/io_reader.rs"]
-pub mod io_reader;
-#[path = "../../src/main_runner.rs"]
-pub mod main_runner;
 
 /*
        ########################################################################################################
@@ -67,13 +62,13 @@ struct InputData {
         ###################  This is where we define the inputs and outputs of the function  ###################
         ########################################################################################################
 */
-impl<C: Config> IOReader<C, ReLUTwosCircuit<C::CircuitField>> for FileReader {
+impl<C: Config> IOReader<ReLUTwosCircuit<C::CircuitField>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
         mut assignment: ReLUTwosCircuit<C::CircuitField>,
     ) -> ReLUTwosCircuit<C::CircuitField> {
-        let data: InputData = <FileReader as IOReader<C, ReLUTwosCircuit<_>>>::read_data_from_json::<
+        let data: InputData = <FileReader as IOReader<ReLUTwosCircuit<_>, C>>::read_data_from_json::<
             InputData,
         >(file_path);
 
@@ -95,7 +90,7 @@ impl<C: Config> IOReader<C, ReLUTwosCircuit<C::CircuitField>> for FileReader {
         file_path: &str,
         mut assignment: ReLUTwosCircuit<C::CircuitField>,
     ) -> ReLUTwosCircuit<C::CircuitField> {
-        let data: OutputData = <FileReader as IOReader<C, ReLUTwosCircuit<_>>>::read_data_from_json::<
+        let data: OutputData = <FileReader as IOReader<ReLUTwosCircuit<_>, C>>::read_data_from_json::<
             OutputData,
         >(file_path);
 

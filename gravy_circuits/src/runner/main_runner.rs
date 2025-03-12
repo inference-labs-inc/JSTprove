@@ -1,4 +1,4 @@
-use crate::io_reader::{FileReader, IOReader};
+use io_reader::{FileReader, IOReader};
 use clap::{Arg, Command};
 use expander_compiler::circuit::layered::witness::Witness;
 use expander_compiler::circuit::layered::{Circuit, NormalInputType};
@@ -10,12 +10,17 @@ use serde_json::{from_reader, to_writer};
 use std::alloc::System;
 use std::time::Instant;
 
+use crate::io::io_reader;
+
+// use crate::io::io_reader;
+
+
 #[global_allocator]
 static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
 
 fn run_main<C: Config, I, CircuitType, CircuitDefaultType>(io_reader: &mut I)
 where
-    I: IOReader<C, CircuitDefaultType>, // `CircuitType` should be the same type used in the `IOReader` impl
+    I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone,
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
@@ -190,7 +195,7 @@ where
 
 fn run_rest<C: Config, I, CircuitDefaultType>(io_reader: &mut I)
 where
-    I: IOReader<C, CircuitDefaultType>, // `CircuitType` should be the same type used in the `IOReader` impl
+    I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
         + Clone,
@@ -305,7 +310,7 @@ where
 
 fn run_witness_and_proof<C: Config, I, CircuitDefaultType>(io_reader: &mut I)
 where
-    I: IOReader<C, CircuitDefaultType>, // `CircuitType` should be the same type used in the `IOReader` impl
+    I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
         + Clone,
@@ -411,7 +416,7 @@ where
 
 fn run_verify<C: Config, I, CircuitDefaultType>()
 where
-    I: IOReader<C, CircuitDefaultType>, // `CircuitType` should be the same type used in the `IOReader` impl
+    I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
         + Clone,
@@ -479,7 +484,7 @@ where
 
 fn run_verify_no_circuit<C: Config, I, CircuitDefaultType>()
 where
-    I: IOReader<C, CircuitDefaultType>, // `CircuitType` should be the same type used in the `IOReader` impl
+    I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
         + Clone,
@@ -549,7 +554,7 @@ where
 
 fn run_debug<C: Config, I, CircuitType, CircuitDefaultType>(io_reader: &mut I)
 where
-    I: IOReader<C, CircuitDefaultType>, // `CircuitType` should be the same type used in the `IOReader` impl
+    I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitType: Default
         + DumpLoadTwoVariables<Variable>
         // + expander_compiler::frontend::Define<C>
@@ -619,7 +624,7 @@ where
 
 
 
-pub fn run_gf2<CircuitType, CircuitDefaultType, Filereader: IOReader<expander_compiler::frontend::GF2Config, CircuitDefaultType>>(file_reader: &mut Filereader)
+pub fn run_gf2<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::GF2Config>>(file_reader: &mut Filereader)
 where
     CircuitDefaultType: std::default::Default
     + DumpLoadTwoVariables<<expander_compiler::frontend::GF2Config as expander_compiler::frontend::Config>::CircuitField>
@@ -634,7 +639,7 @@ where
 
 }
 
-pub fn run_m31<CircuitType, CircuitDefaultType, Filereader: IOReader<expander_compiler::frontend::M31Config, CircuitDefaultType>>(file_reader: &mut Filereader)
+pub fn run_m31<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::M31Config>>(file_reader: &mut Filereader)
 where
     CircuitDefaultType: std::default::Default
     + DumpLoadTwoVariables<<expander_compiler::frontend::M31Config as expander_compiler::frontend::Config>::CircuitField>
@@ -649,7 +654,7 @@ where
 
 }
 
-pub fn run_bn254<CircuitType, CircuitDefaultType, Filereader: IOReader<expander_compiler::frontend::BN254Config, CircuitDefaultType>>(file_reader: &mut Filereader)
+pub fn run_bn254<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut Filereader)
 where
     CircuitDefaultType: std::default::Default
     + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>
@@ -675,7 +680,7 @@ where
     // run_verify::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
 }
 
-pub fn run_bn254_seperate<CircuitType, CircuitDefaultType, Filereader: IOReader<expander_compiler::frontend::BN254Config, CircuitDefaultType>>(file_reader: &mut Filereader)
+pub fn run_bn254_seperate<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut Filereader)
 where
     CircuitDefaultType: std::default::Default
     + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>
@@ -699,7 +704,7 @@ where
 }
 
 
-pub fn debug_bn254<CircuitType, CircuitDefaultType, Filereader: IOReader<expander_compiler::frontend::BN254Config, CircuitDefaultType>>(file_reader: &mut Filereader)
+pub fn debug_bn254<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut Filereader)
 where
     CircuitDefaultType: std::default::Default
     + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>

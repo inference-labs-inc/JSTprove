@@ -3,7 +3,7 @@ use expander_compiler::frontend::Config;
 use serde::de::DeserializeOwned;
 use std::io::Read;
 
-pub trait IOReader<C: Config, CircuitType>
+pub trait IOReader<CircuitType,C: Config>
 where
     CircuitType: Default
         +
