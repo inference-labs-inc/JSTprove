@@ -311,8 +311,7 @@ where
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
         + Clone,
 {
-    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    let start = Instant::now();
+    
     let matches = Command::new("File Copier")
         .version("1.0")
         .about("Copies content from input file to output file")
@@ -333,11 +332,8 @@ where
     let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
     let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
 
-    // let CompileResult {
-    //     witness_solver,
-    //     layered_circuit,
-    // } = compile_result;
-
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now();
     let file = std::fs::File::open(format!("{}_witness_solver.txt", io_reader.get_path())).unwrap();
     let reader = std::io::BufReader::new(file);
     let witness_solver = WitnessSolver::<C>::deserialize_from(reader).unwrap();
@@ -348,18 +344,29 @@ where
     let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
 
     let assignment = CircuitDefaultType::default();
-    // let _input_reader = FileReader {
-    //     path: input_path.clone(),
-    // };
-    // let _output_reader = FileReader {
-    //     path: output_path.clone(),
-    // };
+
     let assignment = io_reader.read_inputs(input_path, assignment);
     let assignment = io_reader.read_outputs(output_path, assignment);
 
     let assignments = vec![assignment; 1];
     let witness = witness_solver.solve_witnesses(&assignments).unwrap();
 
+    println!("Witness Generated");
+
+    // println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
+    println!(
+        "Peak Memory used Overall : {:.2}",
+        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+    );
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed: {}.{} seconds",
+        duration.as_secs(),
+        duration.subsec_millis()
+    );
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now();
+    
     let file = std::fs::File::create(format!("{}_witness.txt", io_reader.get_path())).unwrap();
     let writer = std::io::BufWriter::new(file);
     witness.serialize_into(writer).unwrap();
@@ -701,14 +708,12 @@ where
 
     if split_whole_proof{
         run_witness_and_proof::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
-        run_verify::<BN254Config, Filereader, CircuitDefaultType>(file_reader.get_path());
         run_verify_no_circuit::<BN254Config, Filereader, CircuitDefaultType>(file_reader.get_path());
     }
     else{
         run_rest::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
+        run_verify::<BN254Config, Filereader, CircuitDefaultType>(file_reader.get_path());
     }
-
-    
 }
 
 

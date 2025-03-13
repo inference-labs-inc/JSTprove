@@ -4,7 +4,8 @@ use crate::circuit_functions::matrix_computation::dot;
 use crate::circuit_functions::quantization::run_if_quantized_4d;
 use expander_compiler::frontend::*;
 
-//Untested
+/// Untested
+/// Set default parameters if not set
 pub fn set_default_params(
     dilations: &Vec<u32>,
     kernel_shape: &Vec<u32>,
@@ -40,6 +41,7 @@ pub fn set_default_params(
     (dilations_out, kernel_shape_out, pads_out, strides_out)
 }
 
+/// Check if any parameters are not suitable
 pub fn not_yet_implemented_conv(input_shape: &Vec<u32>, group: &Vec<u32>, dilations: &Vec<u32>) {
     if input_shape[1] != input_shape[1] * group[0] || input_shape[0] % group[0] != 0 {
         panic!("Shape inconsistencies");
@@ -58,6 +60,7 @@ pub fn not_yet_implemented_conv(input_shape: &Vec<u32>, group: &Vec<u32>, dilati
     }
 }
 
+/// Setup the initial array for convolution. Incorporates bias
 fn conv_shape_4_setup_res<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input_shape: &Vec<u32>,
@@ -100,6 +103,7 @@ fn conv_shape_4_setup_res<C: Config, Builder: RootAPI<C>>(
     res
 }
 
+/// Check if two 4 have matching shape
 fn have_matching_shapes(
     x: &Vec<Vec<Vec<Vec<Variable>>>>,
     y: &Vec<Vec<Vec<Vec<Variable>>>>,
@@ -134,6 +138,7 @@ fn have_matching_shapes(
     true
 }
 
+/// Perform convolution layer on shape 4 computation
 pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input_arr: Vec<Vec<Vec<Vec<Variable>>>>,
@@ -286,6 +291,7 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
     res
 }
 
+/// Flatten vector and perform dot product
 fn flatten_and_perform_dot<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     img: Vec<Vec<Vec<Vec<Variable>>>>,
@@ -312,6 +318,7 @@ fn flatten_and_perform_dot<C: Config, Builder: RootAPI<C>>(
     s
 }
 
+/// Run of convolution
 pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input_arr: Vec<Vec<Vec<Vec<Variable>>>>,

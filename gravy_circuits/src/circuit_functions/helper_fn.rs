@@ -1,7 +1,7 @@
 use expander_compiler::frontend::*;
 use ethnum::U256;
 
-
+/// Load in circuit constant given i64, negative values are represented by p-x and positive values are x
 pub fn load_circuit_constant<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     x: i64,
@@ -15,7 +15,7 @@ pub fn load_circuit_constant<C: Config, Builder: RootAPI<C>>(
         api.constant(C::CircuitField::from_u256(U256::from(x.abs() as u64)))
     }
 }
-
+/// Convert 4d array to 4d vectors
 pub fn four_d_array_to_vec<const K: usize, const L: usize, const M: usize, const N: usize>(
     array: [[[[Variable; N]; M]; L]; K],
 ) -> Vec<Vec<Vec<Vec<Variable>>>> {
@@ -29,7 +29,7 @@ pub fn four_d_array_to_vec<const K: usize, const L: usize, const M: usize, const
         })
         .collect()
 }
-
+///Read 4d weights vectors of i64 into circuit constants
 pub fn read_4d_weights<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     weights_data: &Vec<Vec<Vec<Vec<i64>>>>,
@@ -54,6 +54,7 @@ pub fn read_4d_weights<C: Config, Builder: RootAPI<C>>(
     weights
 }
 
+/// Read 2d weights vectors of i64 into circuit constants
 pub fn read_2d_weights<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     weights_data: &Vec<Vec<i64>>,
@@ -68,4 +69,11 @@ pub fn read_2d_weights<C: Config, Builder: RootAPI<C>>(
                 })
                 .collect();
     weights
+}
+
+/// Convert 2d array to 2d vectors
+pub fn two_d_array_to_vec<const M: usize, const N: usize>(
+    matrix: [[Variable; N]; M],
+) -> Vec<Vec<Variable>> {
+    matrix.iter().map(|row| row.to_vec()).collect()
 }

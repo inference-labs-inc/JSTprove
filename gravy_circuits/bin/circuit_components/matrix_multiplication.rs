@@ -4,14 +4,13 @@ use circuit_std_rs::logup::LogUpRangeProofTable;
 use ethnum::U256;
 use expander_compiler::frontend::*;
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
-// #[allow(unused_imports)]
-// use matrix_computation::matrix_multiplication_std;
 #[allow(unused_imports)]
 use gravy_circuits::circuit_functions::matrix_computation::{
     matrix_multplication, matrix_multplication_array, matrix_multplication_naive,
     matrix_multplication_naive2, matrix_multplication_naive2_array, matrix_multplication_naive3,
-    matrix_multplication_naive3_array, two_d_array_to_vec, matrix_multiplication_std
+    matrix_multplication_naive3_array, matrix_multiplication_std
 };
+use gravy_circuits::circuit_functions::helper_fn::two_d_array_to_vec;
 
 #[warn(unused_imports)]
 use gravy_circuits::circuit_functions::quantization::quantize_matrix;

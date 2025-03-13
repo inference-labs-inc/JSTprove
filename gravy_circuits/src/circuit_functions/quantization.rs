@@ -1,8 +1,8 @@
+use crate::circuit_functions::relu::{from_binary, to_binary};
 use circuit_std_rs::logup::LogUpRangeProofTable;
 use expander_compiler::frontend::*;
-use crate::circuit_functions::relu::{from_binary, to_binary};
 
-// Version 1
+/// Quantize a single value using to_binary and from_binary method
 fn quantize<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input_value: Variable,
@@ -11,21 +11,21 @@ fn quantize<C: Config, Builder: RootAPI<C>>(
     v_plus_one: usize,
     two_v: u32,
     alpha_two_v: Variable,
-    is_relu: bool
+    is_relu: bool,
 ) -> Variable {
-    // let q = div_unconstrained(api, input_value, scaling_factor);
     return div_constrained(
         api,
         input_value,
         scaling_factor,
-        // q,
         scaling,
         v_plus_one,
         two_v,
         alpha_two_v,
-        is_relu
+        is_relu,
     );
 }
+
+/// Quantize a single value using lookup table
 fn quantize_lookup<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input_value: Variable,
@@ -35,23 +35,22 @@ fn quantize_lookup<C: Config, Builder: RootAPI<C>>(
     two_v: u32,
     alpha_two_v: Variable,
     is_relu: bool,
-    table: &mut LogUpRangeProofTable
+    table: &mut LogUpRangeProofTable,
 ) -> Variable {
-    // let q = div_unconstrained(api, input_value, scaling_factor);
     return div_constrained_lookup(
         api,
         input_value,
         scaling_factor,
-        // q,
         scaling,
         v_plus_one,
         two_v,
         alpha_two_v,
         is_relu,
-        table
+        table,
     );
 }
-
+/// Create constant from scaling factor, inside the the circuit 
+/// This typically should not be needed, I dont think this needs to be confirmed inside the circuit as it is a circuit parameter
 pub fn scaling_factor_to_constant<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     scaling_power: u32,
@@ -63,12 +62,18 @@ pub fn scaling_factor_to_constant<C: Config, Builder: RootAPI<C>>(
     out
 }
 
-fn constrain_size<C: Config, Builder: RootAPI<C>>(api: &mut Builder, scaling: usize, val: Variable) {
+///Constrain size of value to within 2**scaling, using the to and from binary method
+fn constrain_size<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    scaling: usize,
+    val: Variable,
+) {
     let bits = to_binary(api, val, scaling);
     let total = from_binary(api, &bits, scaling);
     api.assert_is_equal(total, val);
 }
 
+///Constrain size of value to within 2**scaling, using the to and from binary method
 fn div_constrained<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     x: Variable,
@@ -77,10 +82,9 @@ fn div_constrained<C: Config, Builder: RootAPI<C>>(
     v_plus_one: usize,
     two_v: u32,
     alpha_two_v: Variable,
-    is_relu: bool
+    is_relu: bool,
 ) -> Variable {
-
-    //6. 
+    //6.
     let d_sharp = api.add(alpha_two_v, x);
 
     //7.
@@ -92,19 +96,18 @@ fn div_constrained<C: Config, Builder: RootAPI<C>>(
     let total = from_binary(api, &bits, v_plus_one);
     api.assert_is_equal(q_sharp, total);
 
-    //Ensure remainder sharp is in correct range
-    //Should this be scaling -1?
+    // Ensure remainder sharp is in correct range
     constrain_size(api, scaling, rem_sharp);
 
     let q = api.sub(q_sharp, two_v);
-    if is_relu{
+    // If relu optimization, multiply by most significant bit as bits have
+    if is_relu {
         return api.mul(q, bits[v_plus_one - 1]);
-    }
-    else{
+    } else {
         return q;
     }
 }
-
+/// Perform division, using rangeproofs for tablesize
 fn div_constrained_lookup<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     x: Variable,
@@ -114,10 +117,9 @@ fn div_constrained_lookup<C: Config, Builder: RootAPI<C>>(
     two_v: u32,
     alpha_two_v: Variable,
     is_relu: bool,
-    table: &mut LogUpRangeProofTable
+    table: &mut LogUpRangeProofTable,
 ) -> Variable {
-
-    //6. 
+    //6.
     let d_sharp = api.add(alpha_two_v, x);
 
     //7.
@@ -130,19 +132,17 @@ fn div_constrained_lookup<C: Config, Builder: RootAPI<C>>(
     api.assert_is_equal(q_sharp, total);
 
     //Ensure remainder sharp is in correct range
-    //Should this be scaling -1?
-    // constrain_size(api, scaling, rem_sharp);
     table.rangeproof(api, rem_sharp, y.try_into().unwrap());
 
     let q = api.sub(q_sharp, two_v);
-    if is_relu{
+    if is_relu {
         return api.mul(q, bits[v_plus_one - 1]);
-    }
-    else{
+    } else {
         return q;
     }
 }
 
+/// Quantize a matrix, by computing element by element division. Can potentially try memorized simple call here for optimizations?
 pub fn quantize_matrix<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input_matrix: Vec<Vec<Variable>>,
@@ -151,7 +151,7 @@ pub fn quantize_matrix<C: Config, Builder: RootAPI<C>>(
     v_plus_one: usize,
     two_v: u32,
     alpha_two_v: Variable,
-    is_relu: bool
+    is_relu: bool,
 ) -> Vec<Vec<Variable>> {
     let mut out: Vec<Vec<Variable>> = Vec::new();
     for (_, row) in input_matrix.iter().enumerate() {
@@ -165,14 +165,14 @@ pub fn quantize_matrix<C: Config, Builder: RootAPI<C>>(
                 v_plus_one,
                 two_v,
                 alpha_two_v,
-                is_relu
+                is_relu,
             ))
         }
         out.push(row_out);
     }
     out
 }
-
+/// Quantize a matrix, by computing element by element division. Can potentially try memorized simple call here for optimizations?
 pub fn quantize_matrix_lookup<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input_matrix: Vec<Vec<Variable>>,
@@ -182,7 +182,7 @@ pub fn quantize_matrix_lookup<C: Config, Builder: RootAPI<C>>(
     two_v: u32,
     alpha_two_v: Variable,
     is_relu: bool,
-    table: &mut LogUpRangeProofTable
+    table: &mut LogUpRangeProofTable,
 ) -> Vec<Vec<Variable>> {
     let mut out: Vec<Vec<Variable>> = Vec::new();
 
@@ -198,7 +198,7 @@ pub fn quantize_matrix_lookup<C: Config, Builder: RootAPI<C>>(
                 two_v,
                 alpha_two_v,
                 is_relu,
-                table
+                table,
             );
             row_out.push(q);
         }
@@ -206,7 +206,7 @@ pub fn quantize_matrix_lookup<C: Config, Builder: RootAPI<C>>(
     }
     out
 }
-
+/// Quantize a matrix, by computing element by element division, using lookups. Can potentially try memorized simple call here for optimizations?
 pub fn quantize_4d_vector<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input_matrix: Vec<Vec<Vec<Vec<Variable>>>>,
@@ -215,7 +215,7 @@ pub fn quantize_4d_vector<C: Config, Builder: RootAPI<C>>(
     v_plus_one: usize,
     two_v: u32,
     alpha_two_v: Variable,
-    is_relu: bool
+    is_relu: bool,
 ) -> Vec<Vec<Vec<Vec<Variable>>>> {
     let mut out: Vec<Vec<Vec<Vec<Variable>>>> = Vec::new();
     for (_, dim1) in input_matrix.iter().enumerate() {
@@ -233,7 +233,7 @@ pub fn quantize_4d_vector<C: Config, Builder: RootAPI<C>>(
                         v_plus_one,
                         two_v,
                         alpha_two_v,
-                        is_relu
+                        is_relu,
                     ));
                 }
                 dim2_out.push(dim3_out);
@@ -244,7 +244,7 @@ pub fn quantize_4d_vector<C: Config, Builder: RootAPI<C>>(
     }
     out
 }
-
+/// Quantize a 2d vector, by computing element by element division. Can potentially try memorized simple call here for optimizations?
 pub fn quantize_2d_vector<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input_matrix: Vec<Vec<Variable>>,
@@ -253,7 +253,7 @@ pub fn quantize_2d_vector<C: Config, Builder: RootAPI<C>>(
     v_plus_one: usize,
     two_v: u32,
     alpha_two_v: Variable,
-    is_relu: bool
+    is_relu: bool,
 ) -> Vec<Vec<Variable>> {
     let mut out: Vec<Vec<Variable>> = Vec::new();
     for (_, dim1) in input_matrix.iter().enumerate() {
@@ -267,14 +267,14 @@ pub fn quantize_2d_vector<C: Config, Builder: RootAPI<C>>(
                 v_plus_one,
                 two_v,
                 alpha_two_v,
-                is_relu
+                is_relu,
             ));
         }
         out.push(dim1_out);
     }
     out
 }
-
+/// run quantized 4d vector only if quantized boolean is true
 pub fn run_if_quantized_4d<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     scaling_in: u64,
@@ -283,7 +283,7 @@ pub fn run_if_quantized_4d<C: Config, Builder: RootAPI<C>>(
     v_plus_one: usize,
     two_v: u32,
     alpha_two_v: Variable,
-    is_relu: bool
+    is_relu: bool,
 ) -> Vec<Vec<Vec<Vec<Variable>>>> {
     if quantized {
         let scaling_factor = 1 << scaling_in;
@@ -295,12 +295,12 @@ pub fn run_if_quantized_4d<C: Config, Builder: RootAPI<C>>(
             v_plus_one,
             two_v,
             alpha_two_v,
-            is_relu
+            is_relu,
         );
     }
     return out;
 }
-
+/// run quantized 2d vector only if quantized boolean is true
 pub fn run_if_quantized_2d<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     scaling_in: u64,
@@ -309,7 +309,7 @@ pub fn run_if_quantized_2d<C: Config, Builder: RootAPI<C>>(
     v_plus_one: usize,
     two_v: u32,
     alpha_two_v: Variable,
-    is_relu: bool
+    is_relu: bool,
 ) -> Vec<Vec<Variable>> {
     if quantized {
         let scaling_factor = 1 << scaling_in;
@@ -321,148 +321,8 @@ pub fn run_if_quantized_2d<C: Config, Builder: RootAPI<C>>(
             v_plus_one,
             two_v,
             alpha_two_v,
-            is_relu
+            is_relu,
         );
     }
     return out;
 }
-
-//Old versions
-/*
-fn div_unconstrained<C: Config, Builder: RootAPI<C>>(
-    api: &mut Builder,
-    x: Variable,
-    y: u32,
-) -> (Variable, Variable) {
-    //can maybe extract this
-    let middle = C::CircuitField::from_u256(C::CircuitField::MODULUS / 2);
-    let negative_one = C::CircuitField::from(0) - C::CircuitField::from(1);
-
-
-    let is_pos = api.unconstrained_lesser(x, middle);
-
-    //if x is positive
-    let q_pos = api.unconstrained_int_div(x, y);
-    let q_pos = api.unconstrained_mul(q_pos, is_pos);
-
-    //if x is negative
-    // let x_squared = api.unconstrained_pow(x,-1);
-    let x_abs = api.unconstrained_mul(x, negative_one);
-    let q_neg = api.unconstrained_int_div(x_abs, y);
-    let is_neg = api.unconstrained_bit_xor(is_pos, 1);
-    let q_neg_temp = api.unconstrained_mul(q_neg, negative_one);
-    // Unsure why, but I must subtract one here
-    let q_neg_temp = api.unconstrained_add(q_neg_temp, negative_one);
-    let q_neg_out = api.unconstrained_mul(q_neg_temp, is_neg);
-
-
-    let q = api.unconstrained_add(q_pos, q_neg_out);
-    //if a and q are pos
-    let rem_pos = api.unconstrained_mod(x, y);
-    let rem_pos_out = api.unconstrained_mul(rem_pos, is_pos);
-
-    //if a and q are negative then r = a - bq -> r = a + b(-q)
-    let rem_neg = api.unconstrained_mul(y, q);
-    let rem_neg = api.unconstrained_mul(rem_neg, negative_one);
-    let rem_neg = api.unconstrained_add(x, rem_neg);
-    let rem_neg_out = api.unconstrained_mul(is_neg, rem_neg);
-
-    let rem_out = api.unconstrained_add(rem_neg_out, rem_pos_out);
-
-    (q, rem_out)
-}
-
-fn div_constrained<C: Config, Builder: RootAPI<C>>(
-    api: &mut Builder,
-    x: Variable,
-    y: u32,
-    q: Variable,
-    rem: Variable,
-    scaling: usize
-) -> Variable {
-    let temp = api.mul(y, q);
-    let temp2 = api.add(temp, rem);
-    api.assert_is_equal(x, temp2);
-    constrain_rem(api, scaling, rem);
-    q
-}
-
-    fn div_constrained_old<C: Config, Builder: RootAPI<C>>(
-    api: &mut Builder,
-    x: Variable,
-    y: u32,
-    q: Variable,
-    scaling: usize,
-    v_plus_one: usize,
-    two_v: u32,
-    alpha_two_v: Variable,
-) -> Variable {
-    //5.
-    let q_sharp = api.add(q, two_v);
-    //6.
-    let bits = to_binary(api, q_sharp, v_plus_one);
-    let total = from_binary(api, &bits, v_plus_one);
-    api.assert_is_equal(q_sharp, total);
-
-
-    //7. Note, must incorporate 1 << scaling into the parameters... Also temp can be done outside as well
-    // let temp = api.mul(two_v, 1 << scaling);
-    // let temp: u64 = two_v as u64 * (1 << scaling);
-
-    let d_sharp = api.add(alpha_two_v, x);
-
-    //8
-    let q_flat = api.unconstrained_int_div(d_sharp, y);
-    let rem_flat = api.unconstrained_mod(d_sharp, y);
-
-    let temp = api.mul(q_flat, y);
-    let temp2 = api.add(temp, rem_flat);
-    api.assert_is_equal(d_sharp, temp2);
-    constrain_rem(api, scaling, rem_flat);
-
-    //9
-    api.assert_is_equal(q_flat, q_sharp);
-    q
-}
-
-    fn div_unconstrained<C: Config, Builder: RootAPI<C>>(
-    api: &mut Builder,
-    x: Variable,
-    y: u32,
-) -> Variable {
-    //can maybe extract this
-    let middle = C::CircuitField::from_u256(C::CircuitField::MODULUS / 2);
-    let negative_one = C::CircuitField::from(0) - C::CircuitField::from(1);
-
-    let is_pos = api.unconstrained_lesser(x, middle);
-
-    //if x is positive
-    let q_pos = api.unconstrained_int_div(x, y);
-    let q_pos = api.unconstrained_mul(q_pos, is_pos);
-
-    //if x is negative
-    // let x_squared = api.unconstrained_pow(x,-1);
-    let x_abs = api.unconstrained_mul(x, negative_one);
-    let q_neg = api.unconstrained_int_div(x_abs, y);
-    let is_neg = api.unconstrained_bit_xor(is_pos, 1);
-    let q_neg_temp = api.unconstrained_mul(q_neg, negative_one);
-    // Unsure why, but I must subtract one here
-    let q_neg_temp = api.unconstrained_add(q_neg_temp, negative_one);
-    let q_neg_out = api.unconstrained_mul(q_neg_temp, is_neg);
-
-    let q = api.unconstrained_add(q_pos, q_neg_out);
-    // //if a and q are pos
-    // let rem_pos = api.unconstrained_mod(x, y);
-    // let rem_pos_out = api.unconstrained_mul(rem_pos, is_pos);
-
-    // //if a and q are negative then r = a - bq -> r = a + b(-q)
-    // let rem_neg = api.unconstrained_mul(y, q);
-    // let rem_neg = api.unconstrained_mul(rem_neg, negative_one);
-    // let rem_neg = api.unconstrained_add(x, rem_neg);
-    // let rem_neg_out = api.unconstrained_mul(is_neg, rem_neg);
-
-    // let rem_out = api.unconstrained_add(rem_neg_out, rem_pos_out);
-
-    q
-}
- */

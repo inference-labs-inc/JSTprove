@@ -1,6 +1,6 @@
 use expander_compiler::frontend::*;
 
-// Version 1
+// to_binary value, original method using unconstrained api
 pub fn to_binary<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     x: Variable,
@@ -13,7 +13,7 @@ pub fn to_binary<C: Config, Builder: RootAPI<C>>(
     }
     res
 }
-
+// Convert to integer to be used in twos comp (add 2^k-1 to the value)
 fn to_int_for_twos_comp<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     x: Variable,
@@ -24,6 +24,7 @@ fn to_int_for_twos_comp<C: Config, Builder: RootAPI<C>>(
     return new_x;
 }
 
+// Convert to binary using new method. First convert to positive value, and then take relevant bits to binary
 fn to_binary_2s<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     x: Variable,
@@ -36,6 +37,9 @@ fn to_binary_2s<C: Config, Builder: RootAPI<C>>(
 }
 
 //Assert boolean and add bits confirmation to circuit
+/// Check that each element in the bitstring, is in fact a binary value
+/// Computes the expected field element representation of the bitstring. 
+/// The result of this function should be compared against the value prior to the bitstring, to confirm that the bistring representation is correct
 pub fn from_binary<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     bits: &Vec<Variable>,
@@ -51,13 +55,14 @@ pub fn from_binary<C: Config, Builder: RootAPI<C>>(
     }
     res
 }
-
+/// 32 bit simple from_binary
 fn from_binary_simple_32<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     bits: &Vec<Variable>,
 ) -> Vec<Variable> {
     vec![from_binary(api, bits, 32)]
 }
+/// 64 bit simple from_binary
 #[allow(dead_code)]
 fn from_binary_simple_64<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
@@ -66,6 +71,7 @@ fn from_binary_simple_64<C: Config, Builder: RootAPI<C>>(
     vec![from_binary(api, bits, 64)]
 }
 
+/// Relu on vector with using memorized simple call on the from binary component
 fn relu_simple_call_32<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     x: &Vec<Variable>,
@@ -83,21 +89,8 @@ fn relu_simple_call_32<C: Config, Builder: RootAPI<C>>(
     out
 }
 
-// fn relu_simple_call_64<C: Config, Builder: RootAPI<C>>(api: &mut Builder, x: &Vec<Variable>) -> Vec<Variable> {
-//     let mut out: Vec<Variable> = Vec::with_capacity(x.len());
-//     for i in 0..x.len(){
-//         let bits = to_binary_2s(api, x[i], 64);
-//         let total = from_binary(api, &bits, 64);
-
-//         let comp = api.add(x[i], 1 << (63));
-//         api.assert_is_equal(total, comp);
-
-//         out.push(relu_single(api, x[i], bits[63]));
-//     }
-//     out
-// }
-
-// Assume 1 is positive and 0 is positive
+/// Perform RELU on a single value
+/// Assume 1 is positive and 0 is positive
 fn relu_single<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     x: Variable,
@@ -105,7 +98,7 @@ fn relu_single<C: Config, Builder: RootAPI<C>>(
 ) -> Variable {
     api.mul(x, sign)
 }
-
+/// Entire Second version attempt at relu
 fn relu_v2<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input: Variable,
@@ -125,7 +118,7 @@ fn relu_v2<C: Config, Builder: RootAPI<C>>(
     // // Perform relu using sign bit
     relu_single(api, input, bits[n_bits - 1])
 }
-
+// Entire Naive relu attempt
 fn relu_naive<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input: Variable,

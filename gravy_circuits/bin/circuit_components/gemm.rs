@@ -1,8 +1,8 @@
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use gravy_circuits::circuit_functions::helper_fn::read_2d_weights;
+use gravy_circuits::circuit_functions::helper_fn::{read_2d_weights, two_d_array_to_vec};
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
-use gravy_circuits::circuit_functions::matrix_computation::{gemm_vec, two_d_array_to_vec};
+use gravy_circuits::circuit_functions::matrix_computation::gemm_vec;
 use gravy_circuits::circuit_functions::quantization::quantize_matrix;
 use serde::Deserialize;
 // use std::ops::Neg;

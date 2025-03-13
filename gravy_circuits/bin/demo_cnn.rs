@@ -9,7 +9,7 @@ use lazy_static::lazy_static;
 use gravy_circuits::circuit_functions::matrix_computation::{
     matrix_multplication, matrix_multplication_array, matrix_multplication_naive,
     matrix_multplication_naive2, matrix_multplication_naive2_array, matrix_multplication_naive3,
-    matrix_multplication_naive3_array, two_d_array_to_vec, matrix_addition_vec
+    matrix_multplication_naive3_array, matrix_addition_vec
 };
 use gravy_circuits::circuit_functions::quantization::run_if_quantized_2d;
 // use quantization::run_if_quantized_2d;

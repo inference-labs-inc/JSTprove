@@ -3,6 +3,9 @@ use expander_compiler::frontend::Config;
 use serde::de::DeserializeOwned;
 use std::io::Read;
 
+/// Implement io_reader to read inputs and outputs of the circuit.
+/// 
+/// This is primarily used for witness generation
 pub trait IOReader<CircuitType,C: Config>
 where
     CircuitType: Default
@@ -39,7 +42,7 @@ where
     ) -> CircuitType;
     fn get_path(&self) -> &str;
 }
-
+/// To implement IOReader in each binary to read in inputs and outputs of the circuit as is needed on an individual circuit basis
 pub struct FileReader {
     pub path: String,
 }

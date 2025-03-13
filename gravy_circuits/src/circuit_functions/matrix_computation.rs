@@ -2,7 +2,7 @@ use expander_compiler::frontend::*;
 
 
 
-
+/// Naive Matrix addition with arrays
 pub fn matrix_addition<C: Config, Builder: RootAPI<C>, const M: usize, const N: usize>(
     api: &mut Builder,
     matrix_a: [[Variable; N]; M],
@@ -17,7 +17,7 @@ pub fn matrix_addition<C: Config, Builder: RootAPI<C>, const M: usize, const N: 
     array
 }
 
-
+/// Naive Matrix addition with vectors
 pub fn matrix_addition_vec<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: Vec<Vec<Variable>>,
@@ -34,6 +34,7 @@ pub fn matrix_addition_vec<C: Config, Builder: RootAPI<C>>(
     out
 }
 
+/// Matrix hadamard product with arrays
 pub fn matrix_hadamard_product<C: Config, Builder: RootAPI<C>, const M: usize, const N: usize>(
     api: &mut Builder,
     matrix_a: [[Variable; N]; M],
@@ -47,13 +48,13 @@ pub fn matrix_hadamard_product<C: Config, Builder: RootAPI<C>, const M: usize, c
     }
     array
 }
-
-fn product_sub_circuit<C: Config, Builder: RootAPI<C>>(
+/// Compute product of 2 vectors stacked on top of each other
+fn product_row_sub_circuit<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     inputs: &Vec<Variable>,
 ) -> Vec<Variable> {
     let n = inputs.len() / 2; // Assuming inputs are concatenated row and column
-                              // let mut out: Vec<Variable> = Vec::new();
+
     let mut sum = api.constant(0);
 
     for k in 0..n {
@@ -63,6 +64,7 @@ fn product_sub_circuit<C: Config, Builder: RootAPI<C>>(
     vec![sum]
 }
 
+/// Dot product of two vectors
 pub fn dot<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     vector_a: Vec<Variable>,
@@ -76,7 +78,7 @@ pub fn dot<C: Config, Builder: RootAPI<C>>(
     row_col_product
 }
 
-
+/// Matrix multiplication of two arrays
 pub fn matrix_multplication_array<
     C: Config,
     Builder: RootAPI<C>,
@@ -92,7 +94,6 @@ pub fn matrix_multplication_array<
     for i in 0..M {
         for j in 0..K {
             // Prepare inputs as concatenated row and column
-            // api.add(C::CircuitField::from(weights[0][0] as u32),self.matrix_a[0][0]);
             let mut inputs: Vec<Variable> = Vec::new();
             for k in 0..N {
                 inputs.push(matrix_a[i][k]);
@@ -101,13 +102,13 @@ pub fn matrix_multplication_array<
                 inputs.push(matrix_b[k][j]);
             }
             // Use MemorizedSimpleCall for the row-column dot product
-            out[i][j] = api.memorized_simple_call(product_sub_circuit, &inputs)[0];
-            // api.assert_is_equal(self.matrix_product_ab[i][j], prod[0]);
+            out[i][j] = api.memorized_simple_call(product_row_sub_circuit, &inputs)[0];
         }
     }
     out
 }
 
+/// Naive version of matrix multiplication of two arrays
 pub fn matrix_multplication_naive_array<
     C: Config,
     Builder: RootAPI<C>,
@@ -133,6 +134,7 @@ pub fn matrix_multplication_naive_array<
     out
 }
 
+/// Second version of matrix multiplication of two arrays
 pub fn matrix_multplication_naive2_array<
     C: Config,
     Builder: RootAPI<C>,
@@ -157,7 +159,7 @@ pub fn matrix_multplication_naive2_array<
     }
     out
 }
-
+/// Third version of matrix multiplication of two arrays
 pub fn matrix_multplication_naive3_array<
     C: Config,
     Builder: RootAPI<C>,
@@ -184,8 +186,7 @@ pub fn matrix_multplication_naive3_array<
     }
     out
 }
-// Vector of Vectors
-
+/// Matrix multiplication of vector of vectors
 pub fn matrix_multplication<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: Vec<Vec<Variable>>,
@@ -204,13 +205,14 @@ pub fn matrix_multplication<C: Config, Builder: RootAPI<C>>(
                 inputs.push(matrix_b[k][j]);
             }
             // Use MemorizedSimpleCall for the row-column dot product
-            out_rows.push(api.memorized_simple_call(product_sub_circuit, &inputs)[0]);
+            out_rows.push(api.memorized_simple_call(product_row_sub_circuit, &inputs)[0]);
         }
         out.push(out_rows);
     }
     out
 }
 
+/// Matrix multiplciation of vector of vectors naive
 pub fn matrix_multplication_naive<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: Vec<Vec<Variable>>,
@@ -231,7 +233,7 @@ pub fn matrix_multplication_naive<C: Config, Builder: RootAPI<C>>(
     }
     out
 }
-
+/// Matrix multiplciation of vector of vectors naive version 2
 pub fn matrix_multplication_naive2<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: Vec<Vec<Variable>>,
@@ -252,7 +254,7 @@ pub fn matrix_multplication_naive2<C: Config, Builder: RootAPI<C>>(
     }
     out
 }
-
+/// Matrix multiplciation of vector of vectors naive version 3
 pub fn matrix_multplication_naive3<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: Vec<Vec<Variable>>,
@@ -274,12 +276,7 @@ pub fn matrix_multplication_naive3<C: Config, Builder: RootAPI<C>>(
     out
 }
 
-pub fn two_d_array_to_vec<const M: usize, const N: usize>(
-    matrix: [[Variable; N]; M],
-) -> Vec<Vec<Variable>> {
-    matrix.iter().map(|row| row.to_vec()).collect()
-}
-
+/// Compute GEMM with inputs as arrays
 pub fn gemm<C: Config, const M: usize, const N: usize, const K: usize, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: [[Variable; N]; M],
@@ -304,7 +301,7 @@ pub fn gemm<C: Config, const M: usize, const N: usize, const K: usize, Builder: 
     }
     array
 }
-
+/// Compute gemm with inputs as vector
 pub fn gemm_vec<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: Vec<Vec<Variable>>,
@@ -333,6 +330,7 @@ pub fn gemm_vec<C: Config, Builder: RootAPI<C>>(
     array
 }
 
+/// Compute scaled matrix product sum on array
 pub fn scaled_matrix_product_sum<
     C: Config,
     Builder: RootAPI<C>,
@@ -362,6 +360,7 @@ pub fn scaled_matrix_product_sum<
     array
 }
 
+/// Compute scaled matrix product array
 pub fn scaled_matrix_product<
     C: Config,
     Builder: RootAPI<C>,
@@ -389,7 +388,7 @@ pub fn scaled_matrix_product<
     array
 }
 
-
+/// Multiply two matrices, Thaler version
 fn matrix_multiply<C: Config>(
     builder: &mut impl RootAPI<C>,
     target_mat: &mut [Variable], // target to modify
@@ -403,37 +402,7 @@ fn matrix_multiply<C: Config>(
         }
     }
 }
-
-// #[allow(clippy::needless_range_loop)]
-// fn matrix_multiply_unconstrained<C: Config, Builder: RootAPI<C>>(
-//     api: &mut Builder,
-//     a: &Vec<Vec<Variable>>,
-//     b: &Vec<Vec<Variable>>,
-//     zero: &Variable
-// ) -> Vec<Vec<Variable>> {
-//     let m1 = a.len();
-//     let n1 = a[0].len();
-//     let m2 = b.len();
-//     let n2 = b[0].len();
-
-//     assert_eq!(n1, m2, "n1 ! = m2 ");
-
-//     // initialize the result matrix
-//     let mut c = vec![vec![*zero; n2]; m1];
-//     // let mut c: Vec<Vec<Variable>> = Vec::new();
-
-
-//     // FIXME: optimize calculating the multiplication for super large matrix.
-//     for i in 0..m1 {
-//         for j in 0..n2 {
-//             for k in 0..n1 {
-//                 let temp = api.unconstrained_mul(a[i][k], b[k][j]);
-//                 c[i][j] = api.unconstrained_add(temp, c[i][j]);
-//             }
-//         }
-//     }
-//     c
-// }
+/// Standard matrix multiplication. Thaler method (NOT CURRENTLY WORKING WELL)
 pub fn matrix_multiplication_std<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     first_mat: Vec<Vec<Variable>>,
