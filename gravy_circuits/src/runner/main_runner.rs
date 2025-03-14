@@ -6,7 +6,7 @@ use expander_compiler::frontend::{extra::debug_eval, internal::DumpLoadTwoVariab
 use expander_compiler::utils::serde::Serde;
 use gkr_field_config::GKRFieldConfig;
 use peakmem_alloc::*;
-use serde_json::{from_reader, to_writer};
+// use serde_json::{from_reader, to_writer};
 use std::alloc::System;
 // use std::io::{Read, Write};
 use std::time::Instant;
@@ -454,7 +454,8 @@ where
 
     let file = std::fs::File::open(format!("{}_proof.bin", name)).unwrap();
     let reader = std::io::BufReader::new(file);
-    let proof_and_claimed_v: Vec<u8> = from_reader(reader).unwrap();
+    let proof_and_claimed_v: Vec<u8> = Vec::deserialize_from(reader).unwrap();
+    // let proof_and_claimed_v: Vec<u8> = from_reader(reader).unwrap();
     // let mut proof_and_claimed_v = Vec::new();
     // reader.read_to_end(&mut proof_and_claimed_v).unwrap();
     // println!("{:?}", proof_and_claimed_v);
@@ -469,6 +470,7 @@ where
             return;
         }
     };
+
 
     // verify
     assert!(gkr::executor::verify(
