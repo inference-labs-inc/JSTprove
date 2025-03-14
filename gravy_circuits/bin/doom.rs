@@ -1,38 +1,23 @@
 use arith::FieldForECC;
-use convolution_fn::conv_4d_run;
+use gravy_circuits::circuit_functions::convolution_fn::conv_4d_run;
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use helper_fn::{four_d_array_to_vec, load_circuit_constant, read_2d_weights, read_4d_weights};
-use io_reader::{FileReader, IOReader};
+use gravy_circuits::circuit_functions::helper_fn::{four_d_array_to_vec, load_circuit_constant, read_2d_weights, read_4d_weights};
+use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use lazy_static::lazy_static;
-use matrix_computation::matrix_addition_vec;
 #[allow(unused_imports)]
-use matrix_computation::{
+use gravy_circuits::circuit_functions::matrix_computation::{
     matrix_multplication, matrix_multplication_array, matrix_multplication_naive,
     matrix_multplication_naive2, matrix_multplication_naive2_array, matrix_multplication_naive3,
-    matrix_multplication_naive3_array, two_d_array_to_vec,
+    matrix_multplication_naive3_array, matrix_addition_vec
 };
-use quantization::run_if_quantized_2d;
+use gravy_circuits::circuit_functions::quantization::run_if_quantized_2d;
 // use relu::{relu_2d_vec_v2, relu_4d_vec_v2};
 use serde::Deserialize;
 use std::ops::Neg;
 
-#[path = "../src/convolution_fn.rs"]
-pub mod convolution_fn;
-#[path = "../src/matrix_computation.rs"]
-pub mod matrix_computation;
-#[path = "../src/relu.rs"]
-pub mod relu;
+use gravy_circuits::runner::main_runner;
 
-#[path = "../src/quantization.rs"]
-pub mod quantization;
-
-#[path = "../src/helper_fn.rs"]
-pub mod helper_fn;
-#[path = "../src/io_reader.rs"]
-pub mod io_reader;
-#[path = "../src/main_runner.rs"]
-pub mod main_runner;
 
 /*
 Part 2 (memorization), Step 1: vanilla matrix multiplication of two matrices of compatible dimensions.
@@ -121,15 +106,24 @@ lazy_static! {
     };
 }
 
-declare_circuit!(ConvCircuit {
+declare_circuit!(DoomCircuit {
     input_arr: [[[[Variable; DIM4]; DIM3]; DIM2]; DIM1], // shape (m, n)
     outputs: [[Variable; 7]; 1], // shape (m, k)
 });
 
+declare_circuit!(DoomFakeCircuit {
+    input_arr: [[[[Variable; DIM4]; DIM3]; DIM2]; DIM1], // shape (m, n)
+    outputs: [[Variable; 7]; 1], // shape (m, k)
+});
 
+impl<C: Config> Define<C> for DoomFakeCircuit<Variable> {
+    fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
+        api.assert_is_equal(0, 5);
+    }
+}
 
 // Memorization, in a better place
-impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
+impl<C: Config> Define<C> for DoomCircuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         let n_bits = 32;
 
@@ -167,8 +161,7 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
             .map(|x| load_circuit_constant(api, x))
             .collect();
         let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv2_dilation, &WEIGHTS_INPUT.conv2_kernel_shape, &WEIGHTS_INPUT.conv2_pads, &WEIGHTS_INPUT.conv2_strides,&WEIGHTS_INPUT.conv2_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv2_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
-        //relu2
-        // let out = relu_4d_vec_v2(api, out, n_bits);
+
         //conv3
         let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv3_weights);
         let bias: Vec<Variable> = WEIGHTS_INPUT
@@ -177,9 +170,9 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
             .into_iter()
             .map(|x| load_circuit_constant(api, x))
             .collect();
+        
         //conv3
         let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv3_dilation, &WEIGHTS_INPUT.conv3_kernel_shape, &WEIGHTS_INPUT.conv3_pads, &WEIGHTS_INPUT.conv3_strides,&WEIGHTS_INPUT.conv3_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv3_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
-        // let out = relu_4d_vec_v2(api, out, n_bits);
 
         let out_1d: Vec<Variable> = out.iter()
                 .flat_map(|x| x.iter())
@@ -218,13 +211,13 @@ impl<C: Config> GenericDefine<C> for ConvCircuit<Variable> {
 }
 
 
-impl<C: Config> IOReader<C, ConvCircuit<C::CircuitField>> for FileReader {
+impl<C: Config> IOReader<DoomFakeCircuit<C::CircuitField>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
-        mut assignment: ConvCircuit<C::CircuitField>,
-    ) -> ConvCircuit<C::CircuitField> {
-        let data: InputData = <FileReader as IOReader<C, ConvCircuit<_>>>::read_data_from_json::<
+        mut assignment: DoomFakeCircuit<C::CircuitField>,
+    ) -> DoomFakeCircuit<C::CircuitField> {
+        let data: InputData = <FileReader as IOReader<DoomFakeCircuit<_>, C>>::read_data_from_json::<
             InputData,
         >(file_path);
 
@@ -250,9 +243,9 @@ impl<C: Config> IOReader<C, ConvCircuit<C::CircuitField>> for FileReader {
     fn read_outputs(
         &mut self,
         file_path: &str,
-        mut assignment: ConvCircuit<C::CircuitField>,
-    ) -> ConvCircuit<C::CircuitField> {
-        let data: OutputData = <FileReader as IOReader<C, ConvCircuit<_>>>::read_data_from_json::<
+        mut assignment: DoomFakeCircuit<C::CircuitField>,
+    ) -> DoomFakeCircuit<C::CircuitField> {
+        let data: OutputData = <FileReader as IOReader<DoomFakeCircuit<_>, C>>::read_data_from_json::<
             OutputData,
         >(file_path);
 
@@ -270,16 +263,25 @@ impl<C: Config> IOReader<C, ConvCircuit<C::CircuitField>> for FileReader {
         // Return the assignment
         assignment
     }
+    fn get_path(&self) -> &str {
+        &self.path
+    }
 }
 
 fn main() {
     let mut file_reader = FileReader {
-        path: String::new(),
+        path: "doom".to_owned(),
     };
-    main_runner::run_bn254::<ConvCircuit<Variable>,
-                            ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
+    main_runner::run_bn254::<DoomCircuit<Variable>,
+    DoomFakeCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
                             _>(&mut file_reader);
 
+    main_runner::run_bn254_seperate::<DoomCircuit<Variable>,
+                            DoomFakeCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
+                                                    _>(&mut file_reader);
+    // main_runner::run_m31::<ConvCircuit<Variable>,
+    //                         ConvCircuit<<expander_compiler::frontend::M31Config as expander_compiler::frontend::Config>::CircuitField>,
+    //                         _>(&mut file_reader);
     // main_runner::debug_bn254::<ConvCircuit<Variable>,
     //                         ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
     //                                                 _>(&mut file_reader);

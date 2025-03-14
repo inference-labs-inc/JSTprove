@@ -3,8 +3,7 @@ from unittest import mock
 import pytest
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems
-from python_testing.matrix_multiplication import MatrixMultiplication, QuantizedMatrixMultiplication, QuantizedMatrixMultiplicationReLU
-
+from python_testing.circuit_components.matrix_multiplication import MatrixMultiplication, QuantizedMatrixMultiplication, QuantizedMatrixMultiplicationReLU
 
 proof_system = ZKProofSystems.Expander
 proof_folder = "analysis"
@@ -63,7 +62,7 @@ def test_mat_mult_base_quantize_run_negative_ones():
 def test_mat_mult_incorrect_output():
     test_circuit = MatrixMultiplication()
     with pytest.raises(subprocess.CalledProcessError) as exc_info:
-        with mock.patch.object(MatrixMultiplication, 'get_inputs_for_circuit', side_effect=mat_mult_incorrect_output, autospec=True) as mock_get_output:
+        with mock.patch.object(MatrixMultiplication, 'get_outputs', side_effect=mat_mult_incorrect_output, autospec=True) as mock_get_output:
             test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
 
     assert exc_info is not None, "Expected subprocess.CalledProcessError to be raised, but it was not."
@@ -79,7 +78,7 @@ def test_mat_mult_incorrect_output():
 def test_quantized_mat_mult_incorrect_output():
     test_circuit = QuantizedMatrixMultiplication()
     with pytest.raises(subprocess.CalledProcessError) as exc_info:
-        with mock.patch.object(QuantizedMatrixMultiplication, 'get_inputs_for_circuit', side_effect=mat_mult_incorrect_output, autospec=True) as mock_get_output:
+        with mock.patch.object(QuantizedMatrixMultiplication, 'get_outputs', side_effect=mat_mult_incorrect_output, autospec=True) as mock_get_output:
             test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
 
     assert exc_info is not None, "Expected subprocess.CalledProcessError to be raised, but it was not."

@@ -1,5 +1,5 @@
 [package]
-name = "circuits"
+name = "gravy_circuits"
 version = "0.1.0"
 edition = "2021"
 
@@ -25,6 +25,7 @@ serde_json = "1.0"
 peakmem-alloc = "0.3.0"
 expander_compiler.workspace = true
 lazy_static = "1.4"
+circuit-std-rs.workspace = true
 
 [dev-dependencies]
 rayon = "1.9"
@@ -35,46 +36,63 @@ version = "1.0"
 features = [ "derive",]
 
 
-[[bin]]
-name = "testing"
-path = "bin/testing.rs"
+
+# [[bin]]
+# name = "testing"
+# path = "bin/testing.rs"
 
 [[bin]]
 name = "relu_twos_comp"
-path = "bin/relu_twos_comp.rs"
+path = "bin/circuit_components/relu_twos_comp.rs"
 
 [[bin]]
 name = "relu_dual"
-path = "bin/relu_dual.rs"
+path = "bin/circuit_components/relu_dual.rs"
 
 [[bin]]
 name = "matrix_addition"
-path = "bin/matrix_addition.rs"
+path = "bin/circuit_components/matrix_addition.rs"
 
 [[bin]]
 name = "matrix_hadamard_product"
-path = "bin/matrix_hadamard_product.rs"
+path = "bin/circuit_components/matrix_hadamard_product.rs"
 
 [[bin]]
 name = "matrix_multiplication"
-path = "bin/matrix_multiplication.rs"
+path = "bin/circuit_components/matrix_multiplication.rs"
 
 [[bin]]
 name = "scaled_matrix_product"
-path = "bin/scaled_matrix_product.rs"
+path = "bin/circuit_components/scaled_matrix_product.rs"
 
 [[bin]]
 name = "scaled_matrix_product_sum"
-path = "bin/scaled_matrix_product_sum.rs"
+path = "bin/circuit_components/scaled_matrix_product_sum.rs"
 
 [[bin]]
 name = "gemm"
-path = "bin/gemm.rs"
+path = "bin/circuit_components/gemm.rs"
 
 [[bin]]
 name = "convolution"
-path = "bin/convolution.rs"
+path = "bin/circuit_components/convolution.rs"
 
 [[bin]]
 name = "doom"
 path = "bin/doom.rs"
+
+[[bin]]
+name = "doom_2"
+path = "bin/doom_2.rs"
+
+[[bin]]
+name = "eth_fraud"
+path = "bin/eth_fraud.rs"
+
+[[bin]]
+name = "demo_cnn"
+path = "bin/demo_cnn.rs"
+
+[[bin]]
+name = "simple_circuit"
+path = "bin/simple_circuit.rs"

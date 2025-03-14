@@ -3,7 +3,7 @@ from unittest import mock
 import pytest
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems
-from python_testing.gemm import Gemm, QuantizedGemm
+from python_testing.circuit_components.gemm import Gemm, QuantizedGemm
 
 
 proof_system = ZKProofSystems.Expander

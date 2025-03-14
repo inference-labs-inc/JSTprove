@@ -3,7 +3,7 @@ from unittest import mock
 import pytest
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems
-from python_testing.relu import ReLU
+from python_testing.circuit_components.relu import ReLU
 
 
 proof_system = ZKProofSystems.Expander
