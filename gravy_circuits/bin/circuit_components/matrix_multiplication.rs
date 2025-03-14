@@ -40,6 +40,7 @@ struct WeightsData {
     quantized: bool,
     scaling: u32,
     circuit_type: String,
+    is_relu: bool
 }
 
 #[derive(Deserialize, Clone)]
@@ -111,10 +112,7 @@ impl<C: Config> Define<C> for MatMultCircuit<Variable> {
             // let scaling = api.constant(weights.scaling as u32);
             // let scaling_factor = scaling_factor_to_constant(api, )
             println!("{}", scaling_factor);
-            out = quantize_matrix(api, out, scaling_factor, weights.scaling as usize, v_plus_one, two_v, alpha_2_v, false);
-            // out = quantize_matrix_lookup(api, out, scaling_factor, weights.scaling as usize, v_plus_one, two_v, alpha_2_v, false, &mut table_rem);
-            // table_rem.final_check(api);
-
+            out = quantize_matrix(api, out, scaling_factor, weights.scaling as usize, v_plus_one, two_v, alpha_2_v, weights.is_relu);
         }
 
         //Assert output of matrix multiplication

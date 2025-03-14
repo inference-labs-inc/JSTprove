@@ -102,6 +102,7 @@ class QuantizedMatrixHadamard(MatrixHadamardProduct):
 
 
         return (matrix_a, matrix_b, matrix_product_ab)
+    
 
     
 if __name__ == "__main__":
@@ -115,4 +116,7 @@ if __name__ == "__main__":
     #Rework inputs to function
     test_circuit = MatrixHadamardProduct()
     test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
+
+    # test_circuit = QuantizedMatrixMultiplicationReLU(MatMultType.Naive2)
+    # test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
 
