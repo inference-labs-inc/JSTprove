@@ -272,9 +272,9 @@ fn main() {
     let mut file_reader = FileReader {
         path: "doom".to_owned(),
     };
-    main_runner::run_bn254::<DoomCircuit<Variable>,
-    DoomFakeCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-                            _>(&mut file_reader);
+    // main_runner::run_bn254::<DoomCircuit<Variable>,
+    // DoomFakeCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
+    //                         _>(&mut file_reader);
 
     main_runner::run_bn254_seperate::<DoomCircuit<Variable>,
                             DoomFakeCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,

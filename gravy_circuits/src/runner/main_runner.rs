@@ -396,12 +396,13 @@ where
 
     let proof: Vec<u8> = gkr::executor::dump_proof_and_claimed_v(&proof, &claimed_v).map_err(|e| e.to_string()).unwrap();
 
-    let file = std::fs::File::create(format!("{}_proof.txt", io_reader.get_path())).unwrap();
+    let file = std::fs::File::create(format!("{}_proof.bin", io_reader.get_path())).unwrap();
     let writer = std::io::BufWriter::new(file);
     // println!("{:?}", proof);
     // writer.write_all(&proof).unwrap();
     // proof.serialize_into(writer).unwrap();
-    to_writer(writer, &proof).unwrap();
+    proof.serialize_into(writer).unwrap();
+    // to_writer(writer, &proof).unwrap();
 
 
 
@@ -451,7 +452,7 @@ where
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
 
-    let file = std::fs::File::open(format!("{}_proof.txt", name)).unwrap();
+    let file = std::fs::File::open(format!("{}_proof.bin", name)).unwrap();
     let reader = std::io::BufReader::new(file);
     let proof_and_claimed_v: Vec<u8> = from_reader(reader).unwrap();
     // let mut proof_and_claimed_v = Vec::new();
@@ -524,9 +525,10 @@ where
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
 
-    let file = std::fs::File::open(format!("{}_proof.txt", name)).unwrap();
+    let file = std::fs::File::open(format!("{}_proof.bin", name)).unwrap();
     let reader = std::io::BufReader::new(file);
-    let proof_and_claimed_v: Vec<u8> = from_reader(reader).unwrap();
+    let proof_and_claimed_v: Vec<u8> = Vec::deserialize_from(reader).unwrap();
+    // let proof_and_claimed_v: Vec<u8> = from_reader(reader).unwrap();
 
 
 
