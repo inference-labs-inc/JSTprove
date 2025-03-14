@@ -98,7 +98,7 @@ def test_mat_mult_base_quantize_and_relu_run():
 def test_quantized_mat_mult_relu_incorrect_output():
     test_circuit = QuantizedMatrixMultiplicationReLU()
     with pytest.raises(subprocess.CalledProcessError) as exc_info:
-        with mock.patch.object(QuantizedMatrixMultiplicationReLU, 'get_inputs_for_circuit', side_effect=mat_mult_incorrect_output, autospec=True) as mock_get_output:
+        with mock.patch.object(QuantizedMatrixMultiplicationReLU, 'get_outputs', side_effect=mat_mult_incorrect_output, autospec=True) as mock_get_output:
             test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
 
     assert exc_info is not None, "Expected subprocess.CalledProcessError to be raised, but it was not."
