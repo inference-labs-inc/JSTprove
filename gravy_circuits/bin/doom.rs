@@ -161,8 +161,7 @@ impl<C: Config> Define<C> for DoomCircuit<Variable> {
             .map(|x| load_circuit_constant(api, x))
             .collect();
         let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv2_dilation, &WEIGHTS_INPUT.conv2_kernel_shape, &WEIGHTS_INPUT.conv2_pads, &WEIGHTS_INPUT.conv2_strides,&WEIGHTS_INPUT.conv2_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv2_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
-        //relu2
-        // let out = relu_4d_vec_v2(api, out, n_bits);
+
         //conv3
         let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv3_weights);
         let bias: Vec<Variable> = WEIGHTS_INPUT
@@ -171,9 +170,9 @@ impl<C: Config> Define<C> for DoomCircuit<Variable> {
             .into_iter()
             .map(|x| load_circuit_constant(api, x))
             .collect();
+        
         //conv3
         let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv3_dilation, &WEIGHTS_INPUT.conv3_kernel_shape, &WEIGHTS_INPUT.conv3_pads, &WEIGHTS_INPUT.conv3_strides,&WEIGHTS_INPUT.conv3_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv3_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
-        // let out = relu_4d_vec_v2(api, out, n_bits);
 
         let out_1d: Vec<Variable> = out.iter()
                 .flat_map(|x| x.iter())
