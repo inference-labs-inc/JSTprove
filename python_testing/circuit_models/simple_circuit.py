@@ -13,7 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from python_testing.utils.pytorch_helpers import ZKModel
-from python_testing.circuit_components.circuit_helpers import Circuit
+from python_testing.circuit_components.circuit_helpers import Circuit, RunType
     
 class SimpleCircuit(Circuit):
     def __init__(self):
@@ -46,4 +46,12 @@ class SimpleCircuit(Circuit):
 
 if __name__ == "__main__":
 
-    SimpleCircuit().base_testing()
+    # SimpleCircuit().base_testing()
+    # SimpleCircuit().base_testing(run_type=RunType.END_TO_END)
+    SimpleCircuit().base_testing(run_type=RunType.COMPILE_CIRCUIT)
+    SimpleCircuit().base_testing(run_type=RunType.PROVE_WITNESS)
+    SimpleCircuit().base_testing(run_type=RunType.GEN_VERIFY)
+
+
+
+

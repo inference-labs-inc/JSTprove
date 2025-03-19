@@ -118,7 +118,7 @@ declare_circuit!(DoomFakeCircuit {
 
 impl<C: Config> Define<C> for DoomFakeCircuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
-        api.assert_is_equal(0, 5);
+        api.assert_is_equal(0, self.outputs[0][0]);
     }
 }
 
@@ -272,13 +272,19 @@ fn main() {
     let mut file_reader = FileReader {
         path: "doom".to_owned(),
     };
-    // main_runner::run_bn254::<DoomCircuit<Variable>,
-    // DoomFakeCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-    //                         _>(&mut file_reader);
+    main_runner::run_bn254::<DoomCircuit<Variable>,
+    DoomFakeCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
+                            _>(&mut file_reader);
 
-    main_runner::run_bn254_seperate::<DoomCircuit<Variable>,
-                            DoomFakeCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-                                                    _>(&mut file_reader);
+    // main_runner::run_bn254_seperate::<DoomCircuit<Variable>,
+    //                         DoomFakeCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
+    //                                                 _>(&mut file_reader);
+    // let mut file_reader = FileReader {
+    //     path: "doom_dummy".to_owned(),
+    // };
+    // main_runner::compile_dummy_circuit::<DoomFakeCircuit<Variable>,
+    //                                                 DoomFakeCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
+    //                                                                         _>(&mut file_reader);
     // main_runner::run_m31::<ConvCircuit<Variable>,
     //                         ConvCircuit<<expander_compiler::frontend::M31Config as expander_compiler::frontend::Config>::CircuitField>,
     //                         _>(&mut file_reader);

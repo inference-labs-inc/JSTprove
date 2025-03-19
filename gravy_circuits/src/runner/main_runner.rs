@@ -19,7 +19,7 @@ use crate::io::io_reader;
 #[global_allocator]
 static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
 
-fn run_main<C: Config, I, CircuitType, CircuitDefaultType>(io_reader: &mut I)
+pub fn run_main<C: Config, I, CircuitType, CircuitDefaultType>(io_reader: &mut I, input_path: &str, output_path:&str)
 where
     I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone,
@@ -27,26 +27,6 @@ where
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
         + Clone
 {
-    
-    let matches = Command::new("File Copier")
-        .version("1.0")
-        .about("Copies content from input file to output file")
-        .arg(
-            Arg::new("input")
-                .help("The input file to read from")
-                .required(true) // This argument is required
-                .index(1), // Positional argument (first argument)
-        )
-        .arg(
-            Arg::new("output")
-                .help("The output file to write to")
-                .required(true) // This argument is also required
-                .index(2), // Positional argument (second argument)
-        )
-        .get_matches();
-
-    let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
-    let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
     println!("Compiling Circuit...");
@@ -157,7 +137,7 @@ where
     )
 }
 
-fn run_compile_and_serialize<C: Config, CircuitType>(name: &str)
+pub fn run_compile_and_serialize<C: Config, CircuitType>(name: &str)
 where
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone,
 {
@@ -189,7 +169,7 @@ where
     );
 }
 
-fn run_rest<C: Config, I, CircuitDefaultType>(io_reader: &mut I)
+pub fn run_rest<C: Config, I, CircuitDefaultType>(io_reader: &mut I)
 where
     I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
@@ -304,33 +284,49 @@ where
     )
 }
 
-fn run_witness_and_proof<C: Config, I, CircuitDefaultType>(io_reader: &mut I)
+pub fn run_witness_and_proof<C: Config, I, CircuitDefaultType>(io_reader: &mut I, input_path: &str, output_path:&str, circuit_name: &str)
 where
     I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
         + Clone,
 {
-    
-    let matches = Command::new("File Copier")
-        .version("1.0")
-        .about("Copies content from input file to output file")
-        .arg(
-            Arg::new("input")
-                .help("The input file to read from")
-                .required(true) // This argument is required
-                .index(1), // Positional argument (first argument)
-        )
-        .arg(
-            Arg::new("output")
-                .help("The output file to write to")
-                .required(true) // This argument is also required
-                .index(2), // Positional argument (second argument)
-        )
-        .get_matches();
+    // let matches: clap::ArgMatches = Command::new("File Copier")
+    //     .version("1.0")
+    //     .about("Copies content from input file to output file")
+    //     .arg(
+    //         Arg::new("type")
+    //             .help("The type of main runner we want to run")
+    //             .required(true) // This argument is required
+    //             .index(1), // Positional argument (first argument)
+    //     )
+    //     .arg(
+    //         Arg::new("input")
+    //             .help("The file to read circuit inputs from")
+    //             .required(false) // This argument is required
+    //             .long("input") // Use a long flag (e.g., --name)
+    //             .short('i')  // Use a short flag (e.g., -n)
+    //             // .index(2), // Positional argument (first argument)
+    //     )
+    //     .arg(
+    //         Arg::new("output")
+    //             .help("The outputs to the circuit")
+    //             .required(false) // This argument is also required
+    //             .long("output") // Use a long flag (e.g., --name)
+    //             .short('o')  // Use a short flag (e.g., -n)
+    //             // .index(3), // Positional argument (second argument)
+    //     )
+    //     .arg(
+    //         Arg::new("name")
+    //             .help("The name of the circuit for the file names to serialize/deserialize")
+    //             .required(false) // This argument is also required
+    //             .long("name") // Use a long flag (e.g., --name)
+    //             .short('n')  // Use a short flag (e.g., -n)
+    //     )
+    //     .get_matches();
 
-    let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
-    let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+    // let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+    // let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
 
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
@@ -420,7 +416,7 @@ where
     )
 }
 
-fn run_verify<C: Config, I, CircuitDefaultType>(name: &str)
+pub fn run_verify<C: Config, I, CircuitDefaultType>(name: &str)
 where
     I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
@@ -495,7 +491,7 @@ where
     )
 }
 
-fn run_verify_no_circuit<C: Config, I, CircuitDefaultType>(name: &str)
+pub fn run_verify_no_circuit<C: Config, I, CircuitDefaultType>(name: &str)
 where
     I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
@@ -648,7 +644,32 @@ where
     + expander_compiler::frontend::Define<expander_compiler::frontend::GF2Config>
     + std::clone::Clone,
 {
-    run_main::<GF2Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+    let matches: clap::ArgMatches = Command::new("File Copier")
+        .version("1.0")
+        .about("Copies content from input file to output file")
+        // .arg(
+        //     Arg::new("type")
+        //         .help("The type of main runner we want to run")
+        //         .required(true) // This argument is required
+        //         .index(1), // Positional argument (first argument)
+        // )
+        .arg(
+            Arg::new("input")
+                .help("The input file to read from")
+                .required(true) // This argument is required
+                .index(1), // Positional argument (first argument)
+        )
+        .arg(
+            Arg::new("output")
+                .help("The output file to write to")
+                .required(true) // This argument is also required
+                .index(2), // Positional argument (second argument)
+        )
+        .get_matches();
+
+    let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+    let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+    run_main::<GF2Config, Filereader, CircuitType, CircuitDefaultType>(file_reader, &input_path, &output_path);
     // run_main::<GF2Config, GF2ExtConfigSha2Raw, Filereader, CircuitType, CircuitDefaultType>(file_reader);
 
 }
@@ -663,7 +684,32 @@ where
     + expander_compiler::frontend::Define<expander_compiler::frontend::M31Config>
     + std::clone::Clone,
 {
-    run_main::<M31Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+    let matches: clap::ArgMatches = Command::new("File Copier")
+        .version("1.0")
+        .about("Copies content from input file to output file")
+        // .arg(
+        //     Arg::new("type")
+        //         .help("The type of main runner we want to run")
+        //         .required(true) // This argument is required
+        //         .index(1), // Positional argument (first argument)
+        // )
+        .arg(
+            Arg::new("input")
+                .help("The input file to read from")
+                .required(true) // This argument is required
+                .index(1), // Positional argument (first argument)
+        )
+        .arg(
+            Arg::new("output")
+                .help("The output file to write to")
+                .required(true) // This argument is also required
+                .index(2), // Positional argument (second argument)
+        )
+        .get_matches();
+
+    let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+    let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+    run_main::<M31Config, Filereader, CircuitType, CircuitDefaultType>(file_reader, &input_path, &output_path);
     // run_main::<M31Config, M31ExtConfigSha2Raw, Filereader, CircuitType, CircuitDefaultType>(file_reader);
 
 }
@@ -680,7 +726,32 @@ where
     // + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::BN254Config>
     + std::clone::Clone,
 {
-    run_main::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+    let matches: clap::ArgMatches = Command::new("File Copier")
+        .version("1.0")
+        .about("Copies content from input file to output file")
+        // .arg(
+        //     Arg::new("type")
+        //         .help("The type of main runner we want to run")
+        //         .required(true) // This argument is required
+        //         .index(1), // Positional argument (first argument)
+        // )
+        .arg(
+            Arg::new("input")
+                .help("The input file to read from")
+                .required(true) // This argument is required
+                .index(1), // Positional argument (first argument)
+        )
+        .arg(
+            Arg::new("output")
+                .help("The output file to write to")
+                .required(true) // This argument is also required
+                .index(2), // Positional argument (second argument)
+        )
+        .get_matches();
+
+    let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+    let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+    run_main::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader, &input_path, &output_path);
     // run_main::<BN254Config, BN254ConfigSha2Hyrax, Filereader, CircuitType, CircuitDefaultType>(file_reader);
   
     // run_main::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
@@ -694,7 +765,34 @@ where
     // run_verify::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
 }
 
-pub fn run_bn254_seperate<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut Filereader)
+// pub fn run_bn254_seperate<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut Filereader)
+// where
+//     CircuitDefaultType: std::default::Default
+//     + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>
+//     + std::clone::Clone,
+
+//     CircuitType: std::default::Default +
+//     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
+//     + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
+//     // + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::BN254Config>
+//     + std::clone::Clone,
+// {
+
+//     run_compile_and_serialize::<BN254Config, CircuitType>(file_reader.get_path());
+
+//     let split_whole_proof = true;
+
+//     if split_whole_proof{
+//         run_witness_and_proof::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
+//         run_verify_no_circuit::<BN254Config, Filereader, CircuitDefaultType>(file_reader.get_path());
+//     }
+//     else{
+//         run_rest::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
+//         run_verify::<BN254Config, Filereader, CircuitDefaultType>(file_reader.get_path());
+//     }
+// }
+
+pub fn compile_dummy_circuit<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut Filereader)
 where
     CircuitDefaultType: std::default::Default
     + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>
@@ -708,17 +806,8 @@ where
 {
 
     run_compile_and_serialize::<BN254Config, CircuitType>(file_reader.get_path());
-    let split_whole_proof = true;
-
-    if split_whole_proof{
-        run_witness_and_proof::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
-        run_verify_no_circuit::<BN254Config, Filereader, CircuitDefaultType>(file_reader.get_path());
-    }
-    else{
-        run_rest::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
-        run_verify::<BN254Config, Filereader, CircuitDefaultType>(file_reader.get_path());
-    }
 }
+
 
 
 pub fn debug_bn254<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut Filereader)

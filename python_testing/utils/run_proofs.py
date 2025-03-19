@@ -27,38 +27,35 @@ class ZKProofsExpander():
         self.toml_path = f"{self.circuit_folder}/Cargo.toml"
         self.circuit_file = circuit_file
 
-        # cargo run --bin testing --manifest-path ExpanderCompilerCollection/Cargo.toml inputs/reward_input.json output/reward_output.json
 
 
     def run_proof(self, input_file: str, output_file: str, demo = False):
-        # executable_to_run = ["cargo", "build", "--release"]
-        # res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=False)
         assert isinstance(input_file, str)
         assert isinstance(output_file, str)
 
-        # Set RUSTFLAGS to target a specific CPU architecture
-        # os.environ["RUSTFLAGS"] = "-C target-cpu=haswell"
-        # os.environ["RUSTFLAGS"] = "-C target-cpu=x86-64"
-        # os.environ["RUSTFLAGS"] = "-C target-feature=-avx,-avx2"
-        # os.environ["RUSTFLAGS"] = "-C target-cpu=haswell -C target-feature=+avx,-avx2"
+        # Add path to toml
+        executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release", input_file, output_file]
+        # executable_to_run.append("--release")
 
+        # # Add inputs
+        # executable_to_run.append(input_file)
 
-        # # Run cargo clean with manifest path
-        # clean_command = ["cargo", "clean", "--manifest-path", self.toml_path]
-        # logging.info("Running cargo clean to remove old build artifacts.")
-        # res_clean = ExecutableHelperFunctions.run_process(clean_command, die_on_error=True)
-        # if res_clean.returncode == 0:
-        #     logging.info("cargo clean completed successfully.")
-        # else:
-        #     logging.error(f"cargo clean failed with return code: {res_clean.returncode}")
-        #     return  # Exit early if clean fails
+        # # Add output
+        # executable_to_run.append(output_file)
 
-        # Default run of file
-        # executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
+        if res.returncode == 0:
+            logging.info(f"Circuit Compiled with return code: {res.returncode}")
+
+    def run_end_to_end(self, input_file: str, output_file: str, demo = False):
+        assert isinstance(input_file, str)
+        assert isinstance(output_file, str)
 
         # Add path to toml
         executable_to_run = ["cargo", "run", "--bin", self.circuit_file]
         executable_to_run.append("--release")
+
+        executable_to_run.append("run_proof")
 
         # Add inputs
         executable_to_run.append(input_file)
@@ -69,7 +66,53 @@ class ZKProofsExpander():
         res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
         if res.returncode == 0:
             logging.info(f"Circuit Compiled with return code: {res.returncode}")
-            # Do not log here; run_process already handles logging errors.
+
+    def run_compile_circuit(self, circuit_name: str, demo = False):
+        # Add path to toml
+        executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
+        executable_to_run.append("run_compile_circuit")
+        executable_to_run.append(f"-n {circuit_name}")
+
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
+        if res.returncode == 0:
+            logging.info(f"Circuit Compiled with return code: {res.returncode}")
+
+    def run_gen_witness(self, circuit_name: str, witness_name: str, input_file: str, output_file: str, demo = False):
+        executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
+
+
+        executable_to_run.append("run_gen_witness")
+        executable_to_run.append(f"-n {circuit_name}")
+
+        executable_to_run.append("-i")
+        executable_to_run.append(input_file)
+
+        executable_to_run.append("-o")
+        executable_to_run.append(output_file)
+
+
+
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
+        if res.returncode == 0:
+            logging.info(f"Circuit Compiled with return code: {res.returncode}")
+
+    def run_prove_witness(self, circuit_name: str, witness_name: str, proof_name: str, input_file: str, output_file: str, demo = False):
+        raise
+
+    def run_gen_verify(self, circuit_name: str, demo = False):
+        executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
+
+
+        executable_to_run.append("run_gen_verify")
+        executable_to_run.append("-n")
+        executable_to_run.append(circuit_name)
+
+
+
+
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
+        if res.returncode == 0:
+            logging.info(f"Circuit Compiled with return code: {res.returncode}")
 
 class ZKProofsCircom():
     def __init__(self, circuit_file: str):
