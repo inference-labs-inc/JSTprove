@@ -1,5 +1,5 @@
 use expander_compiler::frontend::*;
-use gravy_circuits::runner::main_runner::{run_compile_and_serialize, run_main, run_verify_no_circuit, run_witness_and_proof};
+use gravy_circuits::runner::main_runner::{run_compile_and_serialize, run_main, run_verify, run_verify_no_circuit, run_witness_and_proof};
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use serde::Deserialize;
 use clap::{Arg, Command};
@@ -156,7 +156,7 @@ fn handle_args(mut file_reader: FileReader) {
             let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
 
             
-            run_verify_no_circuit::<BN254Config, FileReader, DummyCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>>(&file_reader.path);
+            run_verify::<BN254Config, FileReader, DummyCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>>(&file_reader.path);
         }
         _ => {
             panic!("Unknown command or missing arguments.");

@@ -291,42 +291,6 @@ where
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
         + Clone,
 {
-    // let matches: clap::ArgMatches = Command::new("File Copier")
-    //     .version("1.0")
-    //     .about("Copies content from input file to output file")
-    //     .arg(
-    //         Arg::new("type")
-    //             .help("The type of main runner we want to run")
-    //             .required(true) // This argument is required
-    //             .index(1), // Positional argument (first argument)
-    //     )
-    //     .arg(
-    //         Arg::new("input")
-    //             .help("The file to read circuit inputs from")
-    //             .required(false) // This argument is required
-    //             .long("input") // Use a long flag (e.g., --name)
-    //             .short('i')  // Use a short flag (e.g., -n)
-    //             // .index(2), // Positional argument (first argument)
-    //     )
-    //     .arg(
-    //         Arg::new("output")
-    //             .help("The outputs to the circuit")
-    //             .required(false) // This argument is also required
-    //             .long("output") // Use a long flag (e.g., --name)
-    //             .short('o')  // Use a short flag (e.g., -n)
-    //             // .index(3), // Positional argument (second argument)
-    //     )
-    //     .arg(
-    //         Arg::new("name")
-    //             .help("The name of the circuit for the file names to serialize/deserialize")
-    //             .required(false) // This argument is also required
-    //             .long("name") // Use a long flag (e.g., --name)
-    //             .short('n')  // Use a short flag (e.g., -n)
-    //     )
-    //     .get_matches();
-
-    // let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
-    // let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
 
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
@@ -445,6 +409,7 @@ where
     // let witness =
     //     layered::witness::Witness::<C>::deserialize_from(witness).map_err(|e| e.to_string())?;
     let (simd_input, simd_public_input) = witness.to_simd::<C::DefaultSimdField>();
+
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
 
