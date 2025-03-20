@@ -55,11 +55,13 @@ class Circuit():
         ## Run the circuit
         self.parse_proof_run_type(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file, run_type)
 
+
+
     def parse_proof_run_type(self, witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file, run_type):
         if run_type == RunType.BASE_TESTING:
             prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file)
         elif run_type == RunType.END_TO_END:
-            ZKProofsExpander(circuit_name).run_end_to_end(input_file, output_file, demo = False)
+            ZKProofsExpander(circuit_name).run_end_to_end(input_file, output_file, circuit_name, demo = False)
         elif run_type == RunType.COMPILE_CIRCUIT:
             ZKProofsExpander(circuit_name).run_compile_circuit(circuit_name)
         # elif run_type == RunType.GEN_WITNESS:

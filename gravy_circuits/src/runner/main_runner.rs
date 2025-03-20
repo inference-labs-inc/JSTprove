@@ -284,7 +284,7 @@ where
     )
 }
 
-pub fn run_witness_and_proof<C: Config, I, CircuitDefaultType>(io_reader: &mut I, input_path: &str, output_path:&str, circuit_name: &str)
+pub fn run_witness_and_proof<C: Config, I, CircuitDefaultType>(io_reader: &mut I, input_path: &str, output_path:&str, _circuit_name: &str)
 where
     I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
@@ -788,4 +788,103 @@ where
     + std::clone::Clone + Define<expander_compiler::frontend::BN254Config>,
 {
     run_debug::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+}
+
+pub fn handle_args<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut  Filereader) 
+where
+    CircuitDefaultType: std::default::Default
+    + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>
+    + std::clone::Clone,
+
+    CircuitType: std::default::Default +
+    expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
+    // + std::clone::Clone + GenericDefine<expander_compiler::frontend::BN254Config>,
+// + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
+    + std::clone::Clone + Define<expander_compiler::frontend::BN254Config>
+    {
+
+    let matches: clap::ArgMatches = Command::new("File Copier")
+        .version("1.0")
+        .about("Copies content from input file to output file")
+        .arg(
+            Arg::new("type")
+                .help("The type of main runner we want to run")
+                .required(true) // This argument is required
+                .index(1), // Positional argument (first argument)
+        )
+        .arg(
+            Arg::new("input")
+                .help("The file to read circuit inputs from")
+                .required(false) // This argument is required
+                .long("input") // Use a long flag (e.g., --name)
+                .short('i')  // Use a short flag (e.g., -n)
+                // .index(2), // Positional argument (first argument)
+        )
+        .arg(
+            Arg::new("output")
+                .help("The file to read outputs to the circuit")
+                .required(false) // This argument is also required
+                .long("output") // Use a long flag (e.g., --name)
+                .short('o')  // Use a short flag (e.g., -n)
+                // .index(3), // Positional argument (second argument)
+        )
+        .arg(
+            Arg::new("name")
+                .help("The name of the circuit for the file names to serialize/deserialize")
+                .required(false) // This argument is also required
+                .long("name") // Use a long flag (e.g., --name)
+                .short('n')  // Use a short flag (e.g., -n)
+        )
+        .get_matches();
+
+        // let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+        // let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+
+    // The first argument is the command we need to identify
+    // let command = &args[1];
+    let command = matches.get_one::<String>("type").unwrap();
+    
+
+    match command.as_str() {
+        //ignore
+        "run_proof" => {
+            let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+            let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+            run_main::<BN254Config, _,  CircuitType, CircuitDefaultType,>( file_reader, &input_path, &output_path);
+        }
+                                    
+        "run_compile_circuit" => {
+            // let circuit_name = &args[2];
+            let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
+
+            
+            run_compile_and_serialize::<BN254Config,CircuitType>(&circuit_name);
+            // compile_circ(circuit_name, demo);
+        }
+        "run_gen_witness" => {
+            let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+            let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+            let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
+            run_witness_and_proof::<BN254Config, _, CircuitDefaultType>(file_reader, input_path, output_path, circuit_name);
+        }
+        // "run_prove_witness" => {
+        //     let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+        //     let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+        //     let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
+        //     run_prove_witness(circuit_name, witness_name, proof_name, input_file, output_file, demo);
+        // }
+        "run_gen_verify"=> {
+
+            // let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+            // let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+            let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
+
+            
+            run_verify::<BN254Config, Filereader, CircuitDefaultType>(&circuit_name);
+        }
+        _ => {
+            panic!("Unknown command or missing arguments.");
+            // exit(1);
+        }
+    }
 }

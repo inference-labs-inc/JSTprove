@@ -47,7 +47,7 @@ class ZKProofsExpander():
         if res.returncode == 0:
             logging.info(f"Circuit Compiled with return code: {res.returncode}")
 
-    def run_end_to_end(self, input_file: str, output_file: str, demo = False):
+    def run_end_to_end(self, input_file: str, output_file: str, circuit_name:str,  demo = False):
         assert isinstance(input_file, str)
         assert isinstance(output_file, str)
 
@@ -57,10 +57,12 @@ class ZKProofsExpander():
 
         executable_to_run.append("run_proof")
 
-        # Add inputs
+        executable_to_run.append(f"-n {circuit_name}")
+
+        executable_to_run.append("-i")
         executable_to_run.append(input_file)
 
-        # Add output
+        executable_to_run.append("-o")
         executable_to_run.append(output_file)
 
         res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
@@ -79,7 +81,6 @@ class ZKProofsExpander():
 
     def run_gen_witness(self, circuit_name: str, witness_name: str, input_file: str, output_file: str, demo = False):
         executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
-
 
         executable_to_run.append("run_gen_witness")
         executable_to_run.append(f"-n {circuit_name}")
