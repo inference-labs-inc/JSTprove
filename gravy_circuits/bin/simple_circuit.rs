@@ -5,31 +5,38 @@ use serde::Deserialize;
 
 
 declare_circuit!(Circuit {
-    input_a: Variable,
-    input_b: Variable,
-    // nonce: Variable,
-    output: Variable, 
+    input_a: PublicVariable,
+    input_b: PublicVariable,
+    nonce: PublicVariable,
+    output: PublicVariable,
+    dummy: [Variable;2]
 });
 
-declare_circuit!(DummyCircuit {
-    input_a: Variable,
-    input_b: Variable,
-    output: Variable, 
-});
+// declare_circuit!(DummyCircuit {
+//     input_a: Variable,
+//     input_b: Variable,
+//     output: Variable, 
+// });
 
-impl<C: Config> Define<C> for DummyCircuit<Variable> {
-    fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
-        api.assert_is_equal(0, 10);
-    }
-}
+// impl<C: Config> Define<C> for DummyCircuit<Variable> {
+//     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
+//         api.assert_is_equal(0, 10);
+//     }
+// }
 
 //Still to factor this out
 
 impl<C: Config> Define<C> for Circuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         let out = api.add(self.input_a, self.input_b);
+        // let out1 = api.add(self.nonce, out);
+        api.assert_is_non_zero(self.nonce);
 
         api.assert_is_equal(out, self.output);
+        for i in 0..self.dummy.len(){
+            api.assert_is_equal(self.dummy[i], 0);
+
+        }
     }
 }
 
@@ -37,7 +44,7 @@ impl<C: Config> Define<C> for Circuit<Variable> {
 struct InputData {
     input_a: u32,
     input_b: u32,
-    // nonce: u32,
+    nonce: u32,
 }
 
 //This is the data structure for the output data to be read in from the json file
@@ -58,8 +65,8 @@ impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
         // Assign inputs to assignment
        assignment.input_a = C::CircuitField::from(data.input_a);
        assignment.input_b = C::CircuitField::from(data.input_b);
-    //    assignment.nonce = C::CircuitField::from(data.nonce);
-
+       assignment.nonce = C::CircuitField::from(data.nonce);
+       assignment.dummy = [C::CircuitField::from(0); 2];
 
         // Return the assignment
         assignment

@@ -293,6 +293,7 @@ where
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
+    println!("{:?}", format!("{}_witness_solver.txt", io_reader.get_path()));
     let file = std::fs::File::open(format!("{}_witness_solver.txt", io_reader.get_path())).unwrap();
     let reader = std::io::BufReader::new(file);
     let witness_solver = WitnessSolver::<C>::deserialize_from(reader).unwrap();
@@ -530,10 +531,6 @@ where
     let file = std::fs::File::open(format!("{}_proof.bin", name)).unwrap();
     let reader = std::io::BufReader::new(file);
     let proof_and_claimed_v: Vec<u8> = Vec::deserialize_from(reader).unwrap();
-    // let proof_and_claimed_v: Vec<u8> = from_reader(reader).unwrap();
-    // let mut proof_and_claimed_v = Vec::new();
-    // reader.read_to_end(&mut proof_and_claimed_v).unwrap();
-    // println!("{:?}", proof_and_claimed_v);
 
 
 
@@ -546,6 +543,10 @@ where
         }
     };
 
+    // println!("{:?}", claimed_v.);
+
+    
+
 
     // verify
     assert!(gkr::executor::verify(
@@ -554,6 +555,7 @@ where
         &proof,
         &claimed_v
     ));
+    // println!("{:?}", proof_and_claimed_v);
 
     println!("Verified");
 
@@ -972,7 +974,7 @@ where
             let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
 
             
-            run_compile_and_serialize::<BN254Config,CircuitType>(&circuit_name);
+            run_compile_and_serialize::<BN254Config,CircuitType>(&file_reader.get_path());
             // compile_circ(circuit_name, demo);
         }
         "run_gen_witness" => {

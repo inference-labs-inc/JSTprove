@@ -73,7 +73,8 @@ class ZKProofsExpander():
         # Add path to toml
         executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
         executable_to_run.append("run_compile_circuit")
-        executable_to_run.append(f"-n {circuit_name}")
+        executable_to_run.append("-n")
+        executable_to_run.append(circuit_name)
 
         res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
         if res.returncode == 0:
@@ -83,7 +84,8 @@ class ZKProofsExpander():
         executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
 
         executable_to_run.append("run_gen_witness")
-        executable_to_run.append(f"-n {circuit_name}")
+        executable_to_run.append("-n")
+        executable_to_run.append(circuit_name)
 
         executable_to_run.append("-i")
         executable_to_run.append(input_file)
@@ -101,7 +103,9 @@ class ZKProofsExpander():
         executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
 
         executable_to_run.append("run_prove_witness")
-        executable_to_run.append(f"-n {circuit_name}")
+        executable_to_run.append("-n")
+        executable_to_run.append(circuit_name)
+
 
         # executable_to_run.append("-i")
         # executable_to_run.append(input_file)
