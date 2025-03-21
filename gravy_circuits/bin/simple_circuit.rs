@@ -7,6 +7,7 @@ use serde::Deserialize;
 declare_circuit!(Circuit {
     input_a: Variable,
     input_b: Variable,
+    // nonce: Variable,
     output: Variable, 
 });
 
@@ -34,8 +35,9 @@ impl<C: Config> Define<C> for Circuit<Variable> {
 
 #[derive(Deserialize, Clone)]
 struct InputData {
-    input_a: u32, // Shape (m, n)
-    input_b: u32, // Shape (n, k)
+    input_a: u32,
+    input_b: u32,
+    // nonce: u32,
 }
 
 //This is the data structure for the output data to be read in from the json file
@@ -56,6 +58,8 @@ impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
         // Assign inputs to assignment
        assignment.input_a = C::CircuitField::from(data.input_a);
        assignment.input_b = C::CircuitField::from(data.input_b);
+    //    assignment.nonce = C::CircuitField::from(data.nonce);
+
 
         // Return the assignment
         assignment

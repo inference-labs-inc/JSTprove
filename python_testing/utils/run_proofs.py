@@ -97,8 +97,23 @@ class ZKProofsExpander():
         if res.returncode == 0:
             logging.info(f"Circuit Compiled with return code: {res.returncode}")
 
-    def run_prove_witness(self, circuit_name: str, witness_name: str, proof_name: str, input_file: str, output_file: str, demo = False):
-        raise
+    def run_prove_witness(self, circuit_name: str, demo = False):
+        executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
+
+        executable_to_run.append("run_prove_witness")
+        executable_to_run.append(f"-n {circuit_name}")
+
+        # executable_to_run.append("-i")
+        # executable_to_run.append(input_file)
+
+        # executable_to_run.append("-o")
+        # executable_to_run.append(output_file)
+
+
+
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
+        if res.returncode == 0:
+            logging.info(f"Circuit Compiled with return code: {res.returncode}")
 
     def run_gen_verify(self, circuit_name: str, demo = False):
         executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]

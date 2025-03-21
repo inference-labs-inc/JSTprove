@@ -64,10 +64,10 @@ class Circuit():
             ZKProofsExpander(circuit_name).run_end_to_end(input_file, output_file, circuit_name, demo = False)
         elif run_type == RunType.COMPILE_CIRCUIT:
             ZKProofsExpander(circuit_name).run_compile_circuit(circuit_name)
-        # elif run_type == RunType.GEN_WITNESS:
-        #     proof_system.run_gen_witness(*args, **kwargs)
-        elif run_type == RunType.PROVE_WITNESS:
+        elif run_type == RunType.GEN_WITNESS:
             ZKProofsExpander(circuit_name).run_gen_witness(circuit_name, "", input_file, output_file)
+        elif run_type == RunType.PROVE_WITNESS:
+            ZKProofsExpander(circuit_name).run_prove_witness(circuit_name, "")
         elif run_type == RunType.GEN_VERIFY:
             ZKProofsExpander(circuit_name).run_gen_verify(circuit_name)
 

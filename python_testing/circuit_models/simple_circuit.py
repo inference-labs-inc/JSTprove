@@ -24,15 +24,15 @@ class SimpleCircuit(Circuit):
 
         self.input_a = 100
         self.input_b = 200
-
-        
-
-
+        #Currently a random value, not sure what value should fit with the validator scheme
+        self.nonce = torch.randint(0,2**32,[1]).item()
+        # print(type(self.nonce))
 
     def get_model_params(self, output):
         inputs = {
             "input_a": self.input_a,
-            "input_b": self.input_b
+            "input_b": self.input_b,
+            "nonce": self.nonce
         }
         outputs = {
             "output": output
@@ -47,16 +47,19 @@ class SimpleCircuit(Circuit):
 if __name__ == "__main__":
 
     # SimpleCircuit().base_testing()
-    SimpleCircuit().base_testing(run_type=RunType.END_TO_END)
-    # SimpleCircuit().base_testing(run_type=RunType.COMPILE_CIRCUIT)
+    # SimpleCircuit().base_testing(run_type=RunType.END_TO_END)
 
-
-    # # outputs = SimpleCircuit.get_outputs()
-    # # (inputs, _, outputs) = SimpleCircuit.get_model_params(SimpleCircuit.get_outputs()) # Create a function that calculates and stores model_params to file
-
-    # SimpleCircuit().base_testing(run_type=RunType.PROVE_WITNESS) # This should specify the model_params file
     
-    # SimpleCircuit().base_testing(run_type=RunType.GEN_VERIFY)
+    SimpleCircuit().base_testing(run_type=RunType.COMPILE_CIRCUIT)
+
+    # outputs = SimpleCircuit.get_outputs()
+    # # (inputs, _, outputs) = SimpleCircuit.get_model_params(SimpleCircuit.get_outputs()) # Create a function that calculates and stores model_params to file
+    SimpleCircuit().base_testing(run_type=RunType.GEN_WITNESS) # This should specify the model_params file
+
+
+    SimpleCircuit().base_testing(run_type=RunType.PROVE_WITNESS) # This should specify the model_params file
+    
+    SimpleCircuit().base_testing(run_type=RunType.GEN_VERIFY)
 
 
 
