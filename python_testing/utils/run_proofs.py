@@ -251,6 +251,8 @@ class ZKProofsCircom():
 class ExecutableHelperFunctions():
     @staticmethod
     def filter_compiling_output(command):
+        env = os.environ.copy()
+        env["RUSTFLAGS"] = "-C target-cpu=native"
         # Run the command and get real-time output
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env = env, text=True)
         import re
