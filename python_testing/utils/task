@@ -1,0 +1,74 @@
+### Code Refactoring Task
+
+**Objective:**  
+Refactor the codebase to improve organization and separation of concerns.
+
+**Files to Modify:**
+1. `python_testing/simple_circuit.py`
+2. `utils/helper_functions.py`
+
+**Key Requirements:**
+1. **Input/Output Management:**
+   - Create dedicated functions for generating and managing input/output files
+   - Ensure output computation is written to files
+   - Include file paths in witness generation
+
+2. **Function Separation:**
+   - Isolate output computation from the main execution flow
+   - Create distinct functions for different operations
+
+**Implementation Details:**
+
+subtask 1. Python - specify files for inputs and create outputs in python
+Create_outputs in python should also write to files
+Generate witness should contain paths to inputs and outputs files
+
+subtask 2. 
+Separate python functions so output computation comes first, then the rest of the run is separate from output computation
+
+**Implementation Approach:**
+- Consider using the decorator pattern for better code organization
+- Explore other suitable design patterns if applicable
+
+**Testing:**
+- Verify changes by running `simple_circuit.py`
+- Ensure all functionality remains intact after refactoring
+
+**Implementation Notes:**
+- Maintain clear separation between file operations and core logic
+- Ensure code is scalable and maintainable
+- Keep the existing functionality while improving code structure
+
+- what to do?
+
+In helper_functions.py, create a function that generates input and output files and the second one for easily and scalably parse proofs.
+I want to have simple_circuit.py and helper_functions.py to clean up and make them in 2 differenct functions.
+ one for input_output file generation and the other one for the parsingproofs. both of these are in helper_functions.py in utils subdirectory.
+  to test it run the simple_circuilt.py to test it out.
+
+
+- Which files to  Alter?
+
+1. python_testing/simple_circuit.py
+2. utils/helper_function.py
+
+
+- what is the best way to do this?
+
+subtask 1. Python - specify files for inputs and create outputs in python
+Create_outputs in python should also write to files
+Generate witness should contain paths to inputs and outputs files
+
+subtask 2. 
+Separate python functions so output computation comes first, then the rest of the run is separate from output computation
+
+ 
+- how to do this? 
+
+  I think using the decorator pattern is the best way to do this.
+  other design pattern that might be useful in this case is ?
+
+
+  - testing?
+
+run simple_circuit.py

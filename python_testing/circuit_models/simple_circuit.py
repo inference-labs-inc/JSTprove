@@ -3,33 +3,29 @@ import torch
 from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
 import os
-from python_testing.circuit_components.relu import ReLU, ConversionType
-
-from python_testing.circuit_components.convolution import Convolution, QuantizedConv
-# from python_testing.matrix_multiplication import QuantizedMatrixMultiplication
-from python_testing.circuit_components.gemm import QuantizedGemm, Gemm
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
-from python_testing.utils.pytorch_helpers import ZKModel
 from python_testing.circuit_components.circuit_helpers import Circuit, RunType
-    
+
 class SimpleCircuit(Circuit):
     def __init__(self):
-        self.layers = {}
-        self.name = "simple_circuit"
-
-        self.scaling = 1
-
-        self.input_a = 100
-        self.input_b = 200
-
+        # Initialize the base class
+        super().__init__()
         
-
-
+        # Circuit-specific parameters
+        self.layers = {}
+        self.name = "simple_circuit"  # Use exact name that matches the binary
+        self.scaling = 1
+        self.input_a = 400
+        self.input_b = 200
+        
+        # Must match an existing cargo binary name
+        self.cargo_binary_name = "simple_circuit"
 
     def get_model_params(self, output):
+        """
+        Get model parameters for the circuit.
+        """
         inputs = {
             "input_a": self.input_a,
             "input_b": self.input_b
@@ -37,21 +33,52 @@ class SimpleCircuit(Circuit):
         outputs = {
             "output": output
         }
-        return inputs,{},outputs
+        return inputs, {}, outputs
     
     def get_outputs(self):
+        """
+        Compute the output of the circuit.
+        This is decorated in the base class to ensure computation happens only once.
+        """
+        print(f"Performing addition operation: {self.input_a} + {self.input_b}")
         return self.input_a + self.input_b
 
-    
-
+# Example code demonstrating circuit operations
 if __name__ == "__main__":
-
-    # SimpleCircuit().base_testing()
-    # SimpleCircuit().base_testing(run_type=RunType.END_TO_END)
-    SimpleCircuit().base_testing(run_type=RunType.COMPILE_CIRCUIT)
-    SimpleCircuit().base_testing(run_type=RunType.PROVE_WITNESS)
-    SimpleCircuit().base_testing(run_type=RunType.GEN_VERIFY)
-
-
-
-
+    # Create a single circuit instance
+    print("\n--- Creating circuit instance ---")
+    circuit = SimpleCircuit()
+    
+    print("\n--- Computing output (will happen only once) ---")
+    output = circuit.get_outputs()
+    print(f"Circuit output: {output}")
+    
+    print("\n--- Testing different operations ---")
+    
+    # Run base testing operation
+    print("\nRunning base testing:")
+    circuit.base_testing(RunType.BASE_TESTING)
+    
+    # Get the output again (should use cached value)
+    print("\nGetting output again (should use cached value):")
+    output_again = circuit.get_outputs()
+    print(f"Circuit output: {output_again}")
+    
+    # Run another operation
+    print("\nRunning compilation:")
+    circuit.base_testing(RunType.COMPILE_CIRCUIT)
+    
+    # Read the input and output files to verify
+    print("\n--- Verifying input and output files ---")
+    print(f"Input file: {circuit._file_info['input_file']}")
+    print(f"Output file: {circuit._file_info['output_file']}")
+    
+    print("\nReading input and output files:")
+    with open(circuit._file_info['input_file'], 'r') as f:
+        input_data = json.load(f)
+    
+    with open(circuit._file_info['output_file'], 'r') as f:
+        output_data = json.load(f)
+    
+    print(f"Input from file: {input_data}")
+    print(f"Output from file: {output_data}")
