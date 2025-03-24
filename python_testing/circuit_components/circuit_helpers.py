@@ -16,7 +16,7 @@ class Circuit():
     def __init__(self):
         raise NotImplementedError("__init__ must be implemented for Class Circuit")
 
-    def base_testing(self, input_folder:str = "inputs", proof_folder: str = "analysis", temp_folder: str= "temp", weights_folder:str = "weights", circuit_folder:str = "", proof_system: ZKProofSystems = ZKProofSystems.Expander, output_folder: str = "output", run_type: RunType = RunType.BASE_TESTING):
+    def base_testing(self, input_folder:str = "inputs", proof_folder: str = "analysis", temp_folder: str= "temp", weights_folder:str = "weights", circuit_folder:str = "", proof_system: ZKProofSystems = ZKProofSystems.Expander, output_folder: str = "output", run_type: RunType = RunType.BASE_TESTING, dev_mode = False):
 
         # NO NEED TO CHANGE!
         witness_file, input_file, proof_path, public_path, verification_key, circuit_name, weights_file, output_file = get_files(
@@ -53,23 +53,23 @@ class Circuit():
         to_json(weights, weights_file)
 
         ## Run the circuit
-        self.parse_proof_run_type(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file, run_type)
+        self.parse_proof_run_type(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file, run_type, dev_mode)
 
 
 
-    def parse_proof_run_type(self, witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file, run_type):
+    def parse_proof_run_type(self, witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file, run_type, dev_mode = False):
         if run_type == RunType.BASE_TESTING:
             prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file)
         elif run_type == RunType.END_TO_END:
-            ZKProofsExpander(circuit_name).run_end_to_end(input_file, output_file, circuit_name, demo = False)
+            ZKProofsExpander(circuit_name).run_end_to_end(input_file, output_file, circuit_name, demo = False, dev_mode = dev_mode)
         elif run_type == RunType.COMPILE_CIRCUIT:
-            ZKProofsExpander(circuit_name).run_compile_circuit(circuit_name)
+            ZKProofsExpander(circuit_name).run_compile_circuit(circuit_name, dev_mode)
         elif run_type == RunType.GEN_WITNESS:
-            ZKProofsExpander(circuit_name).run_gen_witness(circuit_name, "", input_file, output_file)
+            ZKProofsExpander(circuit_name).run_gen_witness(circuit_name, "", input_file, output_file, dev_mode)
         elif run_type == RunType.PROVE_WITNESS:
-            ZKProofsExpander(circuit_name).run_prove_witness(circuit_name, "")
+            ZKProofsExpander(circuit_name).run_prove_witness(circuit_name, "", dev_mode)
         elif run_type == RunType.GEN_VERIFY:
-            ZKProofsExpander(circuit_name).run_gen_verify(circuit_name)
+            ZKProofsExpander(circuit_name).run_gen_verify(circuit_name, dev_mode)
 
         else:
             print(f"Unknown entry: {run_type}")

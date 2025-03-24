@@ -974,7 +974,7 @@ where
             let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
 
             
-            run_compile_and_serialize::<BN254Config,CircuitType>(&file_reader.get_path());
+            run_compile_and_serialize::<BN254Config,CircuitType>(&circuit_name);
             // compile_circ(circuit_name, demo);
         }
         "run_gen_witness" => {

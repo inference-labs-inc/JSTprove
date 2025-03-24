@@ -29,31 +29,28 @@ class ZKProofsExpander():
 
 
 
-    def run_proof(self, input_file: str, output_file: str, demo = False):
+    def run_proof(self, input_file: str, output_file: str, demo = False, dev_mode = True):
         assert isinstance(input_file, str)
         assert isinstance(output_file, str)
-
-        # Add path to toml
-        executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release", input_file, output_file]
-        # executable_to_run.append("--release")
-
-        # # Add inputs
-        # executable_to_run.append(input_file)
-
-        # # Add output
-        # executable_to_run.append(output_file)
+        if dev_mode:
+            executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release", input_file, output_file]
+        else:
+            executable_to_run = [f"./target/release/{self.circuit_file}", input_file, output_file]
+            
 
         res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
         if res.returncode == 0:
             logging.info(f"Circuit Compiled with return code: {res.returncode}")
 
-    def run_end_to_end(self, input_file: str, output_file: str, circuit_name:str,  demo = False):
+    def run_end_to_end(self, input_file: str, output_file: str, circuit_name:str,  demo = False, dev_mode = False):
         assert isinstance(input_file, str)
         assert isinstance(output_file, str)
 
         # Add path to toml
-        executable_to_run = ["cargo", "run", "--bin", self.circuit_file]
-        executable_to_run.append("--release")
+        if dev_mode:
+            executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
+        else:
+            executable_to_run = [f"./target/release/{self.circuit_file}"]
 
         executable_to_run.append("run_proof")
 
@@ -69,9 +66,13 @@ class ZKProofsExpander():
         if res.returncode == 0:
             logging.info(f"Circuit Compiled with return code: {res.returncode}")
 
-    def run_compile_circuit(self, circuit_name: str, demo = False):
+    def run_compile_circuit(self, circuit_name: str, demo = False, dev_mode = False):
         # Add path to toml
-        executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
+        if dev_mode:
+            executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
+        else:
+            executable_to_run = [f"./target/release/{self.circuit_file}"]
+
         executable_to_run.append("run_compile_circuit")
         executable_to_run.append("-n")
         executable_to_run.append(circuit_name)
@@ -80,8 +81,11 @@ class ZKProofsExpander():
         if res.returncode == 0:
             logging.info(f"Circuit Compiled with return code: {res.returncode}")
 
-    def run_gen_witness(self, circuit_name: str, witness_name: str, input_file: str, output_file: str, demo = False):
-        executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
+    def run_gen_witness(self, circuit_name: str, witness_name: str, input_file: str, output_file: str, demo = False, dev_mode = False):
+        if dev_mode:
+            executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
+        else:
+            executable_to_run = [f"./target/release/{self.circuit_file}"]
 
         executable_to_run.append("run_gen_witness")
         executable_to_run.append("-n")
@@ -99,28 +103,25 @@ class ZKProofsExpander():
         if res.returncode == 0:
             logging.info(f"Circuit Compiled with return code: {res.returncode}")
 
-    def run_prove_witness(self, circuit_name: str, demo = False):
-        executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
+    def run_prove_witness(self, circuit_name: str, demo = False, dev_mode = False):
+        if dev_mode:
+            executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
+        else:
+            executable_to_run = [f"./target/release/{self.circuit_file}"]
 
         executable_to_run.append("run_prove_witness")
         executable_to_run.append("-n")
         executable_to_run.append(circuit_name)
 
-
-        # executable_to_run.append("-i")
-        # executable_to_run.append(input_file)
-
-        # executable_to_run.append("-o")
-        # executable_to_run.append(output_file)
-
-
-
         res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
         if res.returncode == 0:
             logging.info(f"Circuit Compiled with return code: {res.returncode}")
 
-    def run_gen_verify(self, circuit_name: str, demo = False):
-        executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
+    def run_gen_verify(self, circuit_name: str, demo = False, dev_mode = False):
+        if dev_mode:
+            executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
+        else:
+            executable_to_run = [f"./target/release/{self.circuit_file}"]
 
 
         executable_to_run.append("run_gen_verify")
