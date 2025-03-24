@@ -59,7 +59,7 @@ if __name__ == "__main__":
     SimpleCircuit().base_testing(run_type=RunType.GEN_WITNESS) # This should specify the model_params file
 
 
-    # SimpleCircuit().base_testing(run_type=RunType.PROVE_WITNESS) # This should specify the model_params file
+    SimpleCircuit().base_testing(run_type=RunType.PROVE_WITNESS) # This should specify the model_params file
     
     SimpleCircuit().base_testing(run_type=RunType.GEN_VERIFY)
 

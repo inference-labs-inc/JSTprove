@@ -34,7 +34,7 @@ impl<C: Config> Define<C> for Circuit<Variable> {
 
         api.assert_is_equal(out, self.output);
         for i in 0..self.dummy.len(){
-            api.assert_is_equal(self.dummy[i], 0);
+            api.assert_is_zero(self.dummy[i]);
 
         }
     }

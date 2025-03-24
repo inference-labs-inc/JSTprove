@@ -251,7 +251,7 @@ class ExecutableHelperFunctions():
     @staticmethod
     def filter_compiling_output(command):
         # Run the command and get real-time output
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env = env, text=True)
         import re
         # Iterate over stdout and stderr, and print them to the command line
         for line in process.stdout:
@@ -269,6 +269,8 @@ class ExecutableHelperFunctions():
         return process
     @staticmethod
     def run_process(executable: List[str], die_on_error:bool =True, shell = False, demo = False):
+        env = os.environ.copy()
+        env["RUSTFLAGS"] = "-C target-cpu=native"
         if demo:
             res = ExecutableHelperFunctions.filter_compiling_output(executable)
             return res
@@ -278,7 +280,7 @@ class ExecutableHelperFunctions():
                 capture_output = True
             else:
                 capture_output = False
-            res = subprocess.run(executable, check=True, capture_output=capture_output, shell=shell, text=True)
+            res = subprocess.run(executable, env = env, check=True, capture_output=capture_output, shell=shell, text=True)
             return res
         except subprocess.CalledProcessError as err:
             # Log the error message from stderr
