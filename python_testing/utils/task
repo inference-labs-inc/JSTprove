@@ -89,3 +89,109 @@ run simple_circuit.py -->
 1. Selective Enhancement: Adding functionality to specific methods without changing their core logic
 2. Automatic Caching: Ensuring get_outputs() runs only once per circuit instance
 3. Cleaner Separation: Handling file I/O separately from business logic
+
+
+# ZK Circuit Testing Framework Improvements
+
+## Overview
+This project enhances the ZK Circuit testing framework using Python decorators to optimize performance and improve workflow flexibility. The implementation addresses two key requirements:
+
+1. Specifying input/output files in Python and ensuring witness generation has access to these paths
+2. Separating output computation from the rest of the processing flow
+
+## Implementation Approach
+
+### Core Decorators
+
+#### 1. `@compute_and_store_output` Decorator
+Applied to the `get_outputs()` method to ensure outputs are computed only once per circuit instance:
+
+```python
+@compute_and_store_output
+def get_outputs(self):
+    # Expensive computation happens here
+    return result
+```
+
+This decorator:
+- Checks for cached output in the temp folder
+- Computes output only if not cached
+- Stores result in a cache file for future use
+- Returns cached output on subsequent calls
+
+#### 2. `@prepare_io_files` Decorator
+Applied to the `base_testing()` method to handle file setup:
+
+```python
+@prepare_io_files
+def base_testing(self, run_type=RunType.BASE_TESTING, ...):
+    # Run the appropriate operation
+    self.parse_proof_run_type(...)
+```
+
+This decorator:
+- Creates necessary directories
+- Generates consistent file paths
+- Calls `get_outputs()` to compute outputs (with caching)
+- Gets model parameters and writes to files
+- Stores file paths for later use
+
+### Requirement 1: Python File Handling
+
+The implementation:
+- Creates structured input files via `prepare_io_files` decorator
+- Computes outputs in Python through the decorated `get_outputs()` method
+- Automatically writes outputs to files using `to_json(outputs, output_file)`
+- Ensures witness generation receives paths to both input and output files
+
+### Requirement 2: Separating Output Computation
+
+The implementation:
+- Uses the `@compute_and_store_output` decorator to ensure outputs are computed first
+- Caches results to prevent redundant computation
+- Separates output computation from file preparation and proof operations
+- Allows operation methods (`compile()`, `generate_witness()`, etc.) to be called independently
+
+## Benefits
+
+1. **Performance Optimization**: Outputs are computed only once per circuit instance
+2. **Modular Design**: Each component has a single responsibility
+3. **Workflow Flexibility**: Operations can be called in any order
+4. **Maintainability**: Core logic is separate from cross-cutting concerns
+5. **Error Resilience**: File operations continue even if cargo operations fail
+
+## Example Usage
+
+```python
+# Create a circuit
+circuit = SimpleCircuit()
+
+# Compute outputs (happens once, cached for future use)
+output = circuit.get_outputs()
+
+# Run independent operations
+circuit.compile()
+circuit.generate_witness()
+circuit.run_proof()
+
+# Or run through base_testing
+circuit.base_testing(RunType.COMPILE_CIRCUIT)
+```
+
+This implementation successfully separates output computation from proof operations while ensuring all necessary files are properly managed, meeting both key requirements.
+
+## Original Requirements
+[Include original requirements from task file here]
+
+## Testing
+1. Activate the virtual environment:
+```bash
+source venv/bin/activate
+```
+
+2. Run the test circuit:
+```bash
+python -m python_testing.simple_circuit
+```
+
+3. Verify that outputs are computed only once and files are generated correctly.
