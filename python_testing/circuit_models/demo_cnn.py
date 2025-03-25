@@ -174,7 +174,7 @@ class Demo(ZKModel):
     
 
 if __name__ == "__main__":
-    Demo().run_circuit()
+    Demo().base_testing()
     # Demo().run_circuit()
     # Demo().run_circuit()
     # Demo().run_circuit()

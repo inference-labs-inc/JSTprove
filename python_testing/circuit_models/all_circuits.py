@@ -9,9 +9,9 @@ from python_testing.circuit_models.testing_circuit_doom import Doom as DoomOrigi
 
 
 if __name__ == "__main__":
-    Demo().run_circuit()
-    Doom2().run_circuit()
-    Doom1().run_circuit()
+    Demo().base_testing()
+    Doom2().base_testing()
+    Doom1().base_testing()
     SimpleCircuit().base_testing(run_type=RunType.END_TO_END)
     DoomOriginal().run_circuit()
 

@@ -5,7 +5,8 @@ import torch.nn.functional as F
 import onnx
 import onnxruntime as ort
 
-from python_testing.utils.run_proofs import ZKProofSystems
+from python_testing.circuit_components.circuit_helpers import Circuit, RunType
+from python_testing.utils.run_proofs import ZKProofSystems, ZKProofsExpander
 from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
 from python_testing.circuit_components.relu import ReLU, ConversionType
 from python_testing.circuit_components.convolution import Convolution, QuantizedConv
@@ -145,21 +146,13 @@ class Layers():
         return mat_mult_circuit.get_model_params(gemm)
     
 # TODO CHANGE THIS NESTED STRUCTURE, DONE FOR EASE FOR NOW, BUT IT NEEDS IMPROVEMENT
-class ZKModel(Layers, GeneralLayerFunctions):
+class ZKModel(Layers, GeneralLayerFunctions, Circuit):
     def __init__(self):
         raise(NotImplementedError, "Must implement")
 
-    def run_circuit(self, demo = False):
+    def base_testing(self, input_folder:str = "inputs", proof_folder: str = "analysis", temp_folder: str= "temp", weights_folder:str = "weights", circuit_folder:str = "", proof_system: ZKProofSystems = ZKProofSystems.Expander, output_folder: str = "output", run_type: RunType = RunType.BASE_TESTING, dev_mode = False, demo = False):
         """Simulates running the model by passing inputs through layers with weights."""
         print("Running circuit...")
-        proof_system = ZKProofSystems.Expander
-        proof_folder = "analysis"
-        output_folder = "output"
-        temp_folder = "temp"
-        input_folder = "inputs"
-        weights_folder = "weights"
-        circuit_folder = ""
-        
 
         witness_file, input_file, proof_path, public_path, verification_key, circuit_name, weights_file, output_file = get_files(
                 input_folder, proof_folder, temp_folder, circuit_folder, weights_folder, self.name, output_folder, proof_system)
@@ -184,4 +177,5 @@ class ZKModel(Layers, GeneralLayerFunctions):
 
 
         # ## Run the circuit
-        prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file, demo = demo)
+        # prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file, demo = demo)
+        self.parse_proof_run_type(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file, RunType.BASE_TESTING, dev_mode)

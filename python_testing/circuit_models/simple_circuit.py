@@ -14,6 +14,8 @@ import torch.nn.functional as F
 import numpy as np
 from python_testing.utils.pytorch_helpers import ZKModel
 from python_testing.circuit_components.circuit_helpers import Circuit, RunType
+
+from random import randint
     
 class SimpleCircuit(Circuit):
     def __init__(self):
@@ -22,17 +24,17 @@ class SimpleCircuit(Circuit):
 
         self.scaling = 1
 
-        self.input_a = 100
-        self.input_b = 200
-
-        
-
-
+        self.input_a = 100#randint(0,10000)
+        self.input_b = 200#randint(0,10000)
+        #Currently a random value, not sure what value should fit with the validator scheme
+        self.nonce = randint(0,10000)
+        # print(type(self.nonce))
 
     def get_model_params(self, output):
         inputs = {
             "input_a": self.input_a,
-            "input_b": self.input_b
+            "input_b": self.input_b,
+            "nonce": self.nonce
         }
         outputs = {
             "output": output
@@ -40,7 +42,7 @@ class SimpleCircuit(Circuit):
         return inputs,{},outputs
     
     def get_outputs(self):
-        return self.input_a + self.input_b
+        return self.input_a + self.input_b #+ self.nonce
 
     
 
@@ -48,8 +50,17 @@ if __name__ == "__main__":
 
     # SimpleCircuit().base_testing()
     # SimpleCircuit().base_testing(run_type=RunType.END_TO_END)
-    SimpleCircuit().base_testing(run_type=RunType.COMPILE_CIRCUIT)
-    SimpleCircuit().base_testing(run_type=RunType.PROVE_WITNESS)
+
+    
+    # SimpleCircuit().base_testing(run_type=RunType.COMPILE_CIRCUIT)
+
+    # outputs = SimpleCircuit.get_outputs()
+    # # (inputs, _, outputs) = SimpleCircuit.get_model_params(SimpleCircuit.get_outputs()) # Create a function that calculates and stores model_params to file
+    SimpleCircuit().base_testing(run_type=RunType.GEN_WITNESS) # This should specify the model_params file
+
+
+    SimpleCircuit().base_testing(run_type=RunType.PROVE_WITNESS) # This should specify the model_params file
+    
     SimpleCircuit().base_testing(run_type=RunType.GEN_VERIFY)
 
 

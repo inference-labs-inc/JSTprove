@@ -316,18 +316,3 @@ if __name__ == "__main__":
     Doom().run_circuit()
 
 
-    
-    
-
-    
-    # proof_system = ZKProofSystems.Expander
-    # proof_folder = "analysis"
-    # output_folder = "output"
-    # temp_folder = "temp"
-    # input_folder = "inputs"
-    # weights_folder = "weights"
-    # circuit_folder = ""
-    # #Rework inputs to function
-    # test_circuit = ReLU(conversion_type = ConversionType.TWOS_COMP)
-    # test_circuit.base_testing(input_folder,proof_folder, temp_folder, circuit_folder, weights, proof_system, output_folder)
-

@@ -301,6 +301,6 @@ class Eth(ZKModel):
 if __name__ == "__main__":
     # main()
 
-    Eth().run_circuit(demo = True)
+    Eth().base_testing(demo = True)
     # Eth()
 
