@@ -163,7 +163,7 @@ def run_cargo_command(binary_name, command_type, args=None):
     except subprocess.CalledProcessError as e:
         print(f"Command failed with return code {e.returncode}")
         print(f"Error output: {e.stderr}")
-        raise
+        raise e
 
 def prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, 
                     circuit_name, proof_system: ZKProofSystems = ZKProofSystems.Expander, 
@@ -246,6 +246,28 @@ def generate_witness(circuit_name, witness_file, input_file, output_file,
         circuit = ZKProofsCircom(circuit_name)
         circuit.compute_witness(witness_file, input_file, wasm=True, c=False)
 
+def generate_proof(circuit_name, witness_file, input_file, output_file, 
+                    proof_system: ZKProofSystems = ZKProofSystems.Expander):
+    """Generate witness for a circuit."""
+    if proof_system == ZKProofSystems.Expander:
+        # Extract the binary name from the circuit path
+        binary_name = os.path.basename(circuit_name)
+        
+        # Prepare arguments
+        args = {
+            'n': circuit_name,
+        }
+        
+        # Run the command
+        try:
+            run_cargo_command(binary_name, 'run_prove_witness', args)
+        except Exception as e:
+            print(f"Warning: Proof generation failed: {e}")
+            
+    elif proof_system == ZKProofSystems.Circom:
+        circuit = ZKProofsCircom(circuit_name)
+        circuit.proof(witness_file, output_file, public_path="")
+
 def generate_verification(circuit_name, proof_system: ZKProofSystems = ZKProofSystems.Expander):
     """Generate verification for a circuit."""
     if proof_system == ZKProofSystems.Expander:
@@ -262,6 +284,7 @@ def generate_verification(circuit_name, proof_system: ZKProofSystems = ZKProofSy
             run_cargo_command(binary_name, 'run_gen_verify', args)
         except Exception as e:
             print(f"Warning: Verification generation failed: {e}")
+            print(type(e))
             
     elif proof_system == ZKProofSystems.Circom:
         raise NotImplementedError("Not implemented for Circom")

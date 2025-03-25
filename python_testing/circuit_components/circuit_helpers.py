@@ -3,7 +3,7 @@ from python_testing.utils.run_proofs import ZKProofSystems, ZKProofsExpander
 from python_testing.utils.helper_functions import (
     get_files, to_json, prove_and_verify, compute_and_store_output, 
     prepare_io_files, compile_circuit, generate_witness, 
-    generate_verification, run_end_to_end
+    generate_verification, run_end_to_end, generate_proof
 )
 from enum import Enum
 
@@ -92,7 +92,7 @@ class Circuit:
             elif run_type == RunType.GEN_WITNESS:
                 generate_witness(circuit_name, witness_file, input_file, output_file, proof_system)
             elif run_type == RunType.PROVE_WITNESS:
-                generate_witness(circuit_name, witness_file, input_file, output_file, proof_system)
+                generate_proof(circuit_name, witness_file, input_file, output_file, proof_system)
             elif run_type == RunType.GEN_VERIFY:
                 generate_verification(circuit_name, proof_system)
             else:

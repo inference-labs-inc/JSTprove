@@ -258,16 +258,7 @@ class ExecutableHelperFunctions():
         import re
         # Iterate over stdout and stderr, and print them to the command line
         for line in process.stdout:
-            # Only print lines that do not contain 'Compiling'
-            # if "Users" not in line:
-                print(re.sub(r'\[.*?\]', '', line), end='')  # Print to the command line (stdout)
-
-        # # Also print stderr (errors) to the command line
-        # for line in process.stderr:
-        #     if "Users" not in line:
-        #         print(re.sub(r'\[.*?\]', '', line), end='')  # Print errors to the command line
-
-        # Wait for the process to complete
+            print(re.sub(r'\[.*?\]', '', line), end='')  # Print to the command line (stdout)
         process.wait()
         return process
     @staticmethod
