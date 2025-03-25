@@ -3,9 +3,19 @@
 **Objective:**  
 Refactor the codebase to improve organization and separation of concerns.
 
+**Implementation Details:**
+
+subtask 1. Python - specify files for inputs and create outputs in python
+Create_outputs in python should also write to files
+Generate witness should contain paths to inputs and outputs files
+
+subtask 2. 
+Separate python functions so output computation comes first, then the rest of the run is separate from output computation
+
 **Files to Modify:**
 1. `python_testing/simple_circuit.py`
 2. `utils/helper_functions.py`
+3. `circuit_components/circuit_helpers.py`
 
 **Key Requirements:**
 1. **Input/Output Management:**
@@ -17,14 +27,7 @@ Refactor the codebase to improve organization and separation of concerns.
    - Isolate output computation from the main execution flow
    - Create distinct functions for different operations
 
-**Implementation Details:**
 
-subtask 1. Python - specify files for inputs and create outputs in python
-Create_outputs in python should also write to files
-Generate witness should contain paths to inputs and outputs files
-
-subtask 2. 
-Separate python functions so output computation comes first, then the rest of the run is separate from output computation
 
 **Implementation Approach:**
 - Consider using the decorator pattern for better code organization
@@ -39,20 +42,20 @@ Separate python functions so output computation comes first, then the rest of th
 - Ensure code is scalable and maintainable
 - Keep the existing functionality while improving code structure
 
-- what to do?
+<!-- - what to do?
 
 In helper_functions.py, create a function that generates input and output files and the second one for easily and scalably parse proofs.
 I want to have simple_circuit.py and helper_functions.py to clean up and make them in 2 differenct functions.
  one for input_output file generation and the other one for the parsingproofs. both of these are in helper_functions.py in utils subdirectory.
-  to test it run the simple_circuilt.py to test it out.
+  to test it run the simple_circuilt.py to test it out. -->
 
-
+<!-- 
 - Which files to  Alter?
 
 1. python_testing/simple_circuit.py
-2. utils/helper_function.py
+2. utils/helper_function.py -->
 
-
+<!-- 
 - what is the best way to do this?
 
 subtask 1. Python - specify files for inputs and create outputs in python
@@ -71,4 +74,18 @@ Separate python functions so output computation comes first, then the rest of th
 
   - testing?
 
-run simple_circuit.py
+run simple_circuit.py -->
+
+
+**The Problem in Current Code**
+
+1. Duplicate Computation: Every time base_testing() is called, it recalculates outputs = self.get_outputs() even if it's the exact same calculation
+2. Fixed Structure: All the code is inside one method (base_testing), making it harder to modify just parts of the workflow
+3. No Caching: There's no way to avoid recomputing outputs when calling different run types
+
+
+**How Decorators Solve These Problems**
+
+1. Selective Enhancement: Adding functionality to specific methods without changing their core logic
+2. Automatic Caching: Ensuring get_outputs() runs only once per circuit instance
+3. Cleaner Separation: Handling file I/O separately from business logic
