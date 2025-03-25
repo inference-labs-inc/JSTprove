@@ -74,36 +74,51 @@ We must run the cargo files with release for reasonable time process
 
 # Command Line Interface
 
-This CLI tool is designed to run various circuit operations, including circuit compilation, witness generation, proof generation, and verification. The CLI dynamically loads circuit modules and resolves file paths using fuzzy matching, making it easier to work with different circuit configurations and JSON file inputs/outputs.
+This CLI tool runs various circuit operations such as compilation, witness generation, proof generation, and verification. It dynamically loads circuit modules, resolves file paths using fuzzy matching, and can list all available circuit files that inherit from a `Circuit` or `ZKModel` class.
 
 ## Features
 
-- **Dynamic Module Loading:**  
-  Load any circuit module and class (default is `SimpleCircuit`) from the `python_testing/circuit_models` directory.
+1. **Dynamic Module Loading**  
+   - By default, the CLI looks for circuit modules in:
+     - `python_testing.circuit_models`
+     - `python_testing.circuit_components`
+   - You can also specify a custom search path relative to `python_testing` with the `--circuit_search_path` flag.
 
-- **File Resolution:**  
-  Automatically searches for JSON files (with fuzzy matching) for input and output. You can override the default paths using command-line flags.
+2. **File Resolution**  
+   - Automatically searches the project root for JSON input and output files using a simple or fuzzy match.
+   - You can override the default filenames (e.g., `{circuit}_input.json` and `{circuit}_output.json`) with:
+     - `--input` to point to an exact input file
+     - `--output` to point to an exact output file
+     - `--pattern` to use a custom format (e.g., `my_{circuit}_input.json`).
 
-- **Operation Flags:**  
-  Run specific stages of your circuit workflow:
-  - `--compile_circuit`: Compile the circuit.
-  - `--gen_witness`: Generate the witness.
-  - `--prove_witness`: Generate both witness and proof.
-  - `--gen_verify`: Run verification.
-  - `--base_testing`: Run base testing (for quick testing).
-  - `--end_to_end`: Run end-to-end testing.
-  - `--all`: Run all stages in the following order: **compile_circuit**, **gen_witness**, **prove_witness**, then **gen_verify**.
+3. **Operation Flags**  
+   - Run specific stages of your circuit workflow:
+     - `--compile_circuit`: Compile the circuit.
+     - `--gen_witness`: Generate a witness.
+     - `--prove_witness`: Generate both the witness and proof.
+     - `--gen_verify`: Run verification.
+     - `--base_testing`: Perform a quick “base testing” cycle (logic depends on your circuit).
+     - `--end_to_end`: Run an all-in-one test if your circuit supports it.
+   - `--all`: Run the main four stages in sequence:  
+     1. Compile (`--compile_circuit`)  
+     2. Generate Witness (`--gen_witness`)  
+     3. Prove Witness (`--prove_witness`)  
+     4. Verify (`--gen_verify`)
 
-- **List Available Circuits:**  
-  Use the `--list_circuits` flag to search for available circuit files. By default, the search is limited to:
-  - `python_testing/circuit_components`
-  - `python_testing/circuit_models`  
-  You can override this using the `--circuit_search_path` flag (path is relative to the project root).
+4. **List Available Circuits**  
+   - Use the `--list_circuits` flag to recursively search for Python files containing a class that inherits from `Circuit` or `ZKModel`.  
+   - By default, it searches in:
+     - `python_testing/circuit_components`
+     - `python_testing/circuit_models`
+   - Override with `--circuit_search_path <some_relative_folder>` to search elsewhere.
 
-## Usage
+## Basic Usage
 
-### Running Specific Operations
-To run a specific operation, provide the corresponding flag along with the `--circuit` argument to specify which circuit module to load. For example:
+1. **Install Dependencies**  
+   Ensure you have **Python 3.12.x** installed and all required dependencies listed in `requirements.txt`:
 
-```bash
-python -m cli --circuit simple_circuit --compile_circuit
+2. **Run the CLI**  
+   From the project root (`GravyTesting-Internal`):
+
+   ```bash
+   python -m cli --circuit simple_circuit --compile_circuit

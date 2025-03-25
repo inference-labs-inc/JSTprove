@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-CLI for running circuit operations. Dynamically loads circuit modules and resolves file paths using fuzzy matching.
+CLI for running circuit operations. Dynamically loads circuit modules, resolves file paths
+using fuzzy matching, and supports listing available circuits.
 """
 
 import argparse
@@ -8,7 +9,7 @@ import difflib
 import importlib
 import logging
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 from python_testing.circuit_components.circuit_helpers import RunType
 
@@ -16,8 +17,17 @@ from python_testing.circuit_components.circuit_helpers import RunType
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Since cli.py is now in the project root, set PROJECT_ROOT accordingly
-PROJECT_ROOT = Path(__file__).resolve().parent  # GravyTesting-Internal
+# Set PROJECT_ROOT since cli.py is in the project root (GravyTesting-Internal)
+PROJECT_ROOT = Path(__file__).resolve().parent
+
+# Cache for JSON files to avoid repeated directory scans
+_JSON_FILES_CACHE: Optional[List[Path]] = None
+
+def _get_all_json_files() -> List[Path]:
+    global _JSON_FILES_CACHE
+    if _JSON_FILES_CACHE is None:
+        _JSON_FILES_CACHE = list(PROJECT_ROOT.rglob("*.json"))
+    return _JSON_FILES_CACHE
 
 def find_file(filename: str, default_path: Optional[Path] = None) -> Path:
     """
@@ -31,7 +41,7 @@ def find_file(filename: str, default_path: Optional[Path] = None) -> Path:
         if candidate.is_file():
             return candidate
 
-    all_json_files = list(PROJECT_ROOT.rglob("*.json"))
+    all_json_files = _get_all_json_files()
     for path in all_json_files:
         if path.name == filename:
             return path
@@ -47,16 +57,38 @@ def find_file(filename: str, default_path: Optional[Path] = None) -> Path:
 
     raise FileNotFoundError(f"Could not find file '{filename}' (or a close match) under {PROJECT_ROOT}.")
 
-def load_circuit(circuit_name: str, class_name: str = "SimpleCircuit"):
+def try_import(module_path: str, class_name: str):
     """
-    Dynamically loads a circuit module and returns an instance of the specified circuit class.
+    Helper function: Tries to import module_path and return the attribute 'class_name'.
+    Returns None on failure.
     """
     try:
-        circuit_module = importlib.import_module(f"python_testing.circuit_models.{circuit_name}")
-        circuit_class = getattr(circuit_module, class_name)
-        return circuit_class()
-    except (ModuleNotFoundError, AttributeError) as e:
-        raise ValueError(f"Could not load circuit '{circuit_name}' with class '{class_name}': {e}")
+        module = importlib.import_module(module_path)
+        return getattr(module, class_name)
+    except (ModuleNotFoundError, AttributeError):
+        return None
+
+def load_circuit(circuit_name: str, class_name: str = "SimpleCircuit", search_path: Optional[str] = None):
+    """
+    Dynamically loads a circuit module and returns an instance of the specified circuit class.
+    It tries the following in order:
+      - python_testing.<search_path> (if provided)
+      - python_testing.circuit_models
+      - python_testing.circuit_components
+    """
+    base_paths = ["python_testing.circuit_models", "python_testing.circuit_components"]
+    if search_path:
+        # Prepend the user-specified search path
+        base_paths.insert(0, f"python_testing.{search_path}")
+
+    for base in base_paths:
+        module_path = f"{base}.{circuit_name}"
+        circuit_class = try_import(module_path, class_name)
+        if circuit_class:
+            return circuit_class()
+    raise ValueError(
+        f"Could not load circuit '{circuit_name}' with class '{class_name}' from any known location."
+    )
 
 def resolve_file_paths(
     circuit_name: str, 
@@ -69,25 +101,24 @@ def resolve_file_paths(
     """
     if pattern:
         input_filename = pattern.format(circuit=circuit_name)
-        if "input" in input_filename:
-            output_filename = input_filename.replace("input", "output")
-        else:
-            output_filename = f"{circuit_name}_output.json"
+        output_filename = input_filename.replace("input", "output") if "input" in input_filename else f"{circuit_name}_output.json"
     else:
         input_filename = f"{circuit_name}_input.json"
         output_filename = f"{circuit_name}_output.json"
 
-    if input_override:
-        input_path = str(find_file(input_override))
-    else:
-        input_path = str(find_file(input_filename, Path("inputs") / input_filename))
-
-    if output_override:
-        output_path = str(find_file(output_override))
-    else:
-        output_path = str(find_file(output_filename, Path("output") / output_filename))
-
+    input_path = str(find_file(input_override) if input_override else find_file(input_filename, Path("inputs") / input_filename))
+    output_path = str(find_file(output_override) if output_override else find_file(output_filename, Path("output") / output_filename))
     return input_path, output_path
+
+def is_circuit_file(path: Path) -> bool:
+    """
+    Checks whether a file contains a class that inherits from ZKModel or Circuit.
+    """
+    try:
+        content = path.read_text()
+    except Exception:
+        return False
+    return "class " in content and ( "(ZKModel):" in content or "(Circuit):" in content )
 
 def list_available_circuits(search_path: Optional[str] = None):
     """
@@ -97,25 +128,19 @@ def list_available_circuits(search_path: Optional[str] = None):
       - python_testing/circuit_models
     The user can override this search directory using the --circuit_search_path flag.
     """
-    search_paths = []
     if search_path:
-        search_paths.append(PROJECT_ROOT / search_path)
+        search_paths = [PROJECT_ROOT / search_path]
     else:
-        search_paths.append(PROJECT_ROOT / "python_testing" / "circuit_components")
-        search_paths.append(PROJECT_ROOT / "python_testing" / "circuit_models")
-
-    circuit_files = set()
-    for base in search_paths:
-        if base.exists():
-            for path in base.rglob("*.py"):
-                try:
-                    content = path.read_text()
-                except Exception:
-                    continue
-                if "class " in content and ( "(ZKModel):" in content or "(Circuit):" in content ):
-                    circuit_files.add(str(path.relative_to(PROJECT_ROOT)))
-        else:
-            logger.warning(f"Search path {base} does not exist.")
+        search_paths = [
+            PROJECT_ROOT / "python_testing" / "circuit_components",
+            PROJECT_ROOT / "python_testing" / "circuit_models"
+        ]
+    circuit_files = {
+        str(p.relative_to(PROJECT_ROOT))
+        for base in search_paths if base.exists()
+        for p in base.rglob("*.py")
+        if is_circuit_file(p)
+    }
     if circuit_files:
         print("Available circuit files:")
         for file in sorted(circuit_files):
@@ -123,10 +148,9 @@ def list_available_circuits(search_path: Optional[str] = None):
     else:
         print("No circuit files found.")
 
-def main():
+def parse_args():
     parser = argparse.ArgumentParser(description="Run circuit operations.")
-    
-    # Operation flags for various RunTypes
+    # Operation flags
     parser.add_argument("--compile_circuit", action="store_true", help="Compile the circuit.")
     parser.add_argument("--gen_witness", action="store_true", help="Generate witness for the circuit.")
     parser.add_argument("--prove_witness", action="store_true", help="Generate witness and proof.")
@@ -135,66 +159,67 @@ def main():
     parser.add_argument("--end_to_end", action="store_true", help="Run end-to-end circuit testing.")
     parser.add_argument("--all", action="store_true", help="Run all stages (compile_circuit, gen_witness, prove_witness, gen_verify).")
     
-    # Flag to list available circuit files, with optional search path override.
+    # Listing and search path flag (used for both listing and dynamic loading)
     parser.add_argument("--list_circuits", action="store_true", help="List all available circuit files.")
     parser.add_argument("--circuit_search_path", type=str, help="Directory to search for circuits (relative to project root).")
     
-    # Optional file overrides and pattern
+    # File overrides and pattern
     parser.add_argument("--input", type=str, help="Path to the input JSON file.")
     parser.add_argument("--output", type=str, help="Path to the output JSON file.")
     parser.add_argument("--pattern", type=str, help="Optional pattern for input/output filenames with '{circuit}' placeholder.")
     
     # Circuit module and class specification
-    parser.add_argument("--circuit", type=str, help="Name of the circuit module (under python_testing/circuit_models/).")
-    parser.add_argument("--class", dest="class_name", type=str, default="SimpleCircuit", help="Name of the circuit class to load. Defaults to 'SimpleCircuit'.")
+    parser.add_argument("--circuit", type=str, help="Name of the circuit module (under default packages).")
+    parser.add_argument("--class", dest="class_name", type=str, default="SimpleCircuit",
+                        help="Name of the circuit class to load. Defaults to 'SimpleCircuit'.")
+    return parser.parse_args()
 
-    args = parser.parse_args()
+def get_run_operations(args) -> List[RunType]:
+    """
+    Returns a list of RunType operations based on the parsed arguments.
+    """
+    if args.all:
+        return [RunType.COMPILE_CIRCUIT, RunType.GEN_WITNESS, RunType.PROVE_WITNESS, RunType.GEN_VERIFY]
+    ops = []
+    if args.base_testing:
+        ops.append(RunType.BASE_TESTING)
+    if args.compile_circuit:
+        ops.append(RunType.COMPILE_CIRCUIT)
+    if args.gen_witness:
+        ops.append(RunType.GEN_WITNESS)
+    if args.prove_witness:
+        ops.append(RunType.PROVE_WITNESS)
+    if args.gen_verify:
+        ops.append(RunType.GEN_VERIFY)
+    if args.end_to_end:
+        ops.append(RunType.END_TO_END)
+    return ops
+
+def main():
+    args = parse_args()
     
-    # If the user requested to list circuits, perform the search and exit.
+    # If listing circuits, perform the search and exit.
     if args.list_circuits:
         list_available_circuits(args.circuit_search_path)
         return
-    
+
     if not args.circuit:
-        parser.error("The --circuit argument is required unless using --list_circuits.")
-    
+        raise ValueError("The --circuit argument is required unless using --list_circuits.")
+
     circuit_name = args.circuit
+    # Load the circuit module/class using the optional search path.
+    circuit = load_circuit(circuit_name, args.class_name, args.circuit_search_path)
     
-    # Load the circuit module/class
-    circuit = load_circuit(circuit_name, args.class_name)
-    
-    # Resolve file paths
+    # Resolve file paths and assign them to the circuit instance.
     input_path, output_path = resolve_file_paths(circuit_name, args.input, args.output, args.pattern)
     circuit.input_path = input_path
     circuit.output_path = output_path
-    
-    # Determine which operations to run based on flags
-    run_operations = []
-    if args.all:
-        run_operations = [
-            RunType.COMPILE_CIRCUIT,
-            RunType.GEN_WITNESS,
-            RunType.PROVE_WITNESS,
-            RunType.GEN_VERIFY,
-        ]
-    else:
-        if args.base_testing:
-            run_operations.append(RunType.BASE_TESTING)
-        if args.compile_circuit:
-            run_operations.append(RunType.COMPILE_CIRCUIT)
-        if args.gen_witness:
-            run_operations.append(RunType.GEN_WITNESS)
-        if args.prove_witness:
-            run_operations.append(RunType.PROVE_WITNESS)
-        if args.gen_verify:
-            run_operations.append(RunType.GEN_VERIFY)
-        if args.end_to_end:
-            run_operations.append(RunType.END_TO_END)
-    
+
+    run_operations = get_run_operations(args)
     if not run_operations:
-        parser.error("No operation specified. Please specify at least one operation flag or use --all.")
+        raise ValueError("No operation specified. Please specify at least one operation flag or use --all.")
     
-    # Execute each specified operation in order.
+    # Execute each operation in order.
     for op in run_operations:
         circuit.base_testing(run_type=op)
 
