@@ -96,8 +96,7 @@ This CLI tool runs various circuit operations such as compilation, witness gener
      - `--compile_circuit`: Compile the circuit.
      - `--gen_witness`: Generate a witness.
      - `--prove_witness`: Generate both the witness and proof.
-     - `--gen_verify`: Run verification.
-     - `--base_testing`: Perform a quick “base testing” cycle (logic depends on your circuit).
+     - `--gen_verify`: Run verification.   
      - `--end_to_end`: Run an all-in-one test if your circuit supports it.
    - `--all`: Run the main four stages in sequence:  
      1. Compile (`--compile_circuit`)  
