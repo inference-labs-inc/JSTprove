@@ -6,6 +6,7 @@ import os
 import torch.nn as nn
 import numpy as np
 from python_testing.circuit_components.circuit_helpers import Circuit, RunType
+from random import randint
 
 class SimpleCircuit(Circuit):
     def __init__(self):
@@ -16,11 +17,12 @@ class SimpleCircuit(Circuit):
         self.layers = {}
         self.name = "simple_circuit"  # Use exact name that matches the binary
         self.scaling = 1
-        self.input_a = 400
-        self.input_b = 200
-        
-        # Must match an existing cargo binary name
         self.cargo_binary_name = "simple_circuit"
+        
+        self.input_a = 100#randint(0,10000)
+        self.input_b = 200#randint(0,10000)
+        #Currently a random value, not sure what value should fit with the validator scheme
+        self.nonce = randint(0,10000)
 
     def get_model_params(self, output):
         """
@@ -28,7 +30,8 @@ class SimpleCircuit(Circuit):
         """
         inputs = {
             "input_a": self.input_a,
-            "input_b": self.input_b
+            "input_b": self.input_b,
+            "nonce": self.nonce
         }
         outputs = {
             "output": output
@@ -82,3 +85,18 @@ if __name__ == "__main__":
     
     print(f"Input from file: {input_data}")
     print(f"Output from file: {output_data}")
+
+    # SimpleCircuit().base_testing()
+    # SimpleCircuit().base_testing(run_type=RunType.END_TO_END)
+
+    
+    # SimpleCircuit().base_testing(run_type=RunType.COMPILE_CIRCUIT)
+
+    # outputs = SimpleCircuit.get_outputs()
+    # # (inputs, _, outputs) = SimpleCircuit.get_model_params(SimpleCircuit.get_outputs()) # Create a function that calculates and stores model_params to file
+#     SimpleCircuit().base_testing(run_type=RunType.GEN_WITNESS) # This should specify the model_params file
+
+
+#     SimpleCircuit().base_testing(run_type=RunType.PROVE_WITNESS) # This should specify the model_params file
+    
+#     SimpleCircuit().base_testing(run_type=RunType.GEN_VERIFY)

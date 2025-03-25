@@ -135,4 +135,4 @@ class Doom(ZKModel):
     
 
 if __name__ == "__main__":
-    Doom().run_circuit()
+    Doom().base_testing()

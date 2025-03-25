@@ -30,6 +30,7 @@ class Circuit:
         
         # This will be set by prepare_io_files decorator
         self._file_info = None
+
     
     @compute_and_store_output
     def get_outputs(self):

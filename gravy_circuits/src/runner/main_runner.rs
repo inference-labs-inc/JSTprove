@@ -284,7 +284,122 @@ where
     )
 }
 
-pub fn run_witness_and_proof<C: Config, I, CircuitDefaultType>(io_reader: &mut I, input_path: &str, output_path:&str, circuit_name: &str)
+pub fn run_witness<C: Config, I, CircuitDefaultType>(io_reader: &mut I, input_path: &str, output_path:&str, _circuit_name: &str)
+where
+    I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
+    CircuitDefaultType: Default
+        + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
+        + Clone,
+{
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now();
+    println!("{:?}", format!("{}_witness_solver.txt", io_reader.get_path()));
+    let file = std::fs::File::open(format!("{}_witness_solver.txt", io_reader.get_path())).unwrap();
+    let reader = std::io::BufReader::new(file);
+    let witness_solver = WitnessSolver::<C>::deserialize_from(reader).unwrap();
+
+
+    let file = std::fs::File::open(format!("{}_circuit.txt", io_reader.get_path())).unwrap();
+    let reader = std::io::BufReader::new(file);
+    let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
+
+    let assignment = CircuitDefaultType::default();
+
+    let assignment = io_reader.read_inputs(input_path, assignment);
+    let assignment = io_reader.read_outputs(output_path, assignment);
+
+    let assignments = vec![assignment; 1];
+    let witness = witness_solver.solve_witnesses(&assignments).unwrap();
+
+    println!("Witness Generated");
+
+    // println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
+    println!(
+        "Peak Memory used Overall : {:.2}",
+        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+    );
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed: {}.{} seconds",
+        duration.as_secs(),
+        duration.subsec_millis()
+    );
+
+    let file = std::fs::File::create(format!("{}_witness.txt", io_reader.get_path())).unwrap();
+    let writer = std::io::BufWriter::new(file);
+    witness.serialize_into(writer).unwrap();
+    // layered_circuit.evaluate();
+    let output = layered_circuit.run(&witness);
+
+    for x in output.iter() {
+        assert_eq!(*x, true);
+    }
+}
+
+pub fn run_prove_witness<C: Config, I, CircuitDefaultType>(io_reader: &mut I, _circuit_name: &str)
+where
+    I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
+    CircuitDefaultType: Default
+        + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
+        + Clone,
+{
+    
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now();
+
+    let file = std::fs::File::open(format!("{}_circuit.txt", io_reader.get_path())).unwrap();
+    let reader = std::io::BufReader::new(file);
+    let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
+
+    let mut expander_circuit = layered_circuit
+        .export_to_expander::<<C>::DefaultGKRFieldConfig>()
+        .flatten::<C::DefaultGKRConfig>();
+    let config = expander_config::Config::<<C>::DefaultGKRConfig>::new(
+        expander_config::GKRScheme::Vanilla,
+        mpi_config::MPIConfig::new(),
+    );
+
+    let file = std::fs::File::open(format!("{}_witness.txt", io_reader.get_path())).unwrap();
+    let reader = std::io::BufReader::new(file);
+    let witness: Witness<C> = Witness::deserialize_from(reader).unwrap();
+
+    let (simd_input, simd_public_input) = witness.to_simd::<<C>::DefaultSimdField>();
+    println!("{} {}", simd_input.len(), simd_public_input.len());
+    expander_circuit.layers[0].input_vals = simd_input;
+    expander_circuit.public_input = simd_public_input.clone();
+
+    // prove
+    expander_circuit.evaluate();
+    let (claimed_v, proof) = gkr::executor::prove(&mut expander_circuit, &config);
+
+    let proof: Vec<u8> = gkr::executor::dump_proof_and_claimed_v(&proof, &claimed_v).map_err(|e| e.to_string()).unwrap();
+
+    let file = std::fs::File::create(format!("{}_proof.bin", io_reader.get_path())).unwrap();
+    let writer = std::io::BufWriter::new(file);
+    // println!("{:?}", proof);
+    // writer.write_all(&proof).unwrap();
+    // proof.serialize_into(writer).unwrap();
+    proof.serialize_into(writer).unwrap();
+    // to_writer(writer, &proof).unwrap();
+
+
+
+    println!("Proved");
+    // println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
+    println!(
+        "Peak Memory used Overall : {:.2}",
+        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+    );
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed: {}.{} seconds",
+        duration.as_secs(),
+        duration.subsec_millis()
+    )
+}
+
+
+pub fn run_witness_and_proof<C: Config, I, CircuitDefaultType>(io_reader: &mut I, input_path: &str, output_path:&str, _circuit_name: &str)
 where
     I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
@@ -416,10 +531,6 @@ where
     let file = std::fs::File::open(format!("{}_proof.bin", name)).unwrap();
     let reader = std::io::BufReader::new(file);
     let proof_and_claimed_v: Vec<u8> = Vec::deserialize_from(reader).unwrap();
-    // let proof_and_claimed_v: Vec<u8> = from_reader(reader).unwrap();
-    // let mut proof_and_claimed_v = Vec::new();
-    // reader.read_to_end(&mut proof_and_claimed_v).unwrap();
-    // println!("{:?}", proof_and_claimed_v);
 
 
 
@@ -432,6 +543,10 @@ where
         }
     };
 
+    // println!("{:?}", claimed_v.);
+
+    
+
 
     // verify
     assert!(gkr::executor::verify(
@@ -440,6 +555,7 @@ where
         &proof,
         &claimed_v
     ));
+    // println!("{:?}", proof_and_claimed_v);
 
     println!("Verified");
 
@@ -788,4 +904,103 @@ where
     + std::clone::Clone + Define<expander_compiler::frontend::BN254Config>,
 {
     run_debug::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+}
+
+pub fn handle_args<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut  Filereader) 
+where
+    CircuitDefaultType: std::default::Default
+    + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>
+    + std::clone::Clone,
+
+    CircuitType: std::default::Default +
+    expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
+    // + std::clone::Clone + GenericDefine<expander_compiler::frontend::BN254Config>,
+// + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
+    + std::clone::Clone + Define<expander_compiler::frontend::BN254Config>
+    {
+
+    let matches: clap::ArgMatches = Command::new("File Copier")
+        .version("1.0")
+        .about("Copies content from input file to output file")
+        .arg(
+            Arg::new("type")
+                .help("The type of main runner we want to run")
+                .required(true) // This argument is required
+                .index(1), // Positional argument (first argument)
+        )
+        .arg(
+            Arg::new("input")
+                .help("The file to read circuit inputs from")
+                .required(false) // This argument is required
+                .long("input") // Use a long flag (e.g., --name)
+                .short('i')  // Use a short flag (e.g., -n)
+                // .index(2), // Positional argument (first argument)
+        )
+        .arg(
+            Arg::new("output")
+                .help("The file to read outputs to the circuit")
+                .required(false) // This argument is also required
+                .long("output") // Use a long flag (e.g., --name)
+                .short('o')  // Use a short flag (e.g., -n)
+                // .index(3), // Positional argument (second argument)
+        )
+        .arg(
+            Arg::new("name")
+                .help("The name of the circuit for the file names to serialize/deserialize")
+                .required(false) // This argument is also required
+                .long("name") // Use a long flag (e.g., --name)
+                .short('n')  // Use a short flag (e.g., -n)
+        )
+        .get_matches();
+
+        // let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+        // let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+
+    // The first argument is the command we need to identify
+    // let command = &args[1];
+    let command = matches.get_one::<String>("type").unwrap();
+    
+
+    match command.as_str() {
+        //ignore
+        "run_proof" => {
+            let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+            let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+            run_main::<BN254Config, _,  CircuitType, CircuitDefaultType,>( file_reader, &input_path, &output_path);
+        }
+                                    
+        "run_compile_circuit" => {
+            // let circuit_name = &args[2];
+            let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
+
+            
+            run_compile_and_serialize::<BN254Config,CircuitType>(&circuit_name);
+            // compile_circ(circuit_name, demo);
+        }
+        "run_gen_witness" => {
+            let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+            let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+            let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
+            run_witness::<BN254Config, _, CircuitDefaultType>(file_reader, input_path, output_path, circuit_name);
+        }
+        "run_prove_witness" => {
+            // let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+            // let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+            let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
+            run_prove_witness::<BN254Config, _, CircuitDefaultType>(file_reader, circuit_name);
+        }
+        "run_gen_verify"=> {
+
+            // let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+            // let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+            let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
+
+            
+            run_verify::<BN254Config, Filereader, CircuitDefaultType>(&circuit_name);
+        }
+        _ => {
+            panic!("Unknown command or missing arguments.");
+            // exit(1);
+        }
+    }
 }
