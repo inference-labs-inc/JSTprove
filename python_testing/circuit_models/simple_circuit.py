@@ -52,15 +52,15 @@ if __name__ == "__main__":
     print("\n--- Creating circuit instance ---")
     circuit = SimpleCircuit()
     
-    print("\n--- Computing output (will happen only once) ---")
-    output = circuit.get_outputs()
-    print(f"Circuit output: {output}")
+    # print("\n--- Computing output (will happen only once) ---")
+    # output = circuit.get_outputs()
+    # print(f"Circuit output: {output}")
     
     print("\n--- Testing different operations ---")
     
-    # Run base testing operation
-    print("\nRunning base testing:")
-    circuit.base_testing(RunType.BASE_TESTING)
+    # # Run base testing operation
+    # print("\nRunning base testing:")
+    # circuit.base_testing(RunType.BASE_TESTING)
     
     # Get the output again (should use cached value)
     print("\nGetting output again (should use cached value):")
@@ -85,6 +85,18 @@ if __name__ == "__main__":
     
     print(f"Input from file: {input_data}")
     print(f"Output from file: {output_data}")
+    circuit.base_testing(RunType.GEN_WITNESS)
+
+    circuit = SimpleCircuit()
+    circuit.base_testing(run_type=RunType.PROVE_WITNESS)
+
+    circuit = SimpleCircuit()
+    circuit.base_testing(run_type=RunType.GEN_VERIFY)
+
+
+
+
+
 
     # SimpleCircuit().base_testing()
     # SimpleCircuit().base_testing(run_type=RunType.END_TO_END)
@@ -94,9 +106,9 @@ if __name__ == "__main__":
 
     # outputs = SimpleCircuit.get_outputs()
     # # (inputs, _, outputs) = SimpleCircuit.get_model_params(SimpleCircuit.get_outputs()) # Create a function that calculates and stores model_params to file
-#     SimpleCircuit().base_testing(run_type=RunType.GEN_WITNESS) # This should specify the model_params file
+    # SimpleCircuit().base_testing(run_type=RunType.GEN_WITNESS) # This should specify the model_params file
 
 
-#     SimpleCircuit().base_testing(run_type=RunType.PROVE_WITNESS) # This should specify the model_params file
+    # SimpleCircuit().base_testing(run_type=RunType.PROVE_WITNESS) # This should specify the model_params file
     
-#     SimpleCircuit().base_testing(run_type=RunType.GEN_VERIFY)
+    # SimpleCircuit().base_testing(run_type=RunType.GEN_VERIFY)
