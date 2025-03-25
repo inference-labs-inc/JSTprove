@@ -6,6 +6,14 @@ from typing import Dict, Any, Tuple, Optional
 from python_testing.utils.run_proofs import ZKProofsCircom, ZKProofsExpander, ZKProofSystems
 from enum import Enum
 
+class RunType(Enum):
+    BASE_TESTING = 'base_testing'
+    END_TO_END = 'end_to_end'
+    COMPILE_CIRCUIT = 'compile_circuit'
+    GEN_WITNESS = 'gen_witness'
+    PROVE_WITNESS = 'prove_witness'
+    GEN_VERIFY = 'gen_verify'
+
 # Decorator to compute outputs once and store in temp folder
 def compute_and_store_output(func):
     """
@@ -73,16 +81,21 @@ def prepare_io_files(func):
             input_folder, proof_folder, temp_folder, circuit_folder, weights_folder, 
             self.name, output_folder, proof_system
         )
-        
-        # Compute output (with caching via decorator)
-        output = self.get_outputs()
+
+        if run_type == RunType.GEN_WITNESS or run_type == RunType.END_TO_END:
+
+            # Compute output (with caching via decorator)
+            output = self.get_outputs()
+        else:
+            output = ""
         
         # Get model parameters
         inputs, weights, outputs = self.get_model_params(output)
         
         # Write to files
-        to_json(inputs, input_file)
-        to_json(outputs, output_file)
+        if run_type == RunType.GEN_WITNESS or run_type == RunType.END_TO_END:
+            to_json(inputs, input_file)
+            to_json(outputs, output_file)
         to_json(weights, weights_path)
         
         # Store paths and data for use in the decorated function
@@ -124,7 +137,7 @@ def read_outputs_from_json(public_path: str) -> Dict[str, Any]:
         d = json.load(json_data)
         return d
 
-def run_cargo_command(binary_name, command_type, args=None):
+def run_cargo_command(binary_name, command_type, args=None, dev_mode = False):
     """
     Run a cargo command with the correct format based on the command type.
     
@@ -140,7 +153,11 @@ def run_cargo_command(binary_name, command_type, args=None):
     import subprocess
     
     # Base command
-    cmd = ['cargo', 'run', '--bin', binary_name, '--release']
+    if dev_mode:
+        cmd = ['cargo', 'run', '--bin', binary_name, '--release']
+    else:
+        cmd = [f'./target/release/{binary_name}']
+
     
     # Add command type
     cmd.append(command_type)
@@ -167,7 +184,7 @@ def run_cargo_command(binary_name, command_type, args=None):
 
 def prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, 
                     circuit_name, proof_system: ZKProofSystems = ZKProofSystems.Expander, 
-                    output_file=None, demo=False) -> None:
+                    output_file=None, demo=False, dev_mode = False) -> None:
     """Process ZK proof based on the proof system type."""
     if proof_system == ZKProofSystems.Expander:
         assert output_file is not None, "Output_file must be specified for Expander proof system"
@@ -183,7 +200,7 @@ def prove_and_verify(witness_file, input_file, proof_path, public_path, verifica
         
         # Run the command
         try:
-            run_cargo_command(binary_name, 'run_proof', args)
+            run_cargo_command(binary_name, 'run_proof', args, dev_mode=False)
         except Exception as e:
             print(f"Warning: Could not complete prove_and_verify: {e}")
             print("This may be expected if the Rust binary is not available.")
@@ -200,7 +217,7 @@ def prove_and_verify(witness_file, input_file, proof_path, public_path, verifica
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
-def compile_circuit(circuit_name, proof_system: ZKProofSystems = ZKProofSystems.Expander):
+def compile_circuit(circuit_name, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False):
     """Compile a circuit."""
     if proof_system == ZKProofSystems.Expander:
         # Extract the binary name from the circuit path
@@ -213,7 +230,7 @@ def compile_circuit(circuit_name, proof_system: ZKProofSystems = ZKProofSystems.
         
         # Run the command
         try:
-            run_cargo_command(binary_name, 'run_compile_circuit', args)
+            run_cargo_command(binary_name, 'run_compile_circuit', args, dev_mode)
         except Exception as e:
             print(f"Warning: Compile operation failed: {e}")
             print(f"Using binary: {binary_name}")
@@ -223,7 +240,7 @@ def compile_circuit(circuit_name, proof_system: ZKProofSystems = ZKProofSystems.
         res = circuit.compile_circuit()
 
 def generate_witness(circuit_name, witness_file, input_file, output_file, 
-                    proof_system: ZKProofSystems = ZKProofSystems.Expander):
+                    proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False):
     """Generate witness for a circuit."""
     if proof_system == ZKProofSystems.Expander:
         # Extract the binary name from the circuit path
@@ -238,7 +255,7 @@ def generate_witness(circuit_name, witness_file, input_file, output_file,
         
         # Run the command
         try:
-            run_cargo_command(binary_name, 'run_gen_witness', args)
+            run_cargo_command(binary_name, 'run_gen_witness', args, dev_mode)
         except Exception as e:
             print(f"Warning: Witness generation failed: {e}")
             
@@ -247,7 +264,7 @@ def generate_witness(circuit_name, witness_file, input_file, output_file,
         circuit.compute_witness(witness_file, input_file, wasm=True, c=False)
 
 def generate_proof(circuit_name, witness_file, input_file, output_file, 
-                    proof_system: ZKProofSystems = ZKProofSystems.Expander):
+                    proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False):
     """Generate witness for a circuit."""
     if proof_system == ZKProofSystems.Expander:
         # Extract the binary name from the circuit path
@@ -260,7 +277,7 @@ def generate_proof(circuit_name, witness_file, input_file, output_file,
         
         # Run the command
         try:
-            run_cargo_command(binary_name, 'run_prove_witness', args)
+            run_cargo_command(binary_name, 'run_prove_witness', args, dev_mode)
         except Exception as e:
             print(f"Warning: Proof generation failed: {e}")
             
@@ -268,7 +285,7 @@ def generate_proof(circuit_name, witness_file, input_file, output_file,
         circuit = ZKProofsCircom(circuit_name)
         circuit.proof(witness_file, output_file, public_path="")
 
-def generate_verification(circuit_name, proof_system: ZKProofSystems = ZKProofSystems.Expander):
+def generate_verification(circuit_name, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False):
     """Generate verification for a circuit."""
     if proof_system == ZKProofSystems.Expander:
         # Extract the binary name from the circuit path
@@ -281,16 +298,15 @@ def generate_verification(circuit_name, proof_system: ZKProofSystems = ZKProofSy
         
         # Run the command
         try:
-            run_cargo_command(binary_name, 'run_gen_verify', args)
+            run_cargo_command(binary_name, 'run_gen_verify', args, dev_mode)
         except Exception as e:
             print(f"Warning: Verification generation failed: {e}")
-            print(type(e))
             
     elif proof_system == ZKProofSystems.Circom:
         raise NotImplementedError("Not implemented for Circom")
 
 def run_end_to_end(circuit_name, input_file, output_file, 
-                  proof_system: ZKProofSystems = ZKProofSystems.Expander, demo=False):
+                  proof_system: ZKProofSystems = ZKProofSystems.Expander, demo=False, dev_mode = False):
     """Run end-to-end proof."""
     if proof_system == ZKProofSystems.Expander:
         # Extract the binary name from the circuit path
@@ -304,7 +320,7 @@ def run_end_to_end(circuit_name, input_file, output_file,
         
         # Run the command
         try:
-            run_cargo_command(binary_name, 'run_end_to_end', args)
+            run_cargo_command(binary_name, 'run_end_to_end', args, dev_mode)
         except Exception as e:
             print(f"Warning: End-to-end operation failed: {e}")
             

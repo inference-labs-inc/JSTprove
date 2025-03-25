@@ -95,9 +95,6 @@ if __name__ == "__main__":
 
 
 
-
-
-
     # SimpleCircuit().base_testing()
     # SimpleCircuit().base_testing(run_type=RunType.END_TO_END)
 
