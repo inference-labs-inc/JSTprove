@@ -121,3 +121,7 @@ This CLI tool runs various circuit operations such as compilation, witness gener
 
    ```bash
    python -m cli --circuit simple_circuit --compile_circuit
+   python -m cli --circuit simple_circuit --gen_witness
+   python -m cli --circuit simple_circuit --prove_witness
+   python -m cli --circuit simple_circuit --gen_verify
+   
