@@ -96,3 +96,7 @@ path = "bin/demo_cnn.rs"
 [[bin]]
 name = "simple_circuit"
 path = "bin/simple_circuit.rs"
+
+# [[bin]]
+# name = "expander-exec"
+# path = "gkr/src/expander-exec.rs"

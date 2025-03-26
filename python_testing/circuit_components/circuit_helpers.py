@@ -85,9 +85,9 @@ class Circuit:
             elif run_type == RunType.GEN_WITNESS:
                 generate_witness(circuit_name, witness_file, input_file, output_file, proof_system, dev_mode)
             elif run_type == RunType.PROVE_WITNESS:
-                generate_proof(circuit_name, witness_file, input_file, output_file, proof_system, dev_mode)
+                generate_proof(circuit_name, witness_file, proof_path, proof_system, dev_mode)
             elif run_type == RunType.GEN_VERIFY:
-                generate_verification(circuit_name, proof_system, dev_mode)
+                generate_verification(circuit_name,input_file, output_file, witness_file, proof_path, proof_system, dev_mode)
             else:
                 print(f"Unknown entry: {run_type}")
                 raise ValueError(f"Unknown run type: {run_type}")

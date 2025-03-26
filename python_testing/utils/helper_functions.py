@@ -81,6 +81,12 @@ def prepare_io_files(func):
             input_folder, proof_folder, temp_folder, circuit_folder, weights_folder, 
             self.name, output_folder, proof_system
         )
+        if "input_file" in kwargs.keys():
+            input_file = kwargs["input_file"]
+            kwargs.pop("input_file")
+        if "output_file" in kwargs.keys():
+            output_file = kwargs["output_file"]
+            kwargs.pop("output_file")
 
         if run_type == RunType.GEN_WITNESS or run_type == RunType.END_TO_END:
 
@@ -251,6 +257,7 @@ def generate_witness(circuit_name, witness_file, input_file, output_file,
             'n': circuit_name,
             'i': input_file,
             'o': output_file,
+            'w': witness_file
         }
         
         # Run the command
@@ -263,7 +270,7 @@ def generate_witness(circuit_name, witness_file, input_file, output_file,
         circuit = ZKProofsCircom(circuit_name)
         circuit.compute_witness(witness_file, input_file, wasm=True, c=False)
 
-def generate_proof(circuit_name, witness_file, input_file, output_file, 
+def generate_proof(circuit_name, witness_file, proof_file, 
                     proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False):
     """Generate witness for a circuit."""
     if proof_system == ZKProofSystems.Expander:
@@ -273,6 +280,8 @@ def generate_proof(circuit_name, witness_file, input_file, output_file,
         # Prepare arguments
         args = {
             'n': circuit_name,
+            'w': witness_file,
+            'p': proof_file
         }
         
         # Run the command
@@ -283,9 +292,9 @@ def generate_proof(circuit_name, witness_file, input_file, output_file,
             
     elif proof_system == ZKProofSystems.Circom:
         circuit = ZKProofsCircom(circuit_name)
-        circuit.proof(witness_file, output_file, public_path="")
+        circuit.proof(witness_file, proof_file, public_path="")
 
-def generate_verification(circuit_name, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False):
+def generate_verification(circuit_name, input_file, output_file, witness_file, proof_file,  proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False):
     """Generate verification for a circuit."""
     if proof_system == ZKProofSystems.Expander:
         # Extract the binary name from the circuit path
@@ -294,6 +303,10 @@ def generate_verification(circuit_name, proof_system: ZKProofSystems = ZKProofSy
         # Prepare arguments
         args = {
             'n': circuit_name,
+            'i': input_file,
+            'o': output_file,
+            'w': witness_file,
+            'p': proof_file
         }
         
         # Run the command
