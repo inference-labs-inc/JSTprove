@@ -87,6 +87,12 @@ def prepare_io_files(func):
         if "output_file" in kwargs.keys():
             output_file = kwargs["output_file"]
             kwargs.pop("output_file")
+        if "proof_path" in kwargs.keys():
+            input_file = kwargs["proof_path"]
+            kwargs.pop("proof_path")
+        if "witness_file" in kwargs.keys():
+            output_file = kwargs["witness_file"]
+            kwargs.pop("witness_file")
 
         if run_type == RunType.GEN_WITNESS or run_type == RunType.END_TO_END:
 
@@ -349,17 +355,20 @@ def get_files(input_folder, proof_folder, temp_folder, circuit_folder, weights_f
     create_folder(output_folder)
     create_folder(weights_folder)
 
-    witness_file = os.path.join(temp_folder, f"{name}_witness.wtns")
+    
     input_file = os.path.join(input_folder, f"{name}_input.json")
-    proof_path = os.path.join(proof_folder, f"{name}_proof.json")
     public_path = os.path.join(proof_folder, f"{name}_public.json")
     verification_key = os.path.join(temp_folder, f"{name}_verification_key.json")
     weights_path = os.path.join(weights_folder, f"{name}_weights.json")
     
     if proof_system == ZKProofSystems.Circom:
         circuit_name = os.path.join(circuit_folder, f"{name}.circom")
+        witness_file = os.path.join(temp_folder, f"{name}_witness.wtns")
+        proof_path = os.path.join(proof_folder, f"{name}_proof.json")
     elif proof_system == ZKProofSystems.Expander:
         circuit_name = os.path.join(circuit_folder, f"{name}")
+        witness_file = os.path.join(f"{name}_witness.txt")
+        proof_path = os.path.join(proof_folder, f"{name}_proof.bin")
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 

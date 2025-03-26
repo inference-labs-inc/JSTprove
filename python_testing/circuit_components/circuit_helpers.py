@@ -46,7 +46,7 @@ class Circuit:
     
     @prepare_io_files
     def base_testing(self, run_type=RunType.BASE_TESTING, 
-                     witness_file=None, input_file=None, proof_path=None, public_path=None, 
+                     witness_file=None, input_file=None, proof_file=None, public_path=None, 
                      verification_key=None, circuit_name=None, weights_path=None, output_file=None,
                      proof_system=None,
                      dev_mode = False):
@@ -62,7 +62,7 @@ class Circuit:
         """
         # Run the appropriate proof operation based on run_type
         self.parse_proof_run_type(
-            witness_file, input_file, proof_path, public_path, 
+            witness_file, input_file, proof_file, public_path, 
             verification_key, circuit_name, proof_system, output_file, run_type, dev_mode
         )
         

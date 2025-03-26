@@ -610,6 +610,8 @@ where
 
         assert_eq!(x,y);
     }
+    println!("{}",proof_path);
+    println!("{}",witness_path);
 
     let file = std::fs::File::open(proof_path).unwrap();
     let reader = std::io::BufReader::new(file);
