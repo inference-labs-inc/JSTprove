@@ -71,3 +71,57 @@ We must run the cargo files with release for reasonable time process
 3. Quantized parameter set to false when it should be true
 
 4. Make sure weights being loaded into rust file are from correct circuit (the naming is correct)
+
+# Command Line Interface
+
+This CLI tool runs various circuit operations such as compilation, witness generation, proof generation, and verification. It dynamically loads circuit modules, resolves file paths using fuzzy matching, and can list all available circuit files that inherit from a `Circuit` or `ZKModel` class.
+
+## Features
+
+1. **Dynamic Module Loading**  
+   - By default, the CLI looks for circuit modules in:
+     - `python_testing.circuit_models`
+     - `python_testing.circuit_components`
+   - You can also specify a custom search path relative to `python_testing` with the `--circuit_search_path` flag.
+
+2. **File Resolution**  
+   - Automatically searches the project root for JSON input and output files using a simple or fuzzy match.
+   - You can override the default filenames (e.g., `{circuit}_input.json` and `{circuit}_output.json`) with:
+     - `--input` to point to an exact input file
+     - `--output` to point to an exact output file
+     - `--pattern` to use a custom format (e.g., `my_{circuit}_input.json`).
+
+3. **Operation Flags**  
+   - Run specific stages of your circuit workflow:
+     - `--compile_circuit`: Compile the circuit.
+     - `--gen_witness`: Generate a witness.
+     - `--prove_witness`: Generate both the witness and proof.
+     - `--gen_verify`: Run verification.   
+     - `--end_to_end`: Run an all-in-one test if your circuit supports it.
+   - `--all`: Run the main four stages in sequence:  
+     1. Compile (`--compile_circuit`)  
+     2. Generate Witness (`--gen_witness`)  
+     3. Prove Witness (`--prove_witness`)  
+     4. Verify (`--gen_verify`)
+
+4. **List Available Circuits**  
+   - Use the `--list_circuits` flag to recursively search for Python files containing a class that inherits from `Circuit` or `ZKModel`.  
+   - By default, it searches in:
+     - `python_testing/circuit_components`
+     - `python_testing/circuit_models`
+   - Override with `--circuit_search_path <some_relative_folder>` to search elsewhere.
+
+## Basic Usage
+
+1. **Install Dependencies**  
+   Ensure you have **Python 3.12.x** installed and all required dependencies listed in `requirements.txt`:
+
+2. **Run the CLI**  
+   From the project root (`GravyTesting-Internal`):
+
+   ```bash
+   python -m cli --circuit simple_circuit --compile_circuit
+   python -m cli --circuit simple_circuit --gen_witness
+   python -m cli --circuit simple_circuit --prove_witness
+   python -m cli --circuit simple_circuit --gen_verify
+   
