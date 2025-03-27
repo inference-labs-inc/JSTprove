@@ -51,7 +51,8 @@ class Circuit:
                      verification_key=None, circuit_name=None, weights_path=None, output_file=None,
                      proof_system=None,
                      dev_mode = False,
-                     ecc = True):
+                     ecc = True,
+                     circuit_path: Optional[str] = None,):
         """
         Run the circuit with the specified run type.
         All file paths are handled by the decorator.
@@ -63,6 +64,10 @@ class Circuit:
         Returns:
             The outputs dictionary
         """
+        if circuit_path is not None:
+            self._file_info['circuit_name'] = circuit_path
+            print(f"[cli] Overriding circuit path: using {circuit_path}")
+
         # Run the appropriate proof operation based on run_type
         self.parse_proof_run_type(
 
