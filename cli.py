@@ -167,8 +167,8 @@ def parse_args():
     # File overrides and pattern
     parser.add_argument("--input", type=str, help="Path to the input JSON file.")
     parser.add_argument("--output", type=str, help="Path to the output JSON file.")
-    parser.add_argument("--witness_file", type=str, help="Optional path to witness file")
-    parser.add_argument("--proof_file", type=str, help="Optional path to proof file")
+    parser.add_argument("--witness", type=str, help="Optional path to witness file")
+    parser.add_argument("--proof", type=str, help="Optional path to proof file")
     parser.add_argument("--pattern", type=str, help="Optional pattern for input/output filenames with '{circuit}' placeholder.")
     
     # Circuit module and class specification
@@ -225,10 +225,10 @@ def main():
         circuit.base_testing(
             run_type=op,
             dev_mode=args.fresh_compile,
-            input_file=args.input_file,
-            output_file=args.output_file,
-            witness_file=args.witness_file,
-            proof_path=args.proof_file,
+            input_file=args.input,
+            output_file=args.output,
+            witness_file=args.witness,
+            proof_path=args.proof,
             ecc=args.ecc
         )
 
