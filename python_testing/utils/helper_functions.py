@@ -210,19 +210,19 @@ def prove_and_verify(witness_file, input_file, proof_path, public_path, verifica
                 print(f"Output file has been written to: {output_file}")
         else:
             # Direct Expander call via expander-exec binary
-            circuit_file = f"{circuit_name}_circuit.txt"
+            paths = get_expander_file_paths(circuit_name)
             run_expander_exec(
                 mode="prove",
-                circuit_file=circuit_file,
-                witness_file=witness_file,
-                proof_file=output_file
+                circuit_file=paths["circuit_file"],
+                witness_file=paths["witness_file"],
+                proof_file=paths["proof_file"]
             )
 
             run_expander_exec(
                 mode="verify",
-                circuit_file=circuit_file,
-                witness_file=witness_file,
-                proof_file=output_file
+                circuit_file=paths["circuit_file"],
+                witness_file=paths["witness_file"],
+                proof_file=paths["proof_file"]
             )
             
     elif proof_system == ZKProofSystems.Circom:
@@ -234,6 +234,13 @@ def prove_and_verify(witness_file, input_file, proof_path, public_path, verifica
         circuit.verify(verification_key, public_path, proof_path)
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
+    
+def get_expander_file_paths(circuit_name: str):
+    return {
+        "circuit_file": f"{circuit_name}_circuit.txt",
+        "witness_file": f"{circuit_name}_witness.txt",
+        "proof_file":   f"{circuit_name}_proof.txt"
+    }
     
 def run_expander_exec(mode: str, circuit_file: str, witness_file: str, proof_file: str):
     assert mode in {"prove", "verify"}
@@ -321,12 +328,12 @@ def generate_proof(circuit_name, witness_file, input_file, output_file,
                 print(f"Warning: Proof generation failed: {e}")
         else:
             # Direct Expander call via expander-exec binary
-            circuit_file = f"{circuit_name}_circuit.txt"
+            paths = get_expander_file_paths(circuit_name)
             run_expander_exec(
                 mode="prove",
-                circuit_file=circuit_file,
-                witness_file=witness_file,
-                proof_file=output_file
+                circuit_file=paths["circuit_file"],
+                witness_file=paths["witness_file"],
+                proof_file=paths["proof_file"]
             )
             
     elif proof_system == ZKProofSystems.Circom:
@@ -352,14 +359,12 @@ def generate_verification(circuit_name, proof_system: ZKProofSystems = ZKProofSy
                 print(f"Warning: Verification generation failed: {e}")
         else:
             # Direct Expander call via expander-exec binary
-            circuit_file = f"{circuit_name}_circuit.txt"
-            witness_file = f"{circuit_name}_witness.txt"
-            proof_file = f"{circuit_name}_proof.txt"
+            paths = get_expander_file_paths(circuit_name)
             run_expander_exec(
                 mode="verify",
-                circuit_file=circuit_file,
-                witness_file=witness_file,
-                proof_file=proof_file
+                circuit_file=paths["circuit_file"],
+                witness_file=paths["witness_file"],
+                proof_file=paths["proof_file"]
             )
             
     elif proof_system == ZKProofSystems.Circom:
