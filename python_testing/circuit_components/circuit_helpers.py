@@ -51,7 +51,7 @@ class Circuit:
                      verification_key=None, circuit_name=None, weights_path=None, output_file=None,
                      proof_system=None,
                      dev_mode = False,
-                     ecc = False,):
+                     ecc = True):
         """
         Run the circuit with the specified run type.
         All file paths are handled by the decorator.
@@ -82,11 +82,11 @@ class Circuit:
                 if ecc:
                     # If ECC is True, run the ECC-specific logic (run_cargo_command)
                     prove_and_verify(witness_file, input_file, proof_path, public_path, 
-                                    verification_key, circuit_name, proof_system, output_file, dev_mode)
+                                    verification_key, circuit_name, proof_system, output_file, dev_mode, ecc=True)
                 else:
                     # If ECC is False, run the Expander-specific logic (expander-exec commands) 
                     prove_and_verify(witness_file, input_file, proof_path, public_path, 
-                                    verification_key, circuit_name, proof_system, output_file, dev_mode, ecc=True)
+                                    verification_key, circuit_name, proof_system, output_file, dev_mode, ecc=False)
             elif run_type == RunType.END_TO_END:
                 run_end_to_end(circuit_name, input_file, output_file, proof_system, dev_mode)
             elif run_type == RunType.COMPILE_CIRCUIT:

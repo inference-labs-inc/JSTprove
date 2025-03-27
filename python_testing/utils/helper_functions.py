@@ -5,6 +5,7 @@ import functools
 from typing import Dict, Any, Tuple, Optional
 from python_testing.utils.run_proofs import ZKProofsCircom, ZKProofsExpander, ZKProofSystems
 from enum import Enum
+import subprocess
 
 class RunType(Enum):
     BASE_TESTING = 'base_testing'
@@ -184,28 +185,37 @@ def run_cargo_command(binary_name, command_type, args=None, dev_mode = False):
 
 def prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, 
                     circuit_name, proof_system: ZKProofSystems = ZKProofSystems.Expander, 
-                    output_file=None, demo=False, dev_mode = False) -> None:
+                    output_file=None, demo=False, dev_mode = False, ecc = True) -> None:
     """Process ZK proof based on the proof system type."""
     if proof_system == ZKProofSystems.Expander:
         assert output_file is not None, "Output_file must be specified for Expander proof system"
         
-        # Extract the binary name from the circuit path
-        binary_name = os.path.basename(circuit_name)
-        
-        # Prepare arguments according to the expected format
-        args = {
-            'i': input_file,
-            'o': output_file,
-        }
-        
-        # Run the command
-        try:
-            run_cargo_command(binary_name, 'run_proof', args, dev_mode=False)
-        except Exception as e:
-            print(f"Warning: Could not complete prove_and_verify: {e}")
-            print("This may be expected if the Rust binary is not available.")
-            print(f"Input file has been written to: {input_file}")
-            print(f"Output file has been written to: {output_file}")
+        if ecc: 
+            # Extract the binary name from the circuit path
+            binary_name = os.path.basename(circuit_name)
+            
+            # Prepare arguments according to the expected format
+            args = {
+                'i': input_file,
+                'o': output_file,
+            }
+            
+            # Run the command
+            try:
+                run_cargo_command(binary_name, 'run_proof', args, dev_mode=False)
+            except Exception as e:
+                print(f"Warning: Could not complete prove_and_verify: {e}")
+                print("This may be expected if the Rust binary is not available.")
+                print(f"Input file has been written to: {input_file}")
+                print(f"Output file has been written to: {output_file}")
+        else:
+            # Direct Expander call via expander-exec binary
+            run_expander_exec(
+                mode="prove",
+                circuit_file=circuit_name,
+                witness_file=witness_file,
+                proof_file=output_file
+            )
             
     elif proof_system == ZKProofSystems.Circom:
         circuit = ZKProofsCircom(circuit_name)
@@ -216,6 +226,27 @@ def prove_and_verify(witness_file, input_file, proof_path, public_path, verifica
         circuit.verify(verification_key, public_path, proof_path)
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
+    
+import subprocess
+
+def run_expander_exec(mode: str, circuit_file: str, witness_file: str, proof_file: str):
+    assert mode in {"prove", "verify"}
+    binary = "./expander-exec"  # or full path if needed
+
+    args = [binary, "--", mode, "-p", "Hyrax", "-c", circuit_file, "-w", witness_file]
+
+    if mode == "prove":
+        args += ["-o", proof_file]
+    else:
+        args += ["-i", proof_file]
+
+    result = subprocess.run(args, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        print(f"❌ expander-exec {mode} failed:\n{result.stderr}")
+    else:
+        print(f"✅ expander-exec {mode} succeeded:\n{result.stdout}")
+
 
 def compile_circuit(circuit_name, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False):
     """Compile a circuit."""
