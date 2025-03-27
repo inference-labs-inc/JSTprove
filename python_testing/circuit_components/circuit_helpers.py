@@ -65,9 +65,6 @@ class Circuit:
         Returns:
             The outputs dictionary
         """
-        if circuit_path is not None:
-            self._file_info['circuit_name'] = circuit_path
-            print(f"[cli] Overriding circuit path: using {circuit_path}")
 
         # Run the appropriate proof operation based on run_type
         self.parse_proof_run_type(
