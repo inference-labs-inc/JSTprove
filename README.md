@@ -121,7 +121,25 @@ This CLI tool runs various circuit operations such as compilation, witness gener
 
    ```bash
    python -m cli --circuit simple_circuit --compile
-   python -m cli --circuit simple_circuit --witness
-   python -m cli --circuit simple_circuit --prove
-   python -m cli --circuit simple_circuit --verify
+   python -m cli --circuit simple_circuit --gen_witness --witness <witness_file_path> --input <input_json_file_path> --output <output_json_file_path>
+   python -m cli --circuit simple_circuit --prove --witness <witness_file_path> --proof <proof_file_path>
+   python -m cli --circuit simple_circuit --verify --witness <witness_file_path> --proof <proof_file_path> --input <input_json_file_path> --output <output_json_file_path>
+   ```
+
+   Dummy demo run through:
+   ```bash
+   Demo
+   run through
+   python cli.py --circuit simple_circuit --ecc --gen_witness --witness witness.txt --input input.json --output output.json
+   python cli.py --circuit simple_circuit --ecc --prove --witness witness.txt --proof proof.bin
+   python cli.py --circuit simple_circuit --ecc --verify --witness witness.txt --proof proof.bin --input input.json --output output.json
+   python cli.py --circuit simple_circuit --ecc --verify --witness witness.txt --proof proof.bin --input input.json 
+
+   Error about inputs not matching
+   python cli.py --circuit simple_circuit --ecc --verify --witness witness.txt --proof proof.bin
+   Error around verification
+   python cli.py --circuit simple_circuit --ecc --verify --witness witness.txt --input input.json --output output.json
+   run through 
+   python cli.py --circuit simple_circuit --ecc --verify --witness witness.txt --proof proof.bin --input input.json --output output.json
+   ```
    
