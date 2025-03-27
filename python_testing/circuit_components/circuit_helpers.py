@@ -23,6 +23,22 @@ class Circuit:
         
         # This will be set by prepare_io_files decorator
         self._file_info = None
+        self.required_keys = None
+    
+    def parse_inputs(self, **kwargs):
+        if self.required_keys is None:
+            raise NotImplementedError("self.required_keys must be specified in circuit definition")
+        for key in self.required_keys:
+            if key not in kwargs:
+                raise KeyError(f"Missing required parameter: {key}")
+            
+            value = kwargs[key]
+            
+            # Validate type (ensure integer)
+            if not isinstance(value, int):
+                raise ValueError(f"Expected an integer for {key}, but got {type(value).__name__}")
+            
+            setattr(self, key, value)
 
     
     @compute_and_store_output

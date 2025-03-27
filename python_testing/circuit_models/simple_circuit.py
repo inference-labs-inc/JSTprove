@@ -23,6 +23,8 @@ class SimpleCircuit(Circuit):
         self.input_b = 200#randint(0,10000)
         #Currently a random value, not sure what value should fit with the validator scheme
         self.nonce = randint(0,10000)
+        self.required_keys = ["input_a", "input_b", "nonce"]
+
 
     def get_model_params(self, output):
         """
