@@ -239,12 +239,13 @@ def run_expander_exec(mode: str, circuit_file: str, witness_file: str, proof_fil
     assert mode in {"prove", "verify"}
     binary = "./expander-exec"  # or full path if needed
 
-    args = [binary, mode, "-p", "Hyrax", "-c", circuit_file, "-w", witness_file]
+    args = [binary, mode, "--circuit-file", circuit_file, "--witness-file", witness_file]
 
     if mode == "prove":
-        args += ["-o", proof_file]
+        args += ["--output-proof-file", proof_file]
     else:
-        args += ["-i", proof_file]
+        args += ["--input-proof-file", proof_file]
+
 
     result = subprocess.run(args, capture_output=True, text=True)
 
