@@ -94,6 +94,7 @@ where
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
 
+
     // prove
     expander_circuit.evaluate();
     let (claimed_v, proof) = gkr::executor::prove(&mut expander_circuit, &config);
@@ -284,7 +285,7 @@ where
     )
 }
 
-pub fn run_witness<C: Config, I, CircuitDefaultType>(io_reader: &mut I, input_path: &str, output_path:&str, _circuit_name: &str)
+pub fn run_witness<C: Config, I, CircuitDefaultType>(io_reader: &mut I, input_path: &str, output_path:&str, witness_path: &str, _circuit_name: &str)
 where
     I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
@@ -325,7 +326,7 @@ where
         duration.subsec_millis()
     );
 
-    let file = std::fs::File::create(format!("{}_witness.txt", io_reader.get_path())).unwrap();
+    let file = std::fs::File::create(witness_path).unwrap();
     let writer = std::io::BufWriter::new(file);
     witness.serialize_into(writer).unwrap();
     // layered_circuit.evaluate();
@@ -336,7 +337,7 @@ where
     }
 }
 
-pub fn run_prove_witness<C: Config, I, CircuitDefaultType>(io_reader: &mut I, _circuit_name: &str)
+pub fn run_prove_witness<C: Config, I, CircuitDefaultType>(io_reader: &mut I, _circuit_name: &str, witness_path: &str, proof_path: &str)
 where
     I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
@@ -359,7 +360,7 @@ where
         mpi_config::MPIConfig::new(),
     );
 
-    let file = std::fs::File::open(format!("{}_witness.txt", io_reader.get_path())).unwrap();
+    let file = std::fs::File::open(witness_path).unwrap();
     let reader = std::io::BufReader::new(file);
     let witness: Witness<C> = Witness::deserialize_from(reader).unwrap();
 
@@ -374,11 +375,8 @@ where
 
     let proof: Vec<u8> = gkr::executor::dump_proof_and_claimed_v(&proof, &claimed_v).map_err(|e| e.to_string()).unwrap();
 
-    let file = std::fs::File::create(format!("{}_proof.bin", io_reader.get_path())).unwrap();
+    let file = std::fs::File::create(proof_path).unwrap();
     let writer = std::io::BufWriter::new(file);
-    // println!("{:?}", proof);
-    // writer.write_all(&proof).unwrap();
-    // proof.serialize_into(writer).unwrap();
     proof.serialize_into(writer).unwrap();
     // to_writer(writer, &proof).unwrap();
 
@@ -542,6 +540,93 @@ where
             return;
         }
     };
+    // verify
+    assert!(gkr::executor::verify(
+        &mut expander_circuit,
+        &config,
+        &proof,
+        &claimed_v
+    ));
+
+    println!("Verified");
+
+    // println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
+    println!(
+        "Peak Memory used Overall : {:.2}",
+        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+    );
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed: {}.{} seconds",
+        duration.as_secs(),
+        duration.subsec_millis()
+    )
+}
+
+pub fn run_verify_io<C: Config, I, CircuitDefaultType>(name: &str, io_reader: &mut I, input_path: &str, output_path:&str, witness_path: &str, proof_path: &str)
+where
+    I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
+    CircuitDefaultType: Default
+        + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
+        + Clone + 
+{
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now();
+
+    let config = expander_config::Config::<<C>::DefaultGKRConfig>::new(
+        expander_config::GKRScheme::Vanilla,
+        mpi_config::MPIConfig::new(),
+    );
+
+    let file = std::fs::File::open(format!("{}_circuit.txt", name)).unwrap();
+    let reader = std::io::BufReader::new(file);
+    let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
+
+    let mut expander_circuit = layered_circuit
+        .export_to_expander::<<C>::DefaultGKRFieldConfig>()
+        .flatten::<C::DefaultGKRConfig>();
+
+
+    let file = std::fs::File::open(witness_path).unwrap();
+    let reader = std::io::BufReader::new(file);
+    let witness = Witness::<C>::deserialize_from(reader).unwrap();
+    // let witness =
+    //     layered::witness::Witness::<C>::deserialize_from(witness).map_err(|e| e.to_string())?;
+    let (simd_input, simd_public_input) = witness.to_simd::<C::DefaultSimdField>();
+
+    expander_circuit.layers[0].input_vals = simd_input;
+    expander_circuit.public_input = simd_public_input.clone();
+    let assignment = CircuitDefaultType::default();
+    let assignment = io_reader.read_inputs(input_path, assignment);
+    let assignment = io_reader.read_outputs(output_path, assignment);
+
+    let mut vars: Vec<C::CircuitField> = Vec::new();
+    let mut public_vars: Vec<C::CircuitField> = Vec::new();
+    assignment.dump_into(&mut vars, &mut public_vars);
+    for (i, _) in public_vars.iter().enumerate(){
+        let x = format!("{:?}", public_vars[i]);
+        let y = format!("{:?}",expander_circuit.public_input[i]);
+        //TODO This can potentially be improved
+
+        assert_eq!(x,y);
+    }
+    println!("{}",proof_path);
+    println!("{}",witness_path);
+
+    let file = std::fs::File::open(proof_path).unwrap();
+    let reader = std::io::BufReader::new(file);
+    let proof_and_claimed_v: Vec<u8> = Vec::deserialize_from(reader).unwrap();
+
+
+
+
+
+    let (proof, claimed_v) = match gkr::executor::load_proof_and_claimed_v::<<<C as Config>::DefaultGKRFieldConfig as GKRFieldConfig>::ChallengeField>(&proof_and_claimed_v) {
+        Ok((proof, claimed_v)) => (proof, claimed_v),
+        Err(_) => {
+            return;
+        }
+    };
 
     // println!("{:?}", claimed_v.);
 
@@ -555,11 +640,8 @@ where
         &proof,
         &claimed_v
     ));
-    // println!("{:?}", proof_and_claimed_v);
 
     println!("Verified");
-
-    // println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
     println!(
         "Peak Memory used Overall : {:.2}",
         GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
@@ -942,7 +1024,20 @@ where
                 .required(false) // This argument is also required
                 .long("output") // Use a long flag (e.g., --name)
                 .short('o')  // Use a short flag (e.g., -n)
-                // .index(3), // Positional argument (second argument)
+        )
+        .arg(
+            Arg::new("witness")
+                .help("The witness file path")
+                .required(false) // This argument is also required
+                .long("witness") // Use a long flag (e.g., --name)
+                .short('w')  // Use a short flag (e.g., -n)
+        )
+        .arg(
+            Arg::new("proof")
+                .help("The proof file path")
+                .required(false) // This argument is also required
+                .long("proof") // Use a long flag (e.g., --name)
+                .short('p')  // Use a short flag (e.g., -n)
         )
         .arg(
             Arg::new("name")
@@ -981,22 +1076,27 @@ where
             let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
             let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
             let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
-            run_witness::<BN254Config, _, CircuitDefaultType>(file_reader, input_path, output_path, circuit_name);
+            let witness_path = matches.get_one::<String>("witness").unwrap(); //"outputs/reward_output.json"
+            run_witness::<BN254Config, _, CircuitDefaultType>(file_reader, input_path, output_path, &witness_path, circuit_name);
         }
         "run_prove_witness" => {
             // let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
             // let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
             let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
-            run_prove_witness::<BN254Config, _, CircuitDefaultType>(file_reader, circuit_name);
+            let witness_path = matches.get_one::<String>("witness").unwrap(); //"outputs/reward_output.json"
+            let proof_path = matches.get_one::<String>("proof").unwrap(); //"outputs/reward_output.json"
+            run_prove_witness::<BN254Config, _, CircuitDefaultType>(file_reader, circuit_name, witness_path, proof_path);
         }
         "run_gen_verify"=> {
 
-            // let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
-            // let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+            let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+            let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
             let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
+            let witness_path = matches.get_one::<String>("witness").unwrap(); //"outputs/reward_output.json"
+            let proof_path = matches.get_one::<String>("proof").unwrap(); //"outputs/reward_output.json"
 
-            
-            run_verify::<BN254Config, Filereader, CircuitDefaultType>(&circuit_name);
+            // run_verify::<BN254Config, Filereader, CircuitDefaultType>(&circuit_name);
+            run_verify_io::<BN254Config, Filereader, CircuitDefaultType>(&circuit_name, file_reader, &input_path, &output_path, witness_path, proof_path);
         }
         _ => {
             panic!("Unknown command or missing arguments.");

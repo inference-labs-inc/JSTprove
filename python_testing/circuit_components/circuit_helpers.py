@@ -47,7 +47,7 @@ class Circuit:
     
     @prepare_io_files
     def base_testing(self, run_type=RunType.BASE_TESTING, 
-                     witness_file=None, input_file=None, proof_path=None, public_path=None, 
+                     witness_file=None, input_file=None, proof_file=None, public_path=None, 
                      verification_key=None, circuit_name=None, weights_path=None, output_file=None,
                      proof_system=None,
                      dev_mode = False,
@@ -65,7 +65,8 @@ class Circuit:
         """
         # Run the appropriate proof operation based on run_type
         self.parse_proof_run_type(
-            witness_file, input_file, proof_path, public_path, 
+
+            witness_file, input_file, proof_file, public_path, 
             verification_key, circuit_name, proof_system, output_file, run_type, dev_mode, ecc
         )
         
@@ -94,9 +95,9 @@ class Circuit:
             elif run_type == RunType.GEN_WITNESS:
                 generate_witness(circuit_name, witness_file, input_file, output_file, proof_system, dev_mode)
             elif run_type == RunType.PROVE_WITNESS:
-                generate_proof(circuit_name, witness_file, input_file, output_file, proof_system, dev_mode, ecc=ecc)
+                generate_proof(circuit_name, witness_file, proof_path, proof_system, dev_mode, ecc=ecc)
             elif run_type == RunType.GEN_VERIFY:
-                generate_verification(circuit_name, proof_system, dev_mode, ecc=ecc)
+                generate_verification(circuit_name, input_file, output_file, witness_file, proof_path, proof_system, dev_mode, ecc=ecc)
             else:
                 print(f"Unknown entry: {run_type}")
                 raise ValueError(f"Unknown run type: {run_type}")

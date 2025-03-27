@@ -20,7 +20,7 @@ where
         I: DeserializeOwned,
     {
         // Read the JSON file into a string
-        println!("{}", file_path);
+        // println!("{}", file_path);
         let mut file = std::fs::File::open(file_path).expect("Unable to open file");
         let mut contents = String::new();
         file.read_to_string(&mut contents)

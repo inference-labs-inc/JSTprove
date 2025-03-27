@@ -120,8 +120,8 @@ This CLI tool runs various circuit operations such as compilation, witness gener
    From the project root (`GravyTesting-Internal`):
 
    ```bash
-   python -m cli --circuit simple_circuit --compile_circuit
-   python -m cli --circuit simple_circuit --gen_witness
-   python -m cli --circuit simple_circuit --prove_witness
-   python -m cli --circuit simple_circuit --gen_verify
+   python -m cli --circuit simple_circuit --compile
+   python -m cli --circuit simple_circuit --witness
+   python -m cli --circuit simple_circuit --prove
+   python -m cli --circuit simple_circuit --verify
    

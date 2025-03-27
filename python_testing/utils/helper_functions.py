@@ -82,6 +82,18 @@ def prepare_io_files(func):
             input_folder, proof_folder, temp_folder, circuit_folder, weights_folder, 
             self.name, output_folder, proof_system
         )
+        if not kwargs.get("input_file", None) is None:
+            input_file = kwargs["input_file"]
+        kwargs.pop("input_file", None)
+        if not kwargs.get("output_file", None) is None:
+            output_file = kwargs["output_file"]
+        kwargs.pop("output_file", None)
+        if not kwargs.get("proof_file", None) is None:
+            proof_path = kwargs["proof_file"]
+        kwargs.pop("proof_file", None)
+        if not kwargs.get("witness_file", None) is None:
+            witness_file = kwargs["witness_file"]
+        kwargs.pop("witness_file", None)
 
         if run_type == RunType.GEN_WITNESS or run_type == RunType.END_TO_END:
 
@@ -103,7 +115,7 @@ def prepare_io_files(func):
         file_info = {
             'witness_file': witness_file,
             'input_file': input_file,
-            'proof_path': proof_path,
+            'proof_file': proof_path,
             'public_path': public_path,
             'verification_key': verification_key,
             'circuit_name': circuit_name,
@@ -115,6 +127,7 @@ def prepare_io_files(func):
             'output': output,
             'proof_system': proof_system
         }
+        # print(input_file, output_file)
         
         # Store file_info in the instance
         self._file_info = file_info
@@ -296,6 +309,7 @@ def generate_witness(circuit_name, witness_file, input_file, output_file,
             'n': circuit_name,
             'i': input_file,
             'o': output_file,
+            'w': witness_file
         }
         
         # Run the command
@@ -308,7 +322,8 @@ def generate_witness(circuit_name, witness_file, input_file, output_file,
         circuit = ZKProofsCircom(circuit_name)
         circuit.compute_witness(witness_file, input_file, wasm=True, c=False)
 
-def generate_proof(circuit_name, witness_file, input_file, output_file, 
+
+def generate_proof(circuit_name, witness_file, proof_file, 
                     proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False, ecc = True):
     """Generate witness for a circuit."""
     if proof_system == ZKProofSystems.Expander:
@@ -319,6 +334,8 @@ def generate_proof(circuit_name, witness_file, input_file, output_file,
             # Prepare arguments
             args = {
                 'n': circuit_name,
+                'w': witness_file,
+                'p': proof_file
             }
             
             # Run the command
@@ -338,9 +355,10 @@ def generate_proof(circuit_name, witness_file, input_file, output_file,
             
     elif proof_system == ZKProofSystems.Circom:
         circuit = ZKProofsCircom(circuit_name)
-        circuit.proof(witness_file, output_file, public_path="")
+        circuit.proof(witness_file, proof_file, public_path="")
 
-def generate_verification(circuit_name, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False, ecc = True):
+
+def generate_verification(circuit_name, input_file, output_file, witness_file, proof_file, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False, ecc = True):
     """Generate verification for a circuit."""
     if proof_system == ZKProofSystems.Expander:
         if ecc:
@@ -350,6 +368,10 @@ def generate_verification(circuit_name, proof_system: ZKProofSystems = ZKProofSy
             # Prepare arguments
             args = {
                 'n': circuit_name,
+                'i': input_file,
+                'o': output_file,
+                'w': witness_file,
+                'p': proof_file
             }
             
             # Run the command
@@ -401,17 +423,20 @@ def get_files(input_folder, proof_folder, temp_folder, circuit_folder, weights_f
     create_folder(output_folder)
     create_folder(weights_folder)
 
-    witness_file = os.path.join(temp_folder, f"{name}_witness.wtns")
+    
     input_file = os.path.join(input_folder, f"{name}_input.json")
-    proof_path = os.path.join(proof_folder, f"{name}_proof.json")
     public_path = os.path.join(proof_folder, f"{name}_public.json")
     verification_key = os.path.join(temp_folder, f"{name}_verification_key.json")
     weights_path = os.path.join(weights_folder, f"{name}_weights.json")
     
     if proof_system == ZKProofSystems.Circom:
         circuit_name = os.path.join(circuit_folder, f"{name}.circom")
+        witness_file = os.path.join(temp_folder, f"{name}_witness.wtns")
+        proof_path = os.path.join(proof_folder, f"{name}_proof.json")
     elif proof_system == ZKProofSystems.Expander:
         circuit_name = os.path.join(circuit_folder, f"{name}")
+        witness_file = os.path.join(f"{name}_witness.txt")
+        proof_path = os.path.join(proof_folder, f"{name}_proof.bin")
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 

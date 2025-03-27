@@ -151,10 +151,10 @@ def list_available_circuits(search_path: Optional[str] = None):
 def parse_args():
     parser = argparse.ArgumentParser(description="Run circuit operations.")
     # Operation flags
-    parser.add_argument("--compile_circuit", action="store_true", help="Compile the circuit.")
+    parser.add_argument("--compile", action="store_true", help="Compile the circuit.")
     parser.add_argument("--gen_witness", action="store_true", help="Generate witness for the circuit.")
-    parser.add_argument("--prove_witness", action="store_true", help="Generate witness and proof.")
-    parser.add_argument("--gen_verify", action="store_true", help="Run verification.")
+    parser.add_argument("--prove", action="store_true", help="Generate witness and proof.")
+    parser.add_argument("--verify", action="store_true", help="Run verification.")
     parser.add_argument("--end_to_end", action="store_true", help="Run end-to-end circuit testing.")
     parser.add_argument("--all", action="store_true", help="Run all stages (compile_circuit, gen_witness, prove_witness, gen_verify).")
     parser.add_argument("--fresh_compile", action="store_true", help="Force fresh compilation of the circuit (sets dev_mode=True).")
@@ -184,13 +184,13 @@ def get_run_operations(args) -> List[RunType]:
     if args.all:
         return [RunType.COMPILE_CIRCUIT, RunType.GEN_WITNESS, RunType.PROVE_WITNESS, RunType.GEN_VERIFY]
     ops = []
-    if args.compile_circuit:
+    if args.compile:
         ops.append(RunType.COMPILE_CIRCUIT)
     if args.gen_witness:
         ops.append(RunType.GEN_WITNESS)
-    if args.prove_witness:
+    if args.prove:
         ops.append(RunType.PROVE_WITNESS)
-    if args.gen_verify:
+    if args.verify:
         ops.append(RunType.GEN_VERIFY)
     if args.end_to_end:
         ops.append(RunType.END_TO_END)
@@ -219,7 +219,6 @@ def main():
     run_operations = get_run_operations(args)
     if not run_operations:
         raise ValueError("No operation specified. Please specify at least one operation flag or use --all.")
-    
     # Execute each operation in order.
     for op in run_operations:
         circuit.base_testing(
@@ -228,10 +227,9 @@ def main():
             input_file=args.input,
             output_file=args.output,
             witness_file=args.witness,
-            proof_path=args.proof,
+            proof_file=args.proof,
             ecc=args.ecc
         )
-
 
 if __name__ == "__main__":
     main()
