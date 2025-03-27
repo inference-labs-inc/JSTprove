@@ -1,3 +1,4 @@
+from typing import Optional
 import subprocess
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems, ZKProofsExpander
