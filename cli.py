@@ -152,7 +152,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Run circuit operations.")
     # Operation flags
     parser.add_argument("--compile", action="store_true", help="Compile the circuit.")
-    parser.add_argument("--witness", action="store_true", help="Generate witness for the circuit.")
+    parser.add_argument("--gen_witness", action="store_true", help="Generate witness for the circuit.")
     parser.add_argument("--prove", action="store_true", help="Generate witness and proof.")
     parser.add_argument("--verify", action="store_true", help="Run verification.")
     parser.add_argument("--end_to_end", action="store_true", help="Run end-to-end circuit testing.")
@@ -186,7 +186,7 @@ def get_run_operations(args) -> List[RunType]:
     ops = []
     if args.compile:
         ops.append(RunType.COMPILE_CIRCUIT)
-    if args.witness:
+    if args.gen_witness:
         ops.append(RunType.GEN_WITNESS)
     if args.prove:
         ops.append(RunType.PROVE_WITNESS)
@@ -219,7 +219,6 @@ def main():
     run_operations = get_run_operations(args)
     if not run_operations:
         raise ValueError("No operation specified. Please specify at least one operation flag or use --all.")
-    
     # Execute each operation in order.
     for op in run_operations:
         circuit.base_testing(

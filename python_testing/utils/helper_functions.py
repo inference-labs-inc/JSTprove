@@ -82,18 +82,18 @@ def prepare_io_files(func):
             input_folder, proof_folder, temp_folder, circuit_folder, weights_folder, 
             self.name, output_folder, proof_system
         )
-        if "input_file" in kwargs.keys():
+        if not kwargs.get("input_file", None) is None:
             input_file = kwargs["input_file"]
-            kwargs.pop("input_file")
-        if "output_file" in kwargs.keys():
+        kwargs.pop("input_file", None)
+        if not kwargs.get("output_file", None) is None:
             output_file = kwargs["output_file"]
-            kwargs.pop("output_file")
-        if "proof_path" in kwargs.keys():
-            input_file = kwargs["proof_path"]
-            kwargs.pop("proof_path")
-        if "witness_file" in kwargs.keys():
-            output_file = kwargs["witness_file"]
-            kwargs.pop("witness_file")
+        kwargs.pop("output_file", None)
+        if not kwargs.get("proof_file", None) is None:
+            proof_path = kwargs["proof_file"]
+        kwargs.pop("proof_file", None)
+        if not kwargs.get("witness_file", None) is None:
+            witness_file = kwargs["witness_file"]
+        kwargs.pop("witness_file", None)
 
         if run_type == RunType.GEN_WITNESS or run_type == RunType.END_TO_END:
 
@@ -115,7 +115,7 @@ def prepare_io_files(func):
         file_info = {
             'witness_file': witness_file,
             'input_file': input_file,
-            'proof_path': proof_path,
+            'proof_file': proof_path,
             'public_path': public_path,
             'verification_key': verification_key,
             'circuit_name': circuit_name,
@@ -127,6 +127,7 @@ def prepare_io_files(func):
             'output': output,
             'proof_system': proof_system
         }
+        # print(input_file, output_file)
         
         # Store file_info in the instance
         self._file_info = file_info
@@ -357,7 +358,7 @@ def generate_proof(circuit_name, witness_file, proof_file,
         circuit.proof(witness_file, proof_file, public_path="")
 
 
-def generate_verification(circuit_name, input_file, output_file, witness_file, proof_file,  proof_system: ZKProofSystems = ZKProofSystems.Expander, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False, ecc = True):
+def generate_verification(circuit_name, input_file, output_file, witness_file, proof_file, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False, ecc = True):
     """Generate verification for a circuit."""
     if proof_system == ZKProofSystems.Expander:
         if ecc:
