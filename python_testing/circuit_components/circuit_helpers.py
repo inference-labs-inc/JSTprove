@@ -107,7 +107,7 @@ class Circuit:
             elif run_type == RunType.END_TO_END:
                 run_end_to_end(circuit_name, input_file, output_file, proof_system, dev_mode)
             elif run_type == RunType.COMPILE_CIRCUIT:
-                compile_circuit(circuit_name, proof_system)
+                compile_circuit(circuit_name, proof_system, dev_mode)
             elif run_type == RunType.GEN_WITNESS:
                 generate_witness(circuit_name, witness_file, input_file, output_file, proof_system, dev_mode)
             elif run_type == RunType.PROVE_WITNESS:

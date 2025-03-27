@@ -288,6 +288,7 @@ def compile_circuit(circuit_name, proof_system: ZKProofSystems = ZKProofSystems.
         # Prepare arguments
         args = {
             'n': circuit_name,
+            'c': "simple_circuit5"
         }
         
         # Run the command
@@ -313,7 +314,8 @@ def generate_witness(circuit_name, witness_file, input_file, output_file,
             'n': circuit_name,
             'i': input_file,
             'o': output_file,
-            'w': witness_file
+            'w': witness_file,
+            'c': "simple_circuit5"
         }
         
         # Run the command
@@ -339,7 +341,8 @@ def generate_proof(circuit_name, witness_file, proof_file,
             args = {
                 'n': circuit_name,
                 'w': witness_file,
-                'p': proof_file
+                'p': proof_file,
+                'c': "simple_circuit5"
             }
             
             # Run the command
@@ -375,7 +378,8 @@ def generate_verification(circuit_name, input_file, output_file, witness_file, p
                 'i': input_file,
                 'o': output_file,
                 'w': witness_file,
-                'p': proof_file
+                'p': proof_file,
+                'c': "simple_circuit5"
             }
             
             # Run the command
