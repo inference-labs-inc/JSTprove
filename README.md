@@ -120,8 +120,25 @@ This CLI tool runs various circuit operations such as compilation, witness gener
    From the project root (`GravyTesting-Internal`):
 
    ```bash
-   python -m cli --circuit simple_circuit --compile
-   python -m cli --circuit simple_circuit --witness
-   python -m cli --circuit simple_circuit --prove
-   python -m cli --circuit simple_circuit --verify
+   python -m cli --circuit simple_circuit --compile --circuit <circuit_file_path>
+   python -m cli --circuit simple_circuit --gen_witness --witness <witness_file_path> --input <input_json_file_path> --output <output_json_file_path> --circuit_path <circuit_file_path>
+   python -m cli --circuit simple_circuit --prove --witness <witness_file_path> --proof <proof_file_path> --circuit_path <circuit_file_path>
+   python -m cli --circuit simple_circuit --verify --witness <witness_file_path> --proof <proof_file_path> --input <input_json_file_path> --output <output_json_file_path> --circuit_path <circuit_file_path>
+   ```
+
+   Dummy demo run through:
+   ```bash
+   Demo
+   run through
+   python cli.py --circuit simple_circuit --gen_witness --witness witness.txt --input input.json --output output.json --circuit_path basic_circuit.txt
+   python cli.py --circuit simple_circuit --prove --witness witness.txt --proof proof.bin --circuit_path basic_circuit.txt
+   python cli.py --circuit simple_circuit --verify --witness witness.txt --proof proof.bin --input input.json --output output.json --circuit_path basic_circuit.txt
+
+   Error about inputs not matching
+   python cli.py --circuit simple_circuit --verify --witness witness.txt --proof proof.bin --circuit_path basic_circuit.txt
+   Error around verification
+   python cli.py --circuit simple_circuit --verify --witness witness.txt --input input.json --output output.json --circuit_path basic_circuit.txt
+   run through 
+   python cli.py --circuit simple_circuit --verify --witness witness.txt --proof proof.bin --input input.json --output output.json --circuit_path basic_circuit.txt
+   ```
    

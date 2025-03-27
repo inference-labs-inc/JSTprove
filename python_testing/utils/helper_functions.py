@@ -96,6 +96,9 @@ def prepare_io_files(func):
         kwargs.pop("witness_file", None)
 
         if run_type == RunType.GEN_WITNESS or run_type == RunType.END_TO_END:
+            inputs = read_from_json(input_file)
+            print(inputs)
+            self.parse_inputs(**inputs)
 
             # Compute output (with caching via decorator)
             output = self.get_outputs()
@@ -107,9 +110,10 @@ def prepare_io_files(func):
         
         # Write to files
         if run_type == RunType.GEN_WITNESS or run_type == RunType.END_TO_END:
-            to_json(inputs, input_file)
+            # to_json(inputs, input_file)
             to_json(outputs, output_file)
-        to_json(weights, weights_path)
+        if run_type == RunType.COMPILE_CIRCUIT or run_type == RunType.END_TO_END: 
+            to_json(weights, weights_path)
         
         # Store paths and data for use in the decorated function
         file_info = {
@@ -145,7 +149,7 @@ def to_json(inputs: Dict[str, Any], path: str) -> None:
     with open(path, 'w') as outfile:
         json.dump(inputs, outfile)
     
-def read_outputs_from_json(public_path: str) -> Dict[str, Any]:
+def read_from_json(public_path: str) -> Dict[str, Any]:
     """Read data from a JSON file."""
     with open(public_path) as json_data:
         d = json.load(json_data)
@@ -311,7 +315,8 @@ def generate_witness(circuit_name, circuit_path, witness_file, input_file, outpu
             'c': circuit_path,
             'i': input_file,
             'o': output_file,
-            'w': witness_file
+            'w': witness_file,
+            'c': circuit_path
         }
         
         # Run the command
@@ -338,7 +343,8 @@ def generate_proof(circuit_name, circuit_path, witness_file, proof_file,
                 'n': circuit_name,
                 'c': circuit_path,
                 'w': witness_file,
-                'p': proof_file
+                'p': proof_file,
+                'c': circuit_path
             }
             
             # Run the command
@@ -375,7 +381,8 @@ def generate_verification(circuit_name, circuit_path, input_file, output_file, w
                 'i': input_file,
                 'o': output_file,
                 'w': witness_file,
-                'p': proof_file
+                'p': proof_file,
+                'c': circuit_path
             }
             
             # Run the command

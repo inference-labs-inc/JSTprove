@@ -8,6 +8,7 @@ use gkr_field_config::GKRFieldConfig;
 use peakmem_alloc::*;
 // use serde_json::{from_reader, to_writer};
 use std::alloc::System;
+use std::path::Path;
 // use std::io::{Read, Write};
 use std::time::Instant;
 
@@ -138,7 +139,19 @@ where
     )
 }
 
-pub fn run_compile_and_serialize<C: Config, CircuitType>(name: &str)
+fn get_witness_solver_path(input: &str) -> String {
+    let path = Path::new(input);
+    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+        if let Some(extension) = path.extension().and_then(|e| e.to_str()) {
+            return format!("{}_witness_solver.{}", stem, extension);
+        } else {
+            return format!("{}_witness_solver", stem);
+        }
+    }
+    input.to_string()
+}
+
+pub fn run_compile_and_serialize<C: Config, CircuitType>(circuit_path: &str)
 where
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone,
 {
@@ -154,11 +167,14 @@ where
     );
     let duration = start.elapsed();
 
-    let file = std::fs::File::create(format!("{}_circuit.txt", name)).unwrap();
+    // let file = std::fs::File::create(format!("{}_circuit.txt", name)).unwrap();
+    let file = std::fs::File::create(circuit_path).unwrap();
+
     let writer = std::io::BufWriter::new(file);
     compile_result.layered_circuit.serialize_into(writer).unwrap();
 
-    let file = std::fs::File::create(format!("{}_witness_solver.txt", name)).unwrap();
+    let file = std::fs::File::create(get_witness_solver_path(circuit_path)).unwrap();
+    // let file = std::fs::File::create(format!("{}_witness_solver.txt", name)).unwrap();
     let writer = std::io::BufWriter::new(file);
     compile_result.witness_solver.serialize_into(writer).unwrap();
 
@@ -285,7 +301,7 @@ where
     )
 }
 
-pub fn run_witness<C: Config, I, CircuitDefaultType>(io_reader: &mut I, input_path: &str, output_path:&str, witness_path: &str, _circuit_name: &str)
+pub fn run_witness<C: Config, I, CircuitDefaultType>(io_reader: &mut I, input_path: &str, output_path:&str, witness_path: &str, circuit_path: &str)
 where
     I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
@@ -294,13 +310,14 @@ where
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
-    println!("{:?}", format!("{}_witness_solver.txt", io_reader.get_path()));
-    let file = std::fs::File::open(format!("{}_witness_solver.txt", io_reader.get_path())).unwrap();
+    // println!("{:?}", format!("{}_witness_solver.txt", io_reader.get_path()));
+    // let file = std::fs::File::open(format!("{}_witness_solver.txt", io_reader.get_path())).unwrap();
+    let file = std::fs::File::open(get_witness_solver_path(circuit_path)).unwrap();
     let reader = std::io::BufReader::new(file);
     let witness_solver = WitnessSolver::<C>::deserialize_from(reader).unwrap();
 
-
-    let file = std::fs::File::open(format!("{}_circuit.txt", io_reader.get_path())).unwrap();
+    let file = std::fs::File::open(circuit_path).unwrap();
+    // let file = std::fs::File::open(format!("{}_circuit.txt", io_reader.get_path())).unwrap();
     let reader = std::io::BufReader::new(file);
     let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
 
@@ -337,9 +354,9 @@ where
     }
 }
 
-pub fn run_prove_witness<C: Config, I, CircuitDefaultType>(io_reader: &mut I, _circuit_name: &str, witness_path: &str, proof_path: &str)
+pub fn run_prove_witness<C: Config, CircuitDefaultType>(circuit_path: &str, witness_path: &str, proof_path: &str)
 where
-    I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
+    // I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
         + Clone,
@@ -348,7 +365,7 @@ where
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
 
-    let file = std::fs::File::open(format!("{}_circuit.txt", io_reader.get_path())).unwrap();
+    let file = std::fs::File::open(circuit_path).unwrap();
     let reader = std::io::BufReader::new(file);
     let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
 
@@ -563,7 +580,7 @@ where
     )
 }
 
-pub fn run_verify_io<C: Config, I, CircuitDefaultType>(name: &str, io_reader: &mut I, input_path: &str, output_path:&str, witness_path: &str, proof_path: &str)
+pub fn run_verify_io<C: Config, I, CircuitDefaultType>(circuit_path: &str, io_reader: &mut I, input_path: &str, output_path:&str, witness_path: &str, proof_path: &str)
 where
     I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
@@ -578,7 +595,9 @@ where
         mpi_config::MPIConfig::new(),
     );
 
-    let file = std::fs::File::open(format!("{}_circuit.txt", name)).unwrap();
+    // let file = std::fs::File::open(format!("{}_circuit.txt", name)).unwrap();
+    let file = std::fs::File::open(circuit_path).unwrap();
+
     let reader = std::io::BufReader::new(file);
     let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
 
@@ -1040,6 +1059,13 @@ where
                 .short('p')  // Use a short flag (e.g., -n)
         )
         .arg(
+            Arg::new("circuit_path")
+                .help("The circuit file path")
+                .required(false) // This argument is also required
+                .long("circuit") // Use a long flag (e.g., --name)
+                .short('c')  // Use a short flag (e.g., -n)
+        )
+        .arg(
             Arg::new("name")
                 .help("The name of the circuit for the file names to serialize/deserialize")
                 .required(false) // This argument is also required
@@ -1066,37 +1092,44 @@ where
                                     
         "run_compile_circuit" => {
             // let circuit_name = &args[2];
-            let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
+            // let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
+            let circuit_path = matches.get_one::<String>("circuit_path").unwrap(); //"outputs/reward_output.json"
+
 
             
-            run_compile_and_serialize::<BN254Config,CircuitType>(&circuit_name);
+            run_compile_and_serialize::<BN254Config,CircuitType>(&circuit_path);
             // compile_circ(circuit_name, demo);
         }
         "run_gen_witness" => {
             let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
             let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
-            let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
+            // let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
             let witness_path = matches.get_one::<String>("witness").unwrap(); //"outputs/reward_output.json"
-            run_witness::<BN254Config, _, CircuitDefaultType>(file_reader, input_path, output_path, &witness_path, circuit_name);
+            let circuit_path = matches.get_one::<String>("circuit_path").unwrap(); //"outputs/reward_output.json"
+            run_witness::<BN254Config, _, CircuitDefaultType>(file_reader, input_path, output_path, &witness_path, circuit_path);
         }
         "run_prove_witness" => {
             // let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
             // let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
-            let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
+            // let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
             let witness_path = matches.get_one::<String>("witness").unwrap(); //"outputs/reward_output.json"
             let proof_path = matches.get_one::<String>("proof").unwrap(); //"outputs/reward_output.json"
-            run_prove_witness::<BN254Config, _, CircuitDefaultType>(file_reader, circuit_name, witness_path, proof_path);
+            let circuit_path = matches.get_one::<String>("circuit_path").unwrap(); //"outputs/reward_output.json"
+
+            run_prove_witness::<BN254Config, CircuitDefaultType>( circuit_path, witness_path, proof_path);
         }
         "run_gen_verify"=> {
 
             let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
             let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
-            let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
+            // let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
             let witness_path = matches.get_one::<String>("witness").unwrap(); //"outputs/reward_output.json"
             let proof_path = matches.get_one::<String>("proof").unwrap(); //"outputs/reward_output.json"
+            let circuit_path = matches.get_one::<String>("circuit_path").unwrap(); //"outputs/reward_output.json"
+
 
             // run_verify::<BN254Config, Filereader, CircuitDefaultType>(&circuit_name);
-            run_verify_io::<BN254Config, Filereader, CircuitDefaultType>(&circuit_name, file_reader, &input_path, &output_path, witness_path, proof_path);
+            run_verify_io::<BN254Config, Filereader, CircuitDefaultType>(&circuit_path, file_reader, &input_path, &output_path, witness_path, proof_path);
         }
         _ => {
             panic!("Unknown command or missing arguments.");

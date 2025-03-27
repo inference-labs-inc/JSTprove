@@ -24,6 +24,22 @@ class Circuit:
         
         # This will be set by prepare_io_files decorator
         self._file_info = None
+        self.required_keys = None
+    
+    def parse_inputs(self, **kwargs):
+        if self.required_keys is None:
+            raise NotImplementedError("self.required_keys must be specified in circuit definition")
+        for key in self.required_keys:
+            if key not in kwargs:
+                raise KeyError(f"Missing required parameter: {key}")
+            
+            value = kwargs[key]
+            
+            # Validate type (ensure integer)
+            if not isinstance(value, int):
+                raise ValueError(f"Expected an integer for {key}, but got {type(value).__name__}")
+            
+            setattr(self, key, value)
 
     
     @compute_and_store_output
@@ -65,6 +81,8 @@ class Circuit:
         Returns:
             The outputs dictionary
         """
+        if circuit_path is None:
+            circuit_path = f"{circuit_name}.txt"
 
         # Run the appropriate proof operation based on run_type
         self.parse_proof_run_type(
@@ -94,7 +112,7 @@ class Circuit:
             elif run_type == RunType.END_TO_END:
                 run_end_to_end(circuit_name, circuit_path, input_file, output_file, proof_system, dev_mode)
             elif run_type == RunType.COMPILE_CIRCUIT:
-                compile_circuit(circuit_name, circuit_path, proof_system)
+                compile_circuit(circuit_name, circuit_path, proof_system, dev_mode)
             elif run_type == RunType.GEN_WITNESS:
                 generate_witness(circuit_name, circuit_path, witness_file, input_file, output_file, proof_system, dev_mode)
             elif run_type == RunType.PROVE_WITNESS:
