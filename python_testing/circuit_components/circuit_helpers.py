@@ -1,3 +1,4 @@
+from typing import Optional
 import subprocess
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems, ZKProofsExpander
@@ -23,6 +24,22 @@ class Circuit:
         
         # This will be set by prepare_io_files decorator
         self._file_info = None
+        self.required_keys = None
+    
+    def parse_inputs(self, **kwargs):
+        if self.required_keys is None:
+            raise NotImplementedError("self.required_keys must be specified in circuit definition")
+        for key in self.required_keys:
+            if key not in kwargs:
+                raise KeyError(f"Missing required parameter: {key}")
+            
+            value = kwargs[key]
+            
+            # Validate type (ensure integer)
+            if not isinstance(value, int):
+                raise ValueError(f"Expected an integer for {key}, but got {type(value).__name__}")
+            
+            setattr(self, key, value)
 
     
     @compute_and_store_output
@@ -51,7 +68,8 @@ class Circuit:
                      verification_key=None, circuit_name=None, weights_path=None, output_file=None,
                      proof_system=None,
                      dev_mode = False,
-                     ecc = True):
+                     ecc = True,
+                     circuit_path: Optional[str] = None,):
         """
         Run the circuit with the specified run type.
         All file paths are handled by the decorator.
@@ -63,17 +81,20 @@ class Circuit:
         Returns:
             The outputs dictionary
         """
+        if circuit_path is None:
+            circuit_path = f"{circuit_name}.txt"
+
         # Run the appropriate proof operation based on run_type
         self.parse_proof_run_type(
 
             witness_file, input_file, proof_file, public_path, 
-            verification_key, circuit_name, proof_system, output_file, run_type, dev_mode, ecc
+            verification_key, circuit_name, circuit_path, proof_system, output_file, run_type, dev_mode, ecc
         )
         
         return #self._file_info['outputs']
     
     def parse_proof_run_type(self, witness_file, input_file, proof_path, public_path, 
-                             verification_key, circuit_name, proof_system, output_file, run_type, dev_mode = False, ecc = True):
+                             verification_key, circuit_name, circuit_path, proof_system, output_file, run_type, dev_mode = False, ecc = True):
         """
         Run the appropriate proof operation based on run_type.
         This function can be called directly if needed.
@@ -89,15 +110,15 @@ class Circuit:
                     prove_and_verify(witness_file, input_file, proof_path, public_path, 
                                     verification_key, circuit_name, proof_system, output_file, dev_mode, ecc=False)
             elif run_type == RunType.END_TO_END:
-                run_end_to_end(circuit_name, input_file, output_file, proof_system, dev_mode)
+                run_end_to_end(circuit_name, circuit_path, input_file, output_file, proof_system, dev_mode)
             elif run_type == RunType.COMPILE_CIRCUIT:
-                compile_circuit(circuit_name, proof_system)
+                compile_circuit(circuit_name, circuit_path, proof_system, dev_mode)
             elif run_type == RunType.GEN_WITNESS:
-                generate_witness(circuit_name, witness_file, input_file, output_file, proof_system, dev_mode)
+                generate_witness(circuit_name, circuit_path, witness_file, input_file, output_file, proof_system, dev_mode)
             elif run_type == RunType.PROVE_WITNESS:
-                generate_proof(circuit_name, witness_file, proof_path, proof_system, dev_mode, ecc=ecc)
+                generate_proof(circuit_name, circuit_path, witness_file, proof_path, proof_system, dev_mode, ecc=ecc)
             elif run_type == RunType.GEN_VERIFY:
-                generate_verification(circuit_name, input_file, output_file, witness_file, proof_path, proof_system, dev_mode, ecc=ecc)
+                generate_verification(circuit_name, circuit_path, input_file, output_file, witness_file, proof_path, proof_system, dev_mode, ecc=ecc)
             else:
                 print(f"Unknown entry: {run_type}")
                 raise ValueError(f"Unknown run type: {run_type}")

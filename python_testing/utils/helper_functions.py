@@ -96,6 +96,9 @@ def prepare_io_files(func):
         kwargs.pop("witness_file", None)
 
         if run_type == RunType.GEN_WITNESS or run_type == RunType.END_TO_END:
+            inputs = read_from_json(input_file)
+            print(inputs)
+            self.parse_inputs(**inputs)
 
             # Compute output (with caching via decorator)
             output = self.get_outputs()
@@ -107,9 +110,10 @@ def prepare_io_files(func):
         
         # Write to files
         if run_type == RunType.GEN_WITNESS or run_type == RunType.END_TO_END:
-            to_json(inputs, input_file)
+            # to_json(inputs, input_file)
             to_json(outputs, output_file)
-        to_json(weights, weights_path)
+        if run_type == RunType.COMPILE_CIRCUIT or run_type == RunType.END_TO_END: 
+            to_json(weights, weights_path)
         
         # Store paths and data for use in the decorated function
         file_info = {
@@ -145,7 +149,7 @@ def to_json(inputs: Dict[str, Any], path: str) -> None:
     with open(path, 'w') as outfile:
         json.dump(inputs, outfile)
     
-def read_outputs_from_json(public_path: str) -> Dict[str, Any]:
+def read_from_json(public_path: str) -> Dict[str, Any]:
     """Read data from a JSON file."""
     with open(public_path) as json_data:
         d = json.load(json_data)
@@ -275,7 +279,7 @@ def run_expander_exec(mode: str, circuit_file: str, witness_file: str, proof_fil
         print(f"✅ expander-exec {mode} succeeded:\n{result.stdout}")
 
 
-def compile_circuit(circuit_name, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False):
+def compile_circuit(circuit_name, circuit_path, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False):
     """Compile a circuit."""
     if proof_system == ZKProofSystems.Expander:
         # Extract the binary name from the circuit path
@@ -284,6 +288,7 @@ def compile_circuit(circuit_name, proof_system: ZKProofSystems = ZKProofSystems.
         # Prepare arguments
         args = {
             'n': circuit_name,
+            'c': circuit_path,
         }
         
         # Run the command
@@ -297,7 +302,7 @@ def compile_circuit(circuit_name, proof_system: ZKProofSystems = ZKProofSystems.
         circuit = ZKProofsCircom(circuit_name)
         res = circuit.compile_circuit()
 
-def generate_witness(circuit_name, witness_file, input_file, output_file, 
+def generate_witness(circuit_name, circuit_path, witness_file, input_file, output_file, 
                     proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False):
     """Generate witness for a circuit."""
     if proof_system == ZKProofSystems.Expander:
@@ -307,9 +312,11 @@ def generate_witness(circuit_name, witness_file, input_file, output_file,
         # Prepare arguments
         args = {
             'n': circuit_name,
+            'c': circuit_path,
             'i': input_file,
             'o': output_file,
-            'w': witness_file
+            'w': witness_file,
+            'c': circuit_path
         }
         
         # Run the command
@@ -323,7 +330,7 @@ def generate_witness(circuit_name, witness_file, input_file, output_file,
         circuit.compute_witness(witness_file, input_file, wasm=True, c=False)
 
 
-def generate_proof(circuit_name, witness_file, proof_file, 
+def generate_proof(circuit_name, circuit_path, witness_file, proof_file, 
                     proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False, ecc = True):
     """Generate witness for a circuit."""
     if proof_system == ZKProofSystems.Expander:
@@ -334,8 +341,10 @@ def generate_proof(circuit_name, witness_file, proof_file,
             # Prepare arguments
             args = {
                 'n': circuit_name,
+                'c': circuit_path,
                 'w': witness_file,
-                'p': proof_file
+                'p': proof_file,
+                'c': circuit_path
             }
             
             # Run the command
@@ -358,7 +367,7 @@ def generate_proof(circuit_name, witness_file, proof_file,
         circuit.proof(witness_file, proof_file, public_path="")
 
 
-def generate_verification(circuit_name, input_file, output_file, witness_file, proof_file, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False, ecc = True):
+def generate_verification(circuit_name, circuit_path, input_file, output_file, witness_file, proof_file, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False, ecc = True):
     """Generate verification for a circuit."""
     if proof_system == ZKProofSystems.Expander:
         if ecc:
@@ -368,10 +377,12 @@ def generate_verification(circuit_name, input_file, output_file, witness_file, p
             # Prepare arguments
             args = {
                 'n': circuit_name,
+                'c': circuit_path,
                 'i': input_file,
                 'o': output_file,
                 'w': witness_file,
-                'p': proof_file
+                'p': proof_file,
+                'c': circuit_path
             }
             
             # Run the command
@@ -392,7 +403,7 @@ def generate_verification(circuit_name, input_file, output_file, witness_file, p
     elif proof_system == ZKProofSystems.Circom:
         raise NotImplementedError("Not implemented for Circom")
 
-def run_end_to_end(circuit_name, input_file, output_file, 
+def run_end_to_end(circuit_name, circuit_path, input_file, output_file, 
                   proof_system: ZKProofSystems = ZKProofSystems.Expander, demo=False, dev_mode = False):
     """Run end-to-end proof."""
     if proof_system == ZKProofSystems.Expander:
@@ -401,6 +412,7 @@ def run_end_to_end(circuit_name, input_file, output_file,
         
         # Prepare arguments
         args = {
+            'c': circuit_path,
             'i': input_file,
             'o': output_file,
         }
