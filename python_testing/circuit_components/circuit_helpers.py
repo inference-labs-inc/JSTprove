@@ -1,3 +1,4 @@
+import subprocess
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems, ZKProofsExpander
 from python_testing.utils.helper_functions import (
@@ -49,13 +50,15 @@ class Circuit:
                      witness_file=None, input_file=None, proof_path=None, public_path=None, 
                      verification_key=None, circuit_name=None, weights_path=None, output_file=None,
                      proof_system=None,
-                     dev_mode = False):
+                     dev_mode = False,
+                     ecc = False,):
         """
         Run the circuit with the specified run type.
         All file paths are handled by the decorator.
         
         Args:
             run_type: Type of run to perform
+            ecc: Boolean flag to determine whether to use Expander Compiler Collection or Expander
             
         Returns:
             The outputs dictionary
@@ -63,21 +66,27 @@ class Circuit:
         # Run the appropriate proof operation based on run_type
         self.parse_proof_run_type(
             witness_file, input_file, proof_path, public_path, 
-            verification_key, circuit_name, proof_system, output_file, run_type, dev_mode
+            verification_key, circuit_name, proof_system, output_file, run_type, dev_mode, ecc
         )
         
         return #self._file_info['outputs']
     
     def parse_proof_run_type(self, witness_file, input_file, proof_path, public_path, 
-                             verification_key, circuit_name, proof_system, output_file, run_type, dev_mode = False):
+                             verification_key, circuit_name, proof_system, output_file, run_type, dev_mode = False, ecc = False):
         """
         Run the appropriate proof operation based on run_type.
         This function can be called directly if needed.
         """
         try:
             if run_type == RunType.BASE_TESTING:
-                prove_and_verify(witness_file, input_file, proof_path, public_path, 
-                                verification_key, circuit_name, proof_system, output_file, dev_mode)
+                if ecc:
+                    # If ECC is True, run the ECC-specific logic (run_cargo_command)
+                    prove_and_verify(witness_file, input_file, proof_path, public_path, 
+                                    verification_key, circuit_name, proof_system, output_file, dev_mode)
+                else:
+                    # If ECC is False, run the Expander-specific logic (expander-exec commands) 
+                    prove_and_verify(witness_file, input_file, proof_path, public_path, 
+                                    verification_key, circuit_name, proof_system, output_file, dev_mode, ecc=True)
             elif run_type == RunType.END_TO_END:
                 run_end_to_end(circuit_name, input_file, output_file, proof_system, dev_mode)
             elif run_type == RunType.COMPILE_CIRCUIT:
