@@ -158,6 +158,7 @@ def parse_args():
     parser.add_argument("--end_to_end", action="store_true", help="Run end-to-end circuit testing.")
     parser.add_argument("--all", action="store_true", help="Run all stages (compile_circuit, gen_witness, prove_witness, gen_verify).")
     parser.add_argument("--fresh_compile", action="store_true", help="Force fresh compilation of the circuit (sets dev_mode=True).")
+    parser.add_argument("--ecc", action="store_true", help="Use ExpanderCompilerCollection (cargo) instead of expander-exec.")
 
     # Listing and search path flag (used for both listing and dynamic loading)
     parser.add_argument("--list_circuits", action="store_true", help="List all available circuit files.")
@@ -166,6 +167,8 @@ def parse_args():
     # File overrides and pattern
     parser.add_argument("--input", type=str, help="Path to the input JSON file.")
     parser.add_argument("--output", type=str, help="Path to the output JSON file.")
+    parser.add_argument("--witness", type=str, help="Optional path to witness file")
+    parser.add_argument("--proof", type=str, help="Optional path to proof file")
     parser.add_argument("--pattern", type=str, help="Optional pattern for input/output filenames with '{circuit}' placeholder.")
     
     # Circuit module and class specification
@@ -219,7 +222,15 @@ def main():
     
     # Execute each operation in order.
     for op in run_operations:
-        circuit.base_testing(run_type=op, dev_mode=args.fresh_compile, input_file = input_path, output_file = output_path)
+        circuit.base_testing(
+            run_type=op,
+            dev_mode=args.fresh_compile,
+            input_file=args.input,
+            output_file=args.output,
+            witness_file=args.witness,
+            proof_file=args.proof,
+            ecc=args.ecc
+        )
 
 if __name__ == "__main__":
     main()
