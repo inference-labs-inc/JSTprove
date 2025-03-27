@@ -81,6 +81,8 @@ class Circuit:
         Returns:
             The outputs dictionary
         """
+        if circuit_path is None:
+            circuit_path = f"{circuit_name}.txt"
 
         # Run the appropriate proof operation based on run_type
         self.parse_proof_run_type(
