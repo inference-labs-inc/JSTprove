@@ -72,7 +72,7 @@ class Circuit:
         return #self._file_info['outputs']
     
     def parse_proof_run_type(self, witness_file, input_file, proof_path, public_path, 
-                             verification_key, circuit_name, proof_system, output_file, run_type, dev_mode = False, ecc = False):
+                             verification_key, circuit_name, proof_system, output_file, run_type, dev_mode = False, ecc = True):
         """
         Run the appropriate proof operation based on run_type.
         This function can be called directly if needed.
