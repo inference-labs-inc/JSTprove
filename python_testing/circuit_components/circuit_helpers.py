@@ -69,7 +69,8 @@ class Circuit:
                      proof_system=None,
                      dev_mode = False,
                      ecc = True,
-                     circuit_path: Optional[str] = None,):
+                     circuit_path: Optional[str] = None,
+                     write_json: Optional[bool] = False):
         """
         Run the circuit with the specified run type.
         All file paths are handled by the decorator.

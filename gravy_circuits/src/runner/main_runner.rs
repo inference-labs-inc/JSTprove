@@ -308,8 +308,8 @@ where
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
         + Clone,
 {
-    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    let start = Instant::now();
+    // GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    // let start = Instant::now();
     // println!("{:?}", format!("{}_witness_solver.txt", io_reader.get_path()));
     // let file = std::fs::File::open(format!("{}_witness_solver.txt", io_reader.get_path())).unwrap();
     let file = std::fs::File::open(get_witness_solver_path(circuit_path)).unwrap();
@@ -325,9 +325,16 @@ where
 
     let assignment = io_reader.read_inputs(input_path, assignment);
     let assignment = io_reader.read_outputs(output_path, assignment);
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now();
 
     let assignments = vec![assignment; 1];
     let witness = witness_solver.solve_witnesses(&assignments).unwrap();
+    let output = layered_circuit.run(&witness);
+
+    for x in output.iter() {
+        assert_eq!(*x, true);
+    }
 
     println!("Witness Generated");
 
@@ -347,11 +354,7 @@ where
     let writer = std::io::BufWriter::new(file);
     witness.serialize_into(writer).unwrap();
     // layered_circuit.evaluate();
-    let output = layered_circuit.run(&witness);
-
-    for x in output.iter() {
-        assert_eq!(*x, true);
-    }
+    
 }
 
 pub fn run_prove_witness<C: Config, CircuitDefaultType>(circuit_path: &str, witness_path: &str, proof_path: &str)

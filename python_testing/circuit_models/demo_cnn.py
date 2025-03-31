@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from python_testing.utils.pytorch_helpers import ZKModel
+from python_testing.utils.pytorch_helpers import ZKModel, RunType
+from python_testing.utils.helper_functions import read_from_json
 
 
 
@@ -82,11 +83,11 @@ class Demo(ZKModel):
         # self.layers = ["conv1", "relu", "reshape", "fc1"]
         # self.layers = ["conv1", "relu", "conv2", "relu", "reshape", "fc1"]
         # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu",  "reshape", "fc1"]
-        # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu",  "reshape", "fc1"]
+        self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu",  "reshape", "fc1"]
 
         # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2"]
         # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3"]
-        self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
+        # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
 
         # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
 
@@ -101,10 +102,20 @@ class Demo(ZKModel):
         first_inputs = torch.tensor(self.read_input()).reshape(self.input_shape)
         # torch.onnx.export(model, first_inputs, f = "demo_cnn_full.onnx")
         
+    def get_weights(self, weights_path = None):
+        if weights_path:
+            for weights_p in weights_path:
+                w = read_from_json(weights_p)
+                for layer in w.keys():
+                    l = w[layer]
+                    print(l)
+                    self.model.__getattr__(layer).weights = l
 
 
 
-    def get_model_params(self):
+
+
+    def get_model_params(self, output = None):
         exclude_keys = ['quantized', 'scaling']
         
         input_arr = self.get_inputs(self.input_data_file).reshape(self.input_shape)
@@ -171,11 +182,15 @@ class Demo(ZKModel):
                 assert(abs(previous_output_tensor[i][j]/(2**(2*self.scaling)) - outputs[i][j]) < 0.01)
         return inputs,[weights,weights_2],output
 
+    def get_outputs(self):
+        return ""
+
+
     
 
 if __name__ == "__main__":
-    Demo().base_testing()
-    # Demo().run_circuit()
-    # Demo().run_circuit()
-    # Demo().run_circuit()
-    # Demo().run_circuit()
+    names = ["demo_1", "demo_2", "demo_3", "demo_4", "demo_5"]
+    for name in names:
+        d = Demo()
+        d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
+        d.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)

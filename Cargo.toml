@@ -32,5 +32,26 @@ crosslayer_prototype = { git = "https://github.com/PolyhedraZK/Expander", branch
 expander_compiler = {git = "https://github.com/PolyhedraZK/ExpanderCompilerCollection"}
 circuit-std-rs = {git = "https://github.com/PolyhedraZK/ExpanderCompilerCollection"}
 
+# [workspace.metadata.cross.target.x86_64-unknown-linux-gnu]
+# # Add custom pre-build steps or configurations if needed
+# pre-build = [
+#     "apt-get update && apt-get install -y libssl-dev && apt-get install libopenmpi-dev && apt-get install openmpi-bin && apt-get install libmpich-dev && apt-get install pkg-config",
+#     "sudo apt install openmpi-bin openmpi-common libopenmpi-dev",
+#     "mpirun --version"
+#     # openmpi-bin \
+#     # libopenmpi-dev \ libmpich-dev
+#     # apt-get install -y \
+#     # libmpich-dev \
+#     # libopenmpi-dev \
+#     # pkg-config \
+#     # libclang-dev \
+#     # clang \
+# ]
+[workspace.metadata.cross.target.x86_64-unknown-linux-gnu]
+pre-build = [
+    "apt-get update && apt-get install -y openmpi-bin libopenmpi-dev"
+]
 
+[workspace.metadata.cross.target.armv7-unknown-linux-gnueabi]
+image = "my_rust_mpi_image"
 

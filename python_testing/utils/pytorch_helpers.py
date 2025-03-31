@@ -1,4 +1,5 @@
 import json
+from typing import Optional
 import torch
 import torch
 import torch.nn.functional as F
@@ -7,7 +8,7 @@ import onnxruntime as ort
 
 from python_testing.circuit_components.circuit_helpers import Circuit, RunType
 from python_testing.utils.run_proofs import ZKProofSystems, ZKProofsExpander
-from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
+from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify,prepare_io_files
 from python_testing.circuit_components.relu import ReLU, ConversionType
 from python_testing.circuit_components.convolution import Convolution, QuantizedConv
 from python_testing.circuit_components.gemm import QuantizedGemm, Gemm
@@ -149,33 +150,48 @@ class Layers():
 class ZKModel(Layers, GeneralLayerFunctions, Circuit):
     def __init__(self):
         raise(NotImplementedError, "Must implement")
-
-    def base_testing(self, input_folder:str = "inputs", proof_folder: str = "analysis", temp_folder: str= "temp", weights_folder:str = "weights", circuit_folder:str = "", proof_system: ZKProofSystems = ZKProofSystems.Expander, output_folder: str = "output", run_type: RunType = RunType.BASE_TESTING, dev_mode = False, demo = False):
+    
+    @prepare_io_files
+    def base_testing(self, run_type=RunType.BASE_TESTING, 
+                     witness_file=None, input_file=None, proof_file=None, public_path=None, 
+                     verification_key=None, circuit_name=None, weights_path=None, output_file=None,
+                     proof_system: ZKProofSystems = ZKProofSystems.Expander,
+                     dev_mode = False,
+                     ecc = True,
+                     circuit_path: Optional[str] = None,
+                     write_json: Optional[bool] = False):
         """Simulates running the model by passing inputs through layers with weights."""
         print("Running circuit...")
 
-        witness_file, input_file, proof_path, public_path, verification_key, circuit_name, weights_file, output_file = get_files(
-                input_folder, proof_folder, temp_folder, circuit_folder, weights_folder, self.name, output_folder, proof_system)
+        # witness_file, input_file, proof_path, public_path, verification_key, circuit_name, weights_file, output_file = get_files(
+        #         input_folder, proof_folder, temp_folder, circuit_folder, weights_folder, self.name, output_folder, proof_system)
+        # if circuit_path is None:
+        #     circuit_path = f"{circuit_name}.txt"
+        print(circuit_name, circuit_path)
+        # inputs, weights, output = self.get_model_params()
 
-        inputs, weights, output = self.get_model_params()
+        if not weights_path:
+            weights_path = f"weights/{circuit_name}_weights.json"
 
 
 
-        # NO NEED TO CHANGE anything below here!
-        to_json(inputs, input_file)
+        # # NO NEED TO CHANGE anything below here!
+        # if run_type==RunType.GEN_WITNESS:
+        #     to_json(inputs, input_file)
 
-        # Write output to json
-        outputs = {"output": value for key, value in output.items()}
-        # outputs = {"outputs": reshape_out.tolist()}
-        to_json(outputs, output_file)
-        for (i, w) in enumerate(weights):
-            if i == 0:
-                to_json(w, weights_file)
-            else:
-                val = i + 1
-                to_json(w, weights_file[:-5] + f"{val}" + weights_file[-5:])
+        #     # Write output to json
+        #     outputs = {"output": value for key, value in output.items()}
+        #     # outputs = {"outputs": reshape_out.tolist()}
+        #     to_json(outputs, output_file)
+        # if run_type == RunType.COMPILE_CIRCUIT:
+            # for (i, w) in enumerate(weights):
+            #     if i == 0:
+            #         to_json(w, weights_path)
+            #     else:
+            #         val = i + 1
+            #         to_json(w, weights_path[:-5] + f"{val}" + weights_path[-5:])
 
 
         # ## Run the circuit
         # prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file, demo = demo)
-        self.parse_proof_run_type(witness_file, input_file, proof_path, public_path, verification_key, circuit_name, proof_system, output_file, RunType.BASE_TESTING, dev_mode)
+        self.parse_proof_run_type(witness_file, input_file, proof_file, public_path, verification_key, circuit_name, circuit_path, proof_system, output_file, run_type, dev_mode)

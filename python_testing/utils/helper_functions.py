@@ -96,24 +96,41 @@ def prepare_io_files(func):
         kwargs.pop("witness_file", None)
 
         if run_type == RunType.GEN_WITNESS or run_type == RunType.END_TO_END:
-            inputs = read_from_json(input_file)
-            print(inputs)
-            self.parse_inputs(**inputs)
+            if kwargs.get("write_json") == True:
+                output = self.get_outputs()
 
-            # Compute output (with caching via decorator)
-            output = self.get_outputs()
+                inputs, weights, outputs = self.get_model_params(output)
+                to_json(inputs, input_file)
+            else:
+                inputs = read_from_json(input_file)
+                self.parse_inputs(**inputs)
+
+                # Compute output (with caching via decorator)
+                output = self.get_outputs()
+                inputs, weights, outputs = self.get_model_params(output)
+
         else:
             output = ""
         
-        # Get model parameters
-        inputs, weights, outputs = self.get_model_params(output)
+            # Get model parameters
+            inputs, weights, outputs = self.get_model_params(output)
         
         # Write to files
         if run_type == RunType.GEN_WITNESS or run_type == RunType.END_TO_END:
             # to_json(inputs, input_file)
             to_json(outputs, output_file)
         if run_type == RunType.COMPILE_CIRCUIT or run_type == RunType.END_TO_END: 
-            to_json(weights, weights_path)
+            if type(weights) == list:
+                for (i, w) in enumerate(weights):
+                    if i == 0:
+                        to_json(w, weights_path)
+                    else:
+                        val = i + 1
+                        to_json(w, weights_path[:-5] + f"{val}" + weights_path[-5:])
+            elif type(weights) == dict:
+                to_json(weights, weights_path)
+            else:
+                raise NotImplementedError("Weights type is incorrect")
         
         # Store paths and data for use in the decorated function
         file_info = {
@@ -281,8 +298,9 @@ def run_expander_exec(mode: str, circuit_file: str, witness_file: str, proof_fil
 
 def compile_circuit(circuit_name, circuit_path, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False):
     """Compile a circuit."""
+
     if proof_system == ZKProofSystems.Expander:
-        # Extract the binary name from the circuit path
+        # Extract the binary name from the circuit path 
         binary_name = os.path.basename(circuit_name)
         
         # Prepare arguments
@@ -290,8 +308,9 @@ def compile_circuit(circuit_name, circuit_path, proof_system: ZKProofSystems = Z
             'n': circuit_name,
             'c': circuit_path,
         }
-        
         # Run the command
+        print("test")
+
         try:
             run_cargo_command(binary_name, 'run_compile_circuit', args, dev_mode)
         except Exception as e:
@@ -301,6 +320,8 @@ def compile_circuit(circuit_name, circuit_path, proof_system: ZKProofSystems = Z
     elif proof_system == ZKProofSystems.Circom:
         circuit = ZKProofsCircom(circuit_name)
         res = circuit.compile_circuit()
+    else:
+        raise NotImplementedError("Must specify proof system")
 
 def generate_witness(circuit_name, circuit_path, witness_file, input_file, output_file, 
                     proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False):
