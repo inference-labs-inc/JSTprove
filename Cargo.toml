@@ -47,11 +47,11 @@ circuit-std-rs = {git = "https://github.com/PolyhedraZK/ExpanderCompilerCollecti
 #     # libclang-dev \
 #     # clang \
 # ]
-[workspace.metadata.cross.target.x86_64-unknown-linux-gnu]
-pre-build = [
-    "apt-get update && apt-get install -y openmpi-bin libopenmpi-dev"
-]
+# [workspace.metadata.cross.target.x86_64-unknown-linux-gnu]
+# pre-build = [
+#     "apt-get update && apt-get install -y openmpi-bin libopenmpi-dev"
+# ]
 
-[workspace.metadata.cross.target.armv7-unknown-linux-gnueabi]
-image = "my_rust_mpi_image"
+# [workspace.metadata.cross.target.armv7-unknown-linux-gnueabi]
+# image = "my_rust_mpi_image"
 
