@@ -425,24 +425,37 @@ def generate_verification(circuit_name, circuit_path, input_file, output_file, w
         raise NotImplementedError("Not implemented for Circom")
 
 def run_end_to_end(circuit_name, circuit_path, input_file, output_file, 
-                  proof_system: ZKProofSystems = ZKProofSystems.Expander, demo=False, dev_mode = False):
+                  proof_system: ZKProofSystems = ZKProofSystems.Expander, demo=False, dev_mode = False, ecc = True):
     """Run end-to-end proof."""
     if proof_system == ZKProofSystems.Expander:
         # Extract the binary name from the circuit path
-        binary_name = os.path.basename(circuit_name)
+        # binary_name = os.path.basename(circuit_name)
         
-        # Prepare arguments
-        args = {
-            'c': circuit_path,
-            'i': input_file,
-            'o': output_file,
-        }
+        # # Prepare arguments
+        # args = {
+        #     'c': circuit_path,
+        #     'i': input_file,
+        #     'o': output_file,
+        # }
         
-        # Run the command
-        try:
-            run_cargo_command(binary_name, 'run_end_to_end', args, dev_mode)
-        except Exception as e:
-            print(f"Warning: End-to-end operation failed: {e}")
+        # # Run the command
+        # try:
+        #     run_cargo_command(binary_name, 'run_end_to_end', args, dev_mode)
+        # except Exception as e:
+        #     print(f"Warning: End-to-end operation failed: {e}")
+
+        base, ext = os.path.splitext(circuit_path)  # Split the filename and extension
+        witness_file = f"{base}_witness{ext}"
+        proof_file = f"{base}_proof{ext}"
+
+
+        # d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
+        # d.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+        compile_circuit(circuit_name, circuit_path, proof_system, dev_mode)
+        generate_witness(circuit_name, circuit_path, witness_file, input_file, output_file, proof_system, dev_mode)
+        generate_proof(circuit_name, circuit_path, witness_file, proof_file, proof_system, dev_mode, ecc)
+        generate_verification(circuit_name, circuit_path, input_file, output_file, witness_file, proof_file, proof_system, dev_mode, ecc)
+
             
     elif proof_system == ZKProofSystems.Circom:
         raise NotImplementedError("Not implemented for Circom")

@@ -78,119 +78,185 @@ class Demo(ZKModel):
     def __init__(self):
         self.layers = {}
         self.name = "demo_cnn"
-
         self.scaling = 21
-        # self.layers = ["conv1", "relu", "reshape", "fc1"]
-        # self.layers = ["conv1", "relu", "conv2", "relu", "reshape", "fc1"]
-        # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu",  "reshape", "fc1"]
-        self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu",  "reshape", "fc1"]
 
-        # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2"]
-        # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3"]
-        # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
-
-        # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
-
+        self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu", "reshape", "fc1"]
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = CNNDemo(layers=self.layers).to(device)
         model.eval()
         self.model = model
         self.input_shape = [1, 4, 28, 28]
-
         self.input_data_file = "doom_data/doom_input.json"
-        first_inputs = torch.tensor(self.read_input()).reshape(self.input_shape)
-        # torch.onnx.export(model, first_inputs, f = "demo_cnn_full.onnx")
-        
-    def get_weights(self, weights_path = None):
+
+    def get_weights(self, weights_path=None):
+        weights = {"layers": self.layers}
+        weights_2 = {}
+        exclude_keys = ["quantized", "scaling"]
+
         if weights_path:
             for weights_p in weights_path:
                 w = read_from_json(weights_p)
-                for layer in w.keys():
-                    l = w[layer]
-                    print(l)
-                    self.model.__getattr__(layer).weights = l
-
-
-
-
-
-    def get_model_params(self, output = None):
-        exclude_keys = ['quantized', 'scaling']
+                for layer, params in w.items():
+                    self.model.__getattr__(layer).weight = torch.tensor(params["weight"])
+                    if "bias" in params:
+                        self.model.__getattr__(layer).bias = torch.tensor(params["bias"])
         
-        input_arr = self.get_inputs(self.input_data_file).reshape(self.input_shape)
-        inputs = {"input": input_arr.long().tolist()}
-        weights = {"layers":self.layers}
-        weights_2 = {}
-        input = {}
-        output = {}
-        first_inputs = torch.tensor(self.read_input()).reshape(self.input_shape)
-        outputs = self.read_output(self.model, first_inputs)
-        
-        
+        return weights, weights_2
 
+    def get_outputs(self):
+        input_arr = torch.tensor(self.read_input()).reshape(self.input_shape)
+        outputs = {"expected": self.read_output(self.model, input_arr)}
         previous_output_tensor = input_arr
-
+        
         for layer in self.layers:
-            layer_params = {layer:{"quant":True}}
-            if any(char.isdigit() for char in layer):
-                l = self.model.__getattr__(layer)
-                try:
-                    layer_params = {layer:{"strides": l.stride}}
-                except:
-                    pass
-                if layer == self.layers[-1]:
-                    layer_params[layer]["quant"] = False
-
-
+            layer_params = {}
+            print(layer)
+            if "reshape" in layer:
+                layer_params = {"shape": [-1, self.model.fc_input_dim]}
+                input_arr = torch.reshape(previous_output_tensor, layer_params["shape"])
+                input_data, weight, output = ("","", input_arr)
             else:
-                l = layer
-                if "reshape" in layer:
-                    layer_params = {layer:{"shape": [-1,self.model.fc_input_dim]}}
+            
+            
+            
+                input_data, weight, output = self.get_layer(input_arr, layer, self.model.__getattr__(layer) if layer in self.model._modules else None, **layer_params)
+            if weight:
+                outputs[layer] = output
+            input_arr = torch.tensor(output["output"])
+            print(input_arr.shape)
+        
+        return outputs
 
-            # layer_params = self.model.__getattr__(layers[1])
-            #Rework inputs to function
-            if not layer in "reshape":
-                (input, weight, output) = self.get_layer(input_arr, layer, l, **layer_params.get(layer, {"": None}))
-                if weight:
-                    if ("fc1" in layer) or ("fc2" in layer) or ("fc3" in layer) or ("fc4" in layer):
-                        weights_2.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()})
-                    else:
-                        weights.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()})
-                input_arr = torch.LongTensor(input["input"])
-                output_tensor = torch.LongTensor(output["output"])
-                try:
-                    self.check_4d_eq(input_arr,previous_output_tensor)
-                except IndexError:
-                    self.check_2d_eq(input_arr,previous_output_tensor)
+    def get_model_params(self, output):
+        inputs = {"input": torch.tensor(self.read_input()).reshape(self.input_shape).tolist()}
+        weights, weights_2 = self.get_weights()
+        outputs = self.get_outputs()
+        
+        return {"inputs": inputs, "weights": [weights, weights_2], "outputs": outputs}
 
-                previous_output_tensor = output_tensor
-                input_arr = output_tensor
-            else:
-                input_arr = torch.reshape(previous_output_tensor, layer_params["reshape"]["shape"])
-                previous_output_tensor = input_arr
+# class Demo(ZKModel):
+#     def __init__(self):
+#         self.layers = {}
+#         self.name = "demo_cnn"
+
+#         self.scaling = 21
+#         # self.layers = ["conv1", "relu", "reshape", "fc1"]
+#         # self.layers = ["conv1", "relu", "conv2", "relu", "reshape", "fc1"]
+#         # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu",  "reshape", "fc1"]
+#         self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu",  "reshape", "fc1"]
+
+#         # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2"]
+#         # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3"]
+#         # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
+
+#         # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
+
+
+#         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#         model = CNNDemo(layers=self.layers).to(device)
+#         model.eval()
+#         self.model = model
+#         self.input_shape = [1, 4, 28, 28]
+
+#         self.input_data_file = "doom_data/doom_input.json"
+#         first_inputs = torch.tensor(self.read_input()).reshape(self.input_shape)
+#         # torch.onnx.export(model, first_inputs, f = "demo_cnn_full.onnx")
+        
+#     def get_weights(self, weights_path = None):
+#         if weights_path:
+#             for weights_p in weights_path:
+#                 w = read_from_json(weights_p)
+#                 for layer in w.keys():
+#                     l = w[layer]
+#                     print(l)
+#                     self.model.__getattr__(layer).weights = l
+
+
+
+
+
+#     def get_model_params(self, output = None):
+#         exclude_keys = ['quantized', 'scaling']
+        
+#         input_arr = self.get_inputs(self.input_data_file).reshape(self.input_shape)
+#         inputs = {"input": input_arr.long().tolist()}
+#         weights = {"layers":self.layers}
+#         weights_2 = {}
+#         input = {}
+#         output = {}
+#         first_inputs = torch.tensor(self.read_input()).reshape(self.input_shape)
+#         outputs = self.read_output(self.model, first_inputs)
+        
+        
+
+#         previous_output_tensor = input_arr
+
+#         for layer in self.layers:
+#             layer_params = {layer:{"quant":True}}
+#             if any(char.isdigit() for char in layer):
+#                 l = self.model.__getattr__(layer)
+#                 try:
+#                     layer_params = {layer:{"strides": l.stride}}
+#                 except:
+#                     pass
+#                 if layer == self.layers[-1]:
+#                     layer_params[layer]["quant"] = False
+
+
+#             else:
+#                 l = layer
+#                 if "reshape" in layer:
+#                     layer_params = {layer:{"shape": [-1,self.model.fc_input_dim]}}
+
+#             # layer_params = self.model.__getattr__(layers[1])
+#             #Rework inputs to function
+#             if not layer in "reshape":
+#                 (input, weight, output) = self.get_layer(input_arr, layer, l, **layer_params.get(layer, {"": None}))
+#                 if weight:
+#                     if ("fc1" in layer) or ("fc2" in layer) or ("fc3" in layer) or ("fc4" in layer):
+#                         weights_2.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()})
+#                     else:
+#                         weights.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()})
+#                 input_arr = torch.LongTensor(input["input"])
+#                 output_tensor = torch.LongTensor(output["output"])
+#                 try:
+#                     self.check_4d_eq(input_arr,previous_output_tensor)
+#                 except IndexError:
+#                     self.check_2d_eq(input_arr,previous_output_tensor)
+
+#                 previous_output_tensor = output_tensor
+#                 input_arr = output_tensor
+#             else:
+#                 input_arr = torch.reshape(previous_output_tensor, layer_params["reshape"]["shape"])
+#                 previous_output_tensor = input_arr
             
 
 
         
-        for i in range(previous_output_tensor.shape[0]):
-            for j in range(previous_output_tensor.shape[1]):
-                # error_margin = 0.001
-                # x = previous_output_tensor[i][j]/(2**(2*self.scaling)) / outputs[i][j]
-                # assert(x < (1 + error_margin))
-                # assert(x > (1 - error_margin))
-                assert(abs(previous_output_tensor[i][j]/(2**(2*self.scaling)) - outputs[i][j]) < 0.01)
-        return inputs,[weights,weights_2],output
+#         for i in range(previous_output_tensor.shape[0]):
+#             for j in range(previous_output_tensor.shape[1]):
+#                 # error_margin = 0.001
+#                 # x = previous_output_tensor[i][j]/(2**(2*self.scaling)) / outputs[i][j]
+#                 # assert(x < (1 + error_margin))
+#                 # assert(x > (1 - error_margin))
+#                 assert(abs(previous_output_tensor[i][j]/(2**(2*self.scaling)) - outputs[i][j]) < 0.01)
+#         return inputs,[weights,weights_2],output
 
-    def get_outputs(self):
-        return ""
+#     def get_outputs(self):
+#         return ""
+    
+#     def get_weights(self):
+#         return 
 
 
     
 
 if __name__ == "__main__":
-    names = ["demo_1", "demo_2", "demo_3", "demo_4", "demo_5"]
+    # names = ["demo_1", "demo_2", "demo_3", "demo_4", "demo_5"]
+    names = ["demo_1"]
     for name in names:
         d = Demo()
+        # d.base_testing(run_type=RunType.END_TO_END, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
         d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
         d.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
