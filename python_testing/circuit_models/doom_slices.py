@@ -61,5 +61,5 @@ if __name__ == "__main__":
             
             
 
-        # d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, witness_file=f"doom_{name}_witness.txt", circuit_path=f"doom_{name}_circuit.txt")
+        d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, witness_file=f"doom_{name}_witness.txt", circuit_path=f"doom_{name}_circuit.txt")
         d.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"doom_{name}_witness.txt", circuit_path=f"doom_{name}_circuit.txt", write_json = True)
