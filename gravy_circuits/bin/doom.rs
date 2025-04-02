@@ -16,7 +16,7 @@ use gravy_circuits::circuit_functions::quantization::run_if_quantized_2d;
 use serde::Deserialize;
 use std::ops::Neg;
 
-use gravy_circuits::runner::main_runner;
+use gravy_circuits::runner::main_runner::{self, handle_args};
 
 
 /*
@@ -211,13 +211,13 @@ impl<C: Config> Define<C> for DoomCircuit<Variable> {
 }
 
 
-impl<C: Config> IOReader<DoomFakeCircuit<C::CircuitField>, C> for FileReader {
+impl<C: Config> IOReader<DoomCircuit<C::CircuitField>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
-        mut assignment: DoomFakeCircuit<C::CircuitField>,
-    ) -> DoomFakeCircuit<C::CircuitField> {
-        let data: InputData = <FileReader as IOReader<DoomFakeCircuit<_>, C>>::read_data_from_json::<
+        mut assignment: DoomCircuit<C::CircuitField>,
+    ) -> DoomCircuit<C::CircuitField> {
+        let data: InputData = <FileReader as IOReader<DoomCircuit<_>, C>>::read_data_from_json::<
             InputData,
         >(file_path);
 
@@ -243,9 +243,9 @@ impl<C: Config> IOReader<DoomFakeCircuit<C::CircuitField>, C> for FileReader {
     fn read_outputs(
         &mut self,
         file_path: &str,
-        mut assignment: DoomFakeCircuit<C::CircuitField>,
-    ) -> DoomFakeCircuit<C::CircuitField> {
-        let data: OutputData = <FileReader as IOReader<DoomFakeCircuit<_>, C>>::read_data_from_json::<
+        mut assignment: DoomCircuit<C::CircuitField>,
+    ) -> DoomCircuit<C::CircuitField> {
+        let data: OutputData = <FileReader as IOReader<DoomCircuit<_>, C>>::read_data_from_json::<
             OutputData,
         >(file_path);
 
@@ -272,9 +272,11 @@ fn main() {
     let mut file_reader = FileReader {
         path: "doom".to_owned(),
     };
-    main_runner::run_bn254::<DoomCircuit<Variable>,
-    DoomFakeCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-                            _>(&mut file_reader);
+    // main_runner::run_bn254::<DoomCircuit<Variable>,
+    // DoomCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
+    //                         _>(&mut file_reader);
+                            
+    handle_args::<DoomCircuit<Variable>,DoomCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
 
     // main_runner::run_bn254_seperate::<DoomCircuit<Variable>,
     //                         DoomFakeCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,

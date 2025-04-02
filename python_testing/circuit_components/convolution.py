@@ -12,7 +12,7 @@ import numpy as np
 
 class Convolution(Circuit):
     #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
-    def __init__(self):
+    def __init__(self, relu = False):
         '''
         #######################################################################################################
         #################################### This is the block for changes ####################################
@@ -30,6 +30,7 @@ class Convolution(Circuit):
         dim_3 = 28
         self.scaling = 21
         self.quantized = False
+        self.relu = relu
 
 
         self.input_arr = torch.randint(low=-2**self.scaling, high=2**self.scaling, size=(dim_0, dim_1, dim_2, dim_3)) 
@@ -149,7 +150,10 @@ class Convolution(Circuit):
                     for k in range(len(output_onnx[i][j])):  # Iterate over the third dimension
                         for l in range(len(output_onnx[i][j][k])):  # Iterate over the fourth dimension
                             assert abs(total_out[i][j][k][l].long() - output[i][j][k][l]) < 1
-        return output
+
+        if self.relu:
+            output = torch.relu(output)
+        return output.long().tolist()
     
     def get_model_params(self, output):
         inputs = {
@@ -168,9 +172,8 @@ class Convolution(Circuit):
                 'quantized': self.quantized,
                 'scaling': self.scaling
             }
-        
         outputs = {
-                'output': output.long().tolist(),
+                'output': output,
             }
         
         return inputs,weights,outputs
@@ -462,8 +465,8 @@ def _conv_implementation(
 
 class QuantizedConv(Convolution):
     #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
-    def __init__(self):
-        super().__init__()
+    def __init__(self, relu = False):
+        super().__init__(relu=relu)
 
         # Instead get a value between 0-1
         # self.matrix_a = torch.rand(size=(self.N_ROWS_A,self.N_COLS_A)) - torch.rand(size=(self.N_ROWS_A,self.N_COLS_A))
@@ -474,7 +477,9 @@ class QuantizedConv(Convolution):
     def get_outputs(self):
         out = torch.from_numpy(self.conv_run(self.input_arr, self.weights, self.bias, "NOTSET",self.dilation, self.group, self.kernel_shape,self.pads, self.strides))
         out = torch.div(out, 2**self.scaling, rounding_mode="floor").long()
-        return out
+        if self.relu:
+            out = torch.relu(out)
+        return out.long().tolist()
 
 
 

@@ -7,7 +7,7 @@ from python_testing.utils.helper_functions import get_files, to_json, prove_and_
 
 class ScaledMatrixProductSum(Circuit):
     #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
-    def __init__(self):
+    def __init__(self, relu = False):
         '''
         #######################################################################################################
         #################################### This is the block for changes ####################################
@@ -24,6 +24,7 @@ class ScaledMatrixProductSum(Circuit):
         N_COLS_B: int = 2; # k
         N_ROWS_C: int = 3; # m
         N_COLS_C: int = 2; # k
+        self.relu = relu
 
         self.alpha = torch.randint(0, 100, ())
         self.matrix_a = torch.randint(low=0, high=100, size=(N_ROWS_A,N_COLS_A)) # (m, n) array of random integers between 0 and 100
@@ -36,6 +37,9 @@ class ScaledMatrixProductSum(Circuit):
         #######################################################################################################
         '''
     def get_outputs(self):
+        if self.relu:
+            x = self.alpha * torch.matmul(self.matrix_a, self.matrix_b) + self.matrix_c
+            return torch.relu(x)
         return self.alpha * torch.matmul(self.matrix_a, self.matrix_b) + self.matrix_c
     
     def get_model_params(self, output):

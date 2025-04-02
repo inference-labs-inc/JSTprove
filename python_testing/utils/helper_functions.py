@@ -99,6 +99,7 @@ def prepare_io_files(func):
             if kwargs.get("write_json") == True:
                 output = self.get_outputs()
 
+
                 inputs, weights, outputs = self.get_model_params(output)
                 to_json(inputs, input_file)
             else:

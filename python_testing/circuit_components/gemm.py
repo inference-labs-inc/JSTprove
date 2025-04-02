@@ -5,7 +5,7 @@ from python_testing.circuit_components.circuit_helpers import Circuit
 
 class Gemm(Circuit):
     #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
-    def __init__(self):
+    def __init__(self, relu = False, reshape = ()):
         # super().__init__()
         '''
         #######################################################################################################
@@ -25,6 +25,8 @@ class Gemm(Circuit):
         N_COLS_C: int = 2; # k
         
         self.quantized = False
+        self.relu = relu
+        self.reshape = reshape
 
         self.scaling = 21
 
@@ -41,9 +43,14 @@ class Gemm(Circuit):
         '''
         
     def get_model_params(self, gemm):
-        inputs = {
-            'input': self.matrix_a.tolist(),  
-            }
+        if self.reshape:
+            inputs = {
+                'input': self.matrix_a.reshape(self.reshape).tolist(),  
+                }
+        else:
+            inputs = {
+                'input': self.matrix_a.tolist(),  
+                }
         
         weights = {
             'alpha' : self.alpha.tolist(),
@@ -53,9 +60,8 @@ class Gemm(Circuit):
             'quantized': self.quantized,
             'scaling': self.scaling
         }
-        
         outputs = {
-            'output' : gemm.tolist(),
+            'output' : gemm,
         }
         
         return inputs,weights,outputs
@@ -64,21 +70,29 @@ class Gemm(Circuit):
         gemm = self.matrix_a
         gemm = self.alpha * torch.matmul(self.matrix_a, self.matrix_b)
         gemm = gemm + self.beta*self.matrix_c
-        return gemm
+        print(gemm)
+        if self.relu:
+            return torch.relu(gemm).tolist()
+        
+        return gemm.tolist()
 
 
 class QuantizedGemm(Gemm):
     #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
-    def __init__(self):
-        super().__init__()
+    def __init__(self, relu = False, reshape = ()):
+        super().__init__(relu=relu)
 
         self.quantized = True
+        self.reshape = reshape
     
     def get_outputs(self):
         gemm = self.alpha * torch.matmul(self.matrix_a, self.matrix_b) #+ self.beta*self.matrix_c
         gemm = gemm + self.beta*self.matrix_c
         gemm = torch.div(gemm, 2**self.scaling, rounding_mode="floor").long()
-        return gemm
+        print(gemm.shape)
+        if self.relu:
+            return torch.relu(gemm).tolist()
+        return gemm.tolist()
     
 if __name__ == "__main__":
     proof_system = ZKProofSystems.Expander

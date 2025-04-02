@@ -97,6 +97,25 @@ path = "bin/demo_cnn.rs"
 name = "simple_circuit"
 path = "bin/simple_circuit.rs"
 
+[[bin]]
+name = "doom_conv1"
+path = "bin/doom/doom_conv1.rs"
+
+[[bin]]
+name = "doom_conv2"
+path = "bin/doom/doom_conv2.rs"
+
+[[bin]]
+name = "doom_conv3"
+path = "bin/doom/doom_conv3.rs"
+
+[[bin]]
+name = "doom_fc1"
+path = "bin/doom/doom_fc1.rs"
+[[bin]]
+name = "doom_fc2"
+path = "bin/doom/doom_fc2.rs"
+
 # [[bin]]
 # name = "expander-exec"
 # path = "gkr/src/expander-exec.rs"

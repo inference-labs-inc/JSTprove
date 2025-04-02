@@ -1,7 +1,7 @@
 import json
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems
-from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
+from python_testing.utils.helper_functions import RunType, get_files, to_json, prove_and_verify
 import os
 from python_testing.circuit_components.relu import ReLU, ConversionType
 
@@ -64,10 +64,10 @@ class Doom(ZKModel):
         self.model = model
         self.input_shape = [1, 4, 28, 28]
 
-        self.input_data_file = "doom_data/doom_input.json"
+        self.input_data_file = "input_doom.json"
 
 
-    def get_model_params(self):
+    def get_model_params(self, output):
         exclude_keys = ['quantized', 'scaling']
         
         input_arr = self.get_inputs(self.input_data_file).reshape(self.input_shape)
@@ -76,7 +76,7 @@ class Doom(ZKModel):
         weights_2 = {}
         input = {}
         output = {}
-        first_inputs = torch.tensor(self.read_input()).reshape(self.input_shape)
+        first_inputs = torch.tensor(self.read_input(self.input_data_file)).reshape(self.input_shape)
         outputs = self.read_output(self.model, first_inputs)
         
         layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "reshape", "fc1", "relu", "fc2"]
@@ -118,21 +118,31 @@ class Doom(ZKModel):
 
                 previous_output_tensor = output_tensor
                 input_arr = output_tensor
+                to_json(input, f"doom_data/doom_{layer}.json")
             else:
                 input_arr = torch.reshape(previous_output_tensor, layer_params["reshape"]["shape"])
                 previous_output_tensor = input_arr
 
 
+
         
         for i in range(previous_output_tensor.shape[0]):
             for j in range(previous_output_tensor.shape[1]):
-                error_margin = 0.0001
+                error_margin = 0.00001
                 x = previous_output_tensor[i][j]/(2**(2*self.scaling)) / outputs[i][j]
+                # print(outputs)
                 assert(x < (1 + error_margin))
                 assert(x > (1 - error_margin))
         return inputs,[weights,weights_2],output
+    
+    def get_outputs(self):
+        pass
 
     
 
 if __name__ == "__main__":
-    Doom().base_testing()
+    # Doom().base_testing()
+    name = "doom"
+    d = Doom()
+    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
+    d.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
