@@ -79,11 +79,19 @@ class GeneralLayerFunctions():
 
 
 class Layers():
-    def get_layer(self, inputs, layer_name, layer, **kwargs):
+    def get_layer_out(self, inputs, layer_name, layer, **kwargs):
+        is_output = True
+        return self.get_layer(inputs, layer_name, layer, is_output, **kwargs)
+    
+    def get_layer_weights(self, inputs, layer_name, layer, **kwargs):
+        is_output = False
+        return self.get_layer(inputs, layer_name, layer, is_output, **kwargs)
+
+    def get_layer(self, inputs, layer_name, layer, is_output, **kwargs):
         if layer_name == "input":
             return self.get_inputs(kwargs.get("file_name", ".json"))
         elif "conv" in layer_name:
-            return self.get_circuit_conv(inputs, layer, kwargs.get("strides", (1,1)),kwargs.get("kernel_shape",(3,3)), kwargs.get("group", [1]), kwargs.get("dilation", (1,1)), kwargs.get("pads", (1,1,1,1)))
+            return self.get_circuit_conv(inputs, layer, kwargs.get("strides", (1,1)),kwargs.get("kernel_shape",(3,3)), kwargs.get("group", [1]), kwargs.get("dilation", (1,1)), kwargs.get("pads", (1,1,1,1)), is_output)
         elif "relu" in layer_name:
             return self.get_relu(inputs)
         elif "fc" in  layer_name:
@@ -103,9 +111,14 @@ class Layers():
         input, output = relu_circuit.get_twos_comp_model_data(out)
         return (input, None, output)
     
-    def get_circuit_conv(self, inputs, layer, strides = (1,1), kernel_shape = (3,3), group = [1], dilation = (1,1), pads = (1,1,1,1)):
+    def get_circuit_conv(self, inputs, layer, strides = (1,1), kernel_shape = (3,3), group = [1], dilation = (1,1), pads = (1,1,1,1), is_output = True):
+        if is_output:
+            return {"input": inputs}, {}, {"output": self.get_circuit_conv_out(inputs, layer, strides, kernel_shape, group, dilation, pads)}
+        x, y =self.get_circuit_conv_weights(inputs, layer, strides, kernel_shape, group, dilation, pads)
+        return {"input", inputs}, x, {"output": y}
         
-
+    
+    def get_circuit_conv_weights(self, inputs, layer, strides = (1,1), kernel_shape = (3,3), group = [1], dilation = (1,1), pads = (1,1,1,1)):
         weights = layer.weight
         bias = layer.bias
         conv_circuit = QuantizedConv()
@@ -122,7 +135,26 @@ class Layers():
         conv_circuit.dilation = dilation
         conv_circuit.pads = pads
 
-        return conv_circuit.get_model_params(conv_circuit.get_outputs())
+        return conv_circuit.get_weights(), conv_circuit.get_outputs()
+
+    def get_circuit_conv_out(self, inputs, layer, strides = (1,1), kernel_shape = (3,3), group = [1], dilation = (1,1), pads = (1,1,1,1)):
+        weights = layer.weight
+        bias = layer.bias
+        conv_circuit = QuantizedConv()
+
+        conv_circuit.input_arr = inputs
+        conv_circuit.weights = torch.mul(weights, 2**self.scaling).long()
+        conv_circuit.bias = torch.mul(bias, 2**(self.scaling*2)).long()
+        
+
+        conv_circuit.scaling = self.scaling
+        conv_circuit.strides = strides
+        conv_circuit.kernel_shape = torch.tensor(kernel_shape)
+        conv_circuit.group = torch.tensor(group) 
+        conv_circuit.dilation = dilation
+        conv_circuit.pads = pads
+
+        return conv_circuit.get_outputs()
     
     def get_mat_mult(self, inputs, layer, quant = True):
         weights = layer.weight

@@ -38,3 +38,5 @@ doom_data/sample_*
 *.csv
 vendor/
 *.zip
+
+doom_data/
