@@ -28,19 +28,12 @@ class CNNDemo(nn.Module):
 
         # Fully connected layers
         self.fc1 = nn.Linear(self.fc_input_dim, 256)
-        self.fc2 = nn.Linear(256, 256)
-        self.fc3 = nn.Linear(256, 256)
-        self.fc4 = nn.Linear(256, 256)
+        for i in range(2,100):
+            self.__setattr__(f"fc{i}", nn.Linear(256, 256))
 
         self.final = nn.Linear(256, n_actions)
 
         # If the last layer in the list is one of the fully connected layers, set them to `final`
-        # if layers[-1] == "fc2":
-        #     self.fc2 = self.final
-        # elif layers[-1] == "fc3":
-        #     self.fc3 = self.final
-        # elif layers[-1] == "fc4":
-        #     self.fc4 = self.final
         if layers[-1] == "fc1":
             self.fc1 = nn.Linear(self.fc_input_dim, n_actions)
         else: 
@@ -59,21 +52,14 @@ class CNNDemo(nn.Module):
 
         x = x.reshape(-1, self.fc_input_dim)  # Flatten before fully connected layers
         x = self.fc1(x)
-
-        if "fc2" in self.layers:
-            print(x.shape)
-            x = F.relu(x)
-            x = self.fc2(x)
-            print(x.shape)
-        if "fc3" in self.layers:
-            print(x.shape)
-            x = F.relu(x)
-            x = self.fc3(x)
-        if "fc4" in self.layers:
-            x = F.relu(x)
-            x = self.fc4(x)
-
-        # x = self.final(x)  # Always apply the final layer
+        for l in self.layers:
+            if "fc1" == l:
+                continue
+            if "fc" in l:
+                x = F.relu(x)
+                layer_fn = self.__getattr__(l)  # Get the function
+                if callable(layer_fn):  # Ensure it's callable
+                    x = layer_fn(x)  # Call it with parameter x
 
         return x
     
@@ -83,14 +69,18 @@ class Demo(ZKModel):
         self.name = "demo_cnn"
 
         self.scaling = 21
-        # self.layers = ["conv1", "relu", "reshape", "fc1"]
+        self.layers = ["conv1", "relu", "reshape", "fc1"]
         # self.layers = ["conv1", "relu", "conv2", "relu", "reshape", "fc1"]
         # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu",  "reshape", "fc1"]
         # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu",  "reshape", "fc1"]
 
         # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2"]
         # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3"]
-        self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
+        # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
+        # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4", "relu", "fc5", "relu", "fc6", "relu", "fc7", "relu", "fc8", "relu", "fc9", "relu", "fc10"]
+        for i in range(2,100):
+            self.layers.append("relu")
+            self.layers.append(f"fc{i}")
 
         # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
 
@@ -102,26 +92,18 @@ class Demo(ZKModel):
         self.input_shape = [1, 4, 28, 28]
 
         self.input_data_file = "doom_data/doom_input.json"
-        first_inputs = torch.tensor(self.read_input()).reshape(self.input_shape)
+        self.first_inputs = torch.div(torch.rand(self.input_shape), 1000)
+        # first_inputs = torch.tensor(self.read_input()).reshape(self.input_shape)
         # torch.onnx.export(model, first_inputs, f = "demo_cnn_full.onnx")
-        
-    def get_weights(self, weights_path = None):
-        if weights_path:
-            for weights_p in weights_path:
-                w = read_from_json(weights_p)
-                for layer in w.keys():
-                    l = w[layer]
-                    print(l)
-                    self.model.__getattr__(layer).weights = l
-
-
 
 
 
     def get_model_params(self, output = None):
         exclude_keys = ['quantized', 'scaling']
         
-        input_arr = self.get_inputs(self.input_data_file).reshape(self.input_shape)
+        # input_arr = self.get_inputs(self.input_data_file).reshape(self.input_shape)
+        input_arr = self.first_inputs*(2**self.scaling)
+        input_arr = input_arr.long()
         inputs = {"input": input_arr.long().tolist()}
         weights = {"layers":self.layers}
         if "fc1" in self.layers:
@@ -130,7 +112,8 @@ class Demo(ZKModel):
             weights_2 = {}
         input = {}
         output = {}
-        first_inputs = torch.tensor(self.read_input()).reshape(self.input_shape)
+        # first_inputs = torch.tensor(self.read_input()).reshape(self.input_shape)
+        first_inputs = self.first_inputs
         outputs = self.read_output(self.model, first_inputs)
         
         
@@ -188,16 +171,9 @@ class Demo(ZKModel):
                 input_arr = torch.reshape(previous_output_tensor, layer_params["reshape"]["shape"])
                 previous_output_tensor = input_arr
             
-
-
-        
         for i in range(previous_output_tensor.shape[0]):
             for j in range(previous_output_tensor.shape[1]):
-                # error_margin = 0.001
-                # x = previous_output_tensor[i][j]/(2**(2*self.scaling)) / outputs[i][j]
-                # assert(x < (1 + error_margin))
-                # assert(x > (1 - error_margin))
-                assert(abs(previous_output_tensor[i][j]/(2**(2*self.scaling)) - outputs[i][j]) < 0.01)
+                assert(abs(previous_output_tensor[i][j]/(2**(2*self.scaling)) - outputs[i][j]) < 0.0001)
         return inputs,[weights,weights_2],output
 
     def get_outputs(self):
@@ -208,7 +184,7 @@ class Demo(ZKModel):
 
 if __name__ == "__main__":
     # names = ["demo_1", "demo_2", "demo_3", "demo_4", "demo_5"]
-    names = ["demo_1"]
+    names = ["demo_6"]
     for name in names:
         d = Demo()
         d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
