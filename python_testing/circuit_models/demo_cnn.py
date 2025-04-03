@@ -35,14 +35,17 @@ class CNNDemo(nn.Module):
         self.final = nn.Linear(256, n_actions)
 
         # If the last layer in the list is one of the fully connected layers, set them to `final`
-        if layers[-1] == "fc2":
-            self.fc2 = self.final
-        elif layers[-1] == "fc3":
-            self.fc3 = self.final
-        elif layers[-1] == "fc4":
-            self.fc4 = self.final
-        elif layers[-1] == "fc1":
+        # if layers[-1] == "fc2":
+        #     self.fc2 = self.final
+        # elif layers[-1] == "fc3":
+        #     self.fc3 = self.final
+        # elif layers[-1] == "fc4":
+        #     self.fc4 = self.final
+        if layers[-1] == "fc1":
             self.fc1 = nn.Linear(self.fc_input_dim, n_actions)
+        else: 
+            self.__setattr__(layers[-1], self.final)
+
 
     def forward(self, x):
         print(self.layers)
@@ -83,11 +86,11 @@ class Demo(ZKModel):
         # self.layers = ["conv1", "relu", "reshape", "fc1"]
         # self.layers = ["conv1", "relu", "conv2", "relu", "reshape", "fc1"]
         # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu",  "reshape", "fc1"]
-        self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu",  "reshape", "fc1"]
+        # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu",  "reshape", "fc1"]
 
         # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2"]
         # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3"]
-        # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
+        self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
 
         # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
 
@@ -121,7 +124,10 @@ class Demo(ZKModel):
         input_arr = self.get_inputs(self.input_data_file).reshape(self.input_shape)
         inputs = {"input": input_arr.long().tolist()}
         weights = {"layers":self.layers}
-        weights_2 = {}
+        if "fc1" in self.layers:
+            weights_2 = {"fc_weights":[], "fc_bias":[], "scaling":self.scaling, "quantized":True, "fc_alpha": [], "fc_beta":[]}
+        else:
+            weights_2 = {}
         input = {}
         output = {}
         first_inputs = torch.tensor(self.read_input()).reshape(self.input_shape)
@@ -153,8 +159,20 @@ class Demo(ZKModel):
             if not layer in "reshape":
                 (input, weight, output) = self.get_layer(input_arr, layer, l, **layer_params.get(layer, {"": None}))
                 if weight:
-                    if ("fc1" in layer) or ("fc2" in layer) or ("fc3" in layer) or ("fc4" in layer):
-                        weights_2.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()})
+                    if any(f"fc{i}" in layer for i in range(1, 20)):
+                        for key, value in weight.items():
+                            if key in exclude_keys:
+                                weights_2[key] = value
+                                continue
+
+                            if key.endswith("weights"):
+                                weights_2["fc_weights"].append(value)
+                            elif key.endswith("bias"):
+                                weights_2["fc_bias"].append(value)
+                            else:
+                                weights_2[f"fc_{key}"].append(value)
+                            
+                        # weights_2.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()})
                     else:
                         weights.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()})
                 input_arr = torch.LongTensor(input["input"])
@@ -189,7 +207,8 @@ class Demo(ZKModel):
     
 
 if __name__ == "__main__":
-    names = ["demo_1", "demo_2", "demo_3", "demo_4", "demo_5"]
+    # names = ["demo_1", "demo_2", "demo_3", "demo_4", "demo_5"]
+    names = ["demo_1"]
     for name in names:
         d = Demo()
         d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
