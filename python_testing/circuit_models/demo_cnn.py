@@ -13,22 +13,21 @@ class CNNDemo(nn.Module):
 
         # Convolutional layers
         self.conv1 = nn.Conv2d(4, 16, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(16, 16, kernel_size=3, stride=2, padding=1)
-        self.conv3 = nn.Conv2d(16, 16, kernel_size=3, stride=2, padding=1)
-        self.conv4 = nn.Conv2d(16, 16, kernel_size=3, stride=2, padding=1)
+        for i in range(2,40):
+            self.__setattr__(f"conv{i}", nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1))
 
         # Default to the shape after conv layers (depends on whether each conv layer is used)
         self.fc_input_dim = 16 * 28 * 28
-        if "conv2" in layers:
-            self.fc_input_dim = 16 * 14 * 14
-        if "conv3" in layers:
-            self.fc_input_dim = 16 * 7 * 7
-        if "conv4" in layers:
-            self.fc_input_dim = 16 * 4 * 4
+        # if "conv2" in layers:
+        #     self.fc_input_dim = 16 * 14 * 14
+        # if "conv3" in layers:
+        #     self.fc_input_dim = 16 * 7 * 7
+        # if "conv4" in layers:
+        #     self.fc_input_dim = 16 * 4 * 4
 
         # Fully connected layers
         self.fc1 = nn.Linear(self.fc_input_dim, 256)
-        for i in range(2,100):
+        for i in range(2,1000):
             self.__setattr__(f"fc{i}", nn.Linear(256, 256))
 
         self.final = nn.Linear(256, n_actions)
@@ -42,24 +41,22 @@ class CNNDemo(nn.Module):
 
     def forward(self, x):
         print(self.layers)
-        x = F.relu(self.conv1(x))
-        if "conv2" in self.layers:
-            x = F.relu(self.conv2(x))
-        if "conv3" in self.layers:
-            x = F.relu(self.conv3(x))
-        if "conv4" in self.layers:
-            x = F.relu(self.conv4(x))
-
-        x = x.reshape(-1, self.fc_input_dim)  # Flatten before fully connected layers
-        x = self.fc1(x)
         for l in self.layers:
             if "fc1" == l:
+                x = self.fc1(x)
                 continue
             if "fc" in l:
-                x = F.relu(x)
                 layer_fn = self.__getattr__(l)  # Get the function
                 if callable(layer_fn):  # Ensure it's callable
                     x = layer_fn(x)  # Call it with parameter x
+            if "reshape" in l:
+                x = x.reshape(-1, self.fc_input_dim)  # Flatten before fully connected layers
+            if "conv" in l:
+                layer_fn = self.__getattr__(l)  # Get the function
+                if callable(layer_fn):  # Ensure it's callable
+                    x = layer_fn(x)  # Call it with parameter x
+            if "relu" in l:
+                x = F.relu(x)
 
         return x
     
@@ -69,7 +66,8 @@ class Demo(ZKModel):
         self.name = "demo_cnn"
 
         self.scaling = 21
-        self.layers = ["conv1", "relu", "reshape", "fc1"]
+        self.layers = []
+        # self.layers = ["conv1", "relu", "reshape", "fc1"]
         # self.layers = ["conv1", "relu", "conv2", "relu", "reshape", "fc1"]
         # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu",  "reshape", "fc1"]
         # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu",  "reshape", "fc1"]
@@ -78,9 +76,16 @@ class Demo(ZKModel):
         # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3"]
         # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
         # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4", "relu", "fc5", "relu", "fc6", "relu", "fc7", "relu", "fc8", "relu", "fc9", "relu", "fc10"]
-        for i in range(2,100):
+        for i in range(1,10):
+            self.layers.append(f"conv{i}")
             self.layers.append("relu")
-            self.layers.append(f"fc{i}")
+        self.layers.append("reshape")
+        self.layers.append("fc1")
+
+
+        # for i in range(2,4):
+        #     self.layers.append("relu")
+        #     self.layers.append(f"fc{i}")
 
         # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
 
@@ -92,7 +97,7 @@ class Demo(ZKModel):
         self.input_shape = [1, 4, 28, 28]
 
         self.input_data_file = "doom_data/doom_input.json"
-        self.first_inputs = torch.div(torch.rand(self.input_shape), 1000)
+        self.first_inputs = torch.rand(self.input_shape)
         # first_inputs = torch.tensor(self.read_input()).reshape(self.input_shape)
         # torch.onnx.export(model, first_inputs, f = "demo_cnn_full.onnx")
 
@@ -105,7 +110,10 @@ class Demo(ZKModel):
         input_arr = self.first_inputs*(2**self.scaling)
         input_arr = input_arr.long()
         inputs = {"input": input_arr.long().tolist()}
-        weights = {"layers":self.layers}
+        if "conv1" in self.layers:
+            weights = {"layers":self.layers, "conv_weights":[], "conv_bias":[], "conv_strides":[], "conv_kernel_shape":[], "conv_group":[], "conv_dilation":[], "conv_pads":[], "conv_input_shape":[]}
+        else:
+            weights = {"layers":self.layers}
         if "fc1" in self.layers:
             weights_2 = {"fc_weights":[], "fc_bias":[], "scaling":self.scaling, "quantized":True, "fc_alpha": [], "fc_beta":[]}
         else:
@@ -142,7 +150,7 @@ class Demo(ZKModel):
             if not layer in "reshape":
                 (input, weight, output) = self.get_layer(input_arr, layer, l, **layer_params.get(layer, {"": None}))
                 if weight:
-                    if any(f"fc{i}" in layer for i in range(1, 20)):
+                    if any(f"fc{i}" in layer for i in range(1, 1000)):
                         for key, value in weight.items():
                             if key in exclude_keys:
                                 weights_2[key] = value
@@ -157,7 +165,29 @@ class Demo(ZKModel):
                             
                         # weights_2.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()})
                     else:
-                        weights.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()})
+                        for key, value in weight.items():
+                            if key in exclude_keys:
+                                weights[key] = value
+                                continue
+                            if key.endswith("weights"):
+                                weights["conv_weights"].append(value)
+                            elif key.endswith("bias"):
+                                weights["conv_bias"].append(value)
+                            elif key.endswith("strides"):
+                                weights["conv_strides"].append(value)
+                            elif key.endswith("kernel_shape"):
+                                weights["conv_kernel_shape"].append(value)
+                            elif key.endswith("group"):
+                                weights["conv_group"].append(value)
+                            elif key.endswith("dilation"):
+                                weights["conv_dilation"].append(value)
+                            elif key.endswith("pads"):
+                                weights["conv_pads"].append(value)
+                            elif key.endswith("input_shape"):
+                                weights["conv_input_shape"].append(value)
+                            else:
+                                weights[f"conv_{key}"].append(value)
+                        # weights.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()})
                 input_arr = torch.LongTensor(input["input"])
                 output_tensor = torch.LongTensor(output["output"])
                 try:
@@ -183,9 +213,11 @@ class Demo(ZKModel):
     
 
 if __name__ == "__main__":
-    # names = ["demo_1", "demo_2", "demo_3", "demo_4", "demo_5"]
-    names = ["demo_6"]
-    for name in names:
+    names = ["demo_1", "demo_2", "demo_3", "demo_4", "demo_5"]
+    # names = ["demo_5"]
+    for n in names:
+        name = f"{n}_conv9"
+        # name = n
         d = Demo()
         d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
         d.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
