@@ -156,6 +156,15 @@ class Convolution(Circuit):
                 'input': self.input_arr.long().tolist()
                 }
             
+        weights = self.get_weights()
+        
+        outputs = {
+                'output': output.long().tolist(),
+            }
+        
+        return inputs,weights,outputs
+    
+    def get_weights(self):
         weights = {
                 'weights': self.weights.long().tolist(),
                 'bias': self.bias.long().tolist(),
@@ -168,12 +177,7 @@ class Convolution(Circuit):
                 'quantized': self.quantized,
                 'scaling': self.scaling
             }
-        
-        outputs = {
-                'output': output.long().tolist(),
-            }
-        
-        return inputs,weights,outputs
+        return weights
 
     
 

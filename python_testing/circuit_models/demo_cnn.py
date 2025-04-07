@@ -4,6 +4,8 @@ import torch.nn.functional as F
 from python_testing.utils.pytorch_helpers import ZKModel, RunType
 from python_testing.utils.helper_functions import read_from_json
 
+import sys
+
 
 
 class CNNDemo(nn.Module):
@@ -57,9 +59,28 @@ class CNNDemo(nn.Module):
                     x = layer_fn(x)  # Call it with parameter x
             if "relu" in l:
                 x = F.relu(x)
-
         return x
+
+def get_used_layers(model, input_tensor):
+    used_layers = []
+
+    def hook_fn(module, input, output):
+        for name, layer in model.named_children():
+            if layer is module:
+                used_layers.append((name, module))  # Store layer name and module
+                break
     
+    hooks = []
+    for name, layer in model.named_children():  # Register hook for each layer
+        hooks.append(layer.register_forward_hook(hook_fn))
+    
+    with torch.no_grad():  # Run inference
+        model(input_tensor)
+    
+    for hook in hooks:  # Remove hooks after execution
+        hook.remove()
+    
+    return used_layers
 class Demo(ZKModel):
     def __init__(self):
         self.layers = {}
@@ -88,13 +109,18 @@ class Demo(ZKModel):
         #     self.layers.append(f"fc{i}")
 
         # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
+        
 
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = CNNDemo(layers=self.layers).to(device)
+        # for name, layer in model.named_children():
+        #     print(name, layer)
+        # print(model.state_dict().keys())
         model.eval()
         self.model = model
         self.input_shape = [1, 4, 28, 28]
+        self.exclude_keys = ['quantized', 'scaling']
 
         self.input_data_file = "doom_data/doom_input.json"
         self.first_inputs = torch.rand(self.input_shape)
@@ -167,7 +193,7 @@ class Demo(ZKModel):
         return inputs,output
     
     def get_weights(self):
-        exclude_keys = ['quantized', 'scaling']
+        exclude_keys = self.exclude_keys
         
         # input_arr = self.get_inputs(self.input_data_file).reshape(self.input_shape)
         input_arr = self.first_inputs*(2**self.scaling)
@@ -194,15 +220,13 @@ class Demo(ZKModel):
         for layer in self.layers:
             layer_params = {layer:{"quant":True}}
             if any(char.isdigit() for char in layer):
-                l = self.model.__getattr__(layer)
+                l = model.__getattr__(layer)
                 try:
-                    layer_params = {layer:{"strides": l.stride}}
+                    layer_params.update({layer:{"strides": l.stride}})
                 except:
                     pass
-                if layer == self.layers[-1]:
+                if layer == layers[-1]:
                     layer_params[layer]["quant"] = False
-
-
             else:
                 l = layer
                 if "reshape" in layer:
@@ -246,7 +270,38 @@ class Demo(ZKModel):
                                 weights["conv_input_shape"].append(value)
                             else:
                                 weights[f"conv_{key}"].append(value)
-                        # weights.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()})
+                        # weights.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()}
+            # Extract weight information
+            _, weight, output = self.get_layer_weights(inputs, layer, l, **layer_params.get(layer, {"": None}))
+                
+            inputs = torch.LongTensor(output["output"])
+            if weight:
+                if any(f"fc{i}" in layer for i in range(1, 5)):
+                    weights_2.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()})
+                else:
+                    weights.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()})
+        
+
+        self.layer_params = layer_params
+        return [weights,weights_2]
+
+
+    def get_outputs(self):
+        layer_params = self.layer_params
+        input_arr = self.get_inputs(self.input_data_file).reshape(self.input_shape)
+        inputs = {"input": input_arr.long().tolist()}
+        first_inputs = torch.tensor(self.read_input()).reshape(self.input_shape)
+        outputs = self.read_output(self.model, first_inputs)
+        
+        previous_output_tensor = input_arr
+        
+        for layer in self.layers:
+            if not layer in "reshape":
+                if any(char.isdigit() for char in layer):
+                    l = self.model.__getattr__(layer)
+                else:
+                    l = layer
+                (input, weight, output) = self.get_layer_out(input_arr, layer, l, **layer_params.get(layer, {"": None}))
                 input_arr = torch.LongTensor(input["input"])
                 output_tensor = torch.LongTensor(output["output"])
                 try:
@@ -259,16 +314,23 @@ class Demo(ZKModel):
             else:
                 input_arr = torch.reshape(previous_output_tensor, layer_params["reshape"]["shape"])
                 previous_output_tensor = input_arr
-            
+  
         for i in range(previous_output_tensor.shape[0]):
             for j in range(previous_output_tensor.shape[1]):
                 assert(abs(previous_output_tensor[i][j]/(2**(2*self.scaling)) - outputs[i][j]) < 0.0001)
-        return [weights,weights_2]
+        
     
     def get_model_params(self, output = None):
         inputs, outputs = self.get_outputs()
         weights = self.get_weights()
         return inputs, weights, outputs
+    
+    def get_model_params(self, output = None):
+        weights, weights_2 = self.get_weights()
+        inputs, output = self.get_outputs()
+        
+        return inputs,[weights,weights_2],output
+
 
 
 
@@ -281,5 +343,11 @@ if __name__ == "__main__":
         # name = f"{n}_conv1"
         name = n
         d = Demo()
+        # d.base_testing()
+        # d.base_testing(run_type=RunType.END_TO_END, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
         d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
         d.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+        # d.base_testing(run_type=RunType.PROVE_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
+        # d.base_testing(run_type=RunType.GEN_VERIFY, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
+
+

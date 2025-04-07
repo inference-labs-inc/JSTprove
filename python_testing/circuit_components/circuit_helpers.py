@@ -102,14 +102,8 @@ class Circuit:
         """
         try:
             if run_type == RunType.BASE_TESTING:
-                if ecc:
-                    # If ECC is True, run the ECC-specific logic (run_cargo_command)
-                    prove_and_verify(witness_file, input_file, proof_path, public_path, 
-                                    verification_key, circuit_name, proof_system, output_file, dev_mode, ecc=True)
-                else:
-                    # If ECC is False, run the Expander-specific logic (expander-exec commands) 
-                    prove_and_verify(witness_file, input_file, proof_path, public_path, 
-                                    verification_key, circuit_name, proof_system, output_file, dev_mode, ecc=False)
+                prove_and_verify(witness_file, input_file, proof_path, public_path, 
+                                verification_key, circuit_name, proof_system, output_file, dev_mode, ecc)
             elif run_type == RunType.END_TO_END:
                 run_end_to_end(circuit_name, circuit_path, input_file, output_file, proof_system, dev_mode)
             elif run_type == RunType.COMPILE_CIRCUIT:
