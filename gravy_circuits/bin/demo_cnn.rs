@@ -34,59 +34,47 @@ const DIM4: usize = 28; // k
 //Define structure of inputs, weights and output
 #[derive(Deserialize, Clone)]
 struct WeightsData {
-    conv1_weights: Vec<Vec<Vec<Vec<i64>>>>,
-    conv1_bias: Vec<i64>,
-    conv1_strides: Vec<u32>,
-    conv1_kernel_shape: Vec<u32>,
-    conv1_group: Vec<u32>,
-    conv1_dilation: Vec<u32>,
-    conv1_pads: Vec<u32>,
-    conv1_input_shape: Vec<u32>,
-    quantized: bool,
+    conv_weights: Vec<Vec<Vec<Vec<Vec<i64>>>>>,
+    conv_bias: Vec<Vec<i64>>,
+    conv_strides: Vec<Vec<u32>>,
+    conv_kernel_shape: Vec<Vec<u32>>,
+    conv_group: Vec<Vec<u32>>,
+    conv_dilation: Vec<Vec<u32>>,
+    conv_pads: Vec<Vec<u32>>,
+    conv_input_shape: Vec<Vec<u32>>,
+    // quantized: bool,
     scaling: u64,
-    conv2_weights: Vec<Vec<Vec<Vec<i64>>>>,
-    conv2_bias: Vec<i64>,
-    conv2_strides: Vec<u32>,
-    conv2_kernel_shape: Vec<u32>,
-    conv2_group: Vec<u32>,
-    conv2_dilation: Vec<u32>,
-    conv2_pads: Vec<u32>,
-    conv2_input_shape: Vec<u32>,
-    conv3_weights: Vec<Vec<Vec<Vec<i64>>>>,
-    conv3_bias: Vec<i64>,
-    conv3_strides: Vec<u32>,
-    conv3_kernel_shape: Vec<u32>,
-    conv3_group: Vec<u32>,
-    conv3_dilation: Vec<u32>,
-    conv3_pads: Vec<u32>,
-    conv3_input_shape: Vec<u32>,
-    conv4_weights: Vec<Vec<Vec<Vec<i64>>>>,
-    conv4_bias: Vec<i64>,
-    conv4_strides: Vec<u32>,
-    conv4_kernel_shape: Vec<u32>,
-    conv4_group: Vec<u32>,
-    conv4_dilation: Vec<u32>,
-    conv4_pads: Vec<u32>,
-    conv4_input_shape: Vec<u32>,
+    // conv2_weights: Vec<Vec<Vec<Vec<i64>>>>,
+    // conv2_bias: Vec<i64>,
+    // conv2_strides: Vec<u32>,
+    // conv2_kernel_shape: Vec<u32>,
+    // conv2_group: Vec<u32>,
+    // conv2_dilation: Vec<u32>,
+    // conv2_pads: Vec<u32>,
+    // conv2_input_shape: Vec<u32>,
+    // conv3_weights: Vec<Vec<Vec<Vec<i64>>>>,
+    // conv3_bias: Vec<i64>,
+    // conv3_strides: Vec<u32>,
+    // conv3_kernel_shape: Vec<u32>,
+    // conv3_group: Vec<u32>,
+    // conv3_dilation: Vec<u32>,
+    // conv3_pads: Vec<u32>,
+    // conv3_input_shape: Vec<u32>,
+    // conv4_weights: Vec<Vec<Vec<Vec<i64>>>>,
+    // conv4_bias: Vec<i64>,
+    // conv4_strides: Vec<u32>,
+    // conv4_kernel_shape: Vec<u32>,
+    // conv4_group: Vec<u32>,
+    // conv4_dilation: Vec<u32>,
+    // conv4_pads: Vec<u32>,
+    // conv4_input_shape: Vec<u32>,
 }
 #[derive(Deserialize, Clone)]
 struct WeightsData2 {
-    fc1_alpha: u32,
-    fc1_beta: u32,
-    fc1_weights: Vec<Vec<i64>>,
-    fc1_bias: Vec<Vec<i64>>,
-    // fc2_alpha: u32,
-    // fc2_beta: u32,
-    // fc2_weights: Vec<Vec<i64>>,
-    // fc2_bias: Vec<Vec<i64>>,
-    // fc3_alpha: u32,
-    // fc3_beta: u32,
-    // fc3_weights: Vec<Vec<i64>>,
-    // fc3_bias: Vec<Vec<i64>>,
-    // fc4_alpha: u32,
-    // fc4_beta: u32,
-    // fc4_weights: Vec<Vec<i64>>,
-    // fc4_bias: Vec<Vec<i64>>,
+    fc_alpha: Vec<u32>,
+    fc_beta: Vec<u32>,
+    fc_weights: Vec<Vec<Vec<i64>>>,
+    fc_bias: Vec<Vec<Vec<i64>>>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -140,49 +128,51 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
         let alpha_2_v = api.mul(scaling_factor, two_v);
 
         // Bring the weights into the circuit as constants
-        let input_arr = four_d_array_to_vec(self.input_arr);
-
+        let mut out = four_d_array_to_vec(self.input_arr);
+        // api.display("1", input_arr[0][0][0][0]);
         
         // Conv 1
-        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv1_weights);
-        let bias: Vec<Variable> = WEIGHTS_INPUT
-            .conv1_bias
-            .clone()
-            .into_iter()
-            .map(|x| load_circuit_constant(api, x))
-            .collect();
+        for (i, _) in WEIGHTS_INPUT.conv_weights.iter().enumerate(){
+            let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv_weights[i]);
+            let bias: Vec<Variable> = WEIGHTS_INPUT
+                .conv_bias[i]
+                .clone()
+                .into_iter()
+                .map(|x| load_circuit_constant(api, x))
+                .collect();
 
-        
-        let out = conv_4d_run(api, input_arr, weights, bias,&WEIGHTS_INPUT.conv1_dilation, &WEIGHTS_INPUT.conv1_kernel_shape, &WEIGHTS_INPUT.conv1_pads, &WEIGHTS_INPUT.conv1_strides,&WEIGHTS_INPUT.conv1_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv1_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
-
+            
+            out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv_dilation[i], &WEIGHTS_INPUT.conv_kernel_shape[i], &WEIGHTS_INPUT.conv_pads[i], &WEIGHTS_INPUT.conv_strides[i],&WEIGHTS_INPUT.conv_input_shape[i], WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv_group[i], true, v_plus_one, two_v, alpha_2_v, true);
+            api.display("2", out[0][0][0][0]);
+        }
         // //conv2
-        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv2_weights);
-        let bias: Vec<Variable> = WEIGHTS_INPUT
-            .conv2_bias
-            .clone()
-            .into_iter()
-            .map(|x| load_circuit_constant(api, x))
-            .collect();
-        let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv2_dilation, &WEIGHTS_INPUT.conv2_kernel_shape, &WEIGHTS_INPUT.conv2_pads, &WEIGHTS_INPUT.conv2_strides,&WEIGHTS_INPUT.conv2_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv2_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
-        // //conv3
-        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv3_weights);
-        let bias: Vec<Variable> = WEIGHTS_INPUT
-            .conv3_bias
-            .clone()
-            .into_iter()
-            .map(|x| load_circuit_constant(api, x))
-            .collect();
-        let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv3_dilation, &WEIGHTS_INPUT.conv3_kernel_shape, &WEIGHTS_INPUT.conv3_pads, &WEIGHTS_INPUT.conv3_strides,&WEIGHTS_INPUT.conv3_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv3_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
+        // let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv2_weights);
+        // let bias: Vec<Variable> = WEIGHTS_INPUT
+        //     .conv2_bias
+        //     .clone()
+        //     .into_iter()
+        //     .map(|x| load_circuit_constant(api, x))
+        //     .collect();
+        // let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv2_dilation, &WEIGHTS_INPUT.conv2_kernel_shape, &WEIGHTS_INPUT.conv2_pads, &WEIGHTS_INPUT.conv2_strides,&WEIGHTS_INPUT.conv2_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv2_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
+        // // //conv3
+        // let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv3_weights);
+        // let bias: Vec<Variable> = WEIGHTS_INPUT
+        //     .conv3_bias
+        //     .clone()
+        //     .into_iter()
+        //     .map(|x| load_circuit_constant(api, x))
+        //     .collect();
+        // let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv3_dilation, &WEIGHTS_INPUT.conv3_kernel_shape, &WEIGHTS_INPUT.conv3_pads, &WEIGHTS_INPUT.conv3_strides,&WEIGHTS_INPUT.conv3_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv3_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
 
-        // // Conv 4
-        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv4_weights);
-        let bias: Vec<Variable> = WEIGHTS_INPUT
-            .conv4_bias
-            .clone()
-            .into_iter()
-            .map(|x| load_circuit_constant(api, x))
-            .collect();
-        let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv4_dilation, &WEIGHTS_INPUT.conv4_kernel_shape, &WEIGHTS_INPUT.conv4_pads, &WEIGHTS_INPUT.conv4_strides,&WEIGHTS_INPUT.conv4_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv4_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
+        // // // Conv 4
+        // let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv4_weights);
+        // let bias: Vec<Variable> = WEIGHTS_INPUT
+        //     .conv4_bias
+        //     .clone()
+        //     .into_iter()
+        //     .map(|x| load_circuit_constant(api, x))
+        //     .collect();
+        // let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv4_dilation, &WEIGHTS_INPUT.conv4_kernel_shape, &WEIGHTS_INPUT.conv4_pads, &WEIGHTS_INPUT.conv4_strides,&WEIGHTS_INPUT.conv4_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv4_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
 
 
         //Reshape
@@ -193,62 +183,24 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
                 .copied()
                 .collect();
 
-        let out_2d = vec![out_1d];
+        let mut out_2d = vec![out_1d];
+        for (i, _) in WEIGHTS_INPUT2.fc_weights.iter().enumerate(){
+            // if WEIGHTS_INPUT2.fc_alpha[i] != 1 ||WEIGHTS_INPUT2.fc_beta[i] != 1 {
+            //     panic!("Not yet implemented for fc alpha or beta not equal to 1");
+            // }
+            let weights = read_2d_weights(api, &WEIGHTS_INPUT2.fc_weights[i]);
+            let bias = read_2d_weights(api, &WEIGHTS_INPUT2.fc_bias[i]);
 
-        //FC1
-        if WEIGHTS_INPUT2.fc1_alpha != 1 ||WEIGHTS_INPUT2.fc1_beta != 1 {
-            panic!("Not yet implemented for fc alpha or beta not equal to 1");
+            out_2d = matrix_multplication_naive2(api, out_2d, weights);
+            out_2d = matrix_addition_vec(api, out_2d, bias);
+            api.display("3", out_2d[0][0]);
+
+            if i != WEIGHTS_INPUT2.fc_weights.len() - 1{
+                out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, true, out_2d, v_plus_one, two_v, alpha_2_v, true);
+            }
+            api.display("4", out_2d[0][0]);
+
         }
-
-        let weights = read_2d_weights(api, &WEIGHTS_INPUT2.fc1_weights);
-        let bias = read_2d_weights(api, &WEIGHTS_INPUT2.fc1_bias);
-
-        let out_2d = matrix_multplication_naive2(api, out_2d, weights);
-        let out_2d = matrix_addition_vec(api, out_2d, bias);
-
-
-        //FC2
-        // let out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, WEIGHTS_INPUT.quantized, out_2d, v_plus_one, two_v, alpha_2_v, true);
-        // if WEIGHTS_INPUT2.fc2_alpha != 1 ||WEIGHTS_INPUT2.fc2_beta != 1 {
-        //     panic!("Not yet implemented for fc alpha or beta not equal to 1");
-        // }
-
-        // let weights = read_2d_weights(api, &WEIGHTS_INPUT2.fc2_weights);
-        // let bias = read_2d_weights(api, &WEIGHTS_INPUT2.fc2_bias);
-
-        // let out_2d = matrix_multplication_naive2(api, out_2d, weights);
-        // let out_2d = matrix_addition_vec(api, out_2d, bias);
-
-
-        //FC3
-        // let out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, WEIGHTS_INPUT.quantized, out_2d, v_plus_one, two_v, alpha_2_v, true);
-
-        // if WEIGHTS_INPUT2.fc3_alpha != 1 ||WEIGHTS_INPUT2.fc3_beta != 1 {
-        //     panic!("Not yet implemented for fc alpha or beta not equal to 1");
-        // }
-
-        // let weights = read_2d_weights(api, &WEIGHTS_INPUT2.fc3_weights);
-        // let bias = read_2d_weights(api, &WEIGHTS_INPUT2.fc3_bias);
-
-        // let out_2d = matrix_multplication_naive2(api, out_2d, weights);
-        // let out_2d = matrix_addition_vec(api, out_2d, bias);
-
-        //FC4
-        // let out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, WEIGHTS_INPUT.quantized, out_2d, v_plus_one, two_v, alpha_2_v, true);
-        // if WEIGHTS_INPUT2.fc4_alpha != 1 ||WEIGHTS_INPUT2.fc4_beta != 1 {
-        //     panic!("Not yet implemented for fc alpha or beta not equal to 1");
-        // }
-
-        // let weights = read_2d_weights(api, &WEIGHTS_INPUT2.fc4_weights);
-        // let bias = read_2d_weights(api, &WEIGHTS_INPUT2.fc4_bias);
-
-        // let out_2d = matrix_multplication_naive2(api, out_2d, weights);
-        // let out_2d = matrix_addition_vec(api, out_2d, bias);
-
-        // // let out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, WEIGHTS_INPUT.quantized, out_2d, v_plus_one, two_v, alpha_2_v, true);
-
-        
-
 
         for (j, dim1) in self.outputs.iter().enumerate() {
                 for (k, _dim2) in dim1.iter().enumerate() {
@@ -322,6 +274,8 @@ fn main() {
     let mut file_reader = FileReader {
         path: "demo_cnn".to_owned(),
     };
+    println!("{:?}",WEIGHTS_INPUT2.fc_weights.len());
+
     // main_runner::run_bn254::<ConvCircuit<Variable>,
     //                         ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
     //                         _>(&mut file_reader);

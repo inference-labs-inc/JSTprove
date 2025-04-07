@@ -90,6 +90,7 @@ class Layers():
     def get_layer(self, inputs, layer_name, layer, is_output, **kwargs):
         if layer_name == "input":
             return self.get_inputs(kwargs.get("file_name", ".json"))
+            # pass
         elif "conv" in layer_name:
             return self.get_circuit_conv(inputs, layer, kwargs.get("strides", (1,1)),kwargs.get("kernel_shape",(3,3)), kwargs.get("group", [1]), kwargs.get("dilation", (1,1)), kwargs.get("pads", (1,1,1,1)), is_output)
         elif "relu" in layer_name:

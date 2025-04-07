@@ -100,6 +100,8 @@ def prepare_io_files(func):
                 output = self.get_outputs()
 
                 inputs, weights, outputs = self.get_model_params(output)
+                print(input_file)
+                print("TO JSON")
                 to_json(inputs, input_file)
             else:
                 inputs = read_from_json(input_file)

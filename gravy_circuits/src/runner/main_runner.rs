@@ -307,6 +307,7 @@ where
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
         + Clone,
+    
 {
     // GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     // let start = Instant::now();
@@ -354,6 +355,52 @@ where
     let writer = std::io::BufWriter::new(file);
     witness.serialize_into(writer).unwrap();
     // layered_circuit.evaluate();
+    
+}
+
+pub fn debug_witness<C: Config, I, CircuitDefaultType, CircuitType>(io_reader: &mut I, input_path: &str, output_path:&str, witness_path: &str, circuit_path: &str)
+where
+    I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
+    CircuitDefaultType: Default
+        + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
+        + Clone,
+        CircuitType: Default
+        + DumpLoadTwoVariables<Variable>
+        + expander_compiler::frontend::Define<C>
+        + Clone
+{
+    // GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    // let start = Instant::now();
+    // println!("{:?}", format!("{}_witness_solver.txt", io_reader.get_path()));
+    // let file = std::fs::File::open(format!("{}_witness_solver.txt", io_reader.get_path())).unwrap();
+    let file = std::fs::File::open(get_witness_solver_path(circuit_path)).unwrap();
+    let reader = std::io::BufReader::new(file);
+    let witness_solver = WitnessSolver::<C>::deserialize_from(reader).unwrap();
+
+    let file = std::fs::File::open(circuit_path).unwrap();
+    // let file = std::fs::File::open(format!("{}_circuit.txt", io_reader.get_path())).unwrap();
+    let reader = std::io::BufReader::new(file);
+    let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
+
+    let assignment = CircuitDefaultType::default();
+    // let _input_reader = FileReader {
+    //     path: input_path.clone(),
+    // };
+    // let _output_reader = FileReader {
+    //     path: output_path.clone(),
+    // };
+    let assignment = io_reader.read_inputs(input_path, assignment);
+    let assignment = io_reader.read_outputs(output_path, assignment);
+
+    let assignments = vec![assignment.clone(); 1];
+    let witness = witness_solver.solve_witnesses(&assignments).unwrap();
+    let _output = layered_circuit.run(&witness);
+
+    debug_eval(&CircuitType::default(), &assignment, EmptyHintCaller);
+    // for x in output.iter() {
+    //     assert_eq!(*x, true);
+    // }
+
     
 }
 
@@ -1110,6 +1157,10 @@ where
             let witness_path = matches.get_one::<String>("witness").unwrap(); //"outputs/reward_output.json"
             let circuit_path = matches.get_one::<String>("circuit_path").unwrap(); //"outputs/reward_output.json"
             run_witness::<BN254Config, _, CircuitDefaultType>(file_reader, input_path, output_path, &witness_path, circuit_path);
+            // debug_witness::<BN254Config, _, CircuitDefaultType, CircuitType>(file_reader, input_path, output_path, &witness_path, circuit_path);
+
+            // debug_bn254::<BN254Config, _, CircuitType>(file_reader);
+
         }
         "run_prove_witness" => {
             // let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"

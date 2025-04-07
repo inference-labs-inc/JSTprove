@@ -94,20 +94,3 @@ if __name__ == "__main__":
 
     circuit = SimpleCircuit()
     circuit.base_testing(run_type=RunType.GEN_VERIFY)
-
-
-
-    # SimpleCircuit().base_testing()
-    # SimpleCircuit().base_testing(run_type=RunType.END_TO_END)
-
-    
-    # SimpleCircuit().base_testing(run_type=RunType.COMPILE_CIRCUIT)
-
-    # outputs = SimpleCircuit.get_outputs()
-    # # (inputs, _, outputs) = SimpleCircuit.get_model_params(SimpleCircuit.get_outputs()) # Create a function that calculates and stores model_params to file
-    # SimpleCircuit().base_testing(run_type=RunType.GEN_WITNESS) # This should specify the model_params file
-
-
-    # SimpleCircuit().base_testing(run_type=RunType.PROVE_WITNESS) # This should specify the model_params file
-    
-    # SimpleCircuit().base_testing(run_type=RunType.GEN_VERIFY)
