@@ -12,18 +12,6 @@ declare_circuit!(Circuit {
     dummy: [Variable;2]
 });
 
-// declare_circuit!(DummyCircuit {
-//     input_a: Variable,
-//     input_b: Variable,
-//     output: Variable, 
-// });
-
-// impl<C: Config> Define<C> for DummyCircuit<Variable> {
-//     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
-//         api.assert_is_equal(0, 10);
-//     }
-// }
-
 //Still to factor this out
 
 impl<C: Config> Define<C> for Circuit<Variable> {

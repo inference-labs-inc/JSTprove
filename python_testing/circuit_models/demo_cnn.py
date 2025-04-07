@@ -76,7 +76,7 @@ class Demo(ZKModel):
         # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3"]
         # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
         # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4", "relu", "fc5", "relu", "fc6", "relu", "fc7", "relu", "fc8", "relu", "fc9", "relu", "fc10"]
-        for i in range(1,10):
+        for i in range(1,2):
             self.layers.append(f"conv{i}")
             self.layers.append("relu")
         self.layers.append("reshape")
@@ -102,8 +102,7 @@ class Demo(ZKModel):
         # torch.onnx.export(model, first_inputs, f = "demo_cnn_full.onnx")
 
 
-
-    def get_model_params(self, output = None):
+    def get_outputs(self):
         exclude_keys = ['quantized', 'scaling']
         
         # input_arr = self.get_inputs(self.input_data_file).reshape(self.input_shape)
@@ -148,6 +147,68 @@ class Demo(ZKModel):
             # layer_params = self.model.__getattr__(layers[1])
             #Rework inputs to function
             if not layer in "reshape":
+                (input, _, output) = self.get_layer(input_arr, layer, l, **layer_params.get(layer, {"": None}))
+                input_arr = torch.LongTensor(input["input"])
+                output_tensor = torch.LongTensor(output["output"])
+                try:
+                    self.check_4d_eq(input_arr,previous_output_tensor)
+                except IndexError:
+                    self.check_2d_eq(input_arr,previous_output_tensor)
+
+                previous_output_tensor = output_tensor
+                input_arr = output_tensor
+            else:
+                input_arr = torch.reshape(previous_output_tensor, layer_params["reshape"]["shape"])
+                previous_output_tensor = input_arr
+            
+        for i in range(previous_output_tensor.shape[0]):
+            for j in range(previous_output_tensor.shape[1]):
+                assert(abs(previous_output_tensor[i][j]/(2**(2*self.scaling)) - outputs[i][j]) < 0.0001)
+        return inputs,output
+    
+    def get_weights(self):
+        exclude_keys = ['quantized', 'scaling']
+        
+        # input_arr = self.get_inputs(self.input_data_file).reshape(self.input_shape)
+        input_arr = self.first_inputs*(2**self.scaling)
+        input_arr = input_arr.long()
+        inputs = {"input": input_arr.long().tolist()}
+        if "conv1" in self.layers:
+            weights = {"layers":self.layers, "conv_weights":[], "conv_bias":[], "conv_strides":[], "conv_kernel_shape":[], "conv_group":[], "conv_dilation":[], "conv_pads":[], "conv_input_shape":[]}
+        else:
+            weights = {"layers":self.layers}
+        if "fc1" in self.layers:
+            weights_2 = {"fc_weights":[], "fc_bias":[], "scaling":self.scaling, "quantized":True, "fc_alpha": [], "fc_beta":[]}
+        else:
+            weights_2 = {}
+        input = {}
+        output = {}
+        # first_inputs = torch.tensor(self.read_input()).reshape(self.input_shape)
+        first_inputs = self.first_inputs
+        outputs = self.read_output(self.model, first_inputs)
+        
+        
+
+        previous_output_tensor = input_arr
+
+        for layer in self.layers:
+            layer_params = {layer:{"quant":True}}
+            if any(char.isdigit() for char in layer):
+                l = self.model.__getattr__(layer)
+                try:
+                    layer_params = {layer:{"strides": l.stride}}
+                except:
+                    pass
+                if layer == self.layers[-1]:
+                    layer_params[layer]["quant"] = False
+
+
+            else:
+                l = layer
+                if "reshape" in layer:
+                    layer_params = {layer:{"shape": [-1,self.model.fc_input_dim]}}
+            #Rework inputs to function
+            if not layer in "reshape":
                 (input, weight, output) = self.get_layer(input_arr, layer, l, **layer_params.get(layer, {"": None}))
                 if weight:
                     if any(f"fc{i}" in layer for i in range(1, 1000)):
@@ -162,8 +223,6 @@ class Demo(ZKModel):
                                 weights_2["fc_bias"].append(value)
                             else:
                                 weights_2[f"fc_{key}"].append(value)
-                            
-                        # weights_2.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()})
                     else:
                         for key, value in weight.items():
                             if key in exclude_keys:
@@ -204,20 +263,23 @@ class Demo(ZKModel):
         for i in range(previous_output_tensor.shape[0]):
             for j in range(previous_output_tensor.shape[1]):
                 assert(abs(previous_output_tensor[i][j]/(2**(2*self.scaling)) - outputs[i][j]) < 0.0001)
-        return inputs,[weights,weights_2],output
+        return [weights,weights_2]
+    
+    def get_model_params(self, output = None):
+        inputs, outputs = self.get_outputs()
+        weights = self.get_weights()
+        return inputs, weights, outputs
 
-    def get_outputs(self):
-        return ""
 
 
     
 
 if __name__ == "__main__":
-    names = ["demo_1", "demo_2", "demo_3", "demo_4", "demo_5"]
-    # names = ["demo_5"]
+    # names = ["demo_1", "demo_2", "demo_3", "demo_4", "demo_5"]
+    names = ["demo_5"]
     for n in names:
-        name = f"{n}_conv9"
-        # name = n
+        # name = f"{n}_conv1"
+        name = n
         d = Demo()
         d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
         d.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
