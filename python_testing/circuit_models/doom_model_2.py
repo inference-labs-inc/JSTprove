@@ -89,7 +89,7 @@ class Doom(ZKModel):
     def get_model_params(self):
         exclude_keys = ['quantized', 'scaling']
         
-        input_arr = self.get_inputs(self.input_data_file).reshape([1,4,28,28])[:,0,:,:].reshape([1,1,28,28])        
+        input_arr = self.get_inputs_from_file(self.input_data_file).reshape([1,4,28,28])[:,0,:,:].reshape([1,1,28,28])        
         
 
         inputs = {"input": input_arr.long().tolist()}

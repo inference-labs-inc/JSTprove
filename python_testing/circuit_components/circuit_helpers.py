@@ -30,13 +30,14 @@ class Circuit:
         if self.required_keys is None:
             raise NotImplementedError("self.required_keys must be specified in circuit definition")
         for key in self.required_keys:
+            # print(key)
             if key not in kwargs:
                 raise KeyError(f"Missing required parameter: {key}")
             
             value = kwargs[key]
             
-            # Validate type (ensure integer)
-            if not isinstance(value, int):
+            # # Validate type (ensure integer)
+            if not isinstance(value, (int, list)):
                 raise ValueError(f"Expected an integer for {key}, but got {type(value).__name__}")
             
             setattr(self, key, value)
@@ -44,6 +45,13 @@ class Circuit:
     
     @compute_and_store_output
     def get_outputs(self):
+        """
+        Compute circuit outputs. This method should be implemented by subclasses.
+        The decorator will ensure it's only computed once.
+        """
+        raise NotImplementedError("get_outputs must be implemented")
+    
+    def get_inputs(self):
         """
         Compute circuit outputs. This method should be implemented by subclasses.
         The decorator will ensure it's only computed once.

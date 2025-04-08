@@ -93,35 +93,60 @@ def prepare_io_files(func):
         kwargs.pop("proof_file", None)
         if not kwargs.get("witness_file", None) is None:
             witness_file = kwargs["witness_file"]
+
+        if not kwargs.get("witness_file", None) is None:
+            witness_file = kwargs["witness_file"]
         kwargs.pop("witness_file", None)
+        
+
+        # No functionality for the following couple outside of this.
+        # For now they are hardcoded
+        if not kwargs.get("model_path", None) is None:
+            model_path = kwargs["model_path"]
+        if not kwargs.get("quantized_model_path", None) is None:
+            quantized_model_path = kwargs["quantized_model_path"]
+        else:
+            quantized_model_path = "quantized_model.pth"
+        
+        is_scaled = True
+
 
         if run_type == RunType.GEN_WITNESS or run_type == RunType.END_TO_END:
+            self.load_quantized_model(quantized_model_path)
             if kwargs.get("write_json") == True:
-                output = self.get_outputs()
+                inputs = self.get_inputs()
+                output = self.get_outputs(inputs)
 
-                inputs, weights, outputs = self.get_model_params(output)
-                print(input_file)
+                input = self.format_inputs(inputs)
+                outputs = self.format_outputs(output)
+
                 print("TO JSON")
-                to_json(inputs, input_file)
+                to_json(input, input_file)
+                to_json(outputs, output_file)
             else:
-                inputs = read_from_json(input_file)
-                self.parse_inputs(**inputs)
+                inputs = self.get_inputs_from_file(input_file, is_scaled = is_scaled)
+                print(inputs[0][0][0][0])
+                # inputs = read_from_json(input_file)
+                # self.parse_inputs(**inputs)
 
                 # Compute output (with caching via decorator)
-                output = self.get_outputs()
-                inputs, weights, outputs = self.get_model_params(output)
-
-        else:
-            output = ""
+                output = self.get_outputs(inputs)
+                outputs = self.format_outputs(output)
+                # inputs, weights, outputs = self.get_model_params(output)
+                to_json(outputs, output_file)
+        # else:
+        #     output = ""
         
-            # Get model parameters
-            inputs, weights, outputs = self.get_model_params(output)
+        #     # Get model parameters
+        #     _, weights, _ = self.get_model_params(output)
         
-        # Write to files
-        if run_type == RunType.GEN_WITNESS or run_type == RunType.END_TO_END:
-            # to_json(inputs, input_file)
-            to_json(outputs, output_file)
+        # # Write to files
+        # if run_type == RunType.GEN_WITNESS or run_type == RunType.END_TO_END:
+        #     # to_json(inputs, input_file)
+        #     to_json(outputs, output_file)
         if run_type == RunType.COMPILE_CIRCUIT or run_type == RunType.END_TO_END: 
+            weights = self.get_weights()
+            self.save_quantized_model(quantized_model_path)
             if type(weights) == list:
                 for (i, w) in enumerate(weights):
                     if i == 0:
@@ -145,8 +170,8 @@ def prepare_io_files(func):
             'weights_path': weights_path,
             'output_file': output_file,
             'inputs': inputs,
-            'weights': weights,
-            'outputs': outputs,
+            'weights': weights_path,
+            'outputs': output_file,
             'output': output,
             'proof_system': proof_system
         }
