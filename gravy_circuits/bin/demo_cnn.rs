@@ -68,14 +68,18 @@ struct WeightsData {
     // conv4_dilation: Vec<u32>,
     // conv4_pads: Vec<u32>,
     // conv4_input_shape: Vec<u32>,
-}
-#[derive(Deserialize, Clone)]
-struct WeightsData2 {
-    fc_alpha: Vec<u32>,
-    fc_beta: Vec<u32>,
+    // fc_alpha: Vec<u32>,
+    // fc_beta: Vec<u32>,
     fc_weights: Vec<Vec<Vec<i64>>>,
     fc_bias: Vec<Vec<Vec<i64>>>,
 }
+// #[derive(Deserialize, Clone)]
+// struct WeightsData2 {
+//     fc_alpha: Vec<u32>,
+//     fc_beta: Vec<u32>,
+//     fc_weights: Vec<Vec<Vec<i64>>>,
+//     fc_bias: Vec<Vec<Vec<i64>>>,
+// }
 
 #[derive(Deserialize, Clone)]
 struct InputData {
@@ -89,7 +93,7 @@ struct OutputData {
 
 // This reads the weights json into a string
 const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/demo_cnn_weights.json");
-const MATRIX_WEIGHTS_FILE2: &str = include_str!("../../weights/demo_cnn_weights2.json");
+// const MATRIX_WEIGHTS_FILE2: &str = include_str!("../../weights/demo_cnn_weights2.json");
 
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
@@ -102,17 +106,17 @@ lazy_static! {
     };
 }
 
-lazy_static! {
-    static ref WEIGHTS_INPUT2: WeightsData2 = {
-        let x: WeightsData2 =
-            serde_json::from_str(MATRIX_WEIGHTS_FILE2).expect("JSON was not well-formatted");
-        x
-    };
-}
+// lazy_static! {
+//     static ref WEIGHTS_INPUT2: WeightsData2 = {
+//         let x: WeightsData2 =
+//             serde_json::from_str(MATRIX_WEIGHTS_FILE2).expect("JSON was not well-formatted");
+//         x
+//     };
+// }
 
 declare_circuit!(ConvCircuit {
-    input_arr: [[[[Variable; DIM4]; DIM3]; DIM2]; DIM1], // shape (m, n)
-    outputs: [[Variable; 10]; 1], // shape (m, k)
+    input_arr: [[[[PublicVariable; DIM4]; DIM3]; DIM2]; DIM1], // shape (m, n)
+    outputs: [[PublicVariable; 10]; 1], // shape (m, k)
 });
 
 
@@ -184,18 +188,18 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
                 .collect();
 
         let mut out_2d = vec![out_1d];
-        for (i, _) in WEIGHTS_INPUT2.fc_weights.iter().enumerate(){
+        for (i, _) in WEIGHTS_INPUT.fc_weights.iter().enumerate(){
             // if WEIGHTS_INPUT2.fc_alpha[i] != 1 ||WEIGHTS_INPUT2.fc_beta[i] != 1 {
             //     panic!("Not yet implemented for fc alpha or beta not equal to 1");
             // }
-            let weights = read_2d_weights(api, &WEIGHTS_INPUT2.fc_weights[i]);
-            let bias = read_2d_weights(api, &WEIGHTS_INPUT2.fc_bias[i]);
+            let weights = read_2d_weights(api, &WEIGHTS_INPUT.fc_weights[i]);
+            let bias = read_2d_weights(api, &WEIGHTS_INPUT.fc_bias[i]);
 
             out_2d = matrix_multplication_naive2(api, out_2d, weights);
             out_2d = matrix_addition_vec(api, out_2d, bias);
             api.display("3", out_2d[0][0]);
 
-            if i != WEIGHTS_INPUT2.fc_weights.len() - 1{
+            if i != WEIGHTS_INPUT.fc_weights.len() - 1{
                 out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, true, out_2d, v_plus_one, two_v, alpha_2_v, true);
             }
             api.display("4", out_2d[0][0]);
@@ -274,7 +278,7 @@ fn main() {
     let mut file_reader = FileReader {
         path: "demo_cnn".to_owned(),
     };
-    println!("{:?}",WEIGHTS_INPUT2.fc_weights.len());
+    // println!("{:?}",WEIGHTS_INPUT2.fc_weights.len());
 
     // main_runner::run_bn254::<ConvCircuit<Variable>,
     //                         ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
