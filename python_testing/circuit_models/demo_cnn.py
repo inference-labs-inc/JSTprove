@@ -26,8 +26,7 @@ class QuantizedLinear(nn.Module):
     def forward(self, x):
         # Assume x is already scaled (long), do matmul in int domain
         x = x.long()
-        # print(x)
-
+        
         out = torch.matmul(x, self.weight.t())
 
         out += self.bias
@@ -115,16 +114,16 @@ class CNNDemo(nn.Module):
 
         # Convolutional layers
         self.conv1 = nn.Conv2d(4, 16, kernel_size=3, stride=1, padding=1)
-        # for i in range(2,40):
-        #     self.__setattr__(f"conv{i}", nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1))
+        for i in range(2,40):
+            self.__setattr__(f"conv{i}", nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1))
 
         # Default to the shape after conv layers (depends on whether each conv layer is used)
         self.fc_input_dim = 16 * 28 * 28
 
         # Fully connected layers
         self.fc1 = nn.Linear(self.fc_input_dim, 256)
-        # for i in range(2,1000):
-        #     self.__setattr__(f"fc{i}", nn.Linear(256, 256))
+        for i in range(2,1000):
+            self.__setattr__(f"fc{i}", nn.Linear(256, 256))
 
         self.final = nn.Linear(256, n_actions)
 
@@ -177,26 +176,6 @@ def get_used_layers(model, input_shape):
     
     return used_layers
 
-# class QuantizedCNNDemo(CNNDemo):
-#     def __init__(self, base_model: CNNDemo, scale: int):
-#         super().__init__(n_actions=base_model.final.out_features, layers=base_model.layers)
-#         self.scale = scale
-
-#         # Replace all conv layers
-#         for name, module in base_model.named_modules():
-#             if isinstance(module, nn.Conv2d):
-#                 quant_layer = QuantizedConv2d(module, scale)
-#                 self._set_layer(name, quant_layer)
-#             elif isinstance(module, nn.Linear):
-#                 quant_layer = QuantizedLinear(module, scale)
-#                 self._set_layer(name, quant_layer)
-
-#     def _set_layer(self, name, new_module):
-#         parts = name.split(".")
-#         obj = self
-#         for p in parts[:-1]:
-#             obj = getattr(obj, p)
-#         setattr(obj, parts[-1], new_module)
 
 def quantize_cnn_demo(model: CNNDemo, scale: int, rescale_config: dict = None):
     rescale_config = rescale_config or {}
@@ -226,25 +205,17 @@ class Demo(ZKModel):
 
         self.scaling = 21
         self.layers = []
-        # self.layers = ["conv1", "relu", "reshape", "fc1"]
-        # self.layers = ["conv1", "relu", "conv2", "relu", "reshape", "fc1"]
-        # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu",  "reshape", "fc1"]
-        # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu",  "reshape", "fc1"]
-
-        # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2"]
-        # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3"]
-        # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
-        # self.layers = ["conv1", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4", "relu", "fc5", "relu", "fc6", "relu", "fc7", "relu", "fc8", "relu", "fc9", "relu", "fc10"]
-        for i in range(1,2):
+        # Add conv layers
+        for i in range(1,3):
             self.layers.append(f"conv{i}")
             self.layers.append("relu")
         self.layers.append("reshape")
         self.layers.append("fc1")
 
-
-        # for i in range(2,4):
-        #     self.layers.append("relu")
-        #     self.layers.append(f"fc{i}")
+        # Add FC layers
+        for i in range(2,4):
+            self.layers.append("relu")
+            self.layers.append(f"fc{i}")
 
         # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
         
@@ -252,7 +223,7 @@ class Demo(ZKModel):
         model = CNNDemo(layers=self.layers).to(device)
         model.eval()
         self.model = model
-        rescale_config = {"fc1": False}
+        rescale_config = {self.layers[-1]: False}
 
         self.quantized_model = quantize_cnn_demo(model, 2**self.scaling, rescale_config=rescale_config)
         self.quantized_model.eval()
@@ -283,14 +254,12 @@ class Demo(ZKModel):
         input_shapes = get_input_shapes_by_layer(self.quantized_model, self.input_shape)  # example input
         used_layers = get_used_layers(self.quantized_model, self.input_shape) 
         # Can combine the above into 1 function
-
         
         weights = {}
         weights["layers"] = self.layers
         weights["scaling"] = self.scaling
         
         for name, module in used_layers:
-            print(name, module)
             if isinstance(module, (nn.Conv2d, QuantizedConv2d)):
                 weights.setdefault("conv_weights", []).append(module.weight.tolist())
                 weights.setdefault("conv_bias", []).append(module.bias.tolist())
@@ -303,13 +272,8 @@ class Demo(ZKModel):
 
             
             if isinstance(module, (nn.Linear, QuantizedLinear)):
-                print(name)
                 weights.setdefault("fc_weights", []).append(module.weight.transpose(0, 1).tolist())
                 weights.setdefault("fc_bias", []).append(module.bias.unsqueeze(0).tolist())
-        # sys.exit()
-        # weights.setdefault("fc_weights", []).append(self.quantized_model.fc1.weight.transpose(0, 1).tolist())
-        # weights.setdefault("fc_bias", []).append(self.quantized_model.fc1.bias.unsqueeze(0).tolist())
-        
 
         return [weights, {}]
 
