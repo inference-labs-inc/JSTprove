@@ -222,6 +222,8 @@ def main():
         raise ValueError("No operation specified. Please specify at least one operation flag or use --all.")
     # Execute each operation in order.
     for op in run_operations:
+        if op == RunType.COMPILE_CIRCUIT:
+            args.fresh_compile = True
         circuit.base_testing(
             run_type=op,
             dev_mode=args.fresh_compile,

@@ -132,7 +132,6 @@ def prepare_io_files(func):
                 # Compute output (with caching via decorator)
                 output = self.get_outputs(inputs)
                 outputs = self.format_outputs(output)
-                # inputs, weights, outputs = self.get_model_params(output)
                 to_json(outputs, output_file)
         # else:
         #     output = ""
@@ -169,10 +168,10 @@ def prepare_io_files(func):
             'circuit_name': circuit_name,
             'weights_path': weights_path,
             'output_file': output_file,
-            'inputs': inputs,
+            'inputs': input_file,
             'weights': weights_path,
             'outputs': output_file,
-            'output': output,
+            'output': output_file,
             'proof_system': proof_system
         }
         # print(input_file, output_file)
