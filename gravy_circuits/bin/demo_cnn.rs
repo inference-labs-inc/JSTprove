@@ -32,6 +32,7 @@ struct WeightsData {
     scaling: u64,
     fc_weights: Vec<Vec<Vec<i64>>>,
     fc_bias: Vec<Vec<Vec<i64>>>,
+    _layers: Vec<String>
 }
 
 #[derive(Deserialize, Clone)]
@@ -193,6 +194,7 @@ fn main() {
     let mut file_reader = FileReader {
         path: "demo_cnn".to_owned(),
     };
+    // println!("{:?}", WEIGHTS_INPUT.layers);
     handle_args::<ConvCircuit<Variable>,ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
 
 }

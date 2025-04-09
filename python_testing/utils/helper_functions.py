@@ -125,7 +125,6 @@ def prepare_io_files(func):
                 to_json(outputs, output_file)
             else:
                 inputs = self.get_inputs_from_file(input_file, is_scaled = is_scaled)
-                print(inputs[0][0][0][0])
                 # inputs = read_from_json(input_file)
                 # self.parse_inputs(**inputs)
 
@@ -133,17 +132,9 @@ def prepare_io_files(func):
                 output = self.get_outputs(inputs)
                 outputs = self.format_outputs(output)
                 to_json(outputs, output_file)
-        # else:
-        #     output = ""
-        
-        #     # Get model parameters
-        #     _, weights, _ = self.get_model_params(output)
-        
-        # # Write to files
-        # if run_type == RunType.GEN_WITNESS or run_type == RunType.END_TO_END:
-        #     # to_json(inputs, input_file)
-        #     to_json(outputs, output_file)
+
         if run_type == RunType.COMPILE_CIRCUIT or run_type == RunType.END_TO_END: 
+            #### TODO Fix the next couple lines
             weights = self.get_weights()
             self.save_quantized_model(quantized_model_path)
             if type(weights) == list:

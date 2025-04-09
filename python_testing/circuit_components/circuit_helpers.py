@@ -3,7 +3,7 @@ import subprocess
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems, ZKProofsExpander
 from python_testing.utils.helper_functions import (
-    get_files, to_json, prove_and_verify, compute_and_store_output, 
+    get_files, read_from_json, to_json, prove_and_verify, compute_and_store_output, 
     prepare_io_files, compile_circuit, generate_witness, 
     generate_verification, run_end_to_end, generate_proof, RunType
 )
@@ -194,3 +194,25 @@ class Circuit:
             self._file_info['output_file'],
             self._file_info['proof_system']
         )
+    def save_model(self, file_path: str):
+        pass
+    
+    def load_model(self, file_path: str):
+        pass
+
+    def save_quantized_model(self, file_path: str):
+        pass
+
+    
+    def load_quantized_model(self, file_path: str):
+        pass
+
+    def get_weights(self):
+        return {}
+    def get_inputs_from_file(self, input_file, is_scaled = True):
+        if is_scaled:
+            return read_from_json(input_file)
+        return read_from_json(input_file)* (2**self.scaling)
+    
+    def format_outputs(self, output):
+        return {"output":output}

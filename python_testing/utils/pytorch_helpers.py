@@ -104,7 +104,6 @@ class GeneralLayerFunctions():
 class PytorchConverter():
     def save_model(self, file_path: str):
         torch.save(self.model.state_dict(), file_path)
-
     
     def load_model(self, file_path: str):
         self.model.load_state_dict(torch.load(file_path))
@@ -273,8 +272,6 @@ class QuantizedConv2d(nn.Module):
 
         if original_conv.bias is not None:
             bias = original_conv.bias.data * scale * scale
-            # if not self.rescale_output:
-            #     bias = bias * scale
             self.bias = nn.Parameter(bias.long(), requires_grad=False)
         else:
             self.bias = None

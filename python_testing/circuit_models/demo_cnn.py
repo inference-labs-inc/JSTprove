@@ -54,22 +54,19 @@ class CNNDemo(nn.Module):
     
 class Demo(ZKModel):
     def __init__(self, model_file_path: str = None, quantized_model_file_path: str = None):
-        self.layers = {}
 
         self.layers = []
         # Add conv layers
-        for i in range(1,2):
+        for i in range(1,5):
             self.layers.append(f"conv{i}")
             self.layers.append("relu")
         self.layers.append("reshape")
         self.layers.append("fc1")
 
         # # Add FC layers
-        # for i in range(2,4):
-        #     self.layers.append("relu")
-        #     self.layers.append(f"fc{i}")
-
-        # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
+        for i in range(2,20):
+            self.layers.append("relu")
+            self.layers.append(f"fc{i}")
         
 
 
@@ -105,6 +102,7 @@ class Demo(ZKModel):
         weights =  super().get_weights()
         weights["layers"] = self.layers
         return weights
+
     
 
 if __name__ == "__main__":

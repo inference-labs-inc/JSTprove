@@ -358,7 +358,7 @@ where
     
 }
 
-pub fn debug_witness<C: Config, I, CircuitDefaultType, CircuitType>(io_reader: &mut I, input_path: &str, output_path:&str, witness_path: &str, circuit_path: &str)
+pub fn debug_witness<C: Config, I, CircuitDefaultType, CircuitType>(io_reader: &mut I, input_path: &str, output_path:&str, _witness_path: &str, circuit_path: &str)
 where
     I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default

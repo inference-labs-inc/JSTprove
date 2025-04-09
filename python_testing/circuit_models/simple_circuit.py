@@ -40,13 +40,19 @@ class SimpleCircuit(Circuit):
         }
         return inputs, {}, outputs
     
-    def get_outputs(self):
+    def get_inputs(self):
+        return {'input_a': self.input_a, 'input_b': self.input_b, 'nonce': self.nonce}
+    
+    def get_outputs(self, inputs = None):
         """
         Compute the output of the circuit.
         This is decorated in the base class to ensure computation happens only once.
         """
-        print(f"Performing addition operation: {self.input_a} + {self.input_b}")
-        return self.input_a + self.input_b
+        if inputs == None:
+            inputs = {'input_a': self.input_a, 'input_b': self.input_b, 'nonce': self.nonce}
+        print(inputs)
+        print(f"Performing addition operation: {inputs['input_a']} + {inputs['input_b']}")
+        return inputs['input_a'] + inputs['input_b']
 
 # Example code demonstrating circuit operations
 if __name__ == "__main__":
