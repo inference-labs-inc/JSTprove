@@ -2,7 +2,7 @@
 import torch
 from python_testing.circuit_components.circuit_helpers import Circuit
 from python_testing.utils.run_proofs import ZKProofSystems
-from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
+from python_testing.utils.helper_functions import RunType, get_files, to_json, prove_and_verify
 
 
 class ScaledMatrixProductSum(Circuit):
@@ -35,22 +35,36 @@ class ScaledMatrixProductSum(Circuit):
         #######################################################################################################
         #######################################################################################################
         '''
-    def get_outputs(self):
-        return self.alpha * torch.matmul(self.matrix_a, self.matrix_b) + self.matrix_c
     
-    def get_model_params(self, output):
-        ## Define inputs and outputs
-        inputs = {
-            'alpha' : self.alpha.tolist(),
-            'matrix_a': self.matrix_a.tolist(),
-            'matrix_b': self.matrix_b.tolist(),
-            'matrix_c': self.matrix_c.tolist(),          
+    def get_inputs(self):
+        return {'matrix_a': self.matrix_a, 'matrix_b': self.matrix_b, 'matrix_c': self.matrix_c, 'alpha': self.alpha}
+    
+    def get_outputs(self, inputs = None):
+        """
+        Compute the output of the circuit.
+        This is decorated in the base class to ensure computation happens only once.
+        """
+        if inputs == None:
+            inputs = {'input_a': self.matrix_a, 'input_b': self.matrix_b, 'matrix_c': self.matrix_c, 'alpha': self.alpha}
+
+        a = torch.tensor(inputs['matrix_a'])
+        b = torch.tensor(inputs['matrix_b'])
+        alpha = inputs['alpha']
+        c = torch.tensor(inputs['matrix_c'])
+        out = alpha*torch.matmul(a, b) + c
+        return out.tolist()
+    
+    def format_outputs(self, output):
+        return {'scaled_matrix_product_sum_alpha_ab_plus_c' : output}
+    
+    def format_inputs(self, inputs):
+        return {
+            'matrix_a': inputs['matrix_a'].tolist(),
+            'matrix_b': inputs['matrix_b'].tolist(), 
+            'matrix_c': inputs['matrix_c'].tolist(), 
+            'alpha': inputs['alpha'].tolist()
             }
-        
-        outputs = {
-            'scaled_matrix_product_sum_alpha_ab_plus_c' : output.tolist(),
-        }
-        return inputs, {}, outputs
+
     
 if __name__ == "__main__":
     proof_system = ZKProofSystems.Expander
@@ -61,6 +75,12 @@ if __name__ == "__main__":
     circuit_folder = ""
     weights_folder = "weights"
     #Rework inputs to function
-    test_circuit = ScaledMatrixProductSum()
-    test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
+    d = ScaledMatrixProductSum()
+    name = d.name
+
+    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    d_2 = ScaledMatrixProductSum()
+    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+    d_3 = ScaledMatrixProductSum()
+    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
 

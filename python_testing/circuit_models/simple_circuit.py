@@ -35,7 +35,6 @@ class SimpleCircuit(Circuit):
         """
         if inputs == None:
             inputs = {'input_a': self.input_a, 'input_b': self.input_b, 'nonce': self.nonce}
-        print(inputs)
         print(f"Performing addition operation: {inputs['input_a']} + {inputs['input_b']}")
         return inputs['input_a'] + inputs['input_b']
     

@@ -8,7 +8,7 @@ use serde::Deserialize;
 // use std::ops::Neg;
 use arith::FieldForECC;
 use lazy_static::lazy_static;
-use gravy_circuits::runner::main_runner;
+use gravy_circuits::runner::main_runner::handle_args;
 
 
 /*
@@ -153,7 +153,5 @@ fn main() {
     let mut file_reader = FileReader {
         path: "gemm".to_owned(),
     };
-    main_runner::run_bn254::<Circuit<Variable>,
-    Circuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-                            _>(&mut file_reader);
+    handle_args::<Circuit<Variable>,Circuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
 }

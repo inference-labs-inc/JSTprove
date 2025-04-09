@@ -14,7 +14,7 @@ use gravy_circuits::circuit_functions::matrix_computation::{
 use gravy_circuits::circuit_functions::quantization::quantize_4d_vector;
 use serde::Deserialize;
 use std::ops::Neg;
-use gravy_circuits::runner::main_runner;
+use gravy_circuits::runner::main_runner::handle_args;
 
 
 /*
@@ -201,11 +201,5 @@ fn main() {
     let mut file_reader = FileReader {
         path: "convolution".to_owned(),
     };
-    main_runner::run_bn254::<ConvCircuit<Variable>,
-                            ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-                            _>(&mut file_reader);
-
-    // main_runner::debug_bn254::<ConvCircuit<Variable>,
-    //                         ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-    //                                                 _>(&mut file_reader);
+    handle_args::<ConvCircuit<Variable>,ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
 }

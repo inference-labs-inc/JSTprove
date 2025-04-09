@@ -16,7 +16,7 @@ use gravy_circuits::circuit_functions::quantization::run_if_quantized_2d;
 use serde::Deserialize;
 use std::ops::Neg;
 
-use gravy_circuits::runner::main_runner::{self, handle_args};
+use gravy_circuits::runner::main_runner::handle_args;
 
 
 /*

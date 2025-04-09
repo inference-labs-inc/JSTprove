@@ -2,7 +2,7 @@ use arith::FieldForECC;
 use ethnum::U256;
 use expander_compiler::frontend::*;
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
-use gravy_circuits::runner::main_runner;
+use gravy_circuits::runner::main_runner::handle_args;
 use serde::Deserialize;
 use std::ops::Neg;
 use gravy_circuits::circuit_functions::relu;
@@ -115,7 +115,5 @@ fn main() {
     };
     // run_gf2();
     // run_m31();
-    main_runner::run_bn254::<ReLUTwosCircuit<Variable>,
-                            ReLUTwosCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-                            _>(&mut file_reader);
+    handle_args::<ReLUTwosCircuit<Variable>,ReLUTwosCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
 }
