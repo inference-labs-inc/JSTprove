@@ -19,18 +19,6 @@ use std::ops::Neg;
 use gravy_circuits::runner::main_runner::handle_args;
 
 
-/*
-Part 2 (memorization), Step 1: vanilla matrix multiplication of two matrices of compatible dimensions.
-matrix a has shape (m, n)
-matrix b has shape (n, k)
-matrix product ab has shape (m, k)
-*/
-
-// const DIM1: usize = 1; // m
-// const DIM2: usize = 4; // n
-// const DIM3: usize = 28; // n
-// const DIM4: usize = 28; // k
-
 //Define structure of inputs, weights and output
 //Define structure of inputs, weights and output
 #[derive(Deserialize, Clone)]
@@ -148,69 +136,6 @@ impl<C: Config> Define<C> for DoomCircuit<Variable> {
             api.display("4", out_2d[0][0]);
 
         }
-        // let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv1_weights);
-        // let bias: Vec<Variable> = WEIGHTS_INPUT
-        //     .conv1_bias
-        //     .clone()
-        //     .into_iter()
-        //     .map(|x| load_circuit_constant(api, x))
-        //     .collect();
-
-        // let input_arr = four_d_array_to_vec(self.input_arr);
-
-        // let out = conv_4d_run(api, input_arr, weights, bias,&WEIGHTS_INPUT.conv1_dilation, &WEIGHTS_INPUT.conv1_kernel_shape, &WEIGHTS_INPUT.conv1_pads, &WEIGHTS_INPUT.conv1_strides,&WEIGHTS_INPUT.conv1_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv1_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
-
-        // //Relu 1
-        // // let out = relu_4d_vec_v2(api, out, n_bits);
-        // //conv2
-        // let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv2_weights);
-        // let bias: Vec<Variable> = WEIGHTS_INPUT
-        //     .conv2_bias
-        //     .clone()
-        //     .into_iter()
-        //     .map(|x| load_circuit_constant(api, x))
-        //     .collect();
-        // let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv2_dilation, &WEIGHTS_INPUT.conv2_kernel_shape, &WEIGHTS_INPUT.conv2_pads, &WEIGHTS_INPUT.conv2_strides,&WEIGHTS_INPUT.conv2_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv2_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
-
-        // //conv3
-        // let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv3_weights);
-        // let bias: Vec<Variable> = WEIGHTS_INPUT
-        //     .conv3_bias
-        //     .clone()
-        //     .into_iter()
-        //     .map(|x| load_circuit_constant(api, x))
-        //     .collect();
-        
-        // //conv3
-        // let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv3_dilation, &WEIGHTS_INPUT.conv3_kernel_shape, &WEIGHTS_INPUT.conv3_pads, &WEIGHTS_INPUT.conv3_strides,&WEIGHTS_INPUT.conv3_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv3_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
-
-        // let out_1d: Vec<Variable> = out.iter()
-        //         .flat_map(|x| x.iter())
-        //         .flat_map(|x| x.iter())
-        //         .flat_map(|x| x.iter())
-        //         .copied()
-        //         .collect();
-
-        // let out_2d = vec![out_1d];
-
-        // let weights = read_2d_weights(api, &WEIGHTS_INPUT.fc1_weights);
-        // let bias = read_2d_weights(api, &WEIGHTS_INPUT.fc1_bias);
-
-        // let out_2d = matrix_multplication_naive2(api, out_2d, weights);
-        // let out_2d = matrix_addition_vec(api, out_2d, bias);
-
-        // let out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, WEIGHTS_INPUT.quantized, out_2d, v_plus_one, two_v, alpha_2_v, true);
-
-
-        // // let out_2d = relu_2d_vec_v2(api, out_2d, n_bits);
-
-
-        // let weights = read_2d_weights(api, &WEIGHTS_INPUT2.fc2_weights);
-        // let bias = read_2d_weights(api, &WEIGHTS_INPUT2.fc2_bias);
-
-        // let out_2d = matrix_multplication_naive2(api, out_2d, weights);
-        // let out_2d = matrix_addition_vec(api, out_2d, bias);
-
 
         for (j, dim1) in self.outputs.iter().enumerate() {
                 for (k, _dim2) in dim1.iter().enumerate() {
@@ -283,24 +208,4 @@ fn main() {
         path: "doom".to_owned(),
     };
     handle_args::<DoomCircuit<Variable>,DoomCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
-
-    // main_runner::run_bn254::<DoomCircuit<Variable>,
-    // DoomCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-    //                         _>(&mut file_reader);
-
-    // main_runner::run_bn254_seperate::<DoomCircuit<Variable>,
-    //                         DoomFakeCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-    //                                                 _>(&mut file_reader);
-    // let mut file_reader = FileReader {
-    //     path: "doom_dummy".to_owned(),
-    // };
-    // main_runner::compile_dummy_circuit::<DoomFakeCircuit<Variable>,
-    //                                                 DoomFakeCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-    //                                                                         _>(&mut file_reader);
-    // main_runner::run_m31::<ConvCircuit<Variable>,
-    //                         ConvCircuit<<expander_compiler::frontend::M31Config as expander_compiler::frontend::Config>::CircuitField>,
-    //                         _>(&mut file_reader);
-    // main_runner::debug_bn254::<ConvCircuit<Variable>,
-    //                         ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-    //                                                 _>(&mut file_reader);
 }

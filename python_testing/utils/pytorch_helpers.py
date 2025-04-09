@@ -184,7 +184,6 @@ class PytorchConverter():
     def quantize_model(self, model, scale: int, rescale_config: dict = None):
         rescale_config = rescale_config or {}
         quantized_model = self.clone_model_with_same_args(model)
-        quantized_model.fc_input_dim = model.fc_input_dim  # keep same shape
 
         # Replace conv and fc layers
         for name, module in model.named_modules():

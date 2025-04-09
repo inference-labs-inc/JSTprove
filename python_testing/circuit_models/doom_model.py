@@ -72,6 +72,13 @@ class Doom(ZKModel):
 
         self.input_shape = [1, 4, 28, 28]
 
+        # inputs = torch.rand(self.input_shape)*2 - 1 
+
+        # print(self.model(inputs))
+        # print(self.quantized_model(inputs*2**self.scaling)/(2**(2*self.scaling)))
+        # import sys
+        # sys.exit()
+
     
 # class Doom(ZKModel):
 #     def __init__(self, file_name="model/doom_checkpoint.pth"):

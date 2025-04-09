@@ -24,21 +24,6 @@ class SimpleCircuit(Circuit):
         #Currently a random value, not sure what value should fit with the validator scheme
         self.nonce = randint(0,10000)
         self.required_keys = ["input_a", "input_b", "nonce"]
-
-
-    def get_model_params(self, output):
-        """
-        Get model parameters for the circuit.
-        """
-        inputs = {
-            "input_a": self.input_a,
-            "input_b": self.input_b,
-            "nonce": self.nonce
-        }
-        outputs = {
-            "output": output
-        }
-        return inputs, {}, outputs
     
     def get_inputs(self):
         return {'input_a': self.input_a, 'input_b': self.input_b, 'nonce': self.nonce}
@@ -53,6 +38,8 @@ class SimpleCircuit(Circuit):
         print(inputs)
         print(f"Performing addition operation: {inputs['input_a']} + {inputs['input_b']}")
         return inputs['input_a'] + inputs['input_b']
+    
+    
 
 # Example code demonstrating circuit operations
 if __name__ == "__main__":
