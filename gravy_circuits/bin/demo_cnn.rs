@@ -12,24 +12,11 @@ use gravy_circuits::circuit_functions::matrix_computation::{
     matrix_multplication_naive3_array, matrix_addition_vec
 };
 use gravy_circuits::circuit_functions::quantization::run_if_quantized_2d;
-// use quantization::run_if_quantized_2d;
-// use relu::{relu_2d_vec_v2, relu_4d_vec_v2};
 use serde::Deserialize;
 use std::ops::Neg;
 
 use gravy_circuits::runner::main_runner::handle_args;
 
-/*
-Part 2 (memorization), Step 1: vanilla matrix multiplication of two matrices of compatible dimensions.
-matrix a has shape (m, n)
-matrix b has shape (n, k)
-matrix product ab has shape (m, k)
-*/
-
-const DIM1: usize = 1; // m
-const DIM2: usize = 4; // n
-const DIM3: usize = 28; // n
-const DIM4: usize = 28; // k
 
 //Define structure of inputs, weights and output
 #[derive(Deserialize, Clone)]
@@ -42,44 +29,10 @@ struct WeightsData {
     conv_dilation: Vec<Vec<u32>>,
     conv_pads: Vec<Vec<u32>>,
     conv_input_shape: Vec<Vec<u32>>,
-    // quantized: bool,
     scaling: u64,
-    // conv2_weights: Vec<Vec<Vec<Vec<i64>>>>,
-    // conv2_bias: Vec<i64>,
-    // conv2_strides: Vec<u32>,
-    // conv2_kernel_shape: Vec<u32>,
-    // conv2_group: Vec<u32>,
-    // conv2_dilation: Vec<u32>,
-    // conv2_pads: Vec<u32>,
-    // conv2_input_shape: Vec<u32>,
-    // conv3_weights: Vec<Vec<Vec<Vec<i64>>>>,
-    // conv3_bias: Vec<i64>,
-    // conv3_strides: Vec<u32>,
-    // conv3_kernel_shape: Vec<u32>,
-    // conv3_group: Vec<u32>,
-    // conv3_dilation: Vec<u32>,
-    // conv3_pads: Vec<u32>,
-    // conv3_input_shape: Vec<u32>,
-    // conv4_weights: Vec<Vec<Vec<Vec<i64>>>>,
-    // conv4_bias: Vec<i64>,
-    // conv4_strides: Vec<u32>,
-    // conv4_kernel_shape: Vec<u32>,
-    // conv4_group: Vec<u32>,
-    // conv4_dilation: Vec<u32>,
-    // conv4_pads: Vec<u32>,
-    // conv4_input_shape: Vec<u32>,
-    // fc_alpha: Vec<u32>,
-    // fc_beta: Vec<u32>,
     fc_weights: Vec<Vec<Vec<i64>>>,
     fc_bias: Vec<Vec<Vec<i64>>>,
 }
-// #[derive(Deserialize, Clone)]
-// struct WeightsData2 {
-//     fc_alpha: Vec<u32>,
-//     fc_beta: Vec<u32>,
-//     fc_weights: Vec<Vec<Vec<i64>>>,
-//     fc_bias: Vec<Vec<Vec<i64>>>,
-// }
 
 #[derive(Deserialize, Clone)]
 struct InputData {
@@ -93,7 +46,6 @@ struct OutputData {
 
 // This reads the weights json into a string
 const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/demo_cnn_weights.json");
-// const MATRIX_WEIGHTS_FILE2: &str = include_str!("../../weights/demo_cnn_weights2.json");
 
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
@@ -106,16 +58,8 @@ lazy_static! {
     };
 }
 
-// lazy_static! {
-//     static ref WEIGHTS_INPUT2: WeightsData2 = {
-//         let x: WeightsData2 =
-//             serde_json::from_str(MATRIX_WEIGHTS_FILE2).expect("JSON was not well-formatted");
-//         x
-//     };
-// }
-
 declare_circuit!(ConvCircuit {
-    input_arr: [[[[PublicVariable; DIM4]; DIM3]; DIM2]; DIM1], // shape (m, n)
+    input_arr: [[[[PublicVariable; 28]; 28]; 4]; 1], // shape (m, n)
     outputs: [[PublicVariable; 10]; 1], // shape (m, k)
 });
 
@@ -149,35 +93,6 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
             out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv_dilation[i], &WEIGHTS_INPUT.conv_kernel_shape[i], &WEIGHTS_INPUT.conv_pads[i], &WEIGHTS_INPUT.conv_strides[i],&WEIGHTS_INPUT.conv_input_shape[i], WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv_group[i], true, v_plus_one, two_v, alpha_2_v, true);
             api.display("2", out[0][0][0][0]);
         }
-        // //conv2
-        // let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv2_weights);
-        // let bias: Vec<Variable> = WEIGHTS_INPUT
-        //     .conv2_bias
-        //     .clone()
-        //     .into_iter()
-        //     .map(|x| load_circuit_constant(api, x))
-        //     .collect();
-        // let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv2_dilation, &WEIGHTS_INPUT.conv2_kernel_shape, &WEIGHTS_INPUT.conv2_pads, &WEIGHTS_INPUT.conv2_strides,&WEIGHTS_INPUT.conv2_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv2_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
-        // // //conv3
-        // let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv3_weights);
-        // let bias: Vec<Variable> = WEIGHTS_INPUT
-        //     .conv3_bias
-        //     .clone()
-        //     .into_iter()
-        //     .map(|x| load_circuit_constant(api, x))
-        //     .collect();
-        // let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv3_dilation, &WEIGHTS_INPUT.conv3_kernel_shape, &WEIGHTS_INPUT.conv3_pads, &WEIGHTS_INPUT.conv3_strides,&WEIGHTS_INPUT.conv3_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv3_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
-
-        // // // Conv 4
-        // let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv4_weights);
-        // let bias: Vec<Variable> = WEIGHTS_INPUT
-        //     .conv4_bias
-        //     .clone()
-        //     .into_iter()
-        //     .map(|x| load_circuit_constant(api, x))
-        //     .collect();
-        // let out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv4_dilation, &WEIGHTS_INPUT.conv4_kernel_shape, &WEIGHTS_INPUT.conv4_pads, &WEIGHTS_INPUT.conv4_strides,&WEIGHTS_INPUT.conv4_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv4_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
-
 
         //Reshape
         let out_1d: Vec<Variable> = out.iter()
@@ -278,17 +193,6 @@ fn main() {
     let mut file_reader = FileReader {
         path: "demo_cnn".to_owned(),
     };
-    // println!("{:?}",WEIGHTS_INPUT2.fc_weights.len());
-
-    // main_runner::run_bn254::<ConvCircuit<Variable>,
-    //                         ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-    //                         _>(&mut file_reader);
-    // main_runner::run_m31::<ConvCircuit<Variable>,
-    //                         ConvCircuit<<expander_compiler::frontend::M31Config as expander_compiler::frontend::Config>::CircuitField>,
-    //                         _>(&mut file_reader);
-    // main_runner::debug_bn254::<ConvCircuit<Variable>,
-    //                         ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-    //                                                 _>(&mut file_reader);
     handle_args::<ConvCircuit<Variable>,ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
 
 }

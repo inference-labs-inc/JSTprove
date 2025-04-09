@@ -58,17 +58,17 @@ class Circuit:
         """
         raise NotImplementedError("get_outputs must be implemented")
     
-    def get_model_params(self, output):
-        """
-        Get model parameters. This method should be implemented by subclasses.
+    # def get_model_params(self, output):
+    #     """
+    #     Get model parameters. This method should be implemented by subclasses.
         
-        Args:
-            output: Output computed by get_outputs
+    #     Args:
+    #         output: Output computed by get_outputs
         
-        Returns:
-            Tuple of (inputs, weights, outputs)
-        """
-        raise NotImplementedError("get_model_params must be implemented")
+    #     Returns:
+    #         Tuple of (inputs, weights, outputs)
+    #     """
+    #     raise NotImplementedError("get_model_params must be implemented")
     
     @prepare_io_files
     def base_testing(self, run_type=RunType.BASE_TESTING, 

@@ -86,9 +86,12 @@ class GeneralLayerFunctions():
     
     def get_inputs(self, file_path:str = None, is_scaled = False):
         if file_path == None:
-            return torch.mul(torch.rand(self.input_shape), 2**self.scaling).long()
-        return self.get_inputs_from_file(self.input_data_file, is_scaled=is_scaled).reshape(self.input_shape)
+            return self.create_new_inputs()
+        return self.get_inputs_from_file(file_path, is_scaled=is_scaled).reshape(self.input_shape)
     
+    def create_new_inputs(self):
+        return torch.mul(torch.rand(self.input_shape), 2**self.scaling).long()
+
     def format_inputs(self, inputs):
         return {"input": inputs.long().tolist()}
     
@@ -203,7 +206,6 @@ class PytorchConverter():
         # Can combine the above into 1 function
         
         weights = {}
-        weights["layers"] = self.layers
         weights["scaling"] = self.scaling
         
         for name, module in used_layers:

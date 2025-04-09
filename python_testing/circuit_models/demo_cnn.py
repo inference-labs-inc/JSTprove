@@ -51,13 +51,11 @@ class CNNDemo(nn.Module):
             if "relu" in l:
                 x = F.relu(x)
         return x
+    
 class Demo(ZKModel):
     def __init__(self, model_file_path: str = None, quantized_model_file_path: str = None):
         self.layers = {}
-        self.name = "demo_cnn"
-        self.required_keys = ["input"]
 
-        self.scaling = 21
         self.layers = []
         # Add conv layers
         for i in range(1,2):
@@ -73,28 +71,40 @@ class Demo(ZKModel):
 
         # self.layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "conv4", "relu", "reshape", "fc1", "relu", "fc2", "relu", "fc3", "relu", "fc4"]
         
+
+
+        ###### The following are needed for all models
+        ###### self.model
+        ###### self.input_shape
+        ###### self.name
+        ###### self.required_keys (these are the keys in the input)
+        ###### self.scaling
+
+        ###### Maybe specify this in a post init?
+        ###### self.quantized_model
+        ###### self.rescale_config - must specify if any layers are not to be rescaled
+
+        self.name = "demo_cnn"
+        self.required_keys = ["input"]
+        self.scaling = 21
+
+
+        self.input_shape = [1, 4, 28, 28]
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = CNNDemo(layers=self.layers).to(device)
         model.eval()
         self.model = model
-        rescale_config = {self.layers[-1]: False}
 
+
+        rescale_config = {self.layers[-1]: False}
         self.quantized_model = self.quantize_model(model, 2**self.scaling, rescale_config=rescale_config)
         self.quantized_model.eval()
 
-        self.input_shape = [1, 4, 28, 28]
-        self.exclude_keys = ['quantized', 'scaling']
 
-        self.input_data_file = "doom_data/doom_input.json"
-        self.first_inputs = torch.rand(self.input_shape)
-
-    
-    def get_model_params(self, output = None):
-        return []
-
-
-
-
+    def get_weights(self):
+        weights =  super().get_weights()
+        weights["layers"] = self.layers
+        return weights
     
 
 if __name__ == "__main__":
@@ -106,7 +116,7 @@ if __name__ == "__main__":
         d = Demo()
         # d.base_testing()
         # d.base_testing(run_type=RunType.END_TO_END, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
-        # d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+        d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
         # d.save_quantized_model("quantized_model.pth")
         d_2 = Demo()
         # d_2.load_quantized_model("quantized_model.pth")
