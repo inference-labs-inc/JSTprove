@@ -47,15 +47,15 @@ class ScaledMatrixProductSum(Circuit):
         if inputs == None:
             inputs = {'input_a': self.matrix_a, 'input_b': self.matrix_b, 'matrix_c': self.matrix_c, 'alpha': self.alpha}
 
-        a = torch.tensor(inputs['matrix_a'])
-        b = torch.tensor(inputs['matrix_b'])
+        a = torch.as_tensor(inputs['matrix_a'])
+        b = torch.as_tensor(inputs['matrix_b'])
         alpha = inputs['alpha']
-        c = torch.tensor(inputs['matrix_c'])
+        c = torch.as_tensor(inputs['matrix_c'])
         out = alpha*torch.matmul(a, b) + c
-        return out.tolist()
+        return out
     
     def format_outputs(self, output):
-        return {'scaled_matrix_product_sum_alpha_ab_plus_c' : output}
+        return {'scaled_matrix_product_sum_alpha_ab_plus_c' : output.tolist()}
     
     def format_inputs(self, inputs):
         return {
@@ -64,7 +64,7 @@ class ScaledMatrixProductSum(Circuit):
             'matrix_c': inputs['matrix_c'].tolist(), 
             'alpha': inputs['alpha'].tolist()
             }
-
+    
     
 if __name__ == "__main__":
     proof_system = ZKProofSystems.Expander

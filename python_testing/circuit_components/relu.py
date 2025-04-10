@@ -87,9 +87,9 @@ class ReLU(Circuit):
 
 
         if self.conversion_type==ConversionType.TWOS_COMP:
-            return torch.relu(torch.tensor(inputs['input']))
+            return torch.relu(torch.as_tensor(inputs['input']))
         if self.conversion_type==ConversionType.DUAL_MATRIX:
-            return torch.mul(torch.tensor(inputs['input']), -1*torch.tensor(inputs['sign']) + 1)
+            return torch.mul(torch.as_tensor(inputs['input']), -1*torch.as_tensor(inputs['sign']) + 1)
         else:
             raise NotImplementedError("Only twos comp and dual matrix relu is available")
     

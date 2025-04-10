@@ -6,7 +6,7 @@ use serde::Deserialize;
 // use std::ops::Neg;
 use arith::FieldForECC;
 
-use gravy_circuits::runner::main_runner::{self, handle_args};
+use gravy_circuits::runner::main_runner::handle_args;
 
 
 /*
@@ -130,11 +130,5 @@ fn main() {
     let mut file_reader = FileReader {
         path: "matrix_hadamard_product".to_owned(),
     };
-    // run_gf2();
-    // run_m31();
-    main_runner::run_bn254::<MatHadamardCircuit<Variable>,
-            MatHadamardCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-                            _>(&mut file_reader);
     handle_args::<MatHadamardCircuit<Variable>,MatHadamardCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
-
 }

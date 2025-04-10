@@ -10,9 +10,6 @@ import onnxruntime as ort
 from python_testing.circuit_components.circuit_helpers import Circuit, RunType
 from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify,prepare_io_files
-from python_testing.circuit_components.relu import ReLU, ConversionType
-from python_testing.circuit_components.convolution import Convolution, QuantizedConv
-from python_testing.circuit_components.gemm import QuantizedGemm, Gemm
 from types import SimpleNamespace
 
 class GeneralLayerFunctions():
@@ -66,7 +63,7 @@ class GeneralLayerFunctions():
         """Reads the outputs for each layer of the model from text files."""
         if is_torch:
             with torch.no_grad():  # Disable gradient calculation during inference
-                output = model(torch.tensor(input_data))
+                output = model(torch.as_tensor(input_data))
                 return output
         else:
             session = ort.InferenceSession(model)
@@ -78,8 +75,8 @@ class GeneralLayerFunctions():
     def get_inputs_from_file(self, file_name, is_scaled: bool = False):
         inputs = self.read_input(file_name)
         if is_scaled:
-            return torch.tensor(inputs).long()
-        return torch.mul(torch.tensor(inputs),2**self.scaling).long()
+            return torch.as_tensor(inputs).long()
+        return torch.mul(torch.as_tensor(inputs),2**self.scaling).long()
     
     def get_outputs(self, inputs):
         return self.quantized_model(inputs)
@@ -90,7 +87,7 @@ class GeneralLayerFunctions():
         return self.get_inputs_from_file(file_path, is_scaled=is_scaled).reshape(self.input_shape)
     
     def create_new_inputs(self):
-        return torch.mul(torch.rand(self.input_shape), 2**self.scaling).long()
+        return torch.mul(torch.rand(self.input_shape) * 2 - 1, 2**self.scaling).long()
 
     def format_inputs(self, inputs):
         return {"input": inputs.long().tolist()}
@@ -184,7 +181,6 @@ class PytorchConverter():
     def quantize_model(self, model, scale: int, rescale_config: dict = None):
         rescale_config = rescale_config or {}
         quantized_model = self.clone_model_with_same_args(model)
-
         # Replace conv and fc layers
         for name, module in model.named_modules():
             rescale = rescale_config.get(name, True)
@@ -235,7 +231,10 @@ class QuantizedLinear(nn.Module):
         
         # Quantize weights and biases to integers
         self.weight = nn.Parameter((original_linear.weight.data * scale).long(), requires_grad=False)
-        bias = original_linear.bias.data * scale * scale
+        if not original_linear.bias is None:
+            bias = original_linear.bias.data * scale * scale
+        else:
+            bias = torch.tensor(0)
         self.bias = nn.Parameter(bias.long(), requires_grad=False)
 
     def forward(self, x):

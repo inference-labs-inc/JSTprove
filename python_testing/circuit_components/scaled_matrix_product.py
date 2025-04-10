@@ -43,7 +43,7 @@ class ScaledMatrixProduct(Circuit):
         if inputs == None:
             inputs = {'input_a': self.matrix_a, 'input_b': self.matrix_b, 'alpha': self.alpha}
 
-        out = inputs['alpha']*torch.matmul(torch.tensor(inputs['matrix_a']), torch.tensor(inputs['matrix_b']))
+        out = inputs['alpha']*torch.matmul(torch.as_tensor(inputs['matrix_a']), torch.as_tensor(inputs['matrix_b']))
         return out.tolist()
     
     def format_outputs(self, output):
