@@ -93,34 +93,54 @@ def prepare_io_files(func):
         kwargs.pop("proof_file", None)
         if not kwargs.get("witness_file", None) is None:
             witness_file = kwargs["witness_file"]
+
+        if not kwargs.get("witness_file", None) is None:
+            witness_file = kwargs["witness_file"]
         kwargs.pop("witness_file", None)
+        
+
+        # No functionality for the following couple outside of this.
+        # For now they are hardcoded
+        if not kwargs.get("model_path", None) is None:
+            model_path = kwargs["model_path"]
+        if not kwargs.get("quantized_model_path", None) is None:
+            quantized_model_path = kwargs["quantized_model_path"]
+        else:
+            quantized_model_path = "quantized_model.pth"
+        
+        is_scaled = True
+
 
         if run_type == RunType.GEN_WITNESS or run_type == RunType.END_TO_END:
+            self.load_quantized_model(quantized_model_path)
             if kwargs.get("write_json") == True:
-                output = self.get_outputs()
+                inputs = self.get_inputs()
+                output = self.get_outputs(inputs)
 
+                input = self.format_inputs(inputs)
+                outputs = self.format_outputs(output)
 
-                inputs, weights, outputs = self.get_model_params(output)
-                to_json(inputs, input_file)
+                print("TO JSON")
+                to_json(input, input_file)
+                to_json(outputs, output_file)
             else:
-                inputs = read_from_json(input_file)
-                self.parse_inputs(**inputs)
+                inputs = self.get_inputs_from_file(input_file, is_scaled = is_scaled)
+                # inputs = read_from_json(input_file)
+                # self.parse_inputs(**inputs)
 
                 # Compute output (with caching via decorator)
-                output = self.get_outputs()
-                inputs, weights, outputs = self.get_model_params(output)
+                output = self.get_outputs(inputs)
+                outputs = self.format_outputs(output)
+                to_json(outputs, output_file)
 
-        else:
-            output = ""
-        
-            # Get model parameters
-            inputs, weights, outputs = self.get_model_params(output)
-        
-        # Write to files
-        if run_type == RunType.GEN_WITNESS or run_type == RunType.END_TO_END:
-            # to_json(inputs, input_file)
-            to_json(outputs, output_file)
         if run_type == RunType.COMPILE_CIRCUIT or run_type == RunType.END_TO_END: 
+            #### TODO Fix the next couple lines
+            func_model_and_quantize = getattr(self, 'get_model_and_quantize', None)
+            if callable(func_model_and_quantize):
+                func_model_and_quantize()
+                
+            weights = self.get_weights()
+            self.save_quantized_model(quantized_model_path)
             if type(weights) == list:
                 for (i, w) in enumerate(weights):
                     if i == 0:
@@ -143,10 +163,10 @@ def prepare_io_files(func):
             'circuit_name': circuit_name,
             'weights_path': weights_path,
             'output_file': output_file,
-            'inputs': inputs,
-            'weights': weights,
-            'outputs': outputs,
-            'output': output,
+            'inputs': input_file,
+            'weights': weights_path,
+            'outputs': output_file,
+            'output': output_file,
             'proof_system': proof_system
         }
         # print(input_file, output_file)
@@ -426,24 +446,37 @@ def generate_verification(circuit_name, circuit_path, input_file, output_file, w
         raise NotImplementedError("Not implemented for Circom")
 
 def run_end_to_end(circuit_name, circuit_path, input_file, output_file, 
-                  proof_system: ZKProofSystems = ZKProofSystems.Expander, demo=False, dev_mode = False):
+                  proof_system: ZKProofSystems = ZKProofSystems.Expander, demo=False, dev_mode = False, ecc = True):
     """Run end-to-end proof."""
     if proof_system == ZKProofSystems.Expander:
         # Extract the binary name from the circuit path
-        binary_name = os.path.basename(circuit_name)
+        # binary_name = os.path.basename(circuit_name)
         
-        # Prepare arguments
-        args = {
-            'c': circuit_path,
-            'i': input_file,
-            'o': output_file,
-        }
+        # # Prepare arguments
+        # args = {
+        #     'c': circuit_path,
+        #     'i': input_file,
+        #     'o': output_file,
+        # }
         
-        # Run the command
-        try:
-            run_cargo_command(binary_name, 'run_end_to_end', args, dev_mode)
-        except Exception as e:
-            print(f"Warning: End-to-end operation failed: {e}")
+        # # Run the command
+        # try:
+        #     run_cargo_command(binary_name, 'run_end_to_end', args, dev_mode)
+        # except Exception as e:
+        #     print(f"Warning: End-to-end operation failed: {e}")
+
+        base, ext = os.path.splitext(circuit_path)  # Split the filename and extension
+        witness_file = f"{base}_witness{ext}"
+        proof_file = f"{base}_proof{ext}"
+
+
+        # d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
+        # d.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+        compile_circuit(circuit_name, circuit_path, proof_system, dev_mode)
+        generate_witness(circuit_name, circuit_path, witness_file, input_file, output_file, proof_system, dev_mode)
+        generate_proof(circuit_name, circuit_path, witness_file, proof_file, proof_system, dev_mode, ecc)
+        generate_verification(circuit_name, circuit_path, input_file, output_file, witness_file, proof_file, proof_system, dev_mode, ecc)
+
             
     elif proof_system == ZKProofSystems.Circom:
         raise NotImplementedError("Not implemented for Circom")

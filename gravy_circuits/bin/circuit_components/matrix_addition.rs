@@ -4,8 +4,8 @@ use serde::Deserialize;
 use ethnum::U256;
 // use std::ops::Neg;
 // use arith::FieldForECC;
-use gravy_circuits::circuit_functions::matrix_computation::{matrix_addition, matrix_hadamard_product};
-use gravy_circuits::runner::main_runner;
+use gravy_circuits::circuit_functions::matrix_computation::matrix_addition;
+use gravy_circuits::runner::main_runner::handle_args;
 
 
 /* 
@@ -15,10 +15,10 @@ matrix b has shape (m, n)
 matrix sum a + b has shape (m, n)
 */
 
-const N_ROWS_A: usize = 17571; // m
-const N_COLS_A: usize = 1; // n
-const N_ROWS_B: usize = 17571; // m
-const N_COLS_B: usize = 1; // n
+const N_ROWS_A: usize = 100; // m
+const N_COLS_A: usize = 50; // n
+const N_ROWS_B: usize = 100; // m
+const N_COLS_B: usize = 50; // n
 
 declare_circuit!(MatAddCircuit {
     matrix_a: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
@@ -36,28 +36,6 @@ impl<C: Config> Define<C> for MatAddCircuit<Variable> {
         }
     }
 }
-declare_circuit!(TestCircuit {
-    matrix_a: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
-    matrix_b: [[Variable; N_COLS_B]; N_ROWS_B], // shape (n, n)
-    matrix_sum_ab: [[Variable; N_COLS_A]; N_ROWS_A], // shape (m, n)
-});
-
-impl<C: Config> Define<C> for TestCircuit<Variable> {
-    fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {  
-        let matrix_sum = matrix_hadamard_product(api, self.matrix_a, self.matrix_b);
-        for i in 0..N_ROWS_A {
-            for j in 0..N_COLS_A {
-                api.assert_is_equal(self.matrix_sum_ab[i][j], matrix_sum[i][j]); 
-            }                          
-        }
-        // let matrix_sum = matrix_computation::matrix_addition(api, self.matrix_a, self.matrix_b);
-        // for i in 0..N_ROWS_A {
-        //     for j in 0..N_COLS_A {
-        //         api.assert_is_equal(self.matrix_sum_ab[i][j], matrix_sum[i][j]); 
-        //     }                          
-        // }
-    }
-}
 
 
 #[derive(Deserialize)]
@@ -72,11 +50,11 @@ struct InputData {
 struct OutputData {
     matrix_sum_ab: Vec<Vec<u64>>, //  Shape (m, n) 
 }
-impl<C: Config>IOReader<TestCircuit<C::CircuitField>, C> for FileReader
+impl<C: Config>IOReader<MatAddCircuit<C::CircuitField>, C> for FileReader
 {
-    fn read_inputs(&mut self, file_path: &str, mut assignment: TestCircuit<C::CircuitField>) -> TestCircuit<C::CircuitField>
+    fn read_inputs(&mut self, file_path: &str, mut assignment: MatAddCircuit<C::CircuitField>) -> MatAddCircuit<C::CircuitField>
     {
-        let data: InputData = <FileReader as IOReader<TestCircuit<_>, C>>::read_data_from_json::<InputData>(file_path); 
+        let data: InputData = <FileReader as IOReader<MatAddCircuit<_>, C>>::read_data_from_json::<InputData>(file_path); 
 
 
         // Assign inputs to assignment
@@ -104,10 +82,10 @@ impl<C: Config>IOReader<TestCircuit<C::CircuitField>, C> for FileReader
         // Return the assignment
         assignment
     }
-    fn read_outputs(&mut self, file_path: &str, mut assignment: TestCircuit<C::CircuitField>) -> TestCircuit<C::CircuitField>
+    fn read_outputs(&mut self, file_path: &str, mut assignment: MatAddCircuit<C::CircuitField>) -> MatAddCircuit<C::CircuitField>
     {
 
-        let data: OutputData = <FileReader as IOReader<TestCircuit<_>, C>>::read_data_from_json::<OutputData>(file_path); 
+        let data: OutputData = <FileReader as IOReader<MatAddCircuit<_>, C>>::read_data_from_json::<OutputData>(file_path); 
 
         // Assign inputs to assignment
         let rows_ab = data.matrix_sum_ab.len();  
@@ -131,12 +109,6 @@ fn main(){
     let mut file_reader = FileReader{path: "matrix_addition".to_owned(),};
     // run_gf2();
     // run_m31();
-    main_runner::run_bn254::<MatAddCircuit<Variable>,
-                            TestCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-                            _>(&mut file_reader);
     //                         build::<M31Config>
-    // main_runner::run_m31::<MatAddCircuit<Variable>,
-    //                         MatAddCircuit<build::<M31Config>::CircuitField>,
-    //                         _>(&mut file_reader);
-
+    handle_args::<MatAddCircuit<Variable>,MatAddCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
 }

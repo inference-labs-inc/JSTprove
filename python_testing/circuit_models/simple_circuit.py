@@ -24,29 +24,21 @@ class SimpleCircuit(Circuit):
         #Currently a random value, not sure what value should fit with the validator scheme
         self.nonce = randint(0,10000)
         self.required_keys = ["input_a", "input_b", "nonce"]
-
-
-    def get_model_params(self, output):
-        """
-        Get model parameters for the circuit.
-        """
-        inputs = {
-            "input_a": self.input_a,
-            "input_b": self.input_b,
-            "nonce": self.nonce
-        }
-        outputs = {
-            "output": output
-        }
-        return inputs, {}, outputs
     
-    def get_outputs(self):
+    def get_inputs(self):
+        return {'input_a': self.input_a, 'input_b': self.input_b, 'nonce': self.nonce}
+    
+    def get_outputs(self, inputs = None):
         """
         Compute the output of the circuit.
         This is decorated in the base class to ensure computation happens only once.
         """
-        print(f"Performing addition operation: {self.input_a} + {self.input_b}")
-        return self.input_a + self.input_b
+        if inputs == None:
+            inputs = {'input_a': self.input_a, 'input_b': self.input_b, 'nonce': self.nonce}
+        print(f"Performing addition operation: {inputs['input_a']} + {inputs['input_b']}")
+        return inputs['input_a'] + inputs['input_b']
+    
+    
 
 # Example code demonstrating circuit operations
 if __name__ == "__main__":
@@ -94,20 +86,3 @@ if __name__ == "__main__":
 
     circuit = SimpleCircuit()
     circuit.base_testing(run_type=RunType.GEN_VERIFY)
-
-
-
-    # SimpleCircuit().base_testing()
-    # SimpleCircuit().base_testing(run_type=RunType.END_TO_END)
-
-    
-    # SimpleCircuit().base_testing(run_type=RunType.COMPILE_CIRCUIT)
-
-    # outputs = SimpleCircuit.get_outputs()
-    # # (inputs, _, outputs) = SimpleCircuit.get_model_params(SimpleCircuit.get_outputs()) # Create a function that calculates and stores model_params to file
-    # SimpleCircuit().base_testing(run_type=RunType.GEN_WITNESS) # This should specify the model_params file
-
-
-    # SimpleCircuit().base_testing(run_type=RunType.PROVE_WITNESS) # This should specify the model_params file
-    
-    # SimpleCircuit().base_testing(run_type=RunType.GEN_VERIFY)

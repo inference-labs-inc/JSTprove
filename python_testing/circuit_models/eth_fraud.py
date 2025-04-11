@@ -7,13 +7,12 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 import json
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems
-from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
+from python_testing.utils.helper_functions import RunType, get_files, to_json, prove_and_verify
 import os
 from python_testing.circuit_components.relu import ReLU, ConversionType
 
 from python_testing.circuit_components.convolution import Convolution, QuantizedConv
 # from python_testing.matrix_multiplication import QuantizedMatrixMultiplication
-from python_testing.circuit_components.gemm import QuantizedGemm, Gemm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -124,9 +123,11 @@ class FraudDetectionCNN(nn.Module):
 
         self.relu = nn.ReLU()
         self.flatten = nn.Flatten()
+        self.input_dim = input_dim
 
     def forward(self, x):
-        x = x.unsqueeze(1).unsqueeze(1)
+        if x.ndim == 2:
+            x = x.unsqueeze(1).unsqueeze(1)
         # x is expected to be [batch_size, 1, height, width]
         x = self.relu(self.conv1(x))  # Shape: [batch_size, 16, height, width]
         x = self.relu(self.conv2(x))  # Shape: [batch_size, 32, height, width]
@@ -212,95 +213,34 @@ class Eth(ZKModel):
     def __init__(self, file_name="model/fraud_detection_model.pth"):
         self.layers = {}
         self.name = "eth_fraud"
+        self.required_keys = ["input"]
+
 
         self.scaling = 21
+        self.input_shape = [1, 1, 1, 47]
+        self.rescale_config = {"fc2": False}
+        self.model_type = FraudDetectionCNN
+        self.model_params = {"input_dim": 47}
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model = FraudDetectionCNN(47).to(device)
-        checkpoint = torch.load(file_name, map_location=device)
-        model.load_state_dict(checkpoint)
-        model.eval()
-        self.model = model
-        self.input_shape = [1, 47]
 
         self.data = load_data()
         for batch in self.data[1]:
             self.input_data = batch[0][0]
             self.labels = batch[1][0]
             break
-        # torch.onnx.export(model, self.input_data.reshape(self.input_shape), f = "fraud_model.onnx")
-
-
-
-    def get_model_params(self):
-        exclude_keys = ['quantized', 'scaling']
-        input_arr = torch.mul(2**self.scaling, self.input_data).reshape(self.input_shape).unsqueeze(1).unsqueeze(1).long()
-        # input_arr = self.get_inputs(self.input_data_file).reshape(self.input_shape)
-        inputs = {"input": input_arr.long().tolist()}
-        weights = {}
-        weights_2 = {}
-        input = {}
-        output = {}
-        first_inputs = self.input_data.reshape(self.input_shape)
-        outputs = self.read_output(self.model, first_inputs)
-        
-        layers = ["conv1", "relu", "conv2", "relu", "reshape", "fc1", "relu", "fc2"]
-        # layers = ["conv1"]
-
-
-        previous_output_tensor = input_arr
-
-        for layer in layers:
-            layer_params = {layer:{"quant":True}}
-            if any(char.isdigit() for char in layer):
-                l = self.model.__getattr__(layer)
-                try:
-                    layer_params = {layer:{"strides": l.stride}}
-                except:
-                    pass
-                if layer == "fc2":
-                    layer_params[layer]["quant"] = False
-
-
-            else:
-                l = layer
-                if "reshape" in layer:
-                    layer_params = {layer:{"shape": [-1,1504]}}
-
-            # layer_params = self.model.__getattr__(layers[1])
-            #Rework inputs to function
-            if not layer in "reshape":
-                (input, weight, output) = self.get_layer(input_arr, layer, l, **layer_params.get(layer, {"": None}))
-                if weight:
-                    weights.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()})
-                input_arr = torch.LongTensor(input["input"])
-                output_tensor = torch.LongTensor(output["output"])
-
-                try:
-                    self.check_4d_eq(input_arr,previous_output_tensor)
-                except IndexError:
-                    self.check_2d_eq(input_arr,previous_output_tensor)
-
-                previous_output_tensor = output_tensor
-                input_arr = output_tensor
-            else:
-                input_arr = torch.reshape(previous_output_tensor, layer_params["reshape"]["shape"])
-                previous_output_tensor = input_arr
-        weights["quantized"] = True
-
 
         
-        for i in range(previous_output_tensor.shape[0]):
-            for j in range(previous_output_tensor.shape[1]):
-                error_margin = 0.0001
-                assert(abs(previous_output_tensor[i][j]/(2**(2*self.scaling)) - outputs[i][j]) < error_margin)
-        return inputs,[weights,weights_2],output
+
+
 
     
 
 if __name__ == "__main__":
-    # main()
-
-    Eth().base_testing(demo = True)
-    # Eth()
+    name = "doom"
+    d = Eth()
+    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    # d.save_quantized_model("quantized_model.pth")
+    d_2 = Eth()
+    # d_2.load_quantized_model("quantized_model.pth")
+    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
 

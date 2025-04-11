@@ -140,5 +140,10 @@ This CLI tool runs various circuit operations such as compilation, witness gener
    python cli.py --circuit simple_circuit --verify --witness witness.txt --input input.json --output output.json --circuit_path basic_circuit.txt
    run through 
    python cli.py --circuit simple_circuit --verify --witness witness.txt --proof proof.bin --input input.json --output output.json --circuit_path basic_circuit.txt
+
+
+   python cli.py --circuit demo_cnn --class Demo --compile --circuit_path demo_circuit.txt
+   python cli.py --circuit demo_cnn --class Demo --gen_witness --input inputs/demo_cnn_input.json --output output/demo_cnn_output.json  --circuit_path demo_circuit.txt
+
    ```
    

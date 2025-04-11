@@ -3,7 +3,7 @@ use std::ops::Neg;
 use circuit_std_rs::logup::LogUpRangeProofTable;
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use gravy_circuits::io::io_reader::{FileReader, IOReader};
+use gravy_circuits::{io::io_reader::{FileReader, IOReader}, runner::main_runner::handle_args};
 #[allow(unused_imports)]
 use gravy_circuits::circuit_functions::matrix_computation::{
     matrix_multplication, matrix_multplication_array, matrix_multplication_naive,
@@ -14,7 +14,6 @@ use gravy_circuits::circuit_functions::helper_fn::two_d_array_to_vec;
 
 #[warn(unused_imports)]
 use gravy_circuits::circuit_functions::quantization::quantize_matrix;
-use gravy_circuits::runner::main_runner;
 use serde::Deserialize;
 // use std::ops::Neg;
 use arith::FieldForECC;
@@ -181,10 +180,5 @@ fn main() {
     };
     // run_gf2();
     // run_m31();
-    main_runner::run_bn254::<MatMultCircuit<Variable>,
-    MatMultCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-                            _>(&mut file_reader);
-    // main_runner::debug_bn254::<MatMultCircuit<Variable>,
-    //                         MatMultCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-    //                                                 _>(&mut file_reader);
+    handle_args::<MatMultCircuit<Variable>,MatMultCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
 }

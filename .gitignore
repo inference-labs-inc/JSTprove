@@ -31,3 +31,12 @@ circom/reward_opt.sym
 *.pyc
 
 doom_data/sample_*
+
+*.json
+*.txt
+*.bin
+*.csv
+vendor/
+*.zip
+
+doom_data/

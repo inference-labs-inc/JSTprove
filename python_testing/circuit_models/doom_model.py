@@ -7,7 +7,6 @@ from python_testing.circuit_components.relu import ReLU, ConversionType
 
 from python_testing.circuit_components.convolution import Convolution, QuantizedConv
 # from python_testing.matrix_multiplication import QuantizedMatrixMultiplication
-from python_testing.circuit_components.gemm import QuantizedGemm, Gemm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -48,101 +47,32 @@ class DoomAgent(nn.Module):
             )
             q_values = self.forward(state_tensor)
             return q_values.argmax().item()
-    
+        
+
 class Doom(ZKModel):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
-        self.layers = {}
+        self.required_keys = ["input"]
         self.name = "doom"
+        self.input_data_file = "doom_data/doom_input.json"
+        self.model_file_name = file_name
+
 
         self.scaling = 21
-
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model = DoomAgent().to(device)
-        checkpoint = torch.load(file_name, map_location=device)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        model.eval()
-        self.model = model
         self.input_shape = [1, 4, 28, 28]
-
-        self.input_data_file = "input_doom.json"
-
-
-    def get_model_params(self, output):
-        exclude_keys = ['quantized', 'scaling']
-        
-        input_arr = self.get_inputs(self.input_data_file).reshape(self.input_shape)
-        inputs = {"input": input_arr.long().tolist()}
-        weights = {}
-        weights_2 = {}
-        input = {}
-        output = {}
-        first_inputs = torch.tensor(self.read_input(self.input_data_file)).reshape(self.input_shape)
-        outputs = self.read_output(self.model, first_inputs)
-        
-        layers = ["conv1", "relu", "conv2", "relu", "conv3", "relu", "reshape", "fc1", "relu", "fc2"]
-
-        previous_output_tensor = input_arr
-
-        for layer in layers:
-            layer_params = {layer:{"quant":True}}
-            if any(char.isdigit() for char in layer):
-                l = self.model.__getattr__(layer)
-                try:
-                    layer_params = {layer:{"strides": l.stride}}
-                except:
-                    pass
-                if layer == "fc2":
-                    layer_params[layer]["quant"] = False
-
-
-            else:
-                l = layer
-                if "reshape" in layer:
-                    layer_params = {layer:{"shape": [-1,1568]}}
-
-            # layer_params = self.model.__getattr__(layers[1])
-            #Rework inputs to function
-            if not layer in "reshape":
-                (input, weight, output) = self.get_layer(input_arr, layer, l, **layer_params.get(layer, {"": None}))
-                if weight:
-                    if "fc2" in layer:
-                        weights_2.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()})
-                    else:
-                        weights.update({f"{layer}_" + key if key not in exclude_keys else key: value for key, value in weight.items()})
-                input_arr = torch.LongTensor(input["input"])
-                output_tensor = torch.LongTensor(output["output"])
-                try:
-                    self.check_4d_eq(input_arr,previous_output_tensor)
-                except IndexError:
-                    self.check_2d_eq(input_arr,previous_output_tensor)
-
-                previous_output_tensor = output_tensor
-                input_arr = output_tensor
-                to_json(input, f"doom_data/doom_{layer}.json")
-            else:
-                input_arr = torch.reshape(previous_output_tensor, layer_params["reshape"]["shape"])
-                previous_output_tensor = input_arr
-
-
-
-        
-        for i in range(previous_output_tensor.shape[0]):
-            for j in range(previous_output_tensor.shape[1]):
-                error_margin = 0.00001
-                x = previous_output_tensor[i][j]/(2**(2*self.scaling)) / outputs[i][j]
-                # print(outputs)
-                assert(x < (1 + error_margin))
-                assert(x > (1 - error_margin))
-        return inputs,[weights,weights_2],output
-    
-    def get_outputs(self):
-        pass
+        self.rescale_config = {"fc2": False}
+        self.model_type = DoomAgent
 
     
 
 if __name__ == "__main__":
-    # Doom().base_testing()
     name = "doom"
     d = Doom()
-    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
-    d.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+    # d.base_testing()
+    # d.base_testing(run_type=RunType.END_TO_END, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    # d.save_quantized_model("quantized_model.pth")
+    d_2 = Doom()
+    # d_2.load_quantized_model("quantized_model.pth")
+    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
+    # d.base_testing(run_type=RunType.PROVE_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
+    # d.base_testing(run_type=RunType.GEN_VERIFY, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")

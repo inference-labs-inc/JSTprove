@@ -9,10 +9,13 @@ from python_testing.circuit_models.testing_circuit_doom import Doom as DoomOrigi
 
 
 if __name__ == "__main__":
-    Demo().base_testing()
-    Doom2().base_testing()
-    Doom1().base_testing()
-    SimpleCircuit().base_testing(run_type=RunType.END_TO_END)
-    DoomOriginal().run_circuit()
+    Demo().base_testing(RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path="demo_circuit.txt")
+    Demo().base_testing(RunType.GEN_WITNESS, dev_mode=False, circuit_path="demo_circuit.txt")
+
+    Doom1().base_testing(RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path="doom_circuit.txt")
+    Doom1().base_testing(RunType.GEN_WITNESS, dev_mode=False, circuit_path="doom_circuit.txt")
+
+    SimpleCircuit().base_testing(RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path="simple_circuit.txt")
+    SimpleCircuit().base_testing(RunType.GEN_WITNESS, dev_mode=False, circuit_path="simple_circuit.txt")
 
 

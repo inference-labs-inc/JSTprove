@@ -1,10 +1,21 @@
 # from circom.reward_fn import generate_sample_inputs
+import json
+import os
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems
-from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
+from python_testing.utils.helper_functions import RunType, get_files, to_json, prove_and_verify
+from python_testing.utils.pytorch_helpers import PytorchConverter, QuantizedLinear, ZKModel
+import torch.nn as nn
+import torch.nn.functional as F
+
+
 from enum import Enum
 import sys
 from python_testing.circuit_components.circuit_helpers import Circuit
+from python_testing.utils.pytorch_partial_models import MatrixMultiplicationModel, MatrixMultiplicationReLUModel
+
+
+
 
 
 class MatMultType(Enum):
@@ -15,117 +26,95 @@ class MatMultType(Enum):
     Naive2 = "naive2"
     Naive3 = "naive3"
 
-class MatrixMultiplication(Circuit):
-    #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
-    def __init__(self, circuit_type: MatMultType = MatMultType.Naive2):
-        # super().__init__()
-        '''
-        #######################################################################################################
-        #################################### This is the block for changes ####################################
-        #######################################################################################################
-        '''
-        # Specify
-        self.name = "matrix_multiplication"
+class MatrixMultiplication(ZKModel):
 
-        self.circuit_type = circuit_type
-        
-        # Function input generation
+    def __init__(self, circuit_type: MatMultType = MatMultType.Naive2, file_name="model/matrix_multiplication.pth", rescale = False):
+        self.required_keys = ["input"]
+        self.name = "matrix_multiplication"
+        self.input_data_file = "doom_data/doom_input.json"
+
+
+        self.scaling = 21
 
         self.N_ROWS_A: int = 1; # m
         self.N_COLS_A: int = 1568; # n
         self.N_ROWS_B: int = self.N_COLS_A; # n
         self.N_COLS_B: int = 256; # k
 
-        self.scaling = 21
-
-        self.matrix_a = torch.randint(low=-2**self.scaling, high=2**self.scaling, size=(self.N_ROWS_A,self.N_COLS_A)) # (m, n) array of random integers between 0 and 100
-        self.matrix_b = torch.randint(low=-2**self.scaling, high=2**self.scaling, size=(self.N_ROWS_B,self.N_COLS_B)) # (n, k) array of random integers between 0 and 100
-
-        self.quantized = False
-        self.relu = False
+        self.model_type = MatrixMultiplicationModel
+        self.model_params = {"in_channels": self.N_COLS_A, "out_channels": self.N_COLS_B, "bias": False}
+        self.rescale_config = {"fc1": rescale}
         
-        '''
-        #######################################################################################################
-        #######################################################################################################
-        #######################################################################################################
-        '''
 
-    def get_outputs(self):
-        return (self.matrix_a, self.matrix_b, torch.matmul(self.matrix_a, self.matrix_b))
+        # self.input_shape = [self.N_ROWS_A, self.N_COLS_A]
+        if not rescale:
+            self.quantized = False
+        else:
+            self.quantized = True
+        self.is_relu = False
+        self.circuit_type = circuit_type
+
+    @property
+    def input_shape(self):
+        return [self.N_ROWS_A, self.N_COLS_A]
     
-    def get_model_params(self, outputs):
+    def format_inputs(self, inputs):
+        return {"matrix_a": inputs.tolist()}
+    
+    def format_outputs(self, outputs):
+        return {"matrix_product_ab": outputs.tolist()}
+    
+    def read_input(self, file_name = "doom_data/doom_input.json"):
+        """Reads the inputs to each layer of the model from text files."""
+        with open(file_name, 'r') as file:
+            data = json.load(file)
+            return data["matrix_a"]
 
-        inputs = {
-            'matrix_a': outputs[0].tolist(),
-            }
+
+    def get_weights(self):
+        weights =  super().get_weights()
+        weights["quantized"] = self.quantized
+        # weights["scaling"] = self.scaling
+        weights["is_relu"] = self.is_relu
+        weights['circuit_type'] =  self.circuit_type.value
+
+        weights["matrix_b"] = weights.pop("fc_weights")[0]
+        return weights
         
-        weights = {
-            'matrix_b': outputs[1].tolist(), 
-            'quantized': self.quantized,
-            'scaling': self.scaling,
-            'circuit_type': self.circuit_type.value,
-            'is_relu': self.relu
-        }
-        
-        outputs = {
-            'matrix_product_ab': outputs[2].tolist(),
-        }
-        
-        return (inputs,weights,outputs)
 
 class QuantizedMatrixMultiplication(MatrixMultiplication):
     #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
-    def __init__(self, circuit_type: MatMultType = MatMultType.Naive2):
-        super().__init__(circuit_type)
+    def __init__(self, circuit_type: MatMultType = MatMultType.Naive2, file_name="model/matrix_multiplication.pth"):
+        super().__init__(circuit_type, file_name, rescale = True)
 
-        # Instead get a value between 0-1
-        self.matrix_a = torch.rand(size=(self.N_ROWS_A,self.N_COLS_A)) - torch.rand(size=(self.N_ROWS_A,self.N_COLS_A))
-        self.matrix_b = torch.rand(size=(self.N_ROWS_B,self.N_COLS_B)) - torch.rand(size=(self.N_ROWS_B,self.N_COLS_B))
-
-        self.quantized = True
-    
-    def get_outputs(self):
-        matrix_a = torch.mul(self.matrix_a, 2**self.scaling).long()
-        matrix_b = torch.mul(self.matrix_b, 2**self.scaling).long()
-        matrix_product_ab = torch.matmul(matrix_a, matrix_b)
-        matrix_product_ab = torch.div(matrix_product_ab, 2**self.scaling, rounding_mode="floor").long()
-
-        #This can show the error term with what we are doing
-        temp_1 = torch.matmul(self.matrix_a, self.matrix_b)
-        temp_1 = torch.mul(temp_1, self.scaling)
-        
-        print(temp_1[0][0].long(), matrix_product_ab[0][0]/2**21)
-
-
-        return (matrix_a, matrix_b, matrix_product_ab)
 
 class QuantizedMatrixMultiplicationReLU(MatrixMultiplication):
-    #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
-    def __init__(self, circuit_type: MatMultType = MatMultType.Naive2):
-        super().__init__(circuit_type)
+    def __init__(self, circuit_type: MatMultType = MatMultType.Naive2, file_name="model/matrix_multiplication_relu.pth", rescale = True):
+        self.required_keys = ["input"]
+        self.name = "matrix_multiplication"
+        self.input_data_file = "doom_data/doom_input.json"
 
-        # Instead get a value between 0-1
-        self.matrix_a = torch.rand(size=(self.N_ROWS_A,self.N_COLS_A)) - torch.rand(size=(self.N_ROWS_A,self.N_COLS_A))
-        self.matrix_b = torch.rand(size=(self.N_ROWS_B,self.N_COLS_B)) - torch.rand(size=(self.N_ROWS_B,self.N_COLS_B))
 
-        self.quantized = True
-        self.relu = True
-    
-    def get_outputs(self):
-        matrix_a = torch.mul(self.matrix_a, 2**self.scaling).long()
-        matrix_b = torch.mul(self.matrix_b, 2**self.scaling).long()
-        matrix_product_ab = torch.matmul(matrix_a, matrix_b)
-        matrix_product_ab = torch.div(matrix_product_ab, 2**self.scaling, rounding_mode="floor").long()
-        matrix_product_ab = torch.relu(matrix_product_ab)
+        self.scaling = 21
 
-        #This can show the error term with what we are doing
-        temp_1 = torch.matmul(self.matrix_a, self.matrix_b)
-        temp_1 = torch.mul(temp_1, self.scaling)
+        self.N_ROWS_A: int = 1; # m
+        self.N_COLS_A: int = 1568; # n
+        self.N_ROWS_B: int = self.N_COLS_A; # n
+        self.N_COLS_B: int = 256; # k
         
-        print(temp_1[0][0].long(), matrix_product_ab[0][0]/2**21)
+        self.model_type = MatrixMultiplicationReLUModel
+        self.model_params = {"in_channels": self.N_COLS_A, "out_channels": self.N_COLS_B, "bias": False}
+        self.rescale_config = {"fc1": rescale}
+        
 
-
-        return (matrix_a, matrix_b, matrix_product_ab)
+        # self.input_shape = [self.N_ROWS_A, self.N_COLS_A]
+        if not rescale:
+            self.quantized = False
+        else:
+            self.quantized = True
+        self.is_relu = True
+        self.circuit_type = circuit_type
+    
     
 if __name__ == "__main__":
     proof_system = ZKProofSystems.Expander
@@ -136,12 +125,33 @@ if __name__ == "__main__":
     weights_folder = "weights"
     circuit_folder = ""
     # #Rework inputs to function
-    # test_circuit = MatrixMultiplication(MatMultType.Naive2)
-    # test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
 
-    # test_circuit = QuantizedMatrixMultiplication(MatMultType.Naive2)
-    # test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
+    d = MatrixMultiplication()
+    name = d.name
 
-    test_circuit = QuantizedMatrixMultiplicationReLU(MatMultType.Naive2)
-    test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
+    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    d_2 = MatrixMultiplication()
+    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+    d_3 = MatrixMultiplication()
+    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
+
+    d = QuantizedMatrixMultiplication()
+    name = d.name
+
+    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    d_2 = QuantizedMatrixMultiplication()
+    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+    d_3 = QuantizedMatrixMultiplication()
+    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
+
+    d = QuantizedMatrixMultiplicationReLU()
+    name = d.name
+
+    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    d_2 = QuantizedMatrixMultiplicationReLU()
+    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+    d_3 = QuantizedMatrixMultiplicationReLU()
+    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
+
+    
 

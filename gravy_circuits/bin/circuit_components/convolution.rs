@@ -14,7 +14,7 @@ use gravy_circuits::circuit_functions::matrix_computation::{
 use gravy_circuits::circuit_functions::quantization::quantize_4d_vector;
 use serde::Deserialize;
 use std::ops::Neg;
-use gravy_circuits::runner::main_runner;
+use gravy_circuits::runner::main_runner::handle_args;
 
 
 /*
@@ -34,16 +34,17 @@ const DIM2OUT: usize = 16;
 //Define structure of inputs, weights and output
 #[derive(Deserialize, Clone)]
 struct WeightsData {
-    weights: Vec<Vec<Vec<Vec<i64>>>>,
-    bias: Vec<i64>,
-    strides: Vec<u32>,
-    kernel_shape: Vec<u32>,
-    group: Vec<u32>,
-    dilation: Vec<u32>,
-    pads: Vec<u32>,
-    input_shape: Vec<u32>,
+    conv_weights: Vec<Vec<Vec<Vec<Vec<i64>>>>>,
+    conv_bias: Vec<Vec<i64>>,
+    conv_strides: Vec<Vec<u32>>,
+    conv_kernel_shape: Vec<Vec<u32>>,
+    conv_group: Vec<Vec<u32>>,
+    conv_dilation: Vec<Vec<u32>>,
+    conv_pads: Vec<Vec<u32>>,
+    conv_input_shape: Vec<Vec<u32>>,
     quantized: bool,
     scaling: u64,
+    is_relu: bool
 }
 
 #[derive(Deserialize, Clone)]
@@ -84,28 +85,28 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
         let scaling_factor = 1 << WEIGHTS_INPUT.scaling;
         let alpha_2_v = api.mul(scaling_factor, two_v);
 
-        let weights = read_4d_weights(api, &WEIGHTS_INPUT.weights);
+        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv_weights[0]);
         let bias: Vec<Variable> = WEIGHTS_INPUT
-            .bias
+            .conv_bias[0]
             .clone()
             .into_iter()
             .map(|x| load_circuit_constant(api, x))
             .collect();
         let (dilations, kernel_shape, pads, strides) = set_default_params(
-            &WEIGHTS_INPUT.dilation,
-            &WEIGHTS_INPUT.kernel_shape,
-            &WEIGHTS_INPUT.pads,
-            &WEIGHTS_INPUT.strides,
-            &WEIGHTS_INPUT.input_shape,
+            &WEIGHTS_INPUT.conv_dilation[0],
+            &WEIGHTS_INPUT.conv_kernel_shape[0],
+            &WEIGHTS_INPUT.conv_pads[0],
+            &WEIGHTS_INPUT.conv_strides[0],
+            &WEIGHTS_INPUT.conv_input_shape[0],
         );
-        not_yet_implemented_conv(&WEIGHTS_INPUT.input_shape, &WEIGHTS_INPUT.group, &dilations);
+        not_yet_implemented_conv(&WEIGHTS_INPUT.conv_input_shape[0], &WEIGHTS_INPUT.conv_group[0], &dilations);
 
         let input_arr = four_d_array_to_vec(self.input_arr);
 
         let mut out: Vec<Vec<Vec<Vec<Variable>>>> = conv_shape_4(
             api,
             input_arr,
-            &WEIGHTS_INPUT.input_shape,
+            &WEIGHTS_INPUT.conv_input_shape[0],
             &kernel_shape,
             &strides,
             &pads,
@@ -116,7 +117,7 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
         if WEIGHTS_INPUT.quantized{
             let scaling_factor = 1 << WEIGHTS_INPUT.scaling;
             println!("{}", scaling_factor);
-            out = quantize_4d_vector(api, out, scaling_factor, WEIGHTS_INPUT.scaling as usize, v_plus_one, two_v, alpha_2_v, false);
+            out = quantize_4d_vector(api, out, scaling_factor, WEIGHTS_INPUT.scaling as usize, v_plus_one, two_v, alpha_2_v, WEIGHTS_INPUT.is_relu);
             // panic!("Quantized not yet implemented");
         }
         else{
@@ -201,11 +202,5 @@ fn main() {
     let mut file_reader = FileReader {
         path: "convolution".to_owned(),
     };
-    main_runner::run_bn254::<ConvCircuit<Variable>,
-                            ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-                            _>(&mut file_reader);
-
-    // main_runner::debug_bn254::<ConvCircuit<Variable>,
-    //                         ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,
-    //                                                 _>(&mut file_reader);
+    handle_args::<ConvCircuit<Variable>,ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
 }

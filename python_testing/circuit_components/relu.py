@@ -1,7 +1,7 @@
 import torch
 from python_testing.circuit_components.circuit_helpers import Circuit
 from python_testing.utils.run_proofs import ZKProofSystems
-from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
+from python_testing.utils.helper_functions import RunType, get_files, to_json, prove_and_verify
 import os
 from enum import Enum
 
@@ -57,112 +57,6 @@ class ReLU(Circuit):
         #######################################################################################################
         '''
 
-    def convert_to_relu_form(self, num_bits = 32):
-
-        def twos_comp_integer(val, bits):
-            """compute the 2's complement of int value val"""
-            return int(f"{val & ((1 << bits) - 1):0{bits}b}", 2)
-        
-        def twos_comp(val, bits):
-            """compute the 2's complement of int value val"""
-            mask = 2**torch.arange(bits - 1, -1, -1).to(val.device, val.dtype)
-            return val.unsqueeze(-1).bitwise_and(mask).ne(0).byte()
-        
-        def bin2dec(b, bits):
-            mask = 2 ** torch.arange(bits - 1, -1, -1).to(b.device, b.dtype)
-            return torch.sum(mask * b, -1)
-        
-        def test(inputs):
-            def to_binary_2s(x, n_bits):
-                res = []
-                for i in range(n_bits):
-                
-                    y = x >> i
-                    res.append(y & 1)
-                return res
-            
-
-            def binary_check(bits):
-                for i in range(len(bits)):
-                    bin_check = 1 - bits[i]
-                    x = bin_check * bits[i]
-                    assert(x == 0)
-
-            def from_binary_2s(bits, n_bits):
-                res = 0
-                length = n_bits - 1
-                for i in range(length):
-                    coef = 1 << i
-                    cur = coef * bits[i]
-                    res = res + cur
-                binary_check(bits)
-                cur = 1 << length * bits[length]
-                temp = 0
-                out = temp - cur
-                return out + res
-            
-            for i in range(len(inputs)):
-                for j in range(len(inputs[i])):
-                    for k in range(len(inputs[i][j])):
-                        # bits = to_binary_2s(inputs[i][j][k], 32)
-                        # total = from_binary_2s(bits, 32)
-                        # assert(total, inputs[i][j][k])
-                        assert(True)
-
-                
-
-        
-
-        if self.conversion_type ==ConversionType.DUAL_MATRIX:
-            self.inputs_2 = (self.inputs_1 < 0).int()
-            self.inputs_1 = torch.mul(torch.abs(self.inputs_1), self.scaling)
-        elif self.conversion_type:
-            self.inputs_1 = torch.mul(self.inputs_1, self.scaling).int()
-            # print(self.inputs_1[0][0][2])
-            # self.inputs_1 = twos_comp(self.inputs_1, 32)
-            # self.inputs_1 =  torch.tensor([twos_comp(val.item(), num_bits) for val in self.inputs_1.flatten()])
-            # print(self.inputs_1[0][0][2])
-
-
-        else:
-            pass
-
-    def get_model_params(self, outputs):
-        if self.conversion_type == ConversionType.TWOS_COMP:
-            if self.outputs == None:
-                outputs = self.get_outputs()
-            else:
-                outputs = torch.mul(self.outputs, self.scaling)
-        elif self.conversion_type == ConversionType.DUAL_MATRIX:
-            if self.outputs == None:
-                inputs_3 = torch.mul(torch.sub(1,torch.mul(self.inputs_2,2)),self.inputs_1)
-                outputs = torch.relu(inputs_3)
-            else:
-                outputs = torch.mul(self.outputs, self.scaling)
-
-        ## Define inputs and outputs
-        if self.conversion_type == ConversionType.TWOS_COMP:
-            inputs, outputs = self.get_twos_comp_model_data(outputs)
-        elif self.conversion_type == ConversionType.DUAL_MATRIX:
-            try:
-                inputs = {
-                    'input': [int(i) for i in self.inputs_1.tolist()],
-                    'sign': [int(i) for i in self.inputs_2.tolist()]
-                    }
-                outputs = {
-                    'output': [int(i) for i in outputs.tolist()],
-                }
-            except:
-                inputs = {
-                    'input': self.inputs_1.int().tolist(),
-                    'sign': self.inputs_2.int().tolist()
-                    }
-                outputs = {
-                    'output': outputs.int().tolist(),
-                }
-                
-        return inputs, {}, outputs
-
     def get_outputs(self):
         return torch.relu(self.inputs_1)
     
@@ -174,17 +68,60 @@ class ReLU(Circuit):
                 'output': out.int().tolist(),
             }
         return (inputs, outputs)
+    
+    def get_inputs(self):
+        if self.conversion_type==ConversionType.TWOS_COMP:
+            return {'input': self.inputs_1.long()}
+        if self.conversion_type==ConversionType.DUAL_MATRIX:
+            return {'input': self.inputs_1.long(),'sign': self.inputs_2.int()}
+        else:
+            raise NotImplementedError("Only twos comp and dual matrix relu is available")
+    
+    def get_outputs(self, inputs = None):
+        """
+        Compute the output of the circuit.
+        This is decorated in the base class to ensure computation happens only once.
+        """
+        if inputs == None:
+            inputs = self.get_inputs()
+
+
+        if self.conversion_type==ConversionType.TWOS_COMP:
+            return torch.relu(torch.as_tensor(inputs['input']))
+        if self.conversion_type==ConversionType.DUAL_MATRIX:
+            return torch.mul(torch.as_tensor(inputs['input']), -1*torch.as_tensor(inputs['sign']) + 1)
+        else:
+            raise NotImplementedError("Only twos comp and dual matrix relu is available")
+    
+    def format_outputs(self, output):
+        return {'output' : output.tolist()}
+    
+    def format_inputs(self, inputs):
+        if self.conversion_type==ConversionType.TWOS_COMP:
+            return {'input' :inputs['input'].tolist()}
+        if self.conversion_type==ConversionType.DUAL_MATRIX:
+            return {'input' : inputs['input'].tolist(), 'sign': inputs['sign'].tolist()}
+        else:
+            raise NotImplementedError("Only twos comp and dual matrix relu is available")
 
     
 if __name__ == "__main__":
     proof_system = ZKProofSystems.Expander
-    proof_folder = "analysis"
+    proof_folder = "proofs"
     output_folder = "output"
     temp_folder = "temp"
     input_folder = "inputs"
-    weights_folder = "weights"
     circuit_folder = ""
+    weights_folder = "weights"
     #Rework inputs to function
-    test_circuit = ReLU(conversion_type = ConversionType.TWOS_COMP)
-    test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder,  proof_system, output_folder)
+    conversion_types = [ConversionType.DUAL_MATRIX, ConversionType.TWOS_COMP]
+    for conversion_type in conversion_types:
+        d = ReLU(conversion_type)
+        name = d.name
+
+        d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+        d_2 = ReLU(conversion_type)
+        d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+        d_3 = ReLU(conversion_type)
+        d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
 

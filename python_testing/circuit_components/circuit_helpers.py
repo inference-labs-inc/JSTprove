@@ -3,7 +3,7 @@ import subprocess
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems, ZKProofsExpander
 from python_testing.utils.helper_functions import (
-    get_files, to_json, prove_and_verify, compute_and_store_output, 
+    get_files, read_from_json, to_json, prove_and_verify, compute_and_store_output, 
     prepare_io_files, compile_circuit, generate_witness, 
     generate_verification, run_end_to_end, generate_proof, RunType
 )
@@ -30,13 +30,14 @@ class Circuit:
         if self.required_keys is None:
             raise NotImplementedError("self.required_keys must be specified in circuit definition")
         for key in self.required_keys:
+            # print(key)
             if key not in kwargs:
                 raise KeyError(f"Missing required parameter: {key}")
             
             value = kwargs[key]
             
-            # Validate type (ensure integer)
-            if not isinstance(value, int):
+            # # Validate type (ensure integer)
+            if not isinstance(value, (int, list)):
                 raise ValueError(f"Expected an integer for {key}, but got {type(value).__name__}")
             
             setattr(self, key, value)
@@ -50,17 +51,24 @@ class Circuit:
         """
         raise NotImplementedError("get_outputs must be implemented")
     
-    def get_model_params(self, output):
+    def get_inputs(self):
         """
-        Get model parameters. This method should be implemented by subclasses.
-        
-        Args:
-            output: Output computed by get_outputs
-        
-        Returns:
-            Tuple of (inputs, weights, outputs)
+        Compute circuit outputs. This method should be implemented by subclasses.
+        The decorator will ensure it's only computed once.
         """
-        raise NotImplementedError("get_model_params must be implemented")
+        raise NotImplementedError("get_outputs must be implemented")
+    
+    # def get_model_params(self, output):
+    #     """
+    #     Get model parameters. This method should be implemented by subclasses.
+        
+    #     Args:
+    #         output: Output computed by get_outputs
+        
+    #     Returns:
+    #         Tuple of (inputs, weights, outputs)
+    #     """
+    #     raise NotImplementedError("get_model_params must be implemented")
     
     @prepare_io_files
     def base_testing(self, run_type=RunType.BASE_TESTING, 
@@ -102,14 +110,8 @@ class Circuit:
         """
         try:
             if run_type == RunType.BASE_TESTING:
-                if ecc:
-                    # If ECC is True, run the ECC-specific logic (run_cargo_command)
-                    prove_and_verify(witness_file, input_file, proof_path, public_path, 
-                                    verification_key, circuit_name, proof_system, output_file, dev_mode, ecc=True)
-                else:
-                    # If ECC is False, run the Expander-specific logic (expander-exec commands) 
-                    prove_and_verify(witness_file, input_file, proof_path, public_path, 
-                                    verification_key, circuit_name, proof_system, output_file, dev_mode, ecc=False)
+                prove_and_verify(witness_file, input_file, proof_path, public_path, 
+                                verification_key, circuit_name, proof_system, output_file, dev_mode, ecc)
             elif run_type == RunType.END_TO_END:
                 run_end_to_end(circuit_name, circuit_path, input_file, output_file, proof_system, dev_mode)
             elif run_type == RunType.COMPILE_CIRCUIT:
@@ -192,3 +194,25 @@ class Circuit:
             self._file_info['output_file'],
             self._file_info['proof_system']
         )
+    def save_model(self, file_path: str):
+        pass
+    
+    def load_model(self, file_path: str):
+        pass
+
+    def save_quantized_model(self, file_path: str):
+        pass
+
+    
+    def load_quantized_model(self, file_path: str):
+        pass
+
+    def get_weights(self):
+        return {}
+    def get_inputs_from_file(self, input_file, is_scaled = True):
+        if is_scaled:
+            return read_from_json(input_file)
+        return read_from_json(input_file)* (2**self.scaling)
+    
+    def format_outputs(self, output):
+        return {"output":output}

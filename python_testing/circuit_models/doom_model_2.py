@@ -89,7 +89,7 @@ class Doom(ZKModel):
     def get_model_params(self):
         exclude_keys = ['quantized', 'scaling']
         
-        input_arr = self.get_inputs(self.input_data_file).reshape([1,4,28,28])[:,0,:,:].reshape([1,1,28,28])        
+        input_arr = self.get_inputs_from_file(self.input_data_file).reshape([1,4,28,28])[:,0,:,:].reshape([1,1,28,28])        
         
 
         inputs = {"input": input_arr.long().tolist()}
@@ -97,9 +97,9 @@ class Doom(ZKModel):
         weights_2 = {}
         input = {}
         output = {}
-        first_inputs = np.asarray(torch.tensor(self.read_input()).reshape([1,4,28,28])[:,0,:,:].reshape([1,1,28,28]))
+        first_inputs = np.asarray(torch.as_tensor(self.read_input()).reshape([1,4,28,28])[:,0,:,:].reshape([1,1,28,28]))
         outputs = self.read_output(self.file_name, first_inputs, is_torch=False)
-        temp = torch.tensor(self.read_input()).reshape([1,4,28,28])[:,0,:,:].reshape([1,1,28,28])
+        temp = torch.as_tensor(self.read_input()).reshape([1,4,28,28])[:,0,:,:].reshape([1,1,28,28])
         
         layers = ["conv1", "relu", "conv2", "relu", "reshape", "fc1", "relu", "fc2"]
         layer_translation = {"fc1": "d1", "fc2": "d2"}
