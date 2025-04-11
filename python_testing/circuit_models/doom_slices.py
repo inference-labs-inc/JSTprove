@@ -73,6 +73,8 @@ class DoomSlice(ZKModel):
         with open(file_name, 'r') as file:
             data = json.load(file)
             return data["output"]
+        
+
 class DoomConv1(DoomSlice):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]

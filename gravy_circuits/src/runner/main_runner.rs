@@ -1057,17 +1057,17 @@ where
     run_debug::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
 }
 
-pub fn handle_args<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut  Filereader) 
+pub fn handle_args<C: Config,CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, C>>(file_reader: &mut  Filereader) 
 where
     CircuitDefaultType: std::default::Default
-    + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>
+    + DumpLoadTwoVariables<<C>::CircuitField>
     + std::clone::Clone,
 
     CircuitType: std::default::Default +
     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
     // + std::clone::Clone + GenericDefine<expander_compiler::frontend::BN254Config>,
 // + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
-    + std::clone::Clone + Define<expander_compiler::frontend::BN254Config>
+    + std::clone::Clone + Define<C>
     {
 
     let matches: clap::ArgMatches = Command::new("File Copier")
@@ -1137,7 +1137,7 @@ where
         "run_proof" => {
             let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
             let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
-            run_main::<BN254Config, _,  CircuitType, CircuitDefaultType,>( file_reader, &input_path, &output_path);
+            run_main::<C, _,  CircuitType, CircuitDefaultType,>( file_reader, &input_path, &output_path);
         }
                                     
         "run_compile_circuit" => {
@@ -1147,7 +1147,7 @@ where
 
 
             
-            run_compile_and_serialize::<BN254Config,CircuitType>(&circuit_path);
+            run_compile_and_serialize::<C,CircuitType>(&circuit_path);
             // compile_circ(circuit_name, demo);
         }
         "run_gen_witness" => {
@@ -1156,7 +1156,7 @@ where
             // let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
             let witness_path = matches.get_one::<String>("witness").unwrap(); //"outputs/reward_output.json"
             let circuit_path = matches.get_one::<String>("circuit_path").unwrap(); //"outputs/reward_output.json"
-            run_witness::<BN254Config, _, CircuitDefaultType>(file_reader, input_path, output_path, &witness_path, circuit_path);
+            run_witness::<C, _, CircuitDefaultType>(file_reader, input_path, output_path, &witness_path, circuit_path);
             // debug_witness::<BN254Config, _, CircuitDefaultType, CircuitType>(file_reader, input_path, output_path, &witness_path, circuit_path);
 
             // debug_bn254::<BN254Config, _, CircuitType>(file_reader);
@@ -1170,7 +1170,7 @@ where
             let proof_path = matches.get_one::<String>("proof").unwrap(); //"outputs/reward_output.json"
             let circuit_path = matches.get_one::<String>("circuit_path").unwrap(); //"outputs/reward_output.json"
 
-            run_prove_witness::<BN254Config, CircuitDefaultType>( circuit_path, witness_path, proof_path);
+            run_prove_witness::<C, CircuitDefaultType>( circuit_path, witness_path, proof_path);
         }
         "run_gen_verify"=> {
 
@@ -1183,7 +1183,7 @@ where
 
 
             // run_verify::<BN254Config, Filereader, CircuitDefaultType>(&circuit_name);
-            run_verify_io::<BN254Config, Filereader, CircuitDefaultType>(&circuit_path, file_reader, &input_path, &output_path, witness_path, proof_path);
+            run_verify_io::<C, Filereader, CircuitDefaultType>(&circuit_path, file_reader, &input_path, &output_path, witness_path, proof_path);
         }
         _ => {
             panic!("Unknown command or missing arguments.");

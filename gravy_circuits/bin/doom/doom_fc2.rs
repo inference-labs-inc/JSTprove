@@ -166,5 +166,7 @@ fn main() {
     let mut file_reader = FileReader {
         path: "doom".to_owned(),
     };
-    handle_args::<DoomCircuit<Variable>,DoomCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
+    handle_args::<BN254Config, DoomCircuit<Variable>,DoomCircuit<_>,_>(&mut file_reader);
+    // handle_args::<M31Config, DoomCircuit<Variable>,DoomCircuit<_>,_>(&mut file_reader);
+    // handle_args::<GF2Config, DoomCircuit<Variable>,DoomCircuit<_>,_>(&mut file_reader);
 }

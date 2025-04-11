@@ -107,8 +107,7 @@ impl<C: Config>IOReader<MatAddCircuit<C::CircuitField>, C> for FileReader
 
 fn main(){
     let mut file_reader = FileReader{path: "matrix_addition".to_owned(),};
-    // run_gf2();
-    // run_m31();
-    //                         build::<M31Config>
-    handle_args::<MatAddCircuit<Variable>,MatAddCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
+    handle_args::<BN254Config, MatAddCircuit<Variable>,MatAddCircuit<_>,_>(&mut file_reader);
+    // handle_args::<M31Config, MatAddCircuit<Variable>,MatAddCircuit<_>,_>(&mut file_reader);
+    // handle_args::<GF2Config, MatAddCircuit<Variable>,MatAddCircuit<_>,_>(&mut file_reader);
 }

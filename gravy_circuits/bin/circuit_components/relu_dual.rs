@@ -110,7 +110,7 @@ fn main() {
     let mut file_reader = FileReader {
         path: "relu_dual".to_owned(),
     };
-    // run_gf2();
-    // run_m31();
-    handle_args::<ReLUDualCircuit<Variable>,ReLUDualCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
+    handle_args::<BN254Config, ReLUDualCircuit<Variable>,ReLUDualCircuit<_>,_>(&mut file_reader);
+    // handle_args::<M31Config, ReLUDualCircuit<Variable>,ReLUDualCircuit<_>,_>(&mut file_reader);
+    // handle_args::<GF2Config, ReLUDualCircuit<Variable>,ReLUDualCircuit<_>,_>(&mut file_reader);
 }

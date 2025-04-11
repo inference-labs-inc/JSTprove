@@ -145,6 +145,9 @@ fn main() {
     };
     // run_gf2();
     // run_m31();
-    handle_args::<Circuit<Variable>,Circuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
+    handle_args::<BN254Config, Circuit<Variable>,Circuit<_>,_>(&mut file_reader);
+    // handle_args::<M31Config, Circuit<Variable>,Circuit<_>,_>(&mut file_reader);
+    // handle_args::<GF2Config, Circuit<Variable>,Circuit<_>,_>(&mut file_reader);
+
 }
 

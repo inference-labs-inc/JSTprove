@@ -208,5 +208,7 @@ fn main() {
     let mut file_reader = FileReader {
         path: "eth_fraud".to_owned(),
     };
-    handle_args::<ConvCircuit<Variable>,ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
+    handle_args::<BN254Config, ConvCircuit<Variable>,ConvCircuit<_>,_>(&mut file_reader);
+    // handle_args::<M31Config, ConvCircuit<Variable>,ConvCircuit<_>,_>(&mut file_reader);
+    // handle_args::<GF2Config, ConvCircuit<Variable>,ConvCircuit<_>,_>(&mut file_reader);
 }

@@ -85,7 +85,10 @@ class GeneralLayerFunctions():
     def get_inputs(self, file_path:str = None, is_scaled = False):
         if file_path == None:
             return self.create_new_inputs()
-        return self.get_inputs_from_file(file_path, is_scaled=is_scaled).reshape(self.input_shape)
+        if hasattr(self, "input_shape"):
+            return self.get_inputs_from_file(file_path, is_scaled=is_scaled).reshape(self.input_shape)
+        else:
+            raise NotImplementedError("Must define attribute input_shape")
     
     def create_new_inputs(self):
         return torch.mul(torch.rand(self.input_shape) * 2 - 1, 2**self.scaling).long()
@@ -224,14 +227,18 @@ class PytorchConverter():
 
         return weights
     
-    def get_model_and_quantize(self):
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    def get_model(self, device):
         try:
             model = self.model_type(**getattr(self, 'model_params', {})).to(device)
+            return model
         except AttributeError:
             raise NotImplementedError(f"Must specify the model type as a pytorch model (as variable self.model_type) in object {self.__class__.__name__}")
         except TypeError as e: 
             raise NotImplementedError(f"{e}. \n Must specify the model parameters of the pytorch model (as dictionary in self.model_params) in object {self.__class__.__name__}.")
+
+    def get_model_and_quantize(self):
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = self.get_model(device)
         
         if hasattr(self, 'model_file_name'):
             print(f"Loading model from file {self.model_file_name}")
@@ -241,7 +248,7 @@ class PytorchConverter():
             print("Creating new model as no saved file path was specified")
         model.eval()
         self.model = model
-        self.quantized_model = self.quantize_model(model, 2**self.scaling, rescale_config=self.rescale_config)
+        self.quantized_model = self.quantize_model(model, 2**self.scaling, rescale_config=getattr(self,"rescale_config", {}))
         self.quantized_model.eval()
 
     def test_accuracy(self):

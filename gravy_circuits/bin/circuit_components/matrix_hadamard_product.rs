@@ -130,5 +130,7 @@ fn main() {
     let mut file_reader = FileReader {
         path: "matrix_hadamard_product".to_owned(),
     };
-    handle_args::<MatHadamardCircuit<Variable>,MatHadamardCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
+    handle_args::<BN254Config, MatHadamardCircuit<Variable>,MatHadamardCircuit<_>,_>(&mut file_reader);
+    // handle_args::<M31Config, MatHadamardCircuit<Variable>,MatHadamardCircuit<_>,_>(&mut file_reader);
+    // handle_args::<GF2Config, MatHadamardCircuit<Variable>,MatHadamardCircuit<_>,_>(&mut file_reader);
 }
