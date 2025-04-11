@@ -34,43 +34,17 @@ const DIM4: usize = 28; // k
 //Define structure of inputs, weights and output
 #[derive(Deserialize, Clone)]
 struct WeightsData {
-    conv1_weights: Vec<Vec<Vec<Vec<i64>>>>,
-    conv1_bias: Vec<i64>,
-    conv1_strides: Vec<u32>,
-    conv1_kernel_shape: Vec<u32>,
-    conv1_group: Vec<u32>,
-    conv1_dilation: Vec<u32>,
-    conv1_pads: Vec<u32>,
-    conv1_input_shape: Vec<u32>,
-    quantized: bool,
+    conv_weights: Vec<Vec<Vec<Vec<Vec<i64>>>>>,
+    conv_bias: Vec<Vec<i64>>,
+    conv_strides: Vec<Vec<u32>>,
+    conv_kernel_shape: Vec<Vec<u32>>,
+    conv_group: Vec<Vec<u32>>,
+    conv_dilation: Vec<Vec<u32>>,
+    conv_pads: Vec<Vec<u32>>,
+    conv_input_shape: Vec<Vec<u32>>,
     scaling: u64,
-    // conv2_weights: Vec<Vec<Vec<Vec<i64>>>>,
-    // conv2_bias: Vec<i64>,
-    // conv2_strides: Vec<u32>,
-    // conv2_kernel_shape: Vec<u32>,
-    // conv2_group: Vec<u32>,
-    // conv2_dilation: Vec<u32>,
-    // conv2_pads: Vec<u32>,
-    // conv2_input_shape: Vec<u32>,
-    // conv3_weights: Vec<Vec<Vec<Vec<i64>>>>,
-    // conv3_bias: Vec<i64>,
-    // conv3_strides: Vec<u32>,
-    // conv3_kernel_shape: Vec<u32>,
-    // conv3_group: Vec<u32>,
-    // conv3_dilation: Vec<u32>,
-    // conv3_pads: Vec<u32>,
-    // conv3_input_shape: Vec<u32>,
-    // fc1_alpha: u32,
-    // fc1_beta: u32,
-    // fc1_weights: Vec<Vec<i64>>,
-    // fc1_bias: Vec<Vec<i64>>,
-}
-#[derive(Deserialize, Clone)]
-struct WeightsData2 {
-    // fc2_alpha: u32,
-    // fc2_beta: u32,
-    // fc2_weights: Vec<Vec<i64>>,
-    // fc2_bias: Vec<Vec<i64>>,
+    // fc_weights: Vec<Vec<Vec<i64>>>,
+    // fc_bias: Vec<Vec<Vec<i64>>>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -85,7 +59,6 @@ struct OutputData {
 
 // This reads the weights json into a string
 const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/doom_weights.json");
-const MATRIX_WEIGHTS_FILE2: &str = include_str!("../../../weights/doom_weights2.json");
 
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
@@ -97,15 +70,6 @@ lazy_static! {
         x
     };
 }
-
-lazy_static! {
-    static ref WEIGHTS_INPUT2: WeightsData2 = {
-        let x: WeightsData2 =
-            serde_json::from_str(MATRIX_WEIGHTS_FILE2).expect("JSON was not well-formatted");
-        x
-    };
-}
-
 declare_circuit!(DoomCircuit {
     input_arr: [[[[Variable; DIM4]; DIM3]; DIM2]; DIM1], // shape (m, n)
     outputs: [[[[Variable; 28]; 28]; 16]; 1], // shape (m, k) 1, 16, 28, 28
@@ -128,9 +92,9 @@ impl<C: Config> Define<C> for DoomCircuit<Variable> {
         //     panic!("Not yet implemented for fc alpha or beta not equal to 1");
         // }
 
-        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv1_weights);
+        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv_weights[0]);
         let bias: Vec<Variable> = WEIGHTS_INPUT
-            .conv1_bias
+            .conv_bias[0]
             .clone()
             .into_iter()
             .map(|x| load_circuit_constant(api, x))
@@ -138,7 +102,7 @@ impl<C: Config> Define<C> for DoomCircuit<Variable> {
 
         let input_arr = four_d_array_to_vec(self.input_arr);
 
-        let out = conv_4d_run(api, input_arr, weights, bias,&WEIGHTS_INPUT.conv1_dilation, &WEIGHTS_INPUT.conv1_kernel_shape, &WEIGHTS_INPUT.conv1_pads, &WEIGHTS_INPUT.conv1_strides,&WEIGHTS_INPUT.conv1_input_shape, WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv1_group, WEIGHTS_INPUT.quantized, v_plus_one, two_v, alpha_2_v, true);
+        let out = conv_4d_run(api, input_arr, weights, bias,&WEIGHTS_INPUT.conv_dilation[0], &WEIGHTS_INPUT.conv_kernel_shape[0], &WEIGHTS_INPUT.conv_pads[0], &WEIGHTS_INPUT.conv_strides[0],&WEIGHTS_INPUT.conv_input_shape[0], WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv_group[0], true, v_plus_one, two_v, alpha_2_v, true);
         
         for (j, dim1) in self.outputs.iter().enumerate() {
                 for (k, dim2) in dim1.iter().enumerate() {

@@ -236,7 +236,7 @@ class Eth(ZKModel):
     
 
 if __name__ == "__main__":
-    name = "doom"
+    name = "eth"
     d = Eth()
     d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
     # d.save_quantized_model("quantized_model.pth")

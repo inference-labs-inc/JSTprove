@@ -30,48 +30,22 @@ matrix product ab has shape (m, k)
 //Define structure of inputs, weights and output
 #[derive(Deserialize, Clone)]
 struct WeightsData {
-    // conv1_weights: Vec<Vec<Vec<Vec<i64>>>>,
-    // conv1_bias: Vec<i64>,
-    // conv1_strides: Vec<u32>,
-    // conv1_kernel_shape: Vec<u32>,
-    // conv1_group: Vec<u32>,
-    // conv1_dilation: Vec<u32>,
-    // conv1_pads: Vec<u32>,
-    // conv1_input_shape: Vec<u32>,
-    quantized: bool,
+    // conv_weights: Vec<Vec<Vec<Vec<Vec<i64>>>>>,
+    // conv_bias: Vec<Vec<i64>>,
+    // conv_strides: Vec<Vec<u32>>,
+    // conv_kernel_shape: Vec<Vec<u32>>,
+    // conv_group: Vec<Vec<u32>>,
+    // conv_dilation: Vec<Vec<u32>>,
+    // conv_pads: Vec<Vec<u32>>,
+    // conv_input_shape: Vec<Vec<u32>>,
     scaling: u64,
-    // conv2_weights: Vec<Vec<Vec<Vec<i64>>>>,
-    // conv2_bias: Vec<i64>,
-    // conv2_strides: Vec<u32>,
-    // conv2_kernel_shape: Vec<u32>,
-    // conv2_group: Vec<u32>,
-    // conv2_dilation: Vec<u32>,
-    // conv2_pads: Vec<u32>,
-    // conv2_input_shape: Vec<u32>,
-    // conv3_weights: Vec<Vec<Vec<Vec<i64>>>>,
-    // conv3_bias: Vec<i64>,
-    // conv3_strides: Vec<u32>,
-    // conv3_kernel_shape: Vec<u32>,
-    // conv3_group: Vec<u32>,
-    // conv3_dilation: Vec<u32>,
-    // conv3_pads: Vec<u32>,
-    // conv3_input_shape: Vec<u32>,
-    // fc1_alpha: u32,
-    // fc1_beta: u32,
-    fc1_weights: Vec<Vec<i64>>,
-    fc1_bias: Vec<Vec<i64>>,
-}
-#[derive(Deserialize, Clone)]
-struct WeightsData2 {
-    // fc2_alpha: u32,
-    // fc2_beta: u32,
-    // fc2_weights: Vec<Vec<i64>>,
-    // fc2_bias: Vec<Vec<i64>>,
+    fc_weights: Vec<Vec<Vec<i64>>>,
+    fc_bias: Vec<Vec<Vec<i64>>>,
 }
 
 #[derive(Deserialize, Clone)]
 struct InputData {
-    input: Vec<Vec<Vec<Vec<i64>>>>,
+    output: Vec<Vec<Vec<Vec<i64>>>>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -81,7 +55,6 @@ struct OutputData {
 
 // This reads the weights json into a string
 const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/doom_weights.json");
-const MATRIX_WEIGHTS_FILE2: &str = include_str!("../../../weights/doom_weights2.json");
 
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
@@ -94,13 +67,6 @@ lazy_static! {
     };
 }
 
-lazy_static! {
-    static ref WEIGHTS_INPUT2: WeightsData2 = {
-        let x: WeightsData2 =
-            serde_json::from_str(MATRIX_WEIGHTS_FILE2).expect("JSON was not well-formatted");
-        x
-    };
-}
 
 declare_circuit!(DoomCircuit {
     input_arr: [[[[Variable; 7]; 7]; 32]; 1], // shape (m, n)
@@ -135,13 +101,13 @@ impl<C: Config> Define<C> for DoomCircuit<Variable> {
 
         let out_2d = vec![out_1d];
 
-        let weights = read_2d_weights(api, &WEIGHTS_INPUT.fc1_weights);
-        let bias = read_2d_weights(api, &WEIGHTS_INPUT.fc1_bias);
+        let weights = read_2d_weights(api, &WEIGHTS_INPUT.fc_weights[0]);
+        let bias = read_2d_weights(api, &WEIGHTS_INPUT.fc_bias[0]);
 
         let out_2d = matrix_multplication_naive2(api, out_2d, weights);
         let out_2d = matrix_addition_vec(api, out_2d, bias);
 
-        let out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, WEIGHTS_INPUT.quantized, out_2d, v_plus_one, two_v, alpha_2_v, true);
+        let out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, true, out_2d, v_plus_one, two_v, alpha_2_v, true);
 
         for (j, dim1) in self.outputs.iter().enumerate() {
                 for (k, _out) in dim1.iter().enumerate() {
@@ -163,7 +129,7 @@ impl<C: Config> IOReader<DoomCircuit<C::CircuitField>, C> for FileReader {
         >(file_path);
 
         // Assign inputs to assignment
-        for (i, dim1) in data.input.iter().enumerate() {
+        for (i, dim1) in data.output.iter().enumerate() {
             for (j, dim2) in dim1.iter().enumerate() {
                 for (k, dim3) in dim2.iter().enumerate() {
                     for (l, &element) in dim3.iter().enumerate() {

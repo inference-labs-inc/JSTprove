@@ -106,7 +106,7 @@ def prepare_io_files(func):
         if not kwargs.get("quantized_model_path", None) is None:
             quantized_model_path = kwargs["quantized_model_path"]
         else:
-            quantized_model_path = "quantized_model.pth"
+            quantized_model_path = f"quantized_model_{self.__class__.__name__}.pth"
         
         is_scaled = True
 
@@ -138,7 +138,7 @@ def prepare_io_files(func):
             func_model_and_quantize = getattr(self, 'get_model_and_quantize', None)
             if callable(func_model_and_quantize):
                 func_model_and_quantize()
-                
+
             weights = self.get_weights()
             self.save_quantized_model(quantized_model_path)
             if type(weights) == list:

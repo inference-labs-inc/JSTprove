@@ -146,4 +146,29 @@ This CLI tool runs various circuit operations such as compilation, witness gener
    python cli.py --circuit demo_cnn --class Demo --gen_witness --input inputs/demo_cnn_input.json --output output/demo_cnn_output.json  --circuit_path demo_circuit.txt
 
    ```
+
+
+   To run Doom and the relevant slices
+
+   python cli.py --circuit doom_model --class Doom --compile --circuit_path doom_circuit.txt
+   python cli.py --circuit doom_model --class Doom --gen_witness --input inputs/doom_input.json --output output/doom_output.json  --circuit_path doom_circuit.txt
+
+
+   python cli.py --circuit doom_slices --class DoomConv1 --compile --circuit_path doom_conv1_circuit.txt
+   python cli.py --circuit doom_slices --class DoomConv1 --gen_witness --input inputs/doom_input.json --output output/doom_conv1_output.json  --circuit_path doom_conv1_circuit.txt
+
+   python cli.py --circuit doom_slices --class DoomConv2 --compile --circuit_path doom_conv2_circuit.txt
+   python cli.py --circuit doom_slices --class DoomConv2 --gen_witness --input output/doom_conv1_output.json --output output/doom_conv2_output.json  --circuit_path doom_conv2_circuit.txt
+
+
+   python cli.py --circuit doom_slices --class DoomConv3 --compile --circuit_path doom_conv3_circuit.txt
+   python cli.py --circuit doom_slices --class DoomConv3 --gen_witness --input output/doom_conv2_output.json --output output/doom_conv3_output.json  --circuit_path doom_conv3_circuit.txt
+
+   python cli.py --circuit doom_slices --class DoomFC1 --compile --circuit_path doom_fc1_circuit.txt
+   python cli.py --circuit doom_slices --class DoomFC1 --gen_witness --input output/doom_conv3_output.json --output output/doom_fc1_output.json  --circuit_path doom_fc1_circuit.txt
+
+   python cli.py --circuit doom_slices --class DoomFC2 --compile --circuit_path doom_fc2_circuit.txt
+   python cli.py --circuit doom_slices --class DoomFC2 --gen_witness --input output/doom_fc1_output.json --output output/doom_fc2_output.json  --circuit_path doom_fc2_circuit.txt
+   python cli.py --circuit doom_slices --class DoomFC2 --gen_witness --input output/doom_fc1_output.json --output output/doom_output.json  --circuit_path doom_fc2_circuit.txt
+
    

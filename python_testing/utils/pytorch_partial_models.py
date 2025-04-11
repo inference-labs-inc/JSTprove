@@ -26,9 +26,9 @@ class QuantizedLinear(nn.Module):
         
         out = torch.matmul(x, self.weight.t())
         out += self.bias
-
         if self.rescale_output:
             out = out >> self.shift  # scale down
+
 
         return out
     
