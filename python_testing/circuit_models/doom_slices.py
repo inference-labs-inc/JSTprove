@@ -64,7 +64,7 @@ class DoomSlice(ZKModel):
         setattr(model,self.slice_name_in_model, getattr(large_model,self.large_model_slice_name))
         model.eval()
         self.model = model
-        self.quantized_model = self.quantize_model(model, self.base**self.scaling, rescale_config=getattr(self,"rescale_config",{}))
+        self.quantized_model = self.quantize_model(model, self.scale_base**self.scaling, rescale_config=getattr(self,"rescale_config",{}))
         self.quantized_model.eval()  
 
     def read_input(self, file_name = "doom_data/doom_input.json"):
