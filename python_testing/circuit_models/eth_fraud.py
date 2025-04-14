@@ -84,29 +84,6 @@ def load_data():
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     return train_loader, val_loader, scaler
-
-# class FraudDetectionCNN(nn.Module):
-#     def __init__(self, input_dim):
-#         super(FraudDetectionCNN, self).__init__()
-
-#         self.conv1 = nn.Conv1d(in_channels=1, out_channels=16, kernel_size=3, stride=1, padding=1)
-#         self.conv2 = nn.Conv1d(in_channels=16, out_channels=32, kernel_size=3, stride=1, padding=1)
-
-#         # self.fc1 = nn.Linear(32 * input_dim, 64)
-#         self.fc1 = nn.Linear(1504, 64)
-#         self.fc2 = nn.Linear(64, 1)
-
-#         self.relu = nn.ReLU()
-#         self.flatten = nn.Flatten()
-
-#     def forward(self, x):
-#         x = x.unsqueeze(1).unsqueeze(1)  # Add channel dimension for Conv1d
-#         x = self.relu(self.conv1(x))
-#         x = self.relu(self.conv2(x))
-#         x = self.flatten(x)
-#         x = self.relu(self.fc1(x))
-#         x = self.fc2(x)
-#         return x
     
 class FraudDetectionCNN(nn.Module):
     def __init__(self, input_dim):
@@ -217,6 +194,7 @@ class Eth(ZKModel):
 
 
         self.scaling = 21
+        self.scale_base = 2
         self.input_shape = [1, 1, 1, 47]
         self.rescale_config = {"fc2": False}
         self.model_type = FraudDetectionCNN

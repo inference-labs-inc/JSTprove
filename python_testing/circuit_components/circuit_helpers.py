@@ -212,7 +212,7 @@ class Circuit:
     def get_inputs_from_file(self, input_file, is_scaled = True):
         if is_scaled:
             return read_from_json(input_file)
-        return read_from_json(input_file)* (2**self.scaling)
+        return read_from_json(input_file)* (self.scale_base**self.scaling)
     
     def format_outputs(self, output):
         return {"output":output}

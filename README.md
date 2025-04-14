@@ -171,4 +171,9 @@ This CLI tool runs various circuit operations such as compilation, witness gener
    python cli.py --circuit doom_slices --class DoomFC2 --gen_witness --input output/doom_fc1_output.json --output output/doom_fc2_output.json  --circuit_path doom_fc2_circuit.txt
    python cli.py --circuit doom_slices --class DoomFC2 --gen_witness --input output/doom_fc1_output.json --output output/doom_output.json  --circuit_path doom_fc2_circuit.txt
 
+
+
+   python cli.py --circuit eth_fraud --class Eth --compile --circuit_path eth_fraud_circuit.txt
+   python cli.py --circuit eth_fraud --class Eth --gen_witness --input inputs/eth_fraud_input.json --output output/eth_fraud_output.json  --circuit_path eth_fraud_circuit.txt
+
    

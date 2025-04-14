@@ -40,7 +40,7 @@ def find_file(filename: str, default_path: Optional[Path] = None) -> Path:
         candidate = PROJECT_ROOT / default_path
         if candidate.is_file():
             return candidate
-
+    return default_path
     all_json_files = _get_all_json_files()
     for path in all_json_files:
         if path.name == filename:

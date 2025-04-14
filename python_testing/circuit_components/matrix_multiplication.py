@@ -35,6 +35,8 @@ class MatrixMultiplication(ZKModel):
 
 
         self.scaling = 21
+        self.scale_base = 2
+
 
         self.N_ROWS_A: int = 1; # m
         self.N_COLS_A: int = 1568; # n
@@ -95,6 +97,7 @@ class QuantizedMatrixMultiplicationReLU(MatrixMultiplication):
         self.input_data_file = "doom_data/doom_input.json"
 
 
+        self.scale_base = 2
         self.scaling = 21
 
         self.N_ROWS_A: int = 1; # m

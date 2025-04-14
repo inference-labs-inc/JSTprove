@@ -20,7 +20,8 @@ class ReLU(Circuit):
         #######################################################################################################
         '''
         self.conversion_type = conversion_type
-        self.scaling = 2 ** 21
+        self.scaling = 21
+        self.scale_base = 2
         if conversion_type == ConversionType.DUAL_MATRIX:
             # Specify
             self.name = "relu_dual"

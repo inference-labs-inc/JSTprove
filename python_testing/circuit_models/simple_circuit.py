@@ -14,10 +14,11 @@ class SimpleCircuit(Circuit):
         super().__init__()
         
         # Circuit-specific parameters
-        self.layers = {}
+        # self.layers = {}
         self.name = "simple_circuit"  # Use exact name that matches the binary
         self.scaling = 1
-        self.cargo_binary_name = "simple_circuit"
+        self.scale_base = 1
+        # self.cargo_binary_name = "simple_circuit"
         
         self.input_a = 100#randint(0,10000)
         self.input_b = 200#randint(0,10000)

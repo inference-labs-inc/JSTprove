@@ -64,7 +64,7 @@ class DoomSlice(ZKModel):
         setattr(model,self.slice_name_in_model, getattr(large_model,self.large_model_slice_name))
         model.eval()
         self.model = model
-        self.quantized_model = self.quantize_model(model, 2**self.scaling, rescale_config=getattr(self,"rescale_config",{}))
+        self.quantized_model = self.quantize_model(model, self.base**self.scaling, rescale_config=getattr(self,"rescale_config",{}))
         self.quantized_model.eval()  
 
     def read_input(self, file_name = "doom_data/doom_input.json"):
@@ -85,6 +85,7 @@ class DoomConv1(DoomSlice):
 
 
         self.scaling = 21
+        self.scale_base = 2
         self.input_shape = [1, 4, 28, 28]
         self.model_type = Conv2DModelReLU
         self.model_params = {"in_channels": 4, "out_channels": 16, "kernel_size": 3, "stride": 1, 'padding': 1}
@@ -105,6 +106,7 @@ class DoomConv2(DoomSlice):
         # self.model_file_name = "model/doom_conv1_checkpoint.pth"
 
 
+        self.scale_base = 2
         self.scaling = 21
         self.input_shape = [1, 16, 28, 28]
         self.model_type = Conv2DModelReLU
@@ -122,6 +124,7 @@ class DoomConv3(DoomSlice):
 
 
         self.scaling = 21
+        self.scale_base = 2
         self.input_shape = [1, 32, 14, 14]
         self.model_type = Conv2DModelReLU
         self.model_params = {"in_channels": 32, "out_channels": 32, "kernel_size": 3, "stride": 2, 'padding': 1}
@@ -138,6 +141,7 @@ class DoomFC1(DoomSlice):
 
 
         self.scaling = 21
+        self.scale_base = 2
         self.input_shape = [1, 1568]
         self.model_type = MatrixMultiplicationReLUModel
         self.model_params = {"in_channels": 1568, "out_channels":256, "bias" : True}
@@ -160,6 +164,7 @@ class DoomFC2(DoomSlice):
         # self.model_file_name = "model/doom_conv1_checkpoint.pth"
 
 
+        self.scale_base = 2
         self.scaling = 21
         self.input_shape = [1, 256]
         self.model_type = MatrixMultiplicationModel

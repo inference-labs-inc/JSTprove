@@ -83,6 +83,7 @@ class Demo(ZKModel):
 
         self.name = "demo_cnn"
         self.required_keys = ["input"]
+        self.scale_base = 2
         self.scaling = 21
 
 

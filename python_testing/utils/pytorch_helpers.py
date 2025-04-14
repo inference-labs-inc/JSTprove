@@ -77,7 +77,7 @@ class GeneralLayerFunctions():
         inputs = self.read_input(file_name)
         if is_scaled:
             return torch.as_tensor(inputs).long()
-        return torch.mul(torch.as_tensor(inputs),2**self.scaling).long()
+        return torch.mul(torch.as_tensor(inputs),self.scale_base**self.scaling).long()
     
     def get_outputs(self, inputs):
         return self.quantized_model(inputs)
@@ -91,7 +91,7 @@ class GeneralLayerFunctions():
             raise NotImplementedError("Must define attribute input_shape")
     
     def create_new_inputs(self):
-        return torch.mul(torch.rand(self.input_shape) * 2 - 1, 2**self.scaling).long()
+        return torch.mul(torch.rand(self.input_shape) * 2 - 1, self.scale_base**self.scaling).long()
 
     def format_inputs(self, inputs):
         return {"input": inputs.long().tolist()}
@@ -208,6 +208,8 @@ class PytorchConverter():
         
         weights = {}
         weights["scaling"] = self.scaling
+        weights["sacle_base"] = self.scale_base
+
         
         for name, module in used_layers:
 
@@ -248,14 +250,14 @@ class PytorchConverter():
             print("Creating new model as no saved file path was specified")
         model.eval()
         self.model = model
-        self.quantized_model = self.quantize_model(model, 2**self.scaling, rescale_config=getattr(self,"rescale_config", {}))
+        self.quantized_model = self.quantize_model(model, self.scale_base**self.scaling, rescale_config=getattr(self,"rescale_config", {}))
         self.quantized_model.eval()
 
     def test_accuracy(self):
         inputs = torch.rand(self.input_shape)*2 - 1
         print(self.model(inputs))
-        q_inputs = inputs*(2**self.scaling)
-        print(self.quantized_model(q_inputs)/(2**(2*self.scaling)))
+        q_inputs = inputs*(self.scale_base**self.scaling)
+        print(self.quantized_model(q_inputs)/(self.scale_base**(2*self.scaling)))
 
 
 # TODO CHANGE THIS NESTED STRUCTURE, DONE FOR EASE FOR NOW, BUT IT NEEDS IMPROVEMENT

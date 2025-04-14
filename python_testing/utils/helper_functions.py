@@ -97,6 +97,11 @@ def prepare_io_files(func):
         if not kwargs.get("witness_file", None) is None:
             witness_file = kwargs["witness_file"]
         kwargs.pop("witness_file", None)
+        if not kwargs.get("circuit_path", None) is None:
+            circuit_path = kwargs["circuit_path"]
+        else:
+            circuit_path = None
+        kwargs.pop("circuit_path", None)
         
 
         # No functionality for the following couple outside of this.
@@ -106,7 +111,11 @@ def prepare_io_files(func):
         if not kwargs.get("quantized_model_path", None) is None:
             quantized_model_path = kwargs["quantized_model_path"]
         else:
-            quantized_model_path = f"quantized_model_{self.__class__.__name__}.pth"
+            if circuit_path:
+                name = os.path.splitext(os.path.basename(circuit_path))[0]
+                quantized_model_path = f"{name}_quantized_model.pth"
+            else:
+                quantized_model_path = f"quantized_model_{self.__class__.__name__}.pth"
         
         is_scaled = True
 

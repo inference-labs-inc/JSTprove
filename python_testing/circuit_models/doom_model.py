@@ -53,10 +53,10 @@ class Doom(ZKModel):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom"
-        self.input_data_file = "doom_data/doom_input.json"
         self.model_file_name = file_name
 
 
+        self.scale_base = 2
         self.scaling = 21
         self.input_shape = [1, 4, 28, 28]
         self.rescale_config = {"fc2": False}
