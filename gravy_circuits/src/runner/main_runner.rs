@@ -313,6 +313,7 @@ where
     // let start = Instant::now();
     // println!("{:?}", format!("{}_witness_solver.txt", io_reader.get_path()));
     // let file = std::fs::File::open(format!("{}_witness_solver.txt", io_reader.get_path())).unwrap();
+    println!("{}", get_witness_solver_path(circuit_path));
     let file = std::fs::File::open(get_witness_solver_path(circuit_path)).unwrap();
     let reader = std::io::BufReader::new(file);
     let witness_solver = WitnessSolver::<C>::deserialize_from(reader).unwrap();

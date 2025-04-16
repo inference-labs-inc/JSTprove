@@ -120,6 +120,8 @@ class PytorchConverter():
 
 
     def expand_padding(self, padding_2):
+        if len(padding_2) != 2:
+            raise(ValueError("Expand padding requires initial padding of dimension 2"))
         pad_h, pad_w = padding_2
         return (pad_w, pad_w, pad_h, pad_h)
     
@@ -190,6 +192,7 @@ class PytorchConverter():
         quantized_model = self.clone_model_with_same_args(model)
         # Replace conv and fc layers
         for name, module in model.named_modules():
+
             rescale = rescale_config.get(name, True)
 
             if isinstance(module, nn.Conv2d):
@@ -263,7 +266,7 @@ class PytorchConverter():
 # TODO CHANGE THIS NESTED STRUCTURE, DONE FOR EASE FOR NOW, BUT IT NEEDS IMPROVEMENT
 class ZKModel(PytorchConverter, GeneralLayerFunctions, Circuit):
     def __init__(self):
-        raise(NotImplementedError, "Must implement")
+        raise NotImplementedError("Must implement __init__")
     
     
     @prepare_io_files
@@ -283,4 +286,4 @@ class ZKModel(PytorchConverter, GeneralLayerFunctions, Circuit):
         if not weights_path:
             weights_path = f"weights/{circuit_name}_weights.json"
 
-        self.parse_proof_run_type(witness_file, input_file, proof_file, public_path, verification_key, circuit_name, circuit_path, proof_system, output_file, run_type, dev_mode)
+        self.parse_proof_run_type(witness_file, input_file, proof_file, public_path, verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, run_type, dev_mode, ecc, write_json)

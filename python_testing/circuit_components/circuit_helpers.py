@@ -25,6 +25,13 @@ class Circuit:
         # This will be set by prepare_io_files decorator
         self._file_info = None
         self.required_keys = None
+
+        # self.check_attributes()
+
+    def check_attributes(self):
+        """Check if the necessary attributes are defined in subclasses."""
+        if not hasattr(self, 'required_keys') or not hasattr(self, 'name') or not hasattr(self, 'scaling') or not hasattr(self, 'scale_base'):
+            raise NotImplementedError("Subclasses must define 'required_keys', 'name', 'scaling' and 'scale_base'.")
     
     def parse_inputs(self, **kwargs):
         if self.required_keys is None:
@@ -56,7 +63,7 @@ class Circuit:
         Compute circuit outputs. This method should be implemented by subclasses.
         The decorator will ensure it's only computed once.
         """
-        raise NotImplementedError("get_outputs must be implemented")
+        raise NotImplementedError("get_inputs must be implemented")
     
     # def get_model_params(self, output):
     #     """
@@ -93,30 +100,40 @@ class Circuit:
         if circuit_path is None:
             circuit_path = f"{circuit_name}.txt"
 
+        weights_path = self._file_info.get("weights")
+
         # Run the appropriate proof operation based on run_type
         self.parse_proof_run_type(
 
             witness_file, input_file, proof_file, public_path, 
-            verification_key, circuit_name, circuit_path, proof_system, output_file, run_type, dev_mode, ecc
+            verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, run_type, dev_mode, ecc, write_json
         )
         
         return #self._file_info['outputs']
     
     def parse_proof_run_type(self, witness_file, input_file, proof_path, public_path, 
-                             verification_key, circuit_name, circuit_path, proof_system, output_file, run_type, dev_mode = False, ecc = True):
+                             verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, run_type, dev_mode = False, ecc = True, write_json = False):
         """
         Run the appropriate proof operation based on run_type.
         This function can be called directly if needed.
         """
+        print(run_type)
+
+        is_scaled = True
+        
         try:
             if run_type == RunType.BASE_TESTING:
                 prove_and_verify(witness_file, input_file, proof_path, public_path, 
                                 verification_key, circuit_name, proof_system, output_file, dev_mode, ecc)
             elif run_type == RunType.END_TO_END:
+                self._compile_preprocessing(weights_path)
+                self._gen_witness_preprocessing(input_file, output_file, write_json, is_scaled)
                 run_end_to_end(circuit_name, circuit_path, input_file, output_file, proof_system, dev_mode)
             elif run_type == RunType.COMPILE_CIRCUIT:
+                self._compile_preprocessing(weights_path)
                 compile_circuit(circuit_name, circuit_path, proof_system, dev_mode)
             elif run_type == RunType.GEN_WITNESS:
+                self._gen_witness_preprocessing(input_file, output_file, write_json, is_scaled)
                 generate_witness(circuit_name, circuit_path, witness_file, input_file, output_file, proof_system, dev_mode)
             elif run_type == RunType.PROVE_WITNESS:
                 generate_proof(circuit_name, circuit_path, witness_file, proof_path, proof_system, dev_mode, ecc=ecc)
@@ -128,7 +145,46 @@ class Circuit:
         except Exception as e:
             print(f"Warning: Operation {run_type} failed: {e}")
             print("Input and output files have still been created correctly.")
+
+    def _gen_witness_preprocessing(self, input_file, output_file, write_json, is_scaled):
+        self.load_quantized_model(self._file_info.get("quantized_model_path"))
+        if write_json == True:
+            inputs = self.get_inputs()
+            output = self.get_outputs(inputs)
+
+            input = self.format_inputs(inputs)
+            outputs = self.format_outputs(output)
+
+            print("TO JSON")
+            to_json(input, input_file)
+            to_json(outputs, output_file)
+        else:
+            inputs = self.get_inputs_from_file(input_file, is_scaled = is_scaled)
+                # Compute output (with caching via decorator)
+            output = self.get_outputs(inputs)
+            outputs = self.format_outputs(output)
+            to_json(outputs, output_file)
     
+    def _compile_preprocessing(self, weights_path):
+        #### TODO Fix the next couple lines
+        func_model_and_quantize = getattr(self, 'get_model_and_quantize', None)
+        if callable(func_model_and_quantize):
+            func_model_and_quantize()
+
+        weights = self.get_weights()
+        self.save_quantized_model(self._file_info.get("quantized_model_path"))
+        if type(weights) == list:
+            for (i, w) in enumerate(weights):
+                if i == 0:
+                    to_json(w, weights_path)
+                else:
+                    val = i + 1
+                    to_json(w, weights_path[:-5] + f"{val}" + weights_path[-5:])
+        elif type(weights) == dict:
+            to_json(weights, weights_path)
+        else:
+            raise NotImplementedError("Weights type is incorrect")
+
     # Individual operations that can be called separately
     def compile(self):
         """Compile the circuit."""
@@ -209,10 +265,17 @@ class Circuit:
 
     def get_weights(self):
         return {}
+    
     def get_inputs_from_file(self, input_file, is_scaled = True):
         if is_scaled:
             return read_from_json(input_file)
-        return read_from_json(input_file)* (self.scale_base**self.scaling)
+        
+        out = {}
+        read = read_from_json(input_file)
+        for k in read.keys():
+            out[k] = torch.as_tensor(read[k])*(self.scale_base**self.scaling)
+            out[k] = out[k].tolist()
+        return  out
     
     def format_outputs(self, output):
         return {"output":output}

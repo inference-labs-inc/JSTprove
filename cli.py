@@ -224,6 +224,7 @@ def main():
     for op in run_operations:
         if op == RunType.COMPILE_CIRCUIT:
             args.fresh_compile = True
+        print("test",args.circuit_path)
         circuit.base_testing(
             run_type=op,
             dev_mode=args.fresh_compile,
