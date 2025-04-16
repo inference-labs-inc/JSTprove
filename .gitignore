@@ -1,14 +1,28 @@
+# Output directories and temporary files
 inputs/
 output/
 proofs/
 temp/
+doom_data/
+doom_data/sample_*
+
+# Virtual environments
 .venv/
+env/
+venv/
 
-*.sym
-*.r1cs
+# System and metadata files
+.DS_Store
+.DS_*
+._*
 
-site/
+# IDE/editor folders
+.vscode/
+.idea/
+
+# Build artifacts and targets
 target/
+site/
 circom/target/
 circom_algebra/target/
 compiler/target/
@@ -16,27 +30,36 @@ constraint_generation/target/
 parser/target/
 program_structure/target/
 type_analysis/target/
-.idea/
-.vscode/
-.DS_Store
+vendor/
 
-*.zkey
-*.ptau
+# Compiled and cache files
+__pycache__/
+*.pyc
+*.pyo
+*.py[cod]
+*.ipynb_checkpoints/
+
+# Circuit-specific artifacts
 *.sym
 *.r1cs
+*.zkey
+*.ptau
 
+# Specific circuit files
 circom/reward_opt.r1cs
 circom/reward_opt.sym
 
-*.pyc
-
-doom_data/sample_*
-
+# Dataset and binary files
 *.json
 *.txt
 *.bin
 *.csv
-vendor/
+
+# Log files
+*.log
+
+# Archives
 *.zip
 
-doom_data/
+# Environment variables
+.env
