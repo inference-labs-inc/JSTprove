@@ -31,9 +31,12 @@ class SimpleCircuit(Circuit):
 
         self.scaling = 1
         self.scale_base = 1
+
+
+
         
-        self.input_a = 100#randint(0,10000)
-        self.input_b = 200#randint(0,10000)
+        self.input_a = 100
+        self.input_b = 200
         self.nonce = randint(0,10000)
     
     '''

@@ -20,8 +20,8 @@ class SimpleCircuit(Circuit):
         self.scale_base = 1
         # self.cargo_binary_name = "simple_circuit"
         
-        self.input_a = 100#randint(0,10000)
-        self.input_b = 200#randint(0,10000)
+        self.input_a = 100
+        self.input_b = 200
         #Currently a random value, not sure what value should fit with the validator scheme
         self.nonce = randint(0,10000)
         self.required_keys = ["input_a", "input_b", "nonce"]
