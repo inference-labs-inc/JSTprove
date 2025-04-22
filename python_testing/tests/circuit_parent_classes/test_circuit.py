@@ -3,7 +3,8 @@ from unittest.mock import patch, MagicMock
 
 
 with patch('python_testing.utils.helper_functions.compute_and_store_output', lambda x: x):  # MUST BE BEFORE THE UUT GETS IMPORTED ANYWHERE!
-    from python_testing.circuit_components.circuit_helpers import ZKProofSystems, RunType, Circuit
+    with patch('python_testing.utils.helper_functions.prepare_io_files', lambda f: f):  # MUST BE BEFORE THE UUT GETS IMPORTED ANYWHERE!
+        from python_testing.circuit_components.circuit_helpers import ZKProofSystems, RunType, Circuit
 
 
 
@@ -98,6 +99,8 @@ def test_parse_proof_dispatch_logic(
     )
     mock_compile.assert_called_once()
     c._compile_preprocessing.assert_called_once_with("weights")
+    args = mock_compile.call_args[0]
+    assert args == ('circuit', "path", ZKProofSystems.Expander, False)
 
     # GEN_WITNESS
     c.parse_proof_run_type(
@@ -106,6 +109,8 @@ def test_parse_proof_dispatch_logic(
     )
     mock_witness.assert_called_once()
     c._gen_witness_preprocessing.assert_called()
+    args = mock_witness.call_args[0]
+    assert args == ('circuit', "path", "w","i", "out", ZKProofSystems.Expander, False)
 
     # PROVE_WITNESS
     c.parse_proof_run_type(
@@ -113,6 +118,11 @@ def test_parse_proof_dispatch_logic(
         "out", "weights", RunType.PROVE_WITNESS
     )
     mock_proof.assert_called_once()
+    args = mock_proof.call_args[0]
+
+
+    assert args == ('circuit', "path", "w","p", ZKProofSystems.Expander, False)
+
 
     # GEN_VERIFY
     c.parse_proof_run_type(
@@ -120,6 +130,9 @@ def test_parse_proof_dispatch_logic(
         "out", "weights", RunType.GEN_VERIFY
     )
     mock_verify.assert_called_once()
+    args = mock_verify.call_args[0]
+    assert args == ('circuit', "path", "i","out", "w", "p", ZKProofSystems.Expander, False)
+
 
     # END_TO_END
     c.parse_proof_run_type(
@@ -136,7 +149,6 @@ def test_parse_proof_dispatch_logic(
         "out", "weights", RunType.BASE_TESTING
     )
     mock_prove_and_verify.assert_called_once()
-
 
 
 # ---------- Optional: test get_weights ----------
@@ -262,3 +274,168 @@ def test_compile_preprocessing_raises_on_bad_weights():
 
     with pytest.raises(NotImplementedError, match="Weights type is incorrect"):
         c._compile_preprocessing("weights.json")
+
+# ---------- Test check attributes --------------
+def test_check_attributes_true():
+    c = Circuit()
+    c.required_keys = ["input"]
+    c.name = "test"
+    c.scaling = 2
+    c.scale_base = 2
+    c.check_attributes()
+
+def test_check_attributes_no_scaling():
+    c = Circuit()
+    c.required_keys = ["input"]
+    c.name = "test"
+    c.scale_base = 2
+    with pytest.raises(NotImplementedError) as exc_info:
+        c.check_attributes()
+
+    msg = str(exc_info.value)
+    assert "Subclasses must define" in msg
+    assert "'scaling'" in msg
+
+
+def test_check_attributes_no_scalebase():
+    c = Circuit()
+    c.required_keys = ["input"]
+    c.name = "test"
+    c.scaling = 2
+
+    with pytest.raises(NotImplementedError) as exc_info:
+        c.check_attributes()
+
+    msg = str(exc_info.value)
+    assert "Subclasses must define" in msg
+    assert "'scale_base'" in msg
+
+def test_check_attributes_no_name():
+    c = Circuit()
+    c.required_keys = ["input"]
+    c.scale_base = 2
+    c.scaling = 2
+
+    with pytest.raises(NotImplementedError) as exc_info:
+        c.check_attributes()
+
+    msg = str(exc_info.value)
+    assert "Subclasses must define" in msg
+    assert "'name'" in msg
+
+
+# ---------- base_testing ------------
+
+@patch.object(Circuit, "parse_proof_run_type")
+def test_base_testing_calls_parse_proof_run_type_correctly(mock_parse):
+    c = Circuit()
+    c._file_info = {}
+    c._file_info["weights"] = "weights/model_weights.json"
+    c.base_testing(
+        run_type=RunType.GEN_WITNESS,
+        witness_file="w.wtns",
+        input_file="i.json",
+        proof_file="p.json",
+        public_path="pub.json",
+        verification_key="vk.key",
+        circuit_name="circuit_model",
+        output_file="o.json",
+        circuit_path="circuit_path.txt",
+        write_json=True
+    )
+
+    mock_parse.assert_called_once()
+    args = mock_parse.call_args[0]
+    assert args[0] == "w.wtns"
+    assert args[1] == "i.json"
+    assert args[2] == "p.json"
+    assert args[3] == "pub.json"
+    assert args[4] == "vk.key"
+    assert args[5] == "circuit_model"
+    assert args[6] == "circuit_path.txt"
+    assert args[7] is None  # proof_system not specified
+    assert args[8] == "o.json"
+    assert args[9] == "weights/model_weights.json"
+    assert args[10] == RunType.GEN_WITNESS
+    assert args[11] is False
+    assert args[12] is True
+    assert args[13] is True
+
+@patch.object(Circuit, "parse_proof_run_type")
+def test_base_testing_uses_default_circuit_path(mock_parse):
+    class MyCircuit(Circuit):
+        def __init__(self):
+            super().__init__()
+            self._file_info = {"weights": "weights.json"}
+            
+
+    c = MyCircuit()
+    c.base_testing(circuit_name="test_model")
+
+    mock_parse.assert_called_once()
+    args = mock_parse.call_args[0]
+    assert args[6] == "test_model.txt"  # default circuit_path
+
+
+@patch.object(Circuit, "parse_proof_run_type")
+def test_base_testing_returns_none(mock_parse):
+    class MyCircuit(Circuit):
+        def __init__(self):
+            super().__init__()
+            self._file_info = {"weights": "some_weights.json"}
+
+    c = MyCircuit()
+    result = c.base_testing(circuit_name="abc")
+    assert result is None
+    mock_parse.assert_called_once()
+
+@patch.object(Circuit, "parse_proof_run_type")
+def test_base_testing_weights_exists(mock_parse):
+    class MyCircuit(Circuit):
+        def __init__(self):
+            super().__init__()
+
+    c = MyCircuit()
+    with pytest.raises(KeyError, match="_file_info"):
+        result = c.base_testing(circuit_name="abc")
+
+
+def test_parse_proof_run_type_invalid_run_type(capsys):
+    c = Circuit()
+
+    c.parse_proof_run_type(
+        "w.wtns", "i.json", "p.json", "pub.json",
+        "vk.key", "model", "path.txt", None, "out.json",
+        "weights.json", "NOT_A_REAL_RUN_TYPE"
+    )
+    captured = capsys.readouterr()
+    assert "Unknown entry: NOT_A_REAL_RUN_TYPE" in captured.out
+    assert "Warning: Operation NOT_A_REAL_RUN_TYPE failed: Unknown run type: NOT_A_REAL_RUN_TYPE" in captured.out
+    assert "Input and output files have still been created correctly." in captured.out
+
+
+# @patch.object(Circuit, "parse_proof_run_type", side_effect = Exception("Boom!"))
+@patch("python_testing.circuit_components.circuit_helpers.compile_circuit", side_effect=Exception("Boom!"))
+@patch.object(Circuit, "_compile_preprocessing")
+def test_parse_proof_run_type_catches_internal_exception(mock_compile_preprocessing, mock_compile, capsys):
+    c = Circuit()
+
+    # This will raise inside `compile_circuit`, which is patched to raise
+    c.parse_proof_run_type(
+        "w.wtns", "i.json", "p.json", "pub.json",
+        "vk.key", "model", "path.txt", None, "out.json",
+        "weights.json", RunType.COMPILE_CIRCUIT
+    )
+
+    captured = capsys.readouterr()
+    print(captured.out)
+    assert "Warning: Operation RunType.COMPILE_CIRCUIT failed: Boom!" in captured.out
+    assert "Input and output files have still been created correctly." in captured.out
+
+
+def test_save_and_load_model_not_implemented():
+    c = Circuit()
+    assert hasattr(c, "save_model")
+    assert hasattr(c, "load_model")
+    assert hasattr(c, "save_quantized_model")
+    assert hasattr(c, "load_quantized_model")

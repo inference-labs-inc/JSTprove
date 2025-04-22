@@ -1158,7 +1158,7 @@ where
             let witness_path = matches.get_one::<String>("witness").unwrap(); //"outputs/reward_output.json"
             let circuit_path = matches.get_one::<String>("circuit_path").unwrap(); //"outputs/reward_output.json"
             run_witness::<C, _, CircuitDefaultType>(file_reader, input_path, output_path, &witness_path, circuit_path);
-            // debug_witness::<BN254Config, _, CircuitDefaultType, CircuitType>(file_reader, input_path, output_path, &witness_path, circuit_path);
+            // debug_witness::<C, _, CircuitDefaultType, CircuitType>(file_reader, input_path, output_path, &witness_path, circuit_path);
 
             // debug_bn254::<BN254Config, _, CircuitType>(file_reader);
 

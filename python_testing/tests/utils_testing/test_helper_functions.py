@@ -1,3 +1,4 @@
+import subprocess
 import pytest
 import os
 import json
@@ -169,6 +170,19 @@ def test_run_cargo_command_bool_args(mock_run):
 def test_run_cargo_command_raises_on_failure(mock_run):
     with pytest.raises(Exception, match="subprocess failed"):
         run_cargo_command("failbin", "fail_cmd", {"x": 1})
+
+@patch("python_testing.utils.helper_functions.subprocess.run")
+def test_run_command_failure(mock_run):
+    mock_run.side_effect = subprocess.CalledProcessError(
+        returncode=1,
+        cmd=["fakecmd"],
+        stderr="boom!"
+    )
+
+    with pytest.raises(subprocess.CalledProcessError) as excinfo:
+        run_cargo_command("fakecmd", "type")
+
+    assert excinfo.value.returncode == 1
 
 
 
@@ -477,6 +491,28 @@ def test_generate_verify_unknown_raises():
     with pytest.raises(NotImplementedError):
         generate_verification("model", "cp", "i", "o", "w", "p",  "unsupported")
 
+def test_circom_not_implemented_full_process():
+    with pytest.raises(NotImplementedError, match="Circom is not implemented"):
+        generate_verification("model", "cp", "i", "o", "w", "p", ZKProofSystems.Circom)
+    with pytest.raises(NotImplementedError, match="Circom is not implemented"):
+        generate_proof("m", "p", "w", "proof", ZKProofSystems.Circom)
+    with pytest.raises(NotImplementedError, match="Circom is not implemented"):
+        generate_witness("m", "p","witness", "input", "output",  ZKProofSystems.Circom)
+    with pytest.raises(NotImplementedError, match="Circom is not implemented"):
+        compile_circuit("model", "path/to/circuit", ZKProofSystems.Circom)
+    with pytest.raises(NotImplementedError, match="Circom is not implemented"):
+        prove_and_verify(
+        witness_file="w.wtns",
+        input_file="i.json",
+        proof_path="p.json",
+        public_path="pub.json",
+        verification_key="vk.key",
+        circuit_name="circuits/mnist",
+        output_file="out.json",
+        proof_system=ZKProofSystems.Circom,
+        ecc=True
+        )
+
 @patch("python_testing.utils.helper_functions.run_cargo_command", side_effect = Exception("TEST"))
 def test_generate_verify_expander_rust_error(mock_run, capfd):
     generate_verification("model", "cp", "i", "o", "w", "p", ZKProofSystems.Expander, True)
@@ -498,14 +534,35 @@ def test_run_end_to_end_calls_all(mock_compile, mock_witness, mock_proof, mock_v
     mock_proof.assert_called_once()
     mock_verify.assert_called_once()
 
+@patch("python_testing.utils.helper_functions.generate_verification")
+@patch("python_testing.utils.helper_functions.generate_proof")
+@patch("python_testing.utils.helper_functions.generate_witness")
+@patch("python_testing.utils.helper_functions.compile_circuit")
+def test_circom_proof_system_errors_end_to_end(mock_compile, mock_witness, mock_proof, mock_verify):
+    with pytest.raises(NotImplementedError, match="Circom is not implemented"):
+        run_end_to_end("m", "m_circuit.txt", "i.json", "o.json", ZKProofSystems.Circom)
+    
+    
+
 
 # # ---------- get_files / create_folder ----------
 
 @patch("python_testing.utils.helper_functions.create_folder")
 def test_get_files_and_create(mock_create):
-    paths = get_files("inputs", "proofs", "tmp", "circuits", "weights", "model", "out", ZKProofSystems.Expander)
+    paths = get_files("inputs", "proofs", "tmp", "circuits", "weights", "model", "out", "quantized_models", ZKProofSystems.Expander)
     assert paths[1].endswith("model_input.json")
-    assert mock_create.call_count == 5
+    assert mock_create.call_count == 6
+
+@patch("python_testing.utils.helper_functions.create_folder")
+def test_get_files_circom(mock_create):
+    with pytest.raises(NotImplementedError, match="Circom is not implemented"):
+        paths = get_files("inputs", "proofs", "tmp", "circuits", "weights", "model", "out", "quantized_models", ZKProofSystems.Circom)
+
+@patch("python_testing.utils.helper_functions.create_folder")
+def test_get_files_non_proof_system(mock_create):
+    fake_proof_system = "unknown"
+    with pytest.raises(NotImplementedError, match=f"Proof system {fake_proof_system} not implemented"):
+        paths = get_files("inputs", "proofs", "tmp", "circuits", "weights", "model", "out","quantized_models", fake_proof_system)
 
 
 @patch("python_testing.utils.helper_functions.os.makedirs")
@@ -520,3 +577,5 @@ def test_create_folder_creates(mock_exists, mock_mkdir):
 def test_create_folder_skips_existing(mock_exists, mock_mkdir):
     create_folder("existing")
     mock_mkdir.assert_not_called()
+
+

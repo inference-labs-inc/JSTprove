@@ -76,7 +76,7 @@ class Circuit:
     #         Tuple of (inputs, weights, outputs)
     #     """
     #     raise NotImplementedError("get_model_params must be implemented")
-    
+
     @prepare_io_files
     def base_testing(self, run_type=RunType.BASE_TESTING, 
                      witness_file=None, input_file=None, proof_file=None, public_path=None, 
@@ -100,6 +100,8 @@ class Circuit:
         if circuit_path is None:
             circuit_path = f"{circuit_name}.txt"
 
+        if not self._file_info:
+            raise KeyError("Must make sure to specify _file_info")
         weights_path = self._file_info.get("weights")
 
         # Run the appropriate proof operation based on run_type
@@ -109,7 +111,7 @@ class Circuit:
             verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, run_type, dev_mode, ecc, write_json
         )
         
-        return #self._file_info['outputs']
+        return 
     
     def parse_proof_run_type(self, witness_file, input_file, proof_path, public_path, 
                              verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, run_type, dev_mode = False, ecc = True, write_json = False):
@@ -117,7 +119,6 @@ class Circuit:
         Run the appropriate proof operation based on run_type.
         This function can be called directly if needed.
         """
-        print(run_type)
 
         is_scaled = True
         
@@ -185,71 +186,71 @@ class Circuit:
         else:
             raise NotImplementedError("Weights type is incorrect")
 
-    # Individual operations that can be called separately
-    def compile(self):
-        """Compile the circuit."""
-        if not self._file_info:
-            # Ensure we have file info
-            self.base_testing(RunType.COMPILE_CIRCUIT)
-            return
+    # # Individual operations that can be called separately
+    # def compile(self):
+    #     """Compile the circuit."""
+    #     if not self._file_info:
+    #         # Ensure we have file info
+    #         self.base_testing(RunType.COMPILE_CIRCUIT)
+    #         return
         
-        compile_circuit(self._file_info['circuit_name'], self._file_info['proof_system'])
+    #     compile_circuit(self._file_info['circuit_name'], self._file_info['proof_system'])
 
-    def generate_witness(self):
-        """Generate witness for the circuit."""
-        if not self._file_info:
-            # Ensure we have file info
-            self.base_testing(RunType.GEN_WITNESS)
-            return
+    # def generate_witness(self):
+    #     """Generate witness for the circuit."""
+    #     if not self._file_info:
+    #         # Ensure we have file info
+    #         self.base_testing(RunType.GEN_WITNESS)
+    #         return
         
-        generate_witness(
-            self._file_info['circuit_name'],
-            self._file_info['witness_file'],
-            self._file_info['input_file'],
-            self._file_info['output_file'],
-            self._file_info['proof_system']
-        )
+    #     generate_witness(
+    #         self._file_info['circuit_name'],
+    #         self._file_info['witness_file'],
+    #         self._file_info['input_file'],
+    #         self._file_info['output_file'],
+    #         self._file_info['proof_system']
+    #     )
     
-    def generate_verification(self):
-        """Generate verification for the circuit."""
-        if not self._file_info:
-            # Ensure we have file info
-            self.base_testing(RunType.GEN_VERIFY)
-            return
+    # def generate_verification(self):
+    #     """Generate verification for the circuit."""
+    #     if not self._file_info:
+    #         # Ensure we have file info
+    #         self.base_testing(RunType.GEN_VERIFY)
+    #         return
         
-        generate_verification(self._file_info['circuit_name'], self._file_info['proof_system'])
+    #     generate_verification(self._file_info['circuit_name'], self._file_info['proof_system'])
     
-    def run_proof(self):
-        """Run proof for the circuit."""
-        if not self._file_info:
-            # Ensure we have file info
-            self.base_testing()
-            return
+    # def run_proof(self):
+    #     """Run proof for the circuit."""
+    #     if not self._file_info:
+    #         # Ensure we have file info
+    #         self.base_testing()
+    #         return
         
-        prove_and_verify(
-            self._file_info['witness_file'],
-            self._file_info['input_file'],
-            self._file_info['proof_path'],
-            self._file_info['public_path'],
-            self._file_info['verification_key'],
-            self._file_info['circuit_name'],
-            self._file_info['proof_system'],
-            self._file_info['output_file']
-        )
+    #     prove_and_verify(
+    #         self._file_info['witness_file'],
+    #         self._file_info['input_file'],
+    #         self._file_info['proof_path'],
+    #         self._file_info['public_path'],
+    #         self._file_info['verification_key'],
+    #         self._file_info['circuit_name'],
+    #         self._file_info['proof_system'],
+    #         self._file_info['output_file']
+    #     )
     
-    def run_end_to_end(self):
-        """Run end-to-end proof."""
-        if not self._file_info:
-            # Ensure we have file info
-            self.base_testing(RunType.END_TO_END)
-            return
+    # def run_end_to_end(self):
+    #     """Run end-to-end proof."""
+    #     if not self._file_info:
+    #         # Ensure we have file info
+    #         self.base_testing(RunType.END_TO_END)
+    #         return
         
-        run_end_to_end(
-            self._file_info['circuit_name'],
-            self._file_info['input_file'],
-            self._file_info['output_file'],
-            self._file_info['proof_system']
-        )
+    #     run_end_to_end(
+    #         self._file_info['circuit_name'],
+    #         self._file_info['input_file'],
+    #         self._file_info['output_file'],
+    #         self._file_info['proof_system']
+    #     )
     def save_model(self, file_path: str):
         pass
     

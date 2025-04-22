@@ -1,8 +1,13 @@
 import pytest
 from unittest.mock import patch, MagicMock
-with patch('python_testing.utils.helper_functions.prepare_io_files', lambda x: x):  # MUST BE BEFORE THE UUT GETS IMPORTED ANYWHERE!
-    from python_testing.utils.pytorch_helpers import ZKModel
-from python_testing.utils.pytorch_helpers import RunType, ZKProofSystems
+import sys
+# from python_testing.utils.pytorch_helpers import 
+sys.modules.pop("python_testing.utils.pytorch_helpers", None)
+
+
+with patch('python_testing.utils.helper_functions.prepare_io_files', lambda f: f):  # MUST BE BEFORE THE UUT GETS IMPORTED ANYWHERE!
+    from python_testing.utils.pytorch_helpers import ZKModel, RunType, ZKProofSystems
+
 
 
 # ---------- __init__ ----------
@@ -14,44 +19,46 @@ def test_init_raises_not_implemented():
 
 # ---------- base_testing ----------
 
-# # @patch("your_module.prepare_io_files", lambda f: f)
-# def test_base_testing_calls_parse_proof_run_type():
-#     class TestZK(ZKModel):
-#         def __init__(self):
-#             pass  # allow instantiation
-#         def parse_proof_run_type(self, *args, **kwargs):
-#             self.called_with = args, kwargs
+def test_base_testing_calls_parse_proof_run_type():
+    class TestZK(ZKModel):
+        def __init__(self):
+            pass
+        def parse_proof_run_type(self, *args, **kwargs):
+            self.called_with = args, kwargs
 
-#     model = TestZK()
-#     model.base_testing(run_type=RunType.BASE_TESTING,
-#                        witness_file="witness.wtns",
-#                        input_file="input.json",
-#                        proof_file="proof.json",
-#                        public_path="public.json",
-#                        verification_key="vk.key",
-#                        circuit_name="test_circuit",
-#                        output_file="out.json",
-#                        dev_mode=True)
+    model = TestZK()
+    model._file_info = {"weights": "dummy"}  # simulate decorator behavior
 
-#     args, kwargs = model.called_with
-#     assert "witness.wtns" in args
-#     assert RunType.BASE_TESTING in args
+    model.base_testing(
+        run_type=RunType.BASE_TESTING,
+        witness_file="witness.wtns",
+        input_file="input.json",
+        proof_file="proof.json",
+        public_path="public.json",
+        verification_key="vk.key",
+        circuit_name="test_circuit",
+        output_file="out.json",
+        dev_mode=True
+    )
+
+    args, kwargs = model.called_with
+    assert "witness.wtns" in args
+    assert RunType.BASE_TESTING in args
 
 
-# # @patch("your_module.prepare_io_files", lambda f: f)
-# @patch.object(ZKModel, 'parse_proof_run_type')
-# def test_base_testing_uses_default_weights_path(mock_parse):
-#     class TestZK(ZKModel):
-#         def __init__(self):
-#             pass
+@patch.object(ZKModel, 'parse_proof_run_type')
+def test_base_testing_uses_default_weights_path(mock_parse):
+    class TestZK(ZKModel):
+        def __init__(self):
+            pass
 
-#     model = TestZK()
-#     model.base_testing(circuit_name="test_model")
+    model = TestZK()
+    model.base_testing(circuit_name="test_model")
 
-#     # ensure circuit_name propagates correctly
-#     args, kwargs = mock_parse.call_args
-#     assert "test_model" in args
-#     assert RunType.BASE_TESTING in args
+    # ensure circuit_name propagates correctly
+    args, kwargs = mock_parse.call_args
+    assert "test_model" in args
+    assert RunType.BASE_TESTING in args
 
 
 # ---------- Inheritance ----------
