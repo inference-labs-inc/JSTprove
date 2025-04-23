@@ -1,32 +1,15 @@
-import time
-import torch
 from python_testing.utils.pytorch_helpers import ZKModel
 from python_testing.utils.run_proofs import ZKProofSystems
-from python_testing.utils.helper_functions import RunType, get_files, to_json, prove_and_verify
-import os
-from enum import Enum
-import sys
-from python_testing.circuit_components.circuit_helpers import Circuit
-import torch.nn as nn
-import torch.nn.functional as F
-from python_testing.utils.pytorch_partial_models import Conv2DModel, Conv2DModelReLU
-
+from python_testing.utils.helper_functions import RunType
+from python_testing.utils.pytorch_partial_models import MaxPooling2DModel
 
 
 import numpy as np
 
-class MaxPooling2DModel(nn.Module):
-    def __init__(self, kernel_size, stride, padding = 0 , dilation = 1, return_indeces = False, ceil_mode = False):
-        super(MaxPooling2DModel, self).__init__()
-        self.pool = nn.MaxPool2d(kernel_size, stride, padding, dilation, return_indeces, ceil_mode)
-        self.kernel_size = kernel_size
-        self.stride = stride
-
-    def forward(self, x):
-        return self.pool(x)
 
 
-class MaxPooling(ZKModel):
+
+class MaxPooling2D(ZKModel):
     #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
     def __init__(self, file_name = "quantized_maxpool.pth"):
         '''
@@ -63,11 +46,8 @@ class MaxPooling(ZKModel):
         self.rescale_config = {}
         self.input_shape = [dim_0, dim_1, dim_2, dim_3]
         
-
-        # self.input_shape = [self.N_ROWS_A, self.N_COLS_A]
         self.is_relu = False
 
-        
         '''
         #######################################################################################################
         #######################################################################################################
@@ -176,30 +156,21 @@ class MaxPooling(ZKModel):
         
 
     def get_weights(self):
-        weights = {}
-        # weights =  super().get_weights()
-        weights["kernel_size"] = [self.kernel_shape]
-        weights["stride"] = [self.strides]
-        weights["padding"] = [self.padding]
-        weights["dilation"] = [self.dilation]
-        weights["input_shape"] = self.input_shape
-
-        weights["return_indeces"] = self.return_indeces
-        weights["ceil_mode"] = self.ceil_mode
-        weights["is_relu"] = self.is_relu
+        weights = super().get_weights()
+        weights["maxpool_is_relu"] = self.is_relu
         return weights
     
-    def get_outputs(self, inputs):
-        out = super().get_outputs(inputs)
-        # out_2 = nn.MaxPool2d(self.kernel_shape, self.strides, self.padding, self.dilation, self.return_indeces, self.ceil_mode)(inputs)
-        # self.check_4d_eq(out, out_2)
-        # pads = [self.padding, self.padding, self.padding, self.padding]
-        # kernel = (self.kernel_shape, self.kernel_shape)
-        # dilation = (self.dilation, self.dilation)
-        # strides = (self.strides, self.strides)
-        # out_3 = torch.as_tensor(self.maxpool2d(inputs, kernel, strides, pads, dilation, self.return_indeces, self.ceil_mode))
-        # self.check_4d_eq(out, out_3)
-        return out
+    # def get_outputs(self, inputs):
+    #     out = super().get_outputs(inputs)
+    #     # out_2 = nn.MaxPool2d(self.kernel_shape, self.strides, self.padding, self.dilation, self.return_indeces, self.ceil_mode)(inputs)
+    #     # self.check_4d_eq(out, out_2)
+    #     # pads = [self.padding, self.padding, self.padding, self.padding]
+    #     # kernel = (self.kernel_shape, self.kernel_shape)
+    #     # dilation = (self.dilation, self.dilation)
+    #     # strides = (self.strides, self.strides)
+    #     # out_3 = torch.as_tensor(self.maxpool2d(inputs, kernel, strides, pads, dilation, self.return_indeces, self.ceil_mode))
+    #     # self.check_4d_eq(out, out_3)
+    #     return out
 
 
 if __name__ == "__main__":
@@ -210,11 +181,11 @@ if __name__ == "__main__":
     input_folder = "inputs"
     weights_folder = "weights"
     circuit_folder = ""
-    d = MaxPooling()
+    d = MaxPooling2D()
     name = d.name
 
     d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
-    d_2 = MaxPooling()
+    d_2 = MaxPooling2D()
     d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
-    d_3 = MaxPooling()
+    d_3 = MaxPooling2D()
     d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)

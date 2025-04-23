@@ -200,7 +200,9 @@ class PytorchConverter():
 
     def get_weights(self):
         input_shapes = self.get_input_shapes_by_layer(self.quantized_model, self.input_shape)  # example input
-        used_layers = self.get_used_layers(self.quantized_model, self.input_shape) 
+        used_layers = self.get_used_layers(self.quantized_model, self.input_shape)
+        def to_tuple(x):
+            return (x,) if isinstance(x, int) else tuple(x)
         # Can combine the above into 1 function
         
         weights = {}
@@ -221,6 +223,16 @@ class PytorchConverter():
             if isinstance(module, (nn.Linear, QuantizedLinear)):
                 weights.setdefault("fc_weights", []).append(module.weight.transpose(0, 1).tolist())
                 weights.setdefault("fc_bias", []).append(module.bias.unsqueeze(0).tolist())
+
+            if isinstance(module, nn.MaxPool2d):
+                weights.setdefault("maxpool_kernel_size", []).append(to_tuple(module.kernel_size))
+                weights.setdefault("maxpool_stride", []).append(to_tuple(module.stride))
+                weights.setdefault("maxpool_dilation", []).append(to_tuple(module.dilation))
+                weights.setdefault("maxpool_padding", []).append(to_tuple(module.padding))
+                weights.setdefault("maxpool_ceil_mode", []).append(module.ceil_mode)
+                weights.setdefault("maxpool_input_shape", []).append(to_tuple(input_shapes[name]))
+
+
 
         return weights
     

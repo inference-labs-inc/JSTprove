@@ -125,3 +125,14 @@ class MatrixMultiplicationReLUModel(nn.Module):
 
     def forward(self, x):
         return F.relu(self.fc1(x))
+    
+
+class MaxPooling2DModel(nn.Module):
+    def __init__(self, kernel_size, stride, padding = 0 , dilation = 1, return_indeces = False, ceil_mode = False):
+        super(MaxPooling2DModel, self).__init__()
+        self.pool = nn.MaxPool2d(kernel_size, stride, padding, dilation, return_indeces, ceil_mode)
+        self.kernel_size = kernel_size
+        self.stride = stride
+
+    def forward(self, x):
+        return self.pool(x)
