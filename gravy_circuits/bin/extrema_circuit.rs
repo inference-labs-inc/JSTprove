@@ -8,9 +8,9 @@ use gravy_circuits::circuit_functions::extrema::assert_extremum;
 use serde::Deserialize;
 
 
-const BASE: u32 = 2;
 const BATCH_SIZE: usize = 32;
 const VEC_LEN: usize = 6;
+const BASE: u32 = 2;
 const NUM_DIGITS: usize = 32; 
 
 declare_circuit!(ExtremaCircuit {
@@ -89,6 +89,23 @@ pub fn get_max_unconstrained<C: Config, Builder: RootAPI<C>>(
     x
 }
 
+pub fn get_and_assert_maximum<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder, candidates: &[Variable], base: u32, num_digits: usize, is_max: bool, use_lookup: bool, mut table_opt: &mut Option<&mut LogUpRangeProofTable>) -> Variable {
+    let max = get_max_unconstrained(api, candidates.to_vec());
+
+    assert_extremum(
+        api,
+        max,
+        candidates,
+        base,
+        num_digits,
+        is_max,
+        use_lookup,
+        &mut table_opt,
+    );
+    max
+}
+
 
 impl<C: Config> Define<C> for ExtremaCircuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
@@ -98,28 +115,13 @@ impl<C: Config> Define<C> for ExtremaCircuit<Variable> {
         table.initial(api);
         let mut table_opt = Some(&mut table);
         let mut max_vals = Vec::new();
+        let is_max = true;
+        let use_lookup = false; 
 
         for i in 0..BATCH_SIZE {
-            let max = get_max_unconstrained(api, self.input_vec[i].to_vec());
-
             // let max = self.max_val[i];
             let candidates = &self.input_vec[i];
-            let is_max = true;
-            let use_lookup = false; 
-            // let use_lookup = true;
-            api.display("max", max);
-            api.display("max_true", self.max_val[i]);
-
-            assert_extremum(
-                api,
-                max,
-                candidates,
-                BASE,
-                NUM_DIGITS,
-                is_max,
-                use_lookup,
-                &mut table_opt,
-            );
+            let  max = get_and_assert_maximum(api, candidates, BASE, NUM_DIGITS, is_max, use_lookup, &mut table_opt);
             max_vals.push(max);
         }
         for i in 0..BATCH_SIZE {

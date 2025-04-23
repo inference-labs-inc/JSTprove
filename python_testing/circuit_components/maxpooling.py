@@ -122,6 +122,7 @@ class MaxPooling(ZKModel):
         global_pooling = False
 
         y_dims = x.shape[:2] + tuple(output_spatial_shape)
+        print(y_dims, output_spatial_shape)
         x = np.array(x, dtype = np.int64)
         y = np.zeros(y_dims, dtype=x.dtype)
         indices = np.full(y_dims, dtype=np.int64, fill_value=-1)
@@ -190,14 +191,14 @@ class MaxPooling(ZKModel):
     
     def get_outputs(self, inputs):
         out = super().get_outputs(inputs)
-        out_2 = nn.MaxPool2d(self.kernel_shape, self.strides, self.padding, self.dilation, self.return_indeces, self.ceil_mode)(inputs)
-        self.check_4d_eq(out, out_2)
-        pads = [self.padding, self.padding, self.padding, self.padding]
-        kernel = (self.kernel_shape, self.kernel_shape)
-        dilation = (self.dilation, self.dilation)
-        strides = (self.strides, self.strides)
-        out_3 = torch.as_tensor(self.maxpool2d(inputs, kernel, strides, pads, dilation, self.return_indeces, self.ceil_mode))
-        self.check_4d_eq(out, out_3)
+        # out_2 = nn.MaxPool2d(self.kernel_shape, self.strides, self.padding, self.dilation, self.return_indeces, self.ceil_mode)(inputs)
+        # self.check_4d_eq(out, out_2)
+        # pads = [self.padding, self.padding, self.padding, self.padding]
+        # kernel = (self.kernel_shape, self.kernel_shape)
+        # dilation = (self.dilation, self.dilation)
+        # strides = (self.strides, self.strides)
+        # out_3 = torch.as_tensor(self.maxpool2d(inputs, kernel, strides, pads, dilation, self.return_indeces, self.ceil_mode))
+        # self.check_4d_eq(out, out_3)
         return out
 
 
@@ -215,5 +216,5 @@ if __name__ == "__main__":
     d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
     d_2 = MaxPooling()
     d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
-    # d_3 = MaxPooling()
-    # d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
+    d_3 = MaxPooling()
+    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)

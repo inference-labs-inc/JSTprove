@@ -5,7 +5,7 @@ use circuit_std_rs::logup::LogUpRangeProofTable;
 use gravy_circuits::circuit_functions::helper_fn::four_d_array_to_vec;
 use gravy_circuits::runner::main_runner::handle_args;
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
-use gravy_circuits::circuit_functions::extrema::assert_extremum;
+use gravy_circuits::circuit_functions::extrema::assert_extremum_vec;
 use serde::Deserialize;
 use lazy_static::lazy_static;
 
@@ -18,11 +18,14 @@ const DIM2: usize = 4;
 const DIM3: usize = 28;
 const DIM4: usize = 28;
 
+// const DIM3_OUT: usize = 14;
+// const DIM4_OUT: usize = 14;
+
 
 
 declare_circuit!(MaxPoolCircuit {
     input_arr: [[[[Variable; DIM4]; DIM3]; DIM2]; DIM1], // shape (m, n)
-    outputs: [[[[Variable; DIM4]; DIM3]; DIM2]; DIM1], // shape (m, k)
+    outputs: [[[[Variable; DIM4/2]; DIM3/2]; DIM2]; DIM1], // shape (m, k)
 });
 
 
@@ -139,24 +142,60 @@ pub fn setup_maxpooling_2d(
     return (pads, kernel_shape, strides, dilation, output_spatial_shape, new_pads);
 }
 
-pub fn maximum<C: Config, Builder: RootAPI<C>>( 
-    api: &mut Builder,
-    input: Vec<Variable>,
-) -> Variable{
-    //Register hint to get maximum, and then assert its true using Tristans extrema code
-    input[0]
+
+pub fn get_max_unconstrained<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder, x: &Vec<Variable>) -> Variable {
+    let midpoint = C::CircuitField::from_u256(ethnum::U256::from(C::CircuitField::MODULUS/2));
+
+    let mut output = api.unconstrained_add(x[0], midpoint);
+
+    for i in 1..x.len(){
+        let y = api.unconstrained_add(x[i], midpoint);
+        let is_new_max = api.unconstrained_greater(y, output);
+        let not_new_max = api.unconstrained_lesser_eq(y, output);
+        
+        let output_1 = api.unconstrained_mul(y, is_new_max);
+        let output_2 = api.unconstrained_mul(output, not_new_max);
+
+        output = api.unconstrained_add(output_1, output_2);
+    }
+    let midpoint_and_one = api.unconstrained_add(midpoint, 1);
+    let x = api.unconstrained_add(output, midpoint_and_one);
+    x
 }
 
+pub fn get_and_assert_maximum<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder, candidates: &Vec<Variable>, base: u32, num_digits: usize, is_max: bool, use_lookup: bool, mut table_opt: &mut Option<&mut LogUpRangeProofTable>) -> Variable {
+    let max = get_max_unconstrained(api, candidates);
+
+    assert_extremum_vec(
+        api,
+        max,
+        candidates,
+        base,
+        num_digits,
+        is_max,
+        use_lookup,
+        &mut table_opt,
+    );
+    max
+}
+
+// base, num_digits, true, use_lookup, table
 pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     x: &Vec<Vec<Vec<Vec<Variable>>>>,
-    padding: &Vec<usize>,
+    // padding: &Vec<usize>,
     kernel_shape: &Vec<usize>,
     strides: &Vec<usize>,
     dilation: &Vec<usize>,
     output_spatial_shape: &Vec<usize>,
     x_shape: &Vec<usize>,
     new_pads: &Vec<[usize; 2]>,
+    base: u32,
+    num_digits: usize,
+    use_lookup: bool,
+    table: &mut Option<&mut LogUpRangeProofTable>, 
 )-> Vec<Vec<Vec<Vec<Variable>>>>{
     let global_pooling = false;
     let batch = x_shape[0];
@@ -234,11 +273,20 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
                     }
                 }
                 if max_elements.len() != 0 {
-                    y_data[y_d + pool_index] = maximum(api, max_elements);
+                    y_data[y_d + pool_index] = get_and_assert_maximum(api, &max_elements, base, num_digits, true, use_lookup, table);
                 }
             }
         }
     }
+    println!("y_dims {}", y_dims[0]);
+    println!("y_dims {}", y_dims[1]);
+    println!("y_dims {}", y_dims[2]);
+    println!("y_dims {}", y_dims[3]);
+
+    println!("output_spatial_shape {}", output_spatial_shape[0]);
+    println!("output_spatial_shape {}", output_spatial_shape[1]);
+    // println!("output_spatial_shape {}", output_spatial_shape[2]);
+    // println!("output_spatial_shape {}", output_spatial_shape[3]);
 
     reshape_4d(&y_data, y_dims)
 }
@@ -274,7 +322,11 @@ impl<C: Config> Define<C> for MaxPoolCircuit<Variable> {
         
         let (padding, kernel_shape, strides, dilation, output_spatial_shape, new_pads) = setup_maxpooling_2d(&WEIGHTS_INPUT.padding, &WEIGHTS_INPUT.kernel_size, &WEIGHTS_INPUT.stride, &WEIGHTS_INPUT.dilation, WEIGHTS_INPUT.ceil_mode, &WEIGHTS_INPUT.input_shape);
 
-        let out = maxpooling_2d(api, &inputs, &padding, &kernel_shape, &strides, &dilation, &output_spatial_shape, &WEIGHTS_INPUT.input_shape, &new_pads);
+        let mut table = LogUpRangeProofTable::new(nb_bits);
+        table.initial(api);
+        let mut table_opt = Some(&mut table);
+
+        let out = maxpooling_2d(api, &inputs, &kernel_shape, &strides, &dilation, &output_spatial_shape, &WEIGHTS_INPUT.input_shape, &new_pads, BASE, NUM_DIGITS, false, &mut table_opt);
 
 
 
@@ -285,8 +337,12 @@ impl<C: Config> Define<C> for MaxPoolCircuit<Variable> {
             for (k, dim2) in dim1.iter().enumerate() {
                 for (l, dim3) in dim2.iter().enumerate() {
                     for (m, _dim4) in dim3.iter().enumerate() {
-                        api.assert_is_different(self.outputs[j][k][l][m], 1);
-                        // api.assert_is_equal(, val);
+                        // api.display(&format!("output[{}][{}][{}][{}]: ", j, k, l, m), self.outputs[j][k][l][m]);
+                        // api.display(&format!("max[{}][{}][{}][{}]: ", j, k, l, m), out[j][k][l][m]);
+                        
+                        // api.assert_is_different(self.outputs[j][k][l][m], 1);
+
+                        api.assert_is_equal(self.outputs[j][k][l][m], out[j][k][l][m]);
                     }
                 }
             }
@@ -357,10 +413,10 @@ impl<C: Config> IOReader<MaxPoolCircuit<C::CircuitField>, C> for FileReader {
                 for (k, dim3) in dim2.iter().enumerate() {
                     for (l, &element) in dim3.iter().enumerate() {
                         if element < 0 {
-                            assignment.input_arr[i][j][k][l] =
+                            assignment.outputs[i][j][k][l] =
                                 C::CircuitField::from(element.abs() as u32).neg();
                         } else {
-                            assignment.input_arr[i][j][k][l] =
+                            assignment.outputs[i][j][k][l] =
                                 C::CircuitField::from(element.abs() as u32);
                         }
                     }

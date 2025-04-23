@@ -151,6 +151,22 @@ pub fn assert_equal_to_some<C: Config, Builder: RootAPI<C>>(
     api.assert_is_zero(product);
 }
 
+pub fn assert_equal_to_some_vec<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    target: Variable,
+    candidates: &Vec<Variable>,
+) {
+    let mut product = api.constant(1);
+    for &a in candidates {
+        // Compute (target - a) for each candidate.
+        let delta = api.sub(target, a);
+        // Multiply into the cumulative product.
+        product = api.mul(product, delta);
+    }
+    // Enforce that the product is exactly zero.
+    api.assert_is_zero(product);
+}
+
 /// Create a LogUpRangeProofTable for the given base.
 /// Computes the number of bits required to represent values in `{0, ..., base - 1}`
 /// and initializes a lookup table suitable for range checks.
@@ -367,6 +383,27 @@ pub fn range_check_extrema_gap<C: Config, Builder: RootAPI<C>>(
     }
 }
 
+pub fn range_check_extrema_gap_vec<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    extremum: Variable,
+    candidates: &Vec<Variable>,
+    base: u32,
+    num_digits: usize,
+    is_max: bool,
+    use_lookup: bool,
+    table: &mut Option<&mut LogUpRangeProofTable>,
+) {
+    for &a in candidates {
+        let gap = if is_max {
+            api.sub(extremum, a)
+        } else {
+            api.sub(a, extremum)
+        };
+
+        let _ = range_check_base_b(api, gap, base, num_digits, use_lookup, table);
+    }
+}
+
 // pub fn range_check_extrema_gap<C: Config, Builder: RootAPI<C>>(
 //     api: &mut Builder,
 //     extremum: Variable,
@@ -421,6 +458,23 @@ pub fn assert_extremum<C: Config, Builder: RootAPI<C>>(
     
     // For each candidate, range-check the gap between the extremum and the candidate.
     range_check_extrema_gap(api, extremum, candidates, base, num_digits, is_max, use_lookup, table);
+}
+
+pub fn assert_extremum_vec<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    extremum: Variable,
+    candidates: &Vec<Variable>,
+    base: u32,
+    num_digits: usize,
+    is_max: bool,
+    use_lookup: bool,
+    table: &mut Option<&mut LogUpRangeProofTable>,
+) {
+    // Enforce that the claimed extremum equals at least one candidate.
+    assert_equal_to_some_vec(api, extremum, candidates);
+    
+    // For each candidate, range-check the gap between the extremum and the candidate.
+    range_check_extrema_gap_vec(api, extremum, candidates, base, num_digits, is_max, use_lookup, table);
 }
 
 /// Enforces that `relu_output` is the ReLU of `relu_input`, i.e., relu_output = max(relu_input, 0).
