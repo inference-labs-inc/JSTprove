@@ -20,7 +20,7 @@ class Extrema(Circuit):
         VEC_LEN = 6      # length of each vector to compute max over
 
         # Generate a batch of vectors with random nonnegative integers
-        self.input_vecs = torch.randint(low=0, high=100, size=(BATCH_SIZE, VEC_LEN))
+        self.input_vecs = torch.randint(low=-2**31, high=2**31, size=(BATCH_SIZE, VEC_LEN))
 
         '''
         #######################################################################################################
