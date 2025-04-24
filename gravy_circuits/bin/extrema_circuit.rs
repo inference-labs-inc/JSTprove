@@ -27,7 +27,7 @@ impl<C: Config> Define<C> for ExtremaCircuit<Variable> {
             let max = self.max_val[i];
             let candidates = &self.input_vec[i];
             let is_max = true;
-            let use_lookup = false; 
+            let use_lookup = true; 
             // let use_lookup = true;
             assert_extremum(
                 api,
@@ -104,6 +104,4 @@ fn main() {
     // handle_args::<BN254Config, ExtremaCircuit<Variable>,ExtremaCircuit<_>,_>(&mut file_reader);
     // handle_args::<ExtremaCircuit<Variable>, ExtremaCircuit<_>, _>(&mut file_reader);
     handle_args_m31::<ExtremaCircuit<Variable>, ExtremaCircuit<_>, _>(&mut file_reader);
-
-    
 }
