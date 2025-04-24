@@ -201,6 +201,9 @@ class PytorchConverter():
     def get_weights(self):
         input_shapes = self.get_input_shapes_by_layer(self.quantized_model, self.input_shape)  # example input
         used_layers = self.get_used_layers(self.quantized_model, self.input_shape)
+        print(used_layers)
+        # import sys
+        # sys.exit()
         def to_tuple(x):
             return (x,) if isinstance(x, int) else tuple(x)
         # Can combine the above into 1 function
@@ -233,7 +236,8 @@ class PytorchConverter():
                 weights.setdefault("maxpool_input_shape", []).append(to_tuple(input_shapes[name]))
 
 
-
+            # if isinstance(module, nn.ReLU):
+            #     pass
         return weights
     
     def get_model_and_quantize(self):

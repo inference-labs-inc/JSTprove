@@ -127,6 +127,10 @@ path = "bin/doom/doom_fc1.rs"
 name = "doom_fc2"
 path = "bin/doom/doom_fc2.rs"
 
+[[bin]]
+name = "net"
+path = "bin/net_model.rs"
+
 # [[bin]]
 # name = "expander-exec"
 # path = "gkr/src/expander-exec.rs"

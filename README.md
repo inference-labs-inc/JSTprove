@@ -170,5 +170,9 @@ This CLI tool runs various circuit operations such as compilation, witness gener
    python cli.py --circuit doom_slices --class DoomFC2 --compile --circuit_path doom_fc2_circuit.txt
    python cli.py --circuit doom_slices --class DoomFC2 --gen_witness --input output/doom_fc1_output.json --output output/doom_fc2_output.json  --circuit_path doom_fc2_circuit.txt
    python cli.py --circuit doom_slices --class DoomFC2 --gen_witness --input output/doom_fc1_output.json --output output/doom_output.json  --circuit_path doom_fc2_circuit.txt
+   
+
+   python cli.py --circuit maxpooling --class MaxPooling2D --compile --circuit_path maxpool_circuit.txt
+   python cli.py --circuit maxpooling --class MaxPooling2D --gen_witness --input inputs/maxpooling_input.json --output output/maxpooling_output.json  --circuit_path maxpool_circuit.txt
 
    
