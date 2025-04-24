@@ -1,6 +1,6 @@
 use expander_compiler::frontend::*;
 use circuit_std_rs::logup::LogUpRangeProofTable;
-use gravy_circuits::runner::main_runner::handle_args;
+use gravy_circuits::runner::main_runner::{handle_args, handle_args_m31};
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use gravy_circuits::circuit_functions::extrema::assert_extremum;
 use serde::Deserialize;
@@ -102,6 +102,8 @@ fn main() {
     };
     // handle_args::<M31Config, ExtremaCircuit<Variable>,ExtremaCircuit<_>,_>(&mut file_reader);
     // handle_args::<BN254Config, ExtremaCircuit<Variable>,ExtremaCircuit<_>,_>(&mut file_reader);
-    handle_args::<ExtremaCircuit<Variable>, ExtremaCircuit<_>, _>(&mut file_reader);
+    // handle_args::<ExtremaCircuit<Variable>, ExtremaCircuit<_>, _>(&mut file_reader);
+    handle_args_m31::<ExtremaCircuit<Variable>, ExtremaCircuit<_>, _>(&mut file_reader);
+
     
 }

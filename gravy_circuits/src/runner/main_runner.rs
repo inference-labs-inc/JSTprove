@@ -1147,7 +1147,9 @@ where
 
 
             
+            // run_compile_and_serialize::<BN254Config,CircuitType>(&circuit_path);
             run_compile_and_serialize::<BN254Config,CircuitType>(&circuit_path);
+
             // compile_circ(circuit_name, demo);
         }
         "run_gen_witness" => {
@@ -1184,6 +1186,143 @@ where
 
             // run_verify::<BN254Config, Filereader, CircuitDefaultType>(&circuit_name);
             run_verify_io::<BN254Config, Filereader, CircuitDefaultType>(&circuit_path, file_reader, &input_path, &output_path, witness_path, proof_path);
+        }
+        _ => {
+            panic!("Unknown command or missing arguments.");
+            // exit(1);
+        }
+    }
+}
+
+pub fn handle_args_m31<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::M31Config>>(file_reader: &mut  Filereader) 
+where
+    CircuitDefaultType: std::default::Default
+    + DumpLoadTwoVariables<<expander_compiler::frontend::M31Config as expander_compiler::frontend::Config>::CircuitField>
+    + std::clone::Clone,
+
+    CircuitType: std::default::Default +
+    expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
+    // + std::clone::Clone + GenericDefine<expander_compiler::frontend::BN254Config>,
+// + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
+    + std::clone::Clone + Define<expander_compiler::frontend::M31Config>
+    {
+
+    let matches: clap::ArgMatches = Command::new("File Copier")
+        .version("1.0")
+        .about("Copies content from input file to output file")
+        .arg(
+            Arg::new("type")
+                .help("The type of main runner we want to run")
+                .required(true) // This argument is required
+                .index(1), // Positional argument (first argument)
+        )
+        .arg(
+            Arg::new("input")
+                .help("The file to read circuit inputs from")
+                .required(false) // This argument is required
+                .long("input") // Use a long flag (e.g., --name)
+                .short('i')  // Use a short flag (e.g., -n)
+                // .index(2), // Positional argument (first argument)
+        )
+        .arg(
+            Arg::new("output")
+                .help("The file to read outputs to the circuit")
+                .required(false) // This argument is also required
+                .long("output") // Use a long flag (e.g., --name)
+                .short('o')  // Use a short flag (e.g., -n)
+        )
+        .arg(
+            Arg::new("witness")
+                .help("The witness file path")
+                .required(false) // This argument is also required
+                .long("witness") // Use a long flag (e.g., --name)
+                .short('w')  // Use a short flag (e.g., -n)
+        )
+        .arg(
+            Arg::new("proof")
+                .help("The proof file path")
+                .required(false) // This argument is also required
+                .long("proof") // Use a long flag (e.g., --name)
+                .short('p')  // Use a short flag (e.g., -n)
+        )
+        .arg(
+            Arg::new("circuit_path")
+                .help("The circuit file path")
+                .required(false) // This argument is also required
+                .long("circuit") // Use a long flag (e.g., --name)
+                .short('c')  // Use a short flag (e.g., -n)
+        )
+        .arg(
+            Arg::new("name")
+                .help("The name of the circuit for the file names to serialize/deserialize")
+                .required(false) // This argument is also required
+                .long("name") // Use a long flag (e.g., --name)
+                .short('n')  // Use a short flag (e.g., -n)
+        )
+        .get_matches();
+
+        // let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+        // let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+
+    // The first argument is the command we need to identify
+    // let command = &args[1];
+    let command = matches.get_one::<String>("type").unwrap();
+    
+
+    match command.as_str() {
+        //ignore
+        "run_proof" => {
+            let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+            let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+            run_main::<M31Config, _,  CircuitType, CircuitDefaultType,>( file_reader, &input_path, &output_path);
+        }
+                                    
+        "run_compile_circuit" => {
+            // let circuit_name = &args[2];
+            // let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
+            let circuit_path = matches.get_one::<String>("circuit_path").unwrap(); //"outputs/reward_output.json"
+
+
+            
+            // run_compile_and_serialize::<BN254Config,CircuitType>(&circuit_path);
+            run_compile_and_serialize::<M31Config,CircuitType>(&circuit_path);
+
+            // compile_circ(circuit_name, demo);
+        }
+        "run_gen_witness" => {
+            let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+            let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+            // let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
+            let witness_path = matches.get_one::<String>("witness").unwrap(); //"outputs/reward_output.json"
+            let circuit_path = matches.get_one::<String>("circuit_path").unwrap(); //"outputs/reward_output.json"
+            run_witness::<M31Config, _, CircuitDefaultType>(file_reader, input_path, output_path, &witness_path, circuit_path);
+            // debug_witness::<BN254Config, _, CircuitDefaultType, CircuitType>(file_reader, input_path, output_path, &witness_path, circuit_path);
+
+            // debug_bn254::<BN254Config, _, CircuitType>(file_reader);
+
+        }
+        "run_prove_witness" => {
+            // let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+            // let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+            // let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
+            let witness_path = matches.get_one::<String>("witness").unwrap(); //"outputs/reward_output.json"
+            let proof_path = matches.get_one::<String>("proof").unwrap(); //"outputs/reward_output.json"
+            let circuit_path = matches.get_one::<String>("circuit_path").unwrap(); //"outputs/reward_output.json"
+
+            run_prove_witness::<M31Config, CircuitDefaultType>( circuit_path, witness_path, proof_path);
+        }
+        "run_gen_verify"=> {
+
+            let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+            let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+            // let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
+            let witness_path = matches.get_one::<String>("witness").unwrap(); //"outputs/reward_output.json"
+            let proof_path = matches.get_one::<String>("proof").unwrap(); //"outputs/reward_output.json"
+            let circuit_path = matches.get_one::<String>("circuit_path").unwrap(); //"outputs/reward_output.json"
+
+
+            // run_verify::<BN254Config, Filereader, CircuitDefaultType>(&circuit_name);
+            run_verify_io::<M31Config, Filereader, CircuitDefaultType>(&circuit_path, file_reader, &input_path, &output_path, witness_path, proof_path);
         }
         _ => {
             panic!("Unknown command or missing arguments.");
