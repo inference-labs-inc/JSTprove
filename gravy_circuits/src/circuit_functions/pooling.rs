@@ -221,14 +221,6 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
             }
         }
     }
-    println!("y_dims {}", y_dims[0]);
-    println!("y_dims {}", y_dims[1]);
-    println!("y_dims {}", y_dims[2]);
-    println!("y_dims {}", y_dims[3]);
-
-    println!("output_spatial_shape {}", output_spatial_shape[0]);
-    println!("output_spatial_shape {}", output_spatial_shape[1]);
-
     reshape_4d(&y_data, y_dims)
 }
 
