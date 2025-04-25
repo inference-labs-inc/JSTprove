@@ -45,7 +45,7 @@ from python_testing.circuit_models.doom_model import Doom, DoomAgent
 #             q_values = self.forward(state_tensor)
 #             return q_values.argmax().item()
 
-class DoomSlice(ZKModel):
+class Slice(ZKModel):
     def get_model_and_quantize(self):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -73,7 +73,7 @@ class DoomSlice(ZKModel):
         with open(file_name, 'r') as file:
             data = json.load(file)
             return data["output"]
-class DoomConv1(DoomSlice):
+class DoomConv1(Slice):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_conv1"
@@ -94,7 +94,7 @@ class DoomConv1(DoomSlice):
         with open(file_name, 'r') as file:
             data = json.load(file)
             return data["input"]
-class DoomConv2(DoomSlice):
+class DoomConv2(Slice):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_conv2"
@@ -110,7 +110,7 @@ class DoomConv2(DoomSlice):
         self.slice_name_in_model = "conv"
         self.large_model_slice_name = "conv2"
 
-class DoomConv3(DoomSlice):
+class DoomConv3(Slice):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_conv3"
@@ -126,7 +126,7 @@ class DoomConv3(DoomSlice):
         self.slice_name_in_model = "conv"
         self.large_model_slice_name = "conv3"
 
-class DoomFC1(DoomSlice):
+class DoomFC1(Slice):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_fc1"
@@ -149,7 +149,7 @@ class DoomFC1(DoomSlice):
             x = torch.tensor(data["output"])
             return x.reshape([-1,1568])#.view(x.size(0), -1)
         
-class DoomFC2(DoomSlice):
+class DoomFC2(Slice):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_fc2"

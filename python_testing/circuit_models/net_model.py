@@ -1,3 +1,4 @@
+import json
 import torch
 from python_testing.utils.helper_functions import RunType
 import torch
@@ -5,6 +6,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from python_testing.utils.pytorch_helpers import ZKModel
+from python_testing.circuit_models.doom_slices import Slice
+import sys
 
 class Net(nn.Module):
     def __init__(self, target_params=None):
@@ -33,11 +36,16 @@ class Net(nn.Module):
 
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
+        print(x.shape)
         x = self.pool(F.relu(self.conv2(x)))
+        print(x.shape)
         x = torch.flatten(x, 1)
         x = F.relu(self.fc1(x))
+        print(x.shape)
         x = F.relu(self.fc2(x))
+        print(x.shape)
         x = self.fc3(x)
+        print(x.shape)
         return x
 
 
@@ -73,6 +81,7 @@ class FC1Segment(nn.Module):
         x = torch.flatten(x, start_dim=1)
         x = F.relu(self.fc1(x))
         return x
+    
 
 
 class FC2Segment(nn.Module):
@@ -93,13 +102,59 @@ class FC3Segment(nn.Module):
     def forward(self, x):
         return self.fc3(x)
     
+class Slice(ZKModel):
+    def get_model_and_quantize(self):
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+        checkpoint = torch.load(self.large_model_file_name, map_location=device)
+        
+        large_model = Net()
+        if "model_state_dict" in checkpoint.keys():
+            large_model.load_state_dict(checkpoint["model_state_dict"])
+        else:
+            large_model.load_state_dict(checkpoint)
+
+        
+        try:
+            model = self.model_type(**getattr(self, 'model_params', {})).to(device)
+        except AttributeError:
+            raise NotImplementedError(f"Must specify the model type as a pytorch model (as variable self.model_type) in object {self.__class__.__name__}")
+        except TypeError as e: 
+            raise NotImplementedError(f"{e}. \n Must specify the model parameters of the pytorch model (as dictionary in self.model_params) in object {self.__class__.__name__}.")
+        
+        for name in self.slice_name_in_model:
+            setattr(model,name, getattr(large_model,name))
+        model.eval()
+        self.model = model
+        self.quantized_model = self.quantize_model(model, 2**self.scaling, rescale_config=getattr(self,"rescale_config",{}))
+        self.quantized_model.eval()  
+
+    def read_input(self, file_name = "doom_data/doom_input.json"):
+        """Reads the inputs to each layer of the model from text files."""
+        print(file_name)
+        with open(file_name, 'r') as file:
+            data = json.load(file)
+            return data["output"]
+
+
+# class NetConv1Model(ZKModel):
+#     def __init__(self):
+#         self.required_keys = ["input"]
+#         self.name = "net_conv1"
+#         self.input_data_file = "input/net_input.json"
+#         # self.model_file_name = "net_model.pth"
+
+
+#         self.scaling = 21
+#         self.input_shape = [1,3,32,32]
+#         self.rescale_config = {}
+#         self.model_type = Conv1Segment
 class NetModel(ZKModel):
     def __init__(self):
         self.required_keys = ["input"]
         self.name = "net"
         self.input_data_file = "input/net_input.json"
-        # self.model_file_name = file_name
+        self.model_file_name = "net_model.pth"
 
 
         self.scaling = 21
@@ -107,18 +162,136 @@ class NetModel(ZKModel):
         self.rescale_config = {"fc3": False}
         self.model_type = Net
 
+class NetConv1Model(Slice):
+    def __init__(self):
+        self.required_keys = ["input"]
+        self.name = "net_conv1"
+        self.input_data_file = "input/net_input.json"
+        self.large_model_file_name = "net_model.pth"
+        self.slice_name_in_model = ["conv1", "pool"]
+        self.large_model_slice_name = "conv1"
+
+
+        self.scaling = 21
+        self.input_shape = [1,3,32,32]
+        self.rescale_config = {}
+        self.model_type = Conv1Segment
+
+    def read_input(self, file_name = "doom_data/doom_input.json"):
+        """Reads the inputs to each layer of the model from text files."""
+        print(file_name)
+        with open(file_name, 'r') as file:
+            data = json.load(file)
+            return data["input"]
+        
+class NetConv2Model(Slice):
+    def __init__(self):
+        self.required_keys = ["input"]
+        self.name = "net_conv2"
+        self.input_data_file = "output/net_conv1_output.json"
+        self.large_model_file_name = "net_model.pth"
+        self.slice_name_in_model = ["conv2", "pool"]
+        self.large_model_slice_name = "conv2"
+
+
+        self.scaling = 21
+        self.input_shape = [1,6,14,14]
+        self.rescale_config = {}
+        self.model_type = Conv2Segment
+
+class NetFC1Model(Slice):
+    def __init__(self):
+        self.required_keys = ["input"]
+        self.name = "net_fc1"
+        self.input_data_file = "output/net_conv2_output.json"
+        self.large_model_file_name = "net_model.pth"
+        self.slice_name_in_model = ["fc1"]
+        self.large_model_slice_name = "fc1"
+
+
+        self.scaling = 21
+        self.input_shape = [1,16,5,5]
+        self.rescale_config = {}
+        self.model_type = FC1Segment
+
+
+class NetFC2Model(Slice):
+    def __init__(self):
+        self.required_keys = ["input"]
+        self.name = "net_fc2"
+        self.input_data_file = "output/net_fc1_output.json"
+        self.large_model_file_name = "net_model.pth"
+        self.slice_name_in_model = ["fc2"]
+        self.large_model_slice_name = "fc2"
+
+
+        self.scaling = 21
+        self.input_shape = [1,120]
+        self.rescale_config = {}
+        self.model_type = FC2Segment
+
+
+class NetFC3Model(Slice):
+    def __init__(self):
+        self.required_keys = ["input"]
+        self.name = "net_fc3"
+        self.input_data_file = "output/net_fc2_output.json"
+        self.large_model_file_name = "net_model.pth"
+        self.slice_name_in_model = ["fc3"]
+        self.large_model_slice_name = "fc3"
+
+
+        self.scaling = 21
+        self.input_shape = [1,84]
+        self.rescale_config = {"fc3": False}
+        self.model_type = FC3Segment
+
     
 
 if __name__ == "__main__":
     name = "net"
     d = NetModel()
+    # # d.save_model("net_model.pth")
+    # # sys.exit()
+
     d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
     d_2 = NetModel()
     d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
-    # d.base_testing(run_type=RunType.PROVE_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
-    # d.base_testing(run_type=RunType.GEN_VERIFY, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
 
     d_3 = NetModel()
     d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
-    # d_3.base_testing(run_type=RunType.PROVE_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
-    # d_3.base_testing(run_type=RunType.GEN_VERIFY, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
+
+
+
+    name = "net_conv1"
+    d = NetConv1Model()
+    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    d_2 = NetConv1Model()
+    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+
+    d_3 = NetConv1Model()
+    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
+
+    name = "net_conv2"
+    d = NetConv2Model()
+    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    d_3 = NetConv2Model()
+    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", input_file=d_3.input_data_file, write_json = False)
+
+    name = "net_fc1"
+    d = NetFC1Model()
+    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    d_3 = NetFC1Model()
+    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", input_file=d_3.input_data_file, write_json = False)
+
+    name = "net_fc2"
+    d = NetFC2Model()
+    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    d_3 = NetFC2Model()
+    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", input_file=d_3.input_data_file, write_json = False)
+
+    name = "net_fc3"
+    d = NetFC3Model()
+    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    d_3 = NetFC3Model()
+    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", input_file=d_3.input_data_file, write_json = False)

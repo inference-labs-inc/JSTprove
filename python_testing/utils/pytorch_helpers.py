@@ -247,6 +247,8 @@ class PytorchConverter():
 
             # if isinstance(module, nn.ReLU):
             #     pass
+        # import sys
+        # sys.exit()
 
         return weights
     
@@ -262,7 +264,10 @@ class PytorchConverter():
         if hasattr(self, 'model_file_name'):
             print(f"Loading model from file {self.model_file_name}")
             checkpoint = torch.load(self.model_file_name, map_location=device)
-            model.load_state_dict(checkpoint["model_state_dict"])
+            if "model_state_dict" in checkpoint.keys():
+                model.load_state_dict(checkpoint["model_state_dict"])
+            else:
+                model.load_state_dict(checkpoint)
         else:
             print("Creating new model as no saved file path was specified")
         model.eval()

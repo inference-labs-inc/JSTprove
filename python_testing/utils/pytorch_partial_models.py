@@ -23,7 +23,7 @@ class QuantizedLinear(nn.Module):
     def forward(self, x):
         # Assume x is already scaled (long), do matmul in int domain
         x = x.long()
-        
+
         out = torch.matmul(x, self.weight.t())
         out += self.bias
         if self.rescale_output:

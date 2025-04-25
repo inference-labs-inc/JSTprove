@@ -46,19 +46,19 @@ struct WeightsData {
 
 #[derive(Deserialize, Clone)]
 struct InputData {
-    input: Vec<Vec<Vec<Vec<i64>>>>,
+    output: Vec<Vec<Vec<Vec<i64>>>>,
 }
 
 #[derive(Deserialize, Clone)]
 struct OutputData {
-    output: Vec<Vec<i64>>,
+    output: Vec<Vec<Vec<Vec<i64>>>>,
 }
 
 const BASE: u32 = 2;
 const NUM_DIGITS: usize = 32; 
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/net_weights.json");
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/net_weights.json");
 
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
@@ -72,8 +72,8 @@ lazy_static! {
 }
 
 declare_circuit!(ConvCircuit {
-    input_arr: [[[[PublicVariable; 32]; 32]; 3]; 1], // shape (m, n)
-    outputs: [[PublicVariable; 10]; 1], // shape (m, k)
+    input_arr: [[[[PublicVariable; 14]; 14]; 6]; 1], // shape (m, n)
+    outputs: [[[[PublicVariable; 5]; 5]; 16]; 1], // shape (m, k)
 });
 
 
@@ -91,62 +91,44 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
         // Bring the weights into the circuit as constants
         let mut out = four_d_array_to_vec(self.input_arr);        
         // Conv 1
-        for (i, _) in WEIGHTS_INPUT.conv_weights.iter().enumerate(){
-            let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv_weights[i]);
-            let bias: Vec<Variable> = WEIGHTS_INPUT
-                .conv_bias[i]
-                .clone()
-                .into_iter()
-                .map(|x| load_circuit_constant(api, x))
-                .collect();
+        let i = 1;
+        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv_weights[i]);
+        let bias: Vec<Variable> = WEIGHTS_INPUT
+            .conv_bias[i]
+            .clone()
+            .into_iter()
+            .map(|x| load_circuit_constant(api, x))
+            .collect();
 
-            
-            out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv_dilation[i], &WEIGHTS_INPUT.conv_kernel_shape[i], &WEIGHTS_INPUT.conv_pads[i], &WEIGHTS_INPUT.conv_strides[i],&WEIGHTS_INPUT.conv_input_shape[i], WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv_group[i], true, v_plus_one, two_v, alpha_2_v, true);
-            api.display("2", out[0][0][0][0]);
+        
+        out = conv_4d_run(api, out, weights, bias,&WEIGHTS_INPUT.conv_dilation[i], &WEIGHTS_INPUT.conv_kernel_shape[i], &WEIGHTS_INPUT.conv_pads[i], &WEIGHTS_INPUT.conv_strides[i],&WEIGHTS_INPUT.conv_input_shape[i], WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv_group[i], true, v_plus_one, two_v, alpha_2_v, true);
+        api.display("2", out[0][0][0][0]);
 
-            let (kernel_shape, strides, dilation, output_spatial_shape, new_pads) = setup_maxpooling_2d(&WEIGHTS_INPUT.maxpool_padding[i], &WEIGHTS_INPUT.maxpool_kernel_size[i], &WEIGHTS_INPUT.maxpool_stride[0], &WEIGHTS_INPUT.maxpool_dilation[i], WEIGHTS_INPUT.maxpool_ceil_mode[i], &WEIGHTS_INPUT.maxpool_input_shape[i]);
+        let (kernel_shape, strides, dilation, output_spatial_shape, new_pads) = setup_maxpooling_2d(&WEIGHTS_INPUT.maxpool_padding[i], &WEIGHTS_INPUT.maxpool_kernel_size[i], &WEIGHTS_INPUT.maxpool_stride[0], &WEIGHTS_INPUT.maxpool_dilation[i], WEIGHTS_INPUT.maxpool_ceil_mode[i], &WEIGHTS_INPUT.maxpool_input_shape[i]);
 
-            // let mut table = LogUpRangeProofTable::new(nb_bits);
-            // table.initial(api);
-            let mut table_opt = None;
+        // let mut table = LogUpRangeProofTable::new(nb_bits);
+        // table.initial(api);
+        let mut table_opt = None;
 
-            out = maxpooling_2d(api, &out, &kernel_shape, &strides, &dilation, &output_spatial_shape, &WEIGHTS_INPUT.maxpool_input_shape[i], &new_pads, BASE, NUM_DIGITS, false, &mut table_opt);
-        }
+        out = maxpooling_2d(api, &out, &kernel_shape, &strides, &dilation, &output_spatial_shape, &WEIGHTS_INPUT.maxpool_input_shape[i], &new_pads, BASE, NUM_DIGITS, false, &mut table_opt);
+        
 
-        //Reshape
-        let out_1d: Vec<Variable> = out.iter()
-                .flat_map(|x| x.iter())
-                .flat_map(|x| x.iter())
-                .flat_map(|x| x.iter())
-                .copied()
-                .collect();
-
-        let mut out_2d = vec![out_1d];
-        for (i, _) in WEIGHTS_INPUT.fc_weights.iter().enumerate(){
-            // if WEIGHTS_INPUT2.fc_alpha[i] != 1 ||WEIGHTS_INPUT2.fc_beta[i] != 1 {
-            //     panic!("Not yet implemented for fc alpha or beta not equal to 1");
-            // }
-            let weights = read_2d_weights(api, &WEIGHTS_INPUT.fc_weights[i]);
-            let bias = read_2d_weights(api, &WEIGHTS_INPUT.fc_bias[i]);
-
-            out_2d = matrix_multplication_naive2(api, out_2d, weights);
-            out_2d = matrix_addition_vec(api, out_2d, bias);
-            api.display("3", out_2d[0][0]);
-
-            if i != WEIGHTS_INPUT.fc_weights.len() - 1{
-                out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, true, out_2d, v_plus_one, two_v, alpha_2_v, true);
-            }
-            api.display("4", out_2d[0][0]);
-
-        }
+        
 
         for (j, dim1) in self.outputs.iter().enumerate() {
-                for (k, _dim2) in dim1.iter().enumerate() {
-                    api.display("out1", self.outputs[j][k]);
-                    api.display("out2", out_2d[j][k]);
-                    api.assert_is_equal(self.outputs[j][k], out_2d[j][k]);
+            for (k, _dim2) in dim1.iter().enumerate() {
+                for (l, dim3) in _dim2.iter().enumerate() {
+                    for (m, _dim4) in dim3.iter().enumerate() {
+                        // api.display("outputs", self.outputs[j][k][l][m]);
+                        // api.display("calculated", out[j][k][l][m]);
+
+                        api.assert_is_equal(self.outputs[j][k][l][m], out[j][k][l][m]);
+                        // api.assert_is_different(self.outputs[j][k][l][m], 1);
+
+                    }
                 }
             }
+        }
     }
 }
 
@@ -162,7 +144,7 @@ impl<C: Config> IOReader<ConvCircuit<C::CircuitField>, C> for FileReader {
         >(file_path);
 
         // Assign inputs to assignment
-        for (i, dim1) in data.input.iter().enumerate() {
+        for (i, dim1) in data.output.iter().enumerate() {
             for (j, dim2) in dim1.iter().enumerate() {
                 for (k, dim3) in dim2.iter().enumerate() {
                     for (l, &element) in dim3.iter().enumerate() {
@@ -190,13 +172,17 @@ impl<C: Config> IOReader<ConvCircuit<C::CircuitField>, C> for FileReader {
         >(file_path);
 
         for (i, dim1) in data.output.iter().enumerate() {
-            for (j, &element) in dim1.iter().enumerate() {
-                if element < 0 {
-                    assignment.outputs[i][j] =
-                        C::CircuitField::from_u256(U256::from(element.abs() as u64)).neg();
-                } else {
-                    assignment.outputs[i][j] =
-                        C::CircuitField::from_u256(U256::from(element.abs() as u64));
+            for (j, dim2) in dim1.iter().enumerate() {
+                for (k, dim3) in dim2.iter().enumerate() {
+                    for (l, &element) in dim3.iter().enumerate() {
+                        if element < 0 {
+                            assignment.outputs[i][j][k][l] =
+                                C::CircuitField::from(element.abs() as u32).neg();
+                        } else {
+                            assignment.outputs[i][j][k][l] =
+                                C::CircuitField::from(element.abs() as u32);
+                        }
+                    }
                 }
             }
         }
