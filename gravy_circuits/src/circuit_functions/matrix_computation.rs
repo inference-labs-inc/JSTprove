@@ -428,7 +428,7 @@ pub fn matrix_multiplication_std<C: Config, Builder: RootAPI<C>>(
     api.assert_is_equal(Variable::from(r1), Variable::from(m1));
     api.assert_is_equal(Variable::from(r2), Variable::from(n2));
 
-    let loop_count = if C::CircuitField::SIZE == M31::SIZE {
+    let loop_count = if CircuitField::<C>::SIZE == M31::SIZE {
         3
     } else {
         1

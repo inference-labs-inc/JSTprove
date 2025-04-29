@@ -11,9 +11,6 @@ clap.workspace = true
 ethnum.workspace = true
 halo2curves.workspace = true
 tiny-keccak.workspace = true
-mpi_config.workspace = true
-gkr_field_config.workspace = true
-expander_config.workspace = true
 expander_circuit.workspace = true
 expander_transcript.workspace = true
 gkr.workspace = true
@@ -26,6 +23,12 @@ peakmem-alloc = "0.3.0"
 expander_compiler.workspace = true
 lazy_static = "1.4"
 circuit-std-rs.workspace = true
+babybear.workspace = true
+gkr_engine.workspace = true
+gkr_hashers.workspace = true
+goldilocks.workspace = true
+serdes.workspace = true
+
 
 [dev-dependencies]
 rayon = "1.9"
@@ -81,9 +84,9 @@ path = "bin/circuit_components/convolution.rs"
 name = "doom"
 path = "bin/doom.rs"
 
-[[bin]]
-name = "doom_2"
-path = "bin/doom_2.rs"
+# [[bin]]
+# name = "doom_2"
+# path = "bin/doom_2.rs"
 
 [[bin]]
 name = "eth_fraud"

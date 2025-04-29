@@ -64,7 +64,7 @@ if __name__ == "__main__":
     
     # Run another operation
     print("\nRunning compilation:")
-    circuit.base_testing(RunType.COMPILE_CIRCUIT)
+    circuit.base_testing(RunType.COMPILE_CIRCUIT, dev_mode=True)
     
     # Read the input and output files to verify
     print("\n--- Verifying input and output files ---")

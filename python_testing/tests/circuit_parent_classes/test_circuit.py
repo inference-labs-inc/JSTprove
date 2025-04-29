@@ -1,5 +1,8 @@
 import pytest
 from unittest.mock import patch, MagicMock
+import sys
+sys.modules.pop("python_testing.circuit_components.circuit_helpers", None)
+
 
 
 with patch('python_testing.utils.helper_functions.compute_and_store_output', lambda x: x):  # MUST BE BEFORE THE UUT GETS IMPORTED ANYWHERE!
@@ -64,6 +67,7 @@ def test_get_inputs_not_implemented():
 
 def test_get_outputs_not_implemented():
     c = Circuit()
+    # c.name = "test"
     with pytest.raises(NotImplementedError, match="get_outputs must be implemented"):
         c.get_outputs()
 
@@ -329,6 +333,8 @@ def test_check_attributes_no_name():
 @patch.object(Circuit, "parse_proof_run_type")
 def test_base_testing_calls_parse_proof_run_type_correctly(mock_parse):
     c = Circuit()
+    c.name = "test"
+
     c._file_info = {}
     c._file_info["weights"] = "weights/model_weights.json"
     c.base_testing(

@@ -2,6 +2,8 @@ use expander_compiler::frontend::internal::DumpLoadTwoVariables;
 use expander_compiler::frontend::Config;
 use serde::de::DeserializeOwned;
 use std::io::Read;
+use gkr_engine::{MPIConfig, MPIEngine, GKREngine, FieldEngine};
+
 
 /// Implement io_reader to read inputs and outputs of the circuit.
 /// 
@@ -11,7 +13,7 @@ where
     CircuitType: Default
         +
         // DumpLoadTwoVariables<Variable> +
-        DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
+        DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
         // + expander_compiler::frontend::Define<C>
         + Clone,
 {

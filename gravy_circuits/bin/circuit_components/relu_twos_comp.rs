@@ -1,4 +1,3 @@
-use arith::FieldForECC;
 use ethnum::U256;
 use expander_compiler::frontend::*;
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
@@ -62,12 +61,12 @@ struct InputData {
         ###################  This is where we define the inputs and outputs of the function  ###################
         ########################################################################################################
 */
-impl<C: Config> IOReader<ReLUTwosCircuit<C::CircuitField>, C> for FileReader {
+impl<C: Config> IOReader<ReLUTwosCircuit<CircuitField::<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
-        mut assignment: ReLUTwosCircuit<C::CircuitField>,
-    ) -> ReLUTwosCircuit<C::CircuitField> {
+        mut assignment: ReLUTwosCircuit<CircuitField::<C>>,
+    ) -> ReLUTwosCircuit<CircuitField::<C>> {
         let data: InputData = <FileReader as IOReader<ReLUTwosCircuit<_>, C>>::read_data_from_json::<
             InputData,
         >(file_path);
@@ -76,9 +75,9 @@ impl<C: Config> IOReader<ReLUTwosCircuit<C::CircuitField>, C> for FileReader {
             for (j, var_vec) in var_vec_vec.iter().enumerate() {
                 for (k, &var) in var_vec.iter().enumerate() {
                     if var < 0 {
-                        assignment.input[i][j][k] = C::CircuitField::from(var.abs() as u32).neg();
+                        assignment.input[i][j][k] = CircuitField::<C>::from(var.abs() as u32).neg();
                     } else {
-                        assignment.input[i][j][k] = C::CircuitField::from(var.abs() as u32);
+                        assignment.input[i][j][k] = CircuitField::<C>::from(var.abs() as u32);
                     }
                 }
             }
@@ -88,8 +87,8 @@ impl<C: Config> IOReader<ReLUTwosCircuit<C::CircuitField>, C> for FileReader {
     fn read_outputs(
         &mut self,
         file_path: &str,
-        mut assignment: ReLUTwosCircuit<C::CircuitField>,
-    ) -> ReLUTwosCircuit<C::CircuitField> {
+        mut assignment: ReLUTwosCircuit<CircuitField::<C>>,
+    ) -> ReLUTwosCircuit<CircuitField::<C>> {
         let data: OutputData = <FileReader as IOReader<ReLUTwosCircuit<_>, C>>::read_data_from_json::<
             OutputData,
         >(file_path);
@@ -97,7 +96,7 @@ impl<C: Config> IOReader<ReLUTwosCircuit<C::CircuitField>, C> for FileReader {
         for (i, var_vec_vec) in data.output.iter().enumerate() {
             for (j, var_vec) in var_vec_vec.iter().enumerate() {
                 for (k, &var) in var_vec.iter().enumerate() {
-                    assignment.output[i][j][k] = C::CircuitField::from_u256(U256::from(var));
+                    assignment.output[i][j][k] = CircuitField::<C>::from_u256(U256::from(var));
                 }
             }
         }

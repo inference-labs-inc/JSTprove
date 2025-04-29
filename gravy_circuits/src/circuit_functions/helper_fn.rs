@@ -8,11 +8,11 @@ pub fn load_circuit_constant<C: Config, Builder: RootAPI<C>>(
 ) -> Variable {
     if x < 0 {
         // let y = api.constant(x.abs() as u32);
-        let y = api.constant(C::CircuitField::from_u256(U256::from(x.abs() as u64)));
+        let y = api.constant(CircuitField::<C>::from_u256(U256::from(x.abs() as u64)));
         api.neg(y)
     } else {
         // api.constant(x.abs() as u32) // For values greater than 100
-        api.constant(C::CircuitField::from_u256(U256::from(x.abs() as u64)))
+        api.constant(CircuitField::<C>::from_u256(U256::from(x.abs() as u64)))
     }
 }
 /// Convert 4d array to 4d vectors

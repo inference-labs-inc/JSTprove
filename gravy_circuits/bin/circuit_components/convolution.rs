@@ -1,4 +1,3 @@
-use arith::FieldForECC;
 use gravy_circuits::circuit_functions::convolution_fn::{conv_shape_4, not_yet_implemented_conv, set_default_params};
 use ethnum::U256;
 use expander_compiler::frontend::*;
@@ -137,12 +136,12 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
     }
 }
 
-impl<C: Config> IOReader<ConvCircuit<C::CircuitField>, C> for FileReader {
+impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
-        mut assignment: ConvCircuit<C::CircuitField>,
-    ) -> ConvCircuit<C::CircuitField> {
+        mut assignment: ConvCircuit<CircuitField::<C>>,
+    ) -> ConvCircuit<CircuitField::<C>> {
         let data: InputData = <FileReader as IOReader<ConvCircuit<_>, C>>::read_data_from_json::<
             InputData,
         >(file_path);
@@ -154,10 +153,10 @@ impl<C: Config> IOReader<ConvCircuit<C::CircuitField>, C> for FileReader {
                     for (l, &element) in dim3.iter().enumerate() {
                         if element < 0 {
                             assignment.input_arr[i][j][k][l] =
-                                C::CircuitField::from(element.abs() as u32).neg();
+                                CircuitField::<C>::from(element.abs() as u32).neg();
                         } else {
                             assignment.input_arr[i][j][k][l] =
-                                C::CircuitField::from(element.abs() as u32);
+                                CircuitField::<C>::from(element.abs() as u32);
                         }
                     }
                 }
@@ -169,8 +168,8 @@ impl<C: Config> IOReader<ConvCircuit<C::CircuitField>, C> for FileReader {
     fn read_outputs(
         &mut self,
         file_path: &str,
-        mut assignment: ConvCircuit<C::CircuitField>,
-    ) -> ConvCircuit<C::CircuitField> {
+        mut assignment: ConvCircuit<CircuitField::<C>>,
+    ) -> ConvCircuit<CircuitField::<C>> {
         let data: OutputData = <FileReader as IOReader<ConvCircuit<_>, C>>::read_data_from_json::<
             OutputData,
         >(file_path);
@@ -181,10 +180,10 @@ impl<C: Config> IOReader<ConvCircuit<C::CircuitField>, C> for FileReader {
                     for (l, &element) in dim3.iter().enumerate() {
                         if element < 0 {
                             assignment.conv_out[i][j][k][l] =
-                                C::CircuitField::from_u256(U256::from(element.abs() as u64)).neg();
+                                CircuitField::<C>::from_u256(U256::from(element.abs() as u64)).neg();
                         } else {
                             assignment.conv_out[i][j][k][l] =
-                                C::CircuitField::from_u256(U256::from(element.abs() as u64));
+                                CircuitField::<C>::from_u256(U256::from(element.abs() as u64));
                         }
                     }
                 }

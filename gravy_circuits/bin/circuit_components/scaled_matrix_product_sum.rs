@@ -4,7 +4,6 @@ use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use gravy_circuits::circuit_functions::matrix_computation::scaled_matrix_product_sum;
 use serde::Deserialize;
 // use std::ops::Neg;
-use arith::FieldForECC;
 use gravy_circuits::runner::main_runner::handle_args;
 
 /*
@@ -61,17 +60,17 @@ struct OutputData {
     scaled_matrix_product_sum_alpha_ab_plus_c: Vec<Vec<u64>>,
 }
 
-impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
+impl<C: Config> IOReader<Circuit<CircuitField::<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
-        mut assignment: Circuit<C::CircuitField>,
-    ) -> Circuit<C::CircuitField> {
+        mut assignment: Circuit<CircuitField::<C>>,
+    ) -> Circuit<CircuitField::<C>> {
         let data: InputData =
             <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<InputData>(file_path);
 
         // Assign inputs to assignment
-        assignment.alpha = C::CircuitField::from_u256(U256::from(data.alpha));
+        assignment.alpha = CircuitField::<C>::from_u256(U256::from(data.alpha));
 
         let rows_a = data.matrix_a.len();
         let cols_a = if rows_a > 0 {
@@ -83,7 +82,7 @@ impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
 
         for (i, row) in data.matrix_a.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_a[i][j] = C::CircuitField::from_u256(U256::from(element));
+                assignment.matrix_a[i][j] = CircuitField::<C>::from_u256(U256::from(element));
             }
         }
 
@@ -97,7 +96,7 @@ impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
 
         for (i, row) in data.matrix_b.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_b[i][j] = C::CircuitField::from_u256(U256::from(element));
+                assignment.matrix_b[i][j] = CircuitField::<C>::from_u256(U256::from(element));
             }
         }
 
@@ -111,7 +110,7 @@ impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
 
         for (i, row) in data.matrix_c.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_c[i][j] = C::CircuitField::from_u256(U256::from(element));
+                assignment.matrix_c[i][j] = CircuitField::<C>::from_u256(U256::from(element));
             }
         }
 
@@ -121,8 +120,8 @@ impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
     fn read_outputs(
         &mut self,
         file_path: &str,
-        mut assignment: Circuit<C::CircuitField>,
-    ) -> Circuit<C::CircuitField> {
+        mut assignment: Circuit<CircuitField::<C>>,
+    ) -> Circuit<CircuitField::<C>> {
         let data: OutputData =
             <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<OutputData>(file_path);
         // Assign inputs to assignment
@@ -144,7 +143,7 @@ impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
         {
             for (j, &element) in row.iter().enumerate() {
                 assignment.scaled_matrix_product_sum_alpha_ab_plus_c[i][j] =
-                    C::CircuitField::from_u256(U256::from(element));
+                    CircuitField::<C>::from_u256(U256::from(element));
             }
         }
         assignment

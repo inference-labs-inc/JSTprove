@@ -20,9 +20,6 @@ ethnum = "1.5.0"
 tiny-keccak = { version = "2.0", features = ["keccak"] }
 halo2curves = { git = "https://github.com/PolyhedraZK/halo2curves", default-features = false, features = ["bits",] }
 arith = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
-mpi_config = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
-gkr_field_config = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
-expander_config = { git = "https://github.com/PolyhedraZK/Expander", branch = "main", package = "config" }
 expander_circuit = { git = "https://github.com/PolyhedraZK/Expander", branch = "main", package = "circuit" }
 gkr = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
 gf2 = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
@@ -31,6 +28,12 @@ expander_transcript = { git = "https://github.com/PolyhedraZK/Expander", branch 
 crosslayer_prototype = { git = "https://github.com/PolyhedraZK/Expander", branch = "main"}
 expander_compiler = {git = "https://github.com/PolyhedraZK/ExpanderCompilerCollection"}
 circuit-std-rs = {git = "https://github.com/PolyhedraZK/ExpanderCompilerCollection"}
+babybear = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
+gkr_engine = { git = "https://github.com/PolyhedraZK/Expander", branch = "main", package = "gkr_engine" }
+gkr_hashers = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
+goldilocks = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
+serdes = { git = "https://github.com/PolyhedraZK/Expander", branch = "main"}
+
 
 # [workspace.metadata.cross.target.x86_64-unknown-linux-gnu]
 # # Add custom pre-build steps or configurations if needed
