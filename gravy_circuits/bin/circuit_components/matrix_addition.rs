@@ -50,9 +50,9 @@ struct InputData {
 struct OutputData {
     matrix_sum_ab: Vec<Vec<u64>>, //  Shape (m, n) 
 }
-impl<C: Config>IOReader<MatAddCircuit<C::CircuitField>, C> for FileReader
+impl<C: Config>IOReader<MatAddCircuit<CircuitField::<C>>, C> for FileReader
 {
-    fn read_inputs(&mut self, file_path: &str, mut assignment: MatAddCircuit<C::CircuitField>) -> MatAddCircuit<C::CircuitField>
+    fn read_inputs(&mut self, file_path: &str, mut assignment: MatAddCircuit<CircuitField::<C>>) -> MatAddCircuit<CircuitField::<C>>
     {
         let data: InputData = <FileReader as IOReader<MatAddCircuit<_>, C>>::read_data_from_json::<InputData>(file_path); 
 
@@ -65,7 +65,7 @@ impl<C: Config>IOReader<MatAddCircuit<C::CircuitField>, C> for FileReader
         
         for (i, row) in data.matrix_a.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_a[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
+                assignment.matrix_a[i][j] = CircuitField::<C>::from_u256(U256::from(element)) ;
             }
         }
 
@@ -75,14 +75,14 @@ impl<C: Config>IOReader<MatAddCircuit<C::CircuitField>, C> for FileReader
 
         for (i, row) in data.matrix_b.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_b[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
+                assignment.matrix_b[i][j] = CircuitField::<C>::from_u256(U256::from(element)) ;
             }
         }
 
         // Return the assignment
         assignment
     }
-    fn read_outputs(&mut self, file_path: &str, mut assignment: MatAddCircuit<C::CircuitField>) -> MatAddCircuit<C::CircuitField>
+    fn read_outputs(&mut self, file_path: &str, mut assignment: MatAddCircuit<CircuitField::<C>>) -> MatAddCircuit<CircuitField::<C>>
     {
 
         let data: OutputData = <FileReader as IOReader<MatAddCircuit<_>, C>>::read_data_from_json::<OutputData>(file_path); 
@@ -94,7 +94,7 @@ impl<C: Config>IOReader<MatAddCircuit<C::CircuitField>, C> for FileReader
 
         for (i, row) in data.matrix_sum_ab.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_sum_ab[i][j] = C::CircuitField::from_u256(U256::from(element)) ;
+                assignment.matrix_sum_ab[i][j] = CircuitField::<C>::from_u256(U256::from(element)) ;
             }
         }
         assignment

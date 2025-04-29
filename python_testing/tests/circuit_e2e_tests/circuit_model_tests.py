@@ -1,5 +1,8 @@
 import pytest
 
+def get_all_circuits():
+    pass
+
 def compile_circuit():
     pass
 

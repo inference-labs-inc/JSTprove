@@ -2,10 +2,14 @@ use io_reader::IOReader;
 use clap::{Arg, Command};
 use expander_compiler::circuit::layered::witness::Witness;
 use expander_compiler::circuit::layered::{Circuit, NormalInputType};
+// use expander_compiler::frontend::{extra::debug_eval, internal::DumpLoadTwoVariables, *};
+// use expander_compiler::utils::serde::Serde;
+use arith::Field;
+use arith::SimdField as _SimdField;
 use expander_compiler::frontend::{extra::debug_eval, internal::DumpLoadTwoVariables, *};
-use expander_compiler::utils::serde::Serde;
-use gkr_field_config::GKRFieldConfig;
+use gkr_engine::{MPIConfig, MPIEngine, GKREngine, FieldEngine};
 use peakmem_alloc::*;
+use serdes::ExpSerde;
 // use serde_json::{from_reader, to_writer};
 use std::alloc::System;
 use std::path::Path;
@@ -25,7 +29,7 @@ where
     I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone,
     CircuitDefaultType: Default
-        + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
         + Clone
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
@@ -84,13 +88,9 @@ where
     let start = Instant::now();
   
     let mut expander_circuit = layered_circuit
-        .export_to_expander::<C::DefaultGKRFieldConfig>()
-        .flatten::<C::DefaultGKRConfig>();
-    let config = expander_config::Config::<<C>::DefaultGKRConfig>::new(
-        expander_config::GKRScheme::Vanilla,
-        mpi_config::MPIConfig::new(),
-    );
-    let (simd_input, simd_public_input) = witness.to_simd::<<C>::DefaultSimdField>();
+        .export_to_expander_flatten();
+    let mpi_config = MPIConfig::prover_new();
+    let (simd_input, simd_public_input) = witness.to_simd();
     println!("{} {}", simd_input.len(), simd_public_input.len());
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
@@ -98,7 +98,7 @@ where
 
     // prove
     expander_circuit.evaluate();
-    let (claimed_v, proof) = gkr::executor::prove(&mut expander_circuit, &config);
+    let (claimed_v, proof) = gkr::executor::prove::<C>(&mut expander_circuit, mpi_config.clone());
 
     println!("Proven");
     println!(
@@ -117,9 +117,9 @@ where
     let start = Instant::now();
 
     // // verify
-    assert!(gkr::executor::verify(
+    assert!(gkr::executor::verify::<C>(
         &mut expander_circuit,
-        &config,
+        mpi_config,
         &proof,
         &claimed_v
     ));
@@ -190,7 +190,7 @@ pub fn run_rest<C: Config, I, CircuitDefaultType>(io_reader: &mut I)
 where
     I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
-        + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
         + Clone,
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
@@ -248,22 +248,18 @@ where
         assert_eq!(*x, true);
     }
 
-    let mut expander_circuit = layered_circuit
-        .export_to_expander::<<C>::DefaultGKRFieldConfig>()
-        .flatten::<C::DefaultGKRConfig>();
-    let config = expander_config::Config::<<C>::DefaultGKRConfig>::new(
-        expander_config::GKRScheme::Vanilla,
-        mpi_config::MPIConfig::new(),
-    );
+    let mut expander_circuit = layered_circuit.export_to_expander_flatten();
 
-    let (simd_input, simd_public_input) = witness.to_simd::<<C>::DefaultSimdField>();
+    let mpi_config = MPIConfig::prover_new();
+
+    let (simd_input, simd_public_input) = witness.to_simd();
     println!("{} {}", simd_input.len(), simd_public_input.len());
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
 
     // prove
     expander_circuit.evaluate();
-    let (claimed_v, proof) = gkr::executor::prove(&mut expander_circuit, &config);
+    let (claimed_v, proof) = gkr::executor::prove::<C>(&mut expander_circuit, mpi_config.clone());
 
 
     let proof = gkr::executor::dump_proof_and_claimed_v(&proof, &claimed_v).map_err(|e| e.to_string()).unwrap();
@@ -271,7 +267,7 @@ where
 
     // let proof = gkr::executor::dump_proof_and_claimed_v(&proof, &claimed_v).map_err(|e| e.to_string()).unwrap();
 
-    let (proof, claimed_v) = match gkr::executor::load_proof_and_claimed_v::<<<C as Config>::DefaultGKRFieldConfig as GKRFieldConfig>::ChallengeField>(&proof) {
+    let (proof, claimed_v) = match gkr::executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof) {
         Ok((proof, claimed_v)) => (proof, claimed_v),
         Err(_) => {
             return;
@@ -279,9 +275,9 @@ where
     };
 
     // verify
-    assert!(gkr::executor::verify(
+    assert!(gkr::executor::verify::<C>(
         &mut expander_circuit,
-        &config,
+        mpi_config,
         &proof,
         &claimed_v
     ));
@@ -305,7 +301,7 @@ pub fn run_witness<C: Config, I, CircuitDefaultType>(io_reader: &mut I, input_pa
 where
     I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
-        + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
         + Clone,
     
 {
@@ -332,11 +328,13 @@ where
 
     let assignments = vec![assignment; 1];
     let witness = witness_solver.solve_witnesses(&assignments).unwrap();
+    // This can be removed
     let output = layered_circuit.run(&witness);
 
     for x in output.iter() {
         assert_eq!(*x, true);
     }
+    // #### Until here #######
 
     println!("Witness Generated");
 
@@ -363,7 +361,7 @@ pub fn debug_witness<C: Config, I, CircuitDefaultType, CircuitType>(io_reader: &
 where
     I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
-        + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
         + Clone,
         CircuitType: Default
         + DumpLoadTwoVariables<Variable>
@@ -395,12 +393,13 @@ where
 
     let assignments = vec![assignment.clone(); 1];
     let witness = witness_solver.solve_witnesses(&assignments).unwrap();
-    let _output = layered_circuit.run(&witness);
 
     debug_eval(&CircuitType::default(), &assignment, EmptyHintCaller);
-    // for x in output.iter() {
-    //     assert_eq!(*x, true);
-    // }
+    let output = layered_circuit.run(&witness);
+
+    for x in output.iter() {
+        assert_eq!(*x, true);
+    }
 
     
 }
@@ -409,7 +408,7 @@ pub fn run_prove_witness<C: Config, CircuitDefaultType>(circuit_path: &str, witn
 where
     // I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
-        + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
         + Clone,
 {
     
@@ -420,26 +419,22 @@ where
     let reader = std::io::BufReader::new(file);
     let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
 
-    let mut expander_circuit = layered_circuit
-        .export_to_expander::<<C>::DefaultGKRFieldConfig>()
-        .flatten::<C::DefaultGKRConfig>();
-    let config = expander_config::Config::<<C>::DefaultGKRConfig>::new(
-        expander_config::GKRScheme::Vanilla,
-        mpi_config::MPIConfig::new(),
-    );
+    let mut expander_circuit = layered_circuit.export_to_expander_flatten();
+
+    let mpi_config = MPIConfig::prover_new();
 
     let file = std::fs::File::open(witness_path).unwrap();
     let reader = std::io::BufReader::new(file);
     let witness: Witness<C> = Witness::deserialize_from(reader).unwrap();
 
-    let (simd_input, simd_public_input) = witness.to_simd::<<C>::DefaultSimdField>();
+    let (simd_input, simd_public_input) = witness.to_simd();
     println!("{} {}", simd_input.len(), simd_public_input.len());
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
 
     // prove
     expander_circuit.evaluate();
-    let (claimed_v, proof) = gkr::executor::prove(&mut expander_circuit, &config);
+    let (claimed_v, proof) = gkr::executor::prove::<C>(&mut expander_circuit, mpi_config.clone());
 
     let proof: Vec<u8> = gkr::executor::dump_proof_and_claimed_v(&proof, &claimed_v).map_err(|e| e.to_string()).unwrap();
 
@@ -469,7 +464,7 @@ pub fn run_witness_and_proof<C: Config, I, CircuitDefaultType>(io_reader: &mut I
 where
     I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
-        + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
         + Clone,
 {
 
@@ -518,22 +513,18 @@ where
         assert_eq!(*x, true);
     }
 
-    let mut expander_circuit = layered_circuit
-        .export_to_expander::<<C>::DefaultGKRFieldConfig>()
-        .flatten::<C::DefaultGKRConfig>();
-    let config = expander_config::Config::<<C>::DefaultGKRConfig>::new(
-        expander_config::GKRScheme::Vanilla,
-        mpi_config::MPIConfig::new(),
-    );
+    let mut expander_circuit = layered_circuit.export_to_expander_flatten();
 
-    let (simd_input, simd_public_input) = witness.to_simd::<<C>::DefaultSimdField>();
+    let mpi_config = MPIConfig::prover_new();
+
+    let (simd_input, simd_public_input) = witness.to_simd();
     println!("{} {}", simd_input.len(), simd_public_input.len());
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
 
     // prove
     expander_circuit.evaluate();
-    let (claimed_v, proof) = gkr::executor::prove(&mut expander_circuit, &config);
+    let (claimed_v, proof) = gkr::executor::prove::<C>(&mut expander_circuit, mpi_config.clone());
 
     let proof: Vec<u8> = gkr::executor::dump_proof_and_claimed_v(&proof, &claimed_v).map_err(|e| e.to_string()).unwrap();
 
@@ -565,31 +556,27 @@ pub fn run_verify<C: Config, I, CircuitDefaultType>(name: &str)
 where
     I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
-        + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
         + Clone,
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
 
-    let config = expander_config::Config::<<C>::DefaultGKRConfig>::new(
-        expander_config::GKRScheme::Vanilla,
-        mpi_config::MPIConfig::new(),
-    );
+    let mpi_config = MPIConfig::prover_new();
+
 
     let file = std::fs::File::open(format!("{}_circuit.txt", name)).unwrap();
     let reader = std::io::BufReader::new(file);
     let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
 
-    let mut expander_circuit = layered_circuit
-        .export_to_expander::<<C>::DefaultGKRFieldConfig>()
-        .flatten::<C::DefaultGKRConfig>();
+    let mut expander_circuit = layered_circuit.export_to_expander_flatten();
 
     let file = std::fs::File::open(format!("{}_witness.txt", name)).unwrap();
     let reader = std::io::BufReader::new(file);
     let witness = Witness::<C>::deserialize_from(reader).unwrap();
     // let witness =
     //     layered::witness::Witness::<C>::deserialize_from(witness).map_err(|e| e.to_string())?;
-    let (simd_input, simd_public_input) = witness.to_simd::<C::DefaultSimdField>();
+    let (simd_input, simd_public_input) = witness.to_simd();
 
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
@@ -602,16 +589,16 @@ where
 
 
 
-    let (proof, claimed_v) = match gkr::executor::load_proof_and_claimed_v::<<<C as Config>::DefaultGKRFieldConfig as GKRFieldConfig>::ChallengeField>(&proof_and_claimed_v) {
+    let (proof, claimed_v) = match gkr::executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v) {
         Ok((proof, claimed_v)) => (proof, claimed_v),
         Err(_) => {
             return;
         }
     };
     // verify
-    assert!(gkr::executor::verify(
+    assert!(gkr::executor::verify::<C>(
         &mut expander_circuit,
-        &config,
+        mpi_config,
         &proof,
         &claimed_v
     ));
@@ -635,16 +622,13 @@ pub fn run_verify_io<C: Config, I, CircuitDefaultType>(circuit_path: &str, io_re
 where
     I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
-        + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
         + Clone + 
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
 
-    let config = expander_config::Config::<<C>::DefaultGKRConfig>::new(
-        expander_config::GKRScheme::Vanilla,
-        mpi_config::MPIConfig::new(),
-    );
+    let mpi_config = MPIConfig::prover_new();
 
     // let file = std::fs::File::open(format!("{}_circuit.txt", name)).unwrap();
     let file = std::fs::File::open(circuit_path).unwrap();
@@ -652,9 +636,7 @@ where
     let reader = std::io::BufReader::new(file);
     let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
 
-    let mut expander_circuit = layered_circuit
-        .export_to_expander::<<C>::DefaultGKRFieldConfig>()
-        .flatten::<C::DefaultGKRConfig>();
+    let mut expander_circuit = layered_circuit.export_to_expander_flatten();
 
 
     let file = std::fs::File::open(witness_path).unwrap();
@@ -662,7 +644,7 @@ where
     let witness = Witness::<C>::deserialize_from(reader).unwrap();
     // let witness =
     //     layered::witness::Witness::<C>::deserialize_from(witness).map_err(|e| e.to_string())?;
-    let (simd_input, simd_public_input) = witness.to_simd::<C::DefaultSimdField>();
+    let (simd_input, simd_public_input) = witness.to_simd();
 
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
@@ -670,8 +652,10 @@ where
     let assignment = io_reader.read_inputs(input_path, assignment);
     let assignment = io_reader.read_outputs(output_path, assignment);
 
-    let mut vars: Vec<C::CircuitField> = Vec::new();
-    let mut public_vars: Vec<C::CircuitField> = Vec::new();
+    // let mut vars: Vec<<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField> = Vec::new();
+    let mut vars: Vec<_> = Vec::new();
+
+    let mut public_vars: Vec<_> = Vec::new();
     assignment.dump_into(&mut vars, &mut public_vars);
     for (i, _) in public_vars.iter().enumerate(){
         let x = format!("{:?}", public_vars[i]);
@@ -691,7 +675,7 @@ where
 
 
 
-    let (proof, claimed_v) = match gkr::executor::load_proof_and_claimed_v::<<<C as Config>::DefaultGKRFieldConfig as GKRFieldConfig>::ChallengeField>(&proof_and_claimed_v) {
+    let (proof, claimed_v) = match gkr::executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v) {
         Ok((proof, claimed_v)) => (proof, claimed_v),
         Err(_) => {
             return;
@@ -704,9 +688,9 @@ where
 
 
     // verify
-    assert!(gkr::executor::verify(
+    assert!(gkr::executor::verify::<C>(
         &mut expander_circuit,
-        &config,
+        mpi_config,
         &proof,
         &claimed_v
     ));
@@ -728,31 +712,27 @@ pub fn run_verify_no_circuit<C: Config, I, CircuitDefaultType>(name: &str)
 where
     I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
-        + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
         + Clone,
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
 
-    let config = expander_config::Config::<<C>::DefaultGKRConfig>::new(
-        expander_config::GKRScheme::Vanilla,
-        mpi_config::MPIConfig::new(),
-    );
+    let mpi_config = MPIConfig::prover_new();
+
 
     let file = std::fs::File::open(format!("{}_circuit.txt", name)).unwrap();
     let reader = std::io::BufReader::new(file);
     let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
 
-    let mut expander_circuit = layered_circuit
-        .export_to_expander::<<C>::DefaultGKRFieldConfig>()
-        .flatten::<C::DefaultGKRConfig>();
+    let mut expander_circuit = layered_circuit.export_to_expander_flatten();
 
     let file = std::fs::File::open(format!("{}_witness.txt", name)).unwrap();
     let reader = std::io::BufReader::new(file);
     let witness = Witness::<C>::deserialize_from(reader).unwrap();
     // let witness =
     //     layered::witness::Witness::<C>::deserialize_from(witness).map_err(|e| e.to_string())?;
-    let (simd_input, simd_public_input) = witness.to_simd::<C::DefaultSimdField>();
+    let (simd_input, simd_public_input) = witness.to_simd();
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input = simd_public_input.clone();
 
@@ -763,7 +743,7 @@ where
 
 
 
-    let (proof, claimed_v) = match gkr::executor::load_proof_and_claimed_v::<<<C as Config>::DefaultGKRFieldConfig as GKRFieldConfig>::ChallengeField>(&proof_and_claimed_v) {
+    let (proof, claimed_v) = match gkr::executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v) {
         Ok((proof, claimed_v)) => (proof, claimed_v),
         Err(_) => {
             return;
@@ -771,9 +751,9 @@ where
     };
 
     // verify
-    assert!(gkr::executor::verify(
+    assert!(gkr::executor::verify::<C>(
         &mut expander_circuit,
-        &config,
+        mpi_config,
         &proof,
         &claimed_v
     ));
@@ -804,7 +784,7 @@ where
         + Clone
         + Define<C>,
     CircuitDefaultType: Default
-        + DumpLoadTwoVariables<<C as expander_compiler::frontend::Config>::CircuitField>
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
         + Clone,
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
@@ -867,138 +847,165 @@ where
 
 
 
-pub fn run_gf2<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::GF2Config>>(file_reader: &mut Filereader)
-where
-    CircuitDefaultType: std::default::Default
-    + DumpLoadTwoVariables<<expander_compiler::frontend::GF2Config as expander_compiler::frontend::Config>::CircuitField>
-    + std::clone::Clone,
-    CircuitType: std::default::Default +
-    expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-    + expander_compiler::frontend::Define<expander_compiler::frontend::GF2Config>
-    + std::clone::Clone,
-{
-    let matches: clap::ArgMatches = Command::new("File Copier")
-        .version("1.0")
-        .about("Copies content from input file to output file")
-        // .arg(
-        //     Arg::new("type")
-        //         .help("The type of main runner we want to run")
-        //         .required(true) // This argument is required
-        //         .index(1), // Positional argument (first argument)
-        // )
-        .arg(
-            Arg::new("input")
-                .help("The input file to read from")
-                .required(true) // This argument is required
-                .index(1), // Positional argument (first argument)
-        )
-        .arg(
-            Arg::new("output")
-                .help("The output file to write to")
-                .required(true) // This argument is also required
-                .index(2), // Positional argument (second argument)
-        )
-        .get_matches();
+// pub fn run_gf2<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::GF2Config>>(file_reader: &mut Filereader)
+// where
+//     CircuitDefaultType: std::default::Default
+//     + DumpLoadTwoVariables<<expander_compiler::frontend::GF2Config as expander_compiler::frontend::Config>::CircuitField>
+//     + std::clone::Clone,
+//     CircuitType: std::default::Default +
+//     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
+//     + expander_compiler::frontend::Define<expander_compiler::frontend::GF2Config>
+//     + std::clone::Clone,
+// {
+//     let matches: clap::ArgMatches = Command::new("File Copier")
+//         .version("1.0")
+//         .about("Copies content from input file to output file")
+//         // .arg(
+//         //     Arg::new("type")
+//         //         .help("The type of main runner we want to run")
+//         //         .required(true) // This argument is required
+//         //         .index(1), // Positional argument (first argument)
+//         // )
+//         .arg(
+//             Arg::new("input")
+//                 .help("The input file to read from")
+//                 .required(true) // This argument is required
+//                 .index(1), // Positional argument (first argument)
+//         )
+//         .arg(
+//             Arg::new("output")
+//                 .help("The output file to write to")
+//                 .required(true) // This argument is also required
+//                 .index(2), // Positional argument (second argument)
+//         )
+//         .get_matches();
 
-    let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
-    let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
-    run_main::<GF2Config, Filereader, CircuitType, CircuitDefaultType>(file_reader, &input_path, &output_path);
-    // run_main::<GF2Config, GF2ExtConfigSha2Raw, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+//     let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+//     let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+//     run_main::<GF2Config, Filereader, CircuitType, CircuitDefaultType>(file_reader, &input_path, &output_path);
+//     // run_main::<GF2Config, GF2ExtConfigSha2Raw, Filereader, CircuitType, CircuitDefaultType>(file_reader);
 
-}
+// }
 
-pub fn run_m31<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::M31Config>>(file_reader: &mut Filereader)
-where
-    CircuitDefaultType: std::default::Default
-    + DumpLoadTwoVariables<<expander_compiler::frontend::M31Config as expander_compiler::frontend::Config>::CircuitField>
-    + std::clone::Clone,
-    CircuitType: std::default::Default +
-    expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-    + expander_compiler::frontend::Define<expander_compiler::frontend::M31Config>
-    + std::clone::Clone,
-{
-    let matches: clap::ArgMatches = Command::new("File Copier")
-        .version("1.0")
-        .about("Copies content from input file to output file")
-        // .arg(
-        //     Arg::new("type")
-        //         .help("The type of main runner we want to run")
-        //         .required(true) // This argument is required
-        //         .index(1), // Positional argument (first argument)
-        // )
-        .arg(
-            Arg::new("input")
-                .help("The input file to read from")
-                .required(true) // This argument is required
-                .index(1), // Positional argument (first argument)
-        )
-        .arg(
-            Arg::new("output")
-                .help("The output file to write to")
-                .required(true) // This argument is also required
-                .index(2), // Positional argument (second argument)
-        )
-        .get_matches();
+// pub fn run_m31<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::M31Config>>(file_reader: &mut Filereader)
+// where
+//     CircuitDefaultType: std::default::Default
+//     + DumpLoadTwoVariables<<expander_compiler::frontend::M31Config as expander_compiler::frontend::Config>::CircuitField>
+//     + std::clone::Clone,
+//     CircuitType: std::default::Default +
+//     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
+//     + expander_compiler::frontend::Define<expander_compiler::frontend::M31Config>
+//     + std::clone::Clone,
+// {
+//     let matches: clap::ArgMatches = Command::new("File Copier")
+//         .version("1.0")
+//         .about("Copies content from input file to output file")
+//         // .arg(
+//         //     Arg::new("type")
+//         //         .help("The type of main runner we want to run")
+//         //         .required(true) // This argument is required
+//         //         .index(1), // Positional argument (first argument)
+//         // )
+//         .arg(
+//             Arg::new("input")
+//                 .help("The input file to read from")
+//                 .required(true) // This argument is required
+//                 .index(1), // Positional argument (first argument)
+//         )
+//         .arg(
+//             Arg::new("output")
+//                 .help("The output file to write to")
+//                 .required(true) // This argument is also required
+//                 .index(2), // Positional argument (second argument)
+//         )
+//         .get_matches();
 
-    let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
-    let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
-    run_main::<M31Config, Filereader, CircuitType, CircuitDefaultType>(file_reader, &input_path, &output_path);
-    // run_main::<M31Config, M31ExtConfigSha2Raw, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+//     let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+//     let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+//     run_main::<M31Config, Filereader, CircuitType, CircuitDefaultType>(file_reader, &input_path, &output_path);
+//     // run_main::<M31Config, M31ExtConfigSha2Raw, Filereader, CircuitType, CircuitDefaultType>(file_reader);
 
-}
+// }
 
-pub fn run_bn254<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut Filereader)
-where
-    CircuitDefaultType: std::default::Default
-    + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>
-    + std::clone::Clone,
+// pub fn run_bn254<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut Filereader)
+// where
+//     CircuitDefaultType: std::default::Default
+//     + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>
+//     + std::clone::Clone,
 
-    CircuitType: std::default::Default +
-    expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-    + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
-    // + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::BN254Config>
-    + std::clone::Clone,
-{
-    let matches: clap::ArgMatches = Command::new("File Copier")
-        .version("1.0")
-        .about("Copies content from input file to output file")
-        // .arg(
-        //     Arg::new("type")
-        //         .help("The type of main runner we want to run")
-        //         .required(true) // This argument is required
-        //         .index(1), // Positional argument (first argument)
-        // )
-        .arg(
-            Arg::new("input")
-                .help("The input file to read from")
-                .required(true) // This argument is required
-                .index(1), // Positional argument (first argument)
-        )
-        .arg(
-            Arg::new("output")
-                .help("The output file to write to")
-                .required(true) // This argument is also required
-                .index(2), // Positional argument (second argument)
-        )
-        .get_matches();
+//     CircuitType: std::default::Default +
+//     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
+//     + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
+//     // + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::BN254Config>
+//     + std::clone::Clone,
+// {
+//     let matches: clap::ArgMatches = Command::new("File Copier")
+//         .version("1.0")
+//         .about("Copies content from input file to output file")
+//         // .arg(
+//         //     Arg::new("type")
+//         //         .help("The type of main runner we want to run")
+//         //         .required(true) // This argument is required
+//         //         .index(1), // Positional argument (first argument)
+//         // )
+//         .arg(
+//             Arg::new("input")
+//                 .help("The input file to read from")
+//                 .required(true) // This argument is required
+//                 .index(1), // Positional argument (first argument)
+//         )
+//         .arg(
+//             Arg::new("output")
+//                 .help("The output file to write to")
+//                 .required(true) // This argument is also required
+//                 .index(2), // Positional argument (second argument)
+//         )
+//         .get_matches();
 
-    let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
-    let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
-    run_main::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader, &input_path, &output_path);
-    // run_main::<BN254Config, BN254ConfigSha2Hyrax, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+//     let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+//     let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+//     run_main::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader, &input_path, &output_path);
+//     // run_main::<BN254Config, BN254ConfigSha2Hyrax, Filereader, CircuitType, CircuitDefaultType>(file_reader);
   
-    // run_main::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+//     // run_main::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
 
-    // run_compile_and_serialize::<BN254Config, CircuitType>();
+//     // run_compile_and_serialize::<BN254Config, CircuitType>();
 
 
-    // run_rest::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
+//     // run_rest::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
 
-    // run_witness_and_proof::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
-    // run_verify::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
-}
+//     // run_witness_and_proof::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
+//     // run_verify::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
+// }
 
-// pub fn run_bn254_seperate<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut Filereader)
+// // pub fn run_bn254_seperate<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut Filereader)
+// // where
+// //     CircuitDefaultType: std::default::Default
+// //     + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>
+// //     + std::clone::Clone,
+
+// //     CircuitType: std::default::Default +
+// //     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
+// //     + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
+// //     // + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::BN254Config>
+// //     + std::clone::Clone,
+// // {
+
+// //     run_compile_and_serialize::<BN254Config, CircuitType>(file_reader.get_path());
+
+// //     let split_whole_proof = true;
+
+// //     if split_whole_proof{
+// //         run_witness_and_proof::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
+// //         run_verify_no_circuit::<BN254Config, Filereader, CircuitDefaultType>(file_reader.get_path());
+// //     }
+// //     else{
+// //         run_rest::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
+// //         run_verify::<BN254Config, Filereader, CircuitDefaultType>(file_reader.get_path());
+// //     }
+// // }
+
+// pub fn compile_dummy_circuit<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut Filereader)
 // where
 //     CircuitDefaultType: std::default::Default
 //     + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>
@@ -1012,56 +1019,29 @@ where
 // {
 
 //     run_compile_and_serialize::<BN254Config, CircuitType>(file_reader.get_path());
-
-//     let split_whole_proof = true;
-
-//     if split_whole_proof{
-//         run_witness_and_proof::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
-//         run_verify_no_circuit::<BN254Config, Filereader, CircuitDefaultType>(file_reader.get_path());
-//     }
-//     else{
-//         run_rest::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
-//         run_verify::<BN254Config, Filereader, CircuitDefaultType>(file_reader.get_path());
-//     }
 // }
 
-pub fn compile_dummy_circuit<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut Filereader)
-where
-    CircuitDefaultType: std::default::Default
-    + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>
-    + std::clone::Clone,
-
-    CircuitType: std::default::Default +
-    expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-    + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
-    // + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::BN254Config>
-    + std::clone::Clone,
-{
-
-    run_compile_and_serialize::<BN254Config, CircuitType>(file_reader.get_path());
-}
 
 
+// pub fn debug_bn254<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut Filereader)
+// where
+//     CircuitDefaultType: std::default::Default
+//     + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>
+//     + std::clone::Clone,
 
-pub fn debug_bn254<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut Filereader)
-where
-    CircuitDefaultType: std::default::Default
-    + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>
-    + std::clone::Clone,
-
-    CircuitType: std::default::Default +
-    expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-    // + std::clone::Clone + GenericDefine<expander_compiler::frontend::BN254Config>,
-// + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
-    + std::clone::Clone + Define<expander_compiler::frontend::BN254Config>,
-{
-    run_debug::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
-}
+//     CircuitType: std::default::Default +
+//     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
+//     // + std::clone::Clone + GenericDefine<expander_compiler::frontend::BN254Config>,
+// // + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
+//     + std::clone::Clone + Define<expander_compiler::frontend::BN254Config>,
+// {
+//     run_debug::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+// }
 
 pub fn handle_args<C: Config,CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, C>>(file_reader: &mut  Filereader) 
 where
     CircuitDefaultType: std::default::Default
-    + DumpLoadTwoVariables<<C>::CircuitField>
+    + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
     + std::clone::Clone,
 
     CircuitType: std::default::Default +

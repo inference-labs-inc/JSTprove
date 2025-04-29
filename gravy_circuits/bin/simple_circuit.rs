@@ -41,20 +41,20 @@ struct OutputData {
     output: u32,
 }
 
-impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
+impl<C: Config> IOReader<Circuit<CircuitField::<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
-        mut assignment: Circuit<C::CircuitField>,
-    ) -> Circuit<C::CircuitField> {
+        mut assignment: Circuit<CircuitField::<C>>,
+    ) -> Circuit<CircuitField::<C>> {
         let data: InputData =
             <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<InputData>(file_path);
 
         // Assign inputs to assignment
-       assignment.input_a = C::CircuitField::from(data.input_a);
-       assignment.input_b = C::CircuitField::from(data.input_b);
-       assignment.nonce = C::CircuitField::from(data.nonce);
-       assignment.dummy = [C::CircuitField::from(0); 2];
+       assignment.input_a = CircuitField::<C>::from(data.input_a);
+       assignment.input_b = CircuitField::<C>::from(data.input_b);
+       assignment.nonce = CircuitField::<C>::from(data.nonce);
+       assignment.dummy = [CircuitField::<C>::from(0); 2];
 
         // Return the assignment
         assignment
@@ -62,13 +62,13 @@ impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
     fn read_outputs(
         &mut self,
         file_path: &str,
-        mut assignment: Circuit<C::CircuitField>,
-    ) -> Circuit<C::CircuitField> {
+        mut assignment: Circuit<CircuitField::<C>>,
+    ) -> Circuit<CircuitField::<C>> {
         let data: OutputData =
             <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<OutputData>(file_path);
 
         // Assign inputs to assignment
-        assignment.output = C::CircuitField::from(data.output);
+        assignment.output = CircuitField::<C>::from(data.output);
         
         assignment
     }

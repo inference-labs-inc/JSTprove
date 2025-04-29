@@ -1,4 +1,3 @@
-use arith::FieldForECC;
 use ethnum::U256;
 use expander_compiler::frontend::*;
 use gravy_circuits::circuit_functions::helper_fn::{read_2d_weights, two_d_array_to_vec};
@@ -109,12 +108,12 @@ impl<C: Config> Define<C> for DoomCircuit<Variable> {
 }
 
 
-impl<C: Config> IOReader<DoomCircuit<C::CircuitField>, C> for FileReader {
+impl<C: Config> IOReader<DoomCircuit<CircuitField::<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
-        mut assignment: DoomCircuit<C::CircuitField>,
-    ) -> DoomCircuit<C::CircuitField> {
+        mut assignment: DoomCircuit<CircuitField::<C>>,
+    ) -> DoomCircuit<CircuitField::<C>> {
         let data: InputData = <FileReader as IOReader<DoomCircuit<_>, C>>::read_data_from_json::<
             InputData,
         >(file_path);
@@ -124,10 +123,10 @@ impl<C: Config> IOReader<DoomCircuit<C::CircuitField>, C> for FileReader {
             for (j, &element) in dim1.iter().enumerate() {
                 if element < 0 {
                     assignment.input_arr[i][j] =
-                        C::CircuitField::from(element.abs() as u32).neg();
+                        CircuitField::<C>::from(element.abs() as u32).neg();
                 } else {
                     assignment.input_arr[i][j] =
-                        C::CircuitField::from(element.abs() as u32);
+                        CircuitField::<C>::from(element.abs() as u32);
                 }
             }
         }
@@ -137,8 +136,8 @@ impl<C: Config> IOReader<DoomCircuit<C::CircuitField>, C> for FileReader {
     fn read_outputs(
         &mut self,
         file_path: &str,
-        mut assignment: DoomCircuit<C::CircuitField>,
-    ) -> DoomCircuit<C::CircuitField> {
+        mut assignment: DoomCircuit<CircuitField::<C>>,
+    ) -> DoomCircuit<CircuitField::<C>> {
         let data: OutputData = <FileReader as IOReader<DoomCircuit<_>, C>>::read_data_from_json::<
             OutputData,
         >(file_path);
@@ -147,10 +146,10 @@ impl<C: Config> IOReader<DoomCircuit<C::CircuitField>, C> for FileReader {
             for (j, &element) in dim1.iter().enumerate() {
                 if element < 0 {
                     assignment.outputs[i][j] =
-                        C::CircuitField::from_u256(U256::from(element.abs() as u64)).neg();
+                        CircuitField::<C>::from_u256(U256::from(element.abs() as u64)).neg();
                 } else {
                     assignment.outputs[i][j] =
-                        C::CircuitField::from_u256(U256::from(element.abs() as u64));
+                        CircuitField::<C>::from_u256(U256::from(element.abs() as u64));
                 }
             }
         }

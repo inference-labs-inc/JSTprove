@@ -4,7 +4,6 @@ use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use gravy_circuits::circuit_functions::matrix_computation::matrix_hadamard_product;
 use serde::Deserialize;
 // use std::ops::Neg;
-use arith::FieldForECC;
 
 use gravy_circuits::runner::main_runner::handle_args;
 
@@ -47,12 +46,12 @@ struct InputData {
 struct OutputData {
     matrix_hadamard_ab: Vec<Vec<u64>>, //  Shape (m, n)
 }
-impl<C: Config> IOReader<MatHadamardCircuit<C::CircuitField>, C> for FileReader {
+impl<C: Config> IOReader<MatHadamardCircuit<CircuitField::<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
-        mut assignment: MatHadamardCircuit<C::CircuitField>,
-    ) -> MatHadamardCircuit<C::CircuitField> {
+        mut assignment: MatHadamardCircuit<CircuitField::<C>>,
+    ) -> MatHadamardCircuit<CircuitField::<C>> {
         let data: InputData =
             <FileReader as IOReader<MatHadamardCircuit<_>, C>>::read_data_from_json::<InputData>(
                 file_path,
@@ -70,7 +69,7 @@ impl<C: Config> IOReader<MatHadamardCircuit<C::CircuitField>, C> for FileReader 
 
         for (i, row) in data.matrix_a.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_a[i][j] = C::CircuitField::from_u256(U256::from(element));
+                assignment.matrix_a[i][j] = CircuitField::<C>::from_u256(U256::from(element));
             }
         }
         let rows_b = data.matrix_b.len();
@@ -84,7 +83,7 @@ impl<C: Config> IOReader<MatHadamardCircuit<C::CircuitField>, C> for FileReader 
 
         for (i, row) in data.matrix_b.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_b[i][j] = C::CircuitField::from_u256(U256::from(element));
+                assignment.matrix_b[i][j] = CircuitField::<C>::from_u256(U256::from(element));
             }
         }
 
@@ -94,8 +93,8 @@ impl<C: Config> IOReader<MatHadamardCircuit<C::CircuitField>, C> for FileReader 
     fn read_outputs(
         &mut self,
         file_path: &str,
-        mut assignment: MatHadamardCircuit<C::CircuitField>,
-    ) -> MatHadamardCircuit<C::CircuitField> {
+        mut assignment: MatHadamardCircuit<CircuitField::<C>>,
+    ) -> MatHadamardCircuit<CircuitField::<C>> {
         let data: OutputData =
             <FileReader as IOReader<MatHadamardCircuit<_>, C>>::read_data_from_json::<OutputData>(
                 file_path,
@@ -116,7 +115,7 @@ impl<C: Config> IOReader<MatHadamardCircuit<C::CircuitField>, C> for FileReader 
         for (i, row) in data.matrix_hadamard_ab.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
                 assignment.matrix_hadamard_ab[i][j] =
-                    C::CircuitField::from_u256(U256::from(element));
+                    CircuitField::<C>::from_u256(U256::from(element));
             }
         }
         assignment
