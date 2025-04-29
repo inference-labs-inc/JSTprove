@@ -4,8 +4,6 @@ use expander_compiler::circuit::layered::witness::Witness;
 use expander_compiler::circuit::layered::{Circuit, NormalInputType};
 // use expander_compiler::frontend::{extra::debug_eval, internal::DumpLoadTwoVariables, *};
 // use expander_compiler::utils::serde::Serde;
-use arith::Field;
-use arith::SimdField as _SimdField;
 use expander_compiler::frontend::{extra::debug_eval, internal::DumpLoadTwoVariables, *};
 use gkr_engine::{MPIConfig, MPIEngine, GKREngine, FieldEngine};
 use peakmem_alloc::*;
