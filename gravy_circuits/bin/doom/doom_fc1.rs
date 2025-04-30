@@ -108,6 +108,10 @@ impl<C: Config> Define<C> for DoomCircuit<Variable> {
 
         let out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, true, out_2d, v_plus_one, two_v, alpha_2_v, true);
 
+        api.display("1", out_2d[0][0]);
+        api.display("2", out_2d[0][1]);
+        api.display("3", out_2d[0][43]);
+        api.display("4", out_2d[0][167]);
         for (j, dim1) in self.outputs.iter().enumerate() {
                 for (k, _out) in dim1.iter().enumerate() {
                     api.assert_is_equal(self.outputs[j][k], out_2d[j][k]);

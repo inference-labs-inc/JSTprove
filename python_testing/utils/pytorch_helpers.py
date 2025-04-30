@@ -91,7 +91,8 @@ class GeneralLayerFunctions():
             raise NotImplementedError("Must define attribute input_shape")
     
     def create_new_inputs(self):
-        return torch.mul(torch.rand(self.input_shape) * 2 - 1, self.scale_base**self.scaling).long()
+        print(self.scale_base, self.scaling, self.scale_base**self.scaling)
+        return torch.mul(torch.rand(self.input_shape)*2 - 1, self.scale_base**self.scaling).long()
 
     def format_inputs(self, inputs):
         return {"input": inputs.long().tolist()}

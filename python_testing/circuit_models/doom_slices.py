@@ -183,15 +183,15 @@ if __name__ == "__main__":
         "fc1",
         "fc2"
         ]
-    name = "doom"
-    d = Doom()
-    # d.base_testing()
-    # d.base_testing(run_type=RunType.END_TO_END, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
-    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
-    # d.save_quantized_model("quantized_model.pth")
-    d_2 = Doom()
-    # d_2.load_quantized_model("quantized_model.pth")
-    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
+    # name = "doom"
+    # d = Doom()
+    # # d.base_testing()
+    # # d.base_testing(run_type=RunType.END_TO_END, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+    # d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    # # d.save_quantized_model("quantized_model.pth")
+    # d_2 = Doom()
+    # # d_2.load_quantized_model("quantized_model.pth")
+    # d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
 
     d = DoomConv1()
     name = "doom_conv1"
@@ -199,7 +199,8 @@ if __name__ == "__main__":
     # d.save_quantized_model("quantized_model.pth")
     d_2 = DoomConv1()
     # d_2.load_quantized_model("quantized_model.pth")
-    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
+    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt",input_file="inputs/doom_input.json", circuit_path=f"{name}_circuit.txt", write_json = False)
+    # d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
 
     d = DoomConv2()
     name = "doom_conv2"

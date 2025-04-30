@@ -94,6 +94,8 @@ fn div_constrained<C: Config, Builder: RootAPI<C>>(
     //Assert that q_sharp is in correct range
     let bits = to_binary(api, q_sharp, v_plus_one);
     let total = from_binary(api, &bits, v_plus_one);
+    api.display("d_sharp", d_sharp);
+
     api.assert_is_equal(q_sharp, total);
 
     // Ensure remainder sharp is in correct range
@@ -256,6 +258,7 @@ pub fn quantize_2d_vector<C: Config, Builder: RootAPI<C>>(
     is_relu: bool,
 ) -> Vec<Vec<Variable>> {
     let mut out: Vec<Vec<Variable>> = Vec::new();
+    
     for (_, dim1) in input_matrix.iter().enumerate() {
         let mut dim1_out: Vec<Variable> = Vec::new();
         for (_, &element) in dim1.iter().enumerate() {
@@ -313,6 +316,7 @@ pub fn run_if_quantized_2d<C: Config, Builder: RootAPI<C>>(
 ) -> Vec<Vec<Variable>> {
     if quantized {
         let scaling_factor = 1 << scaling_in;
+        
         return quantize_2d_vector(
             api,
             out,

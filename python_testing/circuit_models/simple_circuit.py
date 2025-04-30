@@ -39,6 +39,13 @@ class SimpleCircuit(Circuit):
         print(f"Performing addition operation: {inputs['input_a']} + {inputs['input_b']}")
         return inputs['input_a'] + inputs['input_b']
     
+    def format_inputs(self, inputs):
+        """
+        Format the inputs for the circuit.
+        """
+        # Convert inputs to a specific format if necessary
+        return inputs
+    
     
 
 # Example code demonstrating circuit operations
