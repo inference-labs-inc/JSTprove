@@ -57,7 +57,7 @@ class Doom(ZKModel):
 
 
         self.scale_base = 2
-        self.scaling = 16
+        self.scaling = 18
         
         self.input_shape = [1, 4, 28, 28]
         self.rescale_config = {"fc2": False}

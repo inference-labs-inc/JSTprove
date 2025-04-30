@@ -82,9 +82,9 @@ impl<C: Config> Define<C> for DoomCircuit<Variable> {
         let n_bits = 32;
 
         let v_plus_one: usize = n_bits;
-        let two_v: u32 = 1 << (v_plus_one - 1);
+        let two_v: u64 = 1 << (v_plus_one - 1);
         let scaling_factor = 1 << WEIGHTS_INPUT.scaling;
-        let alpha_2_v = api.mul(scaling_factor, two_v);
+        let alpha_2_v = api.mul(scaling_factor, CircuitField::<C>::from_u256(U256::from(two_v)));
 
         // Bring the weights into the circuit as constants
 

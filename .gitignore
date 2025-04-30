@@ -63,3 +63,7 @@ circom/reward_opt.sym
 
 # Environment variables
 .env
+
+*pth
+*onnx
+
