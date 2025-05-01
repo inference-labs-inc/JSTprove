@@ -30,8 +30,8 @@ impl<C: Config> Define<C> for Circuit<Variable> {
 
 #[derive(Deserialize, Clone)]
 struct InputData {
-    input_a: u32,
-    input_b: u32,
+    value_a: u32,
+    value_b: u32,
     nonce: u32,
 }
 
@@ -51,8 +51,8 @@ impl<C: Config> IOReader<Circuit<CircuitField::<C>>, C> for FileReader {
             <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<InputData>(file_path);
 
         // Assign inputs to assignment
-       assignment.input_a = CircuitField::<C>::from(data.input_a);
-       assignment.input_b = CircuitField::<C>::from(data.input_b);
+       assignment.input_a = CircuitField::<C>::from(data.value_a);
+       assignment.input_b = CircuitField::<C>::from(data.value_b);
        assignment.nonce = CircuitField::<C>::from(data.nonce);
        assignment.dummy = [CircuitField::<C>::from(0); 2];
 

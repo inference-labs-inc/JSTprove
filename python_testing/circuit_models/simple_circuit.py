@@ -24,10 +24,10 @@ class SimpleCircuit(Circuit):
         self.input_b = 200
         #Currently a random value, not sure what value should fit with the validator scheme
         self.nonce = randint(0,10000)
-        self.required_keys = ["input_a", "input_b", "nonce"]
+        self.required_keys = ["value_a", "value_b", "nonce"]
     
     def get_inputs(self):
-        return {'input_a': self.input_a, 'input_b': self.input_b, 'nonce': self.nonce}
+        return {'value_a': self.input_a, 'value_b': self.input_b, 'nonce': self.nonce}
     
     def get_outputs(self, inputs = None):
         """
@@ -35,9 +35,9 @@ class SimpleCircuit(Circuit):
         This is decorated in the base class to ensure computation happens only once.
         """
         if inputs == None:
-            inputs = {'input_a': self.input_a, 'input_b': self.input_b, 'nonce': self.nonce}
-        print(f"Performing addition operation: {inputs['input_a']} + {inputs['input_b']}")
-        return inputs['input_a'] + inputs['input_b']
+            inputs = {'value_a': self.input_a, 'value_b': self.input_b, 'nonce': self.nonce}
+        print(f"Performing addition operation: {inputs['value_a']} + {inputs['value_b']}")
+        return inputs['value_a'] + inputs['value_b']
     
     def format_inputs(self, inputs):
         """

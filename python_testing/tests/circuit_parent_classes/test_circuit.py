@@ -94,9 +94,9 @@ def test_parse_proof_dispatch_logic(
 
     # Mock internal preprocessing methods
     c._compile_preprocessing = MagicMock()
-    c._gen_witness_preprocessing = MagicMock()
-    c.rescale_inputs = MagicMock(return_value = "i")
-    c.reshape_inputs = MagicMock(return_value = "i")
+    c._gen_witness_preprocessing = MagicMock(return_value = "i")
+    # c.rescale_inputs = MagicMock(return_value = "i")
+    # c.reshape_inputs = MagicMock(return_value = "i")
 
 
     # COMPILE_CIRCUIT
@@ -229,6 +229,8 @@ def test_gen_witness_preprocessing_write_json_false(mock_to_json):
     c.get_inputs_from_file = MagicMock(return_value="mock_inputs")
     c.reshape_inputs = MagicMock(return_value="in.json")
     c.rescale_inputs = MagicMock(return_value="in.json")
+    c.rename_inputs = MagicMock(return_value="in.json")
+
     c.get_outputs = MagicMock(return_value="mock_outputs")
     c.format_outputs = MagicMock(return_value={"output": 99})
 
