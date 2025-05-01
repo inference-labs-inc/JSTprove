@@ -1,3 +1,4 @@
+import json
 import os
 import pytest
 
@@ -130,32 +131,140 @@ def test_witness_prove_verify_true_inputs_dev(model_fixture, temp_witness_file, 
         output_file = temp_output_file,
     )
 
-def test_witness_write_json():
+
+def test_witness_read_after_write_json(
+    model_fixture,
+    capsys,
+    temp_witness_file,
+    temp_input_file,
+    temp_output_file
+):
+    # Step 1: Write the input file via write_json=True
+    model_write = model_fixture["model_class"]()
+    model_write.base_testing(
+        run_type=RunType.GEN_WITNESS,
+        dev_mode=False,
+        witness_file=temp_witness_file,
+        circuit_path=str(model_fixture["circuit_path"]),
+        input_file=temp_input_file,
+        output_file=temp_output_file,
+        write_json=True
+    )
+
+    if os.path.exists(temp_witness_file):
+        os.remove(temp_witness_file)
+    assert not os.path.exists(temp_witness_file)
+
+    # Optional: Load the written input for inspection
+    with open(temp_input_file, "r") as f:
+        written_input_data = f.read()
+
+    # Step 2: Read from that same input file (write_json=False)
+    model_read = model_fixture["model_class"]()
+    model_read.base_testing(
+        run_type=RunType.GEN_WITNESS,
+        dev_mode=False,
+        witness_file=temp_witness_file,
+        circuit_path=str(model_fixture["circuit_path"]),
+        input_file=temp_input_file,
+        output_file=temp_output_file,
+        write_json=False
+    )
+
+    # Step 3: Validate expected outputs and no errors
+    captured = capsys.readouterr()
+    stdout = captured.out
+    stderr = captured.err
+
+    print(stdout)
+
+    assert os.path.exists(temp_witness_file), "Witness file not generated"
+    assert "Running cargo command:" in stdout
+
+    # Check good output appeared
+    for output in GOOD_OUTPUT:
+        assert output in stdout, f"Expected '{output}' in stdout, but it was not found."
+
+    # Ensure no unexpected errors
+    for output in BAD_OUTPUT:
+        assert output not in stdout, f"Did not expect '{output}' in stdout, but it was found."
+
+    # Optional: verify that input file content was actually read
+    with open(temp_input_file, "r") as f:
+        read_input_data = f.read()
+    assert read_input_data == written_input_data, "Input JSON read is not identical to what was written"
+
+def test_witness_fresh_compile_dev():
     pass
 
-def test_witness_write_and_read_json():
-    pass
 
-# def test_circuit_compiles():
-#     pass
+# Use once fixed input shape read in rust
+# def test_witness_incorrect_input_shape(
+#     model_fixture,
+#     capsys,
+#     temp_witness_file,
+#     temp_input_file,
+#     temp_output_file
+# ):
+#     # Step 1: Write the input file via write_json=True
+#     model_write = model_fixture["model_class"]()
+#     model_write.base_testing(
+#         run_type=RunType.GEN_WITNESS,
+#         dev_mode=False,
+#         witness_file=temp_witness_file,
+#         circuit_path=str(model_fixture["circuit_path"]),
+#         input_file=temp_input_file,
+#         output_file=temp_output_file,
+#         write_json=True
+#     )
+#     if os.path.exists(temp_witness_file):
+#         os.remove(temp_witness_file)
+#     assert not os.path.exists(temp_witness_file)
 
-# def test_witness_dev():
-#     pass
+    # # Optional: Load the written input for inspection
+    # with open(temp_input_file, "r") as f:
+    #     written_input_data = f.read()
+    # input_data = json.loads(written_input_data)
+    # for key in input_data:
+    #     if isinstance(input_data[key], list):
+    #         input_data[key] = torch.as_tensor(input_data[key]).flatten().tolist()
+    #     assert torch.as_tensor(input_data[key]).dim() <= 1, f"Input data for {key} is not 1D tensor. This is a testing error, not a model error. Please fix this test to properly flatten."
+    # with open(temp_input_file, "w") as f:
+    #     json.dump(input_data, f)
 
-# def test_witness_read_inputs_dev():
-#     pass
+#     # Step 2: Read from that same input file (write_json=False)
+#     model_read = model_fixture["model_class"]()
+#     model_read.base_testing(
+#         run_type=RunType.GEN_WITNESS,
+#         dev_mode=False,
+#         witness_file=temp_witness_file,
+#         circuit_path=str(model_fixture["circuit_path"]),
+#         input_file=temp_input_file,
+#         output_file=temp_output_file,
+#         write_json=False
+#     )
 
-# def test_witness_false_inputs_dev():
-#     pass
+#     # Step 3: Validate expected outputs and no errors
+#     captured = capsys.readouterr()
+#     stdout = captured.out
+#     stderr = captured.err
 
-# def test_witness_prove_verify_true_inputs_dev():
-#     pass
+#     print(stdout)
 
-# def test_witness_prove_verify_false_inputs_dev():
-#     pass
+#     assert os.path.exists(temp_witness_file), "Witness file not generated"
+#     assert stdout.count("Running cargo command:") == 2, f"Expected 'Running cargo command: ' in stdout twice, but it was not found."
 
-# def test_witness_fresh_compile_dev():
-#     pass
+#     # Check good output appeared
+#     for output in GOOD_OUTPUT:
+#         assert stdout.count(output) == 2, f"Expected '{output}' in stdout, but it was not found."
 
-# def test_compile_witness_unique_weights():
-#     pass
+
+#     # Ensure no unexpected errors
+#     for output in BAD_OUTPUT:
+#         assert output not in stdout, f"Did not expect '{output}' in stdout, but it was found."
+
+#     # Optional: verify that input file content was actually read
+#     with open(temp_input_file, "r") as f:
+#         read_input_data = f.read()
+#     assert read_input_data == written_input_data, "Input JSON read is not identical to what was written"
+

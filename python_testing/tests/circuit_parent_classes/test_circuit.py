@@ -95,6 +95,9 @@ def test_parse_proof_dispatch_logic(
     # Mock internal preprocessing methods
     c._compile_preprocessing = MagicMock()
     c._gen_witness_preprocessing = MagicMock()
+    c.rescale_inputs = MagicMock(return_value = "i")
+    c.reshape_inputs = MagicMock(return_value = "i")
+
 
     # COMPILE_CIRCUIT
     c.parse_proof_run_type(
@@ -114,6 +117,7 @@ def test_parse_proof_dispatch_logic(
     mock_witness.assert_called_once()
     c._gen_witness_preprocessing.assert_called()
     args = mock_witness.call_args[0]
+    print(args)
     assert args == ('circuit', "path", "w","i", "out", ZKProofSystems.Expander, False)
 
     # PROVE_WITNESS
@@ -223,6 +227,8 @@ def test_gen_witness_preprocessing_write_json_false(mock_to_json):
     c._file_info = {"quantized_model_path": "quant.pt"}
     c.load_quantized_model = MagicMock()
     c.get_inputs_from_file = MagicMock(return_value="mock_inputs")
+    c.reshape_inputs = MagicMock(return_value="in.json")
+    c.rescale_inputs = MagicMock(return_value="in.json")
     c.get_outputs = MagicMock(return_value="mock_outputs")
     c.format_outputs = MagicMock(return_value={"output": 99})
 

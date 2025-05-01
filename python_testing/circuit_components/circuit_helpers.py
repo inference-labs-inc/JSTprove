@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional
 import subprocess
 import torch
@@ -58,7 +59,7 @@ class Circuit:
         """
         raise NotImplementedError("get_outputs must be implemented")
     
-    def get_inputs(self):
+    def get_inputs(self, file_path:str = None, is_scaled = False):
         """
         Compute circuit outputs. This method should be implemented by subclasses.
         The decorator will ensure it's only computed once.
@@ -147,7 +148,63 @@ class Circuit:
             print(f"Warning: Operation {run_type} failed: {e}")
             print("Input and output files have still been created correctly.")
 
+
+    def contains_float(self, obj):
+        if isinstance(obj, float):
+            return True
+        elif isinstance(obj, dict):
+            return any(self.contains_float(v) for v in obj.values())
+        elif isinstance(obj, list):
+            return any(self.contains_float(i) for i in obj)
+        return False
+    
+
+    def rescale_inputs(self, input_file):
+        """
+        Rescale inputs from the input file.
+        This function can be called directly if needed.
+        """
+        inputs = read_from_json(input_file)
+        if not self.contains_float(inputs):
+            return input_file
+
+        if not hasattr(self, "scale_base") or not hasattr(self, "scaling"):
+            raise NotImplementedError("scale_base and scaling must be specified in circuit definition in order to rescale inputs")
+        
+        for k in inputs.keys():
+            inputs[k] = torch.as_tensor(inputs[k])*(self.scale_base**self.scaling).long().tolist()
+        
+        
+
+        path = Path(input_file)
+        new_input_file = path.stem + "_rescaled" + path.suffix
+        to_json(inputs, new_input_file)
+
+        return new_input_file
+    
+    def reshape_inputs(self, input_file):
+        """
+        Rescale inputs from the input file.
+        This function can be called directly if needed.
+        """
+        print(self.__dir__())
+        if not hasattr(self, "input_shape"):
+            raise NotImplementedError("input_shape must be specified in circuit definition in order to rescale inputs")
+        
+        inputs = read_from_json(input_file)
+        for k in inputs.keys():
+            inputs[k] = torch.as_tensor(inputs[k]).reshape(self.input_shape).tolist()
+
+        path = Path(input_file)
+        new_input_file = path.stem + "_reshaped" + path.suffix
+        to_json(inputs, new_input_file)
+
+        return new_input_file
+
+
     def _gen_witness_preprocessing(self, input_file, output_file, write_json, is_scaled):
+        # Rescale and reshape
+
         self.load_quantized_model(self._file_info.get("quantized_model_path"))
         if write_json == True:
             inputs = self.get_inputs()
@@ -160,6 +217,8 @@ class Circuit:
             to_json(input, input_file)
             to_json(outputs, output_file)
         else:
+            input_file = self.rescale_inputs(input_file)
+            input_file = self.reshape_inputs(input_file)
             inputs = self.get_inputs_from_file(input_file, is_scaled = is_scaled)
                 # Compute output (with caching via decorator)
             output = self.get_outputs(inputs)

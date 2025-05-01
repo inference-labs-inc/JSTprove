@@ -76,8 +76,13 @@ class GeneralLayerFunctions():
     def get_inputs_from_file(self, file_name, is_scaled: bool = False):
         inputs = self.read_input(file_name)
         if is_scaled:
-            return torch.as_tensor(inputs).long()
-        return torch.mul(torch.as_tensor(inputs),self.scale_base**self.scaling).long()
+            out =  torch.as_tensor(inputs).long()
+        else:
+            out =  torch.mul(torch.as_tensor(inputs),self.scale_base**self.scaling).long()
+
+        if hasattr(self, "input_shape"):
+            out = out.reshape(self.input_shape)
+        return out
     
     def get_outputs(self, inputs):
         return self.quantized_model(inputs)

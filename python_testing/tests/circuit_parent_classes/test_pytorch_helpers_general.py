@@ -100,17 +100,21 @@ def test_read_output_onnx(mock_session_cls):
 @patch.object(GeneralLayerFunctions, 'read_input', return_value=[1, 2])
 def test_get_inputs_from_file_scaled(mock_read_input):
     g = GeneralLayerFunctions()
+    g.input_shape = (2,)
     g.scale_base = 10
     g.scaling = 2
     tensor = g.get_inputs_from_file("file", is_scaled=False)
     assert torch.equal(tensor, torch.tensor([1, 2]) * 100)
+    assert tensor.shape == (2,)
 
 
 @patch.object(GeneralLayerFunctions, 'read_input', return_value=[3, 4])
 def test_get_inputs_from_file_long(mock_read_input):
     g = GeneralLayerFunctions()
+    g.input_shape = (2,)
     tensor = g.get_inputs_from_file("file", is_scaled=True)
     assert torch.equal(tensor, torch.tensor([3, 4]))
+    assert tensor.shape == (2,)
 
 
 def test_create_new_inputs_shape_and_type():

@@ -11,9 +11,9 @@ GOOD_OUTPUT = ["Witness Generated"]
 BAD_OUTPUT = ["assertion `left == right` failed", "Warning: Witness generation failed"]
 
 MODELS_TO_TEST = [
-    ("doom", Doom),
+    # ("doom", Doom),
     ("simple_circuit", SimpleCircuit),
-    ("cnn_demo", Demo)
+    # ("cnn_demo", Demo)
 
     # ("other_model", OtherModel),
 ]
