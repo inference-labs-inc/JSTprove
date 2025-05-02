@@ -76,6 +76,6 @@ if __name__ == "__main__":
     # for t in range(25):
     d_2 = Doom()
     # d_2.load_quantized_model("quantized_model.pth")
-    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", input_file= "inputs/reshaped_input_data.json", circuit_path=f"{name}_circuit.txt", write_json = False)
+    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", input_file= "inputs/doom_input_2.json", circuit_path=f"{name}_circuit.txt", write_json = False)
     # d_2.base_testing(run_type=RunType.PROVE_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
     # d_2.base_testing(run_type=RunType.GEN_VERIFY, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
