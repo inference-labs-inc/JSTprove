@@ -313,7 +313,7 @@ class Circuit:
         if hasattr(self, "flatten"):
             weights = self.get_weights(flatten = True)
         else:
-            weights = self.get_weights(flatten = False)
+            weights = self.get_weights()
 
         self.save_quantized_model(self._file_info.get("quantized_model_path"))
         if type(weights) == list:
@@ -406,7 +406,7 @@ class Circuit:
     def load_quantized_model(self, file_path: str):
         pass
 
-    def get_weights(self, flatten = False):
+    def get_weights(self):
         return {}
     
     def get_inputs_from_file(self, input_file, is_scaled = True):

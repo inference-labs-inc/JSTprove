@@ -93,8 +93,8 @@ class Demo(ZKModel):
         self.model_params = {"layers": self.layers}
 
 
-    def get_weights(self):
-        weights =  super().get_weights()
+    def get_weights(self, flatten = False):
+        weights =  super().get_weights(flatten=False)
         weights["layers"] = self.layers
         return weights
 

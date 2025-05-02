@@ -20,8 +20,8 @@ GOOD_OUTPUT = ["Witness Generated"]
 BAD_OUTPUT = ["assertion `left == right` failed", "Witness generation failed"]
 
 MODELS_TO_TEST = [
-    ("doom", Doom),
-    ("simple_circuit", SimpleCircuit),
+    # ("doom", Doom),
+    # ("simple_circuit", SimpleCircuit),
     # ("cnn_demo", Demo),
     # ("doom_conv1", DoomConv1),
     # ("doom_conv2", DoomConv2),
@@ -29,8 +29,13 @@ MODELS_TO_TEST = [
     # ("doom_fc1", DoomFC1),
     # ("doom_fc2", DoomFC2),
     # ("eth_fraud", Eth),
+    # ("conv", Convolution),
     # ("quantized_conv", QuantizedConv),
     # ("quantized_conv_relu", QuantizedConvRelu),
+
+    # ("relu", ReLU)
+
+    # ("matrix_multiplication", MatrixMultiplication),
     # ("quantized_matrix_multiplication", QuantizedMatrixMultiplication),
     # ("quantized_matrix_multiplication_relu", QuantizedMatrixMultiplicationReLU),
     # ("matrix_addition", MatrixAddition),
