@@ -218,6 +218,57 @@ class Circuit:
         to_json(inputs, new_input_file)
 
         return new_input_file
+    
+    def rescale_and_reshape_inputs(self, input_file):
+        inputs = read_from_json(input_file)
+        for k in inputs.keys():
+            # Reshape inputs
+            if "input" in k and isinstance(inputs[k], list):
+                    if not hasattr(self, "input_shape"):
+                        raise NotImplementedError("input_shape must be specified in circuit definition in order to rescale inputs")
+                    inputs[k] = torch.as_tensor(inputs[k]).reshape(self.input_shape).tolist()
+            # Rescale inputs
+            if self.contains_float(inputs[k]):
+                inputs[k] = torch.mul(torch.as_tensor(inputs[k]),(self.scale_base**self.scaling)).long().tolist()
+                    
+        path = Path(input_file)
+        new_input_file = path.stem + "_reshaped" + path.suffix
+        to_json(inputs, new_input_file)
+
+        return new_input_file
+    
+    def adjust_inputs(self, input_file):
+        inputs = read_from_json(input_file)
+
+        has_input_been_found = False
+        new_inputs = {}
+
+        for k in inputs.keys():
+            # Reshape inputs
+            if "input" in k and isinstance(inputs[k], list):
+                    if not hasattr(self, "input_shape"):
+                        raise NotImplementedError("input_shape must be specified in circuit definition in order to rescale inputs")
+                    inputs[k] = torch.as_tensor(inputs[k]).reshape(self.input_shape).tolist()
+            # Rescale inputs
+            if self.contains_float(inputs[k]):
+                inputs[k] = torch.mul(torch.as_tensor(inputs[k]),(self.scale_base**self.scaling)).long().tolist()
+        
+            # Rename inputs
+            if "input" in k:
+                if has_input_been_found:
+                    raise ValueError("Multiple inputs found in input file, please change names of the inputs. Only one variable can have 'input' in its name")
+                has_input_been_found = True
+                new_inputs["input"] = inputs[k]
+            else:
+                new_inputs[k] = inputs[k]
+
+
+                    
+        path = Path(input_file)
+        new_input_file = path.stem + "_reshaped" + path.suffix
+        to_json(new_inputs, new_input_file)
+
+        return new_input_file
 
 
     def _gen_witness_preprocessing(self, input_file, output_file, write_json, is_scaled):
@@ -235,9 +286,12 @@ class Circuit:
             to_json(input, input_file)
             to_json(outputs, output_file)
         else:
-            input_file = self.rescale_inputs(input_file)
-            input_file = self.reshape_inputs(input_file)
-            input_file = self.rename_inputs(input_file)
+            # input_file = self.rescale_inputs(input_file)
+            # input_file = self.reshape_inputs(input_file)
+            # input_file = self.rescale_and_reshape_inputs(input_file)
+            # input_file = self.rename_inputs(input_file)
+            input_file = self.adjust_inputs(input_file)
+
 
             inputs = self.get_inputs_from_file(input_file, is_scaled = is_scaled)
                 # Compute output (with caching via decorator)

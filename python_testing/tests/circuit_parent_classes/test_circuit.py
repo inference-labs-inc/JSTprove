@@ -230,6 +230,10 @@ def test_gen_witness_preprocessing_write_json_false(mock_to_json):
     c.reshape_inputs = MagicMock(return_value="in.json")
     c.rescale_inputs = MagicMock(return_value="in.json")
     c.rename_inputs = MagicMock(return_value="in.json")
+    c.rescale_and_reshape_inputs = MagicMock(return_value="in.json")
+    c.adjust_inputs = MagicMock(return_value="in.json")
+
+
 
     c.get_outputs = MagicMock(return_value="mock_outputs")
     c.format_outputs = MagicMock(return_value={"output": 99})

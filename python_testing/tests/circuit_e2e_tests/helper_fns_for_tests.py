@@ -6,16 +6,37 @@ import torch
 from python_testing.circuit_models.demo_cnn import Demo
 from python_testing.circuit_models.doom_model import Doom
 from python_testing.circuit_models.simple_circuit import SimpleCircuit
+from python_testing.circuit_models.doom_slices import DoomConv1, DoomConv2, DoomConv3, DoomFC1, DoomFC2
+from python_testing.circuit_models.eth_fraud import Eth
+from python_testing.circuit_components.convolution import Convolution, QuantizedConv, QuantizedConvRelu
+from python_testing.circuit_components.relu import ReLU
+from python_testing.circuit_components.matrix_multiplication import MatrixMultiplication, QuantizedMatrixMultiplication, QuantizedMatrixMultiplicationReLU
+from python_testing.circuit_components.matrix_addition import MatrixAddition
+from python_testing.circuit_components.scaled_matrix_product import ScaledMatrixProduct
+from python_testing.circuit_components.scaled_matrix_product_sum import ScaledMatrixProductSum
+
 
 GOOD_OUTPUT = ["Witness Generated"]
-BAD_OUTPUT = ["assertion `left == right` failed", "Warning: Witness generation failed"]
+BAD_OUTPUT = ["assertion `left == right` failed", "Witness generation failed"]
 
 MODELS_TO_TEST = [
-    # ("doom", Doom),
+    ("doom", Doom),
     ("simple_circuit", SimpleCircuit),
-    # ("cnn_demo", Demo)
-
-    # ("other_model", OtherModel),
+    ("cnn_demo", Demo),
+    # ("doom_conv1", DoomConv1),
+    # ("doom_conv2", DoomConv2),
+    # ("doom_conv3", DoomConv3),
+    # ("doom_fc1", DoomFC1),
+    # ("doom_fc2", DoomFC2),
+    # ("eth_fraud", Eth),
+    # ("quantized_conv", QuantizedConv),
+    # ("quantized_conv_relu", QuantizedConvRelu),
+    # ("quantized_matrix_multiplication", QuantizedMatrixMultiplication),
+    # ("quantized_matrix_multiplication_relu", QuantizedMatrixMultiplicationReLU),
+    # ("matrix_addition", MatrixAddition),
+    # ("scaled_matrix_product", ScaledMatrixProduct),
+    # ("scaled_matrix_product_sum", ScaledMatrixProductSum),
+    # # ("other_model", OtherModel),
 ]
 
 @pytest.fixture

@@ -3,17 +3,11 @@ import os
 import pytest
 
 # Assume these are your models
-
-
 from python_testing.tests.circuit_e2e_tests.helper_fns_for_tests import *
-
-
-
 # Enums, utils
 from python_testing.utils.helper_functions import RunType
 
 # Define models to be tested
-
 
 
 @pytest.fixture(scope="module", params=MODELS_TO_TEST)
@@ -130,6 +124,7 @@ def test_witness_prove_verify_true_inputs_dev(model_fixture, temp_witness_file, 
         input_file = temp_input_file,
         output_file = temp_output_file,
     )
+    # ASSERTIONS TODO
 
 
 def test_witness_read_after_write_json(
@@ -192,6 +187,7 @@ def test_witness_read_after_write_json(
     # Optional: verify that input file content was actually read
     with open(temp_input_file, "r") as f:
         read_input_data = f.read()
+
     assert read_input_data == written_input_data, "Input JSON read is not identical to what was written"
 
 def test_witness_fresh_compile_dev(capsys, model_fixture, temp_witness_file, temp_input_file, temp_output_file):
@@ -375,7 +371,7 @@ def test_witness_unscaled(
 
 
 
-def test_witness_unscaled_and_incorrect_input(
+def test_witness_unscaled_and_incorrect_shape_input(
     model_fixture,
     capsys,
     temp_witness_file,
@@ -472,7 +468,7 @@ def test_witness_unscaled_and_incorrect_input(
 
     assert new_output_file == written_output_data, "Output file content does not match the expected output"
 
-def test_witness_unscaled(
+def test_witness_wrong_name(
     model_fixture,
     capsys,
     temp_witness_file,
