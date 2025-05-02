@@ -71,7 +71,7 @@ if __name__ == "__main__":
     d = Doom()
     # d.base_testing()
     # d.base_testing(run_type=RunType.END_TO_END, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
-    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    # d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
     # d.save_quantized_model("quantized_model.pth")
     # for t in range(25):
     d_2 = Doom()

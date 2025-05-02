@@ -1,6 +1,7 @@
 import inspect
 import json
 from typing import Optional
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
@@ -168,17 +169,16 @@ class PytorchConverter():
             if len(list(module.children())) == 0:  # Only leaf layers
                 hook = module.register_forward_hook(register_hook(name))
                 hooks.append(hook)
-
         # Run a dummy input through the model
         model.eval()
         dummy_input = torch.randn(*input_shape)
         with torch.no_grad():
-            _ = model(dummy_input)
+                _ = model(dummy_input)
 
         # Remove hooks
         for h in hooks:
             h.remove()
-
+        print("TEST5")
         return input_shapes
     
     def clone_model_with_same_args(self, model):
@@ -212,9 +212,15 @@ class PytorchConverter():
 
         return quantized_model
 
-    def get_weights(self):
-        input_shapes = self.get_input_shapes_by_layer(self.quantized_model, self.input_shape)  # example input
-        used_layers = self.get_used_layers(self.quantized_model, self.input_shape) 
+    def get_weights(self, flatten = False):
+        if flatten:
+            in_shape = [1, np.prod(self.input_shape)]
+        else:
+            in_shape = self.input_shape
+        input_shapes = self.get_input_shapes_by_layer(self.quantized_model, in_shape)  # example input
+        print("TEST3")
+
+        used_layers = self.get_used_layers(self.quantized_model, in_shape) 
         # Can combine the above into 1 function
         
         weights = {}

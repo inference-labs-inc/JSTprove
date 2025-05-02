@@ -262,6 +262,10 @@ class Circuit:
             else:
                 new_inputs[k] = inputs[k]
 
+        if "input" not in new_inputs.keys() and "output" in new_inputs.keys():
+            new_inputs["input"] = inputs["output"]
+            del inputs["output"]
+
 
                     
         path = Path(input_file)
@@ -278,6 +282,7 @@ class Circuit:
         if write_json == True:
             inputs = self.get_inputs()
             output = self.get_outputs(inputs)
+            print(inputs)
 
             input = self.format_inputs(inputs)
             outputs = self.format_outputs(output)
@@ -305,8 +310,11 @@ class Circuit:
         func_model_and_quantize = getattr(self, 'get_model_and_quantize', None)
         if callable(func_model_and_quantize):
             func_model_and_quantize()
+        if hasattr(self, "flatten"):
+            weights = self.get_weights(flatten = True)
+        else:
+            weights = self.get_weights(flatten = False)
 
-        weights = self.get_weights()
         self.save_quantized_model(self._file_info.get("quantized_model_path"))
         if type(weights) == list:
             for (i, w) in enumerate(weights):

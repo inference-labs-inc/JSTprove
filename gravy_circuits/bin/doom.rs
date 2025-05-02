@@ -64,7 +64,7 @@ lazy_static! {
 }
 
 declare_circuit!(DoomCircuit {
-    input_arr: [[[[Variable]]]], // shape (m, n)
+    input_arr: [[[[Variable; 28]; 28]; 4]; 1], // shape (m, n)
     outputs: [[Variable; 7]; 1], // shape (m, k)
 });
 
@@ -83,8 +83,7 @@ impl<C: Config> Define<C> for DoomCircuit<Variable> {
         // if WEIGHTS_INPUT.fc1_alpha != 1 ||WEIGHTS_INPUT.fc1_beta != 1 || WEIGHTS_INPUT2.fc2_alpha != 1 || WEIGHTS_INPUT2.fc2_beta != 1{
         //     panic!("Not yet implemented for fc alpha or beta not equal to 1");
         // }
-        let mut out = self.input_arr;
-        // let mut out = four_d_array_to_vec(self.input_arr);
+        let mut out = four_d_array_to_vec(self.input_arr);
         // api.display("1", input_arr[0][0][0][0]);
         
         // Conv 1

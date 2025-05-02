@@ -44,7 +44,7 @@ struct WeightsData {
 
 #[derive(Deserialize, Clone)]
 struct InputData {
-    output: Vec<Vec<Vec<Vec<i64>>>>,
+    input: Vec<Vec<Vec<Vec<i64>>>>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -124,7 +124,7 @@ impl<C: Config> IOReader<DoomCircuit<CircuitField::<C>>, C> for FileReader {
         >(file_path);
 
         // Assign inputs to assignment
-        for (i, dim1) in data.output.iter().enumerate() {
+        for (i, dim1) in data.input.iter().enumerate() {
             for (j, dim2) in dim1.iter().enumerate() {
                 for (k, dim3) in dim2.iter().enumerate() {
                     for (l, &element) in dim3.iter().enumerate() {
