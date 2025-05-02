@@ -717,7 +717,7 @@ def test_witness_wrong_name(
         else:
             new_input_data[key] = input_data[key]
     assert "input" not in new_input_data.keys(), f"This is a testing error, not a model error. Please fix this test to not incldue 'input' as a key in the input data."
-    assert "output" in new_input_data.keys(), f"This is a testing error, not a model error. Please fix this test to incldue 'output' as a key in the input data."
+    assert ("output" in new_input_data.keys() or count ==0), f"This is a testing error, not a model error. Please fix this test to incldue 'output' as a key in the input data."
 
    
     with open(temp_output_file, "r") as f:

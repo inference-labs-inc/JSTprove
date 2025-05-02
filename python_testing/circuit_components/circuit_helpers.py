@@ -406,7 +406,7 @@ class Circuit:
     def load_quantized_model(self, file_path: str):
         pass
 
-    def get_weights(self):
+    def get_weights(self, flatten = False):
         return {}
     
     def get_inputs_from_file(self, input_file, is_scaled = True):
