@@ -87,13 +87,13 @@ impl<C: Config> Define<C> for MaxPoolCircuit<Variable> {
 
 
 
-impl<C: Config> IOReader<MaxPoolCircuit<C::CircuitField>, C> for FileReader {
+impl<C: Config> IOReader<MaxPoolCircuit<CircuitField::<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
-        mut assignment: MaxPoolCircuit<C::CircuitField>,
-    ) -> MaxPoolCircuit<C::CircuitField> {
-        let data: InputData = <FileReader as IOReader<MaxPoolCircuit<C::CircuitField>, C>>::read_data_from_json::<InputData>(file_path);
+        mut assignment: MaxPoolCircuit<CircuitField::<C>>,
+    ) -> MaxPoolCircuit<CircuitField::<C>> {
+        let data: InputData = <FileReader as IOReader<MaxPoolCircuit<CircuitField::<C>>, C>>::read_data_from_json::<InputData>(file_path);
 
         for (i, dim1) in data.input.iter().enumerate() {
             for (j, dim2) in dim1.iter().enumerate() {
@@ -101,10 +101,10 @@ impl<C: Config> IOReader<MaxPoolCircuit<C::CircuitField>, C> for FileReader {
                     for (l, &element) in dim3.iter().enumerate() {
                         if element < 0 {
                             assignment.input_arr[i][j][k][l] =
-                                C::CircuitField::from(element.abs() as u32).neg();
+                                CircuitField::<C>::from(element.abs() as u32).neg();
                         } else {
                             assignment.input_arr[i][j][k][l] =
-                                C::CircuitField::from(element.abs() as u32);
+                                CircuitField::<C>::from(element.abs() as u32);
                         }
                     }
                 }
@@ -117,9 +117,9 @@ impl<C: Config> IOReader<MaxPoolCircuit<C::CircuitField>, C> for FileReader {
     fn read_outputs(
         &mut self,
         file_path: &str,
-        mut assignment: MaxPoolCircuit<C::CircuitField>,
-    ) -> MaxPoolCircuit<C::CircuitField> {
-        let data: OutputData = <FileReader as IOReader<MaxPoolCircuit<C::CircuitField>, C>>::read_data_from_json::<OutputData>(file_path);
+        mut assignment: MaxPoolCircuit<CircuitField::<C>>,
+    ) -> MaxPoolCircuit<CircuitField::<C>> {
+        let data: OutputData = <FileReader as IOReader<MaxPoolCircuit<CircuitField::<C>>, C>>::read_data_from_json::<OutputData>(file_path);
     
         // assert_eq!(data.max_val.len(), BATCH_SIZE, "Expected {} outputs", BATCH_SIZE);
     
@@ -129,10 +129,10 @@ impl<C: Config> IOReader<MaxPoolCircuit<C::CircuitField>, C> for FileReader {
                     for (l, &element) in dim3.iter().enumerate() {
                         if element < 0 {
                             assignment.outputs[i][j][k][l] =
-                                C::CircuitField::from(element.abs() as u32).neg();
+                                CircuitField::<C>::from(element.abs() as u32).neg();
                         } else {
                             assignment.outputs[i][j][k][l] =
-                                C::CircuitField::from(element.abs() as u32);
+                                CircuitField::<C>::from(element.abs() as u32);
                         }
                     }
                 }
@@ -154,6 +154,7 @@ fn main() {
     };
     // handle_args::<M31Config, ExtremaCircuit<Variable>,ExtremaCircuit<_>,_>(&mut file_reader);
     // handle_args::<BN254Config, ExtremaCircuit<Variable>,ExtremaCircuit<_>,_>(&mut file_reader);
-    handle_args::<MaxPoolCircuit<Variable>, MaxPoolCircuit<_>, _>(&mut file_reader);
+    handle_args::<BN254Config, MaxPoolCircuit<Variable>,MaxPoolCircuit<_>,_>(&mut file_reader);
+
     
 }

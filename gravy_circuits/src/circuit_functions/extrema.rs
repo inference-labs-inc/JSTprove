@@ -41,11 +41,11 @@ pub fn signed_to_field_small<C: Config, Builder: RootAPI<C>>(
     value: i32,
 ) -> Variable {
     if value < 0 {
-        let abs_val = C::CircuitField::from(value.unsigned_abs());
+        let abs_val = CircuitField::<C>::from(value.unsigned_abs());
         let var = api.constant(abs_val);
         api.neg(var)
     } else {
-        api.constant(C::CircuitField::from(value as u32))
+        api.constant(CircuitField::<C>::from(value as u32))
     }
 }
 
@@ -64,11 +64,11 @@ pub fn signed_to_field_any<C: Config, Builder: RootAPI<C>>(
     value: i64,
 ) -> Variable {
     if value < 0 {
-        let abs_val = C::CircuitField::from_u256(U256::from(value.unsigned_abs()));
+        let abs_val = CircuitField::<C>::from_u256(U256::from(value.unsigned_abs()));
         let var = api.constant(abs_val);
         api.neg(var)
     } else {
-        api.constant(C::CircuitField::from_u256(U256::from(value as u64)))
+        api.constant(CircuitField::<C>::from_u256(U256::from(value as u64)))
     }
 }
 

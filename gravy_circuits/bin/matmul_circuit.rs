@@ -31,7 +31,7 @@ impl<C: Config> Define<C> for MatMulCircuit<Variable> {
             let x: Vec<Variable> = (0..N_COLS_B).map(|_| api.get_random_value()).collect();
 
             // u = Bx lies in F^m
-            let mut bx = vec![api.constant(C::CircuitField::zero()); N_ROWS_B];
+            let mut bx = vec![api.constant(CircuitField::<C>::zero()); N_ROWS_B];
             for i in 0..N_ROWS_B {
                 for j in 0..N_COLS_B {
                     let prod = api.mul(b[i][j], x[j]);
@@ -40,7 +40,7 @@ impl<C: Config> Define<C> for MatMulCircuit<Variable> {
             }
 
             // v = Au lies in F^l
-            let mut abx = vec![api.constant(C::CircuitField::zero()); N_ROWS_A];
+            let mut abx = vec![api.constant(CircuitField::<C>::zero()); N_ROWS_A];
             for i in 0..N_ROWS_A {
                 for j in 0..N_COLS_A {
                     let prod = api.mul(a[i][j], bx[j]);
@@ -49,7 +49,7 @@ impl<C: Config> Define<C> for MatMulCircuit<Variable> {
             }
 
             // Cx lies F^l
-            let mut cx = vec![api.constant(C::CircuitField::zero()); N_ROWS_A];
+            let mut cx = vec![api.constant(CircuitField::<C>::zero()); N_ROWS_A];
             for i in 0..N_ROWS_A {
                 for j in 0..N_COLS_B {
                     let prod = api.mul(c[i][j], x[j]);
@@ -65,7 +65,7 @@ impl<C: Config> Define<C> for MatMulCircuit<Variable> {
             // ---- Full Deterministic Check: AB = C ----
             for i in 0..N_ROWS_A {
                 for j in 0..N_COLS_B {
-                    let mut sum = api.constant(C::CircuitField::zero());
+                    let mut sum = api.constant(CircuitField::<C>::zero());
                     for k in 0..N_COLS_A {
                         let prod = api.mul(a[i][k], b[k][j]);
                         sum = api.add(sum, prod);
@@ -90,8 +90,8 @@ struct OutputData {
     matrix_product_ab: Vec<Vec<i64>>, // (l x n)
 }
 
-impl<C: Config> IOReader<MatMulCircuit<C::CircuitField>, C> for FileReader {
-    fn read_inputs(&mut self, file_path: &str, mut assignment: MatMulCircuit<C::CircuitField>) -> MatMulCircuit<C::CircuitField> {
+impl<C: Config> IOReader<MatMulCircuit<CircuitField::<C>>, C> for FileReader {
+    fn read_inputs(&mut self, file_path: &str, mut assignment: MatMulCircuit<CircuitField::<C>>) -> MatMulCircuit<CircuitField::<C>> {
         let data: InputData = <Self as IOReader<_, C>>::read_data_from_json::<InputData>(file_path);
 
         let a_vals = matrix_i64_to_field::<C>(data.matrix_a);
@@ -111,7 +111,7 @@ impl<C: Config> IOReader<MatMulCircuit<C::CircuitField>, C> for FileReader {
         assignment
     }
 
-    fn read_outputs(&mut self, file_path: &str, mut assignment: MatMulCircuit<C::CircuitField>) -> MatMulCircuit<C::CircuitField> {
+    fn read_outputs(&mut self, file_path: &str, mut assignment: MatMulCircuit<CircuitField::<C>>) -> MatMulCircuit<CircuitField::<C>> {
         let data: OutputData = <Self as IOReader<_, C>>::read_data_from_json::<OutputData>(file_path);
         
         let c_vals = matrix_i64_to_field::<C>(data.matrix_product_ab);
@@ -133,5 +133,6 @@ fn main() {
     let mut file_reader = FileReader {
         path: "matmul".to_owned(),
     };
-    handle_args::<MatMulCircuit<Variable>, MatMulCircuit<<BN254Config as Config>::CircuitField>, _>(&mut file_reader);
+    handle_args::<BN254Config, MatMulCircuit<Variable>,MatMulCircuit<_>,_>(&mut file_reader);
+
 }

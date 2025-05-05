@@ -70,7 +70,7 @@ declare_circuit!(ExtremaCircuit {
 
 pub fn get_max_unconstrained<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder, x: Vec<Variable>) -> Variable {
-    let midpoint = C::CircuitField::from_u256(ethnum::U256::from(C::CircuitField::MODULUS/2));
+    let midpoint = CircuitField::<C>::from_u256(ethnum::U256::from(CircuitField::<C>::MODULUS/2));
 
     let mut output = api.unconstrained_add(x[0], midpoint);
 
@@ -142,13 +142,13 @@ struct OutputData {
     max_val: Vec<i32>,
 }
 
-impl<C: Config> IOReader<ExtremaCircuit<C::CircuitField>, C> for FileReader {
+impl<C: Config> IOReader<ExtremaCircuit<CircuitField::<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
-        mut assignment: ExtremaCircuit<C::CircuitField>,
-    ) -> ExtremaCircuit<C::CircuitField> {
-        let data: InputData = <FileReader as IOReader<ExtremaCircuit<C::CircuitField>, C>>::read_data_from_json::<InputData>(file_path);
+        mut assignment: ExtremaCircuit<CircuitField::<C>>,
+    ) -> ExtremaCircuit<CircuitField::<C>> {
+        let data: InputData = <FileReader as IOReader<ExtremaCircuit<CircuitField::<C>>, C>>::read_data_from_json::<InputData>(file_path);
     
         assert_eq!(data.input_vec.len(), BATCH_SIZE, "Expected {} input vectors", BATCH_SIZE);
         for (i, row) in data.input_vec.iter().enumerate() {
@@ -156,9 +156,9 @@ impl<C: Config> IOReader<ExtremaCircuit<C::CircuitField>, C> for FileReader {
             for (j, &val) in row.iter().enumerate() {
                 if val < 0 {
                     assignment.input_vec[i][j] =
-                        C::CircuitField::from(val.abs() as u32).neg();
+                        CircuitField::<C>::from(val.abs() as u32).neg();
                 } else {
-                    assignment.input_vec[i][j] = C::CircuitField::from(val.abs() as u32);
+                    assignment.input_vec[i][j] = CircuitField::<C>::from(val.abs() as u32);
                 }
             }
         }
@@ -169,18 +169,18 @@ impl<C: Config> IOReader<ExtremaCircuit<C::CircuitField>, C> for FileReader {
     fn read_outputs(
         &mut self,
         file_path: &str,
-        mut assignment: ExtremaCircuit<C::CircuitField>,
-    ) -> ExtremaCircuit<C::CircuitField> {
-        let data: OutputData = <FileReader as IOReader<ExtremaCircuit<C::CircuitField>, C>>::read_data_from_json::<OutputData>(file_path);
+        mut assignment: ExtremaCircuit<CircuitField::<C>>,
+    ) -> ExtremaCircuit<CircuitField::<C>> {
+        let data: OutputData = <FileReader as IOReader<ExtremaCircuit<CircuitField::<C>>, C>>::read_data_from_json::<OutputData>(file_path);
     
         assert_eq!(data.max_val.len(), BATCH_SIZE, "Expected {} outputs", BATCH_SIZE);
     
         for (i, &val) in data.max_val.iter().enumerate() {
             if val < 0 {
                 assignment.max_val[i] =
-                    C::CircuitField::from(val.abs() as u32).neg();
+                    CircuitField::<C>::from(val.abs() as u32).neg();
             } else {
-                assignment.max_val[i] = C::CircuitField::from(val.abs() as u32);
+                assignment.max_val[i] = CircuitField::<C>::from(val.abs() as u32);
             }
         }
     
@@ -199,6 +199,7 @@ fn main() {
     };
     // handle_args::<M31Config, ExtremaCircuit<Variable>,ExtremaCircuit<_>,_>(&mut file_reader);
     // handle_args::<BN254Config, ExtremaCircuit<Variable>,ExtremaCircuit<_>,_>(&mut file_reader);
-    handle_args::<ExtremaCircuit<Variable>, ExtremaCircuit<_>, _>(&mut file_reader);
+    handle_args::<BN254Config, ExtremaCircuit<Variable>,ExtremaCircuit<_>,_>(&mut file_reader);
+
     
 }

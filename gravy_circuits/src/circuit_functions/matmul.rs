@@ -20,7 +20,7 @@ pub fn matrix_multiplication<C: Config, API: RootAPI<C>>(
     let m = a[0].len();         // number of cols in A = number of rows in B
     let n = b[0].len();         // number of cols in B
 
-    let zero = api.constant(C::CircuitField::zero());
+    let zero = api.constant(CircuitField::<C>::zero());
     let mut product = vec![vec![zero; n]; l]; // (l x n)
 
     for i in 0..l {

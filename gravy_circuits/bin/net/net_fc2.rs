@@ -1,4 +1,3 @@
-use arith::FieldForECC;
 use ethnum::U256;
 use expander_compiler::frontend::*;
 use gravy_circuits::circuit_functions::helper_fn::{four_d_array_to_vec,read_2d_weights, two_d_array_to_vec};
@@ -44,7 +43,7 @@ struct WeightsData {
 
 #[derive(Deserialize, Clone)]
 struct InputData {
-    output: Vec<Vec<i64>>,
+    input: Vec<Vec<i64>>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -122,25 +121,25 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
 }
 
 
-impl<C: Config> IOReader<ConvCircuit<C::CircuitField>, C> for FileReader {
+impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
-        mut assignment: ConvCircuit<C::CircuitField>,
-    ) -> ConvCircuit<C::CircuitField> {
+        mut assignment: ConvCircuit<CircuitField::<C>>,
+    ) -> ConvCircuit<CircuitField::<C>> {
         let data: InputData = <FileReader as IOReader<ConvCircuit<_>, C>>::read_data_from_json::<
             InputData,
         >(file_path);
 
         // Assign inputs to assignment
-        for (i, dim1) in data.output.iter().enumerate() {
+        for (i, dim1) in data.input.iter().enumerate() {
             for (j, &element) in dim1.iter().enumerate() {
                 if element < 0 {
                     assignment.input_arr[i][j] =
-                        C::CircuitField::from_u256(U256::from(element.abs() as u64)).neg();
+                        CircuitField::<C>::from_u256(U256::from(element.abs() as u64)).neg();
                 } else {
                     assignment.input_arr[i][j] =
-                        C::CircuitField::from_u256(U256::from(element.abs() as u64));
+                        CircuitField::<C>::from_u256(U256::from(element.abs() as u64));
                 }
             }
         }
@@ -150,8 +149,8 @@ impl<C: Config> IOReader<ConvCircuit<C::CircuitField>, C> for FileReader {
     fn read_outputs(
         &mut self,
         file_path: &str,
-        mut assignment: ConvCircuit<C::CircuitField>,
-    ) -> ConvCircuit<C::CircuitField> {
+        mut assignment: ConvCircuit<CircuitField::<C>>,
+    ) -> ConvCircuit<CircuitField::<C>> {
         let data: OutputData = <FileReader as IOReader<ConvCircuit<_>, C>>::read_data_from_json::<
             OutputData,
         >(file_path);
@@ -160,10 +159,10 @@ impl<C: Config> IOReader<ConvCircuit<C::CircuitField>, C> for FileReader {
             for (j, &element) in dim1.iter().enumerate() {
                 if element < 0 {
                     assignment.outputs[i][j] =
-                        C::CircuitField::from_u256(U256::from(element.abs() as u64)).neg();
+                        CircuitField::<C>::from_u256(U256::from(element.abs() as u64)).neg();
                 } else {
                     assignment.outputs[i][j] =
-                        C::CircuitField::from_u256(U256::from(element.abs() as u64));
+                        CircuitField::<C>::from_u256(U256::from(element.abs() as u64));
                 }
             }
         }
@@ -180,6 +179,7 @@ fn main() {
         path: "net".to_owned(),
     };
     // println!("{:?}", WEIGHTS_INPUT.layers);
-    handle_args::<ConvCircuit<Variable>,ConvCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
+    handle_args::<BN254Config, ConvCircuit<Variable>,ConvCircuit<_>,_>(&mut file_reader);
+
 
 }

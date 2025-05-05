@@ -32,7 +32,7 @@ class MaxPooling2D(ZKModel):
         self.required_keys = ["input"]
         # self.input_data_file = "doom_data/doom_input.json"
 
-
+        self.scale_base = 2
         self.scaling = 21
 
         dim_0 = 1

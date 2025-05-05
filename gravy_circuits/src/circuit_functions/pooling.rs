@@ -88,7 +88,7 @@ pub fn setup_maxpooling_2d(
 
 pub fn get_max_unconstrained<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder, x: &Vec<Variable>) -> Variable {
-    let midpoint = C::CircuitField::from_u256(ethnum::U256::from(C::CircuitField::MODULUS/2));
+    let midpoint = CircuitField::<C>::from_u256(ethnum::U256::from(CircuitField::<C>::MODULUS/2));
 
     let mut output = api.unconstrained_add(x[0], midpoint);
 

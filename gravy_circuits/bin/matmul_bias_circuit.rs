@@ -30,7 +30,7 @@ impl<C: Config> Define<C> for MatMulBiasCircuit<Variable> {
             let x: Vec<Variable> = (0..N_COLS_B).map(|_| api.get_random_value()).collect();
 
             // Bx ∈ F^m
-            let mut bx = vec![api.constant(C::CircuitField::zero()); N_ROWS_B];
+            let mut bx = vec![api.constant(CircuitField::<C>::zero()); N_ROWS_B];
             for i in 0..N_ROWS_B {
                 for j in 0..N_COLS_B {
                     let prod = api.mul(b[i][j], x[j]);
@@ -39,7 +39,7 @@ impl<C: Config> Define<C> for MatMulBiasCircuit<Variable> {
             }
 
             // ABx ∈ F^ℓ
-            let mut abx = vec![api.constant(C::CircuitField::zero()); N_ROWS_A];
+            let mut abx = vec![api.constant(CircuitField::<C>::zero()); N_ROWS_A];
             for i in 0..N_ROWS_A {
                 for j in 0..N_COLS_A {
                     let prod = api.mul(a[i][j], bx[j]);
@@ -48,7 +48,7 @@ impl<C: Config> Define<C> for MatMulBiasCircuit<Variable> {
             }
 
             // Cx ∈ F^ℓ
-            let mut cx = vec![api.constant(C::CircuitField::zero()); N_ROWS_A];
+            let mut cx = vec![api.constant(CircuitField::<C>::zero()); N_ROWS_A];
             for i in 0..N_ROWS_A {
                 for j in 0..N_COLS_B {
                     let prod = api.mul(bias[i][j], x[j]);
@@ -57,7 +57,7 @@ impl<C: Config> Define<C> for MatMulBiasCircuit<Variable> {
             }
 
             // Dx ∈ F^ℓ
-            let mut dx = vec![api.constant(C::CircuitField::zero()); N_ROWS_A];
+            let mut dx = vec![api.constant(CircuitField::<C>::zero()); N_ROWS_A];
             for i in 0..N_ROWS_A {
                 for j in 0..N_COLS_B {
                     let prod = api.mul(d[i][j], x[j]);
@@ -75,7 +75,7 @@ impl<C: Config> Define<C> for MatMulBiasCircuit<Variable> {
             // Deterministic check: AB + C == D
             for i in 0..N_ROWS_A {
                 for j in 0..N_COLS_B {
-                    let mut sum = api.constant(C::CircuitField::zero());
+                    let mut sum = api.constant(CircuitField::<C>::zero());
                     for k in 0..N_COLS_A {
                         let prod = api.mul(a[i][k], b[k][j]);
                         sum = api.add(sum, prod);
@@ -100,8 +100,8 @@ struct OutputData {
     matrix_product_ab_plus_c: Vec<Vec<i64>>,  // (ℓ x n)
 }
 
-impl<C: Config> IOReader<MatMulBiasCircuit<C::CircuitField>, C> for FileReader {
-    fn read_inputs(&mut self, file_path: &str, mut assignment: MatMulBiasCircuit<C::CircuitField>) -> MatMulBiasCircuit<C::CircuitField> {
+impl<C: Config> IOReader<MatMulBiasCircuit<CircuitField::<C>>, C> for FileReader {
+    fn read_inputs(&mut self, file_path: &str, mut assignment: MatMulBiasCircuit<CircuitField::<C>>) -> MatMulBiasCircuit<CircuitField::<C>> {
         let data: InputData = <Self as IOReader<_, C>>::read_data_from_json::<InputData>(file_path);
 
         let a_vals = matrix_i64_to_field::<C>(data.matrix_a);
@@ -127,7 +127,7 @@ impl<C: Config> IOReader<MatMulBiasCircuit<C::CircuitField>, C> for FileReader {
         assignment
     }
 
-    fn read_outputs(&mut self, file_path: &str, mut assignment: MatMulBiasCircuit<C::CircuitField>) -> MatMulBiasCircuit<C::CircuitField> {
+    fn read_outputs(&mut self, file_path: &str, mut assignment: MatMulBiasCircuit<CircuitField::<C>>) -> MatMulBiasCircuit<CircuitField::<C>> {
         let data: OutputData = <Self as IOReader<_, C>>::read_data_from_json::<OutputData>(file_path);
 
         let d_vals = matrix_i64_to_field::<C>(data.matrix_product_ab_plus_c);
@@ -149,5 +149,6 @@ fn main() {
     let mut file_reader = FileReader {
         path: "matmul_bias".to_owned(),
     };
-    handle_args::<MatMulBiasCircuit<Variable>, MatMulBiasCircuit<<BN254Config as Config>::CircuitField>, _>(&mut file_reader);
+    handle_args::<BN254Config, MatMulBiasCircuit<Variable>,MatMulBiasCircuit<_>,_>(&mut file_reader);
+
 }

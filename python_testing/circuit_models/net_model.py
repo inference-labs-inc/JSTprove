@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from python_testing.utils.pytorch_helpers import ZKModel
-from python_testing.circuit_models.doom_slices import Slice
+# from python_testing.circuit_models.doom_slices import Slice
 import sys
 
 class Net(nn.Module):
@@ -129,7 +129,7 @@ class Slice(ZKModel):
         print(file_name)
         with open(file_name, 'r') as file:
             data = json.load(file)
-            return data["output"]
+            return data["input"]
 
 
 # class NetConv1Model(ZKModel):
@@ -152,6 +152,7 @@ class NetModel(ZKModel):
         self.model_file_name = "net_model.pth"
 
 
+        self.scale_base = 2
         self.scaling = 21
         self.input_shape = [1,3,32,32]
         self.rescale_config = {"fc3": False}
@@ -166,7 +167,7 @@ class NetConv1Model(Slice):
         self.slice_name_in_model = ["conv1", "pool"]
         self.large_model_slice_name = "conv1"
 
-
+        self.scale_base = 2
         self.scaling = 21
         self.input_shape = [1,3,32,32]
         self.rescale_config = {}
@@ -188,7 +189,7 @@ class NetConv2Model(Slice):
         self.slice_name_in_model = ["conv2", "pool"]
         self.large_model_slice_name = "conv2"
 
-
+        self.scale_base = 2
         self.scaling = 21
         self.input_shape = [1,6,14,14]
         self.rescale_config = {}
@@ -203,7 +204,7 @@ class NetFC1Model(Slice):
         self.slice_name_in_model = ["fc1"]
         self.large_model_slice_name = "fc1"
 
-
+        self.scale_base = 2
         self.scaling = 21
         self.input_shape = [1,16,5,5]
         self.rescale_config = {}
@@ -219,7 +220,7 @@ class NetFC2Model(Slice):
         self.slice_name_in_model = ["fc2"]
         self.large_model_slice_name = "fc2"
 
-
+        self.scale_base = 2
         self.scaling = 21
         self.input_shape = [1,120]
         self.rescale_config = {}
@@ -236,6 +237,7 @@ class NetFC3Model(Slice):
         self.large_model_slice_name = "fc3"
 
 
+        self.scale_base = 2
         self.scaling = 21
         self.input_shape = [1,84]
         self.rescale_config = {"fc3": False}
@@ -249,35 +251,35 @@ if __name__ == "__main__":
     # # d.save_model("net_model.pth")
     # # sys.exit()
 
-    # d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
-    # d_2 = NetModel()
-    # d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    d_2 = NetModel()
+    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
 
-    # d_3 = NetModel()
-    # d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
+    d_3 = NetModel()
+    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
 
 
 
-    # name = "net_conv1"
-    # d = NetConv1Model()
-    # d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
-    # d_2 = NetConv1Model()
-    # d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+    name = "net_conv1"
+    d = NetConv1Model()
+    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    d_2 = NetConv1Model()
+    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
 
-    # d_3 = NetConv1Model()
-    # d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
+    d_3 = NetConv1Model()
+    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
 
-    # name = "net_conv2"
-    # d = NetConv2Model()
-    # d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
-    # d_3 = NetConv2Model()
-    # d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", input_file=d_3.input_data_file, write_json = False)
+    name = "net_conv2"
+    d = NetConv2Model()
+    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    d_3 = NetConv2Model()
+    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", input_file=d_3.input_data_file, write_json = False)
 
-    # name = "net_fc1"
-    # d = NetFC1Model()
-    # d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
-    # d_3 = NetFC1Model()
-    # d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", input_file=d_3.input_data_file, write_json = False)
+    name = "net_fc1"
+    d = NetFC1Model()
+    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    d_3 = NetFC1Model()
+    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", input_file=d_3.input_data_file, write_json = False)
 
     name = "net_fc2"
     d = NetFC2Model()
@@ -285,8 +287,8 @@ if __name__ == "__main__":
     d_3 = NetFC2Model()
     d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", input_file=d_3.input_data_file, write_json = False)
 
-    # name = "net_fc3"
-    # d = NetFC3Model()
-    # d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
-    # d_3 = NetFC3Model()
-    # d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", input_file=d_3.input_data_file, write_json = False)
+    name = "net_fc3"
+    d = NetFC3Model()
+    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    d_3 = NetFC3Model()
+    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", input_file=d_3.input_data_file, write_json = False)
