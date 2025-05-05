@@ -288,7 +288,6 @@ class Circuit:
         if write_json == True:
             inputs = self.get_inputs()
             output = self.get_outputs(inputs)
-            print(inputs, "TEST1")
 
             input = self.format_inputs(inputs)
             outputs = self.format_outputs(output)
@@ -305,7 +304,6 @@ class Circuit:
 
 
             inputs = self.get_inputs_from_file(input_file, is_scaled = is_scaled)
-            print(inputs, "TEST2")
 
                 # Compute output (with caching via decorator)
             output = self.get_outputs(inputs)

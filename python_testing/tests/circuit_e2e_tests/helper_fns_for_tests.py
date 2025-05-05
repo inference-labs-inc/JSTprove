@@ -5,6 +5,7 @@ import torch
 
 from python_testing.circuit_models.demo_cnn import Demo
 from python_testing.circuit_models.doom_model import Doom
+from python_testing.circuit_models.net_model import NetModel, NetConv1Model, NetConv2Model, NetFC1Model, NetFC2Model, NetFC3Model
 from python_testing.circuit_models.simple_circuit import SimpleCircuit
 from python_testing.circuit_models.doom_slices import DoomConv1, DoomConv2, DoomConv3, DoomFC1, DoomFC2
 from python_testing.circuit_models.eth_fraud import Eth
@@ -20,8 +21,8 @@ GOOD_OUTPUT = ["Witness Generated"]
 BAD_OUTPUT = ["assertion `left == right` failed", "Witness generation failed"]
 
 MODELS_TO_TEST = [
-    ("doom", Doom),
-    ("simple_circuit", SimpleCircuit),
+    # ("doom", Doom),
+    # ("simple_circuit", SimpleCircuit),
     # ("cnn_demo", Demo),
     # ("doom_conv1", DoomConv1),
     # ("doom_conv2", DoomConv2),
@@ -29,6 +30,13 @@ MODELS_TO_TEST = [
     # ("doom_fc1", DoomFC1),
     # ("doom_fc2", DoomFC2),
     # ("eth_fraud", Eth),
+    ("net", NetModel),
+    ("net_conv1", NetConv1Model),
+    ("net_conv2", NetConv2Model),
+    ("net_fc1", NetFC1Model),
+    ("net_fc2", NetFC2Model),
+    ("net_fc3", NetFC3Model),
+
     # ("conv", Convolution),
     # ("quantized_conv", QuantizedConv),
     # ("quantized_conv_relu", QuantizedConvRelu),
