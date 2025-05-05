@@ -1,4 +1,3 @@
-use arith::FieldForECC;
 use gravy_circuits::circuit_functions::convolution_fn::conv_4d_run;
 use ethnum::U256;
 use expander_compiler::frontend::*;
@@ -17,6 +16,9 @@ use serde::Deserialize;
 use std::ops::Neg;
 
 use gravy_circuits::runner::main_runner::handle_args;
+
+
+
 
 
 //Define structure of inputs, weights and output
@@ -66,26 +68,15 @@ declare_circuit!(DoomCircuit {
     outputs: [[Variable; 7]; 1], // shape (m, k)
 });
 
-// declare_circuit!(DoomFakeCircuit {
-//     input_arr: [[[[Variable; DIM4]; DIM3]; DIM2]; DIM1], // shape (m, n)
-//     outputs: [[Variable; 7]; 1], // shape (m, k)
-// });
-
-// impl<C: Config> Define<C> for DoomFakeCircuit<Variable> {
-//     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
-//         api.assert_is_equal(0, self.outputs[0][0]);
-//     }
-// }
-
 // Memorization, in a better place
 impl<C: Config> Define<C> for DoomCircuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         let n_bits = 32;
 
         let v_plus_one: usize = n_bits;
-        let two_v: u32 = 1 << (v_plus_one - 1);
+        let two_v: u64 = 1 << (v_plus_one - 1);
         let scaling_factor = 1 << WEIGHTS_INPUT.scaling;
-        let alpha_2_v = api.mul(scaling_factor, two_v);
+        let alpha_2_v = api.mul(scaling_factor, CircuitField::<C>::from_u256(U256::from(two_v)));
 
         // Bring the weights into the circuit as constants
 
@@ -146,12 +137,12 @@ impl<C: Config> Define<C> for DoomCircuit<Variable> {
 }
 
 
-impl<C: Config> IOReader<DoomCircuit<C::CircuitField>, C> for FileReader {
+impl<C: Config> IOReader<DoomCircuit<CircuitField::<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
-        mut assignment: DoomCircuit<C::CircuitField>,
-    ) -> DoomCircuit<C::CircuitField> {
+        mut assignment: DoomCircuit<CircuitField::<C>>,
+    ) -> DoomCircuit<CircuitField::<C>> {
         let data: InputData = <FileReader as IOReader<DoomCircuit<_>, C>>::read_data_from_json::<
             InputData,
         >(file_path);
@@ -163,10 +154,10 @@ impl<C: Config> IOReader<DoomCircuit<C::CircuitField>, C> for FileReader {
                     for (l, &element) in dim3.iter().enumerate() {
                         if element < 0 {
                             assignment.input_arr[i][j][k][l] =
-                                C::CircuitField::from(element.abs() as u32).neg();
+                                CircuitField::<C>::from(element.abs() as u32).neg();
                         } else {
                             assignment.input_arr[i][j][k][l] =
-                                C::CircuitField::from(element.abs() as u32);
+                                CircuitField::<C>::from(element.abs() as u32);
                         }
                     }
                 }
@@ -178,8 +169,8 @@ impl<C: Config> IOReader<DoomCircuit<C::CircuitField>, C> for FileReader {
     fn read_outputs(
         &mut self,
         file_path: &str,
-        mut assignment: DoomCircuit<C::CircuitField>,
-    ) -> DoomCircuit<C::CircuitField> {
+        mut assignment: DoomCircuit<CircuitField::<C>>,
+    ) -> DoomCircuit<CircuitField::<C>> {
         let data: OutputData = <FileReader as IOReader<DoomCircuit<_>, C>>::read_data_from_json::<
             OutputData,
         >(file_path);
@@ -188,10 +179,10 @@ impl<C: Config> IOReader<DoomCircuit<C::CircuitField>, C> for FileReader {
             for (j, &element) in dim1.iter().enumerate() {
                 if element < 0 {
                     assignment.outputs[i][j] =
-                        C::CircuitField::from_u256(U256::from(element.abs() as u64)).neg();
+                        CircuitField::<C>::from_u256(U256::from(element.abs() as u64)).neg();
                 } else {
                     assignment.outputs[i][j] =
-                        C::CircuitField::from_u256(U256::from(element.abs() as u64));
+                        CircuitField::<C>::from_u256(U256::from(element.abs() as u64));
                 }
             }
         }
@@ -207,5 +198,8 @@ fn main() {
     let mut file_reader = FileReader {
         path: "doom".to_owned(),
     };
-    handle_args::<DoomCircuit<Variable>,DoomCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
+    handle_args::<BN254Config, DoomCircuit<Variable>,DoomCircuit<_>,_>(&mut file_reader);
+    // handle_args::<M31Config, DoomCircuit<Variable>,DoomCircuit<_>,_>(&mut file_reader);
+    // handle_args::<GF2Config, DoomCircuit<Variable>,DoomCircuit<_>,_>(&mut file_reader);
+    
 }

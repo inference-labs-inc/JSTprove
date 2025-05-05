@@ -45,7 +45,7 @@ from python_testing.circuit_models.doom_model import Doom, DoomAgent
 #             q_values = self.forward(state_tensor)
 #             return q_values.argmax().item()
 
-class Slice(ZKModel):
+class DoomSlice(ZKModel):
     def get_model_and_quantize(self):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -64,16 +64,21 @@ class Slice(ZKModel):
         setattr(model,self.slice_name_in_model, getattr(large_model,self.large_model_slice_name))
         model.eval()
         self.model = model
-        self.quantized_model = self.quantize_model(model, 2**self.scaling, rescale_config=getattr(self,"rescale_config",{}))
+        self.quantized_model = self.quantize_model(model, self.scale_base**self.scaling, rescale_config=getattr(self,"rescale_config",{}))
         self.quantized_model.eval()  
 
-    def read_input(self, file_name = "doom_data/doom_input.json"):
-        """Reads the inputs to each layer of the model from text files."""
-        print(file_name)
-        with open(file_name, 'r') as file:
-            data = json.load(file)
-            return data["output"]
-class DoomConv1(Slice):
+    # def read_input(self, file_name = "doom_data/doom_input.json"):
+    #     """Reads the inputs to each layer of the model from text files."""
+    #     print(file_name)
+    #     with open(file_name, 'r') as file:
+    #         data = json.load(file)
+    #         return data["output"]
+    
+    # def format_inputs(self, inputs):
+    #     return {"output": inputs.long().tolist()}
+        
+
+class DoomConv1(DoomSlice):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_conv1"
@@ -81,8 +86,9 @@ class DoomConv1(Slice):
         self.large_model_file_name = file_name
         # self.model_file_name = "model/doom_conv1_checkpoint.pth"
 
-
-        self.scaling = 21
+        
+        self.scaling = Doom().scaling
+        self.scale_base = Doom().scale_base
         self.input_shape = [1, 4, 28, 28]
         self.model_type = Conv2DModelReLU
         self.model_params = {"in_channels": 4, "out_channels": 16, "kernel_size": 3, "stride": 1, 'padding': 1}
@@ -94,7 +100,9 @@ class DoomConv1(Slice):
         with open(file_name, 'r') as file:
             data = json.load(file)
             return data["input"]
-class DoomConv2(Slice):
+          
+class DoomConv2(DoomSlice):
+
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_conv2"
@@ -103,14 +111,15 @@ class DoomConv2(Slice):
         # self.model_file_name = "model/doom_conv1_checkpoint.pth"
 
 
-        self.scaling = 21
+        self.scale_base = Doom().scale_base
+        self.scaling = Doom().scaling
         self.input_shape = [1, 16, 28, 28]
         self.model_type = Conv2DModelReLU
         self.model_params = {"in_channels": 16, "out_channels": 32, "kernel_size": 3, "stride": 2, 'padding': 1}
         self.slice_name_in_model = "conv"
         self.large_model_slice_name = "conv2"
 
-class DoomConv3(Slice):
+class DoomConv3(DoomSlice):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_conv3"
@@ -119,14 +128,15 @@ class DoomConv3(Slice):
         # self.model_file_name = "model/doom_conv1_checkpoint.pth"
 
 
-        self.scaling = 21
+        self.scaling = Doom().scaling
+        self.scale_base = Doom().scale_base
         self.input_shape = [1, 32, 14, 14]
         self.model_type = Conv2DModelReLU
         self.model_params = {"in_channels": 32, "out_channels": 32, "kernel_size": 3, "stride": 2, 'padding': 1}
         self.slice_name_in_model = "conv"
         self.large_model_slice_name = "conv3"
 
-class DoomFC1(Slice):
+class DoomFC1(DoomSlice):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_fc1"
@@ -135,21 +145,25 @@ class DoomFC1(Slice):
         # self.model_file_name = "model/doom_conv1_checkpoint.pth"
 
 
-        self.scaling = 21
-        self.input_shape = [1, 1568]
+        self.scaling = Doom().scaling
+        self.scale_base = Doom().scale_base
+        self.input_shape = [1, 32, 7, 7]
         self.model_type = MatrixMultiplicationReLUModel
         self.model_params = {"in_channels": 1568, "out_channels":256, "bias" : True}
         self.slice_name_in_model = "fc1"
         self.large_model_slice_name = "fc1"
+        self.flatten = True
+    # def read_input(self, file_name = "doom_data/doom_input.json"):
+    #     """Reads the inputs to each layer of the model from text files."""
+    #     with open(file_name, 'r') as file:
+    #         data = json.load(file)
+    #         x = torch.tensor(data["output"])
+    #         return x.reshape([-1,1568])#.view(x.size(0), -1)
 
-    def read_input(self, file_name = "doom_data/doom_input.json"):
-        """Reads the inputs to each layer of the model from text files."""
-        with open(file_name, 'r') as file:
-            data = json.load(file)
-            x = torch.tensor(data["output"])
-            return x.reshape([-1,1568])#.view(x.size(0), -1)
+    def get_outputs(self, inputs):
+        return super().get_outputs(inputs.flatten().unsqueeze(0))
         
-class DoomFC2(Slice):
+class DoomFC2(DoomSlice):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_fc2"
@@ -158,7 +172,8 @@ class DoomFC2(Slice):
         # self.model_file_name = "model/doom_conv1_checkpoint.pth"
 
 
-        self.scaling = 21
+        self.scale_base = Doom().scale_base
+        self.scaling = Doom().scaling
         self.input_shape = [1, 256]
         self.model_type = MatrixMultiplicationModel
         self.rescale_config = {"fc1": False}
@@ -175,15 +190,15 @@ if __name__ == "__main__":
         "fc1",
         "fc2"
         ]
-    name = "doom"
-    d = Doom()
-    # d.base_testing()
-    # d.base_testing(run_type=RunType.END_TO_END, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
-    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
-    # d.save_quantized_model("quantized_model.pth")
-    d_2 = Doom()
-    # d_2.load_quantized_model("quantized_model.pth")
-    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
+    # name = "doom"
+    # d = Doom()
+    # # d.base_testing()
+    # # d.base_testing(run_type=RunType.END_TO_END, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+    # d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    # # d.save_quantized_model("quantized_model.pth")
+    # d_2 = Doom()
+    # # d_2.load_quantized_model("quantized_model.pth")
+    # d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
 
     d = DoomConv1()
     name = "doom_conv1"
@@ -191,7 +206,8 @@ if __name__ == "__main__":
     # d.save_quantized_model("quantized_model.pth")
     d_2 = DoomConv1()
     # d_2.load_quantized_model("quantized_model.pth")
-    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
+    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt",input_file="inputs/doom_input.json", circuit_path=f"{name}_circuit.txt", write_json = False)
+    # d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
 
     d = DoomConv2()
     name = "doom_conv2"

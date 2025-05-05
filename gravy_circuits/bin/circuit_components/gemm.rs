@@ -6,7 +6,6 @@ use gravy_circuits::circuit_functions::matrix_computation::gemm_vec;
 use gravy_circuits::circuit_functions::quantization::quantize_matrix;
 use serde::Deserialize;
 // use std::ops::Neg;
-use arith::FieldForECC;
 use lazy_static::lazy_static;
 use gravy_circuits::runner::main_runner::handle_args;
 
@@ -100,12 +99,12 @@ impl<C: Config> Define<C> for Circuit<Variable> {
 
 
 
-impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
+impl<C: Config> IOReader<Circuit<CircuitField::<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
-        mut assignment: Circuit<C::CircuitField>,
-    ) -> Circuit<C::CircuitField> {
+        mut assignment: Circuit<CircuitField::<C>>,
+    ) -> Circuit<CircuitField::<C>> {
         let data: InputData =
             <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<InputData>(file_path);
 
@@ -119,7 +118,7 @@ impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
 
         for (i, row) in data.input.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
-                assignment.matrix_a[i][j] = C::CircuitField::from_u256(U256::from(element));
+                assignment.matrix_a[i][j] = CircuitField::<C>::from_u256(U256::from(element));
             }
         }
         // Return the assignment
@@ -128,8 +127,8 @@ impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
     fn read_outputs(
         &mut self,
         file_path: &str,
-        mut assignment: Circuit<C::CircuitField>,
-    ) -> Circuit<C::CircuitField> {
+        mut assignment: Circuit<CircuitField::<C>>,
+    ) -> Circuit<CircuitField::<C>> {
         let data: OutputData =
             <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<OutputData>(file_path);
         // Assign inputs to assignment
@@ -139,7 +138,7 @@ impl<C: Config> IOReader<Circuit<C::CircuitField>, C> for FileReader {
 
         for (i, row) in data.output.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
-                assignment.gemm[i][j] = C::CircuitField::from_u256(U256::from(element));
+                assignment.gemm[i][j] = CircuitField::<C>::from_u256(U256::from(element));
             }
         }
         assignment
@@ -153,5 +152,7 @@ fn main() {
     let mut file_reader = FileReader {
         path: "gemm".to_owned(),
     };
-    handle_args::<Circuit<Variable>,Circuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
+    handle_args::<BN254Config, Circuit<Variable>,Circuit<_>,_>(&mut file_reader);
+    // handle_args::<M31Config, Circuit<Variable>,Circuit<_>,_>(&mut file_reader);
+    // handle_args::<GF2Config, Circuit<Variable>,Circuit<_>,_>(&mut file_reader);
 }

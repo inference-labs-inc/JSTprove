@@ -25,6 +25,10 @@ class MatrixAddition(Circuit):
         self.matrix_a = torch.randint(low=0, high=100, size=(N_ROWS_A,N_COLS_A)) # (m, n) array of random integers between 0 and 100
         self.matrix_b = torch.randint(low=0, high=100, size=(N_ROWS_B,N_COLS_B)) # (m, n) array of random integers between 0 and 100
 
+        self.scale_base = 1
+        self.scaling = 1
+
+
         '''
         #######################################################################################################
         #######################################################################################################

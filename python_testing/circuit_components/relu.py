@@ -20,15 +20,17 @@ class ReLU(Circuit):
         #######################################################################################################
         '''
         self.conversion_type = conversion_type
-        self.scaling = 2 ** 21
+        self.scaling = 21
+        self.scale_base = 2
         if conversion_type == ConversionType.DUAL_MATRIX:
             # Specify
             self.name = "relu_dual"
             
             # Function input generation
+            self.input_shape = (256,)
 
-            self.inputs_1 = torch.randint(low=0, high=100000000, size=(256,))
-            self.inputs_2 = torch.randint(low=0, high=2, size=(256,))
+            self.inputs_1 = torch.randint(low=0, high=100000000, size=self.input_shape)
+            self.inputs_2 = torch.randint(low=0, high=2, size=self.input_shape)
             self.outputs = None
         elif conversion_type == ConversionType.TWOS_COMP:
             # Specify
@@ -37,7 +39,8 @@ class ReLU(Circuit):
             # Function input generation
 
             # self.inputs_1 = torch.randint(low=-2**21, high=2**21, size=(1000,))
-            self.inputs_1 = torch.randint(low=-2**31, high=2**31, size=(16,4,2))
+            self.input_shape = (16,4,2)
+            # self.inputs_1 = torch.randint(low=-2**26, high=2**26, size=self.input_shape)
 
             self.outputs = None
 
@@ -57,25 +60,46 @@ class ReLU(Circuit):
         #######################################################################################################
         '''
 
-    def get_outputs(self):
-        return torch.relu(self.inputs_1)
+    def get_outputs(self, inputs):
+        return torch.relu()
     
-    def get_twos_comp_model_data(self, out):
-        inputs = {
-                'input': self.inputs_1.int().tolist()
-                }
-        outputs = {
-                'output': out.int().tolist(),
-            }
-        return (inputs, outputs)
-    
+    # def get_twos_comp_model_data(self, out):
+    #     inputs = {
+    #             'input': self.inputs_1.int().tolist()
+    #             }
+    #     outputs = {
+    #             'output': out.int().tolist(),
+    #         }
+    #     return (inputs, outputs)
+
     def get_inputs(self):
         if self.conversion_type==ConversionType.TWOS_COMP:
-            return {'input': self.inputs_1.long()}
-        if self.conversion_type==ConversionType.DUAL_MATRIX:
-            return {'input': self.inputs_1.long(),'sign': self.inputs_2.int()}
-        else:
-            raise NotImplementedError("Only twos comp and dual matrix relu is available")
+            return {'input': torch.randint(low=-2**26, high=2**26, size=self.input_shape).long()}
+        elif self.conversion_type==ConversionType.DUAL_MATRIX:
+            return {'input': torch.randint(low=0, high=2**26, size=self.input_shape).long(),'sign': torch.randint(low=0, high=2, size=self.input_shape).long()}
+        raise NotImplementedError("Only twos comp and dual matrix relu is available")
+    
+    def format_inputs(self, inputs):
+        """
+        Format the inputs for the circuit.
+        """
+        # Convert inputs to a specific format if necessary
+        return inputs
+    
+    # def get_inputs(self, file_path = None):
+    #     if file_path == None:
+    #         if self.conversion_type==ConversionType.TWOS_COMP:
+    #             return {'input': torch.randint(low=-2**26, high=2**26, size=self.input_shape).long()}
+    #         elif self.conversion_type==ConversionType.DUAL_MATRIX:
+    #             return {'input': torch.randint(low=0, high=2**26, size=self.input_shape).long(),'sign': torch.randint(low=0, high=2, size=self.input_shape).long()}
+    #         raise NotImplementedError("Only twos comp and dual matrix relu is available")
+    #     if hasattr(self, "input_shape"):
+    #         inputs = self.get_inputs_from_file(file_path, is_scaled=True)
+    #         for i in inputs.keys():
+    #             inputs[i] = torch.as_tensor(i).reshape(self.input_shape)
+    #         return i
+    #     else:
+    #         raise NotImplementedError("Must define attribute input_shape")
     
     def get_outputs(self, inputs = None):
         """
@@ -83,13 +107,13 @@ class ReLU(Circuit):
         This is decorated in the base class to ensure computation happens only once.
         """
         if inputs == None:
-            inputs = self.get_inputs()
+            raise "ERROR"
 
 
         if self.conversion_type==ConversionType.TWOS_COMP:
-            return torch.relu(torch.as_tensor(inputs['input']))
+            return torch.relu(torch.as_tensor(inputs['input'])).long()
         if self.conversion_type==ConversionType.DUAL_MATRIX:
-            return torch.mul(torch.as_tensor(inputs['input']), -1*torch.as_tensor(inputs['sign']) + 1)
+            return torch.mul(torch.as_tensor(inputs['input']), -1*torch.as_tensor(inputs['sign']) + 1).long()
         else:
             raise NotImplementedError("Only twos comp and dual matrix relu is available")
     
@@ -98,9 +122,9 @@ class ReLU(Circuit):
     
     def format_inputs(self, inputs):
         if self.conversion_type==ConversionType.TWOS_COMP:
-            return {'input' :inputs['input'].tolist()}
+            return {'input' :inputs['input'].long().tolist()}
         if self.conversion_type==ConversionType.DUAL_MATRIX:
-            return {'input' : inputs['input'].tolist(), 'sign': inputs['sign'].tolist()}
+            return {'input' : inputs['input'].long().tolist(), 'sign': inputs['sign'].long().tolist()}
         else:
             raise NotImplementedError("Only twos comp and dual matrix relu is available")
 

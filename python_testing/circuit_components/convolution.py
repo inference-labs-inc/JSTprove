@@ -43,6 +43,7 @@ class Convolution(ZKModel):
         self.input_data_file = "doom_data/doom_input.json"
 
 
+        self.scale_base = 2
         self.scaling = 21
 
         dim_0 = 1
@@ -195,6 +196,7 @@ class QuantizedConvRelu(Convolution):
         self.input_data_file = "doom_data/doom_input.json"
 
 
+        self.scale_base = 2
         self.scaling = 21
 
         dim_0 = 1

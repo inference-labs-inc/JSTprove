@@ -202,4 +202,9 @@ This CLI tool runs various circuit operations such as compilation, witness gener
    <!-- python cli.py --circuit maxpooling --class MaxPooling2D --compile --circuit_path maxpool_circuit.txt
    python cli.py --circuit maxpooling --class MaxPooling2D --gen_witness --input inputs/maxpooling_input.json --output output/maxpooling_output.json  --circuit_path maxpool_circuit.txt -->
 
+
+
+   python cli.py --circuit eth_fraud --class Eth --compile --circuit_path eth_fraud_circuit.txt
+   python cli.py --circuit eth_fraud --class Eth --gen_witness --input inputs/eth_fraud_input.json --output output/eth_fraud_output.json  --circuit_path eth_fraud_circuit.txt
+
    

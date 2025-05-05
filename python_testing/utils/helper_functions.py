@@ -63,10 +63,12 @@ def prepare_io_files(func):
     Decorator that prepares input and output files.
     This allows the function to be called independently.
     """
+    
     @functools.wraps(func)
     def wrapper(self, run_type=None, input_folder=None, proof_folder=None, 
                 temp_folder=None, circuit_folder=None, weights_folder=None, 
                 output_folder=None, proof_system=None, *args, **kwargs):
+        
         
         # Use provided values or defaults from instance
         input_folder = input_folder or getattr(self, 'input_folder', "inputs")
@@ -75,12 +77,13 @@ def prepare_io_files(func):
         circuit_folder = circuit_folder or getattr(self, 'circuit_folder', "")
         weights_folder = weights_folder or getattr(self, 'weights_folder', "weights")
         output_folder = output_folder or getattr(self, 'output_folder', "output")
+        quantized_model_folder = "quantized_model_folder" or getattr(self, 'output_folder', "output")
         proof_system = proof_system or getattr(self, 'proof_system', ZKProofSystems.Expander)
         
         # Get file paths
         witness_file, input_file, proof_path, public_path, verification_key, circuit_name, weights_path, output_file = get_files(
             input_folder, proof_folder, temp_folder, circuit_folder, weights_folder, 
-            self.name, output_folder, proof_system
+            self.name, output_folder, quantized_model_folder, proof_system
         )
         if not kwargs.get("input_file", None) is None:
             input_file = kwargs["input_file"]
@@ -97,61 +100,28 @@ def prepare_io_files(func):
         if not kwargs.get("witness_file", None) is None:
             witness_file = kwargs["witness_file"]
         kwargs.pop("witness_file", None)
+        if not kwargs.get("circuit_path", None) is None:
+            circuit_path = kwargs["circuit_path"]
+        else:
+            circuit_path = None
+        kwargs.pop("circuit_path", None)
         
 
         # No functionality for the following couple outside of this.
         # For now they are hardcoded
         if not kwargs.get("model_path", None) is None:
             model_path = kwargs["model_path"]
+        else:
+            model_path = None
         if not kwargs.get("quantized_model_path", None) is None:
             quantized_model_path = kwargs["quantized_model_path"]
         else:
-            quantized_model_path = f"quantized_model_{self.__class__.__name__}.pth"
+            if circuit_path:
+                name = os.path.splitext(os.path.basename(circuit_path))[0]
+                quantized_model_path = f"{quantized_model_folder}/{name}_quantized_model.pth"
+            else:
+                quantized_model_path = f"{quantized_model_folder}/quantized_model_{self.__class__.__name__}.pth"
         
-        is_scaled = True
-
-
-        if run_type == RunType.GEN_WITNESS or run_type == RunType.END_TO_END:
-            self.load_quantized_model(quantized_model_path)
-            if kwargs.get("write_json") == True:
-                inputs = self.get_inputs()
-                output = self.get_outputs(inputs)
-
-                input = self.format_inputs(inputs)
-                outputs = self.format_outputs(output)
-
-                print("TO JSON")
-                to_json(input, input_file)
-                to_json(outputs, output_file)
-            else:
-                inputs = self.get_inputs_from_file(input_file, is_scaled = is_scaled)
-                # inputs = read_from_json(input_file)
-                # self.parse_inputs(**inputs)
-
-                # Compute output (with caching via decorator)
-                output = self.get_outputs(inputs)
-                outputs = self.format_outputs(output)
-                to_json(outputs, output_file)
-
-        if run_type == RunType.COMPILE_CIRCUIT or run_type == RunType.END_TO_END: 
-            #### TODO Fix the next couple lines
-            func_model_and_quantize = getattr(self, 'get_model_and_quantize', None)
-            if callable(func_model_and_quantize):
-                func_model_and_quantize()
-
-            weights = self.get_weights()
-            self.save_quantized_model(quantized_model_path)
-            if type(weights) == list:
-                for (i, w) in enumerate(weights):
-                    if i == 0:
-                        to_json(w, weights_path)
-                    else:
-                        val = i + 1
-                        to_json(w, weights_path[:-5] + f"{val}" + weights_path[-5:])
-            elif type(weights) == dict:
-                to_json(weights, weights_path)
-            else:
-                raise NotImplementedError("Weights type is incorrect")
         
         # Store paths and data for use in the decorated function
         file_info = {
@@ -167,18 +137,21 @@ def prepare_io_files(func):
             'weights': weights_path,
             'outputs': output_file,
             'output': output_file,
-            'proof_system': proof_system
+            'proof_system': proof_system,
+            'model_path':model_path,
+            'quantized_model_path': quantized_model_path
         }
-        # print(input_file, output_file)
         
         # Store file_info in the instance
         self._file_info = file_info
         
+
+        print(kwargs)
         # Call the original function with all arguments including file info
         return func(self, run_type, 
                     witness_file, input_file, proof_path, public_path, 
                     verification_key, circuit_name, weights_path, output_file,
-                    proof_system, *args, **kwargs)
+                    proof_system, circuit_path = circuit_path, *args, **kwargs)
     
     return wrapper
 
@@ -281,6 +254,8 @@ def prove_and_verify(witness_file, input_file, proof_path, public_path, verifica
             )
             
     elif proof_system == ZKProofSystems.Circom:
+        raise NotImplementedError("Circom is not implemented")
+
         circuit = ZKProofsCircom(circuit_name)
         res = circuit.compile_circuit()
         circuit.compute_witness(witness_file, input_file, wasm=True, c=False)
@@ -330,8 +305,6 @@ def compile_circuit(circuit_name, circuit_path, proof_system: ZKProofSystems = Z
             'c': circuit_path,
         }
         # Run the command
-        print("test")
-
         try:
             run_cargo_command(binary_name, 'run_compile_circuit', args, dev_mode)
         except Exception as e:
@@ -339,10 +312,11 @@ def compile_circuit(circuit_name, circuit_path, proof_system: ZKProofSystems = Z
             print(f"Using binary: {binary_name}")
             
     elif proof_system == ZKProofSystems.Circom:
+        raise NotImplementedError("Circom is not implemented")
         circuit = ZKProofsCircom(circuit_name)
         res = circuit.compile_circuit()
     else:
-        raise NotImplementedError("Must specify proof system")
+        raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
 def generate_witness(circuit_name, circuit_path, witness_file, input_file, output_file, 
                     proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False):
@@ -368,8 +342,11 @@ def generate_witness(circuit_name, circuit_path, witness_file, input_file, outpu
             print(f"Warning: Witness generation failed: {e}")
             
     elif proof_system == ZKProofSystems.Circom:
+        raise NotImplementedError("Circom is not implemented")
         circuit = ZKProofsCircom(circuit_name)
         circuit.compute_witness(witness_file, input_file, wasm=True, c=False)
+    else:
+        raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
 
 def generate_proof(circuit_name, circuit_path, witness_file, proof_file, 
@@ -396,17 +373,20 @@ def generate_proof(circuit_name, circuit_path, witness_file, proof_file,
                 print(f"Warning: Proof generation failed: {e}")
         else:
             # Direct Expander call via expander-exec binary
-            paths = get_expander_file_paths(circuit_name)
+            # paths = get_expander_file_paths(circuit_name)
             run_expander_exec(
                 mode="prove",
-                circuit_file=paths["circuit_file"],
-                witness_file=paths["witness_file"],
-                proof_file=paths["proof_file"]
+                circuit_file=circuit_path,
+                witness_file=witness_file,
+                proof_file=proof_file
             )
             
     elif proof_system == ZKProofSystems.Circom:
+        raise NotImplementedError("Circom is not implemented")
         circuit = ZKProofsCircom(circuit_name)
         circuit.proof(witness_file, proof_file, public_path="")
+    else:
+        raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
 
 def generate_verification(circuit_name, circuit_path, input_file, output_file, witness_file, proof_file, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False, ecc = True):
@@ -434,16 +414,18 @@ def generate_verification(circuit_name, circuit_path, input_file, output_file, w
                 print(f"Warning: Verification generation failed: {e}")
         else:
             # Direct Expander call via expander-exec binary
-            paths = get_expander_file_paths(circuit_name)
+            # paths = get_expander_file_paths(circuit_name)
             run_expander_exec(
                 mode="verify",
-                circuit_file=paths["circuit_file"],
-                witness_file=paths["witness_file"],
-                proof_file=paths["proof_file"]
+                circuit_file=circuit_path,
+                witness_file=witness_file,
+                proof_file=proof_file
             )
             
     elif proof_system == ZKProofSystems.Circom:
-        raise NotImplementedError("Not implemented for Circom")
+        raise NotImplementedError("Circom is not implemented")
+    else:
+        raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
 def run_end_to_end(circuit_name, circuit_path, input_file, output_file, 
                   proof_system: ZKProofSystems = ZKProofSystems.Expander, demo=False, dev_mode = False, ecc = True):
@@ -479,16 +461,20 @@ def run_end_to_end(circuit_name, circuit_path, input_file, output_file,
 
             
     elif proof_system == ZKProofSystems.Circom:
-        raise NotImplementedError("Not implemented for Circom")
+        raise NotImplementedError("Circom is not implemented")
+    else:
+        raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
 def get_files(input_folder, proof_folder, temp_folder, circuit_folder, weights_folder, 
-             name, output_folder, proof_system):
+             name, output_folder, quantized_model_folder, proof_system):
     """Get file paths, creating folders as needed."""
     create_folder(input_folder)
     create_folder(proof_folder)
     create_folder(temp_folder)
     create_folder(output_folder)
     create_folder(weights_folder)
+    create_folder(quantized_model_folder)
+
 
     
     input_file = os.path.join(input_folder, f"{name}_input.json")
@@ -496,14 +482,15 @@ def get_files(input_folder, proof_folder, temp_folder, circuit_folder, weights_f
     verification_key = os.path.join(temp_folder, f"{name}_verification_key.json")
     weights_path = os.path.join(weights_folder, f"{name}_weights.json")
     
-    if proof_system == ZKProofSystems.Circom:
-        circuit_name = os.path.join(circuit_folder, f"{name}.circom")
-        witness_file = os.path.join(temp_folder, f"{name}_witness.wtns")
-        proof_path = os.path.join(proof_folder, f"{name}_proof.json")
-    elif proof_system == ZKProofSystems.Expander:
+    if proof_system == ZKProofSystems.Expander:
         circuit_name = os.path.join(circuit_folder, f"{name}")
         witness_file = os.path.join(f"{name}_witness.txt")
         proof_path = os.path.join(proof_folder, f"{name}_proof.bin")
+    elif proof_system == ZKProofSystems.Circom:
+        raise NotImplementedError("Circom is not implemented")
+        circuit_name = os.path.join(circuit_folder, f"{name}.circom")
+        witness_file = os.path.join(temp_folder, f"{name}_witness.wtns")
+        proof_path = os.path.join(proof_folder, f"{name}_proof.json")
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 

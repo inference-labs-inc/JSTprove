@@ -1,6 +1,7 @@
 import inspect
 import json
 from typing import Optional
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
@@ -78,8 +79,13 @@ class GeneralLayerFunctions():
     def get_inputs_from_file(self, file_name, is_scaled: bool = False):
         inputs = self.read_input(file_name)
         if is_scaled:
-            return torch.as_tensor(inputs).long()
-        return torch.mul(torch.as_tensor(inputs),2**self.scaling).long()
+            out =  torch.as_tensor(inputs).long()
+        else:
+            out =  torch.mul(torch.as_tensor(inputs),self.scale_base**self.scaling).long()
+
+        if hasattr(self, "input_shape"):
+            out = out.reshape(self.input_shape)
+        return out
     
     def get_outputs(self, inputs):
         return self.quantized_model(inputs)
@@ -87,15 +93,21 @@ class GeneralLayerFunctions():
     def get_inputs(self, file_path:str = None, is_scaled = False):
         if file_path == None:
             return self.create_new_inputs()
-        return self.get_inputs_from_file(file_path, is_scaled=is_scaled).reshape(self.input_shape)
+        if hasattr(self, "input_shape"):
+            return self.get_inputs_from_file(file_path, is_scaled=is_scaled).reshape(self.input_shape)
+        else:
+            raise NotImplementedError("Must define attribute input_shape")
     
     def create_new_inputs(self):
-        return torch.mul(torch.rand(self.input_shape) * 2 - 1, 2**self.scaling).long()
+        print(self.scale_base, self.scaling, self.scale_base**self.scaling)
+        return torch.mul(torch.rand(self.input_shape)*2 - 1, self.scale_base**self.scaling).long()
 
     def format_inputs(self, inputs):
         return {"input": inputs.long().tolist()}
     
     def format_outputs(self, outputs):
+        if hasattr(self, "scaling") and hasattr(self, "scale_base"):
+            return {"output": outputs.long().tolist(), "rescaled_output": torch.div(outputs, self.scale_base**(2*self.scaling)).tolist()}
         return {"output": outputs.long().tolist()}
     
     def format_inputs_outputs(self, inputs, outputs):
@@ -119,6 +131,8 @@ class PytorchConverter():
 
 
     def expand_padding(self, padding_2):
+        if len(padding_2) != 2:
+            raise(ValueError("Expand padding requires initial padding of dimension 2"))
         pad_h, pad_w = padding_2
         return (pad_w, pad_w, pad_h, pad_h)
     
@@ -164,14 +178,15 @@ class PytorchConverter():
                 hook = module.register_forward_hook(register_hook(name))
                 hooks.append(hook)
 
+        # Run a dummy input through the model
         model.eval()
         dummy_input = torch.randn(*input_shape)
         with torch.no_grad():
-            _ = model(dummy_input)
+                _ = model(dummy_input)
 
         for h in hooks:
             h.remove()
-
+        print("TEST5")
         return input_shapes
     
     def clone_model_with_same_args(self, model):
@@ -193,6 +208,7 @@ class PytorchConverter():
         quantized_model = self.clone_model_with_same_args(model)
         # Replace conv and fc layers
         for name, module in model.named_modules():
+
             rescale = rescale_config.get(name, True)
 
             if isinstance(module, nn.Conv2d):
@@ -204,16 +220,23 @@ class PytorchConverter():
 
         return quantized_model
 
-    def get_weights(self):
-        input_shapes = self.get_input_shapes_by_layer(self.quantized_model, self.input_shape)  # example input
-        used_layers = self.get_used_layers(self.quantized_model, self.input_shape)
 
+    def get_weights(self, flatten = False):
+        if flatten:
+            in_shape = [1, np.prod(self.input_shape)]
+        else:
+            in_shape = self.input_shape
+        input_shapes = self.get_input_shapes_by_layer(self.quantized_model, in_shape)  # example input
+        print("TEST3")
+
+        used_layers = self.get_used_layers(self.quantized_model, in_shape) 
+        # Can combine the above into 1 function
         def to_tuple(x):
             return (x,) if isinstance(x, int) else tuple(x)
-        # Can combine the above into 1 function
-
         weights = {}
         weights["scaling"] = self.scaling
+        weights["sacle_base"] = self.scale_base
+
         
         name_counters = {}
 
@@ -252,14 +275,18 @@ class PytorchConverter():
 
         return weights
     
-    def get_model_and_quantize(self):
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    def get_model(self, device):
         try:
             model = self.model_type(**getattr(self, 'model_params', {})).to(device)
+            return model
         except AttributeError:
             raise NotImplementedError(f"Must specify the model type as a pytorch model (as variable self.model_type) in object {self.__class__.__name__}")
         except TypeError as e: 
             raise NotImplementedError(f"{e}. \n Must specify the model parameters of the pytorch model (as dictionary in self.model_params) in object {self.__class__.__name__}.")
+
+    def get_model_and_quantize(self):
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = self.get_model(device)
         
         if hasattr(self, 'model_file_name'):
             print(f"Loading model from file {self.model_file_name}")
@@ -272,21 +299,21 @@ class PytorchConverter():
             print("Creating new model as no saved file path was specified")
         model.eval()
         self.model = model
-        self.quantized_model = self.quantize_model(model, 2**self.scaling, rescale_config=self.rescale_config)
+        self.quantized_model = self.quantize_model(model, self.scale_base**self.scaling, rescale_config=getattr(self,"rescale_config", {}))
         self.quantized_model.eval()
 
     def test_accuracy(self):
         inputs = torch.rand(self.input_shape)*2 - 1
         print(self.model(inputs))
-        q_inputs = inputs*(2**self.scaling)
-        print(self.quantized_model(q_inputs)/(2**(2*self.scaling)))
+        q_inputs = inputs*(self.scale_base**self.scaling)
+        print(self.quantized_model(q_inputs)/(self.scale_base**(2*self.scaling)))
 
 
 # TODO CHANGE THIS NESTED STRUCTURE, DONE FOR EASE FOR NOW, BUT IT NEEDS IMPROVEMENT
 class ZKModel(PytorchConverter, GeneralLayerFunctions, Circuit):
 
     def __init__(self):
-        raise(NotImplementedError, "Must implement")
+        raise NotImplementedError("Must implement __init__")
     
     
     @prepare_io_files
@@ -306,4 +333,4 @@ class ZKModel(PytorchConverter, GeneralLayerFunctions, Circuit):
         if not weights_path:
             weights_path = f"weights/{circuit_name}_weights.json"
 
-        self.parse_proof_run_type(witness_file, input_file, proof_file, public_path, verification_key, circuit_name, circuit_path, proof_system, output_file, run_type, dev_mode)
+        self.parse_proof_run_type(witness_file, input_file, proof_file, public_path, verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, run_type, dev_mode, ecc, write_json)

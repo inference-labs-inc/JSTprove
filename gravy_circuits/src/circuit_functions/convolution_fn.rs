@@ -319,7 +319,7 @@ fn flatten_and_perform_dot<C: Config, Builder: RootAPI<C>>(
 }
 
 /// Run of convolution
-pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(
+pub fn conv_4d_run<C: Config, T: Into<u64>, Builder: RootAPI<C>, >(
     api: &mut Builder,
     input_arr: Vec<Vec<Vec<Vec<Variable>>>>,
     weights: Vec<Vec<Vec<Vec<Variable>>>>,
@@ -333,7 +333,7 @@ pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(
     group_in: &Vec<u32>,
     quantized: bool,
     v_plus_one: usize,
-    two_v: u32,
+    two_v: T,
     alpha_two_v: Variable,
     is_relu: bool,
 ) -> Vec<Vec<Vec<Vec<Variable>>>> {

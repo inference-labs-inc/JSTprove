@@ -40,7 +40,7 @@ def find_file(filename: str, default_path: Optional[Path] = None) -> Path:
         candidate = PROJECT_ROOT / default_path
         if candidate.is_file():
             return candidate
-
+    return filename
     all_json_files = _get_all_json_files()
     for path in all_json_files:
         if path.name == filename:
@@ -224,6 +224,7 @@ def main():
     for op in run_operations:
         if op == RunType.COMPILE_CIRCUIT:
             args.fresh_compile = True
+        print("test",args.circuit_path)
         circuit.base_testing(
             run_type=op,
             dev_mode=args.fresh_compile,

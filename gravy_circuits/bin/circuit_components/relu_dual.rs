@@ -3,7 +3,6 @@ use expander_compiler::frontend::*;
 use gravy_circuits::{io::io_reader::{FileReader, IOReader}, runner::main_runner::handle_args};
 use serde::Deserialize;
 // use std::ops::Neg;
-use arith::FieldForECC;
 
 // use gravy_circuits::circuit_functions::relu;
 
@@ -64,12 +63,12 @@ struct OutputData {
     output: Vec<u64>,
 }
 
-impl<C: Config> IOReader<ReLUDualCircuit<C::CircuitField>, C> for FileReader {
+impl<C: Config> IOReader<ReLUDualCircuit<CircuitField::<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
-        mut assignment: ReLUDualCircuit<C::CircuitField>,
-    ) -> ReLUDualCircuit<C::CircuitField> {
+        mut assignment: ReLUDualCircuit<CircuitField::<C>>,
+    ) -> ReLUDualCircuit<CircuitField::<C>> {
         let data: InputData = <FileReader as IOReader<ReLUDualCircuit<_>, C>>::read_data_from_json::<
             InputData,
         >(file_path);
@@ -79,7 +78,7 @@ impl<C: Config> IOReader<ReLUDualCircuit<C::CircuitField>, C> for FileReader {
 
         for (j, var_vec) in u8_vars.iter().enumerate() {
             for (k, &var) in var_vec.iter().enumerate() {
-                assignment.input[j][k] = C::CircuitField::from_u256(U256::from(var));
+                assignment.input[j][k] = CircuitField::<C>::from_u256(U256::from(var));
                 // Treat the u8 as a u64 for Field
             }
         }
@@ -89,14 +88,14 @@ impl<C: Config> IOReader<ReLUDualCircuit<C::CircuitField>, C> for FileReader {
     fn read_outputs(
         &mut self,
         file_path: &str,
-        mut assignment: ReLUDualCircuit<C::CircuitField>,
-    ) -> ReLUDualCircuit<C::CircuitField> {
+        mut assignment: ReLUDualCircuit<CircuitField::<C>>,
+    ) -> ReLUDualCircuit<CircuitField::<C>> {
         let data: OutputData = <FileReader as IOReader<ReLUDualCircuit<_>, C>>::read_data_from_json::<
             OutputData,
         >(file_path);
 
         for k in 0..LENGTH {
-            assignment.output[k] = C::CircuitField::from_u256(U256::from(data.output[k]));
+            assignment.output[k] = CircuitField::<C>::from_u256(U256::from(data.output[k]));
             // Treat the u8 as a u64 for Field
         }
         assignment
@@ -110,7 +109,7 @@ fn main() {
     let mut file_reader = FileReader {
         path: "relu_dual".to_owned(),
     };
-    // run_gf2();
-    // run_m31();
-    handle_args::<ReLUDualCircuit<Variable>,ReLUDualCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
+    handle_args::<BN254Config, ReLUDualCircuit<Variable>,ReLUDualCircuit<_>,_>(&mut file_reader);
+    // handle_args::<M31Config, ReLUDualCircuit<Variable>,ReLUDualCircuit<_>,_>(&mut file_reader);
+    // handle_args::<GF2Config, ReLUDualCircuit<Variable>,ReLUDualCircuit<_>,_>(&mut file_reader);
 }

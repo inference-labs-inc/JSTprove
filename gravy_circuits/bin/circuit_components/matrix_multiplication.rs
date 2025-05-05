@@ -16,7 +16,6 @@ use gravy_circuits::circuit_functions::helper_fn::two_d_array_to_vec;
 use gravy_circuits::circuit_functions::quantization::quantize_matrix;
 use serde::Deserialize;
 // use std::ops::Neg;
-use arith::FieldForECC;
 use lazy_static::lazy_static;
 
 
@@ -44,7 +43,7 @@ struct WeightsData {
 
 #[derive(Deserialize, Clone)]
 struct InputData {
-    matrix_a: Vec<Vec<i64>>,
+    input: Vec<Vec<i64>>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -83,9 +82,9 @@ impl<C: Config> Define<C> for MatMultCircuit<Variable> {
             .into_iter()
             .map(|row| row.into_iter().map(|x| {
                 if x < 0 {
-                    return api.constant(C::CircuitField::from(x.abs() as u32).neg())
+                    return api.constant(CircuitField::<C>::from(x.abs() as u32).neg())
                 } else {
-                    return api.constant(C::CircuitField::from(x.abs() as u32))
+                    return api.constant(CircuitField::<C>::from(x.abs() as u32))
                 }
             })
             .collect())
@@ -125,23 +124,23 @@ impl<C: Config> Define<C> for MatMultCircuit<Variable> {
     }
 }
 
-impl<C: Config> IOReader<MatMultCircuit<C::CircuitField>, C> for FileReader {
+impl<C: Config> IOReader<MatMultCircuit<CircuitField::<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
-        mut assignment: MatMultCircuit<C::CircuitField>,
-    ) -> MatMultCircuit<C::CircuitField> {
+        mut assignment: MatMultCircuit<CircuitField::<C>>,
+    ) -> MatMultCircuit<CircuitField::<C>> {
         let data: InputData = <FileReader as IOReader<MatMultCircuit<_>, C>>::read_data_from_json::<
             InputData,
         >(file_path);
 
         // Assign inputs to assignment
-        for (i, row) in data.matrix_a.iter().enumerate() {
+        for (i, row) in data.input.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
                 if element < 0 {
-                    assignment.matrix_a[i][j] = C::CircuitField::from(element.abs() as u32).neg();
+                    assignment.matrix_a[i][j] = CircuitField::<C>::from(element.abs() as u32).neg();
                 } else {
-                    assignment.matrix_a[i][j] = C::CircuitField::from(element.abs() as u32);
+                    assignment.matrix_a[i][j] = CircuitField::<C>::from(element.abs() as u32);
                 }
             }
         }
@@ -151,8 +150,8 @@ impl<C: Config> IOReader<MatMultCircuit<C::CircuitField>, C> for FileReader {
     fn read_outputs(
         &mut self,
         file_path: &str,
-        mut assignment: MatMultCircuit<C::CircuitField>,
-    ) -> MatMultCircuit<C::CircuitField> {
+        mut assignment: MatMultCircuit<CircuitField::<C>>,
+    ) -> MatMultCircuit<CircuitField::<C>> {
         let data: OutputData = <FileReader as IOReader<MatMultCircuit<_>, C>>::read_data_from_json::<
             OutputData,
         >(file_path);
@@ -160,9 +159,9 @@ impl<C: Config> IOReader<MatMultCircuit<C::CircuitField>, C> for FileReader {
         for (i, row) in data.matrix_product_ab.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
                 if element < 0 {
-                    assignment.matrix_product_ab[i][j] = C::CircuitField::from_u256(U256::from(element.abs() as u64)).neg();
+                    assignment.matrix_product_ab[i][j] = CircuitField::<C>::from_u256(U256::from(element.abs() as u64)).neg();
                 } else {
-                    assignment.matrix_product_ab[i][j] = C::CircuitField::from_u256(U256::from(element.abs() as u64));
+                    assignment.matrix_product_ab[i][j] = CircuitField::<C>::from_u256(U256::from(element.abs() as u64));
                 }
             }
         }
@@ -178,7 +177,7 @@ fn main() {
     let mut file_reader = FileReader {
         path: "matrix_multiplication".to_owned(),
     };
-    // run_gf2();
-    // run_m31();
-    handle_args::<MatMultCircuit<Variable>,MatMultCircuit<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>,_>(&mut file_reader);
+    handle_args::<BN254Config, MatMultCircuit<Variable>,MatMultCircuit<_>,_>(&mut file_reader);
+    // handle_args::<M31Config, ReLUDualCircuit<Variable>,ReLUDualCircuit<_>,_>(&mut file_reader);
+    // handle_args::<GF2Config, ReLUDualCircuit<Variable>,ReLUDualCircuit<_>,_>(&mut file_reader);
 }

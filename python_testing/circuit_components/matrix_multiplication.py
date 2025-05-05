@@ -35,6 +35,8 @@ class MatrixMultiplication(ZKModel):
 
 
         self.scaling = 21
+        self.scale_base = 2
+
 
         self.N_ROWS_A: int = 1; # m
         self.N_COLS_A: int = 1568; # n
@@ -46,7 +48,6 @@ class MatrixMultiplication(ZKModel):
         self.rescale_config = {"fc1": rescale}
         
 
-        # self.input_shape = [self.N_ROWS_A, self.N_COLS_A]
         if not rescale:
             self.quantized = False
         else:
@@ -59,16 +60,16 @@ class MatrixMultiplication(ZKModel):
         return [self.N_ROWS_A, self.N_COLS_A]
     
     def format_inputs(self, inputs):
-        return {"matrix_a": inputs.tolist()}
+        return {"input": inputs.tolist()}
     
     def format_outputs(self, outputs):
         return {"matrix_product_ab": outputs.tolist()}
     
-    def read_input(self, file_name = "doom_data/doom_input.json"):
-        """Reads the inputs to each layer of the model from text files."""
-        with open(file_name, 'r') as file:
-            data = json.load(file)
-            return data["matrix_a"]
+    # def read_input(self, file_name = "doom_data/doom_input.json"):
+    #     """Reads the inputs to each layer of the model from text files."""
+    #     with open(file_name, 'r') as file:
+    #         data = json.load(file)
+    #         return data["input"]
 
 
     def get_weights(self):
@@ -95,6 +96,7 @@ class QuantizedMatrixMultiplicationReLU(MatrixMultiplication):
         self.input_data_file = "doom_data/doom_input.json"
 
 
+        self.scale_base = 2
         self.scaling = 21
 
         self.N_ROWS_A: int = 1; # m
@@ -135,23 +137,23 @@ if __name__ == "__main__":
     d_3 = MatrixMultiplication()
     d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
 
-    d = QuantizedMatrixMultiplication()
-    name = d.name
+    # d = QuantizedMatrixMultiplication()
+    # name = d.name
 
-    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
-    d_2 = QuantizedMatrixMultiplication()
-    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
-    d_3 = QuantizedMatrixMultiplication()
-    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
+    # d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    # d_2 = QuantizedMatrixMultiplication()
+    # d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+    # d_3 = QuantizedMatrixMultiplication()
+    # d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
 
-    d = QuantizedMatrixMultiplicationReLU()
-    name = d.name
+    # d = QuantizedMatrixMultiplicationReLU()
+    # name = d.name
 
-    d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
-    d_2 = QuantizedMatrixMultiplicationReLU()
-    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
-    d_3 = QuantizedMatrixMultiplicationReLU()
-    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
+    # d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
+    # d_2 = QuantizedMatrixMultiplicationReLU()
+    # d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+    # d_3 = QuantizedMatrixMultiplicationReLU()
+    # d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
 
     
 
