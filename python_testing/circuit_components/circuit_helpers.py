@@ -210,7 +210,7 @@ class Circuit:
         for k in inputs.keys():
             if "input" in k and isinstance(inputs[k], list):
                     if not hasattr(self, "input_shape"):
-                        raise NotImplementedError("input_shape must be specified in circuit definition in order to rescale inputs")
+                        raise NotImplementedError("input_shape must be specified in circuit definition in order to reshape inputs")
                     inputs[k] = torch.as_tensor(inputs[k]).reshape(self.input_shape).tolist()
                     
         path = Path(input_file)
@@ -244,14 +244,14 @@ class Circuit:
         new_inputs = {}
 
         for k in inputs.keys():
-            # Reshape inputs
-            if "input" in k and isinstance(inputs[k], list):
-                    if not hasattr(self, "input_shape"):
-                        raise NotImplementedError("input_shape must be specified in circuit definition in order to rescale inputs")
-                    inputs[k] = torch.as_tensor(inputs[k]).reshape(self.input_shape).tolist()
+            
+
             # Rescale inputs
             if self.contains_float(inputs[k]):
-                inputs[k] = torch.mul(torch.as_tensor(inputs[k]),(self.scale_base**self.scaling)).long().tolist()
+                inputs[k] = torch.round(torch.mul(torch.as_tensor(inputs[k]),(self.scale_base**self.scaling))).long().tolist()
+
+
+                # inputs[k] = torch.mul(torch.as_tensor(inputs[k]),(self.scale_base**self.scaling)).long().tolist()
         
             # Rename inputs
             if "input" in k:
@@ -261,6 +261,12 @@ class Circuit:
                 new_inputs["input"] = inputs[k]
             else:
                 new_inputs[k] = inputs[k]
+            # Reshape inputs
+        for k in new_inputs.keys():
+            if "input" in k and isinstance(new_inputs[k], list):
+                if not hasattr(self, "input_shape"):
+                    raise NotImplementedError("input_shape must be specified in circuit definition in order to reshape inputs")
+                new_inputs[k] = torch.as_tensor(new_inputs[k]).reshape(self.input_shape).tolist()
 
         if "input" not in new_inputs.keys() and "output" in new_inputs.keys():
             new_inputs["input"] = inputs["output"]
@@ -282,7 +288,7 @@ class Circuit:
         if write_json == True:
             inputs = self.get_inputs()
             output = self.get_outputs(inputs)
-            print(inputs)
+            print(inputs, "TEST1")
 
             input = self.format_inputs(inputs)
             outputs = self.format_outputs(output)
@@ -299,6 +305,8 @@ class Circuit:
 
 
             inputs = self.get_inputs_from_file(input_file, is_scaled = is_scaled)
+            print(inputs, "TEST2")
+
                 # Compute output (with caching via decorator)
             output = self.get_outputs(inputs)
             outputs = self.format_outputs(output)

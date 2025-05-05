@@ -43,7 +43,7 @@ struct WeightsData {
 
 #[derive(Deserialize, Clone)]
 struct InputData {
-    matrix_a: Vec<Vec<i64>>,
+    input: Vec<Vec<i64>>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -135,7 +135,7 @@ impl<C: Config> IOReader<MatMultCircuit<CircuitField::<C>>, C> for FileReader {
         >(file_path);
 
         // Assign inputs to assignment
-        for (i, row) in data.matrix_a.iter().enumerate() {
+        for (i, row) in data.input.iter().enumerate() {
             for (j, &element) in row.iter().enumerate() {
                 if element < 0 {
                     assignment.matrix_a[i][j] = CircuitField::<C>::from(element.abs() as u32).neg();

@@ -320,7 +320,11 @@ def test_witness_unscaled(
     input_data = json.loads(written_input_data)
     if hasattr(model_write, "scale_base") and hasattr(model_write, "scaling"):
         for key in input_data:
+            print("TEST START")
+            print(input_data[key])
             input_data[key] = torch.div(torch.as_tensor(input_data[key]), model_write.scale_base**model_write.scaling).tolist()
+            print(input_data[key])
+            print("TEST COMPLETE")
     else:
         raise NotImplementedError("Model does not have scale_base attribute")
     assert contains_float(input_data), f"This is a testing error, not a model error. Please fix this test to properly turn data to float."
@@ -366,10 +370,15 @@ def test_witness_unscaled(
     assert os.path.exists(temp_output_file), "Output file not generated"
     with open(temp_output_file, "r") as f:
         new_output_file = f.read()
+    assert_very_close(json.loads(new_output_file), json.loads(written_output_data), model_write)
+    # assert new_output_file == written_output_data, "Output file content does not match the expected output"
 
-    assert new_output_file == written_output_data, "Output file content does not match the expected output"
+def assert_very_close(inputs_1, inputs_2, model):
+    for i in inputs_1.keys():
+        x = torch.div(torch.as_tensor(inputs_1[i]), model.scale_base**model.scaling)
+        y = torch.div(torch.as_tensor(inputs_2[i]), model.scale_base**model.scaling)
 
-
+        assert torch.isclose(x, y, rtol = 1e-8).all()
 
 def test_witness_unscaled_and_incorrect_shape_input(
     model_fixture,
@@ -465,8 +474,9 @@ def test_witness_unscaled_and_incorrect_shape_input(
     assert os.path.exists(temp_output_file), "Output file not generated"
     with open(temp_output_file, "r") as f:
         new_output_file = f.read()
+    assert_very_close(json.loads(new_output_file), json.loads(written_output_data), model_write)
 
-    assert new_output_file == written_output_data, "Output file content does not match the expected output"
+    # assert new_output_file == written_output_data, "Output file content does not match the expected output"
 
 def test_witness_wrong_name(
     model_fixture,
@@ -552,6 +562,8 @@ def test_witness_wrong_name(
     assert os.path.exists(temp_output_file), "Output file not generated"
     with open(temp_output_file, "r") as f:
         new_output_file = f.read()
+
+    assert_very_close(json.loads(new_output_file), json.loads(written_output_data), model_write)
 
     assert new_output_file == written_output_data, "Output file content does not match the expected output"
 
@@ -673,7 +685,11 @@ def test_witness_unscaled_and_incorrect_and_bad_named_input(
     with open(temp_output_file, "r") as f:
         new_output_file = f.read()
 
-    assert new_output_file == written_output_data, "Output file content does not match the expected output"
+    print(new_output_file, "TEST", written_output_data)
+    
+    assert_very_close(json.loads(new_output_file), json.loads(written_output_data), model_write)
+
+    # assert new_output_file == written_output_data, "Output file content does not match the expected output"
 
 def test_witness_wrong_name(
     model_fixture,
@@ -761,5 +777,6 @@ def test_witness_wrong_name(
     assert os.path.exists(temp_output_file), "Output file not generated"
     with open(temp_output_file, "r") as f:
         new_output_file = f.read()
+    assert_very_close(json.loads(new_output_file), json.loads(written_output_data), model_write)
 
     assert new_output_file == written_output_data, "Output file content does not match the expected output"

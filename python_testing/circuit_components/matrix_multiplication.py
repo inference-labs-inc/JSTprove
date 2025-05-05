@@ -48,7 +48,6 @@ class MatrixMultiplication(ZKModel):
         self.rescale_config = {"fc1": rescale}
         
 
-        # self.input_shape = [self.N_ROWS_A, self.N_COLS_A]
         if not rescale:
             self.quantized = False
         else:
@@ -61,16 +60,16 @@ class MatrixMultiplication(ZKModel):
         return [self.N_ROWS_A, self.N_COLS_A]
     
     def format_inputs(self, inputs):
-        return {"matrix_a": inputs.tolist()}
+        return {"input": inputs.tolist()}
     
     def format_outputs(self, outputs):
         return {"matrix_product_ab": outputs.tolist()}
     
-    def read_input(self, file_name = "doom_data/doom_input.json"):
-        """Reads the inputs to each layer of the model from text files."""
-        with open(file_name, 'r') as file:
-            data = json.load(file)
-            return data["matrix_a"]
+    # def read_input(self, file_name = "doom_data/doom_input.json"):
+    #     """Reads the inputs to each layer of the model from text files."""
+    #     with open(file_name, 'r') as file:
+    #         data = json.load(file)
+    #         return data["input"]
 
 
     def get_weights(self):
