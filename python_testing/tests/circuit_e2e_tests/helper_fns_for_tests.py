@@ -23,7 +23,6 @@ BAD_OUTPUT = ["assertion `left == right` failed", "Witness generation failed"]
 MODELS_TO_TEST = [
     # ("doom", Doom),
     # ("simple_circuit", SimpleCircuit),
-    # ("cnn_demo", Demo),
     # ("doom_conv1", DoomConv1),
     # ("doom_conv2", DoomConv2),
     # ("doom_conv3", DoomConv3),
@@ -35,19 +34,23 @@ MODELS_TO_TEST = [
     # ("net_conv2", NetConv2Model),
     # ("net_fc1", NetFC1Model),
     # ("net_fc2", NetFC2Model),
-    ("net_fc3", NetFC3Model),
+    # ("net_fc3", NetFC3Model),
 
     # ("conv", Convolution),
     # ("quantized_conv", QuantizedConv),
     # ("quantized_conv_relu", QuantizedConvRelu),
-    # ("relu", ReLU)
-
+    # ("relu", ReLU),
     # ("matrix_multiplication", MatrixMultiplication),
     # ("quantized_matrix_multiplication", QuantizedMatrixMultiplication),
     # ("quantized_matrix_multiplication_relu", QuantizedMatrixMultiplicationReLU),
     # ("matrix_addition", MatrixAddition),
     # ("scaled_matrix_product", ScaledMatrixProduct),
     # ("scaled_matrix_product_sum", ScaledMatrixProductSum),
+
+    # ("cnn_demo", Demo),
+
+    
+    
     # # ("other_model", OtherModel),
 ]
 

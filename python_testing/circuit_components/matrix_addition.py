@@ -1,7 +1,8 @@
 # from circom.reward_fn import generate_sample_inputs
+from pathlib import Path
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems
-from python_testing.utils.helper_functions import RunType, get_files, to_json, prove_and_verify
+from python_testing.utils.helper_functions import RunType, get_files, read_from_json, to_json, prove_and_verify
 from python_testing.circuit_components.circuit_helpers import Circuit
 
 
@@ -17,14 +18,15 @@ class MatrixAddition(Circuit):
         
         # Function input generation
 
-        N_ROWS_A: int = 100; # m
-        N_COLS_A: int = 50; # n
-        N_ROWS_B: int = 100; # m
-        N_COLS_B: int = 50; # n
+        self.N_ROWS_A: int = 100; # m
+        self.N_COLS_A: int = 50; # n
+        self.N_ROWS_B: int = 100; # m
+        self.N_COLS_B: int = 50; # n
 
-        self.matrix_a = torch.randint(low=0, high=100, size=(N_ROWS_A,N_COLS_A)) # (m, n) array of random integers between 0 and 100
-        self.matrix_b = torch.randint(low=0, high=100, size=(N_ROWS_B,N_COLS_B)) # (m, n) array of random integers between 0 and 100
+        self.matrix_a = torch.randint(low=0, high=100, size=(self.N_ROWS_A,self.N_COLS_A)) # (m, n) array of random integers between 0 and 100
+        self.matrix_b = torch.randint(low=0, high=100, size=(self.N_ROWS_B,self.N_COLS_B)) # (m, n) array of random integers between 0 and 100
 
+        self.input_variables = ["matrix_a", "matrix_b"]
         self.scale_base = 1
         self.scaling = 1
 
@@ -34,7 +36,14 @@ class MatrixAddition(Circuit):
         #######################################################################################################
         #######################################################################################################
         '''
+    @property
+    def matrix_a_shape(self):
+        return [self.N_ROWS_A, self.N_COLS_A]
     
+    @property
+    def matrix_b_shape(self):
+        return (self.N_ROWS_B,self.N_COLS_B)
+
     def get_inputs(self):
         return {'matrix_a': self.matrix_a, 'matrix_b': self.matrix_b}
     
@@ -60,6 +69,7 @@ class MatrixAddition(Circuit):
             'matrix_b': inputs['matrix_b'].tolist(), 
             }
     
+
     
     
 

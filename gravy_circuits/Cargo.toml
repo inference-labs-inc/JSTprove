@@ -57,6 +57,10 @@ name = "matrix_addition"
 path = "bin/circuit_components/matrix_addition.rs"
 
 [[bin]]
+name = "matrix_multiplication"
+path = "bin/circuit_components/matrix_multiplication.rs"
+
+[[bin]]
 name = "matrix_hadamard_product"
 path = "bin/circuit_components/matrix_hadamard_product.rs"
 
