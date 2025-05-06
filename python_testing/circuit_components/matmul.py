@@ -16,19 +16,31 @@ class MatMul(Circuit):
         
         # Function input generation
 
-        N_ROWS_A: int = 40; # m
-        N_COLS_A: int = 40; # n
-        N_ROWS_B: int = 40; # m
-        N_COLS_B: int = 40; # n
+        self.N_ROWS_A: int = 40; # m
+        self.N_COLS_A: int = 40; # n
+        self.N_ROWS_B: int = 40; # m
+        self.N_COLS_B: int = 40; # n
 
-        self.matrix_a = torch.randint(low=-50, high=50, size=(N_ROWS_A,N_COLS_A)) # (m, n) array of random integers between -50 and 50
-        self.matrix_b = torch.randint(low=-50, high=50, size=(N_ROWS_B,N_COLS_B)) # (m, n) array of random integers between -50 and 50
+        self.matrix_a = torch.randint(low=-50, high=50, size=(self.N_ROWS_A,self.N_COLS_A)) # (m, n) array of random integers between -50 and 50
+        self.matrix_b = torch.randint(low=-50, high=50, size=(self.N_ROWS_B,self.N_COLS_B)) # (m, n) array of random integers between -50 and 50
+
+        self.input_variables = ["matrix_a", "matrix_b"]
+        self.scale_base = 1
+        self.scaling = 1
+
 
         '''
         #######################################################################################################
         #######################################################################################################
         #######################################################################################################
         '''
+    @property
+    def matrix_a_shape(self):
+        return [self.N_ROWS_A, self.N_COLS_A]
+    
+    @property
+    def matrix_b_shape(self):
+        return (self.N_ROWS_B,self.N_COLS_B)
     
     def get_inputs(self):
         return {'matrix_a': self.matrix_a, 'matrix_b': self.matrix_b}

@@ -3,6 +3,10 @@ import numpy as np
 import pytest
 import torch
 
+from python_testing.circuit_components.extrema import Extrema
+from python_testing.circuit_components.matmul import MatMul
+from python_testing.circuit_components.matmul_bias import MatMulBias
+from python_testing.circuit_components.maxpooling import MaxPooling2D
 from python_testing.circuit_models.demo_cnn import Demo
 from python_testing.circuit_models.doom_model import Doom
 from python_testing.circuit_models.net_model import NetModel, NetConv1Model, NetConv2Model, NetFC1Model, NetFC2Model, NetFC3Model
@@ -10,7 +14,7 @@ from python_testing.circuit_models.simple_circuit import SimpleCircuit
 from python_testing.circuit_models.doom_slices import DoomConv1, DoomConv2, DoomConv3, DoomFC1, DoomFC2
 from python_testing.circuit_models.eth_fraud import Eth
 from python_testing.circuit_components.convolution import Convolution, QuantizedConv, QuantizedConvRelu
-from python_testing.circuit_components.relu import ReLU
+from python_testing.circuit_components.relu import ReLU, ConversionType
 from python_testing.circuit_components.matrix_multiplication import MatrixMultiplication, QuantizedMatrixMultiplication, QuantizedMatrixMultiplicationReLU
 from python_testing.circuit_components.matrix_addition import MatrixAddition
 from python_testing.circuit_components.scaled_matrix_product import ScaledMatrixProduct
@@ -21,36 +25,41 @@ GOOD_OUTPUT = ["Witness Generated"]
 BAD_OUTPUT = ["assertion `left == right` failed", "Witness generation failed"]
 
 MODELS_TO_TEST = [
-    # ("doom", Doom),
-    # ("simple_circuit", SimpleCircuit),
-    # ("doom_conv1", DoomConv1),
-    # ("doom_conv2", DoomConv2),
-    # ("doom_conv3", DoomConv3),
-    # ("doom_fc1", DoomFC1),
-    # ("doom_fc2", DoomFC2),
-    # ("eth_fraud", Eth),
-    # ("net", NetModel),
-    # ("net_conv1", NetConv1Model),
-    # ("net_conv2", NetConv2Model),
-    # ("net_fc1", NetFC1Model),
-    # ("net_fc2", NetFC2Model),
-    # ("net_fc3", NetFC3Model),
+    ("doom", Doom),
+    ("simple_circuit", SimpleCircuit),
+    ("doom_conv1", DoomConv1),
+    ("doom_conv2", DoomConv2),
+    ("doom_conv3", DoomConv3),
+    ("doom_fc1", DoomFC1),
+    ("doom_fc2", DoomFC2),
+    ("eth_fraud", Eth),
+    ("net", NetModel),
+    ("net_conv1", NetConv1Model),
+    ("net_conv2", NetConv2Model),
+    ("net_fc1", NetFC1Model),
+    ("net_fc2", NetFC2Model),
+    ("net_fc3", NetFC3Model),
 
-    # ("conv", Convolution),
-    # ("quantized_conv", QuantizedConv),
-    # ("quantized_conv_relu", QuantizedConvRelu),
-    # ("relu", ReLU),
-    # ("matrix_multiplication", MatrixMultiplication),
-    # ("quantized_matrix_multiplication", QuantizedMatrixMultiplication),
-    # ("quantized_matrix_multiplication_relu", QuantizedMatrixMultiplicationReLU),
-    # ("matrix_addition", MatrixAddition),
-    # ("scaled_matrix_product", ScaledMatrixProduct),
-    # ("scaled_matrix_product_sum", ScaledMatrixProductSum),
+    ("conv", Convolution),
+    ("quantized_conv", QuantizedConv),
+    ("quantized_conv_relu", QuantizedConvRelu),
+    ("relu", ReLU, {"conversion_type":ConversionType.DUAL_MATRIX}),
+    ("relu", ReLU, {"conversion_type":ConversionType.TWOS_COMP}),
 
-    # ("cnn_demo", Demo),
 
-    
-    
+    ("matrix_multiplication", MatrixMultiplication),
+    ("quantized_matrix_multiplication", QuantizedMatrixMultiplication),
+    ("quantized_matrix_multiplication_relu", QuantizedMatrixMultiplicationReLU),
+    ("matrix_addition", MatrixAddition),
+    ("scaled_matrix_product", ScaledMatrixProduct),
+    ("scaled_matrix_product_sum", ScaledMatrixProductSum),
+
+    ("cnn_demo", Demo, {"layers":["conv1", "relu", "reshape", "fc1", "relu", "fc2"]}),
+
+    ("extrema", Extrema),
+    ("matmul", MatMul),
+    ("matmul_bias", MatMulBias),
+    ("maxpooling", MaxPooling2D),
     # # ("other_model", OtherModel),
 ]
 

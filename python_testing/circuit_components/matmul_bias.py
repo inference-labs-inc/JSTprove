@@ -15,19 +15,35 @@ class MatMulBias(Circuit):
         self.name = "matmul_bias"
         
         # Matrix dimensions
-        N_ROWS_A: int = 30  # ℓ
-        N_COLS_A: int = 30  # m
-        N_ROWS_B: int = 30  # m
-        N_COLS_B: int = 30  # n
+        self.N_ROWS_A: int = 30  # ℓ
+        self.N_COLS_A: int = 30  # m
+        self.N_ROWS_B: int = 30  # m
+        self.N_COLS_B: int = 30  # n
 
-        self.matrix_a = torch.randint(low=-50, high=50, size=(N_ROWS_A, N_COLS_A))  # (ℓ, m)
-        self.matrix_b = torch.randint(low=-50, high=50, size=(N_ROWS_B, N_COLS_B))  # (m, n)
-        self.matrix_c = torch.randint(low=-50, high=50, size=(N_ROWS_A, N_COLS_B))  # (ℓ, n) bias matrix
+        self.matrix_a = torch.randint(low=-50, high=50, size=(self.N_ROWS_A, self.N_COLS_A))  # (ℓ, m)
+        self.matrix_b = torch.randint(low=-50, high=50, size=(self.N_ROWS_B, self.N_COLS_B))  # (m, n)
+        self.matrix_c = torch.randint(low=-50, high=50, size=(self.N_ROWS_A, self.N_COLS_B))  # (ℓ, n) bias matrix
+        self.input_variables = ["matrix_a", "matrix_b", "matrix_c"]
+        self.scale_base = 1
+        self.scaling = 1
+
+
         '''
         #######################################################################################################
         #######################################################################################################
         #######################################################################################################
         '''
+    @property
+    def matrix_a_shape(self):
+        return [self.N_ROWS_A, self.N_COLS_A]
+    
+    @property
+    def matrix_b_shape(self):
+        return (self.N_ROWS_B,self.N_COLS_B)
+    
+    @property
+    def matrix_c_shape(self):
+        return (self.N_ROWS_A,self.N_COLS_B)
     
     def get_inputs(self):
         return {

@@ -338,6 +338,7 @@ class Circuit:
             inputs = self.get_inputs()
             output = self.get_outputs(inputs)
 
+            
             input = self.format_inputs(inputs)
             outputs = self.format_outputs(output)
 

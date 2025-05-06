@@ -22,22 +22,27 @@ class Extrema(Circuit):
         # Generate a batch of vectors with random nonnegative integers
         self.input_vecs = torch.randint(low=-2**31, high=2**31, size=(BATCH_SIZE, VEC_LEN))
 
+        self.scale_base = 1
+        self.scaling = 1
+        self.input_shape = [BATCH_SIZE, VEC_LEN]
+
+
         '''
         #######################################################################################################
         #######################################################################################################
         #######################################################################################################
         '''
     def get_inputs(self):
-        return {"input_vec": self.input_vecs}
+        return {"input": self.input_vecs}
     
     def get_outputs(self, inputs):
-        return torch.max(inputs["input_vec"], dim=1).values
+        return torch.max(torch.as_tensor(inputs["input"]), dim=1).values
     
     def format_outputs(self, output):
         return {"max_val": output.tolist()}
     
     def format_inputs(self, input):
-        return {"input_vec": input["input_vec"].tolist()}
+        return {"input": input["input"].tolist()}
 
 if __name__ == "__main__":
     proof_system = ZKProofSystems.Expander

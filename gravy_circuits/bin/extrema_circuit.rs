@@ -134,7 +134,7 @@ impl<C: Config> Define<C> for ExtremaCircuit<Variable> {
 
 #[derive(Deserialize, Clone)]
 struct InputData {
-    input_vec: Vec<Vec<i32>>,
+    input: Vec<Vec<i32>>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -150,8 +150,8 @@ impl<C: Config> IOReader<ExtremaCircuit<CircuitField::<C>>, C> for FileReader {
     ) -> ExtremaCircuit<CircuitField::<C>> {
         let data: InputData = <FileReader as IOReader<ExtremaCircuit<CircuitField::<C>>, C>>::read_data_from_json::<InputData>(file_path);
     
-        assert_eq!(data.input_vec.len(), BATCH_SIZE, "Expected {} input vectors", BATCH_SIZE);
-        for (i, row) in data.input_vec.iter().enumerate() {
+        assert_eq!(data.input.len(), BATCH_SIZE, "Expected {} input vectors", BATCH_SIZE);
+        for (i, row) in data.input.iter().enumerate() {
             assert_eq!(row.len(), VEC_LEN, "Expected input vector length {}", VEC_LEN);
             for (j, &val) in row.iter().enumerate() {
                 if val < 0 {

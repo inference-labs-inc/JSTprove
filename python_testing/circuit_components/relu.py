@@ -20,6 +20,7 @@ class ReLU(Circuit):
         #######################################################################################################
         '''
         self.conversion_type = conversion_type
+
         self.scaling = 21
         self.scale_base = 2
         if conversion_type == ConversionType.DUAL_MATRIX:
@@ -109,7 +110,7 @@ class ReLU(Circuit):
         if inputs == None:
             raise "ERROR"
 
-
+        print("TEST10", self.conversion_type)
         if self.conversion_type==ConversionType.TWOS_COMP:
             return torch.relu(torch.as_tensor(inputs['input'])).long()
         if self.conversion_type==ConversionType.DUAL_MATRIX:

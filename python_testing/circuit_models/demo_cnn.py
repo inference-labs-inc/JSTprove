@@ -53,20 +53,22 @@ class CNNDemo(nn.Module):
         return x
     
 class Demo(ZKModel):
-    def __init__(self, model_file_path: str = None, quantized_model_file_path: str = None):
+    def __init__(self, model_file_path: str = None, quantized_model_file_path: str = None, layers = None):
+        if layers == None:
+            self.layers = []
+            # Add conv layers
+            for i in range(1,5):
+                self.layers.append(f"conv{i}")
+                self.layers.append("relu")
+            self.layers.append("reshape")
+            self.layers.append("fc1")
 
-        self.layers = []
-        # Add conv layers
-        for i in range(1,5):
-            self.layers.append(f"conv{i}")
-            self.layers.append("relu")
-        self.layers.append("reshape")
-        self.layers.append("fc1")
-
-        # # Add FC layers
-        for i in range(2,20):
-            self.layers.append("relu")
-            self.layers.append(f"fc{i}")
+            # # Add FC layers
+            for i in range(2,20):
+                self.layers.append("relu")
+                self.layers.append(f"fc{i}")
+        else:
+            self.layers = layers
         
 
 
