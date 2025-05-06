@@ -19,49 +19,45 @@ from python_testing.circuit_components.matrix_multiplication import MatrixMultip
 from python_testing.circuit_components.matrix_addition import MatrixAddition
 from python_testing.circuit_components.scaled_matrix_product import ScaledMatrixProduct
 from python_testing.circuit_components.scaled_matrix_product_sum import ScaledMatrixProductSum
+from python_testing.utils.helper_functions import RunType
 
 
 GOOD_OUTPUT = ["Witness Generated"]
 BAD_OUTPUT = ["assertion `left == right` failed", "Witness generation failed"]
 
-MODELS_TO_TEST = [
-    ("doom", Doom),
-    ("simple_circuit", SimpleCircuit),
-    ("doom_conv1", DoomConv1),
-    ("doom_conv2", DoomConv2),
-    ("doom_conv3", DoomConv3),
-    ("doom_fc1", DoomFC1),
-    ("doom_fc2", DoomFC2),
-    ("eth_fraud", Eth),
-    ("net", NetModel),
-    ("net_conv1", NetConv1Model),
-    ("net_conv2", NetConv2Model),
-    ("net_fc1", NetFC1Model),
-    ("net_fc2", NetFC2Model),
-    ("net_fc3", NetFC3Model),
+@pytest.fixture(scope="module")
+def model_fixture(request, tmp_path_factory):
+    param = request.param
+    name = param[0]
+    model_class = param[1]
+    args, kwargs = (), {}
 
-    ("conv", Convolution),
-    ("quantized_conv", QuantizedConv),
-    ("quantized_conv_relu", QuantizedConvRelu),
-    ("relu", ReLU, {"conversion_type":ConversionType.DUAL_MATRIX}),
-    ("relu", ReLU, {"conversion_type":ConversionType.TWOS_COMP}),
+    if len(param) == 3:
+        if isinstance(param[2], dict):
+            kwargs = param[2]
+        else:
+            args = param[2]
+    elif len(param) == 4:
+        args, kwargs = param[2], param[3]
 
+    temp_dir = tmp_path_factory.mktemp(name)
+    circuit_path = temp_dir / f"{name}_circuit.txt"
 
-    ("matrix_multiplication", MatrixMultiplication),
-    ("quantized_matrix_multiplication", QuantizedMatrixMultiplication),
-    ("quantized_matrix_multiplication_relu", QuantizedMatrixMultiplicationReLU),
-    ("matrix_addition", MatrixAddition),
-    ("scaled_matrix_product", ScaledMatrixProduct),
-    ("scaled_matrix_product_sum", ScaledMatrixProductSum),
+    model = model_class(*args, **kwargs)
 
-    ("cnn_demo", Demo, {"layers":["conv1", "relu", "reshape", "fc1", "relu", "fc2"]}),
+    model.base_testing(
+        run_type=RunType.COMPILE_CIRCUIT,
+        dev_mode=True,
+        circuit_path=str(circuit_path),
+    )
 
-    ("extrema", Extrema),
-    ("matmul", MatMul),
-    ("matmul_bias", MatMulBias),
-    ("maxpooling", MaxPooling2D),
-    # # ("other_model", OtherModel),
-]
+    return {
+        "name": name,
+        "model_class": model_class,
+        "circuit_path": circuit_path,
+        "temp_dir": temp_dir,
+        "model": model,
+    }
 
 @pytest.fixture
 def temp_witness_file(tmp_path):

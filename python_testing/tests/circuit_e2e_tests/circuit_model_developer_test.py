@@ -10,45 +10,6 @@ from python_testing.utils.helper_functions import RunType
 # Define models to be tested
 
 
-@pytest.fixture(scope="module", params=MODELS_TO_TEST)
-def model_fixture(request, tmp_path_factory):
-    """Compile circuit once per model and provide model instance and paths."""
-    param = request.param
-    name = param[0]
-    model_class = param[1]
-    # Default to empty args and kwargs
-    args, kwargs = (), {}
-
-    if len(param) == 3:
-        if isinstance(param[2], dict):  # only kwargs provided
-            kwargs = param[2]
-        else:  # only args provided
-            args = param[2]
-    elif len(param) == 4:
-        args, kwargs = param[2], param[3]
-
-    temp_dir = tmp_path_factory.mktemp(name)
-    circuit_path = temp_dir / f"{name}_circuit.txt"
-    
-    # Compile once
-    print(kwargs)
-
-    model = model_class(*args, **kwargs)
-
-    model.base_testing(
-        run_type=RunType.COMPILE_CIRCUIT, 
-        dev_mode=True,
-        circuit_path=str(circuit_path)
-    )
-    
-    return {
-        "name": name,
-        "model_class": model_class,
-        "circuit_path": circuit_path,
-        "temp_dir": temp_dir,
-        "model": model,
-    }
-
 def test_circuit_compiles(model_fixture):
     # Here you could just check that circuit file exists
     assert os.path.exists(model_fixture["circuit_path"])
