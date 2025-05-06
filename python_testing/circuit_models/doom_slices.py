@@ -100,8 +100,9 @@ class DoomConv1(DoomSlice):
         with open(file_name, 'r') as file:
             data = json.load(file)
             return data["input"]
-        
+          
 class DoomConv2(DoomSlice):
+
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_conv2"

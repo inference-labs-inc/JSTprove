@@ -237,48 +237,97 @@ class Circuit:
 
         return new_input_file
     
-    def adjust_inputs(self, input_file):
-        inputs = read_from_json(input_file)
+    # def adjust_inputs(self, input_file):
+    #     inputs = read_from_json(input_file)
 
-        has_input_been_found = False
-        new_inputs = {}
+    #     has_input_been_found = False
+    #     new_inputs = {}
 
-        for k in inputs.keys():
+    #     for k in inputs.keys():
             
 
-            # Rescale inputs
-            if self.contains_float(inputs[k]):
-                inputs[k] = torch.round(torch.mul(torch.as_tensor(inputs[k]),(self.scale_base**self.scaling))).long().tolist()
+    #         # Rescale inputs
+    #         if self.contains_float(inputs[k]):
+    #             inputs[k] = torch.round(torch.mul(torch.as_tensor(inputs[k]),(self.scale_base**self.scaling))).long().tolist()
 
 
-                # inputs[k] = torch.mul(torch.as_tensor(inputs[k]),(self.scale_base**self.scaling)).long().tolist()
+    #             # inputs[k] = torch.mul(torch.as_tensor(inputs[k]),(self.scale_base**self.scaling)).long().tolist()
         
-            # Rename inputs
-            if "input" in k:
-                if has_input_been_found:
-                    raise ValueError("Multiple inputs found in input file, please change names of the inputs. Only one variable can have 'input' in its name")
-                has_input_been_found = True
-                new_inputs["input"] = inputs[k]
-            else:
-                new_inputs[k] = inputs[k]
-            # Reshape inputs
-        for k in new_inputs.keys():
-            if "input" in k and isinstance(new_inputs[k], list):
-                if not hasattr(self, "input_shape"):
-                    raise NotImplementedError("input_shape must be specified in circuit definition in order to reshape inputs")
-                new_inputs[k] = torch.as_tensor(new_inputs[k]).reshape(self.input_shape).tolist()
+    #         # Rename inputs
+    #         if "input" in k:
+    #             if has_input_been_found:
+    #                 raise ValueError("Multiple inputs found in input file, please change names of the inputs. Only one variable can have 'input' in its name")
+    #             has_input_been_found = True
+    #             new_inputs["input"] = inputs[k]
+    #         else:
+    #             new_inputs[k] = inputs[k]
+    #         # Reshape inputs
+    #     for k in new_inputs.keys():
+    #         if "input" in k and isinstance(new_inputs[k], list):
+    #             if not hasattr(self, "input_shape"):
+    #                 raise NotImplementedError("input_shape must be specified in circuit definition in order to reshape inputs")
+    #             new_inputs[k] = torch.as_tensor(new_inputs[k]).reshape(self.input_shape).tolist()
 
-        if "input" not in new_inputs.keys() and "output" in new_inputs.keys():
-            new_inputs["input"] = inputs["output"]
-            del inputs["output"]
+    #     if "input" not in new_inputs.keys() and "output" in new_inputs.keys():
+    #         new_inputs["input"] = inputs["output"]
+    #         del inputs["output"]
 
 
                     
+    #     path = Path(input_file)
+    #     new_input_file = path.stem + "_reshaped" + path.suffix
+    #     to_json(new_inputs, new_input_file)
+
+    #     return new_input_file
+    
+    def adjust_inputs(self, input_file):
+        inputs = read_from_json(input_file)
+        input_variables = getattr(self, "input_variables", ["input"])
+        new_inputs = {}
+        print(f"Input variables: {input_variables}")
+
+        if input_variables == ["input"]:
+            has_input_been_found = False
+            for k in inputs:
+                v = inputs[k]
+                if self.contains_float(v):
+                    v = torch.round(torch.tensor(v) * (self.scale_base ** self.scaling)).long().tolist()
+                if "input" in k:
+                    if has_input_been_found:
+                        raise ValueError("Multiple inputs found containing 'input'. Only one allowed when input_variables = ['input']")
+                    has_input_been_found = True
+                    input_shape_attr = "input_shape"
+                    if not hasattr(self, input_shape_attr):
+                        raise NotImplementedError(f"{input_shape_attr} must be defined to reshape input")
+                    v = torch.tensor(v).reshape(getattr(self, input_shape_attr)).tolist()
+                    new_inputs["input"] = v
+                else:
+                    new_inputs[k] = v
+            if "input" not in new_inputs.keys() and "output" in new_inputs.keys():
+                new_inputs["input"] = inputs["output"]
+                del inputs["output"]
+
+        else:
+            for k in inputs:
+                v = inputs[k]
+                if self.contains_float(v):
+                    v = torch.round(torch.tensor(v) * (self.scale_base ** self.scaling)).long().tolist()
+                if k in input_variables:
+                    input_shape_attr = f"{k}_shape"
+                    if not hasattr(self, input_shape_attr):
+                        raise NotImplementedError(f"{input_shape_attr} must be defined to reshape {k}")
+                    v = torch.tensor(v).reshape(getattr(self, input_shape_attr)).tolist()
+                new_inputs[k] = v
+
+        
+
+        # Save reshaped inputs
         path = Path(input_file)
         new_input_file = path.stem + "_reshaped" + path.suffix
         to_json(new_inputs, new_input_file)
 
         return new_input_file
+
 
 
     def _gen_witness_preprocessing(self, input_file, output_file, write_json, is_scaled):
@@ -288,8 +337,8 @@ class Circuit:
         if write_json == True:
             inputs = self.get_inputs()
             output = self.get_outputs(inputs)
-            print(inputs, "TEST1")
 
+            
             input = self.format_inputs(inputs)
             outputs = self.format_outputs(output)
 
@@ -305,7 +354,6 @@ class Circuit:
 
 
             inputs = self.get_inputs_from_file(input_file, is_scaled = is_scaled)
-            print(inputs, "TEST2")
 
                 # Compute output (with caching via decorator)
             output = self.get_outputs(inputs)

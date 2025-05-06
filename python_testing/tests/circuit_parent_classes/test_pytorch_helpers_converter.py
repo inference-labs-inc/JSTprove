@@ -77,8 +77,8 @@ def test_get_input_shapes_by_layer():
     c = PytorchConverter()
     model = nn.Sequential(nn.Conv2d(1, 1, 3, padding=1), nn.ReLU())
     shape_map = c.get_input_shapes_by_layer(model, (1, 1, 5, 5))
-    assert "0" in shape_map
-    assert shape_map["0"] == torch.Size([1, 1, 5, 5])
+    assert "0_0" in shape_map
+    assert shape_map["0_0"] == torch.Size([1, 1, 5, 5])
 
 # ---------- clone_model_with_same_args ----------
 
@@ -138,7 +138,7 @@ def test_get_weights(mock_used_layers, mock_shapes):
 
 
     mock_used_layers.return_value = [("conv", conv), ("fc", linear)]
-    mock_shapes.return_value = {"conv": (1, 1, 5, 5), "fc": (1, 2)}
+    mock_shapes.return_value = {"conv_0": (1, 1, 5, 5), "fc_0": (1, 2)}
 
     weights = c.get_weights()
     assert "conv_weights" in weights
@@ -168,7 +168,7 @@ def test_get_weights_values():
 
 
     with patch.object(PytorchConverter, 'get_used_layers', return_value=[("conv", conv), ("fc", linear)]), \
-         patch.object(PytorchConverter, 'get_input_shapes_by_layer', return_value={"conv": (1, 1, 1, 1), "fc": (1, 2)}):
+         patch.object(PytorchConverter, 'get_input_shapes_by_layer', return_value={"conv_0": (1, 1, 1, 1), "fc_0": (1, 2)}):
 
         weights = c.get_weights()
 

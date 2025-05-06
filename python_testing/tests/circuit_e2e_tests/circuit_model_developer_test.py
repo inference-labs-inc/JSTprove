@@ -10,34 +10,12 @@ from python_testing.utils.helper_functions import RunType
 # Define models to be tested
 
 
-@pytest.fixture(scope="module", params=MODELS_TO_TEST)
-def model_fixture(request, tmp_path_factory):
-    """Compile circuit once per model and provide model instance and paths."""
-    name, model_class = request.param
-    temp_dir = tmp_path_factory.mktemp(name)
-    circuit_path = temp_dir / f"{name}_circuit.txt"
-    
-    # Compile once
-    model = model_class()
-    model.base_testing(
-        run_type=RunType.COMPILE_CIRCUIT, 
-        dev_mode=True,
-        circuit_path=str(circuit_path)
-    )
-    
-    return {
-        "name": name,
-        "model_class": model_class,
-        "circuit_path": circuit_path,
-        "temp_dir": temp_dir
-    }
-
 def test_circuit_compiles(model_fixture):
     # Here you could just check that circuit file exists
     assert os.path.exists(model_fixture["circuit_path"])
 
 def test_witness_dev(model_fixture, capsys, temp_witness_file, temp_input_file, temp_output_file):
-    model = model_fixture["model_class"]()
+    model = model_fixture["model"]
     model.base_testing(
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
@@ -65,7 +43,7 @@ def test_witness_dev(model_fixture, capsys, temp_witness_file, temp_input_file, 
 
 
 def test_witness_wrong_outputs_dev(model_fixture, capsys, temp_witness_file, temp_input_file, temp_output_file, monkeypatch):
-    model = model_fixture["model_class"]()
+    model = model_fixture["model"]
     original_get_outputs = model.get_outputs
 
     def patched_get_outputs(*args, **kwargs):
@@ -98,7 +76,7 @@ def test_witness_wrong_outputs_dev(model_fixture, capsys, temp_witness_file, tem
         assert output in stdout, f"Expected '{output}' in stdout, but it was not found."
 
 def test_witness_prove_verify_true_inputs_dev(model_fixture, temp_witness_file, temp_input_file, temp_output_file):
-    model = model_fixture["model_class"]()
+    model = model_fixture["model"]
     model.base_testing(
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
@@ -135,7 +113,7 @@ def test_witness_read_after_write_json(
     temp_output_file
 ):
     # Step 1: Write the input file via write_json=True
-    model_write = model_fixture["model_class"]()
+    model_write = model_fixture["model"]
     model_write.base_testing(
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
@@ -155,7 +133,7 @@ def test_witness_read_after_write_json(
         written_input_data = f.read()
 
     # Step 2: Read from that same input file (write_json=False)
-    model_read = model_fixture["model_class"]()
+    model_read = model_fixture["model"]
     model_read.base_testing(
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
@@ -191,7 +169,7 @@ def test_witness_read_after_write_json(
     assert read_input_data == written_input_data, "Input JSON read is not identical to what was written"
 
 def test_witness_fresh_compile_dev(capsys, model_fixture, temp_witness_file, temp_input_file, temp_output_file):
-    model = model_fixture["model_class"]()
+    model = model_fixture["model"]
     model.base_testing(
         run_type=RunType.GEN_WITNESS,
         dev_mode=True,
@@ -228,7 +206,7 @@ def test_witness_incorrect_input_shape(
     temp_output_file
 ):
     # Step 1: Write the input file via write_json=True
-    model_write = model_fixture["model_class"]()
+    model_write = model_fixture["model"]
     model_write.base_testing(
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
@@ -254,7 +232,7 @@ def test_witness_incorrect_input_shape(
         json.dump(input_data, f)
 
     # Step 2: Read from that same input file (write_json=False)
-    model_read = model_fixture["model_class"]()
+    model_read = model_fixture["model"]
     model_read.base_testing(
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
@@ -293,7 +271,7 @@ def test_witness_unscaled(
     temp_output_file
 ):
     # Step 1: Write the input file via write_json=True
-    model_write = model_fixture["model_class"]()
+    model_write = model_fixture["model"]
     model_write.base_testing(
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
@@ -337,7 +315,7 @@ def test_witness_unscaled(
         json.dump(input_data, f)
 
     # Step 2: Read from that same input file (write_json=False)
-    model_read = model_fixture["model_class"]()
+    model_read = model_fixture["model"]
     model_read.base_testing(
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
@@ -388,7 +366,7 @@ def test_witness_unscaled_and_incorrect_shape_input(
     temp_output_file
 ):
     # Step 1: Write the input file via write_json=True
-    model_write = model_fixture["model_class"]()
+    model_write = model_fixture["model"]
     model_write.base_testing(
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
@@ -441,7 +419,7 @@ def test_witness_unscaled_and_incorrect_shape_input(
         json.dump(input_data, f)
 
     # Step 2: Read from that same input file (write_json=False) that has been rescaled and flattened
-    model_read = model_fixture["model_class"]()
+    model_read = model_fixture["model"]
     model_read.base_testing(
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
@@ -486,7 +464,7 @@ def test_witness_wrong_name(
     temp_output_file
 ):
     # Step 1: Write the input file via write_json=True
-    model_write = model_fixture["model_class"]()
+    model_write = model_fixture["model"]
     model_write.base_testing(
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
@@ -529,7 +507,7 @@ def test_witness_wrong_name(
         json.dump(new_input_data, f)
 
     # Step 2: Read from that same input file (write_json=False)
-    model_read = model_fixture["model_class"]()
+    model_read = model_fixture["model"]
     model_read.base_testing(
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
@@ -576,7 +554,7 @@ def test_witness_unscaled_and_incorrect_and_bad_named_input(
     temp_output_file
 ):
     # Step 1: Write the input file via write_json=True
-    model_write = model_fixture["model_class"]()
+    model_write = model_fixture["model"]
     model_write.base_testing(
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
@@ -651,7 +629,7 @@ def test_witness_unscaled_and_incorrect_and_bad_named_input(
 
 
     # Step 2: Read from that same input file (write_json=False) that has been rescaled and flattened
-    model_read = model_fixture["model_class"]()
+    model_read = model_fixture["model"]
     model_read.base_testing(
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
@@ -699,7 +677,7 @@ def test_witness_wrong_name(
     temp_output_file
 ):
     # Step 1: Write the input file via write_json=True
-    model_write = model_fixture["model_class"]()
+    model_write = model_fixture["model"]
     model_write.base_testing(
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
@@ -744,7 +722,7 @@ def test_witness_wrong_name(
         json.dump(new_input_data, f)
 
     # Step 2: Read from that same input file (write_json=False)
-    model_read = model_fixture["model_class"]()
+    model_read = model_fixture["model"]
     model_read.base_testing(
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,

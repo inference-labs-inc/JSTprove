@@ -3,3 +3,8 @@ pub mod relu;
 pub mod convolution_fn;
 pub mod matrix_computation;
 pub mod helper_fn;
+pub mod matmul;
+pub mod extrema;
+pub mod conversion;
+pub mod pooling;
+

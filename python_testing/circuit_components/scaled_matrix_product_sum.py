@@ -18,26 +18,39 @@ class ScaledMatrixProductSum(Circuit):
         
         # Function input generation
 
-        N_ROWS_A: int = 3; # m
-        N_COLS_A: int = 4; # n
-        N_ROWS_B: int = 4; # n
-        N_COLS_B: int = 2; # k
-        N_ROWS_C: int = 3; # m
-        N_COLS_C: int = 2; # k
+        self.N_ROWS_A: int = 3; # m
+        self.N_COLS_A: int = 4; # n
+        self.N_ROWS_B: int = 4; # n
+        self.N_COLS_B: int = 2; # k
+        self.N_ROWS_C: int = 3; # m
+        self.N_COLS_C: int = 2; # k
         self.relu = relu
 
         self.alpha = torch.randint(0, 100, ())
-        self.matrix_a = torch.randint(low=0, high=100, size=(N_ROWS_A,N_COLS_A)) # (m, n) array of random integers between 0 and 100
-        self.matrix_b = torch.randint(low=0, high=100, size=(N_ROWS_B,N_COLS_B)) # (n, k) array of random integers between 0 and 100
-        self.matrix_c = torch.randint(low=0, high=100, size=(N_ROWS_C,N_COLS_C)) # (m, k) array of random integers between 0 and 100
+        self.matrix_a = torch.randint(low=0, high=100, size=(self.N_ROWS_A,self.N_COLS_A)) # (m, n) array of random integers between 0 and 100
+        self.matrix_b = torch.randint(low=0, high=100, size=(self.N_ROWS_B,self.N_COLS_B)) # (n, k) array of random integers between 0 and 100
+        self.matrix_c = torch.randint(low=0, high=100, size=(self.N_ROWS_C,self.N_COLS_C)) # (m, k) array of random integers between 0 and 100
+        self.input_variables = ["matrix_a", "matrix_b", "matrix_c"]
         self.scale_base = 1
         self.scaling = 1
+
 
         '''
         #######################################################################################################
         #######################################################################################################
         #######################################################################################################
         '''
+    @property
+    def matrix_a_shape(self):
+        return [self.N_ROWS_A, self.N_COLS_A]
+    
+    @property
+    def matrix_b_shape(self):
+        return (self.N_ROWS_B,self.N_COLS_B)
+    
+    @property
+    def matrix_c_shape(self):
+        return (self.N_ROWS_C,self.N_COLS_C)
     
     def get_inputs(self):
         return {'matrix_a': self.matrix_a, 'matrix_b': self.matrix_b, 'matrix_c': self.matrix_c, 'alpha': self.alpha}

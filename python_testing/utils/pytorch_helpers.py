@@ -7,6 +7,8 @@ import torch.nn.functional as F
 import torch.nn as nn
 import onnx
 import onnxruntime as ort
+from torch.fx import symbolic_trace
+
 
 from python_testing.circuit_components.circuit_helpers import Circuit, RunType
 from python_testing.utils.run_proofs import ZKProofSystems
@@ -138,44 +140,50 @@ class PytorchConverter():
         used_layers = []
         dummy_input = torch.randn(*input_shape)
 
-        def hook_fn(module, input, output):
-            for name, layer in model.named_children():
-                if layer is module:
-                    used_layers.append((name, module))  # Store layer name and module
-                    break
-        
+        def hook_fn(name):
+            def fn(module, input, output):
+                used_layers.append((name, module))
+            return fn
+
         hooks = []
-        for name, layer in model.named_children():  # Register hook for each layer
-            hooks.append(layer.register_forward_hook(hook_fn))
-        
-        with torch.no_grad():  # Run inference
+        for name, module in model.named_modules():
+            # Only leaf modules to avoid duplicate calls
+            if len(list(module.children())) == 0:
+                hooks.append(module.register_forward_hook(hook_fn(name)))
+
+        with torch.no_grad():
             model(dummy_input)
-        
-        for hook in hooks:  # Remove hooks after execution
+
+        for hook in hooks:
             hook.remove()
-        
+
         return used_layers
-    
+
     def get_input_shapes_by_layer(self, model: nn.Module, input_shape):
         hooks = []
         input_shapes = {}
+        name_count = {}  # regular dict instead of defaultdict
 
-        def register_hook(module_name):
+        def register_hook(name):
             def hook(module, input, output):
-                input_shapes[module_name] = input[0].shape
+                if name not in name_count:
+                    name_count[name] = 0
+                count = name_count[name]
+                input_shapes[f"{name}_{count}"] = input[0].shape
+                name_count[name] += 1
             return hook
 
         for name, module in model.named_modules():
-            if len(list(module.children())) == 0:  # Only leaf layers
+            if len(list(module.children())) == 0:
                 hook = module.register_forward_hook(register_hook(name))
                 hooks.append(hook)
+
         # Run a dummy input through the model
         model.eval()
         dummy_input = torch.randn(*input_shape)
         with torch.no_grad():
                 _ = model(dummy_input)
 
-        # Remove hooks
         for h in hooks:
             h.remove()
         print("TEST5")
@@ -212,6 +220,7 @@ class PytorchConverter():
 
         return quantized_model
 
+
     def get_weights(self, flatten = False):
         if flatten:
             in_shape = [1, np.prod(self.input_shape)]
@@ -222,13 +231,20 @@ class PytorchConverter():
 
         used_layers = self.get_used_layers(self.quantized_model, in_shape) 
         # Can combine the above into 1 function
-        
+        def to_tuple(x):
+            return (x,) if isinstance(x, int) else tuple(x)
         weights = {}
         weights["scaling"] = self.scaling
         weights["sacle_base"] = self.scale_base
 
         
+        name_counters = {}
+
         for name, module in used_layers:
+            # Set count to 0 if name not seen before, otherwise increment
+            count = name_counters[name] if name in name_counters else 0
+            disambiguated_name = f"{name}_{count}"
+            name_counters[name] = count + 1
 
             if isinstance(module, (nn.Conv2d, QuantizedConv2d)):
                 weights.setdefault("conv_weights", []).append(module.weight.tolist())
@@ -238,11 +254,24 @@ class PytorchConverter():
                 weights.setdefault("conv_group", []).append([module.groups])
                 weights.setdefault("conv_dilation", []).append(module.dilation)
                 weights.setdefault("conv_pads", []).append(self.expand_padding(module.padding))
-                weights.setdefault("conv_input_shape", []).append(input_shapes[name])
-            
+                weights.setdefault("conv_input_shape", []).append(input_shapes[disambiguated_name])
+
             if isinstance(module, (nn.Linear, QuantizedLinear)):
                 weights.setdefault("fc_weights", []).append(module.weight.transpose(0, 1).tolist())
                 weights.setdefault("fc_bias", []).append(module.bias.unsqueeze(0).tolist())
+
+            if isinstance(module, nn.MaxPool2d):
+                weights.setdefault("maxpool_kernel_size", []).append(to_tuple(module.kernel_size))
+                weights.setdefault("maxpool_stride", []).append(to_tuple(module.stride))
+                weights.setdefault("maxpool_dilation", []).append(to_tuple(module.dilation))
+                weights.setdefault("maxpool_padding", []).append(to_tuple(module.padding))
+                weights.setdefault("maxpool_ceil_mode", []).append(module.ceil_mode)
+                weights.setdefault("maxpool_input_shape", []).append(to_tuple(input_shapes[disambiguated_name]))
+
+            # if isinstance(module, nn.ReLU):
+            #     pass
+        # import sys
+        # sys.exit()
 
         return weights
     
@@ -262,7 +291,10 @@ class PytorchConverter():
         if hasattr(self, 'model_file_name'):
             print(f"Loading model from file {self.model_file_name}")
             checkpoint = torch.load(self.model_file_name, map_location=device)
-            model.load_state_dict(checkpoint["model_state_dict"])
+            if "model_state_dict" in checkpoint.keys():
+                model.load_state_dict(checkpoint["model_state_dict"])
+            else:
+                model.load_state_dict(checkpoint)
         else:
             print("Creating new model as no saved file path was specified")
         model.eval()
@@ -279,6 +311,7 @@ class PytorchConverter():
 
 # TODO CHANGE THIS NESTED STRUCTURE, DONE FOR EASE FOR NOW, BUT IT NEEDS IMPROVEMENT
 class ZKModel(PytorchConverter, GeneralLayerFunctions, Circuit):
+
     def __init__(self):
         raise NotImplementedError("Must implement __init__")
     

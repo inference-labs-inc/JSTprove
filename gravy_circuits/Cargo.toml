@@ -57,12 +57,27 @@ name = "matrix_addition"
 path = "bin/circuit_components/matrix_addition.rs"
 
 [[bin]]
+name = "matrix_multiplication"
+path = "bin/circuit_components/matrix_multiplication.rs"
+
+[[bin]]
 name = "matrix_hadamard_product"
 path = "bin/circuit_components/matrix_hadamard_product.rs"
 
 [[bin]]
-name = "matrix_multiplication"
-path = "bin/circuit_components/matrix_multiplication.rs"
+name = "matmul"
+path = "bin/matmul_circuit.rs"
+
+[[bin]]
+name = "matmul_bias"
+path = "bin/matmul_bias_circuit.rs"
+
+[[bin]]
+name = "extrema"
+path = "bin/extrema_circuit.rs"
+[[bin]]
+name = "maxpooling"
+path = "bin/maxpooling_circuit.rs"
 
 [[bin]]
 name = "scaled_matrix_product"
@@ -118,6 +133,30 @@ path = "bin/doom/doom_fc1.rs"
 [[bin]]
 name = "doom_fc2"
 path = "bin/doom/doom_fc2.rs"
+
+[[bin]]
+name = "net"
+path = "bin/net_model.rs"
+
+[[bin]]
+name = "net_conv1"
+path = "bin/net/net_conv1.rs"
+
+[[bin]]
+name = "net_conv2"
+path = "bin/net/net_conv2.rs"
+
+[[bin]]
+name = "net_fc1"
+path = "bin/net/net_fc1.rs"
+
+[[bin]]
+name = "net_fc2"
+path = "bin/net/net_fc2.rs"
+
+[[bin]]
+name = "net_fc3"
+path = "bin/net/net_fc3.rs"
 
 # [[bin]]
 # name = "expander-exec"
