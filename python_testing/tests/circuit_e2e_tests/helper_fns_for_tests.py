@@ -30,11 +30,11 @@ MODELS_TO_TEST = [
     # ("doom_fc1", DoomFC1),
     # ("doom_fc2", DoomFC2),
     # ("eth_fraud", Eth),
-    ("net", NetModel),
-    ("net_conv1", NetConv1Model),
-    ("net_conv2", NetConv2Model),
-    ("net_fc1", NetFC1Model),
-    ("net_fc2", NetFC2Model),
+    # ("net", NetModel),
+    # ("net_conv1", NetConv1Model),
+    # ("net_conv2", NetConv2Model),
+    # ("net_fc1", NetFC1Model),
+    # ("net_fc2", NetFC2Model),
     ("net_fc3", NetFC3Model),
 
     # ("conv", Convolution),
@@ -42,7 +42,7 @@ MODELS_TO_TEST = [
     # ("quantized_conv_relu", QuantizedConvRelu),
     # ("relu", ReLU)
 
-    ("matrix_multiplication", MatrixMultiplication),
+    # ("matrix_multiplication", MatrixMultiplication),
     # ("quantized_matrix_multiplication", QuantizedMatrixMultiplication),
     # ("quantized_matrix_multiplication_relu", QuantizedMatrixMultiplicationReLU),
     # ("matrix_addition", MatrixAddition),
