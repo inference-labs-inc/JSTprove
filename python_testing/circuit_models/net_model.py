@@ -149,7 +149,7 @@ class NetModel(ZKModel):
         self.required_keys = ["input"]
         self.name = "net"
         self.input_data_file = "input/net_input.json"
-        self.model_file_name = "net_model.pth"
+        self.model_file_name = "model/net/net_model.pth"
 
 
         self.scale_base = 2
@@ -158,14 +158,14 @@ class NetModel(ZKModel):
         self.rescale_config = {"fc3": False}
         self.model_type = Net
 
-class NetConv1Model(Slice):
+class NetConv1Model(ZKModel):
     def __init__(self):
         self.required_keys = ["input"]
         self.name = "net_conv1"
         self.input_data_file = "input/net_input.json"
-        self.large_model_file_name = "net_model.pth"
-        self.slice_name_in_model = ["conv1", "pool"]
-        self.large_model_slice_name = "conv1"
+        self.model_file_name = "model/net/conv_0.pt"
+        # self.slice_name_in_model = ["conv1", "pool"]
+        # self.large_model_slice_name = "conv1"
 
         self.scale_base = 2
         self.scaling = 21
@@ -173,19 +173,20 @@ class NetConv1Model(Slice):
         self.rescale_config = {}
         self.model_type = Conv1Segment
 
-    def read_input(self, file_name = "doom_data/doom_input.json"):
-        """Reads the inputs to each layer of the model from text files."""
-        print(file_name)
-        with open(file_name, 'r') as file:
-            data = json.load(file)
-            return data["input"]
+    # def read_input(self, file_name = "doom_data/doom_input.json"):
+    #     """Reads the inputs to each layer of the model from text files."""
+    #     print(file_name)
+    #     with open(file_name, 'r') as file:
+    #         data = json.load(file)
+    #         return data["input"]
         
-class NetConv2Model(Slice):
+class NetConv2Model(ZKModel):
     def __init__(self):
         self.required_keys = ["input"]
         self.name = "net_conv2"
         self.input_data_file = "output/net_conv1_output.json"
-        self.large_model_file_name = "net_model.pth"
+        self.model_file_name = "model/net/conv_1.pt"
+
         self.slice_name_in_model = ["conv2", "pool"]
         self.large_model_slice_name = "conv2"
 
@@ -195,12 +196,14 @@ class NetConv2Model(Slice):
         self.rescale_config = {}
         self.model_type = Conv2Segment
 
-class NetFC1Model(Slice):
+class NetFC1Model(ZKModel):
     def __init__(self):
         self.required_keys = ["input"]
         self.name = "net_fc1"
         self.input_data_file = "output/net_conv2_output.json"
-        self.large_model_file_name = "net_model.pth"
+        # self.large_model_file_name = "net_model.pth"
+        self.model_file_name = "model/net/fc_2.pt"
+
         self.slice_name_in_model = ["fc1"]
         self.large_model_slice_name = "fc1"
 
@@ -211,11 +214,13 @@ class NetFC1Model(Slice):
         self.model_type = FC1Segment
 
 
-class NetFC2Model(Slice):
+class NetFC2Model(ZKModel):
     def __init__(self):
         self.required_keys = ["input"]
         self.name = "net_fc2"
         self.input_data_file = "output/net_fc1_output.json"
+        self.model_file_name = "model/net/fc_3.pt"
+
         self.large_model_file_name = "net_model.pth"
         self.slice_name_in_model = ["fc2"]
         self.large_model_slice_name = "fc2"
@@ -227,12 +232,12 @@ class NetFC2Model(Slice):
         self.model_type = FC2Segment
 
 
-class NetFC3Model(Slice):
+class NetFC3Model(ZKModel):
     def __init__(self):
         self.required_keys = ["input"]
         self.name = "net_fc3"
         self.input_data_file = "output/net_fc2_output.json"
-        self.large_model_file_name = "net_model.pth"
+        self.model_file_name = "model/net/fc_4.pt"
         self.slice_name_in_model = ["fc3"]
         self.large_model_slice_name = "fc3"
 

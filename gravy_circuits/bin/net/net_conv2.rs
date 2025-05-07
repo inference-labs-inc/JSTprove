@@ -30,8 +30,8 @@ struct WeightsData {
     conv_pads: Vec<Vec<u32>>,
     conv_input_shape: Vec<Vec<u32>>,
     scaling: u64,
-    fc_weights: Vec<Vec<Vec<i64>>>,
-    fc_bias: Vec<Vec<Vec<i64>>>,
+    // fc_weights: Vec<Vec<Vec<i64>>>,
+    // fc_bias: Vec<Vec<Vec<i64>>>,
     maxpool_kernel_size: Vec<Vec<usize>>,
     maxpool_stride: Vec<Vec<usize>>,
     maxpool_padding: Vec<Vec<usize>>,
@@ -57,7 +57,7 @@ const BASE: u32 = 2;
 const NUM_DIGITS: usize = 32; 
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/net_weights.json");
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/net_conv2_weights.json");
 
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
@@ -90,7 +90,7 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
         // Bring the weights into the circuit as constants
         let mut out = four_d_array_to_vec(self.input_arr);        
         // Conv 1
-        let i = 1;
+        let i = 0;
         let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv_weights[i]);
         let bias: Vec<Variable> = WEIGHTS_INPUT
             .conv_bias[i]
