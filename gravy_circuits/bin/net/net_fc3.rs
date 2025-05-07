@@ -67,7 +67,7 @@ lazy_static! {
 declare_circuit!(ConvCircuit {
     input_arr: [[PublicVariable; 84]; 1], // shape (m, n)
     outputs: [[PublicVariable; 10]; 1], // shape (m, k)
-    dummy: [Variable; 1]
+    dummy: [Variable; 2]
 });
 
 
@@ -95,6 +95,8 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
                 }
             }
             api.assert_is_equal(self.dummy[0],1);
+            api.assert_is_equal(self.dummy[1],1);
+
 
     }
 }
@@ -123,7 +125,8 @@ impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
             }
         }
         assignment.dummy[0] = CircuitField::<C>::from(1);
-        // assignment.dummy[2] = CircuitField::<C>::from(1);
+        assignment.dummy[1] = CircuitField::<C>::from(1);
+
 
         // Return the assignment
         assignment

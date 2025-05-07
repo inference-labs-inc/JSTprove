@@ -18,55 +18,6 @@ declare_circuit!(ExtremaCircuit {
     max_val: [PublicVariable; BATCH_SIZE],
 });
 
-// pub fn to_binary<F: Field>(x: F, num_outputs: usize) -> Result<Vec<F>, Error> {
-//     let mut outputs = Vec::with_capacity(num_outputs);
-//     let mut y = x.to_u256();
-//     for _ in 0..num_outputs {
-//         outputs.push(F::from_u256(y & U256::from(1u32)));
-//         y >>= 1;
-//     }
-//     if y != U256::ZERO {
-//         return Err(Error::UserError(
-//             "to_binary hint input too large".to_string(),
-//         ));
-//     }
-//     Ok(outputs)
-// }
-
-// pub fn get_max_hint_32<F: Field>(x: Vec<F>, mut out: F) -> Result<(), Error> {
-//     let midpoint = (F::FIELD_SIZE/2 )as u128;
-//     let mut output = x[0].to_u256();
-//     let mut is_neg = if output > midpoint {
-//         true
-//     } else {
-//         false
-//     };
-
-//     for i in 1..x.len(){
-//         let y = x[i].to_u256();
-//         // y is positive 
-//         if y < midpoint {
-//             //output is negative
-//             if is_neg {
-//                 is_neg = false;
-//                 output = y;
-//                 }
-//             // y is bigger than output, otherwise output is bigger than y and do nothing
-//             else if y > output {
-//                 output = y;
-//             }
-//         }
-//         else {
-//             //both values are negative, otherwise change nothing
-//             if is_neg && y > output{
-//                 //y is bigger than outputs
-//                     output = y;
-//             }
-//         }
-//     }
-//         //y is negative'
-//     Ok(())
-// }
 
 pub fn get_max_unconstrained<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder, x: Vec<Variable>) -> Variable {

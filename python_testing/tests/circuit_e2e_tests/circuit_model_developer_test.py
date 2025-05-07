@@ -75,7 +75,7 @@ def test_witness_wrong_outputs_dev(model_fixture, capsys, temp_witness_file, tem
     for output in BAD_OUTPUT:
         assert output in stdout, f"Expected '{output}' in stdout, but it was not found."
 
-def test_witness_prove_verify_true_inputs_dev(model_fixture, temp_witness_file, temp_input_file, temp_output_file):
+def test_witness_prove_verify_true_inputs_dev(model_fixture, temp_witness_file, temp_input_file, temp_output_file, temp_proof_file, capsys):
     model = model_fixture["model"]
     model.base_testing(
         run_type=RunType.GEN_WITNESS,
@@ -93,6 +93,7 @@ def test_witness_prove_verify_true_inputs_dev(model_fixture, temp_witness_file, 
         circuit_path=str(model_fixture["circuit_path"]),
         input_file = temp_input_file,
         output_file = temp_output_file,
+        proof_file = temp_proof_file,
     )
     model.base_testing(
         run_type=RunType.GEN_VERIFY,
@@ -101,8 +102,33 @@ def test_witness_prove_verify_true_inputs_dev(model_fixture, temp_witness_file, 
         circuit_path=str(model_fixture["circuit_path"]),
         input_file = temp_input_file,
         output_file = temp_output_file,
+        proof_file = temp_proof_file,
+
     )
     # ASSERTIONS TODO
+
+    captured = capsys.readouterr()
+    stdout = captured.out
+    stderr = captured.err
+    print(stdout)
+    assert os.path.exists(temp_witness_file), "Witness file not generated"
+
+    # Unexpected output
+    assert stdout.count("poly.num_vars() == *params") == 0, f"'poly.num_vars() == *params' thrown. May need a dummy variable(s) to get rid of error. Dummy variables should be private variables. Can set = 1 in read_inputs and assert == 1 at end of circuit"
+    assert stdout.count("Proof generation failed") == 0, f"Proof generation failed"
+    assert os.path.exists(temp_proof_file), "Proof file not generated"
+
+    assert stdout.count("Verification generation failed") == 0, f"Verification failed"
+    # Expected output
+    assert stdout.count("Running cargo command:") == 3, f"Expected 'Running cargo command: ' in stdout three times, but it was not found."
+    assert stdout.count("Witness Generated") == 1, f"Expected 'Witness Generated' in stdout three times, but it was not found."
+
+    assert stdout.count("proving") == 1, f"Expected 'proving' in stdout three times, but it was not found."
+    assert stdout.count("Proved") == 1, f"Expected 'Proved' in stdout three times, but it was not found."
+
+    assert stdout.count("Verified") == 1, f"Expected 'Verified' in stdout three times, but it was not found."
+
+
 
 
 def test_witness_read_after_write_json(

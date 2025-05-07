@@ -140,6 +140,7 @@ class Circuit:
             elif run_type == RunType.PROVE_WITNESS:
                 generate_proof(circuit_name, circuit_path, witness_file, proof_path, proof_system, dev_mode, ecc=ecc)
             elif run_type == RunType.GEN_VERIFY:
+                input_file = self.adjust_inputs(input_file)
                 generate_verification(circuit_name, circuit_path, input_file, output_file, witness_file, proof_path, proof_system, dev_mode, ecc=ecc)
             else:
                 print(f"Unknown entry: {run_type}")

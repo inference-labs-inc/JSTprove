@@ -156,7 +156,7 @@ def parse_args():
     parser.add_argument("--prove", action="store_true", help="Generate witness and proof.")
     parser.add_argument("--verify", action="store_true", help="Run verification.")
     parser.add_argument("--end_to_end", action="store_true", help="Run end-to-end circuit testing.")
-    parser.add_argument("--all", action="store_true", help="Run all stages (compile_circuit, gen_witness, prove_witness, gen_verify).")
+    parser.add_argument("--all", action="store_true", help="Run all stages (compile_circuit, gen_witness, prove, verify).")
     parser.add_argument("--fresh_compile", action="store_true", help="Force fresh compilation of the circuit (sets dev_mode=True).")
     # parser.add_argument("--ecc", action="store_true", help="Use ExpanderCompilerCollection (cargo) instead of expander-exec.")
 

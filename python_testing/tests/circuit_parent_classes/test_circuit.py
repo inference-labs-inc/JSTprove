@@ -97,6 +97,8 @@ def test_parse_proof_dispatch_logic(
     c._gen_witness_preprocessing = MagicMock(return_value = "i")
     # c.rescale_inputs = MagicMock(return_value = "i")
     # c.reshape_inputs = MagicMock(return_value = "i")
+    c.adjust_inputs = MagicMock(return_value = "i")
+
 
 
     # COMPILE_CIRCUIT

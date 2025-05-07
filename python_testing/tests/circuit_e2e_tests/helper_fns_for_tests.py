@@ -89,6 +89,16 @@ def temp_output_file(tmp_path):
     if os.path.exists(output_path):
         output_path.unlink()
 
+@pytest.fixture
+def temp_proof_file(tmp_path):
+    output_path = tmp_path / "temp_proof.txt"
+    # Give it to the test
+    yield output_path
+
+    # After the test is done, remove it
+    if os.path.exists(output_path):
+        output_path.unlink()
+
 def add_1_to_first_element(x):
     """Safely adds 1 to the first element of any scalar/list/tensor."""
     if isinstance(x, (int, float)):

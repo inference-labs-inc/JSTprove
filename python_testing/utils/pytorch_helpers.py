@@ -186,7 +186,6 @@ class PytorchConverter():
 
         for h in hooks:
             h.remove()
-        print("TEST5")
         return input_shapes
     
     def clone_model_with_same_args(self, model):
@@ -227,7 +226,6 @@ class PytorchConverter():
         else:
             in_shape = self.input_shape
         input_shapes = self.get_input_shapes_by_layer(self.quantized_model, in_shape)  # example input
-        print("TEST3")
 
         used_layers = self.get_used_layers(self.quantized_model, in_shape) 
         # Can combine the above into 1 function

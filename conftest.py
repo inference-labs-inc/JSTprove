@@ -70,7 +70,6 @@ def build_models_to_test():
 # ]
 MODELS_TO_TEST = build_models_to_test()
 MODELS_TO_TEST = [t for t in MODELS_TO_TEST if (t[0] != "zkmodel" and t[0] != "doomslice" and t[0] != "slice")]
-print(MODELS_TO_TEST)
 MODELS_TO_TEST.append(("relu_dual", ReLU, {"conversion_type":ConversionType.TWOS_COMP}))
 
 def modify_models_based_on_class(models_to_test):
