@@ -283,6 +283,7 @@ class Circuit:
     
     def adjust_inputs(self, input_file):
         inputs = read_from_json(input_file)
+        print(inputs)
         input_variables = getattr(self, "input_variables", ["input"])
         new_inputs = {}
         print(f"Input variables: {input_variables}")
@@ -319,9 +320,6 @@ class Circuit:
                         raise NotImplementedError(f"{input_shape_attr} must be defined to reshape {k}")
                     v = torch.tensor(v).reshape(getattr(self, input_shape_attr)).tolist()
                 new_inputs[k] = v
-
-        
-
         # Save reshaped inputs
         path = Path(input_file)
         new_input_file = path.stem + "_reshaped" + path.suffix
@@ -343,7 +341,6 @@ class Circuit:
             input = self.format_inputs(inputs)
             outputs = self.format_outputs(output)
 
-            print("TO JSON")
             to_json(input, input_file)
             to_json(outputs, output_file)
         else:

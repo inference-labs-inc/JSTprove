@@ -128,6 +128,71 @@ def test_witness_prove_verify_true_inputs_dev(model_fixture, temp_witness_file, 
 
     assert stdout.count("Verified") == 1, f"Expected 'Verified' in stdout three times, but it was not found."
 
+def test_witness_prove_verify_true_inputs_dev_expander_call(model_fixture, temp_witness_file, temp_input_file, temp_output_file, temp_proof_file, capsys):
+    model = model_fixture["model"]
+    model.base_testing(
+        run_type=RunType.GEN_WITNESS,
+        dev_mode=False,
+        witness_file= temp_witness_file,
+        circuit_path=str(model_fixture["circuit_path"]),
+        input_file = temp_input_file,
+        output_file = temp_output_file,
+        write_json=True
+    )
+    model.base_testing(
+        run_type=RunType.PROVE_WITNESS,
+        dev_mode=False,
+        witness_file=temp_witness_file,
+        circuit_path=str(model_fixture["circuit_path"]),
+        input_file = temp_input_file,
+        output_file = temp_output_file,
+        proof_file = temp_proof_file,
+        ecc = False
+    )
+    model.base_testing(
+        run_type=RunType.GEN_VERIFY,
+        dev_mode=False,
+        witness_file=temp_witness_file,
+        circuit_path=str(model_fixture["circuit_path"]),
+        input_file = temp_input_file,
+        output_file = temp_output_file,
+        proof_file = temp_proof_file,
+        ecc = False
+
+    )
+    # ASSERTIONS TODO
+
+    captured = capsys.readouterr()
+    stdout = captured.out
+    stderr = captured.err
+    print(stdout)
+    assert os.path.exists(temp_witness_file), "Witness file not generated"
+
+    # Unexpected output
+    assert stdout.count("poly.num_vars() == *params") == 0, f"'poly.num_vars() == *params' thrown. May need a dummy variable(s) to get rid of error. Dummy variables should be private variables. Can set = 1 in read_inputs and assert == 1 at end of circuit"
+    assert stdout.count("Proof generation failed") == 0, f"Proof generation failed"
+    assert os.path.exists(temp_proof_file), "Proof file not generated"
+
+    assert stdout.count("Verification generation failed") == 0, f"Verification failed"
+    # Expected output
+    assert stdout.count("Running cargo command:") == 1, f"Expected 'Running cargo command: ' in stdout once, but it was not found."
+    assert stdout.count("Witness Generated") == 1, f"Expected 'Witness Generated' in stdout three times, but it was not found."
+
+    assert stdout.count("proving") == 1, f"Expected 'proving' but it was not found."
+    # assert stdout.count("Proved") == 1, f"Expected 'Proved' in stdout three times, but it was not found."
+
+    assert stdout.count("verifying proof") == 1, f"Expected 'verifying proof' but it was not found."
+    assert stdout.count("success") == 1, f"Expected 'success'  but it was not found."
+
+    assert stdout.count("expander-exec verify succeeded") == 1, f"Expected 'expander-exec verify succeeded'  but it was not found."
+    assert stdout.count("expander-exec prove succeeded") == 1, f"Expected 'expander-exec prove succeeded'  but it was not found."
+
+
+
+
+
+
+
 
 
 
@@ -324,11 +389,9 @@ def test_witness_unscaled(
     input_data = json.loads(written_input_data)
     if hasattr(model_write, "scale_base") and hasattr(model_write, "scaling"):
         for key in input_data:
-            print("TEST START")
             print(input_data[key])
             input_data[key] = torch.div(torch.as_tensor(input_data[key]), model_write.scale_base**model_write.scaling).tolist()
             print(input_data[key])
-            print("TEST COMPLETE")
     else:
         raise NotImplementedError("Model does not have scale_base attribute")
     assert contains_float(input_data), f"This is a testing error, not a model error. Please fix this test to properly turn data to float."
@@ -689,7 +752,7 @@ def test_witness_unscaled_and_incorrect_and_bad_named_input(
     with open(temp_output_file, "r") as f:
         new_output_file = f.read()
 
-    print(new_output_file, "TEST", written_output_data)
+    # print(new_output_file, "TEST", written_output_data)
     
     assert_very_close(json.loads(new_output_file), json.loads(written_output_data), model_write)
 

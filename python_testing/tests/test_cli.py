@@ -130,6 +130,7 @@ def test_main_executes_operations(mock_ops, mock_paths, mock_load, mock_args):
         circuit_path="cp.txt",
         witness=None,
         proof=None,
+        ecc = None
     )
     circuit_instance = MagicMock()
     mock_load.return_value = circuit_instance
@@ -145,4 +146,5 @@ def test_main_executes_operations(mock_ops, mock_paths, mock_load, mock_args):
         output_file="out.json",
         witness_file=None,
         proof_file=None,
+        ecc = None
     )

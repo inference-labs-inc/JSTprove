@@ -1,3 +1,4 @@
+from time import time
 import torch
 import json
 import os
@@ -146,7 +147,7 @@ def prepare_io_files(func):
         self._file_info = file_info
         
 
-        print(kwargs)
+        # print(kwargs)
         # Call the original function with all arguments including file info
         return func(self, run_type, 
                     witness_file, input_file, proof_path, public_path, 
@@ -239,14 +240,14 @@ def prove_and_verify(witness_file, input_file, proof_path, public_path, verifica
         else:
             # Direct Expander call via expander-exec binary
             paths = get_expander_file_paths(circuit_name)
-            run_expander_exec(
+            run_expander_raw(
                 mode="prove",
                 circuit_file=paths["circuit_file"],
                 witness_file=paths["witness_file"],
                 proof_file=paths["proof_file"]
             )
 
-            run_expander_exec(
+            run_expander_raw(
                 mode="verify",
                 circuit_file=paths["circuit_file"],
                 witness_file=paths["witness_file"],
@@ -272,6 +273,8 @@ def get_expander_file_paths(circuit_name: str):
         "proof_file":   f"{circuit_name}_proof.txt"
     }
     
+# env RUSTFLAGS="-C target-cpu=native" mpiexec -n 1 cargo run --manifest-path Expander/Cargo.toml --bin expander-exec --release -- -p Raw prove -c slices/segment_4/segment_4_circuit.compiled -w slices/segment_4/segment_4_witness.compiled -o slices/segment_4/segment_4_proof.bin
+
 def run_expander_exec(mode: str, circuit_file: str, witness_file: str, proof_file: str):
     assert mode in {"prove", "verify"}
     binary = "./expander-exec"  # or full path if needed
@@ -290,6 +293,56 @@ def run_expander_exec(mode: str, circuit_file: str, witness_file: str, proof_fil
         print(f"❌ expander-exec {mode} failed:\n{result.stderr}")
     else:
         print(f"✅ expander-exec {mode} succeeded:\n{result.stdout}")
+
+#   env RUSTFLAGS="-C target-cpu=native" mpiexec -n 1 cargo run --manifest-path Expander/Cargo.toml --bin expander-exec --release -- -p Raw verify -c slices/segment_4/segment_4_circuit.compiled -w slices/segment_4/segment_4_witness.compiled -i slices/segment_4/segment_4_proof.bin
+
+
+def run_expander_raw(mode: str, circuit_file: str, witness_file: str, proof_file: str, pcs_type: str = "Raw"):
+    assert mode in {"prove", "verify"}
+
+    # pcs_type = "Raw" #or Hyrax
+    env = os.environ.copy()
+    env["RUSTFLAGS"] = "-C target-cpu=native"
+
+    arg_1 = 'mpiexec' 
+    arg_2 = '-n'
+    arg_3 = '1'
+    command = 'cargo' 
+    command_2 = 'run'
+    manifest_path = 'Expander/Cargo.toml'
+    binary = 'expander-exec'
+
+    args = [arg_1, arg_2, arg_3, command, command_2, '--manifest-path', manifest_path,'--bin', binary, '--release', '--', '-p', pcs_type]
+    if mode == 'prove':
+        args.append("prove")
+        proof_command = '-o'
+    else:
+        args.append("verify")
+        proof_command = '-i'
+
+
+    args.append('-c')
+    args.append(circuit_file)
+    
+    args.append('-w')
+    args.append(witness_file)
+
+    args.append(proof_command)
+    args.append(proof_file)
+    start_time = time()    
+    result = subprocess.run(args, env = env, capture_output=True, text=True)
+    end_time = time()    
+
+
+    if result.returncode != 0:
+        print(f"❌ expander-exec {mode} failed:\n{result.stderr}")
+
+    else:
+        print(f"✅ expander-exec {mode} succeeded:\n{result.stdout}")
+
+    print(f"Time taken: {end_time - start_time:.4f} seconds")
+    
+
 
 
 def compile_circuit(circuit_name, circuit_path, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False):
@@ -374,7 +427,13 @@ def generate_proof(circuit_name, circuit_path, witness_file, proof_file,
         else:
             # Direct Expander call via expander-exec binary
             # paths = get_expander_file_paths(circuit_name)
-            run_expander_exec(
+            # run_expander_exec(
+            #     mode="prove",
+            #     circuit_file=circuit_path,
+            #     witness_file=witness_file,
+            #     proof_file=proof_file
+            # )
+            run_expander_raw(
                 mode="prove",
                 circuit_file=circuit_path,
                 witness_file=witness_file,
@@ -415,7 +474,13 @@ def generate_verification(circuit_name, circuit_path, input_file, output_file, w
         else:
             # Direct Expander call via expander-exec binary
             # paths = get_expander_file_paths(circuit_name)
-            run_expander_exec(
+            # run_expander_exec(
+            #     mode="verify",
+            #     circuit_file=circuit_path,
+            #     witness_file=witness_file,
+            #     proof_file=proof_file
+            # )
+            run_expander_raw(
                 mode="verify",
                 circuit_file=circuit_path,
                 witness_file=witness_file,

@@ -110,7 +110,6 @@ class ReLU(Circuit):
         if inputs == None:
             raise "ERROR"
 
-        print("TEST10", self.conversion_type)
         if self.conversion_type==ConversionType.TWOS_COMP:
             return torch.relu(torch.as_tensor(inputs['input'])).long()
         if self.conversion_type==ConversionType.DUAL_MATRIX:

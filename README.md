@@ -199,6 +199,23 @@ This CLI tool runs various circuit operations such as compilation, witness gener
    python cli.py --circuit net_model --class NetFC3Model --gen_witness --input output/net_fc2_output.json --output output/net_output.json  --circuit_path net_fc3_circuit.txt
    
 
+   python cli.py --circuit net_model --class NetFC3Model --compile --circuit_path slices/segment_4/segment_4_circuit.compiled 
+   python cli.py --circuit net_model --class NetFC3Model --gen_witness --input slices/segment_4/segment_4_input.json --output slices/segment_4/segment_4_output.json  --circuit_path slices/segment_4/segment_4_circuit.compiled --witness slices/segment_4/segment_4_witness.compiled
+   python cli.py --circuit net_model --class NetFC3Model --prove --witness slices/segment_4/segment_4_witness.compiled  --circuit_path slices/segment_4/segment_4_circuit.compiled  --proof slices/segment_4/segment_4_proof.bin
+
+   python cli.py --circuit net_model --class NetFC3Model --verify --input slices/segment_4/segment_4_input.json --output slices/segment_4/segment_4_output.json  --circuit_path slices/segment_4/segment_4_circuit.compiled --witness slices/segment_4/segment_4_witness.compiled --proof slices/segment_4/segment_4_proof.bin
+
+
+   RUSTFLAGS="-C target-cpu=native" cargo run \
+  --manifest-path Expander/Cargo.toml \
+  --bin expander-exec \
+  --release -- prove \
+
+  env RUSTFLAGS="-C target-cpu=native" mpiexec -n 1 cargo run --manifest-path Expander/Cargo.toml --bin expander-exec --release -- -p Raw prove -c slices/segment_4/segment_4_circuit.compiled -w slices/segment_4/segment_4_witness.compiled -o slices/segment_4/segment_4_proof.bin
+
+  env RUSTFLAGS="-C target-cpu=native" mpiexec -n 1 cargo run --manifest-path Expander/Cargo.toml --bin expander-exec --release -- -p Raw verify -c slices/segment_4/segment_4_circuit.compiled -w slices/segment_4/segment_4_witness.compiled -i slices/segment_4/segment_4_proof.bin
+  
+
    <!-- python cli.py --circuit maxpooling --class MaxPooling2D --compile --circuit_path maxpool_circuit.txt
    python cli.py --circuit maxpooling --class MaxPooling2D --gen_witness --input inputs/maxpooling_input.json --output output/maxpooling_output.json  --circuit_path maxpool_circuit.txt -->
 

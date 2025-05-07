@@ -228,7 +228,7 @@ def test_prove_and_verify_expander_ecc_fails_gracefully(mock_cargo, capsys):
 
 # ---------- Expander with NO ECC ----------
 
-@patch("python_testing.utils.helper_functions.run_expander_exec")
+@patch("python_testing.utils.helper_functions.run_expander_raw")
 @patch("python_testing.utils.helper_functions.get_expander_file_paths", return_value={
     "circuit_file": "c.circ",
     "witness_file": "w.wtns",
@@ -387,7 +387,7 @@ def test_generate_witness_unknown_raises():
 # ---------- generate_proof ----------
 
 
-@patch("python_testing.utils.helper_functions.run_expander_exec")
+@patch("python_testing.utils.helper_functions.run_expander_raw")
 @patch("python_testing.utils.helper_functions.get_expander_file_paths", return_value={
     "circuit_file": "c", "witness_file": "w", "proof_file": "p"
 })
@@ -443,7 +443,7 @@ def test_generate_proof_expander_rust_error(mock_run, capfd):
 
 # # ---------- generate_verification ----------
 
-@patch("python_testing.utils.helper_functions.run_expander_exec")
+@patch("python_testing.utils.helper_functions.run_expander_raw")
 @patch("python_testing.utils.helper_functions.get_expander_file_paths", return_value={
     "circuit_file": "c", "witness_file": "w", "proof_file": "p"
 })

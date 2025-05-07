@@ -158,7 +158,7 @@ def parse_args():
     parser.add_argument("--end_to_end", action="store_true", help="Run end-to-end circuit testing.")
     parser.add_argument("--all", action="store_true", help="Run all stages (compile_circuit, gen_witness, prove, verify).")
     parser.add_argument("--fresh_compile", action="store_true", help="Force fresh compilation of the circuit (sets dev_mode=True).")
-    # parser.add_argument("--ecc", action="store_true", help="Use ExpanderCompilerCollection (cargo) instead of expander-exec.")
+    parser.add_argument("--ecc", action="store_true", help="Use ExpanderCompilerCollection (cargo) instead of expander-exec.")
 
     # Listing and search path flag (used for both listing and dynamic loading)
     parser.add_argument("--list_circuits", action="store_true", help="List all available circuit files.")
@@ -224,7 +224,6 @@ def main():
     for op in run_operations:
         if op == RunType.COMPILE_CIRCUIT:
             args.fresh_compile = True
-        print("test",args.circuit_path)
         circuit.base_testing(
             run_type=op,
             dev_mode=args.fresh_compile,
@@ -233,7 +232,7 @@ def main():
             output_file=args.output,
             witness_file=args.witness,
             proof_file=args.proof,
-            # ecc=args.ecc
+            ecc=args.ecc
         )
 
 if __name__ == "__main__":

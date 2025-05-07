@@ -102,7 +102,7 @@ class MaxPooling2D(ZKModel):
         global_pooling = False
 
         y_dims = x.shape[:2] + tuple(output_spatial_shape)
-        print(y_dims, output_spatial_shape)
+        # print(y_dims, output_spatial_shape)
         x = np.array(x, dtype = np.int64)
         y = np.zeros(y_dims, dtype=x.dtype)
         indices = np.full(y_dims, dtype=np.int64, fill_value=-1)

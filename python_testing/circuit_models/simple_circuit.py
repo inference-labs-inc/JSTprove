@@ -25,7 +25,10 @@ class SimpleCircuit(Circuit):
         #Currently a random value, not sure what value should fit with the validator scheme
         self.nonce = randint(0,10000)
         self.required_keys = ["value_a", "value_b", "nonce"]
-    
+        # self.input_variables = ["value_a", "value_b", "nonce"]
+
+        self.input_shape = [1]
+
     def get_inputs(self):
         return {'value_a': self.input_a, 'value_b': self.input_b, 'nonce': self.nonce}
     
