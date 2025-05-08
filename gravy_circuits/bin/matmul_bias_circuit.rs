@@ -2,7 +2,7 @@ use expander_compiler::frontend::*;
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use serde::Deserialize;
 use gravy_circuits::runner::main_runner::handle_args;
-use gravy_circuits::circuit_functions::conversion::{i64_to_field, matrix_i64_to_field};
+use gravy_circuits::circuit_functions::conversion::matrix_i64_to_field;
 
 const USE_FREIVALDS: bool = true; // change to false for full verification
 // const USE_FREIVALDS: bool = false; // change to true to use Freivalds' probabilistic verification

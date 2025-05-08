@@ -1,6 +1,6 @@
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use gravy_circuits::circuit_functions::helper_fn::{four_d_array_to_vec,read_2d_weights, two_d_array_to_vec};
+use gravy_circuits::circuit_functions::helper_fn::{read_2d_weights, two_d_array_to_vec};
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use lazy_static::lazy_static;
 #[allow(unused_imports)]

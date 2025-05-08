@@ -113,3 +113,22 @@ def add_1_to_first_element(x):
         return x
     else:
         raise TypeError(f"Unsupported type for get_outputs patch: {type(x)}")
+    
+
+# Define models to be tested
+circuit_compile_results = {}
+witness_generated_results = {}
+
+@pytest.fixture(scope="module")
+def check_model_compiles(model_fixture):
+    # Default to True; will be set to False if first test fails
+    result = circuit_compile_results.get(model_fixture['model'])
+    if result is False:
+        pytest.skip(f"Skipping because the first test failed for param: {model_fixture['model']}")
+
+@pytest.fixture(scope="module")
+def check_witness_generated(model_fixture):
+    # Default to True; will be set to False if first test fails
+    result = witness_generated_results.get(model_fixture['model'])
+    if result is False:
+        pytest.skip(f"Skipping because the first test failed for param: {model_fixture['model']}")

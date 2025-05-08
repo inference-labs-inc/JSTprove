@@ -43,7 +43,7 @@ class DoomAgent(nn.Module):
         
 
 class Doom(ZKModel):
-    def __init__(self, file_name="model/doom_checkpoint.pth"):
+    def __init__(self, file_name="model/doom/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom"
         self.model_file_name = file_name

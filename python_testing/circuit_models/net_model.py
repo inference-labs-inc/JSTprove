@@ -97,39 +97,39 @@ class FC3Segment(nn.Module):
     def forward(self, x):
         return self.fc3(x)
     
-class Slice(ZKModel):
-    def get_model_and_quantize(self):
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# class Slice(ZKModel):
+#     def get_model_and_quantize(self):
+#         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        checkpoint = torch.load(self.large_model_file_name, map_location=device)
+#         checkpoint = torch.load(self.large_model_file_name, map_location=device)
         
-        large_model = Net()
-        if "model_state_dict" in checkpoint.keys():
-            large_model.load_state_dict(checkpoint["model_state_dict"])
-        else:
-            large_model.load_state_dict(checkpoint)
+#         large_model = Net()
+#         if "model_state_dict" in checkpoint.keys():
+#             large_model.load_state_dict(checkpoint["model_state_dict"])
+#         else:
+#             large_model.load_state_dict(checkpoint)
 
         
-        try:
-            model = self.model_type(**getattr(self, 'model_params', {})).to(device)
-        except AttributeError:
-            raise NotImplementedError(f"Must specify the model type as a pytorch model (as variable self.model_type) in object {self.__class__.__name__}")
-        except TypeError as e: 
-            raise NotImplementedError(f"{e}. \n Must specify the model parameters of the pytorch model (as dictionary in self.model_params) in object {self.__class__.__name__}.")
+#         try:
+#             model = self.model_type(**getattr(self, 'model_params', {})).to(device)
+#         except AttributeError:
+#             raise NotImplementedError(f"Must specify the model type as a pytorch model (as variable self.model_type) in object {self.__class__.__name__}")
+#         except TypeError as e: 
+#             raise NotImplementedError(f"{e}. \n Must specify the model parameters of the pytorch model (as dictionary in self.model_params) in object {self.__class__.__name__}.")
         
-        for name in self.slice_name_in_model:
-            setattr(model,name, getattr(large_model,name))
-        model.eval()
-        self.model = model
-        self.quantized_model = self.quantize_model(model, 2**self.scaling, rescale_config=getattr(self,"rescale_config",{}))
-        self.quantized_model.eval()  
+#         for name in self.slice_name_in_model:
+#             setattr(model,name, getattr(large_model,name))
+#         model.eval()
+#         self.model = model
+#         self.quantized_model = self.quantize_model(model, 2**self.scaling, rescale_config=getattr(self,"rescale_config",{}))
+#         self.quantized_model.eval()  
 
-    def read_input(self, file_name = "doom_data/doom_input.json"):
-        """Reads the inputs to each layer of the model from text files."""
-        print(file_name)
-        with open(file_name, 'r') as file:
-            data = json.load(file)
-            return data["input"]
+#     def read_input(self, file_name = "doom_data/doom_input.json"):
+#         """Reads the inputs to each layer of the model from text files."""
+#         print(file_name)
+#         with open(file_name, 'r') as file:
+#             data = json.load(file)
+#             return data["input"]
 
 
 # class NetConv1Model(ZKModel):

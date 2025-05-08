@@ -12,38 +12,60 @@ from python_testing.utils.pytorch_helpers import ZKModel
 from python_testing.circuit_models.doom_model import Doom, DoomAgent
 
 
-# class DoomAgent(nn.Module):
-#     def __init__(self, n_actions=7):
-#         super(DoomAgent, self).__init__()
 
-#         self.conv1 = nn.Conv2d(4, 16, kernel_size=3, stride=1, padding=1)
-#         self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1)
-#         self.conv3 = nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1)
+class Conv1Segment(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(4, 16, kernel_size=3, stride=1, padding=1)
 
-#         self.fc_input_dim = 32 * 7 * 7
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        return x
 
-#         self.fc1 = nn.Linear(self.fc_input_dim, 256)
-#         self.fc2 = nn.Linear(256, n_actions)
 
-#     def forward(self, x):
-#         x = F.relu(self.conv1(x))
-#         x = F.relu(self.conv2(x))
-#         x = F.relu(self.conv3(x))
+class Conv2Segment(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1)
 
-#         x = x.reshape(-1, self.fc_input_dim)
-#         x = F.relu(self.fc1(x))
-#         return self.fc2(x)
+    def forward(self, x):
+        x = F.relu(self.conv2(x))
+        return x
 
-#     def act(self, state, epsilon=0.0):
-#         if np.random.random() < epsilon:
-#             return np.random.randint(7)
 
-#         with torch.no_grad():
-#             state_tensor = (
-#                 torch.FloatTensor(state).unsqueeze(0).to(next(self.parameters()).device)
-#             )
-#             q_values = self.forward(state_tensor)
-#             return q_values.argmax().item()
+class Conv3Segment(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv3 = nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1)
+
+    def forward(self, x):
+        # Flatten before the FC layer
+        x = F.relu(self.conv3(x))
+        return x
+    
+
+class FC1Segment(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc_input_dim = 32 * 7 * 7
+        self.fc1 = nn.Linear(self.fc_input_dim, 256, bias=True)
+
+    def forward(self, x):
+        x = x.reshape(-1, self.fc_input_dim)
+        x = F.relu(self.fc1(x))
+        return x
+    
+class FC2Segment(nn.Module):
+    def __init__(self, n_actions = 7):
+        super().__init__()
+        self.fc2 = nn.Linear(256, n_actions)
+
+    def forward(self, x):
+        x = self.fc2(x)
+        return x
+
+
+
 
 class DoomSlice(ZKModel):
     def get_model_and_quantize(self):
@@ -66,120 +88,87 @@ class DoomSlice(ZKModel):
         self.model = model
         self.quantized_model = self.quantize_model(model, self.scale_base**self.scaling, rescale_config=getattr(self,"rescale_config",{}))
         self.quantized_model.eval()  
-
-    # def read_input(self, file_name = "doom_data/doom_input.json"):
-    #     """Reads the inputs to each layer of the model from text files."""
-    #     print(file_name)
-    #     with open(file_name, 'r') as file:
-    #         data = json.load(file)
-    #         return data["output"]
-    
-    # def format_inputs(self, inputs):
-    #     return {"output": inputs.long().tolist()}
         
 
-class DoomConv1(DoomSlice):
+class DoomConv1(ZKModel):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_conv1"
         self.input_data_file = "doom_data/doom_input.json"
-        self.large_model_file_name = file_name
-        # self.model_file_name = "model/doom_conv1_checkpoint.pth"
+        self.model_file_name = "model/doom/conv_0.pt"
 
         
         self.scaling = Doom().scaling
         self.scale_base = Doom().scale_base
         self.input_shape = [1, 4, 28, 28]
-        self.model_type = Conv2DModelReLU
-        self.model_params = {"in_channels": 4, "out_channels": 16, "kernel_size": 3, "stride": 1, 'padding': 1}
-        self.slice_name_in_model = "conv"
-        self.large_model_slice_name = "conv1"
-
-    def read_input(self, file_name = "doom_data/doom_input.json"):
-        """Reads the inputs to each layer of the model from text files."""
-        with open(file_name, 'r') as file:
-            data = json.load(file)
-            return data["input"]
+        self.model_type = Conv1Segment
+        # self.model_params = {"in_channels": 4, "out_channels": 16, "kernel_size": 3, "stride": 1, 'padding': 1}
           
-class DoomConv2(DoomSlice):
+class DoomConv2(ZKModel):
 
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_conv2"
         self.input_data_file = "output/doom_conv1_output.json"
         self.large_model_file_name = file_name
-        # self.model_file_name = "model/doom_conv1_checkpoint.pth"
+        self.model_file_name = "model/doom/conv_1.pt"
 
 
         self.scale_base = Doom().scale_base
         self.scaling = Doom().scaling
         self.input_shape = [1, 16, 28, 28]
-        self.model_type = Conv2DModelReLU
-        self.model_params = {"in_channels": 16, "out_channels": 32, "kernel_size": 3, "stride": 2, 'padding': 1}
-        self.slice_name_in_model = "conv"
-        self.large_model_slice_name = "conv2"
+        self.model_type = Conv2Segment
+        # self.model_params = {"in_channels": 16, "out_channels": 32, "kernel_size": 3, "stride": 2, 'padding': 1}
 
-class DoomConv3(DoomSlice):
+class DoomConv3(ZKModel):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_conv3"
         self.input_data_file = "output/doom_conv2_output.json"
-        self.large_model_file_name = file_name
-        # self.model_file_name = "model/doom_conv1_checkpoint.pth"
+        self.model_file_name = "model/doom/conv_2.pt"
 
 
         self.scaling = Doom().scaling
         self.scale_base = Doom().scale_base
         self.input_shape = [1, 32, 14, 14]
-        self.model_type = Conv2DModelReLU
-        self.model_params = {"in_channels": 32, "out_channels": 32, "kernel_size": 3, "stride": 2, 'padding': 1}
-        self.slice_name_in_model = "conv"
-        self.large_model_slice_name = "conv3"
+        self.model_type = Conv3Segment
+        # self.model_params = {"in_channels": 32, "out_channels": 32, "kernel_size": 3, "stride": 2, 'padding': 1}
+        # self.slice_name_in_model = "conv"
 
-class DoomFC1(DoomSlice):
+class DoomFC1(ZKModel):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_fc1"
         self.input_data_file = "output/doom_conv3_output.json"
-        self.large_model_file_name = file_name
-        # self.model_file_name = "model/doom_conv1_checkpoint.pth"
+        self.model_file_name = "model/doom/fc_3.pt"
 
 
         self.scaling = Doom().scaling
         self.scale_base = Doom().scale_base
         self.input_shape = [1, 32, 7, 7]
-        self.model_type = MatrixMultiplicationReLUModel
-        self.model_params = {"in_channels": 1568, "out_channels":256, "bias" : True}
-        self.slice_name_in_model = "fc1"
-        self.large_model_slice_name = "fc1"
-        self.flatten = True
-    # def read_input(self, file_name = "doom_data/doom_input.json"):
-    #     """Reads the inputs to each layer of the model from text files."""
-    #     with open(file_name, 'r') as file:
-    #         data = json.load(file)
-    #         x = torch.tensor(data["output"])
-    #         return x.reshape([-1,1568])#.view(x.size(0), -1)
+        self.model_type = FC1Segment
+        # self.model_params = {"in_channels": 1568, "out_channels":256, "bias" : True}
 
-    def get_outputs(self, inputs):
-        return super().get_outputs(inputs.flatten().unsqueeze(0))
+    # def get_outputs(self, inputs):
+    #     return super().get_outputs(inputs.flatten().unsqueeze(0))
         
-class DoomFC2(DoomSlice):
+class DoomFC2(ZKModel):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_fc2"
         self.input_data_file = "output/doom_fc1_output.json"
-        self.large_model_file_name = file_name
-        # self.model_file_name = "model/doom_conv1_checkpoint.pth"
+        # self.large_model_file_name = file_name
+        self.model_file_name = "model/doom/fc_4.pt"
 
 
         self.scale_base = Doom().scale_base
         self.scaling = Doom().scaling
         self.input_shape = [1, 256]
-        self.model_type = MatrixMultiplicationModel
-        self.rescale_config = {"fc1": False}
-        self.model_params = {"in_channels": 256, "out_channels":7, "bias":False}
-        self.slice_name_in_model = "fc1"
-        self.large_model_slice_name = "fc2"
+        self.model_type = FC2Segment
+        self.rescale_config = {"fc2": False}
+        # self.model_params = {"in_channels": 256, "out_channels":7, "bias":False}
+        # self.slice_name_in_model = "fc1"
+        # self.large_model_slice_name = "fc2"
 
 if __name__ == "__main__":
     # Doom().base_testing()
