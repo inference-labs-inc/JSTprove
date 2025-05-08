@@ -53,7 +53,7 @@ struct OutputData {
 }
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/doom_weights.json");
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/doom_fc2_weights.json");
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
 // Weights will be read in
@@ -89,10 +89,11 @@ impl<C: Config> Define<C> for DoomCircuit<Variable> {
         // }
 
         // let input_arr = four_d_array_to_vec(self.input_arr);
+        let i = 0;
         let input_arr = two_d_array_to_vec(self.input_arr);
 
-        let weights = read_2d_weights(api, &WEIGHTS_INPUT.fc_weights[1]);
-        let bias = read_2d_weights(api, &WEIGHTS_INPUT.fc_bias[1]);
+        let weights = read_2d_weights(api, &WEIGHTS_INPUT.fc_weights[i]);
+        let bias = read_2d_weights(api, &WEIGHTS_INPUT.fc_bias[i]);
 
         let out_2d = matrix_multplication_naive2(api, input_arr, weights);
         let out_2d = matrix_addition_vec(api, out_2d, bias);

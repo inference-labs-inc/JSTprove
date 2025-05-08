@@ -1,7 +1,6 @@
 use gravy_circuits::circuit_functions::convolution_fn::conv_4d_run;
-use ethnum::U256;
 use expander_compiler::frontend::*;
-use gravy_circuits::circuit_functions::helper_fn::{four_d_array_to_vec, load_circuit_constant, read_2d_weights, read_4d_weights};
+use gravy_circuits::circuit_functions::helper_fn::{four_d_array_to_vec, load_circuit_constant, read_4d_weights};
 use gravy_circuits::circuit_functions::pooling::{setup_maxpooling_2d, maxpooling_2d};
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use lazy_static::lazy_static;
@@ -11,9 +10,7 @@ use gravy_circuits::circuit_functions::matrix_computation::{
     matrix_multplication_naive2, matrix_multplication_naive2_array, matrix_multplication_naive3,
     matrix_multplication_naive3_array, matrix_addition_vec
 };
-use gravy_circuits::circuit_functions::quantization::run_if_quantized_2d;
 use serde::Deserialize;
-use core::panic;
 use std::ops::Neg;
 
 use gravy_circuits::runner::main_runner::handle_args;
@@ -58,7 +55,7 @@ const BASE: u32 = 2;
 const NUM_DIGITS: usize = 32; 
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/net_weights.json");
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/net_conv1_weights.json");
 
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)

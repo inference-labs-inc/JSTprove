@@ -224,4 +224,7 @@ This CLI tool runs various circuit operations such as compilation, witness gener
    python cli.py --circuit eth_fraud --class Eth --compile --circuit_path eth_fraud_circuit.txt
    python cli.py --circuit eth_fraud --class Eth --gen_witness --input inputs/eth_fraud_input.json --output output/eth_fraud_output.json  --circuit_path eth_fraud_circuit.txt
 
-   
+
+
+   If you see this error, it means you need some private variables:
+   called `Result::unwrap()` on an `Err` value: UserError("dest ir circuit invalid: circuit has no inputs")

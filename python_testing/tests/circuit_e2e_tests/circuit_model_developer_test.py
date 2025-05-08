@@ -7,15 +7,17 @@ from python_testing.tests.circuit_e2e_tests.helper_fns_for_tests import *
 # Enums, utils
 from python_testing.utils.helper_functions import RunType
 
-# Define models to be tested
 
 
 def test_circuit_compiles(model_fixture):
     # Here you could just check that circuit file exists
+    circuit_compile_results[model_fixture['model']] = False
     assert os.path.exists(model_fixture["circuit_path"])
+    circuit_compile_results[model_fixture['model']] = True
 
-def test_witness_dev(model_fixture, capsys, temp_witness_file, temp_input_file, temp_output_file):
+def test_witness_dev(model_fixture, capsys, temp_witness_file, temp_input_file, temp_output_file, check_model_compiles):
     model = model_fixture["model"]
+    witness_generated_results[model_fixture['model']] = False
     model.base_testing(
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
@@ -39,10 +41,13 @@ def test_witness_dev(model_fixture, capsys, temp_witness_file, temp_input_file, 
     for output in BAD_OUTPUT:
         assert output not in stdout, f"Did not expect '{output}' in stdout, but it was found."
 
+    witness_generated_results[model_fixture['model']] = True
 
 
 
-def test_witness_wrong_outputs_dev(model_fixture, capsys, temp_witness_file, temp_input_file, temp_output_file, monkeypatch):
+
+
+def test_witness_wrong_outputs_dev(model_fixture, capsys, temp_witness_file, temp_input_file, temp_output_file, monkeypatch, check_model_compiles, check_witness_generated):
     model = model_fixture["model"]
     original_get_outputs = model.get_outputs
 
@@ -75,7 +80,7 @@ def test_witness_wrong_outputs_dev(model_fixture, capsys, temp_witness_file, tem
     for output in BAD_OUTPUT:
         assert output in stdout, f"Expected '{output}' in stdout, but it was not found."
 
-def test_witness_prove_verify_true_inputs_dev(model_fixture, temp_witness_file, temp_input_file, temp_output_file, temp_proof_file, capsys):
+def test_witness_prove_verify_true_inputs_dev(model_fixture, temp_witness_file, temp_input_file, temp_output_file, temp_proof_file, capsys, check_model_compiles, check_witness_generated):
     model = model_fixture["model"]
     model.base_testing(
         run_type=RunType.GEN_WITNESS,
@@ -201,7 +206,9 @@ def test_witness_read_after_write_json(
     capsys,
     temp_witness_file,
     temp_input_file,
-    temp_output_file
+    temp_output_file,
+    check_model_compiles,
+    check_witness_generated
 ):
     # Step 1: Write the input file via write_json=True
     model_write = model_fixture["model"]
@@ -259,7 +266,7 @@ def test_witness_read_after_write_json(
 
     assert read_input_data == written_input_data, "Input JSON read is not identical to what was written"
 
-def test_witness_fresh_compile_dev(capsys, model_fixture, temp_witness_file, temp_input_file, temp_output_file):
+def test_witness_fresh_compile_dev(capsys, model_fixture, temp_witness_file, temp_input_file, temp_output_file, check_model_compiles, check_witness_generated):
     model = model_fixture["model"]
     model.base_testing(
         run_type=RunType.GEN_WITNESS,
@@ -294,7 +301,9 @@ def test_witness_incorrect_input_shape(
     capsys,
     temp_witness_file,
     temp_input_file,
-    temp_output_file
+    temp_output_file,
+    check_model_compiles,
+    check_witness_generated
 ):
     # Step 1: Write the input file via write_json=True
     model_write = model_fixture["model"]
@@ -307,8 +316,8 @@ def test_witness_incorrect_input_shape(
         output_file=temp_output_file,
         write_json=True
     )
-    if os.path.exists(temp_witness_file):
-        os.remove(temp_witness_file)
+    assert os.path.exists(temp_witness_file)
+    os.remove(temp_witness_file)
     assert not os.path.exists(temp_witness_file)
 
     # Optional: Load the written input for inspection
@@ -359,7 +368,9 @@ def test_witness_unscaled(
     capsys,
     temp_witness_file,
     temp_input_file,
-    temp_output_file
+    temp_output_file,
+    check_model_compiles,
+    check_witness_generated
 ):
     # Step 1: Write the input file via write_json=True
     model_write = model_fixture["model"]
@@ -452,7 +463,9 @@ def test_witness_unscaled_and_incorrect_shape_input(
     capsys,
     temp_witness_file,
     temp_input_file,
-    temp_output_file
+    temp_output_file,
+    check_model_compiles,
+    check_witness_generated
 ):
     # Step 1: Write the input file via write_json=True
     model_write = model_fixture["model"]
@@ -550,7 +563,9 @@ def test_witness_wrong_name(
     capsys,
     temp_witness_file,
     temp_input_file,
-    temp_output_file
+    temp_output_file,
+    check_model_compiles,
+    check_witness_generated
 ):
     # Step 1: Write the input file via write_json=True
     model_write = model_fixture["model"]
@@ -640,7 +655,9 @@ def test_witness_unscaled_and_incorrect_and_bad_named_input(
     capsys,
     temp_witness_file,
     temp_input_file,
-    temp_output_file
+    temp_output_file,
+    check_model_compiles,
+    check_witness_generated
 ):
     # Step 1: Write the input file via write_json=True
     model_write = model_fixture["model"]
@@ -763,7 +780,9 @@ def test_witness_wrong_name(
     capsys,
     temp_witness_file,
     temp_input_file,
-    temp_output_file
+    temp_output_file,
+    check_model_compiles,
+    check_witness_generated
 ):
     # Step 1: Write the input file via write_json=True
     model_write = model_fixture["model"]

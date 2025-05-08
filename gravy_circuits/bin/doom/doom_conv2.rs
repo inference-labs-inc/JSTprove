@@ -53,7 +53,7 @@ struct OutputData {
 }
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/doom_weights.json");
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/doom_conv2_weights.json");
 
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
@@ -87,10 +87,11 @@ impl<C: Config> Define<C> for DoomCircuit<Variable> {
         // if WEIGHTS_INPUT.fc1_alpha != 1 ||WEIGHTS_INPUT.fc1_beta != 1 || WEIGHTS_INPUT2.fc2_alpha != 1 || WEIGHTS_INPUT2.fc2_beta != 1{
         //     panic!("Not yet implemented for fc alpha or beta not equal to 1");
         // }
+        let i = 0;
 
-        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv_weights[1]);
+        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv_weights[i]);
         let bias: Vec<Variable> = WEIGHTS_INPUT
-            .conv_bias[1]
+            .conv_bias[i]
             .clone()
             .into_iter()
             .map(|x| load_circuit_constant(api, x))
@@ -98,7 +99,7 @@ impl<C: Config> Define<C> for DoomCircuit<Variable> {
 
         let input_arr = four_d_array_to_vec(self.input_arr);
 
-        let out = conv_4d_run(api, input_arr, weights, bias,&WEIGHTS_INPUT.conv_dilation[1], &WEIGHTS_INPUT.conv_kernel_shape[1], &WEIGHTS_INPUT.conv_pads[1], &WEIGHTS_INPUT.conv_strides[1],&WEIGHTS_INPUT.conv_input_shape[1], WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv_group[1], true, v_plus_one, two_v, alpha_2_v, true);
+        let out = conv_4d_run(api, input_arr, weights, bias,&WEIGHTS_INPUT.conv_dilation[i], &WEIGHTS_INPUT.conv_kernel_shape[i], &WEIGHTS_INPUT.conv_pads[i], &WEIGHTS_INPUT.conv_strides[i],&WEIGHTS_INPUT.conv_input_shape[i], WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv_group[i], true, v_plus_one, two_v, alpha_2_v, true);
         
         for (j, dim1) in self.outputs.iter().enumerate() {
                 for (k, dim2) in dim1.iter().enumerate() {

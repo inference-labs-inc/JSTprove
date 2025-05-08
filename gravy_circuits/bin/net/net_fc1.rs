@@ -55,7 +55,7 @@ struct OutputData {
 // const NUM_DIGITS: usize = 32; 
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/net_weights.json");
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/net_fc1_weights.json");
 
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
@@ -71,6 +71,7 @@ lazy_static! {
 declare_circuit!(ConvCircuit {
     input_arr: [[[[PublicVariable; 5]; 5]; 16]; 1], // shape (m, n)
     outputs: [[PublicVariable; 120]; 1], // shape (m, k)
+    dummy: [Variable; 1]
 });
 
 
@@ -81,9 +82,9 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
         let n_bits = 32;
 
         let v_plus_one: usize = n_bits;
-        let two_v: u32 = 1 << (v_plus_one - 1);
+        let two_v: u64 = 1 << (v_plus_one - 1);
         let scaling_factor = 1 << WEIGHTS_INPUT.scaling;
-        let alpha_2_v = api.mul(scaling_factor, two_v);
+        let alpha_2_v = api.mul(scaling_factor, CircuitField::<C>::from_u256(U256::from(two_v)));
 
         // Bring the weights into the circuit as constants
         let out = four_d_array_to_vec(self.input_arr);       
@@ -108,9 +109,7 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
             out_2d = matrix_addition_vec(api, out_2d, bias);
             api.display("3", out_2d[0][0]);
 
-            if i != WEIGHTS_INPUT.fc_weights.len() - 1{
-                out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, true, out_2d, v_plus_one, two_v, alpha_2_v, true);
-            }
+            out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, true, out_2d, v_plus_one, two_v, alpha_2_v, true);
             api.display("4", out_2d[0][0]);
 
         for (j, dim1) in self.outputs.iter().enumerate() {
@@ -122,6 +121,7 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
 
                 }
             }
+        api.assert_is_equal(self.dummy[0], 1);
     }
 }
 
@@ -152,6 +152,7 @@ impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
                 }
             }
         }
+        assignment.dummy[0] = CircuitField::<C>::from(1);
         // Return the assignment
         assignment
     }

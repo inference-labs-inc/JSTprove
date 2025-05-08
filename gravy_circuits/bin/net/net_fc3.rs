@@ -51,7 +51,7 @@ struct OutputData {
 }
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/net_weights.json");
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/net_fc3_weights.json");
 
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
@@ -79,8 +79,10 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
         // Bring the weights into the circuit as constants
         let mut out_2d = two_d_array_to_vec(self.input_arr);        
 
-        let weights = read_2d_weights(api, &WEIGHTS_INPUT.fc_weights[2]);
-        let bias = read_2d_weights(api, &WEIGHTS_INPUT.fc_bias[2]);
+        let i = 0;
+
+        let weights = read_2d_weights(api, &WEIGHTS_INPUT.fc_weights[i]);
+        let bias = read_2d_weights(api, &WEIGHTS_INPUT.fc_bias[i]);
 
         out_2d = matrix_multplication_naive2(api, out_2d, weights);
         out_2d = matrix_addition_vec(api, out_2d, bias);

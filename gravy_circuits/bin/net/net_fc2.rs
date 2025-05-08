@@ -1,6 +1,6 @@
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use gravy_circuits::circuit_functions::helper_fn::{four_d_array_to_vec,read_2d_weights, two_d_array_to_vec};
+use gravy_circuits::circuit_functions::helper_fn::{read_2d_weights, two_d_array_to_vec};
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use lazy_static::lazy_static;
 #[allow(unused_imports)]
@@ -55,7 +55,7 @@ struct OutputData {
 // const NUM_DIGITS: usize = 32; 
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/net_weights.json");
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../weights/net_fc2_weights.json");
 
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
@@ -71,6 +71,8 @@ lazy_static! {
 declare_circuit!(ConvCircuit {
     input_arr: [[PublicVariable; 120]; 1], // shape (m, n)
     outputs: [[PublicVariable; 84]; 1], // shape (m, k)
+    dummy: [Variable; 2], // shape (m, k)
+
 });
 
 
@@ -81,14 +83,14 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
         let n_bits = 32;
 
         let v_plus_one: usize = n_bits;
-        let two_v: u32 = 1 << (v_plus_one - 1);
+        let two_v:u64 = 1 << (v_plus_one - 1);
         let scaling_factor = 1 << WEIGHTS_INPUT.scaling;
-        let alpha_2_v = api.mul(scaling_factor, two_v);
+        let alpha_2_v = api.mul(scaling_factor, CircuitField::<C>::from_u256(U256::from(two_v)));
 
         // Bring the weights into the circuit as constants
         let mut out_2d = two_d_array_to_vec(self.input_arr);   
 
-        let i = 1;
+        let i = 0;
             // if WEIGHTS_INPUT2.fc_alpha[i] != 1 ||WEIGHTS_INPUT2.fc_beta[i] != 1 {
             //     panic!("Not yet implemented for fc alpha or beta not equal to 1");
             // }
@@ -102,21 +104,26 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
             out_2d = matrix_multplication_naive2(api, out_2d, weights);
             out_2d = matrix_addition_vec(api, out_2d, bias);
             api.display("3", out_2d[0][0]);
+            
 
-            if i != WEIGHTS_INPUT.fc_weights.len() - 1{
-                out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, true, out_2d, v_plus_one, two_v, alpha_2_v, true);
-            }
+            out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, true, out_2d, v_plus_one, two_v, alpha_2_v, true);
             api.display("4", out_2d[0][0]);
+            let x = api.neg(out_2d[0][0]);
+            api.display("4", x);
+
 
         for (j, dim1) in self.outputs.iter().enumerate() {
                 for (k, _dim2) in dim1.iter().enumerate() {
                     api.display("out1", self.outputs[j][k]);
                     api.display("out2", out_2d[j][k]);
                     api.assert_is_equal(self.outputs[j][k], out_2d[j][k]);
-                    // api.assert_is_different(self.outputs[j][k], 1);
+                    // api.assert_is_different(self.outputs[j][k], 10);
 
                 }
             }
+        api.assert_is_equal(self.dummy[0], 1);
+        api.assert_is_equal(self.dummy[1], 1);
+
     }
 }
 
@@ -143,6 +150,8 @@ impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
                 }
             }
         }
+        assignment.dummy[0] = CircuitField::<C>::from(1);
+        assignment.dummy[1] = CircuitField::<C>::from(1);
         // Return the assignment
         assignment
     }
