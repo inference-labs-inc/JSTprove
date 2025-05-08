@@ -149,7 +149,7 @@ class NetModel(ZKModel):
         self.required_keys = ["input"]
         self.name = "net"
         self.input_data_file = "input/net_input.json"
-        self.model_file_name = "model/net/net_model.pth"
+        self.model_file_name = "model/net/model.pth"
 
 
         self.scale_base = 2
@@ -164,21 +164,12 @@ class NetConv1Model(ZKModel):
         self.name = "net_conv1"
         self.input_data_file = "input/net_input.json"
         self.model_file_name = "model/net/conv_0.pt"
-        # self.slice_name_in_model = ["conv1", "pool"]
-        # self.large_model_slice_name = "conv1"
 
         self.scale_base = 2
         self.scaling = 21
         self.input_shape = [1,3,32,32]
         self.rescale_config = {}
         self.model_type = Conv1Segment
-
-    # def read_input(self, file_name = "doom_data/doom_input.json"):
-    #     """Reads the inputs to each layer of the model from text files."""
-    #     print(file_name)
-    #     with open(file_name, 'r') as file:
-    #         data = json.load(file)
-    #         return data["input"]
         
 class NetConv2Model(ZKModel):
     def __init__(self):
@@ -186,9 +177,6 @@ class NetConv2Model(ZKModel):
         self.name = "net_conv2"
         self.input_data_file = "output/net_conv1_output.json"
         self.model_file_name = "model/net/conv_1.pt"
-
-        self.slice_name_in_model = ["conv2", "pool"]
-        self.large_model_slice_name = "conv2"
 
         self.scale_base = 2
         self.scaling = 21
@@ -201,11 +189,7 @@ class NetFC1Model(ZKModel):
         self.required_keys = ["input"]
         self.name = "net_fc1"
         self.input_data_file = "output/net_conv2_output.json"
-        # self.large_model_file_name = "net_model.pth"
         self.model_file_name = "model/net/fc_2.pt"
-
-        self.slice_name_in_model = ["fc1"]
-        self.large_model_slice_name = "fc1"
 
         self.scale_base = 2
         self.scaling = 21
@@ -221,10 +205,6 @@ class NetFC2Model(ZKModel):
         self.input_data_file = "output/net_fc1_output.json"
         self.model_file_name = "model/net/fc_3.pt"
 
-        self.large_model_file_name = "net_model.pth"
-        self.slice_name_in_model = ["fc2"]
-        self.large_model_slice_name = "fc2"
-
         self.scale_base = 2
         self.scaling = 21
         self.input_shape = [1,120]
@@ -238,9 +218,6 @@ class NetFC3Model(ZKModel):
         self.name = "net_fc3"
         self.input_data_file = "output/net_fc2_output.json"
         self.model_file_name = "model/net/fc_4.pt"
-        self.slice_name_in_model = ["fc3"]
-        self.large_model_slice_name = "fc3"
-
 
         self.scale_base = 2
         self.scaling = 21
@@ -257,22 +234,24 @@ if __name__ == "__main__":
     # # sys.exit()
 
     d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
-    d_2 = NetModel()
-    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+    # d_2 = NetModel()
+    # d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
 
     d_3 = NetModel()
-    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
+    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", input_file="inputs/random_input_1.json", write_json = False)
 
+    # d_3.base_testing(run_type=RunType.PROVE_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", input_file="inputs/random_input.json", write_json = False)
+    # d_3.base_testing(run_type=RunType.GEN_VERIFY, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", input_file="inputs/random_input.json", write_json = False)
 
 
     name = "net_conv1"
     d = NetConv1Model()
     d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
-    d_2 = NetConv1Model()
-    d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+    # d_2 = NetConv1Model()
+    # d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
 
     d_3 = NetConv1Model()
-    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = False)
+    d_3.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", input_file="inputs/random_input_1.json",  write_json = False)
 
     name = "net_conv2"
     d = NetConv2Model()

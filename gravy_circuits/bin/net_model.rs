@@ -132,7 +132,7 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
             out_2d = matrix_addition_vec(api, out_2d, bias);
             api.display("3", out_2d[0][0]);
 
-            if i != WEIGHTS_INPUT.fc_weights.len() - 1{
+            if i != 2{
                 out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, true, out_2d, v_plus_one, two_v, alpha_2_v, true);
             }
             api.display("4", out_2d[0][0]);
