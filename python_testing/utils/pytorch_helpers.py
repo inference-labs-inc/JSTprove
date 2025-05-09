@@ -322,7 +322,8 @@ class ZKModel(PytorchConverter, GeneralLayerFunctions, Circuit):
                      dev_mode = False,
                      ecc = True,
                      circuit_path: Optional[str] = None,
-                     write_json: Optional[bool] = False):
+                     write_json: Optional[bool] = False,
+                     bench = False):
         """Simulates running the model by passing inputs through layers with weights."""
         print("Running circuit...")
 
@@ -331,4 +332,4 @@ class ZKModel(PytorchConverter, GeneralLayerFunctions, Circuit):
         if not weights_path:
             weights_path = f"weights/{circuit_name}_weights.json"
 
-        self.parse_proof_run_type(witness_file, input_file, proof_file, public_path, verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, run_type, dev_mode, ecc, write_json)
+        self.parse_proof_run_type(witness_file, input_file, proof_file, public_path, verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, run_type, dev_mode, ecc, write_json, bench)
