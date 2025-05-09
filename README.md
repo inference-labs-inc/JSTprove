@@ -130,9 +130,10 @@ This CLI tool runs various circuit operations such as compilation, witness gener
    ```bash
    Demo
    run through
-   python cli.py --circuit simple_circuit --gen_witness --witness witness.txt --input input.json --output output.json --circuit_path basic_circuit.txt
+   python -m cli --circuit simple_circuit --compile --circuit_path basic_circuit.txt
+   python cli.py --circuit simple_circuit --gen_witness --witness witness.txt --input inputs/simple_circuit_input.json --output output/simple_circuit_output.json --circuit_path basic_circuit.txt
    python cli.py --circuit simple_circuit --prove --witness witness.txt --proof proof.bin --circuit_path basic_circuit.txt
-   python cli.py --circuit simple_circuit --verify --witness witness.txt --proof proof.bin --input input.json --output output.json --circuit_path basic_circuit.txt
+   python cli.py --circuit simple_circuit --verify --witness witness.txt --proof proof.bin --input inputs/simple_circuit_input.json --output output/simple_circuit_output.json --circuit_path basic_circuit.txt
 
    Error about inputs not matching
    python cli.py --circuit simple_circuit --verify --witness witness.txt --proof proof.bin --circuit_path basic_circuit.txt

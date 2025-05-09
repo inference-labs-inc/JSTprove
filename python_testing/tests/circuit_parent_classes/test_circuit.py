@@ -109,7 +109,7 @@ def test_parse_proof_dispatch_logic(
     mock_compile.assert_called_once()
     c._compile_preprocessing.assert_called_once_with("weights")
     args = mock_compile.call_args[0]
-    assert args == ('circuit', "path", ZKProofSystems.Expander, False)
+    assert args == ('circuit', "path", ZKProofSystems.Expander, False, False)
 
     # GEN_WITNESS
     c.parse_proof_run_type(
@@ -119,8 +119,7 @@ def test_parse_proof_dispatch_logic(
     mock_witness.assert_called_once()
     c._gen_witness_preprocessing.assert_called()
     args = mock_witness.call_args[0]
-    print(args)
-    assert args == ('circuit', "path", "w","i", "out", ZKProofSystems.Expander, False)
+    assert args == ('circuit', "path", "w","i", "out", ZKProofSystems.Expander, False, False)
 
     # PROVE_WITNESS
     c.parse_proof_run_type(
@@ -129,9 +128,12 @@ def test_parse_proof_dispatch_logic(
     )
     mock_proof.assert_called_once()
     args = mock_proof.call_args[0]
+    kwargs = mock_proof.call_args[1]
+
 
 
     assert args == ('circuit', "path", "w","p", ZKProofSystems.Expander, False)
+    assert kwargs == {'ecc': True, 'bench': False}
 
 
     # GEN_VERIFY
@@ -141,7 +143,10 @@ def test_parse_proof_dispatch_logic(
     )
     mock_verify.assert_called_once()
     args = mock_verify.call_args[0]
+    kwargs = mock_proof.call_args[1]
     assert args == ('circuit', "path", "i","out", "w", "p", ZKProofSystems.Expander, False)
+    assert kwargs == {'ecc': True, 'bench': False}
+
 
 
     # END_TO_END

@@ -133,7 +133,7 @@ def test_witness_prove_verify_true_inputs_dev(model_fixture, temp_witness_file, 
 
     assert stdout.count("Verified") == 1, f"Expected 'Verified' in stdout three times, but it was not found."
 
-def test_witness_prove_verify_true_inputs_dev_expander_call(model_fixture, temp_witness_file, temp_input_file, temp_output_file, temp_proof_file, capsys):
+def test_witness_prove_verify_true_inputs_dev_expander_call(model_fixture, temp_witness_file, temp_input_file, temp_output_file, temp_proof_file, capsys,check_model_compiles, check_witness_generated):
     model = model_fixture["model"]
     model.base_testing(
         run_type=RunType.GEN_WITNESS,
@@ -163,7 +163,6 @@ def test_witness_prove_verify_true_inputs_dev_expander_call(model_fixture, temp_
         output_file = temp_output_file,
         proof_file = temp_proof_file,
         ecc = False
-
     )
     # ASSERTIONS TODO
 
@@ -171,7 +170,10 @@ def test_witness_prove_verify_true_inputs_dev_expander_call(model_fixture, temp_
     stdout = captured.out
     stderr = captured.err
     print(stdout)
+    print(stderr)
+    # assert False
     assert os.path.exists(temp_witness_file), "Witness file not generated"
+
 
     # Unexpected output
     assert stdout.count("poly.num_vars() == *params") == 0, f"'poly.num_vars() == *params' thrown. May need a dummy variable(s) to get rid of error. Dummy variables should be private variables. Can set = 1 in read_inputs and assert == 1 at end of circuit"

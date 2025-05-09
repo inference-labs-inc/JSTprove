@@ -74,26 +74,26 @@ if __name__ == "__main__":
     
     # Run another operation
     print("\nRunning compilation:")
-    circuit.base_testing(RunType.COMPILE_CIRCUIT, dev_mode=True)
+    circuit.base_testing(RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path="simple_circuit.txt", input_file="inputs/simple_circuit_input.json", output_file="output/simple_circuit_output.txt")
     
     # Read the input and output files to verify
     print("\n--- Verifying input and output files ---")
     print(f"Input file: {circuit._file_info['input_file']}")
     print(f"Output file: {circuit._file_info['output_file']}")
     
-    print("\nReading input and output files:")
-    with open(circuit._file_info['input_file'], 'r') as f:
-        input_data = json.load(f)
+    # print("\nReading input and output files:")
+    # with open(circuit._file_info['input_file'], 'r') as f:
+    #     input_data = json.load(f)
     
-    with open(circuit._file_info['output_file'], 'r') as f:
-        output_data = json.load(f)
+    # with open(circuit._file_info['output_file'], 'r') as f:
+    #     output_data = json.load(f)
     
-    print(f"Input from file: {input_data}")
-    print(f"Output from file: {output_data}")
-    circuit.base_testing(RunType.GEN_WITNESS)
+    # print(f"Input from file: {input_data}")
+    # print(f"Output from file: {output_data}")
+    circuit.base_testing(RunType.GEN_WITNESS, circuit_path="simple_circuit.txt", input_file="inputs/simple_circuit_input.json", output_file="output/simple_circuit_output.json", write_json=True)
 
     circuit = SimpleCircuit()
-    circuit.base_testing(run_type=RunType.PROVE_WITNESS)
+    circuit.base_testing(run_type=RunType.PROVE_WITNESS, circuit_path="simple_circuit.txt", input_file="inputs/simple_circuit_input.json", output_file="output/simple_circuit_output.json")
 
     circuit = SimpleCircuit()
-    circuit.base_testing(run_type=RunType.GEN_VERIFY)
+    circuit.base_testing(run_type=RunType.GEN_VERIFY, circuit_path="simple_circuit.txt", input_file="inputs/simple_circuit_input.json", output_file="output/simple_circuit_output.json")

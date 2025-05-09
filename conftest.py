@@ -1,23 +1,23 @@
+import importlib
+import pkgutil
 import pytest 
-from python_testing.circuit_components.extrema import Extrema
-from python_testing.circuit_components.matmul import MatMul
-from python_testing.circuit_components.matmul_bias import MatMulBias
-from python_testing.circuit_components.maxpooling import MaxPooling2D
+import python_testing.circuit_models
+import python_testing.circuit_components
+
 from python_testing.circuit_models.demo_cnn import Demo
-from python_testing.circuit_models.doom_model import Doom
-from python_testing.circuit_models.net_model import NetModel, NetConv1Model, NetConv2Model, NetFC1Model, NetFC2Model, NetFC3Model
-from python_testing.circuit_models.simple_circuit import SimpleCircuit
-from python_testing.circuit_models.doom_slices import DoomConv1, DoomConv2, DoomConv3, DoomFC1, DoomFC2
-from python_testing.circuit_models.eth_fraud import Eth
-from python_testing.circuit_components.convolution import Convolution, QuantizedConv, QuantizedConvRelu
 from python_testing.circuit_components.relu import ReLU, ConversionType
-from python_testing.circuit_components.matrix_multiplication import MatrixMultiplication, QuantizedMatrixMultiplication, QuantizedMatrixMultiplicationReLU
-from python_testing.circuit_components.matrix_addition import MatrixAddition
-from python_testing.circuit_components.scaled_matrix_product import ScaledMatrixProduct
-from python_testing.circuit_components.scaled_matrix_product_sum import ScaledMatrixProductSum
 from python_testing.utils.helper_functions import RunType
 from python_testing.circuit_components.circuit_helpers import Circuit
 
+
+def import_all_submodules(package):
+    """Recursively import all submodules of a given package."""
+    for loader, name, is_pkg in pkgutil.walk_packages(package.__path__, package.__name__ + "."):
+        importlib.import_module(name)
+
+# Import all submodules so their classes are registered
+import_all_submodules(python_testing.circuit_models)
+import_all_submodules(python_testing.circuit_components)
 
 def all_subclasses(cls):
     """Recursively find all subclasses of a given class."""
@@ -29,6 +29,8 @@ def build_models_to_test():
     models = []
     for cls in all_subclasses(Circuit):
         name = cls.__name__.lower()
+        print(name)
+
         models.append((name, cls))
     return models
 # MODELS_TO_TEST = [

@@ -644,20 +644,28 @@ where
     //     layered::witness::Witness::<C>::deserialize_from(witness).map_err(|e| e.to_string())?;
     let (simd_input, simd_public_input) = witness.to_simd();
 
-    expander_circuit.layers[0].input_vals = simd_input;
+    expander_circuit.layers[0].input_vals = simd_input.clone();
     expander_circuit.public_input = simd_public_input.clone();
     let assignment = CircuitDefaultType::default();
+    
     let assignment = io_reader.read_inputs(input_path, assignment);
     let assignment = io_reader.read_outputs(output_path, assignment);
 
     // let mut vars: Vec<<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField> = Vec::new();
     let mut vars: Vec<_> = Vec::new();
+    println!("{:?}", simd_public_input);
+    println!("{:?}", simd_input);
+
 
     let mut public_vars: Vec<_> = Vec::new();
     assignment.dump_into(&mut vars, &mut public_vars);
     for (i, _) in public_vars.iter().enumerate(){
         let x = format!("{:?}", public_vars[i]);
         let y = format!("{:?}",expander_circuit.public_input[i]);
+        let z = format!("{:?}",expander_circuit.public_input[i]);
+
+        // println!("{}", x);
+        // println!("{}", y);
         //TODO This can potentially be improved
 
         assert_eq!(x,y);
@@ -694,6 +702,66 @@ where
     ));
 
     println!("Verified");
+    println!(
+        "Peak Memory used Overall : {:.2}",
+        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+    );
+    let duration = start.elapsed();
+    println!(
+        "Time elapsed: {}.{} seconds",
+        duration.as_secs(),
+        duration.subsec_millis()
+    )
+}
+
+pub fn run_check_witness<C: Config, I, CircuitDefaultType>(circuit_path: &str, io_reader: &mut I, input_path: &str, output_path:&str, witness_path: &str, proof_path: &str)
+where
+    I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
+    CircuitDefaultType: Default
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
+        + Clone + 
+{
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now();
+
+    // let file = std::fs::File::open(format!("{}_circuit.txt", name)).unwrap();
+    let file = std::fs::File::open(circuit_path).unwrap();
+
+    let reader = std::io::BufReader::new(file);
+    let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
+
+    let mut expander_circuit = layered_circuit.export_to_expander_flatten();
+
+
+    let file = std::fs::File::open(witness_path).unwrap();
+    let reader = std::io::BufReader::new(file);
+    let witness = Witness::<C>::deserialize_from(reader).unwrap();
+
+    let (simd_input, simd_public_input) = witness.to_simd();
+
+    expander_circuit.layers[0].input_vals = simd_input;
+    expander_circuit.public_input = simd_public_input.clone();
+    let assignment = CircuitDefaultType::default();
+    let assignment = io_reader.read_inputs(input_path, assignment);
+    let assignment = io_reader.read_outputs(output_path, assignment);
+
+    // let mut vars: Vec<<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField> = Vec::new();
+    let mut vars: Vec<_> = Vec::new();
+
+    let mut public_vars: Vec<_> = Vec::new();
+    assignment.dump_into(&mut vars, &mut public_vars);
+
+    for (i, _) in public_vars.iter().enumerate(){
+        let x = format!("{:?}", public_vars[i]);
+        let y = format!("{:?}",expander_circuit.public_input[i]);
+        println!("{}", x);
+        println!("{}", y);
+        //TODO This can potentially be improved
+        assert_eq!(x,y);
+    }
+
+
+    println!("Checked witness against circuit inputs and outputs");
     println!(
         "Peak Memory used Overall : {:.2}",
         GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)

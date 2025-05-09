@@ -1,4 +1,5 @@
-from time import time
+import threading
+from time import time, sleep
 import torch
 import json
 import os
@@ -7,6 +8,7 @@ from typing import Dict, Any, Tuple, Optional
 from python_testing.utils.run_proofs import ZKProofsCircom, ZKProofsExpander, ZKProofSystems
 from enum import Enum
 import subprocess
+from python_testing.utils.benchmarking_helpers import end_memory_collection, monitor_subprocess_memory, start_memory_collection
 
 class RunType(Enum):
     BASE_TESTING = 'base_testing'
@@ -167,7 +169,7 @@ def read_from_json(public_path: str) -> Dict[str, Any]:
         d = json.load(json_data)
         return d
 
-def run_cargo_command(binary_name, command_type, args=None, dev_mode = False):
+def run_cargo_command(binary_name, command_type, args=None, dev_mode = False, bench = False):
     """
     Run a cargo command with the correct format based on the command type.
     
@@ -202,10 +204,19 @@ def run_cargo_command(binary_name, command_type, args=None, dev_mode = False):
                 cmd.append(str(value))
     
     print(f"Running cargo command: {' '.join(cmd)}")
-    
     try:
+        if bench:
+            stop_event, monitor_thread, monitor_results = start_memory_collection(binary_name)
+        start_time = time()
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        end_time = time() 
+        if bench:
+            memory = end_memory_collection(stop_event, monitor_thread, monitor_results)
+            print(memory)
+
+        print(f"Time taken: {end_time - start_time:.4f} seconds")
         print(result.stdout)
+
         return result.returncode
     except subprocess.CalledProcessError as e:
         print(f"Command failed with return code {e.returncode}")
@@ -297,12 +308,14 @@ def run_expander_exec(mode: str, circuit_file: str, witness_file: str, proof_fil
 #   env RUSTFLAGS="-C target-cpu=native" mpiexec -n 1 cargo run --manifest-path Expander/Cargo.toml --bin expander-exec --release -- -p Raw verify -c slices/segment_4/segment_4_circuit.compiled -w slices/segment_4/segment_4_witness.compiled -i slices/segment_4/segment_4_proof.bin
 
 
-def run_expander_raw(mode: str, circuit_file: str, witness_file: str, proof_file: str, pcs_type: str = "Raw"):
+def run_expander_raw(mode: str, circuit_file: str, witness_file: str, proof_file: str, pcs_type: str = "Raw", bench = False):
     assert mode in {"prove", "verify"}
 
     # pcs_type = "Raw" #or Hyrax
     env = os.environ.copy()
     env["RUSTFLAGS"] = "-C target-cpu=native"
+    time_measure = "/usr/bin/time" 
+    time_flag = "-l"
 
     arg_1 = 'mpiexec' 
     arg_2 = '-n'
@@ -312,7 +325,7 @@ def run_expander_raw(mode: str, circuit_file: str, witness_file: str, proof_file
     manifest_path = 'Expander/Cargo.toml'
     binary = 'expander-exec'
 
-    args = [arg_1, arg_2, arg_3, command, command_2, '--manifest-path', manifest_path,'--bin', binary, '--release', '--', '-p', pcs_type]
+    args = [time_measure, time_flag, arg_1, arg_2, arg_3, command, command_2, '--manifest-path', manifest_path,'--bin', binary, '--release', '--', '-p', pcs_type]
     if mode == 'prove':
         args.append("prove")
         proof_command = '-o'
@@ -329,9 +342,15 @@ def run_expander_raw(mode: str, circuit_file: str, witness_file: str, proof_file
 
     args.append(proof_command)
     args.append(proof_file)
-    start_time = time()    
+    # TODO wrap and only run if benchmarking internally
+    if bench:
+        stop_event, monitor_thread, monitor_results = start_memory_collection("expander-exec")
+    start_time = time()
     result = subprocess.run(args, env = env, capture_output=True, text=True)
-    end_time = time()    
+    end_time = time() 
+    if bench:
+        memory = end_memory_collection(stop_event, monitor_thread, monitor_results)
+        print(memory)
 
 
     if result.returncode != 0:
@@ -345,7 +364,7 @@ def run_expander_raw(mode: str, circuit_file: str, witness_file: str, proof_file
 
 
 
-def compile_circuit(circuit_name, circuit_path, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False):
+def compile_circuit(circuit_name, circuit_path, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False, bench = False):
     """Compile a circuit."""
 
     if proof_system == ZKProofSystems.Expander:
@@ -359,7 +378,7 @@ def compile_circuit(circuit_name, circuit_path, proof_system: ZKProofSystems = Z
         }
         # Run the command
         try:
-            run_cargo_command(binary_name, 'run_compile_circuit', args, dev_mode)
+            run_cargo_command(binary_name, 'run_compile_circuit', args, dev_mode, bench)
         except Exception as e:
             print(f"Warning: Compile operation failed: {e}")
             print(f"Using binary: {binary_name}")
@@ -372,7 +391,7 @@ def compile_circuit(circuit_name, circuit_path, proof_system: ZKProofSystems = Z
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
 def generate_witness(circuit_name, circuit_path, witness_file, input_file, output_file, 
-                    proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False):
+                    proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False, bench = False):
     """Generate witness for a circuit."""
     if proof_system == ZKProofSystems.Expander:
         # Extract the binary name from the circuit path
@@ -390,7 +409,7 @@ def generate_witness(circuit_name, circuit_path, witness_file, input_file, outpu
         
         # Run the command
         try:
-            run_cargo_command(binary_name, 'run_gen_witness', args, dev_mode)
+            run_cargo_command(binary_name, 'run_gen_witness', args, dev_mode, bench)
         except Exception as e:
             print(f"Warning: Witness generation failed: {e}")
             
@@ -403,7 +422,7 @@ def generate_witness(circuit_name, circuit_path, witness_file, input_file, outpu
 
 
 def generate_proof(circuit_name, circuit_path, witness_file, proof_file, 
-                    proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False, ecc = True):
+                    proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False, ecc = True, bench = False):
     """Generate witness for a circuit."""
     if proof_system == ZKProofSystems.Expander:
         if ecc:
@@ -421,7 +440,7 @@ def generate_proof(circuit_name, circuit_path, witness_file, proof_file,
             
             # Run the command
             try:
-                run_cargo_command(binary_name, 'run_prove_witness', args, dev_mode)
+                run_cargo_command(binary_name, 'run_prove_witness', args, dev_mode, bench)
             except Exception as e:
                 print(f"Warning: Proof generation failed: {e}")
         else:
@@ -448,7 +467,7 @@ def generate_proof(circuit_name, circuit_path, witness_file, proof_file,
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
 
-def generate_verification(circuit_name, circuit_path, input_file, output_file, witness_file, proof_file, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False, ecc = True):
+def generate_verification(circuit_name, circuit_path, input_file, output_file, witness_file, proof_file, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False, ecc = True, bench = False):
     """Generate verification for a circuit."""
     if proof_system == ZKProofSystems.Expander:
         if ecc:
@@ -468,7 +487,7 @@ def generate_verification(circuit_name, circuit_path, input_file, output_file, w
             
             # Run the command
             try:
-                run_cargo_command(binary_name, 'run_gen_verify', args, dev_mode)
+                run_cargo_command(binary_name, 'run_gen_verify', args, dev_mode, bench)
             except Exception as e:
                 print(f"Warning: Verification generation failed: {e}")
         else:

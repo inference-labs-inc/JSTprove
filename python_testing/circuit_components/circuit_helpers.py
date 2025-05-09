@@ -86,7 +86,7 @@ class Circuit:
                      dev_mode = False,
                      ecc = True,
                      circuit_path: Optional[str] = None,
-                     write_json: Optional[bool] = False):
+                     write_json: Optional[bool] = False, bench = False):
         """
         Run the circuit with the specified run type.
         All file paths are handled by the decorator.
@@ -109,13 +109,13 @@ class Circuit:
         self.parse_proof_run_type(
 
             witness_file, input_file, proof_file, public_path, 
-            verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, run_type, dev_mode, ecc, write_json
+            verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, run_type, dev_mode, ecc, write_json, bench
         )
         
         return 
     
     def parse_proof_run_type(self, witness_file, input_file, proof_path, public_path, 
-                             verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, run_type, dev_mode = False, ecc = True, write_json = False):
+                             verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, run_type, dev_mode = False, ecc = True, write_json = False, bench = False):
         """
         Run the appropriate proof operation based on run_type.
         This function can be called directly if needed.
@@ -133,15 +133,15 @@ class Circuit:
                 run_end_to_end(circuit_name, circuit_path, input_file, output_file, proof_system, dev_mode)
             elif run_type == RunType.COMPILE_CIRCUIT:
                 self._compile_preprocessing(weights_path)
-                compile_circuit(circuit_name, circuit_path, proof_system, dev_mode)
+                compile_circuit(circuit_name, circuit_path, proof_system, dev_mode, bench)
             elif run_type == RunType.GEN_WITNESS:
                 input_file = self._gen_witness_preprocessing(input_file, output_file, write_json, is_scaled)
-                generate_witness(circuit_name, circuit_path, witness_file, input_file, output_file, proof_system, dev_mode)
+                generate_witness(circuit_name, circuit_path, witness_file, input_file, output_file, proof_system, dev_mode, bench)
             elif run_type == RunType.PROVE_WITNESS:
-                generate_proof(circuit_name, circuit_path, witness_file, proof_path, proof_system, dev_mode, ecc=ecc)
+                generate_proof(circuit_name, circuit_path, witness_file, proof_path, proof_system, dev_mode, ecc = ecc, bench = bench)
             elif run_type == RunType.GEN_VERIFY:
                 input_file = self.adjust_inputs(input_file)
-                generate_verification(circuit_name, circuit_path, input_file, output_file, witness_file, proof_path, proof_system, dev_mode, ecc=ecc)
+                generate_verification(circuit_name, circuit_path, input_file, output_file, witness_file, proof_path, proof_system, dev_mode, ecc=ecc, bench = bench)
             else:
                 print(f"Unknown entry: {run_type}")
                 raise ValueError(f"Unknown run type: {run_type}")
@@ -238,52 +238,9 @@ class Circuit:
 
         return new_input_file
     
-    # def adjust_inputs(self, input_file):
-    #     inputs = read_from_json(input_file)
-
-    #     has_input_been_found = False
-    #     new_inputs = {}
-
-    #     for k in inputs.keys():
-            
-
-    #         # Rescale inputs
-    #         if self.contains_float(inputs[k]):
-    #             inputs[k] = torch.round(torch.mul(torch.as_tensor(inputs[k]),(self.scale_base**self.scaling))).long().tolist()
-
-
-    #             # inputs[k] = torch.mul(torch.as_tensor(inputs[k]),(self.scale_base**self.scaling)).long().tolist()
-        
-    #         # Rename inputs
-    #         if "input" in k:
-    #             if has_input_been_found:
-    #                 raise ValueError("Multiple inputs found in input file, please change names of the inputs. Only one variable can have 'input' in its name")
-    #             has_input_been_found = True
-    #             new_inputs["input"] = inputs[k]
-    #         else:
-    #             new_inputs[k] = inputs[k]
-    #         # Reshape inputs
-    #     for k in new_inputs.keys():
-    #         if "input" in k and isinstance(new_inputs[k], list):
-    #             if not hasattr(self, "input_shape"):
-    #                 raise NotImplementedError("input_shape must be specified in circuit definition in order to reshape inputs")
-    #             new_inputs[k] = torch.as_tensor(new_inputs[k]).reshape(self.input_shape).tolist()
-
-    #     if "input" not in new_inputs.keys() and "output" in new_inputs.keys():
-    #         new_inputs["input"] = inputs["output"]
-    #         del inputs["output"]
-
-
-                    
-    #     path = Path(input_file)
-    #     new_input_file = path.stem + "_reshaped" + path.suffix
-    #     to_json(new_inputs, new_input_file)
-
-    #     return new_input_file
-    
     def adjust_inputs(self, input_file):
         inputs = read_from_json(input_file)
-        print(inputs)
+        # print(inputs)
         input_variables = getattr(self, "input_variables", ["input"])
         new_inputs = {}
         print(f"Input variables: {input_variables}")
