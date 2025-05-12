@@ -31,6 +31,7 @@ def build_models_to_test():
         name = cls.__name__.lower()
         models.append((name, cls))
     return models
+
 # MODELS_TO_TEST = [
 #     ("doom", Doom),
 #     ("simple_circuit", SimpleCircuit),
@@ -120,10 +121,14 @@ def get_models_to_test(config):
         return MODELS_TO_TEST
     return [m for m in MODELS_TO_TEST if m[0] in selected_models]
 
+
+
 def pytest_generate_tests(metafunc):
     if "model_fixture" in metafunc.fixturenames:
         models = get_models_to_test(metafunc.config)
-        metafunc.parametrize("model_fixture", models, indirect=True, scope="module")
+        ids = [model[0] for model in models]  # Extract readable names
+
+        metafunc.parametrize("model_fixture", models, indirect=True, scope="module", ids=ids)
 
 def pytest_configure(config):
     # If the --list-models option is used, list models and exit

@@ -2,7 +2,7 @@ use gravy_circuits::circuit_functions::convolution_fn::conv_4d_run;
 use ethnum::U256;
 use expander_compiler::frontend::*;
 use gravy_circuits::circuit_functions::helper_fn::{four_d_array_to_vec, load_circuit_constant, read_2d_weights, read_4d_weights};
-use gravy_circuits::io::io_reader::{self, FileReader, IOReader};
+use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use lazy_static::lazy_static;
 #[allow(unused_imports)]
 use gravy_circuits::circuit_functions::matrix_computation::{
@@ -15,7 +15,7 @@ use serde::Deserialize;
 use core::panic;
 use std::ops::Neg;
 
-use gravy_circuits::runner::main_runner::{handle_args, ConfigurableCircuit, Configurable};
+use gravy_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
 
 
 //Define structure of inputs, weights and output
@@ -213,56 +213,6 @@ fn main() {
     };
     println!("{:?}", WEIGHTS_INPUT.layers);
 
-    // let mut circuit = ConvCircuit::<Variable>::default();
-    // circuit.configure();
-
-    // // circuit.outputs = vec![vec![Variable::default(); 10]];
-    // // circuit.p = vec![vec![Variable::default(); 64 * 8]; N_HASHES];
-    // // circuit.out = vec![vec![Variable::default(); 32 * 8]; N_HASHES];
-
-    // let compile_result: CompileResult<BN254Config> = compile(&circuit, CompileOptions::default()).unwrap();
-    // let CompileResult {
-    //     witness_solver,
-    //     layered_circuit,
-    // } = compile_result;
-
-    // let mut assignment = ConvCircuit::<BN254Fr>::default();
-    // // let mut rng = rand::rngs::StdRng::seed_from_u64(1235);
-
-    // let assignment: ConvCircuit<BN254Fr> = <FileReader as IOReader<ConvCircuit<BN254Fr>, BN254Config>>::read_inputs(&mut file_reader,"inputs/generic_demo_input.json", assignment);
-    // let assignment = <FileReader as IOReader<ConvCircuit<BN254Fr>, BN254Config>>::read_outputs(&mut file_reader,"output/generic_demo_output.json", assignment);
-
-    // let witness = witness_solver.solve_witness(&assignment).unwrap();
-    // let res = layered_circuit.run(&witness);
-    // assert_eq!(res, vec![true]);
-    // println!("test 1 passed");
-
-    // for k in 0..N_HASHES {
-    //     assignment.p[k][0] = assignment.p[k][0] - GF2::from(1);
-    // }
-    // let witness = witness_solver.solve_witness(&assignment).unwrap();
-    // let res = layered_circuit.run(&witness);
-    // assert_eq!(res, vec![false]);
-    // println!("test 2 passed");
-
-    // let mut assignments = Vec::new();
-    // for _ in 0..15 {
-    //     for k in 0..N_HASHES {
-    //         assignment.p[k][0] = assignment.p[k][0] - GF2::from(1);
-    //     }
-    //     assignments.push(assignment.clone());
-    // }
-    // let witness = witness_solver.solve_witnesses(&assignments).unwrap();
-    // let res = layered_circuit.run(&witness);
-    // let mut expected_res = vec![false; 15];
-    // for i in 0..8 {
-    //     expected_res[i * 2] = true;
-    // }
-    // assert_eq!(res, expected_res);
-    // println!("test 3 passed");
-
     handle_args::<BN254Config, ConvCircuit<Variable>,ConvCircuit<_>,_>(&mut file_reader);
-    // handle_args::<M31Config, ConvCircuit<Variable>,ConvCircuit<_>,_>(&mut file_reader);
-    // handle_args::<GF2Config, ConvCircuit<Variable>,ConvCircuit<_>,_>(&mut file_reader);
 
 }

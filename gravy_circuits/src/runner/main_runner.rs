@@ -49,8 +49,6 @@ where
     );
     println!("Generating witness...");
 
-
-    
     let CompileResult {
         witness_solver,
         layered_circuit,
@@ -279,12 +277,6 @@ where
     let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
 
     let assignment = CircuitDefaultType::default();
-    // let _input_reader = FileReader {
-    //     path: input_path.clone(),
-    // };
-    // let _output_reader = FileReader {
-    //     path: output_path.clone(),
-    // };
     let assignment = io_reader.read_inputs(input_path, assignment);
     let assignment = io_reader.read_outputs(output_path, assignment);
 
@@ -406,42 +398,6 @@ where
     
 }
 
-// trait BaseCircuit<C: Config>: Default + DumpLoadTwoVariables<Variable> + expander_compiler::frontend::Define<C> + Clone {}
-// impl<T, C: Config> BaseCircuit<C> for T
-// where
-//     T: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone,
-// {}
-
-// enum CircuitWrapper<T> {
-//     Configurable(Box<dyn ConfigurableCircuit>),
-//     Basic(T),
-// }
-// // Runner function, works on generic `T`
-// fn run_circuit_wrapper<T, C: Config>(mut circuit: CircuitWrapper<T>)
-// where
-//     T: BaseCircuit<C>,
-// {
-//     match &mut circuit {
-//         CircuitWrapper::Configurable(c) => {
-//             c.configure();
-//         }
-//         CircuitWrapper::Basic(_) => {
-//             println!("Not configurable.");
-//         }
-//     }
-
-//     println!("Running main circuit logic...");
-// }
-
-// fn wrap_configurable<T>(c: T) -> CircuitWrapper<T> 
-// where T: ConfigurableCircuit + 'static {
-//     CircuitWrapper::Configurable(Box::new(c))
-// }
-
-// fn wrap_basic<T>(c: T) -> CircuitWrapper<T> {
-//     CircuitWrapper::Basic(c)
-// }
-
 
 pub fn debug_witness<C: Config, I, CircuitDefaultType, CircuitType>(io_reader: &mut I, input_path: &str, output_path:&str, _witness_path: &str, circuit_path: &str)
 where
@@ -454,40 +410,29 @@ where
         + expander_compiler::frontend::Define<C>
         + Clone
 {
-    // GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    // let start = Instant::now();
-    println!("WITNESS SOLVER{:?}", format!("{}_witness_solver.txt", io_reader.get_path()));
-    println!("1");
-
-    // let file = std::fs::File::open(format!("{}_witness_solver.txt", io_reader.get_path())).unwrap();
     let file = std::fs::File::open(get_witness_solver_path(circuit_path)).unwrap();
     let reader = std::io::BufReader::new(file);
     let witness_solver = WitnessSolver::<C>::deserialize_from(reader).unwrap();
-    println!("2");
     
 
     let file = std::fs::File::open(circuit_path).unwrap();
-    // let file = std::fs::File::open(format!("{}_circuit.txt", io_reader.get_path())).unwrap();
     let reader = std::io::BufReader::new(file);
     let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
-    println!("TEST2 - {}",layered_circuit.num_public_inputs);
+
 
     let assignment = CircuitDefaultType::default();
-
     let assignment = io_reader.read_inputs(input_path, assignment);
     let assignment = io_reader.read_outputs(output_path, assignment);
-
     let assignments = vec![assignment.clone(); 1];
-    // panic!("TEST pre debug");
-    let circuit = CircuitType::default();
-    // TODO This line needs to be adjust to not be the defaults, if configurable is available
-    // circuit.configure();
+
+
+    let mut circuit = CircuitType::default();
+    configure_if_possible::<CircuitType>(&mut circuit);
     debug_eval(&circuit, &assignment, EmptyHintCaller);
 
+
     let witness = witness_solver.solve_witnesses(&assignments).unwrap();
-
     let output = layered_circuit.run(&witness);
-
     for x in output.iter() {
         assert_eq!(*x, true);
     }
@@ -755,7 +700,6 @@ where
     for (i, _) in public_vars.iter().enumerate(){
         let x = format!("{:?}", public_vars[i]);
         let y = format!("{:?}",expander_circuit.public_input[i]);
-        let z = format!("{:?}",expander_circuit.public_input[i]);
 
         // println!("{}", x);
         // println!("{}", y);
@@ -780,12 +724,6 @@ where
             return;
         }
     };
-
-    // println!("{:?}", claimed_v.);
-
-    
-
-
     // verify
     assert!(gkr::executor::verify::<C>(
         &mut expander_circuit,
@@ -807,65 +745,6 @@ where
     )
 }
 
-pub fn run_check_witness<C: Config, I, CircuitDefaultType>(circuit_path: &str, io_reader: &mut I, input_path: &str, output_path:&str, witness_path: &str, proof_path: &str)
-where
-    I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
-    CircuitDefaultType: Default
-        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
-        + Clone + 
-{
-    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    let start = Instant::now();
-
-    // let file = std::fs::File::open(format!("{}_circuit.txt", name)).unwrap();
-    let file = std::fs::File::open(circuit_path).unwrap();
-
-    let reader = std::io::BufReader::new(file);
-    let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
-
-    let mut expander_circuit = layered_circuit.export_to_expander_flatten();
-
-
-    let file = std::fs::File::open(witness_path).unwrap();
-    let reader = std::io::BufReader::new(file);
-    let witness = Witness::<C>::deserialize_from(reader).unwrap();
-
-    let (simd_input, simd_public_input) = witness.to_simd();
-
-    expander_circuit.layers[0].input_vals = simd_input;
-    expander_circuit.public_input = simd_public_input.clone();
-    let assignment = CircuitDefaultType::default();
-    let assignment = io_reader.read_inputs(input_path, assignment);
-    let assignment = io_reader.read_outputs(output_path, assignment);
-
-    // let mut vars: Vec<<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField> = Vec::new();
-    let mut vars: Vec<_> = Vec::new();
-
-    let mut public_vars: Vec<_> = Vec::new();
-    assignment.dump_into(&mut vars, &mut public_vars);
-
-    for (i, _) in public_vars.iter().enumerate(){
-        let x = format!("{:?}", public_vars[i]);
-        let y = format!("{:?}",expander_circuit.public_input[i]);
-        println!("{}", x);
-        println!("{}", y);
-        //TODO This can potentially be improved
-        assert_eq!(x,y);
-    }
-
-
-    println!("Checked witness against circuit inputs and outputs");
-    println!(
-        "Peak Memory used Overall : {:.2}",
-        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
-    );
-    let duration = start.elapsed();
-    println!(
-        "Time elapsed: {}.{} seconds",
-        duration.as_secs(),
-        duration.subsec_millis()
-    )
-}
 
 pub fn run_verify_no_circuit<C: Config, I, CircuitDefaultType>(name: &str)
 where
@@ -900,8 +779,6 @@ where
     let proof_and_claimed_v: Vec<u8> = Vec::deserialize_from(reader).unwrap();
     // let proof_and_claimed_v: Vec<u8> = from_reader(reader).unwrap();
 
-
-
     let (proof, claimed_v) = match gkr::executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v) {
         Ok((proof, claimed_v)) => (proof, claimed_v),
         Err(_) => {
@@ -933,194 +810,14 @@ where
 }
 
 
-
-fn run_debug<C: Config, I, CircuitType, CircuitDefaultType>(io_reader: &mut I)
-where
-    I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
-    CircuitType: Default
-        + DumpLoadTwoVariables<Variable>
-        // + expander_compiler::frontend::Define<C>
-        + Clone
-        + Define<C>,
-    CircuitDefaultType: Default
-        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
-        + Clone,
-{
-    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    let start = Instant::now();
-    let matches = Command::new("File Copier")
-        .version("1.0")
-        .about("Copies content from input file to output file")
-        .arg(
-            Arg::new("input")
-                .help("The input file to read from")
-                .required(true) // This argument is required
-                .index(1), // Positional argument (first argument)
-        )
-        .arg(
-            Arg::new("output")
-                .help("The output file to write to")
-                .required(true) // This argument is also required
-                .index(2), // Positional argument (second argument)
-        )
-        .get_matches();
-
-    let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
-    let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
-
-    // let compile_result: CompileResult<C> = compile(&CircuitType::default()).unwrap();
-    let compile_result =
-        compile(&CircuitType::default(), CompileOptions::default()).unwrap();
-    println!(
-        "Peak Memory used Overall : {:.2}",
-        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
-    );
-    let duration = start.elapsed();
-    println!(
-        "Time elapsed: {}.{} seconds",
-        duration.as_secs(),
-        duration.subsec_millis()
-    );
-    let CompileResult {
-        witness_solver,
-        layered_circuit,
-    } = compile_result;
-
-    let assignment = CircuitDefaultType::default();
-    // let _input_reader = FileReader {
-    //     path: input_path.clone(),
-    // };
-    // let _output_reader = FileReader {
-    //     path: output_path.clone(),
-    // };
-    let assignment = io_reader.read_inputs(input_path, assignment);
-    let assignment = io_reader.read_outputs(output_path, assignment);
-
-    let assignments = vec![assignment.clone(); 1];
-    let witness = witness_solver.solve_witnesses(&assignments).unwrap();
-    let _output = layered_circuit.run(&witness);
-
-    debug_eval(&CircuitType::default(), &assignment, EmptyHintCaller);
-}
-
-
-// trait IsConfigurable {
-//     fn run(&self);
-// }
-
-// trait NotConfigurable {
-//     fn run(&self);
-// }
 pub trait ConfigurableCircuit {
     fn configure(&mut self);
 }
-pub trait NonConfigurableCircuit {
-}
-pub struct Configurable<T>(T);
-pub struct NonConfigurable<T>(T);
-trait IsConfigurable {
-    // fn configure(&mut self);
-}
-trait NotConfigurable {
-    fn run(&self);
-}
-pub trait RunBehavior<C> {
-    fn run_compile(circuit_path: &str);
-}
-impl<T> IsConfigurable for T where T: ConfigurableCircuit {}
-
-impl<C, CircuitType> RunBehavior<C> for CircuitType
-where
-    C: Config,
-    CircuitType: Default
-    + DumpLoadTwoVariables<Variable>
-    + Define<C>
-    + Clone
-    + ConfigurableCircuit
-    // + IsConfigurable,
-{
-    fn run_compile(circuit_path: &str) {
-        GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-        let start = Instant::now();
-        
-        // let compile_result: CompileResult<C> = compile(&CircuitType::default()).unwrap();
-        println!("TESTESTTEST");
-        
-        let mut circuit = CircuitType::default();
-        println!("{:?}", circuit.num_vars());
-
-        circuit.configure();
-        println!("{:?}", circuit.num_vars());
-        // let compile_result: CompileResult<BN254Config> = compile(&circuit, CompileOptions::default()).unwrap();
-        let compile_result: CompileResult<C> =
-            compile(&circuit, CompileOptions::default()).unwrap();
-        println!("TEST - {}", compile_result.layered_circuit.num_public_inputs);
-        println!(
-            "Peak Memory used Overall : {:.2}",
-            GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
-        );
-        let duration = start.elapsed();
-
-        // let file = std::fs::File::create(format!("{}_circuit.txt", name)).unwrap();
-        let file = std::fs::File::create(circuit_path).unwrap();
-
-        let writer = std::io::BufWriter::new(file);
-        compile_result.layered_circuit.serialize_into(writer).unwrap();
-
-        let file = std::fs::File::create(get_witness_solver_path(circuit_path)).unwrap();
-        // let file = std::fs::File::create(format!("{}_witness_solver.txt", name)).unwrap();
-        let writer = std::io::BufWriter::new(file);
-        compile_result.witness_solver.serialize_into(writer).unwrap();
 
 
-        println!(
-            "Time elapsed: {}.{} seconds",
-            duration.as_secs(),
-            duration.subsec_millis()
-        );
-    }
-}
-
-impl<C, CircuitType> RunBehavior<C> for NonConfigurable<CircuitType>
-where
-    C: Config,
-    CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone,
-{
-    fn run_compile(circuit_path: &str) {
-        GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-        let start = Instant::now();
-        
-        // let compile_result: CompileResult<C> = compile(&CircuitType::default()).unwrap();
-        let circuit = CircuitType::default();
-
-        let compile_result =
-            compile(&circuit, CompileOptions::default()).unwrap();
-        println!(
-            "Peak Memory used Overall : {:.2}",
-            GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
-        );
-        let duration = start.elapsed();
-
-        // let file = std::fs::File::create(format!("{}_circuit.txt", name)).unwrap();
-        let file = std::fs::File::create(circuit_path).unwrap();
-
-        let writer = std::io::BufWriter::new(file);
-        compile_result.layered_circuit.serialize_into(writer).unwrap();
-
-        let file = std::fs::File::create(get_witness_solver_path(circuit_path)).unwrap();
-        // let file = std::fs::File::create(format!("{}_witness_solver.txt", name)).unwrap();
-        let writer = std::io::BufWriter::new(file);
-        compile_result.witness_solver.serialize_into(writer).unwrap();
-
-
-        println!(
-            "Time elapsed: {}.{} seconds",
-            duration.as_secs(),
-            duration.subsec_millis()
-        );
-    }
-}
-
+//This solution requires specialization. If specialization is broken on any given release, we can replace configure_if_possible, to take in a bool. 
+// The bool can be passed from bin main into handle args and into the relevant functions that call configure_if_possible for a manual implementation. 
+// For ease of use, I prefer the current solution, however if it proves to cause problems, we can replace it
 trait MaybeConfigure {
     fn maybe_configure(&mut self);
 }
@@ -1236,14 +933,7 @@ where
             // let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
             let circuit_path = matches.get_one::<String>("circuit_path").unwrap(); //"outputs/reward_output.json"
 
-            // <(CircuitType, PhantomData<C>) as RunBehavior<C>>::run_compile(circuit_path);
-            // Configurable::<CircuitType>::run_compile(&circuit_path);
-            // WrappedCircuitType::run_compile(circuit_path);
-            // Configurable::<CircuitType>::run_compile(circuit_path);
-            // CircuitType::run_compile(circuit_path);
-            // <CircuitType as RunBehavior<C>>::run_compile(&circuit_path);
             run_compile_and_serialize::<C,CircuitType>(&circuit_path);
-            // compile_circ(circuit_name, demo);
         }
         "run_gen_witness" => {
 
@@ -1257,6 +947,15 @@ where
 
             // debug_bn254::<BN254Config, _, CircuitType>(file_reader);
 
+        }
+        "run_debug_witness" => {
+
+            let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
+            let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
+            // let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
+            let witness_path = matches.get_one::<String>("witness").unwrap(); //"outputs/reward_output.json"
+            let circuit_path = matches.get_one::<String>("circuit_path").unwrap(); //"outputs/reward_output.json"
+            debug_witness::<C, _, CircuitDefaultType, CircuitType>(file_reader, input_path, output_path, &witness_path, circuit_path);
         }
         "run_prove_witness" => {
             // let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"

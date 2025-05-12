@@ -29,11 +29,23 @@ class MatrixHadamardProduct(Circuit):
         self.matrix_a = torch.randint(low=0, high=100, size=(self.N_ROWS_A,self.N_COLS_A)) # (m, n) array of random integers between 0 and 100
         self.matrix_b = torch.randint(low=0, high=100, size=(self.N_ROWS_B,self.N_COLS_B)) # (m, n) array of random integers between 0 and 100
 
+        self.scaling = 21
+        self.scale_base = 2
+        self.input_variables = ["matrix_a", "matrix_b"]
+
         '''
         #######################################################################################################
         #######################################################################################################
         #######################################################################################################
         '''
+
+    @property
+    def matrix_a_shape(self):
+        return [self.N_ROWS_A, self.N_COLS_A]
+    
+    @property
+    def matrix_b_shape(self):
+        return (self.N_ROWS_B,self.N_COLS_B)
     
     def get_inputs(self):
         return {'matrix_a': self.matrix_a, 'matrix_b': self.matrix_b}
