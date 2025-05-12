@@ -157,8 +157,59 @@ where
     let start = Instant::now();
     
     // let compile_result: CompileResult<C> = compile(&CircuitType::default()).unwrap();
+
+    let mut circuit = CircuitType::default();
+    configure_if_possible::<CircuitType>(&mut circuit);
+
+    // circuit.output = vec![vec![Variable::default(); 64 * 8]; N_HASHES];
+    // circuit.out = vec![vec![Variable::default(); 32 * 8]; N_HASHES];
+
+    
+
     let compile_result =
-        compile(&CircuitType::default(), CompileOptions::default()).unwrap();
+        compile(&circuit, CompileOptions::default()).unwrap();
+    println!(
+        "Peak Memory used Overall : {:.2}",
+        GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+    );
+    let duration = start.elapsed();
+
+    // let file = std::fs::File::create(format!("{}_circuit.txt", name)).unwrap();
+    let file = std::fs::File::create(circuit_path).unwrap();
+
+    let writer = std::io::BufWriter::new(file);
+    compile_result.layered_circuit.serialize_into(writer).unwrap();
+
+    let file = std::fs::File::create(get_witness_solver_path(circuit_path)).unwrap();
+    // let file = std::fs::File::create(format!("{}_witness_solver.txt", name)).unwrap();
+    let writer = std::io::BufWriter::new(file);
+    compile_result.witness_solver.serialize_into(writer).unwrap();
+
+
+    println!(
+        "Time elapsed: {}.{} seconds",
+        duration.as_secs(),
+        duration.subsec_millis()
+    );
+}
+
+
+pub fn run_compile_and_serialize_configurable<C: Config, CircuitType>(circuit_path: &str)
+where
+    CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone + ConfigurableCircuit,
+{
+    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+    let start = Instant::now();
+    
+    // let compile_result: CompileResult<C> = compile(&CircuitType::default()).unwrap();
+    let mut circuit = CircuitType::default();
+    // circuit.output = vec![vec![Variable::default(); 64 * 8]; N_HASHES];
+    // 
+    
+    circuit.configure(); 
+
+    let compile_result =
+        compile(&circuit, CompileOptions::default()).unwrap();
     println!(
         "Peak Memory used Overall : {:.2}",
         GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
@@ -355,6 +406,43 @@ where
     
 }
 
+// trait BaseCircuit<C: Config>: Default + DumpLoadTwoVariables<Variable> + expander_compiler::frontend::Define<C> + Clone {}
+// impl<T, C: Config> BaseCircuit<C> for T
+// where
+//     T: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone,
+// {}
+
+// enum CircuitWrapper<T> {
+//     Configurable(Box<dyn ConfigurableCircuit>),
+//     Basic(T),
+// }
+// // Runner function, works on generic `T`
+// fn run_circuit_wrapper<T, C: Config>(mut circuit: CircuitWrapper<T>)
+// where
+//     T: BaseCircuit<C>,
+// {
+//     match &mut circuit {
+//         CircuitWrapper::Configurable(c) => {
+//             c.configure();
+//         }
+//         CircuitWrapper::Basic(_) => {
+//             println!("Not configurable.");
+//         }
+//     }
+
+//     println!("Running main circuit logic...");
+// }
+
+// fn wrap_configurable<T>(c: T) -> CircuitWrapper<T> 
+// where T: ConfigurableCircuit + 'static {
+//     CircuitWrapper::Configurable(Box::new(c))
+// }
+
+// fn wrap_basic<T>(c: T) -> CircuitWrapper<T> {
+//     CircuitWrapper::Basic(c)
+// }
+
+
 pub fn debug_witness<C: Config, I, CircuitDefaultType, CircuitType>(io_reader: &mut I, input_path: &str, output_path:&str, _witness_path: &str, circuit_path: &str)
 where
     I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
@@ -368,31 +456,36 @@ where
 {
     // GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     // let start = Instant::now();
-    // println!("{:?}", format!("{}_witness_solver.txt", io_reader.get_path()));
+    println!("WITNESS SOLVER{:?}", format!("{}_witness_solver.txt", io_reader.get_path()));
+    println!("1");
+
     // let file = std::fs::File::open(format!("{}_witness_solver.txt", io_reader.get_path())).unwrap();
     let file = std::fs::File::open(get_witness_solver_path(circuit_path)).unwrap();
     let reader = std::io::BufReader::new(file);
     let witness_solver = WitnessSolver::<C>::deserialize_from(reader).unwrap();
+    println!("2");
+    
 
     let file = std::fs::File::open(circuit_path).unwrap();
     // let file = std::fs::File::open(format!("{}_circuit.txt", io_reader.get_path())).unwrap();
     let reader = std::io::BufReader::new(file);
     let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
+    println!("TEST2 - {}",layered_circuit.num_public_inputs);
 
     let assignment = CircuitDefaultType::default();
-    // let _input_reader = FileReader {
-    //     path: input_path.clone(),
-    // };
-    // let _output_reader = FileReader {
-    //     path: output_path.clone(),
-    // };
+
     let assignment = io_reader.read_inputs(input_path, assignment);
     let assignment = io_reader.read_outputs(output_path, assignment);
 
     let assignments = vec![assignment.clone(); 1];
+    // panic!("TEST pre debug");
+    let circuit = CircuitType::default();
+    // TODO This line needs to be adjust to not be the defaults, if configurable is available
+    // circuit.configure();
+    debug_eval(&circuit, &assignment, EmptyHintCaller);
+
     let witness = witness_solver.solve_witnesses(&assignments).unwrap();
 
-    debug_eval(&CircuitType::default(), &assignment, EmptyHintCaller);
     let output = layered_circuit.run(&witness);
 
     for x in output.iter() {
@@ -911,198 +1004,148 @@ where
 }
 
 
-
-
-// pub fn run_gf2<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::GF2Config>>(file_reader: &mut Filereader)
-// where
-//     CircuitDefaultType: std::default::Default
-//     + DumpLoadTwoVariables<<expander_compiler::frontend::GF2Config as expander_compiler::frontend::Config>::CircuitField>
-//     + std::clone::Clone,
-//     CircuitType: std::default::Default +
-//     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-//     + expander_compiler::frontend::Define<expander_compiler::frontend::GF2Config>
-//     + std::clone::Clone,
-// {
-//     let matches: clap::ArgMatches = Command::new("File Copier")
-//         .version("1.0")
-//         .about("Copies content from input file to output file")
-//         // .arg(
-//         //     Arg::new("type")
-//         //         .help("The type of main runner we want to run")
-//         //         .required(true) // This argument is required
-//         //         .index(1), // Positional argument (first argument)
-//         // )
-//         .arg(
-//             Arg::new("input")
-//                 .help("The input file to read from")
-//                 .required(true) // This argument is required
-//                 .index(1), // Positional argument (first argument)
-//         )
-//         .arg(
-//             Arg::new("output")
-//                 .help("The output file to write to")
-//                 .required(true) // This argument is also required
-//                 .index(2), // Positional argument (second argument)
-//         )
-//         .get_matches();
-
-//     let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
-//     let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
-//     run_main::<GF2Config, Filereader, CircuitType, CircuitDefaultType>(file_reader, &input_path, &output_path);
-//     // run_main::<GF2Config, GF2ExtConfigSha2Raw, Filereader, CircuitType, CircuitDefaultType>(file_reader);
-
+// trait IsConfigurable {
+//     fn run(&self);
 // }
 
-// pub fn run_m31<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::M31Config>>(file_reader: &mut Filereader)
-// where
-//     CircuitDefaultType: std::default::Default
-//     + DumpLoadTwoVariables<<expander_compiler::frontend::M31Config as expander_compiler::frontend::Config>::CircuitField>
-//     + std::clone::Clone,
-//     CircuitType: std::default::Default +
-//     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-//     + expander_compiler::frontend::Define<expander_compiler::frontend::M31Config>
-//     + std::clone::Clone,
-// {
-//     let matches: clap::ArgMatches = Command::new("File Copier")
-//         .version("1.0")
-//         .about("Copies content from input file to output file")
-//         // .arg(
-//         //     Arg::new("type")
-//         //         .help("The type of main runner we want to run")
-//         //         .required(true) // This argument is required
-//         //         .index(1), // Positional argument (first argument)
-//         // )
-//         .arg(
-//             Arg::new("input")
-//                 .help("The input file to read from")
-//                 .required(true) // This argument is required
-//                 .index(1), // Positional argument (first argument)
-//         )
-//         .arg(
-//             Arg::new("output")
-//                 .help("The output file to write to")
-//                 .required(true) // This argument is also required
-//                 .index(2), // Positional argument (second argument)
-//         )
-//         .get_matches();
-
-//     let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
-//     let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
-//     run_main::<M31Config, Filereader, CircuitType, CircuitDefaultType>(file_reader, &input_path, &output_path);
-//     // run_main::<M31Config, M31ExtConfigSha2Raw, Filereader, CircuitType, CircuitDefaultType>(file_reader);
-
+// trait NotConfigurable {
+//     fn run(&self);
 // }
+pub trait ConfigurableCircuit {
+    fn configure(&mut self);
+}
+pub trait NonConfigurableCircuit {
+}
+pub struct Configurable<T>(T);
+pub struct NonConfigurable<T>(T);
+trait IsConfigurable {
+    // fn configure(&mut self);
+}
+trait NotConfigurable {
+    fn run(&self);
+}
+pub trait RunBehavior<C> {
+    fn run_compile(circuit_path: &str);
+}
+impl<T> IsConfigurable for T where T: ConfigurableCircuit {}
 
-// pub fn run_bn254<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut Filereader)
-// where
-//     CircuitDefaultType: std::default::Default
-//     + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>
-//     + std::clone::Clone,
+impl<C, CircuitType> RunBehavior<C> for CircuitType
+where
+    C: Config,
+    CircuitType: Default
+    + DumpLoadTwoVariables<Variable>
+    + Define<C>
+    + Clone
+    + ConfigurableCircuit
+    // + IsConfigurable,
+{
+    fn run_compile(circuit_path: &str) {
+        GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+        let start = Instant::now();
+        
+        // let compile_result: CompileResult<C> = compile(&CircuitType::default()).unwrap();
+        println!("TESTESTTEST");
+        
+        let mut circuit = CircuitType::default();
+        println!("{:?}", circuit.num_vars());
 
-//     CircuitType: std::default::Default +
-//     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-//     + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
-//     // + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::BN254Config>
-//     + std::clone::Clone,
-// {
-//     let matches: clap::ArgMatches = Command::new("File Copier")
-//         .version("1.0")
-//         .about("Copies content from input file to output file")
-//         // .arg(
-//         //     Arg::new("type")
-//         //         .help("The type of main runner we want to run")
-//         //         .required(true) // This argument is required
-//         //         .index(1), // Positional argument (first argument)
-//         // )
-//         .arg(
-//             Arg::new("input")
-//                 .help("The input file to read from")
-//                 .required(true) // This argument is required
-//                 .index(1), // Positional argument (first argument)
-//         )
-//         .arg(
-//             Arg::new("output")
-//                 .help("The output file to write to")
-//                 .required(true) // This argument is also required
-//                 .index(2), // Positional argument (second argument)
-//         )
-//         .get_matches();
+        circuit.configure();
+        println!("{:?}", circuit.num_vars());
+        // let compile_result: CompileResult<BN254Config> = compile(&circuit, CompileOptions::default()).unwrap();
+        let compile_result: CompileResult<C> =
+            compile(&circuit, CompileOptions::default()).unwrap();
+        println!("TEST - {}", compile_result.layered_circuit.num_public_inputs);
+        println!(
+            "Peak Memory used Overall : {:.2}",
+            GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+        );
+        let duration = start.elapsed();
 
-//     let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
-//     let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
-//     run_main::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader, &input_path, &output_path);
-//     // run_main::<BN254Config, BN254ConfigSha2Hyrax, Filereader, CircuitType, CircuitDefaultType>(file_reader);
-  
-//     // run_main::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
+        // let file = std::fs::File::create(format!("{}_circuit.txt", name)).unwrap();
+        let file = std::fs::File::create(circuit_path).unwrap();
 
-//     // run_compile_and_serialize::<BN254Config, CircuitType>();
+        let writer = std::io::BufWriter::new(file);
+        compile_result.layered_circuit.serialize_into(writer).unwrap();
 
-
-//     // run_rest::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
-
-//     // run_witness_and_proof::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
-//     // run_verify::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
-// }
-
-// // pub fn run_bn254_seperate<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut Filereader)
-// // where
-// //     CircuitDefaultType: std::default::Default
-// //     + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>
-// //     + std::clone::Clone,
-
-// //     CircuitType: std::default::Default +
-// //     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-// //     + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
-// //     // + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::BN254Config>
-// //     + std::clone::Clone,
-// // {
-
-// //     run_compile_and_serialize::<BN254Config, CircuitType>(file_reader.get_path());
-
-// //     let split_whole_proof = true;
-
-// //     if split_whole_proof{
-// //         run_witness_and_proof::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
-// //         run_verify_no_circuit::<BN254Config, Filereader, CircuitDefaultType>(file_reader.get_path());
-// //     }
-// //     else{
-// //         run_rest::<BN254Config, Filereader, CircuitDefaultType>(file_reader);
-// //         run_verify::<BN254Config, Filereader, CircuitDefaultType>(file_reader.get_path());
-// //     }
-// // }
-
-// pub fn compile_dummy_circuit<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut Filereader)
-// where
-//     CircuitDefaultType: std::default::Default
-//     + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>
-//     + std::clone::Clone,
-
-//     CircuitType: std::default::Default +
-//     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-//     + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
-//     // + expander_compiler::frontend::GenericDefine<expander_compiler::frontend::BN254Config>
-//     + std::clone::Clone,
-// {
-
-//     run_compile_and_serialize::<BN254Config, CircuitType>(file_reader.get_path());
-// }
+        let file = std::fs::File::create(get_witness_solver_path(circuit_path)).unwrap();
+        // let file = std::fs::File::create(format!("{}_witness_solver.txt", name)).unwrap();
+        let writer = std::io::BufWriter::new(file);
+        compile_result.witness_solver.serialize_into(writer).unwrap();
 
 
+        println!(
+            "Time elapsed: {}.{} seconds",
+            duration.as_secs(),
+            duration.subsec_millis()
+        );
+    }
+}
 
-// pub fn debug_bn254<CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, expander_compiler::frontend::BN254Config>>(file_reader: &mut Filereader)
-// where
-//     CircuitDefaultType: std::default::Default
-//     + DumpLoadTwoVariables<<expander_compiler::frontend::BN254Config as expander_compiler::frontend::Config>::CircuitField>
-//     + std::clone::Clone,
+impl<C, CircuitType> RunBehavior<C> for NonConfigurable<CircuitType>
+where
+    C: Config,
+    CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone,
+{
+    fn run_compile(circuit_path: &str) {
+        GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
+        let start = Instant::now();
+        
+        // let compile_result: CompileResult<C> = compile(&CircuitType::default()).unwrap();
+        let circuit = CircuitType::default();
 
-//     CircuitType: std::default::Default +
-//     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
-//     // + std::clone::Clone + GenericDefine<expander_compiler::frontend::BN254Config>,
-// // + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
-//     + std::clone::Clone + Define<expander_compiler::frontend::BN254Config>,
-// {
-//     run_debug::<BN254Config, Filereader, CircuitType, CircuitDefaultType>(file_reader);
-// }
+        let compile_result =
+            compile(&circuit, CompileOptions::default()).unwrap();
+        println!(
+            "Peak Memory used Overall : {:.2}",
+            GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
+        );
+        let duration = start.elapsed();
+
+        // let file = std::fs::File::create(format!("{}_circuit.txt", name)).unwrap();
+        let file = std::fs::File::create(circuit_path).unwrap();
+
+        let writer = std::io::BufWriter::new(file);
+        compile_result.layered_circuit.serialize_into(writer).unwrap();
+
+        let file = std::fs::File::create(get_witness_solver_path(circuit_path)).unwrap();
+        // let file = std::fs::File::create(format!("{}_witness_solver.txt", name)).unwrap();
+        let writer = std::io::BufWriter::new(file);
+        compile_result.witness_solver.serialize_into(writer).unwrap();
+
+
+        println!(
+            "Time elapsed: {}.{} seconds",
+            duration.as_secs(),
+            duration.subsec_millis()
+        );
+    }
+}
+
+trait MaybeConfigure {
+    fn maybe_configure(&mut self);
+}
+
+// Default impl: do nothing
+impl<T> MaybeConfigure for T {
+    default fn maybe_configure(&mut self) {
+        // Not configurable
+    }
+}
+
+// Special impl: if also ConfigurableCircuit, call configure()
+impl<T> MaybeConfigure for T
+where
+    T: ConfigurableCircuit,
+{
+    fn maybe_configure(&mut self) {
+        self.configure();
+    }
+}
+
+fn configure_if_possible<T: MaybeConfigure>(circuit: &mut T) {
+    circuit.maybe_configure();
+}
+
 
 pub fn handle_args<C: Config,CircuitType, CircuitDefaultType, Filereader: IOReader<CircuitDefaultType, C>>(file_reader: &mut  Filereader) 
 where
@@ -1114,7 +1157,8 @@ where
     expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
     // + std::clone::Clone + GenericDefine<expander_compiler::frontend::BN254Config>,
 // + expander_compiler::frontend::Define<expander_compiler::frontend::BN254Config>
-    + std::clone::Clone + Define<C>
+    + std::clone::Clone + Define<C> //+ RunBehavior<C>,
+    // WrappedCircuitType: RunBehavior<C>
     {
 
     let matches: clap::ArgMatches = Command::new("File Copier")
@@ -1192,12 +1236,17 @@ where
             // let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"
             let circuit_path = matches.get_one::<String>("circuit_path").unwrap(); //"outputs/reward_output.json"
 
-
-            
+            // <(CircuitType, PhantomData<C>) as RunBehavior<C>>::run_compile(circuit_path);
+            // Configurable::<CircuitType>::run_compile(&circuit_path);
+            // WrappedCircuitType::run_compile(circuit_path);
+            // Configurable::<CircuitType>::run_compile(circuit_path);
+            // CircuitType::run_compile(circuit_path);
+            // <CircuitType as RunBehavior<C>>::run_compile(&circuit_path);
             run_compile_and_serialize::<C,CircuitType>(&circuit_path);
             // compile_circ(circuit_name, demo);
         }
         "run_gen_witness" => {
+
             let input_path = matches.get_one::<String>("input").unwrap(); // "inputs/reward_input.json"
             let output_path = matches.get_one::<String>("output").unwrap(); //"outputs/reward_output.json"
             // let circuit_name = matches.get_one::<String>("name").unwrap(); //"outputs/reward_output.json"

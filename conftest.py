@@ -29,8 +29,6 @@ def build_models_to_test():
     models = []
     for cls in all_subclasses(Circuit):
         name = cls.__name__.lower()
-        print(name)
-
         models.append((name, cls))
     return models
 # MODELS_TO_TEST = [

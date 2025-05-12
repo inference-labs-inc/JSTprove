@@ -189,7 +189,8 @@ def run_cargo_command(binary_name, command_type, args=None, dev_mode = False, be
         cmd = ['cargo', 'run', '--bin', binary_name, '--release']
     else:
         cmd = [f'./target/release/{binary_name}']
-
+    env = os.environ.copy()
+    env["RUST_BACKTRACE"] = "1"
     
     # Add command type
     cmd.append(command_type)
@@ -208,7 +209,7 @@ def run_cargo_command(binary_name, command_type, args=None, dev_mode = False, be
         if bench:
             stop_event, monitor_thread, monitor_results = start_memory_collection(binary_name)
         start_time = time()
-        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True, env = env)
         end_time = time() 
         if bench:
             memory = end_memory_collection(stop_event, monitor_thread, monitor_results)
