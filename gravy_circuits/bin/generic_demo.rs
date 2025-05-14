@@ -61,7 +61,7 @@ lazy_static! {
 }
 
 declare_circuit!(ConvCircuit {
-    input_arr: [[[[PublicVariable; 28]; 28]; 4]; 1], // shape (m, n)
+    input_arr: [[[[PublicVariable]]]], // shape (m, n)
     outputs: [[PublicVariable]], // shape (m, k)
     // dummy: [PublicVariable; 10]
 });
@@ -79,7 +79,8 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
         let alpha_2_v = api.mul(scaling_factor, two_v);
 
         // Bring the weights into the circuit as constants
-        let mut out = four_d_array_to_vec(self.input_arr);
+        // let mut out = four_d_array_to_vec(self.input_arr);
+        let mut out = self.input_arr.to_vec();
         // api.display("1", input_arr[0][0][0][0]);
         
         // Conv 1
@@ -143,8 +144,10 @@ impl ConfigurableCircuit for ConvCircuit<Variable> {
             self.outputs = vec![vec![Variable::default(); WEIGHTS_INPUT.output_shape[1]]; WEIGHTS_INPUT.output_shape[0]];
         }
         else{
-            panic!("Bad shape")
+            panic!("Only output shape 2 has been implemented")
         }
+        self.input_arr = vec![vec![vec![vec![Variable::default(); 28]; 28]; 4]; 1];
+
 
     }
 }
@@ -160,21 +163,28 @@ impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
         >(file_path);
 
         // Assign inputs to assignment
+        let mut out: Vec<Vec<Vec<Vec<CircuitField::<C>>>>> = Vec::new();
+
         for (i, dim1) in data.input.iter().enumerate() {
+            let mut out_1: Vec<Vec<Vec<CircuitField::<C>>>> = Vec::new();
             for (j, dim2) in dim1.iter().enumerate() {
+                let mut out_2:Vec<Vec<CircuitField::<C>>> = Vec::new();
                 for (k, dim3) in dim2.iter().enumerate() {
+                    let mut out_3:Vec<CircuitField::<C>> = Vec::new();
                     for (l, &element) in dim3.iter().enumerate() {
                         if element < 0 {
-                            assignment.input_arr[i][j][k][l] =
-                                CircuitField::<C>::from(element.abs() as u32).neg();
+                            out_3.push(CircuitField::<C>::from(element.abs() as u32).neg());
                         } else {
-                            assignment.input_arr[i][j][k][l] =
-                                CircuitField::<C>::from(element.abs() as u32);
+                            out_3.push(CircuitField::<C>::from(element.abs() as u32));
                         }
                     }
+                    out_2.push(out_3);
                 }
+                out_1.push(out_2);
             }
+            out.push(out_1);
         }
+        assignment.input_arr = out;
         // Return the assignment
         assignment
     }

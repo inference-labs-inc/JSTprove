@@ -87,12 +87,13 @@ class GenericDemo(ZKModel):
         self.required_keys = ["input"]
         self.scale_base = 2
         self.scaling = 21
+        self.outputs = 20
 
 
         self.input_shape = [1, 4, 28, 28]
         self.rescale_config = {self.layers[-1]: False}
         self.model_type = CNNDemo
-        self.model_params = {"layers": self.layers}
+        self.model_params = {"layers": self.layers, "n_actions": 10}
 
 
     def get_weights(self, flatten = False):
