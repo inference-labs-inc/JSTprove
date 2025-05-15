@@ -7,6 +7,8 @@ import inspect
 
 from python_testing.utils.pytorch_helpers import PytorchConverter, QuantizedConv2d, QuantizedLinear
 
+# python_testing/utils/pytorch_helpers
+
 # ---------- Save & Load Models ----------
 
 @patch("torch.save")
@@ -98,8 +100,6 @@ def test_clone_model_with_init_args():
 
 # ---------- quantize_model ----------
 
-# @patch("python_testing.utils.pytorch_helpers.QuantizedConv2d", side_effect=lambda m, s, rescale_output: f"QuantConv({m},{s})")
-# @patch("python_testing.utils.pytorch_helpers.QuantizedLinear", side_effect=lambda m, s, rescale_output: f"QuantLinear({m},{s})")
 def test_quantize_model():
     class Dummy(nn.Module):
         def __init__(self):
@@ -124,6 +124,7 @@ def test_get_weights(mock_used_layers, mock_shapes):
             super().__init__()
             self.fc1 = nn.Linear(4, 4)
             self.conv1 = nn.Conv2d(1, 1, 3)
+            self.pool = nn.MaxPool2d(3)
     model = Dummy()
 
     c = PytorchConverter()
@@ -132,7 +133,7 @@ def test_get_weights(mock_used_layers, mock_shapes):
     c.input_shape = (1, 1, 5, 5)
 
     conv = nn.Conv2d(1, 1, 3, padding=1)
-    linear = nn.Linear(2, 2)
+    linear = nn.Linear(4, 4)
 
     c.quantized_model = c.quantize_model(model, scale=100, rescale_config={"fc1": True})
 

@@ -136,7 +136,9 @@ class Circuit:
                 input_file = self._gen_witness_preprocessing(input_file, output_file, quantized_path, write_json, is_scaled)
                 run_end_to_end(circuit_name, circuit_path, input_file, output_file, proof_system, dev_mode)
             elif run_type == RunType.COMPILE_CIRCUIT:
+                print("TEST")
                 self._compile_preprocessing(weights_path, quantized_path)
+                print("TEST2")
                 compile_circuit(circuit_name, circuit_path, proof_system, dev_mode, bench)
             elif run_type == RunType.GEN_WITNESS:
                 input_file = self._gen_witness_preprocessing(input_file, output_file, quantized_path, write_json, is_scaled)

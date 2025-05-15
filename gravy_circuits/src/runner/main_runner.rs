@@ -386,9 +386,10 @@ where
     );
     let duration = start.elapsed();
     println!(
-        "Time elapsed: {}.{} seconds",
+        "Time elapsed: {}.{} seconds {}",
         duration.as_secs(),
-        duration.subsec_millis()
+        duration.subsec_millis(),
+        duration.as_nanos()
     );
 
     let file = std::fs::File::create(witness_path).unwrap();

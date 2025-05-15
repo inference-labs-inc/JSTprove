@@ -233,7 +233,7 @@ class PytorchConverter():
             return (x,) if isinstance(x, int) else tuple(x)
         weights = {}
         weights["scaling"] = self.scaling
-        weights["sacle_base"] = self.scale_base
+        weights["scale_base"] = self.scale_base
 
         
         name_counters = {}
@@ -319,7 +319,8 @@ class ZKModel(PytorchConverter, GeneralLayerFunctions, Circuit):
                      ecc = True,
                      circuit_path: Optional[str] = None,
                      write_json: Optional[bool] = False,
-                     bench = False):
+                     bench = False,
+                     quantized_path = None):
         """Simulates running the model by passing inputs through layers with weights."""
         print("Running circuit...")
 
@@ -328,4 +329,4 @@ class ZKModel(PytorchConverter, GeneralLayerFunctions, Circuit):
         if not weights_path:
             weights_path = f"weights/{circuit_name}_weights.json"
 
-        self.parse_proof_run_type(witness_file, input_file, proof_file, public_path, verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, run_type, dev_mode, ecc, write_json, bench)
+        self.parse_proof_run_type(witness_file, input_file, proof_file, public_path, verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, quantized_path, run_type, dev_mode, ecc, write_json, bench)
