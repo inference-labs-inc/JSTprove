@@ -86,7 +86,9 @@ class Circuit:
                      dev_mode = False,
                      ecc = True,
                      circuit_path: Optional[str] = None,
-                     write_json: Optional[bool] = False, bench = False):
+                     write_json: Optional[bool] = False, 
+                     bench = False,
+                     quantized_path = None):
         """
         Run the circuit with the specified run type.
         All file paths are handled by the decorator.
@@ -103,19 +105,21 @@ class Circuit:
 
         if not self._file_info:
             raise KeyError("Must make sure to specify _file_info")
+        # TODO may need to have a better way to get/store weights path
         weights_path = self._file_info.get("weights")
 
         # Run the appropriate proof operation based on run_type
         self.parse_proof_run_type(
 
             witness_file, input_file, proof_file, public_path, 
-            verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, run_type, dev_mode, ecc, write_json, bench
+            verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, quantized_path, run_type, dev_mode, ecc, write_json, bench,
+            
         )
         
         return 
     
     def parse_proof_run_type(self, witness_file, input_file, proof_path, public_path, 
-                             verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, run_type, dev_mode = False, ecc = True, write_json = False, bench = False):
+                             verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, quantized_path, run_type, dev_mode = False, ecc = True, write_json = False, bench = False):
         """
         Run the appropriate proof operation based on run_type.
         This function can be called directly if needed.
@@ -128,14 +132,14 @@ class Circuit:
                 prove_and_verify(witness_file, input_file, proof_path, public_path, 
                                 verification_key, circuit_name, proof_system, output_file, dev_mode, ecc)
             elif run_type == RunType.END_TO_END:
-                self._compile_preprocessing(weights_path)
-                input_file = self._gen_witness_preprocessing(input_file, output_file, write_json, is_scaled)
+                self._compile_preprocessing(weights_path, quantized_path)
+                input_file = self._gen_witness_preprocessing(input_file, output_file, quantized_path, write_json, is_scaled)
                 run_end_to_end(circuit_name, circuit_path, input_file, output_file, proof_system, dev_mode)
             elif run_type == RunType.COMPILE_CIRCUIT:
-                self._compile_preprocessing(weights_path)
+                self._compile_preprocessing(weights_path, quantized_path)
                 compile_circuit(circuit_name, circuit_path, proof_system, dev_mode, bench)
             elif run_type == RunType.GEN_WITNESS:
-                input_file = self._gen_witness_preprocessing(input_file, output_file, write_json, is_scaled)
+                input_file = self._gen_witness_preprocessing(input_file, output_file, quantized_path, write_json, is_scaled)
                 generate_witness(circuit_name, circuit_path, witness_file, input_file, output_file, proof_system, dev_mode, bench)
             elif run_type == RunType.PROVE_WITNESS:
                 generate_proof(circuit_name, circuit_path, witness_file, proof_path, proof_system, dev_mode, ecc = ecc, bench = bench)
@@ -286,10 +290,13 @@ class Circuit:
 
 
 
-    def _gen_witness_preprocessing(self, input_file, output_file, write_json, is_scaled):
+    def _gen_witness_preprocessing(self, input_file, output_file, quantized_path, write_json, is_scaled):
         # Rescale and reshape
+        if quantized_path:
+            self.load_quantized_model(quantized_path)
+        else:
+            self.load_quantized_model(self._file_info.get("quantized_model_path"))
 
-        self.load_quantized_model(self._file_info.get("quantized_model_path"))
         if write_json == True:
             inputs = self.get_inputs()
             output = self.get_outputs(inputs)
@@ -316,7 +323,7 @@ class Circuit:
             to_json(outputs, output_file)
         return input_file
     
-    def _compile_preprocessing(self, weights_path):
+    def _compile_preprocessing(self, weights_path, quantized_path):
         #### TODO Fix the next couple lines
         func_model_and_quantize = getattr(self, 'get_model_and_quantize', None)
         if callable(func_model_and_quantize):
@@ -326,7 +333,11 @@ class Circuit:
         else:
             weights = self.get_weights()
 
-        self.save_quantized_model(self._file_info.get("quantized_model_path"))
+        if quantized_path:
+            self.save_quantized_model(quantized_path)
+        else:
+            self.save_quantized_model(self._file_info.get("quantized_model_path"))
+
         if type(weights) == list:
             for (i, w) in enumerate(weights):
                 if i == 0:
@@ -339,71 +350,6 @@ class Circuit:
         else:
             raise NotImplementedError("Weights type is incorrect")
 
-    # # Individual operations that can be called separately
-    # def compile(self):
-    #     """Compile the circuit."""
-    #     if not self._file_info:
-    #         # Ensure we have file info
-    #         self.base_testing(RunType.COMPILE_CIRCUIT)
-    #         return
-        
-    #     compile_circuit(self._file_info['circuit_name'], self._file_info['proof_system'])
-
-    # def generate_witness(self):
-    #     """Generate witness for the circuit."""
-    #     if not self._file_info:
-    #         # Ensure we have file info
-    #         self.base_testing(RunType.GEN_WITNESS)
-    #         return
-        
-    #     generate_witness(
-    #         self._file_info['circuit_name'],
-    #         self._file_info['witness_file'],
-    #         self._file_info['input_file'],
-    #         self._file_info['output_file'],
-    #         self._file_info['proof_system']
-    #     )
-    
-    # def generate_verification(self):
-    #     """Generate verification for the circuit."""
-    #     if not self._file_info:
-    #         # Ensure we have file info
-    #         self.base_testing(RunType.GEN_VERIFY)
-    #         return
-        
-    #     generate_verification(self._file_info['circuit_name'], self._file_info['proof_system'])
-    
-    # def run_proof(self):
-    #     """Run proof for the circuit."""
-    #     if not self._file_info:
-    #         # Ensure we have file info
-    #         self.base_testing()
-    #         return
-        
-    #     prove_and_verify(
-    #         self._file_info['witness_file'],
-    #         self._file_info['input_file'],
-    #         self._file_info['proof_path'],
-    #         self._file_info['public_path'],
-    #         self._file_info['verification_key'],
-    #         self._file_info['circuit_name'],
-    #         self._file_info['proof_system'],
-    #         self._file_info['output_file']
-    #     )
-    
-    # def run_end_to_end(self):
-    #     """Run end-to-end proof."""
-    #     if not self._file_info:
-    #         # Ensure we have file info
-    #         self.base_testing(RunType.END_TO_END)
-    #         return
-        
-    #     run_end_to_end(
-    #         self._file_info['circuit_name'],
-    #         self._file_info['input_file'],
-    #         self._file_info['output_file'],
-    #         self._file_info['proof_system']
-    #     )
     def save_model(self, file_path: str):
         pass
     

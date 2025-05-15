@@ -266,10 +266,6 @@ class PytorchConverter():
                 weights.setdefault("maxpool_ceil_mode", []).append(module.ceil_mode)
                 weights.setdefault("maxpool_input_shape", []).append(to_tuple(input_shapes[disambiguated_name]))
 
-            # if isinstance(module, nn.ReLU):
-            #     pass
-        # import sys
-        # sys.exit()
 
         return weights
     

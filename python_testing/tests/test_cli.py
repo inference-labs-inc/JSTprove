@@ -131,7 +131,8 @@ def test_main_executes_operations(mock_ops, mock_paths, mock_load, mock_args):
         witness=None,
         proof=None,
         ecc = None,
-        bench = None
+        bench = None,
+        quantized_path = "test_quantized_path.pt"
     )
     circuit_instance = MagicMock()
     mock_load.return_value = circuit_instance
@@ -148,5 +149,6 @@ def test_main_executes_operations(mock_ops, mock_paths, mock_load, mock_args):
         witness_file=None,
         proof_file=None,
         ecc = None,
-        bench = None
+        bench = None,
+        quantized_path = "test_quantized_path.pt"
     )

@@ -100,11 +100,8 @@ class GenericDemo(ZKModel):
         weights =  super().get_weights(flatten=False)
         weights["layers"] = self.layers
         weights["output_shape"] = [1,10]
+        weights["input_shape"] = self.input_shape
         return weights
-    # def get_outputs(self, inputs):
-    #     x =  super().get_outputs(inputs)
-    #     print(x.shape)
-    #     sys.exit()
 
     
 

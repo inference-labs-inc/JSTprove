@@ -162,8 +162,26 @@ impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
             InputData,
         >(file_path);
 
+        assignment.input_arr = vec![vec![vec![vec![CircuitField::<C>::from(0); 28]; 28]; 4]; 1];
         // Assign inputs to assignment
-        let mut out: Vec<Vec<Vec<Vec<CircuitField::<C>>>>> = Vec::new();
+        for (i, dim1) in data.input.iter().enumerate() {
+            for (j, dim2) in dim1.iter().enumerate() {
+                for (k, dim3) in dim2.iter().enumerate() {
+                    for (l, &element) in dim3.iter().enumerate() {
+                        if element < 0 {
+                            assignment.input_arr[i][j][k][l] =
+                                CircuitField::<C>::from(element.abs() as u32).neg();
+                        } else {
+                            assignment.input_arr[i][j][k][l] =
+                                CircuitField::<C>::from(element.abs() as u32);
+                        }
+                    }
+                }
+            }
+        }
+
+        /*
+let mut out: Vec<Vec<Vec<Vec<CircuitField::<C>>>>> = Vec::new();
 
         for (i, dim1) in data.input.iter().enumerate() {
             let mut out_1: Vec<Vec<Vec<CircuitField::<C>>>> = Vec::new();
@@ -185,6 +203,8 @@ impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
             out.push(out_1);
         }
         assignment.input_arr = out;
+
+         */
         // Return the assignment
         assignment
     }

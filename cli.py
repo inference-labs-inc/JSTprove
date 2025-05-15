@@ -162,6 +162,7 @@ def parse_args():
     parser.add_argument("--bench", action="store_true", help="Benchmark memory")
 
 
+
     # Listing and search path flag (used for both listing and dynamic loading)
     parser.add_argument("--list_circuits", action="store_true", help="List all available circuit files.")
     parser.add_argument("--circuit_search_path", type=str, help="Directory to search for circuits (relative to project root).")
@@ -172,6 +173,7 @@ def parse_args():
     parser.add_argument("--output", type=str, help="Path to the output JSON file.")
     parser.add_argument("--witness", type=str, help="Optional path to witness file")
     parser.add_argument("--proof", type=str, help="Optional path to proof file")
+    parser.add_argument("--quantized_model", type=str, help="Path to the quantized pytorch model")
     parser.add_argument("--pattern", type=str, help="Optional pattern for input/output filenames with '{circuit}' placeholder.")
     
     # Circuit module and class specification
@@ -236,6 +238,7 @@ def main():
             proof_file=args.proof,
             ecc=args.ecc,
             bench = args.bench,
+            quantized_path = args.quantized_path
         )
 
 if __name__ == "__main__":

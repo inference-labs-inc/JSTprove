@@ -102,19 +102,19 @@ def test_parse_proof_dispatch_logic(
 
 
     # COMPILE_CIRCUIT
-    c.parse_proof_run_type(
+    c.parse_proof_run_type( 
         "w", "i", "p", "pub", "vk", "circuit", "path", ZKProofSystems.Expander,
-        "out", "weights", RunType.COMPILE_CIRCUIT
+        "out", "weights", "q", RunType.COMPILE_CIRCUIT
     )
     mock_compile.assert_called_once()
-    c._compile_preprocessing.assert_called_once_with("weights")
+    c._compile_preprocessing.assert_called_once_with("weights", "q")
     args = mock_compile.call_args[0]
     assert args == ('circuit', "path", ZKProofSystems.Expander, False, False)
 
     # GEN_WITNESS
     c.parse_proof_run_type(
         "w", "i", "p", "pub", "vk", "circuit", "path", ZKProofSystems.Expander,
-        "out", "weights", RunType.GEN_WITNESS
+        "out", "weights", "q", RunType.GEN_WITNESS
     )
     mock_witness.assert_called_once()
     c._gen_witness_preprocessing.assert_called()
@@ -124,7 +124,7 @@ def test_parse_proof_dispatch_logic(
     # PROVE_WITNESS
     c.parse_proof_run_type(
         "w", "i", "p", "pub", "vk", "circuit", "path", ZKProofSystems.Expander,
-        "out", "weights", RunType.PROVE_WITNESS
+        "out", "weights", "q", RunType.PROVE_WITNESS
     )
     mock_proof.assert_called_once()
     args = mock_proof.call_args[0]
@@ -139,7 +139,7 @@ def test_parse_proof_dispatch_logic(
     # GEN_VERIFY
     c.parse_proof_run_type(
         "w", "i", "p", "pub", "vk", "circuit", "path", ZKProofSystems.Expander,
-        "out", "weights", RunType.GEN_VERIFY
+        "out", "weights", "q", RunType.GEN_VERIFY
     )
     mock_verify.assert_called_once()
     args = mock_verify.call_args[0]
@@ -152,7 +152,7 @@ def test_parse_proof_dispatch_logic(
     # END_TO_END
     c.parse_proof_run_type(
         "w", "i", "p", "pub", "vk", "circuit", "path", ZKProofSystems.Expander,
-        "out", "weights", RunType.END_TO_END
+        "out", "weights", "q", RunType.END_TO_END
     )
     mock_end_to_end.assert_called_once()
     assert c._compile_preprocessing.call_count >= 2
@@ -161,7 +161,7 @@ def test_parse_proof_dispatch_logic(
     # BASE_TESTING
     c.parse_proof_run_type(
         "w", "i", "p", "pub", "vk", "circuit", "path", ZKProofSystems.Expander,
-        "out", "weights", RunType.BASE_TESTING
+        "out", "weights", "q", RunType.BASE_TESTING
     )
     mock_prove_and_verify.assert_called_once()
 
@@ -219,7 +219,7 @@ def test_gen_witness_preprocessing_write_json_true(mock_to_json):
     c.format_inputs = MagicMock(return_value={"input": 1})
     c.format_outputs = MagicMock(return_value={"output": 2})
 
-    c._gen_witness_preprocessing("in.json", "out.json", write_json=True, is_scaled=True)
+    c._gen_witness_preprocessing("in.json", "out.json", None, write_json=True, is_scaled=True)
 
     c.load_quantized_model.assert_called_once_with("quant.pt")
     c.get_inputs.assert_called_once()
@@ -245,7 +245,7 @@ def test_gen_witness_preprocessing_write_json_false(mock_to_json):
     c.get_outputs = MagicMock(return_value="mock_outputs")
     c.format_outputs = MagicMock(return_value={"output": 99})
 
-    c._gen_witness_preprocessing("in.json", "out.json", write_json=False, is_scaled=False)
+    c._gen_witness_preprocessing("in.json", "out.json", None, write_json=False, is_scaled=False)
 
     c.load_quantized_model.assert_called_once_with("quant.pt")
     c.get_inputs_from_file.assert_called_once_with("in.json", is_scaled=False)
@@ -264,7 +264,7 @@ def test_compile_preprocessing_weights_dict(mock_to_json):
     c.get_weights = MagicMock(return_value={"a": 1})
     c.save_quantized_model = MagicMock()
 
-    c._compile_preprocessing("weights.json")
+    c._compile_preprocessing("weights.json", None)
 
     c.get_model_and_quantize.assert_called_once()
     c.get_weights.assert_called_once()
@@ -280,7 +280,7 @@ def test_compile_preprocessing_weights_list(mock_to_json):
     c.get_weights = MagicMock(return_value=[{"w1": 1}, {"w2": 2}, {"w3": 3}])
     c.save_quantized_model = MagicMock()
 
-    c._compile_preprocessing("weights.json")
+    c._compile_preprocessing("weights.json", None)
 
     assert mock_to_json.call_count == 3
     mock_to_json.assert_any_call({"w1": 1}, "weights.json")
@@ -296,7 +296,7 @@ def test_compile_preprocessing_raises_on_bad_weights():
     c.save_quantized_model = MagicMock()
 
     with pytest.raises(NotImplementedError, match="Weights type is incorrect"):
-        c._compile_preprocessing("weights.json")
+        c._compile_preprocessing("weights.json", None)
 
 # ---------- Test check attributes --------------
 def test_check_attributes_true():
@@ -366,11 +366,31 @@ def test_base_testing_calls_parse_proof_run_type_correctly(mock_parse):
         circuit_name="circuit_model",
         output_file="o.json",
         circuit_path="circuit_path.txt",
+        quantized_path="quantized_path.pt",
         write_json=True
     )
 
     mock_parse.assert_called_once()
     args = mock_parse.call_args[0]
+    expected_args = ("w.wtns", 
+                    "i.json", 
+                    "p.json", 
+                    "pub.json",
+                    "vk.key", 
+                    "circuit_model", 
+                    "circuit_path.txt",
+                    None, 
+                    "o.json", 
+                    "weights/model_weights.json", 
+                    "quantized_path.pt", 
+                    RunType.GEN_WITNESS,
+                    False, 
+                    True, 
+                    True,
+                    False
+    )
+    
+    assert args == expected_args
     assert args[0] == "w.wtns"
     assert args[1] == "i.json"
     assert args[2] == "p.json"
@@ -381,10 +401,11 @@ def test_base_testing_calls_parse_proof_run_type_correctly(mock_parse):
     assert args[7] is None  # proof_system not specified
     assert args[8] == "o.json"
     assert args[9] == "weights/model_weights.json"
-    assert args[10] == RunType.GEN_WITNESS
-    assert args[11] is False
-    assert args[12] is True
+    assert args[10] == "quantized_path.pt"
+    assert args[11] == RunType.GEN_WITNESS
+    assert args[12] is False
     assert args[13] is True
+    assert args[14] is True
 
 @patch.object(Circuit, "parse_proof_run_type")
 def test_base_testing_uses_default_circuit_path(mock_parse):
@@ -431,7 +452,7 @@ def test_parse_proof_run_type_invalid_run_type(capsys):
     c.parse_proof_run_type(
         "w.wtns", "i.json", "p.json", "pub.json",
         "vk.key", "model", "path.txt", None, "out.json",
-        "weights.json", "NOT_A_REAL_RUN_TYPE"
+        "weights.json", "quantized_model.pt","NOT_A_REAL_RUN_TYPE"
     )
     captured = capsys.readouterr()
     assert "Unknown entry: NOT_A_REAL_RUN_TYPE" in captured.out
@@ -440,7 +461,7 @@ def test_parse_proof_run_type_invalid_run_type(capsys):
 
 
 # @patch.object(Circuit, "parse_proof_run_type", side_effect = Exception("Boom!"))
-@patch("python_testing.circuit_components.circuit_helpers.compile_circuit", side_effect=Exception("Boom!"))
+@patch("python_testing.circuit_components.circuit_helpers.compile_circuit", side_effect=Exception("Boom goes the dynamite!"))
 @patch.object(Circuit, "_compile_preprocessing")
 def test_parse_proof_run_type_catches_internal_exception(mock_compile_preprocessing, mock_compile, capsys):
     c = Circuit()
@@ -449,12 +470,12 @@ def test_parse_proof_run_type_catches_internal_exception(mock_compile_preprocess
     c.parse_proof_run_type(
         "w.wtns", "i.json", "p.json", "pub.json",
         "vk.key", "model", "path.txt", None, "out.json",
-        "weights.json", RunType.COMPILE_CIRCUIT
+        "weights.json", "quantized_path.pt", RunType.COMPILE_CIRCUIT
     )
 
     captured = capsys.readouterr()
     print(captured.out)
-    assert "Warning: Operation RunType.COMPILE_CIRCUIT failed: Boom!" in captured.out
+    assert "Warning: Operation RunType.COMPILE_CIRCUIT failed: Boom goes the dynamite!" in captured.out
     assert "Input and output files have still been created correctly." in captured.out
 
 
