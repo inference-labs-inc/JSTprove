@@ -69,39 +69,17 @@ class GenericDemo(ZKModel):
                 self.layers.append(f"fc{i}")
         else:
             self.layers = layers
-        
-
-
-        ###### The following are needed for all models
-        ###### self.model
-        ###### self.input_shape
-        ###### self.name
-        ###### self.required_keys (these are the keys in the input)
-        ###### self.scaling
-
-        ###### Maybe specify this in a post init?
-        ###### self.quantized_model
-        ###### self.rescale_config - must specify if any layers are not to be rescaled
 
         self.name = "generic_demo"
         self.required_keys = ["input"]
         self.scale_base = 2
         self.scaling = 21
-        self.outputs = 20
 
 
         self.input_shape = [1, 4, 28, 28]
         self.rescale_config = {self.layers[-1]: False}
         self.model_type = CNNDemo
         self.model_params = {"layers": self.layers, "n_actions": 10}
-
-
-    def get_weights(self, flatten = False):
-        weights =  super().get_weights(flatten=False)
-        weights["layers"] = self.layers
-        weights["output_shape"] = [1,10]
-        weights["input_shape"] = self.input_shape
-        return weights
 
     
 

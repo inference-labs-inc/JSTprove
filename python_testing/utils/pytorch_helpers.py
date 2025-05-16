@@ -122,6 +122,10 @@ class PytorchConverter():
 
     def save_quantized_model(self, file_path: str):
         # torch.save(self.quantized_model.state_dict(), file_path)
+        # print(self.model.state_dict().keys())
+        # import sys
+        # sys.exit()
+        # raise
         torch.save(self.quantized_model, file_path)
 
     
@@ -159,19 +163,33 @@ class PytorchConverter():
 
         return used_layers
 
-    def get_input_shapes_by_layer(self, model: nn.Module, input_shape):
+    def get_input_and_output_shapes_by_layer(self, model: nn.Module, input_shape):
         hooks = []
         input_shapes = {}
+        output_shapes = {}
         name_count = {}  # regular dict instead of defaultdict
+
 
         def register_hook(name):
             def hook(module, input, output):
                 if name not in name_count:
                     name_count[name] = 0
                 count = name_count[name]
-                input_shapes[f"{name}_{count}"] = input[0].shape
+                key = f"{name}_{count}"
+
+                input_shapes[key] = input[0].shape
+                output_shapes[key] = output.shape if isinstance(output, torch.Tensor) else [o.shape for o in output]
+
                 name_count[name] += 1
             return hook
+        # def register_hook(name):
+        #     def hook(module, input, output):
+        #         if name not in name_count:
+        #             name_count[name] = 0
+        #         count = name_count[name]
+        #         input_shapes[f"{name}_{count}"] = input[0].shape
+        #         name_count[name] += 1
+        #     return hook
 
         for name, module in model.named_modules():
             if len(list(module.children())) == 0:
@@ -186,7 +204,7 @@ class PytorchConverter():
 
         for h in hooks:
             h.remove()
-        return input_shapes
+        return input_shapes, output_shapes
     
     def clone_model_with_same_args(self, model):
         cls = type(model)
@@ -225,7 +243,7 @@ class PytorchConverter():
             in_shape = [1, np.prod(self.input_shape)]
         else:
             in_shape = self.input_shape
-        input_shapes = self.get_input_shapes_by_layer(self.quantized_model, in_shape)  # example input
+        input_shapes, output_shapes = self.get_input_and_output_shapes_by_layer(self.quantized_model, in_shape)  # example input
 
         used_layers = self.get_used_layers(self.quantized_model, in_shape) 
         # Can combine the above into 1 function
@@ -235,6 +253,8 @@ class PytorchConverter():
         weights["scaling"] = self.scaling
         weights["scale_base"] = self.scale_base
         weights["input_shape"] = self.input_shape
+        weights["layers"] = getattr(self, "layers", [])
+        
 
         weights["not_rescale_layers"] = []
         rescaled_layers = getattr(self, "rescale_config", {})
@@ -272,6 +292,8 @@ class PytorchConverter():
                 weights.setdefault("maxpool_padding", []).append(to_tuple(module.padding))
                 weights.setdefault("maxpool_ceil_mode", []).append(module.ceil_mode)
                 weights.setdefault("maxpool_input_shape", []).append(to_tuple(input_shapes[disambiguated_name]))
+
+            weights["output_shape"] = output_shapes[disambiguated_name]
 
 
         return weights
