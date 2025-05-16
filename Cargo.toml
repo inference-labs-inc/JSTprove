@@ -34,6 +34,8 @@ gkr_hashers = { git = "https://github.com/PolyhedraZK/Expander", branch = "main"
 goldilocks = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
 serdes = { git = "https://github.com/PolyhedraZK/Expander", branch = "main"}
 
+ndarray = "0.16.1"
+
 
 # [workspace.metadata.cross.target.x86_64-unknown-linux-gnu]
 # # Add custom pre-build steps or configurations if needed

@@ -42,6 +42,7 @@ def model_fixture(request, tmp_path_factory):
 
     temp_dir = tmp_path_factory.mktemp(name)
     circuit_path = temp_dir / f"{name}_circuit.txt"
+    quantized_path = temp_dir / f"{name}_quantized.pt"
 
     model = model_class(*args, **kwargs)
 
@@ -49,6 +50,7 @@ def model_fixture(request, tmp_path_factory):
         run_type=RunType.COMPILE_CIRCUIT,
         dev_mode=True,
         circuit_path=str(circuit_path),
+        quantized_path = quantized_path
     )
 
     return {
@@ -57,6 +59,7 @@ def model_fixture(request, tmp_path_factory):
         "circuit_path": circuit_path,
         "temp_dir": temp_dir,
         "model": model,
+        "quantized_model": quantized_path, 
     }
 
 @pytest.fixture
@@ -98,6 +101,7 @@ def temp_proof_file(tmp_path):
     # After the test is done, remove it
     if os.path.exists(output_path):
         output_path.unlink()
+
 
 def add_1_to_first_element(x):
     """Safely adds 1 to the first element of any scalar/list/tensor."""

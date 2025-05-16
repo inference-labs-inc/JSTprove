@@ -28,6 +28,7 @@ gkr_engine.workspace = true
 gkr_hashers.workspace = true
 goldilocks.workspace = true
 serdes.workspace = true
+ndarray.workspace = true
 
 
 [dev-dependencies]

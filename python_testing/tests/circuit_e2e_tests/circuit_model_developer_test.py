@@ -25,7 +25,8 @@ def test_witness_dev(model_fixture, capsys, temp_witness_file, temp_input_file, 
         circuit_path=str(model_fixture["circuit_path"]),
         input_file = temp_input_file,
         output_file = temp_output_file,
-        write_json=True
+        write_json=True,
+        quantized_path = str(model_fixture["quantized_model"]),
     )
 
     captured = capsys.readouterr()
@@ -64,7 +65,9 @@ def test_witness_wrong_outputs_dev(model_fixture, capsys, temp_witness_file, tem
         circuit_path=str(model_fixture["circuit_path"]),
         input_file = temp_input_file,
         output_file = temp_output_file,
-        write_json=True
+        write_json=True,
+        quantized_path = str(model_fixture["quantized_model"]),
+
     )
 
     captured = capsys.readouterr()
@@ -89,7 +92,9 @@ def test_witness_prove_verify_true_inputs_dev(model_fixture, temp_witness_file, 
         circuit_path=str(model_fixture["circuit_path"]),
         input_file = temp_input_file,
         output_file = temp_output_file,
-        write_json=True
+        write_json=True,
+        quantized_path = str(model_fixture["quantized_model"]),
+
     )
     model.base_testing(
         run_type=RunType.PROVE_WITNESS,
@@ -99,6 +104,8 @@ def test_witness_prove_verify_true_inputs_dev(model_fixture, temp_witness_file, 
         input_file = temp_input_file,
         output_file = temp_output_file,
         proof_file = temp_proof_file,
+        quantized_path = str(model_fixture["quantized_model"]),
+
     )
     model.base_testing(
         run_type=RunType.GEN_VERIFY,
@@ -108,7 +115,7 @@ def test_witness_prove_verify_true_inputs_dev(model_fixture, temp_witness_file, 
         input_file = temp_input_file,
         output_file = temp_output_file,
         proof_file = temp_proof_file,
-
+        quantized_path = str(model_fixture["quantized_model"]),
     )
     # ASSERTIONS TODO
 
@@ -142,7 +149,8 @@ def test_witness_prove_verify_true_inputs_dev_expander_call(model_fixture, temp_
         circuit_path=str(model_fixture["circuit_path"]),
         input_file = temp_input_file,
         output_file = temp_output_file,
-        write_json=True
+        write_json=True,
+        quantized_path = str(model_fixture["quantized_model"]),
     )
     model.base_testing(
         run_type=RunType.PROVE_WITNESS,
@@ -152,7 +160,8 @@ def test_witness_prove_verify_true_inputs_dev_expander_call(model_fixture, temp_
         input_file = temp_input_file,
         output_file = temp_output_file,
         proof_file = temp_proof_file,
-        ecc = False
+        ecc = False,
+        quantized_path = str(model_fixture["quantized_model"]),
     )
     model.base_testing(
         run_type=RunType.GEN_VERIFY,
@@ -162,7 +171,8 @@ def test_witness_prove_verify_true_inputs_dev_expander_call(model_fixture, temp_
         input_file = temp_input_file,
         output_file = temp_output_file,
         proof_file = temp_proof_file,
-        ecc = False
+        ecc = False,
+        quantized_path = str(model_fixture["quantized_model"]),
     )
     # ASSERTIONS TODO
 
@@ -221,7 +231,9 @@ def test_witness_read_after_write_json(
         circuit_path=str(model_fixture["circuit_path"]),
         input_file=temp_input_file,
         output_file=temp_output_file,
-        write_json=True
+        write_json=True,
+        quantized_path = str(model_fixture["quantized_model"]),
+
     )
 
     if os.path.exists(temp_witness_file):
@@ -241,7 +253,9 @@ def test_witness_read_after_write_json(
         circuit_path=str(model_fixture["circuit_path"]),
         input_file=temp_input_file,
         output_file=temp_output_file,
-        write_json=False
+        write_json=False,
+        quantized_path = str(model_fixture["quantized_model"]),
+
     )
 
     # Step 3: Validate expected outputs and no errors
@@ -277,7 +291,9 @@ def test_witness_fresh_compile_dev(capsys, model_fixture, temp_witness_file, tem
         circuit_path=str(model_fixture["circuit_path"]),
         input_file = temp_input_file,
         output_file = temp_output_file,
-        write_json=True
+        write_json=True,
+        quantized_path = str(model_fixture["quantized_model"]),
+
     )
 
     captured = capsys.readouterr()
@@ -316,7 +332,9 @@ def test_witness_incorrect_input_shape(
         circuit_path=str(model_fixture["circuit_path"]),
         input_file=temp_input_file,
         output_file=temp_output_file,
-        write_json=True
+        write_json=True,
+        quantized_path = str(model_fixture["quantized_model"]),
+
     )
     assert os.path.exists(temp_witness_file)
     os.remove(temp_witness_file)
@@ -342,7 +360,9 @@ def test_witness_incorrect_input_shape(
         circuit_path=str(model_fixture["circuit_path"]),
         input_file=temp_input_file,
         output_file=temp_output_file,
-        write_json=False
+        write_json=False,
+        quantized_path = str(model_fixture["quantized_model"]),
+
     )
 
     # Step 3: Validate expected outputs and no errors
@@ -383,7 +403,9 @@ def test_witness_unscaled(
         circuit_path=str(model_fixture["circuit_path"]),
         input_file=temp_input_file,
         output_file=temp_output_file,
-        write_json=True
+        write_json=True,
+        quantized_path = str(model_fixture["quantized_model"]),
+
     )
     if os.path.exists(temp_witness_file):
         os.remove(temp_witness_file)
@@ -425,7 +447,9 @@ def test_witness_unscaled(
         circuit_path=str(model_fixture["circuit_path"]),
         input_file=temp_input_file,
         output_file=temp_output_file,
-        write_json=False
+        write_json=False,
+        quantized_path = str(model_fixture["quantized_model"]),
+
     )
 
     # Step 3: Validate expected outputs and no errors
@@ -478,7 +502,9 @@ def test_witness_unscaled_and_incorrect_shape_input(
         circuit_path=str(model_fixture["circuit_path"]),
         input_file=temp_input_file,
         output_file=temp_output_file,
-        write_json=True
+        write_json=True,
+        quantized_path = str(model_fixture["quantized_model"]),
+
     )
     if os.path.exists(temp_witness_file):
         os.remove(temp_witness_file)
@@ -531,7 +557,9 @@ def test_witness_unscaled_and_incorrect_shape_input(
         circuit_path=str(model_fixture["circuit_path"]),
         input_file=temp_input_file,
         output_file=temp_output_file,
-        write_json=False
+        write_json=False,
+        quantized_path = str(model_fixture["quantized_model"]),
+
     )
 
     # Step 3: Validate expected outputs and no errors
@@ -580,7 +608,9 @@ def test_witness_unscaled_and_incorrect_and_bad_named_input(
         circuit_path=str(model_fixture["circuit_path"]),
         input_file=temp_input_file,
         output_file=temp_output_file,
-        write_json=True
+        write_json=True,
+        quantized_path = str(model_fixture["quantized_model"]),
+
     )
     if os.path.exists(temp_witness_file):
         os.remove(temp_witness_file)
@@ -655,7 +685,9 @@ def test_witness_unscaled_and_incorrect_and_bad_named_input(
         circuit_path=str(model_fixture["circuit_path"]),
         input_file=temp_input_file,
         output_file=temp_output_file,
-        write_json=False
+        write_json=False,
+        quantized_path = str(model_fixture["quantized_model"]),
+
     )
 
     # Step 3: Validate expected outputs and no errors
@@ -705,7 +737,9 @@ def test_witness_wrong_name(
         circuit_path=str(model_fixture["circuit_path"]),
         input_file=temp_input_file,
         output_file=temp_output_file,
-        write_json=True
+        write_json=True,
+        quantized_path = str(model_fixture["quantized_model"]),
+
     )
     if os.path.exists(temp_witness_file):
         os.remove(temp_witness_file)
@@ -750,7 +784,8 @@ def test_witness_wrong_name(
         circuit_path=str(model_fixture["circuit_path"]),
         input_file=temp_input_file,
         output_file=temp_output_file,
-        write_json=False
+        write_json=False,
+        quantized_path = str(model_fixture["quantized_model"]),
     )
 
     # Step 3: Validate expected outputs and no errors

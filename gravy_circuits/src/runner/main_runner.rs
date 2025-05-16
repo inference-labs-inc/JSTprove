@@ -692,8 +692,6 @@ where
 
     // let mut vars: Vec<<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField> = Vec::new();
     let mut vars: Vec<_> = Vec::new();
-    println!("{:?}", simd_public_input);
-    println!("{:?}", simd_input);
 
 
     let mut public_vars: Vec<_> = Vec::new();

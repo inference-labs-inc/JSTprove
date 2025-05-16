@@ -234,6 +234,13 @@ class PytorchConverter():
         weights = {}
         weights["scaling"] = self.scaling
         weights["scale_base"] = self.scale_base
+        weights["input_shape"] = self.input_shape
+
+        weights["not_rescale_layers"] = []
+        rescaled_layers = getattr(self, "rescale_config", {})
+        for key in rescaled_layers.keys():
+            if not rescaled_layers[key]:
+                weights["not_rescale_layers"].append(key)
 
         
         name_counters = {}
