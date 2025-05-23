@@ -211,11 +211,13 @@ def run_cargo_command(binary_name, command_type, args=None, dev_mode = False, be
         start_time = time()
         result = subprocess.run(cmd, check=True, capture_output=True, text=True, env = env)
         end_time = time() 
+        print("\n--- BENCHMARK RESULTS ---")
+        print(f"Rust time taken: {end_time - start_time:.4f} seconds")
+
         if bench:
             memory = end_memory_collection(stop_event, monitor_thread, monitor_results)
-            print(memory)
+            print(f"Rust subprocess memory: {memory['total']:.2f} MB")
 
-        print(f"Time taken: {end_time - start_time:.4f} seconds")
         print(result.stdout)
 
         return result.returncode
@@ -312,7 +314,9 @@ def run_expander_exec(mode: str, circuit_file: str, witness_file: str, proof_fil
 def run_expander_raw(mode: str, circuit_file: str, witness_file: str, proof_file: str, pcs_type: str = "Raw", bench = False):
     assert mode in {"prove", "verify"}
 
-    # pcs_type = "Raw" #or Hyrax
+    pcs_type = "Raw" #or Hyrax
+    pcs_type = "Hyrax"
+
     env = os.environ.copy()
     env["RUSTFLAGS"] = "-C target-cpu=native"
     time_measure = "/usr/bin/time" 
@@ -349,9 +353,16 @@ def run_expander_raw(mode: str, circuit_file: str, witness_file: str, proof_file
     start_time = time()
     result = subprocess.run(args, env = env, capture_output=True, text=True)
     end_time = time() 
+
+    print("\n--- BENCHMARK RESULTS ---")
+    print(f"Rust time taken: {end_time - start_time:.4f} seconds")
+
     if bench:
         memory = end_memory_collection(stop_event, monitor_thread, monitor_results)
-        print(memory)
+        print(f"Rust subprocess memory: {memory['total']:.2f} MB")
+    # if bench:
+    #     memory = end_memory_collection(stop_event, monitor_thread, monitor_results)
+    #     print(memory)
 
 
     if result.returncode != 0:
@@ -457,7 +468,8 @@ def generate_proof(circuit_name, circuit_path, witness_file, proof_file,
                 mode="prove",
                 circuit_file=circuit_path,
                 witness_file=witness_file,
-                proof_file=proof_file
+                proof_file=proof_file,
+                bench = bench
             )
             
     elif proof_system == ZKProofSystems.Circom:
@@ -504,7 +516,8 @@ def generate_verification(circuit_name, circuit_path, input_file, output_file, w
                 mode="verify",
                 circuit_file=circuit_path,
                 witness_file=witness_file,
-                proof_file=proof_file
+                proof_file=proof_file,
+                bench = bench
             )
             
     elif proof_system == ZKProofSystems.Circom:

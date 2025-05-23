@@ -14,7 +14,7 @@ use gravy_circuits::circuit_functions::quantization::run_if_quantized_2d;
 use serde::Deserialize;
 use core::panic;
 use std::ops::Neg;
-use ndarray::{ArrayD, IxDyn, Order};
+use ndarray::IxDyn;
 
 
 use gravy_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
