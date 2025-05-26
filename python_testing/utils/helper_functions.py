@@ -315,7 +315,7 @@ def run_expander_raw(mode: str, circuit_file: str, witness_file: str, proof_file
     assert mode in {"prove", "verify"}
 
     pcs_type = "Raw" #or Hyrax
-    pcs_type = "Hyrax"
+    # pcs_type = "Hyrax"
 
     env = os.environ.copy()
     env["RUSTFLAGS"] = "-C target-cpu=native"

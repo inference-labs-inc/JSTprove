@@ -1,3 +1,4 @@
+from dataclasses import asdict, dataclass
 import inspect
 import json
 from typing import Optional
@@ -254,6 +255,11 @@ class PytorchConverter():
         weights["scale_base"] = self.scale_base
         weights["input_shape"] = self.input_shape
         weights["layers"] = getattr(self, "layers", [])
+        weights['layer_input_shapes'] = list(input_shapes.values())
+        weights['layer_output_shapes'] = list(output_shapes.values())
+        # print(input_shapes, output_shapes)
+        # import sys
+        # sys.exit()
         
 
         weights["not_rescale_layers"] = []

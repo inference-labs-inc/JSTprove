@@ -162,6 +162,7 @@ path = "bin/net/net_fc3.rs"
 [[bin]]
 name = "generic_demo"
 path = "bin/generic_demo.rs"
-# [[bin]]
-# name = "expander-exec"
-# path = "gkr/src/expander-exec.rs"
+
+[[bin]]
+name = "generic_demo_v2"
+path = "bin/generic_demo_v2.rs"

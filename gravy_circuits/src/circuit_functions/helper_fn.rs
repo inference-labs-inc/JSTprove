@@ -94,6 +94,7 @@ pub fn vec1_to_arrayd<T>(v: Vec<T>) -> ArrayD<T> {
 
 pub fn arrayd_to_vec2<T: Clone>(array: ArrayD<T>) -> Vec<Vec<T>> {
     // Convert to Array2 first
+    // panic!("{}", array.ndim());
     let array2 = array.into_dimensionality::<Ix2>()
         .expect("Expected 2D array");
 
