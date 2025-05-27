@@ -34,7 +34,11 @@ gkr_hashers = { git = "https://github.com/PolyhedraZK/Expander", branch = "main"
 goldilocks = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
 serdes = { git = "https://github.com/PolyhedraZK/Expander", branch = "main"}
 
-ndarray = "0.16.1"
+# ndarray = "0.16.1"
+
+ndarray = { version = "0.16.1", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+# serde_json = "1.0"
 
 
 # [workspace.metadata.cross.target.x86_64-unknown-linux-gnu]

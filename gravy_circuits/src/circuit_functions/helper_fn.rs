@@ -1,6 +1,6 @@
 use expander_compiler::frontend::*;
 use ethnum::U256;
-use ndarray::{ArrayD, Ix1, Ix2, Ix3, Ix4, IxDyn};
+use ndarray::{ArrayD, Ix1, Ix2, Ix3, Ix4, Ix5, IxDyn};
 
 /// Load in circuit constant given i64, negative values are represented by p-x and positive values are x
 pub fn load_circuit_constant<C: Config, Builder: RootAPI<C>>(
@@ -162,6 +162,44 @@ pub fn vec4_to_arrayd(v: Vec<Vec<Vec<Vec<Variable>>>>) -> ArrayD<Variable> {
     ArrayD::from_shape_vec(IxDyn(&[d1, d2, d3, d4]), flat).unwrap()
 }
 
+pub fn arrayd_to_vec5(array: ArrayD<Variable>) -> Vec<Vec<Vec<Vec<Vec<Variable>>>>> {
+    let array5 = array.into_dimensionality::<Ix5>()
+        .expect("Expected 5D array");
+
+    array5
+        .outer_iter()
+        .map(|d4| {
+            d4.outer_iter()
+                .map(|d3| {
+                    d3.outer_iter()
+                        .map(|d2| {
+                            d2.outer_iter()
+                                .map(|d1| d1.to_vec())
+                                .collect()
+                        })
+                        .collect()
+                })
+                .collect()
+        })
+        .collect()
+}
+
+pub fn vec5_to_arrayd(v: Vec<Vec<Vec<Vec<Vec<Variable>>>>>) -> ArrayD<Variable> {
+    let d1 = v.len();
+    let d2 = v[0].len();
+    let d3 = v[0][0].len();
+    let d4 = v[0][0][0].len();
+    let d5 = v[0][0][0][0].len();
+
+    let flat = v.into_iter()
+        .flat_map(|v4| v4.into_iter()
+            .flat_map(|v3| v3.into_iter()
+                .flat_map(|v2| v2.into_iter()
+                    .flatten())))
+        .collect();
+
+    ArrayD::from_shape_vec(IxDyn(&[d1, d2, d3, d4, d5]), flat).unwrap()
+}
 
 pub enum NestedVec<T> {
     D1(Vec<T>),

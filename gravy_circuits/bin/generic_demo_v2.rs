@@ -1,7 +1,8 @@
+use expander_compiler::circuit::layered::Input;
 use gravy_circuits::circuit_functions::convolution_fn::conv_4d_run;
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use gravy_circuits::circuit_functions::helper_fn::{arrayd_to_vec2, arrayd_to_vec4, load_circuit_constant, read_2d_weights, read_4d_weights, vec2_to_arrayd, vec4_to_arrayd};
+use gravy_circuits::circuit_functions::helper_fn::{arrayd_to_vec2, arrayd_to_vec4, load_circuit_constant, read_2d_weights, read_4d_weights, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd};
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use lazy_static::lazy_static;
 #[allow(unused_imports)]
@@ -12,9 +13,13 @@ use gravy_circuits::circuit_functions::matrix_computation::{
 };
 use gravy_circuits::circuit_functions::quantization::run_if_quantized_2d;
 use serde::Deserialize;
+use serde_json::Value;
 use core::panic;
+use std::fs::File;
+use std::io::Write;
 use std::ops::Neg;
-use ndarray::IxDyn;
+use ndarray::{ArrayD, IxDyn};
+use ndarray::Dimension;
 
 
 use gravy_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
@@ -52,7 +57,7 @@ struct Layer{
 
 #[derive(Deserialize, Clone)]
 struct InputData {
-    input: Vec<Vec<Vec<Vec<i64>>>>,
+    input: Value,
 }
 
 #[derive(Deserialize, Clone)]
@@ -75,7 +80,7 @@ lazy_static! {
 }
 
 declare_circuit!(ConvCircuit {
-    input_arr: [[[[PublicVariable]]]], // shape (m, n)
+    input_arr: [[[[[PublicVariable]]]]], // shape (m, n)
     outputs: [[PublicVariable]], // shape (m, k)
     // dummy: [PublicVariable; 10]
 });
@@ -95,7 +100,7 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
 
         // Bring the weights into the circuit as constants
         // let mut out: Vec<Vec<Vec<Vec<Variable>>>> = self.input_arr.to_vec();
-        let mut out = vec4_to_arrayd(self.input_arr.clone());
+        let mut out = vec5_to_arrayd(self.input_arr.clone());
 
 
         let mut layer_num = 0;
@@ -127,10 +132,14 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
                     }
                 }
             // panic!("{}", layer_num);
-                
-            if layer_num != 0{
-                // panic!("{}", layer_num);
-                if WEIGHTS_INPUT.layer_input_shapes[layer_num] != WEIGHTS_INPUT.layer_output_shapes[layer_num - 1]{
+            // panic!("{:#?}, {:#?}, {:#?}",&WEIGHTS_INPUT.layer_input_shapes[layer_num], out.raw_dim().as_array_view().as_slice().unwrap(), &WEIGHTS_INPUT.layer_input_shapes[layer_num] == out.raw_dim().as_array_view().as_slice().unwrap());// == out.raw_dim());
+            let raw_dim = out.raw_dim(); // Keep this alive
+            let dim_view = raw_dim.as_array_view(); // Borrow from that
+            let dim: &[usize] = dim_view.as_slice().unwrap(); // Now borrow is safe
+
+            // if layer_num != 0{
+                if WEIGHTS_INPUT.layer_input_shapes[layer_num] != dim{
+                // if WEIGHTS_INPUT.layer_input_shapes[layer_num] != WEIGHTS_INPUT.layer_output_shapes[layer_num - 1]{
                     let reshape_shape = &WEIGHTS_INPUT.layer_input_shapes[layer_num];
                     // panic!("{:#?}, {:#?}, {:#?}, {:#?}, {}",&WEIGHTS_INPUT.layer_input_shapes[layer_num], &WEIGHTS_INPUT.layer_output_shapes[layer_num - 1], reshape_shape, out.dim(), layer_num);
 
@@ -138,7 +147,7 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
                         .into_shape_with_order(IxDyn(&reshape_shape))
                         .expect("Shape mismatch: Cannot reshape into the given dimensions");
                 }
-            }
+            // }
 
             if layer.starts_with("conv"){
                 let i = conv_layer_num;
@@ -195,6 +204,26 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
             }
     }
 }
+
+
+fn flatten_recursive(value: &Value, out: &mut Vec<i64>) {
+    match value {
+        Value::Number(n) => {
+            out.push(n.as_i64().expect("Expected i64 number"));
+        }
+        Value::Array(arr) => {
+            for v in arr {
+                flatten_recursive(v, out);
+            }
+        }
+        _ => {
+            let mut file = File::create("foo.txt").unwrap();
+            file.write_all(format!("{:#?}",value).as_bytes()).unwrap();
+            panic!("Unexpected non-number value in array {:#?}", value)
+            
+        },
+    }
+}
 impl ConfigurableCircuit for ConvCircuit<Variable> {
     fn configure(&mut self) {
         // Change input and outputs as needed
@@ -216,16 +245,16 @@ impl ConfigurableCircuit for ConvCircuit<Variable> {
         let input_shape: Vec<usize> = WEIGHTS_INPUT.input_shape.clone();
     
         if input_shape.len() == 4{
-            self.input_arr = vec![vec![vec![vec![Variable::default(); input_shape[3]]; input_shape[2]];input_shape[1]]; input_shape[0]];
+            self.input_arr = vec![vec![vec![vec![vec![Variable::default(); input_shape[3]]; input_shape[2]];input_shape[1]]; input_shape[0]]];
         }
         else if input_shape.len() == 3{
-            self.input_arr = vec![vec![vec![vec![Variable::default(); input_shape[2]]; input_shape[1]];input_shape[0]]];
+            self.input_arr = vec![vec![vec![vec![vec![Variable::default(); input_shape[2]]; input_shape[1]];input_shape[0]]]];
         }
         else if input_shape.len() == 2{
-            self.input_arr = vec![vec![vec![vec![Variable::default(); input_shape[1]]; input_shape[0]]]];
+            self.input_arr = vec![vec![vec![vec![vec![Variable::default(); input_shape[1]]; input_shape[0]]]]];
         }
         else if input_shape.len() == 1{
-            self.input_arr = vec![vec![vec![vec![Variable::default(); input_shape[0]]]]];
+            self.input_arr = vec![vec![vec![vec![vec![Variable::default(); input_shape[0]]]]]];
         }
         else{
             panic!("Only 4 input shape dimensions has been implemented")
@@ -241,54 +270,45 @@ impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
         file_path: &str,
         mut assignment: ConvCircuit<CircuitField::<C>>,
     ) -> ConvCircuit<CircuitField::<C>> {
+        /*
+            TODO - Can rework this code potentially to speed up witness generation...
+         */
+
+
         let data: InputData = <FileReader as IOReader<ConvCircuit<_>, C>>::read_data_from_json::<
             InputData,
         >(file_path);
+        let mut flat = Vec::new();
+        flatten_recursive(&data.input, &mut flat);
 
-        assignment.input_arr = vec![vec![vec![vec![CircuitField::<C>::from(0); 28]; 28]; 4]; 1];
-        // Assign inputs to assignment
-        for (i, dim1) in data.input.iter().enumerate() {
-            for (j, dim2) in dim1.iter().enumerate() {
-                for (k, dim3) in dim2.iter().enumerate() {
-                    for (l, &element) in dim3.iter().enumerate() {
-                        if element < 0 {
-                            assignment.input_arr[i][j][k][l] =
-                                CircuitField::<C>::from(element.abs() as u32).neg();
-                        } else {
-                            assignment.input_arr[i][j][k][l] =
-                                CircuitField::<C>::from(element.abs() as u32);
-                        }
-                    }
-                }
-            }
+        let array: ArrayD<i64> = ArrayD::from_shape_vec(IxDyn(&WEIGHTS_INPUT.input_shape), flat).expect("Failed to create ArrayD");
+        
+        let mut shape = array.shape().to_vec();
+
+        // Pad with 1s to make it 5D
+        while shape.len() < 5 {
+            shape.push(1);
         }
 
-        /*
-let mut out: Vec<Vec<Vec<Vec<CircuitField::<C>>>>> = Vec::new();
+        let in_array = array.into_shape(IxDyn(&shape)).expect("Failed to reshape to 5D");
+        assignment.input_arr = vec![vec![vec![vec![vec![CircuitField::<C>::zero(); shape[4]];shape[3]];shape[2]];shape[1]];shape[0]];
+        
+        for (idx, &val) in in_array.indexed_iter() {
+            let converted = if val < 0 {
+                CircuitField::<C>::from(val.abs() as u32).neg()
+            } else {
+                CircuitField::<C>::from(val.abs() as u32)
+            };
 
-        for (i, dim1) in data.input.iter().enumerate() {
-            let mut out_1: Vec<Vec<Vec<CircuitField::<C>>>> = Vec::new();
-            for (j, dim2) in dim1.iter().enumerate() {
-                let mut out_2:Vec<Vec<CircuitField::<C>>> = Vec::new();
-                for (k, dim3) in dim2.iter().enumerate() {
-                    let mut out_3:Vec<CircuitField::<C>> = Vec::new();
-                    for (l, &element) in dim3.iter().enumerate() {
-                        if element < 0 {
-                            out_3.push(CircuitField::<C>::from(element.abs() as u32).neg());
-                        } else {
-                            out_3.push(CircuitField::<C>::from(element.abs() as u32));
-                        }
-                    }
-                    out_2.push(out_3);
-                }
-                out_1.push(out_2);
-            }
-            out.push(out_1);
+            // Assume data is 5D
+            let i = idx[0];
+            let j = idx[1];
+            let k = idx[2];
+            let l = idx[3];
+            let m = idx[4];
+
+            assignment.input_arr[i][j][k][l][m] = converted;
         }
-        assignment.input_arr = out;
-
-         */
-        // Return the assignment
         assignment
     }
     fn read_outputs(

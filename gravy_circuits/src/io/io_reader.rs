@@ -1,7 +1,7 @@
 use expander_compiler::frontend::internal::DumpLoadTwoVariables;
 use expander_compiler::frontend::Config;
 use serde::de::DeserializeOwned;
-use std::io::Read;
+use std::{any::type_name, io::Read};
 use gkr_engine::{GKREngine, FieldEngine};
 
 
@@ -26,7 +26,7 @@ where
         let mut contents = String::new();
         file.read_to_string(&mut contents)
             .expect("Unable to read file");
-
+        // panic!("{}", type_name::<I>());
         // Deserialize the JSON into the InputData struct
         let data: I = serde_json::from_str(&contents).unwrap();
 
