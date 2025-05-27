@@ -307,3 +307,43 @@ pub fn get_5d_circuit_inputs<C: Config>(
         other => panic!("Expected 5D vector, but got {:?}", other),
     }
 }
+
+pub fn get_2d_circuit_inputs<C: Config>(
+    input: &Value,
+    input_shape: &[usize],
+) -> Vec<Vec<CircuitField<C>>>{
+    let mut flat = Vec::new();
+    flatten_recursive(input, &mut flat);
+
+    // Pad the shape with 1s to ensure length 5
+    let mut shape = input_shape.to_vec();
+    while shape.len() < 2 {
+        shape.push(1);
+    }
+
+    // Create the ndarray from the flat vector and shape
+    let array: ArrayD<i64> = ArrayD::from_shape_vec(IxDyn(&shape), flat)
+        .expect("Failed to create ArrayD");
+
+    // Build the nested Vec structure
+    let nested = build_nd_vec::<C>(&shape).unwrap();
+
+    match nested {
+        AnyDimVec::D2(mut v) => {
+            for (idx, &val) in array.indexed_iter() {
+                let converted = if val < 0 {
+                    CircuitField::<C>::from(val.abs() as u32).neg()
+                } else {
+                    CircuitField::<C>::from(val.abs() as u32)
+                };
+
+                let i = idx[0];
+                let j = idx[1];
+
+                v[i][j] = converted;
+            }
+            v
+        }
+        other => panic!("Expected 5D vector, but got {:?}", other),
+    }
+}

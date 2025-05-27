@@ -3,7 +3,7 @@ use gkr_engine::{FieldEngine, GKREngine};
 use gravy_circuits::circuit_functions::convolution_fn::conv_4d_run;
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use gravy_circuits::circuit_functions::helper_fn::{arrayd_to_vec2, arrayd_to_vec4, build_nd_vec, flatten_recursive, get_5d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd, AnyDimVec};
+use gravy_circuits::circuit_functions::helper_fn::{arrayd_to_vec2, arrayd_to_vec4, build_nd_vec, flatten_recursive, get_2d_circuit_inputs, get_5d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd, AnyDimVec};
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use lazy_static::lazy_static;
 #[allow(unused_imports)]
@@ -262,7 +262,7 @@ impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
         let data: InputData = <FileReader as IOReader<ConvCircuit<_>, C>>::read_data_from_json::<
             InputData,
         >(file_path);
-        
+
         assignment.input_arr = get_5d_circuit_inputs::<C>(&data.input, &WEIGHTS_INPUT.input_shape);
 
         assignment
@@ -276,34 +276,7 @@ impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
             OutputData,
         >(file_path);
 
-        let mut flat = Vec::new();
-        flatten_recursive(&data.output, &mut flat);
-
-        let array: ArrayD<i64> = ArrayD::from_shape_vec(IxDyn(&WEIGHTS_INPUT.output_shape), flat).expect("Failed to create ArrayD");
-        
-        let mut shape = array.shape().to_vec();
-
-        // Pad with 1s to make it 5D
-        while shape.len() < 2 {
-            shape.push(1);
-        }
-
-        let in_array = array.into_shape(IxDyn(&shape)).expect("Failed to reshape to 5D");
-        assignment.outputs = vec![vec![CircuitField::<C>::zero(); shape[1]];shape[0]];
-
-        for (idx, &val) in in_array.indexed_iter() {
-            let converted = if val < 0 {
-                CircuitField::<C>::from(val.abs() as u32).neg()
-            } else {
-                CircuitField::<C>::from(val.abs() as u32)
-            };
-
-            // Assume data is 2D
-            let i = idx[0];
-            let j = idx[1];
-
-            assignment.outputs[i][j] = converted;
-        }
+        assignment.outputs = get_2d_circuit_inputs::<C>(&data.output, &WEIGHTS_INPUT.output_shape);
         assignment
 
     }
