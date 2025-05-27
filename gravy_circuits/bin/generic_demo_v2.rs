@@ -62,7 +62,7 @@ struct InputData {
 
 #[derive(Deserialize, Clone)]
 struct OutputData {
-    output: Vec<Vec<i64>>,
+    output: Value,
 }
 
 // This reads the weights json into a string
@@ -319,21 +319,52 @@ impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
         let data: OutputData = <FileReader as IOReader<ConvCircuit<_>, C>>::read_data_from_json::<
             OutputData,
         >(file_path);
-        let mut out: Vec<Vec<CircuitField::<C>>> = Vec::new();
-        for (_, dim1) in data.output.iter().enumerate() {
-            let mut row: Vec<CircuitField::<C>> = Vec::new();
-            for (_, &element) in dim1.iter().enumerate() {
-                if element < 0 {
-                    row.push(CircuitField::<C>::from_u256(U256::from(element.abs() as u64)).neg());
-                } else {
-                    row.push(CircuitField::<C>::from_u256(U256::from(element.abs() as u64)));
-                }
-            }
-            out.push(row);
+
+        let mut flat = Vec::new();
+        flatten_recursive(&data.output, &mut flat);
+
+        let array: ArrayD<i64> = ArrayD::from_shape_vec(IxDyn(&WEIGHTS_INPUT.output_shape), flat).expect("Failed to create ArrayD");
+        
+        let mut shape = array.shape().to_vec();
+
+        // Pad with 1s to make it 5D
+        while shape.len() < 2 {
+            shape.push(1);
         }
-        assignment.outputs = out;
-        // Return the assignment
+
+        let in_array = array.into_shape(IxDyn(&shape)).expect("Failed to reshape to 5D");
+        assignment.outputs = vec![vec![CircuitField::<C>::zero(); shape[1]];shape[0]];
+
+        for (idx, &val) in in_array.indexed_iter() {
+            let converted = if val < 0 {
+                CircuitField::<C>::from(val.abs() as u32).neg()
+            } else {
+                CircuitField::<C>::from(val.abs() as u32)
+            };
+
+            // Assume data is 2D
+            let i = idx[0];
+            let j = idx[1];
+
+            assignment.outputs[i][j] = converted;
+        }
         assignment
+
+        // let mut out: Vec<Vec<CircuitField::<C>>> = Vec::new();
+        // for (_, dim1) in data.output.iter().enumerate() {
+        //     let mut row: Vec<CircuitField::<C>> = Vec::new();
+        //     for (_, &element) in dim1.iter().enumerate() {
+        //         if element < 0 {
+        //             row.push(CircuitField::<C>::from_u256(U256::from(element.abs() as u64)).neg());
+        //         } else {
+        //             row.push(CircuitField::<C>::from_u256(U256::from(element.abs() as u64)));
+        //         }
+        //     }
+        //     out.push(row);
+        // }
+        // assignment.outputs = out;
+        // // Return the assignment
+        // assignment
     }
     fn get_path(&self) -> &str {
         &self.path
