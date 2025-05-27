@@ -1,8 +1,9 @@
 use expander_compiler::circuit::layered::Input;
+use gkr_engine::{FieldEngine, GKREngine};
 use gravy_circuits::circuit_functions::convolution_fn::conv_4d_run;
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use gravy_circuits::circuit_functions::helper_fn::{arrayd_to_vec2, arrayd_to_vec4, load_circuit_constant, read_2d_weights, read_4d_weights, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd};
+use gravy_circuits::circuit_functions::helper_fn::{arrayd_to_vec2, arrayd_to_vec4, build_nd_vec, flatten_recursive, get_5d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd, AnyDimVec};
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use lazy_static::lazy_static;
 #[allow(unused_imports)]
@@ -18,7 +19,7 @@ use core::panic;
 use std::fs::File;
 use std::io::Write;
 use std::ops::Neg;
-use ndarray::{ArrayD, IxDyn};
+use ndarray::{ArrayBase, ArrayD, Dim, IxDyn, IxDynImpl, OwnedRepr};
 use ndarray::Dimension;
 
 
@@ -206,24 +207,7 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
 }
 
 
-fn flatten_recursive(value: &Value, out: &mut Vec<i64>) {
-    match value {
-        Value::Number(n) => {
-            out.push(n.as_i64().expect("Expected i64 number"));
-        }
-        Value::Array(arr) => {
-            for v in arr {
-                flatten_recursive(v, out);
-            }
-        }
-        _ => {
-            let mut file = File::create("foo.txt").unwrap();
-            file.write_all(format!("{:#?}",value).as_bytes()).unwrap();
-            panic!("Unexpected non-number value in array {:#?}", value)
-            
-        },
-    }
-}
+
 impl ConfigurableCircuit for ConvCircuit<Variable> {
     fn configure(&mut self) {
         // Change input and outputs as needed
@@ -264,6 +248,8 @@ impl ConfigurableCircuit for ConvCircuit<Variable> {
     }
 }
 
+
+
 impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
@@ -273,42 +259,12 @@ impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
         /*
             TODO - Can rework this code potentially to speed up witness generation...
          */
-
-
         let data: InputData = <FileReader as IOReader<ConvCircuit<_>, C>>::read_data_from_json::<
             InputData,
         >(file_path);
-        let mut flat = Vec::new();
-        flatten_recursive(&data.input, &mut flat);
-
-        let array: ArrayD<i64> = ArrayD::from_shape_vec(IxDyn(&WEIGHTS_INPUT.input_shape), flat).expect("Failed to create ArrayD");
         
-        let mut shape = array.shape().to_vec();
+        assignment.input_arr = get_5d_circuit_inputs::<C>(&data.input, &WEIGHTS_INPUT.input_shape);
 
-        // Pad with 1s to make it 5D
-        while shape.len() < 5 {
-            shape.push(1);
-        }
-
-        let in_array = array.into_shape(IxDyn(&shape)).expect("Failed to reshape to 5D");
-        assignment.input_arr = vec![vec![vec![vec![vec![CircuitField::<C>::zero(); shape[4]];shape[3]];shape[2]];shape[1]];shape[0]];
-        
-        for (idx, &val) in in_array.indexed_iter() {
-            let converted = if val < 0 {
-                CircuitField::<C>::from(val.abs() as u32).neg()
-            } else {
-                CircuitField::<C>::from(val.abs() as u32)
-            };
-
-            // Assume data is 5D
-            let i = idx[0];
-            let j = idx[1];
-            let k = idx[2];
-            let l = idx[3];
-            let m = idx[4];
-
-            assignment.input_arr[i][j][k][l][m] = converted;
-        }
         assignment
     }
     fn read_outputs(
@@ -350,26 +306,16 @@ impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
         }
         assignment
 
-        // let mut out: Vec<Vec<CircuitField::<C>>> = Vec::new();
-        // for (_, dim1) in data.output.iter().enumerate() {
-        //     let mut row: Vec<CircuitField::<C>> = Vec::new();
-        //     for (_, &element) in dim1.iter().enumerate() {
-        //         if element < 0 {
-        //             row.push(CircuitField::<C>::from_u256(U256::from(element.abs() as u64)).neg());
-        //         } else {
-        //             row.push(CircuitField::<C>::from_u256(U256::from(element.abs() as u64)));
-        //         }
-        //     }
-        //     out.push(row);
-        // }
-        // assignment.outputs = out;
-        // // Return the assignment
-        // assignment
     }
     fn get_path(&self) -> &str {
         &self.path
     }
 }
+
+
+
+
+
 
 fn main() {
     let mut file_reader = FileReader {

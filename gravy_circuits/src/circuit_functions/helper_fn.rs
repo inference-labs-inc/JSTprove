@@ -1,6 +1,9 @@
+use std::ops::Neg;
+
 use expander_compiler::frontend::*;
 use ethnum::U256;
 use ndarray::{ArrayD, Ix1, Ix2, Ix3, Ix4, Ix5, IxDyn};
+use serde_json::Value;
 
 /// Load in circuit constant given i64, negative values are represented by p-x and positive values are x
 pub fn load_circuit_constant<C: Config, Builder: RootAPI<C>>(
@@ -201,28 +204,106 @@ pub fn vec5_to_arrayd(v: Vec<Vec<Vec<Vec<Vec<Variable>>>>>) -> ArrayD<Variable> 
     ArrayD::from_shape_vec(IxDyn(&[d1, d2, d3, d4, d5]), flat).unwrap()
 }
 
-pub enum NestedVec<T> {
-    D1(Vec<T>),
-    D2(Vec<Vec<T>>),
-    D3(Vec<Vec<Vec<T>>>),
-    D4(Vec<Vec<Vec<Vec<T>>>>),
+
+
+pub fn build_1d_vec<C: Config>(shape: [usize; 1]) -> Vec<CircuitField<C>> {
+    vec![CircuitField::<C>::zero(); shape[0]]
 }
 
-// pub fn arrayd_to_nested_vec<T: Clone>(array: ArrayD<T>) -> NestedVec<T> {
-//     match array.ndim() {
-//         1 => NestedVec::D1(arrayd_to_vec1(array)),
-//         2 => NestedVec::D2(arrayd_to_vec2(array)),
-//         3 => NestedVec::D3(arrayd_to_vec3(array)),
-//         4 => NestedVec::D4(arrayd_to_vec4(array)),
-//         _ => panic!("Unsupported dimensionality"),
-//     }
-// }
+pub fn build_2d_vec<C: Config>(shape: [usize; 2]) -> Vec<Vec<CircuitField<C>>> {
+    vec![vec![CircuitField::<C>::zero(); shape[1]]; shape[0]]
+}
 
-// fn nested_vec_to_arrayd<T>(nested: NestedVec<T>) -> ArrayD<T> {
-//     match nested {
-//         NestedVec::D1(v) => vec1_to_arrayd(v),
-//         NestedVec::D2(v) => vec2_to_arrayd(v),
-//         NestedVec::D3(v) => vec3_to_arrayd(v),
-//         NestedVec::D4(v) => vec4_to_arrayd(v),
-//     }
-// }
+pub fn build_3d_vec<C: Config>(shape: [usize; 3]) -> Vec<Vec<Vec<CircuitField<C>>>> {
+    vec![vec![vec![CircuitField::<C>::zero(); shape[2]]; shape[1]]; shape[0]]
+}
+
+pub fn build_4d_vec<C: Config>(shape: [usize; 4]) -> Vec<Vec<Vec<Vec<CircuitField<C>>>>> {
+    vec![vec![vec![vec![CircuitField::<C>::zero(); shape[3]]; shape[2]]; shape[1]]; shape[0]]
+}
+
+pub fn build_5d_vec<C: Config>(shape: [usize; 5]) -> Vec<Vec<Vec<Vec<Vec<CircuitField<C>>>>>> {
+    vec![vec![vec![vec![vec![CircuitField::<C>::zero(); shape[4]]; shape[3]]; shape[2]]; shape[1]]; shape[0]]
+}
+
+pub fn build_nd_vec<C: Config>(shape: &[usize]) -> Result<AnyDimVec<CircuitField<C>>, String> {
+    match shape.len() {
+        1 => Ok(AnyDimVec::D1(build_1d_vec::<C>([shape[0]]))),
+        2 => Ok(AnyDimVec::D2(build_2d_vec::<C>([shape[0], shape[1]]))),
+        3 => Ok(AnyDimVec::D3(build_3d_vec::<C>([shape[0], shape[1], shape[2]]))),
+        4 => Ok(AnyDimVec::D4(build_4d_vec::<C>([shape[0], shape[1], shape[2], shape[3]]))),
+        5 => Ok(AnyDimVec::D5(build_5d_vec::<C>([shape[0], shape[1], shape[2], shape[3], shape[4]]))),
+        _ => Err(format!("Unsupported number of dimensions: {}", shape.len())),
+    }
+}
+
+#[derive(Debug)]
+pub enum AnyDimVec<C> {
+    D1(Vec<C>),
+    D2(Vec<Vec<C>>),
+    D3(Vec<Vec<Vec<C>>>),
+    D4(Vec<Vec<Vec<Vec<C>>>>),
+    D5(Vec<Vec<Vec<Vec<Vec<C>>>>>),
+}
+
+pub fn flatten_recursive(value: &Value, out: &mut Vec<i64>) {
+    match value {
+        Value::Number(n) => {
+            out.push(n.as_i64().expect("Expected i64 number"));
+        }
+        Value::Array(arr) => {
+            for v in arr {
+                flatten_recursive(v, out);
+            }
+        }
+        _ => {
+            // let mut file = File::create("foo.txt").unwrap();
+            // file.write_all(format!("{:#?}",value).as_bytes()).unwrap();
+            panic!("Unexpected non-number value in array {:#?}", value)
+            
+        },
+    }
+}
+
+pub fn get_5d_circuit_inputs<C: Config>(
+    input: &Value,
+    input_shape: &[usize],
+) -> Vec<Vec<Vec<Vec<Vec<CircuitField<C>>>>>>{
+    let mut flat = Vec::new();
+    flatten_recursive(input, &mut flat);
+
+    // Pad the shape with 1s to ensure length 5
+    let mut shape = input_shape.to_vec();
+    while shape.len() < 5 {
+        shape.push(1);
+    }
+
+    // Create the ndarray from the flat vector and shape
+    let array: ArrayD<i64> = ArrayD::from_shape_vec(IxDyn(&shape), flat)
+        .expect("Failed to create ArrayD");
+
+    // Build the nested Vec structure
+    let nested = build_nd_vec::<C>(&shape).unwrap();
+
+    match nested {
+        AnyDimVec::D5(mut v) => {
+            for (idx, &val) in array.indexed_iter() {
+                let converted = if val < 0 {
+                    CircuitField::<C>::from(val.abs() as u32).neg()
+                } else {
+                    CircuitField::<C>::from(val.abs() as u32)
+                };
+
+                let i = idx[0];
+                let j = idx[1];
+                let k = idx[2];
+                let l = idx[3];
+                let m = idx[4];
+
+                v[i][j][k][l][m] = converted;
+            }
+            v
+        }
+        other => panic!("Expected 5D vector, but got {:?}", other),
+    }
+}
