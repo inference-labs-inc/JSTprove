@@ -34,6 +34,8 @@ class GenericModelForCircuit(ZKModel):
 
         self.path = self.find_model(model_name)
         self.model_type = self.get_model_type(self.path)
+        self.model_file_name = self.path + "/model.pt"
+
         print(self.model_type)
 
         # self.model_params = {"layers": self.layers, "n_actions": 10}
@@ -46,6 +48,8 @@ class GenericModelForCircuit(ZKModel):
         self.input_shape = input_shape if input_shape is not None else None
         self.scale_base = self.scale_base if scale_base != -1 else 2
         self.scaling = self.determine_scaling(scaling, self.scale_base, self.max_value)
+
+        self.scaling = 18
         self.rescale_config = rescale_config
         #  May need to figure out how to do this generically. In general we want rescale in all but the last layer, however in the case of a sliced layer, we likely want to rescale all layers
 
@@ -60,9 +64,7 @@ class GenericModelForCircuit(ZKModel):
         assert os.path.exists(model_path), f"Model file {model_path} does not exist"
 
 
-        # spec = importlib.util.spec_from_file_location("dynamic_model", model_path)
-        # module = importlib.util.module_from_spec(spec)
-        # spec.loader.exec_module(module)
+
         module = importlib.import_module(model_path.replace("/", ".").replace(".py", ""))
 
 
@@ -105,9 +107,6 @@ class GenericModelForCircuit(ZKModel):
             l['name'] = l['segment_name']
             layers.append(Layer(**filter_dict_for_dataclass(Layer, l)))
         return layers
-    
-    
-    # def get_layers_from_model(model):
         
 
     
@@ -131,12 +130,7 @@ class GenericModelForCircuit(ZKModel):
     def format_inputs(self, inputs):
         x = super().format_inputs(inputs)
         for key in x.keys():
-            print(x[key][0][0][0][0])
-            print(x[key][0][2][10][10])
             x[key] = torch.as_tensor(x[key]).flatten().tolist()
-            print(x[key][0])
-            print(x[key][100])
-        # sys.exit()
         return x
 
 

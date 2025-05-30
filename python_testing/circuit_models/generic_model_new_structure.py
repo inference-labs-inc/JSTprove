@@ -17,9 +17,7 @@ from dataclasses import asdict, dataclass, field, fields
 from typing import List, Dict, Optional
 
 
-
-
-class GenericModelForCircuit(ZKModel):
+class GenericModelTorch(ZKModel):
     def __init__(self, model_name, models_folder = None, model_file_path: str = None, quantized_model_file_path: str = None, layers = None):
         self.max_value = 2**32
         self.name = "generic_demo_v2"
@@ -40,6 +38,7 @@ class GenericModelForCircuit(ZKModel):
         self.model_params = {}
 
         (required_keys, input_shape, scaling, scale_base, rescale_config) = self.load_metadata(self.path)
+        # self.model_file_name = self.path + "/doom_checkpoint.pt"
 
         self.required_keys = required_keys
         # self.name = name
@@ -105,9 +104,6 @@ class GenericModelForCircuit(ZKModel):
             l['name'] = l['segment_name']
             layers.append(Layer(**filter_dict_for_dataclass(Layer, l)))
         return layers
-    
-    
-    # def get_layers_from_model(model):
         
 
     
@@ -138,12 +134,12 @@ if __name__ == "__main__":
     for n in names:
         # name = f"{n}_conv1"
         name = "doom"
-        d = GenericModelForCircuit(name)
+        d = GenericModelTorch(name)
         # # d.base_testing()
         # # d.base_testing(run_type=RunType.END_TO_END, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
         d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
         # # d.save_quantized_model("quantized_model.pth")
-        d_2 = GenericModelForCircuit(name)
+        d_2 = GenericModelTorch(name)
         # # # # d_2.load_quantized_model("quantized_model.pth")
         d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
         d_2.base_testing(run_type=RunType.PROVE_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")

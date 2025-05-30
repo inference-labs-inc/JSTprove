@@ -145,7 +145,8 @@ class PytorchConverter():
     def save_model(self, file_path: str):
         torch.save(self.model.state_dict(), file_path)
     
-    def load_model(self, file_path: str):
+    def load_model(self, file_path: str, model_type = None):
+        print(file_path)
         self.model.load_state_dict(torch.load(file_path))
 
     def save_quantized_model(self, file_path: str):
@@ -381,14 +382,8 @@ class PytorchConverter():
         weights['layer_input_shapes'] = list(input_shapes.values())
         weights['layer_output_shapes'] = list(output_shapes.values())
 
-        import sys
         
         weights["layers"] = getattr(self, "layers", [])
-        # print(self.model)
-        # sys.exit()
-        # weights["layers"] = self.get_model_layers(self.quantized_model)
-        
-        # sys.exit()
 
         weights["not_rescale_layers"] = []
         rescaled_layers = getattr(self, "rescale_config", {})
