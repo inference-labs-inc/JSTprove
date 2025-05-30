@@ -1,6 +1,6 @@
 use gravy_circuits::circuit_functions::convolution_fn::conv_4d_run;
 use expander_compiler::frontend::*;
-use gravy_circuits::circuit_functions::helper_fn::{arrayd_to_vec2, arrayd_to_vec4, get_2d_circuit_inputs, get_5d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd, AnyDimVec};
+use gravy_circuits::circuit_functions::helper_fn::{arrayd_to_vec1, arrayd_to_vec2, arrayd_to_vec4, get_1d_circuit_inputs, get_2d_circuit_inputs, get_5d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec1_to_arrayd, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd, AnyDimVec};
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use lazy_static::lazy_static;
 #[allow(unused_imports)]
@@ -62,7 +62,7 @@ struct OutputData {
 }
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/generic_demo_v2_weights.json");
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/generic_demo_1d_weights.json");
 
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
@@ -76,8 +76,8 @@ lazy_static! {
 }
 
 declare_circuit!(ConvCircuit {
-    input_arr: [[[[[PublicVariable]]]]], // shape (m, n)
-    outputs: [[PublicVariable]], // shape (m, k)
+    input_arr: [PublicVariable], // shape (m, n)
+    outputs: [PublicVariable], // shape (m, k)
     // dummy: [PublicVariable; 10]
 });
 
@@ -100,7 +100,10 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
 
         // Bring the weights into the circuit as constants
         // let mut out: Vec<Vec<Vec<Vec<Variable>>>> = self.input_arr.to_vec();
-        let mut out = vec5_to_arrayd(self.input_arr.clone());
+        let mut out = vec1_to_arrayd(self.input_arr.clone());
+
+        api.display("{}", out[0]);
+        api.display("{}", out[100]);
 
 
         let mut layer_num = 0;
@@ -113,6 +116,10 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
 
         while layer_num < WEIGHTS_INPUT.layers.len(){
             let layer = &WEIGHTS_INPUT.layers[layer_num].name;
+            if layer_num == 0{
+                api.display("{}", out[0]);
+                api.display("{}", out[100]);
+            }
 
 
             let mut is_rescale = true;
@@ -144,6 +151,12 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
                     out = out
                         .into_shape_with_order(IxDyn(&reshape_shape))
                         .expect("Shape mismatch: Cannot reshape into the given dimensions");
+
+                    if layer_num == 0{
+                        api.display("{}", out[[0,0,0,0]]);
+                        api.display("{}", out[[0,2,10,10]]);
+                    }
+
                 }
             // }
 
@@ -190,15 +203,20 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
             }
             layer_num += 1;
         }
-        let output = arrayd_to_vec2(out);
-        for (j, dim1) in self.outputs.iter().enumerate() {
-                for (k, _dim2) in dim1.iter().enumerate() {
-                    // api.display("out1", self.outputs[j][k]);
-                    // api.display("out2", out_2d[j][k]);
-                    api.assert_is_equal(self.outputs[j][k], output[j][k]);
-                    // api.assert_is_different(self.outputs[j][k], 1);
+        let flatten_shape: Vec<usize> = vec![WEIGHTS_INPUT.output_shape.iter().product()];
 
-                }
+        out = out
+            .into_shape_with_order(IxDyn(&flatten_shape))
+            .expect("Shape mismatch: Cannot reshape into the given dimensions");
+        // panic!("{:?}, {:?}", out.dim(), &reshape_shape);
+
+
+        let output = arrayd_to_vec1(out);
+        for (j, _) in self.outputs.iter().enumerate() {
+                    api.display("out1", self.outputs[j]);
+                    api.display("out2", output[j]);
+                    api.assert_is_equal(self.outputs[j], output[j]);
+                    // api.assert_is_different(self.outputs[j], 1);
             }
     }
 }
@@ -208,41 +226,13 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
 impl ConfigurableCircuit for ConvCircuit<Variable> {
     fn configure(&mut self) {
         // Change input and outputs as needed
-        // self.input_arr[0][0][0][0] = PublicVariable::from(42);
         // Outputs
-        let output_shape = WEIGHTS_INPUT.output_shape.clone();
-        if output_shape.len() == 2{
-            self.outputs = vec![vec![Variable::default(); output_shape[1]]; output_shape[0]];
-        }
-        else if output_shape.len() == 1{
-            self.outputs = vec![vec![Variable::default(); output_shape[0]]];
+        let output_dims: usize = WEIGHTS_INPUT.output_shape.iter().product();
+        self.outputs = vec![Variable::default(); output_dims];
 
-        }
-        else{
-            panic!("Only output shape 2 has been implemented")
-        }
-        
         // Inputs
-        let input_shape: Vec<usize> = WEIGHTS_INPUT.input_shape.clone();
-        
-        if input_shape.len() == 5{
-            self.input_arr = vec![vec![vec![vec![vec![Variable::default(); input_shape[4]]; input_shape[3]];input_shape[2]]; input_shape[1]]; input_shape[0]];
-        }
-        else if input_shape.len() == 4{
-            self.input_arr = vec![vec![vec![vec![vec![Variable::default(); input_shape[3]]; input_shape[2]];input_shape[1]]; input_shape[0]]];
-        }
-        else if input_shape.len() == 3{
-            self.input_arr = vec![vec![vec![vec![vec![Variable::default(); input_shape[2]]; input_shape[1]];input_shape[0]]]];
-        }
-        else if input_shape.len() == 2{
-            self.input_arr = vec![vec![vec![vec![vec![Variable::default(); input_shape[1]]; input_shape[0]]]]];
-        }
-        else if input_shape.len() == 1{
-            self.input_arr = vec![vec![vec![vec![vec![Variable::default(); input_shape[0]]]]]];
-        }
-        else{
-            panic!("Only 4 input shape dimensions has been implemented")
-        }
+        let input_dims: usize = WEIGHTS_INPUT.input_shape.iter().product();
+        self.input_arr = vec![Variable::default(); input_dims];
 
 
     }
@@ -263,7 +253,10 @@ impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
             InputData,
         >(file_path);
 
-        assignment.input_arr = get_5d_circuit_inputs::<C>(&data.input, &WEIGHTS_INPUT.input_shape);
+        let input_dims: &[usize] = &[WEIGHTS_INPUT.input_shape.iter().product()];
+
+
+        assignment.input_arr = get_1d_circuit_inputs::<C>(&data.input, input_dims);
 
         assignment
     }
@@ -276,7 +269,10 @@ impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
             OutputData,
         >(file_path);
 
-        assignment.outputs = get_2d_circuit_inputs::<C>(&data.output, &WEIGHTS_INPUT.output_shape);
+        let output_dims: &[usize] = &[WEIGHTS_INPUT.output_shape.iter().product()];
+
+
+        assignment.outputs = get_1d_circuit_inputs::<C>(&data.output, output_dims);
         assignment
 
     }                 

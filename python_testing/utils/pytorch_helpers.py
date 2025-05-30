@@ -1,7 +1,7 @@
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 import inspect
 import json
-from typing import Optional
+from typing import Dict, List, Optional
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -15,7 +15,34 @@ from python_testing.circuit_components.circuit_helpers import Circuit, RunType
 from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify,prepare_io_files
 from types import SimpleNamespace
-from python_testing.utils.pytorch_partial_models import QuantizedConv2d, QuantizedLinear
+from python_testing.utils.pytorch_partial_models import Conv2DModel, Conv2DModelReLU, QuantizedConv2d, QuantizedLinear
+
+
+@dataclass
+class Parameter:
+    shape: List[int]
+    size: int
+
+@dataclass
+class Layer:
+    index: int
+    name: str
+    type: str
+    # shape: List[int]
+    # size: int
+
+    parameters: int
+    in_channels: Optional[int] = None
+    out_channels: Optional[int] = None
+    kernel_size: Optional[List[int]] = None
+    stride: Optional[List[int]] = None
+    padding: Optional[List[int]] = None
+    activation: Optional[str] = None
+    input_reshape: Optional[Dict] = None
+
+def filter_dict_for_dataclass(cls, d):
+    allowed_keys = {f.name for f in fields(cls)}
+    return {k: v for k, v in d.items() if k in allowed_keys}
 
 class GeneralLayerFunctions():
     def check_4d_eq(self, input_tensor_1, input_tensor_2):
@@ -122,11 +149,6 @@ class PytorchConverter():
         self.model.load_state_dict(torch.load(file_path))
 
     def save_quantized_model(self, file_path: str):
-        # torch.save(self.quantized_model.state_dict(), file_path)
-        # print(self.model.state_dict().keys())
-        # import sys
-        # sys.exit()
-        # raise
         torch.save(self.quantized_model, file_path)
 
     
@@ -183,14 +205,6 @@ class PytorchConverter():
 
                 name_count[name] += 1
             return hook
-        # def register_hook(name):
-        #     def hook(module, input, output):
-        #         if name not in name_count:
-        #             name_count[name] = 0
-        #         count = name_count[name]
-        #         input_shapes[f"{name}_{count}"] = input[0].shape
-        #         name_count[name] += 1
-        #     return hook
 
         for name, module in model.named_modules():
             if len(list(module.children())) == 0:
@@ -237,6 +251,116 @@ class PytorchConverter():
                 setattr(quantized_model, name, quantized_layer)
 
         return quantized_model
+    
+    def get_model_layers(self, model):
+        from torch.fx import symbolic_trace, Tracer, GraphModule
+
+        supported_layers = [QuantizedConv2d, QuantizedLinear, nn.ReLU, nn.MaxPool2d]
+        supported_activations = {
+            F.relu: nn.ReLU,
+            # F.leaky_relu: nn.LeakyReLU,
+            # F.silu: nn.SiLU,
+            # F.gelu: nn.GELU,
+            # F.sigmoid: nn.Sigmoid,
+            # F.tanh: nn.Tanh,
+        }
+
+        class CustomTracer(Tracer):
+            def is_leaf_module(self, m: torch.nn.Module, module_qualified_name: str) -> bool:
+                if isinstance(m, tuple(supported_layers)):  # Add other types here
+                    return True
+                return super().is_leaf_module(m, module_qualified_name)
+        
+
+        tracer = CustomTracer()
+        graph = tracer.trace(model)
+        traced = GraphModule(model, graph)
+
+        node_names = []
+        submodules = []
+        layers = []
+        index = 0
+        for node in graph.nodes:
+            print(f"{node.op}: {node.name}, target={node.target}, args={node.args}, kwargs={node.kwargs}")
+            node_names.append(node.name)
+            if node.op == "placeholder":
+                pass
+
+            if node.op == "call_function":
+                if node.target in supported_activations:
+                    activation_class = supported_activations[node.target]
+                    name = node.name
+                    submodules.append(activation_class())
+                    layers.append(Layer(index, name, activation_class.__name__, 0))
+                
+            
+            if node.op == "call_method":
+                if node.target == "reshape":
+                    # node.args[1:] contains the shape (e.g., (-1, 1568))
+                    shape = node.args[1:]
+                    name = node.name  # e.g., "reshape_1"
+                    
+                    # Create a custom reshape layer
+                    class Reshape(nn.Module):
+                        def __init__(self, shape):
+                            super().__init__()
+                            self.shape = shape
+
+                        def forward(self, x):
+                            return x.reshape(*self.shape)
+
+                    submodules.append(Reshape(shape))
+                if node.target == "flatten":
+                    start_dim = node.args[1] if len(node.args) > 1 else 1
+                    end_dim = node.args[2] if len(node.args) > 2 else -1
+                    name = node.name
+
+                    flatten = nn.Flatten(start_dim, end_dim)
+                    submodules.append(flatten)
+                    # print(node.args)
+                    # submodules.append()
+            
+            if node.op == "call_module":
+
+                submodule = traced.get_submodule(node.name)
+                submodules.append(submodule)
+            index +=1
+        print(submodules)
+        print(layers)
+
+    def extract_scaled_modules(self, traced, scaled_types=None):
+        """
+        Extract all instances of scaled layers (e.g., scaledConv2, scaledFC) from a traced FX graph.
+
+        Args:
+            traced: torch.fx.GraphModule
+            scaled_types: list of (name, type) tuples (e.g., [("scaled_conv", scaledConv2)])
+
+        Returns:
+            Dict with layer type keys and list of detected layers.
+        """
+        if scaled_types is None:
+            scaled_types = []
+
+        structure = {name: [] for name, _ in scaled_types}
+
+        for node in traced.graph.nodes:
+            print(node.op)
+            if node.op == "call_module":
+                submodule = traced.get_submodule(node.target)
+                for type_name, type_class in scaled_types:
+                    if isinstance(submodule, type_class):
+                        entry = {
+                            "name": node.name,
+                            "class": type_class.__name__,
+                            "scale": getattr(submodule, "scale", None),
+                            "shift": getattr(submodule, "shift", None),
+                            "has_bias": submodule.bias is not None,
+                            "rescale_output": getattr(submodule, "rescale_output", None),
+                        }
+                        structure[type_name].append(entry)
+
+        return structure
 
 
     def get_weights(self, flatten = False):
@@ -254,13 +378,17 @@ class PytorchConverter():
         weights["scaling"] = self.scaling
         weights["scale_base"] = self.scale_base
         weights["input_shape"] = self.input_shape
-        weights["layers"] = getattr(self, "layers", [])
         weights['layer_input_shapes'] = list(input_shapes.values())
         weights['layer_output_shapes'] = list(output_shapes.values())
-        # print(input_shapes, output_shapes)
-        # import sys
-        # sys.exit()
+
+        import sys
         
+        weights["layers"] = getattr(self, "layers", [])
+        # print(self.model)
+        # sys.exit()
+        # weights["layers"] = self.get_model_layers(self.quantized_model)
+        
+        # sys.exit()
 
         weights["not_rescale_layers"] = []
         rescaled_layers = getattr(self, "rescale_config", {})

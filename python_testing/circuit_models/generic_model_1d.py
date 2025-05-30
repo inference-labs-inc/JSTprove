@@ -22,7 +22,7 @@ from typing import List, Dict, Optional
 class GenericModelForCircuit(ZKModel):
     def __init__(self, model_name, models_folder = None, model_file_path: str = None, quantized_model_file_path: str = None, layers = None):
         self.max_value = 2**32
-        self.name = "generic_demo_v2"
+        self.name = "generic_demo_1d"
         # self.required_keys = ["input"]
         # self.scale_base = 2
         # self.scaling = 21
@@ -117,6 +117,27 @@ class GenericModelForCircuit(ZKModel):
             return scaling
         
         return int(21 / math.log2(scale_base))
+    
+    def adjust_inputs(self, input_file):
+        input_shape = self.input_shape.copy()
+        self.input_shape = [math.prod(input_shape)]
+        x = super().adjust_inputs(input_file)
+        self.input_shape = input_shape.copy()
+        return x
+    
+    def get_outputs(self, inputs):
+        return super().get_outputs(inputs).flatten()
+    
+    def format_inputs(self, inputs):
+        x = super().format_inputs(inputs)
+        for key in x.keys():
+            print(x[key][0][0][0][0])
+            print(x[key][0][2][10][10])
+            x[key] = torch.as_tensor(x[key]).flatten().tolist()
+            print(x[key][0])
+            print(x[key][100])
+        # sys.exit()
+        return x
 
 
 

@@ -95,8 +95,8 @@ fn div_constrained<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
     //Assert that q_sharp is in correct range
     let bits = to_binary(api, q_sharp, v_plus_one);
     let total = from_binary(api, &bits, v_plus_one);
-    api.display("q_sharp", q_sharp);
-    api.display("total  ", total);
+    // api.display("q_sharp", q_sharp);
+    // api.display("total  ", total);
 
 
     api.assert_is_equal(q_sharp, total);

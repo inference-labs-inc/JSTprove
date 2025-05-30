@@ -166,3 +166,7 @@ path = "bin/generic_demo.rs"
 [[bin]]
 name = "generic_demo_v2"
 path = "bin/generic_demo_v2.rs"
+
+[[bin]]
+name = "generic_demo_1d"
+path = "bin/generic_demo_1d.rs"
