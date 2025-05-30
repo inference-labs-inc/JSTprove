@@ -23,33 +23,24 @@ class GenericModelForCircuit(ZKModel):
     def __init__(self, model_name, models_folder = None, model_file_path: str = None, quantized_model_file_path: str = None, layers = None):
         self.max_value = 2**32
         self.name = "generic_demo_1d"
-        # self.required_keys = ["input"]
-        # self.scale_base = 2
-        # self.scaling = 21
 
-
-        self.input_shape = [1, 4, 28, 28]
-        # self.rescale_config = {self.layers[-1]: False}
         self.rescale_config = {}
 
         self.path = self.find_model(model_name)
         self.model_type = self.get_model_type(self.path)
         self.model_file_name = self.path + "/model.pt"
 
-        print(self.model_type)
 
-        # self.model_params = {"layers": self.layers, "n_actions": 10}
         self.model_params = {}
 
         (required_keys, input_shape, scaling, scale_base, rescale_config) = self.load_metadata(self.path)
 
         self.required_keys = required_keys
-        # self.name = name
+
         self.input_shape = input_shape if input_shape is not None else None
-        self.scale_base = self.scale_base if scale_base != -1 else 2
+        self.scale_base = scale_base if scale_base != -1 else 2
         self.scaling = self.determine_scaling(scaling, self.scale_base, self.max_value)
 
-        self.scaling = 18
         self.rescale_config = rescale_config
         #  May need to figure out how to do this generically. In general we want rescale in all but the last layer, however in the case of a sliced layer, we likely want to rescale all layers
 
@@ -57,16 +48,12 @@ class GenericModelForCircuit(ZKModel):
 
     def find_model(self, model_name):
         # Look for model in models_for_circuit_folder
-        return "models_for_circuit/doom"
+        return f"models_pytorch/{model_name}"
     
     def get_model_type(self, path):
         model_path = path + "/model.py"
         assert os.path.exists(model_path), f"Model file {model_path} does not exist"
-
-
-
         module = importlib.import_module(model_path.replace("/", ".").replace(".py", ""))
-
 
         model_classes = [cls for name, cls in inspect.getmembers(module, inspect.isclass)
                          if cls.__module__ == module.__name__]
@@ -90,7 +77,7 @@ class GenericModelForCircuit(ZKModel):
         # Store metadata values
         required_keys = metadata.get("required_keys", ["input"])
         
-        input_shape = metadata.get("input_shape", [1, 4, 28, 28])
+        input_shape = metadata.get("input_shape", -1)
         # TODO figure out input shape properly
         scaling = metadata.get("scaling", -1)
         scale_base = metadata.get("scale_base", -1)
