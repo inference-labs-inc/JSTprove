@@ -8,7 +8,7 @@ from python_testing.circuit_components.matrix_multiplication import MatrixMultip
 
 
 from python_testing.utils.helper_functions import RunType, read_from_json, to_json
-from python_testing.utils.pytorch_helpers import ZKModel
+from python_testing.utils.pytorch_helpers import ZKTorchModel
 from python_testing.circuit_models.doom_model import Doom, DoomAgent
 
 
@@ -67,7 +67,7 @@ class FC2Segment(nn.Module):
 
 
 
-class DoomSlice(ZKModel):
+class DoomSlice(ZKTorchModel):
     def get_model_and_quantize(self):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -90,7 +90,7 @@ class DoomSlice(ZKModel):
         self.quantized_model.eval()  
         
 
-class DoomConv1(ZKModel):
+class DoomConv1(ZKTorchModel):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_conv1"
@@ -104,7 +104,7 @@ class DoomConv1(ZKModel):
         self.model_type = Conv1Segment
         # self.model_params = {"in_channels": 4, "out_channels": 16, "kernel_size": 3, "stride": 1, 'padding': 1}
           
-class DoomConv2(ZKModel):
+class DoomConv2(ZKTorchModel):
 
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
@@ -120,7 +120,7 @@ class DoomConv2(ZKModel):
         self.model_type = Conv2Segment
         # self.model_params = {"in_channels": 16, "out_channels": 32, "kernel_size": 3, "stride": 2, 'padding': 1}
 
-class DoomConv3(ZKModel):
+class DoomConv3(ZKTorchModel):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_conv3"
@@ -135,7 +135,7 @@ class DoomConv3(ZKModel):
         # self.model_params = {"in_channels": 32, "out_channels": 32, "kernel_size": 3, "stride": 2, 'padding': 1}
         # self.slice_name_in_model = "conv"
 
-class DoomFC1(ZKModel):
+class DoomFC1(ZKTorchModel):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_fc1"
@@ -152,7 +152,7 @@ class DoomFC1(ZKModel):
     # def get_outputs(self, inputs):
     #     return super().get_outputs(inputs.flatten().unsqueeze(0))
         
-class DoomFC2(ZKModel):
+class DoomFC2(ZKTorchModel):
     def __init__(self, file_name="model/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom_fc2"

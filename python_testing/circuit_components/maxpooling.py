@@ -1,4 +1,4 @@
-from python_testing.utils.pytorch_helpers import ZKModel
+from python_testing.utils.pytorch_helpers import ZKTorchModel
 from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import RunType
 from python_testing.utils.pytorch_partial_models import MaxPooling2DModel
@@ -9,7 +9,7 @@ import numpy as np
 
 
 
-class MaxPooling2D(ZKModel):
+class MaxPooling2D(ZKTorchModel):
     #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
     def __init__(self, file_name = "quantized_maxpool.pth"):
         '''

@@ -6,7 +6,7 @@ sys.modules.pop("python_testing.utils.pytorch_helpers", None)
 
 
 with patch('python_testing.utils.helper_functions.prepare_io_files', lambda f: f):  # MUST BE BEFORE THE UUT GETS IMPORTED ANYWHERE!
-    from python_testing.utils.pytorch_helpers import ZKModel, RunType, ZKProofSystems
+    from python_testing.utils.pytorch_helpers import ZKTorchModel, RunType, ZKProofSystems
 
 
 
@@ -14,13 +14,13 @@ with patch('python_testing.utils.helper_functions.prepare_io_files', lambda f: f
 
 def test_init_raises_not_implemented():
     with pytest.raises(NotImplementedError):
-        ZKModel()
+        ZKTorchModel()
 
 
 # ---------- base_testing ----------
 
 def test_base_testing_calls_parse_proof_run_type():
-    class TestZK(ZKModel):
+    class TestZK(ZKTorchModel):
         def __init__(self):
             pass
         def parse_proof_run_type(self, *args, **kwargs):
@@ -46,9 +46,9 @@ def test_base_testing_calls_parse_proof_run_type():
     assert RunType.BASE_TESTING in args
 
 
-@patch.object(ZKModel, 'parse_proof_run_type')
+@patch.object(ZKTorchModel, 'parse_proof_run_type')
 def test_base_testing_uses_default_weights_path(mock_parse):
-    class TestZK(ZKModel):
+    class TestZK(ZKTorchModel):
         def __init__(self):
             pass
 
@@ -65,7 +65,7 @@ def test_base_testing_uses_default_weights_path(mock_parse):
 
 @patch("python_testing.utils.pytorch_helpers.torch.save")
 def test_inherits_save_model(mock_save):
-    class TestZK(ZKModel):
+    class TestZK(ZKTorchModel):
         def __init__(self):
             self.model = MagicMock()
             self.model.state_dict.return_value = {"weights": 123}
@@ -77,7 +77,7 @@ def test_inherits_save_model(mock_save):
 
 @patch("python_testing.utils.pytorch_helpers.torch.load", return_value={"weights": 123})
 def test_inherits_load_model(mock_load):
-    class TestZK(ZKModel):
+    class TestZK(ZKTorchModel):
         def __init__(self):
             self.model = MagicMock()
 

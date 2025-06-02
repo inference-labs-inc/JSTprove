@@ -16,6 +16,9 @@ from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify,prepare_io_files
 from types import SimpleNamespace
 from python_testing.utils.pytorch_partial_models import Conv2DModel, Conv2DModelReLU, QuantizedConv2d, QuantizedLinear
+from python_testing.utils.model_converter import ZKModelBase, ModelConverter
+
+
 
 
 @dataclass
@@ -44,109 +47,13 @@ def filter_dict_for_dataclass(cls, d):
     allowed_keys = {f.name for f in fields(cls)}
     return {k: v for k, v in d.items() if k in allowed_keys}
 
-class GeneralLayerFunctions():
-    def check_4d_eq(self, input_tensor_1, input_tensor_2):
-        for i in range(input_tensor_1.shape[0]):
-            for j in range(input_tensor_1.shape[1]):
-                for k in range(input_tensor_1.shape[2]):
-                    for l in range(input_tensor_1.shape[3]):
-                        assert(abs(input_tensor_1[i][j][k][l] - input_tensor_2[i][j][k][l]) < 1)
-
-    def weights_onnx_to_torch_format(self, onnx_model):
-        w_and_b = {}
-        for i in onnx_model.graph.initializer:
-            layer_name, param_type = i.name.split(".")  # Split into layer name and param type
-            if layer_name not in w_and_b:
-                w_and_b[layer_name] = {}
-
-            w_and_b[layer_name][param_type] = torch.tensor(onnx.numpy_helper.to_array(i))
-
-        for e in w_and_b.keys():
-            w_and_b[e] = SimpleNamespace(**w_and_b[e])
-        return w_and_b
-
-    def check_2d_eq(self, input_tensor_1, input_tensor_2):
-        for i in range(input_tensor_1.shape[0]):
-            for j in range(input_tensor_1.shape[1]):
-                assert(abs(input_tensor_1[i][j] -  input_tensor_2[i][j]) < 1)
-
-    def read_tensor_from_file(self, file_name):
-        """Reads a tensor from a file and returns it as a PyTorch tensor."""
-        with open(file_name, 'r') as f:
-            data = f.read().split()
-            # Convert data to a float and then to a PyTorch tensor
-            tensor_data = torch.tensor([float(d) for d in data])
-        return tensor_data
-    
-    def read_weights(self, model, layer_name):
-        """Reads the weights for the layers of the model from files."""
-        pass
 
 
-    def read_input(self, file_name = "doom_data/doom_input.json"):
-        """Reads the inputs to each layer of the model from text files."""
-        with open(file_name, 'r') as file:
-            data = json.load(file)
-            return data["input"]
-
-
-
-    def read_output(self, model, input_data, is_torch = True):
-        """Reads the outputs for each layer of the model from text files."""
-        if is_torch:
-            with torch.no_grad():  # Disable gradient calculation during inference
-                output = model(torch.as_tensor(input_data))
-                return output
-        else:
-            session = ort.InferenceSession(model)
-
-            input_name = session.get_inputs()[0].name
-            outputs = session.run(None, {input_name: input_data})
-            return outputs
-        
-    def get_inputs_from_file(self, file_name, is_scaled: bool = False):
-        inputs = self.read_input(file_name)
-        if is_scaled:
-            out =  torch.as_tensor(inputs).long()
-        else:
-            out =  torch.mul(torch.as_tensor(inputs),self.scale_base**self.scaling).long()
-
-        if hasattr(self, "input_shape"):
-            out = out.reshape(self.input_shape)
-        return out
-    
-    def get_outputs(self, inputs):
-        return self.quantized_model(inputs)
-    
-    def get_inputs(self, file_path:str = None, is_scaled = False):
-        if file_path == None:
-            return self.create_new_inputs()
-        if hasattr(self, "input_shape"):
-            return self.get_inputs_from_file(file_path, is_scaled=is_scaled).reshape(self.input_shape)
-        else:
-            raise NotImplementedError("Must define attribute input_shape")
-    
-    def create_new_inputs(self):
-        print(self.scale_base, self.scaling, self.scale_base**self.scaling)
-        return torch.mul(torch.rand(self.input_shape)*2 - 1, self.scale_base**self.scaling).long()
-
-    def format_inputs(self, inputs):
-        return {"input": inputs.long().tolist()}
-    
-    def format_outputs(self, outputs):
-        if hasattr(self, "scaling") and hasattr(self, "scale_base"):
-            return {"output": outputs.long().tolist(), "rescaled_output": torch.div(outputs, self.scale_base**(2*self.scaling)).tolist()}
-        return {"output": outputs.long().tolist()}
-    
-    def format_inputs_outputs(self, inputs, outputs):
-        return self.format_inputs(inputs), self.format_outputs(outputs)
-
-class PytorchConverter():
+class PytorchConverter(ModelConverter):
     def save_model(self, file_path: str):
         torch.save(self.model.state_dict(), file_path)
     
     def load_model(self, file_path: str, model_type = None):
-        print(file_path)
         self.model.load_state_dict(torch.load(file_path))
 
     def save_quantized_model(self, file_path: str):
@@ -461,12 +368,12 @@ class PytorchConverter():
         print(self.quantized_model(q_inputs)/(self.scale_base**(2*self.scaling)))
 
 
-# TODO CHANGE THIS NESTED STRUCTURE, DONE FOR EASE FOR NOW, BUT IT NEEDS IMPROVEMENT
-class ZKModel(PytorchConverter, GeneralLayerFunctions, Circuit):
 
+
+# TODO CHANGE THIS NESTED STRUCTURE, DONE FOR EASE FOR NOW, BUT IT NEEDS IMPROVEMENT
+class ZKTorchModel(PytorchConverter, ZKModelBase):
     def __init__(self):
         raise NotImplementedError("Must implement __init__")
-    
     
     @prepare_io_files
     def base_testing(self, run_type=RunType.BASE_TESTING, 

@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from python_testing.utils.pytorch_helpers import ZKModel
+from python_testing.utils.pytorch_helpers import ZKTorchModel
 # from python_testing.circuit_models.doom_slices import Slice
 import sys
 
@@ -144,7 +144,7 @@ class FC3Segment(nn.Module):
 #         self.input_shape = [1,3,32,32]
 #         self.rescale_config = {}
 #         self.model_type = Conv1Segment
-class NetModel(ZKModel):
+class NetModel(ZKTorchModel):
     def __init__(self):
         self.required_keys = ["input"]
         self.name = "net"
@@ -158,7 +158,7 @@ class NetModel(ZKModel):
         self.rescale_config = {"fc3": False}
         self.model_type = Net
 
-class NetConv1Model(ZKModel):
+class NetConv1Model(ZKTorchModel):
     def __init__(self):
         self.required_keys = ["input"]
         self.name = "net_conv1"
@@ -171,7 +171,7 @@ class NetConv1Model(ZKModel):
         self.rescale_config = {}
         self.model_type = Conv1Segment
         
-class NetConv2Model(ZKModel):
+class NetConv2Model(ZKTorchModel):
     def __init__(self):
         self.required_keys = ["input"]
         self.name = "net_conv2"
@@ -184,7 +184,7 @@ class NetConv2Model(ZKModel):
         self.rescale_config = {}
         self.model_type = Conv2Segment
 
-class NetFC1Model(ZKModel):
+class NetFC1Model(ZKTorchModel):
     def __init__(self):
         self.required_keys = ["input"]
         self.name = "net_fc1"
@@ -198,7 +198,7 @@ class NetFC1Model(ZKModel):
         self.model_type = FC1Segment
 
 
-class NetFC2Model(ZKModel):
+class NetFC2Model(ZKTorchModel):
     def __init__(self):
         self.required_keys = ["input"]
         self.name = "net_fc2"
@@ -212,7 +212,7 @@ class NetFC2Model(ZKModel):
         self.model_type = FC2Segment
 
 
-class NetFC3Model(ZKModel):
+class NetFC3Model(ZKTorchModel):
     def __init__(self):
         self.required_keys = ["input"]
         self.name = "net_fc3"

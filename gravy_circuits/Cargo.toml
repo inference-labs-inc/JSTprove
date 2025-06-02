@@ -170,3 +170,7 @@ path = "bin/generic_demo_v2.rs"
 [[bin]]
 name = "torch_generic_circuit"
 path = "bin/torch_generic_circuit.rs"
+
+[[bin]]
+name = "onnx_generic_circuit"
+path = "bin/onnx_generic_circuit.rs"

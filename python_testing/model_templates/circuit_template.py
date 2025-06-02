@@ -1,7 +1,7 @@
 import json
 import torch
 from python_testing.circuit_models.doom_model import DoomAgent
-from python_testing.utils.pytorch_helpers import ZKModel
+from python_testing.utils.pytorch_helpers import ZKTorchModel
 from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
 import os

@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from python_testing.utils.pytorch_helpers import ZKModel
+from python_testing.utils.pytorch_helpers import ZKTorchModel
 import sys
 
 import warnings
@@ -186,7 +186,7 @@ from sklearn.metrics import confusion_matrix, balanced_accuracy_score, precision
 train_loader, val_loader, scaler = load_data()
 
     
-class Eth(ZKModel):
+class Eth(ZKTorchModel):
     def __init__(self, file_name="model/fraud_detection_model.pth"):
         self.layers = {}
         self.name = "eth_fraud"

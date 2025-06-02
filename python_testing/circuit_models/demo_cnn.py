@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from python_testing.utils.pytorch_helpers import ZKModel, RunType
+from python_testing.utils.pytorch_helpers import ZKTorchModel, RunType
 
 import sys
 
@@ -52,7 +52,7 @@ class CNNDemo(nn.Module):
                 x = F.relu(x)
         return x
     
-class Demo(ZKModel):
+class Demo(ZKTorchModel):
     def __init__(self, model_file_path: str = None, quantized_model_file_path: str = None, layers = None):
         if layers == None:
             self.layers = []

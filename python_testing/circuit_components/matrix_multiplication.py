@@ -4,7 +4,7 @@ import os
 import torch
 from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import RunType, get_files, to_json, prove_and_verify
-from python_testing.utils.pytorch_helpers import PytorchConverter, QuantizedLinear, ZKModel
+from python_testing.utils.pytorch_helpers import PytorchConverter, QuantizedLinear, ZKTorchModel
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -26,7 +26,7 @@ class MatMultType(Enum):
     Naive2 = "naive2"
     Naive3 = "naive3"
 
-class MatrixMultiplication(ZKModel):
+class MatrixMultiplication(ZKTorchModel):
 
     def __init__(self, circuit_type: MatMultType = MatMultType.Naive2, file_name="model/matrix_multiplication.pth", rescale = False):
         self.required_keys = ["input"]

@@ -1,7 +1,7 @@
 import json
 import torch
 from python_testing.circuit_models.doom_model import DoomAgent
-from python_testing.utils.pytorch_helpers import ZKModel
+from python_testing.utils.pytorch_helpers import ZKTorchModel
 from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
 import os
@@ -10,7 +10,7 @@ import numpy as np
 from python_testing.circuit_components.circuit_helpers import Circuit, RunType
 from random import randint
 
-class SimpleCircuit(ZKModel):
+class SimpleCircuit(ZKTorchModel):
     '''
     To begin, we need to specify some basic attributes surrounding the model we will be using. 
     required_keys - specify the variables in the input dictionary

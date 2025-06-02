@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from python_testing.utils.pytorch_helpers import ZKModel
+from python_testing.utils.pytorch_helpers import ZKTorchModel
 
 
 
@@ -42,7 +42,7 @@ class DoomAgent(nn.Module):
             return q_values.argmax().item()
         
 
-class Doom(ZKModel):
+class Doom(ZKTorchModel):
     def __init__(self, file_name="model/doom/doom_checkpoint.pth"):
         self.required_keys = ["input"]
         self.name = "doom"

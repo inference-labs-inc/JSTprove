@@ -12,7 +12,7 @@ from python_testing.utils.helper_functions import RunType
 from python_testing.circuit_components.circuit_helpers import Circuit
 from python_testing.circuit_models.generic_model import GenericDemo
 from python_testing.circuit_models.generic_torch import GenericModelTorch
-# from python_testing.circuit_models.generic_model_new_structure import GenericModelTorch
+from python_testing.circuit_models.generic_onnx import GenericModelONNX
 
 
 ModelEntry = namedtuple("ModelEntry", ["name", "source", "loader", "args", "kwargs"])
@@ -20,19 +20,24 @@ ModelEntry = namedtuple("ModelEntry", ["name", "source", "loader", "args", "kwar
 
 def scan_model_files(directory, extension, loader_fn, prefix):
     entries = []
-    for foldername in os.listdir(directory):
+    for file_or_foldername in os.listdir(directory):
         if prefix == "pytorch":
-            folder = os.path.join(directory,foldername)
+            folder = os.path.join(directory,file_or_foldername)
 
             if os.path.isdir(folder):
                 if os.path.isfile(os.path.join(folder,"model.py")) and os.path.isfile(os.path.join(folder,"model.pt")) and os.path.isfile(os.path.join(folder,"metadata.json")):
-                    name = foldername
-                    path = os.path.join(directory, foldername)
+                    name = file_or_foldername
+                    path = os.path.join(directory, file_or_foldername)
                     entries.append(
                         ModelEntry(name=f"{name}", source=prefix, loader=lambda p=path: loader_fn(p), args=(), kwargs={})
                     )
         if prefix == "onnx":
-            pass
+            if os.path.isfile(file_or_foldername) and file_or_foldername[-5:] == ".onnx":
+                name = file_or_foldername[0:len(file_or_foldername) - 5]
+                path = os.path.join(directory, file_or_foldername)
+                entries.append(
+                    ModelEntry(name=f"{name}", source=prefix, loader=lambda p=path: loader_fn(p), args=(), kwargs={})
+                )
     return entries
 
 
@@ -68,7 +73,7 @@ def build_models_to_test():
     # Filter unwanted class models
     models = [
         m for m in models
-        if m.name not in {"zkmodel", "doomslice", "slice", "genericdemo", "genericmodeltorch"}
+        if m.name not in {"zkmodel", "doomslice", "slice", "genericdemo", "genericmodeltorch", "genericmodelonnx"}
     ]
 
     # Add special ReLU model
@@ -89,18 +94,8 @@ def build_models_to_test():
 
     return models
 
-# def build_models_to_test():
-#     models = []
-#     for cls in all_subclasses(Circuit):
-#         name = cls.__name__.lower()
-#         models.append((name, cls))
-#     return models
 
 MODELS_TO_TEST = build_models_to_test()
-# MODELS_TO_TEST = [t for t in MODELS_TO_TEST if (t[0] != "zkmodel" and t[0] != "doomslice" and t[0] != "slice")]
-# MODELS_TO_TEST = [t for t in MODELS_TO_TEST if (t[0] != "genericmodelforcircuit")]
-
-# MODELS_TO_TEST.append(("relu_dual", ReLU, {"conversion_type":ConversionType.TWOS_COMP}))
 
 def modify_models_based_on_class(models_to_test):
     """Loop through the models and modify arguments/kwargs for specific classes."""
@@ -124,11 +119,6 @@ def list_available_models():
     return sorted(f"{model.source}: {model.name}" for model in MODELS_TO_TEST)
 
 
-# def get_models_to_test(selected_models=None):
-#     if selected_models is None:
-#         return MODELS_TO_TEST
-#     return [m for m in MODELS_TO_TEST if m.name in selected_models]
-
 def get_models_to_test(selected_models=None, source_filter=None):
     models = MODELS_TO_TEST
 
@@ -139,9 +129,3 @@ def get_models_to_test(selected_models=None, source_filter=None):
         models = [m for m in models if m.source == source_filter]
 
     return models
-
-
-# def get_models_to_test(selected_models = None):
-#     if selected_models is None:
-#         return MODELS_TO_TEST
-#     return [m for m in MODELS_TO_TEST if m[0] in selected_models]

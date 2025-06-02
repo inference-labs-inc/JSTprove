@@ -3,7 +3,7 @@ import torch
 import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch, mock_open
-from python_testing.utils.pytorch_helpers import GeneralLayerFunctions
+from python_testing.utils.model_converter import GeneralLayerFunctions
 
 
 def test_check_4d_eq_pass():

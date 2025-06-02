@@ -1,6 +1,6 @@
 import time
 import torch
-from python_testing.utils.pytorch_helpers import ZKModel
+from python_testing.utils.pytorch_helpers import ZKTorchModel
 from python_testing.utils.run_proofs import ZKProofSystems
 from python_testing.utils.helper_functions import RunType, get_files, to_json, prove_and_verify
 import os
@@ -18,7 +18,7 @@ import numpy as np
 
 
 
-class Convolution(ZKModel):
+class Convolution(ZKTorchModel):
     #Inputs are defined in the __init__ as per the inputs of the function, alternatively, inputs can be generated here
     def __init__(self, file_name = "quantized_conv.pth", rescale = False, quantize_model = False):
         '''
