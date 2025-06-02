@@ -11,7 +11,7 @@ from python_testing.circuit_components.relu import ReLU, ConversionType
 from python_testing.utils.helper_functions import RunType
 from python_testing.circuit_components.circuit_helpers import Circuit
 from python_testing.circuit_models.generic_model import GenericDemo
-from python_testing.circuit_models.generic_model_1d import GenericModelTorch
+from python_testing.circuit_models.generic_torch import GenericModelTorch
 # from python_testing.circuit_models.generic_model_new_structure import GenericModelTorch
 
 
@@ -117,19 +117,24 @@ def modify_models_based_on_class(models_to_test):
 
 
 def list_available_models():
-    return sorted(model.name for model in MODELS_TO_TEST)
-# def list_available_models():
-#     """List all available circuit model names."""
-#     # models = all_subclasses(Circuit)
-#     models = MODELS_TO_TEST
+    return sorted(f"{model.source}: {model.name}" for model in MODELS_TO_TEST)
 
-#     available_models = [cls[0] for cls in models]
-#     return sorted(available_models)
 
-def get_models_to_test(selected_models=None):
-    if selected_models is None:
-        return MODELS_TO_TEST
-    return [m for m in MODELS_TO_TEST if m.name in selected_models]
+# def get_models_to_test(selected_models=None):
+#     if selected_models is None:
+#         return MODELS_TO_TEST
+#     return [m for m in MODELS_TO_TEST if m.name in selected_models]
+
+def get_models_to_test(selected_models=None, source_filter=None):
+    models = MODELS_TO_TEST
+
+    if selected_models is not None:
+        models = [m for m in models if m.name in selected_models]
+
+    if source_filter is not None:
+        models = [m for m in models if m.source == source_filter]
+
+    return models
 
 
 # def get_models_to_test(selected_models = None):

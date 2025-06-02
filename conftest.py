@@ -14,14 +14,22 @@ def pytest_addoption(parser):
         default=False,
         help="List all available circuit models."
     )
+    parser.addoption(
+        "--source",
+        action="store",
+        choices=["class", "pytorch", "onnx"],
+        default=None,
+        help="Restrict models to a specific source: class, pytorch, or onnx."
+    )
 
 
 def pytest_generate_tests(metafunc):
 
     if "model_fixture" in metafunc.fixturenames:
         selected_models = metafunc.config.getoption("model")
+        selected_source = metafunc.config.getoption("source")
 
-        models = get_models_to_test(selected_models)
+        models = get_models_to_test(selected_models, selected_source)
         ids = [f"{model.name}:{model.source}" for model in models]  # Extract readable names
 
         metafunc.parametrize("model_fixture", models, indirect=True, scope="module", ids=ids)

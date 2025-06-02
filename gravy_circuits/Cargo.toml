@@ -168,5 +168,5 @@ name = "generic_demo_v2"
 path = "bin/generic_demo_v2.rs"
 
 [[bin]]
-name = "generic_demo_1d"
-path = "bin/generic_demo_1d.rs"
+name = "torch_generic_circuit"
+path = "bin/torch_generic_circuit.rs"
