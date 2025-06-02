@@ -21,14 +21,18 @@ ModelEntry = namedtuple("ModelEntry", ["name", "source", "loader", "args", "kwar
 def scan_model_files(directory, extension, loader_fn, prefix):
     entries = []
     for foldername in os.listdir(directory):
-        folder = os.path.join(directory,foldername)
-        if os.path.isdir(folder):
-            if os.path.isfile(os.path.join(folder,"model.py")) and os.path.isfile(os.path.join(folder,"model.pt")) and os.path.isfile(os.path.join(folder,"metadata.json")):
-                name = foldername
-                path = os.path.join(directory, foldername)
-                entries.append(
-                    ModelEntry(name=f"{name}", source=prefix, loader=lambda p=path: loader_fn(p), args=(), kwargs={})
-                )
+        if prefix == "pytorch":
+            folder = os.path.join(directory,foldername)
+
+            if os.path.isdir(folder):
+                if os.path.isfile(os.path.join(folder,"model.py")) and os.path.isfile(os.path.join(folder,"model.pt")) and os.path.isfile(os.path.join(folder,"metadata.json")):
+                    name = foldername
+                    path = os.path.join(directory, foldername)
+                    entries.append(
+                        ModelEntry(name=f"{name}", source=prefix, loader=lambda p=path: loader_fn(p), args=(), kwargs={})
+                    )
+        if prefix == "onnx":
+            pass
     return entries
 
 
