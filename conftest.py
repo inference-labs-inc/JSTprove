@@ -17,11 +17,12 @@ def pytest_addoption(parser):
 
 
 def pytest_generate_tests(metafunc):
+
     if "model_fixture" in metafunc.fixturenames:
         selected_models = metafunc.config.getoption("model")
 
         models = get_models_to_test(selected_models)
-        ids = [model[0] for model in models]  # Extract readable names
+        ids = [f"{model.name}:{model.source}" for model in models]  # Extract readable names
 
         metafunc.parametrize("model_fixture", models, indirect=True, scope="module", ids=ids)
 

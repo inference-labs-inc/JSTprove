@@ -99,16 +99,13 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
         let alpha_2_v = api.mul(scaling_factor, two_v);
 
         // Bring the weights into the circuit as constants
-        // let mut out: Vec<Vec<Vec<Vec<Variable>>>> = self.input_arr.to_vec();
         let mut out = vec5_to_arrayd(self.input_arr.clone());
 
 
         let mut layer_num = 0;
         let mut conv_layer_num = 0;
         let mut fc_layer_num = 0;
-        // panic!("{}", &WEIGHTS_INPUT.layers.len());
 
-        // panic!("{:#?}", WEIGHTS_INPUT.layers); 
         assert!(WEIGHTS_INPUT.layers.len() > 0);
 
         while layer_num < WEIGHTS_INPUT.layers.len(){
@@ -135,17 +132,13 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
             let dim_view = raw_dim.as_array_view(); // Borrow from that
             let dim: &[usize] = dim_view.as_slice().unwrap(); // Now borrow is safe
 
-            // if layer_num != 0{
-                if WEIGHTS_INPUT.layer_input_shapes[layer_num] != dim{
-                // if WEIGHTS_INPUT.layer_input_shapes[layer_num] != WEIGHTS_INPUT.layer_output_shapes[layer_num - 1]{
-                    let reshape_shape = &WEIGHTS_INPUT.layer_input_shapes[layer_num];
-                    // panic!("{:#?}, {:#?}, {:#?}, {:#?}, {}",&WEIGHTS_INPUT.layer_input_shapes[layer_num], &WEIGHTS_INPUT.layer_output_shapes[layer_num - 1], reshape_shape, out.dim(), layer_num);
+            if WEIGHTS_INPUT.layer_input_shapes[layer_num] != dim{
+                let reshape_shape = &WEIGHTS_INPUT.layer_input_shapes[layer_num];
 
-                    out = out
-                        .into_shape_with_order(IxDyn(&reshape_shape))
-                        .expect("Shape mismatch: Cannot reshape into the given dimensions");
-                }
-            // }
+                out = out
+                    .into_shape_with_order(IxDyn(&reshape_shape))
+                    .expect("Shape mismatch: Cannot reshape into the given dimensions");
+            }
 
             if layer.starts_with("conv"){
                 let i = conv_layer_num;

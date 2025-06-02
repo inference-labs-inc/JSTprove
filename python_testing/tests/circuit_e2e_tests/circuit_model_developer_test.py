@@ -85,6 +85,7 @@ def test_witness_wrong_outputs_dev(model_fixture, capsys, temp_witness_file, tem
 
 def test_witness_prove_verify_true_inputs_dev(model_fixture, temp_witness_file, temp_input_file, temp_output_file, temp_proof_file, capsys, check_model_compiles, check_witness_generated):
     model = model_fixture["model"]
+    print(model)
     model.base_testing(
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,

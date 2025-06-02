@@ -19,7 +19,7 @@ from typing import List, Dict, Optional
 
 
 
-class GenericModelForCircuit(ZKModel):
+class GenericModelTorch(ZKModel):
     def __init__(self, model_name, models_folder = None, model_file_path: str = None, quantized_model_file_path: str = None, layers = None):
         self.max_value = 2**32
         self.name = "generic_demo_1d"
@@ -48,12 +48,17 @@ class GenericModelForCircuit(ZKModel):
 
     def find_model(self, model_name):
         # Look for model in models_for_circuit_folder
+        if "models_pytorch" in model_name:
+            return model_name
         return f"models_pytorch/{model_name}"
     
     def get_model_type(self, path):
         model_path = path + "/model.py"
+        print(model_path)
+        print(os.getcwd())
         assert os.path.exists(model_path), f"Model file {model_path} does not exist"
         module = importlib.import_module(model_path.replace("/", ".").replace(".py", ""))
+
 
         model_classes = [cls for name, cls in inspect.getmembers(module, inspect.isclass)
                          if cls.__module__ == module.__name__]
@@ -140,12 +145,12 @@ if __name__ == "__main__":
     for n in names:
         # name = f"{n}_conv1"
         name = "doom"
-        d = GenericModelForCircuit(name)
+        d = GenericModelTorch(name)
         # # d.base_testing()
         # # d.base_testing(run_type=RunType.END_TO_END, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
         d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
         # # d.save_quantized_model("quantized_model.pth")
-        d_2 = GenericModelForCircuit(name)
+        d_2 = GenericModelTorch(name)
         # # # # d_2.load_quantized_model("quantized_model.pth")
         d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
         d_2.base_testing(run_type=RunType.PROVE_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
