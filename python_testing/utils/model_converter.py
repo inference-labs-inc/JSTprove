@@ -84,8 +84,8 @@ class GeneralLayerFunctions():
             out = out.reshape(self.input_shape)
         return out
     
-    def get_outputs(self, inputs):
-        return self.quantized_model(inputs)
+    # def get_outputs(self, inputs):
+    #     return self.quantized_model(inputs)
     
     def get_inputs(self, file_path:str = None, is_scaled = False):
         if file_path == None:
@@ -96,7 +96,7 @@ class GeneralLayerFunctions():
             raise NotImplementedError("Must define attribute input_shape")
     
     def create_new_inputs(self):
-        print(self.scale_base, self.scaling, self.scale_base**self.scaling)
+        # print(self.scale_base, self.scaling, self.scale_base**self.scaling)
         return torch.mul(torch.rand(self.input_shape)*2 - 1, self.scale_base**self.scaling).long()
 
     def format_inputs(self, inputs):
@@ -176,6 +176,7 @@ class ModelConverter(ABC):
         pass
     
 
+    # TODO JG suggestion - can maybe make the layers into a factory here, similar to how its done in Rust? Can refactor to this later imo.
     @abstractmethod
     def get_weights(self, flatten = False):
         pass
@@ -241,13 +242,18 @@ class ModelConverter(ABC):
 
         # return weights
     
-    @abstractmethod
-    def get_model(self, device):
-        pass
+    # @abstractmethod
+    # def get_model(self, device):
+    #     pass
 
     @abstractmethod
     def get_model_and_quantize(self):
         pass
+
     @abstractmethod
     def test_accuracy(self):
+        pass
+
+    @abstractmethod
+    def get_outputs(self, inputs):
         pass

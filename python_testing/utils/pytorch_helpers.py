@@ -1,6 +1,5 @@
-from dataclasses import asdict, dataclass, fields
+from dataclasses import dataclass, fields
 import inspect
-import json
 from typing import Dict, List, Optional
 import numpy as np
 import torch
@@ -8,14 +7,10 @@ import torch.nn.functional as F
 import torch.nn as nn
 import onnx
 import onnxruntime as ort
-from torch.fx import symbolic_trace
 
 
-from python_testing.circuit_components.circuit_helpers import Circuit, RunType
-from python_testing.utils.run_proofs import ZKProofSystems
-from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify,prepare_io_files
-from types import SimpleNamespace
-from python_testing.utils.pytorch_partial_models import Conv2DModel, Conv2DModelReLU, QuantizedConv2d, QuantizedLinear
+from python_testing.circuit_components.circuit_helpers import RunType
+from python_testing.utils.pytorch_partial_models import QuantizedConv2d, QuantizedLinear
 from python_testing.utils.model_converter import ZKModelBase, ModelConverter
 
 
@@ -365,6 +360,9 @@ class PytorchConverter(ModelConverter):
         print(self.model(inputs))
         q_inputs = inputs*(self.scale_base**self.scaling)
         print(self.quantized_model(q_inputs)/(self.scale_base**(2*self.scaling)))
+
+    def get_outputs(self, inputs):
+        return self.quantized_model(inputs)
 
 
 

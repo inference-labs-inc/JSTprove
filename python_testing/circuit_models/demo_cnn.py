@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from python_testing.utils.pytorch_helpers import ZKTorchModel, RunType
+from python_testing.utils.pytorch_helpers import ZKTorchModel
+from python_testing.utils.model_converter import RunType
 
 import sys
 

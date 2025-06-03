@@ -102,7 +102,7 @@ def prepare_io_files(func):
 
         proof_system = kwargs.get("proof_system") or getattr(self, 'proof_system', ZKProofSystems.Expander)
         run_type = kwargs.pop("run_type")
-        
+
         # Get file paths
         witness_file, input_file, proof_path, public_path, verification_key, circuit_name, weights_path, output_file = get_files(
             input_folder, proof_folder, temp_folder, circuit_folder, weights_folder, 
@@ -167,6 +167,8 @@ def prepare_io_files(func):
         
         # Store file_info in the instance
         self._file_info = file_info
+        # if "circuit_name" in kwargs.keys():
+        #     kwargs.pop("circuit_name")
         
 
         # print(kwargs)
