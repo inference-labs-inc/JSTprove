@@ -34,6 +34,7 @@ def test_witness_dev(model_fixture, capsys, temp_witness_file, temp_input_file, 
     stderr = captured.err
 
     print(stdout)
+    # assert False
 
     assert os.path.exists(temp_witness_file)
     assert "Running cargo command:" in stdout

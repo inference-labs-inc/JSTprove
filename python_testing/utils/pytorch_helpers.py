@@ -58,7 +58,6 @@ class PytorchConverter(ModelConverter):
 
     def save_quantized_model(self, file_path: str):
         torch.save(self.quantized_model, file_path)
-
     
     def load_quantized_model(self, file_path: str):
         # self.quantized_model.load_state_dict(torch.load(file_path))
@@ -374,24 +373,3 @@ class PytorchConverter(ModelConverter):
 class ZKTorchModel(PytorchConverter, ZKModelBase):
     def __init__(self):
         raise NotImplementedError("Must implement __init__")
-    
-    @prepare_io_files
-    def base_testing(self, run_type=RunType.BASE_TESTING, 
-                     witness_file=None, input_file=None, proof_file=None, public_path=None, 
-                     verification_key=None, circuit_name=None, weights_path=None, output_file=None,
-                     proof_system: ZKProofSystems = ZKProofSystems.Expander,
-                     dev_mode = False,
-                     ecc = True,
-                     circuit_path: Optional[str] = None,
-                     write_json: Optional[bool] = False,
-                     bench = False,
-                     quantized_path = None):
-        """Simulates running the model by passing inputs through layers with weights."""
-        print("Running circuit...")
-
-        print(circuit_name, circuit_path)
-
-        if not weights_path:
-            weights_path = f"weights/{circuit_name}_weights.json"
-
-        self.parse_proof_run_type(witness_file, input_file, proof_file, public_path, verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, quantized_path, run_type, dev_mode, ecc, write_json, bench)

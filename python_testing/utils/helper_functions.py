@@ -1,3 +1,4 @@
+from pathlib import Path
 import threading
 from time import time, sleep
 import torch
@@ -60,6 +61,8 @@ def compute_and_store_output(func):
     
     return wrapper
 
+
+
 # Decorator to prepare input/output files
 def prepare_io_files(func):
     """
@@ -68,20 +71,37 @@ def prepare_io_files(func):
     """
     
     @functools.wraps(func)
-    def wrapper(self, run_type=None, input_folder=None, proof_folder=None, 
-                temp_folder=None, circuit_folder=None, weights_folder=None, 
-                output_folder=None, proof_system=None, *args, **kwargs):
+    def wrapper(self, *args, **kwargs):
+
+        def resolve_folder(key, file_key=None, default=""):
+            if key in kwargs:
+                return kwargs[key]
+            if file_key in kwargs and kwargs[file_key] is not None:
+                return str(Path(kwargs[file_key]).parent)
+            return getattr(self, key, default)
         
-        
+        # TODO These may need to be fixed as I think the function brings in files not folders, too much default
         # Use provided values or defaults from instance
-        input_folder = input_folder or getattr(self, 'input_folder', "inputs")
-        proof_folder = proof_folder or getattr(self, 'proof_folder', "analysis")
-        temp_folder = temp_folder or getattr(self, 'temp_folder', "temp")
-        circuit_folder = circuit_folder or getattr(self, 'circuit_folder', "")
-        weights_folder = weights_folder or getattr(self, 'weights_folder', "weights")
-        output_folder = output_folder or getattr(self, 'output_folder', "output")
-        quantized_model_folder = "quantized_model_folder" or getattr(self, 'output_folder', "output")
-        proof_system = proof_system or getattr(self, 'proof_system', ZKProofSystems.Expander)
+
+        # Fix this
+        # input_folder = kwargs.get("input_folder") or getattr(self, 'input_folder', "inputs")
+        # proof_folder = kwargs.get("proof_folder") or getattr(self, 'proof_folder', "analysis")
+        # temp_folder = kwargs.get("temp_folder") or getattr(self, 'temp_folder', "temp")
+        # circuit_folder = kwargs.get("circuit_folder") or getattr(self, 'circuit_folder', "")
+        # weights_folder = kwargs.get("weights_folder") or getattr(self, 'weights_folder', "weights")
+        # output_folder = kwargs.get("output_folder") or getattr(self, 'output_folder', "output")
+        # quantized_model_folder = kwargs.get("quantized_folder") or getattr(self, 'quantized_path', "quantized_model_folder")
+        # proof_system = kwargs.get("proof_system") or getattr(self, 'proof_system', ZKProofSystems.Expander)
+        input_folder = resolve_folder("input_folder", "input_file", "inputs")
+        output_folder = resolve_folder("output_folder", "output_file", "output")
+        quantized_model_folder = resolve_folder("quantized_folder", "quantized_path", "quantized_model_folder")
+        proof_folder = resolve_folder("proof_folder", default="analysis")
+        temp_folder = resolve_folder("temp_folder", default="temp")
+        weights_folder = resolve_folder("weights_folder", default="weights")
+        circuit_folder = resolve_folder("circuit_folder", default="")
+
+        proof_system = kwargs.get("proof_system") or getattr(self, 'proof_system', ZKProofSystems.Expander)
+        run_type = kwargs.pop("run_type")
         
         # Get file paths
         witness_file, input_file, proof_path, public_path, verification_key, circuit_name, weights_path, output_file = get_files(

@@ -28,7 +28,7 @@ BAD_OUTPUT = ["assertion `left == right` failed", "Witness generation failed"]
 @pytest.fixture(scope="module")
 def model_fixture(request, tmp_path_factory):
     param = request.param
-    name = f"{param.name}:{param.source}"
+    name = f"{param.name}"
     model_class = param.loader
     args, kwargs = (), {}
 

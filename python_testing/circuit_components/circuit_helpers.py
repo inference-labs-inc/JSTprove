@@ -337,6 +337,7 @@ class Circuit:
 
         if quantized_path:
             self.save_quantized_model(quantized_path)
+
         else:
             self.save_quantized_model(self._file_info.get("quantized_model_path"))
 

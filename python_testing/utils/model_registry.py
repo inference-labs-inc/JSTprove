@@ -73,7 +73,7 @@ def build_models_to_test():
     # Filter unwanted class models
     models = [
         m for m in models
-        if m.name not in {"zkmodel", "doomslice", "slice", "genericdemo", "genericmodeltorch", "genericmodelonnx"}
+        if m.name not in {"zkmodel", "doomslice", "slice", "genericdemo", "genericmodeltorch", "genericmodelonnx", "zktorchmodel", "zkmodelbase"}
     ]
 
     # Add special ReLU model
