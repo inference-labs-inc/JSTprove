@@ -229,3 +229,6 @@ This CLI tool runs various circuit operations such as compilation, witness gener
 
    If you see this error, it means you need some private variables:
    called `Result::unwrap()` on an `Err` value: UserError("dest ir circuit invalid: circuit has no inputs")
+
+
+   pipreqs ./ --ignore .venv,.venv_new

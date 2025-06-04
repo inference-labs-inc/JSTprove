@@ -149,3 +149,23 @@ def test_real_inference_from_onnx():
         assert isinstance(result, list)
         print(result) # Identity op should return input
         # assert False
+
+
+def test_analyze_layers():
+    converter = ONNXConverter()
+    converter.model = create_dummy_model()
+    converter.analyze_layers(converter.model)
+
+    assert False
+    
+    # # Save and load into onnxruntime
+    # with tempfile.NamedTemporaryFile(suffix=".onnx") as tmp:
+    #     onnx.save(converter.model, tmp.name)
+    #     converter.ort_sess = ort.InferenceSession(tmp.name, providers=["CPUExecutionProvider"])
+
+    #     dummy_input = torch.tensor([1.0], dtype=torch.float32).numpy()
+    #     result = converter.get_outputs(dummy_input)
+
+    #     assert isinstance(result, list)
+    #     print(result) # Identity op should return input
+    #     # assert False

@@ -14,6 +14,10 @@ from python_testing.circuit_components.circuit_helpers import RunType
 from python_testing.utils.pytorch_partial_models import QuantizedConv2d, QuantizedLinear
 from python_testing.utils.model_converter import ZKModelBase, ModelConverter
 
+
+import model_analyzer
+
+
 class ONNXConverter(ModelConverter):
 
     # For saving and loading: https://onnx.ai/onnx/intro/python.html, larger models will require a different structure
@@ -37,7 +41,8 @@ class ONNXConverter(ModelConverter):
         self.quantized_model = onnx_model
         print(os.path.exists(file_path))
         self.ort_sess =  ort.InferenceSession(file_path, providers=["CPUExecutionProvider"])
-
+        # https://github.com/sonos/tract/blob/main/api/py/docs/index.md
+        # Can use tract to run model instead
 
     # def expand_padding(self, padding_2):
     #     if len(padding_2) != 2:
@@ -45,6 +50,14 @@ class ONNXConverter(ModelConverter):
     #     pad_h, pad_w = padding_2
     #     return (pad_w, pad_w, pad_h, pad_h)
     
+    def analyze_layers(self, model):
+        # model = tract.onnx().model_for_path("./mobilenetv2-7.onnx").into_optimized().into_runnable()
+        # tract_model = tract.onnx().model_for_path("./models_onnx/doom.onnx")
+        layers = model_analyzer.analyze_model("./models_onnx/doom.onnx")
+        print(layers)
+
+
+
     def get_used_layers(self, model, input_shape):
         pass
 
@@ -136,7 +149,7 @@ class ONNXConverter(ModelConverter):
         q_inputs = inputs*(self.scale_base**self.scaling)
 
         session = ort.InferenceSession(self.model_file_name)
-        outputs = session.run(None, {"input": inputs})
+        outputs = session.run(None, {"input": q_inputs})
 
         print(outputs/(self.scale_base**(2*self.scaling)))
 

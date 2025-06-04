@@ -104,6 +104,20 @@ fn div_constrained<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
     // Ensure remainder sharp is in correct range
     constrain_size(api, scaling, rem_sharp);
 
+
+
+
+    // d_sharp = q_sharp * y + rem_sharp
+
+    let val = api.mul(q_sharp, y);
+
+    let val_2 = api.add(val, rem_sharp);
+
+    api.assert_is_equal(val_2, d_sharp);
+
+
+
+
     let q = api.sub(q_sharp, CircuitField::<C>::from_u256(U256::from(two_v.into())));
     // If relu optimization, multiply by most significant bit as bits have
     if is_relu {
