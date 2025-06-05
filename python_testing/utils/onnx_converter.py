@@ -53,7 +53,8 @@ class ONNXConverter(ModelConverter):
     def analyze_layers(self, model):
         # model = tract.onnx().model_for_path("./mobilenetv2-7.onnx").into_optimized().into_runnable()
         # tract_model = tract.onnx().model_for_path("./models_onnx/doom.onnx")
-        layers = model_analyzer.analyze_model("./models_onnx/doom.onnx")
+        layers = model_analyzer.analyze_model("./models_onnx/doom.onnx", 1)
+        
         print(layers)
 
 
@@ -65,11 +66,22 @@ class ONNXConverter(ModelConverter):
         pass
     
     def quantize_model(self, model, scale: int, rescale_config: dict = None):
+        '''
+        1. Read in the model and layers + analyze
+        2. Look for layers that need quantizing 
+        3. Convert layer to quantized version
+        4. insert quantized version back into the model
+        '''
         pass
     
 
     # TODO JG suggestion - can maybe make the layers into a factory here, similar to how its done in Rust? Can refactor to this later imo.
     def get_weights(self, flatten = False):
+        '''
+        1. Analyze the model for architecture + w & b
+        2. Put arch into format to be read by ECC circuit builder
+        3. Put w + b into format to be read by ECC circuit builder
+        '''
         pass
         # if flatten:
         #     in_shape = [1, np.prod(self.input_shape)]

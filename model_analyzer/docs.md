@@ -1,7 +1,7 @@
 To Run!!
 
-must run `maturin develop --features python`
+must run `maturin develop`
 
 or:
 
-`maturin build --release --features python`
+`maturin build --release`

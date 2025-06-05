@@ -11,6 +11,7 @@ crate-type = ["cdylib"]
 tract-onnx = "0.19"
 tract-core = "0.19"
 pyo3 = { version = "0.25", features = ["extension-module"] }
+thiserror = "2.0.12"
 
 [package.metadata.maturin]
 name = "model_analyzer"

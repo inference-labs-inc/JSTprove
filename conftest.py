@@ -1,3 +1,6 @@
+import os
+import subprocess
+import time
 import pytest 
 from python_testing.utils.model_registry import get_models_to_test, list_available_models
 
@@ -24,7 +27,6 @@ def pytest_addoption(parser):
 
 
 def pytest_generate_tests(metafunc):
-
     if "model_fixture" in metafunc.fixturenames:
         selected_models = metafunc.config.getoption("model")
         selected_source = metafunc.config.getoption("source")
@@ -42,3 +44,21 @@ def pytest_configure(config):
         for model in available_models:
             print(f"- {model}")
         pytest.exit("Exiting after listing available models.")  # This prevents tests from running
+
+
+@pytest.fixture(scope='session', autouse=True)
+def setup_environment():
+    # Save current directory
+    original_dir = os.getcwd()
+
+    try:
+        # Change to 'model_analyzer' directory
+        os.chdir('model_analyzer')
+
+        # Run 'maturin develop' command
+        subprocess.run(['maturin', 'develop'], check=True)
+
+    finally:
+        # Go back to the original directory
+        os.chdir(original_dir)
+        time.sleep(1)

@@ -2,8 +2,8 @@ use pyo3::prelude::*;
 use crate::core::analyze_model_internal;
 
 #[pyfunction]
-fn analyze_model(path: &str) -> PyResult<Vec<String>> {
-    analyze_model_internal(path)
+fn analyze_model(path: &str, batch_size: Option<usize>) -> PyResult<Vec<String>> {
+    analyze_model_internal(path, Some(batch_size.unwrap()))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))
 }
 

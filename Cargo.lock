@@ -1992,6 +1992,7 @@ name = "model_analyzer"
 version = "0.1.0"
 dependencies = [
  "pyo3",
+ "thiserror 2.0.12",
  "tract-core",
  "tract-onnx",
 ]
