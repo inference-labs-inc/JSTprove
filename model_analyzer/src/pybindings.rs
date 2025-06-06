@@ -1,10 +1,14 @@
-use pyo3::prelude::*;
-use crate::core::analyze_model_internal;
+use pyo3::{exceptions::PyRuntimeError, prelude::*};
+use crate::model_analyzer::analyze_model_internal;
 
 #[pyfunction]
-fn analyze_model(path: &str, batch_size: Option<usize>) -> PyResult<Vec<String>> {
-    analyze_model_internal(path, Some(batch_size.unwrap()))
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))
+fn analyze_model(path: &str) -> PyResult<String> {
+    analyze_model_internal(path)
+        .map_err(|e| PyRuntimeError::new_err(format!("{}", e)))
+        .and_then(|analysis| {
+            serde_json::to_string_pretty(&analysis)
+                .map_err(|e| PyRuntimeError::new_err(format!("JSON error: {}", e)))
+        })
 }
 
 #[pymodule]

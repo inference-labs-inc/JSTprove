@@ -1,5 +1,6 @@
 from dataclasses import dataclass, fields
 import inspect
+import json
 from typing import Dict, List, Optional
 import numpy as np
 import torch
@@ -16,7 +17,22 @@ from python_testing.utils.model_converter import ZKModelBase, ModelConverter
 
 
 import model_analyzer
+@dataclass
+class ONNXLayerConstants:
+    input_index: int
+    name: str
+    value: Dict[str, List[int]]
 
+@dataclass
+class ONNXLayer:
+    id: int
+    name: str
+    kind: str
+    inputs: List[int]
+    outputs: List[int]
+    shape: List[int] 
+    constants: List[ONNXLayerConstants]
+    params: Dict
 
 class ONNXConverter(ModelConverter):
 
@@ -53,14 +69,33 @@ class ONNXConverter(ModelConverter):
     def analyze_layers(self, model):
         # model = tract.onnx().model_for_path("./mobilenetv2-7.onnx").into_optimized().into_runnable()
         # tract_model = tract.onnx().model_for_path("./models_onnx/doom.onnx")
-        layers = model_analyzer.analyze_model("./models_onnx/doom.onnx", 1)
+        # layers = model_analyzer.analyze_model("./models_onnx/doom.onnx")
+        layers = model_analyzer.analyze_model("./models_onnx/doom.onnx")
+        # layers = model_analyzer.analyze_model("./models_onnx/resnet18-v2-7.onnx")
+
         
-        print(layers)
+        
+        layers = json.loads(layers)
+        layers = [ONNXLayer(**l) for l in layers]
+
+        # sort layers
+        layers = sorted(layers, key=lambda ONNXLayer: ONNXLayer.id) 
+        print([(l.name, l.id, l.kind, l.inputs, l.outputs, l.params) for l in layers])
 
 
 
     def get_used_layers(self, model, input_shape):
-        pass
+        layers = model_analyzer.analyze_model("./models_onnx/doom.onnx")
+        # layers = model_analyzer.analyze_model("./models_onnx/resnet18-v2-7.onnx")
+
+        
+        
+        layers = json.loads(layers)
+        layers = [ONNXLayer(**l) for l in layers]
+
+        # sort layers
+        layers = sorted(layers, key=lambda ONNXLayer: ONNXLayer.id) 
+        print([(l.name, l.id, l.kind, l.inputs, l.outputs, len(l.constants), l.shape) for l in layers])
 
     def get_input_and_output_shapes_by_layer(self, model, input_shape):
         pass
