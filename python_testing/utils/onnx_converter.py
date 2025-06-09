@@ -17,11 +17,11 @@ from python_testing.utils.model_converter import ZKModelBase, ModelConverter
 
 
 import model_analyzer
-@dataclass
-class ONNXLayerConstants:
-    input_index: int
-    name: str
-    value: Dict[str, List[int]]
+# @dataclass
+# class ONNXLayerConstants:
+#     input_index: int
+#     name: str
+#     value: Dict[str, List[int]]
 
 @dataclass
 class ONNXLayer:
@@ -31,7 +31,7 @@ class ONNXLayer:
     inputs: List[int]
     outputs: List[int]
     shape: List[int] 
-    constants: List[ONNXLayerConstants]
+    tensor: List
     params: Dict
 
 class ONNXConverter(ModelConverter):
@@ -66,36 +66,47 @@ class ONNXConverter(ModelConverter):
     #     pad_h, pad_w = padding_2
     #     return (pad_w, pad_w, pad_h, pad_h)
     
-    def analyze_layers(self, model):
+    def analyze_layers_json(self, model):
+        layers = model_analyzer.analyze_model_json("./models_onnx/doom.onnx")
+        layers = json.loads(layers)
+        # layers = [ONNXLayer(**l) for l in layers]
+
+        # # sort layers
+        # layers = sorted(layers, key=lambda ONNXLayer: ONNXLayer.id) 
+        # print([(l.name, l.id, l.kind, l.inputs, l.outputs, l.shape) for l in layers])
+
+        # for l in layers:
+        #     if l.kind == {'type': 'Const'}:
+        #         print(l.tensor)
+        #         break
+
+    def analyze_layers(self, path):
         # model = tract.onnx().model_for_path("./mobilenetv2-7.onnx").into_optimized().into_runnable()
         # tract_model = tract.onnx().model_for_path("./models_onnx/doom.onnx")
         # layers = model_analyzer.analyze_model("./models_onnx/doom.onnx")
         layers = model_analyzer.analyze_model("./models_onnx/doom.onnx")
-        # layers = model_analyzer.analyze_model("./models_onnx/resnet18-v2-7.onnx")
 
-        
-        
-        layers = json.loads(layers)
-        layers = [ONNXLayer(**l) for l in layers]
 
         # sort layers
         layers = sorted(layers, key=lambda ONNXLayer: ONNXLayer.id) 
-        print([(l.name, l.id, l.kind, l.inputs, l.outputs, l.params) for l in layers])
+        print([(l.name, l.id, l.kind, l.inputs, l.outputs, l.shape) for l in layers])
+        # self.get_used_layers(layers)
+
+        return layers
 
 
 
-    def get_used_layers(self, model, input_shape):
-        layers = model_analyzer.analyze_model("./models_onnx/doom.onnx")
-        # layers = model_analyzer.analyze_model("./models_onnx/resnet18-v2-7.onnx")
+
+    def get_used_layers(self, model):
+        architecture = model_analyzer.get_architecture(model)
 
         
-        
-        layers = json.loads(layers)
-        layers = [ONNXLayer(**l) for l in layers]
+        # layers = json.loads(layers)
+        # layers = [ONNXLayer(**l) for l in layers]
 
-        # sort layers
+        # # sort layers
         layers = sorted(layers, key=lambda ONNXLayer: ONNXLayer.id) 
-        print([(l.name, l.id, l.kind, l.inputs, l.outputs, len(l.constants), l.shape) for l in layers])
+        print([(l.name, l.id, l.kind, l.inputs, l.outputs, f"Tensor length {len(l.tensor)}", l.shape) for l in layers])
 
     def get_input_and_output_shapes_by_layer(self, model, input_shape):
         pass

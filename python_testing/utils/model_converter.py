@@ -164,7 +164,7 @@ class ModelConverter(ABC):
     #     return (pad_w, pad_w, pad_h, pad_h)
     
     @abstractmethod
-    def get_used_layers(self, model, input_shape):
+    def get_used_layers(self, model = None, input_shape = None):
         pass
 
     @abstractmethod

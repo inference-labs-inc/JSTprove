@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use tract_core::{internal::DimLike, ops::cnn::Conv};
 use tract_onnx::prelude::*;
-use crate::layer_handlers::{extract_layer_params, layer_helpers::{is_relu_like, detect_einsum, EinsumType}, layer_ir::{LayerConstant, LayerIR, LayerKind, LayerParams, SerializableTensor}};
+use crate::layer_handlers::{extract_layer_params, layer_helpers::{detect_einsum, is_relu_like, EinsumType}, layer_ir::{LayerConstant, LayerIR, LayerKind, LayerKindWrapper, LayerParams, SerializableTensor}};
 
 // use tract_core::ops::cnn::Conv;
 
@@ -35,9 +35,9 @@ pub fn analyze_model_internal<P: AsRef<std::path::Path>>(onnx_path: P) -> TractR
 
         let inputs: Vec<usize> = node.inputs.iter().map(|i| i.node).collect();
 
-        if op_name == "Const" || op_name == "Source" {
-            continue; // skip weights and inputs
-        }
+        // if op_name == "Const" || op_name == "Source" {
+        //     continue; // skip weights and inputs
+        // }
 
         // Track output links (forward connectivity)
         let mut outputs: Vec<usize> = vec![];
@@ -56,19 +56,19 @@ pub fn analyze_model_internal<P: AsRef<std::path::Path>>(onnx_path: P) -> TractR
         // println!("id - {}, name - {}, {}, {:?}", id, name, op_name, shape);
 
 
-        let constants: Vec<LayerConstant> = node.inputs
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(idx, inlet)| {
-                            const_tensors.get(&inlet.node).and_then(|t| {
-                                SerializableTensor::from_tensor(t).map(|val| LayerConstant {
-                                    input_index: idx,
-                                    name: model.node(inlet.node).name.clone(),
-                                    value: val,
-                                })
-                            })
-                        })
-                        .collect();
+        // let constants: Vec<LayerConstant> = node.inputs
+        //                 .iter()
+        //                 .enumerate()
+        //                 .filter_map(|(idx, inlet)| {
+        //                     const_tensors.get(&inlet.node).and_then(|t| {
+        //                         SerializableTensor::from_tensor(t).map(|val| LayerConstant {
+        //                             input_index: idx,
+        //                             name: model.node(inlet.node).name.clone(),
+        //                             value: val,
+        //                         })
+        //                     })
+        //                 })
+        //                 .collect();
 
         if op_name.as_ref().eq("Max"){
             // println!("{:?}, {:?}, {:?}",weights, biases, inputs);
@@ -77,6 +77,8 @@ pub fn analyze_model_internal<P: AsRef<std::path::Path>>(onnx_path: P) -> TractR
 
         // Map known ops to kind
         let kind = match op_name.as_ref() {
+            "Const" => LayerKind::Const,
+            "Source" => LayerKind::Source,
             "Conv" => LayerKind::Conv,
             "EinSum" => {
                     match &params {
@@ -84,13 +86,13 @@ pub fn analyze_model_internal<P: AsRef<std::path::Path>>(onnx_path: P) -> TractR
                             match detect_einsum(equation){
                                 // TODO fix this approach. Dont want all the unknowns
                                 EinsumType::MatMul => LayerKind::MatMul,
-                                EinsumType::TransposedRHSMatMul => LayerKind::Unknown("MatMulTransposedRHS".into()),
-                                EinsumType::TransposedLHSMatMul => LayerKind::Unknown("MatMulTransposedLHS".into()),
-                                EinsumType::TransposedRHSLHSMatMul => LayerKind::Unknown("MatMulTransposedRHSLHS".into()),
-                                _ => LayerKind::Unknown("EinSum".into())
+                                EinsumType::TransposedRHSMatMul => LayerKind::Unknown { op : "MatMulTransposedRHS".into() },
+                                EinsumType::TransposedLHSMatMul => LayerKind::Unknown { op : "MatMulTransposedLHS".into() },
+                                EinsumType::TransposedRHSLHSMatMul => LayerKind::Unknown { op : "MatMulTransposedRHSLHS".into() },
+                                _ => LayerKind::Unknown { op : "EinSum".into() }
                             }
                         }
-                        _ => LayerKind::Unknown("EinSum".into()),
+                        _ => LayerKind::Unknown {op : "EinSum".into() },
                     }
                 }
             "Add" => LayerKind::Add,
@@ -98,22 +100,31 @@ pub fn analyze_model_internal<P: AsRef<std::path::Path>>(onnx_path: P) -> TractR
                 if is_relu_like(node, &const_tensors) {
                     LayerKind::Relu
                 } else {
-                    LayerKind::Unknown(op_name.to_string())
+                    LayerKind::Unknown { op : op_name.to_string() }
                 }
             }
             "Reshape" => LayerKind::Reshape,
-            _ => LayerKind::Unknown(op_name.to_string()),
+            _ => LayerKind::Unknown { op : op_name.to_string() },
+        };
+        let tensor = if kind == LayerKind::Const {
+            node.outputs.get(0).and_then(|o| {
+                o.fact.konst.as_ref().and_then(|arc| {
+                    SerializableTensor::from_tensor(arc.as_ref())
+                })
+            })
+        } else {
+            None
         };
 
         let layer = LayerIR {
             id,
             name,
-            kind,
+            kind: kind.into(),
             inputs,
             outputs,
             shape,
-            constants,
-            params
+            params,
+            tensor
         };
 
         layer_ids.insert(id);
@@ -137,16 +148,17 @@ pub fn analyze_model_internal<P: AsRef<std::path::Path>>(onnx_path: P) -> TractR
 }
 
 
-// fn get_w_and_b(){
-
-// }
-
-// fn get_architecture(){
-
-// }
-fn quantize_layer(){
+pub fn get_w_and_b(){
 
 }
-fn quantize_model(){
 
-}
+// pub fn get_architecture_internal(model: Vec<LayerIR>) -> TractResult<Vec<LayerIR>>{
+//     return Ok(model)
+
+// }
+// fn quantize_layer(){
+
+// }
+// fn quantize_model(){
+
+// }
