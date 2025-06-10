@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-use tract_core::{internal::DimLike, ops::cnn::Conv};
+use tract_core::internal::DimLike;
 use tract_onnx::prelude::*;
-use crate::layer_handlers::{extract_layer_params, layer_helpers::{detect_einsum, is_relu_like, EinsumType}, layer_ir::{LayerConstant, LayerIR, LayerKind, LayerKindWrapper, LayerParams, SerializableTensor}};
+use crate::layer_handlers::{extract_layer_params, layer_helpers::{detect_einsum, is_relu_like, EinsumType}, layer_ir::{LayerIR, LayerKind, LayerParams, LayerParamsWrapper, SerializableTensor}};
 
 // use tract_core::ops::cnn::Conv;
 
@@ -82,8 +82,8 @@ pub fn analyze_model_internal<P: AsRef<std::path::Path>>(onnx_path: P) -> TractR
             "Conv" => LayerKind::Conv,
             "EinSum" => {
                     match &params {
-                        Some(LayerParams::EinSum { equation }) => {
-                            match detect_einsum(equation){
+                        Some(LayerParams::EinSum { axes, .. }) => {
+                            match detect_einsum(axes){
                                 // TODO fix this approach. Dont want all the unknowns
                                 EinsumType::MatMul => LayerKind::MatMul,
                                 EinsumType::TransposedRHSMatMul => LayerKind::Unknown { op : "MatMulTransposedRHS".into() },
@@ -104,6 +104,8 @@ pub fn analyze_model_internal<P: AsRef<std::path::Path>>(onnx_path: P) -> TractR
                 }
             }
             "Reshape" => LayerKind::Reshape,
+            "Cast" => LayerKind::Cast,
+
             _ => LayerKind::Unknown { op : op_name.to_string() },
         };
         let tensor = if kind == LayerKind::Const {
@@ -123,7 +125,7 @@ pub fn analyze_model_internal<P: AsRef<std::path::Path>>(onnx_path: P) -> TractR
             inputs,
             outputs,
             shape,
-            params,
+            params: params.map(|p| LayerParamsWrapper { inner: p }),
             tensor
         };
 
@@ -134,7 +136,7 @@ pub fn analyze_model_internal<P: AsRef<std::path::Path>>(onnx_path: P) -> TractR
     // Third pass: remove non-layer edges (pointing to consts), clean output edges
     let mut result: Vec<LayerIR> = node_id_to_layer
         .into_iter()
-        .map(|(id, mut layer)| {
+        .map(|(_id, mut layer)| {
             layer.inputs.retain(|i| layer_ids.contains(i));
             layer.outputs.retain(|i| layer_ids.contains(i));
             layer
@@ -148,17 +150,47 @@ pub fn analyze_model_internal<P: AsRef<std::path::Path>>(onnx_path: P) -> TractR
 }
 
 
-pub fn get_w_and_b(){
+pub fn get_w_and_b_internal(model: Vec<LayerIR>) -> TractResult<Vec<LayerIR>>{
+    let mut w_and_b_layers = Vec::new();
+
+    for layer in model.iter(){
+        if layer.kind.kind == LayerKind::Const {
+            w_and_b_layers.push(layer.clone())
+        }
+    }
+    return Ok(w_and_b_layers)
 
 }
 
-// pub fn get_architecture_internal(model: Vec<LayerIR>) -> TractResult<Vec<LayerIR>>{
-//     return Ok(model)
+pub fn get_architecture_internal(model: Vec<LayerIR>) -> TractResult<Vec<LayerIR>>{
+    let mut architecture_layers = Vec::new();
 
-// }
-// fn quantize_layer(){
+    for layer in model.iter(){
+        if layer.kind.kind == LayerKind::Const {
+            
+        }
+        else{
+            architecture_layers.push(layer.clone())
+        }
+    }
+    return Ok(architecture_layers)
+}
+fn quantize_layer(){
+    /*
+        a. If Const layer, than multiply each const by scale
+        b. if non-const layer, than run quantize layer 
+            i. Each layer should implement some quantize layer function, which returns a custom op, with the new custom layer (or something along those lines)
+            ii. This will involve coding out a custom layer for each of our layers eg. QuantizeConv and replace with Conv
+     */
 
-// }
-// fn quantize_model(){
-
-// }
+}
+fn quantize_model<P: AsRef<std::path::Path>>(input_path: P, output_path: P, scale: i64) -> Option<TractResult<Vec<LayerIR>>> {
+    /*
+        This function should:
+            1. Load in a model as a tract model
+            2. loop through all nodes
+            3. pass each load through quantize layer
+            4. save new model to file
+     */
+    None
+}

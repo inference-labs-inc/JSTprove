@@ -90,23 +90,32 @@ class ONNXConverter(ModelConverter):
         # sort layers
         layers = sorted(layers, key=lambda ONNXLayer: ONNXLayer.id) 
         print([(l.name, l.id, l.kind, l.inputs, l.outputs, l.shape) for l in layers])
-        # self.get_used_layers(layers)
+        architecture = self.get_used_layers(layers)
+        w_and_b = self.get_w_and_b(layers)
 
-        return layers
+        return (architecture, w_and_b)
 
 
 
 
     def get_used_layers(self, model):
         architecture = model_analyzer.get_architecture(model)
-
-        
-        # layers = json.loads(layers)
-        # layers = [ONNXLayer(**l) for l in layers]
-
         # # sort layers
-        layers = sorted(layers, key=lambda ONNXLayer: ONNXLayer.id) 
-        print([(l.name, l.id, l.kind, l.inputs, l.outputs, f"Tensor length {len(l.tensor)}", l.shape) for l in layers])
+        layers = sorted(architecture, key=lambda ONNXLayer: ONNXLayer.id) 
+        print([(l.name, l.id, l.kind, l.inputs, l.outputs, f"Tensor length {len(l.tensor) if l.tensor else None}", l.shape, json.loads(l.params.to_dict()) if l.params else None) for l in layers])
+        return layers
+    
+    def get_model_architecture(self, model):
+        return self.get_used_layers(model)
+    
+    def get_w_and_b(self, model):
+        w_and_b = model_analyzer.get_w_and_b(model)
+        # # sort layers
+        layers = sorted(w_and_b, key=lambda ONNXLayer: ONNXLayer.id) 
+        # print([(l.name, l.id, l.kind, l.inputs, l.outputs, f"Tensor length {l.tensor.shape if l.tensor else None}", l.shape) for l in layers])
+        return layers
+
+
 
     def get_input_and_output_shapes_by_layer(self, model, input_shape):
         pass

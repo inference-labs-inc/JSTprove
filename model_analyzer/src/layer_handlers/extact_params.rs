@@ -1,6 +1,6 @@
 use crate::layer_handlers::layer_ir::LayerParams;
 // use crate::extract_params::ExtractParams;
-use tract_core::ops::{cnn::{Conv, PaddingSpec}, einsum::EinSum};
+use tract_core::ops::{cast::Cast, cnn::{Conv, PaddingSpec}, einsum::EinSum};
 
 
 pub trait ExtractParams {
@@ -34,7 +34,18 @@ impl ExtractParams for Conv {
 impl ExtractParams for EinSum {
     fn extract_params(&self) -> Option<LayerParams> {
         Some(LayerParams::EinSum  {
-            equation: self.axes.to_string(),
+            axes: self.axes.to_string(),
+            operating_dt: format!("{:?}",self.operating_dt),
+            q_params: format!("{:?}",self.q_params),
+            
+        })
+    }
+}
+
+impl ExtractParams for Cast {
+    fn extract_params(&self) -> Option<LayerParams> {
+        Some(LayerParams::Cast  {
+            to: format!("{:?}", self.to),
         })
     }
 }
