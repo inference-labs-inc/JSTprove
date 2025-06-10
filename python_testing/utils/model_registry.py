@@ -11,7 +11,7 @@ from python_testing.circuit_components.relu import ReLU, ConversionType
 from python_testing.utils.helper_functions import RunType
 from python_testing.circuit_components.circuit_helpers import Circuit
 from python_testing.circuit_models.generic_model import GenericDemo
-from python_testing.circuit_models.generic_torch import GenericModelTorch
+# from python_testing.circuit_models.generic_torch import GenericModelTorch
 # from python_testing.circuit_models.generic_model_new_structure import GenericModelTorch
 
 
@@ -82,7 +82,7 @@ def build_models_to_test():
             models[i] = entry._replace(args=(3, 4), kwargs={"layers": ["conv1", "relu", "reshape", "fc1", "relu", "fc2"]})
 
     # Add PyTorch + ONNX models
-    models += scan_model_files("models_pytorch", ".pt", GenericModelTorch, "pytorch")
+    models += scan_model_files("models_pytorch", ".pt", GenericDemo, "pytorch")
     # models += scan_model_files("models_onnx", ".onnx", lambda p: onnxruntime.InferenceSession(p), "onnx")
 
 
