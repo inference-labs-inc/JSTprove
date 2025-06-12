@@ -1972,6 +1972,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tract-core",
+ "tract-nnef",
  "tract-onnx",
 ]
 

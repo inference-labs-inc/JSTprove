@@ -67,7 +67,7 @@ impl SerializableTensor {
 fn json_to_py(py: Python<'_>, val: &Value) -> PyResult<PyObject> {
     use Value::*;
     match val {
-        Null => Ok(py.None()),
+        null => Ok(py.None()),
         Bool(b) => b.into_py_any(py),
         Number(n) => {
             if let Some(i) = n.as_i64() {
