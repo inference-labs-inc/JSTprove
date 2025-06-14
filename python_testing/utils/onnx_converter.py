@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 import onnx
-from onnx import NodeProto, TensorProto, shape_inference
+from onnx import NodeProto, TensorProto, shape_inference, helper, numpy_helper
 
 import onnxruntime as ort
 import os
@@ -18,6 +18,13 @@ from python_testing.utils.onnx_helpers import dims_prod, extract_shape_dict, par
 from python_testing.utils.onnx_op_quantizer import ONNXOpQuantizer
 from python_testing.utils.pytorch_partial_models import QuantizedConv2d, QuantizedLinear
 from python_testing.utils.model_converter import ZKModelBase, ModelConverter
+
+from onnxruntime import InferenceSession, SessionOptions
+from onnxruntime_extensions import get_library_path, OrtPyFunction
+from python_testing.utils.onnx_custom_ops import conv
+
+from python_testing.utils.onnx_custom_ops.conv import int64_conv
+from python_testing.utils.onnx_custom_ops.gemm import int64_gemm7
 
 
 import model_analyzer
@@ -125,6 +132,8 @@ class ONNXConverter(ModelConverter):
         w_and_b = self.get_model_w_and_b(model, output_name_to_shape, id_count, domain_to_version)
 
         new_model = self.quantize_model(model, 2, 21)
+        custom_domain = onnx.helper.make_operatorsetid(domain="ai.onnx.contrib", version=1)
+        new_model.opset_import.append(custom_domain)
         onnx.checker.check_model(new_model)
 
         with open("model.onnx", "wb") as f:
@@ -134,9 +143,11 @@ class ONNXConverter(ModelConverter):
         onnx.checker.check_model(model)  # This throws a descriptive error
 
         inputs = torch.rand([1,4,28,28])
-        self.run_model_onnx_runtime(path, inputs)
+        outputs_true = self.run_model_onnx_runtime(path, inputs)
 
-        self.run_model_onnx_runtime("model.onnx", inputs)
+        outputs_quant = self.run_model_onnx_runtime("model.onnx", inputs)
+        print(outputs_true)
+        print([o/(2**21) for o in outputs_quant])
 
 
         return (architecture, w_and_b)
@@ -147,11 +158,26 @@ class ONNXConverter(ModelConverter):
         onnx_model = onnx.load(path)
         # Fix, can remove this next line 
         onnx.checker.check_model(onnx_model)
-        ort_sess =  ort.InferenceSession(path, providers=["CPUExecutionProvider"])
+        
+
+        
+        opts = SessionOptions()
+        opts.register_custom_ops_library(get_library_path())
+        
+
+        ort_sess =  ort.InferenceSession(path, opts, providers=["CPUExecutionProvider"])
         input_name = ort_sess.get_inputs()[0].name
         output_name = ort_sess.get_outputs()[0].name
-        outputs = ort_sess.run([output_name], {input_name: input.numpy()})
-        print(outputs)
+        # X = np.random.randint(0, 10, (1, 3, 32, 32), dtype=np.int64)
+        # W = np.random.randint(-2, 2, (6, 3, 3, 3), dtype=np.int64)
+        # B = np.random.randint(-10, 10, (6,), dtype=np.int64)
+
+        # Y = int64_conv(X, W, B)
+        # print(Y.shape)
+        outputs = ort_sess.run([output_name], {input_name: np.asarray(input)})
+        
+        return outputs
+
         # This can help:
         # for constant in onnx_model.graph.initializer:
         #     constant_dtype = constant.data_type
@@ -161,7 +187,6 @@ class ONNXConverter(ModelConverter):
         # for layer in onnx_model.graph.node:
         #     print(layer.input, layer.op_type, layer.name)
         # self.get_model_architecture(onnx_model)
-        return outputs
 
     
     def get_model_architecture(self, model: onnx.ModelProto, output_name_to_shape: Dict[str, List[int]], id_count: int = 0, domain_to_version: dict[str, int] = None):
@@ -258,9 +283,22 @@ class ONNXConverter(ModelConverter):
         3. Convert layer to quantized version
         4. insert quantized version back into the model
         '''
+        import sys
         model = unscaled_model
         new_nodes = []
         initializer_map = {init.name: init for init in model.graph.initializer}
+        input_names = [inp.name for inp in unscaled_model.graph.input]
+
+        for i, name in enumerate(input_names):
+            output_name, mul_node, floor_node, cast_to_int64 = self.quantize_input(name, self.op_quantizer, scale_base, scale)
+            new_nodes.append(mul_node)
+            new_nodes.append(floor_node)
+            new_nodes.append(cast_to_int64)
+            for node in model.graph.node:
+                for idx, inp in enumerate(node.input):
+                    if inp == name:
+                        node.input[idx] = output_name
+        # sys.exit()
         for node in model.graph.node:
             rescale = rescale_config.get(node.name, False) if rescale_config else True
             quant_nodes = self.quantize_layer(node, rescale, model, scale, scale_base, initializer_map)
@@ -291,19 +329,99 @@ class ONNXConverter(ModelConverter):
         model.graph.initializer.extend(self.op_quantizer.new_initializers)
 
         self.op_quantizer.new_initializers = []
+        
         for layer in model.graph.node:
             print(layer.name, layer.op_type, layer.input, layer.output)
             
 
         for layer in model.graph.initializer:
             print(layer.name)
+
+        for out in model.graph.output:
+            # if out.name == "output":
+                # out.name = "output_int"  # match Cast output
+                out.type.tensor_type.elem_type = onnx.TensorProto.INT64
+
+
+        for node in model.graph.node:
+            if node.name == "_rescale_cast":
+                for output_name in node.output:
+                    print("TEST")
+                    print(node.output, node.input, node.name, node.op_type)
+
+                    for value_info in model.graph.value_info:
+                        if value_info.name == output_name:
+                            print(value_info)
         
+        # # For debugging attributes
+        # for node in model.graph.node:
+        #     if node.op_type == "Int64Gemm":
+        #         for attr in node.attribute:
+        #             print(f"{attr.name}: {attr.type}")
+        # model.opset_import[0].version = 17
+
+
+
+        # a = np.ones((2, 3), dtype=np.int64)
+        # b = np.ones((3, 4), dtype=np.int64)
+        # c = np.zeros((2, 4), dtype=np.int64)
+        # dummy_op = OrtPyFunction.from_customop("Int64Gemm",int64_gemm7)
+
+
+        # out = dummy_op(a, b, c, alpha=1.0, beta=1.0, transA=False, transB=False)
+        # print("Output:", out)
+        # for node in model.graph.node:
+        #     print(f"Node: {node.name}, OpType: {node.op_type}")
+        #     for attr in node.attribute:
+        #         print(f"  Attr: {attr.name}, Type: {attr.type}")
+
         return model
         
 
     def quantize_layer(self, node: onnx.NodeProto, rescale: bool, model: onnx.ModelProto, scale: int, scale_base: int, initializer_map: dict[str, onnx.TensorProto]) -> onnx.NodeProto:
         quant_nodes = self.op_quantizer.quantize(node, rescale, model.graph, scale, scale_base, initializer_map)
         return quant_nodes
+    
+    def quantize_input(self, input_name, op_quantizer: ONNXOpQuantizer, scale_base, scale):
+        scale_value = scale_base ** scale
+        original_output = input_name
+
+        # === Create scale constant ===
+        scale_const_name = input_name + "_scale"
+        scale_tensor = numpy_helper.from_array(
+            np.array([scale_value], dtype=np.float32), name=scale_const_name
+        )
+        op_quantizer.new_initializers.append(scale_tensor)
+
+        # === Add Mul node ===
+        scaled_output_name = f"{input_name}_scaled"
+        mul_node = helper.make_node(
+            "Mul",
+            inputs=[input_name, scale_const_name],
+            outputs=[scaled_output_name],
+            name=f"{input_name}_mul",
+        )
+        # graph.node.append(mul_node)
+        # replace_input_references(graph, original_output, mul_node.output[0])
+
+        # === Floor node (simulate rounding) ===
+        rounded_output_name = f"{input_name}_scaled_floor"
+        floor_node = helper.make_node(
+            "Floor",
+            inputs=[scaled_output_name],
+            outputs=[rounded_output_name],
+            name=f"{scaled_output_name}",
+        )
+        output_name = f"{rounded_output_name}_int"
+        cast_to_int64 = helper.make_node(
+            "Cast",
+            inputs=[rounded_output_name],
+            outputs=[output_name],
+            to=onnx.TensorProto.INT64,
+            name = rounded_output_name
+        )
+        return output_name, mul_node, floor_node, cast_to_int64
+
 
     
     # def quantize_constant(self, initializer: TensorProto, scale_base: int, scale: int):
@@ -450,3 +568,9 @@ class ONNXConverter(ModelConverter):
         input_name = self.ort_sess.get_inputs()[0].name
         output_name = self.ort_sess.get_outputs()[0].name
         return self.ort_sess.run([output_name], {input_name: inputs})
+    
+
+if __name__ == "__main__":
+    converter = ONNXConverter()
+    # converter.model = create_dummy_model()
+    converter.analyze_layers("")

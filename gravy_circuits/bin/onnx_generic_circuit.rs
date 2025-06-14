@@ -259,11 +259,6 @@ impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
     }
 }
 
-
-
-
-
-
 fn main() {
     let mut file_reader = FileReader {
         path: "demo_cnn".to_owned(),

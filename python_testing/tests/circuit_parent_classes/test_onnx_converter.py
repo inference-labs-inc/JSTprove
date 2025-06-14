@@ -151,12 +151,12 @@ def test_real_inference_from_onnx():
         # assert False
 
 
-def test_analyze_layers():
-    converter = ONNXConverter()
-    converter.model = create_dummy_model()
-    converter.analyze_layers(converter.model)
+# def test_analyze_layers():
+#     converter = ONNXConverter()
+#     converter.model = create_dummy_model()
+#     converter.analyze_layers(converter.model)
 
-    assert False
+#     assert False
     
     # # Save and load into onnxruntime
     # with tempfile.NamedTemporaryFile(suffix=".onnx") as tmp:

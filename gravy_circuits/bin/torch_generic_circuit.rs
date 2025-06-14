@@ -189,7 +189,6 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
             .expect("Shape mismatch: Cannot reshape into the given dimensions");
         // panic!("{:?}, {:?}", out.dim(), &reshape_shape);
 
-
         let output = arrayd_to_vec1(out);
         for (j, _) in self.outputs.iter().enumerate() {
                     api.display("out1", self.outputs[j]);

@@ -111,14 +111,12 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
         while layer_num < WEIGHTS_INPUT.layers.len(){
             let layer = &WEIGHTS_INPUT.layers[layer_num].name;
 
-
             let mut is_rescale = true;
             for l in &WEIGHTS_INPUT.not_rescale_layers{
                 if l.eq_ignore_ascii_case(layer){
                     is_rescale = false;
                 }
-            }
-            
+            }            
 
             let mut is_relu = false;
                 if layer_num + 1 < WEIGHTS_INPUT.layers.len(){
