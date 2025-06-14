@@ -225,7 +225,7 @@ class ONNXOpQuantizer:
         if len(node.input) > 2:
             bias_name = node.input[2]
             bias_tensor = initializer_map[bias_name]
-            quant_bias_name, mul_node_2, floor_node_2, cast_node_2 = self.insert_scale_node(bias_tensor, scale_base, scale, graph)
+            quant_bias_name, mul_node_2, floor_node_2, cast_node_2 = self.insert_scale_node(bias_tensor, scale_base, (scale*2), graph)
             new_inputs.append(quant_bias_name)
             nodes.append(mul_node_2)
             nodes.append(floor_node_2)

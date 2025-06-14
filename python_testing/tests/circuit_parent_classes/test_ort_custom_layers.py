@@ -147,10 +147,11 @@ def test_tiny_conv(tiny_conv_model_path):
     outputs_true = converter.run_model_onnx_runtime(path, inputs)
 
     outputs_quant = converter.run_model_onnx_runtime("model.onnx", inputs)
-    print(outputs_true)
-    print([o.astype(float)/(2**21) for o in outputs_quant])
+    true = torch.tensor(np.array(outputs_true), dtype=torch.float32)
+    quant = torch.tensor(np.array(outputs_quant), dtype=torch.float32) / (2**21)
 
-    assert False
+    assert torch.allclose(true, quant, rtol=1e-3, atol=1e-5), "Outputs do not match"
+
     
 # if __name__ == "__main__":
 #     path = "test_path.onnx"
