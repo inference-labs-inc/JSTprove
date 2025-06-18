@@ -65,20 +65,24 @@ def test_save_quantized_model(mock_save, converter):
     converter.save_quantized_model(path)
     mock_save.assert_called_once_with(converter.quantized_model, path)
 
-@patch("python_testing.utils.onnx_converter.onnx.load")
-@patch("python_testing.utils.onnx_converter.onnx.checker.check_model")
+@patch("python_testing.utils.onnx_converter.SessionOptions")
 @patch("python_testing.utils.onnx_converter.ort.InferenceSession")
-def test_load_quantized_model(mock_ort_sess, mock_check, mock_load, converter):
+@patch("python_testing.utils.onnx_converter.onnx.checker.check_model")
+@patch("python_testing.utils.onnx_converter.onnx.load")
+def test_load_quantized_model(mock_load, mock_check, mock_ort_sess, mock_session_opts, converter):
+
     fake_model = MagicMock(name="onnx_model")
     mock_load.return_value = fake_model
+
+    mock_opts_instance = MagicMock(name="session_options")
+    mock_session_opts.return_value = mock_opts_instance
 
     path = "quantized_model.onnx"
     converter.load_quantized_model(path)
 
     mock_load.assert_called_once_with(path)
     mock_check.assert_called_once_with(fake_model)
-    # mock_ort_sess.assert_called_once_with(path, providers=["CPUExecutionProvider"])
-
+    mock_ort_sess.assert_called_once_with(path, mock_opts_instance, providers=["CPUExecutionProvider"])
     assert converter.quantized_model == fake_model
 
 

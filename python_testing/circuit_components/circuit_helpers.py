@@ -153,7 +153,6 @@ class Circuit:
         except Exception as e:
             print(f"Warning: Operation {run_type} failed: {e}")
             print("Input and output files have still been created correctly.")
-            raise e
 
 
     def contains_float(self, obj):
