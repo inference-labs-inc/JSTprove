@@ -12,8 +12,8 @@ def parse_attribute(attr: AttributeProto):
         AttributeProto.FLOATS: lambda a: list(a.floats),
         AttributeProto.INTS: lambda a: list(a.ints),
         AttributeProto.STRINGS: lambda a: [s.decode('utf-8') for s in a.strings],
-        AttributeProto.TENSOR: lambda a: numpy_helper.to_array(a.t),
-        AttributeProto.TENSORS: lambda a: [numpy_helper.to_array(t) for t in a.tensors],
+        AttributeProto.TENSOR: lambda a: numpy_helper.to_array(a.t).tolist(),
+        AttributeProto.TENSORS: lambda a: [numpy_helper.to_array(t).tolist() for t in a.tensors],
         # AttributeProto.GRAPH: lambda a: a.g,              # GraphProto
         # AttributeProto.GRAPHS: lambda a: list(a.graphs),  # List[GraphProto]
     }
@@ -72,6 +72,7 @@ def extract_attributes(node: onnx.NodeProto) -> dict:
         elif attr.type == AttributeProto.FLOATS:
             attrs[name] = [float(x) for x in val]  # ← you want to ensure these are int if your op expects it
         elif attr.type == AttributeProto.INTS:
+            # attrs[name] = [int(x) for x in val]  # ← you want to ensure these are int if your op expects it
             attrs[name] =",".join(str(v) for v in val)
         elif attr.type == AttributeProto.STRING:
             attrs[name] = val.decode("utf-8") if isinstance(val, bytes) else val
@@ -89,6 +90,15 @@ def extract_attributes(node: onnx.NodeProto) -> dict:
     #     if isinstance(v, list) and any(isinstance(i, float) for i in v):
     #         print(f"⚠️  Attribute {k} contains float values: {v}")
     return attrs
+
+def get_input_shapes(onnx_model: onnx.ModelProto):
+        input_shapes = {}
+        for input in onnx_model.graph.input:
+            input_name = input.name
+            # Get the shape from the input's type information
+            shape = [dim.dim_value for dim in input.type.tensor_type.shape.dim]
+            input_shapes[input_name] = shape
+        return input_shapes
 
 # def extract_attributes(node: onnx.NodeProto) -> dict:
 #     return {

@@ -1,6 +1,8 @@
-from dataclasses import dataclass, fields
+import copy
+from dataclasses import asdict, dataclass, fields, is_dataclass
 import inspect
 import json
+import sys
 from typing import Dict, List, Optional
 import numpy as np
 import torch
@@ -14,7 +16,7 @@ import os
 
 
 from python_testing.circuit_components.circuit_helpers import RunType
-from python_testing.utils.onnx_helpers import dims_prod, extract_shape_dict, parse_attributes
+from python_testing.utils.onnx_helpers import dims_prod, extract_shape_dict, get_input_shapes, parse_attributes
 from python_testing.utils.onnx_op_quantizer import ONNXOpQuantizer
 from python_testing.utils.pytorch_partial_models import QuantizedConv2d, QuantizedLinear
 from python_testing.utils.model_converter import ZKModelBase, ModelConverter
@@ -46,6 +48,13 @@ class ONNXLayer:
     params: Optional[Dict] # Most layers will have params attached to them. For eg, params for conv would be - dilation, kernel_shape, pad, strides, group,...
     opset_version_number: int # This is the version number of the operation used. So far this is not used in rust, but I think for infrastructure purposes we can include
 
+@dataclass
+class ONNXIO:
+    name: str
+    elem_type: int
+    shape: List[int]
+
+
 class ONNXConverter(ModelConverter):
     def __init__(self):
         super().__init__()
@@ -61,25 +70,28 @@ class ONNXConverter(ModelConverter):
         onnx.checker.check_model(onnx_model)
         self.model = onnx_model
 
+        self.required_keys = [input.name for input in onnx_model.graph.input]
+        self.input_shape = get_input_shapes(onnx_model)
+        return self.model
+    
+
     def save_quantized_model(self, file_path: str):
         onnx.save(self.quantized_model, file_path)
 
     # Not sure this is ideal
     def load_quantized_model(self, file_path: str):
+        # May be able to remove next few lines...
         onnx_model = onnx.load(file_path)
+        custom_domain = onnx.helper.make_operatorsetid(domain="ai.onnx.contrib", version=1)
+        onnx_model.opset_import.append(custom_domain)
         # Fix, can remove this next line 
         onnx.checker.check_model(onnx_model)
         self.quantized_model = onnx_model
-        print(os.path.exists(file_path))
-        self.ort_sess =  ort.InferenceSession(file_path, providers=["CPUExecutionProvider"])
-        # https://github.com/sonos/tract/blob/main/api/py/docs/index.md
-        # Can use tract to run model instead
-
-    # def expand_padding(self, padding_2):
-    #     if len(padding_2) != 2:
-    #         raise(ValueError("Expand padding requires initial padding of dimension 2"))
-    #     pad_h, pad_w = padding_2
-    #     return (pad_w, pad_w, pad_h, pad_h)
+        opts = SessionOptions()
+        opts.register_custom_ops_library(get_library_path())
+        self.ort_sess =  ort.InferenceSession(file_path, opts, providers=["CPUExecutionProvider"])
+        self.required_keys = [input.name for input in onnx_model.graph.input]
+        self.input_shape = get_input_shapes(onnx_model)
     
     def analyze_layers_json(self, model):
         layers = model_analyzer.analyze_model_json("./models_onnx/doom.onnx")
@@ -95,19 +107,16 @@ class ONNXConverter(ModelConverter):
         #         print(l.tensor)
         #         break
 
-    def analyze_layers(self, path):
+    def analyze_layers(self, output_name_to_shape = None):
         # model = tract.onnx().model_for_path("./mobilenetv2-7.onnx").into_optimized().into_runnable()
         # tract_model = tract.onnx().model_for_path("./models_onnx/doom.onnx")
         # layers = model_analyzer.analyze_model("./models_onnx/doom.onnx")
-        path  ="./models_onnx/doom.onnx"
+        # path  ="./models_onnx/doom.onnx"
         id_count = 0
-        model = onnx.load(path)
-        # Fix, can remove this next line 
-        onnx.checker.check_model(model)
 
-        # Check the model and print Y"s shape information
-        onnx.checker.check_model(model)
-        print(f"Before shape inference, the shape info of Y is:\n{model.graph.value_info}")
+        
+
+        # We may want to add our own model checker here, in order to confirm that the model layers meet our specs - layer types etc.
 
         # To be used if I need batch size
         # for input_tensor in model.graph.input:
@@ -115,41 +124,21 @@ class ONNXConverter(ModelConverter):
             # input_tensor.type.tensor_type.shape.dim[0].dim_value = getattr(self, "batch_size", 1)  # Set batch size to 1
 
         # Apply shape inference on the model
-        inferred_model = shape_inference.infer_shapes(model)
+        if not output_name_to_shape:
+            inferred_model = shape_inference.infer_shapes(self.model) 
 
-        # Check the model and print Y"s shape information
-        onnx.checker.check_model(inferred_model)
+            # Check the model and print Y"s shape information
+            onnx.checker.check_model(inferred_model)
+            output_name_to_shape = extract_shape_dict(inferred_model)
+
         # print(f"After shape inference, the shape info of Y is:\n{inferred_model.graph.value_info}")
         
 
-        domain_to_version = {opset.domain: opset.version for opset in model.opset_import}
-        print(inferred_model.graph.value_info[0].name)
+        domain_to_version = {opset.domain: opset.version for opset in self.model.opset_import}
         
-        inferred_model = shape_inference.infer_shapes(model)
-        output_name_to_shape = extract_shape_dict(inferred_model)
         id_count = 0
-        architecture = self.get_model_architecture(model, output_name_to_shape, id_count, domain_to_version)
-        w_and_b = self.get_model_w_and_b(model, output_name_to_shape, id_count, domain_to_version)
-
-        new_model = self.quantize_model(model, 2, 21)
-        custom_domain = onnx.helper.make_operatorsetid(domain="ai.onnx.contrib", version=1)
-        new_model.opset_import.append(custom_domain)
-        onnx.checker.check_model(new_model)
-
-        with open("model.onnx", "wb") as f:
-            f.write(new_model.SerializeToString())
-
-        model = onnx.load("model.onnx")
-        onnx.checker.check_model(model)  # This throws a descriptive error
-
-        inputs = torch.rand([1,4,28,28])
-        outputs_true = self.run_model_onnx_runtime(path, inputs)
-
-        outputs_quant = self.run_model_onnx_runtime("model.onnx", inputs)
-        print(outputs_true)
-        print([o/(2**21) for o in outputs_quant])
-
-
+        architecture = self.get_model_architecture(self.model, output_name_to_shape, id_count, domain_to_version)
+        w_and_b = self.get_model_w_and_b(self.model, output_name_to_shape, id_count, domain_to_version)
         return (architecture, w_and_b)
     
     
@@ -160,20 +149,14 @@ class ONNXConverter(ModelConverter):
         onnx.checker.check_model(onnx_model)
         
 
-        
-        opts = SessionOptions()
-        opts.register_custom_ops_library(get_library_path())
-        
-
-        ort_sess =  ort.InferenceSession(path, opts, providers=["CPUExecutionProvider"])
+        if not hasattr(self, "ort_sess"):
+            opts = SessionOptions()
+            opts.register_custom_ops_library(get_library_path())
+            ort_sess =  ort.InferenceSession(path, opts, providers=["CPUExecutionProvider"])
+        else:
+            ort_sess = self.ort_sess
         input_name = ort_sess.get_inputs()[0].name
         output_name = ort_sess.get_outputs()[0].name
-        # X = np.random.randint(0, 10, (1, 3, 32, 32), dtype=np.int64)
-        # W = np.random.randint(-2, 2, (6, 3, 3, 3), dtype=np.int64)
-        # B = np.random.randint(-10, 10, (6,), dtype=np.int64)
-
-        # Y = int64_conv(X, W, B)
-        # print(Y.shape)
         outputs = ort_sess.run([output_name], {input_name: np.asarray(input)})
         
         return outputs
@@ -205,6 +188,7 @@ class ONNXConverter(ModelConverter):
             layer = self.analyze_constant(node, output_name_to_shape, id_count, domain_to_version )
             layers.append(layer)
             id_count += 1
+
         return layers
         
 
@@ -227,8 +211,8 @@ class ONNXConverter(ModelConverter):
                 id = id, 
                 name = name,
                 op_type = op_type,
-                inputs = inputs,
-                outputs = outputs,
+                inputs = list(inputs),
+                outputs = list(outputs),
                 shape = output_shapes,
                 params = params,
                 opset_version_number = opset_version,
@@ -247,6 +231,7 @@ class ONNXConverter(ModelConverter):
         opset_version = -1
         params = {}
         constant_dtype = node.data_type
+        # Can do this step in rust potentially to keep file sizes low if needed
         np_data = onnx.numpy_helper.to_array(node, constant_dtype)
             # 💡 Extract output shapes
         output_shapes = {
@@ -256,12 +241,12 @@ class ONNXConverter(ModelConverter):
                 id = id, 
                 name = name,
                 op_type = op_type,
-                inputs = inputs,
-                outputs = outputs,
+                inputs = list(inputs),
+                outputs = list(outputs),
                 shape = output_shapes,
                 params = params,
                 opset_version_number = opset_version,
-                tensor = np_data,
+                tensor = np_data.tolist(),
             )
         return layer
 
@@ -283,12 +268,12 @@ class ONNXConverter(ModelConverter):
         3. Convert layer to quantized version
         4. insert quantized version back into the model
         '''
-        import sys
-        model = unscaled_model
-        new_nodes = []
+        model = copy.deepcopy(unscaled_model)
         initializer_map = {init.name: init for init in model.graph.initializer}
         input_names = [inp.name for inp in unscaled_model.graph.input]
 
+
+        new_nodes = []
         for i, name in enumerate(input_names):
             output_name, mul_node, floor_node, cast_to_int64 = self.quantize_input(name, self.op_quantizer, scale_base, scale)
             new_nodes.append(mul_node)
@@ -298,7 +283,6 @@ class ONNXConverter(ModelConverter):
                 for idx, inp in enumerate(node.input):
                     if inp == name:
                         node.input[idx] = output_name
-        # sys.exit()
         for node in model.graph.node:
             rescale = rescale_config.get(node.name, False) if rescale_config else True
             quant_nodes = self.quantize_layer(node, rescale, model, scale, scale_base, initializer_map)
@@ -342,16 +326,6 @@ class ONNXConverter(ModelConverter):
                 # out.name = "output_int"  # match Cast output
                 out.type.tensor_type.elem_type = onnx.TensorProto.INT64
 
-
-        for node in model.graph.node:
-            if node.name == "_rescale_cast":
-                for output_name in node.output:
-                    print("TEST")
-                    print(node.output, node.input, node.name, node.op_type)
-
-                    for value_info in model.graph.value_info:
-                        if value_info.name == output_name:
-                            print(value_info)
         
         # # For debugging attributes
         # for node in model.graph.node:
@@ -456,121 +430,132 @@ class ONNXConverter(ModelConverter):
         2. Put arch into format to be read by ECC circuit builder
         3. Put w + b into format to be read by ECC circuit builder
         '''
-        pass
-        # if flatten:
-        #     in_shape = [1, np.prod(self.input_shape)]
-        # else:
-        #     in_shape = self.input_shape
-        # input_shapes, output_shapes = self.get_input_and_output_shapes_by_layer(self.quantized_model, in_shape)  # example input
+        print(self.model.graph.node)
+        inferred_model = shape_inference.infer_shapes(self.model) 
 
-        # used_layers = self.get_used_layers(self.quantized_model, in_shape) 
-        # # Can combine the above into 1 function
-        # def to_tuple(x):
-        #     return (x,) if isinstance(x, int) else tuple(x)
-        # weights = {}
-        # weights["scaling"] = self.scaling
-        # weights["scale_base"] = self.scale_base
-        # weights["input_shape"] = self.input_shape
-        # weights['layer_input_shapes'] = list(input_shapes.values())
-        # weights['layer_output_shapes'] = list(output_shapes.values())
-
+        # Check the model and print Y"s shape information
+        onnx.checker.check_model(inferred_model)
+        output_name_to_shape = extract_shape_dict(inferred_model)
+        (architecture, w_and_b) = self.analyze_layers(output_name_to_shape)
         
-        # weights["layers"] = getattr(self, "layers", [])
+        inputs = []
+        outputs = []
+        for input in self.model.graph.input:
+            shape =  output_name_to_shape.get(input.name, [])
+            elem_type = getattr(input, "elem_type", -1)
+            inputs.append(ONNXIO(input.name, elem_type, shape))
 
-        # weights["not_rescale_layers"] = []
-        # rescaled_layers = getattr(self, "rescale_config", {})
-        # for key in rescaled_layers.keys():
-        #     if not rescaled_layers[key]:
-        #         weights["not_rescale_layers"].append(key)
-
+        for output in self.model.graph.output:
+            shape =  output_name_to_shape.get(output.name, [])
+            elem_type = getattr(output, "elem_type", -1)
+            outputs.append(ONNXIO(output.name, elem_type, shape))
         
-        # name_counters = {}
-
-        # for name, module in used_layers:
-        #     # Set count to 0 if name not seen before, otherwise increment
-        #     count = name_counters[name] if name in name_counters else 0
-        #     disambiguated_name = f"{name}_{count}"
-        #     name_counters[name] = count + 1
-
-        #     if isinstance(module, (nn.Conv2d, QuantizedConv2d)):
-        #         weights.setdefault("conv_weights", []).append(module.weight.tolist())
-        #         weights.setdefault("conv_bias", []).append(module.bias.tolist())
-        #         weights.setdefault("conv_strides", []).append(module.stride)
-        #         weights.setdefault("conv_kernel_shape", []).append(module.kernel_size)
-        #         weights.setdefault("conv_group", []).append([module.groups])
-        #         weights.setdefault("conv_dilation", []).append(module.dilation)
-        #         weights.setdefault("conv_pads", []).append(self.expand_padding(module.padding))
-        #         weights.setdefault("conv_input_shape", []).append(input_shapes[disambiguated_name])
-
-        #     if isinstance(module, (nn.Linear, QuantizedLinear)):
-        #         weights.setdefault("fc_weights", []).append(module.weight.transpose(0, 1).tolist())
-        #         weights.setdefault("fc_bias", []).append(module.bias.unsqueeze(0).tolist())
-
-        #     if isinstance(module, nn.MaxPool2d):
-        #         weights.setdefault("maxpool_kernel_size", []).append(to_tuple(module.kernel_size))
-        #         weights.setdefault("maxpool_stride", []).append(to_tuple(module.stride))
-        #         weights.setdefault("maxpool_dilation", []).append(to_tuple(module.dilation))
-        #         weights.setdefault("maxpool_padding", []).append(to_tuple(module.padding))
-        #         weights.setdefault("maxpool_ceil_mode", []).append(module.ceil_mode)
-        #         weights.setdefault("maxpool_input_shape", []).append(to_tuple(input_shapes[disambiguated_name]))
-
-        #     weights["output_shape"] = output_shapes[disambiguated_name]
-
-
-        # return weights
-    
-    # @abstractmethod
-    # def get_model(self, device):
-    #     pass
-
-    # def run_quantized_model_inference_tract(self, path, input):
-    #     outputs = model_analyzer.run_model_from_f32(path)
-    #     print(outputs)
-    #     return outputs
-    
-    # def run_model_inference_tract(self, path: str, input: torch.Tensor):
-    #     outputs = model_analyzer.run_model_from_f32(path,input.flatten().tolist(), input.shape)
-    #     print(outputs)
-    #     return outputs
-    
-    # def get_used_layers_tract(self, model):
-    #     architecture = model_analyzer.get_architecture(model)
-    #     # # sort layers
-    #     layers = sorted(architecture, key=lambda ONNXLayer: ONNXLayer.id) 
-    #     # print([(l.name, l.id, l.kind, l.inputs, l.outputs, f"Tensor length {len(l.tensor) if l.tensor else None}", l.shape, json.loads(l.params.to_dict()) if l.params else None) for l in layers])
-    #     return layers
-    
-    
-    # def get_w_and_b_tract(self, model):
-    #     w_and_b = model_analyzer.get_w_and_b(model)
-    #     # # sort layers
-    #     layers = sorted(w_and_b, key=lambda ONNXLayer: ONNXLayer.id) 
-    #     # print([(l.name, l.id, l.kind, l.inputs, l.outputs, f"Tensor length {l.tensor.shape if l.tensor else None}", l.shape) for l in layers])
-    #     return layers
+        architecture = {
+            "inputs": [asdict(i) for i in inputs],
+            "outputs": [asdict(o) for o in outputs],
+            "architecture": [asdict(a) for a in architecture],
+        }
+        weights = {
+            "w_and_b": [asdict(w_b) for w_b in w_and_b]
+        }
+        return architecture, weights
 
     def get_model_and_quantize(self):
-        pass
+        
+        if hasattr(self, 'model_file_name'):
+            self.load_model(self.model_file_name)
+        else:
+            raise FileNotFoundError("An ONNX model is required at the specified path")
+        
+        # self.model = model
+        self.quantized_model = self.quantize_model(self.model, self.scale_base, self.scaling, rescale_config=getattr(self,"rescale_config", {}))
 
     def test_accuracy(self):
-        inputs = torch.rand(self.input_shape)*2 - 1
-        session = ort.InferenceSession(self.model_file_name)
-        outputs = session.run(None, {"input": inputs})
-        print(outputs)
+        # model = onnx.load()
+        model = self.model
+        input_shape = []
+        for input in model.graph.input:
+            for d in input.type.tensor_type.shape.dim:
+                if (d.HasField("dim_value")):
+                    val = d.dim_value  # known dimension
+                elif (d.HasField("dim_param")):
+                    if "batch_size" not in d.dim_param:
+                        raise ValueError("Unknown dimension")
+                    val = 1
+                    # print (d.dim_param, end=", ")  # unknown dimension with symbolic name
+                else:
+                    # print ("?", end=", ")  # unknown dimension with no name
+                    raise ValueError("Unknown dimension")
 
-        q_inputs = inputs*(self.scale_base**self.scaling)
+                input_shape.append(val)
+        print(input_shape)
+        inputs = torch.rand(input_shape)*2 - 1
+        new_model = self.quantize_model(model, 2, 21)
+        custom_domain = onnx.helper.make_operatorsetid(domain="ai.onnx.contrib", version=1)
+        new_model.opset_import.append(custom_domain)
+        onnx.checker.check_model(new_model)
 
-        session = ort.InferenceSession(self.model_file_name)
-        outputs = session.run(None, {"input": q_inputs})
+        with open(self.quantized_model_file_name, "wb") as f:
+            f.write(new_model.SerializeToString())
 
-        print(outputs/(self.scale_base**(2*self.scaling)))
+        model = onnx.load(self.quantized_model_file_name)
+        onnx.checker.check_model(model)  # This throws a descriptive error
+
+        inputs = torch.rand([1,4,28,28])
+        outputs_true = self.run_model_onnx_runtime(self.model_file_name, inputs)[0][0].tolist()
+
+        outputs_quant = self.run_model_onnx_runtime(self.quantized_model_file_name, inputs)[0][0].tolist()
+        # print(outputs_true)
+        print("ONNXRuntime true model output : ",[[float("{:.5f}".format(o)) for o in outputs_true]])
+        
+        print("ONNXRuntime quant model output: ",[[float("{:.5f}".format(o/(2**21))) for o in outputs_quant]])
+        # print([[o/(2**21) for o in outputs_quant]])
+
 
     def get_outputs(self, inputs):
         input_name = self.ort_sess.get_inputs()[0].name
         output_name = self.ort_sess.get_outputs()[0].name
-        return self.ort_sess.run([output_name], {input_name: inputs})
-    
+        return self.ort_sess.run([output_name], {input_name: np.asarray(inputs)})
+
+
+# def find_non_serializable_fields(obj, path="root"):
+#     """
+#     Recursively finds fields that are not JSON serializable.
+#     """
+#     if is_dataclass(obj):
+#         obj = asdict(obj)
+
+#     if isinstance(obj, dict):
+#         for k, v in obj.items():
+#             find_non_serializable_fields(v, f"{path}.{k}")
+#     elif isinstance(obj, list):
+#         for i, item in enumerate(obj):
+#             find_non_serializable_fields(item, f"{path}[{i}]")
+#     else:
+#         try:
+#             json.dumps(obj)
+#         except TypeError:
+#             # print(obj.tolist())
+#             print(f"❌ Non-serializable field found at: {path} (type: {type(obj).__name__})")
+#             # sys.exit()
+
+class ZKONNXModel(ONNXConverter, ZKModelBase):
+    def __init__(self):
+        raise NotImplementedError("Must implement __init__")
+
 
 if __name__ == "__main__":
+    path  ="./models_onnx/doom.onnx"
+
     converter = ONNXConverter()
+    converter.model_path, converter.quantized_model_path = path, "quantized_doom.onnx"
+    converter.load_model(path)
     # converter.model = create_dummy_model()
-    converter.analyze_layers("")
+    # converter.test_accuracy()
+    arch, weights = converter.get_weights()
+    with open('onnx_weights.json', 'w') as fp:
+        json.dump(weights,fp)
+    with open('onnx_arch.json', 'w') as fp:
+        json.dump(arch,fp)
+
+    # converter.analyze_layers("")

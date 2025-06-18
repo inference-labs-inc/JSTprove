@@ -2,6 +2,7 @@ from collections import namedtuple
 import importlib
 import os
 import pkgutil
+import sys
 import pytest 
 import python_testing.circuit_models
 import python_testing.circuit_components
@@ -32,12 +33,14 @@ def scan_model_files(directory, extension, loader_fn, prefix):
                         ModelEntry(name=f"{name}", source=prefix, loader=lambda p=path: loader_fn(p), args=(), kwargs={})
                     )
         if prefix == "onnx":
-            if os.path.isfile(file_or_foldername) and file_or_foldername[-5:] == ".onnx":
+            if os.path.isfile(os.path.join(directory, file_or_foldername)) and file_or_foldername[-5:] == ".onnx":
                 name = file_or_foldername[0:len(file_or_foldername) - 5]
                 path = os.path.join(directory, file_or_foldername)
                 entries.append(
                     ModelEntry(name=f"{name}", source=prefix, loader=lambda p=path: loader_fn(p), args=(), kwargs={})
                 )
+
+    
     return entries
 
 
@@ -88,7 +91,7 @@ def build_models_to_test():
 
     # Add PyTorch + ONNX models
     models += scan_model_files("models_pytorch", ".pt", GenericModelTorch, "pytorch")
-    # models += scan_model_files("models_onnx", ".onnx", lambda p: onnxruntime.InferenceSession(p), "onnx")
+    models += scan_model_files("models_onnx", ".onnx", GenericModelONNX, "onnx")
 
 
 

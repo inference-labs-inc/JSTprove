@@ -1,4 +1,5 @@
 from pathlib import Path
+import sys
 from typing import Optional
 import subprocess
 import torch
@@ -152,6 +153,7 @@ class Circuit:
         except Exception as e:
             print(f"Warning: Operation {run_type} failed: {e}")
             print("Input and output files have still been created correctly.")
+            raise e
 
 
     def contains_float(self, obj):
@@ -347,6 +349,8 @@ class Circuit:
                     val = i + 1
                     to_json(w, weights_path[:-5] + f"{val}" + weights_path[-5:])
         elif type(weights) == dict:
+            to_json(weights, weights_path)
+        elif isinstance(weights, tuple) and len(weights) == 2:
             to_json(weights, weights_path)
         else:
             raise NotImplementedError("Weights type is incorrect")
