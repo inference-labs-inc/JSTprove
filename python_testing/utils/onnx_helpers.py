@@ -31,7 +31,9 @@ def extract_shape_dict(inferred_model) -> Dict[str, List[int]]:
         for vi in all_info:
             if vi.type.HasField("tensor_type"):
                 shape = [
-                    d.dim_value if d.HasField("dim_value") else -1
+                    # TODO figure out how to deal with bad value
+                    # d.dim_value if d.HasField("dim_value") else -1
+                    d.dim_value if d.HasField("dim_value") else 1
                     for d in vi.type.tensor_type.shape.dim
                 ]
                 value_info[vi.name] = shape

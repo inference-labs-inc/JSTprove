@@ -10,9 +10,11 @@ use gravy_circuits::circuit_functions::matrix_computation::{
     matrix_multplication_naive3_array, matrix_addition_vec
 };
 use gravy_circuits::circuit_functions::quantization::run_if_quantized_2d;
+use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::Value;
 use core::panic;
+use std::collections::HashMap;
 
 use ndarray::IxDyn;
 use ndarray::Dimension;
@@ -21,34 +23,44 @@ use ndarray::Dimension;
 use gravy_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
 
 
-//Define structure of inputs, weights and output
-#[derive(Deserialize, Clone)]
-struct WeightsData {
-    conv_weights: Vec<Vec<Vec<Vec<Vec<i64>>>>>,
-    conv_bias: Vec<Vec<i64>>,
-    conv_strides: Vec<Vec<u32>>,
-    conv_kernel_shape: Vec<Vec<u32>>,
-    conv_group: Vec<Vec<u32>>,
-    conv_dilation: Vec<Vec<u32>>,
-    conv_pads: Vec<Vec<u32>>,
-    conv_input_shape: Vec<Vec<u32>>,
-    scaling: u64,
-    fc_weights: Vec<Vec<Vec<i64>>>,
-    fc_bias: Vec<Vec<Vec<i64>>>,
-    layers: Vec<Layer>,
-    output_shape: Vec<usize>,
-    input_shape: Vec<usize>,
-    not_rescale_layers: Vec<String>,
-    layer_input_shapes: Vec<Vec<usize>>,
-    layer_output_shapes: Vec<Vec<usize>>
+type WeightsData = (Architecture, W_and_B, CircuitParams);
+#[derive(Deserialize, Clone, Debug)]
+struct Architecture{
+    inputs: Vec<ONNXIO>,
+    outputs: Vec<ONNXIO>,
+    architecture: Vec<ONNXLayer>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
-// #[serde(deny_unknown_fields)] // Optional: remove this to allow unknowns
-struct Layer{
+struct W_and_B{
+    w_and_b: Vec<ONNXLayer>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+struct CircuitParams{
+    scale_base: u16,
+    scaling: u16,
+    rescale_config: HashMap<String, bool>
+}
+
+#[derive(Deserialize, Clone, Debug)]
+struct ONNXLayer{
+    id: usize,
     name: String,
-    r#type: String,
-    activation: String
+    op_type: String,
+    inputs: Vec<String>,
+    outputs: Vec<String>,
+    shape: HashMap<String, Vec<usize>>,
+    tensor: Option<Value>,
+    params: Option<Value>,
+    opset_version_number: i16,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+struct ONNXIO{
+    name: String,
+    elem_type: i16,
+    shape: Vec<usize>
 }
 
 #[derive(Deserialize, Clone)]
@@ -62,7 +74,7 @@ struct OutputData {
 }
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/generic_demo_1d_weights.json");
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/onnx_generic_circuit_weights.json");
 
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
@@ -73,15 +85,96 @@ lazy_static! {
             serde_json::from_str(MATRIX_WEIGHTS_FILE).expect("JSON was not well-formatted");
         x
     };
-}
+    static ref ARCHITECTURE: Architecture = WEIGHTS_INPUT.0.clone();
+    static ref W_AND_B: W_and_B = WEIGHTS_INPUT.1.clone();
+    static ref CIRCUITPARAMS: CircuitParams = WEIGHTS_INPUT.2.clone();
 
+}
+// TODO implement various inputs (maybe the handling should be done inside)
 declare_circuit!(ConvCircuit {
     input_arr: [PublicVariable], // shape (m, n)
     outputs: [PublicVariable], // shape (m, k)
     // dummy: [PublicVariable; 10]
 });
 
+fn parse_value_to_array<I: DeserializeOwned>(value: Value) -> Result<I, serde_json::Error>{
+    match serde_json::from_value::<I>(value) {
+        Ok(vec_from_value) => {
+            // Use vec_from_value here
+            Ok(vec_from_value)
+        }
+        Err(e) => {
+            eprintln!("Failed to parse JSON value: {}", e);
+            Err(e)
+        }
+    }
+}
+fn transpose<T: Clone>(matrix: Vec<Vec<T>>) -> Vec<Vec<T>> {
+    if matrix.is_empty() || matrix[0].is_empty() {
+        return vec![];
+    }
 
+    let rows = matrix.len();
+    let cols = matrix[0].len();
+
+    let mut transposed = vec![Vec::with_capacity(rows); cols];
+
+    for row in matrix {
+        assert_eq!(row.len(), cols, "All rows must be the same length");
+        for (j, val) in row.into_iter().enumerate() {
+            transposed[j].push(val);
+        }
+    }
+
+    transposed
+}
+pub fn parse_maybe_1d_to_2d<T: DeserializeOwned + Clone>(
+    value: Value,
+) -> Result<Vec<Vec<T>>, serde_json::Error> {
+    // Try parsing as 2D array first
+    match serde_json::from_value::<Vec<Vec<T>>>(value.clone()) {
+        Ok(vv) => Ok(vv),
+        Err(_) => {
+            // Try parsing as 1D array
+            let v: Vec<T> = serde_json::from_value(value)?;
+            Ok(vec![v]) // Wrap into a 2D vector
+        }
+    }
+}
+
+
+fn collect_all_shapes(layers: &[ONNXLayer], ios: &[ONNXIO]) -> HashMap<String, Vec<usize>> {
+    let mut result = HashMap::new();
+
+    // Merge from layers
+    for layer in layers {
+        for (key, shape) in &layer.shape {
+            result.insert(key.clone(), shape.clone());
+        }
+    }
+
+    // Merge from IOs
+    for io in ios {
+        result.insert(io.name.clone(), io.shape.clone());
+    }
+
+    result
+}
+
+// // TODO, this is probably slow and not ideal
+// fn scale_json(value: Value, x: f32) -> Value {
+//     match value {
+//         Value::Number(n) if n.is_f64() => {
+//             Value::Number((((n.as_f64().unwrap() * x as f64) as i64).into()))
+//         }
+//         Value::Array(arr) => {
+//             Value::Array(arr.into_iter().map(|v| scale_json(v, x)).collect())
+//         }
+//         other => other, // handle as needed
+//     }
+// }
+
+// TODO all panics below need to be replaced by proper errors
 
 // Memorization, in a better place
 impl<C: Config> Define<C> for ConvCircuit<Variable> {
@@ -95,8 +188,10 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
         let two_v: u32 = 1 << (v_plus_one - 1);
 
         // TODO adjust for different base
-        let scaling_factor = 1 << WEIGHTS_INPUT.scaling;
+        let scaling_factor = 1 << CIRCUITPARAMS.scaling;
         let alpha_2_v = api.mul(scaling_factor, two_v);
+
+        let scaling  = (CIRCUITPARAMS.scale_base as u32).pow(CIRCUITPARAMS.scaling as u32);
 
         // Bring the weights into the circuit as constants
         // let mut out: Vec<Vec<Vec<Vec<Variable>>>> = self.input_arr.to_vec();
@@ -105,84 +200,191 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
         api.display("{}", out[0]);
         api.display("{}", out[100]);
 
+        let inputs = &ARCHITECTURE.inputs;
+        let outputs = &ARCHITECTURE.outputs;
+        // TODO only accounts for single input for now, must account for more
+        let mut shape = &inputs[0].shape;
+
 
         let mut layer_num = 0;
-        let mut conv_layer_num = 0;
-        let mut fc_layer_num = 0;
-        // panic!("{}", &WEIGHTS_INPUT.layers.len());
+        assert!(ARCHITECTURE.architecture.len() > 0);
 
-        // panic!("{:#?}", WEIGHTS_INPUT.layers); 
-        assert!(WEIGHTS_INPUT.layers.len() > 0);
+        // Load weights and biases into hashmap
+        let w_and_b_map: HashMap<String, ONNXLayer> = W_AND_B.w_and_b.clone()
+            .into_iter()
+            .map(|layer| (layer.name.clone(), layer))
+            .collect();
 
-        while layer_num < WEIGHTS_INPUT.layers.len(){
-            let layer = &WEIGHTS_INPUT.layers[layer_num].name;
+        let shapes_map: HashMap<String, Vec<usize>> = collect_all_shapes(&ARCHITECTURE.architecture, inputs);
+        // panic!("{:?}", shapes_map);
+
+        
 
 
-            let mut is_rescale = true;
-            for l in &WEIGHTS_INPUT.not_rescale_layers{
-                if l.eq_ignore_ascii_case(layer){
-                    is_rescale = false;
-                }
+        // panic!("{:?}", ARCHITECTURE.architecture);
+        while layer_num < ARCHITECTURE.architecture.len(){
+            let layer = ARCHITECTURE.architecture[layer_num].clone();
+            let layer_name = &ARCHITECTURE.architecture[layer_num].name;
+            let layer_type = &ARCHITECTURE.architecture[layer_num].op_type;
+            // TODO, proper constant logic
+            if layer_type.starts_with("Constant"){
+                layer_num +=1;
+                continue
             }
-            
 
+            // TODO this only works with single output shape
+            // shape = match  ARCHITECTURE.architecture[layer_num].shape.get(&ARCHITECTURE.architecture[layer_num].outputs[0]){
+            //     Some(input_shape) => input_shape,
+            //     None => panic!("Error getting output shape for layer {}", layer_name)
+            // };
+            // TODO this should be done on a per input basis. For now this only works because we are looking at single input layers
+            shape = match  shapes_map.get(&ARCHITECTURE.architecture[layer_num].inputs[0]){
+                Some(input_shape) => input_shape,
+                None => panic!("Error getting output shape for layer {}", layer_name)
+            };
+            // if layer_num == 0{
+            //     panic!("{}", layer_name);
+            // }
+
+            // let mut is_rescale = true;
+            let is_rescale = match  CIRCUITPARAMS.rescale_config.get(layer_name){
+                Some(config) => config,
+                None => &true
+            };
+            /*
+                TODO This should be changed, where either here or in python, we analyze the outputs of the given file to determine if there is an activation applied to the outputs.
+                TODO Also, we should diverge the outputs into different paths, depending on the outputs of the layer.
+             */
+             
             let mut is_relu = false;
-                if layer_num + 1 < WEIGHTS_INPUT.layers.len(){
-                    let layer_plus_1 = &WEIGHTS_INPUT.layers[layer_num].activation;
-                    if layer_plus_1.starts_with("ReLU") {
+                if layer_num + 1 < ARCHITECTURE.architecture.len(){
+                    let layer_plus_1 = &ARCHITECTURE.architecture[layer_num + 1].op_type;
+                    if layer_plus_1.starts_with("Relu") {
                         is_relu = true;
-                        // layer_num +=1;
+                        layer_num +=1;
+                        // panic!("{}", layer_name);
                     }
                 }
+                
+
             let raw_dim = out.raw_dim(); // Keep this alive
             let dim_view = raw_dim.as_array_view(); // Borrow from that
             let dim: &[usize] = dim_view.as_slice().unwrap(); // Now borrow is safe
 
-            if WEIGHTS_INPUT.layer_input_shapes[layer_num] != dim{
-                let reshape_shape = &WEIGHTS_INPUT.layer_input_shapes[layer_num];
-
+            if shape != dim{
+                let reshape_shape = shape;
+                // if layer_num >= 1{
+                //     panic!("{:?}, {:?}, {}, {}", reshape_shape, dim, layer_name, layer_type);
+                // }
                 out = out
                     .into_shape_with_order(IxDyn(&reshape_shape))
                     .expect("Shape mismatch: Cannot reshape into the given dimensions");
-
             }
+            
 
-            if layer.starts_with("conv"){
-                let i = conv_layer_num;
+            if layer_type.starts_with("Conv"){
+                // let i = conv_layer_num;
+                let weights_input = &layer.inputs[1];
+                let bias_input = &layer.inputs[2];
+
+                // TODO these should be cleaned up a bit
+                let weights_tensor_option = match w_and_b_map.get(weights_input) {
+                    Some(tensor) => tensor.tensor.clone(),
+                    None => panic!("ModelError - missing weights and biases: {}", weights_input)
+                };
+                let weight_tensor = match weights_tensor_option {
+                    Some(tensor) => parse_value_to_array(tensor).unwrap(),
+                    None => panic!("ModelError - missing tensor in expected weights/bias: {}", weights_input)
+                };
+
+                let bias_tensor_option = match  w_and_b_map.get(bias_input) {
+                    Some(tensor) => tensor.tensor.clone(),
+                    None => panic!("ModelError - missing weights and biases: {}", bias_input)
+                };
+                let bias_tensor: Vec<i64> = match bias_tensor_option {
+                    Some(tensor) => parse_value_to_array(tensor).unwrap(),
+                    None => panic!("ModelError - missing tensor in expected weights/bias: {}", bias_input)
+                };
 
 
-                let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv_weights[i]);
-                let bias: Vec<Variable> = WEIGHTS_INPUT
-                    .conv_bias[i]
+                let weights = read_4d_weights(api, &weight_tensor);
+                let bias: Vec<Variable> = bias_tensor
                     .clone()
                     .into_iter()
                     .map(|x| load_circuit_constant(api, x))
                     .collect();
+
                 let temp_out = arrayd_to_vec4(out);
 
-                let temp_out = conv_4d_run(api, temp_out, weights, bias,&WEIGHTS_INPUT.conv_dilation[i], &WEIGHTS_INPUT.conv_kernel_shape[i], &WEIGHTS_INPUT.conv_pads[i], &WEIGHTS_INPUT.conv_strides[i],&WEIGHTS_INPUT.conv_input_shape[i], WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv_group[i], is_rescale, v_plus_one, two_v, alpha_2_v, is_relu);
+                let in_shape = vec![temp_out.len(),temp_out[0].len(), temp_out[0][0].len(), temp_out[0][0][0].len()];
+                let params = layer.params.unwrap();
+                // TODO fix this to a function, for getting parameters, maybe have some default value as well?
+                let dilation = get_param(layer_name, &"dilations", &params);
+                let kernel_shape = get_param(layer_name, &"kernel_shape", &params);
+                let group = vec![get_param(layer_name, &"group", &params)];
+                let pads = get_param(layer_name, &"pads", &params);
+                let strides = get_param(layer_name, &"strides", &params);
+                // panic!("{:?}", &in_shape);
+                let temp_out = conv_4d_run(api, temp_out, weights, bias,&dilation, &kernel_shape, &pads, &strides, &convert_usize_to_u32(in_shape.to_vec()), CIRCUITPARAMS.scaling.into(), &group, is_rescale.clone(), v_plus_one, two_v, alpha_2_v, is_relu);
                 out = vec4_to_arrayd(temp_out);
-                conv_layer_num += 1;
+                // conv_layer_num += 1;
             }
-            else if layer.starts_with("fc"){
-                let i = fc_layer_num;
-                let weights = read_2d_weights(api, &WEIGHTS_INPUT.fc_weights[i]);
-                let bias = read_2d_weights(api, &WEIGHTS_INPUT.fc_bias[i]);
+            else if layer_type.starts_with("Gemm"){
+                let weights_input = &layer.inputs[1];
+                let bias_input = &layer.inputs[2];
+
+                let weights_tensor_option = match w_and_b_map.get(weights_input) {
+                    Some(tensor) => tensor.tensor.clone(),
+                    None => panic!("ModelError - missing weights and biases: {}", weights_input)
+                };
+                let mut weight_tensor = match weights_tensor_option {
+                    Some(tensor) => parse_value_to_array(tensor).unwrap(),
+                    None => panic!("ModelError - missing tensor in expected weights/bias: {}", weights_input)
+                };
+
+                let bias_tensor_option = match  w_and_b_map.get(bias_input) {
+                    Some(tensor) => tensor.tensor.clone(),
+                    None => panic!("ModelError - missing weights and biases: {}", bias_input)
+                };
+                let bias_tensor = match bias_tensor_option {
+                    Some(tensor) => parse_maybe_1d_to_2d(tensor).unwrap(),
+                    None => panic!("ModelError - missing tensor in expected weights/bias: {}", bias_input)
+                };
+                let params = layer.params.unwrap();
+                // TODO, not implemented yet
+                let alpha: f32 = get_param(layer_name, &"alpha", &params);
+                let beta: f32 = get_param(layer_name, &"beta", &params);
+                // TODO No trans_a, must figure out what to do if doesnt exists
+                // let trans_a: usize = get_param(layer_name, &"transA", &params);
+
+
+
+                let trans_b: usize = get_param(layer_name, &"transB", &params);
+                if trans_b == 1{
+                    weight_tensor = transpose(weight_tensor);
+                }
+
+
+
+                let weights = read_2d_weights(api, &weight_tensor);
+                let bias = read_2d_weights(api, &bias_tensor);
                 
                 let mut out_2d = arrayd_to_vec2(out);
 
+                // panic!("{}, {}, {}, {}, {}, {}", out_2d.len(), out_2d[0].len(), bias.len(), bias[0].len(), weights.len(), weights[0].len());
 
                 out_2d = matrix_multplication_naive2(api, out_2d, weights);
                 out_2d = matrix_addition_vec(api, out_2d, bias);
                 api.display("3", out_2d[0][0]);
 
-                out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, is_rescale, out_2d, v_plus_one, two_v, alpha_2_v, is_relu);
+                out_2d = run_if_quantized_2d(api, CIRCUITPARAMS.scaling.into(), is_rescale.clone(), out_2d, v_plus_one, two_v, alpha_2_v, is_relu);
                 out = vec2_to_arrayd(out_2d);
-                fc_layer_num += 1;
             }
             layer_num += 1;
         }
-        let flatten_shape: Vec<usize> = vec![WEIGHTS_INPUT.output_shape.iter().product()];
+        let flatten_shape: Vec<usize> = vec![outputs.iter()
+        .map(|obj| obj.shape.iter().product::<usize>())
+        .product()];
 
         out = out
             .into_shape_with_order(IxDyn(&flatten_shape))
@@ -200,17 +402,37 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
     }
 }
 
+fn get_param<I:DeserializeOwned>(layer_name: &String, param_name: &str, params: &Value) -> I {
+    match params.get(param_name){
+        Some(param) => {
+            let x = param.clone();
+            serde_json::from_value(x.clone()).expect(&format!("❌ Failed to parse param '{}': got value {}", param_name, x))
+
+        },
+        None => panic!("ParametersError: {} is missing {}", layer_name, param_name)
+    }
+}
+
+fn convert_usize_to_u32(input: Vec<usize>) -> Vec<u32> {
+    input.into_iter().map(|x| x as u32).collect()
+}
+
 
 
 impl ConfigurableCircuit for ConvCircuit<Variable> {
     fn configure(&mut self) {
         // Change input and outputs as needed
         // Outputs
-        let output_dims: usize = WEIGHTS_INPUT.output_shape.iter().product();
+        // let output_dims: usize = WEIGHTS_INPUT.output_shape.iter().product();
+        let output_dims: usize = ARCHITECTURE.outputs.iter()
+        .map(|obj| obj.shape.iter().product::<usize>())
+        .product();
         self.outputs = vec![Variable::default(); output_dims];
 
         // Inputs
-        let input_dims: usize = WEIGHTS_INPUT.input_shape.iter().product();
+        let input_dims: usize = ARCHITECTURE.inputs.iter()
+            .map(|obj| obj.shape.iter().product::<usize>())
+            .product();    
         self.input_arr = vec![Variable::default(); input_dims];
 
 
@@ -232,7 +454,9 @@ impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
             InputData,
         >(file_path);
 
-        let input_dims: &[usize] = &[WEIGHTS_INPUT.input_shape.iter().product()];
+        let input_dims: &[usize] = &[ARCHITECTURE.inputs.iter()
+            .map(|obj| obj.shape.iter().product::<usize>())
+            .product()]; 
 
 
         assignment.input_arr = get_1d_circuit_inputs::<C>(&data.input, input_dims);
@@ -247,7 +471,11 @@ impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
             OutputData,
         >(file_path);
 
-        let output_dims: &[usize] = &[WEIGHTS_INPUT.output_shape.iter().product()];
+        let output_dims: &[usize] = &[ARCHITECTURE.outputs.iter()
+            .map(|obj| obj.shape.iter().product::<usize>())
+            .product()]; 
+
+        // let output_dims: &[usize] = &[WEIGHTS_INPUT.output_shape.iter().product()];
 
 
         assignment.outputs = get_1d_circuit_inputs::<C>(&data.output, output_dims);

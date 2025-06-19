@@ -349,7 +349,7 @@ class Circuit:
                     to_json(w, weights_path[:-5] + f"{val}" + weights_path[-5:])
         elif type(weights) == dict:
             to_json(weights, weights_path)
-        elif isinstance(weights, tuple) and len(weights) == 2:
+        elif isinstance(weights, tuple):
             to_json(weights, weights_path)
         else:
             raise NotImplementedError("Weights type is incorrect")

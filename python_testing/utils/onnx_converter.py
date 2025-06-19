@@ -437,6 +437,13 @@ class ONNXConverter(ModelConverter):
         onnx.checker.check_model(inferred_model)
         output_name_to_shape = extract_shape_dict(inferred_model)
         (architecture, w_and_b) = self.analyze_layers(output_name_to_shape)
+        for w in w_and_b:
+            w_and_b_array = np.asarray(w.tensor)
+            w_and_b_scaled = w_and_b_array * (getattr(self, "scale_base", 2)**getattr(self,"scaling", 18))
+            w_and_b_out = w_and_b_scaled.astype(np.int64).tolist()
+            w.tensor = w_and_b_out
+            
+        
         
         inputs = []
         outputs = []
@@ -458,7 +465,12 @@ class ONNXConverter(ModelConverter):
         weights = {
             "w_and_b": [asdict(w_b) for w_b in w_and_b]
         }
-        return architecture, weights
+        circuit_params = {
+            "scale_base": getattr(self, "scale_base", 2),
+            "scaling": getattr(self,"scaling", 18),
+            "rescale_config": getattr(self, "rescale_config", {})
+        }
+        return architecture, weights, circuit_params
 
     def get_model_and_quantize(self):
         
@@ -468,7 +480,7 @@ class ONNXConverter(ModelConverter):
             raise FileNotFoundError("An ONNX model is required at the specified path")
         
         # self.model = model
-        self.quantized_model = self.quantize_model(self.model, self.scale_base, self.scaling, rescale_config=getattr(self,"rescale_config", {}))
+        self.quantized_model = self.quantize_model(self.model, getattr(self,"scale_base", 2), getattr(self,"scaling", 18), rescale_config=getattr(self,"rescale_config", {}))
 
     def test_accuracy(self):
         # model = onnx.load()
@@ -548,14 +560,20 @@ if __name__ == "__main__":
     path  ="./models_onnx/doom.onnx"
 
     converter = ONNXConverter()
-    converter.model_path, converter.quantized_model_path = path, "quantized_doom.onnx"
+    converter.model_file_name, converter.quantized_model_file_name = path, "quantized_doom.onnx"
+    # converter.model_file_name = path
     converter.load_model(path)
+    converter.get_model_and_quantize()
+
     # converter.model = create_dummy_model()
-    # converter.test_accuracy()
-    arch, weights = converter.get_weights()
-    with open('onnx_weights.json', 'w') as fp:
-        json.dump(weights,fp)
-    with open('onnx_arch.json', 'w') as fp:
-        json.dump(arch,fp)
+    converter.test_accuracy()
+    # weights = converter.get_weights()
+    # print(weights[1].keys())
+    # print(weights[1]["w_and_b"][0].keys())
+
+    # with open('onnx_weights.json', 'w') as fp:
+    #     json.dump(weights,fp)
+    # with open('onnx_arch.json', 'w') as fp:
+    #     json.dump(arch,fp)
 
     # converter.analyze_layers("")

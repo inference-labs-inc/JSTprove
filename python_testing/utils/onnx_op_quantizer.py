@@ -58,15 +58,17 @@ class ONNXOpQuantizer:
                 print(f"{attr.name}: type={attr.type} ({onnx.AttributeProto.AttributeType.Name(attr.type)})")
             print(attrs)
             output_name = f"{node.name}_int"
-            cast_to_int64 = helper.make_node(
-                "Cast",
-                inputs=[node.input[0]],
-                outputs=[output_name],
-                to=onnx.TensorProto.INT64,
-                name = node.name
-            )
+            # cast_to_int64 = helper.make_node(
+            #     "Cast",
+            #     inputs=[node.input[0]],
+            #     outputs=[output_name],
+            #     to=onnx.TensorProto.INT64,
+            #     name = node.name
+            # )
+            # nodes.append(cast_to_int64)
+
             
-            node.input[0] = output_name
+            # node.input[0] = output_name
             
             int64_conv_node = onnx.helper.make_node(
                                             "Int64Conv",
@@ -76,7 +78,6 @@ class ONNXOpQuantizer:
                                             domain="ai.onnx.contrib",
                                             **attrs
                                         )
-            nodes.append(cast_to_int64)
             
             # int64_conv_node.output[0] = "Y"
             nodes.append(int64_conv_node)
@@ -216,19 +217,19 @@ class ONNXOpQuantizer:
         # === Quantize weight ===
         weight_name = node.input[1]
         weight_tensor = initializer_map[weight_name]
-        quant_weight_name, mul_node, floor_node, cast_node = self.insert_scale_node(weight_tensor, scale_base, scale, graph)
+        quant_weight_name, mul_node, cast_node = self.insert_scale_node(weight_tensor, scale_base, scale, graph)
 
         # === Quantize bias if present ===
         new_inputs = [node.input[0], quant_weight_name]
-        nodes = [mul_node, floor_node, cast_node]
+        nodes = [mul_node, cast_node]
 
         if len(node.input) > 2:
             bias_name = node.input[2]
             bias_tensor = initializer_map[bias_name]
-            quant_bias_name, mul_node_2, floor_node_2, cast_node_2 = self.insert_scale_node(bias_tensor, scale_base, (scale*2), graph)
+            quant_bias_name, mul_node_2, cast_node_2 = self.insert_scale_node(bias_tensor, scale_base, (scale*2), graph)
             new_inputs.append(quant_bias_name)
             nodes.append(mul_node_2)
-            nodes.append(floor_node_2)
+            # nodes.append(floor_node_2)
             nodes.append(cast_node_2)
 
 
@@ -263,15 +264,15 @@ class ONNXOpQuantizer:
         # graph.node.append(mul_node)
         # replace_input_references(graph, original_output, mul_node.output[0])
 
-        # === Floor node (simulate rounding) ===
-        rounded_output_name = f"{tensor.name}_scaled_floor"
-        floor_node = helper.make_node(
-            "Floor",
-            inputs=[scaled_output_name],
-            outputs=[rounded_output_name],
-            name=f"{scaled_output_name}",
-        )
-        output_name = f"{rounded_output_name}_int"
+        # # === Floor node (simulate rounding) ===
+        # rounded_output_name = f"{tensor.name}_scaled_floor"
+        # floor_node = helper.make_node(
+        #     "Floor",
+        #     inputs=[scaled_output_name],
+        #     outputs=[rounded_output_name],
+        #     name=f"{scaled_output_name}",
+        # )
+        # output_name = f"{rounded_output_name}_int"
         # cast_to_int64 = helper.make_node(
         #     "Cast",
         #     inputs=[rounded_output_name],
@@ -280,6 +281,8 @@ class ONNXOpQuantizer:
         #     name = rounded_output_name
         # )
         # The following is with removed floor node
+        output_name = f"{scaled_output_name}_cast"
+        rounded_output_name = scaled_output_name
         cast_to_int64 = helper.make_node(
             "Cast",
             inputs=[scaled_output_name],
@@ -289,7 +292,7 @@ class ONNXOpQuantizer:
         )
         # graph.node.append(floor_node)
         # replace_input_references(graph, original_output, floor_node.output[0])
-        return output_name, mul_node, floor_node, cast_to_int64
+        return output_name, mul_node, cast_to_int64
         # replace_input_references(graph, original_output, mul_node.output[0])
         # return scaled_output_name
     

@@ -2,16 +2,12 @@ import pytest
 from unittest.mock import patch, MagicMock
 import sys
 
-# from python_testing.utils.pytorch_helpers import 
 sys.modules.pop("python_testing.utils.pytorch_helpers", None)
 
 
 with patch('python_testing.utils.helper_functions.prepare_io_files', lambda f: f):  # MUST BE BEFORE THE UUT GETS IMPORTED ANYWHERE!
     from python_testing.utils.pytorch_helpers import ZKTorchModel
     from python_testing.utils.helper_functions import RunType
-
-    # from python_testing.utils.model_converter import RunType, ZKProofSystems
-
 
 
 # ---------- __init__ ----------
