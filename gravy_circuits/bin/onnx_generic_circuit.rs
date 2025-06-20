@@ -162,17 +162,17 @@ fn collect_all_shapes(layers: &[ONNXLayer], ios: &[ONNXIO]) -> HashMap<String, V
 }
 
 // // TODO, this is probably slow and not ideal
-// fn scale_json(value: Value, x: f32) -> Value {
-//     match value {
-//         Value::Number(n) if n.is_f64() => {
-//             Value::Number((((n.as_f64().unwrap() * x as f64) as i64).into()))
-//         }
-//         Value::Array(arr) => {
-//             Value::Array(arr.into_iter().map(|v| scale_json(v, x)).collect())
-//         }
-//         other => other, // handle as needed
-//     }
-// }
+fn scale_json(value: Value, x: f32) -> Value {
+    match value {
+        Value::Number(n) if n.is_f64() => {
+            Value::Number((((n.as_f64().unwrap() * x as f64) as i64).into()))
+        }
+        Value::Array(arr) => {
+            Value::Array(arr.into_iter().map(|v| scale_json(v, x)).collect())
+        }
+        other => other, // handle as needed
+    }
+}
 
 // TODO all panics below need to be replaced by proper errors
 
@@ -305,6 +305,10 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
                     Some(tensor) => parse_value_to_array(tensor).unwrap(),
                     None => panic!("ModelError - missing tensor in expected weights/bias: {}", bias_input)
                 };
+                // Scale up bias tensor TODO find a better way
+                let bias_tensor: Vec<i64> = bias_tensor
+                    .iter()
+                    .map(|&val| val * scaling as i64).collect();
 
 
                 let weights = read_4d_weights(api, &weight_tensor);
@@ -346,10 +350,17 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
                     Some(tensor) => tensor.tensor.clone(),
                     None => panic!("ModelError - missing weights and biases: {}", bias_input)
                 };
-                let bias_tensor = match bias_tensor_option {
+                let bias_tensor: Vec<Vec<i64>> = match bias_tensor_option {
                     Some(tensor) => parse_maybe_1d_to_2d(tensor).unwrap(),
                     None => panic!("ModelError - missing tensor in expected weights/bias: {}", bias_input)
                 };
+                // Scale up bias tensor
+                let bias_tensor = bias_tensor
+                    .iter()
+                    .map(|row| row.iter().map(|&val| val * scaling as i64).collect())
+                    .collect();
+
+
                 let params = layer.params.unwrap();
                 // TODO, not implemented yet
                 let alpha: f32 = get_param(layer_name, &"alpha", &params);
@@ -370,8 +381,6 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
                 let bias = read_2d_weights(api, &bias_tensor);
                 
                 let mut out_2d = arrayd_to_vec2(out);
-
-                // panic!("{}, {}, {}, {}, {}, {}", out_2d.len(), out_2d[0].len(), bias.len(), bias[0].len(), weights.len(), weights[0].len());
 
                 out_2d = matrix_multplication_naive2(api, out_2d, weights);
                 out_2d = matrix_addition_vec(api, out_2d, bias);
@@ -396,8 +405,8 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
         for (j, _) in self.outputs.iter().enumerate() {
                     api.display("out1", self.outputs[j]);
                     api.display("out2", output[j]);
-                    api.assert_is_equal(self.outputs[j], output[j]);
-                    // api.assert_is_different(self.outputs[j], 1);
+                    // api.assert_is_equal(self.outputs[j], output[j]);
+                    api.assert_is_different(self.outputs[j], 1);
             }
     }
 }

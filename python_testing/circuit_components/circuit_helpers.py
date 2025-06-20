@@ -153,6 +153,7 @@ class Circuit:
         except Exception as e:
             print(f"Warning: Operation {run_type} failed: {e}")
             print("Input and output files have still been created correctly.")
+            # raise e
 
 
     def contains_float(self, obj):
@@ -297,17 +298,20 @@ class Circuit:
             self.load_quantized_model(quantized_path)
         else:
             self.load_quantized_model(self._file_info.get("quantized_model_path"))
+        
 
         if write_json == True:
             inputs = self.get_inputs()
-            output = self.get_outputs(inputs)
+            outputs = self.get_outputs(inputs)
+
+            
 
             
             input = self.format_inputs(inputs)
-            outputs = self.format_outputs(output)
+            output = self.format_outputs(outputs)
 
             to_json(input, input_file)
-            to_json(outputs, output_file)
+            to_json(output, output_file)
         else:
             # input_file = self.rescale_inputs(input_file)
             # input_file = self.reshape_inputs(input_file)

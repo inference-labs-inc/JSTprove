@@ -81,6 +81,7 @@ class ONNXConverter(ModelConverter):
     # Not sure this is ideal
     def load_quantized_model(self, file_path: str):
         # May be able to remove next few lines...
+        print(file_path)
         onnx_model = onnx.load(file_path)
         custom_domain = onnx.helper.make_operatorsetid(domain="ai.onnx.contrib", version=1)
         onnx_model.opset_import.append(custom_domain)
@@ -154,7 +155,10 @@ class ONNXConverter(ModelConverter):
             opts.register_custom_ops_library(get_library_path())
             ort_sess =  ort.InferenceSession(path, opts, providers=["CPUExecutionProvider"])
         else:
-            ort_sess = self.ort_sess
+            # ort_sess = self.ort_sess
+            opts = SessionOptions()
+            opts.register_custom_ops_library(get_library_path())
+            ort_sess =  ort.InferenceSession(path, opts, providers=["CPUExecutionProvider"])
         input_name = ort_sess.get_inputs()[0].name
         output_name = ort_sess.get_outputs()[0].name
         outputs = ort_sess.run([output_name], {input_name: np.asarray(input)})
@@ -480,9 +484,10 @@ class ONNXConverter(ModelConverter):
             raise FileNotFoundError("An ONNX model is required at the specified path")
         
         # self.model = model
+        print(getattr(self,"scaling", 18))
         self.quantized_model = self.quantize_model(self.model, getattr(self,"scale_base", 2), getattr(self,"scaling", 18), rescale_config=getattr(self,"rescale_config", {}))
 
-    def test_accuracy(self):
+    def test_accuracy(self, inputs = None):
         # model = onnx.load()
         model = self.model
         input_shape = []
@@ -501,8 +506,8 @@ class ONNXConverter(ModelConverter):
 
                 input_shape.append(val)
         print(input_shape)
-        inputs = torch.rand(input_shape)*2 - 1
-        new_model = self.quantize_model(model, 2, 21)
+        # inputs = torch.rand(input_shape)*2 - 1
+        new_model = self.quantize_model(model, 2, 18)
         custom_domain = onnx.helper.make_operatorsetid(domain="ai.onnx.contrib", version=1)
         new_model.opset_import.append(custom_domain)
         onnx.checker.check_model(new_model)
@@ -512,15 +517,15 @@ class ONNXConverter(ModelConverter):
 
         model = onnx.load(self.quantized_model_file_name)
         onnx.checker.check_model(model)  # This throws a descriptive error
-
-        inputs = torch.rand([1,4,28,28])
+        if inputs == None:
+            inputs = torch.rand([1,4,28,28])*2 - 1
         outputs_true = self.run_model_onnx_runtime(self.model_file_name, inputs)[0][0].tolist()
 
         outputs_quant = self.run_model_onnx_runtime(self.quantized_model_file_name, inputs)[0][0].tolist()
         # print(outputs_true)
         print("ONNXRuntime true model output : ",[[float("{:.5f}".format(o)) for o in outputs_true]])
         
-        print("ONNXRuntime quant model output: ",[[float("{:.5f}".format(o/(2**21))) for o in outputs_quant]])
+        print("ONNXRuntime quant model output: ",[[float("{:.5f}".format(o/(2**18))) for o in outputs_quant]])
         # print([[o/(2**21) for o in outputs_quant]])
 
 
@@ -558,6 +563,8 @@ class ZKONNXModel(ONNXConverter, ZKModelBase):
 
 if __name__ == "__main__":
     path  ="./models_onnx/doom.onnx"
+    # path  ="./models_onnx/test_doom_after_conv.onnx"
+
 
     converter = ONNXConverter()
     converter.model_file_name, converter.quantized_model_file_name = path, "quantized_doom.onnx"
