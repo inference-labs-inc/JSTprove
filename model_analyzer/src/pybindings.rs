@@ -1,14 +1,39 @@
-use pyo3::prelude::*;
-use crate::core::analyze_model_internal;
+use pyo3::{exceptions::PyRuntimeError, prelude::*};
+use crate::model_analyzer::{analyze_model_internal, get_architecture_internal, get_w_and_b_internal};
+use crate::layer_handlers::layer_ir::LayerIR;
 
 #[pyfunction]
-fn analyze_model(path: &str, batch_size: Option<usize>) -> PyResult<Vec<String>> {
-    analyze_model_internal(path, Some(batch_size.unwrap()))
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))
+fn analyze_model(path: &str) -> PyResult<Vec<LayerIR>> {
+    analyze_model_internal(path)
+        .map_err(|e| PyRuntimeError::new_err(format!("{}", e)))
 }
+
+#[pyfunction]
+fn analyze_model_json(path: &str) -> PyResult<String> {
+    let result = analyze_model_internal(path)
+        .map_err(|e| PyRuntimeError::new_err(format!("{}", e)))?;
+    serde_json::to_string_pretty(&result)
+        .map_err(|e| PyRuntimeError::new_err(format!("JSON error: {}", e)))
+}
+
+#[pyfunction]
+fn get_architecture(model: Vec<LayerIR>) -> PyResult<Vec<LayerIR>> {
+    get_architecture_internal(model)
+        .map_err(|e| PyRuntimeError::new_err(format!("{}", e)))
+}
+
+#[pyfunction]
+fn get_w_and_b(model: Vec<LayerIR>) -> PyResult<Vec<LayerIR>> {
+    get_w_and_b_internal(model)
+        .map_err(|e| PyRuntimeError::new_err(format!("{}", e)))
+}
+
 
 #[pymodule]
 fn model_analyzer(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(analyze_model, m)?)?;
+    m.add_function(wrap_pyfunction!(analyze_model_json, m)?)?;
+    m.add_function(wrap_pyfunction!(get_architecture, m)?)?;
+    m.add_function(wrap_pyfunction!(get_w_and_b, m)?)?;
     Ok(())
 }

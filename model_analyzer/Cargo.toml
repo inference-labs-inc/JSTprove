@@ -8,10 +8,14 @@ name = "model_analyzer"
 crate-type = ["cdylib"]
 
 [dependencies]
-tract-onnx = "0.19"
-tract-core = "0.19"
+tract-onnx = "0.21.13"
+tract-core = "0.21.13"
 pyo3 = { version = "0.25", features = ["extension-module"] }
-thiserror = "2.0.12"
+# thiserror = "2.0.12"
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+lazy_static = "1.4"
+
 
 [package.metadata.maturin]
 name = "model_analyzer"

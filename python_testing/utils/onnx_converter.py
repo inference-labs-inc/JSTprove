@@ -1,5 +1,6 @@
 from dataclasses import dataclass, fields
 import inspect
+import json
 from typing import Dict, List, Optional
 import numpy as np
 import torch
@@ -16,7 +17,22 @@ from python_testing.utils.model_converter import ZKModelBase, ModelConverter
 
 
 import model_analyzer
+# @dataclass
+# class ONNXLayerConstants:
+#     input_index: int
+#     name: str
+#     value: Dict[str, List[int]]
 
+@dataclass
+class ONNXLayer:
+    id: int
+    name: str
+    kind: str
+    inputs: List[int]
+    outputs: List[int]
+    shape: List[int] 
+    tensor: List
+    params: Dict
 
 class ONNXConverter(ModelConverter):
 
@@ -50,17 +66,56 @@ class ONNXConverter(ModelConverter):
     #     pad_h, pad_w = padding_2
     #     return (pad_w, pad_w, pad_h, pad_h)
     
-    def analyze_layers(self, model):
+    def analyze_layers_json(self, model):
+        layers = model_analyzer.analyze_model_json("./models_onnx/doom.onnx")
+        layers = json.loads(layers)
+        # layers = [ONNXLayer(**l) for l in layers]
+
+        # # sort layers
+        # layers = sorted(layers, key=lambda ONNXLayer: ONNXLayer.id) 
+        # print([(l.name, l.id, l.kind, l.inputs, l.outputs, l.shape) for l in layers])
+
+        # for l in layers:
+        #     if l.kind == {'type': 'Const'}:
+        #         print(l.tensor)
+        #         break
+
+    def analyze_layers(self, path):
         # model = tract.onnx().model_for_path("./mobilenetv2-7.onnx").into_optimized().into_runnable()
         # tract_model = tract.onnx().model_for_path("./models_onnx/doom.onnx")
-        layers = model_analyzer.analyze_model("./models_onnx/doom.onnx", 1)
-        
-        print(layers)
+        # layers = model_analyzer.analyze_model("./models_onnx/doom.onnx")
+        layers = model_analyzer.analyze_model("./models_onnx/doom.onnx")
+
+
+        # sort layers
+        layers = sorted(layers, key=lambda ONNXLayer: ONNXLayer.id) 
+        print([(l.name, l.id, l.kind, l.inputs, l.outputs, l.shape) for l in layers])
+        architecture = self.get_used_layers(layers)
+        w_and_b = self.get_w_and_b(layers)
+
+        return (architecture, w_and_b)
 
 
 
-    def get_used_layers(self, model, input_shape):
-        pass
+
+    def get_used_layers(self, model):
+        architecture = model_analyzer.get_architecture(model)
+        # # sort layers
+        layers = sorted(architecture, key=lambda ONNXLayer: ONNXLayer.id) 
+        print([(l.name, l.id, l.kind, l.inputs, l.outputs, f"Tensor length {len(l.tensor) if l.tensor else None}", l.shape, json.loads(l.params.to_dict()) if l.params else None) for l in layers])
+        return layers
+    
+    def get_model_architecture(self, model):
+        return self.get_used_layers(model)
+    
+    def get_w_and_b(self, model):
+        w_and_b = model_analyzer.get_w_and_b(model)
+        # # sort layers
+        layers = sorted(w_and_b, key=lambda ONNXLayer: ONNXLayer.id) 
+        # print([(l.name, l.id, l.kind, l.inputs, l.outputs, f"Tensor length {l.tensor.shape if l.tensor else None}", l.shape) for l in layers])
+        return layers
+
+
 
     def get_input_and_output_shapes_by_layer(self, model, input_shape):
         pass
