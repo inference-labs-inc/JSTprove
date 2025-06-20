@@ -1,22 +1,36 @@
 use expander_compiler::frontend::*;
 
-/// Extract the least significant `n_bits` bits of a given field element or integer represented as a `Variable`,
-/// using the Expander Compiler Collection's unconstrained operations.
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: unconstrained_to_bits
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Extracts the least significant `n_bits` of a field element as a bitstring, in little-endian order.
 ///
-/// This function returns a vector of `Variable`s corresponding to the bits in little-endian order,
-/// i.e., `bits[0]` is the least significant bit.
+/// # Overview
+/// Uses the Expander Compiler Collection’s unconstrained bitwise operations to extract
+/// the `n_bits` least significant bits of a `Variable`. The bits are returned in little-endian order:
+/// `bits[0]` is the least significant bit, `bits[n_bits - 1]` is the most significant of the truncated bits.
+///
+/// This function does **not** check that the input fits within `n_bits`; any higher-order bits are discarded.
 ///
 /// # Type Parameters
-/// - `C`: The circuit configuration (implements `Config`).
-/// - `Builder`: The prover API (implements `RootAPI<C>`), providing unconstrained bitwise operations.
+/// - `C`: Circuit configuration implementing `Config`.
+/// - `Builder`: Prover API implementing `RootAPI<C>`.
 ///
-/// # Parameters
-/// - `api`: A mutable reference to the circuit builder.
-/// - `input`: The `Variable` whose lower bits are being extracted.
-/// - `n_bits`: The number of least significant bits to extract.
+/// # Arguments
+/// - `api`: Mutable reference to the circuit builder.
+/// - `input`: A `Variable` representing the integer or field element to be bit-decomposed.
+/// - `n_bits`: Number of least significant bits to extract.
 ///
 /// # Returns
-/// A `Vec<Variable>` of length `n_bits`, containing the extracted bits in little-endian order.
+/// A vector of `n_bits` `Variable`s representing the bit decomposition of `input`,
+/// in little-endian order.
+///
+/// # Example
+/// ```ignore
+/// // For input = 43 and n_bits = 4:
+/// // Returns [1, 1, 0, 1], since 43 = 0b101011, and the 4 LSBs are 1011.
+/// ```
 pub fn unconstrained_to_bits<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input: Variable,
@@ -36,32 +50,47 @@ pub fn unconstrained_to_bits<C: Config, Builder: RootAPI<C>>(
     least_significant_bits
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: assert_is_bitstring_and_reconstruct
+// ─────────────────────────────────────────────────────────────────────────────
 
-/// Enforce that a little-endian bitstring really is bits ∈ {0,1}, and
-/// then reconstruct the integer ∑_{i=0}^{bits.len()−1} bits[i]·2^i.
-/// Panics if there’s any overflow in 2^i for i ≥ 32.
-/// 
+/// Checks that each element of a little-endian bitstring is in `{0,1}` and reconstructs the integer.
+///
+/// # Overview
+/// For a given slice of variables `[b₀, b₁, ..., bₙ₋₁]` representing a bitstring in little-endian order,
+/// this function:
+/// 1. Enforces that each `bᵢ ∈ {0,1}` via the constraint `bᵢ(bᵢ − 1) = 0`.
+/// 2. Reconstructs the integer `∑ bᵢ·2ⁱ` and returns the corresponding `Variable`.
+///
+/// This function panics if any shift `2ⁱ` for `i ≥ 32` overflows a `u32`.
+///
 /// # Arguments
-/// * `api`                  – circuit builder implementing `RootAPI<C>`.
-/// * `least_significant_bits` – slice of Variables to check & combine
-/// 
+/// - `api`: A mutable reference to the circuit builder implementing `RootAPI<C>`.
+/// - `least_significant_bits`: A slice of `Variable`s representing a bitstring in little-endian order.
+///
 /// # Returns
-/// The field element corresponding to the reconstructed integer.
+/// A `Variable` encoding the integer reconstructed from the bitstring.
+///
+/// # Example
+/// ```ignore
+/// // For bits = [1, 1, 0, 1], returns 11,
+/// // since 1·2⁰ + 1·2¹ + 0·2² + 1·2³ = 11.
+/// ```
 pub fn assert_is_bitstring_and_reconstruct<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     least_significant_bits: &[Variable],
 ) -> Variable {
-    // Start accumulation at zero
+    // Start with 0 and accumulate ∑ bᵢ·2ⁱ as we iterate
     let mut reconstructed = api.constant(0u32);
 
     for (i, &bit) in least_significant_bits.iter().enumerate() {
-        // 1) Enforce bit ∈ {0,1} via vanishing polynomial b(b−1)=0
+        // Enforce bᵢ ∈ {0,1} via b(b−1) = 0
         let one = api.constant(1u32);
         let bit_minus_one = api.sub(bit, one);
         let vanishing = api.mul(bit, bit_minus_one);
         api.assert_is_zero(vanishing);
 
-        // 2) Add bit · 2^i to the running total
+        // Compute bᵢ · 2ⁱ
         let weight = 1u32
             .checked_shl(i as u32)
             .expect("bit index i must be < 32");
@@ -72,225 +101,271 @@ pub fn assert_is_bitstring_and_reconstruct<C: Config, Builder: RootAPI<C>>(
     reconstructed
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: rescale_by_power_of_two
+// ─────────────────────────────────────────────────────────────────────────────
 
-/// # Notation
-/// - Let `κ = scaling_exponent`, and define `α = 2^κ`  
-/// - Let `s = shift_exponent`, and define `S = 2^s`  
-/// - Define `T = 2·S − 1 = 2^(s + 1) − 1`  
-/// - `c = dividend`  
-/// - `r = remainder`  
-/// - `q^♯ = shifted_q`
+/// Computes `q = floor((c + α·S)/α) − S`, optionally applying ReLU.
 ///
-/// Divide out a α = 2^κ “scaling_factor” then subtract a S = 2^s “shift” (all via unconstrained div + mod
-/// plus range‐checks), and optionally ReLU the result:
-/// 1) form `shifted_dividend = α·S + c`
-/// 2) `shifted_dividend = α·q^♯ + r` by unconstrained div+mod  
-/// 3) assert exactness of that decomposition  
-/// 4) range‐check `r ∈ [0, α - 1] = [0, 2^κ - 1]`  
-/// 5) range‐check `q^♯ ∈ [0, T] = [0, 2·S - 1] = [0, 2^(s + 1) - 1]`  
-/// 6) recover `q = q^♯ − S`  
-/// 7) if `apply_relu`, zero‐out negatives via the MSB of `q^♯`  
+/// All intermediate values are computed using **unconstrained operations** (i.e.,  
+/// witness-only helper functions such as division, modulo, and bit decomposition),  
+/// and **correctness is enforced explicitly** via constraint assertions such as  
+/// `assert_is_equal`, `assert_is_zero`, and bitstring range checks.
+///
+/// # Notation
+/// - Let `κ = scaling_exponent`, and define `α = 2^κ`.
+/// - Let `s = shift_exponent`, and define `S = 2^s`.
+/// - Define `T = 2·S − 1 = 2^(s + 1) − 1`.
+/// - `c` is the input `dividend`.
+/// - `r` is the remainder.
+/// - `q^♯` is the offset quotient: `q^♯ = q + S`.
+///
+/// # Process
+/// 1. Form `shifted_dividend = α·S + c`.
+/// 2. Unconstrained division: `shifted_dividend = α·q^♯ + r`.
+/// 3. Enforce this equality with a constraint.
+/// 4. Range-check `r ∈ [0, α − 1]`.
+/// 5. Range-check `q^♯ ∈ [0, T] = [0, 2^(s + 1) − 1]`.
+/// 6. Recover `q = q^♯ − S`.
+/// 7. If `apply_relu`, output `max(q, 0)` using MSB of `q^♯`.
 ///
 /// # Panics
-/// - if any `checked_shl` or `checked_add` overflows a 32-bit  
+/// - If `checked_shl` or `checked_mul` overflows a 32-bit integer.
 ///
 /// # Arguments
-/// * `api`               – circuit builder implementing `RootAPI<C>`.  
-/// * `dividend` (`c`)    – a `Variable ≡ original_integer mod p`, assumed in  
-///                        `[−α·S, α·(T - S)] = [−α·S, α·(S - 1)] = [-2^(κ + s),2^κ·(2^s - 1)]`  
-/// * `scaling_exponent` (`κ`)  – so that `α = 2^κ`  
-/// * `shift_exponent`   (`s`)  – so that `S = 2^s`  
-/// * `apply_relu`        – if `true`, output `max(q,0)` instead of `q`  
+/// - `api`: The circuit builder implementing `RootAPI<C>`.
+/// - `dividend` (`c`): The field element to rescale, assumed in `[-α·S, α·(T − S)]`.
+/// - `scaling_exponent` (`κ`): So that `α = 2^κ`.
+/// - `shift_exponent` (`s`): So that `S = 2^s`.
+/// - `apply_relu`: If `true`, returns `max(q, 0)` instead of `q`.
 pub fn rescale_by_power_of_two<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    dividend: Variable, // c
-    scaling_exponent: usize, // κ
-    shift_exponent: usize, // s
+    dividend: Variable,          // c
+    scaling_exponent: usize,     // κ
+    shift_exponent: usize,       // s
     apply_relu: bool,
 ) -> Variable {
- // 1) compute scaling_factor_ = 2^scaling_exponent (α = 2^κ) and shift_ = 2^shift_exponent (S = 2^s) as u32
-let scaling_factor_: u32 = 1u32
-    .checked_shl(scaling_exponent as u32)
-    .expect("scaling_exponent < 32");
-// lift scaling_factor_ (α = 2^κ) to a circuit constant
-let scaling_factor = api.constant(scaling_factor_); 
-let shift_: u32 = 1u32
-    .checked_shl(shift_exponent as u32)
-    .expect("shift_exponent < 32");
-// lift shift_ (S = 2^s) to a circuit constant
-let shift = api.constant(shift_); 
+    // Step 1: compute α = 2^κ and S = 2^s as native integers
+    let scaling_factor_: u32 = 1u32
+        .checked_shl(scaling_exponent as u32)
+        .expect("scaling_exponent < 32");
+    let shift_: u32 = 1u32
+        .checked_shl(shift_exponent as u32)
+        .expect("shift_exponent < 32");
 
-// 2) compute the scaled_shift = scaling_factor_*shift_ (α·S = 2^κ·2^s)
-let scaled_shift_: u32 = scaling_factor_
-    .checked_mul(shift_)
-    .expect("2^scaling_exponent · 2^shift_exponent fits in u32");
-// lift scaled_shift_ (α·S = 2^κ·2^s) to a circuit constant
-let scaled_shift = api.constant(scaled_shift_); 
+    // Lift α and S to circuit constants
+    let scaling_factor = api.constant(scaling_factor_);
+    let shift = api.constant(shift_);
 
-// 3) form shifted_dividend = scaled_shift + dividend (α·S + c)
-let shifted_dividend = api.add(scaled_shift, dividend);
+    // Step 2: compute α·S
+    let scaled_shift_: u32 = scaling_factor_
+        .checked_mul(shift_)
+        .expect("2^κ · 2^s fits in u32");
+    let scaled_shift = api.constant(scaled_shift_);
 
-// 4) unconstrained Euclidean division: shifted_dividend = scaling_factor_*shifted_q + remainder (α·S + c = α·q^♯ + r)
-// q^♯ = floor((α·S + c)/α)
-let shifted_q = api.unconstrained_int_div(shifted_dividend, scaling_factor_); 
-// r = α·S + c - α·q^♯
-let remainder = api.unconstrained_mod(shifted_dividend, scaling_factor_); 
+    // Step 3: compute shifted_dividend = α·S + c
+    let shifted_dividend = api.add(scaled_shift, dividend);
 
-// 4b) constrain Euclidean division: shifted_dividend = scaling_factor_*shifted_q + remainder (α·S + c = α·q^♯ + r)
-// α·q^♯
-let scaling_factor_times_shifted_q = api.mul(scaling_factor, shifted_q); 
-// α·q^♯ + r
-let recomposed_shifted_dividend = api.add(scaling_factor_times_shifted_q, remainder); 
-// α·S + c = α·q^♯ + r
-api.assert_is_equal(shifted_dividend, recomposed_shifted_dividend); 
+    // Step 4: Unconstrained Euclidean division: α·S + c = α·q^♯ + r
+    let shifted_q = api.unconstrained_int_div(shifted_dividend, scaling_factor_);
+    let remainder = api.unconstrained_mod(shifted_dividend, scaling_factor_);
 
-// 5) range‐check remainder r ∈ [0, α - 1] = [0, 2^κ - 1]
-// r = d_0 + d_1·2 + ... + d_{κ - 1}·2^(κ - 1) + D_κ·2^κ
-let rem_bits = unconstrained_to_bits(api, remainder, scaling_exponent); 
-// d_i·(d_i - 1) = 0; rem_recon = d_0 + d_1·2 + ... + d_{κ - 1}·2^(κ - 1)
-let rem_recon = assert_is_bitstring_and_reconstruct(api, &rem_bits); 
-// r = d_0 + d_1·2 + ... + d_{κ - 1}·2^(κ - 1)
-api.assert_is_equal(remainder, rem_recon); 
+    // Step 4b: Enforce α·q^♯ + r = α·S + c
+    let lhs = shifted_dividend;
+    let rhs = api.add(api.mul(scaling_factor, shifted_q), remainder);
+    api.assert_is_equal(lhs, rhs);
 
-// 6) range‐check shifted_q q^♯ ∈ [0, T] = [0, 2·S - 1] = [0, 2^(s + 1) - 1]
-let n_bits_q = shift_exponent
-    .checked_add(1)
-    .expect("shift_exponent + 1 fits in usize");
-// q^♯ = d_0 + d_1·2 + ... + d_s·2^s + D_{s + 1}·2^(s + 1)
-let q_bits = unconstrained_to_bits(api, shifted_q, n_bits_q); 
-// d_i·(d_i - 1) = 0; q_recon = d_0 + d_1·2 + ... + d_s·2^s
-let q_recon = assert_is_bitstring_and_reconstruct(api, &q_bits); 
-// q^♯ = d_0 + d_1·2 + ... + d_{s - 1}·2^s
-api.assert_is_equal(shifted_q, q_recon); 
+    // Step 5: Range-check r ∈ [0, α − 1] using κ bits
+    let rem_bits = unconstrained_to_bits(api, remainder, scaling_exponent);
+    let rem_recon = assert_is_bitstring_and_reconstruct(api, &rem_bits);
+    api.assert_is_equal(remainder, rem_recon);
 
-// 7) recover the quotient: shifted_q − 2^s (q = q^♯ - S)
-let quotient = api.sub(shifted_q, shift);
+    // Step 6: Range-check q^♯ ∈ [0, 2^(s + 1) − 1] using s + 1 bits
+    let n_bits_q = shift_exponent
+        .checked_add(1)
+        .expect("shift_exponent + 1 fits in usize");
+    let q_bits = unconstrained_to_bits(api, shifted_q, n_bits_q);
+    let q_recon = assert_is_bitstring_and_reconstruct(api, &q_bits);
+    api.assert_is_equal(shifted_q, q_recon);
 
-// 8) optionally zero out negatives via MSB of shifted_q 
-if apply_relu {
-    // q ≥ 0 ⇔ q + S ≥ S <=> q^♯ ≥ S = 2^s ⇔ d_s = 1 (since q^♯ ≤ 2^(s + 1) - 1)
-    let sign_bit = q_bits[shift_exponent]; // the s-th bit d_s
-    // ReLU(q) = d_s·q
-    api.mul(quotient, sign_bit) 
-} else {
-    quotient
-}
+    // Step 7: Recover q = q^♯ − S
+    let quotient = api.sub(shifted_q, shift);
+
+    // Step 8: If ReLU is applied, zero out negatives using MSB of q^♯
+    if apply_relu {
+        // q ≥ 0 ⇔ q^♯ ≥ S ⇔ MSB d_s = 1
+        let sign_bit = q_bits[shift_exponent]; // the (s + 1)-st bit d_s
+        api.mul(quotient, sign_bit)
+    } else {
+        quotient
+    }
 }
 
-/// Find the maximum element of a nonempty slice of field elements (viewed as integers in [0,p−1]),
-/// using only unconstrained comparisons and multiplications.
-/// 
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: unconstrained_max
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Returns the maximum value in a nonempty slice of field elements (interpreted as integers in `[0, p−1]`),
+/// using only unconstrained witness operations and explicit selection logic.
+///
+/// Internally, this function performs pairwise comparisons using `unconstrained_greater` and `unconstrained_lesser_eq`,  
+/// and selects the maximum via weighted sums:  
+/// `current_max ← v·(v > current_max) + current_max·(v ≤ current_max)`
+///
 /// # Panics
-/// - if `values` is empty.
-/// 
+/// - If `values` is empty.
+///
 /// # Arguments
-/// * `api`    – circuit builder implementing `RootAPI<C>` 
-/// * `values` – slice of `Variable` (each in [0,p−1])  
-/// 
+/// - `api`: A mutable reference to the circuit builder implementing `RootAPI<C>`.
+/// - `values`: A slice of `Variable`s, each assumed to lie in the range `[0, p−1]`.
+///
 /// # Returns
-/// A `Variable` holding `max_i values[i]`.
+/// A `Variable` encoding `max_i values[i]`, the maximum value in the slice.
+///
+/// # Example
+/// ```ignore
+/// // For values = [7, 2, 9, 5], returns 9.
+/// ```
 pub fn unconstrained_max<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     values: &[Variable],
 ) -> Variable {
-    assert!(!values.is_empty(), "unconstrained_max: values must be nonempty");
+    assert!(
+        !values.is_empty(),
+        "unconstrained_max: input slice must be nonempty"
+    );
 
-    // Start with the first element as the current max
+    // Initialize with the first element
     let mut current_max = values[0];
 
-    // Iterate through the rest, updating via unconstrained comparisons
     for &v in &values[1..] {
-        // is_greater = 1 if v > current_max, else 0
+        // Compute indicators: is_greater = 1 if v > current_max, else 0
         let is_greater = api.unconstrained_greater(v, current_max);
-        // is_not_greater = 1 if v <= current_max, else 0
         let is_not_greater = api.unconstrained_lesser_eq(v, current_max);
 
-        // pick v when it's larger, otherwise keep current_max
+        // Select either v or current_max based on indicator bits
         let take_v = api.unconstrained_mul(v, is_greater);
         let keep_old = api.unconstrained_mul(current_max, is_not_greater);
 
-        // new current_max = take_v + keep_old
+        // Update current_max
         current_max = api.unconstrained_add(take_v, keep_old);
     }
 
     current_max
 }
 
-/// Verifies that a nonempty slice of `Variable`s `values`, each encoding an integer in
-/// [-S, T - S] = [−2^s, 2^s − 1], has maximum `M`, by performing the offset‐shift on‐circuit:
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: assert_is_max
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Asserts that a given slice of `Variable`s contains a maximum value `M`,
+/// by verifying that some `x_i` satisfies `M = max_i x_i`, using only unconstrained operations
+/// and an offset-shifting technique to reduce comparisons to the nonnegative range `[0, 2^(s + 1) − 1]`.
 ///
-/// 1. Compute S = 2^s, lifted to a circuit constant.
-/// 2. For each x ∈ values, form x + S ∈ [0, T] = [0, 2·S - 1] = [0, 2^(s + 1) - 1].
-/// 3. Call `unconstrained_max` on `&[x_offset]` to get M^♯ = max{x + S : x ∈ values} = max{x : x ∈ values} + S = M + S.
-/// 4. Recover the (least nonnegative residue of the) true max: M = M^♯ − S.
-/// 5. For each original x, compute Δ = M − x, bit‐decompose Δ ∈ [0, T] = [0, 2·S - 1] = [0, 2^(s + 1) - 1].
-///    (using s + 1 bits), and recompose to assert exactness.
-/// 6. Multiply all Δ’s together and assert the product is zero — ensures at least one
-///    Δ = 0, i.e. some x = M.
+/// # Idea
+/// Each `x_i` is a field element (i.e., a `Variable` representing the least nonnegative residue mod `p`)
+/// that is **assumed** to encode a signed integer in the interval `[-S, T − S] = [−2^s, 2^s − 1]`,
+/// where `S = 2^s` and `T = 2·S - 1 = 2^(s + 1) − 1`.
+///
+/// Since all circuit operations take place in `𝔽_p` and each `x_i` is already reduced modulo `p`,
+/// we shift each value by `S` on-circuit to ensure that the quantity `x_i + S` lands in `[0, T]`.
+/// Under the assumption that `x_i ∈ [−S, T − S]`, this shift does **not** wrap around modulo `p`,
+/// so `x_i + S` in `𝔽_p` reflects the true integer sum.
+///
+/// We then compute:
+/// ```text
+///     M^♯ = max_i (x_i + S)
+///     M   = M^♯ − S mod p
+/// ```
+/// to recover the **least nonnegative residue** of the maximum value, `M`.
+///
+/// To verify that `M` is indeed the maximum:
+/// - For each `x_i`, we compute `Δ_i = M − x_i`, and use bit decomposition to enforce
+///   `Δ_i ∈ [0, T]`, using `s + 1` bits.
+/// - Then we constrain the product `∏_i Δ_i` to be zero. This ensures that at least one
+///   `Δ_i = 0`, i.e., that some `x_i = M`.
+///
+/// # Example
+/// Suppose the input slice encodes the signed integers `[-2, 0, 3]`, and `s = 2`, so `S = 4`, `T = 7`.
+///
+/// - Shift:  
+///   `x_0 = -2` ⇒ `x_0 + S = 2`  
+///   `x_1 =  0` ⇒ `x_1 + S = 4`  
+///   `x_2 =  3` ⇒ `x_2 + S = 7`
+///
+/// - Compute:  
+///   `M^♯ = max{x_i + S} = 7`  
+///   `M   = M^♯ − S = 3`
+///
+/// - Verify:  
+///   For each `x_i`, compute `Δ_i = M − x_i ∈ [0, 7]`  
+///   The values are: `Δ = [5, 3, 0]`  
+///   Since one `Δ_i = 0`, we conclude that some `x_i = M`.
+///
+/// # Assumptions
+/// - All values `x_i` are `Variable`s in `𝔽_p` that **encode signed integers** in `[-S, T − S]`.
+/// - The prime `p` satisfies `p > T = 2^(s + 1) − 1`, so no wraparound occurs in `x_i + S`.
 ///
 /// # Panics
-/// - if `values` is empty.
-/// - if any 2^s or s + 1 shift overflows a `u32`.
+/// - If `values` is empty.
+/// - If computing `2^s` or `s + 1` overflows a `u32`.
 ///
 /// # Type Parameters
-/// - `C`: the circuit‐field config.
-/// - `Builder`: must implement `RootAPI<C>`.
+/// - `C`: The circuit field configuration.
+/// - `Builder`: A builder implementing `RootAPI<C>`.
 ///
 /// # Arguments
-/// - `api`             – your circuit builder.
-/// - `values`          – nonempty slice of `Variable`, each in [-S, T - S] = [−2^s, 2^s − 1].
-/// - `shift_exponent` – `s`, so that `offset = 2^s`.
+/// - `api`: Your circuit builder.
+/// - `values`: A nonempty slice of `Variable`s, each encoding an integer in `[-S, T − S]`.
+/// - `shift_exponent`: The exponent `s`, so that `S = 2^s` and `T = 2^(s + 1) − 1`.
 pub fn assert_is_max<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    values: &[Variable], // x_0,...,x_{n - 1}
-    shift_exponent: usize, // s
+    values: &[Variable],
+    shift_exponent: usize,
 ) {
-    // 0) require nonempty input
+    // 0) Require nonempty input
     assert!(
         !values.is_empty(),
-        "assert_is_max: `values` slice must be nonempty"
+        "assert_is_max: input slice must be nonempty"
     );
 
-    // 1) compute offset = 2^shift_exponent (S = 2^s) as a u32 and lift into the circuit
+    // 1) Compute offset = 2^s (S = 2^s), lifted to a circuit constant
     let offset_: u32 = 1u32
         .checked_shl(shift_exponent as u32)
         .expect("shift_exponent < 32");
     let offset = api.constant(offset_);
 
-    // 2) on‐circuit shift: x_offset = x + offset (x^♯ = x + S)
+    // 2) Form offset-shifted values: x_i^♯ = x_i + S
     let mut values_offset = Vec::with_capacity(values.len());
     for &x in values {
         values_offset.push(api.add(x, offset));
     }
 
-    // 3) unconstrained max over the shifted values (M^♯ = max{x + S : x ∈ values} = max{x : x ∈ values} + S = M + S)
+    // 3) Compute max_i (x_i^♯), which equals M^♯ = M + S
     let max_offset = unconstrained_max(api, &values_offset);
 
-    // 4) recover the (least nonnegative residue of the) true maximum: max_raw = max_offset - offset (M = M^♯ − S)
+    // 4) Recover M = M^♯ − S
     let max_raw = api.sub(max_offset, offset);
 
-    // 5) range‐check each Δ = M − x ∈ [0, T] = [0, 2·S − 1] = [0, 2^(s + 1) - 1] via bit‐decomp (need s + 1 bits)
+    // 5) For each x_i, range-check Δ_i = M − x_i ∈ [0, T] using s + 1 bits
     let n_bits = shift_exponent
         .checked_add(1)
-        .expect("shift_exponent + 1 fits in usize");
+        .expect("shift_exponent + 1 must fit in usize");
     let mut prod = api.constant(1);
 
     for &x in values {
-        // Δ = M − x
         let delta = api.sub(max_raw, x);
-        // If M - x ∈ [0, T], then M ≥ x.
-        // Conversely, if M ≥ x AND M, x ∈ [-S, T - S], then M - x ∈ [0, T] = [0, 2·S - 1] = [0, 2^(s + 1) - 1].
-        // bit‐decompose and recompose Δ = d_0 + d_1·2 + ... + d_s·2^s + D_s·2^(s + 1)
+
+        // Δ ∈ [0, T] ⇔ ∃ bitstring of length s + 1 summing to Δ
         let bits = unconstrained_to_bits(api, delta, n_bits);
-        // recon = d_0 + d_1·2 + ... + d_s·2^s
         let recon = assert_is_bitstring_and_reconstruct(api, &bits);
-        // Δ = d_0 + d_1·2 + ... + d_s·2^s
         api.assert_is_equal(delta, recon);
 
-        // accumulate product of all deltas
+        // Multiply all Δ_i together
         prod = api.mul(prod, delta);
     }
 
-    // 6) prod = 0 if and only if Δ = 0 for some x ∈ values, i.e. x = M for some x ∈ values.
+    // 6) Final check: ∏ Δ_i = 0 ⇔ ∃ x_i such that Δ_i = 0 ⇔ x_i = M
     api.assert_is_zero(prod);
 }
+
