@@ -44,7 +44,7 @@ class GenericModelONNX(ZKONNXModel):
         # Temp hardcoded
 
         self.scale_base = 2
-        self.scaling = 18
+        self.scaling = 2
 
         self.rescale_config = {}
         #  Temp empty, can choose which layers to rescale for optimization purposes

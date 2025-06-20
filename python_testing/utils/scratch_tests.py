@@ -1,5 +1,5 @@
 import onnx
-from onnx import helper, shape_inference
+from onnx import TensorProto, helper, shape_inference
 from onnx import numpy_helper
 from onnx import load, save
 from onnx.utils import extract_model
@@ -42,15 +42,25 @@ def cut_model(model_path, output_names, save_path):
         shape = [dim.dim_value for dim in value_info.type.tensor_type.shape.dim]
         new_output = helper.make_tensor_value_info(name, elem_type, shape)
         graph.output.append(new_output)
+    for output in graph.output:
+        print(output)
+        if output.name == "/conv1/Conv_output_0":
+            output.type.tensor_type.elem_type = TensorProto.INT64
 
     onnx.save(model, save_path)
     print(f"Saved cut model with outputs {output_names} to {save_path}")
 
 
 if __name__ == "__main__":
+    # /conv1/Conv_output_0
+    # prune_model(
+    #     model_path="models_onnx/doom.onnx",
+    #     output_names=["/Relu_2_output_0"],  # replace with your intermediate tensor
+    #     save_path= "models_onnx/test_doom_cut.onnx"
+    # )
+    # cut_model("models_onnx/doom.onnx",["/Relu_2_output_0"], "test_doom_after_conv.onnx")
     prune_model(
         model_path="models_onnx/doom.onnx",
-        output_names=["/Relu_2_output_0"],  # replace with your intermediate tensor
-        save_path= "test_doom_after_conv.onnx"
+        output_names=["/conv1/Conv_output_0"],  # replace with your intermediate tensor
+        save_path= "models_onnx/test_doom_cut.onnx"
     )
-    # cut_model("models_onnx/doom.onnx",["/Relu_2_output_0"], "test_doom_after_conv.onnx")

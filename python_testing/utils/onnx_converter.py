@@ -507,7 +507,7 @@ class ONNXConverter(ModelConverter):
                 input_shape.append(val)
         print(input_shape)
         # inputs = torch.rand(input_shape)*2 - 1
-        new_model = self.quantize_model(model, 2, 18)
+        new_model = self.quantize_model(model, getattr(self,"scale_base", 2), getattr(self,"scaling", 18))
         custom_domain = onnx.helper.make_operatorsetid(domain="ai.onnx.contrib", version=1)
         new_model.opset_import.append(custom_domain)
         onnx.checker.check_model(new_model)
@@ -525,7 +525,7 @@ class ONNXConverter(ModelConverter):
         # print(outputs_true)
         print("ONNXRuntime true model output : ",[[float("{:.5f}".format(o)) for o in outputs_true]])
         
-        print("ONNXRuntime quant model output: ",[[float("{:.5f}".format(o/(2**18))) for o in outputs_quant]])
+        print("ONNXRuntime quant model output: ",[[float("{:.5f}".format(o/(getattr(self,"scale_base", 2)**getattr(self,"scaling", 18)))) for o in outputs_quant]])
         # print([[o/(2**21) for o in outputs_quant]])
 
 
@@ -562,12 +562,14 @@ class ZKONNXModel(ONNXConverter, ZKModelBase):
 
 
 if __name__ == "__main__":
-    path  ="./models_onnx/doom.onnx"
-    # path  ="./models_onnx/test_doom_after_conv.onnx"
+    # path  ="./models_onnx/doom.onnx"
+    path  = "./models_onnx/test_doom_after_conv.onnx"
 
 
     converter = ONNXConverter()
     converter.model_file_name, converter.quantized_model_file_name = path, "quantized_doom.onnx"
+    converter.scale_base, converter.scaling = 2,15
+
     # converter.model_file_name = path
     converter.load_model(path)
     converter.get_model_and_quantize()
