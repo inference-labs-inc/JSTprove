@@ -266,12 +266,12 @@ class ONNXOpQuantizer:
 
         # # === Floor node (simulate rounding) ===
         rounded_output_name = f"{tensor.name}_scaled_floor"
-        floor_node = helper.make_node(
-            "Floor",
-            inputs=[scaled_output_name],
-            outputs=[rounded_output_name],
-            name=f"{scaled_output_name}",
-        )
+        # floor_node = helper.make_node(
+        #     "Floor",
+        #     inputs=[scaled_output_name],
+        #     outputs=[rounded_output_name],
+        #     name=f"{scaled_output_name}",
+        # )
         # output_name = f"{rounded_output_name}_int"
         # cast_to_int64 = helper.make_node(
         #     "Cast",

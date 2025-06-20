@@ -523,9 +523,13 @@ class ONNXConverter(ModelConverter):
 
         outputs_quant = self.run_model_onnx_runtime(self.quantized_model_file_name, inputs)[0][0].tolist()
         # print(outputs_true)
-        print("ONNXRuntime true model output : ",[[float("{:.5f}".format(o)) for o in outputs_true]])
-        
-        print("ONNXRuntime quant model output: ",[[float("{:.5f}".format(o/(getattr(self,"scale_base", 2)**getattr(self,"scaling", 18)))) for o in outputs_quant]])
+        formatter = np.vectorize(lambda x: float(f"{x:.5f}"))
+        print("ONNXRuntime true model output : ",formatter(outputs_true))
+
+
+        scale = getattr(self, "scale_base", 2) ** getattr(self, "scaling", 18)
+        formatter = np.vectorize(lambda o: float(f"{o / scale:.5f}"))
+        print("ONNXRuntime quant model output: ",formatter(outputs_quant))
         # print([[o/(2**21) for o in outputs_quant]])
 
 
@@ -563,7 +567,7 @@ class ZKONNXModel(ONNXConverter, ZKModelBase):
 
 if __name__ == "__main__":
     # path  ="./models_onnx/doom.onnx"
-    path  = "./models_onnx/test_doom_after_conv.onnx"
+    path  = "./models_onnx/test_doom_cut.onnx"
 
 
     converter = ONNXConverter()

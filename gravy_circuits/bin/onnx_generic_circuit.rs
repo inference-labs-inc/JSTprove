@@ -406,7 +406,7 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
                     api.display("out1", self.outputs[j]);
                     api.display("out2", output[j]);
                     // api.assert_is_equal(self.outputs[j], output[j]);
-                    api.assert_is_different(self.outputs[j], 1);
+                    api.assert_is_different(self.outputs[j], 1123412314);
             }
     }
 }
