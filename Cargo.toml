@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "gravy_circuits",
-    "model_analyzer"
+    # "model_analyzer"
 ]
 
 resolver = "2"

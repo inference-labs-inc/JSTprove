@@ -93,6 +93,7 @@ class ONNXConverter(ModelConverter):
         self.ort_sess =  ort.InferenceSession(file_path, opts, providers=["CPUExecutionProvider"])
         self.required_keys = [input.name for input in onnx_model.graph.input]
         self.input_shape = get_input_shapes(onnx_model)
+        self.quantized_model_path = file_path
     
     def analyze_layers_json(self, model):
         layers = model_analyzer.analyze_model_json("./models_onnx/doom.onnx")
@@ -161,7 +162,22 @@ class ONNXConverter(ModelConverter):
             ort_sess =  ort.InferenceSession(path, opts, providers=["CPUExecutionProvider"])
         input_name = ort_sess.get_inputs()[0].name
         output_name = ort_sess.get_outputs()[0].name
-        outputs = ort_sess.run([output_name], {input_name: np.asarray(input)})
+        print("TEST")
+        if ort_sess.get_inputs()[0].type == "tensor(double)":
+            outputs = ort_sess.run([output_name], {input_name: np.asarray(input).astype(np.float64)})
+        else:
+            outputs = ort_sess.run([output_name], {input_name: np.asarray(input)})
+
+
+
+        # intermediate_names = ["conv1.weight_scaled_cast", "conv1.bias_scaled_cast"]
+
+        # results = ort_sess.run(intermediate_names, {input_name: np.asarray(input)})
+
+        # with open('debug_data.json', 'w') as f:
+        #     json.dump(results, f)
+
+        # sys.exit()
         
         return outputs
 
@@ -281,12 +297,20 @@ class ONNXConverter(ModelConverter):
         for i, name in enumerate(input_names):
             output_name, mul_node, floor_node, cast_to_int64 = self.quantize_input(name, self.op_quantizer, scale_base, scale)
             new_nodes.append(mul_node)
-            new_nodes.append(floor_node)
+            # new_nodes.append(floor_node)
             new_nodes.append(cast_to_int64)
             for node in model.graph.node:
                 for idx, inp in enumerate(node.input):
                     if inp == name:
                         node.input[idx] = output_name
+        
+        for input_tensor in model.graph.input:
+            tensor_type = input_tensor.type.tensor_type
+            # Only change float32 (type = 1)
+            if tensor_type.elem_type == TensorProto.FLOAT:
+                tensor_type.elem_type = TensorProto.DOUBLE  # float64 is enum 11
+
+
         for node in model.graph.node:
             rescale = rescale_config.get(node.name, False) if rescale_config else True
             quant_nodes = self.quantize_layer(node, rescale, model, scale, scale_base, initializer_map)
@@ -303,10 +327,25 @@ class ONNXConverter(ModelConverter):
             used_initializer_names.update(node.input)
 
         # Keep only initializers actually used
-        kept_initializers = [
-            tensor for tensor in model.graph.initializer
-            if tensor.name in used_initializer_names
-        ]
+        # kept_initializers = [
+        #     tensor for tensor in model.graph.initializer
+        #     if tensor.name in used_initializer_names
+        # ]
+        # Keep and convert to float64 only used initializers
+        kept_initializers = []
+        for name in used_initializer_names:
+            if name in initializer_map:
+                orig_init = initializer_map[name]
+                np_array = numpy_helper.to_array(orig_init)
+
+                if np_array.dtype == np.float32:
+                    # Convert to float64
+                    np_array = np_array.astype(np.float64)
+                    new_init = numpy_helper.from_array(np_array, name=name)
+                    kept_initializers.append(new_init)
+                else:
+                    # Keep as-is
+                    kept_initializers.append(orig_init)
 
         model.graph.ClearField("initializer")
         model.graph.initializer.extend(kept_initializers)
@@ -367,7 +406,7 @@ class ONNXConverter(ModelConverter):
         # === Create scale constant ===
         scale_const_name = input_name + "_scale"
         scale_tensor = numpy_helper.from_array(
-            np.array([scale_value], dtype=np.float32), name=scale_const_name
+            np.array([scale_value], dtype=np.float64), name=scale_const_name
         )
         op_quantizer.new_initializers.append(scale_tensor)
 
@@ -393,7 +432,8 @@ class ONNXConverter(ModelConverter):
         output_name = f"{rounded_output_name}_int"
         cast_to_int64 = helper.make_node(
             "Cast",
-            inputs=[rounded_output_name],
+            # inputs=[rounded_output_name],
+            inputs=[scaled_output_name],
             outputs=[output_name],
             to=onnx.TensorProto.INT64,
             name = rounded_output_name
@@ -443,7 +483,11 @@ class ONNXConverter(ModelConverter):
         (architecture, w_and_b) = self.analyze_layers(output_name_to_shape)
         for w in w_and_b:
             w_and_b_array = np.asarray(w.tensor)
-            w_and_b_scaled = w_and_b_array * (getattr(self, "scale_base", 2)**getattr(self,"scaling", 18))
+            # VERY VERY TEMPORARY FIX
+            if "bias" in w.name:
+                w_and_b_scaled = w_and_b_array * (getattr(self, "scale_base", 2)**(getattr(self,"scaling", 18)*2))
+            else:
+                w_and_b_scaled = w_and_b_array * (getattr(self, "scale_base", 2)**getattr(self,"scaling", 18))
             w_and_b_out = w_and_b_scaled.astype(np.int64).tolist()
             w.tensor = w_and_b_out
             
@@ -474,6 +518,7 @@ class ONNXConverter(ModelConverter):
             "scaling": getattr(self,"scaling", 18),
             "rescale_config": getattr(self, "rescale_config", {})
         }
+        self.save_quantized_model("test.onnx")
         return architecture, weights, circuit_params
 
     def get_model_and_quantize(self):
@@ -484,7 +529,6 @@ class ONNXConverter(ModelConverter):
             raise FileNotFoundError("An ONNX model is required at the specified path")
         
         # self.model = model
-        print(getattr(self,"scaling", 18))
         self.quantized_model = self.quantize_model(self.model, getattr(self,"scale_base", 2), getattr(self,"scaling", 18), rescale_config=getattr(self,"rescale_config", {}))
 
     def test_accuracy(self, inputs = None):
@@ -522,6 +566,8 @@ class ONNXConverter(ModelConverter):
         outputs_true = self.run_model_onnx_runtime(self.model_file_name, inputs)[0][0].tolist()
 
         outputs_quant = self.run_model_onnx_runtime(self.quantized_model_file_name, inputs)[0][0].tolist()
+
+        
         # print(outputs_true)
         formatter = np.vectorize(lambda x: float(f"{x:.5f}"))
         print("ONNXRuntime true model output : ",formatter(outputs_true))
@@ -536,7 +582,39 @@ class ONNXConverter(ModelConverter):
     def get_outputs(self, inputs):
         input_name = self.ort_sess.get_inputs()[0].name
         output_name = self.ort_sess.get_outputs()[0].name
-        return self.ort_sess.run([output_name], {input_name: np.asarray(inputs)})
+
+        intermediate_names = ["conv1.bias_scaled_cast"]
+        
+
+
+        model = onnx.load(self.quantized_model_path)
+        model.graph.output.append(helper.make_tensor_value_info(
+                intermediate_names[0],
+                TensorProto.INT64,  # or DOUBLE, depending on the tensor
+                shape=None  # Optional, or specify known shape
+            ))
+        onnx.save(model, self.quantized_model_path)
+
+        print("TEST")
+        opts = SessionOptions()
+        opts.register_custom_ops_library(get_library_path())
+        self.ort_sess =  ort.InferenceSession(self.quantized_model_path, opts, providers=["CPUExecutionProvider"])
+        print("TEST")
+
+        results = self.ort_sess.run(intermediate_names, {input_name: np.asarray(inputs).astype(np.float64)})
+        print(type(results[0]), "TEST,TEST")
+
+        with open('debug_data.json', 'w') as f:
+            json.dump(results[0].tolist(), f)
+        print("TESTOUT")
+        # TODO this is not optimal or robust
+        if self.ort_sess.get_inputs()[0].type == "tensor(double)":
+            outputs = self.ort_sess.run([output_name], {input_name: np.asarray(inputs).astype(np.float64)})
+        else:
+            outputs = self.ort_sess.run([output_name], {input_name: np.asarray(inputs)})
+
+        # sys.exit()
+        return outputs
 
 
 # def find_non_serializable_fields(obj, path="root"):
@@ -572,7 +650,7 @@ if __name__ == "__main__":
 
     converter = ONNXConverter()
     converter.model_file_name, converter.quantized_model_file_name = path, "quantized_doom.onnx"
-    converter.scale_base, converter.scaling = 2,15
+    converter.scale_base, converter.scaling = 2,18
 
     # converter.model_file_name = path
     converter.load_model(path)

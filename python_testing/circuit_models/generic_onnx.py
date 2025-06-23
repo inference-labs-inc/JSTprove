@@ -24,7 +24,7 @@ class GenericModelONNX(ZKONNXModel):
         self.name = "onnx_generic_circuit"
         self.op_quantizer = ONNXOpQuantizer()
 
-        self.rescale_config = {} 
+        self.rescale_config = {"/conv1/Conv": False} 
 
         # self.path = self.find_model(model_name)
         # self.model_type = self.get_model_type(self.path)
@@ -44,9 +44,8 @@ class GenericModelONNX(ZKONNXModel):
         # Temp hardcoded
 
         self.scale_base = 2
-        self.scaling = 2
+        self.scaling = 18
 
-        self.rescale_config = {}
         #  Temp empty, can choose which layers to rescale for optimization purposes
 
 

@@ -55,7 +55,7 @@ def replace_input_references(graph: onnx.GraphProto, old_output: str, new_output
 
 def create_quantized_initializer(orig_tensor: onnx.TensorProto, scale_exponent: int, scale: int, scale_base: int) -> Tuple[onnx.TensorProto, str]:
     factor = scale_base ** (scale * scale_exponent)
-    arr = to_array(orig_tensor).astype(np.float32) * factor
+    arr = to_array(orig_tensor).astype(np.float64) * factor
     arr = arr.astype(np.int64)
     new_name = orig_tensor.name + f"_q{scale_exponent}"
     new_tensor = from_array(arr, name=new_name)
