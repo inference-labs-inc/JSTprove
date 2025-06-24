@@ -34,6 +34,8 @@ class ONNXOpQuantizer:
         else:
             print(f"⚠️ No quantizer implemented for op_type: {node.op_type}")
             return node
+        
+    
 
     def _quantize_conv(
         self,
@@ -45,6 +47,8 @@ class ONNXOpQuantizer:
         initializer_map: dict[str, onnx.TensorProto],
     ) -> List[onnx.NodeProto]:
         nodes = []
+        output_name = f"{node.name}_int"
+
         # node.input[:] = self.quantize_w_and_b(node, scale, scale_base, initializer_map)
         nodes, node.input[:] = self.add_nodes_w_and_b(node, scale, scale_base, initializer_map, graph)
         attrs = extract_attributes(node)
@@ -52,13 +56,24 @@ class ONNXOpQuantizer:
         attrs.setdefault("auto_pad", "NOTSET")
         for attr in node.attribute:
             print(f"{attr.name}: type={attr.type} ({onnx.AttributeProto.AttributeType.Name(attr.type)})")
+        attrs["rescale"] = int(rescale)
+
+        scale_value = scale_base ** scale
+        
+        # TODO make this constant to all layers
+        # === Create scale constant ===
+        scale_const_name = f"{output_name}_scaler"
+        scale_tensor = numpy_helper.from_array(
+            np.array([scale_value], dtype=np.int64), name=scale_const_name
+        )
+        self.new_initializers.append(scale_tensor)
+        node.input.append(scale_const_name)
+
 
         
         if rescale:
-            (node, div_node) = self.rescale_layer(node, scale_base, scale, graph)
+            # (node, div_node) = self.rescale_layer(node, scale_base, scale, graph)
             # attributes = list(node.attribute)
-            
-            output_name = f"{node.name}_int"
             
             int64_conv_node = onnx.helper.make_node(
                                             "Int64Conv",
@@ -71,21 +86,9 @@ class ONNXOpQuantizer:
             
             # int64_conv_node.output[0] = "Y"
             nodes.append(int64_conv_node)
-            new_div_node_output = f"{div_node.name}_out"
-            cast_out_to_int64 = helper.make_node(
-                "Cast",
-                inputs=[new_div_node_output],
-                outputs=div_node.output,
-                to=onnx.TensorProto.INT64,
-                name = f"{div_node.name}_cast"
-            )
-            div_node.output[0] = new_div_node_output
-            nodes.append(div_node)
-            nodes.append(cast_out_to_int64)
             return nodes
 
         else:
-            output_name = f"{node.name}_int"
             int64_conv_node = onnx.helper.make_node(
                                             "Int64Conv",
                                             inputs=node.input,

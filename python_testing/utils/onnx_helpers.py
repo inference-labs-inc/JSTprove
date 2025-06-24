@@ -102,6 +102,8 @@ def get_input_shapes(onnx_model: onnx.ModelProto):
             input_shapes[input_name] = shape
         return input_shapes
 
+def rescale_to_int(rescale):
+    return int(rescale)
 # def extract_attributes(node: onnx.NodeProto) -> dict:
 #     return {
 #         attr.name: onnx.helper.get_attribute_value(attr)

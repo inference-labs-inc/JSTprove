@@ -417,8 +417,6 @@ fn convert_usize_to_u32(input: Vec<usize>) -> Vec<u32> {
     input.into_iter().map(|x| x as u32).collect()
 }
 
-
-
 impl ConfigurableCircuit for ConvCircuit<Variable> {
     fn configure(&mut self) {
         // Change input and outputs as needed

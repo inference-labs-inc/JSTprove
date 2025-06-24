@@ -23,8 +23,10 @@ class GenericModelONNX(ZKONNXModel):
         self.max_value = 2**32
         self.name = "onnx_generic_circuit"
         self.op_quantizer = ONNXOpQuantizer()
+        self.rescale_config = {} 
 
-        self.rescale_config = {"/conv1/Conv": False} 
+
+        # self.rescale_config = {"/conv1/Conv": False} 
 
         # self.path = self.find_model(model_name)
         # self.model_type = self.get_model_type(self.path)
@@ -103,7 +105,7 @@ if __name__ == "__main__":
     names = ["demo"]
     for n in names:
         # name = f"{n}_conv1"
-        name = "doom"
+        name = "test_doom_cut"
         d = GenericModelONNX(name)
         # # # d.base_testing()
         # # # d.base_testing(run_type=RunType.END_TO_END, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)

@@ -20,7 +20,8 @@ def parse_attr(attr, default):
     inputs=[
         PyCustomOpDef.dt_int64,  # X
         PyCustomOpDef.dt_int64,  # W
-        PyCustomOpDef.dt_int64   # B
+        PyCustomOpDef.dt_int64,   # B
+        PyCustomOpDef.dt_int64, # scaling factor
     ],
     outputs=[PyCustomOpDef.dt_int64],
     attrs={
@@ -29,19 +30,22 @@ def parse_attr(attr, default):
         "pads": PyCustomOpDef.dt_string,
         "dilations": PyCustomOpDef.dt_string,
         "group": PyCustomOpDef.dt_int64,
-        "kernel_shape": PyCustomOpDef.dt_string
+        "kernel_shape": PyCustomOpDef.dt_string,
+        "rescale": PyCustomOpDef.dt_int64
     }
 )
 def int64_conv(
     X: Any,
     W: Any,
     B: Any | None = None,
+    scaling_factor: Any | None = None,
     auto_pad: Any | None = None,
     dilations: Any | None = None,
     group: Any | None = None,
     kernel_shape: Any | None = None,
     pads: Any | None = None,
-    strides: Any | None = None
+    strides: Any | None = None,
+    rescale: Any | None = None,
 ):
 
     
@@ -56,60 +60,64 @@ def int64_conv(
     W = torch.from_numpy(W)
     B = torch.from_numpy(B)
 
-    Y = F.conv2d(X, W, bias=B, stride=strides, padding=pads[:2], dilation=dilations, groups=group)
-    return Y.numpy().astype(np.int64)
+    Y = F.conv2d(X, W, bias=B, stride=strides, padding=pads[:2], dilation=dilations, groups=group).numpy().astype(np.int64)
+    if rescale == 1:
+        if scaling_factor == None:
+            raise NotImplementedError("scaling factor must be specified")
+        Y = (Y // scaling_factor)
+    return Y.astype(np.int64)
 
 
-@onnx_op(
-    op_type="Int64ConvFull",
-    domain="ai.onnx.contrib",
-    inputs=[
-        PyCustomOpDef.dt_float,  # X
-        PyCustomOpDef.dt_float,  # W
-        PyCustomOpDef.dt_float   # B
-    ],
-    outputs=[PyCustomOpDef.dt_float],
-    attrs={
-        "scale_base": PyCustomOpDef.dt_int64,
-        "scaling": PyCustomOpDef.dt_int64,
-        "auto_pad": PyCustomOpDef.dt_string,
-        "strides": PyCustomOpDef.dt_string,
-        "pads": PyCustomOpDef.dt_string,
-        "dilations": PyCustomOpDef.dt_string,
-        "group": PyCustomOpDef.dt_int64,
-        "kernel_shape": PyCustomOpDef.dt_string,
-    }
-)
-def int64_conv_full(
-    X: Any,
-    W: Any,
-    B: Any | None = None,
-    scale_base: Any | None = None,
-    scaling: Any | None = None,
-    auto_pad: Any | None = None,
-    dilations: Any | None = None,
-    group: Any | None = None,
-    kernel_shape: Any | None = None,
-    pads: Any | None = None,
-    strides: Any | None = None,
-):
-    scale = scale_base**scaling
+# @onnx_op(
+#     op_type="Int64ConvFull",
+#     domain="ai.onnx.contrib",
+#     inputs=[
+#         PyCustomOpDef.dt_float,  # X
+#         PyCustomOpDef.dt_float,  # W
+#         PyCustomOpDef.dt_float   # B
+#     ],
+#     outputs=[PyCustomOpDef.dt_float],
+#     attrs={
+#         "scale_base": PyCustomOpDef.dt_int64,
+#         "scaling": PyCustomOpDef.dt_int64,
+#         "auto_pad": PyCustomOpDef.dt_string,
+#         "strides": PyCustomOpDef.dt_string,
+#         "pads": PyCustomOpDef.dt_string,
+#         "dilations": PyCustomOpDef.dt_string,
+#         "group": PyCustomOpDef.dt_int64,
+#         "kernel_shape": PyCustomOpDef.dt_string,
+#     }
+# )
+# def int64_conv_full(
+#     X: Any,
+#     W: Any,
+#     B: Any | None = None,
+#     scale_base: Any | None = None,
+#     scaling: Any | None = None,
+#     auto_pad: Any | None = None,
+#     dilations: Any | None = None,
+#     group: Any | None = None,
+#     kernel_shape: Any | None = None,
+#     pads: Any | None = None,
+#     strides: Any | None = None,
+# ):
+#     scale = scale_base**scaling
 
-    scale_squared = scale**2
+#     scale_squared = scale**2
 
-    strides = parse_attr(strides, [1, 1])
-    dilations = parse_attr(dilations, [1, 1])
-    pads = parse_attr(pads, [0, 0, 0, 0])
-    kernel_shape = parse_attr(kernel_shape, [3, 3])
+#     strides = parse_attr(strides, [1, 1])
+#     dilations = parse_attr(dilations, [1, 1])
+#     pads = parse_attr(pads, [0, 0, 0, 0])
+#     kernel_shape = parse_attr(kernel_shape, [3, 3])
 
     
-    # return Conv()._run(X, W,B, auto_pad, dilations, group, kernel_shape, pads, strides).asarray().astype(np.int64)
-    X = torch.mul(torch.from_numpy(X), scale)  # add batch dim if needed
-    W = torch.mul(torch.from_numpy(W), scale) 
-    B = torch.mul(torch.from_numpy(B), scale_squared) 
+#     # return Conv()._run(X, W,B, auto_pad, dilations, group, kernel_shape, pads, strides).asarray().astype(np.int64)
+#     X = torch.mul(torch.from_numpy(X), scale)  # add batch dim if needed
+#     W = torch.mul(torch.from_numpy(W), scale) 
+#     B = torch.mul(torch.from_numpy(B), scale_squared) 
 
-    Y = F.conv2d(X, W, bias=B, stride=strides, padding=pads[:2], dilation=dilations, groups=group).long()
+#     Y = F.conv2d(X, W, bias=B, stride=strides, padding=pads[:2], dilation=dilations, groups=group).long()
 
-    out = torch.div(Y, scale_squared)
+#     out = torch.div(Y, scale_squared)
 
-    return Y.numpy().astype(np.float32)
+#     return Y.numpy().astype(np.float32)
