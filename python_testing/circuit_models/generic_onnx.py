@@ -67,7 +67,8 @@ class GenericModelONNX(ZKONNXModel):
     
     def adjust_inputs(self, input_file):
         input_shape = self.input_shape.copy()
-        self.input_shape = [math.prod(input_shape)]
+        shape = self.adjust_shape(input_shape)
+        self.input_shape = [math.prod(shape)]
         x = super().adjust_inputs(input_file)
         self.input_shape = input_shape.copy()
         return x

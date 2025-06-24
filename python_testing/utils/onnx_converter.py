@@ -93,6 +93,7 @@ class ONNXConverter(ModelConverter):
         self.ort_sess =  ort.InferenceSession(file_path, opts, providers=["CPUExecutionProvider"])
         self.required_keys = [input.name for input in onnx_model.graph.input]
         self.input_shape = get_input_shapes(onnx_model)
+
         self.quantized_model_path = file_path
     
     def analyze_layers_json(self, model):
@@ -162,7 +163,6 @@ class ONNXConverter(ModelConverter):
             ort_sess =  ort.InferenceSession(path, opts, providers=["CPUExecutionProvider"])
         input_name = ort_sess.get_inputs()[0].name
         output_name = ort_sess.get_outputs()[0].name
-        print("TEST")
         if ort_sess.get_inputs()[0].type == "tensor(double)":
             outputs = ort_sess.run([output_name], {input_name: np.asarray(input).astype(np.float64)})
         else:
@@ -549,7 +549,6 @@ class ONNXConverter(ModelConverter):
                     raise ValueError("Unknown dimension")
 
                 input_shape.append(val)
-        print(input_shape)
         # inputs = torch.rand(input_shape)*2 - 1
         new_model = self.quantize_model(model, getattr(self,"scale_base", 2), getattr(self,"scaling", 18))
         custom_domain = onnx.helper.make_operatorsetid(domain="ai.onnx.contrib", version=1)
@@ -568,7 +567,6 @@ class ONNXConverter(ModelConverter):
         outputs_quant = self.run_model_onnx_runtime(self.quantized_model_file_name, inputs)[0][0].tolist()
 
         
-        # print(outputs_true)
         formatter = np.vectorize(lambda x: float(f"{x:.5f}"))
         print("ONNXRuntime true model output : ",formatter(outputs_true))
 
@@ -582,41 +580,48 @@ class ONNXConverter(ModelConverter):
     def get_outputs(self, inputs):
         input_name = self.ort_sess.get_inputs()[0].name
         output_name = self.ort_sess.get_outputs()[0].name
+        # if inputs.dtype in (torch.float16, torch.float32, torch.float64):
+        #     print("Tensor is a float type")
 
-        intermediate_names = ["conv1.bias_scaled_cast"]
+        # TODO This may cause some rounding errors at some point but works for now. Should be checked at some point
+        inputs = torch.as_tensor(inputs)
+        if inputs.dtype in (torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8):
+            inputs = inputs.double()
+            inputs = inputs / (self.scale_base**self.scaling)
+
+        # intermediate_names = ["conv1.bias_scaled_cast"]
         
 
 
-        model = onnx.load(self.quantized_model_path)
-        model.graph.output.append(helper.make_tensor_value_info(
-                intermediate_names[0],
-                TensorProto.INT64,  # or DOUBLE, depending on the tensor
-                shape=None  # Optional, or specify known shape
-            ))
-        onnx.save(model, self.quantized_model_path)
+        # model = onnx.load(self.quantized_model_path)
+        # model.graph.output.append(helper.make_tensor_value_info(
+        #         intermediate_names[0],
+        #         TensorProto.INT64,  # or DOUBLE, depending on the tensor
+        #         shape=None  # Optional, or specify known shape
+        #     ))
+        # onnx.save(model, self.quantized_model_path)
 
-        print("TEST")
-        opts = SessionOptions()
-        opts.register_custom_ops_library(get_library_path())
-        self.ort_sess =  ort.InferenceSession(self.quantized_model_path, opts, providers=["CPUExecutionProvider"])
-        print("TEST")
+        # print("TEST")
+        # opts = SessionOptions()
+        # opts.register_custom_ops_library(get_library_path())
+        # self.ort_sess =  ort.InferenceSession(self.quantized_model_path, opts, providers=["CPUExecutionProvider"])
+        # print("TEST")
 
-        results = self.ort_sess.run(intermediate_names, {input_name: np.asarray(inputs).astype(np.float64)})
-        print(type(results[0]), "TEST,TEST")
+        # results = self.ort_sess.run(intermediate_names, {input_name: np.asarray(inputs).astype(np.float64)})
+        # print(type(results[0]), "TEST,TEST")
 
-        with open('debug_data.json', 'w') as f:
-            json.dump(results[0].tolist(), f)
-        print("TESTOUT")
+        # with open('debug_data.json', 'w') as f:
+        #     json.dump(results[0].tolist(), f)
         # TODO this is not optimal or robust
         if self.ort_sess.get_inputs()[0].type == "tensor(double)":
             outputs = self.ort_sess.run([output_name], {input_name: np.asarray(inputs).astype(np.float64)})
         else:
             outputs = self.ort_sess.run([output_name], {input_name: np.asarray(inputs)})
 
-        outputs_true = self.run_model_onnx_runtime(self.model_file_name, inputs)[0][0].tolist()
-        print(type(outputs[0][0]))
-        with open('debug_outputs.json', 'w') as f:
-            json.dump((outputs_true, outputs[0][0].tolist()), f)
+        # outputs_true = self.run_model_onnx_runtime(self.model_file_name, inputs)[0][0].tolist()
+        # print(type(outputs[0][0]))
+        # with open('debug_outputs.json', 'w') as f:
+        #     json.dump((outputs_true, outputs[0][0].tolist()), f)
         # sys.exit()
         return outputs
 

@@ -81,9 +81,23 @@ class GeneralLayerFunctions():
         else:
             out =  torch.mul(torch.as_tensor(inputs),self.scale_base**self.scaling).long()
 
+
         if hasattr(self, "input_shape"):
-            out = out.reshape(self.input_shape)
+            shape = self.input_shape
+            if hasattr(self, 'adjust_shape') and callable(getattr(self, 'adjust_shape')):
+                shape = self.adjust_shape(shape)
+
+            out = out.reshape(shape)
         return out
+
+    # def adjust_shape(self, shape):
+    #     if isinstance(shape, dict):
+    #             # Get the first shape from the dict (assuming only one input is relevant here)
+    #         if len(shape.values()) == 1:
+    #             shape = next(iter(shape.values()))
+    #         else:
+    #             raise ValueError("Shape inputs in get_inputs_from_file() has too many inputs")
+    #     return shape
     
     # def get_outputs(self, inputs):
     #     return self.quantized_model(inputs)

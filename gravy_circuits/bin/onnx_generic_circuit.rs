@@ -94,7 +94,7 @@ lazy_static! {
 declare_circuit!(ConvCircuit {
     input_arr: [PublicVariable], // shape (m, n)
     outputs: [PublicVariable], // shape (m, k)
-    dummy: [Variable; 1]
+    dummy: [Variable; 2]
 });
 
 fn parse_value_to_array<I: DeserializeOwned>(value: Value) -> Result<I, serde_json::Error>{
@@ -397,6 +397,8 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
                     // api.assert_is_different(self.outputs[j], 1123412314);
             }
             api.assert_is_equal(self.dummy[0], 1);
+            api.assert_is_equal(self.dummy[1], 1);
+
     }
 }
 
@@ -456,6 +458,8 @@ impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
             .map(|obj| obj.shape.iter().product::<usize>())
             .product()]; 
         assignment.dummy[0] = CircuitField::<C>::from(1);
+        assignment.dummy[1] = CircuitField::<C>::from(1);
+
 
         assignment.input_arr = get_1d_circuit_inputs::<C>(&data.input, input_dims);
         assignment

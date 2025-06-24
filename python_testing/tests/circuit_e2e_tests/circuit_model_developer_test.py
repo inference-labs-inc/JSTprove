@@ -235,7 +235,6 @@ def test_witness_read_after_write_json(
         output_file=temp_output_file,
         write_json=True,
         quantized_path = str(model_fixture["quantized_model"]),
-
     )
 
     if os.path.exists(temp_witness_file):
@@ -479,12 +478,7 @@ def test_witness_unscaled(
     assert_very_close(json.loads(new_output_file), json.loads(written_output_data), model_write)
     # assert new_output_file == written_output_data, "Output file content does not match the expected output"
 
-def assert_very_close(inputs_1, inputs_2, model):
-    for i in inputs_1.keys():
-        x = torch.div(torch.as_tensor(inputs_1[i]), model.scale_base**model.scaling)
-        y = torch.div(torch.as_tensor(inputs_2[i]), model.scale_base**model.scaling)
 
-        assert torch.isclose(x, y, rtol = 1e-8).all()
 
 def test_witness_unscaled_and_incorrect_shape_input(
     model_fixture,
