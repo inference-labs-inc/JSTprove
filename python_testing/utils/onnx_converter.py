@@ -613,6 +613,10 @@ class ONNXConverter(ModelConverter):
         else:
             outputs = self.ort_sess.run([output_name], {input_name: np.asarray(inputs)})
 
+        outputs_true = self.run_model_onnx_runtime(self.model_file_name, inputs)[0][0].tolist()
+        print(type(outputs[0][0]))
+        with open('debug_outputs.json', 'w') as f:
+            json.dump((outputs_true, outputs[0][0].tolist()), f)
         # sys.exit()
         return outputs
 

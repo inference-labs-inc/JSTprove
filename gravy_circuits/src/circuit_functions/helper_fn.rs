@@ -480,12 +480,12 @@ pub fn get_1d_circuit_inputs<C: Config>(
     }
 }
 
-
+// TODO change 64 bits to 128 across the board, or add checks. If more than 64 bits, fail
 fn convert_val_to_field_element<C: Config>(val: i64) -> <<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField {
     let converted = if val < 0 {
-        CircuitField::<C>::from(val.abs() as u32).neg()
+        CircuitField::<C>::from_u256(U256::from(val.abs() as u64)).neg()
     } else {
-        CircuitField::<C>::from(val.abs() as u32)
+        CircuitField::<C>::from_u256(U256::from(val.abs() as u64))
     };
     converted
 }
