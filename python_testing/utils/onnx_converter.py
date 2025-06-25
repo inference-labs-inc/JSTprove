@@ -26,6 +26,8 @@ from onnxruntime_extensions import get_library_path, OrtPyFunction
 from python_testing.utils.onnx_custom_ops import conv
 
 from python_testing.utils.onnx_custom_ops.conv import int64_conv
+from python_testing.utils.onnx_custom_ops.relu import int64_relu
+
 from python_testing.utils.onnx_custom_ops.gemm import int64_gemm7
 
 
@@ -288,9 +290,11 @@ class ONNXConverter(ModelConverter):
         3. Convert layer to quantized version
         4. insert quantized version back into the model
         '''
+        
         model = copy.deepcopy(unscaled_model)
         initializer_map = {init.name: init for init in model.graph.initializer}
         input_names = [inp.name for inp in unscaled_model.graph.input]
+
 
 
         new_nodes = []
@@ -303,12 +307,13 @@ class ONNXConverter(ModelConverter):
                 for idx, inp in enumerate(node.input):
                     if inp == name:
                         node.input[idx] = output_name
-        
         for input_tensor in model.graph.input:
             tensor_type = input_tensor.type.tensor_type
             # Only change float32 (type = 1)
             if tensor_type.elem_type == TensorProto.FLOAT:
                 tensor_type.elem_type = TensorProto.DOUBLE  # float64 is enum 11
+        
+
 
 
         for node in model.graph.node:
@@ -391,7 +396,12 @@ class ONNXConverter(ModelConverter):
         #     print(f"Node: {node.name}, OpType: {node.op_type}")
         #     for attr in node.attribute:
         #         print(f"  Attr: {attr.name}, Type: {attr.type}")
-
+        # TODO This has not been extensively tested. May need to somehow include this when quantizing layers individually (Concern is that some layers shouldnt be converted into this type...)
+        # Such as multiplying up scalers etc.
+        for vi in model.graph.value_info:
+            vi.type.tensor_type.elem_type = TensorProto.INT64
+        # TODO remove
+        onnx.save(model, "debug_test.onnx")
         return model
         
 
@@ -530,6 +540,8 @@ class ONNXConverter(ModelConverter):
         
         # self.model = model
         self.quantized_model = self.quantize_model(self.model, getattr(self,"scale_base", 2), getattr(self,"scaling", 18), rescale_config=getattr(self,"rescale_config", {}))
+        
+        # sys.exit()
 
     def test_accuracy(self, inputs = None):
         # model = onnx.load()

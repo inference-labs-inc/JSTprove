@@ -61,6 +61,6 @@ if __name__ == "__main__":
     # cut_model("models_onnx/doom.onnx",["/Relu_2_output_0"], "test_doom_after_conv.onnx")
     prune_model(
         model_path="models_onnx/doom.onnx",
-        output_names=["/conv1/Conv_output_0"],  # replace with your intermediate tensor
+        output_names=["/Relu_output_0"],  # replace with your intermediate tensor
         save_path= "models_onnx/test_doom_cut.onnx"
     )

@@ -15,7 +15,9 @@ class ONNXOpQuantizer:
         # Register handlers
         self.register("Conv", self._quantize_conv)
         self.register("MatMul", self._quantize_matmul)
-        self.register("Relu", self._quantize_passthrough)
+        # TODO check long term if we need the custom relu or can passthrough here
+        # self.register("Relu", self._quantize_relu) # might work with quantize_passthrough instead for some models
+        self.register("Relu", self._quantize_passthrough) # might work with quantize_passthrough instead for some models
         self.register("Reshape", self._quantize_passthrough)
         self.register("Gemm", self._quantize_gemm)
         self.register("Constant", self._quantize_constant)
@@ -56,6 +58,7 @@ class ONNXOpQuantizer:
         attrs.setdefault("auto_pad", "NOTSET")
         for attr in node.attribute:
             print(f"{attr.name}: type={attr.type} ({onnx.AttributeProto.AttributeType.Name(attr.type)})")
+            
         attrs["rescale"] = int(rescale)
 
         scale_value = scale_base ** scale
@@ -68,37 +71,17 @@ class ONNXOpQuantizer:
         )
         self.new_initializers.append(scale_tensor)
         node.input.append(scale_const_name)
+        int64_conv_node = onnx.helper.make_node(
+                                        "Int64Conv",
+                                        inputs=node.input,
+                                        outputs=node.output,  # preserve original output name
+                                        name=node.name,
+                                        domain="ai.onnx.contrib",
+                                        **attrs
+                                    )
 
-
-        
-        if rescale:
-            # (node, div_node) = self.rescale_layer(node, scale_base, scale, graph)
-            # attributes = list(node.attribute)
-            
-            int64_conv_node = onnx.helper.make_node(
-                                            "Int64Conv",
-                                            inputs=node.input,
-                                            outputs=node.output,  # preserve original output name
-                                            name=output_name,
-                                            domain="ai.onnx.contrib",
-                                            **attrs
-                                        )
-            
-            # int64_conv_node.output[0] = "Y"
-            nodes.append(int64_conv_node)
-            return nodes
-
-        else:
-            int64_conv_node = onnx.helper.make_node(
-                                            "Int64Conv",
-                                            inputs=node.input,
-                                            outputs=node.output,  # preserve original output name
-                                            name=output_name,
-                                            domain="ai.onnx.contrib",
-                                            **attrs
-                                        )
-            nodes.append(int64_conv_node)
-            return nodes
+        nodes.append(int64_conv_node)
+        return nodes
 
     def _quantize_matmul(self, node: onnx.NodeProto, rescale: bool, graph: onnx.GraphProto, scale: int, scale_base: int, initializer_map: dict[str, onnx.TensorProto]):
         # Stub for now
@@ -141,6 +124,28 @@ class ONNXOpQuantizer:
             node.name = node.name + "_quant"
             nodes.append(node)
             return nodes
+        
+    def _quantize_relu(
+        self,
+        node: onnx.NodeProto,
+        rescale: bool,
+        graph: onnx.GraphProto,
+        scale: int,
+        scale_base: int,
+        initializer_map: dict[str, onnx.TensorProto],
+    ) -> List[onnx.NodeProto]:
+        nodes = []
+        int64_relu = onnx.helper.make_node(
+                                        "Int64Relu",
+                                        inputs=node.input,
+                                        outputs=node.output,  # preserve original output name
+                                        # outputs=output_intermediate,  # preserve original output name
+                                        name=node.name,
+                                        domain="ai.onnx.contrib",
+                                    )
+
+        nodes.append(int64_relu)
+        return nodes
 
     def _quantize_passthrough(self, node: onnx.NodeProto, *args):
         return node  # e.g. ReLU: just pass it through
