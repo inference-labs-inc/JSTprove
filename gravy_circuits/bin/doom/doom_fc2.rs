@@ -109,12 +109,12 @@ impl<C: Config> Define<C> for DoomCircuit<Variable> {
 }
 
 
-impl<C: Config> IOReader<DoomCircuit<CircuitField::<C>>, C> for FileReader {
+impl<C: Config> IOReader<DoomCircuit<CircuitField<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
-        mut assignment: DoomCircuit<CircuitField::<C>>,
-    ) -> DoomCircuit<CircuitField::<C>> {
+        mut assignment: DoomCircuit<CircuitField<C>>,
+    ) -> DoomCircuit<CircuitField<C>> {
         let data: InputData = <FileReader as IOReader<DoomCircuit<_>, C>>::read_data_from_json::<
             InputData,
         >(file_path);
@@ -137,8 +137,8 @@ impl<C: Config> IOReader<DoomCircuit<CircuitField::<C>>, C> for FileReader {
     fn read_outputs(
         &mut self,
         file_path: &str,
-        mut assignment: DoomCircuit<CircuitField::<C>>,
-    ) -> DoomCircuit<CircuitField::<C>> {
+        mut assignment: DoomCircuit<CircuitField<C>>,
+    ) -> DoomCircuit<CircuitField<C>> {
         let data: OutputData = <FileReader as IOReader<DoomCircuit<_>, C>>::read_data_from_json::<
             OutputData,
         >(file_path);

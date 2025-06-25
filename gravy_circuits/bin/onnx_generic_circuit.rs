@@ -62,7 +62,7 @@ struct OutputData {
 }
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/generic_demo_1d_weights.json");
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/torch_generic_circuit_weights.json");
 
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
