@@ -91,24 +91,29 @@ class ONNXOpQuantizer:
     
     def _quantize_gemm(self, node: onnx.NodeProto, rescale: bool, graph: onnx.GraphProto, scale: int, scale_base: int, initializer_map: dict[str, onnx.TensorProto]):
         nodes = []
+        output_name = f"{node.name}_int"
 
         # node.input[:] = self.quantize_w_and_b(node, scale, scale_base, initializer_map)
         nodes, node.input[:] = self.add_nodes_w_and_b(node, scale, scale_base, initializer_map, graph)
 
-        
-        if rescale:
-            (node, div_node) = self.rescale_layer(node, scale_base, scale, graph)
-            
-            prev_outputs = div_node.output[0]
-            # node.input[0] = output_name
-            output_name = f"{node.name}_int"
-            attrs = extract_attributes(node)
-            attrs.setdefault("transA", 0)
-            attrs.setdefault("transB", 0)
-            for attr in node.attribute:
-                print(f"{attr.name}: type={attr.type} ({onnx.AttributeProto.AttributeType.Name(attr.type)})")
+        attrs = extract_attributes(node)
+        attrs.setdefault("transA", 0)
+        attrs.setdefault("transB", 0) 
+        attrs["rescale"] = int(rescale)
+        for attr in node.attribute:
+            print(f"{attr.name}: type={attr.type} ({onnx.AttributeProto.AttributeType.Name(attr.type)})")
 
-            int64_gemm = onnx.helper.make_node(
+        scale_value = scale_base ** scale
+        
+        # TODO make this constant to all layers
+        # === Create scale constant ===
+        scale_const_name = f"{output_name}_scaler"
+        scale_tensor = numpy_helper.from_array(
+            np.array([scale_value], dtype=np.int64), name=scale_const_name
+        )
+        self.new_initializers.append(scale_tensor)
+        node.input.append(scale_const_name)
+        int64_gemm = onnx.helper.make_node(
                                             "Int64Gemm",
                                             inputs=node.input,
                                             outputs=node.output,  # preserve original output name
@@ -116,14 +121,8 @@ class ONNXOpQuantizer:
                                             domain="ai.onnx.contrib",
                                             **attrs
                                         )
-            nodes.append(int64_gemm)
-            nodes.append(div_node)
-            return nodes
-
-        else:
-            node.name = node.name + "_quant"
-            nodes.append(node)
-            return nodes
+        nodes.append(int64_gemm)
+        return nodes
         
     def _quantize_relu(
         self,

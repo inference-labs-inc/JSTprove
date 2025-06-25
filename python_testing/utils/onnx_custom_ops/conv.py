@@ -4,6 +4,7 @@ from onnxruntime_extensions import onnx_op, PyCustomOpDef
 # from onnx.reference.ops.op_conv import Conv
 import torch
 import torch.nn.functional as F
+from python_testing.utils.onnx_custom_ops.custom_helpers import rescaling
 
 from scipy.signal import correlate2d
 
@@ -60,12 +61,11 @@ def int64_conv(
     W = torch.from_numpy(W)
     B = torch.from_numpy(B)
 
-    Y = F.conv2d(X, W, bias=B, stride=strides, padding=pads[:2], dilation=dilations, groups=group).numpy().astype(np.int64)
-    if rescale == 1:
-        if scaling_factor == None:
-            raise NotImplementedError("scaling factor must be specified")
-        Y = (Y // scaling_factor)
-    return Y.astype(np.int64)
+    result = F.conv2d(X, W, bias=B, stride=strides, padding=pads[:2], dilation=dilations, groups=group).numpy().astype(np.int64)
+    result = rescaling(scaling_factor, rescale, result)
+    return result.astype(np.int64)
+
+
 
 
 # @onnx_op(
