@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "gravy_circuits",
-#    "model_analyzer"
 ]
 
 

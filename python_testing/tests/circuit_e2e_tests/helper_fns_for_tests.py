@@ -136,3 +136,10 @@ def check_witness_generated(model_fixture):
     result = witness_generated_results.get(model_fixture['model'])
     if result is False:
         pytest.skip(f"Skipping because the first test failed for param: {model_fixture['model']}")
+
+def assert_very_close(inputs_1, inputs_2, model):
+    for i in inputs_1.keys():
+        x = torch.div(torch.as_tensor(inputs_1[i]), model.scale_base**model.scaling)
+        y = torch.div(torch.as_tensor(inputs_2[i]), model.scale_base**model.scaling)
+
+        assert torch.isclose(x, y, rtol = 1e-8).all()

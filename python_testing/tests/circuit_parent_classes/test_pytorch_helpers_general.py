@@ -115,6 +115,7 @@ def test_get_inputs_from_file_long(mock_read_input):
     tensor = g.get_inputs_from_file("file", is_scaled=True)
     assert torch.equal(tensor, torch.tensor([3, 4]))
     assert tensor.shape == (2,)
+# test callable in get_inputs from file
 
 
 def test_create_new_inputs_shape_and_type():

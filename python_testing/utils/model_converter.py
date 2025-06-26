@@ -1,4 +1,5 @@
 import json
+import sys
 from typing import Optional
 import torch
 import onnx
@@ -80,9 +81,23 @@ class GeneralLayerFunctions():
         else:
             out =  torch.mul(torch.as_tensor(inputs),self.scale_base**self.scaling).long()
 
+
         if hasattr(self, "input_shape"):
-            out = out.reshape(self.input_shape)
+            shape = self.input_shape
+            if hasattr(self, 'adjust_shape') and callable(getattr(self, 'adjust_shape')):
+                shape = self.adjust_shape(shape)
+
+            out = out.reshape(shape)
         return out
+
+    # def adjust_shape(self, shape):
+    #     if isinstance(shape, dict):
+    #             # Get the first shape from the dict (assuming only one input is relevant here)
+    #         if len(shape.values()) == 1:
+    #             shape = next(iter(shape.values()))
+    #         else:
+    #             raise ValueError("Shape inputs in get_inputs_from_file() has too many inputs")
+    #     return shape
     
     # def get_outputs(self, inputs):
     #     return self.quantized_model(inputs)
@@ -96,8 +111,26 @@ class GeneralLayerFunctions():
             raise NotImplementedError("Must define attribute input_shape")
     
     def create_new_inputs(self):
-        # print(self.scale_base, self.scaling, self.scale_base**self.scaling)
-        return torch.mul(torch.rand(self.input_shape)*2 - 1, self.scale_base**self.scaling).long()
+        # ONNX inputs will be in this form, and require inputs to not be scaled up
+        if isinstance(self.input_shape, dict):
+            keys = self.input_shape.keys()
+            if len(keys) == 1:
+                # If unknown dim in batch spot, assume batch size of 1
+                input_shape = self.input_shape[list(keys)[0]]
+                input_shape[0] = 1 if input_shape[0] < 1 else input_shape[0]
+                return self.get_rand_inputs(input_shape)
+            inputs = {}
+            for key in keys:
+                # If unknown dim in batch spot, assume batch size of 1
+                input_shape = self.input_shape[keys[key]]
+                input_shape[0] = 1 if input_shape[0] < 1 else input_shape[0]
+                inputs[key] = self.get_rand_inputs(input_shape)
+            return inputs
+        
+        return torch.mul(self.get_rand_inputs(self.input_shape), self.scale_base**self.scaling).long()
+    
+    def get_rand_inputs(self, input_shape):
+        return torch.rand(input_shape)*2 - 1
 
     def format_inputs(self, inputs):
         return {"input": inputs.long().tolist()}

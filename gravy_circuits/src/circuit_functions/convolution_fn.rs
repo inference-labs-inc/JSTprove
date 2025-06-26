@@ -345,6 +345,7 @@ pub fn conv_4d_run<C: Config, T: Into<u64>, Builder: RootAPI<C>, >(
         input_shape_in,
     );
     not_yet_implemented_conv(input_shape_in, group_in, &dilations);
+
     let out: Vec<Vec<Vec<Vec<Variable>>>> = conv_shape_4(
         api,
         input_arr,
@@ -355,6 +356,7 @@ pub fn conv_4d_run<C: Config, T: Into<u64>, Builder: RootAPI<C>, >(
         &weights,
         &bias,
     );
+
 
     run_if_quantized_4d(
         api,

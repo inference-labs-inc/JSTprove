@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use tract_core::internal::DimLike;
 use tract_onnx::prelude::*;
+use tract_nnef::{nnef, ops::tract_nnef};
 use crate::layer_handlers::{extract_layer_params, layer_helpers::{detect_einsum, is_relu_like, EinsumType}, layer_ir::{LayerIR, LayerKind, LayerParams, LayerParamsWrapper, SerializableTensor}};
 
 // use tract_core::ops::cnn::Conv;
@@ -29,105 +30,7 @@ pub fn analyze_model_internal<P: AsRef<std::path::Path>>(onnx_path: P) -> TractR
 
     // Second pass: build layers
     for node in model.nodes() {
-        let op_name = node.op().name();
-        let id = node.id;
-        let name = node.name.clone();
-
-        let inputs: Vec<usize> = node.inputs.iter().map(|i| i.node).collect();
-
-        // if op_name == "Const" || op_name == "Source" {
-        //     continue; // skip weights and inputs
-        // }
-
-        // Track output links (forward connectivity)
-        let mut outputs: Vec<usize> = vec![];
-        for output in &node.outputs {
-            for succ in &output.successors {
-                outputs.push(succ.node);
-            }
-        }
-
-        // Try to infer shape
-        let shape = node
-            .outputs
-            .get(0)
-            .map(|o| o.fact.shape.iter().map(|d| d.to_usize().unwrap_or(0)).collect())
-            .unwrap_or_default();
-        // println!("id - {}, name - {}, {}, {:?}", id, name, op_name, shape);
-
-
-        // let constants: Vec<LayerConstant> = node.inputs
-        //                 .iter()
-        //                 .enumerate()
-        //                 .filter_map(|(idx, inlet)| {
-        //                     const_tensors.get(&inlet.node).and_then(|t| {
-        //                         SerializableTensor::from_tensor(t).map(|val| LayerConstant {
-        //                             input_index: idx,
-        //                             name: model.node(inlet.node).name.clone(),
-        //                             value: val,
-        //                         })
-        //                     })
-        //                 })
-        //                 .collect();
-
-        if op_name.as_ref().eq("Max"){
-            // println!("{:?}, {:?}, {:?}",weights, biases, inputs);
-        }
-        let params = extract_layer_params(node.op().as_typed().unwrap());
-
-        // Map known ops to kind
-        let kind = match op_name.as_ref() {
-            "Const" => LayerKind::Const,
-            "Source" => LayerKind::Source,
-            "Conv" => LayerKind::Conv,
-            "EinSum" => {
-                    match &params {
-                        Some(LayerParams::EinSum { axes, .. }) => {
-                            match detect_einsum(axes){
-                                // TODO fix this approach. Dont want all the unknowns
-                                EinsumType::MatMul => LayerKind::MatMul,
-                                EinsumType::TransposedRHSMatMul => LayerKind::Unknown { op : "MatMulTransposedRHS".into() },
-                                EinsumType::TransposedLHSMatMul => LayerKind::Unknown { op : "MatMulTransposedLHS".into() },
-                                EinsumType::TransposedRHSLHSMatMul => LayerKind::Unknown { op : "MatMulTransposedRHSLHS".into() },
-                                _ => LayerKind::Unknown { op : "EinSum".into() }
-                            }
-                        }
-                        _ => LayerKind::Unknown {op : "EinSum".into() },
-                    }
-                }
-            "Add" => LayerKind::Add,
-            "Max" => {
-                if is_relu_like(node, &const_tensors) {
-                    LayerKind::Relu
-                } else {
-                    LayerKind::Unknown { op : op_name.to_string() }
-                }
-            }
-            "Reshape" => LayerKind::Reshape,
-            "Cast" => LayerKind::Cast,
-
-            _ => LayerKind::Unknown { op : op_name.to_string() },
-        };
-        let tensor = if kind == LayerKind::Const {
-            node.outputs.get(0).and_then(|o| {
-                o.fact.konst.as_ref().and_then(|arc| {
-                    SerializableTensor::from_tensor(arc.as_ref())
-                })
-            })
-        } else {
-            None
-        };
-
-        let layer = LayerIR {
-            id,
-            name,
-            kind: kind.into(),
-            inputs,
-            outputs,
-            shape,
-            params: params.map(|p| LayerParamsWrapper { inner: p }),
-            tensor
-        };
+        let (id, layer) = analyze_layer(&const_tensors, node);
 
         layer_ids.insert(id);
         node_id_to_layer.insert(id, layer);
@@ -148,6 +51,97 @@ pub fn analyze_model_internal<P: AsRef<std::path::Path>>(onnx_path: P) -> TractR
 
     Ok(result)
 }
+
+fn analyze_layer(const_tensors: &HashMap<usize, Tensor>, node: &Node<TypedFact, Box<dyn TypedOp>>) -> (usize, LayerIR) {
+    let op_name = node.op().name();
+    let id = node.id;
+    let name = node.name.clone();
+
+    let inputs: Vec<usize> = node.inputs.iter().map(|i| i.node).collect();
+
+    // Track output links (forward connectivity)
+    let mut outputs: Vec<usize> = vec![];
+    for output in &node.outputs {
+        for succ in &output.successors {
+            outputs.push(succ.node);
+        }
+    }
+
+    // Try to infer shape
+    let shape = node
+        .outputs
+        .get(0)
+        .map(|o| o.fact.shape.iter().map(|d| d.to_usize().unwrap_or(0)).collect())
+        .unwrap_or_default();
+
+    if op_name.as_ref().eq("Max"){
+        // println!("{:?}, {:?}, {:?}",weights, biases, inputs);
+    }
+    let params = extract_layer_params(node.op().as_typed().unwrap());
+
+    // Map known ops to kind
+    let kind = get_layer_kind(const_tensors, node, op_name, &params);
+    let tensor = if kind == LayerKind::Const {
+        node.outputs.get(0).and_then(|o| {
+            o.fact.konst.as_ref().and_then(|arc| {
+                SerializableTensor::from_tensor(arc.as_ref())
+            })
+        })
+    } else {
+        None
+    };
+
+    let layer = LayerIR {
+        id,
+        name,
+        kind: kind.into(),
+        inputs,
+        outputs,
+        shape,
+        params: params.map(|p| LayerParamsWrapper { inner: p }),
+        tensor
+    };
+    (id, layer)
+}
+
+fn get_layer_kind(const_tensors: &HashMap<usize, Tensor>, node: &Node<TypedFact, Box<dyn TypedOp + 'static>>, op_name: std::borrow::Cow<'_, str>, params: &Option<LayerParams>) -> LayerKind {
+    let kind = match op_name.as_ref() {
+        "Const" => LayerKind::Const,
+        "Source" => LayerKind::Source,
+        "Conv" => LayerKind::Conv,
+        "EinSum" => {
+                match params {
+                    Some(LayerParams::EinSum { axes, .. }) => {
+                        match detect_einsum(axes){
+                            // TODO fix this approach. Dont want all the unknowns
+                            EinsumType::MatMul => LayerKind::MatMul,
+                            EinsumType::TransposedRHSMatMul => LayerKind::Unknown { op : "MatMulTransposedRHS".into() },
+                            EinsumType::TransposedLHSMatMul => LayerKind::Unknown { op : "MatMulTransposedLHS".into() },
+                            EinsumType::TransposedRHSLHSMatMul => LayerKind::Unknown { op : "MatMulTransposedRHSLHS".into() },
+                            _ => LayerKind::Unknown { op : "EinSum".into() }
+                        }
+                    }
+                    _ => LayerKind::Unknown {op : "EinSum".into() },
+                }
+            }
+        "Add" => LayerKind::Add,
+        "Max" => {
+            if is_relu_like(node, const_tensors) {
+                LayerKind::Relu
+            } else {
+                LayerKind::Unknown { op : op_name.to_string() }
+            }
+        }
+        "Reshape" => LayerKind::Reshape,
+        "Cast" => LayerKind::Cast,
+
+        _ => LayerKind::Unknown { op : op_name.to_string() },
+    };
+    kind
+}
+
+
+
 
 
 pub fn get_w_and_b_internal(model: Vec<LayerIR>) -> TractResult<Vec<LayerIR>>{
@@ -175,16 +169,10 @@ pub fn get_architecture_internal(model: Vec<LayerIR>) -> TractResult<Vec<LayerIR
     }
     return Ok(architecture_layers)
 }
-fn quantize_layer(){
-    /*
-        a. If Const layer, than multiply each const by scale
-        b. if non-const layer, than run quantize layer 
-            i. Each layer should implement some quantize layer function, which returns a custom op, with the new custom layer (or something along those lines)
-            ii. This will involve coding out a custom layer for each of our layers eg. QuantizeConv and replace with Conv
-     */
 
-}
-fn quantize_model<P: AsRef<std::path::Path>>(input_path: P, output_path: P, scale: i64) -> Option<TractResult<Vec<LayerIR>>> {
+pub fn quantize_model_internal<P: AsRef<std::path::Path>>(input_path: P, output_path: P, scale: i64) {
+
+
     /*
         This function should:
             1. Load in a model as a tract model
@@ -192,5 +180,52 @@ fn quantize_model<P: AsRef<std::path::Path>>(input_path: P, output_path: P, scal
             3. pass each load through quantize layer
             4. save new model to file
      */
-    None
+
+    let model = tract_onnx::onnx()
+        .model_for_path(&input_path).unwrap()
+        .into_typed().unwrap(); // Do not optimize yet
+    let mut const_tensors: HashMap<usize, Tensor> = HashMap::new();
+
+    for node in model.nodes() {
+        if node.op().name() == "Const" {
+            if let Some(t) = node.outputs[0].fact.konst.as_ref().map(|arc| arc.as_ref().clone()) {
+                const_tensors.insert(node.id, t);
+            }
+        }
+    }
+
+    // Second pass: build layers
+    for node in model.nodes() {
+        quantize_layer(node,  &const_tensors);
+    }
+
+    // tract_onnx::onnx().write
+
+    tract_nnef::nnef().write_to_dir(&model, "model_dir").unwrap();
+}
+
+fn quantize_layer(node: &Node<TypedFact, Box<dyn TypedOp>>, const_tensors:&HashMap<usize, Tensor>  ){
+    /*
+        a. If Const layer, than multiply each const by scale
+        b. if non-const layer, than run quantize layer 
+            i. Each layer should implement some quantize layer function, which returns a custom op, with the new custom layer (or something along those lines)
+            ii. This will involve coding out a custom layer for each of our layers eg. QuantizeConv and replace with Conv
+     */
+    let op_name = node.op().name();
+    let id = node.id;
+    let name = node.name.clone();
+
+    let inputs: Vec<usize> = node.inputs.iter().map(|i| i.node).collect();
+    let mut outputs: Vec<usize> = vec![];
+    for output in &node.outputs {
+        for succ in &output.successors {
+            outputs.push(succ.node);
+        }
+    }
+
+    let params = extract_layer_params(node.op().as_typed().unwrap());
+
+    let kind = get_layer_kind(const_tensors, node, op_name, &params);
+
+
 }

@@ -107,7 +107,7 @@ class GenericModelTorch(ZKTorchModel):
         if scaling != -1:
             return scaling
         
-        return int(21 / math.log2(scale_base))
+        return int(18 / math.log2(scale_base))
     
     def adjust_inputs(self, input_file):
         input_shape = self.input_shape.copy()

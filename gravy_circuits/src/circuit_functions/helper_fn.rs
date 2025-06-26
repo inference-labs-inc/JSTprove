@@ -206,6 +206,30 @@ pub fn vec5_to_arrayd(v: Vec<Vec<Vec<Vec<Vec<Variable>>>>>) -> ArrayD<Variable> 
 }
 
 /*
+    For scaling functions
+*/
+pub fn scale_4d_vector(data: &Vec<Vec<Vec<Vec<f64>>>>, x: f64) -> Vec<Vec<Vec<Vec<i64>>>> {
+    data.iter()
+        .map(|v3| {
+            v3.iter()
+                .map(|v2| {
+                    v2.iter()
+                        .map(|v1| {
+                            v1.iter()
+                                .map(|&val| (val * x) as i64)
+                                .collect()
+                        })
+                        .collect()
+                })
+                .collect()
+        })
+        .collect()
+}
+
+
+
+
+/*
     For witness generation, putting values into the circuit
 */
 
@@ -456,12 +480,12 @@ pub fn get_1d_circuit_inputs<C: Config>(
     }
 }
 
-
+// TODO change 64 bits to 128 across the board, or add checks. If more than 64 bits, fail
 fn convert_val_to_field_element<C: Config>(val: i64) -> <<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField {
     let converted = if val < 0 {
-        CircuitField::<C>::from(val.abs() as u32).neg()
+        CircuitField::<C>::from_u256(U256::from(val.abs() as u64)).neg()
     } else {
-        CircuitField::<C>::from(val.abs() as u32)
+        CircuitField::<C>::from_u256(U256::from(val.abs() as u64))
     };
     converted
 }
