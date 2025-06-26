@@ -387,8 +387,7 @@ dependencies = [
 [[package]]
 name = "build-probe-mpi"
 version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3234fa6de2f6e0e338c7183ba09ae68c8f2bd6919d8763362597627362b7f8fe"
+source = "git+https://github.com/0pendansor/rsmpi?branch=patch-1#650f9f8f0f551939dd71183cd481c884666746ec"
 dependencies = [
  "pkg-config",
  "shell-words",
@@ -1584,9 +1583,9 @@ checksum = "d750af042f7ef4f724306de029d18836c26c1765a54a6a3f094cbd23a7267ffa"
 
 [[package]]
 name = "libffi"
-version = "3.2.0"
+version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce826c243048e3d5cec441799724de52e2d42f820468431fc3fceee2341871e2"
+checksum = "ebfd30a67b482a08116e753d0656cb626548cf4242543e5cc005be7639d99838"
 dependencies = [
  "libc",
  "libffi-sys",
@@ -1594,9 +1593,9 @@ dependencies = [
 
 [[package]]
 name = "libffi-sys"
-version = "2.3.0"
+version = "3.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f36115160c57e8529781b4183c2bb51fdc1f6d6d1ed345591d84be7703befb3c"
+checksum = "f003aa318c9f0ee69eb0ada7c78f5c9d2fedd2ceb274173b5c7ff475eee584a3"
 dependencies = [
  "cc",
 ]
@@ -1728,8 +1727,7 @@ dependencies = [
 [[package]]
 name = "mpi"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "677762a4bde2c81158fc566a69b97d11b0c3358694e64f4f922ac5189be311cc"
+source = "git+https://github.com/0pendansor/rsmpi?branch=patch-1#650f9f8f0f551939dd71183cd481c884666746ec"
 dependencies = [
  "build-probe-mpi",
  "conv",
@@ -1743,8 +1741,7 @@ dependencies = [
 [[package]]
 name = "mpi-sys"
 version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f35fdd7bdb38959515f008d12598065631de9624f6d42c11caef19e8e0d10de"
+source = "git+https://github.com/0pendansor/rsmpi?branch=patch-1#650f9f8f0f551939dd71183cd481c884666746ec"
 dependencies = [
  "bindgen",
  "build-probe-mpi",

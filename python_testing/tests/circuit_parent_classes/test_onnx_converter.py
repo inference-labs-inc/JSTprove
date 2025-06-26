@@ -174,4 +174,3 @@ def test_real_inference_from_onnx():
 
         assert isinstance(result, list)
         print(result) # Identity op should return input
-

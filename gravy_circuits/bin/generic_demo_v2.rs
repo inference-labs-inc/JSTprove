@@ -1,25 +1,21 @@
-use gravy_circuits::circuit_functions::convolution_fn::conv_4d_run;
+use core::panic;
 use expander_compiler::frontend::*;
-use gravy_circuits::circuit_functions::helper_fn::{arrayd_to_vec2, arrayd_to_vec4, get_2d_circuit_inputs, get_5d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd, AnyDimVec};
-use gravy_circuits::io::io_reader::{FileReader, IOReader};
-use lazy_static::lazy_static;
+use gravy_circuits::circuit_functions::convolution_fn::conv_4d_run;
+use gravy_circuits::circuit_functions::helper_fn::{arrayd_to_vec1, arrayd_to_vec2, arrayd_to_vec4, arrayd_to_vec5, get_1d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec1_to_arrayd, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd};
 #[allow(unused_imports)]
 use gravy_circuits::circuit_functions::matrix_computation::{
-    matrix_multplication, matrix_multplication_array, matrix_multplication_naive,
-    matrix_multplication_naive2, matrix_multplication_naive2_array, matrix_multplication_naive3,
-    matrix_multplication_naive3_array, matrix_addition_vec
+    matrix_addition_vec, matrix_multplication, matrix_multplication_array,
+    matrix_multplication_naive, matrix_multplication_naive2, matrix_multplication_naive2_array,
+    matrix_multplication_naive3, matrix_multplication_naive3_array,
 };
-use gravy_circuits::circuit_functions::quantization::run_if_quantized_2d;
+use gravy_circuits::io::io_reader::{FileReader, IOReader};
+use gravy_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
+use lazy_static::lazy_static;
+use ndarray::Dimension;
+use ndarray::{ ArrayD, IxDyn};
 use serde::Deserialize;
 use serde_json::Value;
-use core::panic;
-
-use ndarray::IxDyn;
-use ndarray::Dimension;
-
-
-use gravy_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
-
+use gravy_circuits::circuit_functions::quantization::run_if_quantized_2d;
 
 //Define structure of inputs, weights and output
 #[derive(Deserialize, Clone)]
@@ -40,15 +36,15 @@ struct WeightsData {
     input_shape: Vec<usize>,
     not_rescale_layers: Vec<String>,
     layer_input_shapes: Vec<Vec<usize>>,
-    layer_output_shapes: Vec<Vec<usize>>
+    layer_output_shapes: Vec<Vec<usize>>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
 // #[serde(deny_unknown_fields)] // Optional: remove this to allow unknowns
-struct Layer{
+struct Layer {
     name: String,
-    r#type: String,
-    activation: String
+    r#type: String, // Layer Type
+    activation: String,
 }
 
 #[derive(Deserialize, Clone)]
@@ -62,8 +58,7 @@ struct OutputData {
 }
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/generic_demo_v2_weights.json");
-
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/torch_generic_circuit_weights.json");
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
 // Weights will be read in
@@ -75,211 +70,325 @@ lazy_static! {
     };
 }
 
-declare_circuit!(ConvCircuit {
-    input_arr: [[[[[PublicVariable]]]]], // shape (m, n)
-    outputs: [[PublicVariable]], // shape (m, k)
-    // dummy: [PublicVariable; 10]
+declare_circuit!(Circuit {
+    input_arr: [PublicVariable], // shape (m, n)
+    outputs: [PublicVariable],   // shape (m, k)
 });
 
+/*
+ConvLayer, ReshapeLayer, FCLayer
+*/
+struct ConvLayer {
+    index: usize,
+    weights: Vec<Vec<Vec<Vec<i64>>>>,
+    bias: Vec<i64>,
+    strides: Vec<u32>,
+    kernel_shape: Vec<u32>,
+    group: Vec<u32>,
+    dilation: Vec<u32>,
+    pads: Vec<u32>,
+    input_shape: Vec<u32>,
+    scaling: u64,
+    is_relu: bool,
+    v_plus_one: usize,
+    two_v: u64,
+    alpha_two_v: Variable,
+    is_rescale: bool,
+}
+
+struct ReshapeLayer {
+    shape: Vec<usize>,
+}
+
+struct FCLayer {
+    index: usize,
+    weights: Vec<Vec<Vec<i64>>>,
+    bias: Vec<Vec<Vec<i64>>>,
+    is_rescale: bool,
+    v_plus_one: usize,
+    two_v: u64,
+    alpha_two_v: Variable,
+    is_relu: bool,
+    scaling: u64,
+}
+
+trait LayerOp<C: Config, Builder: RootAPI<C>> {
+    fn apply(&self, api: &mut Builder, input: ArrayD<Variable>)
+        -> Result<ArrayD<Variable>, String>;
+}
+
+impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
+    fn apply(
+        &self,
+        api: &mut Builder,
+        input: ArrayD<Variable>,
+    ) -> Result<ArrayD<Variable>, String> {
+        eprintln!("Applying input shape CONV");
+        let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv_weights[self.index]);
+        let bias: Vec<Variable> = WEIGHTS_INPUT.conv_bias[self.index]
+            .clone()
+            .into_iter()
+            .map(|x| load_circuit_constant(api, x))
+            .collect();
+        let alpha_two_v = api.mul(self.two_v as u32, self.scaling as u32);
+        eprintln!("Applying biases");
+
+        let input = arrayd_to_vec4(input);
+        eprintln!("GOT Input:");
+        
+        eprintln!("{:?}", &self.dilation);
+        eprintln!("{:?}", &self.kernel_shape);
+        eprintln!("{:?}", &self.pads);
+        eprintln!("{:?}", &self.strides);
+        eprintln!("{:?}", &self.input_shape);
+        eprintln!("{:?}", &self.scaling);
+        eprintln!("{:?}", &self.group);
+        eprintln!("{:?}",Variable::from(self.alpha_two_v));
+        
+        let out = conv_4d_run(
+            api,
+            input,
+            weights,
+            bias,
+            &self.dilation,
+            &self.kernel_shape,
+            &self.pads,
+            &self.strides,
+            &self.input_shape,
+            self.scaling,
+            &self.group,
+            self.is_rescale,
+            self.v_plus_one,
+            self.two_v,
+            alpha_two_v,
+            self.is_relu,
+        );
+        
+        eprint!("PRINTING INDEX");
+        Ok(vec4_to_arrayd(out))
+    }
+}
+
+impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FCLayer {
+    fn apply(
+        &self,
+        api: &mut Builder,
+        input: ArrayD<Variable>,
+    ) -> Result<ArrayD<Variable>, String> {
+        let weights = read_2d_weights(api, &WEIGHTS_INPUT.fc_weights[self.index]);
+        let bias = read_2d_weights(api, &WEIGHTS_INPUT.fc_bias[self.index]);
+        let mut out_2d = arrayd_to_vec2(input); // Potential point of failure, check with Jonathan
+
+        let alpha_two_v = api.mul(self.two_v as u32, self.scaling as u32);
+
+        out_2d = matrix_multplication_naive2(api, out_2d, weights);
+        out_2d = matrix_addition_vec(api, out_2d, bias);
+        api.display("3", out_2d[0][0]);
+        eprintln!("GOT display:");
+        out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, self.is_rescale, out_2d, self.v_plus_one, self.two_v, alpha_two_v, self.is_relu);
+        eprintln!("GOT output:");
+        let out = vec2_to_arrayd(out_2d);
+        eprintln!("Finished");
+        Ok(out)
+    }
+}
+
+impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
+    /*
+    TO-DO: Implement permanent implementation, currently temp solution
+     */
+    fn apply(
+        &self,
+        api: &mut Builder,
+        input: ArrayD<Variable>,
+    ) -> Result<ArrayD<Variable>, String> {
+        let reshape_shape: [usize; 2] = [1,12544];
+        let mut input = input;
+        input = input
+            .into_shape_with_order(IxDyn(&reshape_shape))
+            .expect("Shape mismatch: Cannot reshape into the given dimensions.");
+
+        Ok(input)
+    }
+}
+
+type BoxedDynLayer<C, B> = Box<dyn LayerOp<C, B>>;
+
+fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Builder>>> {
+    let mut layers: Vec<BoxedDynLayer<C, Builder>> = vec![];
+    let mut conv_layer_num = 0;
+    let mut fc_layer_num = 0;
+    const N_BITS: usize = 32;
+    const V_PLUS_ONE: usize = N_BITS;
+    const TWO_V: u64 = 1 << (V_PLUS_ONE - 1);
+    let alpha_two_v_usize: usize = ((1 << WEIGHTS_INPUT.scaling) * TWO_V) as usize;
 
 
-// Memorization, in a better place
-impl<C: Config> Define<C> for ConvCircuit<Variable> {
-    fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
-        // TODO have this specified on python side
-        // Confirm that this is hardcoded properly into the circuit, and not adjustable
-        let n_bits = 32;
+    for (i, layer) in WEIGHTS_INPUT.layers.iter().enumerate() {
+        let is_relu = if i + 1 < WEIGHTS_INPUT.layers.len() {
+            WEIGHTS_INPUT.layers[i + 1].activation.starts_with("ReLU")
+        } else {
+            false
+        };
 
-        // Similarly here
-        let v_plus_one: usize = n_bits;
-        let two_v: u32 = 1 << (v_plus_one - 1);
+        let is_rescale = !WEIGHTS_INPUT
+            .not_rescale_layers
+            .iter()
+            .any(|l| l.eq_ignore_ascii_case(&layer.name));
+        match layer.r#type.as_str() {
+            "conv" => {
+                let conv = ConvLayer {
+                    index: conv_layer_num,
+                    weights: WEIGHTS_INPUT.conv_weights[conv_layer_num].clone(),
+                    bias: WEIGHTS_INPUT.conv_bias[conv_layer_num].clone(),
+                    strides: WEIGHTS_INPUT.conv_strides[conv_layer_num].clone(),
+                    kernel_shape: WEIGHTS_INPUT.conv_kernel_shape[conv_layer_num].clone(),
+                    group: WEIGHTS_INPUT.conv_group[conv_layer_num].clone(),
+                    dilation: WEIGHTS_INPUT.conv_dilation[conv_layer_num].clone(),
+                    pads: WEIGHTS_INPUT.conv_pads[conv_layer_num].clone(),
+                    input_shape: WEIGHTS_INPUT.conv_input_shape[conv_layer_num].clone(),
+                    scaling: WEIGHTS_INPUT.scaling,
+                    is_relu,
+                    v_plus_one: N_BITS,
+                    two_v: TWO_V,
+                    /*
+                    TODO - api.mul instead of hard-coding multiplication
+                     */
+                    alpha_two_v: Variable::from(alpha_two_v_usize),
+                    is_rescale,
+                };
 
-        // TODO adjust for different base
-        let scaling_factor = 1 << WEIGHTS_INPUT.scaling;
-        let alpha_2_v = api.mul(scaling_factor, two_v);
-
-        // Bring the weights into the circuit as constants
-        let mut out = vec5_to_arrayd(self.input_arr.clone());
-
-
-        let mut layer_num = 0;
-        let mut conv_layer_num = 0;
-        let mut fc_layer_num = 0;
-
-        assert!(WEIGHTS_INPUT.layers.len() > 0);
-
-        while layer_num < WEIGHTS_INPUT.layers.len(){
-            let layer = &WEIGHTS_INPUT.layers[layer_num].name;
-
-            let mut is_rescale = true;
-            for l in &WEIGHTS_INPUT.not_rescale_layers{
-                if l.eq_ignore_ascii_case(layer){
-                    is_rescale = false;
-                }
-            }            
-
-            let mut is_relu = false;
-                if layer_num + 1 < WEIGHTS_INPUT.layers.len(){
-                    let layer_plus_1 = &WEIGHTS_INPUT.layers[layer_num].activation;
-                    if layer_plus_1.starts_with("ReLU") {
-                        is_relu = true;
-                        // layer_num +=1;
-                    }
-                }
-            let raw_dim = out.raw_dim(); // Keep this alive
-            let dim_view = raw_dim.as_array_view(); // Borrow from that
-            let dim: &[usize] = dim_view.as_slice().unwrap(); // Now borrow is safe
-
-            if WEIGHTS_INPUT.layer_input_shapes[layer_num] != dim{
-                let reshape_shape = &WEIGHTS_INPUT.layer_input_shapes[layer_num];
-
-                out = out
-                    .into_shape_with_order(IxDyn(&reshape_shape))
-                    .expect("Shape mismatch: Cannot reshape into the given dimensions");
-            }
-
-            if layer.starts_with("conv"){
-                let i = conv_layer_num;
-
-
-                let weights = read_4d_weights(api, &WEIGHTS_INPUT.conv_weights[i]);
-                let bias: Vec<Variable> = WEIGHTS_INPUT
-                    .conv_bias[i]
-                    .clone()
-                    .into_iter()
-                    .map(|x| load_circuit_constant(api, x))
-                    .collect();
-                let temp_out = arrayd_to_vec4(out);
-
-                let temp_out = conv_4d_run(api, temp_out, weights, bias,&WEIGHTS_INPUT.conv_dilation[i], &WEIGHTS_INPUT.conv_kernel_shape[i], &WEIGHTS_INPUT.conv_pads[i], &WEIGHTS_INPUT.conv_strides[i],&WEIGHTS_INPUT.conv_input_shape[i], WEIGHTS_INPUT.scaling, &WEIGHTS_INPUT.conv_group[i], is_rescale, v_plus_one, two_v, alpha_2_v, is_relu);
-                out = vec4_to_arrayd(temp_out);
+                layers.push(Box::new(conv));
                 conv_layer_num += 1;
+
             }
-            //temporary solution
-            else if layer.starts_with("reshape"){
-                let reshape_shape: [usize; 2] = [1,12544];
-
-                out = out
-                    .into_shape_with_order(IxDyn(&reshape_shape))
-                    .expect("Shape mismatch: Cannot reshape into the given dimensions");
+            "reshape" => {
+                /*
+                   TODO - Implement permanent solution for what reshape layer needs like
+                */
+                let reshape = ReshapeLayer {
+                    shape: WEIGHTS_INPUT.layer_input_shapes[i].clone(),
+                };
+                layers.push(Box::new(reshape));
             }
-            else if layer.starts_with("fc"){
-                let i = fc_layer_num;
-                let weights = read_2d_weights(api, &WEIGHTS_INPUT.fc_weights[i]);
-                let bias = read_2d_weights(api, &WEIGHTS_INPUT.fc_bias[i]);
-                
-                let mut out_2d = arrayd_to_vec2(out);
-
-
-                out_2d = matrix_multplication_naive2(api, out_2d, weights);
-                out_2d = matrix_addition_vec(api, out_2d, bias);
-                api.display("3", out_2d[0][0]);
-
-                out_2d = run_if_quantized_2d(api, WEIGHTS_INPUT.scaling, is_rescale, out_2d, v_plus_one, two_v, alpha_2_v, is_relu);
-                out = vec2_to_arrayd(out_2d);
+            "fc" => {
+                let fc = FCLayer {
+                    index: fc_layer_num,
+                    weights: WEIGHTS_INPUT.fc_weights.clone(),
+                    bias: WEIGHTS_INPUT.fc_bias.clone(),
+                    is_relu,
+                    v_plus_one: V_PLUS_ONE,
+                    two_v: TWO_V,
+                    alpha_two_v: Variable::from(alpha_two_v_usize),
+                    is_rescale,
+                    scaling: WEIGHTS_INPUT.scaling,
+                };
+                layers.push(Box::new(fc));
                 fc_layer_num += 1;
             }
-            layer_num += 1;
+            other => panic!("Unsupported layer type: {}", other),
         }
-        let output = arrayd_to_vec2(out);
-        for (j, dim1) in self.outputs.iter().enumerate() {
-                for (k, _dim2) in dim1.iter().enumerate() {
-                    // api.display("out1", self.outputs[j][k]);
-                    // api.display("out2", out_2d[j][k]);
-                    api.assert_is_equal(self.outputs[j][k], output[j][k]);
-                    // api.assert_is_different(self.outputs[j][k], 1);
+    }
 
-                }
+    layers
+}
+// Memorization, in a better place
+impl<C: Config> Define<C> for Circuit<Variable> {
+    fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
+        let mut out = vec1_to_arrayd(self.input_arr.clone());
+        let layers = build_layers::<C, Builder>();
+        
+        assert!(WEIGHTS_INPUT.layers.len() > 0);
+
+        for (i, layer) in layers.iter().enumerate() {
+
+            let expected_shape = &WEIGHTS_INPUT.layer_input_shapes[i];
+
+            let raw_dim = out.raw_dim();
+            let dim_view = raw_dim.as_array_view();
+            let current_shape: &[usize] = dim_view.as_slice().unwrap();
+
+            if current_shape != expected_shape {
+                let reshape_shape = &WEIGHTS_INPUT.layer_input_shapes[i];
+
+                out = out
+                    .into_shape_with_order(IxDyn(&reshape_shape))
+                    .expect("Shape mismatch: Cannot reshape into the given dimensions");
+                print!("Check 1");
             }
+
+            /*
+            ERROR IS OCCURING HERE
+             */
+            out = layer
+                .apply(api, out)
+                .expect(&format!("Failed to apply layer {}", i));
+        }
+
+        eprint!("Pre-vec1");
+        let flatten_shape: Vec<usize> = vec![WEIGHTS_INPUT.output_shape.iter().product()];
+
+        out = out
+            .into_shape_with_order(IxDyn(&flatten_shape))
+            .expect("Shape mismatch: Cannot reshape into the given dimensions"); 
+        let output = arrayd_to_vec1(out);
+        eprint!("Pre-vec2");
+        for (j, _) in self.outputs.iter().enumerate() {
+            api.display("out1", self.outputs[j]);
+            api.display("out2", output[j]);
+            api.assert_is_equal(self.outputs[j], output[j]);
+            // api.assert_is_different(self.outputs[j], 1);
+        }
     }
 }
 
-
-
-impl ConfigurableCircuit for ConvCircuit<Variable> {
+impl ConfigurableCircuit for Circuit<Variable> {
     fn configure(&mut self) {
         // Change input and outputs as needed
-        // self.input_arr[0][0][0][0] = PublicVariable::from(42);
         // Outputs
-        let output_shape = WEIGHTS_INPUT.output_shape.clone();
-        if output_shape.len() == 2{
-            self.outputs = vec![vec![Variable::default(); output_shape[1]]; output_shape[0]];
-        }
-        else if output_shape.len() == 1{
-            self.outputs = vec![vec![Variable::default(); output_shape[0]]];
+        let output_dims: usize = WEIGHTS_INPUT.output_shape.iter().product();
+        self.outputs = vec![Variable::default(); output_dims];
 
-        }
-        else{
-            panic!("Only output shape 2 has been implemented")
-        }
-        
         // Inputs
-        let input_shape: Vec<usize> = WEIGHTS_INPUT.input_shape.clone();
-        
-        if input_shape.len() == 5{
-            self.input_arr = vec![vec![vec![vec![vec![Variable::default(); input_shape[4]]; input_shape[3]];input_shape[2]]; input_shape[1]]; input_shape[0]];
-        }
-        else if input_shape.len() == 4{
-            self.input_arr = vec![vec![vec![vec![vec![Variable::default(); input_shape[3]]; input_shape[2]];input_shape[1]]; input_shape[0]]];
-        }
-        else if input_shape.len() == 3{
-            self.input_arr = vec![vec![vec![vec![vec![Variable::default(); input_shape[2]]; input_shape[1]];input_shape[0]]]];
-        }
-        else if input_shape.len() == 2{
-            self.input_arr = vec![vec![vec![vec![vec![Variable::default(); input_shape[1]]; input_shape[0]]]]];
-        }
-        else if input_shape.len() == 1{
-            self.input_arr = vec![vec![vec![vec![vec![Variable::default(); input_shape[0]]]]]];
-        }
-        else{
-            panic!("Only 4 input shape dimensions has been implemented")
-        }
-
-
+        let input_dims: usize = WEIGHTS_INPUT.input_shape.iter().product();
+        self.input_arr = vec![Variable::default(); input_dims];
     }
 }
 
-
-
-impl<C: Config> IOReader<ConvCircuit<CircuitField::<C>>, C> for FileReader {
+impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
-        mut assignment: ConvCircuit<CircuitField::<C>>,
-    ) -> ConvCircuit<CircuitField::<C>> {
+        mut assignment: Circuit<CircuitField<C>>,
+    ) -> Circuit<CircuitField<C>> {
         /*
-            TODO - Can rework this code potentially to speed up witness generation...
-         */
-        let data: InputData = <FileReader as IOReader<ConvCircuit<_>, C>>::read_data_from_json::<
-            InputData,
-        >(file_path);
+           TODO - Can rework this code potentially to speed up witness generation...
+        */
+        let data: InputData =
+            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<InputData>(file_path);
 
-        assignment.input_arr = get_5d_circuit_inputs::<C>(&data.input, &WEIGHTS_INPUT.input_shape);
+        let input_dims: &[usize] = &[WEIGHTS_INPUT.input_shape.iter().product()];
 
+        assignment.input_arr = get_1d_circuit_inputs::<C>(&data.input, input_dims);
         assignment
     }
     fn read_outputs(
         &mut self,
         file_path: &str,
-        mut assignment: ConvCircuit<CircuitField::<C>>,
-    ) -> ConvCircuit<CircuitField::<C>> {
-        let data: OutputData = <FileReader as IOReader<ConvCircuit<_>, C>>::read_data_from_json::<
-            OutputData,
-        >(file_path);
+        mut assignment: Circuit<CircuitField<C>>,
+    ) -> Circuit<CircuitField<C>> {
+        let data: OutputData =
+            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<OutputData>(file_path);
 
-        assignment.outputs = get_2d_circuit_inputs::<C>(&data.output, &WEIGHTS_INPUT.output_shape);
+        let output_dims: &[usize] = &[WEIGHTS_INPUT.output_shape.iter().product()];
+
+        assignment.outputs = get_1d_circuit_inputs::<C>(&data.output, output_dims);
         assignment
-
-    }                 
+    }
     fn get_path(&self) -> &str {
         &self.path
     }
 }
-
-
-
-
-
 
 fn main() {
     let mut file_reader = FileReader {
@@ -287,6 +396,5 @@ fn main() {
     };
     // println!("{:?}", WEIGHTS_INPUT.layers);
 
-    handle_args::<BN254Config, ConvCircuit<Variable>,ConvCircuit<_>,_>(&mut file_reader);
-
+    handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(&mut file_reader);
 }

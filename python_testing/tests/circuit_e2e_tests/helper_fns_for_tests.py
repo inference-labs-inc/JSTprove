@@ -12,7 +12,7 @@ from python_testing.circuit_models.doom_model import Doom
 from python_testing.circuit_models.net_model import NetModel, NetConv1Model, NetConv2Model, NetFC1Model, NetFC2Model, NetFC3Model
 from python_testing.circuit_models.simple_circuit import SimpleCircuit
 from python_testing.circuit_models.doom_slices import DoomConv1, DoomConv2, DoomConv3, DoomFC1, DoomFC2
-from python_testing.circuit_models.eth_fraud import Eth
+# from python_testing.circuit_models.eth_fraud import Eth
 from python_testing.circuit_components.convolution import Convolution, QuantizedConv, QuantizedConvRelu
 from python_testing.circuit_components.relu import ReLU, ConversionType
 from python_testing.circuit_components.matrix_multiplication import MatrixMultiplication, QuantizedMatrixMultiplication, QuantizedMatrixMultiplicationReLU
