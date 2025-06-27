@@ -600,41 +600,12 @@ class ONNXConverter(ModelConverter):
         if inputs.dtype in (torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8):
             inputs = inputs.double()
             inputs = inputs / (self.scale_base**self.scaling)
-
-        # intermediate_names = ["conv1.bias_scaled_cast"]
-        
-
-
-        # model = onnx.load(self.quantized_model_path)
-        # model.graph.output.append(helper.make_tensor_value_info(
-        #         intermediate_names[0],
-        #         TensorProto.INT64,  # or DOUBLE, depending on the tensor
-        #         shape=None  # Optional, or specify known shape
-        #     ))
-        # onnx.save(model, self.quantized_model_path)
-
-        # print("TEST")
-        # opts = SessionOptions()
-        # opts.register_custom_ops_library(get_library_path())
-        # self.ort_sess =  ort.InferenceSession(self.quantized_model_path, opts, providers=["CPUExecutionProvider"])
-        # print("TEST")
-
-        # results = self.ort_sess.run(intermediate_names, {input_name: np.asarray(inputs).astype(np.float64)})
-        # print(type(results[0]), "TEST,TEST")
-
-        # with open('debug_data.json', 'w') as f:
-        #     json.dump(results[0].tolist(), f)
+        # TODO add for all inputs (we should be able to account for multiple inputs...)
         # TODO this is not optimal or robust
         if self.ort_sess.get_inputs()[0].type == "tensor(double)":
             outputs = self.ort_sess.run([output_name], {input_name: np.asarray(inputs).astype(np.float64)})
         else:
             outputs = self.ort_sess.run([output_name], {input_name: np.asarray(inputs)})
-
-        # outputs_true = self.run_model_onnx_runtime(self.model_file_name, inputs)[0][0].tolist()
-        # print(type(outputs[0][0]))
-        # with open('debug_outputs.json', 'w') as f:
-        #     json.dump((outputs_true, outputs[0][0].tolist()), f)
-        # sys.exit()
         return outputs
 
 
