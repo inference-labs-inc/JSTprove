@@ -276,14 +276,7 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
                 let bias_input = &layer.inputs[2];
 
                 // TODO these should be cleaned up a bit
-                let weights_tensor_option = match w_and_b_map.get(weights_input) {
-                    Some(tensor) => tensor.tensor.clone(),
-                    None => panic!("ModelError - missing weights and biases: {}", weights_input)
-                };
-                let weight_tensor = match weights_tensor_option {
-                    Some(tensor) => parse_value_to_array(tensor).unwrap(),
-                    None => panic!("ModelError - missing tensor in expected weights/bias: {}", weights_input)
-                };
+                let weight_tensor = get_w_or_b(&w_and_b_map, weights_input);
 
                 let bias_tensor_option = match  w_and_b_map.get(bias_input) {
                     Some(tensor) => tensor.tensor.clone(),
@@ -293,6 +286,13 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
                     Some(tensor) => parse_value_to_array(tensor).unwrap(),
                     None => panic!("ModelError - missing tensor in expected weights/bias: {}", bias_input)
                 };
+                let params = layer.params.unwrap();
+                // TODO fix this to a function, for getting parameters, maybe have some default value as well?
+                let dilation = get_param(layer_name, &"dilations", &params);
+                let kernel_shape = get_param(layer_name, &"kernel_shape", &params);
+                let group = vec![get_param(layer_name, &"group", &params)];
+                let pads = get_param(layer_name, &"pads", &params);
+                let strides = get_param(layer_name, &"strides", &params);
                 // // Scale up bias tensor TODO find a better way
                 // let bias_tensor: Vec<i64> = bias_tensor
                 //     .iter()
@@ -309,13 +309,7 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
                 let temp_out = arrayd_to_vec4(out);
 
                 let in_shape = vec![temp_out.len(),temp_out[0].len(), temp_out[0][0].len(), temp_out[0][0][0].len()];
-                let params = layer.params.unwrap();
-                // TODO fix this to a function, for getting parameters, maybe have some default value as well?
-                let dilation = get_param(layer_name, &"dilations", &params);
-                let kernel_shape = get_param(layer_name, &"kernel_shape", &params);
-                let group = vec![get_param(layer_name, &"group", &params)];
-                let pads = get_param(layer_name, &"pads", &params);
-                let strides = get_param(layer_name, &"strides", &params);
+                
                 // panic!("{}, {}", &is_rescale, is_relu);
                 let temp_out = conv_4d_run(api, temp_out, weights, bias,&dilation, &kernel_shape, &pads, &strides, &convert_usize_to_u32(in_shape.to_vec()), CIRCUITPARAMS.scaling.into(), &group, is_rescale.clone(), v_plus_one, two_v, alpha_2_v, is_relu);
                 out = vec4_to_arrayd(temp_out);
@@ -400,6 +394,18 @@ impl<C: Config> Define<C> for ConvCircuit<Variable> {
             api.assert_is_equal(self.dummy[1], 1);
 
     }
+}
+
+fn get_w_or_b<I: DeserializeOwned>(w_and_b_map: &HashMap<String, ONNXLayer>, weights_input: &String) -> I{
+    let weights_tensor_option = match w_and_b_map.get(weights_input) {
+        Some(tensor) => tensor.tensor.clone(),
+        None => panic!("ModelError - missing weights and biases: {}", weights_input)
+    };
+    let weight_tensor = match weights_tensor_option {
+        Some(tensor) => parse_value_to_array(tensor).unwrap(),
+        None => panic!("ModelError - missing tensor in expected weights/bias: {}", weights_input)
+    };
+    serde_json::from_value(weight_tensor).expect("Deserialization failed")
 }
 
 fn get_param<I:DeserializeOwned>(layer_name: &String, param_name: &str, params: &Value) -> I {
