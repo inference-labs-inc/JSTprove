@@ -1,4 +1,6 @@
 use core::panic;
+use std::env::consts::ARCH;
+use expander_compiler::circuit::ir::common::display;
 use expander_compiler::frontend::*;
 use gravy_circuits::circuit_functions::convolution_fn::conv_4d_run;
 use gravy_circuits::circuit_functions::helper_fn::{arrayd_to_vec1, arrayd_to_vec2, arrayd_to_vec4, arrayd_to_vec5, get_1d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec1_to_arrayd, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd};
@@ -93,12 +95,15 @@ lazy_static! {
 declare_circuit!(Circuit {
     input_arr: [PublicVariable], // shape (m, n)
     outputs: [PublicVariable],   // shape (m, k)
+    dummy: [Variable; 2]
 });
 
 /*
 ConvLayer, ReshapeLayer, FCLayer
 */
+#[derive(Debug)]
 struct ConvLayer {
+    name: String,
     index: usize,
     weights: Vec<Vec<Vec<Vec<i64>>>>,
     bias: Vec<i64>,
@@ -107,29 +112,42 @@ struct ConvLayer {
     group: Vec<u32>,
     dilation: Vec<u32>,
     pads: Vec<u32>,
-    // input_shape: Vec<u32>,
+    input_shape: Vec<usize>,
     scaling: u64,
     is_relu: bool,
     v_plus_one: usize,
-    two_v: u64,
-    alpha_two_v: Variable,
+    two_v: u32,
+    alpha_two_v: u64,
     is_rescale: bool,
 }
-
+#[derive(Debug)]
 struct ReshapeLayer {
+    name: String,
     shape: Vec<usize>,
+    input_shape: Vec<usize>,
+}
+#[derive(Debug)]
+struct ConstantLayer {
+    name: String,
+    value: Value,
 }
 
+#[derive(Debug)]
 struct GemmLayer {
+    name: String,
     index: usize,
     weights: Vec<Vec<i64>>,
     bias: Vec<Vec<i64>>,
     is_rescale: bool,
     v_plus_one: usize,
-    two_v: u64,
-    alpha_two_v: Variable,
+    two_v: u32,
+    alpha_two_v: u64,
     is_relu: bool,
     scaling: u64,
+    input_shape: Vec<usize>,
+    alpha: f32,
+    beta: f32,
+    transb: usize,
 }
 
 trait LayerOp<C: Config, Builder: RootAPI<C>> {
@@ -145,32 +163,38 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         api: &mut Builder,
         input: ArrayD<Variable>,
     ) -> Result<ArrayD<Variable>, String> {
-        eprintln!("Applying input shape CONV");
-        
+        eprintln!("Applying input shape CONV: {}", self.index);
 
+        // Reshape inputs
+        let input = reshape_layer(input, &self.input_shape);
+
+        // Get weights and biases
         let weights = read_4d_weights(api, &self.weights);
         let bias: Vec<Variable> = self.bias
             .clone()
             .into_iter()
             .map(|x| load_circuit_constant(api, x))
             .collect();
-        let alpha_two_v = api.mul(self.two_v as u32, self.scaling as u32);
-        eprintln!("Applying biases");
+        // Obtain scaling factors (This can move TODO)
+        let scale_factor = 1 << self.scaling;
+        let alpha_two_v = api.mul(self.two_v as u32, scale_factor as u32);
 
+        // Convert inputs to correct form
         let input = arrayd_to_vec4(input);
         eprintln!("GOT Input:");
         // TODO there should be a better way to do this (Maybe even inside conv4drun)
+        // Get input shape
         let in_shape = vec![input.len() as u32,input[0].len() as u32, input[0][0].len() as u32, input[0][0][0].len() as u32];
         
-        eprintln!("{:?}", &self.dilation);
-        eprintln!("{:?}", &self.kernel_shape);
-        eprintln!("{:?}", &self.pads);
-        eprintln!("{:?}", &self.strides);
-        eprintln!("{:?}", &in_shape);
-        eprintln!("{:?}", &self.scaling);
-        eprintln!("{:?}", &self.group);
-        eprintln!("{:?}",Variable::from(self.alpha_two_v));
+        // eprintln!("{:?}", &self.dilation);
+        // eprintln!("{:?}", &self.kernel_shape);
+        // eprintln!("{:?}", &self.pads);
+        // eprintln!("{:?}", &self.strides);
+        // eprintln!("{:?}", &in_shape);
+        // eprintln!("{:?}", &self.scaling);
+        // eprintln!("{:?}", &self.group);
         
+        // Run convolution
         let out = conv_4d_run(
             api,
             input,
@@ -189,6 +213,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             alpha_two_v,
             self.is_relu,
         );
+        eprintln!("GOT OUTPUT");
+
         
         eprint!("PRINTING INDEX");
         Ok(vec4_to_arrayd(out))
@@ -201,13 +227,23 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         api: &mut Builder,
         input: ArrayD<Variable>,
     ) -> Result<ArrayD<Variable>, String> {
-        let weights = read_2d_weights(api, &self.weights);
+
+        // Reshape inputs
+        let input = reshape_layer(input, &self.input_shape);
+
+        let mut weight_tensor = self.weights.clone();
+        if self.transb == 1{
+            weight_tensor = transpose(weight_tensor);
+        }
+        let weights = read_2d_weights(api, &weight_tensor);
         let bias = read_2d_weights(api, &self.bias);
         let mut out_2d = arrayd_to_vec2(input); // Potential point of failure, check with Jonathan
 
-        let alpha_two_v = api.mul(self.two_v as u32, self.scaling as u32);
+        let scale_factor = 1 << self.scaling;
+        let alpha_two_v = api.mul(self.two_v as u32, scale_factor as u32);
 
         out_2d = matrix_multplication_naive2(api, out_2d, weights);
+        eprintln!("out2d dimension {}, {}", out_2d.len(), out_2d[0].len());
         out_2d = matrix_addition_vec(api, out_2d, bias);
         api.display("3", out_2d[0][0]);
         eprintln!("GOT display:");
@@ -238,14 +274,25 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
     }
 }
 
+impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConstantLayer {
+    // Passthrough
+    fn apply(
+        &self,
+        api: &mut Builder,
+        input: ArrayD<Variable>,
+    ) -> Result<ArrayD<Variable>, String> {
+        Ok(input)
+    }
+}
+
 type BoxedDynLayer<C, B> = Box<dyn LayerOp<C, B>>;
 
 fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Builder>>> {
     let mut layers: Vec<BoxedDynLayer<C, Builder>> = vec![];
     const N_BITS: usize = 32;
     const V_PLUS_ONE: usize = N_BITS;
-    const TWO_V: u64 = 1 << (V_PLUS_ONE - 1);
-    let alpha_two_v_usize: usize = ((1 << CIRCUITPARAMS.scaling) * TWO_V) as usize;
+    const TWO_V: u32 = 1 << (V_PLUS_ONE - 1);
+    let alpha_two_v: u64 = ((1 << CIRCUITPARAMS.scaling) * TWO_V) as u64;
 
     // Load weights and biases into hashmap
 
@@ -259,16 +306,16 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
         .collect();
 
 
-    let shapes_map: HashMap<String, Vec<usize>> = collect_all_shapes(&ARCHITECTURE.architecture, &ARCHITECTURE.inputs);
-    let skip_next_layer = false;
+    let mut skip_next_layer = false;
     // let skip_future_layers = Set();
 
+    let inputs = &ARCHITECTURE.inputs;
+
+    // TODO havent figured out how but this can maybe go in build layers?
+    let shapes_map: HashMap<String, Vec<usize>> = collect_all_shapes(&ARCHITECTURE.architecture, inputs);
+    // TODO should account for multiple inputs
+
     for (i, layer) in ARCHITECTURE.architecture.iter().enumerate() {
-        // let is_relu = if i + 1 < WEIGHTS_INPUT.layers.len() {
-        //     WEIGHTS_INPUT.layers[i + 1].activation.starts_with("ReLU")
-        // } else {
-        //     false
-        // };
         /*
         TODO track relu through outputs instead. And skip the output layer when it comes in the graph (Maybe use a set containing the outputs)
          */
@@ -287,6 +334,7 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
             // let layer_plus_1 = &layer.output.name
             // May need to store all layer architecture in a hashmap or something, and access the next layer through the hashmap
             if layer_plus_1.starts_with("Relu") {
+                eprintln!("Found Relu for {}", layer.name.as_str());
                 is_relu = true;
                 skip_next_layer = true;
                 // skip_future_layers.add(layer_plus_1.name)
@@ -305,31 +353,38 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
 
         match layer.op_type.as_str() {
             "Conv" => {
-                let params = layer.params.unwrap();
+                let params = layer.params.clone().unwrap();
+                // TODO this should be done on a per input basis. For now this only works because we are looking at single input layers
+                // I think this should move inside the individual layers
+                let expected_shape = match shapes_map.get(&layer.inputs[0]){
+                    Some(input_shape) => input_shape,
+                    None => panic!("Error getting output shape for layer {}", layer.name)
+                };
                 let conv = ConvLayer {
+                    name: layer.name.clone(),
                     index: i,
                     weights: get_w_or_b(&w_and_b_map, &layer.inputs[1]),
                     bias: get_w_or_b(&w_and_b_map, &layer.inputs[2]),
-                    strides:get_param(&layer.name, &"strides", &params),
+                    strides: get_param(&layer.name, &"strides", &params),
                     kernel_shape: get_param(&layer.name, &"kernel_shape", &params),
                     group: vec![get_param(&layer.name, &"group", &params)],
                     dilation: get_param(&layer.name, &"dilations", &params),
                     pads: get_param(&layer.name, &"pads", &params),
-                    // input_shape: WEIGHTS_INPUT.conv_input_shape[conv_layer_num].clone(),
+                    input_shape: expected_shape.to_vec(),
                     scaling: CIRCUITPARAMS.scaling.into(),
-                    is_relu,
+                    is_relu: is_relu,
                     v_plus_one: N_BITS,
                     two_v: TWO_V,
                     /*
                     TODO - api.mul instead of hard-coding multiplication
                      */
-                    alpha_two_v: Variable::from(alpha_two_v_usize),
+                    alpha_two_v: alpha_two_v,
                     is_rescale: *is_rescale, //DONT KNOW IF THIS IS IDEAL TODO
                 };
 
                 layers.push(Box::new(conv));
             }
-            "reshape" => {
+            "Reshape" => {
                 /*
                    TODO - Implement permanent solution for what reshape layer needs like
                 */
@@ -339,80 +394,83 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 // layers.push(Box::new(reshape));
             }
             "Gemm" => {
-                let fc = GemmLayer {
+                let params = layer.params.clone().unwrap();
+                // TODO this should be done on a per input basis. For now this only works because we are looking at single input layers
+                // I think this should move inside the individual layers
+                let expected_shape = match shapes_map.get(&layer.inputs[0]){
+                    Some(input_shape) => input_shape,
+                    None => panic!("Error getting output shape for layer {}", layer.name)
+                };
+                let gemm = GemmLayer {
+                    name: layer.name.clone(),
                     index: i,
                     weights: get_w_or_b(&w_and_b_map, &layer.inputs[1]),
-                    bias: get_w_or_b(&w_and_b_map, &layer.inputs[2]),
-                    is_relu,
+                    bias: parse_maybe_1d_to_2d(get_w_or_b(&w_and_b_map, &layer.inputs[2])).unwrap(),
+                    is_relu: is_relu,
                     v_plus_one: V_PLUS_ONE,
                     two_v: TWO_V,
-                    alpha_two_v: Variable::from(alpha_two_v_usize),
+                    alpha_two_v: alpha_two_v,
                     is_rescale: is_rescale.clone(),
-                    scaling: WEIGHTS_INPUT.scaling, // TODO: Becomes scaling_in?
+                    scaling: CIRCUITPARAMS.scaling.into(), // TODO: Becomes scaling_in?
+                    input_shape: expected_shape.to_vec(),
+                    alpha: get_param(&layer.name, &"alpha", &params),
+                    beta: get_param(&layer.name, &"beta", &params),
+                    transb: get_param(&layer.name, &"transB", &params),
+
                 };
-                layers.push(Box::new(fc));
+                layers.push(Box::new(gemm));
+            }
+            "Constant" => {
+                // let constant = ConstantLayer {
+                //     value: get_param(&layer.name, &"value", &layer.params.clone().unwrap())
+                // };
+                // layers.push(Box::new(constant));
             }
             other => panic!("Unsupported layer type: {}", other),
         }
+        eprintln!("layer added: {}", layer.op_type.as_str() );
     }
-
     layers
 }
 // Memorization, in a better place
 impl<C: Config> Define<C> for Circuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         let mut out = vec1_to_arrayd(self.input_arr.clone());
-        // Load weights and biases into hashmap
-        let w_and_b_map: HashMap<String, ONNXLayer> = W_AND_B.w_and_b.clone()
-            .into_iter()
-            .map(|layer| (layer.name.clone(), layer))
-            .collect();
-
-
         let layers = build_layers::<C, Builder>();
         
         assert!(ARCHITECTURE.architecture.len() > 0);
 
         for (i, layer) in layers.iter().enumerate() {
 
-            // TODO: Fix the input / output shapes
-            let expected_shape = &WEIGHTS_INPUT.layer_input_shapes[i];
-
-            let raw_dim = out.raw_dim();
-            let dim_view = raw_dim.as_array_view();
-            let current_shape: &[usize] = dim_view.as_slice().unwrap();
-
-            if current_shape != expected_shape {
-                let reshape_shape = &WEIGHTS_INPUT.layer_input_shapes[i];
-
-                out = out
-                    .into_shape_with_order(IxDyn(&reshape_shape))
-                    .expect("Shape mismatch: Cannot reshape into the given dimensions");
-                print!("Check 1");
-            }
-
-            /*
-            ERROR IS OCCURING HERE
-             */
+            eprintln!("Applying Layer {:?}", &ARCHITECTURE.architecture[i].name);
             out = layer
                 .apply(api, out)
                 .expect(&format!("Failed to apply layer {}", i));
-        }
 
-        eprint!("Pre-vec1");
-        let flatten_shape: Vec<usize> = vec![WEIGHTS_INPUT.output_shape.iter().product()];
+        }
+        
+        eprint!("Flatten output");
+        let flatten_shape: Vec<usize> = vec![ARCHITECTURE.outputs.iter()
+            .map(|obj| obj.shape.iter().product::<usize>())
+            .product()];
 
         out = out
             .into_shape_with_order(IxDyn(&flatten_shape))
             .expect("Shape mismatch: Cannot reshape into the given dimensions"); 
+
         let output = arrayd_to_vec1(out);
-        eprint!("Pre-vec2");
+
+        eprint!("Assert outputs match");
         for (j, _) in self.outputs.iter().enumerate() {
             api.display("out1", self.outputs[j]);
             api.display("out2", output[j]);
             api.assert_is_equal(self.outputs[j], output[j]);
-            // api.assert_is_different(self.outputs[j], 1);
+            // api.assert_is_different(self.outputs[j], 13241234);
         }
+        api.assert_is_equal(self.dummy[0], 1);
+        api.assert_is_equal(self.dummy[1], 1);
+        eprintln!("Outputs match");
+
     }
 }
 
@@ -489,7 +547,32 @@ fn get_param<I:DeserializeOwned>(layer_name: &String, param_name: &str, params: 
         None => panic!("ParametersError: {} is missing {}", layer_name, param_name)
     }
 }
+fn reshape_layer(input: ndarray::ArrayBase<ndarray::OwnedRepr<Variable>, ndarray::Dim<ndarray::IxDynImpl>>, input_shape: &[usize]) -> ndarray::ArrayBase<ndarray::OwnedRepr<Variable>, ndarray::Dim<ndarray::IxDynImpl>> {
+    let raw_dim = input.raw_dim();
+    // Keep this alive
+    let dim_view = raw_dim.as_array_view();
+    // Borrow from that
+    let dim: &[usize] = dim_view.as_slice().unwrap();
+    // Now borrow is safe
 
+    let expected_shape = input_shape;
+
+    eprintln!("Current Shape {:?}", dim);
+    eprintln!("Expected Shape {:?}", expected_shape);
+
+    // TODO remove this
+    let mut input = input;
+    
+    if dim != expected_shape {
+        let reshape_shape = &expected_shape;
+
+
+        input = input
+            .into_shape_with_order(IxDyn(&reshape_shape))
+            .expect("Shape mismatch: Cannot reshape into the given dimensions");
+    }
+    input
+}
 fn convert_usize_to_u32(input: Vec<usize>) -> Vec<u32> {
     input.into_iter().map(|x| x as u32).collect()
 }
@@ -510,11 +593,15 @@ impl ConfigurableCircuit for Circuit<Variable> {
     fn configure(&mut self) {
         // Change input and outputs as needed
         // Outputs
-        let output_dims: usize = WEIGHTS_INPUT.output_shape.iter().product();
+        let output_dims: usize = ARCHITECTURE.outputs.iter()
+        .map(|obj| obj.shape.iter().product::<usize>())
+        .product();
         self.outputs = vec![Variable::default(); output_dims];
 
         // Inputs
-        let input_dims: usize = WEIGHTS_INPUT.input_shape.iter().product();
+        let input_dims: usize = ARCHITECTURE.inputs.iter()
+            .map(|obj| obj.shape.iter().product::<usize>())
+            .product();
         self.input_arr = vec![Variable::default(); input_dims];
     }
 }
@@ -531,7 +618,12 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
         let data: InputData =
             <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<InputData>(file_path);
 
-        let input_dims: &[usize] = &[WEIGHTS_INPUT.input_shape.iter().product()];
+        let input_dims: &[usize] = &[ARCHITECTURE.inputs.iter()
+            .map(|obj| obj.shape.iter().product::<usize>())
+            .product()]; 
+        assignment.dummy[0] = CircuitField::<C>::from(1);
+        assignment.dummy[1] = CircuitField::<C>::from(1);
+
 
         assignment.input_arr = get_1d_circuit_inputs::<C>(&data.input, input_dims);
         assignment
@@ -544,7 +636,9 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
         let data: OutputData =
             <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<OutputData>(file_path);
 
-        let output_dims: &[usize] = &[WEIGHTS_INPUT.output_shape.iter().product()];
+        let output_dims: &[usize] = &[ARCHITECTURE.outputs.iter()
+            .map(|obj| obj.shape.iter().product::<usize>())
+            .product()]; 
 
         assignment.outputs = get_1d_circuit_inputs::<C>(&data.output, output_dims);
         assignment
