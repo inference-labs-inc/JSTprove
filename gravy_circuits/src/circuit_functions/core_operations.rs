@@ -1,4 +1,5 @@
 use expander_compiler::frontend::*;
+use std::marker::PhantomData;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: unconstrained_to_bits
@@ -396,6 +397,7 @@ pub struct MaxAssertionContext<C: Config> {
 
     /// The offset `S = 2^s`, lifted as a constant into the circuit.
     pub offset: Variable,
+    _marker: PhantomData<C>,
 }
 
 impl<C: Config> MaxAssertionContext<C> {
@@ -410,6 +412,7 @@ impl<C: Config> MaxAssertionContext<C> {
         Self {
             shift_exponent,
             offset,
+            _marker: PhantomData,
         }
     }
 }
