@@ -94,7 +94,8 @@ pub fn assert_is_bitstring_and_reconstruct<C: Config, Builder: RootAPI<C>>(
         let weight = 1u32
             .checked_shl(i as u32)
             .expect("bit index i must be < 32");
-        let term = api.mul(api.constant(weight), bit);
+        let weight_const = api.constant(weight);
+        let term = api.mul(weight_const, bit);
         reconstructed = api.add(reconstructed, term);
     }
 
