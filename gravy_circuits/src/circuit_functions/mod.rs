@@ -7,3 +7,4 @@ pub mod matmul;
 pub mod extrema;
 pub mod conversion;
 pub mod max_pooling;
+pub mod core_operations;
