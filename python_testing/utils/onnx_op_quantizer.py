@@ -21,6 +21,8 @@ class ONNXOpQuantizer:
         self.register("Reshape", self._quantize_passthrough)
         self.register("Gemm", self._quantize_gemm)
         self.register("Constant", self._quantize_constant)
+        self.register("Maxpool", self._quantize_passthrough)
+
 
         
 

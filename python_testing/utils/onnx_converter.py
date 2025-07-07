@@ -196,9 +196,42 @@ class ONNXConverter(ModelConverter):
     
     def get_model_architecture(self, model: onnx.ModelProto, output_name_to_shape: Dict[str, List[int]], id_count: int = 0, domain_to_version: dict[str, int] = None):
         layers = []
-        # Check the model and print Y"s shape information
+        constant_values = {}
+        # First pass: collect constant nodes
+        for node in model.graph.node:
+            if node.op_type == "Constant":
+                print(node)
+                for attr in node.attribute:
+                    if attr.name == "value":
+                        tensor = attr.t
+                        const_value = numpy_helper.to_array(tensor)
+                        constant_values[node.output[0]] = const_value
+
+        # Map output name to shape (assumed provided from previous analysis)
+        layers = []
+        id_count = 0
+
+        # Second pass: analyze layers
         for (idx, node) in enumerate(model.graph.node):
-            layer = self.analyze_layer(node, output_name_to_shape, id_count, domain_to_version )
+            if node.op_type == "Constant":
+                continue  # Already processed
+
+            layer = self.analyze_layer(node, output_name_to_shape, id_count, domain_to_version)
+            print(layer.shape)
+
+            # Attach constant inputs as parameters
+            for input_name in node.input:
+                if input_name in constant_values:
+                    print(layer.params)
+                    if not hasattr(layer, 'params'):
+                        layer.params = {}
+                    result = constant_values[input_name]
+                    if isinstance(result, np.ndarray) or isinstance(result, torch.Tensor):
+                        layer.params[input_name] = result.tolist()
+                    else:
+                        layer.params[input_name] = constant_values[input_name]
+                    print(layer.params)
+
             layers.append(layer)
             id_count += 1
         return layers

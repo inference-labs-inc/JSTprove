@@ -13,7 +13,7 @@ use gravy_circuits::circuit_functions::matrix_computation::{
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use gravy_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
 use lazy_static::lazy_static;
-use ndarray::Dimension;
+use ndarray::{Array1, Dimension};
 use ndarray::{ ArrayD, IxDyn};
 use rand::distributions::WeightedError;
 use std::collections::HashMap;
@@ -25,7 +25,7 @@ use serde_json::Value;
 use gravy_circuits::circuit_functions::quantization::run_if_quantized_2d;
 
 
-type WeightsData = (Architecture, W_and_B, CircuitParams);
+type WeightsData = (Architecture, WANDB, CircuitParams);
 #[derive(Deserialize, Clone, Debug)]
 struct Architecture{
     inputs: Vec<ONNXIO>,
@@ -34,7 +34,7 @@ struct Architecture{
 }
 
 #[derive(Deserialize, Clone, Debug)]
-struct W_and_B{
+struct WANDB{
     w_and_b: Vec<ONNXLayer>,
 }
 
@@ -87,7 +87,7 @@ lazy_static! {
         x
     };
     static ref ARCHITECTURE: Architecture = WEIGHTS_INPUT.0.clone();
-    static ref W_AND_B: W_and_B = WEIGHTS_INPUT.1.clone();
+    static ref W_AND_B: WANDB = WEIGHTS_INPUT.1.clone();
     static ref CIRCUITPARAMS: CircuitParams = WEIGHTS_INPUT.2.clone();
 
 }
@@ -119,17 +119,23 @@ struct ConvLayer {
     two_v: u32,
     alpha_two_v: u64,
     is_rescale: bool,
+    inputs: Vec<String>,
+    outputs: Vec<String>,
 }
 #[derive(Debug)]
 struct ReshapeLayer {
     name: String,
     shape: Vec<usize>,
     input_shape: Vec<usize>,
+    inputs: Vec<String>,
+    outputs: Vec<String>,
+
 }
 #[derive(Debug)]
 struct ConstantLayer {
     name: String,
     value: Value,
+    outputs: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -148,11 +154,14 @@ struct GemmLayer {
     alpha: f32,
     beta: f32,
     transb: usize,
+    inputs: Vec<String>,
+    outputs: Vec<String>,
 }
 
 trait LayerOp<C: Config, Builder: RootAPI<C>> {
-    fn apply(&self, api: &mut Builder, input: ArrayD<Variable>)
-        -> Result<ArrayD<Variable>, String>;
+    fn apply(&self, api: &mut Builder, input: HashMap<String,ArrayD<Variable>>)
+    // fn apply(&self, api: &mut Builder, input: ArrayD<Variable>)
+        -> Result<(String,ArrayD<Variable>), String>;
 
     // fn build for every Layer type
 }
@@ -161,12 +170,16 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: ArrayD<Variable>,
-    ) -> Result<ArrayD<Variable>, String> {
-        eprintln!("Applying input shape CONV: {}", self.index);
+        input: HashMap<String,ArrayD<Variable>>,
+    ) -> Result<(String,ArrayD<Variable>), String> {
+        eprintln!("Applying input shape for CONV: {}", self.name);
 
+        eprintln!("{:?}", self.inputs);
+
+
+        let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         // Reshape inputs
-        let input = reshape_layer(input, &self.input_shape);
+        let layer_input = reshape_layer(layer_input, &self.input_shape);
 
         // Get weights and biases
         let weights = read_4d_weights(api, &self.weights);
@@ -180,24 +193,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         let alpha_two_v = api.mul(self.two_v as u32, scale_factor as u32);
 
         // Convert inputs to correct form
-        let input = arrayd_to_vec4(input);
+        let layer_input = arrayd_to_vec4(layer_input);
         eprintln!("GOT Input:");
         // TODO there should be a better way to do this (Maybe even inside conv4drun)
         // Get input shape
-        let in_shape = vec![input.len() as u32,input[0].len() as u32, input[0][0].len() as u32, input[0][0][0].len() as u32];
-        
-        // eprintln!("{:?}", &self.dilation);
-        // eprintln!("{:?}", &self.kernel_shape);
-        // eprintln!("{:?}", &self.pads);
-        // eprintln!("{:?}", &self.strides);
-        // eprintln!("{:?}", &in_shape);
-        // eprintln!("{:?}", &self.scaling);
-        // eprintln!("{:?}", &self.group);
+        let in_shape = vec![layer_input.len() as u32,layer_input[0].len() as u32, layer_input[0][0].len() as u32, layer_input[0][0][0].len() as u32];
+    
         
         // Run convolution
         let out = conv_4d_run(
             api,
-            input,
+            layer_input,
             weights,
             bias,
             &self.dilation,
@@ -214,10 +220,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             self.is_relu,
         );
         eprintln!("GOT OUTPUT");
-
-        
         eprint!("PRINTING INDEX");
-        Ok(vec4_to_arrayd(out))
+
+        Ok((self.outputs[0].clone(), vec4_to_arrayd(out)))
     }
 }
 
@@ -225,11 +230,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: ArrayD<Variable>,
-    ) -> Result<ArrayD<Variable>, String> {
+        input: HashMap<String,ArrayD<Variable>>,
+    ) -> Result<(String,ArrayD<Variable>), String> {
+        eprintln!("Applying input shape for GemmLayer: {}", self.name);
+        eprintln!("{:?}", self.inputs);
 
+
+        let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         // Reshape inputs
-        let input = reshape_layer(input, &self.input_shape);
+        let layer_input = reshape_layer(layer_input, &self.input_shape);
 
         let mut weight_tensor = self.weights.clone();
         if self.transb == 1{
@@ -237,7 +246,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         }
         let weights = read_2d_weights(api, &weight_tensor);
         let bias = read_2d_weights(api, &self.bias);
-        let mut out_2d = arrayd_to_vec2(input); // Potential point of failure, check with Jonathan
+        let mut out_2d = arrayd_to_vec2(layer_input); // Potential point of failure, check with Jonathan
 
         let scale_factor = 1 << self.scaling;
         let alpha_two_v = api.mul(self.two_v as u32, scale_factor as u32);
@@ -251,7 +260,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         eprintln!("GOT output:");
         let out = vec2_to_arrayd(out_2d);
         eprintln!("Finished");
-        Ok(out)
+        Ok((self.outputs[0].clone(), out))
     }
 }
 
@@ -262,26 +271,27 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: ArrayD<Variable>,
-    ) -> Result<ArrayD<Variable>, String> {
-        let reshape_shape: [usize; 2] = [1,12544];
-        let mut input = input;
-        input = input
+        input: HashMap<String,ArrayD<Variable>>,
+    ) -> Result<(String,ArrayD<Variable>), String> {
+        let reshape_shape = self.shape.clone();
+        let mut layer_input = input.get(&self.inputs[0]).unwrap();
+        let out = &layer_input.clone()
             .into_shape_with_order(IxDyn(&reshape_shape))
             .expect("Shape mismatch: Cannot reshape into the given dimensions.");
 
-        Ok(input)
+        Ok((self.outputs[0].clone(), out.clone()))
     }
 }
-
+// TODO remove constants from python side. Incorporate into the layer that uses it instead
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConstantLayer {
     // Passthrough
     fn apply(
         &self,
         api: &mut Builder,
-        input: ArrayD<Variable>,
-    ) -> Result<ArrayD<Variable>, String> {
-        Ok(input)
+        input: HashMap<String,ArrayD<Variable>>,
+    ) -> Result<(String,ArrayD<Variable>), String> {
+
+        Ok((self.outputs[0].clone(), ArrayD::from_shape_vec(IxDyn(&[1]), vec![api.constant(0)]).unwrap()))
     }
 }
 
@@ -328,6 +338,8 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
             skip_next_layer = false;
             continue
         }
+        // TODO needs to fix this approach
+        let mut outputs = layer.outputs.to_vec();
         let mut is_relu = false;
         if i + 1 < ARCHITECTURE.architecture.len(){
             let layer_plus_1 = &ARCHITECTURE.architecture[i + 1].op_type;
@@ -337,6 +349,7 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 eprintln!("Found Relu for {}", layer.name.as_str());
                 is_relu = true;
                 skip_next_layer = true;
+                outputs = ARCHITECTURE.architecture[i + 1].outputs.clone();
                 // skip_future_layers.add(layer_plus_1.name)
             }
         }
@@ -349,8 +362,7 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
         /*
         Implement Static Polymorphism, want to generalize a build function
         no matter the type of layer we want to build and return that layer type.
-         */
-
+        */
         match layer.op_type.as_str() {
             "Conv" => {
                 let params = layer.params.clone().unwrap();
@@ -380,6 +392,8 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                      */
                     alpha_two_v: alpha_two_v,
                     is_rescale: *is_rescale, //DONT KNOW IF THIS IS IDEAL TODO
+                    inputs: layer.inputs.to_vec(),
+                    outputs: outputs
                 };
 
                 layers.push(Box::new(conv));
@@ -388,10 +402,22 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 /*
                    TODO - Implement permanent solution for what reshape layer needs like
                 */
-                // let reshape = ReshapeLayer {
-                //     shape: WEIGHTS_INPUT.layer_input_shapes[i].clone(),
-                // };
-                // layers.push(Box::new(reshape));
+                let shape_name = layer.inputs[1].clone();
+                let params = layer.params.clone().unwrap();
+                
+                let expected_shape = match shapes_map.get(&layer.inputs[0]){
+                    Some(input_shape) => input_shape,
+                    None => panic!("Error getting output shape for layer {}", layer.name)
+                };
+                let output_shape = shapes_map.get(&layer.outputs.to_vec()[0]);
+                let reshape = ReshapeLayer {
+                    name: layer.name.clone(),
+                    input_shape: expected_shape.to_vec(),
+                    inputs: layer.inputs.to_vec(),
+                    outputs: layer.outputs.to_vec(),
+                    shape: get_param_or_default(&layer.name, &shape_name, &params, output_shape)
+                };
+                layers.push(Box::new(reshape));
             }
             "Gemm" => {
                 let params = layer.params.clone().unwrap();
@@ -416,6 +442,8 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                     alpha: get_param(&layer.name, &"alpha", &params),
                     beta: get_param(&layer.name, &"beta", &params),
                     transb: get_param(&layer.name, &"transB", &params),
+                    inputs: layer.inputs.to_vec(),
+                    outputs: outputs
 
                 };
                 layers.push(Box::new(gemm));
@@ -432,10 +460,53 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
     }
     layers
 }
+
+fn get_inputs<T: Clone>(v: Vec<T>, inputs: Vec<ONNXIO>) -> HashMap<String, ArrayD<T>>{
+    // Step 1: Compute total number of elements required
+    let total_required: usize = inputs
+        .iter()
+        .map(|input| input.shape.iter().product::<usize>())
+        .sum();
+
+    // Step 2: Validate that v has exactly the required number of elements
+    if v.len() != total_required {
+        panic!(
+            "Input data length mismatch: got {}, but {} elements required by input shapes",
+            v.len(),
+            total_required
+        );
+    }
+
+    // Step 3: Split and reshape
+    let mut result = HashMap::new();
+    let mut start = 0;
+
+    for input_info in inputs {
+        let num_elements: usize = input_info.shape.iter().product();
+        let end = start + num_elements;
+
+        let slice = v[start..end].to_vec(); // clone slice
+        let arr = ArrayD::from_shape_vec(IxDyn(&input_info.shape), slice)
+            .expect("Invalid shape for input data");
+
+        result.insert(input_info.name.clone(), arr);
+        start = end;
+    }
+
+    result
+}
+
 // Memorization, in a better place
 impl<C: Config> Define<C> for Circuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
-        let mut out = vec1_to_arrayd(self.input_arr.clone());
+        // Getting inputs
+        let mut out = get_inputs(self.input_arr.clone(), ARCHITECTURE.inputs.clone());
+        
+        // let mut out = out2.remove("input").unwrap().clone();
+
+
+
+        // let mut out = vec1_to_arrayd(self.input_arr.clone());
         let layers = build_layers::<C, Builder>();
         
         assert!(ARCHITECTURE.architecture.len() > 0);
@@ -443,9 +514,11 @@ impl<C: Config> Define<C> for Circuit<Variable> {
         for (i, layer) in layers.iter().enumerate() {
 
             eprintln!("Applying Layer {:?}", &ARCHITECTURE.architecture[i].name);
-            out = layer
-                .apply(api, out)
+            // TODO worried about clone in here being very expensive
+            let result = layer
+                .apply(api, out.clone())
                 .expect(&format!("Failed to apply layer {}", i));
+            out.insert(result.0, result.1);
 
         }
         
@@ -454,11 +527,14 @@ impl<C: Config> Define<C> for Circuit<Variable> {
             .map(|obj| obj.shape.iter().product::<usize>())
             .product()];
 
-        out = out
+        // TODO only support single output
+        let output_name = ARCHITECTURE.outputs[0].name.clone();
+
+        let output = out.get(&output_name).unwrap().clone()
             .into_shape_with_order(IxDyn(&flatten_shape))
             .expect("Shape mismatch: Cannot reshape into the given dimensions"); 
 
-        let output = arrayd_to_vec1(out);
+        let output = arrayd_to_vec1(output);
 
         eprint!("Assert outputs match");
         for (j, _) in self.outputs.iter().enumerate() {
@@ -519,7 +595,6 @@ pub fn parse_maybe_1d_to_2d<T: DeserializeOwned + Clone>(
     }
 }
 
-
 fn collect_all_shapes(layers: &[ONNXLayer], ios: &[ONNXIO]) -> HashMap<String, Vec<usize>> {
     let mut result = HashMap::new();
 
@@ -547,6 +622,32 @@ fn get_param<I:DeserializeOwned>(layer_name: &String, param_name: &str, params: 
         None => panic!("ParametersError: {} is missing {}", layer_name, param_name)
     }
 }
+
+
+fn get_param_or_default<I: DeserializeOwned + Clone>(
+    layer_name: &str,
+    param_name: &str,
+    params: &Value,
+    default: Option<&I>,
+) -> I {
+    match params.get(param_name) {
+        Some(param) => {
+            let x = param.clone();
+            match serde_json::from_value(x.clone()) {
+                Ok(value) => value,
+                Err(_) => {
+                    eprintln!("⚠️ Warning: Failed to parse param '{}': got value {} — using default", param_name, x);
+                    default.unwrap().clone()
+                }
+            }
+        },
+        None => {
+            eprintln!("⚠️ Warning: ParametersError: '{}' is missing '{}' — using default", layer_name, param_name);
+            default.unwrap().clone()
+        }
+    }
+}
+
 fn reshape_layer(input: ndarray::ArrayBase<ndarray::OwnedRepr<Variable>, ndarray::Dim<ndarray::IxDynImpl>>, input_shape: &[usize]) -> ndarray::ArrayBase<ndarray::OwnedRepr<Variable>, ndarray::Dim<ndarray::IxDynImpl>> {
     let raw_dim = input.raw_dim();
     // Keep this alive
