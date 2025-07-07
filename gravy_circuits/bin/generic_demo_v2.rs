@@ -11,7 +11,7 @@ use gravy_circuits::circuit_functions::matrix_computation::{
     matrix_multplication_naive3, matrix_multplication_naive3_array,
 };
 // !!! MaxPool
-use crate::circuit_functions::max_pooling::{setup_maxpooling_2d, maxpooling_2d};
+use gravy_circuits::circuit_functions::max_pooling::{setup_maxpooling_2d, maxpooling_2d};
 
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use gravy_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
@@ -307,10 +307,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         api: &mut Builder,
         input: ArrayD<Variable>,
     ) -> Result<ArrayD<Variable>, String> {
-        use crate::circuit_functions::max_pooling::{
+        use gravy_circuits::circuit_functions::max_pooling::{
             setup_maxpooling_2d, maxpooling_2d
         };
-        use crate::circuit_functions::helper_fn::{
+        use gravy_circuits::circuit_functions::helper_fn::{
             arrayd_to_vec4, vec4_to_arrayd
         };
 

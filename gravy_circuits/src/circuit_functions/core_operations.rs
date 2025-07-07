@@ -219,6 +219,8 @@ pub struct RescalingContext<C: Config> {
     pub scaling_factor: Variable,
     pub shift: Variable,
     pub scaled_shift: Variable,
+
+    _marker: PhantomData<C>,
 }
 
 impl<C: Config> RescalingContext<C> {
@@ -240,6 +242,7 @@ impl<C: Config> RescalingContext<C> {
             scaling_factor,
             shift,
             scaled_shift,
+            _marker: PhantomData,
         }
     }
 }
