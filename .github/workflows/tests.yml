@@ -41,7 +41,7 @@ jobs:
     - name: Test Doom Model #TODO: Have a standardized model to run from, multiple sources (other than ONNX)?
       run: |
         mkdir -p report
-        pytest --model doom --source onnx --html=report/report.html
+        pytest --model asojd --source onnx --html=report/report.html
 
     - name: Upload Pytest HTML Report
       uses: actions/upload-artifact@v4
