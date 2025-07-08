@@ -5,14 +5,14 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch, mock_open
 from python_testing.utils.model_converter import GeneralLayerFunctions
 
-
+@pytest.mark.unit
 def test_check_4d_eq_pass():
     g = GeneralLayerFunctions()
     t1 = torch.ones((2, 2, 2, 2))
     t2 = torch.ones((2, 2, 2, 2)) + 0.5
     g.check_4d_eq(t1, t2)  # Should not raise
 
-
+@pytest.mark.unit
 def test_check_4d_eq_fail():
     g = GeneralLayerFunctions()
     t1 = torch.ones((1, 1, 1, 1))
@@ -20,14 +20,14 @@ def test_check_4d_eq_fail():
     with pytest.raises(AssertionError):
         g.check_4d_eq(t1, t2)
 
-
+@pytest.mark.unit
 def test_check_2d_eq_pass():
     g = GeneralLayerFunctions()
     t1 = torch.tensor([[5.0, 5.5]])
     t2 = torch.tensor([[5.4, 5.9]])
     g.check_2d_eq(t1, t2)
 
-
+@pytest.mark.unit
 def test_check_2d_eq_fail():
     g = GeneralLayerFunctions()
     t1 = torch.tensor([[1.0]])
@@ -36,7 +36,7 @@ def test_check_2d_eq_fail():
         g.check_2d_eq(t1, t2)
 
 # --------- ONNX to Torch Format ---------
-
+@pytest.mark.unit
 @patch("python_testing.utils.pytorch_helpers.torch.tensor")
 @patch("python_testing.utils.pytorch_helpers.onnx.numpy_helper.to_array")
 def test_weights_onnx_to_torch_format(mock_to_array, mock_tensor):
@@ -56,14 +56,14 @@ def test_weights_onnx_to_torch_format(mock_to_array, mock_tensor):
     assert result["conv1"].bias == "tensor(2)"
 
 # --------- File I/O ---------
-
+@pytest.mark.unit
 @patch("builtins.open", new_callable=mock_open, read_data="1.0 2.0 3.0")
 def test_read_tensor_from_file(mock_file):
     g = GeneralLayerFunctions()
     tensor = g.read_tensor_from_file("dummy.txt")
     assert torch.allclose(tensor, torch.tensor([1.0, 2.0, 3.0]))
 
-
+@pytest.mark.unit
 @patch("builtins.open", new_callable=mock_open, read_data='{"input": [1, 2, 3]}')
 def test_read_input(mock_file):
     g = GeneralLayerFunctions()
@@ -72,7 +72,7 @@ def test_read_input(mock_file):
 
 # --------- Output Reading ---------
 
-
+@pytest.mark.unit
 def test_read_output_torch():
     g = GeneralLayerFunctions()
     model = MagicMock()
@@ -82,7 +82,7 @@ def test_read_output_torch():
     result = g.read_output(model, input_data, is_torch=True)
     assert result == "mocked_output"
 
-
+@pytest.mark.unit
 @patch("python_testing.utils.pytorch_helpers.ort.InferenceSession")
 def test_read_output_onnx(mock_session_cls):
     g = GeneralLayerFunctions()
@@ -96,7 +96,7 @@ def test_read_output_onnx(mock_session_cls):
     assert result == ["onnx_output"]
 
 # --------- Input Handling ---------
-
+@pytest.mark.unit
 @patch.object(GeneralLayerFunctions, 'read_input', return_value=[1, 2])
 def test_get_inputs_from_file_scaled(mock_read_input):
     g = GeneralLayerFunctions()
@@ -107,7 +107,7 @@ def test_get_inputs_from_file_scaled(mock_read_input):
     assert torch.equal(tensor, torch.tensor([1, 2]) * 100)
     assert tensor.shape == (2,)
 
-
+@pytest.mark.unit
 @patch.object(GeneralLayerFunctions, 'read_input', return_value=[3, 4])
 def test_get_inputs_from_file_long(mock_read_input):
     g = GeneralLayerFunctions()
@@ -117,7 +117,7 @@ def test_get_inputs_from_file_long(mock_read_input):
     assert tensor.shape == (2,)
 # test callable in get_inputs from file
 
-
+@pytest.mark.unit
 def test_create_new_inputs_shape_and_type():
     g = GeneralLayerFunctions()
     g.input_shape = (2, 3)
@@ -129,7 +129,7 @@ def test_create_new_inputs_shape_and_type():
     assert result.max() < 10
     assert result.min() > -10
 
-
+@pytest.mark.unit
 def test_get_inputs_with_shape(monkeypatch):
     g = GeneralLayerFunctions()
     g.input_shape = (1, 2)
@@ -137,7 +137,7 @@ def test_get_inputs_with_shape(monkeypatch):
     result = g.get_inputs("dummy.txt")
     assert torch.equal(result, torch.tensor([1, 2]).reshape(1, 2))
 
-
+@pytest.mark.unit
 def test_get_inputs_raises_if_no_shape():
     g = GeneralLayerFunctions()
     with pytest.raises(NotImplementedError, match = "Must define attribute input_shape"):
@@ -145,19 +145,19 @@ def test_get_inputs_raises_if_no_shape():
 
 
 # --------- Formatters ---------
-
+@pytest.mark.unit
 def test_format_inputs():
     g = GeneralLayerFunctions()
     result = g.format_inputs(torch.tensor([1, 2]))
     assert result == {"input": [1, 2]}
 
-
+@pytest.mark.unit
 def test_format_outputs():
     g = GeneralLayerFunctions()
     result = g.format_outputs(torch.tensor([5, 6]))
     assert result == {"output": [5, 6]}
 
-
+@pytest.mark.unit
 def test_format_inputs_outputs():
     g = GeneralLayerFunctions()
     inputs = torch.tensor([1])

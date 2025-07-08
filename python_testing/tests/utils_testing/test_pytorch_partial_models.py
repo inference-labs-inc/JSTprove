@@ -9,7 +9,7 @@ from python_testing.utils.pytorch_partial_models import (
 )
 
 # ---------- QuantizedLinear ----------
-
+@pytest.mark.unit
 def test_quantized_linear_forward_matches_float():
     scale = 16
     linear = nn.Linear(4, 2, bias=True)
@@ -30,7 +30,7 @@ def test_quantized_linear_forward_matches_float():
     assert y_float.shape == y_deq.shape
     torch.testing.assert_close(y_float, y_deq)
 
-
+@pytest.mark.unit
 def test_quantized_linear_no_rescale():
     scale = 100
     linear = nn.Linear(2, 2)
@@ -54,7 +54,7 @@ def test_quantized_linear_no_rescale():
 
 
 # ---------- QuantizedConv2d ----------
-
+@pytest.mark.unit
 def test_quantized_conv2d_forward_matches_float():
     conv = nn.Conv2d(1, 1, kernel_size=3, padding=1)
     conv.weight.data.fill_(1.0)
@@ -73,7 +73,7 @@ def test_quantized_conv2d_forward_matches_float():
     assert y_float.shape == y_deq.shape
     torch.testing.assert_close(y_float, y_deq)
 
-
+@pytest.mark.unit
 def test_quantized_conv2d_without_bias():
     conv = nn.Conv2d(1, 1, kernel_size=1, bias=False)
     qconv = QuantizedConv2d(conv, scale=16)
@@ -82,7 +82,7 @@ def test_quantized_conv2d_without_bias():
     assert y.shape == (1, 1, 1, 1)
     assert y.dtype == torch.long
 
-
+@pytest.mark.unit
 def test_quantized_conv2d_no_rescale():
     scale = 16
     conv = nn.Conv2d(1, 1, kernel_size=1)
@@ -104,14 +104,14 @@ def test_quantized_conv2d_no_rescale():
 
 
 # ---------- Simple Model Wrappers ----------
-
+@pytest.mark.unit
 def test_conv2d_model_output():
     model = Conv2DModel(1, 1)
     x = torch.ones((1, 1, 5, 5))
     y = model(x)
     assert y.shape[1] == 1
 
-
+@pytest.mark.unit
 def test_conv2d_model_relu_output():
     model = Conv2DModelReLU(1, 1, bias = True)
 
@@ -122,14 +122,14 @@ def test_conv2d_model_relu_output():
 
     assert torch.all(y == 0)  # relu zero-out
 
-
+@pytest.mark.unit
 def test_matmul_model_output_shape():
     model = MatrixMultiplicationModel(4, 2)
     x = torch.ones((1, 4))
     y = model(x)
     assert y.shape == (1, 2)
 
-
+@pytest.mark.unit
 def test_matmul_relu_model_non_negative():
     model = MatrixMultiplicationReLUModel(4, 2)
     model.fc1.weight.data.fill_(0.5)

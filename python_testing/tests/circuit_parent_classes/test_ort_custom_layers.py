@@ -28,7 +28,6 @@ from python_testing.utils.onnx_custom_ops.gemm import int64_gemm7
 
 import model_analyzer
 
-
 @pytest.fixture
 def tiny_conv_model_path(tmp_path):
     # Create input and output tensor info
@@ -77,7 +76,7 @@ def tiny_conv_model_path(tmp_path):
 
     return str(model_path)
 
-
+@pytest.mark.integration
 def test_tiny_conv(tiny_conv_model_path):
     # Prepare input: 4x4 array [0..15]
     X_input = np.arange(16, dtype=np.float32).reshape(1, 1, 4, 4)
@@ -102,7 +101,7 @@ def test_tiny_conv(tiny_conv_model_path):
     # Assert output values are close to expected sums
     np.testing.assert_allclose(Y_output, expected_output, rtol=1e-5, atol=1e-6)
 
-
+@pytest.mark.integration
 def test_tiny_conv(tiny_conv_model_path):
     path = tiny_conv_model_path
 
