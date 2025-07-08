@@ -488,10 +488,11 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 dilation: get_param(&layer.name, "dilations", &params),
                 padding: get_param(&layer.name, "pads", &params),
                 input_shape: expected_shape.clone(),
-                shift_exponent: N_BITS,
+                shift_exponent: N_BITS - 1,
                 };
                 layers.push(Box::new(maxpool));
             }
+            "Flatten" => continue, 
             other => panic!("Unsupported layer type: {}", other),
         }
         eprintln!("layer added: {}", layer.op_type.as_str() );
