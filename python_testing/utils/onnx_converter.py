@@ -30,6 +30,10 @@ from python_testing.utils.onnx_custom_ops.relu import int64_relu
 
 from python_testing.utils.onnx_custom_ops.gemm import int64_gemm7
 
+# !!! MaxPool
+from python_testing.utils.onnx_custom_ops.maxpool import int64_maxpool
+
+
 
 import model_analyzer
 # @dataclass
@@ -401,6 +405,8 @@ class ONNXConverter(ModelConverter):
         for vi in model.graph.value_info:
             vi.type.tensor_type.elem_type = TensorProto.INT64
         # TODO remove
+        # !!! MaxPool
+        onnx.checker.check_model(model)
         onnx.save(model, "debug_test.onnx")
         return model
         
