@@ -36,7 +36,8 @@ jobs:
           libopenmpi-dev \
           pkg-config \
           libclang-dev \
-          clang
+          clang \
+          openmpi-bin \
     - name: Test Doom Model #TODO: Have a standardized model to run from, multiple sources (other than ONNX)?
       run: |
         mkdir -p report
