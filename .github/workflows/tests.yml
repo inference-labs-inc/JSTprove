@@ -30,6 +30,13 @@ jobs:
         python -m pip install --upgrade pip
         pip install pytest pytest-html
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    - name: Install OMPI
+      run: |
+        apt-get update && apt-get install -y \
+          libopenmpi-dev \
+          pkg-config \
+          libclang-dev \
+          clang
     - name: Test Doom Model #TODO: Have a standardized model to run from, multiple sources (other than ONNX)?
       run: |
         mkdir -p report
