@@ -406,6 +406,10 @@ class ONNXConverter(ModelConverter):
             vi.type.tensor_type.elem_type = TensorProto.INT64
         # TODO remove
         # !!! MaxPool
+        custom_domain = helper.make_operatorsetid(domain="ai.onnx.contrib",version=1)
+        domains = [op.domain for op in model.opset_import]
+        if "ai.onnx.contrib" not in domains:
+            model.opset_import.append(custom_domain)
         onnx.checker.check_model(model)
         onnx.save(model, "debug_test.onnx")
         return model

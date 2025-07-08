@@ -23,6 +23,7 @@ class ONNXOpQuantizer:
         self.register("Constant", self._quantize_constant)
         # !!! MaxPool
         self.register("MaxPool", self._quantize_maxpool)
+        # self.register("MaxPool", self._quantize_passthrough)
 
         
 
@@ -150,15 +151,15 @@ class ONNXOpQuantizer:
     
     # !!! MaxPool
     def _quantize_maxpool(self, node, rescale, graph, scale, scale_base, initializer_map):
-    attrs = {a.name: helper.get_attribute_value(a) for a in node.attribute}
-    attr_str = {k: ",".join(map(str, v)) if isinstance(v, list) else str(v) for k, v in attrs.items()}
-    return helper.make_node(
-        "Int64MaxPool",
-        inputs=node.input,
-        outputs=node.output,
-        name=node.name,
-        domain="ai.onnx.contrib",
-        **attr_str
+        attrs = {a.name: helper.get_attribute_value(a) for a in node.attribute}
+        attr_str = {k: ",".join(map(str, v)) if isinstance(v, list) else str(v) for k, v in attrs.items()}
+        return helper.make_node(
+            "Int64MaxPool",
+            inputs=node.input,
+            outputs=node.output,
+            name=node.name,
+            domain="ai.onnx.contrib",
+            **attr_str
     )
 
     def _quantize_passthrough(self, node: onnx.NodeProto, *args):
