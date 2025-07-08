@@ -32,7 +32,7 @@ jobs:
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     - name: Install OMPI
       run: |
-        apt-get update && apt-get install -y \
+        sudo apt-get update && sudo apt-get install -y \
           libopenmpi-dev \
           pkg-config \
           libclang-dev \
