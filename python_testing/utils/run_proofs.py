@@ -27,30 +27,113 @@ class ZKProofsExpander():
         self.toml_path = f"{self.circuit_folder}/Cargo.toml"
         self.circuit_file = circuit_file
 
-        # cargo run --bin testing --manifest-path ExpanderCompilerCollection/Cargo.toml inputs/reward_input.json output/reward_output.json
 
 
-    def run_proof(self, input_file: str, output_file: str):
+    def run_proof(self, input_file: str, output_file: str, demo = False, dev_mode = True):
         assert isinstance(input_file, str)
         assert isinstance(output_file, str)
+        if dev_mode:
+            executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release", input_file, output_file]
+        else:
+            executable_to_run = [f"./target/release/{self.circuit_file}", input_file, output_file]
+            
 
-        # Default run of file
-        executable_to_run = ["cargo", "run", "--bin", self.circuit_file]
-
-        # Add path to toml
-        executable_to_run.append("--manifest-path")
-        executable_to_run.append(f"{self.toml_path}")
-
-        # Add inputs
-        executable_to_run.append(input_file)
-
-        # Add output
-        executable_to_run.append(output_file)
-
-        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=False)
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
         if res.returncode == 0:
             logging.info(f"Circuit Compiled with return code: {res.returncode}")
 
+    def run_end_to_end(self, input_file: str, output_file: str, circuit_name:str,  demo = False, dev_mode = False):
+        assert isinstance(input_file, str)
+        assert isinstance(output_file, str)
+
+        # Add path to toml
+        if dev_mode:
+            executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
+        else:
+            executable_to_run = [f"./target/release/{self.circuit_file}"]
+
+        executable_to_run.append("run_proof")
+
+        executable_to_run.append(f"-n {circuit_name}")
+
+        executable_to_run.append("-i")
+        executable_to_run.append(input_file)
+
+        executable_to_run.append("-o")
+        executable_to_run.append(output_file)
+
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
+        if res.returncode == 0:
+            logging.info(f"Circuit Compiled with return code: {res.returncode}")
+
+    def run_compile_circuit(self, circuit_name: str, demo = False, dev_mode = False):
+        # Add path to toml
+        if dev_mode:
+            executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
+        else:
+            executable_to_run = [f"./target/release/{self.circuit_file}"]
+
+        executable_to_run.append("run_compile_circuit")
+        executable_to_run.append("-n")
+        executable_to_run.append(circuit_name)
+
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
+        if res.returncode == 0:
+            logging.info(f"Circuit Compiled with return code: {res.returncode}")
+
+    def run_gen_witness(self, circuit_name: str, witness_name: str, input_file: str, output_file: str, demo = False, dev_mode = False):
+        if dev_mode:
+            executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
+        else:
+            executable_to_run = [f"./target/release/{self.circuit_file}"]
+
+        executable_to_run.append("run_gen_witness")
+        executable_to_run.append("-n")
+        executable_to_run.append(circuit_name)
+
+        executable_to_run.append("-i")
+        executable_to_run.append(input_file)
+
+        executable_to_run.append("-o")
+        executable_to_run.append(output_file)
+
+
+
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
+        if res.returncode == 0:
+            logging.info(f"Circuit Compiled with return code: {res.returncode}")
+
+    def run_prove_witness(self, circuit_name: str, demo = False, dev_mode = False):
+        if dev_mode:
+            executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
+        else:
+            executable_to_run = [f"./target/release/{self.circuit_file}"]
+
+        executable_to_run.append("run_prove_witness")
+        executable_to_run.append("-n")
+        executable_to_run.append(circuit_name)
+
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
+        if res.returncode == 0:
+            logging.info(f"Circuit Compiled with return code: {res.returncode}")
+
+    def run_gen_verify(self, circuit_name: str, demo = False, dev_mode = False):
+        if dev_mode:
+            executable_to_run = ["cargo", "run", "--bin", self.circuit_file, "--release"]
+        else:
+            executable_to_run = [f"./target/release/{self.circuit_file}"]
+
+
+        executable_to_run.append("run_gen_verify")
+        executable_to_run.append("-n")
+        executable_to_run.append(circuit_name)
+
+
+
+
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
+        if res.returncode == 0:
+            logging.info(f"Circuit Compiled with return code: {res.returncode}")
 
 class ZKProofsCircom():
     def __init__(self, circuit_file: str):
@@ -167,19 +250,39 @@ class ZKProofsCircom():
         
 class ExecutableHelperFunctions():
     @staticmethod
-    def run_process(executable: List[str], die_on_error:bool =True, shell = False):
+    def filter_compiling_output(command):
+        env = os.environ.copy()
+        env["RUSTFLAGS"] = "-C target-cpu=native"
+        # Run the command and get real-time output
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env = env, text=True)
+        import re
+        # Iterate over stdout and stderr, and print them to the command line
+        for line in process.stdout:
+            print(re.sub(r'\[.*?\]', '', line), end='')  # Print to the command line (stdout)
+        process.wait()
+        return process
+    @staticmethod
+    def run_process(executable: List[str], die_on_error:bool =True, shell = False, demo = False):
+        env = os.environ.copy()
+        env["RUSTFLAGS"] = "-C target-cpu=native"
+        if demo:
+            res = ExecutableHelperFunctions.filter_compiling_output(executable)
+            return res
         try:
-            # If output is reading weirdlt, change capture_output to True, add `text=True` and print the output
-            res = subprocess.run(executable, check=True, capture_output=False, shell=shell)
-            # print("STDOUT:", res.stdout)
-            # print("STDERR:", res.stderr)
+            # Capture output by setting capture_output=True
+            if "pytest" in sys.modules:
+                capture_output = True
+            else:
+                capture_output = False
+            res = subprocess.run(executable, env = env, check=True, capture_output=capture_output, shell=shell, text=True)
             return res
         except subprocess.CalledProcessError as err:
-            logging.error(f"{err} {err.stderr.decode('utf8')}")
-            # logging.error(f"ARGS {err.args}")
-            logging.error(err.output.decode('utf8'))
+            # Log the error message from stderr
+            stderr_output = err.stderr if err.stderr else "No stderr output"
+            logging.error(f"Error: {err} {stderr_output}")
             if die_on_error:
-                sys.exit()
+                # assert(err)
+                raise
             return err
         
     @staticmethod
@@ -206,6 +309,7 @@ class ExecutableHelperFunctions():
         except subprocess.CalledProcessError as err:
             logging.error(f"{err} {err.stderr.decode('utf8')}")
             logging.error(err.output.decode('utf8'))
+            logging.debug(f"Running command: {' '.join(executable)}")
             if die_on_error:
                 sys.exit()
             return err
