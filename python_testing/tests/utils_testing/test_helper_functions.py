@@ -188,7 +188,7 @@ def test_run_command_failure(mock_run):
 
 
 # ---------- Expander with ECC (happy path) ----------
-@pytest.mark.unit
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command")
 def test_prove_and_verify_expander_ecc_calls_cargo(mock_cargo):
     prove_and_verify(
@@ -208,7 +208,7 @@ def test_prove_and_verify_expander_ecc_calls_cargo(mock_cargo):
 
 
 # ---------- Expander with ECC (error fallback) ----------
-@pytest.mark.unit
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command", side_effect=Exception("boom"))
 def test_prove_and_verify_expander_ecc_fails_gracefully(mock_cargo, capsys):
     prove_and_verify(
@@ -228,7 +228,7 @@ def test_prove_and_verify_expander_ecc_fails_gracefully(mock_cargo, capsys):
 
 
 # ---------- Expander with NO ECC ----------
-@pytest.mark.unit
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_expander_raw")
 @patch("python_testing.utils.helper_functions.get_expander_file_paths", return_value={
     "circuit_file": "c.circ",
@@ -280,7 +280,7 @@ def test_get_expander_file_paths():
 
 
 # ---------- run_expander_exec ----------
-@pytest.mark.unit
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.subprocess.run")
 def test_run_expander_exec_calls_correct_args(mock_run):
     mock_run.return_value.returncode = 0
@@ -290,7 +290,7 @@ def test_run_expander_exec_calls_correct_args(mock_run):
     assert "--output-proof-file" in args
     assert not "--input-proof-file" in args
 
-@pytest.mark.unit
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.subprocess.run")
 def test_run_expander_exec_calls_verify_correct_args(mock_run):
     mock_run.return_value.returncode = 0
@@ -300,14 +300,14 @@ def test_run_expander_exec_calls_verify_correct_args(mock_run):
     assert "--input-proof-file" in args
     assert not "--output-proof-file" in args
 
-@pytest.mark.unit
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.subprocess.run")
 def test_run_expander_exec_bad_mode(mock_run):
     mock_run.return_value.returncode = 0
     with pytest.raises(AssertionError):
         run_expander_exec("Unicorn", "circuit.txt", "witness.txt", "proof.txt")
 
-@pytest.mark.unit
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.subprocess.run")
 def test_run_expander_exec_handles_failure(mock_run, capsys):
     mock_run.return_value.returncode = 1
@@ -319,7 +319,7 @@ def test_run_expander_exec_handles_failure(mock_run, capsys):
 
 
 # ---------- compile_circuit ----------
-@pytest.mark.unit
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command")
 def test_compile_circuit_expander(mock_run):
     compile_circuit("model", "path/to/circuit", ZKProofSystems.Expander)
@@ -328,7 +328,7 @@ def test_compile_circuit_expander(mock_run):
     assert args["c"] == "path/to/circuit"
     assert mock_run.call_args[0][3] == False
 
-@pytest.mark.unit
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command")
 def test_compile_circuit_expander_dev_mode_true(mock_run):
     compile_circuit("model2", "path/to/circuit2", ZKProofSystems.Expander, True)
@@ -337,7 +337,7 @@ def test_compile_circuit_expander_dev_mode_true(mock_run):
     assert args["c"] == "path/to/circuit2"
     assert mock_run.call_args[0][3] == True
 
-@pytest.mark.unit
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command", side_effect = Exception("TEST"))
 def test_compile_circuit_expander_rust_error(mock_run, capfd):
     compile_circuit("model2", "path/to/circuit2", ZKProofSystems.Expander, True)
@@ -346,14 +346,14 @@ def test_compile_circuit_expander_rust_error(mock_run, capfd):
     assert "Using binary: model2" in out
 
 
-@pytest.mark.unit
+@pytest.mark.integration
 def test_compile_circuit_unknown_raises():
     with pytest.raises(NotImplementedError):
         compile_circuit("m", "p", "unsupported")
 
 
 # # ---------- generate_witness ----------
-@pytest.mark.unit
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command")
 def test_generate_witness_expander(mock_run):
     generate_witness("model", "path/to/circuit", "witness", "input", "output", ZKProofSystems.Expander)
@@ -365,7 +365,7 @@ def test_generate_witness_expander(mock_run):
     assert args["o"] == "output"
     assert mock_run.call_args[0][3] == False
 
-@pytest.mark.unit
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command")
 def test_generate_witness_expander_dev_mode_true(mock_run):
     generate_witness("model", "path/to/circuit", "witness", "input", "output", ZKProofSystems.Expander, True)
@@ -377,7 +377,7 @@ def test_generate_witness_expander_dev_mode_true(mock_run):
     assert args["o"] == "output"
     assert mock_run.call_args[0][3] == True
 
-@pytest.mark.unit
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command", side_effect = Exception("TEST"))
 def test_generate_witness_expander_rust_error(mock_run, capfd):
     generate_witness("model2", "path/to/circuit2", "witness", "input", "output", ZKProofSystems.Expander, True)
@@ -393,7 +393,7 @@ def test_generate_witness_unknown_raises():
 
 # ---------- generate_proof ----------
 
-@pytest.mark.unit
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_expander_raw")
 @patch("python_testing.utils.helper_functions.get_expander_file_paths", return_value={
     "circuit_file": "c", "witness_file": "w", "proof_file": "p"
@@ -408,7 +408,7 @@ def test_generate_proof_expander_no_ecc(mock_paths, mock_exec):
 
     assert mock_exec.call_count == 1
 
-@pytest.mark.unit
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command")
 def test_generate_proof_expander_with_ecc(mock_run):
     generate_proof("model", "c", "w", "p", ZKProofSystems.Expander, ecc=True)
@@ -422,7 +422,7 @@ def test_generate_proof_expander_with_ecc(mock_run):
     assert args[2]['w'] == 'w'
     assert args[2]['p'] == 'p'
 
-@pytest.mark.unit
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command")
 def test_generate_proof_expander_with_ecc_dev_mode_true(mock_run):
     generate_proof("model", "c", "w", "p", ZKProofSystems.Expander, ecc=True, dev_mode=True)
@@ -452,7 +452,7 @@ def test_generate_proof_expander_rust_error(mock_run, capfd):
 
 
 # # ---------- generate_verification ----------
-@pytest.mark.unit
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_expander_raw")
 @patch("python_testing.utils.helper_functions.get_expander_file_paths", return_value={
     "circuit_file": "c", "witness_file": "w", "proof_file": "p"
@@ -466,7 +466,7 @@ def test_generate_verify_expander_no_ecc(mock_paths, mock_exec):
 
     assert mock_exec.call_count == 1
 
-@pytest.mark.unit
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command")
 def test_generate_verify_expander_with_ecc(mock_run):
     generate_verification("model", "cp", "i", "o", "w", "p", ZKProofSystems.Expander, ecc=True)
@@ -482,7 +482,7 @@ def test_generate_verify_expander_with_ecc(mock_run):
     assert args[2]['i'] == 'i'
     assert args[2]['o'] == 'o'
 
-@pytest.mark.unit
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command")
 def test_generate_verify_expander_with_ecc_dev_mode_true(mock_run):
     generate_verification("model", "cp", "i", "o", "w", "p",  ZKProofSystems.Expander, ecc=True, dev_mode=True)

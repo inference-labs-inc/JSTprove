@@ -44,7 +44,6 @@ def test_base_testing_calls_parse_proof_run_type():
     assert "witness.wtns" in args
     assert RunType.BASE_TESTING in args
 
-# TODO Fix
 @pytest.mark.unit
 @patch.object(ZKTorchModel, 'parse_proof_run_type')
 def test_base_testing_uses_default_weights_path(mock_parse):

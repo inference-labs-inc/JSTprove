@@ -120,7 +120,7 @@ def test_quantize_model():
     assert isinstance(getattr(quantized, "conv1"), QuantizedConv2d)
 
 # ---------- get_weights ----------
-@pytest.mark.unit
+@pytest.mark.integration
 @patch.object(PytorchConverter, 'get_input_and_output_shapes_by_layer')
 @patch.object(PytorchConverter, 'get_used_layers')
 def test_get_weights(mock_used_layers, mock_shapes):
@@ -150,7 +150,7 @@ def test_get_weights(mock_used_layers, mock_shapes):
     assert "conv_weights" in weights
     assert "fc_weights" in weights
 
-@pytest.mark.unit
+@pytest.mark.integration
 def test_get_weights_values():
     class DummyConv(nn.Conv2d):
         def __init__(self):
