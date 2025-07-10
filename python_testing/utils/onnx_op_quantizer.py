@@ -16,8 +16,8 @@ class ONNXOpQuantizer:
         self.register("Conv", self._quantize_conv)
         self.register("MatMul", self._quantize_matmul)
         # TODO check long term if we need the custom relu or can passthrough here
-        # self.register("Relu", self._quantize_relu) # might work with quantize_passthrough instead for some models
-        self.register("Relu", self._quantize_passthrough) # might work with quantize_passthrough instead for some models
+        self.register("Relu", self._quantize_relu) # might work with quantize_passthrough instead for some models
+        # self.register("Relu", self._quantize_passthrough) # might work with quantize_passthrough instead for some models
         self.register("Reshape", self._quantize_passthrough)
         self.register("Gemm", self._quantize_gemm)
         self.register("Constant", self._quantize_constant)
