@@ -1,7 +1,6 @@
 use std::ops::Neg;
 
 use expander_compiler::frontend::*;
-use circuit_std_rs::logup::LogUpRangeProofTable;
 use jstprove_circuits::circuit_functions::helper_fn::four_d_array_to_vec;
 use jstprove_circuits::runner::main_runner::handle_args;
 use jstprove_circuits::io::io_reader::{FileReader, IOReader};
@@ -58,14 +57,12 @@ impl<C: Config> Define<C> for MaxPoolCircuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         // Create a shared lookup table for digit range checks
         let nb_bits = (32 - BASE.leading_zeros()) as usize;
-        let mut table = LogUpRangeProofTable::new(nb_bits);
         table.initial(api);
         let mut _table_opt = Some(&mut table);
         let inputs = four_d_array_to_vec(self.input_arr.clone());
 
         let (kernel_shape, strides, dilation, output_spatial_shape, new_pads) = setup_maxpooling_2d(&WEIGHTS_INPUT.maxpool_padding[0], &WEIGHTS_INPUT.maxpool_kernel_size[0], &WEIGHTS_INPUT.maxpool_stride[0], &WEIGHTS_INPUT.maxpool_dilation[0], WEIGHTS_INPUT.maxpool_ceil_mode[0], &WEIGHTS_INPUT.maxpool_input_shape[0]);
 
-        let mut table = LogUpRangeProofTable::new(nb_bits);
         table.initial(api);
         let mut table_opt = Some(&mut table);
 
@@ -150,10 +147,8 @@ impl<C: Config> IOReader<MaxPoolCircuit<CircuitField::<C>>, C> for FileReader {
 
 fn main() {
     let mut file_reader = FileReader {
-        path: "extrema".to_owned(),
+        path: "maxpooling".to_owned(),
     };
-    // handle_args::<M31Config, ExtremaCircuit<Variable>,ExtremaCircuit<_>,_>(&mut file_reader);
-    // handle_args::<BN254Config, ExtremaCircuit<Variable>,ExtremaCircuit<_>,_>(&mut file_reader);
     handle_args::<BN254Config, MaxPoolCircuit<Variable>,MaxPoolCircuit<_>,_>(&mut file_reader);
 
     

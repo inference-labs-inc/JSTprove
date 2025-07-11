@@ -73,9 +73,7 @@ path = "bin/matmul_circuit.rs"
 name = "matmul_bias"
 path = "bin/matmul_bias_circuit.rs"
 
-[[bin]]
-name = "extrema"
-path = "bin/extrema_circuit.rs"
+
 [[bin]]
 name = "maxpooling"
 path = "bin/maxpooling_circuit.rs"

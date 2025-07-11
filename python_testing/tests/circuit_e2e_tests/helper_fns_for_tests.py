@@ -3,7 +3,6 @@ import numpy as np
 import pytest
 import torch
 
-from python_testing.circuit_components.extrema import Extrema
 from python_testing.circuit_components.matmul import MatMul
 from python_testing.circuit_components.matmul_bias import MatMulBias
 from python_testing.circuit_components.maxpooling import MaxPooling2D
