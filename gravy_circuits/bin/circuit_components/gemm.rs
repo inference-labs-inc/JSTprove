@@ -1,13 +1,13 @@
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use gravy_circuits::circuit_functions::helper_fn::{read_2d_weights, two_d_array_to_vec};
-use gravy_circuits::io::io_reader::{FileReader, IOReader};
-use gravy_circuits::circuit_functions::matrix_computation::gemm_vec;
-use gravy_circuits::circuit_functions::quantization::quantize_matrix;
+use jstprove_circuits::circuit_functions::helper_fn::{read_2d_weights, two_d_array_to_vec};
+use jstprove_circuits::io::io_reader::{FileReader, IOReader};
+use jstprove_circuits::circuit_functions::matrix_computation::gemm_vec;
+use jstprove_circuits::circuit_functions::quantization::quantize_matrix;
 use serde::Deserialize;
 // use std::ops::Neg;
 use lazy_static::lazy_static;
-use gravy_circuits::runner::main_runner::handle_args;
+use jstprove_circuits::runner::main_runner::handle_args;
 
 
 /*

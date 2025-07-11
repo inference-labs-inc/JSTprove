@@ -1,19 +1,19 @@
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use gravy_circuits::circuit_functions::helper_fn::{four_d_array_to_vec,read_2d_weights};
-use gravy_circuits::io::io_reader::{FileReader, IOReader};
+use jstprove_circuits::circuit_functions::helper_fn::{four_d_array_to_vec,read_2d_weights};
+use jstprove_circuits::io::io_reader::{FileReader, IOReader};
 use lazy_static::lazy_static;
 #[allow(unused_imports)]
-use gravy_circuits::circuit_functions::matrix_computation::{
+use jstprove_circuits::circuit_functions::matrix_computation::{
     matrix_multplication, matrix_multplication_array, matrix_multplication_naive,
     matrix_multplication_naive2, matrix_multplication_naive2_array, matrix_multplication_naive3,
     matrix_multplication_naive3_array, matrix_addition_vec
 };
-use gravy_circuits::circuit_functions::quantization::run_if_quantized_2d;
+use jstprove_circuits::circuit_functions::quantization::run_if_quantized_2d;
 use serde::Deserialize;
 use std::ops::Neg;
 
-use gravy_circuits::runner::main_runner::handle_args;
+use jstprove_circuits::runner::main_runner::handle_args;
 
 
 //Define structure of inputs, weights and output

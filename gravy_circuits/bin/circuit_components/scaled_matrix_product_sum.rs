@@ -1,10 +1,10 @@
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use gravy_circuits::io::io_reader::{FileReader, IOReader};
-use gravy_circuits::circuit_functions::matrix_computation::scaled_matrix_product_sum;
+use jstprove_circuits::io::io_reader::{FileReader, IOReader};
+use jstprove_circuits::circuit_functions::matrix_computation::scaled_matrix_product_sum;
 use serde::Deserialize;
 // use std::ops::Neg;
-use gravy_circuits::runner::main_runner::handle_args;
+use jstprove_circuits::runner::main_runner::handle_args;
 
 /*
 Step 3: scalar times matrix product of two matrices of compatible dimensions, plus a third matrix of campatible dimensions.

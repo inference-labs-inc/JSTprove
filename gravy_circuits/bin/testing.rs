@@ -1,4 +1,4 @@
-use gravy_circuits::{io::io_reader, runner::main_runner};
+use jstprove_circuits::{io::io_reader, runner::main_runner};
 use ethnum::U256;
 use expander_compiler::frontend::*;
 use io_reader::{FileReader, IOReader};

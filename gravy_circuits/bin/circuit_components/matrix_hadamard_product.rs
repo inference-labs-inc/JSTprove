@@ -1,11 +1,11 @@
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use gravy_circuits::io::io_reader::{FileReader, IOReader};
-use gravy_circuits::circuit_functions::matrix_computation::matrix_hadamard_product;
+use jstprove_circuits::io::io_reader::{FileReader, IOReader};
+use jstprove_circuits::circuit_functions::matrix_computation::matrix_hadamard_product;
 use serde::Deserialize;
 // use std::ops::Neg;
 
-use gravy_circuits::runner::main_runner::handle_args;
+use jstprove_circuits::runner::main_runner::handle_args;
 
 
 /*

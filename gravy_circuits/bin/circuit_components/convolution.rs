@@ -1,19 +1,19 @@
-use gravy_circuits::circuit_functions::convolution_fn::{conv_shape_4, not_yet_implemented_conv, set_default_params};
+use jstprove_circuits::circuit_functions::convolution_fn::{conv_shape_4, not_yet_implemented_conv, set_default_params};
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use gravy_circuits::circuit_functions::helper_fn::{four_d_array_to_vec, load_circuit_constant, read_4d_weights};
-use gravy_circuits::io::io_reader::{FileReader, IOReader};
+use jstprove_circuits::circuit_functions::helper_fn::{four_d_array_to_vec, load_circuit_constant, read_4d_weights};
+use jstprove_circuits::io::io_reader::{FileReader, IOReader};
 use lazy_static::lazy_static;
 #[allow(unused_imports)]
-use gravy_circuits::circuit_functions::matrix_computation::{
+use jstprove_circuits::circuit_functions::matrix_computation::{
     matrix_multplication, matrix_multplication_array, matrix_multplication_naive,
     matrix_multplication_naive2, matrix_multplication_naive2_array, matrix_multplication_naive3,
     matrix_multplication_naive3_array,
 };
-use gravy_circuits::circuit_functions::quantization::quantize_4d_vector;
+use jstprove_circuits::circuit_functions::quantization::quantize_4d_vector;
 use serde::Deserialize;
 use std::ops::Neg;
-use gravy_circuits::runner::main_runner::handle_args;
+use jstprove_circuits::runner::main_runner::handle_args;
 
 
 /*

@@ -1,6 +1,6 @@
 use expander_compiler::frontend::*;
-use gravy_circuits::runner::main_runner::handle_args;
-use gravy_circuits::io::io_reader::{FileReader, IOReader};
+use jstprove_circuits::runner::main_runner::handle_args;
+use jstprove_circuits::io::io_reader::{FileReader, IOReader};
 use serde::Deserialize;
 
 

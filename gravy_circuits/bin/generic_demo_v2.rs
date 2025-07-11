@@ -2,19 +2,19 @@ use core::panic;
 use std::env::consts::ARCH;
 use expander_compiler::circuit::ir::common::display;
 use expander_compiler::frontend::*;
-use gravy_circuits::circuit_functions::convolution_fn::conv_4d_run;
-use gravy_circuits::circuit_functions::helper_fn::{arrayd_to_vec1, arrayd_to_vec2, arrayd_to_vec4, arrayd_to_vec5, get_1d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec1_to_arrayd, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd};
+use jstprove_circuits::circuit_functions::convolution_fn::conv_4d_run;
+use jstprove_circuits::circuit_functions::helper_fn::{arrayd_to_vec1, arrayd_to_vec2, arrayd_to_vec4, arrayd_to_vec5, get_1d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec1_to_arrayd, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd};
 #[allow(unused_imports)]
-use gravy_circuits::circuit_functions::matrix_computation::{
+use jstprove_circuits::circuit_functions::matrix_computation::{
     matrix_addition_vec, matrix_multplication, matrix_multplication_array,
     matrix_multplication_naive, matrix_multplication_naive2, matrix_multplication_naive2_array,
     matrix_multplication_naive3, matrix_multplication_naive3_array,
 };
 // !!! MaxPool
-use gravy_circuits::circuit_functions::max_pooling::{setup_maxpooling_2d, maxpooling_2d};
+use jstprove_circuits::circuit_functions::max_pooling::{setup_maxpooling_2d, maxpooling_2d};
 
-use gravy_circuits::io::io_reader::{FileReader, IOReader};
-use gravy_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
+use jstprove_circuits::io::io_reader::{FileReader, IOReader};
+use jstprove_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
 use lazy_static::lazy_static;
 use ndarray::Dimension;
 use ndarray::{ ArrayD, IxDyn};
@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::Value;
-use gravy_circuits::circuit_functions::quantization::run_if_quantized_2d;
+use jstprove_circuits::circuit_functions::quantization::run_if_quantized_2d;
 
 
 type WeightsData = (Architecture, W_and_B, CircuitParams);
@@ -307,10 +307,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         api: &mut Builder,
         input: ArrayD<Variable>,
     ) -> Result<ArrayD<Variable>, String> {
-        use gravy_circuits::circuit_functions::max_pooling::{
+        use jstprove_circuits::circuit_functions::max_pooling::{
             setup_maxpooling_2d, maxpooling_2d
         };
-        use gravy_circuits::circuit_functions::helper_fn::{
+        use jstprove_circuits::circuit_functions::helper_fn::{
             arrayd_to_vec4, vec4_to_arrayd
         };
 

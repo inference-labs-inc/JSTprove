@@ -3,17 +3,17 @@ use std::ops::Neg;
 use circuit_std_rs::logup::LogUpRangeProofTable;
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use gravy_circuits::{io::io_reader::{FileReader, IOReader}, runner::main_runner::handle_args};
+use jstprove_circuits::{io::io_reader::{FileReader, IOReader}, runner::main_runner::handle_args};
 #[allow(unused_imports)]
-use gravy_circuits::circuit_functions::matrix_computation::{
+use jstprove_circuits::circuit_functions::matrix_computation::{
     matrix_multplication, matrix_multplication_array, matrix_multplication_naive,
     matrix_multplication_naive2, matrix_multplication_naive2_array, matrix_multplication_naive3,
     matrix_multplication_naive3_array, matrix_multiplication_std
 };
-use gravy_circuits::circuit_functions::helper_fn::two_d_array_to_vec;
+use jstprove_circuits::circuit_functions::helper_fn::two_d_array_to_vec;
 
 #[warn(unused_imports)]
-use gravy_circuits::circuit_functions::quantization::quantize_matrix;
+use jstprove_circuits::circuit_functions::quantization::quantize_matrix;
 use serde::Deserialize;
 // use std::ops::Neg;
 use lazy_static::lazy_static;

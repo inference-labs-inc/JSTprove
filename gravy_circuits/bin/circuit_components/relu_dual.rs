@@ -1,10 +1,10 @@
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use gravy_circuits::{io::io_reader::{FileReader, IOReader}, runner::main_runner::handle_args};
+use jstprove_circuits::{io::io_reader::{FileReader, IOReader}, runner::main_runner::handle_args};
 use serde::Deserialize;
 // use std::ops::Neg;
 
-// use gravy_circuits::circuit_functions::relu;
+// use jstprove_circuits::circuit_functions::relu;
 
 
 

@@ -2,10 +2,10 @@ use std::ops::Neg;
 
 use expander_compiler::frontend::*;
 use circuit_std_rs::logup::LogUpRangeProofTable;
-use gravy_circuits::circuit_functions::helper_fn::four_d_array_to_vec;
-use gravy_circuits::runner::main_runner::handle_args;
-use gravy_circuits::io::io_reader::{FileReader, IOReader};
-use gravy_circuits::circuit_functions::max_pooling::{maxpooling_2d, setup_maxpooling_2d};
+use jstprove_circuits::circuit_functions::helper_fn::four_d_array_to_vec;
+use jstprove_circuits::runner::main_runner::handle_args;
+use jstprove_circuits::io::io_reader::{FileReader, IOReader};
+use jstprove_circuits::circuit_functions::max_pooling::{maxpooling_2d, setup_maxpooling_2d};
 use serde::Deserialize;
 use lazy_static::lazy_static;
 

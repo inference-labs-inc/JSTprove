@@ -1,11 +1,11 @@
 use expander_compiler::frontend::*;
-use gravy_circuits::io::io_reader::{FileReader, IOReader};
+use jstprove_circuits::io::io_reader::{FileReader, IOReader};
 use serde::Deserialize;
 use ethnum::U256;
 // use std::ops::Neg;
 // use arith::FieldForECC;
-use gravy_circuits::circuit_functions::matrix_computation::matrix_addition;
-use gravy_circuits::runner::main_runner::handle_args;
+use jstprove_circuits::circuit_functions::matrix_computation::matrix_addition;
+use jstprove_circuits::runner::main_runner::handle_args;
 
 
 /* 

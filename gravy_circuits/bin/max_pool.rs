@@ -1,12 +1,12 @@
 use arith::FieldForECC;
-use gravy_circuits::circuit_functions::max_pool::max_pool;
+use jstprove_circuits::circuit_functions::max_pool::max_pool;
 use ethnum::U256;
 use expander_compiler::frontend::*;
-use gravy_circuits::circuit_functions::helper_fn::four_d_array_to_vec;
-use gravy_circuits::io::io_reader::{FileReader, IOReader};
+use jstprove_circuits::circuit_functions::helper_fn::four_d_array_to_vec;
+use jstprove_circuits::io::io_reader::{FileReader, IOReader};
 use serde::Deserialize;
 use std::ops::Neg;
-use gravy_circuits::runner::main_runner;
+use jstprove_circuits::runner::main_runner;
 
 const BATCH: usize = 1;
 const CHANNEL: usize = 1;
