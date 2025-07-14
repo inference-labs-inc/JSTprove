@@ -25,10 +25,7 @@ from onnxruntime import InferenceSession, SessionOptions
 from onnxruntime_extensions import get_library_path, OrtPyFunction
 from python_testing.utils.onnx_custom_ops import conv
 
-from python_testing.utils.onnx_custom_ops.conv import int64_conv
-from python_testing.utils.onnx_custom_ops.relu import int64_relu
-
-from python_testing.utils.onnx_custom_ops.gemm import int64_gemm7
+from python_testing.utils.onnx_custom_ops import *
 
 
 import model_analyzer
