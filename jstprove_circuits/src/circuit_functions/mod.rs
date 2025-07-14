@@ -4,6 +4,5 @@ pub mod convolution_fn;
 pub mod matrix_computation;
 pub mod helper_fn;
 pub mod matmul;
-pub mod conversion;
 pub mod max_pooling;
 pub mod core_operations;
