@@ -1,5 +1,4 @@
 use expander_compiler::frontend::*;
-use std::marker::PhantomData;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: unconstrained_to_bits
@@ -209,7 +208,7 @@ pub fn rescale_by_power_of_two<C: Config, Builder: RootAPI<C>>(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Holds integer and circuit-level constants for rescaling by `2^κ` and shifting by `2^s`.
-pub struct RescalingContext<C: Config> {
+pub struct RescalingContext {
     pub scaling_exponent: usize,   // κ
     pub shift_exponent: usize,     // s
     pub scaling_factor_: u32,      // α = 2^κ
@@ -219,12 +218,10 @@ pub struct RescalingContext<C: Config> {
     pub scaling_factor: Variable,
     pub shift: Variable,
     pub scaled_shift: Variable,
-
-    _marker: PhantomData<C>,
 }
 
-impl<C: Config> RescalingContext<C> {
-    pub fn new<Builder: RootAPI<C>>(api: &mut Builder, scaling_exponent: usize, shift_exponent: usize) -> Self {
+impl RescalingContext {
+    pub fn new<C:Config, Builder: RootAPI<C>>(api: &mut Builder, scaling_exponent: usize, shift_exponent: usize) -> Self {
         let scaling_factor_ = 1u32.checked_shl(scaling_exponent as u32).expect("scaling_exponent < 32");
         let shift_ = 1u32.checked_shl(shift_exponent as u32).expect("shift_exponent < 32");
         let scaled_shift_ = scaling_factor_.checked_mul(shift_).expect("2^κ · 2^s fits in u32");
@@ -242,7 +239,6 @@ impl<C: Config> RescalingContext<C> {
             scaling_factor,
             shift,
             scaled_shift,
-            _marker: PhantomData,
         }
     }
 }
@@ -293,7 +289,7 @@ impl<C: Config> RescalingContext<C> {
 /// - `apply_relu`: If `true`, returns `max(q, 0)` instead of `q`.
 pub fn rescale<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    context: &RescalingContext<C>, 
+    context: &RescalingContext, 
     dividend: Variable,
     apply_relu: bool,
 ) -> Variable {
@@ -394,20 +390,19 @@ pub fn unconstrained_max<C: Config, Builder: RootAPI<C>>(
 
 /// Context for applying `assert_is_max` with a fixed shift exponent `s`,
 /// to avoid recomputing constants in repeated calls (e.g., in max pooling).
-pub struct MaxAssertionContext<C: Config> {
+pub struct MaxAssertionContext {
     /// The exponent `s` such that `S = 2^s`.
     pub shift_exponent: usize,
 
     /// The offset `S = 2^s`, lifted as a constant into the circuit.
     pub offset: Variable,
-    _marker: PhantomData<C>,
 }
 
-impl<C: Config> MaxAssertionContext<C> {
+impl MaxAssertionContext {
     /// Creates a new context for asserting maximums, given a `shift_exponent = s`.
     ///
     /// Computes `S = 2^s` and lifts it to a constant for reuse.
-    pub fn new<Builder: RootAPI<C>>(api: &mut Builder, shift_exponent: usize) -> Self {
+    pub fn new<C: Config, Builder: RootAPI<C>>(api: &mut Builder, shift_exponent: usize) -> Self {
         let offset_: u32 = 1u32
             .checked_shl(shift_exponent as u32)
             .expect("shift_exponent must be less than 32");
@@ -415,7 +410,6 @@ impl<C: Config> MaxAssertionContext<C> {
         Self {
             shift_exponent,
             offset,
-            _marker: PhantomData,
         }
     }
 }
@@ -488,7 +482,7 @@ impl<C: Config> MaxAssertionContext<C> {
 /// - `values`: A nonempty slice of `Variable`s, each encoding an integer in `[-S, T − S]`.
 pub fn assert_is_max<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    context: &MaxAssertionContext<C>, // S = 2^s = context.offset
+    context: &MaxAssertionContext, // S = 2^s = context.offset
     values: &[Variable],
 ) {
     // 0) Require nonempty input
