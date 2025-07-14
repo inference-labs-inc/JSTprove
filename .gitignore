@@ -1,21 +1,51 @@
-# Python virtual environments
-venv/
-*.egg-info/
-__pycache__/
-*.pyc
-
-# Rust build artifacts
-target/
-Cargo.lock
-
-# VS Code settings
-.vscode/
-
-# Input/output JSON files
+# Output directories and temporary files
 inputs/
 output/
+proofs/
+temp/
 
-# OS metadata
+# Virtual environments
+.venv/
+env/
+venv/
+
+# System and metadata files
 .DS_Store
-Thumbs.db
+.DS_*
+._*
 
+# IDE/editor folders
+.vscode/
+.idea/
+
+# Compiled and cache files
+__pycache__/
+*.pyc
+*.pyo
+*.py[cod]
+*.ipynb_checkpoints/
+*.cfg
+lib
+report
+
+# Rust Binaries
+target
+
+# Dataset and binary files
+*.json
+*.txt
+*.bin
+*.csv
+
+# Log files
+*.log
+
+# Archives
+*.zip
+
+# Environment variables
+.env
+
+# Retain Specific Model Files
+*.onnx
+!models_onnx/*.onnx
