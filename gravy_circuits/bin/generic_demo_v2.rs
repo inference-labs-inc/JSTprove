@@ -307,12 +307,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         api: &mut Builder,
         input: ArrayD<Variable>,
     ) -> Result<ArrayD<Variable>, String> {
-        use gravy_circuits::circuit_functions::max_pooling::{
-            setup_maxpooling_2d, maxpooling_2d
-        };
-        use gravy_circuits::circuit_functions::helper_fn::{
-            arrayd_to_vec4, vec4_to_arrayd
-        };
 
         let input = reshape_layer(input, &self.input_shape);
         let x = arrayd_to_vec4(input);

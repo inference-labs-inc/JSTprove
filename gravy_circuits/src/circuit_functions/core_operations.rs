@@ -515,6 +515,7 @@ pub fn assert_is_max<C: Config, Builder: RootAPI<C>>(
 
         // Δ ∈ [0, T] ⇔ ∃ bitstring of length s + 1 summing to Δ
         let bits = unconstrained_to_bits(api, delta, n_bits);
+        // TO DO: elaborate/make more explicit, e.g. "Range check enforcing Δ >= 0"
         let recon = assert_is_bitstring_and_reconstruct(api, &bits);
         api.assert_is_equal(delta, recon);
 
