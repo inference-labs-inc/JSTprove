@@ -151,8 +151,9 @@ struct GemmLayer {
     is_relu: bool,
     scaling: u64,
     input_shape: Vec<usize>,
-    alpha: f32,
-    beta: f32,
+    alpha: u32,
+    beta: u32,
+    transa: usize,
     transb: usize,
     inputs: Vec<String>,
     outputs: Vec<String>,
@@ -241,16 +242,36 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         let layer_input = reshape_layer(layer_input, &self.input_shape);
 
         let mut weight_tensor = self.weights.clone();
-        if self.transb == 1{
-            weight_tensor = transpose(weight_tensor);
+        let mut out_2d = arrayd_to_vec2(layer_input);
+
+        // Untested trans a value of 1
+        match self.transa {
+            0 => {},
+            1 => {out_2d = transpose(out_2d);},
+            other => panic!("Unsupported transa value {} in Gemm layer: {}", other, self.name),
         }
+
+        match self.transb {
+            0 => {},
+            1 => {weight_tensor = transpose(weight_tensor);},
+            other => panic!("Unsupported transb value {} in Gemm layer: {}", other, self.name),
+        }
+
         let weights = read_2d_weights(api, &weight_tensor);
         let bias = read_2d_weights(api, &self.bias);
-        let mut out_2d = arrayd_to_vec2(layer_input); // Potential point of failure, check with Jonathan
+        
 
         let scale_factor = 1 << self.scaling;
         let alpha_two_v = api.mul(self.two_v as u32, scale_factor as u32);
 
+        // TODO add support for alpha and beta !=1. Hint, may need to scale up the alpha/beta and then rescale
+        if self.alpha != 1{
+            panic!("Only alpha = 1 is currently supported for Gemm layers");
+        }
+
+        if self.beta != 1{
+            panic!("Only alpha = 1 is currently supported for Gemm layers");
+        }
         out_2d = matrix_multplication_naive2(api, out_2d, weights);
         eprintln!("out2d dimension {}, {}", out_2d.len(), out_2d[0].len());
         out_2d = matrix_addition_vec(api, out_2d, bias);
@@ -379,7 +400,7 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                     bias: get_w_or_b(&w_and_b_map, &layer.inputs[2]),
                     strides: get_param(&layer.name, &"strides", &params),
                     kernel_shape: get_param(&layer.name, &"kernel_shape", &params),
-                    group: vec![get_param(&layer.name, &"group", &params)],
+                    group: vec![get_param_or_default(&layer.name, &"group", &params, Some(&1))],
                     dilation: get_param(&layer.name, &"dilations", &params),
                     pads: get_param(&layer.name, &"pads", &params),
                     input_shape: expected_shape.to_vec(),
@@ -439,9 +460,10 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                     is_rescale: is_rescale.clone(),
                     scaling: CIRCUITPARAMS.scaling.into(), // TODO: Becomes scaling_in?
                     input_shape: expected_shape.to_vec(),
-                    alpha: get_param(&layer.name, &"alpha", &params),
-                    beta: get_param(&layer.name, &"beta", &params),
-                    transb: get_param(&layer.name, &"transB", &params),
+                    alpha: get_param_or_default(&layer.name, &"alpha", &params, Some(&1)),
+                    beta: get_param_or_default(&layer.name, &"beta", &params, Some(&1)),
+                    transa: get_param_or_default(&layer.name, &"transA", &params, Some(&0)),
+                    transb: get_param_or_default(&layer.name, &"transB", &params, Some(&0)),
                     inputs: layer.inputs.to_vec(),
                     outputs: outputs
 
