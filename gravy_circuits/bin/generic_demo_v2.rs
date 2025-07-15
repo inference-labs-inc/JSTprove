@@ -131,6 +131,16 @@ struct ReshapeLayer {
     outputs: Vec<String>,
 
 }
+
+#[derive(Debug)]
+struct ReluLayer {
+    name: String,
+    index: usize,
+    input_shape: Vec<usize>,
+    inputs: Vec<String>,
+    outputs: Vec<String>,
+}
+
 #[derive(Debug)]
 struct ConstantLayer {
     name: String,
@@ -159,12 +169,49 @@ struct GemmLayer {
     outputs: Vec<String>,
 }
 
+fn get_vector_dim<T>(v: &Vec<T>) -> usize {
+    if let Some(first) = v.first() {
+        if let Some(inner) = any_as_vec_ref(first) {
+            1 + get_vector_dim(inner)
+        } else {
+            1
+        }
+    } else {
+        1
+    }
+}
+// Helper to try casting to Vec<_>
+fn any_as_vec_ref<T>(_: &T) -> Option<&Vec<T>> {
+    None // Rust has no runtime reflection to inspect Vec<T>'s contents
+}
+
 trait LayerOp<C: Config, Builder: RootAPI<C>> {
     fn apply(&self, api: &mut Builder, input: HashMap<String,ArrayD<Variable>>)
     // fn apply(&self, api: &mut Builder, input: ArrayD<Variable>)
         -> Result<(String,ArrayD<Variable>), String>;
 
     // fn build for every Layer type
+}
+
+// TODO TEST THIS
+impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
+    fn apply(
+        &self,
+        api: &mut Builder,
+        input: HashMap<String,ArrayD<Variable>>,
+    ) -> Result<(String,ArrayD<Variable>), String> {
+        let layer_input = input.get(&self.inputs[0]).unwrap().clone();
+        // Reshape inputs
+        let layer_input = reshape_layer(layer_input, &self.input_shape);
+
+        let out = layer_input;
+
+        // let dims = get_vector_dim(out);
+        // TODO RELU unsupported for now. Must design relu function that takes in array instead of vectors
+        panic!("Unsupported ReLU.");
+
+        Ok((self.outputs[0].clone(), out))
+    }
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
@@ -475,6 +522,20 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 //     value: get_param(&layer.name, &"value", &layer.params.clone().unwrap())
                 // };
                 // layers.push(Box::new(constant));
+            }
+            "ReLU" =>{
+                let expected_shape = match shapes_map.get(&layer.inputs[0]){
+                    Some(input_shape) => input_shape,
+                    None => panic!("Error getting output shape for layer {}", layer.name)
+                };
+                let relu = ReluLayer{
+                    name: layer.name.clone(),
+                    index: i,
+                    input_shape: expected_shape.to_vec(),
+                    inputs: layer.inputs.to_vec(),
+                    outputs: outputs
+                };
+                layers.push(Box::new(relu));
             }
             other => panic!("Unsupported layer type: {}", other),
         }
