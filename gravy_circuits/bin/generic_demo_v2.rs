@@ -132,7 +132,15 @@ struct ReshapeLayer {
     input_shape: Vec<usize>,
     inputs: Vec<String>,
     outputs: Vec<String>,
+}
 
+#[derive(Debug)]
+struct FlattenLayer {
+    name: String,
+    axis: usize,
+    input_shape: Vec<usize>,
+    inputs: Vec<String>,
+    outputs: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -164,8 +172,8 @@ struct GemmLayer {
     is_relu: bool,
     scaling: u64,
     input_shape: Vec<usize>,
-    alpha: u32,
-    beta: u32,
+    alpha: f32,
+    beta: f32,
     transa: usize,
     transb: usize,
     inputs: Vec<String>,
@@ -198,6 +206,8 @@ struct MaxPoolLayer {
     padding: Vec<usize>,
     input_shape: Vec<usize>,
     shift_exponent: usize, 
+    inputs: Vec<String>,
+    outputs: Vec<String>,
 }
 
 trait LayerOp<C: Config, Builder: RootAPI<C>> {
@@ -296,8 +306,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         input: HashMap<String,ArrayD<Variable>>,
     ) -> Result<(String,ArrayD<Variable>), String> {
         eprintln!("Applying input shape for GemmLayer: {}", self.name);
-        eprintln!("{:?}", self.inputs);
-
 
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         // Reshape inputs
@@ -327,11 +335,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         let alpha_two_v = api.mul(self.two_v as u32, scale_factor as u32);
 
         // TODO add support for alpha and beta !=1. Hint, may need to scale up the alpha/beta and then rescale
-        if self.alpha != 1{
+        if self.alpha != 1.0{
             panic!("Only alpha = 1 is currently supported for Gemm layers");
         }
 
-        if self.beta != 1{
+        if self.beta != 1.0{
             panic!("Only alpha = 1 is currently supported for Gemm layers");
         }
         out_2d = matrix_multplication_naive2(api, out_2d, weights);
@@ -365,6 +373,33 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
         Ok((self.outputs[0].clone(), out.clone()))
     }
 }
+
+
+fn onnx_flatten<T>(array: ArrayD<T>, axis: usize) -> ArrayD<T> {
+    let shape = array.shape();
+    let dim0 = shape[..axis].iter().product::<usize>();
+    let dim1 = shape[axis..].iter().product::<usize>();
+
+    array.into_shape_with_order(IxDyn(&[dim0, dim1])).unwrap()
+}
+
+impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
+    /*
+    TO-DO: Implement permanent implementation, currently temp solution
+     */
+    fn apply(
+        &self,
+        api: &mut Builder,
+        input: HashMap<String,ArrayD<Variable>>,
+    ) -> Result<(String,ArrayD<Variable>), String> {
+        let reshape_axis = self.axis.clone();
+        let layer_input = input.get(&self.inputs[0]).unwrap();
+
+        let out = onnx_flatten(layer_input.clone(), reshape_axis);
+
+        Ok((self.outputs[0].clone(), out.clone()))
+    }
+}
 // TODO remove constants from python side. Incorporate into the layer that uses it instead
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConstantLayer {
     // Passthrough
@@ -383,11 +418,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: ArrayD<Variable>,
-    ) -> Result<ArrayD<Variable>, String> {
+        input: HashMap<String,ArrayD<Variable>>,
+    ) -> Result<(String,ArrayD<Variable>), String> {
 
-        let input = reshape_layer(input, &self.input_shape);
-        let x = arrayd_to_vec4(input);
+        eprintln!("Applying input shape for GemmLayer: {}", self.name);
+
+        let layer_input = input.get(&self.inputs[0]).unwrap().clone();
+
+        let layer_input = reshape_layer(layer_input, &self.input_shape);
+        let x = arrayd_to_vec4(layer_input);
 
         let ceil_mode = false; // or make configurable
         let (kernel, strides, dilation, out_shape, pads) = setup_maxpooling_2d(
@@ -400,7 +439,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
             &self.input_shape, &pads, self.shift_exponent,
         );
 
-        Ok(vec4_to_arrayd(output))
+        let out = vec4_to_arrayd(output);
+        eprintln!("Finished");
+        Ok((self.outputs[0].clone(), out))
     }
 }
 
@@ -548,8 +589,8 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                     is_rescale: is_rescale.clone(),
                     scaling: CIRCUITPARAMS.scaling.into(), // TODO: Becomes scaling_in?
                     input_shape: expected_shape.to_vec(),
-                    alpha: get_param_or_default(&layer.name, &"alpha", &params, Some(&1)),
-                    beta: get_param_or_default(&layer.name, &"beta", &params, Some(&1)),
+                    alpha: get_param_or_default(&layer.name, &"alpha", &params, Some(&1.0)),
+                    beta: get_param_or_default(&layer.name, &"beta", &params, Some(&1.0)),
                     transa: get_param_or_default(&layer.name, &"transA", &params, Some(&0)),
                     transb: get_param_or_default(&layer.name, &"transB", &params, Some(&0)),
                     inputs: layer.inputs.to_vec(),
@@ -573,31 +614,52 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 };
 
                 let maxpool = MaxPoolLayer {
-                name: layer.name.clone(),
-                kernel_shape: get_param(&layer.name, "kernel_shape", &params),
-                strides: get_param(&layer.name, "strides", &params),
-                dilation: get_param(&layer.name, "dilations", &params),
-                padding: get_param(&layer.name, "pads", &params),
-                input_shape: expected_shape.clone(),
-                shift_exponent: N_BITS - 1,
+                    name: layer.name.clone(),
+                    kernel_shape: get_param(&layer.name, "kernel_shape", &params),
+                    strides: get_param(&layer.name, "strides", &params),
+                    dilation: get_param(&layer.name, "dilations", &params),
+                    padding: get_param(&layer.name, "pads", &params),
+                    input_shape: expected_shape.clone(),
+                    shift_exponent: N_BITS - 1,
+                    inputs: layer.inputs.to_vec(),
+                    outputs: outputs,
                 };
                 layers.push(Box::new(maxpool));
             }
-            "Flatten" => continue, 
-            "ReLU" =>{
+            "Flatten" => {
+                /*
+                   TODO - Implement permanent solution for what reshape layer needs like
+                */
+                let params = layer.params.clone().unwrap();
+                
                 let expected_shape = match shapes_map.get(&layer.inputs[0]){
                     Some(input_shape) => input_shape,
                     None => panic!("Error getting output shape for layer {}", layer.name)
                 };
-                let relu = ReluLayer{
+                let output_shape = shapes_map.get(&layer.outputs.to_vec()[0]);
+                let flatten = FlattenLayer {
                     name: layer.name.clone(),
-                    index: i,
                     input_shape: expected_shape.to_vec(),
                     inputs: layer.inputs.to_vec(),
-                    outputs: outputs
+                    outputs: layer.outputs.to_vec(),
+                    axis: get_param_or_default(&layer.name, &"axis", &params, Some(&1))
                 };
-                layers.push(Box::new(relu));
+                layers.push(Box::new(flatten));
             }
+            // "ReLU" =>{
+            //     let expected_shape = match shapes_map.get(&layer.inputs[0]){
+            //         Some(input_shape) => input_shape,
+            //         None => panic!("Error getting output shape for layer {}", layer.name)
+            //     };
+            //     let relu = ReluLayer{
+            //         name: layer.name.clone(),
+            //         index: i,
+            //         input_shape: expected_shape.to_vec(),
+            //         inputs: layer.inputs.to_vec(),
+            //         outputs: outputs
+            //     };
+            //     layers.push(Box::new(relu));
+            // }
             other => panic!("Unsupported layer type: {}", other),
         }
         eprintln!("layer added: {}", layer.op_type.as_str() );
