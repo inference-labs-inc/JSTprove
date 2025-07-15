@@ -9,7 +9,7 @@ from python_testing.utils.helper_functions import RunType, ZKProofSystems
 
 
 # ---------- compute_and_store_output ----------
-
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.os.makedirs")
 @patch("python_testing.utils.helper_functions.os.path.exists", return_value=False)
 @patch("python_testing.utils.helper_functions.json.dump")
@@ -30,7 +30,7 @@ def test_compute_and_store_output_saves(mock_file, mock_dump, mock_exists, mock_
     mock_dump.assert_called_once()
     assert result == {"out": 123}
 
-
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.os.path.exists", return_value=True)
 @patch("python_testing.utils.helper_functions.open", new_callable=mock_open, read_data='{"out": 456}')
 @patch("python_testing.utils.helper_functions.json.load", return_value={"out": 456})
@@ -47,7 +47,7 @@ def test_compute_and_store_output_loads_from_cache(mock_load, mock_file, mock_ex
     output = d.get_outputs()
     assert output == {"out": 456}
 
-
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.os.path.exists", return_value=True)
 @patch("python_testing.utils.helper_functions.open", new_callable=mock_open)
 @patch("python_testing.utils.helper_functions.json.load", side_effect=json.JSONDecodeError("msg", "doc", 0))
@@ -67,7 +67,7 @@ def test_compute_and_store_output_on_json_error(mock_dump, mock_load, mock_file,
 
 
 # ---------- prepare_io_files ----------
-
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.get_files", return_value=[
     "witness.wtns", "input.json", "proof.json", "public.json",
     "vk.key", "test_circuit", "weights.json", "out.json"
@@ -108,7 +108,7 @@ def test_prepare_io_files_runs_func(mock_file, mock_splitext, mock_json, mock_ge
 
 
 # ---------- to_json ----------
-
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.open", new_callable=mock_open)
 @patch("python_testing.utils.helper_functions.json.dump")
 def test_to_json_saves_json(mock_dump, mock_file):
@@ -119,7 +119,7 @@ def test_to_json_saves_json(mock_dump, mock_file):
 
 
 # ---------- read_from_json ----------
-
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.open", new_callable=mock_open, read_data='{"x": 42}')
 @patch("python_testing.utils.helper_functions.json.load", return_value={"x": 42})
 def test_read_from_json_loads_json(mock_load, mock_file):
@@ -130,7 +130,7 @@ def test_read_from_json_loads_json(mock_load, mock_file):
 
 
 # ---------- run_cargo_command ----------
-
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.subprocess.run")
 def test_run_cargo_command_normal(mock_run):
     mock_run.return_value = MagicMock(returncode=0, stdout="ok")
@@ -143,7 +143,7 @@ def test_run_cargo_command_normal(mock_run):
     assert "-i" in args and "input.json" in args
     assert code == 0
 
-
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.subprocess.run")
 def test_run_cargo_command_dev_mode(mock_run):
     mock_run.return_value = MagicMock(returncode=0)
@@ -153,7 +153,7 @@ def test_run_cargo_command_dev_mode(mock_run):
     assert args[:5] == ["cargo", "run", "--bin", "testbin", "--release"]
     assert "compile" in args
 
-
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.subprocess.run")
 def test_run_cargo_command_bool_args(mock_run):
     mock_run.return_value = MagicMock(returncode=0)
@@ -165,12 +165,13 @@ def test_run_cargo_command_bool_args(mock_run):
     assert "in.json" in args
     assert "-json" in args  # Even though False, it's added
 
-
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.subprocess.run", side_effect=Exception("subprocess failed"))
 def test_run_cargo_command_raises_on_failure(mock_run):
     with pytest.raises(Exception, match="subprocess failed"):
         run_cargo_command("failbin", "fail_cmd", {"x": 1})
 
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.subprocess.run")
 def test_run_command_failure(mock_run):
     mock_run.side_effect = subprocess.CalledProcessError(
@@ -187,7 +188,7 @@ def test_run_command_failure(mock_run):
 
 
 # ---------- Expander with ECC (happy path) ----------
-
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command")
 def test_prove_and_verify_expander_ecc_calls_cargo(mock_cargo):
     prove_and_verify(
@@ -207,7 +208,7 @@ def test_prove_and_verify_expander_ecc_calls_cargo(mock_cargo):
 
 
 # ---------- Expander with ECC (error fallback) ----------
-
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command", side_effect=Exception("boom"))
 def test_prove_and_verify_expander_ecc_fails_gracefully(mock_cargo, capsys):
     prove_and_verify(
@@ -227,7 +228,7 @@ def test_prove_and_verify_expander_ecc_fails_gracefully(mock_cargo, capsys):
 
 
 # ---------- Expander with NO ECC ----------
-
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_expander_raw")
 @patch("python_testing.utils.helper_functions.get_expander_file_paths", return_value={
     "circuit_file": "c.circ",
@@ -252,7 +253,7 @@ def test_prove_and_verify_expander_no_ecc_runs_exec(mock_paths, mock_exec):
 
 
 # ---------- Unsupported proof system ----------
-
+@pytest.mark.unit
 def test_prove_and_verify_unknown_system_raises():
     with pytest.raises(NotImplementedError, match="not implemented"):
         prove_and_verify(
@@ -269,7 +270,7 @@ def test_prove_and_verify_unknown_system_raises():
 
 # 
 # ---------- get_expander_file_paths ----------
-
+@pytest.mark.unit
 def test_get_expander_file_paths():
     name = "model"
     paths = get_expander_file_paths(name)
@@ -279,7 +280,7 @@ def test_get_expander_file_paths():
 
 
 # ---------- run_expander_exec ----------
-
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.subprocess.run")
 def test_run_expander_exec_calls_correct_args(mock_run):
     mock_run.return_value.returncode = 0
@@ -289,6 +290,7 @@ def test_run_expander_exec_calls_correct_args(mock_run):
     assert "--output-proof-file" in args
     assert not "--input-proof-file" in args
 
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.subprocess.run")
 def test_run_expander_exec_calls_verify_correct_args(mock_run):
     mock_run.return_value.returncode = 0
@@ -298,13 +300,14 @@ def test_run_expander_exec_calls_verify_correct_args(mock_run):
     assert "--input-proof-file" in args
     assert not "--output-proof-file" in args
 
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.subprocess.run")
 def test_run_expander_exec_bad_mode(mock_run):
     mock_run.return_value.returncode = 0
     with pytest.raises(AssertionError):
         run_expander_exec("Unicorn", "circuit.txt", "witness.txt", "proof.txt")
 
-
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.subprocess.run")
 def test_run_expander_exec_handles_failure(mock_run, capsys):
     mock_run.return_value.returncode = 1
@@ -316,7 +319,7 @@ def test_run_expander_exec_handles_failure(mock_run, capsys):
 
 
 # ---------- compile_circuit ----------
-
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command")
 def test_compile_circuit_expander(mock_run):
     compile_circuit("model", "path/to/circuit", ZKProofSystems.Expander)
@@ -325,6 +328,7 @@ def test_compile_circuit_expander(mock_run):
     assert args["c"] == "path/to/circuit"
     assert mock_run.call_args[0][3] == False
 
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command")
 def test_compile_circuit_expander_dev_mode_true(mock_run):
     compile_circuit("model2", "path/to/circuit2", ZKProofSystems.Expander, True)
@@ -333,6 +337,7 @@ def test_compile_circuit_expander_dev_mode_true(mock_run):
     assert args["c"] == "path/to/circuit2"
     assert mock_run.call_args[0][3] == True
 
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command", side_effect = Exception("TEST"))
 def test_compile_circuit_expander_rust_error(mock_run, capfd):
     compile_circuit("model2", "path/to/circuit2", ZKProofSystems.Expander, True)
@@ -341,14 +346,14 @@ def test_compile_circuit_expander_rust_error(mock_run, capfd):
     assert "Using binary: model2" in out
 
 
-
+@pytest.mark.integration
 def test_compile_circuit_unknown_raises():
     with pytest.raises(NotImplementedError):
         compile_circuit("m", "p", "unsupported")
 
 
 # # ---------- generate_witness ----------
-
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command")
 def test_generate_witness_expander(mock_run):
     generate_witness("model", "path/to/circuit", "witness", "input", "output", ZKProofSystems.Expander)
@@ -360,6 +365,7 @@ def test_generate_witness_expander(mock_run):
     assert args["o"] == "output"
     assert mock_run.call_args[0][3] == False
 
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command")
 def test_generate_witness_expander_dev_mode_true(mock_run):
     generate_witness("model", "path/to/circuit", "witness", "input", "output", ZKProofSystems.Expander, True)
@@ -371,6 +377,7 @@ def test_generate_witness_expander_dev_mode_true(mock_run):
     assert args["o"] == "output"
     assert mock_run.call_args[0][3] == True
 
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command", side_effect = Exception("TEST"))
 def test_generate_witness_expander_rust_error(mock_run, capfd):
     generate_witness("model2", "path/to/circuit2", "witness", "input", "output", ZKProofSystems.Expander, True)
@@ -378,7 +385,7 @@ def test_generate_witness_expander_rust_error(mock_run, capfd):
     assert "Warning: Witness generation failed: TEST" in out
 
 
-
+@pytest.mark.unit
 def test_generate_witness_unknown_raises():
     with pytest.raises(NotImplementedError):
         generate_witness("m", "p","witness", "input", "output",  "unsupported")
@@ -386,7 +393,7 @@ def test_generate_witness_unknown_raises():
 
 # ---------- generate_proof ----------
 
-
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_expander_raw")
 @patch("python_testing.utils.helper_functions.get_expander_file_paths", return_value={
     "circuit_file": "c", "witness_file": "w", "proof_file": "p"
@@ -401,7 +408,7 @@ def test_generate_proof_expander_no_ecc(mock_paths, mock_exec):
 
     assert mock_exec.call_count == 1
 
-
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command")
 def test_generate_proof_expander_with_ecc(mock_run):
     generate_proof("model", "c", "w", "p", ZKProofSystems.Expander, ecc=True)
@@ -415,6 +422,7 @@ def test_generate_proof_expander_with_ecc(mock_run):
     assert args[2]['w'] == 'w'
     assert args[2]['p'] == 'p'
 
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command")
 def test_generate_proof_expander_with_ecc_dev_mode_true(mock_run):
     generate_proof("model", "c", "w", "p", ZKProofSystems.Expander, ecc=True, dev_mode=True)
@@ -428,10 +436,12 @@ def test_generate_proof_expander_with_ecc_dev_mode_true(mock_run):
     assert args[2]['w'] == 'w'
     assert args[2]['p'] == 'p'
 
+@pytest.mark.unit
 def test_generate_proof_unknown_raises():
     with pytest.raises(NotImplementedError):
         generate_proof("m", "p", "w", "proof", "unsupported")
 
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.run_cargo_command", side_effect = Exception("TEST"))
 def test_generate_proof_expander_rust_error(mock_run, capfd):
     generate_proof("model2", "path/to/circuit2", "w", 'p', ZKProofSystems.Expander, True)
@@ -442,7 +452,7 @@ def test_generate_proof_expander_rust_error(mock_run, capfd):
 
 
 # # ---------- generate_verification ----------
-
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_expander_raw")
 @patch("python_testing.utils.helper_functions.get_expander_file_paths", return_value={
     "circuit_file": "c", "witness_file": "w", "proof_file": "p"
@@ -456,7 +466,7 @@ def test_generate_verify_expander_no_ecc(mock_paths, mock_exec):
 
     assert mock_exec.call_count == 1
 
-
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command")
 def test_generate_verify_expander_with_ecc(mock_run):
     generate_verification("model", "cp", "i", "o", "w", "p", ZKProofSystems.Expander, ecc=True)
@@ -472,6 +482,7 @@ def test_generate_verify_expander_with_ecc(mock_run):
     assert args[2]['i'] == 'i'
     assert args[2]['o'] == 'o'
 
+@pytest.mark.integration
 @patch("python_testing.utils.helper_functions.run_cargo_command")
 def test_generate_verify_expander_with_ecc_dev_mode_true(mock_run):
     generate_verification("model", "cp", "i", "o", "w", "p",  ZKProofSystems.Expander, ecc=True, dev_mode=True)
@@ -487,10 +498,12 @@ def test_generate_verify_expander_with_ecc_dev_mode_true(mock_run):
     assert args[2]['i'] == 'i'
     assert args[2]['o'] == 'o'
 
+@pytest.mark.unit
 def test_generate_verify_unknown_raises():
     with pytest.raises(NotImplementedError):
         generate_verification("model", "cp", "i", "o", "w", "p",  "unsupported")
 
+@pytest.mark.unit
 def test_circom_not_implemented_full_process():
     with pytest.raises(NotImplementedError, match="Circom is not implemented"):
         generate_verification("model", "cp", "i", "o", "w", "p", ZKProofSystems.Circom)
@@ -513,6 +526,7 @@ def test_circom_not_implemented_full_process():
         ecc=True
         )
 
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.run_cargo_command", side_effect = Exception("TEST"))
 def test_generate_verify_expander_rust_error(mock_run, capfd):
     generate_verification("model", "cp", "i", "o", "w", "p", ZKProofSystems.Expander, True)
@@ -522,7 +536,7 @@ def test_generate_verify_expander_rust_error(mock_run, capfd):
 
 
 # # ---------- run_end_to_end ----------
-
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.generate_verification")
 @patch("python_testing.utils.helper_functions.generate_proof")
 @patch("python_testing.utils.helper_functions.generate_witness")
@@ -534,6 +548,7 @@ def test_run_end_to_end_calls_all(mock_compile, mock_witness, mock_proof, mock_v
     mock_proof.assert_called_once()
     mock_verify.assert_called_once()
 
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.generate_verification")
 @patch("python_testing.utils.helper_functions.generate_proof")
 @patch("python_testing.utils.helper_functions.generate_witness")
@@ -546,32 +561,34 @@ def test_circom_proof_system_errors_end_to_end(mock_compile, mock_witness, mock_
 
 
 # # ---------- get_files / create_folder ----------
-
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.create_folder")
 def test_get_files_and_create(mock_create):
     paths = get_files("inputs", "proofs", "tmp", "circuits", "weights", "model", "out", "quantized_models", ZKProofSystems.Expander)
     assert paths[1].endswith("model_input.json")
     assert mock_create.call_count == 6
 
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.create_folder")
 def test_get_files_circom(mock_create):
     with pytest.raises(NotImplementedError, match="Circom is not implemented"):
         paths = get_files("inputs", "proofs", "tmp", "circuits", "weights", "model", "out", "quantized_models", ZKProofSystems.Circom)
 
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.create_folder")
 def test_get_files_non_proof_system(mock_create):
     fake_proof_system = "unknown"
     with pytest.raises(NotImplementedError, match=f"Proof system {fake_proof_system} not implemented"):
         paths = get_files("inputs", "proofs", "tmp", "circuits", "weights", "model", "out","quantized_models", fake_proof_system)
 
-
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.os.makedirs")
 @patch("python_testing.utils.helper_functions.os.path.exists", return_value=False)
 def test_create_folder_creates(mock_exists, mock_mkdir):
     create_folder("new_folder")
     mock_mkdir.assert_called_once_with("new_folder")
 
-
+@pytest.mark.unit
 @patch("python_testing.utils.helper_functions.os.makedirs")
 @patch("python_testing.utils.helper_functions.os.path.exists", return_value=True)
 def test_create_folder_skips_existing(mock_exists, mock_mkdir):

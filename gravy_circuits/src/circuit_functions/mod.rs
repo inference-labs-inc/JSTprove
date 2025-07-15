@@ -6,5 +6,5 @@ pub mod helper_fn;
 pub mod matmul;
 pub mod extrema;
 pub mod conversion;
-pub mod pooling;
-
+pub mod max_pooling;
+pub mod core_operations;

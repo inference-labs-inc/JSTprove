@@ -10,6 +10,9 @@ use gravy_circuits::circuit_functions::matrix_computation::{
     matrix_multplication_naive, matrix_multplication_naive2, matrix_multplication_naive2_array,
     matrix_multplication_naive3, matrix_multplication_naive3_array,
 };
+// !!! MaxPool
+use gravy_circuits::circuit_functions::max_pooling::{setup_maxpooling_2d, maxpooling_2d};
+
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use gravy_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
 use lazy_static::lazy_static;
@@ -183,6 +186,18 @@ fn get_vector_dim<T>(v: &Vec<T>) -> usize {
 // Helper to try casting to Vec<_>
 fn any_as_vec_ref<T>(_: &T) -> Option<&Vec<T>> {
     None // Rust has no runtime reflection to inspect Vec<T>'s contents
+}
+
+// !!! MaxPool
+#[derive(Debug)]
+struct MaxPoolLayer {
+    name: String,
+    kernel_shape: Vec<usize>,
+    strides: Vec<usize>,
+    dilation: Vec<usize>,
+    padding: Vec<usize>,
+    input_shape: Vec<usize>,
+    shift_exponent: usize, 
 }
 
 trait LayerOp<C: Config, Builder: RootAPI<C>> {
@@ -363,6 +378,32 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConstantLayer {
     }
 }
 
+// !!! MaxPool
+impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
+    fn apply(
+        &self,
+        api: &mut Builder,
+        input: ArrayD<Variable>,
+    ) -> Result<ArrayD<Variable>, String> {
+
+        let input = reshape_layer(input, &self.input_shape);
+        let x = arrayd_to_vec4(input);
+
+        let ceil_mode = false; // or make configurable
+        let (kernel, strides, dilation, out_shape, pads) = setup_maxpooling_2d(
+            &self.padding, &self.kernel_shape, &self.strides,
+            &self.dilation, ceil_mode, &self.input_shape,
+        );
+
+        let output = maxpooling_2d::<C, Builder>(
+            api, &x, &kernel, &strides, &dilation, &out_shape,
+            &self.input_shape, &pads, self.shift_exponent,
+        );
+
+        Ok(vec4_to_arrayd(output))
+    }
+}
+
 type BoxedDynLayer<C, B> = Box<dyn LayerOp<C, B>>;
 
 fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Builder>>> {
@@ -523,6 +564,26 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 // };
                 // layers.push(Box::new(constant));
             }
+            // !!! MaxPool
+            "MaxPool" => {
+                let params = layer.params.clone().unwrap();
+                let expected_shape = match shapes_map.get(&layer.inputs[0]) {
+                Some(s) => s,
+                None => panic!("Missing shape for MaxPool input {}", layer.name),
+                };
+
+                let maxpool = MaxPoolLayer {
+                name: layer.name.clone(),
+                kernel_shape: get_param(&layer.name, "kernel_shape", &params),
+                strides: get_param(&layer.name, "strides", &params),
+                dilation: get_param(&layer.name, "dilations", &params),
+                padding: get_param(&layer.name, "pads", &params),
+                input_shape: expected_shape.clone(),
+                shift_exponent: N_BITS - 1,
+                };
+                layers.push(Box::new(maxpool));
+            }
+            "Flatten" => continue, 
             "ReLU" =>{
                 let expected_shape = match shapes_map.get(&layer.inputs[0]){
                     Some(input_shape) => input_shape,

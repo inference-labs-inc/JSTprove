@@ -27,6 +27,10 @@ from python_testing.utils.onnx_custom_ops import conv
 
 from python_testing.utils.onnx_custom_ops import *
 
+# !!! MaxPool
+from python_testing.utils.onnx_custom_ops.maxpool import int64_maxpool
+
+
 
 import model_analyzer
 # @dataclass
@@ -431,6 +435,12 @@ class ONNXConverter(ModelConverter):
         for vi in model.graph.value_info:
             vi.type.tensor_type.elem_type = TensorProto.INT64
         # TODO remove
+        # !!! MaxPool
+        custom_domain = helper.make_operatorsetid(domain="ai.onnx.contrib",version=1)
+        domains = [op.domain for op in model.opset_import]
+        if "ai.onnx.contrib" not in domains:
+            model.opset_import.append(custom_domain)
+        onnx.checker.check_model(model)
         onnx.save(model, "debug_test.onnx")
         return model
         

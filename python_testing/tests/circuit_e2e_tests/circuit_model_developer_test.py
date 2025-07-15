@@ -8,13 +8,14 @@ from python_testing.tests.circuit_e2e_tests.helper_fns_for_tests import *
 from python_testing.utils.helper_functions import RunType
 
 
-
+@pytest.mark.e2e
 def test_circuit_compiles(model_fixture):
     # Here you could just check that circuit file exists
     circuit_compile_results[model_fixture['model']] = False
     assert os.path.exists(model_fixture["circuit_path"])
     circuit_compile_results[model_fixture['model']] = True
 
+@pytest.mark.e2e
 def test_witness_dev(model_fixture, capsys, temp_witness_file, temp_input_file, temp_output_file, check_model_compiles):
     model = model_fixture["model"]
     witness_generated_results[model_fixture['model']] = False
@@ -48,7 +49,7 @@ def test_witness_dev(model_fixture, capsys, temp_witness_file, temp_input_file, 
 
 
 
-
+@pytest.mark.e2e
 def test_witness_wrong_outputs_dev(model_fixture, capsys, temp_witness_file, temp_input_file, temp_output_file, monkeypatch, check_model_compiles, check_witness_generated):
     model = model_fixture["model"]
     original_get_outputs = model.get_outputs
@@ -84,6 +85,7 @@ def test_witness_wrong_outputs_dev(model_fixture, capsys, temp_witness_file, tem
     for output in BAD_OUTPUT:
         assert output in stdout, f"Expected '{output}' in stdout, but it was not found."
 
+@pytest.mark.e2e
 def test_witness_prove_verify_true_inputs_dev(model_fixture, temp_witness_file, temp_input_file, temp_output_file, temp_proof_file, capsys, check_model_compiles, check_witness_generated):
     model = model_fixture["model"]
     print(model)
@@ -142,6 +144,7 @@ def test_witness_prove_verify_true_inputs_dev(model_fixture, temp_witness_file, 
 
     assert stdout.count("Verified") == 1, f"Expected 'Verified' in stdout three times, but it was not found."
 
+@pytest.mark.e2e
 def test_witness_prove_verify_true_inputs_dev_expander_call(model_fixture, temp_witness_file, temp_input_file, temp_output_file, temp_proof_file, capsys,check_model_compiles, check_witness_generated):
     model = model_fixture["model"]
     model.base_testing(
@@ -214,7 +217,7 @@ def test_witness_prove_verify_true_inputs_dev_expander_call(model_fixture, temp_
 
 
 
-
+@pytest.mark.e2e
 def test_witness_read_after_write_json(
     model_fixture,
     capsys,
@@ -283,6 +286,7 @@ def test_witness_read_after_write_json(
 
     assert read_input_data == written_input_data, "Input JSON read is not identical to what was written"
 
+@pytest.mark.e2e
 def test_witness_fresh_compile_dev(capsys, model_fixture, temp_witness_file, temp_input_file, temp_output_file, check_model_compiles, check_witness_generated):
     model = model_fixture["model"]
     model.base_testing(
@@ -315,6 +319,7 @@ def test_witness_fresh_compile_dev(capsys, model_fixture, temp_witness_file, tem
 
 
 # Use once fixed input shape read in rust
+@pytest.mark.e2e
 def test_witness_incorrect_input_shape(
     model_fixture,
     capsys,
@@ -385,7 +390,7 @@ def test_witness_incorrect_input_shape(
     for output in BAD_OUTPUT:
         assert output not in stdout, f"Did not expect '{output}' in stdout, but it was found."
 
-
+@pytest.mark.e2e
 def test_witness_unscaled(
     model_fixture,
     capsys,
@@ -479,7 +484,7 @@ def test_witness_unscaled(
     # assert new_output_file == written_output_data, "Output file content does not match the expected output"
 
 
-
+@pytest.mark.e2e
 def test_witness_unscaled_and_incorrect_shape_input(
     model_fixture,
     capsys,
@@ -584,7 +589,7 @@ def test_witness_unscaled_and_incorrect_shape_input(
 
     # assert new_output_file == written_output_data, "Output file content does not match the expected output"
 
-
+@pytest.mark.e2e
 def test_witness_unscaled_and_incorrect_and_bad_named_input(
     model_fixture,
     capsys,
@@ -715,6 +720,7 @@ def test_witness_unscaled_and_incorrect_and_bad_named_input(
 
     # assert new_output_file == written_output_data, "Output file content does not match the expected output"
 
+@pytest.mark.e2e
 def test_witness_wrong_name(
     model_fixture,
     capsys,

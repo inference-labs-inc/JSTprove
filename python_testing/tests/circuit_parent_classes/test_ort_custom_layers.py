@@ -29,7 +29,6 @@ from python_testing.utils.onnx_custom_ops.gemm import int64_gemm7
 
 import model_analyzer
 
-
 @pytest.fixture
 def tiny_conv_model_path(tmp_path):
     # Create input and output tensor info
@@ -78,32 +77,7 @@ def tiny_conv_model_path(tmp_path):
 
     return str(model_path)
 
-
-def test_tiny_conv(tiny_conv_model_path):
-    # Prepare input: 4x4 array [0..15]
-    X_input = np.arange(16, dtype=np.float32).reshape(1, 1, 4, 4)
-
-    # Run ONNX Runtime inference session
-    session = ort.InferenceSession(tiny_conv_model_path)
-    outputs = session.run(None, {'X': X_input})
-    Y_output = outputs[0]
-
-    # Expected output is 3x3 sliding window sums on the input
-    # Since kernel is all ones, output Y at each location is sum of 3x3 input patch
-    expected_output = np.array([[
-        [
-            [np.sum(X_input[0, 0, i:i+3, j:j+3]) for j in range(2)]
-            for i in range(2)
-        ]
-    ]], dtype=np.float32)
-
-    # Assert output shape
-    assert Y_output.shape == (1, 1, 2, 2)
-
-    # Assert output values are close to expected sums
-    np.testing.assert_allclose(Y_output, expected_output, rtol=1e-5, atol=1e-6)
-
-
+@pytest.mark.integration
 def test_tiny_conv(tiny_conv_model_path):
     path = tiny_conv_model_path
 

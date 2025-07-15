@@ -36,7 +36,7 @@ use crate::circuit_functions::{
 /// ```
 pub fn rescale_matrix<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    context: &RescalingContext<C>,
+    context: &RescalingContext,
     dividend_matrix: Vec<Vec<Variable>>,
     apply_relu: bool,
 ) -> Vec<Vec<Variable>> {
@@ -79,7 +79,7 @@ pub fn rescale_matrix<C: Config, Builder: RootAPI<C>>(
 pub fn rescale_4d_vector<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input_tensor: Vec<Vec<Vec<Vec<Variable>>>>,
-    context: &RescalingContext<C>,
+    context: &RescalingContext,
     apply_relu: bool,
 ) -> Vec<Vec<Vec<Vec<Variable>>>> {
     input_tensor
