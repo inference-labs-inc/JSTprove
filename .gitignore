@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-# Created by venv; see https://docs.python.org/3/library/venv.html
-=======
->>>>>>> origin/main
 # Output directories and temporary files
 inputs/
 output/
@@ -54,8 +50,4 @@ target
 
 # Retain Specific Model Files
 *.onnx
-<<<<<<< HEAD
 !models_onnx/*.onnx
-=======
-!models_onnx/*.onnx
->>>>>>> origin/main
