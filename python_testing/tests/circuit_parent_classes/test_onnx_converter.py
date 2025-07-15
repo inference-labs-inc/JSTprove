@@ -40,12 +40,14 @@ def converter(temp_model_path, temp_quant_model_path):
     conv.quantized_model = MagicMock(name="quantized_model")
     return conv
 
+@pytest.mark.unit
 @patch("python_testing.utils.onnx_converter.onnx.save")
 def test_save_model(mock_save, converter):
     path = "model.onnx"
     converter.save_model(path)
     mock_save.assert_called_once_with(converter.model, path)
 
+@pytest.mark.unit
 @patch("python_testing.utils.onnx_converter.onnx.load")
 @patch("python_testing.utils.onnx_converter.onnx.checker.check_model")
 def test_load_model(mock_check, mock_load, converter):
@@ -59,12 +61,14 @@ def test_load_model(mock_check, mock_load, converter):
     mock_check.assert_called_once_with(fake_model)
     assert converter.model == fake_model
 
+@pytest.mark.unit
 @patch("python_testing.utils.onnx_converter.onnx.save")
 def test_save_quantized_model(mock_save, converter):
     path = "quantized_model.onnx"
     converter.save_quantized_model(path)
     mock_save.assert_called_once_with(converter.quantized_model, path)
 
+@pytest.mark.unit
 @patch("python_testing.utils.onnx_converter.SessionOptions")
 @patch("python_testing.utils.onnx_converter.ort.InferenceSession")
 @patch("python_testing.utils.onnx_converter.onnx.checker.check_model")
@@ -85,7 +89,7 @@ def test_load_quantized_model(mock_load, mock_check, mock_ort_sess, mock_session
     mock_ort_sess.assert_called_once_with(path, mock_opts_instance, providers=["CPUExecutionProvider"])
     assert converter.quantized_model == fake_model
 
-
+@pytest.mark.unit
 def test_get_outputs_with_mocked_session(converter):
     dummy_input = [[1.0]]
     dummy_output = [[2.0]]
@@ -125,6 +129,7 @@ def create_dummy_model():
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
     return model
 
+@pytest.mark.integration
 def test_save_and_load_real_model():
     converter = ONNXConverter()
     model = create_dummy_model()
@@ -159,7 +164,7 @@ def test_save_and_load_real_model():
 
 # def test_save_and_load_large_model():
 #     pass
-
+@pytest.mark.integration
 def test_real_inference_from_onnx():
     converter = ONNXConverter()
     converter.model = create_dummy_model()

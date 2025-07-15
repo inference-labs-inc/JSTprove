@@ -11,7 +11,7 @@ with patch('python_testing.utils.helper_functions.prepare_io_files', lambda f: f
 
 
 # ---------- __init__ ----------
-
+@pytest.mark.unit
 def test_init_raises_not_implemented():
     with pytest.raises(NotImplementedError):
         ZKTorchModel()
@@ -20,6 +20,7 @@ def test_init_raises_not_implemented():
 # ---------- base_testing ----------
 
 # TODO FIX
+@pytest.mark.unit
 def test_base_testing_calls_parse_proof_run_type():
     class TestZK(ZKTorchModel):
         def __init__(self):
@@ -43,7 +44,7 @@ def test_base_testing_calls_parse_proof_run_type():
     assert "witness.wtns" in args
     assert RunType.BASE_TESTING in args
 
-# TODO Fix
+@pytest.mark.unit
 @patch.object(ZKTorchModel, 'parse_proof_run_type')
 def test_base_testing_uses_default_weights_path(mock_parse):
     class TestZK(ZKTorchModel):
@@ -60,7 +61,7 @@ def test_base_testing_uses_default_weights_path(mock_parse):
 
 
 # ---------- Inheritance ----------
-
+@pytest.mark.unit
 @patch("python_testing.utils.pytorch_helpers.torch.save")
 def test_inherits_save_model(mock_save):
     class TestZK(ZKTorchModel):
@@ -72,7 +73,7 @@ def test_inherits_save_model(mock_save):
     model.save_model("zk.pt")
     mock_save.assert_called_once_with({"weights": 123}, "zk.pt")
 
-
+@pytest.mark.unit
 @patch("python_testing.utils.pytorch_helpers.torch.load", return_value={"weights": 123})
 def test_inherits_load_model(mock_load):
     class TestZK(ZKTorchModel):

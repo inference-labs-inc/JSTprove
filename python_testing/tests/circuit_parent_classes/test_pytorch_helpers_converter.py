@@ -10,7 +10,7 @@ from python_testing.utils.pytorch_helpers import PytorchConverter, QuantizedConv
 # python_testing/utils/pytorch_helpers
 
 # ---------- Save & Load Models ----------
-
+@pytest.mark.unit
 @patch("torch.save")
 def test_save_model(mock_save):
     c = PytorchConverter()
@@ -19,7 +19,7 @@ def test_save_model(mock_save):
     c.save_model("model.pt")
     mock_save.assert_called_once_with({"weights": 123}, "model.pt")
 
-
+@pytest.mark.unit
 @patch("torch.load", return_value={"weights": 123})
 def test_load_model(mock_load):
     c = PytorchConverter()
@@ -27,7 +27,7 @@ def test_load_model(mock_load):
     c.load_model("model.pt")
     c.model.load_state_dict.assert_called_once_with({"weights": 123})
 
-
+@pytest.mark.unit
 @patch("torch.save")
 def test_save_quantized_model(mock_save):
     c = PytorchConverter()
@@ -35,7 +35,7 @@ def test_save_quantized_model(mock_save):
     c.save_quantized_model("quant.pt")
     mock_save.assert_called_once_with("quantized_model_obj", "quant.pt")
 
-
+@pytest.mark.unit
 @patch("torch.load", return_value="quantized_model_obj")
 def test_load_quantized_model(mock_load):
     c = PytorchConverter()
@@ -44,18 +44,19 @@ def test_load_quantized_model(mock_load):
     assert c.quantized_model == "quantized_model_obj"
 
 # ---------- Padding Expansion ----------
-
+@pytest.mark.unit
 def test_expand_padding():
     c = PytorchConverter()
     assert c.expand_padding((1, 2)) == (2, 2, 1, 1)
 
+@pytest.mark.unit
 def test_expand_padding():
     c = PytorchConverter()
     with pytest.raises(ValueError, match = "Expand padding requires initial padding of dimension 2"):
         c.expand_padding((1,2,2))
 
 # ---------- get_used_layers ----------
-
+@pytest.mark.unit
 def test_get_used_layers():
     c = PytorchConverter()
     layer = nn.Linear(4, 4)
@@ -74,7 +75,7 @@ def test_get_used_layers():
     assert isinstance(used[1][1], nn.Linear)
 
 # ---------- get_input_shapes_by_layer ----------
-
+@pytest.mark.unit
 def test_get_input_shapes_by_layer():
     c = PytorchConverter()
     model = nn.Sequential(nn.Conv2d(1, 1, 3, padding=1), nn.ReLU())
@@ -87,7 +88,7 @@ def test_get_input_shapes_by_layer():
     assert out_shape_map["0_0"] == torch.Size([1, 1, 5, 5])
 
 # ---------- clone_model_with_same_args ----------
-
+@pytest.mark.unit
 def test_clone_model_with_init_args():
     class Dummy(nn.Module):
         def __init__(self, a, b=5):
@@ -103,7 +104,7 @@ def test_clone_model_with_init_args():
     assert cloned.b == 2
 
 # ---------- quantize_model ----------
-
+@pytest.mark.unit
 def test_quantize_model():
     class Dummy(nn.Module):
         def __init__(self):
@@ -119,7 +120,7 @@ def test_quantize_model():
     assert isinstance(getattr(quantized, "conv1"), QuantizedConv2d)
 
 # ---------- get_weights ----------
-
+@pytest.mark.integration
 @patch.object(PytorchConverter, 'get_input_and_output_shapes_by_layer')
 @patch.object(PytorchConverter, 'get_used_layers')
 def test_get_weights(mock_used_layers, mock_shapes):
@@ -149,6 +150,7 @@ def test_get_weights(mock_used_layers, mock_shapes):
     assert "conv_weights" in weights
     assert "fc_weights" in weights
 
+@pytest.mark.integration
 def test_get_weights_values():
     class DummyConv(nn.Conv2d):
         def __init__(self):
@@ -183,7 +185,7 @@ def test_get_weights_values():
         assert weights["fc_bias"][0] == [[5.0, 5.0]]
 
 # ---------- get_model ----------
-
+@pytest.mark.unit
 def test_get_model_success():
     class DummyModel(nn.Module):
         def __init__(self, hidden_size):
@@ -197,14 +199,14 @@ def test_get_model_success():
     assert isinstance(model, DummyModel)
     assert model.hidden_size == 10
 
-
+@pytest.mark.unit
 def test_get_model_failure():
     c = PytorchConverter()
     with pytest.raises(NotImplementedError):
         c.get_model("cpu")
 
 # ---------- get_model_and_quantize ----------
-
+@pytest.mark.unit
 @patch.object(PytorchConverter, "get_model")
 @patch("torch.load")
 @patch.object(PytorchConverter, "quantize_model")
@@ -222,7 +224,7 @@ def test_get_model_and_quantize(mock_quantize, mock_load, mock_get_model):
     assert hasattr(c, "quantized_model")
 
 # ---------- test_accuracy ----------
-
+@pytest.mark.unit
 def test_test_accuracy_prints(capsys):
     c = PytorchConverter()
     c.scale_base = 10
@@ -236,7 +238,7 @@ def test_test_accuracy_prints(capsys):
     captured = capsys.readouterr()
     assert "original_out" in captured.out
 
-
+@pytest.mark.unit
 def test_model_save_and_load_equivalence(tmp_path):
     class Simple(nn.Module):
         def __init__(self):
