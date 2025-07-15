@@ -1,7 +1,7 @@
 use gravy_circuits::circuit_functions::convolution_fn::conv_4d_run;
 use expander_compiler::frontend::*;
 use gravy_circuits::circuit_functions::helper_fn::{four_d_array_to_vec, load_circuit_constant, read_4d_weights};
-use gravy_circuits::circuit_functions::pooling::{setup_maxpooling_2d, maxpooling_2d};
+use gravy_circuits::circuit_functions::max_pooling::{setup_maxpooling_2d, maxpooling_2d};
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use lazy_static::lazy_static;
 #[allow(unused_imports)]

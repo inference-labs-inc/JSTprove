@@ -16,11 +16,14 @@ class ONNXOpQuantizer:
         self.register("Conv", self._quantize_conv)
         self.register("MatMul", self._quantize_matmul)
         # TODO check long term if we need the custom relu or can passthrough here
-        # self.register("Relu", self._quantize_relu) # might work with quantize_passthrough instead for some models
-        self.register("Relu", self._quantize_passthrough) # might work with quantize_passthrough instead for some models
+        self.register("Relu", self._quantize_relu) # might work with quantize_passthrough instead for some models
+        # self.register("Relu", self._quantize_passthrough) # might work with quantize_passthrough instead for some models
         self.register("Reshape", self._quantize_passthrough)
         self.register("Gemm", self._quantize_gemm)
         self.register("Constant", self._quantize_constant)
+        # !!! MaxPool
+        self.register("MaxPool", self._quantize_maxpool)
+        # self.register("MaxPool", self._quantize_passthrough)
 
         
 
@@ -145,6 +148,19 @@ class ONNXOpQuantizer:
 
         nodes.append(int64_relu)
         return nodes
+    
+    # !!! MaxPool
+    def _quantize_maxpool(self, node, rescale, graph, scale, scale_base, initializer_map):
+        attrs = {a.name: helper.get_attribute_value(a) for a in node.attribute}
+        attr_str = {k: ",".join(map(str, v)) if isinstance(v, list) else str(v) for k, v in attrs.items()}
+        return helper.make_node(
+            "Int64MaxPool",
+            inputs=node.input,
+            outputs=node.output,
+            name=node.name,
+            domain="ai.onnx.contrib",
+            **attr_str
+    )
 
     def _quantize_passthrough(self, node: onnx.NodeProto, *args):
         return node  # e.g. ReLU: just pass it through

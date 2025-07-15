@@ -36,6 +36,8 @@ target
 *.txt
 *.bin
 *.csv
+*.compiled
+*.pth
 
 # Log files
 *.log

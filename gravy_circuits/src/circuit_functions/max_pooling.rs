@@ -1,7 +1,5 @@
-
 use expander_compiler::frontend::*;
-use circuit_std_rs::logup::LogUpRangeProofTable;
-use crate::circuit_functions::extrema::assert_extremum_vec;
+use crate::circuit_functions::core_operations::{unconstrained_max, assert_is_max, MaxAssertionContext};
 
 pub fn setup_maxpooling_2d_params(
     padding: &Vec<usize>,
@@ -86,45 +84,7 @@ pub fn setup_maxpooling_2d(
 }
 
 
-pub fn get_max_unconstrained<C: Config, Builder: RootAPI<C>>(
-    api: &mut Builder, x: &Vec<Variable>) -> Variable {
-    let midpoint = CircuitField::<C>::from_u256(ethnum::U256::from(CircuitField::<C>::MODULUS/2));
-
-    let mut output = api.unconstrained_add(x[0], midpoint);
-
-    for i in 1..x.len(){
-        let y = api.unconstrained_add(x[i], midpoint);
-        let is_new_max = api.unconstrained_greater(y, output);
-        let not_new_max = api.unconstrained_lesser_eq(y, output);
-        
-        let output_1 = api.unconstrained_mul(y, is_new_max);
-        let output_2 = api.unconstrained_mul(output, not_new_max);
-
-        output = api.unconstrained_add(output_1, output_2);
-    }
-    let midpoint_and_one = api.unconstrained_add(midpoint, 1);
-    let x = api.unconstrained_add(output, midpoint_and_one);
-    x
-}
-
-pub fn get_and_assert_maximum<C: Config, Builder: RootAPI<C>>(
-    api: &mut Builder, candidates: &Vec<Variable>, base: u32, num_digits: usize, is_max: bool, use_lookup: bool, mut table_opt: &mut Option<&mut LogUpRangeProofTable>) -> Variable {
-    let max = get_max_unconstrained(api, candidates);
-
-    assert_extremum_vec(
-        api,
-        max,
-        candidates,
-        base,
-        num_digits,
-        is_max,
-        use_lookup,
-        &mut table_opt,
-    );
-    max
-}
-
-// base, num_digits, true, use_lookup, table
+// shift_exponent, true 
 pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     x: &Vec<Vec<Vec<Vec<Variable>>>>,
@@ -135,10 +95,7 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
     output_spatial_shape: &Vec<usize>,
     x_shape: &Vec<usize>,
     new_pads: &Vec<[usize; 2]>,
-    base: u32,
-    num_digits: usize,
-    use_lookup: bool,
-    table: &mut Option<&mut LogUpRangeProofTable>, 
+    shift_exponent: usize,
 )-> Vec<Vec<Vec<Vec<Variable>>>>{
     let global_pooling = false;
     let batch = x_shape[0];
@@ -185,6 +142,8 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
     .collect();
     let mut y_data = y;
 
+    let context = MaxAssertionContext::new(api, shift_exponent);
+    
     for c in 0..total_channels {
         let x_d = c * x_step;
         let y_d = c * y_step;
@@ -198,7 +157,7 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
                 let wend = wstart + (kernel_shape[1] * dilation_w) as isize;
 
                 let pool_index = ph * pooled_width + pw;
-                let mut max_elements: Vec<Variable> = Vec::new();
+                let mut values: Vec<Variable> = Vec::new();
 
                 for h in (hstart..hend).step_by(dilation_h) {
                     if h < 0 || h >= height as isize {
@@ -211,12 +170,14 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
 
                         let input_index = (h as usize) * width + (w as usize);
                         let val = x_data[x_d + input_index];
-                        max_elements.push(val);
+                        values.push(val);
 
                     }
                 }
-                if max_elements.len() != 0 {
-                    y_data[y_d + pool_index] = get_and_assert_maximum(api, &max_elements, base, num_digits, true, use_lookup, table);
+                if values.len() != 0 {                    
+                    let max = unconstrained_max(api, &values);
+                    assert_is_max(api, &context, &values);
+                    y_data[y_d + pool_index] = max;
                 }
             }
         }
