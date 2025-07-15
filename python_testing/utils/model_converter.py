@@ -138,7 +138,7 @@ class GeneralLayerFunctions():
     def format_outputs(self, outputs):
         if hasattr(self, "scaling") and hasattr(self, "scale_base"):
             # Must change how rescaled_outputs is specified TODO
-            return {"output": outputs.long().tolist(), "rescaled_output": torch.div(outputs, self.scale_base**(2*self.scaling)).tolist()}
+            return {"output": outputs.long().tolist(), "rescaled_output": torch.div(outputs, self.scale_base**(self.scaling)).tolist()}
         return {"output": outputs.long().tolist()}
     
     def format_inputs_outputs(self, inputs, outputs):
