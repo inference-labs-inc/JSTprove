@@ -13,6 +13,7 @@ use gravy_circuits::circuit_functions::matrix_computation::{
 // !!! MaxPool
 use gravy_circuits::circuit_functions::max_pooling::{setup_maxpooling_2d, maxpooling_2d};
 
+use gravy_circuits::circuit_functions::relu::relu_array;
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use gravy_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
 use lazy_static::lazy_static;
@@ -150,6 +151,7 @@ struct ReluLayer {
     input_shape: Vec<usize>,
     inputs: Vec<String>,
     outputs: Vec<String>,
+    n_bits: usize,
 }
 
 #[derive(Debug)]
@@ -227,13 +229,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
     ) -> Result<(String,ArrayD<Variable>), String> {
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         // Reshape inputs
-        let layer_input = reshape_layer(layer_input, &self.input_shape);
+        // TODO work on removing
+        // let layer_input = reshape_layer(layer_input, &self.input_shape);
 
         let out = layer_input;
 
         // let dims = get_vector_dim(out);
         // TODO RELU unsupported for now. Must design relu function that takes in array instead of vectors
-        panic!("Unsupported ReLU.");
+        // panic!("Unsupported ReLU.");
+        let out = relu_array(api, out, self.n_bits);
 
         Ok((self.outputs[0].clone(), out))
     }
@@ -252,7 +256,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
 
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         // Reshape inputs
-        let layer_input = reshape_layer(layer_input, &self.input_shape);
+        // TODO work on removing
+        // let layer_input = reshape_layer(layer_input, &self.input_shape);
 
         // Get weights and biases
         let weights = read_4d_weights(api, &self.weights);
@@ -309,7 +314,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
 
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         // Reshape inputs
-        let layer_input = reshape_layer(layer_input, &self.input_shape);
+        // TODO work on removing
+        // let layer_input = reshape_layer(layer_input, &self.input_shape);
 
         let mut weight_tensor = self.weights.clone();
         let mut out_2d = arrayd_to_vec2(layer_input);
@@ -424,8 +430,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         eprintln!("Applying input shape for GemmLayer: {}", self.name);
 
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
+        // TODO work on removing
 
-        let layer_input = reshape_layer(layer_input, &self.input_shape);
+        // let layer_input = reshape_layer(layer_input, &self.input_shape);
         let x = arrayd_to_vec4(layer_input);
 
         let ceil_mode = false; // or make configurable
@@ -500,6 +507,7 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 is_relu = true;
                 skip_next_layer = true;
                 outputs = ARCHITECTURE.architecture[i + 1].outputs.clone();
+                
                 // skip_future_layers.add(layer_plus_1.name)
             }
         }
@@ -646,20 +654,22 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 };
                 layers.push(Box::new(flatten));
             }
-            // "ReLU" =>{
-            //     let expected_shape = match shapes_map.get(&layer.inputs[0]){
-            //         Some(input_shape) => input_shape,
-            //         None => panic!("Error getting output shape for layer {}", layer.name)
-            //     };
-            //     let relu = ReluLayer{
-            //         name: layer.name.clone(),
-            //         index: i,
-            //         input_shape: expected_shape.to_vec(),
-            //         inputs: layer.inputs.to_vec(),
-            //         outputs: outputs
-            //     };
-            //     layers.push(Box::new(relu));
-            // }
+            // Just in case the relu is not following a gemm or conv layer 
+            "Relu" =>{
+                let expected_shape = match shapes_map.get(&layer.inputs[0]){
+                    Some(input_shape) => input_shape,
+                    None => panic!("Error getting output shape for layer {}", layer.name)
+                };
+                let relu = ReluLayer{
+                    name: layer.name.clone(),
+                    index: i,
+                    input_shape: expected_shape.to_vec(),
+                    inputs: layer.inputs.to_vec(),
+                    outputs: outputs,
+                    n_bits: N_BITS,
+                };
+                layers.push(Box::new(relu));
+            }
             other => panic!("Unsupported layer type: {}", other),
         }
         eprintln!("layer added: {}", layer.op_type.as_str() );
