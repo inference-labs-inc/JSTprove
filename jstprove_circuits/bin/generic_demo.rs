@@ -2,16 +2,16 @@ use core::panic;
 use std::env::consts::ARCH;
 use expander_compiler::circuit::ir::common::display;
 use expander_compiler::frontend::*;
-use jstprove_circuits::circuit_functions::convolution_fn::conv_4d_run;
-use jstprove_circuits::circuit_functions::helper_fn::{arrayd_to_vec1, arrayd_to_vec2, arrayd_to_vec4, arrayd_to_vec5, get_1d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec1_to_arrayd, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd};
+use jstprove_circuits::circuit_functions::layer_conv::conv_4d_run;
+use jstprove_circuits::circuit_functions::utils_helper::{arrayd_to_vec1, arrayd_to_vec2, arrayd_to_vec4, arrayd_to_vec5, get_1d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec1_to_arrayd, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd};
 #[allow(unused_imports)]
-use jstprove_circuits::circuit_functions::matrix_computation::{
+use jstprove_circuits::circuit_functions::layer_matmul::{
     matrix_addition_vec, matrix_multplication, matrix_multplication_array,
     matrix_multplication_naive, matrix_multplication_naive2, matrix_multplication_naive2_array,
     matrix_multplication_naive3, matrix_multplication_naive3_array,
 };
 // !!! MaxPool
-use jstprove_circuits::circuit_functions::max_pooling::{setup_maxpooling_2d, maxpooling_2d};
+use jstprove_circuits::circuit_functions::layer_max_pool::{setup_maxpooling_2d, maxpooling_2d};
 
 use jstprove_circuits::io::io_reader::{FileReader, IOReader};
 use jstprove_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::Value;
-use jstprove_circuits::circuit_functions::quantization::run_if_quantized_2d;
+use jstprove_circuits::circuit_functions::utils_quantization::run_if_quantized_2d;
 
 
 type WeightsData = (Architecture, W_and_B, CircuitParams);
