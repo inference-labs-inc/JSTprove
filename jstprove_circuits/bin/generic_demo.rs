@@ -5,11 +5,7 @@ use expander_compiler::frontend::*;
 use jstprove_circuits::circuit_functions::layer_conv::conv_4d_run;
 use jstprove_circuits::circuit_functions::utils_helper::{arrayd_to_vec1, arrayd_to_vec2, arrayd_to_vec4, arrayd_to_vec5, get_1d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec1_to_arrayd, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd};
 #[allow(unused_imports)]
-use jstprove_circuits::circuit_functions::layer_matmul::{
-    matrix_addition_vec, matrix_multplication, matrix_multplication_array,
-    matrix_multplication_naive, matrix_multplication_naive2, matrix_multplication_naive2_array,
-    matrix_multplication_naive3, matrix_multplication_naive3_array,
-};
+use jstprove_circuits::circuit_functions::layer_matmul::{matrix_addition_vec, matrix_multplication_naive2,};
 // !!! MaxPool
 use jstprove_circuits::circuit_functions::layer_max_pool::{setup_maxpooling_2d, maxpooling_2d};
 
@@ -307,13 +303,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         api: &mut Builder,
         input: ArrayD<Variable>,
     ) -> Result<ArrayD<Variable>, String> {
-        use jstprove_circuits::circuit_functions::max_pooling::{
-            setup_maxpooling_2d, maxpooling_2d
-        };
-        use jstprove_circuits::circuit_functions::helper_fn::{
-            arrayd_to_vec4, vec4_to_arrayd
-        };
-
         let input = reshape_layer(input, &self.input_shape);
         let x = arrayd_to_vec4(input);
 
