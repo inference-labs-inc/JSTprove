@@ -1,5 +1,18 @@
 use expander_compiler::frontend::*;
 
+pub fn dot<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    vector_a: Vec<Variable>,
+    vector_b: Vec<Variable>,
+) -> Variable {
+    let mut row_col_product: Variable = api.constant(0);
+    for k in 0..vector_a.len() {
+        let element_product = api.mul(vector_a[k], vector_b[k]);
+        row_col_product = api.add(row_col_product, element_product);
+    }
+    row_col_product
+}
+
 /// Naive Matrix addition with vectors
 pub fn matrix_addition_vec<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
