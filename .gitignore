@@ -25,11 +25,13 @@ __pycache__/
 *.py[cod]
 *.ipynb_checkpoints/
 *.cfg
-lib
+lib/
+bin/
+share/
 report
 
 # Rust Binaries
-target
+target/
 
 # Dataset and binary files
 *.json
