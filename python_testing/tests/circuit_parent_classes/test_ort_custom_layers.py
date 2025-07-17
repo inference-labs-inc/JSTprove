@@ -12,6 +12,7 @@ from onnx import TensorProto, shape_inference, helper, numpy_helper
 
 import onnxruntime as ort
 import os
+import transformers
 
 
 from python_testing.utils.onnx_converter import ONNXConverter

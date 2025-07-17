@@ -43,11 +43,6 @@ def scan_model_files(directory, extension, loader_fn, prefix):
     
     return entries
 
-
-
-
-
-
 def import_all_submodules(package):
     """Recursively import all submodules of a given package."""
     for loader, name, is_pkg in pkgutil.walk_packages(package.__path__, package.__name__ + "."):
