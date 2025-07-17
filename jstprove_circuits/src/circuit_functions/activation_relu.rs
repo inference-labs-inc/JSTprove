@@ -1,4 +1,41 @@
 use expander_compiler::frontend::*;
+use ndarray::ArrayD;
+use crate::circuit_functions::core_operations::{unconstrained_to_bits, assert_is_bitstring_and_reconstruct, MaxAssertionContext};
+
+
+pub fn relu_array<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    array: ArrayD<Variable>,
+    n_bits: usize,
+) -> ArrayD<Variable>{
+    let context = MaxAssertionContext::new(api, n_bits - 1);
+
+    let new_array = array.map(|var| relu(api, var, &context));
+    new_array
+}
+
+// TODO can make use of memorized calls instead, by flattening the array and expanding?
+pub fn relu<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    x: &Variable,
+    context: &MaxAssertionContext,
+) -> Variable {
+    let shifted_x = api.add(context.offset, x);
+    let n_bits = context
+        .shift_exponent
+        .checked_add(1)
+        .expect("shift_exponent + 1 must fit in usize");
+
+    let bits = unconstrained_to_bits(api, shifted_x, n_bits);
+    let recon = assert_is_bitstring_and_reconstruct(api, &bits);
+    api.assert_is_equal(shifted_x, recon);
+
+    let sign_bit = bits[context.shift_exponent]; // the (s + 1)-st bit d_s
+    // let sign_bit = bits[n_bits - 1];
+    let out = api.mul(x, sign_bit);
+    out
+}
+
 
 // to_binary value, original method using unconstrained api
 pub fn to_binary<C: Config, Builder: RootAPI<C>>(

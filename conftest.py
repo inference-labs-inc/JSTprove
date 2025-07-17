@@ -24,6 +24,53 @@ def pytest_addoption(parser):
         default=None,
         help="Restrict models to a specific source: class, pytorch, or onnx."
     )
+    parser.addoption(
+        "--unit",
+        action="store_true",
+        default=False,
+        help="Run only unit tests."
+    )
+    parser.addoption(
+        "--integration",
+        action="store_true",
+        default=False,
+        help="Run only integration tests."
+    )
+    parser.addoption(
+        "--e2e",
+        action="store_true",
+        default=False,
+        help="Run only end-to-end tests."
+    )
+
+def pytest_collection_modifyitems(config, items):
+    run_unit = config.getoption("--unit")
+    run_integration = config.getoption("--integration")
+    run_e2e = config.getoption("--e2e")
+
+    # If no filters set, run all
+    if not any([run_unit, run_integration, run_e2e]):
+        return
+
+    selected = []
+    deselected = []
+
+    for item in items:
+        has_unit = "unit" in item.keywords
+        has_integration = "integration" in item.keywords and "e2e" not in item.keywords
+        has_e2e = "e2e" in item.keywords
+
+        if run_unit and has_unit:
+            selected.append(item)
+        elif run_integration and has_integration:
+            selected.append(item)
+        elif run_e2e and has_e2e:
+            selected.append(item)
+        else:
+            deselected.append(item)
+
+    items[:] = selected
+    config.hook.pytest_deselected(items=deselected)
 
 
 def pytest_generate_tests(metafunc):

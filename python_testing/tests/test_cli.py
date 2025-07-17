@@ -9,6 +9,7 @@ from python_testing.circuit_components.circuit_helpers import RunType
 
 
 # ---------- parse_args ----------
+@pytest.mark.unit
 def test_parse_args_defaults(monkeypatch):
     monkeypatch.setattr("sys.argv", ["cli.py", "--circuit", "my_circuit", "--compile"])
     args = parse_args()
@@ -18,6 +19,7 @@ def test_parse_args_defaults(monkeypatch):
 
 
 # ---------- get_run_operations ----------
+@pytest.mark.unit
 @pytest.mark.parametrize("flags,expected", [
     (["--all"], [RunType.COMPILE_CIRCUIT, RunType.GEN_WITNESS, RunType.PROVE_WITNESS, RunType.GEN_VERIFY]),
     (["--compile"], [RunType.COMPILE_CIRCUIT]),
@@ -34,11 +36,12 @@ def test_get_run_operations(monkeypatch, flags, expected):
 
 
 # ---------- find_file ----------
+@pytest.mark.unit
 def test_find_file_appends_json_extension():
     result = find_file("data")
     assert result == "data.json"
 
-
+@pytest.mark.unit
 @patch("cli.Path.is_file", return_value=True)
 def test_find_file_returns_valid_default_path(mock_isfile):
     path = Path("inputs/some_file.json")
@@ -46,20 +49,21 @@ def test_find_file_returns_valid_default_path(mock_isfile):
     assert result == PROJECT_ROOT / path
     mock_isfile.assert_called_once()
 
-
+@pytest.mark.unit
 @patch("cli.Path.is_file", return_value=False)
 def test_find_file_returns_filename_if_default_path_missing(mock_isfile):
     result = find_file("myfile", default_path=Path("fake/path.json"))
     assert result == "myfile.json"
     mock_isfile.assert_called_once()
 
-
+@pytest.mark.unit
 def test_find_file_no_default_path():
     result = find_file("model_output")
     assert result == "model_output.json"
 
 
 # ---------- resolve_file_paths ----------
+@pytest.mark.unit
 @patch("cli.find_file")
 def test_resolve_file_paths_with_overrides(mock_find):
     mock_find.side_effect = lambda x, default=None: Path(f"/resolved/{x}")
@@ -67,7 +71,7 @@ def test_resolve_file_paths_with_overrides(mock_find):
     assert input_path == "/resolved/input.json"
     assert output_path == "/resolved/output.json"
 
-
+@pytest.mark.unit
 @patch("cli.find_file")
 def test_resolve_file_paths_with_pattern(mock_find):
     mock_find.side_effect = lambda x, default=None: Path(f"/matched/{x}")
@@ -77,6 +81,7 @@ def test_resolve_file_paths_with_pattern(mock_find):
 
 
 # ---------- load_circuit ----------
+@pytest.mark.unit
 @patch("cli.importlib.import_module")
 def test_load_circuit_success(mock_import):
     mock_module = MagicMock()
@@ -85,7 +90,7 @@ def test_load_circuit_success(mock_import):
     result = load_circuit("my_mod", "SimpleCircuit")
     assert result == "instance"
 
-
+@pytest.mark.unit
 @patch("cli.importlib.import_module", side_effect=ModuleNotFoundError)
 def test_load_circuit_fail(mock_import):
     with pytest.raises(ValueError):
@@ -93,6 +98,7 @@ def test_load_circuit_fail(mock_import):
 
 
 # ---------- main ----------
+@pytest.mark.unit
 @patch("cli.parse_args")
 @patch("cli.list_available_circuits")
 def test_main_lists_and_exits(mock_list, mock_args):
@@ -105,7 +111,7 @@ def test_main_lists_and_exits(mock_list, mock_args):
     cli.main()
     mock_list.assert_called_once()
 
-
+@pytest.mark.unit
 @patch("cli.parse_args")
 @patch("cli.load_circuit")
 @patch("cli.resolve_file_paths")
