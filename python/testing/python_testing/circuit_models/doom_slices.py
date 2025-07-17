@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 from python.testing.python_testing.utils.helper_functions import RunType
 from python.testing.python_testing.utils.pytorch_helpers import ZKTorchModel
-from python.testing.python_testing import Doom, DoomAgent
+from python.testing.python_testing.circuit_models.doom_model import Doom, DoomAgent
 
 
 
