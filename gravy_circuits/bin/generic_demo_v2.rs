@@ -1,9 +1,7 @@
 use core::panic;
-use std::env::consts::ARCH;
-use expander_compiler::circuit::ir::common::display;
 use expander_compiler::frontend::*;
 use gravy_circuits::circuit_functions::convolution_fn::conv_4d_run;
-use gravy_circuits::circuit_functions::helper_fn::{arrayd_to_vec1, arrayd_to_vec2, arrayd_to_vec4, arrayd_to_vec5, get_1d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec1_to_arrayd, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd};
+use gravy_circuits::circuit_functions::helper_fn::{arrayd_to_vec1, arrayd_to_vec2, arrayd_to_vec4, get_1d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec2_to_arrayd, vec4_to_arrayd};
 #[allow(unused_imports)]
 use gravy_circuits::circuit_functions::matrix_computation::{
     matrix_addition_vec, matrix_multplication, matrix_multplication_array,
@@ -17,9 +15,8 @@ use gravy_circuits::circuit_functions::relu::relu_array;
 use gravy_circuits::io::io_reader::{FileReader, IOReader};
 use gravy_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
 use lazy_static::lazy_static;
-use ndarray::{Array1, Dimension};
+use ndarray::Dimension;
 use ndarray::{ ArrayD, IxDyn};
-use rand::distributions::WeightedError;
 use std::collections::HashMap;
 
 // Serde Packages
@@ -214,9 +211,7 @@ struct MaxPoolLayer {
 
 trait LayerOp<C: Config, Builder: RootAPI<C>> {
     fn apply(&self, api: &mut Builder, input: HashMap<String,ArrayD<Variable>>)
-    // fn apply(&self, api: &mut Builder, input: ArrayD<Variable>)
         -> Result<(String,ArrayD<Variable>), String>;
-
     // fn build for every Layer type
 }
 
@@ -234,9 +229,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
 
         let out = layer_input;
 
-        // let dims = get_vector_dim(out);
         // TODO RELU unsupported for now. Must design relu function that takes in array instead of vectors
-        // panic!("Unsupported ReLU.");
         let out = relu_array(api, out, self.n_bits);
 
         Ok((self.outputs[0].clone(), out))
@@ -249,11 +242,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
     ) -> Result<(String,ArrayD<Variable>), String> {
-        eprintln!("Applying input shape for CONV: {}", self.name);
-
-        eprintln!("{:?}", self.inputs);
-
-
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         // Reshape inputs
         // TODO work on removing
@@ -272,11 +260,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
 
         // Convert inputs to correct form
         let layer_input = arrayd_to_vec4(layer_input);
-        eprintln!("GOT Input:");
         // TODO there should be a better way to do this (Maybe even inside conv4drun)
         // Get input shape
         let in_shape = vec![layer_input.len() as u32,layer_input[0].len() as u32, layer_input[0][0].len() as u32, layer_input[0][0][0].len() as u32];
-    
         
         // Run convolution
         let out = conv_4d_run(
@@ -297,9 +283,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             alpha_two_v,
             self.is_relu,
         );
-        eprintln!("GOT OUTPUT");
-        eprint!("PRINTING INDEX");
-
         Ok((self.outputs[0].clone(), vec4_to_arrayd(out)))
     }
 }
@@ -310,8 +293,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
     ) -> Result<(String,ArrayD<Variable>), String> {
-        eprintln!("Applying input shape for GemmLayer: {}", self.name);
-
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         // Reshape inputs
         // TODO work on removing
@@ -321,17 +302,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         let mut out_2d = arrayd_to_vec2(layer_input);
 
         // Untested trans a value of 1
-        match self.transa {
-            0 => {},
-            1 => {out_2d = transpose(out_2d);},
-            other => panic!("Unsupported transa value {} in Gemm layer: {}", other, self.name),
-        }
-
-        match self.transb {
-            0 => {},
-            1 => {weight_tensor = transpose(weight_tensor);},
-            other => panic!("Unsupported transb value {} in Gemm layer: {}", other, self.name),
-        }
+        out_2d = check_and_apply_transpose(out_2d, self.transa, "transa", "Gemm", &self.name);
+        weight_tensor = check_and_apply_transpose(weight_tensor, self.transb, "transb", "Gemm", &self.name);
 
         let weights = read_2d_weights(api, &weight_tensor);
         let bias = read_2d_weights(api, &self.bias);
@@ -341,13 +313,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         let alpha_two_v = api.mul(self.two_v as u32, scale_factor as u32);
 
         // TODO add support for alpha and beta !=1. Hint, may need to scale up the alpha/beta and then rescale
-        if self.alpha != 1.0{
-            panic!("Only alpha = 1 is currently supported for Gemm layers");
-        }
+        check_alpha_beta(self.alpha, "alpha", "Gemm", &self.name);
+        check_alpha_beta(self.beta, "beta", "Gemm", &self.name);
 
-        if self.beta != 1.0{
-            panic!("Only alpha = 1 is currently supported for Gemm layers");
-        }
         out_2d = matrix_multplication_naive2(api, out_2d, weights);
         eprintln!("out2d dimension {}, {}", out_2d.len(), out_2d[0].len());
         out_2d = matrix_addition_vec(api, out_2d, bias);
@@ -361,10 +329,23 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
     }
 }
 
+fn check_alpha_beta(val: f32, var_name: &str, layer_type: &str, layer_name: &str) {
+    if val != 1.0{
+        panic!("Only {} = 1 is currently supported for {} layers: {}", var_name, layer_type, layer_name);
+    }
+}
+
+
+
+fn check_and_apply_transpose<T: Clone>(matrix: Vec<Vec<T>>, flag: usize, var_name: &str, layer_type: &str, layer_name: &str) -> Vec<Vec<T>>{
+    match flag {
+            0 => matrix,
+            1 => transpose(matrix),
+            other => panic!("Unsupported {} value {} in {} layer: {}", var_name, other, layer_type, layer_name),
+        }
+}
+
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
-    /*
-    TO-DO: Implement permanent implementation, currently temp solution
-     */
     fn apply(
         &self,
         api: &mut Builder,
@@ -381,6 +362,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
 }
 
 
+
+
 fn onnx_flatten<T>(array: ArrayD<T>, axis: usize) -> ArrayD<T> {
     let shape = array.shape();
     let dim0 = shape[..axis].iter().product::<usize>();
@@ -390,9 +373,6 @@ fn onnx_flatten<T>(array: ArrayD<T>, axis: usize) -> ArrayD<T> {
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
-    /*
-    TO-DO: Implement permanent implementation, currently temp solution
-     */
     fn apply(
         &self,
         api: &mut Builder,
@@ -517,10 +497,6 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 None => &true
             };
 
-        /*
-        Implement Static Polymorphism, want to generalize a build function
-        no matter the type of layer we want to build and return that layer type.
-        */
         match layer.op_type.as_str() {
             "Conv" => {
                 let params = layer.params.clone().unwrap();
@@ -557,9 +533,6 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 layers.push(Box::new(conv));
             }
             "Reshape" => {
-                /*
-                   TODO - Implement permanent solution for what reshape layer needs like
-                */
                 let shape_name = layer.inputs[1].clone();
                 let params = layer.params.clone().unwrap();
                 
@@ -635,9 +608,6 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 layers.push(Box::new(maxpool));
             }
             "Flatten" => {
-                /*
-                   TODO - Implement permanent solution for what reshape layer needs like
-                */
                 let params = layer.params.clone().unwrap();
                 
                 let expected_shape = match shapes_map.get(&layer.inputs[0]){
