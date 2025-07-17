@@ -2,7 +2,8 @@ import math
 import numpy as np
 import torch
 # from python_testing.utils.pytorch_helpers import Layer, ZKTorchModel, RunType, filter_dict_for_dataclass
-from python.testing.python_testing.utils.onnx_converter import ZKONNXModel, RunType, ONNXOpQuantizer
+from python.testing.python_testing.utils.onnx_converter import ZKONNXModel, ONNXOpQuantizer
+from python.testing.python_testing.utils.helper_functions import RunType
 
 
 class GenericModelONNX(ZKONNXModel):

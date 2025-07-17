@@ -90,12 +90,9 @@ def prepare_io_files(func):
         # output_folder = kwargs.get("output_folder") or getattr(self, 'output_folder', "output")
         # quantized_model_folder = kwargs.get("quantized_folder") or getattr(self, 'quantized_path', "quantized_model_folder")
         # proof_system = kwargs.get("proof_system") or getattr(self, 'proof_system', ZKProofSystems.Expander)
-        #TODO: Delete the following folders(inputs, output,quantized_model_folder, analysis, temp)  as they aren't being populated with anything
         input_folder = resolve_folder("input_folder", "input_file", "inputs")
         output_folder = resolve_folder("output_folder", "output_file", "output")
         quantized_model_folder = resolve_folder("quantized_folder", "quantized_path", "quantized_model_folder")
-        proof_folder = resolve_folder("proof_folder", default="analysis")
-        temp_folder = resolve_folder("temp_folder", default="temp")
         weights_folder = resolve_folder("weights_folder", default="weights")
         circuit_folder = resolve_folder("circuit_folder", default="")
 
