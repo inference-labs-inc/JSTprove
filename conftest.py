@@ -1,8 +1,5 @@
-import os
-import subprocess
-import time
-import pytest 
-from python_testing.utils.model_registry import get_models_to_test, list_available_models
+import pytest
+from python.testing.python_testing.utils.model_registry import get_models_to_test, list_available_models
 
 def pytest_addoption(parser):
     parser.addoption(
