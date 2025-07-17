@@ -1,6 +1,6 @@
 use expander_compiler::frontend::*;
 use ndarray::ArrayD;
-use crate::circuit_functions::core_operations::{unconstrained_to_bits, assert_is_bitstring_and_reconstruct, MaxAssertionContext};
+use crate::circuit_functions::utils_core_math::{unconstrained_to_bits, assert_is_bitstring_and_reconstruct, MaxAssertionContext};
 
 
 pub fn relu_array<C: Config, Builder: RootAPI<C>>(

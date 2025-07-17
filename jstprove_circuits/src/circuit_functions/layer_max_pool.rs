@@ -142,7 +142,7 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
     .collect();
     let mut y_data = y;
 
-    let context = MaxAssertionContext::<C>::new(api, shift_exponent);
+    let context = MaxAssertionContext::new(api, shift_exponent);
     
     for c in 0..total_channels {
         let x_d = c * x_step;
