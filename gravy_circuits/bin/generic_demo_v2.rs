@@ -77,7 +77,7 @@ struct OutputData {
 }
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../weights/onnx_generic_circuit_weights.json");
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../python/models/weights/onnx_generic_circuit_weights.json");
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
 // Weights will be read in
@@ -614,7 +614,6 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                     Some(input_shape) => input_shape,
                     None => panic!("Error getting output shape for layer {}", layer.name)
                 };
-                let output_shape = shapes_map.get(&layer.outputs.to_vec()[0]);
                 let flatten = FlattenLayer {
                     name: layer.name.clone(),
                     input_shape: expected_shape.to_vec(),
