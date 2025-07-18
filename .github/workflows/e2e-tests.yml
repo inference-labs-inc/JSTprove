@@ -17,7 +17,7 @@ permissions:
 jobs:
   build:
 
-    runs-on: ubuntu-latest-large
+    runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
@@ -43,7 +43,7 @@ jobs:
     - name: Run E2E Tests with Standard Model #TODO: Have a standardized model to run from, multiple sources (other than ONNX)?
       run: |
         mkdir -p report
-        pytest --e2e --model doom --source onnx --html=report/integration_tests.html #TODO: Should configure E2E tests to run.
+        pytest --e2e --model doom --source net_model --html=report/integration_tests.html #TODO: Should configure E2E tests to run.
 
     - name: Upload Pytest HTML Report
       uses: actions/upload-artifact@v4
