@@ -1,45 +1,108 @@
-use expander_compiler::frontend::*;
+//! Utilities for quantization-related arithmetic in circuit construction.
+//!
+//! This module provides functionality for rescaling the product of two fixed-point
+//! approximations, where each operand has been independently scaled and rounded.
+//! That is, we assume integers `a ≈ α·x` and `b ≈ α·y`, where `α = 2^κ` is the fixed-point
+//! scaling factor, and `a`, `b` are scaled versions of real numbers `x`, `y`.
+//!
+//! The product `c' = a·b` approximates `α²·x·y`. Since the circuit operates only on field
+//! elements (nonnegative integers modulo `p`, the field modulus), we must simulate signed
+//! integer arithmetic using representative values in the range `[0, p - 1]`.
+//!
+//! To correctly recover a fixed-point approximation of `x·y` at scale `α`, we compute:
+//!
+//! ```text
+//! q = floor((c + α·S)/α) − S
+//! ```
+//!
+//! where `c` is the least nonnegative residue of the signed integer `c'`,
+//! and `S = 2^s` is a centering constant that ensures intermediate values
+//! remain within the field during division and remainder operations.
+//!
+//! The computation enforces that:
+//!
+//! ```text
+//! c + α·S = α·q^♯ + r,    with    0 ≤ r < α
+//! ```
+//!
+//! Then recovers `q = q^♯ − S`, and optionally applies ReLU by zeroing out negative values
+//! based on the most significant bit of `q^♯`.
+//!
+//! The core logic is implemented in [`rescale`] and its batched variants
+//! [`rescale_2d_vector`] and [`rescale_4d_vector`], using a shared [`RescalingContext`]
+//! to precompute constants and optimize performance.
+
+// External crates
 use ethnum::U256;
-use super::utils_core_math::{unconstrained_to_bits, assert_is_bitstring_and_reconstruct};
+use expander_compiler::frontend::*;
+
+// Internal modules
+use super::utils_core_math::{assert_is_bitstring_and_reconstruct, unconstrained_to_bits};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STRUCT: RescalingContext
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Holds integer and circuit-level constants for rescaling by `2^κ` and shifting by `2^s`.
+/// Holds integer and circuit-level constants for rescaling by `α = 2^κ` and shifting by `S = 2^s`.
 pub struct RescalingContext {
-    pub scaling_exponent: usize,   // κ
-    pub shift_exponent: usize,     // s
-    pub scaling_factor_: u32,      // α = 2^κ
-    pub shift_: u32,               // S = 2^s
-    pub scaled_shift_: U256,       // α·S = 2^{κ + s} (could overflow u32)
+    pub scaling_exponent: usize,    // κ: exponent such that α = 2^κ
+    pub shift_exponent: usize,      // s: exponent such that S = 2^s
 
-    pub scaling_factor: Variable,
-    pub shift: Variable,
-    pub scaled_shift: Variable,
+    pub scaling_factor_: u32,       // α = 2^κ, as a native u32
+    pub shift_: u32,                // S = 2^s, as a native u32
+    pub scaled_shift_: U256,        // α·S = 2^{κ + s}, as a U256 for overflow safety
+
+    pub scaling_factor: Variable,   // α = 2^κ, lifted to the circuit as a Variable
+    pub shift: Variable,            // S = 2^s, lifted to the circuit as a Variable
+    pub scaled_shift: Variable,     // α·S = 2^{κ + s}, lifted to the circuit as a Variable
 }
 
-impl RescalingContext {
-    pub fn new<C:Config, Builder: RootAPI<C>>(api: &mut Builder, scaling_exponent: usize, shift_exponent: usize) -> Self {
-        let scaling_factor_ = 1u32.checked_shl(scaling_exponent as u32).expect("scaling_exponent < 32");
-        let shift_ = 1u32.checked_shl(shift_exponent as u32).expect("shift_exponent < 32");
-        let scaled_shift_ = U256::from(scaling_factor_)*U256::from(shift_);
+// ─────────────────────────────────────────────────────────────────────────────
+// IMPL: RescalingContext
+// ─────────────────────────────────────────────────────────────────────────────
 
-        let scaling_factor = api.constant(scaling_factor_);
-        let shift = api.constant(shift_);
+impl RescalingContext {
+    /// Constructs a [`RescalingContext`] from the given scaling and shift exponents.
+    ///
+    /// Precomputes:
+    /// - Native powers of two:  
+    ///   - `scaling_factor_ = 2^κ` (`u32`)  
+    ///   - `shift_ = 2^s` (`u32`)  
+    ///   - `scaled_shift_ = 2^{κ + s}` (`U256`, to avoid overflow)
+    ///
+    /// - Circuit-lifted versions of these values:  
+    ///   - `scaling_factor`, `shift`, and `scaled_shift` (as `Variable`)
+    ///
+    /// These are reused throughout rescaling to avoid redundant lifting and ensure consistent constraints.
+    ///
+    /// # Panics
+    /// Panics if `scaling_exponent` or `shift_exponent` are too large for `u32` shifts or multiplication.
+    pub fn new<C: Config, Builder: RootAPI<C>>(
+        api: &mut Builder,
+        scaling_exponent: usize,
+        shift_exponent: usize,
+    ) -> Self {
+        let scaling_factor_ = 1u32.checked_shl(scaling_exponent as u32)
+            .expect("scaling_exponent < 32"); // α = 2^κ
+        let shift_ = 1u32.checked_shl(shift_exponent as u32)
+            .expect("shift_exponent < 32");   // S = 2^s
+        let scaled_shift_ = U256::from(scaling_factor_) * U256::from(shift_); // α·S = 2^{κ + s}
+
+        let scaling_factor = api.constant(scaling_factor_); // α as Variable
+        let shift = api.constant(shift_);                   // S as Variable
         let scaled_shift = api.constant(
             CircuitField::<C>::from_u256(scaled_shift_)
-        );
+        ); // α·S as Variable
 
         Self {
-            scaling_exponent,
-            shift_exponent,
-            scaling_factor_,
-            shift_,
-            scaled_shift_,
-            scaling_factor,
-            shift,
-            scaled_shift,
+            scaling_exponent,  // κ
+            shift_exponent,    // s
+            scaling_factor_,   // α = 2^κ
+            shift_,            // S = 2^s
+            scaled_shift_,     // α·S = 2^{κ + s}
+            scaling_factor,    // α as Variable
+            shift,             // S as Variable
+            scaled_shift,      // α·S as Variable
         }
     }
 }
@@ -136,6 +199,24 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: rescale_2d_vector
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Applies [`rescale`] elementwise to a 2D matrix of variables.
+///
+/// A single [`RescalingContext`] is created and reused for all elements,
+/// improving performance in layer-wide operations like matrix multiplication.
+///
+/// # Arguments
+/// - `api`: The circuit builder.
+/// - `input_matrix`: A 2D vector of field elements to rescale.
+/// - `scaling_exponent`: κ, such that α = 2^κ.
+/// - `shift_exponent`: s, such that S = 2^s.
+/// - `apply_relu`: If `true`, apply ReLU to each output.
+///
+/// # Returns
+/// A 2D vector of rescaled field elements.
 pub fn rescale_2d_vector<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input_matrix: Vec<Vec<Variable>>,
@@ -157,6 +238,25 @@ pub fn rescale_2d_vector<C: Config, Builder: RootAPI<C>>(
     output_matrix
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: rescale_4d_vector
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Applies [`rescale`] elementwise to a 4D tensor of variables.
+///
+/// A single [`RescalingContext`] is reused for all elements, enabling
+/// efficient rescaling in convolutional outputs with shape `[N][C][H][W]`
+/// or similar.
+///
+/// # Arguments
+/// - `api`: The circuit builder.
+/// - `input_tensor`: A 4D tensor of field elements to rescale.
+/// - `scaling_exponent`: κ, such that α = 2^κ.
+/// - `shift_exponent`: s, such that S = 2^s.
+/// - `apply_relu`: If `true`, apply ReLU to each output.
+///
+/// # Returns
+/// A 4D tensor of rescaled field elements.
 pub fn rescale_4d_vector<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input_tensor: Vec<Vec<Vec<Vec<Variable>>>>,
