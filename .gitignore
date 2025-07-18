@@ -52,4 +52,4 @@ target/
 
 # Retain Specific Model Files
 *.onnx
-!models_onnx/*.onnx
+!python/models/models_onnx/*.onnx
