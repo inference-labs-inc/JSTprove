@@ -2,7 +2,7 @@ use expander_compiler::frontend::*;
 use super::utils_core_math::{rescale, RescalingContext};
 
 
-// ///Constrain size of value to within 2**scaling, using the to and from binary method
+// Constrain size of value to within 2**scaling, using the to and from binary method
 // fn constrain_size<C: Config, Builder: RootAPI<C>>(
 //     api: &mut Builder,
 //     scaling: usize,
@@ -52,7 +52,7 @@ use super::utils_core_math::{rescale, RescalingContext};
 //     }
 // }
 
-// /// Quantize a 2d vector, by computing element by element division. Can potentially try memorized simple call here for optimizations?
+// Quantize a 2d vector, by computing element by element division. Can potentially try memorized simple call here for optimizations?
 // pub fn quantize_2d_vector<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
 //     api: &mut Builder,
 //     input_matrix: Vec<Vec<Variable>>,
@@ -106,7 +106,7 @@ pub fn rescale_2d_vector<C: Config, Builder: RootAPI<C>>(
     output_matrix
 }
 
-// /// run quantized 2d vector only if quantized boolean is true
+// run quantized 2d vector only if quantized boolean is true
 // pub fn run_if_quantized_2d<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
 //     api: &mut Builder,
 //     scaling_in: u64,
@@ -134,7 +134,7 @@ pub fn rescale_2d_vector<C: Config, Builder: RootAPI<C>>(
 //     return out;
 // }
 
-// /// Quantize a matrix, by computing element by element division, using lookups. Can potentially try memorized simple call here for optimizations?
+// Quantize a matrix, by computing element by element division, using lookups. Can potentially try memorized simple call here for optimizations?
 // pub fn quantize_4d_vector<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
 //     api: &mut Builder,
 //     input_matrix: Vec<Vec<Vec<Vec<Variable>>>>,
@@ -203,7 +203,7 @@ pub fn rescale_4d_vector<C: Config, Builder: RootAPI<C>>(
     output_tensor
 }
 
-/// run quantized 4d vector only if quantized boolean is true
+// run quantized 4d vector only if quantized boolean is true
 // pub fn run_if_quantized_4d<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
 //     api: &mut Builder,
 //     scaling_in: u64,

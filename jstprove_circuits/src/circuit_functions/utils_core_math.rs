@@ -213,7 +213,7 @@ pub struct RescalingContext {
     pub shift_exponent: usize,     // s
     pub scaling_factor_: u32,      // α = 2^κ
     pub shift_: u32,               // S = 2^s
-    pub scaled_shift_: u32,        // α·S = 2^{κ + s}
+    pub scaled_shift_: U256,       // α·S = 2^{κ + s} (could overflow u32)
 
     pub scaling_factor: Variable,
     pub shift: Variable,
@@ -224,11 +224,13 @@ impl RescalingContext {
     pub fn new<C:Config, Builder: RootAPI<C>>(api: &mut Builder, scaling_exponent: usize, shift_exponent: usize) -> Self {
         let scaling_factor_ = 1u32.checked_shl(scaling_exponent as u32).expect("scaling_exponent < 32");
         let shift_ = 1u32.checked_shl(shift_exponent as u32).expect("shift_exponent < 32");
-        let scaled_shift_ = scaling_factor_.checked_mul(shift_).expect("2^κ · 2^s fits in u32");
+        let scaled_shift_ = U256::from(scaling_factor_)*U256::from(shift_);
 
         let scaling_factor = api.constant(scaling_factor_);
         let shift = api.constant(shift_);
-        let scaled_shift = api.constant(scaled_shift_);
+        let scaled_shift = api.constant(
+            CircuitField::<C>::from_u256(scaled_shift_)
+        );
 
         Self {
             scaling_exponent,
