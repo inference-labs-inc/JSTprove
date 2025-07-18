@@ -1,7 +1,7 @@
 use std::cmp::{max, min};
 
 use crate::circuit_functions::layer_matmul::dot;
-use crate::circuit_functions::utils_quantization::run_if_quantized_4d;
+use crate::circuit_functions::utils_quantization::rescale_4d_vector;
 use expander_compiler::frontend::*;
 
 /// Untested
@@ -357,15 +357,12 @@ pub fn conv_4d_run<C: Config, T: Into<u64>, Builder: RootAPI<C>, >(
         &bias,
     );
 
-
-    run_if_quantized_4d(
-        api,
-        scaling_in,
-        quantized,
-        out,
-        v_plus_one,
-        two_v,
-        alpha_two_v,
-        is_relu,
-    )
+    if quantized {
+        let scaling_exponent = scaling_in as usize;
+        let shift_exponent = v_plus_one.checked_sub(1)
+            .expect("v_plus_one must be at least 1");
+        rescale_4d_vector(api, out, scaling_exponent, shift_exponent, is_relu)
+    } else {
+        out
+    }
 }

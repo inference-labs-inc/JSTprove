@@ -1,4 +1,5 @@
 use expander_compiler::frontend::*;
+use ethnum::U256;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: unconstrained_to_bits
@@ -102,7 +103,6 @@ pub fn assert_is_bitstring_and_reconstruct<C: Config, Builder: RootAPI<C>>(
     reconstructed
 }
 
-// TO DO: delete this is STRUCT + rescale (below) works.
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: rescale_by_power_of_two
 // ─────────────────────────────────────────────────────────────────────────────
@@ -319,7 +319,11 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
     api.assert_is_equal(shifted_q, q_recon);
 
     // Step 6: Recover quotient q = q^♯ − S
-    let quotient = api.sub(shifted_q, context.shift); // q = q^♯ − S
+    // let quotient = api.sub(shifted_q, context.shift); // q = q^♯ − S
+    let quotient = api.sub(
+        shifted_q,
+        CircuitField::<C>::from_u256(U256::from(context.shift_ as u64)),
+    ); // q = q^♯ − S
 
     // Step 7: If ReLU is applied, zero out negatives using MSB of q^♯
     if apply_relu {
