@@ -1,12 +1,12 @@
 import pytest
 from unittest.mock import patch, MagicMock
 import sys
-sys.modules.pop("python/testing/core.circuit_components.circuit_helpers", None)
+sys.modules.pop("python.testing.core.circuit_components.circuit_helpers", None)
 
 
 
-with patch('python/testing/core.utils.helper_functions.compute_and_store_output', lambda x: x):  # MUST BE BEFORE THE UUT GETS IMPORTED ANYWHERE!
-    with patch('python/testing/core.utils.helper_functions.prepare_io_files', lambda f: f):  # MUST BE BEFORE THE UUT GETS IMPORTED ANYWHERE!
+with patch('python.testing.core.utils.helper_functions.compute_and_store_output', lambda x: x):  # MUST BE BEFORE THE UUT GETS IMPORTED ANYWHERE!
+    with patch('python.testing.core.utils.helper_functions.prepare_io_files', lambda f: f):  # MUST BE BEFORE THE UUT GETS IMPORTED ANYWHERE!
         from python.testing.core.circuit_components.circuit_helpers import ZKProofSystems, RunType, Circuit
 
 
@@ -106,7 +106,7 @@ def test_parse_proof_dispatch_logic(
 
 
     # COMPILE_CIRCUIT
-    c.parse_proof_run_type( 
+    c.parse_proof_run_type(
         "w", "i", "p", "pub", "vk", "circuit", "path", ZKProofSystems.Expander,
         "out", "weights", "q", RunType.COMPILE_CIRCUIT
     )
@@ -383,24 +383,24 @@ def test_base_testing_calls_parse_proof_run_type_correctly(mock_parse):
 
     mock_parse.assert_called_once()
     args = mock_parse.call_args[0]
-    expected_args = ("w.wtns", 
-                    "i.json", 
-                    "p.json", 
+    expected_args = ("w.wtns",
+                    "i.json",
+                    "p.json",
                     "pub.json",
-                    "vk.key", 
-                    "circuit_model", 
+                    "vk.key",
+                    "circuit_model",
                     "circuit_path.txt",
-                    None, 
-                    "o.json", 
-                    "weights/model_weights.json", 
-                    "quantized_path.pt", 
+                    None,
+                    "o.json",
+                    "weights/model_weights.json",
+                    "quantized_path.pt",
                     RunType.GEN_WITNESS,
-                    False, 
-                    True, 
+                    False,
+                    True,
                     True,
                     False
     )
-    
+
     assert args == expected_args
     assert args[0] == "w.wtns"
     assert args[1] == "i.json"
@@ -425,7 +425,7 @@ def test_base_testing_uses_default_circuit_path(mock_parse):
         def __init__(self):
             super().__init__()
             self._file_info = {"weights": "weights.json"}
-            
+
 
     c = MyCircuit()
     c.base_testing(circuit_name="test_model")

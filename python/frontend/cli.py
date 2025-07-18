@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 from typing import Optional, Tuple, List
 
-from python.testing.python_testing.circuit_components.circuit_helpers import RunType
+from python.testing.core.circuit_components.circuit_helpers import RunType
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -72,14 +72,14 @@ def load_circuit(circuit_name: str, class_name: str = "SimpleCircuit", search_pa
     """
     Dynamically loads a circuit module and returns an instance of the specified circuit class.
     It tries the following in order:
-      - python_testing.<search_path> (if provided)
-      - python_testing.circuit_models
-      - python_testing.circuit_components
+      - python/testing/corecore.<search_path> (if provided)
+      - python/testing/corecore.circuit_models
+      - python/testing/corecore.circuit_components
     """
-    base_paths = ["python_testing.circuit_models", "python_testing.circuit_components"]
+    base_paths = ["python/testing/corecore.circuit_models", "python/testing/corecore.circuit_components"]
     if search_path:
         # Prepend the user-specified search path
-        base_paths.insert(0, f"python_testing.{search_path}")
+        base_paths.insert(0, f"python/testing/corecore.{search_path}")
 
     for base in base_paths:
         module_path = f"{base}.{circuit_name}"
@@ -126,16 +126,16 @@ def list_available_circuits(search_path: Optional[str] = None):
     """
     Lists all available circuit files by searching for Python files that define a class inheriting
     from ZKModel or Circuit. By default, it searches in:
-      - python_testing/circuit_components
-      - python_testing/circuit_models
+      - python/testing/corecore/circuit_components
+      - python/testing/corecore/circuit_models
     The user can override this search directory using the --circuit_search_path flag.
     """
     if search_path:
         search_paths = [PROJECT_ROOT / search_path]
     else:
         search_paths = [
-            PROJECT_ROOT / "python_testing" / "circuit_components",
-            PROJECT_ROOT / "python_testing" / "circuit_models"
+            PROJECT_ROOT / "python/testing/corecore" / "circuit_components",
+            PROJECT_ROOT / "python/testing/corecore" / "circuit_models"
         ]
     circuit_files = {
         str(p.relative_to(PROJECT_ROOT))

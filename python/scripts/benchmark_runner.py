@@ -5,8 +5,8 @@ import json
 import os
 import re
 import tempfile
-from python.testing.python_testing.utils.helper_functions import RunType
-from python.testing.python_testing.utils.model_registry import list_available_models, get_models_to_test
+from python.testing.core.utils.helper_functions import RunType
+from python.testing.core.utils.model_registry import list_available_models, get_models_to_test
 # slow, not sure why?
 
 

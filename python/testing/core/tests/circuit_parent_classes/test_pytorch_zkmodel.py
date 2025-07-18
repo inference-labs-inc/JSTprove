@@ -2,10 +2,10 @@ import pytest
 from unittest.mock import patch, MagicMock
 import sys
 
-sys.modules.pop("python_testing.utils.pytorch_helpers", None)
+sys.modules.pop("python.testing.core.utils.pytorch_helpers", None)
 
 
-with patch('python_testing.utils.helper_functions.prepare_io_files', lambda f: f):  # MUST BE BEFORE THE UUT GETS IMPORTED ANYWHERE!
+with patch('python.testing.core.utils.helper_functions.prepare_io_files', lambda f: f):  # MUST BE BEFORE THE UUT GETS IMPORTED ANYWHERE!
     from python.testing.core.utils.pytorch_helpers import ZKTorchModel
     from python.testing.core.utils.helper_functions import RunType
 

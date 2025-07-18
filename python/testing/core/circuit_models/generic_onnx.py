@@ -1,7 +1,7 @@
 import math
 import numpy as np
 import torch
-# from python_testing.utils.pytorch_helpers import Layer, ZKTorchModel, RunType, filter_dict_for_dataclass
+# from core.utils.pytorch_helpers import Layer, ZKTorchModel, RunType, filter_dict_for_dataclass
 from python.testing.core.utils.onnx_converter import ZKONNXModel, ONNXOpQuantizer
 from python.testing.core.utils.helper_functions import RunType
 

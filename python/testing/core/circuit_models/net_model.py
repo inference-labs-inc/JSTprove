@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from python.testing.core.utils.pytorch_helpers import ZKTorchModel
-# from python_testing.circuit_models.doom_slices import Slice
+# from core.circuit_models.doom_slices import Slice
 
 class Net(nn.Module):
     def __init__(self, target_params=None):

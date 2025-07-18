@@ -4,10 +4,15 @@ import os
 import pkgutil
 import pytest
 
+from python.testing.core import circuit_models
+from python.testing.core import circuit_components
+
+
+
 from python.testing.core.circuit_models.demo_cnn import Demo
 from python.testing.core.circuit_components.relu import ReLU, ConversionType
 from python.testing.core.circuit_components.circuit_helpers import Circuit
-from python.testing.python_testing.circuit_models.generic_torch import GenericModelTorch
+from python.testing.core.circuit_models.generic_torch import GenericModelTorch
 from python.testing.core.circuit_models.generic_onnx import GenericModelONNX
 
 
@@ -49,8 +54,8 @@ def import_all_submodules(package):
         importlib.import_module(name)
 
 # Import all submodules so their classes are registered
-import_all_submodules(python.testing.python_testing.circuit_models)
-import_all_submodules(python.testing.python_testing.circuit_components)
+import_all_submodules(circuit_models)
+import_all_submodules(circuit_components)
 
 def all_subclasses(cls):
     """Recursively find all subclasses of a given class."""

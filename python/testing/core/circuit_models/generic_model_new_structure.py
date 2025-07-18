@@ -8,7 +8,7 @@
 # import torch.nn.functional as F
 # import importlib.util
 # import inspect
-# from python_testing.utils.pytorch_helpers import Layer, ZKModel, RunType, filter_dict_for_dataclass
+# from core.utils.pytorch_helpers import Layer, ZKModel, RunType, filter_dict_for_dataclass
 
 # import sys
 

@@ -2,7 +2,7 @@
 # import torch.nn as nn
 # import torch.nn.functional as F
 # import numpy as np
-# from python_testing.utils.pytorch_helpers import ZKModel
+# from core.utils.pytorch_helpers import ZKModel
 # import onnx
 
 

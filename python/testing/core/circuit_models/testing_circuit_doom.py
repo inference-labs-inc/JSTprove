@@ -5,8 +5,8 @@ import os
 from python.testing.core.circuit_components.relu import ReLU, ConversionType
 
 from python.testing.core.circuit_components.convolution import QuantizedConv
-# from python_testing.matrix_multiplication import QuantizedMatrixMultiplication
-# from python_testing.circuit_components.gemm import QuantizedGemm, Gemm
+# from core.matrix_multiplication import QuantizedMatrixMultiplication
+# from core.circuit_components.gemm import QuantizedGemm, Gemm
 
 
 

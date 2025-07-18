@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 import torch
 
-# from python_testing.circuit_models.eth_fraud import Eth
+# from core.circuit_models.eth_fraud import Eth
 from python.testing.core.utils.helper_functions import RunType
 
 

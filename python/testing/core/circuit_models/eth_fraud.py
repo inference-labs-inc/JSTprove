@@ -6,18 +6,18 @@
 # from sklearn.preprocessing import StandardScaler, LabelEncoder
 # import json
 # import torch
-# from python_testing.utils.run_proofs import ZKProofSystems
-# from python_testing.utils.helper_functions import RunType, get_files, to_json, prove_and_verify
+# from core.utils.run_proofs import ZKProofSystems
+# from core.utils.helper_functions import RunType, get_files, to_json, prove_and_verify
 # import os
-# from python_testing.circuit_components.relu import ReLU, ConversionType
+# from core.circuit_components.relu import ReLU, ConversionType
 #
-# from python_testing.circuit_components.convolution import Convolution, QuantizedConv
-# # from python_testing.matrix_multiplication import QuantizedMatrixMultiplication
+# from core.circuit_components.convolution import Convolution, QuantizedConv
+# # from core.matrix_multiplication import QuantizedMatrixMultiplication
 # import torch
 # import torch.nn as nn
 # import torch.nn.functional as F
 # import numpy as np
-# from python_testing.utils.pytorch_helpers import ZKTorchModel
+# from core.utils.pytorch_helpers import ZKTorchModel
 # import sys
 #
 # import warnings

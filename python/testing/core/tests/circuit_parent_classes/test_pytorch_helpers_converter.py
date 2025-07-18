@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock
 
 from python.testing.core.utils.pytorch_helpers import PytorchConverter, QuantizedConv2d, QuantizedLinear
 
-# python_testing/utils/pytorch_helpers
+# core/utils/pytorch_helpers
 
 # ---------- Save & Load Models ----------
 @pytest.mark.unit

@@ -90,18 +90,18 @@ def prepare_io_files(func):
         # output_folder = kwargs.get("output_folder") or getattr(self, 'output_folder', "output")
         # quantized_model_folder = kwargs.get("quantized_folder") or getattr(self, 'quantized_path', "quantized_model_folder")
         # proof_system = kwargs.get("proof_system") or getattr(self, 'proof_system', ZKProofSystems.Expander)
-        input_folder = resolve_folder("input_folder", "input_file", "inputs")
-        output_folder = resolve_folder("output_folder", "output_file", "output")
-        quantized_model_folder = resolve_folder("quantized_folder", "quantized_path", "quantized_model_folder")
-        weights_folder = resolve_folder("weights_folder", default="weights")
-        circuit_folder = resolve_folder("circuit_folder", default="")
+        input_folder = resolve_folder("input_folder", "input_file", "python/models/inputs")
+        output_folder = resolve_folder("output_folder", "output_file", "python/models/output")
+        quantized_model_folder = resolve_folder("quantized_folder", "quantized_path", "python/models/quantized_model_folder")
+        weights_folder = resolve_folder("weights_folder", default="python/models/weights")
+        circuit_folder = resolve_folder("circuit_folder", default="python/models/")
 
         proof_system = kwargs.get("proof_system") or getattr(self, 'proof_system', ZKProofSystems.Expander)
         run_type = kwargs.pop("run_type")
 
         # Get file paths
         witness_file, input_file, proof_path, public_path, verification_key, circuit_name, weights_path, output_file = get_files(
-            input_folder, proof_folder, temp_folder, circuit_folder, weights_folder, 
+            input_folder, circuit_folder, weights_folder,
             self.name, output_folder, quantized_model_folder, proof_system
         )
         if not kwargs.get("input_file", None) is None:

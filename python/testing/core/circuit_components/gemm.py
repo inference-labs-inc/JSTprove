@@ -1,7 +1,7 @@
 # import torch
-# from python_testing.utils.run_proofs import ZKProofSystems
-# from python_testing.utils.helper_functions import get_files, to_json, prove_and_verify
-# from python_testing.circuit_components.circuit_helpers import Circuit
+# from core.utils.run_proofs import ZKProofSystems
+# from core.utils.helper_functions import get_files, to_json, prove_and_verify
+# from core.circuit_components.circuit_helpers import Circuit
 
 # import torch.nn as nn
 

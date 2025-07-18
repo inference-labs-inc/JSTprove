@@ -13,7 +13,7 @@ subtask 2.
 Separate python functions so output computation comes first, then the rest of the run is separate from output computation
 
 **Files to Modify:**
-1. `python/testing/python_testing/simple_circuit.py`
+1. `python/testing/core/simple_circuit.py`
 2. `utils/helper_functions.py`
 3. `circuit_components/circuit_helpers.py`
 
@@ -52,7 +52,7 @@ I want to have simple_circuit.py and helper_functions.py to clean up and make th
 <!-- 
 - Which files to  Alter?
 
-1. python/testing/python_testing/simple_circuit.py
+1. python/testing/core/simple_circuit.py
 2. utils/helper_function.py -->
 
 <!-- 
@@ -191,7 +191,7 @@ source venv/bin/activate
 
 2. Run the test circuit:
 ```bash
-python -m python/testing/core.simple_circuit
+python -m python/testing/corecore.simple_circuit
 ```
 
 3. Verify that outputs are computed only once and files are generated correctly.

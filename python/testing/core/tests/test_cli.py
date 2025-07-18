@@ -11,7 +11,7 @@ from python.testing.core.circuit_components.circuit_helpers import RunType
 # ---------- parse_args ----------
 @pytest.mark.unit
 def test_parse_args_defaults(monkeypatch):
-    monkeypatch.setattr("sys.argv", ["cli.py", "--circuit", "my_circuit", "--compile"])
+    monkeypatch.setattr("sys.argv", ["python/frontend/cli.py", "--circuit", "my_circuit", "--compile"])
     args = parse_args()
     assert args.circuit == "my_circuit"
     assert args.compile is True
@@ -29,7 +29,7 @@ def test_parse_args_defaults(monkeypatch):
     (["--end_to_end"], [RunType.END_TO_END]),
 ])
 def test_get_run_operations(monkeypatch, flags, expected):
-    monkeypatch.setattr("sys.argv", ["cli.py", "--circuit", "foo"] + flags)
+    monkeypatch.setattr("sys.argv", ["python/frontend/cli.py", "--circuit", "foo"] + flags)
     args = parse_args()
     result = get_run_operations(args)
     assert result == expected
@@ -42,7 +42,7 @@ def test_find_file_appends_json_extension():
     assert result == "data.json"
 
 @pytest.mark.unit
-@patch("cli.Path.is_file", return_value=True)
+@patch("python.frontend.cli.Path.is_file", return_value=True)
 def test_find_file_returns_valid_default_path(mock_isfile):
     path = Path("inputs/some_file.json")
     result = find_file("ignored_name", default_path=path)
@@ -50,7 +50,7 @@ def test_find_file_returns_valid_default_path(mock_isfile):
     mock_isfile.assert_called_once()
 
 @pytest.mark.unit
-@patch("cli.Path.is_file", return_value=False)
+@patch("python.frontend.cli.Path.is_file", return_value=False)
 def test_find_file_returns_filename_if_default_path_missing(mock_isfile):
     result = find_file("myfile", default_path=Path("fake/path.json"))
     assert result == "myfile.json"
@@ -64,7 +64,7 @@ def test_find_file_no_default_path():
 
 # ---------- resolve_file_paths ----------
 @pytest.mark.unit
-@patch("cli.find_file")
+@patch("python.frontend.cli.find_file")
 def test_resolve_file_paths_with_overrides(mock_find):
     mock_find.side_effect = lambda x, default=None: Path(f"/resolved/{x}")
     input_path, output_path = resolve_file_paths("my_circuit", "input.json", "output.json", None)
@@ -72,7 +72,7 @@ def test_resolve_file_paths_with_overrides(mock_find):
     assert output_path == "/resolved/output.json"
 
 @pytest.mark.unit
-@patch("cli.find_file")
+@patch("python.frontend.cli.find_file")
 def test_resolve_file_paths_with_pattern(mock_find):
     mock_find.side_effect = lambda x, default=None: Path(f"/matched/{x}")
     i, o = resolve_file_paths("cnn", None, None, "{circuit}_input.json")
@@ -82,7 +82,7 @@ def test_resolve_file_paths_with_pattern(mock_find):
 
 # ---------- load_circuit ----------
 @pytest.mark.unit
-@patch("cli.importlib.import_module")
+@patch("python.frontend.cli.importlib.import_module")
 def test_load_circuit_success(mock_import):
     mock_module = MagicMock()
     mock_import.return_value = mock_module
@@ -91,7 +91,7 @@ def test_load_circuit_success(mock_import):
     assert result == "instance"
 
 @pytest.mark.unit
-@patch("cli.importlib.import_module", side_effect=ModuleNotFoundError)
+@patch("python.frontend.cli.importlib.import_module", side_effect=ModuleNotFoundError)
 def test_load_circuit_fail(mock_import):
     with pytest.raises(ValueError):
         load_circuit("bad_mod", "FakeClass")
@@ -99,8 +99,8 @@ def test_load_circuit_fail(mock_import):
 
 # ---------- main ----------
 @pytest.mark.unit
-@patch("cli.parse_args")
-@patch("cli.list_available_circuits")
+@patch("python.frontend.cli.parse_args")
+@patch("python.frontend.cli.list_available_circuits")
 def test_main_lists_and_exits(mock_list, mock_args):
     from python.frontend import cli
     mock_args.return_value = argparse.Namespace(
@@ -112,10 +112,10 @@ def test_main_lists_and_exits(mock_list, mock_args):
     mock_list.assert_called_once()
 
 @pytest.mark.unit
-@patch("cli.parse_args")
-@patch("cli.load_circuit")
-@patch("cli.resolve_file_paths")
-@patch("cli.get_run_operations", return_value=[RunType.COMPILE_CIRCUIT])
+@patch("python.frontend.cli.parse_args")
+@patch("python.frontend.cli.load_circuit")
+@patch("python.frontend.cli.resolve_file_paths")
+@patch("python.frontend.cli.get_run_operations", return_value=[RunType.COMPILE_CIRCUIT])
 def test_main_executes_operations(mock_ops, mock_paths, mock_load, mock_args):
     from python.frontend import cli
     mock_args.return_value = argparse.Namespace(
