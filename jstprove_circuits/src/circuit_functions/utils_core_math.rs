@@ -85,11 +85,7 @@ pub fn assert_is_bitstring_and_reconstruct<C: Config, Builder: RootAPI<C>>(
 
     for (i, &bit) in least_significant_bits.iter().enumerate() {
         // Enforce bᵢ ∈ {0,1} via b(b−1) = 0
-        let one = api.constant(1u32);
-        let bit_minus_one = api.sub(bit, one);
-        let vanishing = api.mul(bit, bit_minus_one);
-        api.assert_is_zero(vanishing);
-
+        api.assert_is_bool(bit);
         // Compute bᵢ · 2ⁱ
         let weight = 1u32
             .checked_shl(i as u32)
