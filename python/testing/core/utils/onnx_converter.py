@@ -14,6 +14,11 @@ from python.testing.core.utils.onnx_helpers import extract_shape_dict, get_input
 from python.testing.core.utils.onnx_op_quantizer import ONNXOpQuantizer
 from python.testing.core.utils.model_converter import ZKModelBase, ModelConverter
 
+"""
+Keep the ununused import below as it
+must remain due to 'SessionOptions' dependency.
+"""
+import python.testing.core.utils.onnx_custom_ops
 from onnxruntime import InferenceSession, SessionOptions
 from onnxruntime_extensions import get_library_path, OrtPyFunction
 
