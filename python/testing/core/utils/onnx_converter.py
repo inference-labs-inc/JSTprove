@@ -78,7 +78,6 @@ class ONNXConverter(ModelConverter):
     # Not sure this is ideal
     def load_quantized_model(self, file_path: str):
         # May be able to remove next few lines...
-        print(file_path)
         onnx_model = onnx.load(file_path)
         custom_domain = onnx.helper.make_operatorsetid(domain="ai.onnx.contrib", version=1)
         onnx_model.opset_import.append(custom_domain)
@@ -181,7 +180,6 @@ class ONNXConverter(ModelConverter):
         # First pass: collect constant nodes
         for node in model.graph.node:
             if node.op_type == "Constant":
-                print(node)
                 for attr in node.attribute:
                     if attr.name == "value":
                         tensor = attr.t
@@ -198,12 +196,10 @@ class ONNXConverter(ModelConverter):
                 continue  # Already processed
 
             layer = self.analyze_layer(node, output_name_to_shape, id_count, domain_to_version)
-            print(layer.shape)
 
             # Attach constant inputs as parameters
             for input_name in node.input:
                 if input_name in constant_values:
-                    print(layer.params)
                     if not hasattr(layer, 'params'):
                         layer.params = {}
                     result = constant_values[input_name]
@@ -211,7 +207,6 @@ class ONNXConverter(ModelConverter):
                         layer.params[input_name] = result.tolist()
                     else:
                         layer.params[input_name] = constant_values[input_name]
-                    print(layer.params)
 
             layers.append(layer)
             id_count += 1
@@ -376,13 +371,6 @@ class ONNXConverter(ModelConverter):
 
         self.op_quantizer.new_initializers = []
         
-        for layer in model.graph.node:
-            print(layer.name, layer.op_type, layer.input, layer.output)
-            
-
-        for layer in model.graph.initializer:
-            print(layer.name)
-
         for out in model.graph.output:
             # if out.name == "output":
                 # out.name = "output_int"  # match Cast output
@@ -504,8 +492,7 @@ class ONNXConverter(ModelConverter):
         2. Put arch into format to be read by ECC circuit builder
         3. Put w + b into format to be read by ECC circuit builder
         '''
-        print(self.model.graph.node)
-        inferred_model = shape_inference.infer_shapes(self.model) 
+        inferred_model = shape_inference.infer_shapes(self.model)
 
         # Check the model and print Y"s shape information
         onnx.checker.check_model(inferred_model)

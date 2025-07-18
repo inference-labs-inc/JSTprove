@@ -5,7 +5,7 @@ import pytest
 # Assume these are your models
 # Enums, utils
 from python.testing.core.utils.helper_functions import RunType
-
+from python.testing.core.tests.circuit_e2e_tests.helper_fns_for_tests import *
 
 @pytest.mark.e2e
 def test_circuit_compiles(model_fixture):

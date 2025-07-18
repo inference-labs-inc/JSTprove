@@ -7,7 +7,7 @@ from python.testing.core.utils.helper_functions import RunType, ZKProofSystems
 
 
 # ---------- compute_and_store_output ----------
-@pytest.mark.unit
+@pytest.mark .unit
 @patch("python.testing.core.utils.helper_functions.os.makedirs")
 @patch("python.testing.core.utils.helper_functions.os.path.exists", return_value=False)
 @patch("python.testing.core.utils.helper_functions.json.dump")
