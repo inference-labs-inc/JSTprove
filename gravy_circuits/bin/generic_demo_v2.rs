@@ -20,7 +20,7 @@ use lazy_static::lazy_static;
 use ndarray::{Array1, Dimension};
 use ndarray::{ ArrayD, IxDyn};
 use rand::distributions::WeightedError;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 // Serde Packages
 use serde::de::DeserializeOwned;
@@ -50,7 +50,7 @@ struct CircuitParams{
 }
 
 #[derive(Deserialize, Clone, Debug)]
-struct ONNXLayer{
+pub struct ONNXLayer{
     id: usize,
     name: String,
     op_type: String,
@@ -220,7 +220,6 @@ trait LayerOp<C: Config, Builder: RootAPI<C>> {
     // fn build for every Layer type
 }
 
-// TODO TEST THIS
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
     fn apply(
         &self,
@@ -452,6 +451,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
     }
 }
 
+
 type BoxedDynLayer<C, B> = Box<dyn LayerOp<C, B>>;
 
 fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Builder>>> {
@@ -472,8 +472,16 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
         .map(|layer| (layer.name.clone(), layer))
         .collect();
 
+    // Make a Hashmap where the key is the inputs to a layer, the value must be a tuple of layer name, layer type.
+    // I have the layers of an onnx model. I have certain optimizations based on combining certain layers in the computation graph
+    // I want to figure out a way to identify these patterns in the graph should they appear, so that I can mark them off
+    //  as I proceed through the graph layers later. Can you help me with this please?
 
-    let mut skip_next_layer = false;
+
+    
+    let mut skip_next_layer: HashMap<String, bool>  = HashMap::new();
+
+
     // let skip_future_layers = Set();
 
     let inputs = &ARCHITECTURE.inputs;
@@ -481,6 +489,13 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
     // TODO havent figured out how but this can maybe go in build layers?
     let shapes_map: HashMap<String, Vec<usize>> = collect_all_shapes(&ARCHITECTURE.architecture, inputs);
     // TODO should account for multiple inputs
+
+
+    let matcher = PatternMatcher::new();
+    matcher.run(&ARCHITECTURE.architecture);
+
+    
+
 
     for (i, layer) in ARCHITECTURE.architecture.iter().enumerate() {
         /*
@@ -491,26 +506,14 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
             continue
         }
         */
-        if skip_next_layer{
-            skip_next_layer = false;
+        if *skip_next_layer.get(&layer.name).unwrap_or(&false){
+            // skip_next_layer.false;
             continue
         }
         // TODO needs to fix this approach
         let mut outputs = layer.outputs.to_vec();
         let mut is_relu = false;
-        if i + 1 < ARCHITECTURE.architecture.len(){
-            let layer_plus_1 = &ARCHITECTURE.architecture[i + 1].op_type;
-            // let layer_plus_1 = &layer.output.name
-            // May need to store all layer architecture in a hashmap or something, and access the next layer through the hashmap
-            if layer_plus_1.starts_with("Relu") {
-                eprintln!("Found Relu for {}", layer.name.as_str());
-                is_relu = true;
-                skip_next_layer = true;
-                outputs = ARCHITECTURE.architecture[i + 1].outputs.clone();
-                
-                // skip_future_layers.add(layer_plus_1.name)
-            }
-        }
+        relu_opt_skip(&mut skip_next_layer, i, layer, &mut outputs, &mut is_relu);
 
         let is_rescale = match  CIRCUITPARAMS.rescale_config.get(&layer.name){
                 Some(config) => config,
@@ -660,6 +663,8 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                     Some(input_shape) => input_shape,
                     None => panic!("Error getting output shape for layer {}", layer.name)
                 };
+                // TODO remove
+                panic!("RELU NOT OPT HIT");
                 let relu = ReluLayer{
                     name: layer.name.clone(),
                     index: i,
@@ -675,6 +680,32 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
         eprintln!("layer added: {}", layer.op_type.as_str() );
     }
     layers
+}
+
+fn relu_opt_skip(skip_layer: &mut HashMap<String, bool>, i: usize, layer: &ONNXLayer, outputs: &mut Vec<String>, is_relu: &mut bool) {
+    // The goal with the new version should be
+    // 1. obtain the outputs of the layer
+    // 2. look for relu op type in layers that take this output as inputs
+    // 3. change skip layer to hashmap with key as layer name to skip and bool as value
+    // 4. return is_relu, mutated skip_layer, alternative outputs
+
+    // ahead of time in build layers, will want to loop through the layers and create a datatype, maybe a hashmap, which stores the layer inputs as key, and vector of tuples as the value
+    // each tuple in the vector will house a layer_name and op_type. This will be able to be used for future optimizations as well, combining layers and such
+
+
+    if i + 1 < ARCHITECTURE.architecture.len(){
+        let layer_plus_1 = &ARCHITECTURE.architecture[i + 1].op_type;
+        // let layer_plus_1 = &layer.output.name
+        // May need to store all layer architecture in a hashmap or something, and access the next layer through the hashmap
+        if layer_plus_1.starts_with("Relu") {
+            eprintln!("Found Relu for {}", layer.name.as_str());
+            *is_relu = true;
+            skip_layer.insert(layer.name.clone(), true);
+            *outputs = ARCHITECTURE.architecture[i + 1].outputs.clone();
+        
+            // skip_future_layers.add(layer_plus_1.name)
+        }
+    }
 }
 
 fn get_inputs<T: Clone>(v: Vec<T>, inputs: Vec<ONNXIO>) -> HashMap<String, ArrayD<T>>{
@@ -906,6 +937,279 @@ fn get_w_or_b<I: DeserializeOwned>(w_and_b_map: &HashMap<String, ONNXLayer>, wei
     // serde_json::from_value(weight_tensor).expect("Deserialization failed")
 }
 
+/*
+
+Pattern matching of layers
+
+*/
+
+#[derive(Debug, Clone, Copy)]
+pub enum BranchMatchMode {
+    Any,
+    All,
+}
+
+fn build_input_to_layer_map<'a>(layers: &'a [ONNXLayer]) -> HashMap<&'a str, Vec<&'a ONNXLayer>> {
+    let mut map: HashMap<&str, Vec<&ONNXLayer>> = HashMap::new();
+    for layer in layers {
+        for input in &layer.inputs {
+            map.entry(input).or_default().push(layer);
+        }
+    }
+    // eprint!("{:?}", map.keys());
+    map
+}
+
+// #[derive(Debug)]
+// pub struct PatternMatch<'a> {
+//     pub pattern_name: &'a str,
+//     pub layers: Vec<&'a ONNXLayer>,
+// }
+// fn find_pattern_matches<'a>(
+//     layers: &'a [ONNXLayer],
+//     pattern: &GraphPattern,
+//     mode: BranchMatchMode,
+// ) -> Vec<Vec<&'a ONNXLayer>> {
+//     let mut matches = Vec::new();
+//     // let input_to_layers = build_input_to_layer_map(layers);
+//     let ops = pattern.ops;
+//     eprintln!("{:#?}", ops[0]);
+
+//     // Iterate all layers as potential start points
+//     for start_idx in 0..layers.len() {
+//         eprintln!("{}", layers[start_idx].op_type);
+//         // Quick check if first op matches
+//         if layers[start_idx].op_type.as_str() != ops[0] {
+//             continue;
+//         }
+
+//         // Attempt to match the rest of the pattern
+//         let mut current_layer = &layers[start_idx];
+//         let mut matched_layers = vec![current_layer];
+
+//         // Index of layer in the overall graph to search for next ops
+//         let mut search_start = start_idx + 1;
+
+//         // For each next op in pattern
+//         let mut matched = true;
+//         for &op_name in &ops[1..] {
+//             // Try to find the next layer with matching op
+//             // and that has at least one input matching current_layer outputs
+//             let mut found_next = None;
+
+//             for idx in search_start..layers.len() {
+//                 let candidate = &layers[idx];
+//                 if candidate.op_type.as_str() != op_name {
+//                     continue;
+//                 }
+
+//                 // Check connectivity: candidate.inputs intersect current_layer.outputs?
+//                 if candidate.inputs.iter().any(|input| current_layer.outputs.contains(input)) {
+//                     found_next = Some(candidate);
+//                     search_start = idx + 1; // Move forward for next searches
+//                     break;
+//                 }
+//             }
+
+//             if let Some(next_layer) = found_next {
+//                 matched_layers.push(next_layer);
+//                 current_layer = next_layer;
+//             } else {
+//                 matched = false;
+//                 break;
+//             }
+//         }
+
+//         if matched {
+//             matches.push(matched_layers);
+//         }
+//     }
+
+//     matches
+// }
+// TODO untested with actual branching
+fn find_pattern_matches<'a>(
+    layers: &'a [ONNXLayer],
+    pattern: &GraphPattern,
+    mode: BranchMatchMode,
+) -> Vec<Vec<&'a ONNXLayer>> {
+    let mut matches = Vec::new();
+    for layer in layers {
+        if layer.op_type == pattern.ops[0] {
+            dfs(
+                layer,
+                pattern.ops,
+                1,
+                vec![layer],
+                layers,
+                &mut matches,
+                mode,
+            );
+        }
+    }
+    matches
+}
+/*
+Inputs:
+    - current_layer: current position in the graph
+    - ops: list of op names we're trying to match (e.g. ["Conv", "Relu"])
+    - depth:  index in the pattern we're trying to match
+    - path: vector of matched layers so far
+    - all_matches: where completed match paths get collected
+    - mode: "Any" (at least one path matches) or "All" (every branch must match)
+*/
+// Recursive DFS search across branches
+fn dfs<'a>(
+    current_layer: &'a ONNXLayer,
+    ops: &[&'static str],
+    depth: usize,
+    path: Vec<&'a ONNXLayer>,
+    layers: &'a [ONNXLayer],
+    all_matches: &mut Vec<Vec<&'a ONNXLayer>>,
+    mode: BranchMatchMode,
+) {
+    // Base case
+    // Save full match if we reach the end of the pattern
+    if depth == ops.len() {
+        all_matches.push(path.clone());
+        return;
+    }
+
+    // Only consider layers that:
+    // - Those whose op matches the next step in the pattern (ops[depth])
+    // - and that directly consume one of the outputs from the current layer
+    let matching_next_layers: Vec<&ONNXLayer> = layers
+        .iter()
+        .filter(|l| {
+            l.op_type == ops[depth]
+                && l.inputs.iter().any(|inp| current_layer.outputs.contains(inp))
+        })
+        .collect();
+
+
+    match mode {
+        BranchMatchMode::Any => {
+            // Try matching each of the next layers
+            // Recurse with new layer and keep going
+            // If any completes the pattern, add to all matches
+            for next_layer in matching_next_layers {
+                let mut new_path = path.clone();
+                new_path.push(next_layer);
+                dfs(
+                    next_layer,
+                    ops,
+                    depth + 1,
+                    new_path,
+                    layers,
+                    all_matches,
+                    mode,
+                );
+            }
+        }
+        BranchMatchMode::All => {
+            // If there are no next layers that match the next op — we abort early.
+            if matching_next_layers.is_empty() {
+                return;
+            }
+
+            let mut all_paths = vec![];
+            for next_layer in matching_next_layers {
+                let mut new_path = path.clone();
+                new_path.push(next_layer);
+                let mut sub_matches = Vec::new();
+                dfs(
+                    next_layer,
+                    ops,
+                    depth + 1,
+                    new_path.clone(),
+                    layers,
+                    &mut sub_matches,
+                    mode,
+                );
+                if !sub_matches.is_empty() {
+                    all_paths.push(sub_matches);
+                }
+                // We explore every matching direct consumer
+                // Recurse on each one
+                // Keep only those that reach a complete match
+            }
+
+            // Only accept if all direct consumer branches found matching paths
+            if all_paths.len() >= 1 && all_paths.iter().all(|paths| !paths.is_empty()) {
+                for branch in all_paths {
+                    for b in branch {
+                        all_matches.push(b);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// TODO, somewhere must include priority in sequence, for example, conv relu batchnorm takes priority over conv relu
+fn build_pattern_registry() -> Vec<GraphPattern> {
+    vec![
+        GraphPattern {
+            name: "Conv+Relu".into(),
+            ops: &["Conv", "Relu"],
+        },
+        GraphPattern {
+            name: "Gemm+Relu".into(),
+            ops: &["Gemm", "Relu"],
+        },
+    ]
+}
+#[derive(Debug, Clone, Copy)]
+pub struct GraphPattern {
+    pub name: &'static str,
+    pub ops: &'static [&'static str],
+}
+
+
+
+
+pub struct PatternMatcher {
+    patterns: Vec<GraphPattern>,
+}
+
+impl PatternMatcher {
+    pub fn new() -> Self {
+        Self {
+            patterns: build_pattern_registry(),
+        }
+    }
+
+    pub fn run(&self, layers: &[ONNXLayer]) {
+        use std::time::SystemTime;
+        let now = SystemTime::now();
+   
+        for pat in &self.patterns {
+            let matches = find_pattern_matches(layers, pat, BranchMatchMode::All);
+            eprintln!("Pattern `{}` matched {} times", pat.name, matches.len());
+        }
+
+        match now.elapsed() {
+            Ok(elapsed) => {
+                // it prints '2'
+                eprintln!("Model pattern match took: {} nano seconds", elapsed.as_nanos());
+            }
+            Err(e) => {
+                // an error occurred!
+                eprintln!("Error calculating time: {e:?}");
+            }
+        }
+        panic!("");
+    }
+}
+
+
+/*
+
+Pattern matching of layers
+
+*/
+
+
 impl ConfigurableCircuit for Circuit<Variable> {
     fn configure(&mut self) {
         // Change input and outputs as needed
@@ -964,6 +1268,7 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
         &self.path
     }
 }
+
 
 fn main() {
     let mut file_reader = FileReader {

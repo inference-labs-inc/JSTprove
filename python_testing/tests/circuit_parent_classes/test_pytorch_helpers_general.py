@@ -37,8 +37,8 @@ def test_check_2d_eq_fail():
 
 # --------- ONNX to Torch Format ---------
 @pytest.mark.unit
-@patch("python_testing.utils.pytorch_helpers.torch.tensor")
-@patch("python_testing.utils.pytorch_helpers.onnx.numpy_helper.to_array")
+@patch("python_testing.utils.model_converter.torch.tensor")
+@patch("python_testing.utils.model_converter.onnx.numpy_helper.to_array")
 def test_weights_onnx_to_torch_format(mock_to_array, mock_tensor):
     g = GeneralLayerFunctions()
 
@@ -83,7 +83,7 @@ def test_read_output_torch():
     assert result == "mocked_output"
 
 @pytest.mark.unit
-@patch("python_testing.utils.pytorch_helpers.ort.InferenceSession")
+@patch("python_testing.utils.model_converter.ort.InferenceSession")
 def test_read_output_onnx(mock_session_cls):
     g = GeneralLayerFunctions()
     mock_session = MagicMock()
