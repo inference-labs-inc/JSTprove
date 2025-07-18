@@ -1,4 +1,5 @@
 use expander_compiler::frontend::*;
+use ethnum::U256;
 use super::utils_core_math::{unconstrained_to_bits, assert_is_bitstring_and_reconstruct};
 
 // ─────────────────────────────────────────────────────────────────────────────
