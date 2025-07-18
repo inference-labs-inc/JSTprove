@@ -7,7 +7,7 @@ use jstprove_circuits::circuit_functions::layer_matmul::{matrix_addition_vec, ma
 // !!! MaxPool
 use jstprove_circuits::circuit_functions::layer_max_pool::{setup_maxpooling_2d, maxpooling_2d};
 
-use jstprove_circuits::circuit_functions::activation_relu::relu_array;
+use jstprove_circuits::circuit_functions::activation_relu::{relu_array, ReluContext};
 use jstprove_circuits::io::io_reader::{FileReader, IOReader};
 use jstprove_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
 use lazy_static::lazy_static;
@@ -227,7 +227,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
         let out = layer_input;
 
         // TODO RELU unsupported for now. Must design relu function that takes in array instead of vectors
-        let out = relu_array(api, out, self.n_bits);
+        let out = relu_array(api, out, self.n_bits - 1);
 
         Ok((self.outputs[0].clone(), out))
     }

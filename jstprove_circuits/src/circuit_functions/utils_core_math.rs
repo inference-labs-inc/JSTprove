@@ -84,7 +84,7 @@ pub fn assert_is_bitstring_and_reconstruct<C: Config, Builder: RootAPI<C>>(
     let mut reconstructed = api.constant(0u32);
 
     for (i, &bit) in least_significant_bits.iter().enumerate() {
-        // Enforce bᵢ ∈ {0,1} via b(b−1) = 0
+        // Enforce bᵢ ∈ {0, 1} via b(b − 1) = 0
         api.assert_is_bool(bit);
         // Compute bᵢ · 2ⁱ
         let weight = 1u32
