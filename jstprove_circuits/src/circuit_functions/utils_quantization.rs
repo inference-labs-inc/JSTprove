@@ -149,3 +149,70 @@ pub fn run_if_quantized_2d<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
     }
     return out;
 }
+
+/// Quantize a matrix, by computing element by element division, using lookups. Can potentially try memorized simple call here for optimizations?
+pub fn quantize_4d_vector<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    input_matrix: Vec<Vec<Vec<Vec<Variable>>>>,
+    scaling_factor: u32,
+    scaling: usize,
+    v_plus_one: usize,
+    two_v: T,
+    alpha_two_v: Variable,
+    is_relu: bool,
+) -> Vec<Vec<Vec<Vec<Variable>>>> {
+    let mut out: Vec<Vec<Vec<Vec<Variable>>>> = Vec::new();
+    let two_v: u64 = two_v.into();
+    for (_, dim1) in input_matrix.iter().enumerate() {
+        let mut dim1_out: Vec<Vec<Vec<Variable>>> = Vec::new();
+        for (_, dim2) in dim1.iter().enumerate() {
+            let mut dim2_out: Vec<Vec<Variable>> = Vec::new();
+            for (_, dim3) in dim2.iter().enumerate() {
+                let mut dim3_out: Vec<Variable> = Vec::new();
+                for (_, &element) in dim3.iter().enumerate() {
+                    dim3_out.push(quantize(
+                        api,
+                        element,
+                        scaling_factor,
+                        scaling,
+                        v_plus_one,
+                        two_v,
+                        alpha_two_v,
+                        is_relu,
+                    ));
+                }
+                dim2_out.push(dim3_out);
+            }
+            dim1_out.push(dim2_out)
+        }
+        out.push(dim1_out);
+    }
+    out
+}
+
+/// run quantized 4d vector only if quantized boolean is true
+pub fn run_if_quantized_4d<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    scaling_in: u64,
+    quantized: bool,
+    out: Vec<Vec<Vec<Vec<Variable>>>>,
+    v_plus_one: usize,
+    two_v: T,
+    alpha_two_v: Variable,
+    is_relu: bool,
+) -> Vec<Vec<Vec<Vec<Variable>>>> {
+    if quantized {
+        let scaling_factor = 1 << scaling_in;
+        return quantize_4d_vector(
+            api,
+            out,
+            scaling_factor,
+            scaling_in as usize,
+            v_plus_one,
+            two_v,
+            alpha_two_v,
+            is_relu,
+        );
+    }
+    return out;
+}
