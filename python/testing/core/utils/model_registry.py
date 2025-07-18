@@ -89,8 +89,7 @@ def build_models_to_test():
         if entry.loader == Demo:
             models[i] = entry._replace(args=(3, 4), kwargs={"layers": ["conv1", "relu", "reshape", "fc1", "relu", "fc2"]})
 
-    # Add PyTorch + ONNX models
-    # models += scan_model_files("/python/models/models_pytorch", ".pt", GenericModelTorch, "pytorch")
+    # Add ONNX models
     models += scan_model_files("./python/models/models_onnx", ".onnx", GenericModelONNX, "onnx")
 
 

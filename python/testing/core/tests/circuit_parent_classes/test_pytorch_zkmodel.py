@@ -56,7 +56,8 @@ def test_base_testing_uses_default_weights_path(mock_parse):
 
     # ensure circuit_name propagates correctly
     args, kwargs = mock_parse.call_args
-    assert "test_model" in args
+    print(args)
+    assert "python/models/test_model" in args
     assert RunType.BASE_TESTING in args
 
 

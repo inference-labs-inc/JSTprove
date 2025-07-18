@@ -84,7 +84,7 @@ def prepare_io_files(func):
         # Fix this
         # input_folder = kwargs.get("input_folder") or getattr(self, 'input_folder', "inputs")
         # proof_folder = kwargs.get("proof_folder") or getattr(self, 'proof_folder', "analysis")
-        # temp_folder = kwargs.get("temp_folder") or getattr(self, 'temp_folder', "temp")
+        temp_folder = kwargs.get("temp_folder") or getattr(self, 'temp_folder', "temp")
         # circuit_folder = kwargs.get("circuit_folder") or getattr(self, 'circuit_folder', "")
         # weights_folder = kwargs.get("weights_folder") or getattr(self, 'weights_folder', "weights")
         # output_folder = kwargs.get("output_folder") or getattr(self, 'output_folder', "output")
@@ -92,6 +92,7 @@ def prepare_io_files(func):
         # proof_system = kwargs.get("proof_system") or getattr(self, 'proof_system', ZKProofSystems.Expander)
         input_folder = resolve_folder("input_folder", "input_file", "python/models/inputs")
         output_folder = resolve_folder("output_folder", "output_file", "python/models/output")
+        proof_folder = resolve_folder("proof_folder", "proof_file", "python/models/proofs")
         quantized_model_folder = resolve_folder("quantized_folder", "quantized_path", "python/models/quantized_model_folder")
         weights_folder = resolve_folder("weights_folder", default="python/models/weights")
         circuit_folder = resolve_folder("circuit_folder", default="python/models/")
@@ -101,7 +102,7 @@ def prepare_io_files(func):
 
         # Get file paths
         witness_file, input_file, proof_path, public_path, verification_key, circuit_name, weights_path, output_file = get_files(
-            input_folder, circuit_folder, weights_folder,
+            input_folder, proof_folder, temp_folder, circuit_folder, weights_folder,
             self.name, output_folder, quantized_model_folder, proof_system
         )
         if not kwargs.get("input_file", None) is None:
@@ -581,7 +582,7 @@ def run_end_to_end(circuit_name, circuit_path, input_file, output_file,
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
-def get_files(input_folder, proof_folder, temp_folder, circuit_folder, weights_folder, 
+def get_files(input_folder, proof_folder, temp_folder, circuit_folder, weights_folder,
              name, output_folder, quantized_model_folder, proof_system):
     """Get file paths, creating folders as needed."""
     create_folder(input_folder)
