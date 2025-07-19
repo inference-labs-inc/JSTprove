@@ -17,7 +17,7 @@ from python.testing.core.circuit_components.circuit_helpers import RunType
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Set PROJECT_ROOT since cli.py is in the project root (GravyTesting-Internal)
+# Set PROJECT_ROOT since cli.py is in the project root (jstproveTesting-Internal)
 PROJECT_ROOT = Path(__file__).resolve().parent
 
 # Cache for JSON files to avoid repeated directory scans

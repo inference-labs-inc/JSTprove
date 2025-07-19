@@ -1,16 +1,21 @@
-from onnx import helper, TensorProto
 import pytest
-
 import numpy as np
 import torch
 import onnx
+
 from onnx import TensorProto, shape_inference, helper, numpy_helper
 
 from python.testing.core.utils.onnx_converter import ONNXConverter
-from python.testing.core.utils.onnx_helpers import extract_shape_dict
+from python.testing.core.utils.onnx_helpers import dims_prod, extract_shape_dict, parse_attributes
+from python.testing.core.utils.onnx_op_quantizer import ONNXOpQuantizer
 
 from onnxruntime import InferenceSession, SessionOptions
 from onnxruntime_extensions import get_library_path, OrtPyFunction
+from python.testing.core.utils.onnx_custom_ops import conv
+
+from python.testing.core.utils.onnx_custom_ops.conv import int64_conv
+from python.testing.core.utils.onnx_custom_ops.gemm import int64_gemm7
+
 
 @pytest.fixture
 def tiny_conv_model_path(tmp_path):

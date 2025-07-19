@@ -23,8 +23,15 @@ from onnxruntime import InferenceSession, SessionOptions
 from onnxruntime_extensions import get_library_path, OrtPyFunction
 
 
+from python.testing.core.utils.onnx_custom_ops import conv
+
+from python.testing.core.utils.onnx_custom_ops.conv import int64_conv
+from python.testing.core.utils.onnx_custom_ops.relu import int64_relu
+
+from python.testing.core.utils.onnx_custom_ops.gemm import int64_gemm7
 
 # !!! MaxPool
+from python.testing.core.utils.onnx_custom_ops.maxpool import int64_maxpool
 
 
 # @dataclass
@@ -78,6 +85,7 @@ class ONNXConverter(ModelConverter):
     # Not sure this is ideal
     def load_quantized_model(self, file_path: str):
         # May be able to remove next few lines...
+        print(file_path) #TODO: Change to logging
         onnx_model = onnx.load(file_path)
         custom_domain = onnx.helper.make_operatorsetid(domain="ai.onnx.contrib", version=1)
         onnx_model.opset_import.append(custom_domain)
@@ -180,6 +188,7 @@ class ONNXConverter(ModelConverter):
         # First pass: collect constant nodes
         for node in model.graph.node:
             if node.op_type == "Constant":
+                print(node) #TODO: Change to logging
                 for attr in node.attribute:
                     if attr.name == "value":
                         tensor = attr.t
@@ -196,10 +205,12 @@ class ONNXConverter(ModelConverter):
                 continue  # Already processed
 
             layer = self.analyze_layer(node, output_name_to_shape, id_count, domain_to_version)
+            print(layer.shape) #TODO: Change to logging
 
             # Attach constant inputs as parameters
             for input_name in node.input:
                 if input_name in constant_values:
+                    print(layer.params) #TODO: Change to logging
                     if not hasattr(layer, 'params'):
                         layer.params = {}
                     result = constant_values[input_name]
@@ -207,6 +218,7 @@ class ONNXConverter(ModelConverter):
                         layer.params[input_name] = result.tolist()
                     else:
                         layer.params[input_name] = constant_values[input_name]
+                    print(layer.params) #TODO: Change to logging
 
             layers.append(layer)
             id_count += 1
@@ -371,6 +383,15 @@ class ONNXConverter(ModelConverter):
 
         self.op_quantizer.new_initializers = []
         
+        for layer in model.graph.node:
+            #TODO: Change to logging
+            print(layer.name, layer.op_type, layer.input, layer.output)
+            
+
+        for layer in model.graph.initializer:
+            #TODO: Change to logging
+            print(layer.name)
+
         for out in model.graph.output:
             # if out.name == "output":
                 # out.name = "output_int"  # match Cast output
@@ -492,7 +513,8 @@ class ONNXConverter(ModelConverter):
         2. Put arch into format to be read by ECC circuit builder
         3. Put w + b into format to be read by ECC circuit builder
         '''
-        inferred_model = shape_inference.infer_shapes(self.model)
+        print(self.model.graph.node) #TODO: Change to logging
+        inferred_model = shape_inference.infer_shapes(self.model) 
 
         # Check the model and print Y"s shape information
         onnx.checker.check_model(inferred_model)
