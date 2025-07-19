@@ -85,7 +85,7 @@ def build_models_to_test():
             models[i] = entry._replace(args=(3, 4), kwargs={"layers": ["conv1", "relu", "reshape", "fc1", "relu", "fc2"]})
 
     # Add ONNX models
-    models += scan_model_files("./python/models/models_onnx", ".onnx", GenericModelONNX, "onnx")
+    models += scan_model_files("python/models/models_onnx", ".onnx", GenericModelONNX, "onnx")
 
 
 

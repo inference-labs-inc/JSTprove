@@ -23,7 +23,7 @@ class ZKProofSystems(Enum):
 class ZKProofsExpander():
     def __init__(self, circuit_file: str):
         assert isinstance(circuit_file, str)
-        self.circuit_folder = "ExpanderCompilerCollection"
+        self.circuit_folder = "rust/ExpanderCompilerCollection"
         self.toml_path = f"{self.circuit_folder}/Cargo.toml"
         self.circuit_file = circuit_file
 
@@ -38,7 +38,7 @@ class ZKProofsExpander():
             executable_to_run = [f"./target/release/{self.circuit_file}", input_file, output_file]
             
 
-        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo, cwd="rust")
         if res.returncode == 0:
             logging.info(f"Circuit Compiled with return code: {res.returncode}")
 
@@ -62,7 +62,7 @@ class ZKProofsExpander():
         executable_to_run.append("-o")
         executable_to_run.append(output_file)
 
-        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo, cwd="rust")
         if res.returncode == 0:
             logging.info(f"Circuit Compiled with return code: {res.returncode}")
 
@@ -77,7 +77,7 @@ class ZKProofsExpander():
         executable_to_run.append("-n")
         executable_to_run.append(circuit_name)
 
-        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo, cwd="rust")
         if res.returncode == 0:
             logging.info(f"Circuit Compiled with return code: {res.returncode}")
 
@@ -99,7 +99,7 @@ class ZKProofsExpander():
 
 
 
-        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo, cwd="rust")
         if res.returncode == 0:
             logging.info(f"Circuit Compiled with return code: {res.returncode}")
 
@@ -113,7 +113,7 @@ class ZKProofsExpander():
         executable_to_run.append("-n")
         executable_to_run.append(circuit_name)
 
-        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo, cwd="rust")
         if res.returncode == 0:
             logging.info(f"Circuit Compiled with return code: {res.returncode}")
 
@@ -131,7 +131,7 @@ class ZKProofsExpander():
 
 
 
-        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo)
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=True, demo=demo, cwd="rust")
         if res.returncode == 0:
             logging.info(f"Circuit Compiled with return code: {res.returncode}")
 
@@ -153,30 +153,30 @@ class ZKProofsCircom():
         if c:
             executable_to_run.append("--c")
 
-        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=False)
+        res = ExecutableHelperFunctions.run_process(executable_to_run, die_on_error=False, cwd="rust")
         if res.returncode == 0:
             logging.info(f"Circuit Compiled with return code: {res.returncode}")
     
     def compute_witness(self, witness_file: str, input_file: str, wasm: bool = True, c: bool = False):
         if wasm:
             ex_1 = ["node", os.path.join(self.folder_js,"generate_witness.js"),os.path.join(self.folder_js,f"{self.circuit_file[:-7]}.wasm"), input_file, witness_file]
-            res = ExecutableHelperFunctions.run_process(ex_1)
+            res = ExecutableHelperFunctions.run_process(ex_1, cwd="rust")
             if res.returncode == 0:
                 logging.info(f"Generated witness in {witness_file} with return code: {res.returncode}")
         if c:
             #Currently locally got an error
             ex_1 = ["make"]
             ex_2 = [f"{self.circuit_file[:-7]}",input_file, witness_file]
-            res = ExecutableHelperFunctions.change_dir_run_process(self.folder_c, ex_1)
+            res = ExecutableHelperFunctions.change_dir_run_process(self.folder_c, ex_1, cwd="rust")
             if res.returncode == 0:
                 logging.info(f"Witness -- Make complete")
-            res = ExecutableHelperFunctions.run_process(ex_2)
+            res = ExecutableHelperFunctions.run_process(ex_2, cwd="rust")
             if res.returncode == 0:
                 logging.info(f"Generated witness in {witness_file} with return code: {res.returncode}")
 
     def proof(self, witness_path, output_proof_path, public_path):
         ex_1 = ["snarkjs", "groth16", "prove", f"{self.circuit_folder}/{self.circuit_file[:-7]}_0001.zkey", witness_path, output_proof_path, public_path]
-        res = ExecutableHelperFunctions.run_process(ex_1)
+        res = ExecutableHelperFunctions.run_process(ex_1, cwd="rust")
         if res.returncode == 0:
             logging.info(f"Proof generated with exit code: {res.returncode}")
             try:
@@ -198,7 +198,7 @@ class ZKProofsCircom():
     
     def verify(self, verification_key, public_path, proof_path):
         ex_1 = ["snarkjs", "groth16", "verify", verification_key, public_path, proof_path]
-        res = ExecutableHelperFunctions.run_process(ex_1)
+        res = ExecutableHelperFunctions.run_process(ex_1, cwd="rust")
         if res.returncode == 0:
             logging.info(f"Verified with exit code: {res.returncode}")
 
@@ -213,10 +213,10 @@ class ZKProofsCircom():
         ex_2 = ["snarkjs", "powersoftau", "contribute", f"{self.circuit_folder}/pot12_0000.ptau", f"{self.circuit_folder}/pot12_0001.ptau", '--name="First contribution"', "-v"]
         comm_2 = ["aaa"]
         if not os.path.exists(pot_file_name):
-            res = ExecutableHelperFunctions.run_process_and_communicate(ex_1,comm_2)
+            res = ExecutableHelperFunctions.run_process_and_communicate(ex_1,comm_2, cwd="rust")
             
         if not os.path.exists(pot_file_name):
-            res = ExecutableHelperFunctions.run_process_and_communicate(ex_2, comm_2)
+            res = ExecutableHelperFunctions.run_process_and_communicate(ex_2, comm_2, cwd="rust")
             if res.returncode == 0:
                 logging.info(f"Ran Powers of Tau")
 
@@ -229,10 +229,10 @@ class ZKProofsCircom():
         ex_3 = ["snarkjs", "zkey", "contribute", f"{self.circuit_folder}/{self.circuit_file[:-7]}_0000.zkey", f"{self.circuit_folder}/{self.circuit_file[:-7]}_0001.zkey", '--name="1st Contributor Name"', "-v"]
         ex_4 = ["snarkjs", "zkey", "export", "verificationkey", f"{self.circuit_folder}/{self.circuit_file[:-7]}_0001.zkey", verification_path]
         if not os.path.exists(pot_file_name): 
-            res = ExecutableHelperFunctions.run_process(ex_1)
+            res = ExecutableHelperFunctions.run_process(ex_1, cwd="rust")
             if res.returncode == 0:
                 logging.info(f"Start Generation of Phase 2 with exit code: {res.returncode}")
-        res = ExecutableHelperFunctions.run_process(ex_2)
+        res = ExecutableHelperFunctions.run_process(ex_2, cwd="rust")
         if res.returncode == 0:
             logging.info(f"Generate zkey with exit code: {res.returncode}")
             logging.info(f"{res.args}")
@@ -240,10 +240,10 @@ class ZKProofsCircom():
                 logging.info(f"{res.stderr}")
             except:
                 pass
-        res = ExecutableHelperFunctions.run_process_and_communicate(ex_3,"a")
+        res = ExecutableHelperFunctions.run_process_and_communicate(ex_3,"a", cwd="rust")
         if res.returncode == 0:
             logging.info(f"Contribute to phase 2 with exit code: {res.returncode}")
-        res = ExecutableHelperFunctions.run_process(ex_4)
+        res = ExecutableHelperFunctions.run_process(ex_4, cwd="rust")
         if res.returncode == 0:
             logging.info(f"Export verification key with exit code: {res.returncode}")
 
@@ -262,7 +262,7 @@ class ExecutableHelperFunctions():
         process.wait()
         return process
     @staticmethod
-    def run_process(executable: List[str], die_on_error:bool =True, shell = False, demo = False):
+    def run_process(executable: List[str], die_on_error:bool =True, shell = False, demo = False, cwd = None):
         env = os.environ.copy()
         env["RUSTFLAGS"] = "-C target-cpu=native"
         if demo:
@@ -274,7 +274,7 @@ class ExecutableHelperFunctions():
                 capture_output = True
             else:
                 capture_output = False
-            res = subprocess.run(executable, env = env, check=True, capture_output=capture_output, shell=shell, text=True)
+            res = subprocess.run(executable, env = env, check=True, capture_output=capture_output, shell=shell, text=True, cwd=cwd)
             return res
         except subprocess.CalledProcessError as err:
             # Log the error message from stderr
