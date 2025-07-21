@@ -2,7 +2,7 @@ use std::cmp::{max, min};
 
 use crate::circuit_functions::layer_matmul::dot;
 use super::{
-    utils_quantization::{rescale_4d_vector, rescale_tensor, RescalingContext}, // not currently using rescale_4d_vector
+    utils_quantization::{rescale_4d_vector, rescale_array, rescale_tensor, RescalingContext}, // not currently using rescale_4d_vector
     utils_helper::IntoTensor,
 };
 

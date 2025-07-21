@@ -34,6 +34,7 @@
 
 // External crates
 use ethnum::U256;
+use ndarray::ArrayD;
 use expander_compiler::frontend::*;
 
 // Internal modules
@@ -198,6 +199,30 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
     } else {
         quotient
     }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// rescale_array
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Applies `rescale` elementwise to an `ArrayD<Variable>`.
+///
+/// # Arguments
+/// - `api`: Mutable reference to the circuit builder.
+/// - `array`: A tensor (of any shape) of `Variable`s to rescale.
+/// - `context`: Precomputed rescaling context (shift and scaling factors).
+/// - `apply_relu`: Whether to apply ReLU after rescaling.
+///
+/// # Returns
+/// An `ArrayD<Variable>` of the same shape with all values rescaled.
+pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    array: ArrayD<Variable>,
+    context: &RescalingContext,
+    apply_relu: bool,
+) -> ArrayD<Variable> {
+    array.map(|x| rescale(api, context, x, apply_relu))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
