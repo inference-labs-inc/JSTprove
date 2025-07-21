@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "jstprove_circuits",
+    "rust/jstprove_circuits",
 ]
 
 
