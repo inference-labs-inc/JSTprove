@@ -1,7 +1,11 @@
 use std::cmp::{max, min};
 
 use crate::circuit_functions::layer_matmul::dot;
-use crate::circuit_functions::utils_quantization::rescale_4d_vector;
+use super::{
+    utils_quantization::{rescale_4d_vector, rescale_tensor, RescalingContext}, // not currently using rescale_4d_vector
+    utils_helper::IntoTensor,
+};
+
 use expander_compiler::frontend::*;
 
 /// Untested
@@ -361,7 +365,9 @@ pub fn conv_4d_run<C: Config, T: Into<u64>, Builder: RootAPI<C>, >(
         let scaling_exponent = scaling_in as usize;
         let shift_exponent = v_plus_one.checked_sub(1)
             .expect("v_plus_one must be at least 1");
-        rescale_4d_vector(api, out, scaling_exponent, shift_exponent, is_relu)
+        // rescale_4d_vector(api, out, scaling_exponent, shift_exponent, is_relu)
+        let context = RescalingContext::new(api, scaling_exponent, shift_exponent);
+        rescale_tensor(api, out, &context, is_relu)
     } else {
         out
     }
