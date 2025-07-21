@@ -38,6 +38,7 @@ use expander_compiler::frontend::*;
 
 // Internal modules
 use super::utils_core_math::{assert_is_bitstring_and_reconstruct, unconstrained_to_bits};
+use super::utils_helper::IntoTensor;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STRUCT: RescalingContext
@@ -199,6 +200,15 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
     }
 }
 
+pub fn rescale_tensor<C: Config, Builder: RootAPI<C>, T: IntoTensor>(
+    api: &mut Builder,
+    input_tensor: T,
+    context: &RescalingContext,
+    apply_relu: bool,
+) -> T::Output {
+    input_tensor.map_elements(|x| rescale(api, context, x, apply_relu))
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: rescale_2d_vector
 // ─────────────────────────────────────────────────────────────────────────────
@@ -285,3 +295,6 @@ pub fn rescale_4d_vector<C: Config, Builder: RootAPI<C>>(
 
     output_tensor
 }
+
+
+

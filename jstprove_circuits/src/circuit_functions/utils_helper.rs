@@ -489,3 +489,61 @@ fn convert_val_to_field_element<C: Config>(val: i64) -> <<C as GKREngine>::Field
     };
     converted
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRAIT: IntoTensor
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Recursively applies a function to all `Variable` elements within a nested structure.
+///
+/// This trait enables generic, elementwise operations over arbitrarily nested `Vec`
+/// containers containing `Variable` values. For example, it allows applying a transformation
+/// uniformly across scalars, vectors, matrices, or higher-dimensional tensors of `Variable`s.
+///
+/// # Associated Type
+/// - `Output`: The structure obtained by applying the function to each `Variable`.
+///
+/// # Provided Method
+/// - `map_elements(f)`: Applies the function `f` recursively to each `Variable` in the structure.
+///
+/// # Examples
+/// ```ignore
+/// let scalar: Variable = ...;
+/// let result = scalar.map_elements(|v| api.neg(v));
+///
+/// let matrix: Vec<Vec<Variable>> = ...;
+/// let negated = matrix.map_elements(|v| api.neg(v));
+/// ```
+pub trait IntoTensor {
+    type Output;
+
+    fn map_elements<F>(self, f: F) -> Self::Output
+    where
+        F: FnMut(Variable) -> Variable;
+}
+
+impl IntoTensor for Variable {
+    type Output = Variable;
+
+    fn map_elements<F>(self, mut f: F) -> Self::Output
+    where
+        F: FnMut(Variable) -> Variable,
+    {
+        f(self)
+    }
+}
+
+impl<T: IntoTensor> IntoTensor for Vec<T> {
+    type Output = Vec<T::Output>;
+
+    fn map_elements<F>(self, f: F) -> Self::Output
+    where
+        F: FnMut(Variable) -> Variable,
+    {
+        self.into_iter().map(|x| x.map_elements(f)).collect()
+    }
+}
+
+
+// let context = RescalingContext::new(api, scaling_exponent, shift_exponent);
+// let output = rescale_tensor(api, input_tensor, &context, apply_relu);

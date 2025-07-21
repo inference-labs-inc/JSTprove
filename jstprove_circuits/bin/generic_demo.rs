@@ -19,8 +19,12 @@ use std::collections::HashMap;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::Value;
-// use jstprove_circuits::circuit_functions::utils_quantization::run_if_quantized_2d;
+
+//
 use jstprove_circuits::circuit_functions::utils_quantization::rescale_2d_vector;
+use super::quantization::RescalingContext;
+use super::utils_quantization::rescale_tensor;
+use super::utils_helper::IntoTensor;
 
 
 type WeightsData = (Architecture, WANDB, CircuitParams);
@@ -323,7 +327,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             let scaling_exponent = CIRCUITPARAMS.scaling as usize;
             let shift_exponent = self.v_plus_one.checked_sub(1)
                 .expect("v_plus_one must be at least 1");
-            out_2d = rescale_2d_vector(api, out_2d, scaling_exponent, shift_exponent, self.is_relu);
+            // out_2d = rescale_2d_vector(api, out_2d, scaling_exponent, shift_exponent, self.is_relu);
+            let context = RescalingContext::new(api, scaling_exponent, shift_exponent);
+            out_2d = rescale_tensor(api, out_2d, &context, self.is_relu);
         }
         eprintln!("GOT output:");
         let out = vec2_to_arrayd(out_2d);
