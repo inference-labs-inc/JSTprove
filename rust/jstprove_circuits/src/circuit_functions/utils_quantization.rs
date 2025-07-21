@@ -38,6 +38,7 @@ use expander_compiler::frontend::*;
 
 // Internal modules
 use super::utils_core_math::{assert_is_bitstring_and_reconstruct, unconstrained_to_bits};
+use super::utils_helper::IntoTensor;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STRUCT: RescalingContext
@@ -200,6 +201,47 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: rescale_tensor
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Applies the [`rescale`] function elementwise to an arbitrarily nested tensor of `Variable`s.
+///
+/// This function supports tensors of any dimensionality (e.g., scalars, vectors, matrices, 4D arrays)
+/// by using the [`IntoTensor`] trait to recursively traverse and transform each `Variable`.
+/// A single [`RescalingContext`] is reused for all elements to avoid redundant constant lifting.
+///
+/// # Type Parameters
+/// - `C`: The circuit configuration implementing [`Config`].
+/// - `Builder`: The circuit builder implementing [`RootAPI<C>`].
+/// - `T`: A structure that implements [`IntoTensor`] (e.g., `Variable`, `Vec<Variable>`, etc.).
+///
+/// # Arguments
+/// - `api`: Mutable reference to the circuit builder.
+/// - `input_tensor`: The input tensor containing `Variable`s to be rescaled.
+/// - `context`: Precomputed [`RescalingContext`] containing constants for rescaling.
+/// - `apply_relu`: Whether to apply ReLU (i.e., output `max(0, q)`) to each element after rescaling.
+///
+/// # Returns
+/// A structure of the same shape as `input_tensor`, with each `Variable` rescaled via [`rescale`].
+///
+/// # Example
+/// ```ignore
+/// let context = RescalingContext::new(api, κ, s);
+/// let rescaled = rescale_tensor(api, input_tensor, &context, true);
+/// ```
+///
+/// See also: [`IntoTensor`], [`rescale`]
+pub fn rescale_tensor<C: Config, Builder: RootAPI<C>, T: IntoTensor>(
+    api: &mut Builder,
+    input_tensor: T,
+    context: &RescalingContext,
+    apply_relu: bool,
+) -> T::Output {
+    let mut f = |x| rescale(api, context, x, apply_relu);
+    input_tensor.map_elements(&mut f)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: rescale_2d_vector
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -285,3 +327,6 @@ pub fn rescale_4d_vector<C: Config, Builder: RootAPI<C>>(
 
     output_tensor
 }
+
+
+
