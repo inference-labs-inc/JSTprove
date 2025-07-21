@@ -22,9 +22,9 @@ use serde_json::Value;
 
 //
 use jstprove_circuits::circuit_functions::utils_quantization::rescale_2d_vector;
-use super::quantization::RescalingContext;
-use super::utils_quantization::rescale_tensor;
-use super::utils_helper::IntoTensor;
+use jstprove_circuits::circuit_functions::utils_quantization::RescalingContext;
+use jstprove_circuits::circuit_functions::utils_quantization::rescale_tensor;
+use jstprove_circuits::circuit_functions::utils_helper::IntoTensor;
 
 
 type WeightsData = (Architecture, WANDB, CircuitParams);

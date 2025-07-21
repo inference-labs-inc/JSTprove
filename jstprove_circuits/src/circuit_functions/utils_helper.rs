@@ -517,7 +517,7 @@ fn convert_val_to_field_element<C: Config>(val: i64) -> <<C as GKREngine>::Field
 pub trait IntoTensor {
     type Output;
 
-    fn map_elements<F>(self, f: F) -> Self::Output
+    fn map_elements<F>(self, f: &mut F) -> Self::Output
     where
         F: FnMut(Variable) -> Variable;
 }
@@ -525,7 +525,7 @@ pub trait IntoTensor {
 impl IntoTensor for Variable {
     type Output = Variable;
 
-    fn map_elements<F>(self, mut f: F) -> Self::Output
+    fn map_elements<F>(self, f: &mut F) -> Self::Output
     where
         F: FnMut(Variable) -> Variable,
     {
@@ -536,13 +536,14 @@ impl IntoTensor for Variable {
 impl<T: IntoTensor> IntoTensor for Vec<T> {
     type Output = Vec<T::Output>;
 
-    fn map_elements<F>(self, f: F) -> Self::Output
+    fn map_elements<F>(self, f: &mut F) -> Self::Output
     where
         F: FnMut(Variable) -> Variable,
     {
         self.into_iter().map(|x| x.map_elements(f)).collect()
     }
 }
+
 
 
 // let context = RescalingContext::new(api, scaling_exponent, shift_exponent);

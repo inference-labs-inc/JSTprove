@@ -206,7 +206,8 @@ pub fn rescale_tensor<C: Config, Builder: RootAPI<C>, T: IntoTensor>(
     context: &RescalingContext,
     apply_relu: bool,
 ) -> T::Output {
-    input_tensor.map_elements(|x| rescale(api, context, x, apply_relu))
+    let mut f = |x| rescale(api, context, x, apply_relu);
+    input_tensor.map_elements(&mut f)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
