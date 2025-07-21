@@ -6,6 +6,8 @@
 name: E2E Python Tests
 
 on:
+  push:
+    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
