@@ -1,19 +1,15 @@
 use core::panic;
 use expander_compiler::frontend::*;
-use gravy_circuits::circuit_functions::convolution_fn::conv_4d_run;
-use gravy_circuits::circuit_functions::helper_fn::{arrayd_to_vec1, arrayd_to_vec2, arrayd_to_vec4, get_1d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec2_to_arrayd, vec4_to_arrayd};
+use jstprove_circuits::circuit_functions::layer_conv::conv_4d_run;
+use jstprove_circuits::circuit_functions::utils_helper::{arrayd_to_vec1, arrayd_to_vec2, arrayd_to_vec4, arrayd_to_vec5, get_1d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec1_to_arrayd, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd};
 #[allow(unused_imports)]
-use gravy_circuits::circuit_functions::matrix_computation::{
-    matrix_addition_vec, matrix_multplication, matrix_multplication_array,
-    matrix_multplication_naive, matrix_multplication_naive2, matrix_multplication_naive2_array,
-    matrix_multplication_naive3, matrix_multplication_naive3_array,
-};
+use jstprove_circuits::circuit_functions::layer_matmul::{matrix_addition_vec, matrix_multplication_naive2,};
 // !!! MaxPool
-use gravy_circuits::circuit_functions::max_pooling::{setup_maxpooling_2d, maxpooling_2d};
+use jstprove_circuits::circuit_functions::layer_max_pool::{setup_maxpooling_2d, maxpooling_2d};
 
-use gravy_circuits::circuit_functions::relu::relu_array;
-use gravy_circuits::io::io_reader::{FileReader, IOReader};
-use gravy_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
+use jstprove_circuits::circuit_functions::activation_relu::{relu_array, ReluContext};
+use jstprove_circuits::io::io_reader::{FileReader, IOReader};
+use jstprove_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
 use lazy_static::lazy_static;
 use ndarray::Dimension;
 use ndarray::{ ArrayD, IxDyn};
@@ -23,7 +19,8 @@ use std::collections::HashMap;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::Value;
-use gravy_circuits::circuit_functions::quantization::run_if_quantized_2d;
+// use jstprove_circuits::circuit_functions::utils_quantization::run_if_quantized_2d;
+use jstprove_circuits::circuit_functions::utils_quantization::rescale_2d_vector;
 
 
 type WeightsData = (Architecture, WANDB, CircuitParams);
@@ -77,7 +74,7 @@ struct OutputData {
 }
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../python/models/weights/onnx_generic_circuit_weights.json");
+const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../python/models/weights/onnx_generic_circuit_weights.json");
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
 // Weights will be read in
@@ -230,7 +227,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
         let out = layer_input;
 
         // TODO RELU unsupported for now. Must design relu function that takes in array instead of vectors
-        let out = relu_array(api, out, self.n_bits);
+        let out = relu_array(api, out, self.n_bits - 1);
 
         Ok((self.outputs[0].clone(), out))
     }
@@ -321,7 +318,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         out_2d = matrix_addition_vec(api, out_2d, bias);
         api.display("3", out_2d[0][0]);
         eprintln!("GOT display:");
-        out_2d = run_if_quantized_2d(api, CIRCUITPARAMS.scaling.into(), self.is_rescale, out_2d, self.v_plus_one, self.two_v, alpha_two_v, self.is_relu);
+        // out_2d = run_if_quantized_2d(api, CIRCUITPARAMS.scaling.into(), self.is_rescale, out_2d, self.v_plus_one, self.two_v, alpha_two_v, self.is_relu);
+        if self.is_rescale {
+            let scaling_exponent = CIRCUITPARAMS.scaling as usize;
+            let shift_exponent = self.v_plus_one.checked_sub(1)
+                .expect("v_plus_one must be at least 1");
+            out_2d = rescale_2d_vector(api, out_2d, scaling_exponent, shift_exponent, self.is_relu);
+        }
         eprintln!("GOT output:");
         let out = vec2_to_arrayd(out_2d);
         eprintln!("Finished");
@@ -407,8 +410,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         input: HashMap<String,ArrayD<Variable>>,
     ) -> Result<(String,ArrayD<Variable>), String> {
 
-        eprintln!("Applying input shape for GemmLayer: {}", self.name);
-
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         // TODO work on removing
 
@@ -427,7 +428,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         );
 
         let out = vec4_to_arrayd(output);
-        eprintln!("Finished");
         Ok((self.outputs[0].clone(), out))
     }
 }

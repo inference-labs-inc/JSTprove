@@ -32,6 +32,7 @@ report
 
 # Rust Binaries
 target/
+!rust/jstprove_circuits/bin
 
 # Dataset and binary files
 *.json
@@ -53,3 +54,6 @@ target/
 # Retain Specific Model Files
 *.onnx
 !python/models/models_onnx/*.onnx
+
+# Proving System
+Expander/
