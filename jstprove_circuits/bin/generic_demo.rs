@@ -20,11 +20,10 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::Value;
 
-//
-use jstprove_circuits::circuit_functions::utils_quantization::rescale_2d_vector;
-use jstprove_circuits::circuit_functions::utils_quantization::RescalingContext;
-use jstprove_circuits::circuit_functions::utils_quantization::rescale_tensor;
-use jstprove_circuits::circuit_functions::utils_helper::IntoTensor;
+use jstprove_circuits::circuit_functions::{
+    utils_quantization::{rescale_2d_vector, rescale_tensor, RescalingContext}, // currently note using rescale_2d_vector
+    utils_helper::IntoTensor,
+};
 
 
 type WeightsData = (Architecture, WANDB, CircuitParams);

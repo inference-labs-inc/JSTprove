@@ -494,25 +494,31 @@ fn convert_val_to_field_element<C: Config>(val: i64) -> <<C as GKREngine>::Field
 // TRAIT: IntoTensor
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Recursively applies a function to all `Variable` elements within a nested structure.
+/// Recursively applies a function to all [`Variable`] elements within a nested tensor-like structure.
 ///
-/// This trait enables generic, elementwise operations over arbitrarily nested `Vec`
-/// containers containing `Variable` values. For example, it allows applying a transformation
-/// uniformly across scalars, vectors, matrices, or higher-dimensional tensors of `Variable`s.
+/// This trait enables uniform, elementwise transformations over arbitrarily nested [`Vec`] containers
+/// containing [`Variable`]s. It is implemented for:
+/// - `Variable` (scalar),
+/// - `Vec<Variable>` (1D),
+/// - `Vec<Vec<Variable>>` (2D),
+/// - and recursively for higher-dimensional tensors.
+///
+/// This is useful for applying functions like negation, rescaling, or ReLU activation to
+/// entire arrays or tensors without manually writing nested loops.
 ///
 /// # Associated Type
-/// - `Output`: The structure obtained by applying the function to each `Variable`.
+/// - [`Output`]: The resulting structure after applying the function to each [`Variable`].
 ///
 /// # Provided Method
-/// - `map_elements(f)`: Applies the function `f` recursively to each `Variable` in the structure.
+/// - `map_elements(f)`: Applies the closure `f` recursively to each [`Variable`] in the structure.
 ///
-/// # Examples
+/// # Example
 /// ```ignore
 /// let scalar: Variable = ...;
-/// let result = scalar.map_elements(|v| api.neg(v));
+/// let negated_scalar = scalar.map_elements(|v| api.neg(v));
 ///
 /// let matrix: Vec<Vec<Variable>> = ...;
-/// let negated = matrix.map_elements(|v| api.neg(v));
+/// let negated_matrix = matrix.map_elements(|v| api.neg(v));
 /// ```
 pub trait IntoTensor {
     type Output;
@@ -543,8 +549,3 @@ impl<T: IntoTensor> IntoTensor for Vec<T> {
         self.into_iter().map(|x| x.map_elements(f)).collect()
     }
 }
-
-
-
-// let context = RescalingContext::new(api, scaling_exponent, shift_exponent);
-// let output = rescale_tensor(api, input_tensor, &context, apply_relu);
