@@ -53,3 +53,6 @@ target/
 # Retain Specific Model Files
 *.onnx
 !python/models/models_onnx/*.onnx
+
+# Proving System
+Expander/
