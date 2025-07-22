@@ -1,8 +1,7 @@
 [workspace]
 members = [
-    "gravy_circuits",
+    "rust/jstprove_circuits",
 ]
-
 
 
 resolver = "2"
@@ -69,4 +68,3 @@ mpi = { git = "https://github.com/0pendansor/rsmpi", branch = "patch-1" }
 
 # [workspace.metadata.cross.target.armv7-unknown-linux-gnueabi]
 # image = "my_rust_mpi_image"
-
