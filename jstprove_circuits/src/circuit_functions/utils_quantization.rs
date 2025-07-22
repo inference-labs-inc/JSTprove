@@ -229,7 +229,7 @@ pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
     apply_relu: bool,
 ) -> ArrayD<Variable> {
     let context = RescalingContext::new(api, scaling_exponent, shift_exponent);
-    array.map(|x| rescale(api, &context, x, apply_relu))
+    array.map(|x| rescale(api, &context, *x, apply_relu))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

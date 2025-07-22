@@ -286,55 +286,101 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         Ok((self.outputs[0].clone(), vec4_to_arrayd(out)))
     }
 }
-
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(String,ArrayD<Variable>), String> {
+        input: HashMap<String, ArrayD<Variable>>,
+    ) -> Result<(String, ArrayD<Variable>), String> {
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
-        // Reshape inputs
-        // TODO work on removing
-        // let layer_input = reshape_layer(layer_input, &self.input_shape);
 
         let mut weight_tensor = self.weights.clone();
         let mut out_2d = arrayd_to_vec2(layer_input);
 
-        // Untested trans a value of 1
+        // Handle optional transposition
         out_2d = check_and_apply_transpose(out_2d, self.transa, "transa", "Gemm", &self.name);
         weight_tensor = check_and_apply_transpose(weight_tensor, self.transb, "transb", "Gemm", &self.name);
 
         let weights = read_2d_weights(api, &weight_tensor);
         let bias = read_2d_weights(api, &self.bias);
-        
 
         let scale_factor = 1 << self.scaling;
         let alpha_two_v = api.mul(self.two_v as u32, scale_factor as u32);
 
-        // TODO add support for alpha and beta !=1. Hint, may need to scale up the alpha/beta and then rescale
+        // Ensure alpha = 1 and beta = 1 for now
         check_alpha_beta(self.alpha, "alpha", "Gemm", &self.name);
         check_alpha_beta(self.beta, "beta", "Gemm", &self.name);
 
+        // Perform matrix multiplication and bias addition
         out_2d = matrix_multplication_naive2(api, out_2d, weights);
         eprintln!("out2d dimension {}, {}", out_2d.len(), out_2d[0].len());
         out_2d = matrix_addition_vec(api, out_2d, bias);
+
         api.display("3", out_2d[0][0]);
         eprintln!("GOT display:");
-        // out_2d = run_if_quantized_2d(api, CIRCUITPARAMS.scaling.into(), self.is_rescale, out_2d, self.v_plus_one, self.two_v, alpha_two_v, self.is_relu);
+
+        // Optionally apply rescaling and ReLU
+        let mut out_array = vec2_to_arrayd(out_2d);
         if self.is_rescale {
-            let scaling_exponent = CIRCUITPARAMS.scaling as usize;
-            let shift_exponent = self.v_plus_one.checked_sub(1)
-                .expect("v_plus_one must be at least 1");
-            // out_2d = rescale_2d_vector(api, out_2d, scaling_exponent, shift_exponent, self.is_relu);
-            let output = rescale_array(api, tensor, κ, s, apply_relu);
+            let k = CIRCUITPARAMS.scaling as usize;
+            let s = self.v_plus_one.checked_sub(1).expect("v_plus_one must be at least 1");
+            out_array = rescale_array(api, out_array, k, s, self.is_relu);
         }
+
         eprintln!("GOT output:");
-        let out = vec2_to_arrayd(out_2d);
         eprintln!("Finished");
-        Ok((self.outputs[0].clone(), out))
+
+        Ok((self.outputs[0].clone(), out_array))
     }
 }
+// impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
+//     fn apply(
+//         &self,
+//         api: &mut Builder,
+//         input: HashMap<String,ArrayD<Variable>>,
+//     ) -> Result<(String,ArrayD<Variable>), String> {
+//         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
+//         // Reshape inputs
+//         // TODO work on removing
+//         // let layer_input = reshape_layer(layer_input, &self.input_shape);
+
+//         let mut weight_tensor = self.weights.clone();
+//         let mut out_2d = arrayd_to_vec2(layer_input);
+
+//         // Untested trans a value of 1
+//         out_2d = check_and_apply_transpose(out_2d, self.transa, "transa", "Gemm", &self.name);
+//         weight_tensor = check_and_apply_transpose(weight_tensor, self.transb, "transb", "Gemm", &self.name);
+
+//         let weights = read_2d_weights(api, &weight_tensor);
+//         let bias = read_2d_weights(api, &self.bias);
+        
+
+//         let scale_factor = 1 << self.scaling;
+//         let alpha_two_v = api.mul(self.two_v as u32, scale_factor as u32);
+
+//         // TODO add support for alpha and beta !=1. Hint, may need to scale up the alpha/beta and then rescale
+//         check_alpha_beta(self.alpha, "alpha", "Gemm", &self.name);
+//         check_alpha_beta(self.beta, "beta", "Gemm", &self.name);
+
+//         out_2d = matrix_multplication_naive2(api, out_2d, weights);
+//         eprintln!("out2d dimension {}, {}", out_2d.len(), out_2d[0].len());
+//         out_2d = matrix_addition_vec(api, out_2d, bias);
+//         api.display("3", out_2d[0][0]);
+//         eprintln!("GOT display:");
+//         // out_2d = run_if_quantized_2d(api, CIRCUITPARAMS.scaling.into(), self.is_rescale, out_2d, self.v_plus_one, self.two_v, alpha_two_v, self.is_relu);
+//         if self.is_rescale {
+//             let scaling_exponent = CIRCUITPARAMS.scaling as usize;
+//             let shift_exponent = self.v_plus_one.checked_sub(1)
+//                 .expect("v_plus_one must be at least 1");
+//             // out_2d = rescale_2d_vector(api, out_2d, scaling_exponent, shift_exponent, self.is_relu);
+//             let output = rescale_array(api, tensor, κ, s, apply_relu);
+//         }
+//         eprintln!("GOT output:");
+//         let out = vec2_to_arrayd(out_2d);
+//         eprintln!("Finished");
+//         Ok((self.outputs[0].clone(), out))
+//     }
+// }
 
 fn check_alpha_beta(val: f32, var_name: &str, layer_type: &str, layer_name: &str) {
     if val != 1.0{
