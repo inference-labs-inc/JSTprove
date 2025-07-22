@@ -327,9 +327,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             let shift_exponent = self.v_plus_one.checked_sub(1)
                 .expect("v_plus_one must be at least 1");
             // out_2d = rescale_2d_vector(api, out_2d, scaling_exponent, shift_exponent, self.is_relu);
-            let context = RescalingContext::new(api, scaling_exponent, shift_exponent);
-            // out_2d = rescale_tensor(api, out_2d, &context, self.is_relu);
-            let out_2d = rescale_array(api, out_2d, &context, self.is_relu);
+            let output = rescale_array(api, tensor, κ, s, apply_relu);
         }
         eprintln!("GOT output:");
         let out = vec2_to_arrayd(out_2d);

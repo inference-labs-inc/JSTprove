@@ -203,15 +203,20 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// rescale_array
+// FUNCTION: rescale_array
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Applies `rescale` elementwise to an `ArrayD<Variable>`.
+/// Applies `rescale` elementwise to an `ArrayD<Variable>`, using provided scaling and shift exponents.
+///
+/// Internally constructs a [`RescalingContext`] with the given exponents:
+/// - `scaling_exponent` κ such that α = 2^κ
+/// - `shift_exponent` s such that S = 2^s
 ///
 /// # Arguments
 /// - `api`: Mutable reference to the circuit builder.
 /// - `array`: A tensor (of any shape) of `Variable`s to rescale.
-/// - `context`: Precomputed rescaling context (shift and scaling factors).
+/// - `scaling_exponent`: κ for scaling by 2^κ.
+/// - `shift_exponent`: s for shifting by 2^s.
 /// - `apply_relu`: Whether to apply ReLU after rescaling.
 ///
 /// # Returns
@@ -219,10 +224,12 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
 pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     array: ArrayD<Variable>,
-    context: &RescalingContext,
+    scaling_exponent: usize,
+    shift_exponent: usize,
     apply_relu: bool,
 ) -> ArrayD<Variable> {
-    array.map(|x| rescale(api, context, x, apply_relu))
+    let context = RescalingContext::new(api, scaling_exponent, shift_exponent);
+    array.map(|x| rescale(api, &context, x, apply_relu))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
