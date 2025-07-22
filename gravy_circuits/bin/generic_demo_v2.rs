@@ -118,7 +118,7 @@ struct ConvLayer {
     pads: Vec<u32>,
     input_shape: Vec<usize>,
     scaling: u64,
-    is_relu: bool,
+    optimization_pattern: GraphPattern,
     v_plus_one: usize,
     two_v: u32,
     alpha_two_v: u64,
@@ -171,7 +171,7 @@ struct GemmLayer {
     v_plus_one: usize,
     two_v: u32,
     alpha_two_v: u64,
-    is_relu: bool,
+    optimization_pattern: GraphPattern,
     scaling: u64,
     input_shape: Vec<usize>,
     alpha: f32,
@@ -226,6 +226,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
     ) -> Result<(String,ArrayD<Variable>), String> {
+        eprintln!("{:?}", self);
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         // Reshape inputs
         // TODO work on removing
@@ -248,10 +249,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
     ) -> Result<(String,ArrayD<Variable>), String> {
-        eprintln!("Applying input shape for CONV: {}", self.name);
-
-        eprintln!("{:?}", self.inputs);
-
+        let is_relu = match self.optimization_pattern.name{
+                    "Conv+Relu" => true,
+                    _ => false
+                };
 
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         // Reshape inputs
@@ -271,7 +272,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
 
         // Convert inputs to correct form
         let layer_input = arrayd_to_vec4(layer_input);
-        eprintln!("GOT Input:");
         // TODO there should be a better way to do this (Maybe even inside conv4drun)
         // Get input shape
         let in_shape = vec![layer_input.len() as u32,layer_input[0].len() as u32, layer_input[0][0].len() as u32, layer_input[0][0][0].len() as u32];
@@ -294,11 +294,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             self.v_plus_one,
             self.two_v,
             alpha_two_v,
-            self.is_relu,
+            is_relu,
         );
-        eprintln!("GOT OUTPUT");
-        eprint!("PRINTING INDEX");
-
         Ok((self.outputs[0].clone(), vec4_to_arrayd(out)))
     }
 }
@@ -309,7 +306,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
     ) -> Result<(String,ArrayD<Variable>), String> {
-        eprintln!("Applying input shape for GemmLayer: {}", self.name);
+        let is_relu = match self.optimization_pattern.name{
+                    "Gemm+Relu" => true,
+                    _ => false
+                };
 
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         // Reshape inputs
@@ -348,14 +348,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             panic!("Only alpha = 1 is currently supported for Gemm layers");
         }
         out_2d = matrix_multplication_naive2(api, out_2d, weights);
-        eprintln!("out2d dimension {}, {}", out_2d.len(), out_2d[0].len());
         out_2d = matrix_addition_vec(api, out_2d, bias);
         api.display("3", out_2d[0][0]);
-        eprintln!("GOT display:");
-        out_2d = run_if_quantized_2d(api, CIRCUITPARAMS.scaling.into(), self.is_rescale, out_2d, self.v_plus_one, self.two_v, alpha_two_v, self.is_relu);
-        eprintln!("GOT output:");
+        out_2d = run_if_quantized_2d(api, CIRCUITPARAMS.scaling.into(), self.is_rescale, out_2d, self.v_plus_one, self.two_v, alpha_two_v, is_relu);
         let out = vec2_to_arrayd(out_2d);
-        eprintln!("Finished");
         Ok((self.outputs[0].clone(), out))
     }
 }
@@ -426,8 +422,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         input: HashMap<String,ArrayD<Variable>>,
     ) -> Result<(String,ArrayD<Variable>), String> {
 
-        eprintln!("Applying input shape for GemmLayer: {}", self.name);
-
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         // TODO work on removing
 
@@ -446,7 +440,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         );
 
         let out = vec4_to_arrayd(output);
-        eprintln!("Finished");
         Ok((self.outputs[0].clone(), out))
     }
 }
@@ -492,43 +485,47 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
 
 
     let matcher = PatternMatcher::new();
-    matcher.run(&ARCHITECTURE.architecture);
+    let opt_patterns_by_layername = matcher.run(&ARCHITECTURE.architecture);
 
     
 
 
     for (i, layer) in ARCHITECTURE.architecture.iter().enumerate() {
         /*
-        TODO track relu through outputs instead. And skip the output layer when it comes in the graph (Maybe use a set containing the outputs)
+            Track layer combo optimizations
          */
-        /* if layer.name in skip_future_layers {
-            skip_future_layers.pop(layer.name)
-            continue
-        }
-        */
+
         if *skip_next_layer.get(&layer.name).unwrap_or(&false){
-            // skip_next_layer.false;
             continue
         }
-        // TODO needs to fix this approach
-        let mut outputs = layer.outputs.to_vec();
-        let mut is_relu = false;
-        relu_opt_skip(&mut skip_next_layer, i, layer, &mut outputs, &mut is_relu);
+        let outputs = layer.outputs.to_vec();
+
+        let optimization_pattern_match = opt_patterns_by_layername.get(&layer.name);
+        let (optimization_pattern, outputs, layers_to_skip) =  match optimization_skip_layers(optimization_pattern_match, outputs.clone()) {
+            Some(opt) => opt,
+            None => (GraphPattern::default(), outputs.clone(), vec![])
+        };
+        // Save layers to skip
+        layers_to_skip.into_iter()
+            .for_each(|item| {
+                skip_next_layer.insert(item.to_string(), true);
+            });
+        /*
+            End tracking layer combo optimizations
+         */
+
+        
+        
 
         let is_rescale = match  CIRCUITPARAMS.rescale_config.get(&layer.name){
                 Some(config) => config,
                 None => &true
             };
 
-        /*
-        Implement Static Polymorphism, want to generalize a build function
-        no matter the type of layer we want to build and return that layer type.
-        */
         match layer.op_type.as_str() {
             "Conv" => {
-                let params = layer.params.clone().unwrap();
-                // TODO this should be done on a per input basis. For now this only works because we are looking at single input layers
-                // I think this should move inside the individual layers
+                let params = layer.params.clone().unwrap();                
+                // We can move this inside the layer op
                 let expected_shape = match shapes_map.get(&layer.inputs[0]){
                     Some(input_shape) => input_shape,
                     None => panic!("Error getting output shape for layer {}", layer.name)
@@ -545,14 +542,11 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                     pads: get_param(&layer.name, &"pads", &params),
                     input_shape: expected_shape.to_vec(),
                     scaling: CIRCUITPARAMS.scaling.into(),
-                    is_relu: is_relu,
+                    optimization_pattern: optimization_pattern,
                     v_plus_one: N_BITS,
                     two_v: TWO_V,
-                    /*
-                    TODO - api.mul instead of hard-coding multiplication
-                     */
                     alpha_two_v: alpha_two_v,
-                    is_rescale: *is_rescale, //DONT KNOW IF THIS IS IDEAL TODO
+                    is_rescale: *is_rescale,
                     inputs: layer.inputs.to_vec(),
                     outputs: outputs
                 };
@@ -560,9 +554,6 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 layers.push(Box::new(conv));
             }
             "Reshape" => {
-                /*
-                   TODO - Implement permanent solution for what reshape layer needs like
-                */
                 let shape_name = layer.inputs[1].clone();
                 let params = layer.params.clone().unwrap();
                 
@@ -581,9 +572,9 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 layers.push(Box::new(reshape));
             }
             "Gemm" => {
+
                 let params = layer.params.clone().unwrap();
-                // TODO this should be done on a per input basis. For now this only works because we are looking at single input layers
-                // I think this should move inside the individual layers
+                // We can move this inside the layer op
                 let expected_shape = match shapes_map.get(&layer.inputs[0]){
                     Some(input_shape) => input_shape,
                     None => panic!("Error getting output shape for layer {}", layer.name)
@@ -593,7 +584,7 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                     index: i,
                     weights: get_w_or_b(&w_and_b_map, &layer.inputs[1]),
                     bias: parse_maybe_1d_to_2d(get_w_or_b(&w_and_b_map, &layer.inputs[2])).unwrap(),
-                    is_relu: is_relu,
+                    optimization_pattern: optimization_pattern,
                     v_plus_one: V_PLUS_ONE,
                     two_v: TWO_V,
                     alpha_two_v: alpha_two_v,
@@ -616,7 +607,6 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 // };
                 // layers.push(Box::new(constant));
             }
-            // !!! MaxPool
             "MaxPool" => {
                 let params = layer.params.clone().unwrap();
                 let expected_shape = match shapes_map.get(&layer.inputs[0]) {
@@ -638,9 +628,6 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 layers.push(Box::new(maxpool));
             }
             "Flatten" => {
-                /*
-                   TODO - Implement permanent solution for what reshape layer needs like
-                */
                 let params = layer.params.clone().unwrap();
                 
                 let expected_shape = match shapes_map.get(&layer.inputs[0]){
@@ -663,8 +650,6 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                     Some(input_shape) => input_shape,
                     None => panic!("Error getting output shape for layer {}", layer.name)
                 };
-                // TODO remove
-                panic!("RELU NOT OPT HIT");
                 let relu = ReluLayer{
                     name: layer.name.clone(),
                     index: i,
@@ -682,29 +667,42 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
     layers
 }
 
-fn relu_opt_skip(skip_layer: &mut HashMap<String, bool>, i: usize, layer: &ONNXLayer, outputs: &mut Vec<String>, is_relu: &mut bool) {
-    // The goal with the new version should be
-    // 1. obtain the outputs of the layer
-    // 2. look for relu op type in layers that take this output as inputs
-    // 3. change skip layer to hashmap with key as layer name to skip and bool as value
-    // 4. return is_relu, mutated skip_layer, alternative outputs
+// fn optimization_skip_layers(skip_layer: &mut HashMap<String, bool>, i: usize, layer: &ONNXLayer, outputs: &mut Vec<String>, is_relu: &mut bool) {
+fn optimization_skip_layers(optimization_match: Option<&Vec<OptimizationMatch>>, outputs: Vec<String>) -> Option<(GraphPattern, Vec<String>, Vec<String>)> {
+    match optimization_match {
+        Some(opt) => {
+            let pattern = opt[0].pattern;
+            let mut new_outputs = Vec::new();
+            let mut skipped_layers: Vec<String> = Vec::new();
+            // Loop through all potential branches
+            for opt_match in opt{
+                // Assert all the patterns are the same
+                assert!(pattern.name == opt_match.pattern.name);
+                // Get final layer of pattern
+                let layers = opt_match.layers.clone();
+                let final_layer = layers[layers.len() - 1].clone();
+                let first_layer = layers[0].clone();
 
-    // ahead of time in build layers, will want to loop through the layers and create a datatype, maybe a hashmap, which stores the layer inputs as key, and vector of tuples as the value
-    // each tuple in the vector will house a layer_name and op_type. This will be able to be used for future optimizations as well, combining layers and such
+                // Assert outputs match 
+                eprintln!("{:?}", first_layer.outputs);
+                eprintln!("{:?}", outputs);
+                assert!(first_layer.outputs.iter().all(|item| outputs.contains(item)));
+                new_outputs.extend(final_layer.outputs);
+                skipped_layers.extend(opt_match.layers.iter().map(|layer| layer.name.clone()))
+            }
+            // Search the other way. Makes sure both sides of inequality holds
+            // assert!(outputs.iter().all(|item| new_outputs.contains(item)));
 
+            let set: HashSet<_> = new_outputs.into_iter().collect();
+            let unique_new_outputs: Vec<String> = set.into_iter().collect();
+            // let set: HashSet<_> = outputs.into_iter().collect();
+            // let unique_old_outputs: Vec<String> = set.into_iter().collect();
 
-    if i + 1 < ARCHITECTURE.architecture.len(){
-        let layer_plus_1 = &ARCHITECTURE.architecture[i + 1].op_type;
-        // let layer_plus_1 = &layer.output.name
-        // May need to store all layer architecture in a hashmap or something, and access the next layer through the hashmap
-        if layer_plus_1.starts_with("Relu") {
-            eprintln!("Found Relu for {}", layer.name.as_str());
-            *is_relu = true;
-            skip_layer.insert(layer.name.clone(), true);
-            *outputs = ARCHITECTURE.architecture[i + 1].outputs.clone();
-        
-            // skip_future_layers.add(layer_plus_1.name)
-        }
+            // assert!(unique_new_outputs.len() == unique_old_outputs.len());
+    
+            Some((pattern, unique_new_outputs, skipped_layers))
+        },
+        None => return None
     }
 }
 
@@ -960,73 +958,6 @@ fn build_input_to_layer_map<'a>(layers: &'a [ONNXLayer]) -> HashMap<&'a str, Vec
     map
 }
 
-// #[derive(Debug)]
-// pub struct PatternMatch<'a> {
-//     pub pattern_name: &'a str,
-//     pub layers: Vec<&'a ONNXLayer>,
-// }
-// fn find_pattern_matches<'a>(
-//     layers: &'a [ONNXLayer],
-//     pattern: &GraphPattern,
-//     mode: BranchMatchMode,
-// ) -> Vec<Vec<&'a ONNXLayer>> {
-//     let mut matches = Vec::new();
-//     // let input_to_layers = build_input_to_layer_map(layers);
-//     let ops = pattern.ops;
-//     eprintln!("{:#?}", ops[0]);
-
-//     // Iterate all layers as potential start points
-//     for start_idx in 0..layers.len() {
-//         eprintln!("{}", layers[start_idx].op_type);
-//         // Quick check if first op matches
-//         if layers[start_idx].op_type.as_str() != ops[0] {
-//             continue;
-//         }
-
-//         // Attempt to match the rest of the pattern
-//         let mut current_layer = &layers[start_idx];
-//         let mut matched_layers = vec![current_layer];
-
-//         // Index of layer in the overall graph to search for next ops
-//         let mut search_start = start_idx + 1;
-
-//         // For each next op in pattern
-//         let mut matched = true;
-//         for &op_name in &ops[1..] {
-//             // Try to find the next layer with matching op
-//             // and that has at least one input matching current_layer outputs
-//             let mut found_next = None;
-
-//             for idx in search_start..layers.len() {
-//                 let candidate = &layers[idx];
-//                 if candidate.op_type.as_str() != op_name {
-//                     continue;
-//                 }
-
-//                 // Check connectivity: candidate.inputs intersect current_layer.outputs?
-//                 if candidate.inputs.iter().any(|input| current_layer.outputs.contains(input)) {
-//                     found_next = Some(candidate);
-//                     search_start = idx + 1; // Move forward for next searches
-//                     break;
-//                 }
-//             }
-
-//             if let Some(next_layer) = found_next {
-//                 matched_layers.push(next_layer);
-//                 current_layer = next_layer;
-//             } else {
-//                 matched = false;
-//                 break;
-//             }
-//         }
-
-//         if matched {
-//             matches.push(matched_layers);
-//         }
-//     }
-
-//     matches
-// }
 // TODO untested with actual branching
 fn find_pattern_matches<'a>(
     layers: &'a [ONNXLayer],
@@ -1159,14 +1090,17 @@ fn build_pattern_registry() -> Vec<GraphPattern> {
         },
     ]
 }
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct GraphPattern {
     pub name: &'static str,
     pub ops: &'static [&'static str],
 }
 
-
-
+#[derive(Debug, Clone)]
+pub struct OptimizationMatch{
+    pattern: GraphPattern,
+    layers: Vec<ONNXLayer>
+}
 
 pub struct PatternMatcher {
     patterns: Vec<GraphPattern>,
@@ -1179,14 +1113,22 @@ impl PatternMatcher {
         }
     }
 
-    pub fn run(&self, layers: &[ONNXLayer]) {
+    pub fn run(&self, layers: &[ONNXLayer]) -> HashMap<std::string::String, Vec<OptimizationMatch>>{
         use std::time::SystemTime;
         let now = SystemTime::now();
+
+        let mut all_matches: HashMap<String, Vec<OptimizationMatch>> = HashMap::new();
    
         for pat in &self.patterns {
             let matches = find_pattern_matches(layers, pat, BranchMatchMode::All);
             eprintln!("Pattern `{}` matched {} times", pat.name, matches.len());
+
+            for m in matches{
+                all_matches.entry(m[0].name.clone()).or_default().push(OptimizationMatch { pattern: *pat, layers: m.into_iter().cloned().collect()});
+            }
+            // eprintln!("{:?}", matches[0]);
         }
+        eprintln!("{:?}", all_matches);
 
         match now.elapsed() {
             Ok(elapsed) => {
@@ -1198,7 +1140,8 @@ impl PatternMatcher {
                 eprintln!("Error calculating time: {e:?}");
             }
         }
-        panic!("");
+        all_matches
+        // panic!("");
     }
 }
 
