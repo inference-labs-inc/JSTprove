@@ -11,7 +11,7 @@ from onnx import NodeProto, TensorProto, shape_inference, helper, numpy_helper
 import onnxruntime as ort
 
 from python.testing.core.utils.onnx_helpers import extract_shape_dict, get_input_shapes, parse_attributes
-from python.testing.core.utils.onnx_op_quantizer import ONNXOpQuantizer
+from python.testing.core.utils.onnx_quantizer.onnx_op_quantizer import ONNXOpQuantizer
 from python.testing.core.utils.model_converter import ZKModelBase, ModelConverter
 
 """
@@ -313,6 +313,10 @@ class ONNXConverter(ModelConverter):
         '''
         
         model = copy.deepcopy(unscaled_model)
+
+        # Check that all of the layers in model are supported by our system
+        self.op_quantizer.check_model(model)
+
         initializer_map = {init.name: init for init in model.graph.initializer}
         input_names = [inp.name for inp in unscaled_model.graph.input]
 
@@ -636,28 +640,8 @@ class ONNXConverter(ModelConverter):
         else:
             outputs = self.ort_sess.run([output_name], {input_name: np.asarray(inputs)})
         return outputs
-
-
-# def find_non_serializable_fields(obj, path="root"):
-#     """
-#     Recursively finds fields that are not JSON serializable.
-#     """
-#     if is_dataclass(obj):
-#         obj = asdict(obj)
-
-#     if isinstance(obj, dict):
-#         for k, v in obj.items():
-#             find_non_serializable_fields(v, f"{path}.{k}")
-#     elif isinstance(obj, list):
-#         for i, item in enumerate(obj):
-#             find_non_serializable_fields(item, f"{path}[{i}]")
-#     else:
-#         try:
-#             json.dumps(obj)
-#         except TypeError:
-#             # print(obj.tolist())
-#             print(f"❌ Non-serializable field found at: {path} (type: {type(obj).__name__})")
-#             # sys.exit()
+    
+    
 
 class ZKONNXModel(ONNXConverter, ZKModelBase):
     def __init__(self):

@@ -317,6 +317,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         weight_tensor = check_and_apply_transpose(weight_tensor, self.transb, "transb", "Gemm", &self.name);
 
         let weights = read_2d_weights(api, &weight_tensor);
+        // TODO, should support not requiring a bias value 
         let bias = read_2d_weights(api, &self.bias);
         
 
@@ -745,10 +746,6 @@ impl<C: Config> Define<C> for Circuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         // Getting inputs
         let mut out = get_inputs(self.input_arr.clone(), ARCHITECTURE.inputs.clone());
-        
-        // let mut out = out2.remove("input").unwrap().clone();
-
-
 
         // let mut out = vec1_to_arrayd(self.input_arr.clone());
         let layers = build_layers::<C, Builder>();
