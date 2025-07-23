@@ -25,7 +25,6 @@ class GemmQuantizer(BaseOpQuantizer):
         nodes = []
         output_name = f"{node.name}_int"
 
-        # node.input[:] = self.quantize_w_and_b(node, scale, scale_base, initializer_map)
         nodes, node.input[:] = self.add_nodes_w_and_b(node, scale, scale_base, initializer_map, graph)
 
         attrs = extract_attributes(node)
@@ -37,7 +36,6 @@ class GemmQuantizer(BaseOpQuantizer):
 
         scale_value = scale_base ** scale
         
-        # TODO make this constant to all layers
         # === Create scale constant ===
         scale_const_name = f"{output_name}_scaler"
         scale_tensor = numpy_helper.from_array(

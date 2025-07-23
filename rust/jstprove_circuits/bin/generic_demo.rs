@@ -212,7 +212,7 @@ struct MaxPoolLayer {
 
 trait LayerOp<C: Config, Builder: RootAPI<C>> {
     fn apply(&self, api: &mut Builder, input: HashMap<String,ArrayD<Variable>>)
-        -> Result<(String,ArrayD<Variable>), String>;
+        -> Result<(Vec<String>,ArrayD<Variable>), String>;
     // fn build for every Layer type
 }
 
@@ -221,7 +221,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(String,ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
         eprintln!("{:?}", self);
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         // Reshape inputs
@@ -233,7 +233,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
         // TODO RELU unsupported for now. Must design relu function that takes in array instead of vectors
         let out = relu_array(api, out, self.n_bits - 1);
 
-        Ok((self.outputs[0].clone(), out))
+        Ok((self.outputs.clone(), out))
     }
 }
 
@@ -242,7 +242,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(String,ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
         let is_relu = match self.optimization_pattern.name{
                     "Conv+Relu" => true,
                     _ => false
@@ -260,6 +260,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             .into_iter()
             .map(|x| load_circuit_constant(api, x))
             .collect();
+        
         // Obtain scaling factors (This can move TODO)
         let scale_factor = 1 << self.scaling;
         let alpha_two_v = api.mul(self.two_v as u32, scale_factor as u32);
@@ -289,7 +290,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             alpha_two_v,
             is_relu,
         );
-        Ok((self.outputs[0].clone(), vec4_to_arrayd(out)))
+        Ok((self.outputs.clone(), vec4_to_arrayd(out)))
     }
 }
 
@@ -298,7 +299,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(String,ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String>{
         let is_relu = match self.optimization_pattern.name{
                     "Gemm+Relu" => true,
                     _ => false
@@ -341,7 +342,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             out_2d = rescale_tensor(api, out_2d, &context, is_relu);
         }
         let out = vec2_to_arrayd(out_2d);
-        Ok((self.outputs[0].clone(), out))
+        Ok((self.outputs.clone(), out))
     }
 }
 
@@ -366,14 +367,14 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(String,ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
         let reshape_shape = self.shape.clone();
         let mut layer_input = input.get(&self.inputs[0]).unwrap();
         let out = &layer_input.clone()
             .into_shape_with_order(IxDyn(&reshape_shape))
             .expect("Shape mismatch: Cannot reshape into the given dimensions.");
 
-        Ok((self.outputs[0].clone(), out.clone()))
+        Ok((self.outputs.clone(), out.clone()))
     }
 }
 
@@ -393,13 +394,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(String,ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String>{
         let reshape_axis = self.axis.clone();
         let layer_input = input.get(&self.inputs[0]).unwrap();
 
         let out = onnx_flatten(layer_input.clone(), reshape_axis);
 
-        Ok((self.outputs[0].clone(), out.clone()))
+        Ok((self.outputs.clone(), out.clone()))
     }
 }
 // TODO remove constants from python side. Incorporate into the layer that uses it instead
@@ -409,19 +410,18 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConstantLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(String,ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
 
-        Ok((self.outputs[0].clone(), ArrayD::from_shape_vec(IxDyn(&[1]), vec![api.constant(0)]).unwrap()))
+        Ok((self.outputs.clone(), ArrayD::from_shape_vec(IxDyn(&[1]), vec![api.constant(0)]).unwrap()))
     }
 }
 
-// !!! MaxPool
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
     fn apply(
         &self,
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(String,ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String>{
 
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         // TODO work on removing
@@ -441,7 +441,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         );
 
         let out = vec4_to_arrayd(output);
-        Ok((self.outputs[0].clone(), out))
+        Ok((self.outputs.clone(), out))
     }
 }
 
@@ -759,8 +759,11 @@ impl<C: Config> Define<C> for Circuit<Variable> {
             let result = layer
                 .apply(api, out.clone())
                 .expect(&format!("Failed to apply layer {}", i));
-            out.insert(result.0, result.1);
-
+            // out.insert(result.0, result.1);
+            result.0.into_iter().for_each(|key| {
+                // out.insert(key, Arc::clone(&value)); Depending on memory constraints here
+                out.insert(key, result.1.clone());
+            });
         }
         
         eprint!("Flatten output");
@@ -928,7 +931,6 @@ fn get_w_or_b<I: DeserializeOwned>(w_and_b_map: &HashMap<String, ONNXLayer>, wei
         None => panic!("ModelError - missing tensor in expected weights/bias: {}", weights_input)
     };
     weight_tensor
-    // serde_json::from_value(weight_tensor).expect("Deserialization failed")
 }
 
 /*
@@ -941,17 +943,6 @@ Pattern matching of layers
 pub enum BranchMatchMode {
     Any,
     All,
-}
-
-fn build_input_to_layer_map<'a>(layers: &'a [ONNXLayer]) -> HashMap<&'a str, Vec<&'a ONNXLayer>> {
-    let mut map: HashMap<&str, Vec<&ONNXLayer>> = HashMap::new();
-    for layer in layers {
-        for input in &layer.inputs {
-            map.entry(input).or_default().push(layer);
-        }
-    }
-    // eprint!("{:?}", map.keys());
-    map
 }
 
 // TODO untested with actual branching
@@ -1213,7 +1204,5 @@ fn main() {
     let mut file_reader = FileReader {
         path: "demo_cnn".to_owned(),
     };
-    // println!("{:?}", WEIGHTS_INPUT.layers);
-
     handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(&mut file_reader);
 }

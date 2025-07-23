@@ -30,7 +30,7 @@ class ConstantQuantizer(BaseOpQuantizer):
         )
 
         if not is_data_constant:
-            return node  # ✅ Used for shape or index — don't quantize
+            return node  # Used for shape or index — don't quantize
 
         # Safe to quantize: numeric constant used in computation
         for attr in node.attribute:
