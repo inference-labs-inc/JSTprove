@@ -1,4 +1,4 @@
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Set, Tuple
 import numpy as np
 from onnx import AttributeProto, numpy_helper
 import onnx
@@ -104,8 +104,18 @@ def get_input_shapes(onnx_model: onnx.ModelProto):
 
 def rescale_to_int(rescale):
     return int(rescale)
-# def extract_attributes(node: onnx.NodeProto) -> dict:
-#     return {
-#         attr.name: onnx.helper.get_attribute_value(attr)
-#         for attr in node.attribute
-#     }
+
+
+def get_model_op_types(self, model: onnx.ModelProto) -> Set[str]:
+        return {node.op_type for node in model.graph.node}
+
+def check_model_compatibility(model: onnx.ModelProto, registry: Dict[str, Callable]) -> Tuple[bool, Set[str]]:
+    model_ops = get_model_op_types(model)
+    unsupported_ops = model_ops - registry.keys()
+    return (len(unsupported_ops) == 0, unsupported_ops)
+
+def get_attribute_ints(node: onnx.NodeProto, name: str, default: list[int] = None) -> list[int]:
+    for attr in node.attribute:
+        if attr.name == name and attr.type == onnx.AttributeProto.INTS:
+            return list(attr.ints)
+    return default if default is not None else []

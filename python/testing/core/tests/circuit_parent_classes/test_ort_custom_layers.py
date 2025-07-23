@@ -7,7 +7,7 @@ from onnx import TensorProto, shape_inference, helper, numpy_helper
 
 from python.testing.core.utils.onnx_converter import ONNXConverter
 from python.testing.core.utils.onnx_helpers import dims_prod, extract_shape_dict, parse_attributes
-from python.testing.core.utils.onnx_op_quantizer import ONNXOpQuantizer
+from python.testing.core.utils.onnx_quantizer.onnx_op_quantizer import ONNXOpQuantizer
 
 from onnxruntime import InferenceSession, SessionOptions
 from onnxruntime_extensions import get_library_path, OrtPyFunction

@@ -359,6 +359,9 @@ class PytorchConverter(ModelConverter):
 
     def get_outputs(self, inputs):
         return self.quantized_model(inputs)
+    
+    def check_model(self, model):
+        pass
 
 
 
