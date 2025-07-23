@@ -3,7 +3,7 @@ use std::ops::Neg;
 use expander_compiler::frontend::*;
 use ethnum::U256;
 use gkr_engine::{FieldEngine, GKREngine};
-use ndarray::{ArrayD, Ix1, Ix2, Ix3, Ix4, Ix5, IxDyn};
+use ndarray::{Array2, ArrayD, Ix1, Ix2, Ix3, Ix4, Ix5, IxDyn, Zip};
 use serde_json::Value;
 
 /// Load in circuit constant given i64, negative values are represented by p-x and positive values are x
@@ -20,6 +20,21 @@ pub fn load_circuit_constant<C: Config, Builder: RootAPI<C>>(
         api.constant(CircuitField::<C>::from_u256(U256::from(x.abs() as u64)))
     }
 }
+
+/// Convert an Array2 of i64 values to circuit constants (Variables)
+pub fn load_array_constants<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    input: &Array2<i64>,
+) -> Array2<Variable> {
+    let mut result = Array2::default(input.dim());
+    Zip::from(&mut result)
+        .and(input)
+        .for_each(|out_elem, &val| {
+            *out_elem = load_circuit_constant(api, val);
+        });
+    result
+}
+
 /// Convert 4d array to 4d vectors
 pub fn four_d_array_to_vec<const K: usize, const L: usize, const M: usize, const N: usize>(
     array: [[[[Variable; N]; M]; L]; K],

@@ -1,3 +1,4 @@
+use ndarray::ArrayD;
 use expander_compiler::frontend::*;
 
 pub fn dot<C: Config, Builder: RootAPI<C>>(
@@ -12,6 +13,36 @@ pub fn dot<C: Config, Builder: RootAPI<C>>(
     }
     row_col_product
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: matrix_addition
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Adds two `Array2<Variable>` matrices elementwise using circuit constraints.
+///
+/// # Arguments
+/// - `api`: The circuit builder.
+/// - `matrix_a`: First matrix.
+/// - `matrix_b`: Second matrix.
+///
+/// # Returns
+/// An `Array2<Variable>` representing the elementwise sum of the two input matrices.
+pub fn matrix_addition<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    matrix_a: Array2<Variable>,
+    matrix_b: Array2<Variable>,
+) -> Array2<Variable> {
+    let shape = matrix_a.dim();
+    assert_eq!(shape, matrix_b.dim(), "Shape mismatch in matrix_addition");
+
+    let mut result = Array2::default(shape);
+    for ((i, j), out_elem) in result.indexed_iter_mut() {
+        *out_elem = api.add(matrix_a[(i, j)], matrix_b[(i, j)]);
+    }
+
+    result
+}
+
 
 /// Naive Matrix addition with vectors
 pub fn matrix_addition_vec<C: Config, Builder: RootAPI<C>>(
@@ -28,6 +59,44 @@ pub fn matrix_addition_vec<C: Config, Builder: RootAPI<C>>(
         out.push(row_out);
     }
     out
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: matrix_multiplication
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Multiplies two `Array2<Variable>` matrices using naïve nested loops and circuit constraints.
+///
+/// # Arguments
+/// - `api`: The circuit builder.
+/// - `matrix_a`: Matrix of shape (m × n).
+/// - `matrix_b`: Matrix of shape (n × p).
+///
+/// # Returns
+/// A matrix of shape (m × p) representing the matrix product.
+pub fn matrix_multiplication<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    matrix_a: Array2<Variable>,
+    matrix_b: Array2<Variable>,
+) -> Array2<Variable> {
+    let (m, n) = matrix_a.dim();
+    let (n2, p) = matrix_b.dim();
+    assert_eq!(n, n2, "Inner dimensions must match for matrix multiplication");
+
+    let mut result = Array2::default((m, p));
+
+    for i in 0..m {
+        for j in 0..p {
+            let mut acc = api.constant(0);
+            for k in 0..n {
+                let mul = api.mul(matrix_a[(i, k)], matrix_b[(k, j)]);
+                acc = api.add(acc, mul);
+            }
+            result[(i, j)] = acc;
+        }
+    }
+
+    result
 }
 
 /// Matrix multiplciation of vector of vectors naive version 2

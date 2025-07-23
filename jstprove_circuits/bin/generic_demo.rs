@@ -1,9 +1,9 @@
 use core::panic;
 use expander_compiler::frontend::*;
 use jstprove_circuits::circuit_functions::layer_conv::conv_4d_run;
-use jstprove_circuits::circuit_functions::utils_helper::{arrayd_to_vec1, arrayd_to_vec2, arrayd_to_vec4, arrayd_to_vec5, get_1d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec1_to_arrayd, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd};
+use jstprove_circuits::circuit_functions::utils_helper::{load_array_constants, arrayd_to_vec1, arrayd_to_vec2, arrayd_to_vec4, arrayd_to_vec5, get_1d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec1_to_arrayd, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd};
 #[allow(unused_imports)]
-use jstprove_circuits::circuit_functions::layer_matmul::{matrix_addition_vec, matrix_multplication_naive2,};
+use jstprove_circuits::circuit_functions::layer_matmul::{matrix_addition, matrix_multiplication, matrix_addition_vec, matrix_multplication_naive2,};
 // !!! MaxPool
 use jstprove_circuits::circuit_functions::layer_max_pool::{setup_maxpooling_2d, maxpooling_2d};
 
@@ -12,7 +12,7 @@ use jstprove_circuits::io::io_reader::{FileReader, IOReader};
 use jstprove_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
 use lazy_static::lazy_static;
 use ndarray::Dimension;
-use ndarray::{ ArrayD, IxDyn};
+use ndarray::{ArrayD, IxDyn, Array2, Axis};
 use std::collections::HashMap;
 
 // Serde Packages
@@ -162,8 +162,10 @@ struct ConstantLayer {
 struct GemmLayer {
     name: String,
     index: usize,
-    weights: Vec<Vec<i64>>,
-    bias: Vec<Vec<i64>>,
+    // weights: Vec<Vec<i64>>,
+    weights: Array2<i64>,
+    // bias: Vec<Vec<i64>>,
+    bias: Array2<i64>,
     is_rescale: bool,
     v_plus_one: usize,
     two_v: u32,
@@ -286,6 +288,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         Ok((self.outputs[0].clone(), vec4_to_arrayd(out)))
     }
 }
+
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
     fn apply(
         &self,
@@ -293,46 +296,43 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         input: HashMap<String, ArrayD<Variable>>,
     ) -> Result<(String, ArrayD<Variable>), String> {
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
-
-        let mut weight_tensor = self.weights.clone();
-        let mut out_2d = arrayd_to_vec2(layer_input);
+        let mut input_array = layer_input
+            .into_dimensionality::<Ix2>()
+            .map_err(|_| format!("Expected 2D input for layer {}", self.name))?;
 
         // Handle optional transposition
-        out_2d = check_and_apply_transpose(out_2d, self.transa, "transa", "Gemm", &self.name);
-        weight_tensor = check_and_apply_transpose(weight_tensor, self.transb, "transb", "Gemm", &self.name);
+        if self.transa == 1 {
+            input_array = input_array.reversed_axes().to_owned();
+        }
 
-        let weights = read_2d_weights(api, &weight_tensor);
-        let bias = read_2d_weights(api, &self.bias);
+        let mut weights_array = load_array_constants(api, &self.weights);
+        if self.transb == 1 {
+            weights_array = weights_array.reversed_axes().to_owned();
+        }
 
-        let scale_factor = 1 << self.scaling;
-        let alpha_two_v = api.mul(self.two_v as u32, scale_factor as u32);
+        let bias_array = load_array_constants(api, &self.bias);
 
-        // Ensure alpha = 1 and beta = 1 for now
+        // Sanity check alpha and beta
         check_alpha_beta(self.alpha, "alpha", "Gemm", &self.name);
         check_alpha_beta(self.beta, "beta", "Gemm", &self.name);
 
-        // Perform matrix multiplication and bias addition
-        out_2d = matrix_multplication_naive2(api, out_2d, weights);
-        eprintln!("out2d dimension {}, {}", out_2d.len(), out_2d[0].len());
-        out_2d = matrix_addition_vec(api, out_2d, bias);
+        // Matrix multiplication and bias addition
+        let mut result = matrix_multiplication(api, input_array, weights_array);
+        result = matrix_addition(api, result, bias_array);
 
-        api.display("3", out_2d[0][0]);
-        eprintln!("GOT display:");
+        api.display("3", result[(0, 0)]);
 
-        // Optionally apply rescaling and ReLU
-        let mut out_array = vec2_to_arrayd(out_2d);
+        let mut out_array = result.into_dyn(); // back to ArrayD<Variable>
         if self.is_rescale {
             let k = CIRCUITPARAMS.scaling as usize;
             let s = self.v_plus_one.checked_sub(1).expect("v_plus_one must be at least 1");
             out_array = rescale_array(api, out_array, k, s, self.is_relu);
         }
 
-        eprintln!("GOT output:");
-        eprintln!("Finished");
-
         Ok((self.outputs[0].clone(), out_array))
     }
 }
+
 // impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
 //     fn apply(
 //         &self,
@@ -396,6 +396,38 @@ fn check_and_apply_transpose<T: Clone>(matrix: Vec<Vec<T>>, flag: usize, var_nam
             1 => transpose(matrix),
             other => panic!("Unsupported {} value {} in {} layer: {}", var_name, other, layer_type, layer_name),
         }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: check_and_apply_transpose_array
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Applies a transpose to a 2D array if the transpose flag is set.
+///
+/// # Arguments
+/// - `matrix`: A 2D array (`Array2<T>`) to conditionally transpose.
+/// - `flag`: 0 means no transpose, 1 means transpose.
+/// - `var_name`: Name of the transpose flag variable (for error messages).
+/// - `layer_type`: Name of the layer type (for error messages).
+/// - `layer_name`: Name of the layer instance (for error messages).
+///
+/// # Panics
+/// Panics if `flag` is not 0 or 1.
+pub fn check_and_apply_transpose_array<T: Clone>(
+    matrix: Array2<T>,
+    flag: usize,
+    var_name: &str,
+    layer_type: &str,
+    layer_name: &str,
+) -> Array2<T> {
+    match flag {
+        0 => matrix,
+        1 => matrix.reversed_axes(), // transpose
+        other => panic!(
+            "Unsupported {} value {} in {} layer: {}",
+            var_name, other, layer_type, layer_name
+        ),
+    }
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
@@ -559,8 +591,10 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 let conv = ConvLayer {
                     name: layer.name.clone(),
                     index: i,
-                    weights: get_w_or_b(&w_and_b_map, &layer.inputs[1]),
-                    bias: get_w_or_b(&w_and_b_map, &layer.inputs[2]),
+                    // weights: get_w_or_b(&w_and_b_map, &layer.inputs[1]),
+                    weights: get_w_or_b::<Array2<i64>>(&w_and_b_map, &layer.inputs[1]),
+                    // bias: get_w_or_b(&w_and_b_map, &layer.inputs[2]),
+                    bias: get_w_or_b::<Array2<i64>>(&w_and_b_map, &layer.inputs[2]),
                     strides: get_param(&layer.name, &"strides", &params),
                     kernel_shape: get_param(&layer.name, &"kernel_shape", &params),
                     group: vec![get_param_or_default(&layer.name, &"group", &params, Some(&1))],
