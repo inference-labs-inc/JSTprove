@@ -1,5 +1,5 @@
 use expander_compiler::frontend::*;
-use super::utils_core_math::{unconstrained_to_bits, assert_is_bitstring_and_reconstruct};
+use super::super::utils::core_math::{unconstrained_to_bits, assert_is_bitstring_and_reconstruct};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: unconstrained_max

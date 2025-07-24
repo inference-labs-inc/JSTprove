@@ -1,6 +1,6 @@
 use ndarray::ArrayD;
 use expander_compiler::frontend::*;
-use crate::circuit_functions::utils_core_math::{unconstrained_to_bits, assert_is_bitstring_and_reconstruct};
+use crate::circuit_functions::utils::core_math::{unconstrained_to_bits, assert_is_bitstring_and_reconstruct};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STRUCT: ReluContext

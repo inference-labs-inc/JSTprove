@@ -1,10 +1,12 @@
 use std::cmp::{max, min};
 
-use crate::circuit_functions::layer_matmul::dot;
-use super::{
-    utils_quantization::{rescale_4d_vector, rescale_array, rescale_tensor, RescalingContext}, // not currently using rescale_4d_vector
-    utils_helper::IntoTensor,
+use crate::circuit_functions::activations_and_layers::gemm::dot;
+
+use super::super::utils::quantization::{
+    rescale_4d_vector, rescale_array, rescale_tensor, RescalingContext,
 };
+
+use super::super::utils::helper::IntoTensor;
 
 use expander_compiler::frontend::*;
 

@@ -1,13 +1,33 @@
 use core::panic;
 use expander_compiler::frontend::*;
-use jstprove_circuits::circuit_functions::layer_conv::conv_4d_run;
-use jstprove_circuits::circuit_functions::utils_helper::{load_array_constants, arrayd_to_vec1, arrayd_to_vec2, arrayd_to_vec4, arrayd_to_vec5, get_1d_circuit_inputs, load_circuit_constant, read_2d_weights, read_4d_weights, vec1_to_arrayd, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd};
+use jstprove_circuits::circuit_functions::activations_and_layers::conv::conv_4d_run;
+use jstprove_circuits::circuit_functions::utils::helper::{
+    load_array_constants,
+    arrayd_to_vec1, arrayd_to_vec2, arrayd_to_vec4, arrayd_to_vec5,
+    get_1d_circuit_inputs,
+    load_circuit_constant,
+    read_2d_weights, read_4d_weights,
+    vec1_to_arrayd, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd,
+};
 #[allow(unused_imports)]
-use jstprove_circuits::circuit_functions::layer_matmul::{matrix_addition, matrix_multiplication, matrix_addition_vec, matrix_multplication_naive2,};
+#[allow(unused_imports)]
+use jstprove_circuits::circuit_functions::activations_and_layers::gemm::{
+    matrix_addition,
+    matrix_multiplication,
+    matrix_addition_vec,
+    matrix_multplication_naive2,
+};
 // !!! MaxPool
-use jstprove_circuits::circuit_functions::layer_max_pool::{setup_maxpooling_2d, maxpooling_2d};
+use jstprove_circuits::circuit_functions::activations_and_layers::maxpool::{
+    setup_maxpooling_2d,
+    maxpooling_2d,
+};
 
-use jstprove_circuits::circuit_functions::activation_relu::{relu_array, ReluContext};
+use jstprove_circuits::circuit_functions::activations_and_layers::relu::{
+    relu_array,
+    ReluContext,
+};
+
 use jstprove_circuits::io::io_reader::{FileReader, IOReader};
 use jstprove_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
 use lazy_static::lazy_static;
