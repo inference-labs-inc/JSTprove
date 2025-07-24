@@ -1,11 +1,13 @@
 REPORTING_URL = " https://discord.com/invite/inferencelabs"
 
-class QuantizationError(Exception):
-    # TODO fix message
-    GENERIC_MESSAGE = (
+GENERIC_ERROR_MESSAGE = (
         "\nThe model submitted is not currently supported by JSTProve."
         f"\nTo enter your model in our support integration queue, please request support for your model in the JSTProve channel of the Inference Labs Discord:{REPORTING_URL}"
     )
+
+class QuantizationError(Exception):
+    # TODO fix message
+    GENERIC_MESSAGE = GENERIC_ERROR_MESSAGE
 
     def __init__(self, message: str):
         full_msg = f"{self.GENERIC_MESSAGE}\n\n{message}"

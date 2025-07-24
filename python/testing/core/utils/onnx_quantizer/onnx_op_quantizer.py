@@ -38,7 +38,7 @@ class ONNXOpQuantizer:
         if handler:
             return handler.quantize(node, rescale, graph, scale, scale_base, initializer_map)
         else:
-            print(f"⚠️ No quantizer implemented for op_type: {node.op_type}")
+            print(f"No quantizer implemented for op_type: {node.op_type}")
             return node
     
     # TODO extend this beyond just supported layers, but also supported parameters - gemm alpha = 1, beta = 1,
@@ -58,7 +58,7 @@ class ONNXOpQuantizer:
     def check_layer(self, node: onnx.NodeProto, initializer_map: dict[str, onnx.TensorProto]) -> None:
         handler = self.handlers.get(node.op_type)
         if not handler:
-            raise ValueError(f"No handler registered for op: {node.op_type}")
+            raise UnsupportedOpError(node.op_type,node.name)
 
         if hasattr(handler, "check_supported") and callable(handler.check_supported):
             handler.check_supported(node, initializer_map)
