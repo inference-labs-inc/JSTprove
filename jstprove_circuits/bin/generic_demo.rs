@@ -10,7 +10,6 @@ use jstprove_circuits::circuit_functions::utils::helper::{
     vec1_to_arrayd, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd,
 };
 #[allow(unused_imports)]
-#[allow(unused_imports)]
 use jstprove_circuits::circuit_functions::activations_and_layers::gemm::{
     matrix_addition,
     matrix_multiplication,
@@ -32,7 +31,7 @@ use jstprove_circuits::io::io_reader::{FileReader, IOReader};
 use jstprove_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
 use lazy_static::lazy_static;
 use ndarray::Dimension;
-use ndarray::{ArrayD, IxDyn, Array2, Axis};
+use ndarray::{ArrayD, IxDyn, Array2, Axis, Ix2};
 use std::collections::HashMap;
 
 // Serde Packages
@@ -40,10 +39,11 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::Value;
 
-use jstprove_circuits::circuit_functions::{
-    utils_quantization::{rescale_2d_vector, rescale_array, rescale_tensor, RescalingContext}, // currently note using rescale_2d_vector
-    utils_helper::IntoTensor,
+use jstprove_circuits::circuit_functions::utils::quantization::{
+    rescale_2d_vector, rescale_array, rescale_tensor, RescalingContext,
 };
+
+use jstprove_circuits::circuit_functions::utils::helper::IntoTensor;
 
 
 type WeightsData = (Architecture, WANDB, CircuitParams);
@@ -126,8 +126,10 @@ ConvLayer, ReshapeLayer, FCLayer
 struct ConvLayer {
     name: String,
     index: usize,
-    weights: Vec<Vec<Vec<Vec<i64>>>>,
-    bias: Vec<i64>,
+    // weights: Vec<Vec<Vec<Vec<i64>>>>,
+    weights: ArrayD<i64>,
+    // bias: Vec<i64>,
+    bias: ArrayD<i64>,
     strides: Vec<u32>,
     kernel_shape: Vec<u32>,
     group: Vec<u32>,
@@ -183,9 +185,9 @@ struct GemmLayer {
     name: String,
     index: usize,
     // weights: Vec<Vec<i64>>,
-    weights: Array2<i64>,
+    weights: ArrayD<i64>,
     // bias: Vec<Vec<i64>>,
-    bias: Array2<i64>,
+    bias: ArrayD<i64>,
     is_rescale: bool,
     v_plus_one: usize,
     two_v: u32,
@@ -262,31 +264,29 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(String,ArrayD<Variable>), String> {
-        let layer_input = input.get(&self.inputs[0]).unwrap().clone();
-        // Reshape inputs
-        // TODO work on removing
-        // let layer_input = reshape_layer(layer_input, &self.input_shape);
+        input: HashMap<String, ArrayD<Variable>>,
+    ) -> Result<(String, ArrayD<Variable>), String> {
+        // Extract input
+        let layer_input = input.get(&self.inputs[0])
+            .ok_or("Missing input tensor")?
+            .clone();
 
-        // Get weights and biases
-        let weights = read_4d_weights(api, &self.weights);
-        let bias: Vec<Variable> = self.bias
-            .clone()
-            .into_iter()
-            .map(|x| load_circuit_constant(api, x))
-            .collect();
-        // Obtain scaling factors (This can move TODO)
+        // Convert weights
+        let weights = load_array_constants(api, &self.weights);
+
+        // Convert bias to ArrayD
+        let bias: ArrayD<Variable> = vec1_to_arrayd(
+            self.bias.iter().map(|x| load_circuit_constant(api, *x)).collect()
+        );
+
+        // Scaling
         let scale_factor = 1 << self.scaling;
         let alpha_two_v = api.mul(self.two_v as u32, scale_factor as u32);
 
-        // Convert inputs to correct form
-        let layer_input = arrayd_to_vec4(layer_input);
-        // TODO there should be a better way to do this (Maybe even inside conv4drun)
-        // Get input shape
-        let in_shape = vec![layer_input.len() as u32,layer_input[0].len() as u32, layer_input[0][0].len() as u32, layer_input[0][0][0].len() as u32];
-        
-        // Run convolution
+        // Get shape
+        let in_shape = layer_input.shape().iter().map(|&x| x as u32).collect::<Vec<_>>();
+
+        // Convolution
         let out = conv_4d_run(
             api,
             layer_input,
@@ -305,7 +305,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             alpha_two_v,
             self.is_relu,
         );
-        Ok((self.outputs[0].clone(), vec4_to_arrayd(out)))
+
+        Ok((self.outputs[0].clone(), out))
     }
 }
 
@@ -337,10 +338,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         check_alpha_beta(self.beta, "beta", "Gemm", &self.name);
 
         // Matrix multiplication and bias addition
-        let mut result = matrix_multiplication(api, input_array, weights_array);
+        let mut result = matrix_multiplication(api, input_array.into_dyn(), weights_array.into_dyn());
         result = matrix_addition(api, result, bias_array);
 
-        api.display("3", result[(0, 0)]);
+        api.display("3", result[[0, 0]]);
 
         let mut out_array = result.into_dyn(); // back to ArrayD<Variable>
         if self.is_rescale {
@@ -434,12 +435,12 @@ fn check_and_apply_transpose<T: Clone>(matrix: Vec<Vec<T>>, flag: usize, var_nam
 /// # Panics
 /// Panics if `flag` is not 0 or 1.
 pub fn check_and_apply_transpose_array<T: Clone>(
-    matrix: Array2<T>,
+    matrix: ArrayD<T>,
     flag: usize,
     var_name: &str,
     layer_type: &str,
     layer_name: &str,
-) -> Array2<T> {
+) -> ArrayD<T> {
     match flag {
         0 => matrix,
         1 => matrix.reversed_axes(), // transpose
@@ -612,9 +613,9 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                     name: layer.name.clone(),
                     index: i,
                     // weights: get_w_or_b(&w_and_b_map, &layer.inputs[1]),
-                    weights: get_w_or_b::<Array2<i64>>(&w_and_b_map, &layer.inputs[1]),
+                    weights: get_w_or_b::<ArrayD<i64>>(&w_and_b_map, &layer.inputs[1]),
                     // bias: get_w_or_b(&w_and_b_map, &layer.inputs[2]),
-                    bias: get_w_or_b::<Array2<i64>>(&w_and_b_map, &layer.inputs[2]),
+                    bias: get_w_or_b::<ArrayD<i64>>(&w_and_b_map, &layer.inputs[2]),
                     strides: get_param(&layer.name, &"strides", &params),
                     kernel_shape: get_param(&layer.name, &"kernel_shape", &params),
                     group: vec![get_param_or_default(&layer.name, &"group", &params, Some(&1))],
@@ -665,8 +666,9 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 let gemm = GemmLayer {
                     name: layer.name.clone(),
                     index: i,
-                    weights: get_w_or_b(&w_and_b_map, &layer.inputs[1]),
-                    bias: parse_maybe_1d_to_2d(get_w_or_b(&w_and_b_map, &layer.inputs[2])).unwrap(),
+                    weights: get_w_or_b::<ArrayD<i64>>(&w_and_b_map, &layer.inputs[1]),
+                    bias: get_w_or_b::<ArrayD<i64>>(&w_and_b_map, &layer.inputs[2]),
+                    // bias: parse_maybe_1d_to_2d(get_w_or_b(&w_and_b_map, &layer.inputs[2])).unwrap(),
                     is_relu: is_relu,
                     v_plus_one: V_PLUS_ONE,
                     two_v: TWO_V,
@@ -840,18 +842,28 @@ impl<C: Config> Define<C> for Circuit<Variable> {
     }
 }
 
-fn parse_value_to_array<I: DeserializeOwned>(value: Value) -> Result<I, serde_json::Error>{
+fn parse_value_to_array<I: DeserializeOwned>(value: Value) -> Result<I, serde_json::Error> {
+    // Print type of value for debugging
+    eprintln!("\n🔍 Attempting to parse tensor JSON value:");
+    eprintln!("Type: {}", match &value {
+        Value::Null => "Null",
+        Value::Bool(_) => "Bool",
+        Value::Number(_) => "Number",
+        Value::String(_) => "String",
+        Value::Array(_) => "Array",
+        Value::Object(_) => "Object",
+    });
+    eprintln!("Raw JSON: {}", value);
+    eprintln!("Attempting to parse into type: {}", std::any::type_name::<I>());
     match serde_json::from_value::<I>(value) {
-        Ok(vec_from_value) => {
-            // Use vec_from_value here
-            Ok(vec_from_value)
-        }
+        Ok(parsed) => Ok(parsed),
         Err(e) => {
-            eprintln!("Failed to parse JSON value: {}", e);
+            eprintln!("❌ Failed to parse JSON value: {}", e);
             Err(e)
         }
     }
 }
+
 fn transpose<T: Clone>(matrix: Vec<Vec<T>>) -> Vec<Vec<T>> {
     if matrix.is_empty() || matrix[0].is_empty() {
         return vec![];
@@ -967,17 +979,43 @@ fn reshape_layer(input: ndarray::ArrayBase<ndarray::OwnedRepr<Variable>, ndarray
 fn convert_usize_to_u32(input: Vec<usize>) -> Vec<u32> {
     input.into_iter().map(|x| x as u32).collect()
 }
-fn get_w_or_b<I: DeserializeOwned>(w_and_b_map: &HashMap<String, ONNXLayer>, weights_input: &String) -> I{
+
+fn get_w_or_b<I: DeserializeOwned>(
+    w_and_b_map: &HashMap<String, ONNXLayer>,
+    weights_input: &String,
+) -> I {
     let weights_tensor_option = match w_and_b_map.get(weights_input) {
         Some(tensor) => tensor.tensor.clone(),
-        None => panic!("ModelError - missing weights and biases: {}", weights_input)
+        None => panic!("🚨 ModelError - missing weights and biases: {}", weights_input),
     };
-    let weight_tensor = match weights_tensor_option {
-        Some(tensor) => parse_value_to_array(tensor).unwrap(),
-        None => panic!("ModelError - missing tensor in expected weights/bias: {}", weights_input)
-    };
-    weight_tensor
-    // serde_json::from_value(weight_tensor).expect("Deserialization failed")
+
+    match weights_tensor_option {
+        Some(tensor_json) => {
+            // Unwrap "value" if tensor is an object with that key
+            let inner_value = match &tensor_json {
+                Value::Object(map) if map.contains_key("value") => map.get("value").cloned().unwrap(),
+                _ => tensor_json.clone(),
+            };
+
+            eprintln!(
+                "🔍 Attempting to parse tensor JSON value:\nType: {}\nRaw JSON: {}",
+                match &inner_value {
+                    Value::Array(_) => "Array",
+                    Value::Object(_) => "Object",
+                    Value::Number(_) => "Number",
+                    Value::String(_) => "String",
+                    _ => "Other",
+                },
+                inner_value
+            );
+
+            match parse_value_to_array::<I>(inner_value) {
+                Ok(parsed) => parsed,
+                Err(e) => panic!("🚨 ModelError - could not parse tensor for '{}': {}", weights_input, e),
+            }
+        }
+        None => panic!("🚨 ModelError - missing tensor in expected weights/bias: {}", weights_input),
+    }
 }
 
 impl ConfigurableCircuit for Circuit<Variable> {

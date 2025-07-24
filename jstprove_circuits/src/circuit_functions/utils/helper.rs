@@ -24,9 +24,9 @@ pub fn load_circuit_constant<C: Config, Builder: RootAPI<C>>(
 /// Convert an Array2 of i64 values to circuit constants (Variables)
 pub fn load_array_constants<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    input: &Array2<i64>,
-) -> Array2<Variable> {
-    let mut result = Array2::default(input.dim());
+    input: &ArrayD<i64>,
+) -> ArrayD<Variable> {
+    let mut result = ArrayD::default(input.dim());
     Zip::from(&mut result)
         .and(input)
         .for_each(|out_elem, &val| {

@@ -263,14 +263,13 @@ pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
 /// ```
 ///
 /// See also: [`IntoTensor`], [`rescale`]
-pub fn rescale_tensor<C: Config, Builder: RootAPI<C>, T: IntoTensor>(
+pub fn rescale_tensor<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    input_tensor: T,
+    input_tensor: ArrayD<Variable>,
     context: &RescalingContext,
     apply_relu: bool,
-) -> T::Output {
-    let mut f = |x| rescale(api, context, x, apply_relu);
-    input_tensor.map_elements(&mut f)
+) -> ArrayD<Variable> {
+    input_tensor.mapv(|x| rescale(api, context, x, apply_relu))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

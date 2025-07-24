@@ -1,4 +1,4 @@
-use ndarray::ArrayD;
+use ndarray::{ArrayD, Array2, Ix2};
 use expander_compiler::frontend::*;
 
 pub fn dot<C: Config, Builder: RootAPI<C>>(
@@ -29,18 +29,25 @@ pub fn dot<C: Config, Builder: RootAPI<C>>(
 /// An `Array2<Variable>` representing the elementwise sum of the two input matrices.
 pub fn matrix_addition<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    matrix_a: Array2<Variable>,
-    matrix_b: Array2<Variable>,
-) -> Array2<Variable> {
-    let shape = matrix_a.dim();
-    assert_eq!(shape, matrix_b.dim(), "Shape mismatch in matrix_addition");
+    matrix_a: ArrayD<Variable>,
+    matrix_b: ArrayD<Variable>,
+) -> ArrayD<Variable> {
+    let a = matrix_a
+        .into_dimensionality::<Ix2>()
+        .expect("matrix_addition: matrix_a must be 2D");
+    let b = matrix_b
+        .into_dimensionality::<Ix2>()
+        .expect("matrix_addition: matrix_b must be 2D");
+
+    let shape = a.dim();
+    assert_eq!(shape, b.dim(), "Shape mismatch in matrix_addition");
 
     let mut result = Array2::default(shape);
     for ((i, j), out_elem) in result.indexed_iter_mut() {
-        *out_elem = api.add(matrix_a[(i, j)], matrix_b[(i, j)]);
+        *out_elem = api.add(a[(i, j)], b[(i, j)]);
     }
 
-    result
+    result.into_dyn()
 }
 
 
@@ -76,11 +83,18 @@ pub fn matrix_addition_vec<C: Config, Builder: RootAPI<C>>(
 /// A matrix of shape (m × p) representing the matrix product.
 pub fn matrix_multiplication<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    matrix_a: Array2<Variable>,
-    matrix_b: Array2<Variable>,
-) -> Array2<Variable> {
-    let (m, n) = matrix_a.dim();
-    let (n2, p) = matrix_b.dim();
+    matrix_a: ArrayD<Variable>,
+    matrix_b: ArrayD<Variable>,
+) -> ArrayD<Variable> {
+    let a = matrix_a
+        .into_dimensionality::<Ix2>()
+        .expect("matrix_multiplication: matrix_a must be 2D");
+    let b = matrix_b
+        .into_dimensionality::<Ix2>()
+        .expect("matrix_multiplication: matrix_b must be 2D");
+
+    let (m, n) = a.dim();
+    let (n2, p) = b.dim();
     assert_eq!(n, n2, "Inner dimensions must match for matrix multiplication");
 
     let mut result = Array2::default((m, p));
@@ -89,15 +103,16 @@ pub fn matrix_multiplication<C: Config, Builder: RootAPI<C>>(
         for j in 0..p {
             let mut acc = api.constant(0);
             for k in 0..n {
-                let mul = api.mul(matrix_a[(i, k)], matrix_b[(k, j)]);
+                let mul = api.mul(a[(i, k)], b[(k, j)]);
                 acc = api.add(acc, mul);
             }
             result[(i, j)] = acc;
         }
     }
 
-    result
+    result.into_dyn()
 }
+
 
 /// Matrix multiplciation of vector of vectors naive version 2
 pub fn matrix_multplication_naive2<C: Config, Builder: RootAPI<C>>(
