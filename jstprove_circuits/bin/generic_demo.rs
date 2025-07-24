@@ -1,4 +1,5 @@
 use core::panic;
+use std::any::TypeId;
 use expander_compiler::frontend::*;
 use jstprove_circuits::circuit_functions::activations_and_layers::conv::conv_4d_run;
 use jstprove_circuits::circuit_functions::utils::helper::{
@@ -35,7 +36,7 @@ use ndarray::{ArrayD, IxDyn, Array2, Axis, Ix2};
 use std::collections::HashMap;
 
 // Serde Packages
-use serde::de::DeserializeOwned;
+use serde::de::{value, DeserializeOwned};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -320,16 +321,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         let mut input_array = layer_input
             .into_dimensionality::<Ix2>()
             .map_err(|_| format!("Expected 2D input for layer {}", self.name))?;
+        let mut weights_array = load_array_constants(api, &self.weights)
+        .into_dimensionality::<Ix2>()
+            .map_err(|_| format!("Expected 2D input for layer {}", self.name))?;;
 
-        // Handle optional transposition
-        if self.transa == 1 {
-            input_array = input_array.reversed_axes().to_owned();
-        }
-
-        let mut weights_array = load_array_constants(api, &self.weights);
-        if self.transb == 1 {
-            weights_array = weights_array.reversed_axes().to_owned();
-        }
+        input_array = check_and_apply_transpose_array(input_array, self.transa, "transa", "Gemm", &self.name);
+        weights_array = check_and_apply_transpose_array(weights_array, self.transa, "transa", "Gemm", &self.name);
 
         let bias_array = load_array_constants(api, &self.bias);
 
@@ -435,12 +432,12 @@ fn check_and_apply_transpose<T: Clone>(matrix: Vec<Vec<T>>, flag: usize, var_nam
 /// # Panics
 /// Panics if `flag` is not 0 or 1.
 pub fn check_and_apply_transpose_array<T: Clone>(
-    matrix: ArrayD<T>,
+    matrix: Array2<T>,
     flag: usize,
     var_name: &str,
     layer_type: &str,
     layer_name: &str,
-) -> ArrayD<T> {
+) -> Array2<T> {
     match flag {
         0 => matrix,
         1 => matrix.reversed_axes(), // transpose
@@ -603,6 +600,7 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
         match layer.op_type.as_str() {
             "Conv" => {
                 let params = layer.params.clone().unwrap();
+                eprintln!("Conv");
                 // TODO this should be done on a per input basis. For now this only works because we are looking at single input layers
                 // I think this should move inside the individual layers
                 let expected_shape = match shapes_map.get(&layer.inputs[0]){
@@ -613,9 +611,9 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                     name: layer.name.clone(),
                     index: i,
                     // weights: get_w_or_b(&w_and_b_map, &layer.inputs[1]),
-                    weights: get_w_or_b::<ArrayD<i64>>(&w_and_b_map, &layer.inputs[1]),
+                    weights: get_w_or_b(&w_and_b_map, &layer.inputs[1]),
                     // bias: get_w_or_b(&w_and_b_map, &layer.inputs[2]),
-                    bias: get_w_or_b::<ArrayD<i64>>(&w_and_b_map, &layer.inputs[2]),
+                    bias: get_w_or_b(&w_and_b_map, &layer.inputs[2]),
                     strides: get_param(&layer.name, &"strides", &params),
                     kernel_shape: get_param(&layer.name, &"kernel_shape", &params),
                     group: vec![get_param_or_default(&layer.name, &"group", &params, Some(&1))],
@@ -666,8 +664,8 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 let gemm = GemmLayer {
                     name: layer.name.clone(),
                     index: i,
-                    weights: get_w_or_b::<ArrayD<i64>>(&w_and_b_map, &layer.inputs[1]),
-                    bias: get_w_or_b::<ArrayD<i64>>(&w_and_b_map, &layer.inputs[2]),
+                    weights: get_w_or_b(&w_and_b_map, &layer.inputs[1]),
+                    bias: get_w_or_b(&w_and_b_map, &layer.inputs[2]),
                     // bias: parse_maybe_1d_to_2d(get_w_or_b(&w_and_b_map, &layer.inputs[2])).unwrap(),
                     is_relu: is_relu,
                     v_plus_one: V_PLUS_ONE,
@@ -842,26 +840,121 @@ impl<C: Config> Define<C> for Circuit<Variable> {
     }
 }
 
-fn parse_value_to_array<I: DeserializeOwned>(value: Value) -> Result<I, serde_json::Error> {
-    // Print type of value for debugging
-    eprintln!("\n🔍 Attempting to parse tensor JSON value:");
-    eprintln!("Type: {}", match &value {
-        Value::Null => "Null",
-        Value::Bool(_) => "Bool",
-        Value::Number(_) => "Number",
-        Value::String(_) => "String",
-        Value::Array(_) => "Array",
-        Value::Object(_) => "Object",
-    });
-    eprintln!("Raw JSON: {}", value);
-    eprintln!("Attempting to parse into type: {}", std::any::type_name::<I>());
-    match serde_json::from_value::<I>(value) {
-        Ok(parsed) => Ok(parsed),
-        Err(e) => {
-            eprintln!("❌ Failed to parse JSON value: {}", e);
-            Err(e)
+pub fn value_to_arrayd<T>(value: Value) -> Result<ArrayD<T>, String>
+where
+    T: Clone + FromJsonNumber + 'static,
+{
+    match value {
+        // Single number -> 0D array (scalar)
+        Value::Number(n) => {
+            let val = T::from_json_number(&n).ok_or("Invalid number for target type")?;
+            Ok(ArrayD::from_elem(IxDyn(&[]), val))
+        }
+        
+        // Array -> determine dimensions and convert
+        Value::Array(arr) => {
+            if arr.is_empty() {
+                return Ok(ArrayD::from_shape_vec(IxDyn(&[0]), vec![]).unwrap());
+            }
+            
+            // Get the shape by walking through the nested structure
+            let shape = get_array_shape(&Value::Array(arr.clone()))?;
+            
+            // Flatten all the data
+            let mut data = Vec::new();
+            flatten_to_typed_data::<T>(&Value::Array(arr), &mut data)?;
+            
+            // Create the ArrayD
+            ArrayD::from_shape_vec(IxDyn(&shape), data)
+                .map_err(|e| format!("Shape error: {}", e))
+        }
+        
+        _ => Err("Expected number or array".to_string()),
+    }
+}
+
+fn flatten_to_typed_data<T>(value: &Value, data: &mut Vec<T>) -> Result<(), String>
+where
+    T: Clone + FromJsonNumber,
+{
+    match value {
+        Value::Number(n) => {
+            let val = T::from_json_number(n).ok_or("Invalid number for target type")?;
+            data.push(val);
+            Ok(())
+        }
+        Value::Array(arr) => {
+            for item in arr {
+                flatten_to_typed_data(item, data)?;
+            }
+            Ok(())
+        }
+        _ => Err("Expected number or array".to_string()),
+    }
+}
+
+pub trait FromJsonNumber {
+    fn from_json_number(n: &serde_json::Number) -> Option<Self>
+    where
+        Self: Sized;
+}
+
+impl FromJsonNumber for f64 {
+    fn from_json_number(n: &serde_json::Number) -> Option<Self> {
+        n.as_f64()
+    }
+}
+
+impl FromJsonNumber for f32 {
+    fn from_json_number(n: &serde_json::Number) -> Option<Self> {
+        n.as_f64().map(|x| x as f32)
+    }
+}
+
+impl FromJsonNumber for i32 {
+    fn from_json_number(n: &serde_json::Number) -> Option<Self> {
+        n.as_i64().map(|x| x as i32)
+    }
+}
+
+impl FromJsonNumber for i64 {
+    fn from_json_number(n: &serde_json::Number) -> Option<Self> {
+        n.as_i64()
+    }
+}
+
+impl FromJsonNumber for u32 {
+    fn from_json_number(n: &serde_json::Number) -> Option<Self> {
+        n.as_u64().map(|x| x as u32)
+    }
+}
+
+impl FromJsonNumber for u64 {
+    fn from_json_number(n: &serde_json::Number) -> Option<Self> {
+        n.as_u64()
+    }
+}
+
+fn get_array_shape(value: &Value) -> Result<Vec<usize>, String> {
+    let mut shape = Vec::new();
+    let mut current = value;
+    
+    loop {
+        match current {
+            Value::Array(arr) => {
+                if arr.is_empty() {
+                    shape.push(0);
+                    break;
+                }
+                shape.push(arr.len());
+                current = &arr[0];
+            }
+            Value::Number(_) => break,
+            _ => return Err("Invalid array structure".to_string()),
         }
     }
+    
+    Ok(shape)
 }
 
 fn transpose<T: Clone>(matrix: Vec<Vec<T>>) -> Vec<Vec<T>> {
@@ -896,7 +989,6 @@ pub fn parse_maybe_1d_to_2d<T: DeserializeOwned + Clone>(
         }
     }
 }
-
 fn collect_all_shapes(layers: &[ONNXLayer], ios: &[ONNXIO]) -> HashMap<String, Vec<usize>> {
     let mut result = HashMap::new();
 
@@ -980,10 +1072,10 @@ fn convert_usize_to_u32(input: Vec<usize>) -> Vec<u32> {
     input.into_iter().map(|x| x as u32).collect()
 }
 
-fn get_w_or_b<I: DeserializeOwned>(
+fn get_w_or_b<I: DeserializeOwned + Clone + FromJsonNumber + 'static>(
     w_and_b_map: &HashMap<String, ONNXLayer>,
     weights_input: &String,
-) -> I {
+) -> ArrayD<I> {
     let weights_tensor_option = match w_and_b_map.get(weights_input) {
         Some(tensor) => tensor.tensor.clone(),
         None => panic!("🚨 ModelError - missing weights and biases: {}", weights_input),
@@ -996,9 +1088,10 @@ fn get_w_or_b<I: DeserializeOwned>(
                 Value::Object(map) if map.contains_key("value") => map.get("value").cloned().unwrap(),
                 _ => tensor_json.clone(),
             };
+            
 
             eprintln!(
-                "🔍 Attempting to parse tensor JSON value:\nType: {}\nRaw JSON: {}",
+                "🔍 Attempting to parse tensor JSON value:\nType: {} for {}\nRaw JSON: {}",
                 match &inner_value {
                     Value::Array(_) => "Array",
                     Value::Object(_) => "Object",
@@ -1006,13 +1099,16 @@ fn get_w_or_b<I: DeserializeOwned>(
                     Value::String(_) => "String",
                     _ => "Other",
                 },
+                weights_input,
                 inner_value
             );
-
-            match parse_value_to_array::<I>(inner_value) {
-                Ok(parsed) => parsed,
-                Err(e) => panic!("🚨 ModelError - could not parse tensor for '{}': {}", weights_input, e),
-            }
+            return value_to_arrayd(inner_value).unwrap();
+            
+        
+            // match parse_value_to_array::<I>(inner_value) {
+            //     Ok(parsed) => parsed,
+            //     Err(e) => panic!("🚨 ModelError - could not parse tensor for '{}': {}", weights_input, e),
+            // }
         }
         None => panic!("🚨 ModelError - missing tensor in expected weights/bias: {}", weights_input),
     }
