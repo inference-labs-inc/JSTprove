@@ -59,23 +59,6 @@ pub fn matrix_addition<C: Config, Builder: RootAPI<C>>(
         .expect("Failed to build result array after matrix_addition")
 }
 
-/// Naive Matrix addition with vectors
-pub fn matrix_addition_vec<C: Config, Builder: RootAPI<C>>(
-    api: &mut Builder,
-    matrix_a: Vec<Vec<Variable>>,
-    matrix_b: Vec<Vec<Variable>>,
-) -> Vec<Vec<Variable>> {
-    let mut out: Vec<Vec<Variable>> = Vec::new(); // or [[Variable::default(); N]; M]
-    for (i, row_a) in matrix_a.iter().enumerate() {
-        let mut row_out: Vec<Variable> = Vec::new();
-        for (j, value) in row_a.iter().enumerate() {
-            row_out.push(api.add(value, matrix_b[i][j]));
-        }
-        out.push(row_out);
-    }
-    out
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: matrix_multiplication
 // ─────────────────────────────────────────────────────────────────────────────
@@ -119,27 +102,4 @@ pub fn matrix_multiplication<C: Config, Builder: RootAPI<C>>(
     }
 
     result.into_dyn()
-}
-
-
-/// Matrix multiplciation of vector of vectors naive version 2
-pub fn matrix_multplication_naive2<C: Config, Builder: RootAPI<C>>(
-    api: &mut Builder,
-    matrix_a: Vec<Vec<Variable>>,
-    matrix_b: Vec<Vec<Variable>>,
-) -> Vec<Vec<Variable>> {
-    let mut out: Vec<Vec<Variable>> = Vec::new();
-    for i in 0..matrix_a.len() {
-        let mut out_row: Vec<Variable> = Vec::new();
-        for j in 0..matrix_b[0].len() {
-            let mut row_col_product: Variable = api.constant(0);
-            for k in 0..matrix_b.len() {
-                let element_product = api.mul(matrix_a[i][k], matrix_b[k][j]);
-                row_col_product = api.add(row_col_product, element_product);
-            }
-            out_row.push(row_col_product);
-        }
-        out.push(out_row);
-    }
-    out
 }

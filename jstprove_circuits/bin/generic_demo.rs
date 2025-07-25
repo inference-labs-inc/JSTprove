@@ -14,10 +14,8 @@ use jstprove_circuits::circuit_functions::utils::helper::{
 use jstprove_circuits::circuit_functions::activations_and_layers::gemm::{
     matrix_addition,
     matrix_multiplication,
-    matrix_addition_vec,
-    matrix_multplication_naive2,
 };
-// !!! MaxPool
+
 use jstprove_circuits::circuit_functions::activations_and_layers::maxpool::{
     setup_maxpooling_2d,
     maxpooling_2d,
@@ -127,9 +125,7 @@ ConvLayer, ReshapeLayer, FCLayer
 struct ConvLayer {
     name: String,
     index: usize,
-    // weights: Vec<Vec<Vec<Vec<i64>>>>,
     weights: ArrayD<i64>,
-    // bias: Vec<i64>,
     bias: ArrayD<i64>,
     strides: Vec<u32>,
     kernel_shape: Vec<u32>,
@@ -185,9 +181,7 @@ struct ConstantLayer {
 struct GemmLayer {
     name: String,
     index: usize,
-    // weights: Vec<Vec<i64>>,
     weights: ArrayD<i64>,
-    // bias: Vec<Vec<i64>>,
     bias: ArrayD<i64>,
     is_rescale: bool,
     v_plus_one: usize,
@@ -220,7 +214,6 @@ fn any_as_vec_ref<T>(_: &T) -> Option<&Vec<T>> {
     None // Rust has no runtime reflection to inspect Vec<T>'s contents
 }
 
-// !!! MaxPool
 #[derive(Debug)]
 struct MaxPoolLayer {
     name: String,
@@ -351,69 +344,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
     }
 }
 
-// impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
-//     fn apply(
-//         &self,
-//         api: &mut Builder,
-//         input: HashMap<String,ArrayD<Variable>>,
-//     ) -> Result<(String,ArrayD<Variable>), String> {
-//         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
-//         // Reshape inputs
-//         // TODO work on removing
-//         // let layer_input = reshape_layer(layer_input, &self.input_shape);
-
-//         let mut weight_tensor = self.weights.clone();
-//         let mut out_2d = arrayd_to_vec2(layer_input);
-
-//         // Untested trans a value of 1
-//         out_2d = check_and_apply_transpose(out_2d, self.transa, "transa", "Gemm", &self.name);
-//         weight_tensor = check_and_apply_transpose(weight_tensor, self.transb, "transb", "Gemm", &self.name);
-
-//         let weights = read_2d_weights(api, &weight_tensor);
-//         let bias = read_2d_weights(api, &self.bias);
-        
-
-//         let scale_factor = 1 << self.scaling;
-//         let alpha_two_v = api.mul(self.two_v as u32, scale_factor as u32);
-
-//         // TODO add support for alpha and beta !=1. Hint, may need to scale up the alpha/beta and then rescale
-//         check_alpha_beta(self.alpha, "alpha", "Gemm", &self.name);
-//         check_alpha_beta(self.beta, "beta", "Gemm", &self.name);
-
-//         out_2d = matrix_multplication_naive2(api, out_2d, weights);
-//         eprintln!("out2d dimension {}, {}", out_2d.len(), out_2d[0].len());
-//         out_2d = matrix_addition_vec(api, out_2d, bias);
-//         api.display("3", out_2d[0][0]);
-//         eprintln!("GOT display:");
-//         // out_2d = run_if_quantized_2d(api, CIRCUITPARAMS.scaling.into(), self.is_rescale, out_2d, self.v_plus_one, self.two_v, alpha_two_v, self.is_relu);
-//         if self.is_rescale {
-//             let scaling_exponent = CIRCUITPARAMS.scaling as usize;
-//             let shift_exponent = self.v_plus_one.checked_sub(1)
-//                 .expect("v_plus_one must be at least 1");
-//             // out_2d = rescale_2d_vector(api, out_2d, scaling_exponent, shift_exponent, self.is_relu);
-//             let output = rescale_array(api, tensor, κ, s, apply_relu);
-//         }
-//         eprintln!("GOT output:");
-//         let out = vec2_to_arrayd(out_2d);
-//         eprintln!("Finished");
-//         Ok((self.outputs[0].clone(), out))
-//     }
-// }
-
 fn check_alpha_beta(val: f32, var_name: &str, layer_type: &str, layer_name: &str) {
     if val != 1.0{
         panic!("Only {} = 1 is currently supported for {} layers: {}", var_name, layer_type, layer_name);
     }
-}
-
-
-
-fn check_and_apply_transpose<T: Clone>(matrix: Vec<Vec<T>>, flag: usize, var_name: &str, layer_type: &str, layer_name: &str) -> Vec<Vec<T>>{
-    match flag {
-            0 => matrix,
-            1 => transpose(matrix),
-            other => panic!("Unsupported {} value {} in {} layer: {}", var_name, other, layer_type, layer_name),
-        }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -502,7 +436,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConstantLayer {
     }
 }
 
-// !!! MaxPool
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
     fn apply(
         &self,
@@ -610,9 +543,7 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 let conv = ConvLayer {
                     name: layer.name.clone(),
                     index: i,
-                    // weights: get_w_or_b(&w_and_b_map, &layer.inputs[1]),
                     weights: get_w_or_b(&w_and_b_map, &layer.inputs[1]),
-                    // bias: get_w_or_b(&w_and_b_map, &layer.inputs[2]),
                     bias: get_w_or_b(&w_and_b_map, &layer.inputs[2]),
                     strides: get_param(&layer.name, &"strides", &params),
                     kernel_shape: get_param(&layer.name, &"kernel_shape", &params),
@@ -666,7 +597,6 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                     index: i,
                     weights: get_w_or_b(&w_and_b_map, &layer.inputs[1]),
                     bias: get_w_or_b(&w_and_b_map, &layer.inputs[2]),
-                    // bias: parse_maybe_1d_to_2d(get_w_or_b(&w_and_b_map, &layer.inputs[2])).unwrap(),
                     is_relu: is_relu,
                     v_plus_one: V_PLUS_ONE,
                     two_v: TWO_V,
@@ -690,7 +620,6 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                 // };
                 // layers.push(Box::new(constant));
             }
-            // !!! MaxPool
             "MaxPool" => {
                 let params = layer.params.clone().unwrap();
                 let expected_shape = match shapes_map.get(&layer.inputs[0]) {
@@ -976,19 +905,7 @@ fn transpose<T: Clone>(matrix: Vec<Vec<T>>) -> Vec<Vec<T>> {
 
     transposed
 }
-pub fn parse_maybe_1d_to_2d<T: DeserializeOwned + Clone>(
-    value: Value,
-) -> Result<Vec<Vec<T>>, serde_json::Error> {
-    // Try parsing as 2D array first
-    match serde_json::from_value::<Vec<Vec<T>>>(value.clone()) {
-        Ok(vv) => Ok(vv),
-        Err(_) => {
-            // Try parsing as 1D array
-            let v: Vec<T> = serde_json::from_value(value)?;
-            Ok(vec![v]) // Wrap into a 2D vector
-        }
-    }
-}
+
 fn collect_all_shapes(layers: &[ONNXLayer], ios: &[ONNXIO]) -> HashMap<String, Vec<usize>> {
     let mut result = HashMap::new();
 
@@ -1099,16 +1016,11 @@ fn get_w_or_b<I: DeserializeOwned + Clone + FromJsonNumber + 'static>(
                     Value::String(_) => "String",
                     _ => "Other",
                 },
-                weights_input,
-                inner_value
+                // weights_input,
+                // inner_value
             );
             return value_to_arrayd(inner_value).unwrap();
             
-        
-            // match parse_value_to_array::<I>(inner_value) {
-            //     Ok(parsed) => parsed,
-            //     Err(e) => panic!("🚨 ModelError - could not parse tensor for '{}': {}", weights_input, e),
-            // }
         }
         None => panic!("🚨 ModelError - missing tensor in expected weights/bias: {}", weights_input),
     }
