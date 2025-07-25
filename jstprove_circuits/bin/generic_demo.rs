@@ -1,44 +1,47 @@
-use core::panic;
-use expander_compiler::frontend::*;
-use jstprove_circuits::circuit_functions::layers::conv::conv_4d_run;
-use jstprove_circuits::circuit_functions::utils::tensor_ops::{
-    load_array_constants,
-    arrayd_to_vec1, arrayd_to_vec4,
-    get_1d_circuit_inputs,
-    load_circuit_constant,
-    vec1_to_arrayd, vec4_to_arrayd,
-};
 #[allow(unused_imports)]
+/// Standard library imports
+use core::panic;
+use std::collections::HashMap;
+
+/// External crate imports
+use lazy_static::lazy_static;
+use ndarray::{Array2, ArrayD, Dimension, Ix2, IxDyn};
+use serde::{Deserialize, de::DeserializeOwned};
+use serde_json::Value;
+
+/// ExpanderCompilerCollection imports
+use expander_compiler::frontend::*;
+
+/// Internal crate imports
+use jstprove_circuits::circuit_functions::layers::conv::conv_4d_run;
+
 use jstprove_circuits::circuit_functions::layers::gemm::{
     matrix_addition,
     matrix_multiplication,
 };
 
 use jstprove_circuits::circuit_functions::layers::maxpool::{
-    setup_maxpooling_2d,
     maxpooling_2d,
+    setup_maxpooling_2d,
 };
 
-use jstprove_circuits::circuit_functions::layers::relu::{
-    relu_array,
+use jstprove_circuits::circuit_functions::layers::relu::relu_array;
+
+use jstprove_circuits::circuit_functions::utils::quantization::rescale_array;
+
+use jstprove_circuits::circuit_functions::utils::tensor_ops::{
+    arrayd_to_vec1,
+    arrayd_to_vec4,
+    get_1d_circuit_inputs,
+    load_array_constants,
+    load_circuit_constant,
+    vec1_to_arrayd,
+    vec4_to_arrayd,
 };
 
 use jstprove_circuits::io::io_reader::{FileReader, IOReader};
-use jstprove_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
-use lazy_static::lazy_static;
-use ndarray::Dimension;
-use ndarray::{ArrayD, IxDyn, Array2, Ix2};
-use std::collections::HashMap;
 
-// Serde Packages
-use serde::de::{DeserializeOwned};
-use serde::Deserialize;
-use serde_json::Value;
-
-use jstprove_circuits::circuit_functions::utils::quantization::{
-    rescale_array, 
-};
-
+use jstprove_circuits::runner::main_runner::{ConfigurableCircuit, handle_args};
 
 type WeightsData = (Architecture, WANDB, CircuitParams);
 #[derive(Deserialize, Clone, Debug)]

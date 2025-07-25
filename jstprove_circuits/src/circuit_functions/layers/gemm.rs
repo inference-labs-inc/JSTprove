@@ -1,6 +1,31 @@
-use ndarray::{ArrayD, Array2, Ix2, IxDyn};
+/// External crate imports
+use ndarray::{Array2, ArrayD, Ix2, IxDyn};
+
+/// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: dot
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Computes the dot product of two 1D `Vec<Variable>` vectors using circuit constraints.
+///
+/// # Arguments
+/// - `api`: The circuit builder.
+/// - `vector_a`: First input vector.
+/// - `vector_b`: Second input vector (must have the same length).
+///
+/// # Returns
+/// A `Variable` representing the scalar dot product result:  
+/// \\( \sum_i a_i \cdot b_i \\)
+///
+/// # Panics
+/// Panics if the vectors are of unequal length.
+///
+/// # Example
+/// ```ignore
+/// let dot_result = dot(api, vec![a1, a2], vec![b1, b2]);
+/// ```
 pub fn dot<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     vector_a: Vec<Variable>,
@@ -18,15 +43,28 @@ pub fn dot<C: Config, Builder: RootAPI<C>>(
 // FUNCTION: matrix_addition
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Adds two `Array2<Variable>` matrices elementwise using circuit constraints.
+/// Adds two `ArrayD<Variable>` tensors elementwise using circuit constraints.
+///
+/// If the shapes differ but the total number of elements matches, this function
+/// attempts to reshape `matrix_b` to match `matrix_a`. This is useful for adding
+/// broadcasted constants (e.g., bias terms) with higher-dimensional arrays.
 ///
 /// # Arguments
 /// - `api`: The circuit builder.
-/// - `matrix_a`: First matrix.
-/// - `matrix_b`: Second matrix.
+/// - `matrix_a`: First input tensor.
+/// - `matrix_b`: Second input tensor, possibly with a different shape.
 ///
 /// # Returns
-/// An `Array2<Variable>` representing the elementwise sum of the two input matrices.
+/// An `ArrayD<Variable>` of the same shape as `matrix_a`, representing the elementwise sum.
+///
+/// # Panics
+/// - If the total number of elements in `matrix_a` and `matrix_b` do not match.
+/// - If reshaping `matrix_b` to `matrix_a`'s shape fails.
+///
+/// # Example
+/// ```ignore
+/// let result = matrix_addition(api, input_tensor, bias_tensor);
+/// ```
 pub fn matrix_addition<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: ArrayD<Variable>,
@@ -63,15 +101,28 @@ pub fn matrix_addition<C: Config, Builder: RootAPI<C>>(
 // FUNCTION: matrix_multiplication
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Multiplies two `Array2<Variable>` matrices using naïve nested loops and circuit constraints.
+/// Performs 2D matrix multiplication using circuit constraints.
+///
+/// The input tensors must be 2-dimensional. This function computes
+/// the standard matrix product of `matrix_a` (shape \\( m \times n \\))
+/// and `matrix_b` (shape \\( n \times p \\)), resulting in a tensor of shape \\( m \times p \\).
 ///
 /// # Arguments
 /// - `api`: The circuit builder.
-/// - `matrix_a`: Matrix of shape (m × n).
-/// - `matrix_b`: Matrix of shape (n × p).
+/// - `matrix_a`: Left-hand matrix (must be 2D).
+/// - `matrix_b`: Right-hand matrix (must be 2D).
 ///
 /// # Returns
-/// A matrix of shape (m × p) representing the matrix product.
+/// An `ArrayD<Variable>` (2D) representing the result of matrix multiplication.
+///
+/// # Panics
+/// - If either input tensor is not 2D.
+/// - If the inner dimensions do not match: `matrix_a.shape()[1] != matrix_b.shape()[0]`.
+///
+/// # Example
+/// ```ignore
+/// let product = matrix_multiplication(api, weights, input);
+/// ```
 pub fn matrix_multiplication<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: ArrayD<Variable>,

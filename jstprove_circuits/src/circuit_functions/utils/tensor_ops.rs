@@ -1,10 +1,14 @@
+/// Standard library imports
 use std::ops::Neg;
 
-use expander_compiler::frontend::*;
+/// External crate imports
 use ethnum::U256;
-use gkr_engine::{FieldEngine, GKREngine};
 use ndarray::{Array2, ArrayD, Ix1, Ix2, Ix3, Ix4, Ix5, IxDyn, Zip};
 use serde_json::Value;
+
+/// Expander and proving framework imports
+use expander_compiler::frontend::*;
+use gkr_engine::{FieldEngine, GKREngine};
 
 /// Load in circuit constant given i64, negative values are represented by p-x and positive values are x
 pub fn load_circuit_constant<C: Config, Builder: RootAPI<C>>(
