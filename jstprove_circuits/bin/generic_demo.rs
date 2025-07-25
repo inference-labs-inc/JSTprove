@@ -326,7 +326,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             .map_err(|_| format!("Expected 2D input for layer {}", self.name))?;;
 
         input_array = check_and_apply_transpose_array(input_array, self.transa, "transa", "Gemm", &self.name);
-        weights_array = check_and_apply_transpose_array(weights_array, self.transa, "transa", "Gemm", &self.name);
+        weights_array = check_and_apply_transpose_array(weights_array, self.transb, "transb", "Gemm", &self.name);
 
         let bias_array = load_array_constants(api, &self.bias);
 

@@ -1,4 +1,4 @@
-use ndarray::{ArrayD, Array2, Ix2};
+use ndarray::{ArrayD, Array2, Ix2, IxDyn};
 use expander_compiler::frontend::*;
 
 pub fn dot<C: Config, Builder: RootAPI<C>>(
@@ -30,26 +30,34 @@ pub fn dot<C: Config, Builder: RootAPI<C>>(
 pub fn matrix_addition<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: ArrayD<Variable>,
-    matrix_b: ArrayD<Variable>,
+    mut matrix_b: ArrayD<Variable>,
 ) -> ArrayD<Variable> {
-    let a = matrix_a
-        .into_dimensionality::<Ix2>()
-        .expect("matrix_addition: matrix_a must be 2D");
-    let b = matrix_b
-        .into_dimensionality::<Ix2>()
-        .expect("matrix_addition: matrix_b must be 2D");
+    let shape_a = matrix_a.shape().to_vec();
 
-    let shape = a.dim();
-    assert_eq!(shape, b.dim(), "Shape mismatch in matrix_addition");
-
-    let mut result = Array2::default(shape);
-    for ((i, j), out_elem) in result.indexed_iter_mut() {
-        *out_elem = api.add(a[(i, j)], b[(i, j)]);
+    // Attempt to reshape if shape differs but total elements match
+    if matrix_b.shape() != shape_a {
+        if matrix_b.len() == matrix_a.len() {
+            matrix_b = matrix_b
+                .into_shape(IxDyn(&shape_a))
+                .expect("Reshape failed: bias shape is not compatible with input shape");
+        } else {
+            panic!(
+                "Shape mismatch in matrix_addition: matrix_a shape = {:?}, matrix_b shape = {:?}",
+                shape_a,
+                matrix_b.shape()
+            );
+        }
     }
 
-    result.into_dyn()
-}
+    let result = matrix_a
+        .iter()
+        .zip(matrix_b.iter())
+        .map(|(&a, &b)| api.add(a, b))
+        .collect::<Vec<_>>();
 
+    ArrayD::from_shape_vec(IxDyn(&shape_a), result)
+        .expect("Failed to build result array after matrix_addition")
+}
 
 /// Naive Matrix addition with vectors
 pub fn matrix_addition_vec<C: Config, Builder: RootAPI<C>>(
