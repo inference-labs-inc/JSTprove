@@ -4,7 +4,7 @@ use ndarray::{ArrayD, IxDyn};
 use crate::circuit_functions::layers::gemm::dot;
 
 use super::super::utils::quantization::{
-    rescale_4d_vector, rescale_array, rescale_tensor, RescalingContext,
+    rescale_array, rescale_tensor, RescalingContext,
 };
 
 use super::super::utils::helper::IntoTensor;
@@ -273,8 +273,7 @@ pub fn conv_4d_run<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
         let scaling_exponent = scaling_in as usize;
         let shift_exponent = v_plus_one.checked_sub(1)
             .expect("v_plus_one must be at least 1");
-        let context = RescalingContext::new(api, scaling_exponent, shift_exponent);
-        rescale_tensor(api, out, &context, is_relu)
+        rescale_array(api, out, scaling_exponent, shift_exponent, is_relu)
     } else {
         out
     }
