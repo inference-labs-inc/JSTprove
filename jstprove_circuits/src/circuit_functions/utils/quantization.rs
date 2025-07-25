@@ -39,7 +39,6 @@ use expander_compiler::frontend::*;
 
 // Internal modules
 use super::core_math::{assert_is_bitstring_and_reconstruct, unconstrained_to_bits};
-use super::helper::IntoTensor;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STRUCT: RescalingContext
