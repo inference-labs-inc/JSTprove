@@ -4,7 +4,7 @@ use ndarray::{ArrayD, IxDyn};
 use crate::circuit_functions::layers::gemm::dot;
 
 use super::super::utils::quantization::{
-    rescale_array, rescale_tensor, RescalingContext,
+    rescale_array,
 };
 
 use super::super::utils::helper::IntoTensor;
