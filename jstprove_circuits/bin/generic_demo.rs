@@ -1008,16 +1008,15 @@ fn get_w_or_b<I: DeserializeOwned + Clone + FromJsonNumber + 'static>(
             
 
             eprintln!(
-                "🔍 Attempting to parse tensor JSON value:\nType: {} for {}\nRaw JSON: {}",
+                "🔍 Attempting to parse tensor for '{}': type = {}",
+                weights_input,
                 match &inner_value {
                     Value::Array(_) => "Array",
                     Value::Object(_) => "Object",
                     Value::Number(_) => "Number",
                     Value::String(_) => "String",
                     _ => "Other",
-                },
-                // weights_input,
-                // inner_value
+                }
             );
             return value_to_arrayd(inner_value).unwrap();
             
