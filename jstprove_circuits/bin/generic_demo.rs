@@ -1,7 +1,7 @@
 use core::panic;
 use std::any::TypeId;
 use expander_compiler::frontend::*;
-use jstprove_circuits::circuit_functions::activations_and_layers::conv::conv_4d_run;
+use jstprove_circuits::circuit_functions::layers::conv::conv_4d_run;
 use jstprove_circuits::circuit_functions::utils::helper::{
     load_array_constants,
     arrayd_to_vec1, arrayd_to_vec2, arrayd_to_vec4, arrayd_to_vec5,
@@ -11,17 +11,17 @@ use jstprove_circuits::circuit_functions::utils::helper::{
     vec1_to_arrayd, vec2_to_arrayd, vec4_to_arrayd, vec5_to_arrayd,
 };
 #[allow(unused_imports)]
-use jstprove_circuits::circuit_functions::activations_and_layers::gemm::{
+use jstprove_circuits::circuit_functions::layers::gemm::{
     matrix_addition,
     matrix_multiplication,
 };
 
-use jstprove_circuits::circuit_functions::activations_and_layers::maxpool::{
+use jstprove_circuits::circuit_functions::layers::maxpool::{
     setup_maxpooling_2d,
     maxpooling_2d,
 };
 
-use jstprove_circuits::circuit_functions::activations_and_layers::relu::{
+use jstprove_circuits::circuit_functions::layers::relu::{
     relu_array,
     ReluContext,
 };

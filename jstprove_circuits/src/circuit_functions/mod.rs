@@ -1,2 +1,2 @@
 pub mod utils;
-pub mod activations_and_layers;
+pub mod layers;
