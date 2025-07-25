@@ -7,7 +7,7 @@ use ndarray::{ArrayD, IxDyn};
 /// Internal crate imports
 use crate::circuit_functions::utils::onnx_types::ONNXIO;
 
-fn onnx_flatten<T>(array: ArrayD<T>, axis: usize) -> ArrayD<T> {
+pub fn onnx_flatten<T>(array: ArrayD<T>, axis: usize) -> ArrayD<T> {
     let shape = array.shape();
     let dim0 = shape[..axis].iter().product::<usize>();
     let dim1 = shape[axis..].iter().product::<usize>();
@@ -15,7 +15,7 @@ fn onnx_flatten<T>(array: ArrayD<T>, axis: usize) -> ArrayD<T> {
     array.into_shape_with_order(IxDyn(&[dim0, dim1])).unwrap()
 }
 
-fn get_inputs<T: Clone>(v: Vec<T>, inputs: Vec<ONNXIO>) -> HashMap<String, ArrayD<T>>{
+pub fn get_inputs<T: Clone>(v: Vec<T>, inputs: Vec<ONNXIO>) -> HashMap<String, ArrayD<T>>{
     // Step 1: Compute total number of elements required
     let total_required: usize = inputs
         .iter()

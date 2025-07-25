@@ -11,7 +11,7 @@ use crate::circuit_functions::utils::json_array::value_to_arrayd;
 use crate::circuit_functions::utils::json_array::FromJsonNumber;
 use crate::circuit_functions::utils::onnx_types::{ONNXIO, ONNXLayer};
 
-fn get_w_or_b<I: DeserializeOwned + Clone + FromJsonNumber + 'static>(
+pub fn get_w_or_b<I: DeserializeOwned + Clone + FromJsonNumber + 'static>(
     w_and_b_map: &HashMap<String, ONNXLayer>,
     weights_input: &String,
 ) -> ArrayD<I> {
@@ -47,7 +47,7 @@ fn get_w_or_b<I: DeserializeOwned + Clone + FromJsonNumber + 'static>(
     }
 }
 
-fn collect_all_shapes(layers: &[ONNXLayer], ios: &[ONNXIO]) -> HashMap<String, Vec<usize>> {
+pub fn collect_all_shapes(layers: &[ONNXLayer], ios: &[ONNXIO]) -> HashMap<String, Vec<usize>> {
     let mut result = HashMap::new();
 
     // Merge from layers
@@ -65,7 +65,7 @@ fn collect_all_shapes(layers: &[ONNXLayer], ios: &[ONNXIO]) -> HashMap<String, V
     result
 }
 
-fn get_param<I:DeserializeOwned>(layer_name: &String, param_name: &str, params: &Value) -> I {
+pub fn get_param<I:DeserializeOwned>(layer_name: &String, param_name: &str, params: &Value) -> I {
     match params.get(param_name){
         Some(param) => {
             let x = param.clone();
@@ -77,7 +77,7 @@ fn get_param<I:DeserializeOwned>(layer_name: &String, param_name: &str, params: 
 }
 
 
-fn get_param_or_default<I: DeserializeOwned + Clone>(
+pub fn get_param_or_default<I: DeserializeOwned + Clone>(
     layer_name: &str,
     param_name: &str,
     params: &Value,
