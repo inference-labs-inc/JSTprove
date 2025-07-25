@@ -1,15 +1,13 @@
+/// Standard library imports
 use std::cmp::{max, min};
+
+/// External crate imports
 use ndarray::{ArrayD, IxDyn};
-
-use crate::circuit_functions::layers::gemm::dot;
-
-use super::super::utils::quantization::{
-    rescale_array,
-};
-
-use super::super::utils::helper::IntoTensor;
-
 use expander_compiler::frontend::*;
+
+/// Internal module imports
+use crate::circuit_functions::layers::gemm::dot;
+use crate::circuit_functions::utils::quantization::rescale_array;
 
 /// Untested
 /// Set default parameters if not set
