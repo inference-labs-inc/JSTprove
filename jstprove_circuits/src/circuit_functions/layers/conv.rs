@@ -1,7 +1,7 @@
 use std::cmp::{max, min};
 use ndarray::{ArrayD, IxDyn};
 
-use crate::circuit_functions::activations_and_layers::gemm::dot;
+use crate::circuit_functions::layers::gemm::dot;
 
 use super::super::utils::quantization::{
     rescale_4d_vector, rescale_array, rescale_tensor, RescalingContext,
