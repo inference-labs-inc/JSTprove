@@ -1,4 +1,7 @@
+/// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
+
+/// Internal crate imports
 use super::super::utils::core_math::{unconstrained_to_bits, assert_is_bitstring_and_reconstruct};
 
 // ─────────────────────────────────────────────────────────────────────────────

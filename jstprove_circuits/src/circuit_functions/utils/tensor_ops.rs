@@ -6,7 +6,7 @@ use ethnum::U256;
 use ndarray::{Array2, ArrayD, Ix1, Ix2, Ix3, Ix4, Ix5, IxDyn, Zip};
 use serde_json::Value;
 
-/// Expander and proving framework imports
+/// ExpanderCompilerCollection and proving framework imports
 use expander_compiler::frontend::*;
 use gkr_engine::{FieldEngine, GKREngine};
 
@@ -25,7 +25,7 @@ pub fn load_circuit_constant<C: Config, Builder: RootAPI<C>>(
     }
 }
 
-/// Convert an Array2 of i64 values to circuit constants (Variables)
+/// Convert an ArrayD of i64 values to circuit constants (Variables)
 pub fn load_array_constants<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input: &ArrayD<i64>,

@@ -35,10 +35,13 @@
 // External crates
 use ethnum::U256;
 use ndarray::ArrayD;
+
+/// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
 // Internal modules
 use super::core_math::{assert_is_bitstring_and_reconstruct, unconstrained_to_bits};
+use super::tensor_ops::IntoTensor;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STRUCT: RescalingContext

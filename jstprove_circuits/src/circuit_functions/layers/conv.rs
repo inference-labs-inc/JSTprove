@@ -3,6 +3,8 @@ use std::cmp::{max, min};
 
 /// External crate imports
 use ndarray::{ArrayD, IxDyn};
+
+/// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
 /// Internal module imports
