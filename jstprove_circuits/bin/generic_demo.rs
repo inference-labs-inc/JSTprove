@@ -196,22 +196,6 @@ struct GemmLayer {
     outputs: Vec<String>,
 }
 
-fn get_vector_dim<T>(v: &Vec<T>) -> usize {
-    if let Some(first) = v.first() {
-        if let Some(inner) = any_as_vec_ref(first) {
-            1 + get_vector_dim(inner)
-        } else {
-            1
-        }
-    } else {
-        1
-    }
-}
-// Helper to try casting to Vec<_>
-fn any_as_vec_ref<T>(_: &T) -> Option<&Vec<T>> {
-    None // Rust has no runtime reflection to inspect Vec<T>'s contents
-}
-
 #[derive(Debug)]
 struct MaxPoolLayer {
     name: String,
@@ -395,9 +379,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
         Ok((self.outputs[0].clone(), out.clone()))
     }
 }
-
-
-
 
 fn onnx_flatten<T>(array: ArrayD<T>, axis: usize) -> ArrayD<T> {
     let shape = array.shape();
@@ -884,26 +865,6 @@ fn get_array_shape(value: &Value) -> Result<Vec<usize>, String> {
     Ok(shape)
 }
 
-fn transpose<T: Clone>(matrix: Vec<Vec<T>>) -> Vec<Vec<T>> {
-    if matrix.is_empty() || matrix[0].is_empty() {
-        return vec![];
-    }
-
-    let rows = matrix.len();
-    let cols = matrix[0].len();
-
-    let mut transposed = vec![Vec::with_capacity(rows); cols];
-
-    for row in matrix {
-        assert_eq!(row.len(), cols, "All rows must be the same length");
-        for (j, val) in row.into_iter().enumerate() {
-            transposed[j].push(val);
-        }
-    }
-
-    transposed
-}
-
 fn collect_all_shapes(layers: &[ONNXLayer], ios: &[ONNXIO]) -> HashMap<String, Vec<usize>> {
     let mut result = HashMap::new();
 
@@ -955,36 +916,6 @@ fn get_param_or_default<I: DeserializeOwned + Clone>(
             default.unwrap().clone()
         }
     }
-}
-
-fn reshape_layer(input: ndarray::ArrayBase<ndarray::OwnedRepr<Variable>, ndarray::Dim<ndarray::IxDynImpl>>, input_shape: &[usize]) -> ndarray::ArrayBase<ndarray::OwnedRepr<Variable>, ndarray::Dim<ndarray::IxDynImpl>> {
-    let raw_dim = input.raw_dim();
-    // Keep this alive
-    let dim_view = raw_dim.as_array_view();
-    // Borrow from that
-    let dim: &[usize] = dim_view.as_slice().unwrap();
-    // Now borrow is safe
-
-    let expected_shape = input_shape;
-
-    eprintln!("Current Shape {:?}", dim);
-    eprintln!("Expected Shape {:?}", expected_shape);
-
-    // TODO remove this
-    let mut input = input;
-    
-    if dim != expected_shape {
-        let reshape_shape = &expected_shape;
-
-
-        input = input
-            .into_shape_with_order(IxDyn(&reshape_shape))
-            .expect("Shape mismatch: Cannot reshape into the given dimensions");
-    }
-    input
-}
-fn convert_usize_to_u32(input: Vec<usize>) -> Vec<u32> {
-    input.into_iter().map(|x| x as u32).collect()
 }
 
 fn get_w_or_b<I: DeserializeOwned + Clone + FromJsonNumber + 'static>(
