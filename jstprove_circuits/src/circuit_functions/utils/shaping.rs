@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use ndarray::{ArrayD, IxDyn};
 
 /// Internal crate imports
-use crate::circuit_functions::layers::generic_demo_support::ONNXIO; // Adjust if needed
+use crate::circuit_functions::utils::onnx_types::ONNXIO;
 
 fn onnx_flatten<T>(array: ArrayD<T>, axis: usize) -> ArrayD<T> {
     let shape = array.shape();
