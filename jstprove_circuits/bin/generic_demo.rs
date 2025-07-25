@@ -60,6 +60,9 @@ use jstprove_circuits::io::io_reader::{FileReader, IOReader};
 
 use jstprove_circuits::runner::main_runner::{ConfigurableCircuit, handle_args};
 
+use jstprove_circuits::circuit_functions::utils::onnx_types::{ONNXIO, ONNXLayer};
+
+
 type WeightsData = (Architecture, WANDB, CircuitParams);
 #[derive(Deserialize, Clone, Debug)]
 struct Architecture{
@@ -80,25 +83,25 @@ struct CircuitParams{
     rescale_config: HashMap<String, bool>
 }
 
-#[derive(Deserialize, Clone, Debug)]
-struct ONNXLayer{
-    id: usize,
-    name: String,
-    op_type: String,
-    inputs: Vec<String>,
-    outputs: Vec<String>,
-    shape: HashMap<String, Vec<usize>>,
-    tensor: Option<Value>,
-    params: Option<Value>,
-    opset_version_number: i16,
-}
+// #[derive(Deserialize, Clone, Debug)]
+// struct ONNXLayer{
+//     id: usize,
+//     name: String,
+//     op_type: String,
+//     inputs: Vec<String>,
+//     outputs: Vec<String>,
+//     shape: HashMap<String, Vec<usize>>,
+//     tensor: Option<Value>,
+//     params: Option<Value>,
+//     opset_version_number: i16,
+// }
 
-#[derive(Deserialize, Clone, Debug)]
-struct ONNXIO{
-    name: String,
-    elem_type: i16,
-    shape: Vec<usize>
-}
+// #[derive(Deserialize, Clone, Debug)]
+// struct ONNXIO{
+//     name: String,
+//     elem_type: i16,
+//     shape: Vec<usize>
+// }
 
 #[derive(Deserialize, Clone)]
 struct InputData {

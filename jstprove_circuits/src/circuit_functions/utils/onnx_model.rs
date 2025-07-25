@@ -9,7 +9,7 @@ use ndarray::ArrayD;
 /// Internal crate imports
 use crate::circuit_functions::utils::json_array::value_to_arrayd;
 use crate::circuit_functions::utils::json_array::FromJsonNumber;
-use crate::circuit_functions::layers::generic_demo_support::{ONNXIO, ONNXLayer}; // Adjust path if needed
+use crate::circuit_functions::utils::onnx_types::{ONNXIO, ONNXLayer};
 
 fn get_w_or_b<I: DeserializeOwned + Clone + FromJsonNumber + 'static>(
     w_and_b_map: &HashMap<String, ONNXLayer>,
