@@ -39,7 +39,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use jstprove_circuits::circuit_functions::utils::quantization::{
-    rescale_2d_vector, rescale_array, rescale_tensor, RescalingContext,
+    rescale_array, 
 };
 
 use jstprove_circuits::circuit_functions::utils::helper::IntoTensor;
