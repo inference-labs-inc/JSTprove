@@ -24,6 +24,7 @@ class ConstantQuantizer(BaseOpQuantizer):
         output_name = node.output[0]
 
         data_ops = {"Add", "Mul", "Conv", "MatMul", "Sub", "Div", "Gemm"}  # ops that consume numeric constants
+        print([n for n in graph.node])
         is_data_constant = any(
             output_name in n.input and n.op_type in data_ops
             for n in graph.node

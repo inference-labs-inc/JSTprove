@@ -145,3 +145,4 @@ def test_insert_scale_node_creates_mul_and_cast(dummy_tensor, dummy_graph):
     assert len(quantizer.new_initializers) == 1
     assert quantizer.new_initializers[0].name.endswith("_scale")
     assert onnx.numpy_helper.to_array(quantizer.new_initializers[0])[0] == 10.0
+
