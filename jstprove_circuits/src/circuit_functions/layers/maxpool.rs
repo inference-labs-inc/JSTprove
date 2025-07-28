@@ -1,3 +1,5 @@
+use ndarray::{ArrayD, Array4, Ix4};
+
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
@@ -283,11 +285,17 @@ pub fn setup_maxpooling_2d(
 }
 
 
-// shift_exponent, true 
+/// Reshape a flat array into a 4D `ArrayD`.
+pub fn reshape_4d(flat: &[Variable], dims: [usize; 4]) -> ArrayD<Variable> {
+    let array4 = Array4::from_shape_vec(dims, flat.to_vec())
+        .expect("reshape_4d: shape mismatch");
+    array4.into_dyn()
+}
+
+/// Perform 2D max pooling using `ArrayD` instead of nested vectors.
 pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    x: &Vec<Vec<Vec<Vec<Variable>>>>,
-    // padding: &Vec<usize>,
+    x: &ArrayD<Variable>,
     kernel_shape: &Vec<usize>,
     strides: &Vec<usize>,
     dilation: &Vec<usize>,
@@ -295,7 +303,7 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
     x_shape: &Vec<usize>,
     new_pads: &Vec<[usize; 2]>,
     shift_exponent: usize,
-)-> Vec<Vec<Vec<Vec<Variable>>>>{
+) -> ArrayD<Variable> {
     let global_pooling = false;
     let batch = x_shape[0];
     let channels = x_shape[1];
@@ -310,10 +318,7 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
     };
 
     let y_dims = [batch, channels, pooled_height, pooled_width];
-    let y_size = y_dims.iter().product();
-    let y = vec![api.constant(0); y_size];
-
-    let total_channels = batch * channels;
+    let mut y = Array4::from_elem(y_dims, api.constant(0));
 
     let stride_h = if global_pooling { 1 } else { strides[0] };
     let stride_w = if global_pooling {
@@ -324,78 +329,52 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
         1
     };
 
-    let x_step = height * width;
-    let y_step = pooled_height * pooled_width;
-
     let dilation_h = dilation[0];
     let dilation_w = if dilation.len() > 1 {
         dilation[1]
     } else {
         1
     };
-    let x_data: Vec<Variable> =  x.iter()
-    .flat_map(|z| z.iter())
-    .flat_map(|z| z.iter())
-    .flat_map(|z| z.iter())
-    .copied()
-    .collect();
-    let mut y_data = y;
+
+    let array4 = x.clone().into_dimensionality::<Ix4>().expect("Expected 4D input for maxpooling");
 
     let context = MaxAssertionContext::new(api, shift_exponent);
-    
-    for c in 0..total_channels {
-        let x_d = c * x_step;
-        let y_d = c * y_step;
 
-        for ph in 0..pooled_height {
-            let hstart = ph as isize * stride_h as isize - new_pads[0][0] as isize;
-            let hend = hstart + (kernel_shape[0] * dilation_h) as isize;
+    for n in 0..batch {
+        for c in 0..channels {
+            for ph in 0..pooled_height {
+                let hstart = ph as isize * stride_h as isize - new_pads[0][0] as isize;
+                let hend = hstart + (kernel_shape[0] * dilation_h) as isize;
 
-            for pw in 0..pooled_width {
-                let wstart = pw as isize * stride_w as isize - new_pads[1][0] as isize;
-                let wend = wstart + (kernel_shape[1] * dilation_w) as isize;
+                for pw in 0..pooled_width {
+                    let wstart = pw as isize * stride_w as isize - new_pads[1][0] as isize;
+                    let wend = wstart + (kernel_shape[1] * dilation_w) as isize;
 
-                let pool_index = ph * pooled_width + pw;
-                let mut values: Vec<Variable> = Vec::new();
+                    let mut values: Vec<Variable> = Vec::new();
 
-                for h in (hstart..hend).step_by(dilation_h) {
-                    if h < 0 || h >= height as isize {
-                        continue;
-                    }
-                    for w in (wstart..wend).step_by(dilation_w) {
-                        if w < 0 || w >= width as isize {
+                    for h in (hstart..hend).step_by(dilation_h) {
+                        if h < 0 || h >= height as isize {
                             continue;
                         }
+                        for w in (wstart..wend).step_by(dilation_w) {
+                            if w < 0 || w >= width as isize {
+                                continue;
+                            }
 
-                        let input_index = (h as usize) * width + (w as usize);
-                        let val = x_data[x_d + input_index];
-                        values.push(val);
+                            let val = array4[[n, c, h as usize, w as usize]];
+                            values.push(val);
+                        }
+                    }
 
+                    if !values.is_empty() {
+                        let max = unconstrained_max(api, &values);
+                        assert_is_max(api, &context, &values);
+                        y[[n, c, ph, pw]] = max;
                     }
                 }
-                if values.len() != 0 {                    
-                    let max = unconstrained_max(api, &values);
-                    assert_is_max(api, &context, &values);
-                    y_data[y_d + pool_index] = max;
-                }
             }
         }
     }
-    reshape_4d(&y_data, y_dims)
-}
 
-fn reshape_4d(flat: &Vec<Variable>, dims: [usize; 4]) -> Vec<Vec<Vec<Vec<Variable>>>> {
-    let (n, c, h, w) = (dims[0], dims[1], dims[2], dims[3]);
-    let mut out =  vec![vec![vec![vec![Variable::default(); w]; h]; c]; n];
-    for ni in 0..n {
-        for ci in 0..c {
-            for hi in 0..h {
-                for wi in 0..w {
-                    let flat_index = ((ni * c + ci) * h + hi) * w + wi;
-                    out[ni][ci][hi][wi] = flat[flat_index];
-                }
-            }
-        }
-    }
-    out
+    y.into_dyn()
 }

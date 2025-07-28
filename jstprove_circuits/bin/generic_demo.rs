@@ -433,28 +433,35 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(String,ArrayD<Variable>), String> {
-
+        input: HashMap<String, ArrayD<Variable>>,
+    ) -> Result<(String, ArrayD<Variable>), String> {
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
-        // TODO work on removing
+        let shape = layer_input.shape();
+        assert_eq!(shape.len(), 4, "Expected 4D input for max pooling, got shape: {:?}", shape);
 
-        // let layer_input = reshape_layer(layer_input, &self.input_shape);
-        let x = arrayd_to_vec4(layer_input);
-
-        let ceil_mode = false; // or make configurable
+        let ceil_mode = false;
         let (kernel, strides, dilation, out_shape, pads) = setup_maxpooling_2d(
-            &self.padding, &self.kernel_shape, &self.strides,
-            &self.dilation, ceil_mode, &self.input_shape,
+            &self.padding,
+            &self.kernel_shape,
+            &self.strides,
+            &self.dilation,
+            ceil_mode,
+            &self.input_shape,
         );
 
         let output = maxpooling_2d::<C, Builder>(
-            api, &x, &kernel, &strides, &dilation, &out_shape,
-            &self.input_shape, &pads, self.shift_exponent,
+            api,
+            &layer_input,
+            &kernel,
+            &strides,
+            &dilation,
+            &out_shape,
+            &self.input_shape,
+            &pads,
+            self.shift_exponent,
         );
 
-        let out = vec4_to_arrayd(output);
-        Ok((self.outputs[0].clone(), out))
+        Ok((self.outputs[0].clone(), output))
     }
 }
 
