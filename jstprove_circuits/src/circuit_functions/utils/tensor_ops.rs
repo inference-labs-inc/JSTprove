@@ -105,28 +105,35 @@ fn flatten_recursive(value: &Value, out: &mut Vec<i64>) {
 
 pub fn get_nd_circuit_inputs<C: Config>(
     input: &Value,
-    shape: &[usize],
-) -> ArrayD<<C as GKREngine>::FieldConfig::CircuitField> {
-    // flatten JSON to Vec<i64>
+    input_shape: &[usize],
+) -> ArrayD<CircuitField<C>> {
+    // 1) flatten JSON → Vec<i64>
     let mut flat = Vec::new();
     flatten_recursive(input, &mut flat);
 
-    // verify size
+    // 2) pad to at least 1 dimension
+    let mut shape = input_shape.to_vec();
+    if shape.is_empty() {
+        shape.push(1);
+    }
+
+    // 3) sanity check
     let expected: usize = shape.iter().product();
-    assert_eq!(flat.len(), expected, "wrong number of elements");
+    assert_eq!(
+        flat.len(),
+        expected,
+        "JSON had {} elements but shape {:?} requires {}",
+        flat.len(),
+        shape,
+        expected
+    );
 
-    // build ArrayD<i64>
-    let a_i64 = ArrayD::from_shape_vec(IxDyn(shape), flat)
-        .expect("shape/flat‐len mismatch");
+    // 4) build the i64 ndarray
+    let a_i64: ArrayD<i64> =
+        ArrayD::from_shape_vec(IxDyn(&shape), flat).expect("shape/flat-len mismatch");
 
-    // map to CircuitField<C>
-    a_i64.mapv(|val| {
-        if val < 0 {
-            CircuitField::<C>::from_u256(U256::from(val.abs() as u64)).neg()
-        } else {
-            CircuitField::<C>::from_u256(U256::from(val as u64))
-        }
-    })
+    // 5) map to your circuit field type
+    a_i64.mapv(|val| convert_val_to_field_element::<C>(val))
 }
 
 

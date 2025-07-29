@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 /// External crate imports
 use lazy_static::lazy_static;
-use ndarray::{Array2, ArrayD, Dimension, Ix2, IxDyn};
+use ndarray::{Array2, ArrayD, Dimension, Ix1, Ix2, IxDyn};
 use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::Value;
 
@@ -749,28 +749,40 @@ impl ConfigurableCircuit for Circuit<Variable> {
     }
 }
 
+
 impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
         mut assignment: Circuit<CircuitField<C>>,
     ) -> Circuit<CircuitField<C>> {
-        /*
-           TODO - Can rework this code potentially to speed up witness generation...
-        */
         let data: InputData =
             <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<InputData>(file_path);
 
-        let input_dims: &[usize] = &[ARCHITECTURE.inputs.iter()
+        // compute the total number of inputs
+        let input_dims: &[usize] = &[ARCHITECTURE
+            .inputs
+            .iter()
             .map(|obj| obj.shape.iter().product::<usize>())
-            .product()]; 
+            .product()];
+
         assignment.dummy[0] = CircuitField::<C>::from(1);
         assignment.dummy[1] = CircuitField::<C>::from(1);
 
+        // 1) get back an ArrayD<CircuitField<C>>
+        let arr: ArrayD<CircuitField<C>> =
+            get_nd_circuit_inputs::<C>(&data.input, input_dims);
 
-        assignment.input_arr = get_nd_circuit_inputs::<C>(&data.input, input_dims);
+        // 2) downcast to Ix1 and collect into a Vec
+        let flat: Vec<CircuitField<C>> = arr
+            .into_dimensionality::<Ix1>()
+            .expect("Expected a 1-D array here")
+            .to_vec();
+
+        assignment.input_arr = flat;
         assignment
     }
+
     fn read_outputs(
         &mut self,
         file_path: &str,
@@ -779,17 +791,29 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
         let data: OutputData =
             <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<OutputData>(file_path);
 
-        let output_dims: &[usize] = &[ARCHITECTURE.outputs.iter()
+        let output_dims: &[usize] = &[ARCHITECTURE
+            .outputs
+            .iter()
             .map(|obj| obj.shape.iter().product::<usize>())
-            .product()]; 
+            .product()];
 
-        assignment.outputs = get_nd_circuit_inputs::<C>(&data.output, output_dims);
+        let arr: ArrayD<CircuitField<C>> =
+            get_nd_circuit_inputs::<C>(&data.output, output_dims);
+
+        let flat: Vec<CircuitField<C>> = arr
+            .into_dimensionality::<Ix1>()
+            .expect("Expected a 1-D array here")
+            .to_vec();
+
+        assignment.outputs = flat;
         assignment
     }
+
     fn get_path(&self) -> &str {
         &self.path
     }
 }
+
 
 fn main() {
     let mut file_reader = FileReader {
