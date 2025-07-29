@@ -43,47 +43,6 @@ pub fn load_array_constants<C: Config, Builder: RootAPI<C>>(
     For witness generation, putting values into the circuit
 */
 
-fn build_1d_vec<C: Config>(shape: [usize; 1]) -> Vec<CircuitField<C>> {
-    vec![CircuitField::<C>::zero(); shape[0]]
-}
-
-fn build_2d_vec<C: Config>(shape: [usize; 2]) -> Vec<Vec<CircuitField<C>>> {
-    vec![vec![CircuitField::<C>::zero(); shape[1]]; shape[0]]
-}
-
-fn build_3d_vec<C: Config>(shape: [usize; 3]) -> Vec<Vec<Vec<CircuitField<C>>>> {
-    vec![vec![vec![CircuitField::<C>::zero(); shape[2]]; shape[1]]; shape[0]]
-}
-
-fn build_4d_vec<C: Config>(shape: [usize; 4]) -> Vec<Vec<Vec<Vec<CircuitField<C>>>>> {
-    vec![vec![vec![vec![CircuitField::<C>::zero(); shape[3]]; shape[2]]; shape[1]]; shape[0]]
-}
-
-fn build_5d_vec<C: Config>(shape: [usize; 5]) -> Vec<Vec<Vec<Vec<Vec<CircuitField<C>>>>>> {
-    vec![vec![vec![vec![vec![CircuitField::<C>::zero(); shape[4]]; shape[3]]; shape[2]]; shape[1]]; shape[0]]
-}
-
-fn build_nd_vec<C: Config>(shape: &[usize]) -> Result<AnyDimVec<CircuitField<C>>, String> {
-    match shape.len() {
-        1 => Ok(AnyDimVec::D1(build_1d_vec::<C>([shape[0]]))),
-        2 => Ok(AnyDimVec::D2(build_2d_vec::<C>([shape[0], shape[1]]))),
-        3 => Ok(AnyDimVec::D3(build_3d_vec::<C>([shape[0], shape[1], shape[2]]))),
-        4 => Ok(AnyDimVec::D4(build_4d_vec::<C>([shape[0], shape[1], shape[2], shape[3]]))),
-        5 => Ok(AnyDimVec::D5(build_5d_vec::<C>([shape[0], shape[1], shape[2], shape[3], shape[4]]))),
-        _ => Err(format!("Unsupported number of dimensions: {}", shape.len())),
-    }
-}
-
-#[derive(Debug)]
-pub enum AnyDimVec<C> {
-    D1(Vec<C>),
-    D2(Vec<Vec<C>>),
-    D3(Vec<Vec<Vec<C>>>),
-    D4(Vec<Vec<Vec<Vec<C>>>>),
-    D5(Vec<Vec<Vec<Vec<Vec<C>>>>>),
-}
-
-
 fn flatten_recursive(value: &Value, out: &mut Vec<i64>) {
     match value {
         Value::Number(n) => {
@@ -134,43 +93,6 @@ pub fn get_nd_circuit_inputs<C: Config>(
 
     // 5) map to your circuit field type
     a_i64.mapv(|val| convert_val_to_field_element::<C>(val))
-}
-
-
-pub fn get_1d_circuit_inputs<C: Config>(
-    input: &Value,
-    input_shape: &[usize],
-) -> Vec<CircuitField<C>>{
-    let mut flat = Vec::new();
-    flatten_recursive(input, &mut flat);
-
-    // Pad the shape with 1s to ensure length 5
-    let mut shape = input_shape.to_vec();
-    while shape.len() < 1 {
-        shape.push(1);
-    }
-
-    // Create the ndarray from the flat vector and shape
-    let array: ArrayD<i64> = ArrayD::from_shape_vec(IxDyn(&shape), flat)
-        .expect("Failed to create ArrayD");
-
-    // Build the nested Vec structure
-    let nested = build_nd_vec::<C>(&shape).unwrap();
-
-    match nested {
-        AnyDimVec::D1(mut v) => {
-            for (idx, &val) in array.indexed_iter() {
-                let converted = convert_val_to_field_element::<C>(val);
-
-                let i = idx[0];
-
-                v[i] = converted;
-            }
-            v
-        }
-            other => panic!("Expected 1D vector"),
-
-    }
 }
 
 // TODO change 64 bits to 128 across the board, or add checks. If more than 64 bits, fail

@@ -47,7 +47,6 @@ use jstprove_circuits::circuit_functions::layers::relu::relu_array;
 use jstprove_circuits::circuit_functions::utils::quantization::rescale_array;
 
 use jstprove_circuits::circuit_functions::utils::tensor_ops::{
-    get_1d_circuit_inputs,
     get_nd_circuit_inputs,
     load_array_constants,
     load_circuit_constant,
@@ -748,7 +747,6 @@ impl ConfigurableCircuit for Circuit<Variable> {
         self.input_arr = vec![Variable::default(); input_dims];
     }
 }
-
 
 impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
     fn read_inputs(
