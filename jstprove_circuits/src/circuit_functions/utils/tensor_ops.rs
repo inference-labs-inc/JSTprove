@@ -69,11 +69,6 @@ pub fn arrayd_to_vec1<T: Clone>(array: ArrayD<T>) -> Vec<T> {
     array1.to_vec()
 }
 
-pub fn vec1_to_arrayd<T>(v: Vec<T>) -> ArrayD<T> {
-    let shape = vec![v.len()];
-    ArrayD::from_shape_vec(IxDyn(&shape), v).unwrap()
-}
-
 pub fn arrayd_to_vec2<T: Clone>(array: ArrayD<T>) -> Vec<Vec<T>> {
     // Convert to Array2 first
     // panic!("{}", array.ndim());

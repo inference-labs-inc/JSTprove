@@ -51,7 +51,6 @@ use jstprove_circuits::circuit_functions::utils::tensor_ops::{
     get_1d_circuit_inputs,
     load_array_constants,
     load_circuit_constant,
-    vec1_to_arrayd,
 };
 
 use jstprove_circuits::io::io_reader::{FileReader, IOReader};
@@ -268,10 +267,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         // Convert weights
         let weights = load_array_constants(api, &self.weights);
 
-        // Convert bias to ArrayD
-        // let bias: ArrayD<Variable> = vec1_to_arrayd(
-            // self.bias.iter().map(|x| load_circuit_constant(api, *x)).collect()
-        // );
         let bias = self.bias.mapv(|x| load_circuit_constant(api, x));
         // Scaling
         let scale_factor = 1 << self.scaling;
@@ -687,10 +682,6 @@ impl<C: Config> Define<C> for Circuit<Variable> {
         let mut out = get_inputs(self.input_arr.clone(), ARCHITECTURE.inputs.clone());
         
         // let mut out = out2.remove("input").unwrap().clone();
-
-
-
-        // let mut out = vec1_to_arrayd(self.input_arr.clone());
         let layers = build_layers::<C, Builder>();
         
         assert!(ARCHITECTURE.architecture.len() > 0);
@@ -718,15 +709,22 @@ impl<C: Config> Define<C> for Circuit<Variable> {
             .into_shape_with_order(IxDyn(&flatten_shape))
             .expect("Shape mismatch: Cannot reshape into the given dimensions"); 
 
-        let output = arrayd_to_vec1(output);
+        // let output = arrayd_to_vec1(output);
+        let output = output.as_slice().expect("Output not contiguous");
 
         eprint!("Assert outputs match");
+        // for (j, _) in self.outputs.iter().enumerate() {
+        //     api.display("out1", self.outputs[j]);
+        //     api.display("out2", output[j]);
+        //     api.assert_is_equal(self.outputs[j], output[j]);
+        //     // api.assert_is_different(self.outputs[j], 13241234);
+        // }
         for (j, _) in self.outputs.iter().enumerate() {
             api.display("out1", self.outputs[j]);
             api.display("out2", output[j]);
             api.assert_is_equal(self.outputs[j], output[j]);
-            // api.assert_is_different(self.outputs[j], 13241234);
         }
+
         api.assert_is_equal(self.dummy[0], 1);
         api.assert_is_equal(self.dummy[1], 1);
         eprintln!("Outputs match");
