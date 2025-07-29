@@ -48,12 +48,10 @@ use jstprove_circuits::circuit_functions::utils::quantization::rescale_array;
 
 use jstprove_circuits::circuit_functions::utils::tensor_ops::{
     arrayd_to_vec1,
-    arrayd_to_vec4,
     get_1d_circuit_inputs,
     load_array_constants,
     load_circuit_constant,
     vec1_to_arrayd,
-    vec4_to_arrayd,
 };
 
 use jstprove_circuits::io::io_reader::{FileReader, IOReader};
@@ -271,10 +269,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         let weights = load_array_constants(api, &self.weights);
 
         // Convert bias to ArrayD
-        let bias: ArrayD<Variable> = vec1_to_arrayd(
-            self.bias.iter().map(|x| load_circuit_constant(api, *x)).collect()
-        );
-
+        // let bias: ArrayD<Variable> = vec1_to_arrayd(
+            // self.bias.iter().map(|x| load_circuit_constant(api, *x)).collect()
+        // );
+        let bias = self.bias.mapv(|x| load_circuit_constant(api, x));
         // Scaling
         let scale_factor = 1 << self.scaling;
         let alpha_two_v = api.mul(self.two_v as u32, scale_factor as u32);
