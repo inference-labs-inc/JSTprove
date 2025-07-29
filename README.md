@@ -10,7 +10,7 @@ pip install -r requirements.txt
 
 The development/building process will involve working in two different areas of the codebase. We will begin with the python testing files. 
 
-In `python_testing` directory, we will build the python representation of the code. With this, we can test the function we are trying to circuitize line by line for easier development. Additionally, through this code, we will write the inputs and outputs (and weights if applicable) of our function/circuit to file, so that the rust circuit can read this in. Next we will call our rust code to compile the circuit, run the witness and prove and verify the given inputs and outputs. For this process, use `python_testing/testing_circuits_base_functions.py` as an example/template.
+In `python/testing/core` directory, we will build the python representation of the code. With this, we can test the function we are trying to circuitize line by line for easier development. Additionally, through this code, we will write the inputs and outputs (and weights if applicable) of our function/circuit to file, so that the rust circuit can read this in. Next we will call our rust code to compile the circuit, run the witness and prove and verify the given inputs and outputs. For this process, use `python/testing/core/testing_circuits_base_functions.py` as an example/template.
 
 In `jstprove_circuits` directory, we will build the Expander circuits in rust for proving. We can follow the template in `jstprove_circuits/bin/testing.rs`. The templates have been designed to make the development process as easy as possible. The helper functions are in `jstprove_circuits/src/`. For creating circuits, we must define the inputs and outpsuts structure of the circuits. We must then specify how these get read into the circuit. Finally, we must design the circuit
 
@@ -19,22 +19,22 @@ In `jstprove_circuits` directory, we will build the Expander circuits in rust fo
 To run testing environment in python:
 
 ```
-python -m python_testing.testing_circuit
+python -m python/testing/core.testing_circuit
 ```
 
 ## Circuit creation Instructions
 
 The circuit creation process involves working with two (or three) files. 
 
-1. Create the circuit file using `jstprove_circuits/bin/testing.rs` as a template. The binary should belong in `jstprove_circuits/bin/`. Add the name of the circuit and path to the binary in `jstprove_circuits/Cargo.toml`
+1. Create the circuit file using `gravy_circuits/bin/testing.rs` as a template. The binary should belong in `gravy_circuits/bin/`. Add the name of the circuit and path to the binary in `gravy_circuits/Cargo.toml`
 
-2. Work in `python_testing/testing_circuit`
+2. Work in `python/testing/core/testing_circuit`
 
     a. Change the self.name in the `__init__` to the name of the circuit [circuit_name], used in the file creation code specified in section 1.
 
     b. Generate inputs to the function in the `___init__` 
 
-    c. Code the function to circuitize in `python_testing/testing_circuit`, 
+    c. Code the function to circuitize in `python/testing/core/testing_circuit`, 
   
     d. Define the inputs and outputs, to be sent to json for circuits
 
@@ -44,7 +44,7 @@ The circuit creation process involves working with two (or three) files.
 
     b. Define circuit
 
-4. Run ``` python -m python_testing.circuit_tests``` to test the accuracy of the circuit
+4. Run ``` python -m python/testing/core.circuit_tests``` to test the accuracy of the circuit
 
 TODO: Incorporate proof time, proof size and max memory used results, into the circuit testing 
 
@@ -52,10 +52,10 @@ TODO: Incorporate proof time, proof size and max memory used results, into the c
 
 To run circuit example:
 ```
-python -m python_testing.matrix_multiplication
+python -m python/testing/core.matrix_multiplication
 ```
 
-Relevent files to explore -> `python_testing/matrix_multiplication.py` and `jstprove_circuits/bin/matrix_multiplication.rs`
+Relevent files to explore -> `python/testing/core/matrix_multiplication.py` and `jstprove_circuits/bin/matrix_multiplication.rs`
 
 
 ## Important note
@@ -80,9 +80,9 @@ This CLI tool runs various circuit operations such as compilation, witness gener
 
 1. **Dynamic Module Loading**  
    - By default, the CLI looks for circuit modules in:
-     - `python_testing.circuit_models`
-     - `python_testing.circuit_components`
-   - You can also specify a custom search path relative to `python_testing` with the `--circuit_search_path` flag.
+     - `python/testing/core.circuit_models`
+     - `python/testing/core.circuit_components`
+   - You can also specify a custom search path relative to `python/testing/core` with the `--circuit_search_path` flag.
 
 2. **File Resolution**  
    - Automatically searches the project root for JSON input and output files using a simple or fuzzy match.
@@ -107,8 +107,8 @@ This CLI tool runs various circuit operations such as compilation, witness gener
 4. **List Available Circuits**  
    - Use the `--list_circuits` flag to recursively search for Python files containing a class that inherits from `Circuit` or `ZKModel`.  
    - By default, it searches in:
-     - `python_testing/circuit_components`
-     - `python_testing/circuit_models`
+     - `python/testing/core/circuit_components`
+     - `python/testing/core/circuit_models`
    - Override with `--circuit_search_path <some_relative_folder>` to search elsewhere.
 
 ## Basic Usage
@@ -117,7 +117,7 @@ This CLI tool runs various circuit operations such as compilation, witness gener
    Ensure you have **Python 3.12.x** installed and all required dependencies listed in `requirements.txt`:
 
 2. **Run the CLI**  
-   From the project root (`jstproveTesting-Internal`):
+   From the project root (`JSTProve`):
 
    ```bash
    python -m cli --circuit simple_circuit --compile --circuit <circuit_file_path>
@@ -235,4 +235,5 @@ This CLI tool runs various circuit operations such as compilation, witness gener
 
    ONNX 1.17 does not support python 3.13
    brew install libffi, open
-   
+
+

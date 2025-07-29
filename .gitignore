@@ -25,11 +25,14 @@ __pycache__/
 *.py[cod]
 *.ipynb_checkpoints/
 *.cfg
-lib
+lib/
+bin/
+share/
 report
 
 # Rust Binaries
-target
+target/
+!rust/jstprove_circuits/bin
 
 # Dataset and binary files
 *.json
@@ -50,4 +53,7 @@ target
 
 # Retain Specific Model Files
 *.onnx
-!models_onnx/*.onnx
+!python/models/models_onnx/*.onnx
+
+# Proving System
+Expander/

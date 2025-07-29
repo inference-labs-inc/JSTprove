@@ -1,0 +1,58 @@
+# This workflow will install Python dependencies, run tests and lint with a single version of Python
+# TODO: Add a matrix of Python Versions if we want to support cross-compatibility
+# TODO: Create tests for different sources such as : ["class", "pytorch", "onnx"]
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: Unit, Integration Python Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v3
+      with:
+        python-version: "3.10"  #Should we specify more versions?
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-html
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    - name: Install OMPI
+      run: |
+        sudo apt-get update && sudo apt-get install -y \
+          libopenmpi-dev \
+          pkg-config \
+          libclang-dev \
+          clang \
+          openmpi-bin \
+    - name: Run Unit Tests with
+      run: |
+        mkdir -p report
+        pytest --unit --html=report/unit_tests.html
+    - name: Run Integration Tests
+      run: |
+        mkdir -p report
+        pytest --integration --html=report/integration_tests.html
+    - name: Run E2E Tests with Standard Model #TODO: Have a standardized model to run from, multiple sources (other than ONNX)?
+      run: |
+        mkdir -p report
+        pytest --integration --html=report/integration_tests.html #TODO: Should configure E2E tests to run.
+
+    - name: Upload Pytest HTML Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: pytest-html-report
+        path: report
