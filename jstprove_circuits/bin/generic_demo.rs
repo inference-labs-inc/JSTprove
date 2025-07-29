@@ -47,7 +47,6 @@ use jstprove_circuits::circuit_functions::layers::relu::relu_array;
 use jstprove_circuits::circuit_functions::utils::quantization::rescale_array;
 
 use jstprove_circuits::circuit_functions::utils::tensor_ops::{
-    arrayd_to_vec1,
     get_1d_circuit_inputs,
     load_array_constants,
     load_circuit_constant,
@@ -709,16 +708,10 @@ impl<C: Config> Define<C> for Circuit<Variable> {
             .into_shape_with_order(IxDyn(&flatten_shape))
             .expect("Shape mismatch: Cannot reshape into the given dimensions"); 
 
-        // let output = arrayd_to_vec1(output);
         let output = output.as_slice().expect("Output not contiguous");
 
         eprint!("Assert outputs match");
-        // for (j, _) in self.outputs.iter().enumerate() {
-        //     api.display("out1", self.outputs[j]);
-        //     api.display("out2", output[j]);
-        //     api.assert_is_equal(self.outputs[j], output[j]);
-        //     // api.assert_is_different(self.outputs[j], 13241234);
-        // }
+
         for (j, _) in self.outputs.iter().enumerate() {
             api.display("out1", self.outputs[j]);
             api.display("out2", output[j]);
