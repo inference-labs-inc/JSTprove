@@ -48,6 +48,7 @@ use jstprove_circuits::circuit_functions::utils::quantization::rescale_array;
 
 use jstprove_circuits::circuit_functions::utils::tensor_ops::{
     get_1d_circuit_inputs,
+    get_nd_circuit_inputs,
     load_array_constants,
     load_circuit_constant,
 };
@@ -767,7 +768,7 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
         assignment.dummy[1] = CircuitField::<C>::from(1);
 
 
-        assignment.input_arr = get_1d_circuit_inputs::<C>(&data.input, input_dims);
+        assignment.input_arr = get_nd_circuit_inputs::<C>(&data.input, input_dims);
         assignment
     }
     fn read_outputs(
@@ -782,7 +783,7 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
             .map(|obj| obj.shape.iter().product::<usize>())
             .product()]; 
 
-        assignment.outputs = get_1d_circuit_inputs::<C>(&data.output, output_dims);
+        assignment.outputs = get_nd_circuit_inputs::<C>(&data.output, output_dims);
         assignment
     }
     fn get_path(&self) -> &str {
