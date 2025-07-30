@@ -3,7 +3,7 @@ use std::ops::Neg;
 
 /// External crate imports
 use ethnum::U256;
-use ndarray::{Array2, ArrayD, Ix1, Ix2, Ix3, Ix4, Ix5, IxDyn, Zip};
+use ndarray::{ArrayD, IxDyn, Zip};
 use serde_json::Value;
 
 /// ExpanderCompilerCollection and proving framework imports

@@ -1,24 +1,19 @@
 #[allow(unused_imports)]
 /// Standard library imports
 use core::panic;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use jstprove_circuits::circuit_functions::utils::graph_pattern_matching::{optimization_skip_layers, GraphPattern, PatternMatcher};
 /// External crate imports
 use lazy_static::lazy_static;
-use ndarray::{Array2, ArrayD, Dimension, Ix1, Ix2, IxDyn};
-use serde::{Deserialize, de::DeserializeOwned};
+use ndarray::{ArrayD, Ix1, Ix2, IxDyn};
+use serde::Deserialize;
 use serde_json::Value;
 
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
 /// Internal crate imports
-use jstprove_circuits::circuit_functions::utils::json_array::{
-    value_to_arrayd,
-    FromJsonNumber,
-};
-
 use jstprove_circuits::circuit_functions::utils::onnx_model::{
     collect_all_shapes,
     get_param,
@@ -29,6 +24,7 @@ use jstprove_circuits::circuit_functions::utils::onnx_model::{
 use jstprove_circuits::circuit_functions::utils::shaping::{
     get_inputs,
     onnx_flatten,
+    check_and_apply_transpose_array
 };
 
 use jstprove_circuits::circuit_functions::layers::conv::conv_4d_run;
@@ -79,26 +75,6 @@ struct CircuitParams{
     scaling: u32,
     rescale_config: HashMap<String, bool>
 }
-
-// #[derive(Deserialize, Clone, Debug)]
-// struct ONNXLayer{
-//     id: usize,
-//     name: String,
-//     op_type: String,
-//     inputs: Vec<String>,
-//     outputs: Vec<String>,
-//     shape: HashMap<String, Vec<usize>>,
-//     tensor: Option<Value>,
-//     params: Option<Value>,
-//     opset_version_number: i16,
-// }
-
-// #[derive(Deserialize, Clone, Debug)]
-// struct ONNXIO{
-//     name: String,
-//     elem_type: i16,
-//     shape: Vec<usize>
-// }
 
 #[derive(Deserialize, Clone)]
 struct InputData {
@@ -228,7 +204,8 @@ struct MaxPoolLayer {
 
 trait LayerOp<C: Config, Builder: RootAPI<C>> {
     fn apply(&self, api: &mut Builder, input: HashMap<String,ArrayD<Variable>>)
-        -> Result<(String,ArrayD<Variable>), String>;
+        -> Result<(Vec<String>,ArrayD<Variable>), String>;
+
     // fn build for every Layer type
 }
 
@@ -237,7 +214,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(String,ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
         eprintln!("{:?}", self);
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         // Reshape inputs
@@ -249,7 +226,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
         // TODO RELU unsupported for now. Must design relu function that takes in array instead of vectors
         let out = relu_array(api, out, self.n_bits - 1);
 
-        Ok((self.outputs[0].clone(), out))
+        Ok((self.outputs.clone(), out))
     }
 }
 
@@ -258,7 +235,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(String,ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
         let is_relu = match self.optimization_pattern.name{
                     "Conv+Relu" => true,
                     _ => false
@@ -300,7 +277,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             is_relu,
         );
 
-        Ok((self.outputs[0].clone(), out))
+        Ok((self.outputs.clone(), out))
     }
 }
 
@@ -309,7 +286,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(String,ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
         let is_relu = match self.optimization_pattern.name{
                     "Gemm+Relu" => true,
                     _ => false
@@ -321,7 +298,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             .map_err(|_| format!("Expected 2D input for layer {}", self.name))?;
         let mut weights_array = load_array_constants(api, &self.weights)
         .into_dimensionality::<Ix2>()
-            .map_err(|_| format!("Expected 2D input for layer {}", self.name))?;;
+            .map_err(|_| format!("Expected 2D input for layer {}", self.name))?;
 
         input_array = check_and_apply_transpose_array(input_array, self.transa, "transa", "Gemm", &self.name);
         weights_array = check_and_apply_transpose_array(weights_array, self.transb, "transb", "Gemm", &self.name);
@@ -345,7 +322,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             out_array = rescale_array(api, out_array, k, s, is_relu);
         }
 
-        Ok((self.outputs[0].clone(), out_array))
+        Ok((self.outputs.clone(), out_array))
     }
 }
 
@@ -355,51 +332,21 @@ fn check_alpha_beta(val: f32, var_name: &str, layer_type: &str, layer_name: &str
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FUNCTION: check_and_apply_transpose_array
-// ─────────────────────────────────────────────────────────────────────────────
 
-/// Applies a transpose to a 2D array if the transpose flag is set.
-///
-/// # Arguments
-/// - `matrix`: A 2D array (`Array2<T>`) to conditionally transpose.
-/// - `flag`: 0 means no transpose, 1 means transpose.
-/// - `var_name`: Name of the transpose flag variable (for error messages).
-/// - `layer_type`: Name of the layer type (for error messages).
-/// - `layer_name`: Name of the layer instance (for error messages).
-///
-/// # Panics
-/// Panics if `flag` is not 0 or 1.
-pub fn check_and_apply_transpose_array<T: Clone>(
-    matrix: Array2<T>,
-    flag: usize,
-    var_name: &str,
-    layer_type: &str,
-    layer_name: &str,
-) -> Array2<T> {
-    match flag {
-        0 => matrix,
-        1 => matrix.reversed_axes(), // transpose
-        other => panic!(
-            "Unsupported {} value {} in {} layer: {}",
-            var_name, other, layer_type, layer_name
-        ),
-    }
-}
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
     fn apply(
         &self,
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(String,ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
         let reshape_shape = self.shape.clone();
-        let mut layer_input = input.get(&self.inputs[0]).unwrap();
+        let layer_input = input.get(&self.inputs[0]).unwrap();
         let out = &layer_input.clone()
             .into_shape_with_order(IxDyn(&reshape_shape))
             .expect("Shape mismatch: Cannot reshape into the given dimensions.");
 
-        Ok((self.outputs[0].clone(), out.clone()))
+        Ok((self.outputs.clone(), out.clone()))
     }
 }
 
@@ -410,13 +357,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(String,ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
         let reshape_axis = self.axis.clone();
         let layer_input = input.get(&self.inputs[0]).unwrap();
 
         let out = onnx_flatten(layer_input.clone(), reshape_axis);
 
-        Ok((self.outputs[0].clone(), out.clone()))
+        Ok((self.outputs.clone(), out.clone()))
     }
 }
 // TODO remove constants from python side. Incorporate into the layer that uses it instead
@@ -426,9 +373,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConstantLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(String,ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
 
-        Ok((self.outputs[0].clone(), ArrayD::from_shape_vec(IxDyn(&[1]), vec![api.constant(0)]).unwrap()))
+        Ok((self.outputs.clone(), ArrayD::from_shape_vec(IxDyn(&[1]), vec![api.constant(0)]).unwrap()))
     }
 }
 
@@ -437,7 +384,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<(String, ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         let shape = layer_input.shape();
         assert_eq!(shape.len(), 4, "Expected 4D input for max pooling, got shape: {:?}", shape);
@@ -464,7 +411,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
             self.shift_exponent,
         );
 
-        Ok((self.outputs[0].clone(), output))
+        Ok((self.outputs.clone(), output))
     }
 }
 
@@ -707,7 +654,10 @@ impl<C: Config> Define<C> for Circuit<Variable> {
             let result = layer
                 .apply(api, out.clone())
                 .expect(&format!("Failed to apply layer {}", i));
-            out.insert(result.0, result.1);
+            result.0.into_iter().for_each(|key| {
+                // out.insert(key, Arc::clone(&value)); Depending on memory constraints here
+                out.insert(key, result.1.clone());
+            });
 
         }
         

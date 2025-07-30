@@ -1,7 +1,7 @@
 use expander_compiler::frontend::internal::DumpLoadTwoVariables;
 use expander_compiler::frontend::Config;
 use serde::de::DeserializeOwned;
-use std::{any::type_name, io::Read};
+use std::io::Read;
 use gkr_engine::{GKREngine, FieldEngine};
 
 

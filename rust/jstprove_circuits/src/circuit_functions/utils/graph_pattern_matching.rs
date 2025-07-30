@@ -1,15 +1,6 @@
-use core::panic;
 use std::collections::{HashMap, HashSet};
 
 /// External crate imports
-use lazy_static::lazy_static;
-use ndarray::{Array2, ArrayD, Dimension, Ix1, Ix2, IxDyn};
-use serde::{Deserialize, de::DeserializeOwned};
-use serde_json::Value;
-
-/// ExpanderCompilerCollection imports
-use expander_compiler::frontend::*;
-
 use crate::circuit_functions::utils::onnx_types::ONNXLayer;
 
 /*
@@ -60,17 +51,6 @@ pub fn optimization_skip_layers(optimization_match: Option<&Vec<OptimizationMatc
 pub enum BranchMatchMode {
     Any,
     All,
-}
-
-fn build_input_to_layer_map<'a>(layers: &'a [ONNXLayer]) -> HashMap<&'a str, Vec<&'a ONNXLayer>> {
-    let mut map: HashMap<&str, Vec<&ONNXLayer>> = HashMap::new();
-    for layer in layers {
-        for input in &layer.inputs {
-            map.entry(input).or_default().push(layer);
-        }
-    }
-    // eprint!("{:?}", map.keys());
-    map
 }
 
 // TODO untested with actual branching

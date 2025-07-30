@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 
 /// External crate imports
-use ndarray::{ArrayD, IxDyn};
+use ndarray::{Array2, ArrayD, IxDyn};
 
 /// Internal crate imports
 use crate::circuit_functions::utils::onnx_types::ONNXIO;
@@ -48,4 +48,36 @@ pub fn get_inputs<T: Clone>(v: Vec<T>, inputs: Vec<ONNXIO>) -> HashMap<String, A
     }
 
     result
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: check_and_apply_transpose_array
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Applies a transpose to a 2D array if the transpose flag is set.
+///
+/// # Arguments
+/// - `matrix`: A 2D array (`Array2<T>`) to conditionally transpose.
+/// - `flag`: 0 means no transpose, 1 means transpose.
+/// - `var_name`: Name of the transpose flag variable (for error messages).
+/// - `layer_type`: Name of the layer type (for error messages).
+/// - `layer_name`: Name of the layer instance (for error messages).
+///
+/// # Panics
+/// Panics if `flag` is not 0 or 1.
+pub fn check_and_apply_transpose_array<T: Clone>(
+    matrix: Array2<T>,
+    flag: usize,
+    var_name: &str,
+    layer_type: &str,
+    layer_name: &str,
+) -> Array2<T> {
+    match flag {
+        0 => matrix,
+        1 => matrix.reversed_axes(), // transpose
+        other => panic!(
+            "Unsupported {} value {} in {} layer: {}",
+            var_name, other, layer_type, layer_name
+        ),
+    }
 }
