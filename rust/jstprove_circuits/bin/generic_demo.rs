@@ -1,22 +1,7 @@
 #[allow(unused_imports)]
-<<<<<<< HEAD:jstprove_circuits/bin/generic_demo.rs
 /// Standard library imports
 use core::panic;
-use std::collections::HashMap;
-=======
-use jstprove_circuits::circuit_functions::layer_matmul::{matrix_addition_vec, matrix_multplication_naive2,};
-// !!! MaxPool
-use jstprove_circuits::circuit_functions::layer_max_pool::{setup_maxpooling_2d, maxpooling_2d};
-
-use jstprove_circuits::circuit_functions::activation_relu::{relu_array, ReluContext};
-use jstprove_circuits::io::io_reader::{FileReader, IOReader};
-use jstprove_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
-use lazy_static::lazy_static;
-use ndarray::Dimension;
-use ndarray::{ ArrayD, IxDyn};
-use rand::distributions::WeightedError;
 use std::collections::{HashMap, HashSet};
->>>>>>> main:rust/jstprove_circuits/bin/generic_demo.rs
 
 /// External crate imports
 use lazy_static::lazy_static;
@@ -94,7 +79,6 @@ struct CircuitParams{
     rescale_config: HashMap<String, bool>
 }
 
-<<<<<<< HEAD:jstprove_circuits/bin/generic_demo.rs
 // #[derive(Deserialize, Clone, Debug)]
 // struct ONNXLayer{
 //     id: usize,
@@ -107,20 +91,6 @@ struct CircuitParams{
 //     params: Option<Value>,
 //     opset_version_number: i16,
 // }
-=======
-#[derive(Deserialize, Clone, Debug)]
-pub struct ONNXLayer{
-    id: usize,
-    name: String,
-    op_type: String,
-    inputs: Vec<String>,
-    outputs: Vec<String>,
-    shape: HashMap<String, Vec<usize>>,
-    tensor: Option<Value>,
-    params: Option<Value>,
-    opset_version_number: i16,
-}
->>>>>>> main:rust/jstprove_circuits/bin/generic_demo.rs
 
 // #[derive(Deserialize, Clone, Debug)]
 // struct ONNXIO{
@@ -286,14 +256,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
     fn apply(
         &self,
         api: &mut Builder,
-<<<<<<< HEAD:jstprove_circuits/bin/generic_demo.rs
-        input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<(String, ArrayD<Variable>), String> {
-        // Extract input
-        let layer_input = input.get(&self.inputs[0])
-            .ok_or("Missing input tensor")?
-            .clone();
-=======
         input: HashMap<String,ArrayD<Variable>>,
     ) -> Result<(String,ArrayD<Variable>), String> {
         let is_relu = match self.optimization_pattern.name{
@@ -305,7 +267,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         // Reshape inputs
         // TODO work on removing
         // let layer_input = reshape_layer(layer_input, &self.input_shape);
->>>>>>> main:rust/jstprove_circuits/bin/generic_demo.rs
 
         // Convert weights
         let weights = load_array_constants(api, &self.weights);
@@ -346,10 +307,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
     fn apply(
         &self,
         api: &mut Builder,
-<<<<<<< HEAD:jstprove_circuits/bin/generic_demo.rs
-        input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<(String, ArrayD<Variable>), String> {
-=======
         input: HashMap<String,ArrayD<Variable>>,
     ) -> Result<(String,ArrayD<Variable>), String> {
         let is_relu = match self.optimization_pattern.name{
@@ -357,7 +314,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
                     _ => false
                 };
 
->>>>>>> main:rust/jstprove_circuits/bin/generic_demo.rs
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         let mut input_array = layer_input
             .into_dimensionality::<Ix2>()
@@ -371,7 +327,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
 
         let bias_array = load_array_constants(api, &self.bias);
 
-<<<<<<< HEAD:jstprove_circuits/bin/generic_demo.rs
         // Sanity check alpha and beta
         check_alpha_beta(self.alpha, "alpha", "Gemm", &self.name);
         check_alpha_beta(self.beta, "beta", "Gemm", &self.name);
@@ -386,38 +341,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         if self.is_rescale {
             let k = CIRCUITPARAMS.scaling as usize;
             let s = self.v_plus_one.checked_sub(1).expect("v_plus_one must be at least 1");
-            out_array = rescale_array(api, out_array, k, s, self.is_relu);
+            out_array = rescale_array(api, out_array, k, s, is_relu);
         }
 
         Ok((self.outputs[0].clone(), out_array))
-=======
-        let weights = read_2d_weights(api, &weight_tensor);
-        // TODO, should support not requiring a bias value 
-        let bias = read_2d_weights(api, &self.bias);
-        
-
-        let scale_factor = 1 << self.scaling;
-        let alpha_two_v = api.mul(self.two_v as u32, scale_factor as u32);
-
-        // TODO add support for alpha and beta !=1. Hint, may need to scale up the alpha/beta and then rescale
-        check_alpha_beta(self.alpha, "alpha", "Gemm", &self.name);
-        check_alpha_beta(self.beta, "beta", "Gemm", &self.name);
-
-        out_2d = matrix_multplication_naive2(api, out_2d, weights);
-        out_2d = matrix_addition_vec(api, out_2d, bias);
-        api.display("3", out_2d[0][0]);
-        // out_2d = run_if_quantized_2d(api, CIRCUITPARAMS.scaling.into(), self.is_rescale, out_2d, self.v_plus_one, self.two_v, alpha_two_v, is_relu);
-        if self.is_rescale {
-            let scaling_exponent = CIRCUITPARAMS.scaling as usize;
-            let shift_exponent = self.v_plus_one.checked_sub(1)
-                .expect("v_plus_one must be at least 1");
-            // out_2d = rescale_2d_vector(api, out_2d, scaling_exponent, shift_exponent, self.is_relu);
-            let context = RescalingContext::new(api, scaling_exponent, shift_exponent);
-            out_2d = rescale_tensor(api, out_2d, &context, is_relu);
-        }
-        let out = vec2_to_arrayd(out_2d);
-        Ok((self.outputs[0].clone(), out))
->>>>>>> main:rust/jstprove_circuits/bin/generic_demo.rs
     }
 }
 
@@ -620,15 +547,8 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
 
         match layer.op_type.as_str() {
             "Conv" => {
-<<<<<<< HEAD:jstprove_circuits/bin/generic_demo.rs
-                let params = layer.params.clone().unwrap();
-                eprintln!("Conv");
-                // TODO this should be done on a per input basis. For now this only works because we are looking at single input layers
-                // I think this should move inside the individual layers
-=======
                 let params = layer.params.clone().unwrap();                
                 // We can move this inside the layer op
->>>>>>> main:rust/jstprove_circuits/bin/generic_demo.rs
                 let expected_shape = match shapes_map.get(&layer.inputs[0]){
                     Some(input_shape) => input_shape,
                     None => panic!("Error getting output shape for layer {}", layer.name)
@@ -686,13 +606,8 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                     name: layer.name.clone(),
                     index: i,
                     weights: get_w_or_b(&w_and_b_map, &layer.inputs[1]),
-<<<<<<< HEAD:jstprove_circuits/bin/generic_demo.rs
                     bias: get_w_or_b(&w_and_b_map, &layer.inputs[2]),
-                    is_relu: is_relu,
-=======
-                    bias: parse_maybe_1d_to_2d(get_w_or_b(&w_and_b_map, &layer.inputs[2])).unwrap(),
                     optimization_pattern: optimization_pattern,
->>>>>>> main:rust/jstprove_circuits/bin/generic_demo.rs
                     v_plus_one: V_PLUS_ONE,
                     two_v: TWO_V,
                     alpha_two_v: alpha_two_v,
@@ -773,69 +688,13 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
     }
     layers
 }
-
-<<<<<<< HEAD:jstprove_circuits/bin/generic_demo.rs
-=======
-// fn optimization_skip_layers(skip_layer: &mut HashMap<String, bool>, i: usize, layer: &ONNXLayer, outputs: &mut Vec<String>, is_relu: &mut bool) {
-fn optimization_skip_layers(optimization_match: Option<&Vec<OptimizationMatch>>, outputs: Vec<String>) -> Option<(GraphPattern, Vec<String>, Vec<String>)> {
-    match optimization_match {
-        Some(opt) => {
-            let pattern = opt[0].pattern;
-            let mut new_outputs = Vec::new();
-            let mut skipped_layers: Vec<String> = Vec::new();
-            // Loop through all potential branches
-            for opt_match in opt{
-                // Assert all the patterns are the same
-                assert!(pattern.name == opt_match.pattern.name);
-                // Get final layer of pattern
-                let layers = opt_match.layers.clone();
-                let final_layer = layers[layers.len() - 1].clone();
-                let first_layer = layers[0].clone();
-
-                // Assert outputs match 
-                eprintln!("{:?}", first_layer.outputs);
-                eprintln!("{:?}", outputs);
-                assert!(first_layer.outputs.iter().all(|item| outputs.contains(item)));
-                new_outputs.extend(final_layer.outputs);
-                skipped_layers.extend(opt_match.layers.iter().map(|layer| layer.name.clone()))
-            }
-            // Search the other way. Makes sure both sides of inequality holds
-            // assert!(outputs.iter().all(|item| new_outputs.contains(item)));
-
-            let set: HashSet<_> = new_outputs.into_iter().collect();
-            let unique_new_outputs: Vec<String> = set.into_iter().collect();
-            // let set: HashSet<_> = outputs.into_iter().collect();
-            // let unique_old_outputs: Vec<String> = set.into_iter().collect();
-
-            // assert!(unique_new_outputs.len() == unique_old_outputs.len());
-    
-            Some((pattern, unique_new_outputs, skipped_layers))
-        },
-        None => return None
-    }
-}
-
-fn get_inputs<T: Clone>(v: Vec<T>, inputs: Vec<ONNXIO>) -> HashMap<String, ArrayD<T>>{
-    // Step 1: Compute total number of elements required
-    let total_required: usize = inputs
-        .iter()
-        .map(|input| input.shape.iter().product::<usize>())
-        .sum();
->>>>>>> main:rust/jstprove_circuits/bin/generic_demo.rs
-
-
 // Memorization, in a better place
 impl<C: Config> Define<C> for Circuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         // Getting inputs
         let mut out = get_inputs(self.input_arr.clone(), ARCHITECTURE.inputs.clone());
-<<<<<<< HEAD:jstprove_circuits/bin/generic_demo.rs
         
         // let mut out = out2.remove("input").unwrap().clone();
-=======
-
-        // let mut out = vec1_to_arrayd(self.input_arr.clone());
->>>>>>> main:rust/jstprove_circuits/bin/generic_demo.rs
         let layers = build_layers::<C, Builder>();
         
         assert!(ARCHITECTURE.architecture.len() > 0);
@@ -891,6 +750,44 @@ impl<C: Config> Define<C> for Circuit<Variable> {
 Pattern matching of layers
 
 */
+
+fn optimization_skip_layers(optimization_match: Option<&Vec<OptimizationMatch>>, outputs: Vec<String>) -> Option<(GraphPattern, Vec<String>, Vec<String>)> {
+    match optimization_match {
+        Some(opt) => {
+            let pattern = opt[0].pattern;
+            let mut new_outputs = Vec::new();
+            let mut skipped_layers: Vec<String> = Vec::new();
+            // Loop through all potential branches
+            for opt_match in opt{
+                // Assert all the patterns are the same
+                assert!(pattern.name == opt_match.pattern.name);
+                // Get final layer of pattern
+                let layers = opt_match.layers.clone();
+                let final_layer = layers[layers.len() - 1].clone();
+                let first_layer = layers[0].clone();
+
+                // Assert outputs match 
+                eprintln!("{:?}", first_layer.outputs);
+                eprintln!("{:?}", outputs);
+                assert!(first_layer.outputs.iter().all(|item| outputs.contains(item)));
+                new_outputs.extend(final_layer.outputs);
+                skipped_layers.extend(opt_match.layers.iter().map(|layer| layer.name.clone()))
+            }
+            // Search the other way. Makes sure both sides of inequality holds
+            // assert!(outputs.iter().all(|item| new_outputs.contains(item)));
+
+            let set: HashSet<_> = new_outputs.into_iter().collect();
+            let unique_new_outputs: Vec<String> = set.into_iter().collect();
+            // let set: HashSet<_> = outputs.into_iter().collect();
+            // let unique_old_outputs: Vec<String> = set.into_iter().collect();
+
+            // assert!(unique_new_outputs.len() == unique_old_outputs.len());
+    
+            Some((pattern, unique_new_outputs, skipped_layers))
+        },
+        None => return None
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum BranchMatchMode {
@@ -1186,11 +1083,11 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
 }
 
 
+
 fn main() {
     let mut file_reader = FileReader {
         path: "demo_cnn".to_owned(),
     };
-    // println!("{:?}", WEIGHTS_INPUT.layers);
 
     handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(&mut file_reader);
 }
