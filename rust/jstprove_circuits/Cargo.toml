@@ -14,6 +14,7 @@ tiny-keccak.workspace = true
 expander_circuit.workspace = true
 expander_transcript.workspace = true
 gkr.workspace = true
+expander_binary.workspace = true
 arith.workspace = true
 gf2.workspace = true
 mersenne31.workspace = true
@@ -29,6 +30,7 @@ gkr_hashers.workspace = true
 goldilocks.workspace = true
 serdes.workspace = true
 ndarray.workspace = true
+mpi.workspace = true
 
 
 [dev-dependencies]
