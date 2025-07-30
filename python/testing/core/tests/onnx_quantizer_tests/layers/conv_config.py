@@ -25,7 +25,7 @@ class ConvConfigProvider(BaseLayerConfigProvider):
             }
         )
     
-    class ConvUnsupportedStrideConfigProvider(BaseLayerConfigProvider):
+class ConvUnsupportedStrideConfigProvider(BaseLayerConfigProvider):
     @property
     def layer_name(self) -> str:
         return "Conv_UnsupportedStride"
