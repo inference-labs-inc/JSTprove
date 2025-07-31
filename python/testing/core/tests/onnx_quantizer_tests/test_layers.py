@@ -419,3 +419,26 @@ class TestScalability:
             assert isinstance(config.valid_inputs, list), "Quantization test config is not supported yet for {} and must be implemented"
             assert isinstance(config.valid_attributes, dict), "Quantization test config is not supported yet for {} and must be implemented"
             assert isinstance(config.required_initializers, dict), "Quantization test config is not supported yet for {} and must be implemented"
+
+@pytest.mark.unit
+def test_unsupported_conv_stride_is_handled_gracefully():
+    factory = TestLayerFactory()
+    config = factory.get_layer_config("Conv_UnsupportedStride")
+
+    node = config.create_node()
+    graph = helper.make_graph(
+        nodes=[node],
+        name="bad_conv_graph",
+        inputs=[
+            helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 16, 224, 224])
+        ],
+        outputs=[
+            helper.make_tensor_value_info("conv_output", TensorProto.FLOAT, [1, 32, 224, 224])
+        ],
+        initializer=list(config.create_initializers().values())
+    )
+    model = helper.make_model(graph)
+    quantizer = ONNXOpQuantizer()
+
+    with pytest.raises(InvalidParamError, match="stride.*unsupported"):
+        quantizer.check_model(model)
