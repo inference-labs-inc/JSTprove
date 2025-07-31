@@ -436,7 +436,6 @@ def test_conv_with_unsupported_stride_is_handled_gracefully():
         strides=[2, 2],  # <--- unsupported
     )
 
-    # Construct the model graph
     input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 16, 224, 224])
     output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 32, 112, 112])
 
@@ -457,6 +456,16 @@ def test_conv_with_unsupported_stride_is_handled_gracefully():
     model = helper.make_model(graph)
     quantizer = ONNXOpQuantizer()
 
-    # Assert that an InvalidParamError is raised during model checking
+    # Prepare initializer map
+    initializer_map = quantizer.get_initializer_map(model)
+
+    # Try quantizing the node directly
     with pytest.raises(InvalidParamError, match="stride.*unsupported"):
-        quantizer.check_model(model)
+        quantizer.quantize(
+            node=conv_node,
+            rescale=True,
+            graph=model.graph,
+            scale=1,
+            scale_base=255,
+            initializer_map=initializer_map
+        )
