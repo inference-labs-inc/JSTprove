@@ -459,5 +459,5 @@ def test_conv3d_should_raise_invalid_param_error():
 
     initializer_map = quantizer.get_initializer_map(model)
 
-    with pytest.raises(InvalidParamError, match="3D|unsupported|rank"):
+    with pytest.raises(InvalidParamError, match="3D Conv is not currently supported"):
         quantizer.check_layer(conv_node, initializer_map)
