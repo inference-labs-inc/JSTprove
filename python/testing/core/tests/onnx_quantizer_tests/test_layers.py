@@ -421,24 +421,42 @@ class TestScalability:
             assert isinstance(config.required_initializers, dict), "Quantization test config is not supported yet for {} and must be implemented"
 
 @pytest.mark.unit
-def test_unsupported_conv_stride_is_handled_gracefully():
-    factory = TestLayerFactory()
-    config = factory.get_layer_config("Conv_UnsupportedStride")
+def test_conv_with_unsupported_stride_is_handled_gracefully():
+    """Test that Conv with unsupported strides raises an InvalidParamError."""
 
-    node = config.create_node()
-    graph = helper.make_graph(
-        nodes=[node],
-        name="bad_conv_graph",
-        inputs=[
-            helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 16, 224, 224])
-        ],
-        outputs=[
-            helper.make_tensor_value_info("conv_output", TensorProto.FLOAT, [1, 32, 224, 224])
-        ],
-        initializer=list(config.create_initializers().values())
+    # Construct the Conv node manually
+    conv_node = helper.make_node(
+        op_type="Conv",
+        inputs=["input", "conv_weight", "conv_bias"],
+        outputs=["output"],
+        name="bad_conv",
+        kernel_shape=[3, 3],
+        pads=[1, 1, 1, 1],
+        dilations=[1, 1],
+        strides=[2, 2],  # <--- unsupported
     )
+
+    # Construct the model graph
+    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 16, 224, 224])
+    output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 32, 112, 112])
+
+    weight_array = np.random.randn(32, 16, 3, 3).astype(np.float32)
+    bias_array = np.random.randn(32).astype(np.float32)
+
+    weight_initializer = helper.make_tensor("conv_weight", TensorProto.FLOAT, weight_array.shape, weight_array.flatten())
+    bias_initializer = helper.make_tensor("conv_bias", TensorProto.FLOAT, bias_array.shape, bias_array.flatten())
+
+    graph = helper.make_graph(
+        nodes=[conv_node],
+        name="unsupported_stride_graph",
+        inputs=[input_tensor],
+        outputs=[output_tensor],
+        initializer=[weight_initializer, bias_initializer],
+    )
+
     model = helper.make_model(graph)
     quantizer = ONNXOpQuantizer()
 
+    # Assert that an InvalidParamError is raised during model checking
     with pytest.raises(InvalidParamError, match="stride.*unsupported"):
         quantizer.check_model(model)
