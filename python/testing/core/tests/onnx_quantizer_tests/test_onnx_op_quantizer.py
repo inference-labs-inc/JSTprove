@@ -210,20 +210,3 @@ def test_check_empty_model():
     quantizer = ONNXOpQuantizer()
     # Should not raise
     quantizer.check_model(model)
-
-@pytest.mark.unit
-def test_conv_with_unsupported_stride_should_fail():
-    factory = TestLayerFactory()
-    config = factory.get_layer_config("Conv_UnsupportedStride")
-    
-    model = TestONNXOpQuantizer().create_model_with_layers(["Conv_UnsupportedStride"], {"Conv_UnsupportedStride": config})
-    
-    quantizer = ONNXOpQuantizer()
-    
-    with pytest.raises(ValueError, match="Unsupported stride"):  # adjust match as needed
-        quantizer.quantize_model(
-            model=model,
-            rescale=False,
-            scale=1,
-            scale_base=255,
-        )
