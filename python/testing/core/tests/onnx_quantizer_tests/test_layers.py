@@ -12,6 +12,9 @@ from python.testing.core.utils.onnx_quantizer.exceptions import InvalidParamErro
 
 from python.testing.core.tests.onnx_quantizer_tests.layers.factory import TestLayerFactory
 
+from onnx.numpy_helper import from_array
+
+
 
 
 class LayerTestConfig:
