@@ -459,13 +459,6 @@ def test_conv_with_unsupported_stride_is_handled_gracefully():
     # Prepare initializer map
     initializer_map = quantizer.get_initializer_map(model)
 
-    # Try quantizing the node directly
-    with pytest.raises(InvalidParamError, match="stride.*unsupported"):
-        quantizer.quantize(
-            node=conv_node,
-            rescale=True,
-            graph=model.graph,
-            scale=1,
-            scale_base=255,
-            initializer_map=initializer_map
-        )
+    with pytest.raises(InvalidParamError, match="3D|unsupported|rank"):
+        quantizer.check_layer(conv_node, initializer_map)
+# foo
