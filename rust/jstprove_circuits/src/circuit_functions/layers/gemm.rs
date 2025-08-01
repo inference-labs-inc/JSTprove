@@ -26,10 +26,11 @@ use expander_compiler::frontend::*;
 /// ```ignore
 /// let dot_result = dot(api, vec![a1, a2], vec![b1, b2]);
 /// ```
+
 pub fn dot<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    vector_a: Vec<Variable>,
-    vector_b: Vec<Variable>,
+    vector_a: ArrayD<&Variable>,
+    vector_b: ArrayD<&Variable>,
 ) -> Variable {
     let mut row_col_product: Variable = api.constant(0);
     for k in 0..vector_a.len() {
@@ -76,7 +77,7 @@ pub fn matrix_addition<C: Config, Builder: RootAPI<C>>(
     if matrix_b.shape() != shape_a {
         if matrix_b.len() == matrix_a.len() {
             matrix_b = matrix_b
-                .into_shape(IxDyn(&shape_a))
+                .into_shape_with_order(IxDyn(&shape_a))
                 .expect("Reshape failed: bias shape is not compatible with input shape");
         } else {
             panic!(
