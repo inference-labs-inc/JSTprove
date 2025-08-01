@@ -510,5 +510,34 @@ def test_gemm_invalid_params(attr_name, attr_value, match):
 @pytest.mark.unit
 @pytest.mark.parametrize("transA, transB", [(0, 0), (0, 1), (1, 0), (1, 1)])
 def test_gemm_transpose_combinations_supported(transA, transB):
-    # same setup as above
-    # call check_layer and assert no exception
+    gemm_node = helper.make_node(
+        op_type="Gemm",
+        inputs=["input", "gemm_weight", "gemm_bias"],
+        outputs=["output"],
+        name=f"gemm_transA_{transA}_transB_{transB}",
+        alpha=1.0,
+        beta=1.0,
+        transA=transA,
+        transB=transB
+    )
+
+    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 256])
+    output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 128])
+
+    weight = from_array(np.random.randn(256, 128).astype(np.float32), name="gemm_weight")
+    bias = from_array(np.random.randn(128).astype(np.float32), name="gemm_bias")
+
+    graph = helper.make_graph(
+        nodes=[gemm_node],
+        name="gemm_graph",
+        inputs=[input_tensor],
+        outputs=[output_tensor],
+        initializer=[weight, bias]
+    )
+
+    model = helper.make_model(graph)
+    quantizer = ONNXOpQuantizer()
+    initializer_map = quantizer.get_initializer_map(model)
+
+    # Should not raise
+    quantizer.check_layer(gemm_node, initializer_map)
