@@ -461,3 +461,54 @@ def test_conv3d_should_raise_invalid_param_error():
 
     with pytest.raises(InvalidParamError, match="3D Conv is not currently supported"):
         quantizer.check_layer(conv_node, initializer_map)
+
+# WORK IN PROGRESS BELOW
+@pytest.mark.unit
+@pytest.mark.parametrize("attr_name, attr_value, match", [
+    ("alpha", 2.0, "alpha value of 2.0 not supported"),
+    ("beta", 0.0, "beta value of 0.0 not supported"),
+    ("transA", 3, "transA value of 3 not supported"),
+    ("transB", -1, "transB value of -1 not supported"),
+])
+def test_gemm_invalid_params(attr_name, attr_value, match):
+    attrs = {
+        "alpha": 1.0,
+        "beta": 1.0,
+        "transA": 0,
+        "transB": 0,
+    }
+    attrs[attr_name] = attr_value
+
+    gemm_node = helper.make_node(
+        op_type="Gemm",
+        inputs=["input", "gemm_weight", "gemm_bias"],
+        outputs=["output"],
+        name="gemm_invalid",
+        **attrs
+    )
+
+    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 256])
+    output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 128])
+    weight = from_array(np.random.randn(256, 128).astype(np.float32), name="gemm_weight")
+    bias = from_array(np.random.randn(128).astype(np.float32), name="gemm_bias")
+
+    graph = helper.make_graph(
+        nodes=[gemm_node],
+        name="gemm_graph",
+        inputs=[input_tensor],
+        outputs=[output_tensor],
+        initializer=[weight, bias]
+    )
+
+    model = helper.make_model(graph)
+    quantizer = ONNXOpQuantizer()
+    initializer_map = quantizer.get_initializer_map(model)
+
+    with pytest.raises(InvalidParamError, match=match):
+        quantizer.check_layer(gemm_node, initializer_map)
+
+@pytest.mark.unit
+@pytest.mark.parametrize("transA, transB", [(0, 0), (0, 1), (1, 0), (1, 1)])
+def test_gemm_transpose_combinations_supported(transA, transB):
+    # same setup as above
+    # call check_layer and assert no exception
