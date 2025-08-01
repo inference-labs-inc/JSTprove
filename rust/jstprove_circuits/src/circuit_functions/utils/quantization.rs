@@ -34,11 +34,13 @@
 
 // External crates
 use ethnum::U256;
+use ndarray::ArrayD;
+
+/// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
 // Internal modules
-use super::utils_core_math::{assert_is_bitstring_and_reconstruct, unconstrained_to_bits};
-use super::utils_helper::IntoTensor;
+use super::core_math::{assert_is_bitstring_and_reconstruct, unconstrained_to_bits};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STRUCT: RescalingContext
@@ -200,133 +202,35 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
     }
 }
 
+
 // ─────────────────────────────────────────────────────────────────────────────
-// FUNCTION: rescale_tensor
+// FUNCTION: rescale_array
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Applies the [`rescale`] function elementwise to an arbitrarily nested tensor of `Variable`s.
+/// Applies `rescale` elementwise to an `ArrayD<Variable>`, using provided scaling and shift exponents.
 ///
-/// This function supports tensors of any dimensionality (e.g., scalars, vectors, matrices, 4D arrays)
-/// by using the [`IntoTensor`] trait to recursively traverse and transform each `Variable`.
-/// A single [`RescalingContext`] is reused for all elements to avoid redundant constant lifting.
-///
-/// # Type Parameters
-/// - `C`: The circuit configuration implementing [`Config`].
-/// - `Builder`: The circuit builder implementing [`RootAPI<C>`].
-/// - `T`: A structure that implements [`IntoTensor`] (e.g., `Variable`, `Vec<Variable>`, etc.).
+/// Internally constructs a [`RescalingContext`] with the given exponents:
+/// - `scaling_exponent` κ such that α = 2^κ
+/// - `shift_exponent` s such that S = 2^s
 ///
 /// # Arguments
 /// - `api`: Mutable reference to the circuit builder.
-/// - `input_tensor`: The input tensor containing `Variable`s to be rescaled.
-/// - `context`: Precomputed [`RescalingContext`] containing constants for rescaling.
-/// - `apply_relu`: Whether to apply ReLU (i.e., output `max(0, q)`) to each element after rescaling.
+/// - `array`: A tensor (of any shape) of `Variable`s to rescale.
+/// - `scaling_exponent`: κ for scaling by 2^κ.
+/// - `shift_exponent`: s for shifting by 2^s.
+/// - `apply_relu`: Whether to apply ReLU after rescaling.
 ///
 /// # Returns
-/// A structure of the same shape as `input_tensor`, with each `Variable` rescaled via [`rescale`].
-///
-/// # Example
-/// ```ignore
-/// let context = RescalingContext::new(api, κ, s);
-/// let rescaled = rescale_tensor(api, input_tensor, &context, true);
-/// ```
-///
-/// See also: [`IntoTensor`], [`rescale`]
-pub fn rescale_tensor<C: Config, Builder: RootAPI<C>, T: IntoTensor>(
+/// An `ArrayD<Variable>` of the same shape with all values rescaled.
+pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    input_tensor: T,
-    context: &RescalingContext,
-    apply_relu: bool,
-) -> T::Output {
-    let mut f = |x| rescale(api, context, x, apply_relu);
-    input_tensor.map_elements(&mut f)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FUNCTION: rescale_2d_vector
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Applies [`rescale`] elementwise to a 2D matrix of variables.
-///
-/// A single [`RescalingContext`] is created and reused for all elements,
-/// improving performance in layer-wide operations like matrix multiplication.
-///
-/// # Arguments
-/// - `api`: The circuit builder.
-/// - `input_matrix`: A 2D vector of field elements to rescale.
-/// - `scaling_exponent`: κ, such that α = 2^κ.
-/// - `shift_exponent`: s, such that S = 2^s.
-/// - `apply_relu`: If `true`, apply ReLU to each output.
-///
-/// # Returns
-/// A 2D vector of rescaled field elements.
-pub fn rescale_2d_vector<C: Config, Builder: RootAPI<C>>(
-    api: &mut Builder,
-    input_matrix: Vec<Vec<Variable>>,
+    array: ArrayD<Variable>,
     scaling_exponent: usize,
     shift_exponent: usize,
     apply_relu: bool,
-) -> Vec<Vec<Variable>> {
+) -> ArrayD<Variable> {
     let context = RescalingContext::new(api, scaling_exponent, shift_exponent);
-    let mut output_matrix = Vec::with_capacity(input_matrix.len());
-
-    for row in input_matrix {
-        let mut output_row = Vec::with_capacity(row.len());
-        for &value in &row {
-            output_row.push(rescale(api, &context, value, apply_relu));
-        }
-        output_matrix.push(output_row);
-    }
-
-    output_matrix
+    array.map(|x| rescale(api, &context, *x, apply_relu))
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FUNCTION: rescale_4d_vector
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Applies [`rescale`] elementwise to a 4D tensor of variables.
-///
-/// A single [`RescalingContext`] is reused for all elements, enabling
-/// efficient rescaling in convolutional outputs with shape `[N][C][H][W]`
-/// or similar.
-///
-/// # Arguments
-/// - `api`: The circuit builder.
-/// - `input_tensor`: A 4D tensor of field elements to rescale.
-/// - `scaling_exponent`: κ, such that α = 2^κ.
-/// - `shift_exponent`: s, such that S = 2^s.
-/// - `apply_relu`: If `true`, apply ReLU to each output.
-///
-/// # Returns
-/// A 4D tensor of rescaled field elements.
-pub fn rescale_4d_vector<C: Config, Builder: RootAPI<C>>(
-    api: &mut Builder,
-    input_tensor: Vec<Vec<Vec<Vec<Variable>>>>,
-    scaling_exponent: usize,
-    shift_exponent: usize,
-    apply_relu: bool,
-) -> Vec<Vec<Vec<Vec<Variable>>>> {
-    let context = RescalingContext::new(api, scaling_exponent, shift_exponent);
-    let mut output_tensor = Vec::with_capacity(input_tensor.len());
-
-    for dim1 in input_tensor {
-        let mut dim1_out = Vec::with_capacity(dim1.len());
-        for dim2 in dim1 {
-            let mut dim2_out = Vec::with_capacity(dim2.len());
-            for dim3 in dim2 {
-                let mut dim3_out = Vec::with_capacity(dim3.len());
-                for &element in &dim3 {
-                    dim3_out.push(rescale(api, &context, element, apply_relu));
-                }
-                dim2_out.push(dim3_out);
-            }
-            dim1_out.push(dim2_out);
-        }
-        output_tensor.push(dim1_out);
-    }
-
-    output_tensor
-}
-
 
 

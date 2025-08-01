@@ -1,6 +1,14 @@
+/// External crate imports
 use ndarray::ArrayD;
+
+/// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
-use crate::circuit_functions::utils_core_math::{unconstrained_to_bits, assert_is_bitstring_and_reconstruct};
+
+/// Internal crate imports
+use crate::circuit_functions::utils::core_math::{
+    assert_is_bitstring_and_reconstruct,
+    unconstrained_to_bits,
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STRUCT: ReluContext

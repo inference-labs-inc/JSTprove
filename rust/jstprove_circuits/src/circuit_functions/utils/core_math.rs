@@ -1,3 +1,4 @@
+/// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
 // ─────────────────────────────────────────────────────────────────────────────
