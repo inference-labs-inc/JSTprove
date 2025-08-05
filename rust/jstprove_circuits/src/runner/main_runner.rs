@@ -5,7 +5,7 @@ use expander_compiler::circuit::layered::{Circuit, NormalInputType};
 // use expander_compiler::frontend::{extra::debug_eval, internal::DumpLoadTwoVariables, *};
 // use expander_compiler::utils::serde::Serde;
 use expander_compiler::frontend::{extra::debug_eval, internal::DumpLoadTwoVariables, *};
-use gkr_engine::{MPIConfig, MPIEngine, GKREngine, FieldEngine};
+use gkr_engine::{MPIConfig, GKREngine, FieldEngine};
 use peakmem_alloc::*;
 use serdes::ExpSerde;
 // use serde_json::{from_reader, to_writer};
@@ -15,6 +15,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use crate::io::io_reader;
+use expander_binary::executor;
 
 // use crate::io::io_reader;
 
@@ -85,7 +86,9 @@ where
   
     let mut expander_circuit = layered_circuit
         .export_to_expander_flatten();
-    let mpi_config = MPIConfig::prover_new();
+    // TODO explore other configs
+    let mpi_config = MPIConfig::prover_new(None, None);
+    
     let (simd_input, simd_public_input) = witness.to_simd();
     println!("{} {}", simd_input.len(), simd_public_input.len());
     expander_circuit.layers[0].input_vals = simd_input;
@@ -94,7 +97,7 @@ where
 
     // prove
     expander_circuit.evaluate();
-    let (claimed_v, proof) = gkr::executor::prove::<C>(&mut expander_circuit, mpi_config.clone());
+    let (claimed_v, proof) = executor::prove::<C>(&mut expander_circuit, mpi_config.clone());
 
     println!("Proven");
     println!(
@@ -113,7 +116,7 @@ where
     let start = Instant::now();
 
     // // verify
-    assert!(gkr::executor::verify::<C>(
+    assert!(executor::verify::<C>(
         &mut expander_circuit,
         mpi_config,
         &proof,
@@ -291,7 +294,7 @@ where
 
     let mut expander_circuit = layered_circuit.export_to_expander_flatten();
 
-    let mpi_config = MPIConfig::prover_new();
+    let mpi_config = MPIConfig::prover_new(None, None);
 
     let (simd_input, simd_public_input) = witness.to_simd();
     println!("{} {}", simd_input.len(), simd_public_input.len());
@@ -300,15 +303,15 @@ where
 
     // prove
     expander_circuit.evaluate();
-    let (claimed_v, proof) = gkr::executor::prove::<C>(&mut expander_circuit, mpi_config.clone());
+    let (claimed_v, proof) = executor::prove::<C>(&mut expander_circuit, mpi_config.clone());
 
 
-    let proof = gkr::executor::dump_proof_and_claimed_v(&proof, &claimed_v).map_err(|e| e.to_string()).unwrap();
+    let proof = executor::dump_proof_and_claimed_v(&proof, &claimed_v).map_err(|e| e.to_string()).unwrap();
 
 
-    // let proof = gkr::executor::dump_proof_and_claimed_v(&proof, &claimed_v).map_err(|e| e.to_string()).unwrap();
+    // let proof = executor::dump_proof_and_claimed_v(&proof, &claimed_v).map_err(|e| e.to_string()).unwrap();
 
-    let (proof, claimed_v) = match gkr::executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof) {
+    let (proof, claimed_v) = match executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof) {
         Ok((proof, claimed_v)) => (proof, claimed_v),
         Err(_) => {
             return;
@@ -316,7 +319,7 @@ where
     };
 
     // verify
-    assert!(gkr::executor::verify::<C>(
+    assert!(executor::verify::<C>(
         &mut expander_circuit,
         mpi_config,
         &proof,
@@ -458,7 +461,10 @@ where
 
     let mut expander_circuit = layered_circuit.export_to_expander_flatten();
 
-    let mpi_config = MPIConfig::prover_new();
+    let mpi_config = MPIConfig::prover_new(None, None);
+    // let universe = mpi::initialize().unwrap();
+    // let world = universe.world();
+    // let mpi_config = MPIConfig::prover_new(Some(&universe), Some(&world));
 
     let file = std::fs::File::open(witness_path).unwrap();
     let reader = std::io::BufReader::new(file);
@@ -471,9 +477,9 @@ where
 
     // prove
     expander_circuit.evaluate();
-    let (claimed_v, proof) = gkr::executor::prove::<C>(&mut expander_circuit, mpi_config.clone());
+    let (claimed_v, proof) = executor::prove::<C>(&mut expander_circuit, mpi_config.clone());
 
-    let proof: Vec<u8> = gkr::executor::dump_proof_and_claimed_v(&proof, &claimed_v).map_err(|e| e.to_string()).unwrap();
+    let proof: Vec<u8> = executor::dump_proof_and_claimed_v(&proof, &claimed_v).map_err(|e| e.to_string()).unwrap();
 
     let file = std::fs::File::create(proof_path).unwrap();
     let writer = std::io::BufWriter::new(file);
@@ -552,7 +558,7 @@ where
 
     let mut expander_circuit = layered_circuit.export_to_expander_flatten();
 
-    let mpi_config = MPIConfig::prover_new();
+    let mpi_config = MPIConfig::prover_new(None, None);
 
     let (simd_input, simd_public_input) = witness.to_simd();
     println!("{} {}", simd_input.len(), simd_public_input.len());
@@ -561,9 +567,9 @@ where
 
     // prove
     expander_circuit.evaluate();
-    let (claimed_v, proof) = gkr::executor::prove::<C>(&mut expander_circuit, mpi_config.clone());
+    let (claimed_v, proof) = executor::prove::<C>(&mut expander_circuit, mpi_config.clone());
 
-    let proof: Vec<u8> = gkr::executor::dump_proof_and_claimed_v(&proof, &claimed_v).map_err(|e| e.to_string()).unwrap();
+    let proof: Vec<u8> = executor::dump_proof_and_claimed_v(&proof, &claimed_v).map_err(|e| e.to_string()).unwrap();
 
     let file = std::fs::File::create(format!("{}_proof.bin", io_reader.get_path())).unwrap();
     let writer = std::io::BufWriter::new(file);
@@ -599,7 +605,7 @@ where
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
 
-    let mpi_config = MPIConfig::prover_new();
+    let mpi_config = MPIConfig::prover_new(None, None);
 
 
     let file = std::fs::File::open(format!("{}_circuit.txt", name)).unwrap();
@@ -626,14 +632,14 @@ where
 
 
 
-    let (proof, claimed_v) = match gkr::executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v) {
+    let (proof, claimed_v) = match executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v) {
         Ok((proof, claimed_v)) => (proof, claimed_v),
         Err(_) => {
             return;
         }
     };
     // verify
-    assert!(gkr::executor::verify::<C>(
+    assert!(executor::verify::<C>(
         &mut expander_circuit,
         mpi_config,
         &proof,
@@ -665,7 +671,8 @@ where
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
 
-    let mpi_config = MPIConfig::prover_new();
+    // let mpi_config = MPIConfig::prover_new(None, None);
+    let mpi_config = gkr_engine::MPIConfig::verifier_new(1);
 
     // let file = std::fs::File::open(format!("{}_circuit.txt", name)).unwrap();
     let file = std::fs::File::open(circuit_path).unwrap();
@@ -717,14 +724,14 @@ where
 
 
 
-    let (proof, claimed_v) = match gkr::executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v) {
+    let (proof, claimed_v) = match executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v) {
         Ok((proof, claimed_v)) => (proof, claimed_v),
         Err(_) => {
             return;
         }
     };
     // verify
-    assert!(gkr::executor::verify::<C>(
+    assert!(executor::verify::<C>(
         &mut expander_circuit,
         mpi_config,
         &proof,
@@ -755,7 +762,9 @@ where
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
 
-    let mpi_config = MPIConfig::prover_new();
+    // TODO explore other configs
+    // let mpi_config = MPIConfig::prover_new(None, None);
+    let mpi_config = gkr_engine::MPIConfig::verifier_new(1);
 
 
     let file = std::fs::File::open(format!("{}_circuit.txt", name)).unwrap();
@@ -778,7 +787,7 @@ where
     let proof_and_claimed_v: Vec<u8> = Vec::deserialize_from(reader).unwrap();
     // let proof_and_claimed_v: Vec<u8> = from_reader(reader).unwrap();
 
-    let (proof, claimed_v) = match gkr::executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v) {
+    let (proof, claimed_v) = match executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v) {
         Ok((proof, claimed_v)) => (proof, claimed_v),
         Err(_) => {
             return;
@@ -786,7 +795,7 @@ where
     };
 
     // verify
-    assert!(gkr::executor::verify::<C>(
+    assert!(executor::verify::<C>(
         &mut expander_circuit,
         mpi_config,
         &proof,

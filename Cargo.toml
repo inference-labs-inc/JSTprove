@@ -24,6 +24,7 @@ arith = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
 expander_circuit = { git = "https://github.com/PolyhedraZK/Expander", branch = "main", package = "circuit" }
 gkr = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
 gf2 = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
+expander_binary = { git = "https://github.com/PolyhedraZK/Expander", branch = "main", package = "bin" }
 mersenne31 = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
 expander_transcript = { git = "https://github.com/PolyhedraZK/Expander", branch = "main", package = "transcript" }
 crosslayer_prototype = { git = "https://github.com/PolyhedraZK/Expander", branch = "main"}
@@ -34,6 +35,7 @@ gkr_engine = { git = "https://github.com/PolyhedraZK/Expander", branch = "main",
 gkr_hashers = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
 goldilocks = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
 serdes = { git = "https://github.com/PolyhedraZK/Expander", branch = "main"}
+mpi = "0.8.0"
 
 # ndarray = "0.16.1"
 
