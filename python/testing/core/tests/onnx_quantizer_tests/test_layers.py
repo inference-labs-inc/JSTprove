@@ -5,6 +5,7 @@ import numpy as np
 from onnx import helper, numpy_helper, TensorProto
 from typing import Dict, List, Any, Optional, Tuple
 from unittest.mock import Mock, MagicMock
+import copy
 
 # Import your classes (adjust imports as needed)
 from python.testing.core.utils.onnx_quantizer.onnx_op_quantizer import ONNXOpQuantizer
@@ -541,3 +542,103 @@ def test_gemm_transpose_combinations_supported(transA, transB):
 
     # Should not raise
     quantizer.check_layer(gemm_node, initializer_map)
+
+@pytest.mark.unit
+def test_maxpool2d_supported_config_passes():
+    node = helper.make_node(
+        op_type="MaxPool",
+        inputs=["input"],
+        outputs=["output"],
+        name="maxpool_valid",
+        kernel_shape=[2, 2],
+        strides=[2, 2],
+        dilations=[1, 1],
+        pads=[0, 0, 0, 0],
+    )
+
+    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 3, 32, 32])
+    output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 3, 16, 16])
+
+    graph = helper.make_graph(
+        nodes=[node],
+        name="maxpool_test_graph",
+        inputs=[input_tensor],
+        outputs=[output_tensor],
+    )
+
+    model = helper.make_model(graph)
+    quantizer = ONNXOpQuantizer()
+    initializer_map = quantizer.get_initializer_map(model)
+
+    # Should NOT raise
+    quantizer.check_layer(node, initializer_map)
+
+
+@pytest.mark.unit
+def test_maxpool3d_should_raise_invalid_param_error():
+    node = helper.make_node(
+        op_type="MaxPool",
+        inputs=["input"],
+        outputs=["output"],
+        name="maxpool_3d",
+        kernel_shape=[2, 2, 2],
+        strides=[2, 2, 2],
+        dilations=[1, 1, 1],
+        pads=[0, 0, 0, 0, 0, 0],
+    )
+
+    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 3, 16, 32, 32])
+    output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 3, 8, 16, 16])
+
+    graph = helper.make_graph(
+        nodes=[node],
+        name="maxpool_test_graph",
+        inputs=[input_tensor],
+        outputs=[output_tensor],
+    )
+
+    model = helper.make_model(graph)
+    quantizer = ONNXOpQuantizer()
+    initializer_map = quantizer.get_initializer_map(model)
+
+    with pytest.raises(InvalidParamError, match="only maxpool2d.*Found 3D"):
+        quantizer.check_layer(node, initializer_map)
+
+@pytest.mark.unit
+@pytest.mark.parametrize("missing_attr", ["strides", "kernel_shape", "dilations", "pads"])
+def test_maxpool_missing_required_attrs(missing_attr):
+    full_attrs = {
+        "kernel_shape": [2, 2],
+        "strides": [2, 2],
+        "dilations": [1, 1],
+        "pads": [0, 0, 0, 0],
+    }
+
+    attrs = copy.deepcopy(full_attrs)
+    attrs.pop(missing_attr)
+
+    node = helper.make_node(
+        op_type="MaxPool",
+        inputs=["input"],
+        outputs=["output"],
+        name=f"maxpool_missing_{missing_attr}",
+        **attrs
+    )
+
+    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 3, 32, 32])
+    output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 3, 16, 16])
+
+    graph = helper.make_graph(
+        nodes=[node],
+        name="maxpool_missing_attr_graph",
+        inputs=[input_tensor],
+        outputs=[output_tensor],
+    )
+
+    model = helper.make_model(graph)
+    quantizer = ONNXOpQuantizer()
+    initializer_map = quantizer.get_initializer_map(model)
+
+    with pytest.raises(InvalidParamError, match=missing_attr):
+        quantizer.check_layer(node, initializer_map)
+
