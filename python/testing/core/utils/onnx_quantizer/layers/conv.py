@@ -3,7 +3,7 @@ import onnx
 from onnx import helper, numpy_helper
 from typing import Callable, Dict, List, Optional, Union
 
-from python.testing.core.utils.onnx_helpers import create_quantized_initializer, extract_attributes, replace_input_references
+from python.testing.core.utils.onnx_helpers import create_quantized_initializer, extract_attributes, replace_input_references, get_attribute_ints
 from onnx.numpy_helper import to_array, from_array
 
 from python.testing.core.utils.onnx_quantizer.exceptions import InvalidParamError
@@ -67,6 +67,7 @@ class ConvQuantizer(BaseOpQuantizer):
         
         self.check_supported_shape(node, initializer_map)
         self.check_all_params_exist(node)
+        self.check_params_size(node)
 
     def check_all_params_exist(self, node: onnx.NodeProto):
         strides = next((attr.f for attr in node.attribute if attr.name == "strides"), "N/A")
@@ -83,9 +84,24 @@ class ConvQuantizer(BaseOpQuantizer):
             raise InvalidParamError(node.name, node.op_type, f"Missing dilations parameter", "dilations")
         if pads == "N/A":
             raise InvalidParamError(node.name, node.op_type, f"Missing pads parameter", "pads")
+        
+    def check_params_size(self, node: onnx.NodeProto):
+        strides = get_attribute_ints(node, "strides", default=[])
+        kernel_shape = get_attribute_ints(node, "kernel_shape", default=[])
+        dilations = get_attribute_ints(node, "dilations", default=[])
+        pads = get_attribute_ints(node, "pads", default=[])
 
+        if len(kernel_shape) != 2:
+            raise InvalidParamError(node.name, node.op_type, f"Expected 2D Conv. Got {len(kernel_shape)}D kernel_shape")
 
+        if len(strides) != 2:
+            raise InvalidParamError(node.name, node.op_type, f"Expected 2 strides for 2D, got {len(strides)}")
 
+        if len(dilations) != 2:
+            raise InvalidParamError(node.name, node.op_type, f"Expected 2 dilations for 2D, got {len(dilations)}")
+
+        if len(pads) != 4:
+            raise InvalidParamError(node.name, node.op_type, f"Expected 4 pads for 2D, got {len(pads)}")
 
     
     def check_supported_shape(self, node: onnx.NodeProto, initializer_map: dict[str, onnx.TensorProto]):
