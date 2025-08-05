@@ -383,8 +383,6 @@ class TestONNXOpQuantizer:
             result = quantizer.quantize(node, rescale, mock_graph, scale, scale_base, initializer_map)
             assert result is not None, f"Quantization failed for {node.op_type} in combination {layer_combination}"
 
-
-
 class TestScalability:
     """Tests (meta) to verify the framework scales with new layers"""
     
@@ -423,6 +421,10 @@ class TestScalability:
             assert isinstance(config.valid_inputs, list), "Quantization test config is not supported yet for {} and must be implemented"
             assert isinstance(config.valid_attributes, dict), "Quantization test config is not supported yet for {} and must be implemented"
             assert isinstance(config.required_initializers, dict), "Quantization test config is not supported yet for {} and must be implemented"
+
+# WORK IN PROGRESS BELOW
+
+# CONVOLUTION
 
 @pytest.mark.unit
 def test_conv3d_should_raise_invalid_param_error():
@@ -463,42 +465,94 @@ def test_conv3d_should_raise_invalid_param_error():
     with pytest.raises(InvalidParamError, match="3D Conv is not currently supported"):
         quantizer.check_layer(conv_node, initializer_map)
 
-# WORK IN PROGRESS BELOW
 @pytest.mark.unit
-@pytest.mark.parametrize("attr_name, attr_value, match", [
-    ("alpha", 2.0, "alpha value of 2.0 not supported"),
-    ("beta", 0.0, "beta value of 0.0 not supported"),
-    ("transA", 3, "transA value of 3 not supported"),
-    ("transB", -1, "transB value of -1 not supported"),
-])
-def test_gemm_invalid_params(attr_name, attr_value, match):
-    attrs = {
-        "alpha": 1.0,
-        "beta": 1.0,
-        "transA": 0,
-        "transB": 0,
+@pytest.mark.parametrize("missing_attr", ["strides", "kernel_shape", "dilations", "pads"])
+def test_conv_missing_required_attrs(missing_attr):
+    full_attrs = {
+        "kernel_shape": [3, 3],
+        "strides": [1, 1],
+        "dilations": [1, 1],
+        "pads": [1, 1, 1, 1],
     }
-    attrs[attr_name] = attr_value
 
-    gemm_node = helper.make_node(
-        op_type="Gemm",
-        inputs=["input", "gemm_weight", "gemm_bias"],
+    attrs = full_attrs.copy()
+    attrs.pop(missing_attr)
+
+    conv_node = helper.make_node(
+        op_type="Conv",
+        inputs=["input", "conv_weight", "conv_bias"],
         outputs=["output"],
-        name="gemm_invalid",
+        name=f"conv_missing_{missing_attr}",
         **attrs
     )
 
-    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 256])
-    output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 128])
-    weight = from_array(np.random.randn(256, 128).astype(np.float32), name="gemm_weight")
-    bias = from_array(np.random.randn(128).astype(np.float32), name="gemm_bias")
+    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 16, 224, 224])
+    output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 32, 224, 224])
+    weight = from_array(np.random.randn(32, 16, 3, 3).astype(np.float32), name="conv_weight")
+    bias = from_array(np.random.randn(32).astype(np.float32), name="conv_bias")
 
     graph = helper.make_graph(
-        nodes=[gemm_node],
-        name="gemm_graph",
+        nodes=[conv_node],
+        name="conv_missing_attr_graph",
         inputs=[input_tensor],
         outputs=[output_tensor],
-        initializer=[weight, bias]
+        initializer=[weight, bias],
+    )
+
+    model = helper.make_model(graph)
+    quantizer = ONNXOpQuantizer()
+    initializer_map = quantizer.get_initializer_map(model)
+
+    with pytest.raises(InvalidParamError, match=missing_attr):
+        quantizer.check_layer(conv_node, initializer_map)
+
+@pytest.mark.unit
+@pytest.mark.parametrize("bad_attr, bad_value, match", [
+    # Pads should have 4 values for 2D: [top, left, bottom, right]
+    ("pads", [1, 1], "pads"),
+    ("pads", [1, 1, 1], "pads"),
+    ("pads", [1, 1, 1, 1, 1], "pads"),
+
+    # Strides should have 2 values for 2D: [stride_h, stride_w]
+    ("strides", [1], "strides"),
+    ("strides", [1, 1, 1], "strides"),
+
+    # Dilations should have 2 values
+    ("dilations", [1], "dilations"),
+    ("dilations", [1, 1, 1], "dilations"),
+
+    # Kernel shape should have 2 values for 2D
+    ("kernel_shape", [3], "kernel_shape"),
+    ("kernel_shape", [3, 3, 3], "kernel_shape"),
+])
+def test_conv_invalid_param_lengths(bad_attr, bad_value, match):
+    attrs = {
+        "kernel_shape": [3, 3],
+        "pads": [1, 1, 1, 1],
+        "strides": [1, 1],
+        "dilations": [1, 1],
+    }
+    attrs[bad_attr] = bad_value
+
+    conv_node = helper.make_node(
+        op_type="Conv",
+        inputs=["input", "conv_weight", "conv_bias"],
+        outputs=["output"],
+        name=f"conv_bad_{bad_attr}",
+        **attrs
+    )
+
+    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 16, 224, 224])
+    output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 32, 224, 224])
+    weight = from_array(np.random.randn(32, 16, 3, 3).astype(np.float32), name="conv_weight")
+    bias = from_array(np.random.randn(32).astype(np.float32), name="conv_bias")
+
+    graph = helper.make_graph(
+        nodes=[conv_node],
+        name="conv_bad_attr_graph",
+        inputs=[input_tensor],
+        outputs=[output_tensor],
+        initializer=[weight, bias],
     )
 
     model = helper.make_model(graph)
@@ -506,42 +560,9 @@ def test_gemm_invalid_params(attr_name, attr_value, match):
     initializer_map = quantizer.get_initializer_map(model)
 
     with pytest.raises(InvalidParamError, match=match):
-        quantizer.check_layer(gemm_node, initializer_map)
-
-@pytest.mark.unit
-@pytest.mark.parametrize("transA, transB", [(0, 0), (0, 1), (1, 0), (1, 1)])
-def test_gemm_transpose_combinations_supported(transA, transB):
-    gemm_node = helper.make_node(
-        op_type="Gemm",
-        inputs=["input", "gemm_weight", "gemm_bias"],
-        outputs=["output"],
-        name=f"gemm_transA_{transA}_transB_{transB}",
-        alpha=1.0,
-        beta=1.0,
-        transA=transA,
-        transB=transB
-    )
-
-    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 256])
-    output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 128])
-
-    weight = from_array(np.random.randn(256, 128).astype(np.float32), name="gemm_weight")
-    bias = from_array(np.random.randn(128).astype(np.float32), name="gemm_bias")
-
-    graph = helper.make_graph(
-        nodes=[gemm_node],
-        name="gemm_graph",
-        inputs=[input_tensor],
-        outputs=[output_tensor],
-        initializer=[weight, bias]
-    )
-
-    model = helper.make_model(graph)
-    quantizer = ONNXOpQuantizer()
-    initializer_map = quantizer.get_initializer_map(model)
-
-    # Should not raise
-    quantizer.check_layer(gemm_node, initializer_map)
+        quantizer.check_layer(conv_node, initializer_map)
+        
+# MAXPOOL
 
 @pytest.mark.unit
 def test_maxpool2d_supported_config_passes():
@@ -641,3 +662,84 @@ def test_maxpool_missing_required_attrs(missing_attr):
 
     with pytest.raises(InvalidParamError, match=missing_attr):
         quantizer.check_layer(node, initializer_map)
+
+# GEMM   
+
+@pytest.mark.unit
+@pytest.mark.parametrize("attr_name, attr_value, match", [
+    ("alpha", 2.0, "alpha value of 2.0 not supported"),
+    ("beta", 0.0, "beta value of 0.0 not supported"),
+    ("transA", 3, "transA value of 3 not supported"),
+    ("transB", -1, "transB value of -1 not supported"),
+])
+def test_gemm_invalid_params(attr_name, attr_value, match):
+    attrs = {
+        "alpha": 1.0,
+        "beta": 1.0,
+        "transA": 0,
+        "transB": 0,
+    }
+    attrs[attr_name] = attr_value
+
+    gemm_node = helper.make_node(
+        op_type="Gemm",
+        inputs=["input", "gemm_weight", "gemm_bias"],
+        outputs=["output"],
+        name="gemm_invalid",
+        **attrs
+    )
+
+    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 256])
+    output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 128])
+    weight = from_array(np.random.randn(256, 128).astype(np.float32), name="gemm_weight")
+    bias = from_array(np.random.randn(128).astype(np.float32), name="gemm_bias")
+
+    graph = helper.make_graph(
+        nodes=[gemm_node],
+        name="gemm_graph",
+        inputs=[input_tensor],
+        outputs=[output_tensor],
+        initializer=[weight, bias]
+    )
+
+    model = helper.make_model(graph)
+    quantizer = ONNXOpQuantizer()
+    initializer_map = quantizer.get_initializer_map(model)
+
+    with pytest.raises(InvalidParamError, match=match):
+        quantizer.check_layer(gemm_node, initializer_map)
+
+@pytest.mark.unit
+@pytest.mark.parametrize("transA, transB", [(0, 0), (0, 1), (1, 0), (1, 1)])
+def test_gemm_transpose_combinations_supported(transA, transB):
+    gemm_node = helper.make_node(
+        op_type="Gemm",
+        inputs=["input", "gemm_weight", "gemm_bias"],
+        outputs=["output"],
+        name=f"gemm_transA_{transA}_transB_{transB}",
+        alpha=1.0,
+        beta=1.0,
+        transA=transA,
+        transB=transB
+    )
+
+    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 256])
+    output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 128])
+
+    weight = from_array(np.random.randn(256, 128).astype(np.float32), name="gemm_weight")
+    bias = from_array(np.random.randn(128).astype(np.float32), name="gemm_bias")
+
+    graph = helper.make_graph(
+        nodes=[gemm_node],
+        name="gemm_graph",
+        inputs=[input_tensor],
+        outputs=[output_tensor],
+        initializer=[weight, bias]
+    )
+
+    model = helper.make_model(graph)
+    quantizer = ONNXOpQuantizer()
+    initializer_map = quantizer.get_initializer_map(model)
+
+    # Should not raise
+    quantizer.check_layer(gemm_node, initializer_map)
