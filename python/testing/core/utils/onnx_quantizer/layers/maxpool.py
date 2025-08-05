@@ -62,3 +62,12 @@ class MaxpoolQuantizer(BaseOpQuantizer):
 
         if len(kernel_shape) != 2:
             raise InvalidParamError(node.name, node.op_type, f"Currently only maxpool2d is supported. Found {len(kernel_shape)}D")
+        
+        if len(strides) != 2:
+            raise InvalidParamError(node.name, node.op_type, f"Expected 2 strides for 2D, got {len(strides)}")
+
+        if len(dilations) != 2:
+            raise InvalidParamError(node.name, node.op_type, f"Expected 2 dilations for 2D, got {len(dilations)}")
+
+        if len(pads) != 4:
+            raise InvalidParamError(node.name, node.op_type, f"Expected 4 pads for 2D, got {len(pads)}")

@@ -561,7 +561,7 @@ def test_conv_invalid_param_lengths(bad_attr, bad_value, match):
 
     with pytest.raises(InvalidParamError, match=match):
         quantizer.check_layer(conv_node, initializer_map)
-        
+
 # MAXPOOL
 
 @pytest.mark.unit
@@ -661,6 +661,55 @@ def test_maxpool_missing_required_attrs(missing_attr):
     initializer_map = quantizer.get_initializer_map(model)
 
     with pytest.raises(InvalidParamError, match=missing_attr):
+        quantizer.check_layer(node, initializer_map)
+
+@pytest.mark.unit
+@pytest.mark.parametrize("attr_name, bad_value, match", [
+    ("pads", [0, 0], "pads"),
+    ("pads", [0, 0, 0], "pads"),
+    ("pads", [0, 0, 0, 0, 0], "pads"),
+
+    ("strides", [1], "strides"),
+    ("strides", [1, 1, 1], "strides"),
+
+    ("dilations", [1], "dilations"),
+    ("dilations", [1, 1, 1], "dilations"),
+
+    ("kernel_shape", [2], "kernel_shape"),
+    ("kernel_shape", [2, 2, 2], "kernel_shape"),
+])
+def test_maxpool_invalid_param_lengths(attr_name, bad_value, match):
+    attrs = {
+        "kernel_shape": [2, 2],
+        "strides": [2, 2],
+        "dilations": [1, 1],
+        "pads": [0, 0, 0, 0],
+    }
+    attrs[attr_name] = bad_value
+
+    node = helper.make_node(
+        "MaxPool",
+        inputs=["input"],
+        outputs=["output"],
+        name=f"maxpool_bad_{attr_name}",
+        **attrs
+    )
+
+    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 3, 32, 32])
+    output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 3, 16, 16])
+
+    graph = helper.make_graph(
+        nodes=[node],
+        name="maxpool_test_graph",
+        inputs=[input_tensor],
+        outputs=[output_tensor],
+    )
+
+    model = helper.make_model(graph)
+    quantizer = ONNXOpQuantizer()
+    initializer_map = quantizer.get_initializer_map(model)
+
+    with pytest.raises(InvalidParamError, match=match):
         quantizer.check_layer(node, initializer_map)
 
 # GEMM   
