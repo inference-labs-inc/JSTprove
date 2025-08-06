@@ -142,10 +142,6 @@ class TestSpecBuilder:
         self._spec.error_match = match
         return self
     
-    # def validator(self, func: Callable) -> 'TestSpecBuilder':
-    #     self._spec.custom_validator = func
-    #     return self
-    
     def tags(self, *tags: str) -> 'TestSpecBuilder':
         self._spec.tags.extend(tags)
         return self

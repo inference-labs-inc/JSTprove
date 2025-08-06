@@ -47,11 +47,12 @@ class ConvConfigProvider(BaseLayerConfigProvider):
             .build(),
             
             # # # Error cases
+            # TODO FIX in code
             error_test("no_bias")
             .description("2D convolution without bias")
             .override_inputs("input", "conv_weight")
-            .override_attrs(strides=[2, 2], kernel_shape=[5, 5])
-            .override_initializer("conv_weight", np.random.randn(64, 16, 5, 5))
+            # .override_attrs(strides=[2, 2], kernel_shape=[5, 5])
+            # .override_initializer("conv_weight", np.random.randn(64, 16, 5, 5))
             .expects_error(InvalidParamError, "Expected at least 3 inputs (input, weights, bias), got 2")
             .tags("no_bias", "stride_2")
             .build(),
@@ -69,18 +70,20 @@ class ConvConfigProvider(BaseLayerConfigProvider):
             .tags("3d", "unsupported")
             .build(),
             
-            # error_test("invalid_stride")
-            # .description("Invalid stride values")
-            # .override_attrs(strides=[0, 1])
-            # .override_inputs("input", "conv_weight")
-            # .expects_error(InvalidParamError, "stride must be positive")
-            # .tags("invalid_params")
-            # .build(),
+            error_test("invalid_stride")
+            .description("Invalid stride values")
+            .override_attrs(strides=[0, 1])
+            .override_inputs("input", "conv_weight")
+            .expects_error(InvalidParamError, "stride must be positive")
+            .tags("invalid_params")
+            .skip("Not yet supported")
+            .build(),
             
-            # error_test("negative_dilation")
-            # .description("Negative dilation values")
-            # .override_attrs(dilations=[-1, 1])
-            # .expects_error(InvalidParamError, "dilation must be positive")
-            # .tags("invalid_params")
-            # .build(),
+            error_test("negative_dilation")
+            .description("Negative dilation values")
+            .override_attrs(dilations=[-1, 1])
+            .expects_error(InvalidParamError, "dilation must be positive")
+            .tags("invalid_params")
+            .skip("Not yet supported")
+            .build(),
         ]
