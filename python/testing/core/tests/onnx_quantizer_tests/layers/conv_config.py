@@ -55,6 +55,7 @@ class ConvConfigProvider(BaseLayerConfigProvider):
             .expects_error(InvalidParamError, "Expected at least 3 inputs (input, weights, bias), got 2")
             .tags("no_bias", "stride_2")
             .build(),
+            
             error_test("conv3d_unsupported")
             .description("3D convolution should raise error")
             .override_attrs(

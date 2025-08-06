@@ -50,6 +50,7 @@ class LayerTestConfig:
 
 class TestONNXOpQuantizer:
     """Generic unit tests for ONNX Op Quantizer"""
+    _validation_failed_cases = set()
     
     @pytest.fixture
     def quantizer(self):
@@ -60,6 +61,47 @@ class TestONNXOpQuantizer:
     def layer_configs(self):
         """Get all layer configurations"""
         return TestLayerFactory.get_layer_configs()
+    
+    def _validate_onnx_model(self, model: onnx.ModelProto, test_case_name: str) -> None:
+        """
+        Validate ONNX model using onnx.checker.check_model().
+        Skip test if model is invalid.
+        
+        Args:
+            model: ONNX model to validate
+            test_case_name: Name of the test case for error reporting
+            
+        Raises:
+            pytest.skip: If model validation fails
+        """
+        try:
+            onnx.checker.check_model(model)
+        except onnx.checker.ValidationError as e:
+            error_msg = (
+                f"ONNX model validation failed for {test_case_name}. "
+                f"Model structure is invalid: {str(e)}"
+            )
+            print(error_msg)
+            pytest.skip(error_msg)
+            # assert False, f"ERROR with model: {error_msg}"
+        except Exception as e:
+            error_msg = (
+                f"Unexpected error during ONNX model validation for {test_case_name}: "
+                f"{type(e).__name__}: {str(e)}"
+            )
+            pytest.skip(error_msg)
+
+    @classmethod
+    def _check_validation_dependency(cls, test_case_data):
+        """Check if validation failed for this test case and skip if so"""
+        layer_name, config, test_spec = test_case_data
+        test_case_id = f"{layer_name}_{test_spec.name}"
+        
+        if test_case_id in cls._validation_failed_cases:
+            pytest.skip(f"Skipping because ONNX validation failed for {layer_name}.{test_spec.name}")
+    
+    
+
 
     @staticmethod
     def _generate_test_id(test_case_tuple):
@@ -105,6 +147,42 @@ class TestONNXOpQuantizer:
         )
         
         return helper.make_model(graph)
+    
+    # ===== VAlIDATE MODEL =======
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "test_case_data", 
+        TestLayerFactory.get_all_test_cases(),
+        ids=_generate_test_id.__func__
+    )
+    def test_factory_models_pass_onnx_validation(self, test_case_data):
+        """Test that all factory-created models pass ONNX validation"""
+        layer_name, config, test_spec = test_case_data
+        test_case_id = f"{layer_name}_{test_spec.name}"
+        
+        if test_spec.skip_reason:
+            pytest.skip(test_spec.skip_reason)
+            
+        model = config.create_test_model(test_spec)
+        test_case_name = f"{layer_name}.{test_spec.name}"
+        
+        try:
+            onnx.checker.check_model(model)
+        except onnx.checker.ValidationError as e:
+            # Mark this test case as failed for other tests to check
+            self._validation_failed_cases.add(test_case_id)
+            pytest.fail(
+                f"ONNX model validation failed for {test_case_name}. "
+                f"Model structure is invalid: {str(e)}"
+            )
+        except Exception as e:
+            # Mark this test case as failed for other tests to check
+            self._validation_failed_cases.add(test_case_id)
+            pytest.fail(
+                f"Unexpected error during ONNX model validation for {test_case_name}: "
+                f"{type(e).__name__}: {str(e)}"
+            )
 
     # ===== CHECK_MODEL TESTS =====
     @pytest.mark.unit
@@ -116,6 +194,8 @@ class TestONNXOpQuantizer:
     def test_check_model_individual_valid_cases(self, quantizer, test_case_data):
         """Test each individual valid test case"""
         layer_name, config, test_spec = test_case_data
+
+        self._check_validation_dependency(test_case_data)
         
         if test_spec.skip_reason:
             pytest.skip(test_spec.skip_reason)
@@ -126,6 +206,7 @@ class TestONNXOpQuantizer:
             quantizer.check_model(model)
         except (InvalidParamError, UnsupportedOpError) as e:
             pytest.fail(f"Model check failed for {layer_name}.{test_spec.name}: {e}")
+
     @pytest.mark.unit
     def test_check_model_unsupported_layer_fails(self, quantizer):
         """Test that models with unsupported layers fail validation"""
@@ -173,6 +254,8 @@ class TestONNXOpQuantizer:
     def test_quantize_individual_valid_cases(self, quantizer, test_case_data):
         """Test quantization for each individual valid test case"""
         layer_name, config, test_spec = test_case_data
+
+        self._check_validation_dependency(test_case_data)
         
         # if test_spec.skip_reason:
         #     pytest.skip(test_spec.skip_reason)
@@ -211,6 +294,8 @@ class TestONNXOpQuantizer:
     def test_quantize_preserves_node_names(self, quantizer, test_case_data):
         """Test quantization for each individual valid test case"""
         layer_name, config, test_spec = test_case_data
+
+        self._check_validation_dependency(test_case_data)
         
         # if test_spec.skip_reason:
         #     pytest.skip(test_spec.skip_reason)
@@ -262,6 +347,8 @@ class TestONNXOpQuantizer:
     def test_quantize_with_different_scales(self, quantizer, test_case_data, scale_params):
         """Test quantization for each individual valid test case"""
         layer_name, config, test_spec = test_case_data
+
+        self._check_validation_dependency(test_case_data)
         
         # if test_spec.skip_reason:
         #     pytest.skip(test_spec.skip_reason)
@@ -293,6 +380,8 @@ class TestONNXOpQuantizer:
     def test_quantize_with_different_scales(self, quantizer, test_case_data, rescale):
         """Test quantization for each individual valid test case"""
         layer_name, config, test_spec = test_case_data
+
+        self._check_validation_dependency(test_case_data)
         
         # if test_spec.skip_reason:
         #     pytest.skip(test_spec.skip_reason)
@@ -367,6 +456,8 @@ class TestONNXOpQuantizer:
     def test_check_model_individual_error_cases(self, quantizer, test_case_data):
         """Test each individual error test case"""
         layer_name, config, test_spec = test_case_data
+
+        self._check_validation_dependency(test_case_data)
         
         if test_spec.skip_reason:
             pytest.skip(test_spec.skip_reason)

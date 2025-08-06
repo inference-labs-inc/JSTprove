@@ -15,7 +15,7 @@ class MaxPoolConfigProvider(BaseLayerConfigProvider):
             valid_attributes={
                 "kernel_shape": [2, 2],
                 "strides": [2, 2],
-                "dilations": 1,
+                "dilations": [1],
                 "pads": [0,0],
             },
             required_initializers={}
