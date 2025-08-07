@@ -70,20 +70,19 @@ class ConvQuantizer(BaseOpQuantizer):
         self.check_params_size(node)
 
     def check_all_params_exist(self, node: onnx.NodeProto):
-        strides = next((attr.f for attr in node.attribute if attr.name == "strides"), "N/A")
-        kernel_shape = next((attr.f for attr in node.attribute if attr.name == "kernel_shape"), "N/A")
-        dilations = next((attr.f for attr in node.attribute if attr.name == "dilations"), "N/A")
-        pads = next((attr.f for attr in node.attribute if attr.name == "pads"), "N/A")
-        
+        strides = get_attribute_ints(node, "strides", default="N/A")
+        kernel_shape = get_attribute_ints(node, "kernel_shape", default="N/A")
+        dilations = get_attribute_ints(node, "dilations", default="N/A")
+        pads = get_attribute_ints(node, "pads", default="N/A")
 
         if strides == "N/A":
-            raise InvalidParamError(node.name, node.op_type, f"Missing strides parameter", "strides")
+            raise InvalidParamError(node.name, node.op_type, "Missing strides parameter", "strides")
         if kernel_shape == "N/A":
-            raise InvalidParamError(node.name, node.op_type, f"Missing kernel_shape parameter", "kernel_shape")
+            raise InvalidParamError(node.name, node.op_type, "Missing kernel_shape parameter", "kernel_shape")
         if dilations == "N/A":
-            raise InvalidParamError(node.name, node.op_type, f"Missing dilations parameter", "dilations")
+            raise InvalidParamError(node.name, node.op_type, "Missing dilations parameter", "dilations")
         if pads == "N/A":
-            raise InvalidParamError(node.name, node.op_type, f"Missing pads parameter", "pads")
+            raise InvalidParamError(node.name, node.op_type, "Missing pads parameter", "pads")
         
     def check_params_size(self, node: onnx.NodeProto):
         strides = get_attribute_ints(node, "strides", default=[])
