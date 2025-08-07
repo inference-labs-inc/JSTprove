@@ -84,6 +84,8 @@ class ConvQuantizer(BaseOpQuantizer):
         if pads == "N/A":
             raise InvalidParamError(node.name, node.op_type, "Missing pads parameter", "pads")
         
+        print([attr.name for attr in node.attribute])
+        
     def check_params_size(self, node: onnx.NodeProto):
         strides = get_attribute_ints(node, "strides", default=[])
         kernel_shape = get_attribute_ints(node, "kernel_shape", default=[])
