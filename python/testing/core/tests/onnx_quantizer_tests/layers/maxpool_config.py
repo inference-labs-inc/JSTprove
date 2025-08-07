@@ -15,13 +15,8 @@ class MaxPoolConfigProvider(BaseLayerConfigProvider):
             valid_attributes={
                 "kernel_shape": [2, 2],
                 "strides": [2, 2],
-<<<<<<< HEAD
                 "dilations": [1,1],
                 "pads": [0,0,0,0],
-=======
-                "dilations": [1],
-                "pads": [0,0],
->>>>>>> quantizer_tests_infrastructure
             },
             required_initializers={}
         )

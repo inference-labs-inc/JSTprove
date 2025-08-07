@@ -86,4 +86,78 @@ class ConvConfigProvider(BaseLayerConfigProvider):
             .tags("invalid_params")
             .skip("Not yet supported")
             .build(),
+            
+            # Missing required attributes
+            error_test("missing_strides")
+            .description("Conv node missing 'strides' attribute")
+            .override_attrs(kernel_shape=[3, 3], dilations=[1, 1], pads=[1, 1, 1, 1])  # exclude strides
+            .expects_error(InvalidParamError, "strides")
+            .tags("missing_attr")
+            .build(),
+
+            error_test("missing_kernel_shape")
+            .description("Conv node missing 'kernel_shape' attribute")
+            .override_attrs(strides=[1, 1], dilations=[1, 1], pads=[1, 1, 1, 1])  # exclude kernel_shape
+            .expects_error(InvalidParamError, "kernel_shape")
+            .tags("missing_attr")
+            .build(),
+
+            error_test("missing_dilations")
+            .description("Conv node missing 'dilations' attribute")
+            .override_attrs(kernel_shape=[3, 3], strides=[1, 1], pads=[1, 1, 1, 1])  # exclude dilations
+            .expects_error(InvalidParamError, "dilations")
+            .tags("missing_attr")
+            .build(),
+
+            error_test("missing_pads")
+            .description("Conv node missing 'pads' attribute")
+            .override_attrs(kernel_shape=[3, 3], strides=[1, 1], dilations=[1, 1])  # exclude pads
+            .expects_error(InvalidParamError, "pads")
+            .tags("missing_attr")
+            .build(),
+
+            # Invalid param lengths
+            error_test("invalid_pads_short")
+            .description("pads too short (length 2)")
+            .override_attrs(pads=[1, 1])
+            .expects_error(InvalidParamError, "pads")
+            .tags("invalid_attr_length")
+            .build(),
+
+            error_test("invalid_pads_long")
+            .description("pads too long (length 5)")
+            .override_attrs(pads=[1, 1, 1, 1, 1])
+            .expects_error(InvalidParamError, "pads")
+            .tags("invalid_attr_length")
+            .build(),
+
+            error_test("invalid_strides_short")
+            .description("strides too short (length 1)")
+            .override_attrs(strides=[1])
+            .expects_error(InvalidParamError, "strides")
+            .tags("invalid_attr_length")
+            .build(),
+
+            error_test("invalid_strides_long")
+            .description("strides too long (length 3)")
+            .override_attrs(strides=[1, 1, 1])
+            .expects_error(InvalidParamError, "strides")
+            .tags("invalid_attr_length")
+            .build(),
+
+            error_test("invalid_dilations_short")
+            .description("dilations too short (length 1)")
+            .override_attrs(dilations=[1])
+            .expects_error(InvalidParamError, "dilations")
+            .tags("invalid_attr_length")
+            .build(),
+
+            error_test("invalid_kernel_shape_long")
+            .description("kernel_shape too long (length 3)")
+            .override_attrs(kernel_shape=[3, 3, 3])
+            .override_initializer("conv_weight", np.random.randn(32, 16, 3, 3, 3))
+            .expects_error(InvalidParamError, "kernel_shape")
+            .tags("invalid_attr_length")
+            .build(),
+
         ]
