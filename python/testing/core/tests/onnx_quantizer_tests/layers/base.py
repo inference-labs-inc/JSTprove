@@ -36,6 +36,10 @@ class TestSpec:
     # Test metadata
     tags: List[str] = field(default_factory=list)
     skip_reason: Optional[str] = None
+
+    # Omit attributes
+    omit_attrs: List[str] = field(default_factory=list)
+
     
     # Remove __post_init__ validation - we'll validate in the builder instead
 
@@ -109,7 +113,11 @@ class LayerTestConfig:
             outputs=graph_outputs,
             initializer=list(initializers.values())
         )
-        
+
+        attrs = {**self.valid_attributes, **test_spec.attr_overrides}
+        for key in test_spec.omit_attrs:
+            attrs.pop(key, None)
+
         return helper.make_model(graph)
 
 
@@ -126,6 +134,11 @@ class TestSpecBuilder:
     def override_attrs(self, **attrs) -> 'TestSpecBuilder':
         self._spec.attr_overrides.update(attrs)
         return self
+    
+    def omit_attrs(self, *attrs: str) -> 'TestSpecBuilder':
+        self._spec.omit_attrs.extend(attrs)
+        return self
+
     
     def override_initializer(self, name: str, data: np.ndarray) -> 'TestSpecBuilder':
         self._spec.initializer_overrides[name] = data
