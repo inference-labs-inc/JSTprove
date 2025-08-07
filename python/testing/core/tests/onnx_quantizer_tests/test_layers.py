@@ -8,6 +8,7 @@ from unittest.mock import Mock, MagicMock
 import copy
 
 # Import your classes (adjust imports as needed)
+from python.testing.core.tests.onnx_quantizer_tests.layers.base import SpecType
 from python.testing.core.utils.onnx_quantizer.onnx_op_quantizer import ONNXOpQuantizer
 from python.testing.core.utils.onnx_quantizer.exceptions import InvalidParamError, UnsupportedOpError
 
@@ -48,86 +49,9 @@ class LayerTestConfig:
             initializers[name] = tensor
         return initializers
 
-
-# class TestLayerFactory:
-#     """Factory for creating test configurations for different layer types"""
-    
-#     @staticmethod
-#     def get_layer_configs() -> Dict[str, LayerTestConfig]:
-#         """Get test configurations for all supported layers"""
-#         return {
-#             "Conv": LayerTestConfig(
-#                 op_type="Conv",
-#                 valid_inputs=["input", "conv_weight", "conv_bias"],
-#                 valid_attributes={
-#                     "strides": [1, 1],
-#                     "kernel_shape": [3, 3],
-#                     "dilations": [1, 1],
-#                     "pads": [1, 1, 1, 1]
-#                 },
-#                 required_initializers={
-#                     "conv_weight": np.random.randn(32, 16, 3, 3),
-#                     "conv_bias": np.random.randn(32)
-#                 }
-#             ),
-#             "Gemm": LayerTestConfig(
-#                 op_type="Gemm",
-#                 valid_inputs=["input", "gemm_weight", "gemm_bias"],
-#                 valid_attributes={
-#                     "alpha": 1.0,
-#                     "beta": 1.0,
-#                     "transA": 0,
-#                     "transB": 0
-#                 },
-#                 required_initializers={
-#                     "gemm_weight": np.random.randn(128, 256),
-#                     "gemm_bias": np.random.randn(128)
-#                 }
-#             ),
-#             "Relu": LayerTestConfig(
-#                 op_type="Relu",
-#                 valid_inputs=["input"],
-#                 valid_attributes={},
-#                 required_initializers={}
-#             ),
-#             "Reshape": LayerTestConfig(
-#                 op_type="Reshape",
-#                 valid_inputs=["input", "shape"],
-#                 valid_attributes={},
-#                 required_initializers={
-#                     "shape": np.array([1, -1])
-#                 }
-#             ),
-#             "MaxPool": LayerTestConfig(
-#                 op_type="MaxPool",
-#                 valid_inputs=["input"],
-#                 valid_attributes={
-#                     "kernel_shape": [2, 2],
-#                     "strides": [2, 2],
-#                     "dilations": 1,
-#                     "pads": 1
-#                 },
-#                 required_initializers={}
-#             ),
-#             "Flatten": LayerTestConfig(
-#                 op_type="Flatten",
-#                 valid_inputs=["input"],
-#                 valid_attributes={"axis": 1},
-#                 required_initializers={}
-#             ),
-#             "Constant": LayerTestConfig(
-#                 op_type="Constant",
-#                 valid_inputs=[],
-#                 valid_attributes={
-#                     "value": numpy_helper.from_array(np.array([1.0]), name="const_value")
-#                 },
-#                 required_initializers={}
-#             )
-#         }
-
-
 class TestONNXOpQuantizer:
     """Generic unit tests for ONNX Op Quantizer"""
+    _validation_failed_cases = set()
     
     @pytest.fixture
     def quantizer(self):
@@ -138,6 +62,55 @@ class TestONNXOpQuantizer:
     def layer_configs(self):
         """Get all layer configurations"""
         return TestLayerFactory.get_layer_configs()
+    
+    def _validate_onnx_model(self, model: onnx.ModelProto, test_case_name: str) -> None:
+        """
+        Validate ONNX model using onnx.checker.check_model().
+        Skip test if model is invalid.
+        
+        Args:
+            model: ONNX model to validate
+            test_case_name: Name of the test case for error reporting
+            
+        Raises:
+            pytest.skip: If model validation fails
+        """
+        try:
+            onnx.checker.check_model(model)
+        except onnx.checker.ValidationError as e:
+            error_msg = (
+                f"ONNX model validation failed for {test_case_name}. "
+                f"Model structure is invalid: {str(e)}"
+            )
+            print(error_msg)
+            pytest.skip(error_msg)
+        except Exception as e:
+            error_msg = (
+                f"Unexpected error during ONNX model validation for {test_case_name}: "
+                f"{type(e).__name__}: {str(e)}"
+            )
+            pytest.skip(error_msg)
+
+    @classmethod
+    def _check_validation_dependency(cls, test_case_data):
+        """Check if validation failed for this test case and skip if so"""
+        layer_name, config, test_spec = test_case_data
+        test_case_id = f"{layer_name}_{test_spec.name}"
+        
+        if test_case_id in cls._validation_failed_cases:
+            pytest.skip(f"Skipping because ONNX validation failed for {layer_name}.{test_spec.name}")
+
+
+    @staticmethod
+    def _generate_test_id(test_case_tuple):
+        """Generate test ID from test case tuple"""
+        try:
+            layer_name, config, test_spec = test_case_tuple
+            return f"{layer_name}_{test_spec.name}"
+        except (IndexError, AttributeError):
+            return str(test_case_tuple)
+        except Exception:
+            return "unknown"
     
     def create_model_with_layers(self, layer_types: List[str], 
                                layer_configs: Dict[str, LayerTestConfig]) -> onnx.ModelProto:
@@ -172,22 +145,72 @@ class TestONNXOpQuantizer:
         )
         
         return helper.make_model(graph)
+    
+    # ===== VAlIDATE MODEL =======
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "test_case_data", 
+        TestLayerFactory.get_all_test_cases(),
+        ids=_generate_test_id.__func__
+    )
+    def test_factory_models_pass_onnx_validation(self, test_case_data):
+        """Test that all factory-created models pass ONNX validation"""
+        layer_name, config, test_spec = test_case_data
+        test_case_id = f"{layer_name}_{test_spec.name}"
+        
+        if test_spec.skip_reason:
+            pytest.skip(f"{layer_name}_{test_spec.name}: {test_spec.skip_reason}")
+        
+        # Create model
+        model = config.create_test_model(test_spec)
+        test_case_name = f"{layer_name}.{test_spec.name}"
+        
+        try:
+            # Onnx check of model
+            onnx.checker.check_model(model)
+        except onnx.checker.ValidationError as e:
+            # Mark this test case as failed for other tests to check
+            self._validation_failed_cases.add(test_case_id)
+            pytest.fail(
+                f"ONNX model validation failed for {test_case_name}. "
+                f"Model structure is invalid: {str(e)}"
+            )
+        except Exception as e:
+            # Mark this test case as failed for other tests to check
+            self._validation_failed_cases.add(test_case_id)
+            pytest.fail(
+                f"Unexpected error during ONNX model validation for {test_case_name}: "
+                f"{type(e).__name__}: {str(e)}"
+            )
 
     # ===== CHECK_MODEL TESTS =====
-    
     @pytest.mark.unit
-    @pytest.mark.parametrize("config", TestLayerFactory.get_layer_configs().values(), 
-                           ids=TestLayerFactory.get_layer_configs().keys())
-    def test_check_model_single_layer_passes(self, quantizer, config):
-        """Test that models with single supported layers pass validation"""
-        model = self.create_model_with_layers([config.op_type], {config.op_type: config})
+    @pytest.mark.parametrize(
+        "test_case_data", 
+        TestLayerFactory.get_test_cases_by_type(SpecType.VALID),
+        ids=_generate_test_id.__func__
+    )
+    def test_check_model_individual_valid_cases(self, quantizer, test_case_data):
+        """Test each individual valid test case"""
+        layer_name, config, test_spec = test_case_data
+
+        # Skips if layer is not a valid onnx layer
+        self._check_validation_dependency(test_case_data)
+        
+        if test_spec.skip_reason:
+            pytest.skip(f"{layer_name}_{test_spec.name}: {test_spec.skip_reason}")
+        
+        # Create model from layer specs
+        model = config.create_test_model(test_spec)
+        
         try:
             quantizer.check_model(model)
-        except InvalidParamError as e:
-            pytest.fail(f"Model check failed for op_type={config.op_type}, {e.message}")
-        except UnsupportedOpError as e:
-            pytest.fail(f"Model check failed as op_type={config.op_type} is unsupported")
-    
+        except (InvalidParamError, UnsupportedOpError) as e:
+            pytest.fail(f"Model check failed for {layer_name}.{test_spec.name}: {e}")
+        except Exception as e:
+            pytest.fail(f"Model check failed for {layer_name}.{test_spec.name}: {e}")
+
     @pytest.mark.unit
     def test_check_model_unsupported_layer_fails(self, quantizer):
         """Test that models with unsupported layers fail validation"""
@@ -226,53 +249,78 @@ class TestONNXOpQuantizer:
         quantizer.check_model(model)
 
     # ===== QUANTIZE TESTS =====
-    @pytest.mark.unit
-    @pytest.mark.parametrize("config", TestLayerFactory.get_layer_configs().values(),
-                           ids=TestLayerFactory.get_layer_configs().keys())
-    def test_quantize_single_layer_returns_nodes(self, quantizer, config):
-        """Test that quantizing layers returns appropriate node structures"""
-        node = config.create_node()
-        initializer_map = config.create_initializers()
+    @pytest.mark.unit  
+    @pytest.mark.parametrize(
+        "test_case_data", 
+        TestLayerFactory.get_test_cases_by_type(SpecType.VALID),
+        ids=_generate_test_id.__func__
+    )
+    def test_quantize_individual_valid_cases(self, quantizer, test_case_data):
+        """Test quantization for each individual valid test case"""
+        layer_name, config, test_spec = test_case_data
 
+        # Skips if layer is not a valid onnx layer
+        self._check_validation_dependency(test_case_data)
+        
+        if test_spec.skip_reason:
+            pytest.skip(f"{layer_name}_{test_spec.name}: {test_spec.skip_reason}")
+        
+        # Create model from layer specs
+        model = config.create_test_model(test_spec)
+        node = model.graph.node[0]
+        initializer_map = {init.name: init for init in model.graph.initializer}
+        
         mock_graph = Mock()
         if node.op_type == "Constant":
             mock_data_node = Mock()
-            mock_data_node.input = [f"{config.op_type.lower()}_output"]
+            mock_data_node.input = [node.output[0]]
             mock_graph.node = [mock_data_node]
+
         scale, scale_base = 2, 10
         rescale = True
-        
+
         
         result = quantizer.quantize(node, rescale, mock_graph, scale, scale_base, initializer_map)
-        
-        # Result should be either a single node or list of nodes
+
+        # Test that the output of the quantizer quantize is in fact a node
         if isinstance(result, list):
-            assert len(result) > 0, f"Quantize returned empty list for {config.op_type}"
+            assert len(result) > 0, f"Quantize returned empty list for {layer_name}.{test_spec.name}"
             for node_result in result:
-                assert isinstance(node_result, onnx.NodeProto), f"Invalid node type returned for {config.op_type}"
+                assert isinstance(node_result, onnx.NodeProto), f"Invalid node type returned for {layer_name}.{test_spec.name}"
         else:
-            assert isinstance(result, onnx.NodeProto), f"Invalid result type for {config.op_type}"
-    
-    @pytest.mark.unit
-    @pytest.mark.parametrize("config", TestLayerFactory.get_layer_configs().values(),
-                           ids=TestLayerFactory.get_layer_configs().keys())
-    def test_quantize_preserves_node_names(self, quantizer, config):
-        """Test that quantization preserves or properly transforms node names"""
+            assert isinstance(result, onnx.NodeProto), f"Quantize returned none node for {layer_name}.{test_spec.name}"
+        
+            assert result is not None, f"Quantize returned None for {layer_name}.{test_spec.name}"
 
-        original_name = f"test_{config.op_type.lower()}_node"
-        node = config.create_node()
-        node.name = original_name
-        initializer_map = config.create_initializers()
+    @pytest.mark.unit  
+    @pytest.mark.parametrize(
+        "test_case_data", 
+        TestLayerFactory.get_test_cases_by_type(SpecType.VALID),
+        ids=_generate_test_id.__func__
+    )
+    def test_quantize_preserves_node_names(self, quantizer, test_case_data):
+        """Test quantization for each individual valid test case"""
+        layer_name, config, test_spec = test_case_data
 
+        # Skips if layer is not a valid onnx layer
+        self._check_validation_dependency(test_case_data)
+        
+        if test_spec.skip_reason:
+            pytest.skip(f"{layer_name}_{test_spec.name}: {test_spec.skip_reason}")
+        
+        # Create model from layer specs
+        model = config.create_test_model(test_spec)
+        node = model.graph.node[0]
+        initializer_map = {init.name: init for init in model.graph.initializer}
+        
         mock_graph = Mock()
         if node.op_type == "Constant":
             mock_data_node = Mock()
-            mock_data_node.input = [f"{config.op_type.lower()}_output"]
+            mock_data_node.input = [node.output[0]]
             mock_graph.node = [mock_data_node]
 
         scale, scale_base = 2, 10
         rescale = True
-        
         result = quantizer.quantize(node, rescale, mock_graph, scale, scale_base, initializer_map)
         is_node_present = False
         
@@ -283,10 +331,10 @@ class TestONNXOpQuantizer:
                 # Ensure that each original node's attributes are contained in the new nodes
                 for att in node.attribute:
                     assert att.name in [a.name for a in result_node.attribute]
-
                 return True
         
-        # Check that result nodes have meaningful names
+        # Check that result nodes have meaningful names and the relevant node is present
+        # And ensure that the new node has the same parameters as the old node
         if isinstance(result, list):
             for result_node in result:
                 assert result_node.name, f"Quantized node missing name for {config.op_type}"
@@ -296,52 +344,83 @@ class TestONNXOpQuantizer:
         else:
             assert result.name, f"Quantized node missing name for {config.op_type}"
             is_node_present = is_node_present or check_node_and_analyze_parameters(node, result)
-        assert is_node_present, "Cannot find quantized node relating to prequantized node"
-    
-    @pytest.mark.unit
-    @pytest.mark.parametrize("scale_params", [(2, 10), (0, 5)])
-    @pytest.mark.parametrize("config", TestLayerFactory.get_layer_configs().values(),
-                           ids=TestLayerFactory.get_layer_configs().keys())
-    def test_quantize_with_different_scales(self, quantizer, config, scale_params):
-        """Test quantization with different scale parameters"""
-        node = config.create_node()
-        initializer_map = config.create_initializers()
 
+        # Assert that the node is in fact present
+        assert is_node_present, "Cannot find quantized node relating to prequantized node"
+
+    @pytest.mark.unit  
+    @pytest.mark.parametrize("scale_params", [(2, 10), (0, 5)])
+    @pytest.mark.parametrize(
+        "test_case_data", 
+        TestLayerFactory.get_test_cases_by_type(SpecType.VALID),
+        ids=_generate_test_id.__func__
+    )
+    def test_quantize_with_different_scales(self, quantizer, test_case_data, scale_params):
+        """Test quantization for each individual valid test case"""
+        layer_name, config, test_spec = test_case_data
+
+        # Skips if layer is not a valid onnx layer
+        self._check_validation_dependency(test_case_data)
+        
+        if test_spec.skip_reason:
+            pytest.skip(f"{layer_name}_{test_spec.name}: {test_spec.skip_reason}")
+        
+        # Create model from layer specs
+        model = config.create_test_model(test_spec)
+        node = model.graph.node[0]
+        initializer_map = {init.name: init for init in model.graph.initializer}
+        
         mock_graph = Mock()
         if node.op_type == "Constant":
             mock_data_node = Mock()
-            mock_data_node.input = [f"{config.op_type.lower()}_output"]
+            mock_data_node.input = [node.output[0]]
             mock_graph.node = [mock_data_node]
-        rescale = True
+
+        # Test for both scale parameters
         scale, scale_base = scale_params
-        
+        rescale = True
         result = quantizer.quantize(node, rescale, mock_graph, scale, scale_base, initializer_map)
         
         # Should return valid result regardless of scale values
         assert result is not None, f"Quantize returned None for scale={scale}, scale_base={scale_base}"
     
-    @pytest.mark.unit
+    @pytest.mark.unit  
     @pytest.mark.parametrize("rescale", [True, False])
-    @pytest.mark.parametrize("config", TestLayerFactory.get_layer_configs().values(),
-                           ids=TestLayerFactory.get_layer_configs().keys())
-    def test_quantize_with_rescale_variations(self, quantizer, config, rescale):
-        """Test quantization with different rescale settings"""
-        node = config.create_node()
-        initializer_map = config.create_initializers()
+    @pytest.mark.parametrize(
+        "test_case_data", 
+        TestLayerFactory.get_test_cases_by_type(SpecType.VALID),
+        ids=_generate_test_id.__func__
+    )
+    def test_quantize_with_different_rescales(self, quantizer, test_case_data, rescale):
+        """Test quantization for each individual valid test case"""
+        layer_name, config, test_spec = test_case_data
 
+        # Skips if layer is not a valid onnx layer
+        self._check_validation_dependency(test_case_data)
+        
+        if test_spec.skip_reason:
+            pytest.skip(f"{layer_name}_{test_spec.name}: {test_spec.skip_reason}")
+        
+        # Create model from layer specs
+        model = config.create_test_model(test_spec)
+        node = model.graph.node[0]
+        initializer_map = {init.name: init for init in model.graph.initializer}
+        
         mock_graph = Mock()
         if node.op_type == "Constant":
             mock_data_node = Mock()
-            mock_data_node.input = [f"{config.op_type.lower()}_output"]
+            mock_data_node.input = [node.output[0]]
             mock_graph.node = [mock_data_node]
+
         scale, scale_base = 2, 10
         
+        # Test that quantizing works with both rescaling values
         result = quantizer.quantize(node, rescale, mock_graph, scale, scale_base, initializer_map)
         assert result is not None, f"Quantize failed with rescale={rescale}"
     
     @pytest.mark.unit
     def test_quantize_unsupported_layer_returns_original(self, quantizer):
-        """Test that unsupported layers return the original node"""
+        """Test that unsupported layers return the original node in quantization process"""
         mock_graph = Mock()
         scale, scale_base = 2, 10
         rescale = True
@@ -382,6 +461,67 @@ class TestONNXOpQuantizer:
         for node in model.graph.node:
             result = quantizer.quantize(node, rescale, mock_graph, scale, scale_base, initializer_map)
             assert result is not None, f"Quantization failed for {node.op_type} in combination {layer_combination}"
+        
+    # ===== Error TESTS =====
+    
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "test_case_data", 
+        TestLayerFactory.get_test_cases_by_type(SpecType.ERROR),
+        ids=_generate_test_id.__func__
+    )
+    def test_check_model_individual_error_cases(self, quantizer, test_case_data):
+        """Test each individual error test case"""
+        layer_name, config, test_spec = test_case_data
+
+        # Skips if layer is not a valid onnx layer
+        self._check_validation_dependency(test_case_data)
+        
+        if test_spec.skip_reason:
+            pytest.skip(f"{layer_name}_{test_spec.name}: {test_spec.skip_reason}")
+        
+        # Create model from layer specs
+        model = config.create_test_model(test_spec)
+        
+        # Ensures that expected test is in fact raised
+        with pytest.raises(test_spec.expected_error) as exc:
+            quantizer.check_model(model)
+
+        # Ensures the error message is as expected
+        if isinstance(test_spec.error_match, list):
+            for e in test_spec.error_match:
+                assert e in str(exc.value)
+        else:
+            assert test_spec.error_match in str(exc.value)
+    
+    
+    # # ===== TAGGED TESTS =====
+    
+    # @pytest.mark.unit
+    # @pytest.mark.parametrize(
+    #     "test_case_data",
+    #     TestLayerFactory.get_test_cases_by_tag("transpose"),
+    #     ids=_generate_test_id.__func__
+    # )
+    # def test_transpose_operations(self, quantizer, test_case_data):
+    #     """Test operations specifically tagged with 'transpose'"""
+    #     layer_name, config, test_spec = test_case_data
+    #     model = config.create_test_model(test_spec)
+    #     # Implementation specific to transpose tests
+    #     quantizer.check_model(model)
+    
+    # @pytest.mark.unit
+    # @pytest.mark.parametrize(
+    #     "test_case_data",
+    #     TestLayerFactory.get_test_cases_by_tag("invalid_params"),
+    #     ids=_generate_test_id.__func__
+    # )
+    # def test_invalid_parameter_handling(self, quantizer, test_case_data):
+    #     """Test handling of invalid parameters across all layers"""
+    #     layer_name, config, test_spec = test_case_data
+    #     model = config.create_test_model(test_spec)
+    #     with pytest.raises(test_spec.expected_error, match=test_spec.error_match):
+    #         quantizer.check_model(model)
 
 class TestScalability:
     """Tests (meta) to verify the framework scales with new layers"""
