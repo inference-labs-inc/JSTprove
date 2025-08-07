@@ -115,7 +115,9 @@ class LayerTestConfig:
         )
 
         attrs = {**self.valid_attributes, **test_spec.attr_overrides}
-        for key in test_spec.omit_attrs:
+        
+        # Remove omitted attributes
+        for key in getattr(test_spec, "omit_attrs", []):
             attrs.pop(key, None)
 
         return helper.make_model(graph)
