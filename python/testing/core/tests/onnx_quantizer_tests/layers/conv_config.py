@@ -91,6 +91,7 @@ class ConvConfigProvider(BaseLayerConfigProvider):
             error_test("missing_strides")
             .description("Conv node missing 'strides' attribute")
             .omit_attrs("strides")  # exclude strides
+            .override_attrs(kernel_shape=[3, 3], dilations=[1, 1], pads=[1, 1, 1, 1])  # supply others explicitly
             .expects_error(InvalidParamError, "strides")
             .tags("missing_attr")
             .build(),
@@ -98,6 +99,7 @@ class ConvConfigProvider(BaseLayerConfigProvider):
             error_test("missing_kernel_shape")
             .description("Conv node missing 'kernel_shape' attribute")
             .omit_attrs("kernel_shape")  # exclude kernel_shape
+            .override_attrs(strides=[3, 3], dilations=[1, 1], pads=[1, 1, 1, 1])  # supply others explicitly
             .expects_error(InvalidParamError, "kernel_shape")
             .tags("missing_attr")
             .build(),
@@ -105,6 +107,7 @@ class ConvConfigProvider(BaseLayerConfigProvider):
             error_test("missing_dilations")
             .description("Conv node missing 'dilations' attribute")
             .omit_attrs("dilations")  # exclude dilations
+            .override_attrs(strides=[3,3], kernel_shape=[3, 3], pads=[1, 1, 1, 1])  # supply others explicitly
             .expects_error(InvalidParamError, "dilations")
             .tags("missing_attr")
             .build(),
@@ -112,6 +115,7 @@ class ConvConfigProvider(BaseLayerConfigProvider):
             error_test("missing_pads")
             .description("Conv node missing 'pads' attribute")
             .omit_attrs("pads") # exclude pads
+            .override_attrs(strides=[3,3], kernel_shape=[3, 3], dilations=[1, 1])  # supply others explicitly
             .expects_error(InvalidParamError, "pads")
             .tags("missing_attr")
             .build(),
