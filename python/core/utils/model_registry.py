@@ -9,10 +9,10 @@ from python.core import circuit_components
 
 
 
-from python.core.circuit_models.demo_cnn import Demo
-from python.core.circuit_components.relu import ReLU, ConversionType
+# from python.core.circuit_models.demo_cnn import Demo
+# from python.core.circuit_components.relu import ReLU, ConversionType
 from python.core.circuit_components.circuit_helpers import Circuit
-from python.core.circuit_models.generic_torch import GenericModelTorch
+# from python.core.circuit_models.generic_torch import GenericModelTorch
 from python.core.circuit_models.generic_onnx import GenericModelONNX
 
 
@@ -74,15 +74,6 @@ def build_models_to_test():
         if m.name not in {"zkmodel", "doomslice", "slice", "genericdemo", "genericmodeltorch", "genericmodelonnx", "zktorchmodel", "zkmodelbase"}
     ]
 
-    # Add special ReLU model
-    models.append(
-        ModelEntry(name="relu_dual", source="class", loader=ReLU, args=(), kwargs={"conversion_type": ConversionType.TWOS_COMP})
-    )
-
-    # Demo args
-    for i, entry in enumerate(models):
-        if entry.loader == Demo:
-            models[i] = entry._replace(args=(3, 4), kwargs={"layers": ["conv1", "relu", "reshape", "fc1", "relu", "fc2"]})
 
     # Add ONNX models
     models += scan_model_files("python/models/models_onnx", ".onnx", GenericModelONNX, "onnx")
@@ -100,11 +91,6 @@ def modify_models_based_on_class(models_to_test):
     
     for model_name, model_class in models_to_test:
         args, kwargs = (), {}
-
-        # Check specific model class and add parameters if needed
-        if model_class == Demo:
-            args = (3, 4)  # Example args for SimpleCircuit
-            kwargs = {"layers":["conv1", "relu", "reshape", "fc1", "relu", "fc2"]} # Example kwargs for SimpleCircuit
         
         updated_models.append((model_name, model_class, args, kwargs))
     

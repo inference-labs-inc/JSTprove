@@ -1,5 +1,5 @@
 import torch.nn as nn
-from python.testing.core.circuit_components.circuit_helpers import Circuit
+from python.core.circuit_components.circuit_helpers import Circuit
 from random import randint
 
 class SimpleCircuit(Circuit):
@@ -23,10 +23,7 @@ class SimpleCircuit(Circuit):
 
         self.scaling = 1
         self.scale_base = 1
-
-
-
-        
+    
         self.input_a = 100
         self.input_b = 200
         self.nonce = randint(0,10000)

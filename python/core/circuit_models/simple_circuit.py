@@ -68,7 +68,7 @@ if __name__ == "__main__":
     
     # Run another operation
     print("\nRunning compilation:")
-    circuit.base_testing(RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path="simple_circuit.txt", input_file="inputs/simple_circuit_input.json", output_file="output/simple_circuit_output.txt")
+    circuit.base_testing(run_type = RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path="simple_circuit.txt", input_file="inputs/simple_circuit_input.json", output_file="output/simple_circuit_output.txt")
     
     # Read the input and output files to verify
     print("\n--- Verifying input and output files ---")
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     
     # print(f"Input from file: {input_data}")
     # print(f"Output from file: {output_data}")
-    circuit.base_testing(RunType.GEN_WITNESS, circuit_path="simple_circuit.txt", input_file="inputs/simple_circuit_input.json", output_file="output/simple_circuit_output.json", write_json=True)
+    circuit.base_testing(run_type = RunType.GEN_WITNESS, circuit_path="simple_circuit.txt", input_file="inputs/simple_circuit_input.json", output_file="output/simple_circuit_output.json", write_json=True)
 
     circuit = SimpleCircuit()
     circuit.base_testing(run_type=RunType.PROVE_WITNESS, circuit_path="simple_circuit.txt", input_file="inputs/simple_circuit_input.json", output_file="output/simple_circuit_output.json")
