@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 /// External crate imports
 use ndarray::ArrayD;
 
@@ -5,10 +7,57 @@ use ndarray::ArrayD;
 use expander_compiler::frontend::*;
 
 /// Internal crate imports
-use crate::circuit_functions::utils::core_math::{
+use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::core_math::{
     assert_is_bitstring_and_reconstruct,
     unconstrained_to_bits,
-};
+}};
+
+// -------- Struct --------
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct ReluLayer {
+    name: String,
+    index: usize,
+    input_shape: Vec<usize>,
+    inputs: Vec<String>,
+    outputs: Vec<String>,
+    n_bits: usize,
+}
+// -------- Implementations --------
+impl ReluLayer{
+    pub fn new(
+        name: String,
+        index: usize,
+        input_shape: Vec<usize>,
+        inputs: Vec<String>,
+        outputs: Vec<String>,
+        n_bits: usize,
+    ) -> Self {
+        Self {
+            name: name,
+            index: index,
+            input_shape: input_shape,
+            inputs: inputs,
+            outputs: outputs,
+            n_bits: n_bits,
+        }
+    }
+}
+
+impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
+    fn apply(
+        &self,
+        api: &mut Builder,
+        input: HashMap<String,ArrayD<Variable>>,
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
+        eprintln!("{:?}", self);
+        let layer_input = input.get(&self.inputs[0]).unwrap().clone();
+        let out = layer_input;
+        let out = relu_array(api, out, self.n_bits - 1);
+
+        Ok((self.outputs.clone(), out))
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STRUCT: ReluContext

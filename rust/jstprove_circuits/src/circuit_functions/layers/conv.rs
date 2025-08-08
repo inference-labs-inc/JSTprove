@@ -1,5 +1,5 @@
 /// Standard library imports
-use std::cmp::{max, min};
+use std::{cmp::{max, min}, collections::HashMap};
 
 /// External crate imports
 use ndarray::{s, ArrayD};
@@ -8,7 +8,133 @@ use ndarray::{s, ArrayD};
 use expander_compiler::frontend::*;
 
 /// Internal module imports
-use crate::circuit_functions::utils::quantization::rescale_array;
+use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{graph_pattern_matching::GraphPattern, quantization::rescale_array, tensor_ops::{load_array_constants, load_circuit_constant}}};
+
+// -------- Struct --------
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct ConvLayer {
+    name: String,
+    index: usize,
+    weights: ArrayD<i64>,
+    bias: ArrayD<i64>,
+    strides: Vec<u32>,
+    kernel_shape: Vec<u32>,
+    group: Vec<u32>,
+    dilation: Vec<u32>,
+    pads: Vec<u32>,
+    input_shape: Vec<usize>,
+    scaling: u64,
+    optimization_pattern: GraphPattern,
+    v_plus_one: usize,
+    two_v: u32,
+    alpha_two_v: u64,
+    is_rescale: bool,
+    inputs: Vec<String>,
+    outputs: Vec<String>,
+}
+
+// -------- Implementations --------
+
+impl ConvLayer {
+    pub fn new(
+        name: String,
+        index: usize,
+        weights: ArrayD<i64>,
+        bias: ArrayD<i64>,
+        strides: Vec<u32>,
+        kernel_shape: Vec<u32>,
+        group: Vec<u32>,
+        dilation: Vec<u32>,
+        pads: Vec<u32>,
+        input_shape: Vec<usize>,
+        scaling: u64,
+        optimization_pattern: GraphPattern,
+        v_plus_one: usize,
+        two_v: u32,
+        alpha_two_v: u64,
+        is_rescale: bool,
+        inputs: Vec<String>,
+        outputs: Vec<String>,
+    ) -> Self {
+        Self {
+            name: name,
+            index: index,
+            weights: weights,
+            bias: bias,
+            strides: strides,
+            kernel_shape: kernel_shape,
+            group: group,
+            dilation: dilation,
+            pads: pads,
+            input_shape: input_shape,
+            scaling: scaling,
+            optimization_pattern: optimization_pattern,
+            v_plus_one: v_plus_one,
+            two_v: two_v,
+            alpha_two_v: alpha_two_v,
+            is_rescale: is_rescale,
+            inputs: inputs,
+            outputs: outputs,
+        }
+    }
+}
+
+
+impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
+    fn apply(
+        &self,
+        api: &mut Builder,
+        input: HashMap<String,ArrayD<Variable>>,
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
+        let is_relu = match self.optimization_pattern.name{
+                    "Conv+Relu" => true,
+                    _ => false
+                };
+
+        let layer_input = input.get(&self.inputs[0]).unwrap().clone();
+        // Reshape inputs
+        // TODO work on removing
+        // let layer_input = reshape_layer(layer_input, &self.input_shape);
+
+        // Convert weights
+        let weights = load_array_constants(api, &self.weights);
+
+        let bias = self.bias.mapv(|x| load_circuit_constant(api, x));
+        // Scaling
+        let scale_factor = 1 << self.scaling;
+        let alpha_two_v = api.mul(self.two_v as u32, scale_factor as u32);
+
+        // Get shape
+        let in_shape = layer_input.shape().iter().map(|&x| x as u32).collect::<Vec<_>>();
+
+        // Convolution
+        let out = conv_4d_run(
+            api,
+            layer_input,
+            weights,
+            bias,
+            &self.dilation,
+            &self.kernel_shape,
+            &self.pads,
+            &self.strides,
+            &in_shape,
+            self.scaling,
+            &self.group,
+            self.is_rescale,
+            self.v_plus_one,
+            self.two_v,
+            alpha_two_v,
+            is_relu,
+        );
+
+        Ok((self.outputs.clone(), out))
+    }
+}
+
+
+
 
 /// Untested
 /// Set default parameters if not set

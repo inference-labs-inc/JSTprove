@@ -1,11 +1,96 @@
+use std::collections::HashMap;
+
 /// External crate imports
 use ndarray::{ArrayD, Array4, Ix4};
 
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
+use crate::circuit_functions::layers::layer_ops::LayerOp;
+
 /// Internal crate imports
 use super::super::utils::core_math::{unconstrained_to_bits, assert_is_bitstring_and_reconstruct};
+
+// -------- Struct --------
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct MaxPoolLayer {
+    name: String,
+    kernel_shape: Vec<usize>,
+    strides: Vec<usize>,
+    dilation: Vec<usize>,
+    padding: Vec<usize>,
+    input_shape: Vec<usize>,
+    shift_exponent: usize, 
+    inputs: Vec<String>,
+    outputs: Vec<String>,
+}
+
+// -------- Implementations --------
+impl MaxPoolLayer{
+    pub fn new(
+        name: String,
+        kernel_shape: Vec<usize>,
+        strides: Vec<usize>,
+        dilation: Vec<usize>,
+        padding: Vec<usize>,
+        input_shape: Vec<usize>,
+        shift_exponent: usize, 
+        inputs: Vec<String>,
+        outputs: Vec<String>,
+    ) -> Self {
+        Self {
+            name: name,
+            kernel_shape: kernel_shape,
+            strides: strides,
+            dilation: dilation,
+            padding: padding,
+            input_shape: input_shape,
+            shift_exponent: shift_exponent,
+            inputs: inputs,
+            outputs: outputs,
+        }
+    }
+}
+
+impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
+    fn apply(
+        &self,
+        api: &mut Builder,
+        input: HashMap<String, ArrayD<Variable>>,
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
+        let layer_input = input.get(&self.inputs[0]).unwrap().clone();
+        let shape = layer_input.shape();
+        assert_eq!(shape.len(), 4, "Expected 4D input for max pooling, got shape: {:?}", shape);
+
+        let ceil_mode = false;
+        let (kernel, strides, dilation, out_shape, pads) = setup_maxpooling_2d(
+            &self.padding,
+            &self.kernel_shape,
+            &self.strides,
+            &self.dilation,
+            ceil_mode,
+            &self.input_shape,
+        );
+
+        let output = maxpooling_2d::<C, Builder>(
+            api,
+            &layer_input,
+            &kernel,
+            &strides,
+            &dilation,
+            &out_shape,
+            &self.input_shape,
+            &pads,
+            self.shift_exponent,
+        );
+
+        Ok((self.outputs.clone(), output))
+    }
+}
+
+
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: unconstrained_max

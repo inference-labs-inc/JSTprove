@@ -1,8 +1,127 @@
+use std::collections::HashMap;
+
 /// External crate imports
 use ndarray::{Array2, ArrayD, Ix2, IxDyn};
 
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
+
+use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{graph_pattern_matching::GraphPattern, quantization::rescale_array, shaping::check_and_apply_transpose_array, tensor_ops::load_array_constants}};
+
+// -------- Struct --------
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct GemmLayer {
+    name: String,
+    index: usize,
+    weights: ArrayD<i64>,
+    bias: ArrayD<i64>,
+    is_rescale: bool,
+    v_plus_one: usize,
+    two_v: u32,
+    alpha_two_v: u64,
+    optimization_pattern: GraphPattern,
+    scaling: u64,
+    input_shape: Vec<usize>,
+    alpha: f32,
+    beta: f32,
+    transa: usize,
+    transb: usize,
+    inputs: Vec<String>,
+    outputs: Vec<String>,
+}
+
+// -------- Implementation --------
+
+
+impl GemmLayer {
+    pub fn new(
+        name: String,
+        index: usize,
+        weights: ArrayD<i64>,
+        bias: ArrayD<i64>,
+        is_rescale: bool,
+        v_plus_one: usize,
+        two_v: u32,
+        alpha_two_v: u64,
+        optimization_pattern: GraphPattern,
+        scaling: u64,
+        input_shape: Vec<usize>,
+        alpha: f32,
+        beta: f32,
+        transa: usize,
+        transb: usize,
+        inputs: Vec<String>,
+        outputs: Vec<String>,
+    ) -> Self {
+        Self {
+            name: name,
+            index: index,
+            weights: weights,
+            bias: bias,
+            is_rescale: is_rescale,
+            v_plus_one: v_plus_one,
+            two_v: two_v,
+            alpha_two_v: alpha_two_v,
+            optimization_pattern: optimization_pattern,
+            scaling: scaling,
+            input_shape: input_shape,
+            alpha: alpha,
+            beta: beta,
+            transa: transa,
+            transb: transb,
+            inputs: inputs,
+            outputs: outputs,
+        }
+    }
+}
+
+impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
+    fn apply(
+        &self,
+        api: &mut Builder,
+        input: HashMap<String,ArrayD<Variable>>,
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
+        let is_relu = match self.optimization_pattern.name{
+                    "Gemm+Relu" => true,
+                    _ => false
+                };
+
+        let layer_input = input.get(&self.inputs[0]).unwrap().clone();
+        let mut input_array = layer_input
+            .into_dimensionality::<Ix2>()
+            .map_err(|_| format!("Expected 2D input for layer {}", self.name))?;
+        let mut weights_array = load_array_constants(api, &self.weights)
+        .into_dimensionality::<Ix2>()
+            .map_err(|_| format!("Expected 2D input for layer {}", self.name))?;
+
+        input_array = check_and_apply_transpose_array(input_array, self.transa, "transa", "Gemm", &self.name);
+        weights_array = check_and_apply_transpose_array(weights_array, self.transb, "transb", "Gemm", &self.name);
+
+        let bias_array = load_array_constants(api, &self.bias);
+
+        // Sanity check alpha and beta
+        check_alpha_beta(self.alpha, "alpha", "Gemm", &self.name);
+        check_alpha_beta(self.beta, "beta", "Gemm", &self.name);
+
+        // Matrix multiplication and bias addition
+        let mut result = matrix_multiplication(api, input_array.into_dyn(), weights_array.into_dyn());
+        result = matrix_addition(api, result, bias_array);
+
+        api.display("3", result[[0, 0]]);
+
+        let mut out_array = result.into_dyn(); // back to ArrayD<Variable>
+        if self.is_rescale {
+            let k = self.scaling as usize;
+            let s = self.v_plus_one.checked_sub(1).expect("v_plus_one must be at least 1");
+            out_array = rescale_array(api, out_array, k, s, is_relu);
+        }
+
+        Ok((self.outputs.clone(), out_array))
+    }
+}
+
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: dot
@@ -154,4 +273,10 @@ pub fn matrix_multiplication<C: Config, Builder: RootAPI<C>>(
     }
 
     result.into_dyn()
+}
+
+fn check_alpha_beta(val: f32, var_name: &str, layer_type: &str, layer_name: &str) {
+    if val != 1.0{
+        panic!("Only {} = 1 is currently supported for {} layers: {}", var_name, layer_type, layer_name);
+    }
 }
