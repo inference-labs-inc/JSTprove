@@ -4,7 +4,7 @@ import json
 import os
 import functools
 from typing import Dict, Any
-from python.core.utils.run_proofs import ZKProofsCircom, ZKProofSystems
+from python.core.utils.run_proofs import ZKProofSystems
 from enum import Enum
 import subprocess
 from python.core.utils.benchmarking_helpers import end_memory_collection, start_memory_collection
@@ -289,13 +289,6 @@ def prove_and_verify(witness_file, input_file, proof_path, public_path, verifica
             
     elif proof_system == ZKProofSystems.Circom:
         raise NotImplementedError("Circom is not implemented")
-
-        circuit = ZKProofsCircom(circuit_name)
-        res = circuit.compile_circuit()
-        circuit.compute_witness(witness_file, input_file, wasm=True, c=False)
-        circuit.proof_setup(verification_key)
-        circuit.proof(witness_file, proof_path, public_path)
-        circuit.verify(verification_key, public_path, proof_path)
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
     
@@ -416,8 +409,6 @@ def compile_circuit(circuit_name, circuit_path, proof_system: ZKProofSystems = Z
             
     elif proof_system == ZKProofSystems.Circom:
         raise NotImplementedError("Circom is not implemented")
-        circuit = ZKProofsCircom(circuit_name)
-        res = circuit.compile_circuit()
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
@@ -446,8 +437,6 @@ def generate_witness(circuit_name, circuit_path, witness_file, input_file, outpu
             
     elif proof_system == ZKProofSystems.Circom:
         raise NotImplementedError("Circom is not implemented")
-        circuit = ZKProofsCircom(circuit_name)
-        circuit.compute_witness(witness_file, input_file, wasm=True, c=False)
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
@@ -493,8 +482,6 @@ def generate_proof(circuit_name, circuit_path, witness_file, proof_file,
             
     elif proof_system == ZKProofSystems.Circom:
         raise NotImplementedError("Circom is not implemented")
-        circuit = ZKProofsCircom(circuit_name)
-        circuit.proof(witness_file, proof_file, public_path="")
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
@@ -605,9 +592,6 @@ def get_files(input_folder, proof_folder, temp_folder, circuit_folder, weights_f
         proof_path = os.path.join(proof_folder, f"{name}_proof.bin")
     elif proof_system == ZKProofSystems.Circom:
         raise NotImplementedError("Circom is not implemented")
-        circuit_name = os.path.join(circuit_folder, f"{name}.circom")
-        witness_file = os.path.join(temp_folder, f"{name}_witness.wtns")
-        proof_path = os.path.join(proof_folder, f"{name}_proof.json")
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 

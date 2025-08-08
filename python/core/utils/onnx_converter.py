@@ -640,12 +640,6 @@ class ONNXConverter(ModelConverter):
         else:
             outputs = self.ort_sess.run([output_name], {input_name: np.asarray(inputs)})
         return outputs
-    
-    
-
-class ZKONNXModel(ONNXConverter, ZKModelBase):
-    def __init__(self):
-        raise NotImplementedError("Must implement __init__")
 
 
 if __name__ == "__main__":

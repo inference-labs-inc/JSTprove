@@ -187,13 +187,6 @@ class ModelConverter(ABC):
     @abstractmethod
     def load_quantized_model(self, file_path: str):
         pass
-
-
-    # def expand_padding(self, padding_2):
-    #     if len(padding_2) != 2:
-    #         raise(ValueError("Expand padding requires initial padding of dimension 2"))
-    #     pad_h, pad_w = padding_2
-    #     return (pad_w, pad_w, pad_h, pad_h)
     
     @abstractmethod
     def get_used_layers(self, model = None, input_shape = None):
