@@ -142,7 +142,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerBuilder<C, Builder> for ConvLayer{
         optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::GraphPattern,
         is_rescale: bool,
         index: usize,
-        layer_context: &crate::circuit_functions::layers::layer_ops::BuildLayerContext
+        layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
     ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
         
         let params = layer.params.clone().unwrap();                

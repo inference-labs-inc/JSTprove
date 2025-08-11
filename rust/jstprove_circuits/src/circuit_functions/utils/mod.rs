@@ -8,3 +8,4 @@ pub mod quantization;    // Quantization utilities and rescaling logic
 pub mod shaping;         // Shape manipulation and input partitioning
 pub mod tensor_ops;      // Conversions between nested Vecs and ArrayD
 pub mod graph_pattern_matching;
+pub mod build_layers;

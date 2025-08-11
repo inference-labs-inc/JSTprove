@@ -66,7 +66,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerBuilder<C, Builder> for ReluLayer{
         _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::GraphPattern,
         _is_rescale: bool,
         index: usize,
-        layer_context: &crate::circuit_functions::layers::layer_ops::BuildLayerContext
+        layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
     ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
         let expected_shape = match layer_context.shapes_map.get(&layer.inputs[0]){
             Some(input_shape) => input_shape,

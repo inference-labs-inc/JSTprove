@@ -50,7 +50,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerBuilder<C, Builder> for ConstantLayer{
         _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::GraphPattern,
         _is_rescale: bool,
         _index: usize,
-        _layer_context: &crate::circuit_functions::layers::layer_ops::BuildLayerContext
+        _layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
     ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
         let constant = ConstantLayer::new(
             layer.name.clone(),

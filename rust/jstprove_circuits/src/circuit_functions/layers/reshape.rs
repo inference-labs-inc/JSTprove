@@ -58,7 +58,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerBuilder<C, Builder> for ReshapeLayer{
         _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::GraphPattern,
         _is_rescale: bool,
         _index: usize,
-        layer_context: &crate::circuit_functions::layers::layer_ops::BuildLayerContext
+        layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
     ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
         let shape_name = layer.inputs[1].clone();
         let params = layer.params.clone().unwrap();

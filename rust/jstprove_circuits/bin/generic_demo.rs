@@ -1,13 +1,8 @@
 #[allow(unused_imports)]
 /// Standard library imports
 use core::panic;
-use std::collections::HashMap;
 
-use jstprove_circuits::circuit_functions::layers::constant::ConstantLayer;
-use jstprove_circuits::circuit_functions::layers::flatten::FlattenLayer;
-use jstprove_circuits::circuit_functions::layers::layer_ops::{BuildLayerContext, LayerBuilder, LayerOp};
-use jstprove_circuits::circuit_functions::layers::reshape::ReshapeLayer;
-use jstprove_circuits::circuit_functions::utils::graph_pattern_matching::{optimization_skip_layers, GraphPattern, PatternMatcher};
+use jstprove_circuits::circuit_functions::utils::build_layers::build_layers;
 /// External crate imports
 use lazy_static::lazy_static;
 use ndarray::{ArrayD, Ix1, IxDyn};
@@ -16,19 +11,12 @@ use ndarray::{ArrayD, Ix1, IxDyn};
 use expander_compiler::frontend::*;
 
 /// Internal crate imports
-use jstprove_circuits::circuit_functions::utils::onnx_model::{
-    collect_all_shapes, get_param_or_default, Architecture, CircuitParams, InputData, OutputData, WANDB
-};
+use jstprove_circuits::circuit_functions::utils::onnx_model::{Architecture, CircuitParams, InputData, OutputData, WANDB};
 use jstprove_circuits::circuit_functions::utils::shaping::get_inputs;
-use jstprove_circuits::circuit_functions::layers::conv::ConvLayer;
-use jstprove_circuits::circuit_functions::layers::gemm::GemmLayer;
-use jstprove_circuits::circuit_functions::layers::maxpool::MaxPoolLayer;
-use jstprove_circuits::circuit_functions::layers::relu::ReluLayer;
 
 use jstprove_circuits::circuit_functions::utils::tensor_ops::get_nd_circuit_inputs;
 use jstprove_circuits::io::io_reader::{FileReader, IOReader};
 use jstprove_circuits::runner::main_runner::{ConfigurableCircuit, handle_args};
-use jstprove_circuits::circuit_functions::utils::onnx_types::ONNXLayer;
 
 
 type WeightsData = (Architecture, WANDB, CircuitParams);
@@ -56,91 +44,6 @@ declare_circuit!(Circuit {
     dummy: [Variable; 2]
 });
 
-
-type BoxedDynLayer<C, B> = Box<dyn LayerOp<C, B>>;
-
-fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Builder>>> {
-    let mut layers: Vec<BoxedDynLayer<C, Builder>> = vec![];
-    const N_BITS: usize = 32;
-    const V_PLUS_ONE: usize = N_BITS;
-    const TWO_V: u32 = 1 << (V_PLUS_ONE - 1);
-    let alpha_two_v: u64 = ((1 << CIRCUITPARAMS.scaling) * TWO_V) as u64;
-
-    /*
-    TODO: Inject weights + bias data with external functions instead of regular assignment in function.
-     */
-
-    let w_and_b_map: HashMap<String, ONNXLayer> = W_AND_B.w_and_b.clone()
-        .into_iter()
-        .map(|layer| (layer.name.clone(), layer))
-        .collect();
-
-    
-
-    let mut skip_next_layer: HashMap<String, bool>  = HashMap::new();
-
-    let inputs = &ARCHITECTURE.inputs;
-
-    // TODO havent figured out how but this can maybe go in build layers?
-    let shapes_map: HashMap<String, Vec<usize>> = collect_all_shapes(&ARCHITECTURE.architecture, inputs);
-
-    let layer_context = BuildLayerContext{
-        w_and_b_map: w_and_b_map.clone(),
-        shapes_map: shapes_map.clone(),
-        n_bits: N_BITS,
-        two_v: TWO_V,
-        alpha_two_v: alpha_two_v
-    };
-
-    let matcher = PatternMatcher::new();
-    let opt_patterns_by_layername = matcher.run(&ARCHITECTURE.architecture);
-    for (i, original_layer) in ARCHITECTURE.architecture.iter().enumerate() {
-        /*
-            Track layer combo optimizations
-         */
-        let mut layer = original_layer.clone();
-        if *skip_next_layer.get(&layer.name).unwrap_or(&false){
-            continue
-        }
-        let outputs = layer.outputs.to_vec();
-
-        let optimization_pattern_match = opt_patterns_by_layername.get(&layer.name);
-        let (optimization_pattern, outputs, layers_to_skip) =  match optimization_skip_layers(optimization_pattern_match, outputs.clone()) {
-            Some(opt) => opt,
-            None => (GraphPattern::default(), outputs.clone(), vec![])
-        };
-        // Save layers to skip
-        layers_to_skip.into_iter()
-            .for_each(|item| {
-                skip_next_layer.insert(item.to_string(), true);
-            });
-
-        layer.outputs = outputs;
-        /*
-            End tracking layer combo optimizations
-         */
-        let is_rescale = match  CIRCUITPARAMS.rescale_config.get(&layer.name){
-            Some(config) => config,
-            None => &true
-        };
-        let builder = match layer.op_type.as_str() {
-            "Conv"     => ConvLayer::build,
-            "Reshape"  => ReshapeLayer::build,
-            "Gemm"     => GemmLayer::build,
-            "Constant" => ConstantLayer::build,
-            "MaxPool"  => MaxPoolLayer::build,
-            "Flatten"  => FlattenLayer::build,
-            "Relu"     => ReluLayer::build,
-            other      => panic!("Unsupported layer type: {}", other),
-        };
-
-        let built = builder(&layer, &CIRCUITPARAMS, optimization_pattern, *is_rescale, i, &layer_context)
-            .unwrap();
-        layers.push(built);
-        eprintln!("layer added: {}", layer.op_type.as_str() );
-    }
-    layers
-}
 // Memorization, in a better place
 impl<C: Config> Define<C> for Circuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
@@ -148,14 +51,13 @@ impl<C: Config> Define<C> for Circuit<Variable> {
         let mut out = get_inputs(self.input_arr.clone(), ARCHITECTURE.inputs.clone());
         
         // let mut out = out2.remove("input").unwrap().clone();
-        let layers = build_layers::<C, Builder>();
+        let layers = build_layers::<C, Builder>(&CIRCUITPARAMS, &ARCHITECTURE, &W_AND_B);
         
         assert!(ARCHITECTURE.architecture.len() > 0);
 
         for (i, layer) in layers.iter().enumerate() {
 
             eprintln!("Applying Layer {:?}", &ARCHITECTURE.architecture[i].name);
-            // TODO worried about clone in here being very expensive
             let result = layer
                 .apply(api, out.clone())
                 .expect(&format!("Failed to apply layer {}", i));

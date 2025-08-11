@@ -14,13 +14,5 @@ pub trait LayerOp<C: Config, Builder: RootAPI<C>> {
 
 pub trait LayerBuilder<C: Config, Builder: RootAPI<C>> {
     /// Build the layer from generic layer data and context
-    fn build(layer: &ONNXLayer, circuit_params: &CircuitParams, optimization_pattern: GraphPattern, is_rescale: bool, index: usize, layer_context: &BuildLayerContext) -> Result<Box<dyn LayerOp<C, Builder>>, Error>;
-}
-
-pub struct BuildLayerContext{
-    pub w_and_b_map: HashMap<String, ONNXLayer>,
-    pub shapes_map: HashMap<String, Vec<usize>>,
-    pub n_bits: usize,
-    pub two_v: u32,
-    pub alpha_two_v: u64,
+    fn build(layer: &ONNXLayer, circuit_params: &CircuitParams, optimization_pattern: GraphPattern, is_rescale: bool, index: usize, layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext) -> Result<Box<dyn LayerOp<C, Builder>>, Error>;
 }
