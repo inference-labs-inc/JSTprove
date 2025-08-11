@@ -6,7 +6,7 @@ use ndarray::{ArrayD, Array4, Ix4};
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
-use crate::circuit_functions::{layers::layer_ops::{LayerBuilder, LayerOp}, utils::onnx_model::get_param};
+use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::onnx_model::get_param};
 
 /// Internal crate imports
 use super::super::utils::core_math::{unconstrained_to_bits, assert_is_bitstring_and_reconstruct};
@@ -27,31 +27,6 @@ pub struct MaxPoolLayer {
 }
 
 // -------- Implementations --------
-impl MaxPoolLayer{
-    pub fn new(
-        name: String,
-        kernel_shape: Vec<usize>,
-        strides: Vec<usize>,
-        dilation: Vec<usize>,
-        padding: Vec<usize>,
-        input_shape: Vec<usize>,
-        shift_exponent: usize, 
-        inputs: Vec<String>,
-        outputs: Vec<String>,
-    ) -> Self {
-        Self {
-            name: name,
-            kernel_shape: kernel_shape,
-            strides: strides,
-            dilation: dilation,
-            padding: padding,
-            input_shape: input_shape,
-            shift_exponent: shift_exponent,
-            inputs: inputs,
-            outputs: outputs,
-        }
-    }
-}
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
     fn apply(
@@ -87,9 +62,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
 
         Ok((self.outputs.clone(), output))
     }
-}
 
-impl<C: Config, Builder: RootAPI<C>> LayerBuilder<C, Builder> for MaxPoolLayer{
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
@@ -104,17 +77,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerBuilder<C, Builder> for MaxPoolLayer{
         None => panic!("Missing shape for MaxPool input {}", layer.name),
         };
 
-        let maxpool = MaxPoolLayer::new(
-            layer.name.clone(),
-            get_param(&layer.name, "kernel_shape", &params),
-            get_param(&layer.name, "strides", &params),
-            get_param(&layer.name, "dilations", &params),
-            get_param(&layer.name, "pads", &params),
-            expected_shape.clone(),
-            layer_context.n_bits - 1,
-            layer.inputs.to_vec(),
-            layer.outputs.to_vec(),
-        );
+        let maxpool = Self{
+            name: layer.name.clone(),
+            kernel_shape: get_param(&layer.name, "kernel_shape", &params),
+            strides: get_param(&layer.name, "strides", &params),
+            dilation: get_param(&layer.name, "dilations", &params),
+            padding: get_param(&layer.name, "pads", &params),
+            input_shape: expected_shape.clone(),
+            shift_exponent: layer_context.n_bits - 1,
+            inputs: layer.inputs.to_vec(),
+            outputs: layer.outputs.to_vec(),
+        };
         Ok(Box::new(maxpool))
     }
 }

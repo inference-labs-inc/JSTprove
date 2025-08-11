@@ -7,7 +7,7 @@ use ndarray::ArrayD;
 use expander_compiler::frontend::*;
 
 /// Internal crate imports
-use crate::circuit_functions::{layers::layer_ops::{LayerBuilder, LayerOp}, utils::core_math::{
+use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::core_math::{
     assert_is_bitstring_and_reconstruct,
     unconstrained_to_bits,
 }};
@@ -24,25 +24,6 @@ pub struct ReluLayer {
     n_bits: usize,
 }
 // -------- Implementations --------
-impl ReluLayer{
-    pub fn new(
-        name: String,
-        index: usize,
-        input_shape: Vec<usize>,
-        inputs: Vec<String>,
-        outputs: Vec<String>,
-        n_bits: usize,
-    ) -> Self {
-        Self {
-            name: name,
-            index: index,
-            input_shape: input_shape,
-            inputs: inputs,
-            outputs: outputs,
-            n_bits: n_bits,
-        }
-    }
-}
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
     fn apply(
@@ -57,9 +38,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
 
         Ok((self.outputs.clone(), out))
     }
-}
 
-impl<C: Config, Builder: RootAPI<C>> LayerBuilder<C, Builder> for ReluLayer{
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
@@ -72,14 +51,14 @@ impl<C: Config, Builder: RootAPI<C>> LayerBuilder<C, Builder> for ReluLayer{
             Some(input_shape) => input_shape,
             None => panic!("Error getting output shape for layer {}", layer.name)
         };
-        let relu = ReluLayer::new(
-            layer.name.clone(),
-            index,
-            expected_shape.to_vec(),
-            layer.inputs.to_vec(),
-            layer.outputs.to_vec(),
-            layer_context.n_bits,
-        );
+        let relu = Self{
+            name: layer.name.clone(),
+            index: index,
+            input_shape: expected_shape.to_vec(),
+            inputs: layer.inputs.to_vec(),
+            outputs: layer.outputs.to_vec(),
+            n_bits: layer_context.n_bits,
+        };
         Ok(Box::new(relu))
     }
 }

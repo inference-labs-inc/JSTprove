@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use ndarray::ArrayD;
 use expander_compiler::frontend::*;
 
-use crate::circuit_functions::{layers::layer_ops::{LayerBuilder, LayerOp}, utils::{onnx_model::get_param_or_default, shaping::onnx_flatten}};
+use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{onnx_model::get_param_or_default, shaping::onnx_flatten}};
 
 // -------- Struct --------
 #[allow(dead_code)]
@@ -17,23 +17,6 @@ pub struct FlattenLayer {
 }
 
 // -------- Implementations --------
-impl FlattenLayer{
-    pub fn new(
-        name: String,
-        axis: usize,
-        input_shape: Vec<usize>,
-        inputs: Vec<String>,
-        outputs: Vec<String>,
-    ) -> Self {
-        Self {
-            name: name,
-            axis: axis,
-            input_shape: input_shape,
-            inputs: inputs,
-            outputs: outputs,
-        }
-    }
-}
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
     fn apply(
@@ -48,10 +31,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
 
         Ok((self.outputs.clone(), out.clone()))
     }
-}
-
-
-impl<C: Config, Builder: RootAPI<C>> LayerBuilder<C, Builder> for FlattenLayer{
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
@@ -66,13 +45,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerBuilder<C, Builder> for FlattenLayer{
             Some(input_shape) => input_shape,
             None => panic!("Error getting output shape for layer {}", layer.name)
         };
-        let flatten = FlattenLayer::new(
-            layer.name.clone(),
-            get_param_or_default(&layer.name, &"axis", &params, Some(&1)),
-            expected_shape.to_vec(),
-            layer.inputs.to_vec(),
-            layer.outputs.to_vec(),
-        );
+        let flatten = Self{
+            name: layer.name.clone(),
+            axis: get_param_or_default(&layer.name, &"axis", &params, Some(&1)),
+            input_shape: expected_shape.to_vec(),
+            inputs: layer.inputs.to_vec(),
+            outputs: layer.outputs.to_vec(),
+        };
         Ok(Box::new(flatten))
     }
 }

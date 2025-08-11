@@ -10,9 +10,14 @@ use crate::circuit_functions::utils::onnx_model::CircuitParams;
 pub trait LayerOp<C: Config, Builder: RootAPI<C>> {
     fn apply(&self, api: &mut Builder, input: HashMap<String,ArrayD<Variable>>)
         -> Result<(Vec<String>,ArrayD<Variable>), String>;
-}
-
-pub trait LayerBuilder<C: Config, Builder: RootAPI<C>> {
-    /// Build the layer from generic layer data and context
-    fn build(layer: &ONNXLayer, circuit_params: &CircuitParams, optimization_pattern: GraphPattern, is_rescale: bool, index: usize, layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext) -> Result<Box<dyn LayerOp<C, Builder>>, Error>;
+fn build(
+        layer: &ONNXLayer,
+        circuit_params: &CircuitParams,
+        optimization_pattern: GraphPattern,
+        is_rescale: bool,
+        index: usize,
+        layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
+    ) -> Result<Box<dyn LayerOp<C, Builder>>, Error>
+    where
+        Self: Sized;
 }

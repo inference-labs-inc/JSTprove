@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::circuit_functions::{layers::{constant::ConstantLayer, conv::ConvLayer, flatten::FlattenLayer, gemm::GemmLayer, layer_ops::{LayerBuilder, LayerOp}, maxpool::MaxPoolLayer, relu::ReluLayer, reshape::ReshapeLayer}, utils::{graph_pattern_matching::{optimization_skip_layers, GraphPattern, PatternMatcher}, onnx_model::{collect_all_shapes, Architecture, CircuitParams, WANDB}, onnx_types::ONNXLayer}};
+use crate::circuit_functions::{layers::{constant::ConstantLayer, conv::ConvLayer, flatten::FlattenLayer, gemm::GemmLayer, layer_ops::LayerOp, maxpool::MaxPoolLayer, relu::ReluLayer, reshape::ReshapeLayer}, utils::{graph_pattern_matching::{optimization_skip_layers, GraphPattern, PatternMatcher}, onnx_model::{collect_all_shapes, Architecture, CircuitParams, WANDB}, onnx_types::ONNXLayer}};
 
 use expander_compiler::frontend::*;
 

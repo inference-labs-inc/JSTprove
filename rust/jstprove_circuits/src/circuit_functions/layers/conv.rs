@@ -10,7 +10,7 @@ use expander_compiler::frontend::*;
 use crate::circuit_functions::{utils::{onnx_model::{get_param, get_param_or_default, get_w_or_b}}};
 
 /// Internal module imports
-use crate::circuit_functions::{layers::layer_ops::{LayerBuilder, LayerOp}, utils::{graph_pattern_matching::GraphPattern, quantization::rescale_array, tensor_ops::{load_array_constants, load_circuit_constant}}};
+use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{graph_pattern_matching::GraphPattern, quantization::rescale_array, tensor_ops::{load_array_constants, load_circuit_constant}}};
 
 // -------- Struct --------
 
@@ -38,51 +38,6 @@ pub struct ConvLayer {
 }
 
 // -------- Implementations --------
-
-impl ConvLayer {
-    pub fn new(
-        name: String,
-        index: usize,
-        weights: ArrayD<i64>,
-        bias: ArrayD<i64>,
-        strides: Vec<u32>,
-        kernel_shape: Vec<u32>,
-        group: Vec<u32>,
-        dilation: Vec<u32>,
-        pads: Vec<u32>,
-        input_shape: Vec<usize>,
-        scaling: u64,
-        optimization_pattern: GraphPattern,
-        v_plus_one: usize,
-        two_v: u32,
-        alpha_two_v: u64,
-        is_rescale: bool,
-        inputs: Vec<String>,
-        outputs: Vec<String>,
-    ) -> Self {
-        Self {
-            name: name,
-            index: index,
-            weights: weights,
-            bias: bias,
-            strides: strides,
-            kernel_shape: kernel_shape,
-            group: group,
-            dilation: dilation,
-            pads: pads,
-            input_shape: input_shape,
-            scaling: scaling,
-            optimization_pattern: optimization_pattern,
-            v_plus_one: v_plus_one,
-            two_v: two_v,
-            alpha_two_v: alpha_two_v,
-            is_rescale: is_rescale,
-            inputs: inputs,
-            outputs: outputs,
-        }
-    }
-}
-
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
     fn apply(
@@ -133,9 +88,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
 
         Ok((self.outputs.clone(), out))
     }
-}
 
-impl<C: Config, Builder: RootAPI<C>> LayerBuilder<C, Builder> for ConvLayer{
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
@@ -151,26 +104,26 @@ impl<C: Config, Builder: RootAPI<C>> LayerBuilder<C, Builder> for ConvLayer{
             Some(input_shape) => input_shape,
             None => panic!("Error getting output shape for layer {}", layer.name)
         };
-        let conv = ConvLayer::new(
-            layer.name.clone(),
-            index,
-            get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[1]),
-            get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[2]),
-            get_param(&layer.name, &"strides", &params),
-            get_param(&layer.name, &"kernel_shape", &params),
-            vec![get_param_or_default(&layer.name, &"group", &params, Some(&1))],
-            get_param(&layer.name, &"dilations", &params),
-            get_param(&layer.name, &"pads", &params),
-            expected_shape.to_vec(),
-            circuit_params.scaling.into(),
-            optimization_pattern,
-            layer_context.n_bits,
-            layer_context.two_v,
-            layer_context.alpha_two_v,
-            is_rescale,
-            layer.inputs.to_vec(),
-            layer.outputs.to_vec(),
-        );
+        let conv = Self{
+            name: layer.name.clone(),
+            index: index,
+            weights: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[1]),
+            bias: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[2]),
+            strides: get_param(&layer.name, &"strides", &params),
+            kernel_shape: get_param(&layer.name, &"kernel_shape", &params),
+            group: vec![get_param_or_default(&layer.name, &"group", &params, Some(&1))],
+            dilation: get_param(&layer.name, &"dilations", &params),
+            pads: get_param(&layer.name, &"pads", &params),
+            input_shape: expected_shape.to_vec(),
+            scaling: circuit_params.scaling.into(),
+            optimization_pattern: optimization_pattern,
+            v_plus_one: layer_context.n_bits,
+            two_v: layer_context.two_v,
+            alpha_two_v: layer_context.alpha_two_v,
+            is_rescale: is_rescale,
+            inputs: layer.inputs.to_vec(),
+            outputs: layer.outputs.to_vec(),
+        };
         Ok(Box::new(conv))
     }
 }
