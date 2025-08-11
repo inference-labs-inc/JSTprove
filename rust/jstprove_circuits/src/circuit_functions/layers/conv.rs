@@ -7,8 +7,10 @@ use ndarray::{s, ArrayD};
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
+use crate::circuit_functions::{utils::{onnx_model::{get_param, get_param_or_default, get_w_or_b}}};
+
 /// Internal module imports
-use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{graph_pattern_matching::GraphPattern, quantization::rescale_array, tensor_ops::{load_array_constants, load_circuit_constant}}};
+use crate::circuit_functions::{layers::layer_ops::{LayerBuilder, LayerOp}, utils::{graph_pattern_matching::GraphPattern, quantization::rescale_array, tensor_ops::{load_array_constants, load_circuit_constant}}};
 
 // -------- Struct --------
 
@@ -130,6 +132,46 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         );
 
         Ok((self.outputs.clone(), out))
+    }
+}
+
+impl<C: Config, Builder: RootAPI<C>> LayerBuilder<C, Builder> for ConvLayer{
+    fn build(
+        layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
+        circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
+        optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::GraphPattern,
+        is_rescale: bool,
+        index: usize,
+        layer_context: &crate::circuit_functions::layers::layer_ops::BuildLayerContext
+    ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
+        
+        let params = layer.params.clone().unwrap();                
+        // We can move this inside the layer op
+        let expected_shape = match layer_context.shapes_map.get(&layer.inputs[0]){
+            Some(input_shape) => input_shape,
+            None => panic!("Error getting output shape for layer {}", layer.name)
+        };
+        let conv = ConvLayer::new(
+            layer.name.clone(),
+            index,
+            get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[1]),
+            get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[2]),
+            get_param(&layer.name, &"strides", &params),
+            get_param(&layer.name, &"kernel_shape", &params),
+            vec![get_param_or_default(&layer.name, &"group", &params, Some(&1))],
+            get_param(&layer.name, &"dilations", &params),
+            get_param(&layer.name, &"pads", &params),
+            expected_shape.to_vec(),
+            circuit_params.scaling.into(),
+            optimization_pattern,
+            layer_context.n_bits,
+            layer_context.two_v,
+            layer_context.alpha_two_v,
+            is_rescale,
+            layer.inputs.to_vec(),
+            layer.outputs.to_vec(),
+        );
+        Ok(Box::new(conv))
     }
 }
 

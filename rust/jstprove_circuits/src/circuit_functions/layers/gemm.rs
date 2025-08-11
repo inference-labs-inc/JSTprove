@@ -6,7 +6,7 @@ use ndarray::{Array2, ArrayD, Ix2, IxDyn};
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
-use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{graph_pattern_matching::GraphPattern, quantization::rescale_array, shaping::check_and_apply_transpose_array, tensor_ops::load_array_constants}};
+use crate::circuit_functions::{layers::layer_ops::{LayerBuilder, LayerOp}, utils::{graph_pattern_matching::GraphPattern, onnx_model::{get_param_or_default, get_w_or_b}, quantization::rescale_array, shaping::check_and_apply_transpose_array, tensor_ops::load_array_constants}};
 
 // -------- Struct --------
 #[allow(dead_code)]
@@ -118,6 +118,45 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         }
 
         Ok((self.outputs.clone(), out_array))
+    }
+}
+
+impl<C: Config, Builder: RootAPI<C>> LayerBuilder<C, Builder> for GemmLayer{
+    fn build(
+        layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
+        circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
+        optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::GraphPattern,
+        is_rescale: bool,
+        index: usize,
+        layer_context: &crate::circuit_functions::layers::layer_ops::BuildLayerContext
+    ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
+        
+        let params = layer.params.clone().unwrap();
+        // We can move this inside the layer op
+        let expected_shape = match layer_context.shapes_map.get(&layer.inputs[0]){
+            Some(input_shape) => input_shape,
+            None => panic!("Error getting output shape for layer {}", layer.name)
+        };
+        let gemm = GemmLayer::new(
+            layer.name.clone(),
+            index,
+            get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[1]),
+            get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[2]),
+            is_rescale.clone(),
+            layer_context.n_bits,
+            layer_context.two_v,
+            layer_context.alpha_two_v,
+            optimization_pattern,
+            circuit_params.scaling.into(), // TODO: Becomes scaling_in?
+            expected_shape.to_vec(),
+            get_param_or_default(&layer.name, &"alpha", &params, Some(&1.0)),
+            get_param_or_default(&layer.name, &"beta", &params, Some(&1.0)),
+            get_param_or_default(&layer.name, &"transA", &params, Some(&0)),
+            get_param_or_default(&layer.name, &"transB", &params, Some(&0)),
+            layer.inputs.to_vec(),
+            layer.outputs.to_vec(),
+        );
+        Ok(Box::new(gemm))
     }
 }
 

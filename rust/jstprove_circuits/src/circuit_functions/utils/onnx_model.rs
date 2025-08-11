@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 /// External crate imports
 use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use serde_json::Value;
 use ndarray::ArrayD;
 
@@ -10,6 +11,35 @@ use ndarray::ArrayD;
 use crate::circuit_functions::utils::json_array::value_to_arrayd;
 use crate::circuit_functions::utils::json_array::FromJsonNumber;
 use crate::circuit_functions::utils::onnx_types::{ONNXIO, ONNXLayer};
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct Architecture{
+    pub inputs: Vec<ONNXIO>,
+    pub outputs: Vec<ONNXIO>,
+    pub architecture: Vec<ONNXLayer>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct WANDB{
+    pub w_and_b: Vec<ONNXLayer>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct CircuitParams{
+    pub scale_base: u32,
+    pub scaling: u32,
+    pub rescale_config: HashMap<String, bool>
+}
+
+#[derive(Deserialize, Clone)]
+pub struct InputData {
+    pub input: Value,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct OutputData {
+    pub output: Value,
+}
 
 pub fn get_w_or_b<I: DeserializeOwned + Clone + FromJsonNumber + 'static>(
     w_and_b_map: &HashMap<String, ONNXLayer>,

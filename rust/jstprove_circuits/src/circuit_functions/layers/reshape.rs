@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use ndarray::{ArrayD, IxDyn};
 use expander_compiler::frontend::*;
 
-use crate::circuit_functions::layers::layer_ops::LayerOp;
+use crate::circuit_functions::{layers::layer_ops::{LayerBuilder, LayerOp}, utils::onnx_model::get_param_or_default};
 
 
 // -------- Struct --------
@@ -48,5 +48,33 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
             .expect("Shape mismatch: Cannot reshape into the given dimensions.");
 
         Ok((self.outputs.clone(), out.clone()))
+    }
+}
+
+impl<C: Config, Builder: RootAPI<C>> LayerBuilder<C, Builder> for ReshapeLayer{
+    fn build(
+        layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
+        _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
+        _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::GraphPattern,
+        _is_rescale: bool,
+        _index: usize,
+        layer_context: &crate::circuit_functions::layers::layer_ops::BuildLayerContext
+    ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
+        let shape_name = layer.inputs[1].clone();
+        let params = layer.params.clone().unwrap();
+        
+        let expected_shape = match layer_context.shapes_map.get(&layer.inputs[0]){
+            Some(input_shape) => input_shape,
+            None => panic!("Error getting output shape for layer {}", layer.name)
+        };
+        let output_shape = layer_context.shapes_map.get(&layer.outputs.to_vec()[0]);
+        let reshape = ReshapeLayer::new(
+            layer.name.clone(),
+            expected_shape.to_vec(),
+            layer.inputs.to_vec(),
+            layer.outputs.to_vec(),
+            get_param_or_default(&layer.name, &shape_name, &params, output_shape)
+        );
+        Ok(Box::new(reshape))
     }
 }

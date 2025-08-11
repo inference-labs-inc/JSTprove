@@ -6,7 +6,7 @@ use ndarray::{ArrayD, Array4, Ix4};
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
-use crate::circuit_functions::layers::layer_ops::LayerOp;
+use crate::circuit_functions::{layers::layer_ops::{LayerBuilder, LayerOp}, utils::onnx_model::get_param};
 
 /// Internal crate imports
 use super::super::utils::core_math::{unconstrained_to_bits, assert_is_bitstring_and_reconstruct};
@@ -86,6 +86,36 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         );
 
         Ok((self.outputs.clone(), output))
+    }
+}
+
+impl<C: Config, Builder: RootAPI<C>> LayerBuilder<C, Builder> for MaxPoolLayer{
+    fn build(
+        layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
+        _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
+        _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::GraphPattern,
+        _is_rescale: bool,
+        _index: usize,
+        layer_context: &crate::circuit_functions::layers::layer_ops::BuildLayerContext
+    ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
+        let params = layer.params.clone().unwrap();
+        let expected_shape = match layer_context.shapes_map.get(&layer.inputs[0]) {
+        Some(s) => s,
+        None => panic!("Missing shape for MaxPool input {}", layer.name),
+        };
+
+        let maxpool = MaxPoolLayer::new(
+            layer.name.clone(),
+            get_param(&layer.name, "kernel_shape", &params),
+            get_param(&layer.name, "strides", &params),
+            get_param(&layer.name, "dilations", &params),
+            get_param(&layer.name, "pads", &params),
+            expected_shape.clone(),
+            layer_context.n_bits - 1,
+            layer.inputs.to_vec(),
+            layer.outputs.to_vec(),
+        );
+        Ok(Box::new(maxpool))
     }
 }
 

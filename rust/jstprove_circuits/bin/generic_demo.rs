@@ -5,24 +5,19 @@ use std::collections::HashMap;
 
 use jstprove_circuits::circuit_functions::layers::constant::ConstantLayer;
 use jstprove_circuits::circuit_functions::layers::flatten::FlattenLayer;
-use jstprove_circuits::circuit_functions::layers::layer_ops::LayerOp;
+use jstprove_circuits::circuit_functions::layers::layer_ops::{BuildLayerContext, LayerBuilder, LayerOp};
 use jstprove_circuits::circuit_functions::layers::reshape::ReshapeLayer;
 use jstprove_circuits::circuit_functions::utils::graph_pattern_matching::{optimization_skip_layers, GraphPattern, PatternMatcher};
 /// External crate imports
 use lazy_static::lazy_static;
 use ndarray::{ArrayD, Ix1, IxDyn};
-use serde::Deserialize;
-use serde_json::Value;
 
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
 /// Internal crate imports
 use jstprove_circuits::circuit_functions::utils::onnx_model::{
-    collect_all_shapes,
-    get_param,
-    get_param_or_default,
-    get_w_or_b,
+    collect_all_shapes, get_param_or_default, Architecture, CircuitParams, InputData, OutputData, WANDB
 };
 use jstprove_circuits::circuit_functions::utils::shaping::get_inputs;
 use jstprove_circuits::circuit_functions::layers::conv::ConvLayer;
@@ -31,43 +26,12 @@ use jstprove_circuits::circuit_functions::layers::maxpool::MaxPoolLayer;
 use jstprove_circuits::circuit_functions::layers::relu::ReluLayer;
 
 use jstprove_circuits::circuit_functions::utils::tensor_ops::get_nd_circuit_inputs;
-
 use jstprove_circuits::io::io_reader::{FileReader, IOReader};
-
 use jstprove_circuits::runner::main_runner::{ConfigurableCircuit, handle_args};
-
-use jstprove_circuits::circuit_functions::utils::onnx_types::{ONNXIO, ONNXLayer};
+use jstprove_circuits::circuit_functions::utils::onnx_types::ONNXLayer;
 
 
 type WeightsData = (Architecture, WANDB, CircuitParams);
-#[derive(Deserialize, Clone, Debug)]
-struct Architecture{
-    inputs: Vec<ONNXIO>,
-    outputs: Vec<ONNXIO>,
-    architecture: Vec<ONNXLayer>,
-}
-
-#[derive(Deserialize, Clone, Debug)]
-struct WANDB{
-    w_and_b: Vec<ONNXLayer>,
-}
-
-#[derive(Deserialize, Clone, Debug)]
-struct CircuitParams{
-    _scale_base: u32,
-    scaling: u32,
-    rescale_config: HashMap<String, bool>
-}
-
-#[derive(Deserialize, Clone)]
-struct InputData {
-    input: Value,
-}
-
-#[derive(Deserialize, Clone)]
-struct OutputData {
-    output: Value,
-}
 
 // This reads the weights json into a string
 const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../python/models/weights/onnx_generic_circuit_weights.json");
@@ -87,8 +51,8 @@ lazy_static! {
 }
 
 declare_circuit!(Circuit {
-    input_arr: [PublicVariable], // shape (m, n)
-    outputs: [PublicVariable],   // shape (m, k)
+    input_arr: [PublicVariable],
+    outputs: [PublicVariable],
     dummy: [Variable; 2]
 });
 
@@ -102,8 +66,6 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
     const TWO_V: u32 = 1 << (V_PLUS_ONE - 1);
     let alpha_two_v: u64 = ((1 << CIRCUITPARAMS.scaling) * TWO_V) as u64;
 
-    // Load weights and biases into hashmap
-
     /*
     TODO: Inject weights + bias data with external functions instead of regular assignment in function.
      */
@@ -113,6 +75,8 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
         .map(|layer| (layer.name.clone(), layer))
         .collect();
 
+    
+
     let mut skip_next_layer: HashMap<String, bool>  = HashMap::new();
 
     let inputs = &ARCHITECTURE.inputs;
@@ -120,13 +84,21 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
     // TODO havent figured out how but this can maybe go in build layers?
     let shapes_map: HashMap<String, Vec<usize>> = collect_all_shapes(&ARCHITECTURE.architecture, inputs);
 
+    let layer_context = BuildLayerContext{
+        w_and_b_map: w_and_b_map.clone(),
+        shapes_map: shapes_map.clone(),
+        n_bits: N_BITS,
+        two_v: TWO_V,
+        alpha_two_v: alpha_two_v
+    };
+
     let matcher = PatternMatcher::new();
     let opt_patterns_by_layername = matcher.run(&ARCHITECTURE.architecture);
-    for (i, layer) in ARCHITECTURE.architecture.iter().enumerate() {
+    for (i, original_layer) in ARCHITECTURE.architecture.iter().enumerate() {
         /*
             Track layer combo optimizations
          */
-
+        let mut layer = original_layer.clone();
         if *skip_next_layer.get(&layer.name).unwrap_or(&false){
             continue
         }
@@ -142,158 +114,29 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
             .for_each(|item| {
                 skip_next_layer.insert(item.to_string(), true);
             });
+
+        layer.outputs = outputs;
         /*
             End tracking layer combo optimizations
          */
-
-        
-        
-
         let is_rescale = match  CIRCUITPARAMS.rescale_config.get(&layer.name){
-                Some(config) => config,
-                None => &true
-            };
+            Some(config) => config,
+            None => &true
+        };
+        let builder = match layer.op_type.as_str() {
+            "Conv"     => ConvLayer::build,
+            "Reshape"  => ReshapeLayer::build,
+            "Gemm"     => GemmLayer::build,
+            "Constant" => ConstantLayer::build,
+            "MaxPool"  => MaxPoolLayer::build,
+            "Flatten"  => FlattenLayer::build,
+            "Relu"     => ReluLayer::build,
+            other      => panic!("Unsupported layer type: {}", other),
+        };
 
-        match layer.op_type.as_str() {
-            "Conv" => {
-                let params = layer.params.clone().unwrap();                
-                // We can move this inside the layer op
-                let expected_shape = match shapes_map.get(&layer.inputs[0]){
-                    Some(input_shape) => input_shape,
-                    None => panic!("Error getting output shape for layer {}", layer.name)
-                };
-                let conv = ConvLayer::new(
-                    layer.name.clone(),
-                    i,
-                    get_w_or_b(&w_and_b_map, &layer.inputs[1]),
-                    get_w_or_b(&w_and_b_map, &layer.inputs[2]),
-                    get_param(&layer.name, &"strides", &params),
-                    get_param(&layer.name, &"kernel_shape", &params),
-                    vec![get_param_or_default(&layer.name, &"group", &params, Some(&1))],
-                    get_param(&layer.name, &"dilations", &params),
-                    get_param(&layer.name, &"pads", &params),
-                    expected_shape.to_vec(),
-                    CIRCUITPARAMS.scaling.into(),
-                    optimization_pattern,
-                    N_BITS,
-                    TWO_V,
-                    alpha_two_v,
-                    *is_rescale,
-                    layer.inputs.to_vec(),
-                    outputs
-                );
-
-                layers.push(Box::new(conv));
-            }
-            "Reshape" => {
-                let shape_name = layer.inputs[1].clone();
-                let params = layer.params.clone().unwrap();
-                
-                let expected_shape = match shapes_map.get(&layer.inputs[0]){
-                    Some(input_shape) => input_shape,
-                    None => panic!("Error getting output shape for layer {}", layer.name)
-                };
-                let output_shape = shapes_map.get(&layer.outputs.to_vec()[0]);
-                let reshape = ReshapeLayer::new(
-                    layer.name.clone(),
-                    expected_shape.to_vec(),
-                    layer.inputs.to_vec(),
-                    layer.outputs.to_vec(),
-                    get_param_or_default(&layer.name, &shape_name, &params, output_shape)
-                );
-                layers.push(Box::new(reshape));
-            }
-            "Gemm" => {
-
-                let params = layer.params.clone().unwrap();
-                // We can move this inside the layer op
-                let expected_shape = match shapes_map.get(&layer.inputs[0]){
-                    Some(input_shape) => input_shape,
-                    None => panic!("Error getting output shape for layer {}", layer.name)
-                };
-                let gemm = GemmLayer::new(
-                    layer.name.clone(),
-                    i,
-                    get_w_or_b(&w_and_b_map, &layer.inputs[1]),
-                    get_w_or_b(&w_and_b_map, &layer.inputs[2]),
-                    is_rescale.clone(),
-                    V_PLUS_ONE,
-                    TWO_V,
-                    alpha_two_v,
-                    optimization_pattern,
-                    CIRCUITPARAMS.scaling.into(), // TODO: Becomes scaling_in?
-                    expected_shape.to_vec(),
-                    get_param_or_default(&layer.name, &"alpha", &params, Some(&1.0)),
-                    get_param_or_default(&layer.name, &"beta", &params, Some(&1.0)),
-                    get_param_or_default(&layer.name, &"transA", &params, Some(&0)),
-                    get_param_or_default(&layer.name, &"transB", &params, Some(&0)),
-                    layer.inputs.to_vec(),
-                    outputs,
-                );
-                layers.push(Box::new(gemm));
-            }
-            "Constant" => {
-                let constant = ConstantLayer::new(
-                    layer.name.clone(),
-                    get_param(&layer.name, &"value", &layer.params.clone().unwrap()),
-                    outputs
-                );
-                layers.push(Box::new(constant));
-            }
-            "MaxPool" => {
-                let params = layer.params.clone().unwrap();
-                let expected_shape = match shapes_map.get(&layer.inputs[0]) {
-                Some(s) => s,
-                None => panic!("Missing shape for MaxPool input {}", layer.name),
-                };
-
-                let maxpool = MaxPoolLayer::new(
-                    layer.name.clone(),
-                    get_param(&layer.name, "kernel_shape", &params),
-                    get_param(&layer.name, "strides", &params),
-                    get_param(&layer.name, "dilations", &params),
-                    get_param(&layer.name, "pads", &params),
-                    expected_shape.clone(),
-                    N_BITS - 1,
-                    layer.inputs.to_vec(),
-                    outputs,
-                );
-                layers.push(Box::new(maxpool));
-            }
-            "Flatten" => {
-                let params = layer.params.clone().unwrap();
-                
-                let expected_shape = match shapes_map.get(&layer.inputs[0]){
-                    Some(input_shape) => input_shape,
-                    None => panic!("Error getting output shape for layer {}", layer.name)
-                };
-                let flatten = FlattenLayer::new(
-                    layer.name.clone(),
-                    get_param_or_default(&layer.name, &"axis", &params, Some(&1)),
-                    expected_shape.to_vec(),
-                    layer.inputs.to_vec(),
-                    layer.outputs.to_vec(),
-                );
-                layers.push(Box::new(flatten));
-            }
-            // Just in case the relu is not following a gemm or conv layer 
-            "Relu" =>{
-                let expected_shape = match shapes_map.get(&layer.inputs[0]){
-                    Some(input_shape) => input_shape,
-                    None => panic!("Error getting output shape for layer {}", layer.name)
-                };
-                let relu = ReluLayer::new(
-                    layer.name.clone(),
-                    i,
-                    expected_shape.to_vec(),
-                    layer.inputs.to_vec(),
-                    outputs,
-                    N_BITS,
-                );
-                layers.push(Box::new(relu));
-            }
-            other => panic!("Unsupported layer type: {}", other),
-        }
+        let built = builder(&layer, &CIRCUITPARAMS, optimization_pattern, *is_rescale, i, &layer_context)
+            .unwrap();
+        layers.push(built);
         eprintln!("layer added: {}", layer.op_type.as_str() );
     }
     layers

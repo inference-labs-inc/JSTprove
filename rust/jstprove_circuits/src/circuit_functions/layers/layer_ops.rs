@@ -2,7 +2,25 @@ use std::collections::HashMap;
 
 use expander_compiler::frontend::*;
 use ndarray::ArrayD;
+
+use crate::circuit_functions::utils::graph_pattern_matching::GraphPattern;
+use crate::circuit_functions::utils::onnx_types::ONNXLayer;
+use crate::circuit_functions::utils::onnx_model::CircuitParams;
+
 pub trait LayerOp<C: Config, Builder: RootAPI<C>> {
     fn apply(&self, api: &mut Builder, input: HashMap<String,ArrayD<Variable>>)
         -> Result<(Vec<String>,ArrayD<Variable>), String>;
+}
+
+pub trait LayerBuilder<C: Config, Builder: RootAPI<C>> {
+    /// Build the layer from generic layer data and context
+    fn build(layer: &ONNXLayer, circuit_params: &CircuitParams, optimization_pattern: GraphPattern, is_rescale: bool, index: usize, layer_context: &BuildLayerContext) -> Result<Box<dyn LayerOp<C, Builder>>, Error>;
+}
+
+pub struct BuildLayerContext{
+    pub w_and_b_map: HashMap<String, ONNXLayer>,
+    pub shapes_map: HashMap<String, Vec<usize>>,
+    pub n_bits: usize,
+    pub two_v: u32,
+    pub alpha_two_v: u64,
 }

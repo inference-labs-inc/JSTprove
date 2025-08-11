@@ -7,7 +7,7 @@ use ndarray::ArrayD;
 use expander_compiler::frontend::*;
 
 /// Internal crate imports
-use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::core_math::{
+use crate::circuit_functions::{layers::layer_ops::{LayerBuilder, LayerOp}, utils::core_math::{
     assert_is_bitstring_and_reconstruct,
     unconstrained_to_bits,
 }};
@@ -56,6 +56,31 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
         let out = relu_array(api, out, self.n_bits - 1);
 
         Ok((self.outputs.clone(), out))
+    }
+}
+
+impl<C: Config, Builder: RootAPI<C>> LayerBuilder<C, Builder> for ReluLayer{
+    fn build(
+        layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
+        _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
+        _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::GraphPattern,
+        _is_rescale: bool,
+        index: usize,
+        layer_context: &crate::circuit_functions::layers::layer_ops::BuildLayerContext
+    ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
+        let expected_shape = match layer_context.shapes_map.get(&layer.inputs[0]){
+            Some(input_shape) => input_shape,
+            None => panic!("Error getting output shape for layer {}", layer.name)
+        };
+        let relu = ReluLayer::new(
+            layer.name.clone(),
+            index,
+            expected_shape.to_vec(),
+            layer.inputs.to_vec(),
+            layer.outputs.to_vec(),
+            layer_context.n_bits,
+        );
+        Ok(Box::new(relu))
     }
 }
 
