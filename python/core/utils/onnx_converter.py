@@ -11,27 +11,27 @@ from onnx import NodeProto, TensorProto, shape_inference, helper, numpy_helper
 import onnxruntime as ort
 
 from python.core.utils.onnx_helpers import extract_shape_dict, get_input_shapes, parse_attributes
-from python.core.utils.onnx_quantizer.onnx_op_quantizer import ONNXOpQuantizer
+from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import ONNXOpQuantizer
 from python.core.utils.model_converter import ZKModelBase, ModelConverter
 
 """
 Keep the ununused import below as it
 must remain due to 'SessionOptions' dependency.
 """
-import python.core.utils.onnx_custom_ops
+import python.core.model_processing.onnx_custom_ops
 from onnxruntime import InferenceSession, SessionOptions
 from onnxruntime_extensions import get_library_path, OrtPyFunction
 
 
-from python.core.utils.onnx_custom_ops import conv
+from python.core.model_processing.onnx_custom_ops import conv
 
-from python.core.utils.onnx_custom_ops.conv import int64_conv
-from python.core.utils.onnx_custom_ops.relu import int64_relu
+from python.core.model_processing.onnx_custom_ops.conv import int64_conv
+from python.core.model_processing.onnx_custom_ops.relu import int64_relu
 
-from python.core.utils.onnx_custom_ops.gemm import int64_gemm7
+from python.core.model_processing.onnx_custom_ops.gemm import int64_gemm7
 
 # !!! MaxPool
-from python.core.utils.onnx_custom_ops.maxpool import int64_maxpool
+from python.core.model_processing.onnx_custom_ops.maxpool import int64_maxpool
 
 
 # @dataclass

@@ -6,10 +6,16 @@ from typing import Callable, Dict, List, Optional, Union
 from python.core.utils.onnx_helpers import create_quantized_initializer, extract_attributes, replace_input_references
 from onnx.numpy_helper import to_array, from_array
 
-from python.core.utils.onnx_quantizer.layers.base import BaseOpQuantizer
-from python.core.utils.onnx_quantizer.exceptions import InvalidParamError
+from python.core.model_processing.onnx_quantizer.layers.base import BaseOpQuantizer
+from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
 
 class GemmQuantizer(BaseOpQuantizer):
+    """
+    Quantizer for ONNX Gemm layers.
+
+    - Replaces standard Gemm with Int64Gemm from the `ai.onnx.contrib` domain and makes relevant additional changes to the graph.
+    - Validates that all required Gemm parameters are present.
+    """
     def __init__(self, new_initializers):
         self.new_initializers = new_initializers
 
@@ -22,10 +28,26 @@ class GemmQuantizer(BaseOpQuantizer):
         scale_base: int,
         initializer_map: dict[str, onnx.TensorProto],
     ) -> List[onnx.NodeProto]:
+        """
+        Quantize a Gemm node by:
+        1. Quantizing its weights and bias.
+        2. Adding a scale constant.
+        3. Replacing it with an Int64Gemm node.
+
+        Args:
+            node (onnx.NodeProto): The Constant node to quantize.
+            rescale (bool): Whether rescaling is enabled (Doesnt have an affect on this op type)
+            graph (onnx.GraphProto): The ONNX graph.
+            scale (int): Scale exponent.
+            scale_base (int): The base of scaling.
+            initializer_map (dict[str, onnx.TensorProto]): Map of initializer names to tensor data.
+
+        Returns:
+            List[onnx.NodeProto]: A list of ONNX nodes (quantized and any auxiliary nodes).
+        """
         nodes = []
         output_name = f"{node.name}_int"
 
-        # node.input[:] = self.quantize_w_and_b(node, scale, scale_base, initializer_map)
         nodes, node.input[:] = self.add_nodes_w_and_b(node, scale, scale_base, initializer_map, graph)
 
         attrs = extract_attributes(node)
@@ -46,18 +68,29 @@ class GemmQuantizer(BaseOpQuantizer):
         self.new_initializers.append(scale_tensor)
         node.input.append(scale_const_name)
         int64_gemm = onnx.helper.make_node(
-                                            "Int64Gemm",
-                                            inputs=node.input,
-                                            outputs=node.output,  # preserve original output name
-                                            name=output_name,
-                                            domain="ai.onnx.contrib",
-                                            **attrs
-                                        )
+                                        "Int64Gemm",
+                                        inputs=node.input,
+                                        outputs=node.output,  # preserve original output name
+                                        name=output_name,
+                                        domain="ai.onnx.contrib",
+                                        **attrs
+                                    )
         nodes.append(int64_gemm)
         return nodes
     
     
-    def check_supported(self, node: onnx.NodeProto, initializer_map: dict[str, onnx.TensorProto] = None):
+    def check_supported(self, node: onnx.NodeProto, initializer_map: dict[str, onnx.TensorProto] = None) -> None:
+        """
+        Perform high-level validation to ensure that this node
+        can be quantized safely.
+
+        Args:
+            node (onnx.NodeProto): ONNX node to be checked
+            initializer_map (dict[str, onnx.TensorProto]): Initializer map (name of weight or bias and tensor)
+
+        Raises:
+            InvalidParamError: If any requirement is not met.
+        """
         if len(node.input) < 2:
             raise InvalidParamError(node.name, node.op_type, f"Expected at least 2 inputs (input, weights), got {len(node.input)}")
         

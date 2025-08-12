@@ -9,3 +9,8 @@ def rescaling(scaling_factor, rescale, Y):
         return Y
     else:
         raise NotImplementedError("Rescale must be 0 or 1")
+    
+def parse_attr(attr, default):
+    if attr is None:
+        return default
+    return [int(x) for x in attr.split(",")]

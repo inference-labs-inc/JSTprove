@@ -7,14 +7,14 @@ from onnx import TensorProto, shape_inference, helper, numpy_helper
 
 from python.core.utils.onnx_converter import ONNXConverter
 from python.core.utils.onnx_helpers import dims_prod, extract_shape_dict, parse_attributes
-from python.core.utils.onnx_quantizer.onnx_op_quantizer import ONNXOpQuantizer
+from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import ONNXOpQuantizer
 
 from onnxruntime import InferenceSession, SessionOptions
 from onnxruntime_extensions import get_library_path, OrtPyFunction
-from python.core.utils.onnx_custom_ops import conv
+from python.core.model_processing.onnx_custom_ops import conv
 
-from python.core.utils.onnx_custom_ops.conv import int64_conv
-from python.core.utils.onnx_custom_ops.gemm import int64_gemm7
+from python.core.model_processing.onnx_custom_ops.conv import int64_conv
+from python.core.model_processing.onnx_custom_ops.gemm import int64_gemm7
 
 
 @pytest.fixture
