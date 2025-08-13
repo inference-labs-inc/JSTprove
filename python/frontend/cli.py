@@ -1,246 +1,165 @@
-#!/usr/bin/env python3
-"""
-CLI for running circuit operations. Dynamically loads circuit modules, resolves file paths
-using fuzzy matching, and supports listing available circuits.
-"""
+# python/frontend/cli.py
 
 import argparse
 import importlib
-import logging
+import sys
 from pathlib import Path
-from typing import Optional, Tuple, List
 
-from python.testing.core.circuit_components.circuit_helpers import RunType
+from python.testing.core.utils.helper_functions import RunType
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
-# Set PROJECT_ROOT since cli.py is in the project root (jstproveTesting-Internal)
-PROJECT_ROOT = Path(__file__).resolve().parent
-
-# Cache for JSON files to avoid repeated directory scans
-_JSON_FILES_CACHE: Optional[List[Path]] = None
-
-def _get_all_json_files() -> List[Path]:
-    global _JSON_FILES_CACHE
-    if _JSON_FILES_CACHE is None:
-        _JSON_FILES_CACHE = list(PROJECT_ROOT.rglob("*.json"))
-    return _JSON_FILES_CACHE
-
-def find_file(filename: str, default_path: Optional[Path] = None) -> Path:
-    """
-    Finds a JSON file in the project root using exact or fuzzy matching.
-    """
-    if not filename.endswith(".json"):
-        filename += ".json"
-
-    if default_path:
-        candidate = PROJECT_ROOT / default_path
-        if candidate.is_file():
-            return candidate
-    return filename
-    all_json_files = _get_all_json_files()
-    for path in all_json_files:
-        if path.name == filename:
-            return path
-
-    file_names = [p.name for p in all_json_files]
-    close_matches = difflib.get_close_matches(filename, file_names, n=1, cutoff=0.6)
-    if close_matches:
-        fuzzy_match = close_matches[0]
-        for path in all_json_files:
-            if path.name == fuzzy_match:
-                logger.warning(f"Could not find '{filename}', using close match '{fuzzy_match}'")
-                return path
-
-    raise FileNotFoundError(f"Could not find file '{filename}' (or a close match) under {PROJECT_ROOT}.")
-
-def try_import(module_path: str, class_name: str):
-    """
-    Helper function: Tries to import module_path and return the attribute 'class_name'.
-    Returns None on failure.
-    """
+def _load_circuit(dotted: str):
+    """Load a Circuit subclass from 'package.module:ClassName'."""
+    if ":" not in dotted:
+        raise SystemExit("--circuit must be 'package.module:ClassName'")
+    mod_name, cls_name = dotted.split(":", 1)
+    mod = importlib.import_module(mod_name)
     try:
-        module = importlib.import_module(module_path)
-        return getattr(module, class_name)
-    except (ModuleNotFoundError, AttributeError):
-        return None
+        cls = getattr(mod, cls_name)
+    except AttributeError as e:
+        raise SystemExit(f"Class '{cls_name}' not found in module '{mod_name}'") from e
+    return cls()
 
-def load_circuit(circuit_name: str, class_name: str = "SimpleCircuit", search_path: Optional[str] = None):
-    """
-    Dynamically loads a circuit module and returns an instance of the specified circuit class.
-    It tries the following in order:
-      - python/testing/corecore.<search_path> (if provided)
-      - python/testing/corecore.circuit_models
-      - python/testing/corecore.circuit_components
-    """
-    base_paths = ["python/testing/corecore.circuit_models", "python/testing/corecore.circuit_components"]
-    if search_path:
-        # Prepend the user-specified search path
-        base_paths.insert(0, f"python/testing/corecore.{search_path}")
 
-    for base in base_paths:
-        module_path = f"{base}.{circuit_name}"
-        circuit_class = try_import(module_path, class_name)
-        if circuit_class:
-            return circuit_class()
-    raise ValueError(
-        f"Could not load circuit '{circuit_name}' with class '{class_name}' from any known location."
+def _ensure_exists(path: str, kind: str = "file"):
+    p = Path(path)
+    if kind == "file" and not p.is_file():
+        raise SystemExit(f"Required {kind} not found: {path}")
+    if kind == "dir" and not p.is_dir():
+        raise SystemExit(f"Required {kind} not found: {path}")
+
+
+def _ensure_parent_dir(path: str):
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+
+    parser = argparse.ArgumentParser(
+        prog="jstprove",
+        description="ZK-ML CLI (compile, witness, prove, verify)."
     )
+    sub = parser.add_subparsers(dest="cmd", required=True)
 
-def resolve_file_paths(
-    circuit_name: str, 
-    input_override: Optional[str], 
-    output_override: Optional[str], 
-    pattern: Optional[str]
-) -> Tuple[str, str]:
-    """
-    Resolves input and output file paths based on provided overrides or default patterns.
-    """
-    if pattern:
-        input_filename = pattern.format(circuit=circuit_name)
-        output_filename = input_filename.replace("input", "output") if "input" in input_filename else f"{circuit_name}_output.json"
-    else:
-        input_filename = f"{circuit_name}_input.json"
-        output_filename = f"{circuit_name}_output.json"
+    # compile
+    p_compile = sub.add_parser("compile", help="Compile a circuit (writes circuit + quantized model + weights).")
+    p_compile.add_argument("--circuit", required=True,
+                           help="Dotted path to Circuit subclass, e.g. "
+                                "python.testing.core.circuit_models.generic_onnx:GenericONNXCircuit")
+    p_compile.add_argument("--name", required=True, help="Logical circuit/model name.")
+    p_compile.add_argument("--circuit-path", required=True, help="Output path for the compiled circuit (e.g., circuit.txt).")
+    p_compile.add_argument("--model-path", required=True, help="Path to the original model to be circuitized.")
+    p_compile.add_argument("--quantized-path", required=True, help="Output path for the quantized model.")
 
-    input_path = str(find_file(input_override) if input_override else find_file(input_filename, Path(
-        "../../inputs") / input_filename))
-    output_path = str(find_file(output_override) if output_override else find_file(output_filename, Path(
-        "../../output") / output_filename))
-    return input_path, output_path
+    # witness
+    p_wit = sub.add_parser("witness", help="Generate witness using a compiled circuit.")
+    p_wit.add_argument("--circuit", required=True, help="Dotted path to Circuit subclass.")
+    p_wit.add_argument("--name", required=True, help="Logical circuit/model name.")
+    p_wit.add_argument("--circuit-path", required=True, help="Path to the compiled circuit.")
+    p_wit.add_argument("--quantized-path", required=True, help="Path to the quantized model.")
+    p_wit.add_argument("--input-path", required=True, help="Path to input JSON (model inputs).")
+    p_wit.add_argument("--output-path", required=True, help="Path to write model outputs JSON.")
+    p_wit.add_argument("--witness-path", required=True, help="Path to write witness.")
 
-def is_circuit_file(path: Path) -> bool:
-    """
-    Checks whether a file contains a class that inherits from ZKModel or Circuit.
-    """
+    # prove
+    p_prove = sub.add_parser("prove", help="Generate a proof from a circuit and witness.")
+    p_prove.add_argument("--circuit", required=True, help="Dotted path to Circuit subclass.")
+    p_prove.add_argument("--name", required=True, help="Logical circuit/model name.")
+    p_prove.add_argument("--circuit-path", required=True, help="Path to the compiled circuit.")
+    p_prove.add_argument("--witness-path", required=True, help="Path to an existing witness.")
+    p_prove.add_argument("--proof-path", required=True, help="Path to write proof.")
+
+    # verify
+    p_verify = sub.add_parser("verify", help="Verify a proof.")
+    p_verify.add_argument("--circuit", required=True, help="Dotted path to Circuit subclass.")
+    p_verify.add_argument("--name", required=True, help="Logical circuit/model name.")
+    p_verify.add_argument("--circuit-path", required=True, help="Path to the compiled circuit.")
+    p_verify.add_argument("--input-path", required=True, help="Path to input JSON.")
+    p_verify.add_argument("--output-path", required=True, help="Path to expected outputs JSON.")
+    p_verify.add_argument("--witness-path", required=True, help="Path to witness.")
+    p_verify.add_argument("--proof-path", required=True, help="Path to proof.")
+
+    args = parser.parse_args(argv)
+
+    circuit = _load_circuit(args.circuit)
+
     try:
-        content = path.read_text()
-    except Exception:
-        return False
-    return "class " in content and ( "(ZKModel):" in content or "(Circuit):" in content )
+        if args.cmd == "compile":
+            _ensure_exists(args.model_path, "file")
+            _ensure_parent_dir(args.circuit_path)
+            _ensure_parent_dir(args.quantized_path)
 
-def list_available_circuits(search_path: Optional[str] = None):
-    """
-    Lists all available circuit files by searching for Python files that define a class inheriting
-    from ZKModel or Circuit. By default, it searches in:
-      - python/testing/corecore/circuit_components
-      - python/testing/corecore/circuit_models
-    The user can override this search directory using the --circuit_search_path flag.
-    """
-    if search_path:
-        search_paths = [PROJECT_ROOT / search_path]
-    else:
-        search_paths = [
-            PROJECT_ROOT / "python/testing/corecore" / "circuit_components",
-            PROJECT_ROOT / "python/testing/corecore" / "circuit_models"
-        ]
-    circuit_files = {
-        str(p.relative_to(PROJECT_ROOT))
-        for base in search_paths if base.exists()
-        for p in base.rglob("*.py")
-        if is_circuit_file(p)
-    }
-    if circuit_files:
-        print("Available circuit files:")
-        for file in sorted(circuit_files):
-            print(file)
-    else:
-        print("No circuit files found.")
+            # Let the Circuit know where the original model is
+            setattr(circuit, "model_path", args.model_path)
+            setattr(circuit, "onnx_path", args.model_path)
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Run circuit operations.")
-    # Operation flags
-    parser.add_argument("--compile", action="store_true", help="Compile the circuit.")
-    parser.add_argument("--gen_witness", action="store_true", help="Generate witness for the circuit.")
-    parser.add_argument("--prove", action="store_true", help="Generate witness and proof.")
-    parser.add_argument("--verify", action="store_true", help="Run verification.")
-    parser.add_argument("--end_to_end", action="store_true", help="Run end-to-end circuit testing.")
-    parser.add_argument("--all", action="store_true", help="Run all stages (compile_circuit, gen_witness, prove, verify).")
-    parser.add_argument("--fresh_compile", action="store_true", help="Force fresh compilation of the circuit (sets dev_mode=True).")
-    parser.add_argument("--ecc", action="store_true", help="Use ExpanderCompilerCollection (cargo) instead of expander-exec.")
-    parser.add_argument("--bench", action="store_true", help="Benchmark memory")
+            circuit.base_testing(
+                run_type=RunType.COMPILE_CIRCUIT,
+                circuit_name=args.name,
+                circuit_path=args.circuit_path,
+                quantized_path=args.quantized_path,
+            )
+            print(f"[compile] done → circuit={args.circuit_path}, quantized={args.quantized_path}")
 
+        elif args.cmd == "witness":
+            _ensure_exists(args.circuit_path, "file")
+            _ensure_exists(args.quantized_path, "file")
+            _ensure_exists(args.input_path, "file")
+            _ensure_parent_dir(args.output_path)
+            _ensure_parent_dir(args.witness_path)
 
+            circuit.base_testing(
+                run_type=RunType.GEN_WITNESS,
+                circuit_name=args.name,
+                circuit_path=args.circuit_path,
+                quantized_path=args.quantized_path,
+                input_file=args.input_path,
+                output_file=args.output_path,
+                witness_file=args.witness_path,
+            )
+            print(f"[witness] wrote witness → {args.witness_path} and outputs → {args.output_path}")
 
-    # Listing and search path flag (used for both listing and dynamic loading)
-    parser.add_argument("--list_circuits", action="store_true", help="List all available circuit files.")
-    parser.add_argument("--circuit_search_path", type=str, help="Directory to search for circuits (relative to project root).")
-    
-    # File overrides and pattern
-    parser.add_argument("--circuit_path", type=str, help="Path to the circuit file (Rust or otherwise)")
-    parser.add_argument("--input", type=str, help="Path to the input JSON file.")
-    parser.add_argument("--output", type=str, help="Path to the output JSON file.")
-    parser.add_argument("--witness", type=str, help="Optional path to witness file")
-    parser.add_argument("--proof", type=str, help="Optional path to proof file")
-    parser.add_argument("--quantized_model", type=str, help="Path to the quantized pytorch model")
-    parser.add_argument("--pattern", type=str, help="Optional pattern for input/output filenames with '{circuit}' placeholder.")
-    
-    # Circuit module and class specification
-    parser.add_argument("--circuit", type=str, help="Name of the circuit module (under default packages).")
-    parser.add_argument("--class", dest="class_name", type=str, default="SimpleCircuit",
-                        help="Name of the circuit class to load. Defaults to 'SimpleCircuit'.")
-    return parser.parse_args()
+        elif args.cmd == "prove":
+            _ensure_exists(args.circuit_path, "file")
+            _ensure_exists(args.witness_path, "file")
+            _ensure_parent_dir(args.proof_path)
 
-def get_run_operations(args) -> List[RunType]:
-    """
-    Returns a list of RunType operations based on the parsed arguments.
-    """
-    if args.all:
-        return [RunType.COMPILE_CIRCUIT, RunType.GEN_WITNESS, RunType.PROVE_WITNESS, RunType.GEN_VERIFY]
-    ops = []
-    if args.compile:
-        ops.append(RunType.COMPILE_CIRCUIT)
-    if args.gen_witness:
-        ops.append(RunType.GEN_WITNESS)
-    if args.prove:
-        ops.append(RunType.PROVE_WITNESS)
-    if args.verify:
-        ops.append(RunType.GEN_VERIFY)
-    if args.end_to_end:
-        ops.append(RunType.END_TO_END)
-    return ops
+            circuit.base_testing(
+                run_type=RunType.PROVE_WITNESS,
+                circuit_name=args.name,
+                circuit_path=args.circuit_path,
+                witness_file=args.witness_path,
+                proof_file=args.proof_path,
+            )
+            print(f"[prove] wrote proof → {args.proof_path}")
 
-def main():
-    args = parse_args()
-    
-    # If listing circuits, perform the search and exit.
-    if args.list_circuits:
-        list_available_circuits(args.circuit_search_path)
-        return
+        elif args.cmd == "verify":
+            _ensure_exists(args.circuit_path, "file")
+            _ensure_exists(args.input_path, "file")
+            _ensure_exists(args.output_path, "file")
+            _ensure_exists(args.witness_path, "file")
+            _ensure_exists(args.proof_path, "file")
 
-    if not args.circuit:
-        raise ValueError("The --circuit argument is required unless using --list_circuits.")
+            circuit.base_testing(
+                run_type=RunType.GEN_VERIFY,
+                circuit_name=args.name,
+                circuit_path=args.circuit_path,
+                input_file=args.input_path,
+                output_file=args.output_path,
+                witness_file=args.witness_path,
+                proof_file=args.proof_path,
+            )
+            print(f"[verify] verification complete for proof → {args.proof_path}")
 
-    circuit_name = args.circuit
-    # Load the circuit module/class using the optional search path.
-    circuit = load_circuit(circuit_name, args.class_name, args.circuit_search_path)
-    
-    # Resolve file paths and assign them to the circuit instance.
-    input_path, output_path = resolve_file_paths(circuit_name, args.input, args.output, args.pattern)
-    circuit.input_path = input_path
-    circuit.output_path = output_path
+        return 0
 
-    run_operations = get_run_operations(args)
-    if not run_operations:
-        raise ValueError("No operation specified. Please specify at least one operation flag or use --all.")
-    # Execute each operation in order.
-    for op in run_operations:
-        if op == RunType.COMPILE_CIRCUIT:
-            args.fresh_compile = True
-        circuit.base_testing(
-            run_type=op,
-            dev_mode=args.fresh_compile,
-            circuit_path=args.circuit_path,
-            input_file=args.input,
-            output_file=args.output,
-            witness_file=args.witness,
-            proof_file=args.proof,
-            ecc=args.ecc,
-            bench = args.bench,
-            quantized_path = args.quantized_path
-        )
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
