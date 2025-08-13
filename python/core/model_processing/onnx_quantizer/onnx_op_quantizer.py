@@ -37,7 +37,6 @@ class ONNXOpQuantizer:
         Build a {name: TensorProto} mapping for the model's initializers.
     """
     def __init__(self):
-        
         self.handlers: Dict[str, Callable[[onnx.NodeProto, bool], Union[onnx.NodeProto, List[onnx.NodeProto]]]] = {}
         self.new_initializers = [] 
 

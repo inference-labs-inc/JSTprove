@@ -3,7 +3,7 @@ import onnx
 from onnx import numpy_helper
 from typing import List
 
-from python.core.utils.onnx_helpers import extract_attributes
+from python.core.model_processing.onnx_custom_ops.onnx_helpers import extract_attributes
 
 from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
 from python.core.model_processing.onnx_quantizer.layers.base import BaseOpQuantizer

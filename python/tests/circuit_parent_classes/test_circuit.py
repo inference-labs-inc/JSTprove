@@ -1,13 +1,13 @@
 import pytest
 from unittest.mock import patch, MagicMock
 import sys
-sys.modules.pop("python.core.circuit_components.circuit_helpers", None)
+sys.modules.pop("python.core.circuits.base", None)
 
 
 
 with patch('python.core.utils.helper_functions.compute_and_store_output', lambda x: x):  # MUST BE BEFORE THE UUT GETS IMPORTED ANYWHERE!
     with patch('python.core.utils.helper_functions.prepare_io_files', lambda f: f):  # MUST BE BEFORE THE UUT GETS IMPORTED ANYWHERE!
-        from python.core.circuit_components.circuit_helpers import ZKProofSystems, RunType, Circuit
+        from python.core.circuits.base import ZKProofSystems, RunType, Circuit
 
 
 
@@ -80,12 +80,12 @@ def test_get_outputs_not_implemented():
 # ---------- Test parse_proof_run_type ----------
 
 @pytest.mark.unit
-@patch("python.core.circuit_components.circuit_helpers.prove_and_verify")
-@patch("python.core.circuit_components.circuit_helpers.compile_circuit")
-@patch("python.core.circuit_components.circuit_helpers.generate_witness")
-@patch("python.core.circuit_components.circuit_helpers.generate_proof")
-@patch("python.core.circuit_components.circuit_helpers.generate_verification")
-@patch("python.core.circuit_components.circuit_helpers.run_end_to_end")
+@patch("python.core.circuits.base.prove_and_verify")
+@patch("python.core.circuits.base.compile_circuit")
+@patch("python.core.circuits.base.generate_witness")
+@patch("python.core.circuits.base.generate_proof")
+@patch("python.core.circuits.base.generate_verification")
+@patch("python.core.circuits.base.run_end_to_end")
 def test_parse_proof_dispatch_logic(
     mock_end_to_end,
     mock_verify,
@@ -181,7 +181,7 @@ def test_get_inputs_from_file():
     c = Circuit()
     c.scale_base = 2
     c.scaling = 2
-    with patch('python.core.circuit_components.circuit_helpers.read_from_json', return_value = {"input":[1,2,3,4]}):
+    with patch('python.core.circuits.base.read_from_json', return_value = {"input":[1,2,3,4]}):
         x = c.get_inputs_from_file("", is_scaled=True)
         assert x == {"input":[1,2,3,4]}
 
@@ -193,7 +193,7 @@ def test_get_inputs_from_file_multiple_inputs():
     c = Circuit()
     c.scale_base = 2
     c.scaling = 2
-    with patch('python.core.circuit_components.circuit_helpers.read_from_json', return_value = {"input":[1,2,3,4], "nonce": 25}):
+    with patch('python.core.circuits.base.read_from_json', return_value = {"input":[1,2,3,4], "nonce": 25}):
         x = c.get_inputs_from_file("", is_scaled=True)
         assert x == {"input":[1,2,3,4], "nonce": 25}
 
@@ -217,7 +217,7 @@ def test_format_outputs():
 
 # ---------- _gen_witness_preprocessing ----------
 @pytest.mark.unit
-@patch("python.core.circuit_components.circuit_helpers.to_json")
+@patch("python.core.circuits.base.to_json")
 def test_gen_witness_preprocessing_write_json_true(mock_to_json):
     c = Circuit()
     c._file_info = {"quantized_model_path": "quant.pt"}
@@ -236,7 +236,7 @@ def test_gen_witness_preprocessing_write_json_true(mock_to_json):
     mock_to_json.assert_any_call({"output": 2}, "out.json")
 
 @pytest.mark.unit
-@patch("python.core.circuit_components.circuit_helpers.to_json")
+@patch("python.core.circuits.base.to_json")
 def test_gen_witness_preprocessing_write_json_false(mock_to_json):
     c = Circuit()
     c._file_info = {"quantized_model_path": "quant.pt"}
@@ -264,7 +264,7 @@ def test_gen_witness_preprocessing_write_json_false(mock_to_json):
 
 # ---------- _compile_preprocessing ----------
 @pytest.mark.unit
-@patch("python.core.circuit_components.circuit_helpers.to_json")
+@patch("python.core.circuits.base.to_json")
 def test_compile_preprocessing_weights_dict(mock_to_json):
     c = Circuit()
     c._file_info = {"quantized_model_path": "model.pth"}
@@ -280,7 +280,7 @@ def test_compile_preprocessing_weights_dict(mock_to_json):
     mock_to_json.assert_called_once_with({"a": 1}, "weights.json")
 
 @pytest.mark.unit
-@patch("python.core.circuit_components.circuit_helpers.to_json")
+@patch("python.core.circuits.base.to_json")
 def test_compile_preprocessing_weights_list(mock_to_json):
     c = Circuit()
     c._file_info = {"quantized_model_path": "model.pth"}
@@ -474,7 +474,7 @@ def test_parse_proof_run_type_invalid_run_type(capsys):
 
 @pytest.mark.unit
 # @patch.object(Circuit, "parse_proof_run_type", side_effect = Exception("Boom!"))
-@patch("python.core.circuit_components.circuit_helpers.compile_circuit", side_effect=Exception("Boom goes the dynamite!"))
+@patch("python.core.circuits.base.compile_circuit", side_effect=Exception("Boom goes the dynamite!"))
 @patch.object(Circuit, "_compile_preprocessing")
 def test_parse_proof_run_type_catches_internal_exception(mock_compile_preprocessing, mock_compile, capsys):
     c = Circuit()

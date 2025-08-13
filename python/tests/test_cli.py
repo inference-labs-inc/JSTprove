@@ -5,7 +5,7 @@ from pathlib import Path
 from python.frontend.cli import (
     PROJECT_ROOT, parse_args, get_run_operations, find_file, load_circuit, resolve_file_paths
 )
-from python.core.circuit_components.circuit_helpers import RunType
+from python.core.circuits.base import RunType
 
 
 # ---------- parse_args ----------

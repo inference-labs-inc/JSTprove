@@ -5,13 +5,13 @@ import pkgutil
 import pytest
 
 from python.core import circuit_models
-from python.core import circuit_components
+from python.core import circuits
 
 
 
 # from python.core.circuit_models.demo_cnn import Demo
 # from python.core.circuit_components.relu import ReLU, ConversionType
-from python.core.circuit_components.circuit_helpers import Circuit
+from python.core.circuits.base import Circuit
 # from python.core.circuit_models.generic_torch import GenericModelTorch
 from python.core.circuit_models.generic_onnx import GenericModelONNX
 
@@ -22,16 +22,6 @@ ModelEntry = namedtuple("ModelEntry", ["name", "source", "loader", "args", "kwar
 def scan_model_files(directory, extension, loader_fn, prefix):
     entries = []
     for file_or_foldername in os.listdir(directory):
-        if prefix == "pytorch":
-            folder = os.path.join(directory,file_or_foldername)
-
-            if os.path.isdir(folder):
-                if os.path.isfile(os.path.join(folder,"model.py")) and os.path.isfile(os.path.join(folder,"model.pt")) and os.path.isfile(os.path.join(folder,"metadata.json")):
-                    name = file_or_foldername
-                    path = os.path.join(directory, file_or_foldername)
-                    entries.append(
-                        ModelEntry(name=f"{name}", source=prefix, loader=lambda p=path: loader_fn(p), args=(), kwargs={})
-                    )
         if prefix == "onnx":
             if os.path.isfile(os.path.join(directory, file_or_foldername)) and file_or_foldername[-5:] == ".onnx":
                 name = file_or_foldername[0:len(file_or_foldername) - 5]
@@ -39,8 +29,6 @@ def scan_model_files(directory, extension, loader_fn, prefix):
                 entries.append(
                     ModelEntry(name=f"{name}", source=prefix, loader=lambda p=path: loader_fn(p), args=(), kwargs={})
                 )
-
-    
     return entries
 
 def import_all_submodules(package):
@@ -50,7 +38,7 @@ def import_all_submodules(package):
 
 # Import all submodules so their classes are registered
 import_all_submodules(circuit_models)
-import_all_submodules(circuit_components)
+import_all_submodules(circuits)
 
 def all_subclasses(cls):
     """Recursively find all subclasses of a given class."""
@@ -67,19 +55,13 @@ def build_models_to_test():
         models.append(
             ModelEntry(name=name, source="class", loader=cls, args=(), kwargs={})
         )
-
     # Filter unwanted class models
     models = [
         m for m in models
-        if m.name not in {"zkmodel", "doomslice", "slice", "genericdemo", "genericmodeltorch", "genericmodelonnx", "zktorchmodel", "zkmodelbase"}
+        if m.name not in {"zkmodel", "genericmodelonnx", "zktorchmodel", "zkmodelbase"}
     ]
-
-
     # Add ONNX models
     models += scan_model_files("python/models/models_onnx", ".onnx", GenericModelONNX, "onnx")
-
-
-
     return models
 
 
@@ -91,9 +73,7 @@ def modify_models_based_on_class(models_to_test):
     
     for model_name, model_class in models_to_test:
         args, kwargs = (), {}
-        
         updated_models.append((model_name, model_class, args, kwargs))
-    
     return updated_models
 
 

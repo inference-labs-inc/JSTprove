@@ -1,18 +1,14 @@
 import copy
 from dataclasses import asdict, dataclass
-import json
 from typing import Dict, List, Optional
 import numpy as np
 import torch
-import torch.nn as nn
 import onnx
 from onnx import NodeProto, TensorProto, shape_inference, helper, numpy_helper
 
-import onnxruntime as ort
-
-from python.core.utils.onnx_helpers import extract_shape_dict, get_input_shapes, parse_attributes
+from python.core.model_processing.onnx_custom_ops.onnx_helpers import extract_shape_dict, get_input_shapes, parse_attributes
 from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import ONNXOpQuantizer
-from python.core.utils.model_converter import ZKModelBase, ModelConverter
+from python.core.model_processing.converters.base import ModelConverter
 
 """
 Keep the ununused import below as it
@@ -20,28 +16,13 @@ must remain due to 'SessionOptions' dependency.
 """
 import python.core.model_processing.onnx_custom_ops
 from onnxruntime import InferenceSession, SessionOptions
-from onnxruntime_extensions import get_library_path, OrtPyFunction
-
-
-from python.core.model_processing.onnx_custom_ops import conv
-
-from python.core.model_processing.onnx_custom_ops.conv import int64_conv
-from python.core.model_processing.onnx_custom_ops.relu import int64_relu
-
-from python.core.model_processing.onnx_custom_ops.gemm import int64_gemm7
-
-# !!! MaxPool
-from python.core.model_processing.onnx_custom_ops.maxpool import int64_maxpool
-
-
-# @dataclass
-# class ONNXLayerConstants:
-#     input_index: int
-#     name: str
-#     value: Dict[str, List[int]]
+from onnxruntime_extensions import get_library_path
 
 @dataclass
 class ONNXLayer:
+    """
+    A dataclass representing an ONNX layer, in the form to be sent to the circuit building process
+    """    
     id: int
     name: str
     op_type: str #This is the operation type. eg. "Conv" for convolution layers
@@ -54,6 +35,9 @@ class ONNXLayer:
 
 @dataclass
 class ONNXIO:
+    """
+    A dataclass representing an ONNX input or output, in the form to be sent to the circuit building process
+    """    
     name: str
     elem_type: int
     shape: List[int]
@@ -94,28 +78,14 @@ class ONNXConverter(ModelConverter):
         self.quantized_model = onnx_model
         opts = SessionOptions()
         opts.register_custom_ops_library(get_library_path())
-        self.ort_sess =  ort.InferenceSession(file_path, opts, providers=["CPUExecutionProvider"])
+        self.ort_sess =  InferenceSession(file_path, opts, providers=["CPUExecutionProvider"])
         self.required_keys = [input.name for input in onnx_model.graph.input]
         self.input_shape = get_input_shapes(onnx_model)
 
         self.quantized_model_path = file_path
 
     def analyze_layers(self, output_name_to_shape = None):
-        # model = tract.onnx().model_for_path("./mobilenetv2-7.onnx").into_optimized().into_runnable()
-        # tract_model = tract.onnx().model_for_path("./models_onnx/doom.onnx")
-        # layers = model_analyzer.analyze_model("./models_onnx/doom.onnx")
-        # path  ="./models_onnx/doom.onnx"
         id_count = 0
-
-        
-
-        # We may want to add our own model checker here, in order to confirm that the model layers meet our specs - layer types etc.
-
-        # To be used if I need batch size
-        # for input_tensor in model.graph.input:
-            # if input_tensor.name == "input":  # replace with your input name
-            # input_tensor.type.tensor_type.shape.dim[0].dim_value = getattr(self, "batch_size", 1)  # Set batch size to 1
-
         # Apply shape inference on the model
         if not output_name_to_shape:
             inferred_model = shape_inference.infer_shapes(self.model) 
@@ -123,10 +93,6 @@ class ONNXConverter(ModelConverter):
             # Check the model and print Y"s shape information
             onnx.checker.check_model(inferred_model)
             output_name_to_shape = extract_shape_dict(inferred_model)
-
-        # print(f"After shape inference, the shape info of Y is:\n{inferred_model.graph.value_info}")
-        
-
         domain_to_version = {opset.domain: opset.version for opset in self.model.opset_import}
         
         id_count = 0
@@ -145,44 +111,21 @@ class ONNXConverter(ModelConverter):
         if not hasattr(self, "ort_sess"):
             opts = SessionOptions()
             opts.register_custom_ops_library(get_library_path())
-            ort_sess =  ort.InferenceSession(path, opts, providers=["CPUExecutionProvider"])
+            ort_sess =  InferenceSession(path, opts, providers=["CPUExecutionProvider"])
         else:
-            # ort_sess = self.ort_sess
             opts = SessionOptions()
             opts.register_custom_ops_library(get_library_path())
-            ort_sess =  ort.InferenceSession(path, opts, providers=["CPUExecutionProvider"])
+            ort_sess =  InferenceSession(path, opts, providers=["CPUExecutionProvider"])
         input_name = ort_sess.get_inputs()[0].name
         output_name = ort_sess.get_outputs()[0].name
         if ort_sess.get_inputs()[0].type == "tensor(double)":
             outputs = ort_sess.run([output_name], {input_name: np.asarray(input).astype(np.float64)})
         else:
             outputs = ort_sess.run([output_name], {input_name: np.asarray(input)})
-
-
-
-        # intermediate_names = ["conv1.weight_scaled_cast", "conv1.bias_scaled_cast"]
-
-        # results = ort_sess.run(intermediate_names, {input_name: np.asarray(input)})
-
-        # with open('debug_data.json', 'w') as f:
-        #     json.dump(results, f)
-
-        # sys.exit()
         
         return outputs
-
-        # This can help:
-        # for constant in onnx_model.graph.initializer:
-        #     constant_dtype = constant.data_type
-        #     np_data = onnx.numpy_helper.to_array(constant, constant_dtype)
-        #     np_data
-        #     print(constant.name, np_data.shape)
-        # for layer in onnx_model.graph.node:
-        #     print(layer.input, layer.op_type, layer.name)
-        # self.get_model_architecture(onnx_model)
-
     
-    def get_model_architecture(self, model: onnx.ModelProto, output_name_to_shape: Dict[str, List[int]], id_count: int = 0, domain_to_version: dict[str, int] = None):
+    def get_model_architecture(self, model: onnx.ModelProto, output_name_to_shape: Dict[str, List[int]], id_count: int = 0, domain_to_version: dict[str, int] = None) -> List[ONNXLayer]:
         layers = []
         constant_values = {}
         # First pass: collect constant nodes
@@ -224,7 +167,7 @@ class ONNXConverter(ModelConverter):
             id_count += 1
         return layers
     
-    def get_model_w_and_b(self, model: onnx.ModelProto, output_name_to_shape: Dict[str, List[int]], id_count: int = 0, domain_to_version: dict[str, int] = None):
+    def get_model_w_and_b(self, model: onnx.ModelProto, output_name_to_shape: Dict[str, List[int]], id_count: int = 0, domain_to_version: dict[str, int] = None) -> List[ONNXLayer]:
         layers = []
         # Check the model and print Y"s shape information
         for (idx, node) in enumerate(model.graph.initializer):
@@ -292,17 +235,6 @@ class ONNXConverter(ModelConverter):
                 tensor = np_data.tolist(),
             )
         return layer
-
-    def get_used_layers(self, model=None, input_shape=None):
-        # return super().get_used_layers(model, input_shape)
-        pass
-
-    
-
-
-
-    def get_input_and_output_shapes_by_layer(self, model, input_shape):
-        pass
     
     def quantize_model(self, unscaled_model: onnx.ModelProto, scale_base: int,  scale: int, rescale_config: dict = None):
         '''
@@ -357,11 +289,6 @@ class ONNXConverter(ModelConverter):
             used_initializer_names.update(node.input)
 
         # Keep only initializers actually used
-        # kept_initializers = [
-        #     tensor for tensor in model.graph.initializer
-        #     if tensor.name in used_initializer_names
-        # ]
-        # Keep and convert to float64 only used initializers
         kept_initializers = []
         for name in used_initializer_names:
             if name in initializer_map:
@@ -379,10 +306,6 @@ class ONNXConverter(ModelConverter):
 
         model.graph.ClearField("initializer")
         model.graph.initializer.extend(kept_initializers)
-
-        # for (idx, initializer) in enumerate(model.graph.initializer):
-        #     layer = self.quantize_constant(initializer, scale_base, scale)
-
         model.graph.initializer.extend(self.op_quantizer.new_initializers)
 
         self.op_quantizer.new_initializers = []
@@ -400,35 +323,11 @@ class ONNXConverter(ModelConverter):
             # if out.name == "output":
                 # out.name = "output_int"  # match Cast output
                 out.type.tensor_type.elem_type = onnx.TensorProto.INT64
-
-        
-        # # For debugging attributes
-        # for node in model.graph.node:
-        #     if node.op_type == "Int64Gemm":
-        #         for attr in node.attribute:
-        #             print(f"{attr.name}: {attr.type}")
-        # model.opset_import[0].version = 17
-
-
-
-        # a = np.ones((2, 3), dtype=np.int64)
-        # b = np.ones((3, 4), dtype=np.int64)
-        # c = np.zeros((2, 4), dtype=np.int64)
-        # dummy_op = OrtPyFunction.from_customop("Int64Gemm",int64_gemm7)
-
-
-        # out = dummy_op(a, b, c, alpha=1.0, beta=1.0, transA=False, transB=False)
-        # print("Output:", out)
-        # for node in model.graph.node:
-        #     print(f"Node: {node.name}, OpType: {node.op_type}")
-        #     for attr in node.attribute:
-        #         print(f"  Attr: {attr.name}, Type: {attr.type}")
         # TODO This has not been extensively tested. May need to somehow include this when quantizing layers individually (Concern is that some layers shouldnt be converted into this type...)
         # Such as multiplying up scalers etc.
         for vi in model.graph.value_info:
             vi.type.tensor_type.elem_type = TensorProto.INT64
-        # TODO remove
-        # !!! MaxPool
+            
         custom_domain = helper.make_operatorsetid(domain="ai.onnx.contrib",version=1)
         domains = [op.domain for op in model.opset_import]
         if "ai.onnx.contrib" not in domains:
@@ -444,7 +343,6 @@ class ONNXConverter(ModelConverter):
     
     def quantize_input(self, input_name, op_quantizer: ONNXOpQuantizer, scale_base, scale):
         scale_value = scale_base ** scale
-        original_output = input_name
 
         # === Create scale constant ===
         scale_const_name = input_name + "_scale"
@@ -461,9 +359,6 @@ class ONNXConverter(ModelConverter):
             outputs=[scaled_output_name],
             name=f"{input_name}_mul",
         )
-        # graph.node.append(mul_node)
-        # replace_input_references(graph, original_output, mul_node.output[0])
-
         # === Floor node (simulate rounding) ===
         rounded_output_name = f"{input_name}_scaled_floor"
         floor_node = helper.make_node(
@@ -475,39 +370,12 @@ class ONNXConverter(ModelConverter):
         output_name = f"{rounded_output_name}_int"
         cast_to_int64 = helper.make_node(
             "Cast",
-            # inputs=[rounded_output_name],
             inputs=[scaled_output_name],
             outputs=[output_name],
             to=onnx.TensorProto.INT64,
             name = rounded_output_name
         )
         return output_name, mul_node, floor_node, cast_to_int64
-
-
-    
-    # def quantize_constant(self, initializer: TensorProto, scale_base: int, scale: int):
-    #     # if initializer.data_type == onnx.TensorProto.DataType.FLOAT:
-    #     #     for i in range(dims_prod(initializer.dims)):
-    #     #         initializer.float_data[i] = initializer.float_data[i]*(scale_base**scale)
-
-    #     if initializer.data_type == onnx.TensorProto.FLOAT:
-    #         factor = scale_base ** scale
-
-    #         # Read full tensor into numpy
-    #         arr = to_array(initializer).astype(np.float32)
-
-    #         # Apply quantization (scaling)
-    #         arr *= factor
-
-    #         # Overwrite initializer with updated values
-    #         new_tensor = from_array(arr, name=initializer.name)
-
-    #         # Copy updated fields back (in-place mutation)
-    #         initializer.ClearField('float_data')
-    #         initializer.ClearField('raw_data')
-    #         initializer.raw_data = new_tensor.raw_data
-            
-        
     
 
     # TODO JG suggestion - can maybe make the layers into a factory here, similar to how its done in Rust? Can refactor to this later imo.
@@ -533,8 +401,6 @@ class ONNXConverter(ModelConverter):
                 w_and_b_scaled = w_and_b_array * (getattr(self, "scale_base", 2)**getattr(self,"scaling", 18))
             w_and_b_out = w_and_b_scaled.astype(np.int64).tolist()
             w.tensor = w_and_b_out
-            
-        
         
         inputs = []
         outputs = []
@@ -570,71 +436,20 @@ class ONNXConverter(ModelConverter):
             self.load_model(self.model_file_name)
         else:
             raise FileNotFoundError("An ONNX model is required at the specified path")
-        
-        # self.model = model
         self.quantized_model = self.quantize_model(self.model, getattr(self,"scale_base", 2), getattr(self,"scaling", 18), rescale_config=getattr(self,"rescale_config", {}))
-        
-        # sys.exit()
-
-    def test_accuracy(self, inputs = None):
-        # model = onnx.load()
-        model = self.model
-        input_shape = []
-        for input in model.graph.input:
-            for d in input.type.tensor_type.shape.dim:
-                if (d.HasField("dim_value")):
-                    val = d.dim_value  # known dimension
-                elif (d.HasField("dim_param")):
-                    if "batch_size" not in d.dim_param:
-                        raise ValueError("Unknown dimension")
-                    val = 1
-                    # print (d.dim_param, end=", ")  # unknown dimension with symbolic name
-                else:
-                    # print ("?", end=", ")  # unknown dimension with no name
-                    raise ValueError("Unknown dimension")
-
-                input_shape.append(val)
-        # inputs = torch.rand(input_shape)*2 - 1
-        new_model = self.quantize_model(model, getattr(self,"scale_base", 2), getattr(self,"scaling", 18))
-        custom_domain = onnx.helper.make_operatorsetid(domain="ai.onnx.contrib", version=1)
-        new_model.opset_import.append(custom_domain)
-        onnx.checker.check_model(new_model)
-
-        with open(self.quantized_model_file_name, "wb") as f:
-            f.write(new_model.SerializeToString())
-
-        model = onnx.load(self.quantized_model_file_name)
-        onnx.checker.check_model(model)  # This throws a descriptive error
-        if inputs == None:
-            inputs = torch.rand([1,4,28,28])*2 - 1
-        outputs_true = self.run_model_onnx_runtime(self.model_file_name, inputs)[0][0].tolist()
-
-        outputs_quant = self.run_model_onnx_runtime(self.quantized_model_file_name, inputs)[0][0].tolist()
-
-        
-        formatter = np.vectorize(lambda x: float(f"{x:.5f}"))
-        print("ONNXRuntime true model output : ",formatter(outputs_true))
-
-
-        scale = getattr(self, "scale_base", 2) ** getattr(self, "scaling", 18)
-        formatter = np.vectorize(lambda o: float(f"{o / scale:.5f}"))
-        print("ONNXRuntime quant model output: ",formatter(outputs_quant))
-        # print([[o/(2**21) for o in outputs_quant]])
-
 
     def get_outputs(self, inputs):
         input_name = self.ort_sess.get_inputs()[0].name
         output_name = self.ort_sess.get_outputs()[0].name
-        # if inputs.dtype in (torch.float16, torch.float32, torch.float64):
-        #     print("Tensor is a float type")
 
         # TODO This may cause some rounding errors at some point but works for now. Should be checked at some point
         inputs = torch.as_tensor(inputs)
         if inputs.dtype in (torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8):
             inputs = inputs.double()
             inputs = inputs / (self.scale_base**self.scaling)
+
         # TODO add for all inputs (we should be able to account for multiple inputs...)
-        # TODO this is not optimal or robust
+        # TODO this may not be optimal or robust
         if self.ort_sess.get_inputs()[0].type == "tensor(double)":
             outputs = self.ort_sess.run([output_name], {input_name: np.asarray(inputs).astype(np.float64)})
         else:
@@ -651,19 +466,7 @@ if __name__ == "__main__":
     converter.model_file_name, converter.quantized_model_file_name = path, "quantized_doom.onnx"
     converter.scale_base, converter.scaling = 2,18
 
-    # converter.model_file_name = path
     converter.load_model(path)
     converter.get_model_and_quantize()
 
-    # converter.model = create_dummy_model()
     converter.test_accuracy()
-    # weights = converter.get_weights()
-    # print(weights[1].keys())
-    # print(weights[1]["w_and_b"][0].keys())
-
-    # with open('onnx_weights.json', 'w') as fp:
-    #     json.dump(weights,fp)
-    # with open('onnx_arch.json', 'w') as fp:
-    #     json.dump(arch,fp)
-
-    # converter.analyze_layers("")

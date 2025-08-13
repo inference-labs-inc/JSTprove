@@ -1,5 +1,5 @@
 import torch.nn as nn
-from python.core.circuit_components.circuit_helpers import Circuit
+from python.core.circuits.base import Circuit
 from random import randint
 
 class SimpleCircuit(Circuit):

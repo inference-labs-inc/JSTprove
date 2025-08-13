@@ -2,8 +2,8 @@ import math
 import numpy as np
 import torch
 # from core.utils.pytorch_helpers import Layer, ZKTorchModel, RunType, filter_dict_for_dataclass
-from python.core.utils.onnx_converter import ONNXOpQuantizer, ONNXConverter
-from python.core.utils.model_converter import ZKModelBase
+from python.core.model_processing.converters.onnx_converter import ONNXOpQuantizer, ONNXConverter
+from python.core.circuits.zk_model_base import ZKModelBase
 from python.core.utils.helper_functions import RunType
 
 class GenericModelONNX(ONNXConverter, ZKModelBase):

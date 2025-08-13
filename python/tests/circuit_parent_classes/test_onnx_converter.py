@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import torch
 
-from python.core.utils.onnx_converter import ONNXConverter
+from python.core.model_processing.converters.onnx_converter import ONNXConverter
 
 import onnx
 import tempfile
@@ -41,15 +41,15 @@ def converter(temp_model_path, temp_quant_model_path):
     return conv
 
 @pytest.mark.unit
-@patch("python.core.utils.onnx_converter.onnx.save")
+@patch("python.core.model_processing.converters.onnx_converter.onnx.save")
 def test_save_model(mock_save, converter):
     path = "model.onnx"
     converter.save_model(path)
     mock_save.assert_called_once_with(converter.model, path)
 
 @pytest.mark.unit
-@patch("python.core.utils.onnx_converter.onnx.load")
-@patch("python.core.utils.onnx_converter.onnx.checker.check_model")
+@patch("python.core.model_processing.converters.onnx_converter.onnx.load")
+@patch("python.core.model_processing.converters.onnx_converter.onnx.checker.check_model")
 def test_load_model(mock_check, mock_load, converter):
     fake_model = MagicMock(name="onnx_model")
     mock_load.return_value = fake_model
@@ -62,17 +62,17 @@ def test_load_model(mock_check, mock_load, converter):
     assert converter.model == fake_model
 
 @pytest.mark.unit
-@patch("python.core.utils.onnx_converter.onnx.save")
+@patch("python.core.model_processing.converters.onnx_converter.onnx.save")
 def test_save_quantized_model(mock_save, converter):
     path = "quantized_model.onnx"
     converter.save_quantized_model(path)
     mock_save.assert_called_once_with(converter.quantized_model, path)
 
 @pytest.mark.unit
-@patch("python.core.utils.onnx_converter.SessionOptions")
-@patch("python.core.utils.onnx_converter.ort.InferenceSession")
-@patch("python.core.utils.onnx_converter.onnx.checker.check_model")
-@patch("python.core.utils.onnx_converter.onnx.load")
+@patch("python.core.model_processing.converters.onnx_converter.SessionOptions")
+@patch("python.core.model_processing.converters.onnx_converter.InferenceSession")
+@patch("python.core.model_processing.converters.onnx_converter.onnx.checker.check_model")
+@patch("python.core.model_processing.converters.onnx_converter.onnx.load")
 def test_load_quantized_model(mock_load, mock_check, mock_ort_sess, mock_session_opts, converter):
 
     fake_model = MagicMock(name="onnx_model")

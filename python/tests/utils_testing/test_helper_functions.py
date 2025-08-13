@@ -66,10 +66,16 @@ def test_compute_and_store_output_on_json_error(mock_dump, mock_load, mock_file,
 
 # ---------- prepare_io_files ----------
 @pytest.mark.unit
-@patch("python.core.utils.helper_functions.get_files", return_value=[
-    "witness.wtns", "input.json", "proof.json", "public.json",
-    "vk.key", "test_circuit", "weights.json", "out.json"
-])
+@patch("python.core.utils.helper_functions.get_files", return_value={
+    "witness_file": "witness.wtns",
+    "input_file": "input.json",
+    "proof_path": "proof.json",
+    "public_path": "public.json",
+    "verification_key": "vk.key",
+    "circuit_name": "test_circuit",
+    "weights_path": "weights.json",
+    "output_file": "out.json"
+})
 @patch("python.core.utils.helper_functions.to_json")
 @patch("python.core.utils.helper_functions.os.path.splitext", return_value=("model", ".circom"))
 @patch("python.core.utils.helper_functions.open", new_callable=mock_open)
@@ -562,22 +568,50 @@ def test_circom_proof_system_errors_end_to_end(mock_compile, mock_witness, mock_
 @pytest.mark.unit
 @patch("python.core.utils.helper_functions.create_folder")
 def test_get_files_and_create(mock_create):
-    paths = get_files("inputs", "proofs", "tmp", "circuits", "weights", "model", "out", "quantized_models", ZKProofSystems.Expander)
-    assert paths[1].endswith("model_input.json")
-    assert mock_create.call_count == 6
+    folders = {
+        "input": "inputs",
+        "proof": "proofs",
+        "temp": "tmp",
+        "circuit": "circuits",
+        "weights": "weights",
+        "output": "out",
+        "quantized_model": "quantized_models"
+    }
+    paths = get_files("model", ZKProofSystems.Expander, folders)
+    assert paths["input_file"].endswith("model_input.json")
+    assert mock_create.call_count == len(folders)
 
 @pytest.mark.unit
 @patch("python.core.utils.helper_functions.create_folder")
 def test_get_files_circom(mock_create):
+    folders = {
+        "input": "inputs",
+        "proof": "proofs",
+        "temp": "tmp",
+        "circuit": "circuits",
+        "weights": "weights",
+        "output": "out",
+        "quantized_model": "quantized_models"
+    }
     with pytest.raises(NotImplementedError, match="Circom is not implemented"):
-        paths = get_files("inputs", "proofs", "tmp", "circuits", "weights", "model", "out", "quantized_models", ZKProofSystems.Circom)
+        # paths = get_files("inputs", "proofs", "tmp", "circuits", "weights", "model", "out", "quantized_models", ZKProofSystems.Circom)
+        get_files("model", ZKProofSystems.Circom, folders)
 
 @pytest.mark.unit
 @patch("python.core.utils.helper_functions.create_folder")
 def test_get_files_non_proof_system(mock_create):
+    folders = {
+        "input": "inputs",
+        "proof": "proofs",
+        "temp": "tmp",
+        "circuit": "circuits",
+        "weights": "weights",
+        "output": "out",
+        "quantized_model": "quantized_models"
+    }
     fake_proof_system = "unknown"
     with pytest.raises(NotImplementedError, match=f"Proof system {fake_proof_system} not implemented"):
-        paths = get_files("inputs", "proofs", "tmp", "circuits", "weights", "model", "out","quantized_models", fake_proof_system)
+        get_files("model", fake_proof_system, folders)
 
 @pytest.mark.unit
 @patch("python.core.utils.helper_functions.os.makedirs")

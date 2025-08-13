@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 from typing import Optional, Tuple, List
 
-from python.core.circuit_components.circuit_helpers import RunType
+from python.core.circuits.base import RunType
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

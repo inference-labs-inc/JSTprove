@@ -82,15 +82,6 @@ def extract_attributes(node: onnx.NodeProto) -> dict:
             attrs[name] = bool(val)
         else:
             raise ValueError(f"Unsupported attribute type: {attr.name} (type={attr.type})")
-    
-
-    for k, v in attrs.items():
-        # print(type(k))
-        pass
-    #     if isinstance(v, float):
-    #         print(f"⚠️  Attribute {k} is float: {v} → will be coerced?")
-    #     if isinstance(v, list) and any(isinstance(i, float) for i in v):
-    #         print(f"⚠️  Attribute {k} contains float values: {v}")
     return attrs
 
 def get_input_shapes(onnx_model: onnx.ModelProto):

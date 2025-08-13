@@ -3,7 +3,7 @@ import onnx
 from onnx import helper, numpy_helper
 from typing import List, Optional
 
-from python.core.utils.onnx_helpers import create_quantized_initializer, replace_input_references
+from python.core.model_processing.onnx_custom_ops.onnx_helpers import create_quantized_initializer, replace_input_references
 
 
 class BaseOpQuantizer:
@@ -90,35 +90,6 @@ class BaseOpQuantizer:
         replace_input_references(graph, original_output, div_node.output[0])
 
         return [node, div_node]
-    
-    def quantize_w_and_b(self, node: onnx.NodeProto, scale: int, scale_base: int, initializer_map: dict[str, onnx.TensorProto]) -> List[str]:
-        """Quantize the weights and bias (if present) used by a given node.
-
-        Args:
-            node (onnx.NodeProto): Node to find used weights and biases.
-            scale (int): Base for the scaling exponent.
-            scale_base (int): Scaling exponent.
-            initializer_map (dict[str, onnx.TensorProto]): The initializer map.
-
-        Returns:
-            List[str]: New input names for the node.
-        """ 
-        # Quantize weight
-        weight_name = node.input[1]
-        weight_tensor = initializer_map[weight_name]
-        quant_weight_tensor, quant_weight_name = create_quantized_initializer(weight_tensor, scale_exponent=1, scale = scale, scale_base = scale_base)
-        self.new_initializers.append(quant_weight_tensor)
-
-        # Quantize bias if present
-        new_inputs = [node.input[0], quant_weight_name]
-        if len(node.input) > 2:
-            bias_name = node.input[2]
-            bias_tensor = initializer_map[bias_name]
-            quant_bias_tensor, quant_bias_name = create_quantized_initializer(bias_tensor, scale_exponent=2, scale = scale, scale_base = scale_base)
-            self.new_initializers.append(quant_bias_tensor)
-            new_inputs.append(quant_bias_name)
-
-        return new_inputs
 
     def add_nodes_w_and_b(self, node: onnx.NodeProto, scale: int, scale_base: int, initializer_map: dict[str, onnx.TensorProto], graph: onnx.GraphProto) -> tuple[list[onnx.NodeProto], list[str]]:
         """Insert scaling and casting nodes for weight and bias, to convert from float to scaled int64 values.

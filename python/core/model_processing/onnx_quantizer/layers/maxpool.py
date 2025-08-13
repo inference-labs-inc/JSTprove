@@ -3,7 +3,7 @@ import onnx
 from onnx import helper, numpy_helper
 from typing import Callable, Dict, List, Optional, Union
 
-from python.core.utils.onnx_helpers import create_quantized_initializer, extract_attributes, get_attribute_ints, replace_input_references
+from python.core.model_processing.onnx_custom_ops.onnx_helpers import create_quantized_initializer, extract_attributes, get_attribute_ints, replace_input_references
 from onnx.numpy_helper import to_array, from_array
 
 from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError

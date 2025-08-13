@@ -5,8 +5,8 @@ import onnx
 
 from onnx import TensorProto, shape_inference, helper, numpy_helper
 
-from python.core.utils.onnx_converter import ONNXConverter
-from python.core.utils.onnx_helpers import dims_prod, extract_shape_dict, parse_attributes
+from python.core.model_processing.converters.onnx_converter import ONNXConverter
+from python.core.model_processing.onnx_custom_ops.onnx_helpers import dims_prod, extract_shape_dict, parse_attributes
 from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import ONNXOpQuantizer
 
 from onnxruntime import InferenceSession, SessionOptions

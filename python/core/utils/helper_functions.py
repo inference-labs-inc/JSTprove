@@ -79,47 +79,58 @@ def prepare_io_files(func):
             return getattr(self, key, default)
         
         # TODO These may need to be fixed as I think the function brings in files not folders, too much default
-        # Use provided values or defaults from instance
-
-        # Fix this
-        # input_folder = kwargs.get("input_folder") or getattr(self, 'input_folder', "inputs")
-        # proof_folder = kwargs.get("proof_folder") or getattr(self, 'proof_folder', "analysis")
-        temp_folder = kwargs.get("temp_folder") or getattr(self, 'temp_folder', "temp")
-        # circuit_folder = kwargs.get("circuit_folder") or getattr(self, 'circuit_folder', "")
-        # weights_folder = kwargs.get("weights_folder") or getattr(self, 'weights_folder', "weights")
-        # output_folder = kwargs.get("output_folder") or getattr(self, 'output_folder', "output")
-        # quantized_model_folder = kwargs.get("quantized_folder") or getattr(self, 'quantized_path', "quantized_model_folder")
-        # proof_system = kwargs.get("proof_system") or getattr(self, 'proof_system', ZKProofSystems.Expander)
-        input_folder = resolve_folder("input_folder", "input_file", "python/models/inputs")
-        output_folder = resolve_folder("output_folder", "output_file", "python/models/output")
-        proof_folder = resolve_folder("proof_folder", "proof_file", "python/models/proofs")
-        quantized_model_folder = resolve_folder("quantized_folder", "quantized_path", "python/models/quantized_model_folder")
+        
+        # temp_folder = kwargs.get("temp_folder") or getattr(self, 'temp_folder', "python/models/temp")
+        input_folder = resolve_folder("input_folder", "input_file", default = "python/models/inputs")
+        output_folder = resolve_folder("output_folder", "output_file", default = "python/models/output")
+        proof_folder = resolve_folder("proof_folder", "proof_file", default = "python/models/proofs")
+        quantized_model_folder = resolve_folder("quantized_folder", "quantized_path", default = "python/models/quantized_model_folder")
         weights_folder = resolve_folder("weights_folder", default="python/models/weights")
         circuit_folder = resolve_folder("circuit_folder", default="python/models/")
 
         proof_system = kwargs.get("proof_system") or getattr(self, 'proof_system', ZKProofSystems.Expander)
         run_type = kwargs.pop("run_type")
 
-        # Get file paths
-        witness_file, input_file, proof_path, public_path, verification_key, circuit_name, weights_path, output_file = get_files(
-            input_folder, proof_folder, temp_folder, circuit_folder, weights_folder,
-            self.name, output_folder, quantized_model_folder, proof_system
+
+        files = get_files(
+            self.name,
+            proof_system,
+            {
+                "input": input_folder,
+                "proof": proof_folder,
+                # "temp": temp_folder,
+                "circuit": circuit_folder,
+                "weights": weights_folder,
+                "output": output_folder,
+                "quantized_model": quantized_model_folder
+            }
         )
+
+        witness_file = files["witness_file"]
+        input_file = files["input_file"]
+        proof_path = files["proof_path"]
+        public_path = files["public_path"]
+        # verification_key = files["verification_key"]
+        circuit_name = files["circuit_name"]
+        weights_path = files["weights_path"]
+        output_file = files["output_file"]
+
         if not kwargs.get("input_file", None) is None:
             input_file = kwargs["input_file"]
         kwargs.pop("input_file", None)
+
         if not kwargs.get("output_file", None) is None:
             output_file = kwargs["output_file"]
         kwargs.pop("output_file", None)
+
         if not kwargs.get("proof_file", None) is None:
             proof_path = kwargs["proof_file"]
         kwargs.pop("proof_file", None)
-        if not kwargs.get("witness_file", None) is None:
-            witness_file = kwargs["witness_file"]
 
         if not kwargs.get("witness_file", None) is None:
             witness_file = kwargs["witness_file"]
         kwargs.pop("witness_file", None)
+
         if not kwargs.get("circuit_path", None) is None:
             circuit_path = kwargs["circuit_path"]
         else:
@@ -149,7 +160,7 @@ def prepare_io_files(func):
             'input_file': input_file,
             'proof_file': proof_path,
             'public_path': public_path,
-            'verification_key': verification_key,
+            # 'verification_key': verification_key,
             'circuit_name': circuit_name,
             'weights_path': weights_path,
             'output_file': output_file,
@@ -164,15 +175,11 @@ def prepare_io_files(func):
         
         # Store file_info in the instance
         self._file_info = file_info
-        # if "circuit_name" in kwargs.keys():
-        #     kwargs.pop("circuit_name")
         
-
-        # print(kwargs)
         # Call the original function with all arguments including file info
         return func(self, run_type, 
                     witness_file, input_file, proof_path, public_path, 
-                    verification_key, circuit_name, weights_path, output_file,
+                    "", circuit_name, weights_path, output_file,
                     proof_system, circuit_path = circuit_path, *args, **kwargs)
     
     return wrapper
@@ -299,7 +306,6 @@ def get_expander_file_paths(circuit_name: str):
         "proof_file":   f"{circuit_name}_proof.txt"
     }
     
-# env RUSTFLAGS="-C target-cpu=native" mpiexec -n 1 cargo run --manifest-path Expander/Cargo.toml --bin expander-exec --release -- -p Raw prove -c slices/segment_4/segment_4_circuit.compiled -w slices/segment_4/segment_4_witness.compiled -o slices/segment_4/segment_4_proof.bin
 
 def run_expander_exec(mode: str, circuit_file: str, witness_file: str, proof_file: str):
     assert mode in {"prove", "verify"}
@@ -320,7 +326,6 @@ def run_expander_exec(mode: str, circuit_file: str, witness_file: str, proof_fil
     else:
         print(f"✅ expander-exec {mode} succeeded:\n{result.stdout}")
 
-#   env RUSTFLAGS="-C target-cpu=native" mpiexec -n 1 cargo run --manifest-path Expander/Cargo.toml --bin expander-exec --release -- -p Raw verify -c slices/segment_4/segment_4_circuit.compiled -w slices/segment_4/segment_4_witness.compiled -i slices/segment_4/segment_4_proof.bin
 
 
 def run_expander_raw(mode: str, circuit_file: str, witness_file: str, proof_file: str, pcs_type: str = "Raw", bench = False):
@@ -372,10 +377,6 @@ def run_expander_raw(mode: str, circuit_file: str, witness_file: str, proof_file
     if bench:
         memory = end_memory_collection(stop_event, monitor_thread, monitor_results)
         print(f"Rust subprocess memory: {memory['total']:.2f} MB")
-    # if bench:
-    #     memory = end_memory_collection(stop_event, monitor_thread, monitor_results)
-    #     print(memory)
-
 
     if result.returncode != 0:
         print(f"❌ expander-exec {mode} failed:\n{result.stderr}")
@@ -426,9 +427,7 @@ def generate_witness(circuit_name, circuit_path, witness_file, input_file, outpu
             'i': input_file,
             'o': output_file,
             'w': witness_file,
-            'c': circuit_path
         }
-        
         # Run the command
         try:
             run_cargo_command(binary_name, 'run_gen_witness', args, dev_mode, bench)
@@ -455,7 +454,6 @@ def generate_proof(circuit_name, circuit_path, witness_file, proof_file,
                 'c': circuit_path,
                 'w': witness_file,
                 'p': proof_file,
-                'c': circuit_path
             }
             
             # Run the command
@@ -464,14 +462,6 @@ def generate_proof(circuit_name, circuit_path, witness_file, proof_file,
             except Exception as e:
                 print(f"Warning: Proof generation failed: {e}")
         else:
-            # Direct Expander call via expander-exec binary
-            # paths = get_expander_file_paths(circuit_name)
-            # run_expander_exec(
-            #     mode="prove",
-            #     circuit_file=circuit_path,
-            #     witness_file=witness_file,
-            #     proof_file=proof_file
-            # )
             run_expander_raw(
                 mode="prove",
                 circuit_file=circuit_path,
@@ -501,23 +491,13 @@ def generate_verification(circuit_name, circuit_path, input_file, output_file, w
                 'o': output_file,
                 'w': witness_file,
                 'p': proof_file,
-                'c': circuit_path
             }
-            
             # Run the command
             try:
                 run_cargo_command(binary_name, 'run_gen_verify', args, dev_mode, bench)
             except Exception as e:
                 print(f"Warning: Verification generation failed: {e}")
         else:
-            # Direct Expander call via expander-exec binary
-            # paths = get_expander_file_paths(circuit_name)
-            # run_expander_exec(
-            #     mode="verify",
-            #     circuit_file=circuit_path,
-            #     witness_file=witness_file,
-            #     proof_file=proof_file
-            # )
             run_expander_raw(
                 mode="verify",
                 circuit_file=circuit_path,
@@ -535,68 +515,64 @@ def run_end_to_end(circuit_name, circuit_path, input_file, output_file,
                   proof_system: ZKProofSystems = ZKProofSystems.Expander, demo=False, dev_mode = False, ecc = True):
     """Run end-to-end proof."""
     if proof_system == ZKProofSystems.Expander:
-        # Extract the binary name from the circuit path
-        # binary_name = os.path.basename(circuit_name)
-        
-        # # Prepare arguments
-        # args = {
-        #     'c': circuit_path,
-        #     'i': input_file,
-        #     'o': output_file,
-        # }
-        
-        # # Run the command
-        # try:
-        #     run_cargo_command(binary_name, 'run_end_to_end', args, dev_mode)
-        # except Exception as e:
-        #     print(f"Warning: End-to-end operation failed: {e}")
-
         base, ext = os.path.splitext(circuit_path)  # Split the filename and extension
         witness_file = f"{base}_witness{ext}"
         proof_file = f"{base}_proof{ext}"
-
-
-        # d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt")
-        # d.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
         compile_circuit(circuit_name, circuit_path, proof_system, dev_mode)
         generate_witness(circuit_name, circuit_path, witness_file, input_file, output_file, proof_system, dev_mode)
         generate_proof(circuit_name, circuit_path, witness_file, proof_file, proof_system, dev_mode, ecc)
         generate_verification(circuit_name, circuit_path, input_file, output_file, witness_file, proof_file, proof_system, dev_mode, ecc)
-
-            
     elif proof_system == ZKProofSystems.Circom:
         raise NotImplementedError("Circom is not implemented")
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
-def get_files(input_folder, proof_folder, temp_folder, circuit_folder, weights_folder,
-             name, output_folder, quantized_model_folder, proof_system):
-    """Get file paths, creating folders as needed."""
-    create_folder(input_folder)
-    create_folder(proof_folder)
-    create_folder(temp_folder)
-    create_folder(output_folder)
-    create_folder(weights_folder)
-    create_folder(quantized_model_folder)
+def get_files(
+    name: str,
+    proof_system: ZKProofSystems,
+    folders: Dict[str, str],
+) -> Dict[str, str]:
+    """
+    Generate file paths ensuring folders exist.
 
+    Args:
+        name (str): The base name for all generated files.
+        proof_system (ZKProofSystems): The ZK proof system being used.
+        folders (Dict[str, str]): Dictionary containing required folder paths with keys like:
+                 'input', 'proof', 'temp', 'circuit', 'weights', 'output', 'quantized_model'.
 
-    
-    input_file = os.path.join(input_folder, f"{name}_input.json")
-    public_path = os.path.join(proof_folder, f"{name}_public.json")
-    verification_key = os.path.join(temp_folder, f"{name}_verification_key.json")
-    weights_path = os.path.join(weights_folder, f"{name}_weights.json")
-    
+    Raises:
+        NotImplementedError: If not implemented proof system is tried
+
+    Returns:
+        Dict[str, str]: A dictionary mapping descriptive keys to file paths.
+    """    
+    # Ensure all provided folders exist
+    for path in folders.values():
+        create_folder(path)
+
+    # Common file paths
+    paths = {
+        "input_file": os.path.join(folders["input"], f"{name}_input.json"),
+        "public_path": os.path.join(folders["proof"], f"{name}_public.json"),
+        # "verification_key": os.path.join(folders["temp"], f"{name}_verification_key.json"),
+        "weights_path": os.path.join(folders["weights"], f"{name}_weights.json"),
+        "output_file": os.path.join(folders["output"], f"{name}_output.json"),
+    }
+
+    # Proof-system-specific files
     if proof_system == ZKProofSystems.Expander:
-        circuit_name = os.path.join(circuit_folder, f"{name}")
-        witness_file = os.path.join(f"{name}_witness.txt")
-        proof_path = os.path.join(proof_folder, f"{name}_proof.bin")
+        paths.update({
+            "circuit_name": os.path.join(folders["circuit"], name),
+            "witness_file": os.path.join(folders["input"], f"{name}_witness.txt"),
+            "proof_path": os.path.join(folders["proof"], f"{name}_proof.bin"),
+        })
     elif proof_system == ZKProofSystems.Circom:
         raise NotImplementedError("Circom is not implemented")
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
-    output_file = os.path.join(output_folder, f"{name}_output.json")
-    return witness_file, input_file, proof_path, public_path, verification_key, circuit_name, weights_path, output_file
+    return paths
 
 def create_folder(directory: str) -> None:
     """Create a directory if it doesn't exist."""
