@@ -5,7 +5,6 @@ using fuzzy matching, and supports listing available circuits.
 """
 
 import argparse
-import difflib
 import importlib
 import logging
 from pathlib import Path
