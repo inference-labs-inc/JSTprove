@@ -102,6 +102,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     circuit = _build_circuit(args.circuit, args.name)
+    circuit.name = args.name
 
     try:
         if args.cmd == "compile":
@@ -115,7 +116,6 @@ def main(argv: list[str] | None = None) -> int:
 
             circuit.base_testing(
                 run_type=RunType.COMPILE_CIRCUIT,
-                circuit_name=args.name,
                 circuit_path=args.circuit_path,
                 quantized_path=args.quantized_path,
             )
@@ -130,7 +130,6 @@ def main(argv: list[str] | None = None) -> int:
 
             circuit.base_testing(
                 run_type=RunType.GEN_WITNESS,
-                circuit_name=args.name,
                 circuit_path=args.circuit_path,
                 quantized_path=args.quantized_path,
                 input_file=args.input_path,
@@ -146,7 +145,6 @@ def main(argv: list[str] | None = None) -> int:
 
             circuit.base_testing(
                 run_type=RunType.PROVE_WITNESS,
-                circuit_name=args.name,
                 circuit_path=args.circuit_path,
                 witness_file=args.witness_path,
                 proof_file=args.proof_path,
@@ -162,7 +160,6 @@ def main(argv: list[str] | None = None) -> int:
 
             circuit.base_testing(
                 run_type=RunType.GEN_VERIFY,
-                circuit_name=args.name,
                 circuit_path=args.circuit_path,
                 input_file=args.input_path,
                 output_file=args.output_path,
