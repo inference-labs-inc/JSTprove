@@ -4,12 +4,13 @@ import argparse
 import importlib
 import sys
 from pathlib import Path
+import inspect
 
 from python.testing.core.utils.helper_functions import RunType
 
 
-def _load_circuit(dotted: str):
-    """Load a Circuit subclass from 'package.module:ClassName'."""
+def _build_circuit(dotted: str, name: str):
+    """Load a Circuit subclass and instantiate it, passing name if needed."""
     if ":" not in dotted:
         raise SystemExit("--circuit must be 'package.module:ClassName'")
     mod_name, cls_name = dotted.split(":", 1)
@@ -18,7 +19,25 @@ def _load_circuit(dotted: str):
         cls = getattr(mod, cls_name)
     except AttributeError as e:
         raise SystemExit(f"Class '{cls_name}' not found in module '{mod_name}'") from e
-    return cls()
+
+    # Try common constructor patterns: (model_name=...), (name=...), (positional), then no-arg
+    try:
+        return cls(model_name=name)
+    except TypeError:
+        pass
+    try:
+        return cls(name=name)
+    except TypeError:
+        pass
+    try:
+        return cls(name)  # positional
+    except TypeError:
+        pass
+    try:
+        return cls()      # fallback
+    except TypeError as e:
+        sig = str(inspect.signature(cls))
+        raise SystemExit(f"Failed to construct {cls.__name__}{sig}: {e}")
 
 
 def _ensure_exists(path: str, kind: str = "file"):
@@ -82,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
-    circuit = _load_circuit(args.circuit)
+    circuit = _build_circuit(args.circuit, args.name)
 
     try:
         if args.cmd == "compile":
