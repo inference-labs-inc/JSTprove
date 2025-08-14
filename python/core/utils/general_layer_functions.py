@@ -1,18 +1,5 @@
 import json
-from typing import Optional
 import torch
-import onnx
-import onnxruntime as ort
-
-
-from python.core.circuits.base import Circuit, RunType
-from python.core.utils.run_proofs import ZKProofSystems
-from python.core.utils.helper_functions import prepare_io_files
-from types import SimpleNamespace
-from abc import ABC, abstractmethod
-
-
-
 class GeneralLayerFunctions():
     def read_input(self, file_name = "doom_data/doom_input.json"):
         """Reads the inputs to each layer of the model from text files."""

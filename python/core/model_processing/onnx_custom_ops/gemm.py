@@ -40,8 +40,7 @@ def int64_gemm7(
     and is used in the JSTProve quantized inference pipeline. It parses ONNX-style 
     gemm attributes, applies gemm 
     and optionally rescales the result.
-\\
-
+    
     Parameters
     ----------
     a : Input tensor with dtype int64.

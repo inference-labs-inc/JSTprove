@@ -44,30 +44,81 @@ class ONNXIO:
 
 
 class ONNXConverter(ModelConverter):
+    """Concrete implementation of `ModelConverter` for ONNX models.
+    """
     def __init__(self):
+        """Initialize the converter and its operator quantizer.
+
+        Initializes:
+            self.op_quantizer (ONNXOpQuantizer): Dispatcher that quantizes
+                individual ONNX ops and accumulates newly created initializers.
+        """
         super().__init__()
         self.op_quantizer = ONNXOpQuantizer()
 
-    # For saving and loading: https://onnx.ai/onnx/intro/python.html, larger models will require a different structure
-    def save_model(self, file_path: str):
+    # For saving and loading: https://onnx.ai/onnx/intro/python.html, larger models may require a different structure
+    def save_model(self, file_path: str) -> None:
+        """Serialize the ONNX model to file.
+
+        Args:
+            file_path (str): Destination path (e.g., ``"models/my_model.onnx"``).
+        
+        Note
+        ----
+        - For saving and loading: https://onnx.ai/onnx/intro/python.html, larger models may require a different structure
+        """        
         onnx.save(self.model, file_path)
     
-    def load_model(self, file_path: str, model_type = None):
+    def load_model(self, file_path: str, model_type = None) -> onnx.ModelProto:
+        """Load an ONNX model from file and extract basic I/O metadata.
+
+        Args:
+            file_path (str): Path to the `.onnx` file.
+            model_type (_type_, optional): Placeholder for future multi-format loaders. Defaults to None.
+
+        Returns:
+            onnx.ModelProto: The loaded onnx model.
+        """        
+        """
+
+        Side effects:
+            - Sets ``self.model``.
+            - Populates ``self.required_keys`` (model input names).
+            - Populates ``self.input_shape`` (dict of input name -> shape).
+
+        Raises:
+            OSError: If the file cannot be read.
+            onnx.onnx_cpp2py_export.checker.ValidationError:
+                If the model is malformed (during later checks).
+        """
         onnx_model = onnx.load(file_path)
-        # Fix, can remove this next line 
         self.model = onnx_model
 
         self._extract_model_io_info(onnx_model)
         return self.model
     
 
-    def save_quantized_model(self, file_path: str):
+    def save_quantized_model(self, file_path: str) -> None:
+        """Serialize the quantized ONNX model to file.
+
+        Args:
+            file_path (str): Destination path for the quantized model.
+        """
         onnx.save(self.quantized_model, file_path)
 
     # Not sure this is ideal
-    def load_quantized_model(self, file_path: str):
+    def load_quantized_model(self, file_path: str) -> None:
+        """Load a quantized ONNX model and create an inference session.
+
+        Note
+        ----
+         - Uses the custom opset for the quantized layers
+
+        Args:
+            file_path (str): Path to the quantized ``.onnx`` file.
+        """
         # May be able to remove next few lines...
-        print("Loading quantized model from: ",file_path) #TODO: Change to logging
+        print("Loading quantized model from: ", file_path) #TODO: Change to logging
         onnx_model = onnx.load(file_path)
         custom_domain = onnx.helper.make_operatorsetid(domain="ai.onnx.contrib", version=1)
         onnx_model.opset_import.append(custom_domain)
@@ -79,6 +130,19 @@ class ONNXConverter(ModelConverter):
         self.quantized_model_path = file_path
 
     def analyze_layers(self, output_name_to_shape: Dict[str, List[int]] = None) -> Tuple[List[ONNXLayer], List[ONNXLayer]]:
+        """Analyze the onnx model graph into logical layers and parameter tensors.
+
+        Args:
+            output_name_to_shape (Dict[str, List[int]], optional): mapping of value name -> shape. If
+                omitted, shapes are inferred via `onnx.shape_inference`. Defaults to None.
+
+        Returns:
+            Tuple[List[ONNXLayer], List[ONNXLayer]]: ``(architecture, w_and_b)`` where:
+                - ``architecture`` is a list of `ONNXLayer` describing
+                  the computational graph.
+                - ``w_and_b`` is a list of `ONNXLayer` representing
+                  constant tensors (initializers).
+        """
         id_count = 0
         # Apply shape inference on the model
         if not output_name_to_shape:
@@ -96,7 +160,20 @@ class ONNXConverter(ModelConverter):
     
     
     
-    def run_model_onnx_runtime(self, path: str, input: torch.Tensor):
+    def run_model_onnx_runtime(self, path: str, input: torch.Tensor) -> Any:
+        """Execute a model on CPU via ONNX Runtime and return its outputs.
+
+        Creates a fresh inference session for the model at ``path``, feeds
+        the provided tensor under the first input name, and returns the
+        first output.
+
+        Args:
+            path (str): Path to the ONNX model to execute.
+            input (torch.Tensor): Input tensor to feed into the model's first input.
+
+        Returns:
+            Any: The output(s) as returned by `InferenceSession.run`.
+        """
         # Fix, can remove this next line        
 
         ort_sess =  self._create_inference_session(path)
@@ -110,6 +187,17 @@ class ONNXConverter(ModelConverter):
         return outputs
     
     def get_model_architecture(self, model: onnx.ModelProto, output_name_to_shape: Dict[str, List[int]], id_count: int = 0, domain_to_version: dict[str, int] = None) -> List[ONNXLayer]:
+        """Construct ONNXLayer objects for architecture graph nodes (not weights or biases).
+
+        Args:
+            model (onnx.ModelProto): The ONNX model to analyze.
+            output_name_to_shape (Dict[str, List[int]]): Map of value name -> inferred shape.
+            id_count (int, optional): Starting numeric ID for layers (incremented per node). Defaults to 0.
+            domain_to_version (dict[str, int], optional): Map of opset domain -> version used. Defaults to None.
+
+        Returns:
+            List[ONNXLayer]: Model’s computational layers (excluding initializers) in the form of ONNXLayers.
+        """
         layers = []
         constant_values = {}
         # First pass: collect constant nodes
@@ -152,6 +240,20 @@ class ONNXConverter(ModelConverter):
         return layers
     
     def get_model_w_and_b(self, model: onnx.ModelProto, output_name_to_shape: Dict[str, List[int]], id_count: int = 0, domain_to_version: dict[str, int] = None) -> List[ONNXLayer]:
+        """Extract constant initializers (weights/biases) as layers.
+
+        Iterates through graph initializers and wraps each tensor
+        into an ONNXLayers.
+
+        Args:
+            model (onnx.ModelProto): The ONNX model to analyze.
+            output_name_to_shape (Dict[str, List[int]]): Map of value name -> inferred shape
+            id_count (int, optional): Starting numeric ID for layers (incremented per tensor). Defaults to 0.
+            domain_to_version (dict[str, int], optional): Map of opset domain -> version used (unused). Defaults to None.
+
+        Returns:
+            List[ONNXLayer]: ONNXLayers representing weights/biases found in the graph
+        """
         layers = []
         # Check the model and print Y"s shape information
         for (idx, node) in enumerate(model.graph.initializer):
@@ -162,15 +264,32 @@ class ONNXConverter(ModelConverter):
         return layers
     
     def _create_inference_session(self, model_path: str) -> InferenceSession:
-        """
-        Internal helper to create and configure an ONNX Runtime InferenceSession.
+        """Internal helper to create and configure an ONNX Runtime InferenceSession.
+        Registers a custom ops shared library for use with the custom quantized operations.
+
+        Args:
+            model_path (str): Path to the ONNX model to load.
+
+        Returns:
+            InferenceSession: A configured InferenceSession.
         """
         opts = SessionOptions()
         opts.register_custom_ops_library(get_library_path())
         return InferenceSession(model_path, opts, providers=["CPUExecutionProvider"])
         
 
-    def analyze_layer(self, node: NodeProto, output_name_to_shape: Dict[str, List[int]], id_count: int = -1, domain_to_version: dict[str, int] = None) -> List[ONNXLayer]:
+    def analyze_layer(self, node: NodeProto, output_name_to_shape: Dict[str, List[int]], id_count: int = -1, domain_to_version: dict[str, int] = None) -> ONNXLayer:
+        """Convert a non-constant ONNX node into a structured ONNXLayer.
+
+        Args:
+            node (NodeProto): The ONNX node to analyze.
+            output_name_to_shape (Dict[str, List[int]]): Map of value name -> inferred shape.
+            id_count (int, optional): Numeric ID to assign to this layer (increment handled by caller). Defaults to -1.
+            domain_to_version (dict[str, int], optional): Map of opset domain -> version number. Defaults to None.
+
+        Returns:
+            ONNXLayer: ONNXLayer describing the node
+        """
         name = node.name
         id = id_count
         id_count += 1
@@ -199,6 +318,17 @@ class ONNXConverter(ModelConverter):
         return layer
     
     def analyze_constant(self, node: TensorProto, output_name_to_shape: Dict[str, List[int]], id_count: int = -1, domain_to_version: dict[str, int] = None) -> List[ONNXLayer]:
+        """Convert a constant ONNX node (weights or bias) into a structured ONNXLayer.
+
+        Args:
+            node (NodeProto): The ONNX node to analyze.
+            output_name_to_shape (Dict[str, List[int]]): Map of value name -> inferred shape.
+            id_count (int, optional): Numeric ID to assign to this layer (increment handled by caller). Defaults to -1.
+            domain_to_version (dict[str, int], optional): Map of opset domain -> version number. Defaults to None.
+
+        Returns:
+            ONNXLayer: ONNXLayer describing the node
+        """        
         name = node.name
         id = id_count
         id_count += 1
@@ -228,13 +358,24 @@ class ONNXConverter(ModelConverter):
             )
         return layer
     
-    def quantize_model(self, unscaled_model: onnx.ModelProto, scale_base: int,  scale: int, rescale_config: dict = None):
-        '''
+    def quantize_model(self, unscaled_model: onnx.ModelProto, scale_base: int,  scale: int, rescale_config: dict = None) -> onnx.ModelProto:
+        """Produce a quantized ONNX graph from a floating-point model.
+
         1. Read in the model and layers + analyze
         2. Look for layers that need quantizing 
         3. Convert layer to quantized version
         4. insert quantized version back into the model
-        '''
+
+        Args:
+            unscaled_model (onnx.ModelProto): The original unscaled model.
+            scale_base (int): Base for fixed-point scaling (e.g., 2).
+            scale (int): Exponent for scaling (e.g., 18 would lead to a scale factor 2**18).
+            rescale_config (dict, optional): mapping of node name -> bool to control
+                whether a given node should apply a final rescale. Defaults to None.
+
+        Returns:
+            onnx.ModelProto: A new onnx model representation of the quantized model.
+        """
         
         model = copy.deepcopy(unscaled_model)
 
@@ -328,10 +469,40 @@ class ONNXConverter(ModelConverter):
         
 
     def quantize_layer(self, node: onnx.NodeProto, rescale: bool, model: onnx.ModelProto, scale: int, scale_base: int, initializer_map: dict[str, onnx.TensorProto]) -> onnx.NodeProto:
+        """Quantize a single ONNX node using the configured op quantizer.
+
+        Args:
+            node (onnx.NodeProto): The original onnx node to quantize.
+            rescale (bool): Whether to apply output rescaling for this node.
+            model (onnx.ModelProto): The original model used for context
+            scale (int): Exponent for scaling (e.g., 18 would lead to a scale factor 2**18).
+            scale_base (int): Base for fixed-point scaling (e.g., 2).
+            initializer_map (dict[str, onnx.TensorProto]): Mapping from initializer name to tensor.
+
+        Returns:
+            onnx.NodeProto: A quantized node or list of nodes replacing the initial node.
+        """
         quant_nodes = self.op_quantizer.quantize(node, rescale, model.graph, scale, scale_base, initializer_map)
         return quant_nodes
     
-    def quantize_input(self, input_name: str, op_quantizer: ONNXOpQuantizer, scale_base: int, scale: int):
+    def quantize_input(self, input_name: str, op_quantizer: ONNXOpQuantizer, scale_base: int, scale: int) -> Tuple[str, onnx.NodeProto, onnx.NodeProto, onnx.NodeProto]:
+        """Insert scaling and casting nodes to quantize a model input.
+
+        Creates:
+            - Mul: scales the input by scale_base ** scale.
+            - Cast (to INT64): produces the final integer input tensor.
+
+        Args:
+            input_name (str): Name of the graph input to quantize.
+            op_quantizer (ONNXOpQuantizer): The op quantizer whose ``new_initializers`` list is
+                used to store the created scale constant.
+            scale_base (int): Base for fixed-point scaling (e.g., 2).
+            scale (int): Exponent for scaling (e.g., 18 would lead to a scale factor 2**18).
+
+        Returns:
+            Tuple[str, onnx.NodeProto, onnx.NodeProto, onnx.NodeProto]: A tuple ``(output_name, mul_node, floor_node, cast_node)`` where
+            ``output_name`` is the name of the quantized input tensor and the nodes are nodes to add to the graph.
+        """
         scale_value = scale_base ** scale
 
         # === Create scale constant ===
@@ -367,18 +538,34 @@ class ONNXConverter(ModelConverter):
         )
         return output_name, mul_node, floor_node, cast_to_int64
     
-    def _extract_model_io_info(self, onnx_model):
+    def _extract_model_io_info(self, onnx_model: onnx.ModelProto) -> None:
+        """Populate input metadata from a loaded ONNX model.
+
+        Args:
+            onnx_model (onnx.ModelProto): Onnx model
+        """
         self.required_keys = [input.name for input in onnx_model.graph.input]
         self.input_shape = get_input_shapes(onnx_model)
     
 
     # TODO JG suggestion - can maybe make the layers into a factory here, similar to how its done in Rust? Can refactor to this later imo.
-    def get_weights(self, flatten: bool = False):
-        '''
+    def get_weights(self, flatten: bool = False) -> Tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]], dict[str, Any]]:
+        """Export architecture, weights, and circuit parameters for ECC.
+
         1. Analyze the model for architecture + w & b
         2. Put arch into format to be read by ECC circuit builder
         3. Put w + b into format to be read by ECC circuit builder
-        '''
+
+        Args:
+            flatten (bool, optional): Currently unused; reserved for alternative layouts. Defaults to False.
+
+        Returns:
+            Tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]], dict[str, Any]]: A tuple ``(architecture, weights, circuit_params)``:
+                - ``architecture``: Dict with serialized ``architecture`` layers.
+                - ``weights``: Dict containing ``w_and_b`` (serialized tensors).
+                - ``circuit_params``: Dict containing scaling parameters and
+                  ``rescale_config``.
+        """
         print(self.model.graph.node) #TODO: Change to logging
         inferred_model = shape_inference.infer_shapes(self.model) 
 
@@ -425,15 +612,29 @@ class ONNXConverter(ModelConverter):
         self.save_quantized_model("test.onnx")
         return architecture, weights, circuit_params
 
-    def get_model_and_quantize(self):
-        
+    def get_model_and_quantize(self) -> None:
+        """Load the configured model (by path) and build its quantized form.
+
+        Expects the instance to define ``self.model_file_name`` beforehand.
+
+        Raises:
+            FileNotFoundError: If ``self.model_file_name`` is unset or invalid.
+        """
         if hasattr(self, 'model_file_name'):
             self.load_model(self.model_file_name)
         else:
             raise FileNotFoundError("An ONNX model is required at the specified path")
         self.quantized_model = self.quantize_model(self.model, getattr(self,"scale_base", 2), getattr(self,"scaling", 18), rescale_config=getattr(self,"rescale_config", {}))
 
-    def get_outputs(self, inputs: Any):
+    def get_outputs(self, inputs: Any) -> Any:
+        """Run the currently loaded (quantized) model via ONNX Runtime.
+
+        Args:
+            inputs (Any): Input array/tensor matching the model’s first input.
+
+        Returns:
+            Any: The output of the onnxruntime inference.
+        """
         input_name = self.ort_sess.get_inputs()[0].name
         output_name = self.ort_sess.get_outputs()[0].name
 

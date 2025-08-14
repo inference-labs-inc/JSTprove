@@ -4,7 +4,6 @@ import sys
 from typing import List
 import json
 import os
-from abc import ABC
 from enum import Enum
 
 root = logging.getLogger()

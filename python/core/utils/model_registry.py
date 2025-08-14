@@ -2,17 +2,11 @@ from collections import namedtuple
 import importlib
 import os
 import pkgutil
-import pytest
 
 from python.core import circuit_models
 from python.core import circuits
 
-
-
-# from python.core.circuit_models.demo_cnn import Demo
-# from python.core.circuit_components.relu import ReLU, ConversionType
 from python.core.circuits.base import Circuit
-# from python.core.circuit_models.generic_torch import GenericModelTorch
 from python.core.circuit_models.generic_onnx import GenericModelONNX
 
 
