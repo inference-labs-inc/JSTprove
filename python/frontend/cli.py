@@ -110,7 +110,10 @@ def main(argv: list[str] | None = None) -> int:
             _ensure_parent_dir(args.circuit_path)
             _ensure_parent_dir(args.quantized_path)
 
-            # Let the Circuit know where the original model is
+            # Make sure ONNXConverter sees the explicit file that is passed
+            setattr(circuit, "model_file_name", args.model_path)
+
+            # Let the Circuit know where the original model is (Optional (harmless) if other code reads these)
             setattr(circuit, "model_path", args.model_path)
             setattr(circuit, "onnx_path", args.model_path)
 
