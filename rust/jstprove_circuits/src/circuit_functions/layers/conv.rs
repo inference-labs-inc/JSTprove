@@ -51,9 +51,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
                 };
 
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
-        // Reshape inputs
-        // TODO work on removing
-        // let layer_input = reshape_layer(layer_input, &self.input_shape);
 
         // Convert weights
         let weights = load_array_constants(api, &self.weights);
