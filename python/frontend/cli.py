@@ -5,6 +5,8 @@ import importlib
 import sys
 from pathlib import Path
 from python.testing.core.utils.helper_functions import RunType
+import onnx
+from python.testing.core.utils.onnx_helpers import get_input_shapes
 
 DEFAULT_CIRCUIT_DOTTED = "python.testing.core.circuit_models.generic_onnx:GenericModelONNX"
 
@@ -82,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
     p_verify.add_argument("--output-path", required=True, help="Path to expected outputs JSON.")
     p_verify.add_argument("--witness-path", required=True, help="Path to witness.")
     p_verify.add_argument("--proof-path", required=True, help="Path to proof.")
+    p_verify.add_argument("--quantized-path", required=True, help="Path to the quantized ONNX (used to infer input shapes).")
 
     args = parser.parse_args(argv)
 
@@ -149,8 +152,21 @@ def main(argv: list[str] | None = None) -> int:
             _ensure_exists(args.output_path, "file")
             _ensure_exists(args.witness_path, "file")
             _ensure_exists(args.proof_path, "file")
+            _ensure_exists(args.quantized_path, "file")
 
             circuit = _build_default_circuit("cli")
+
+            # hydrate shapes so adjust_inputs() works
+            if hasattr(circuit, "load_quantized_model"):
+                circuit.load_quantized_model(args.quantized_path)
+            else:
+            # fallback: infer from ONNX directly
+            m = onnx.load(args.quantized_path)
+            shapes = get_input_shapes(m)  # dict of input_name -> shape
+            if len(shapes) == 1:
+                circuit.input_shape = [s if s > 0 else 1 for s in next(iter(shapes.values()))]
+            else:
+                raise SystemExit("verify needs load_quantized_model or a single-input model to infer shape")
 
             circuit.base_testing(
                 run_type=RunType.GEN_VERIFY,
