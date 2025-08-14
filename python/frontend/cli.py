@@ -160,13 +160,13 @@ def main(argv: list[str] | None = None) -> int:
             if hasattr(circuit, "load_quantized_model"):
                 circuit.load_quantized_model(args.quantized_path)
             else:
-            # fallback: infer from ONNX directly
-            m = onnx.load(args.quantized_path)
-            shapes = get_input_shapes(m)  # dict of input_name -> shape
-            if len(shapes) == 1:
-                circuit.input_shape = [s if s > 0 else 1 for s in next(iter(shapes.values()))]
-            else:
-                raise SystemExit("verify needs load_quantized_model or a single-input model to infer shape")
+                # fallback: infer from ONNX directly
+                m = onnx.load(args.quantized_path)
+                shapes = get_input_shapes(m)  # dict of input_name -> shape
+                if len(shapes) == 1:
+                    circuit.input_shape = [s if s > 0 else 1 for s in next(iter(shapes.values()))]
+                else:
+                    raise SystemExit("verify needs load_quantized_model or a single-input model to infer shape")
 
             circuit.base_testing(
                 run_type=RunType.GEN_VERIFY,
