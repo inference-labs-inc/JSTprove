@@ -4,9 +4,12 @@ from random import randint
 
 class SimpleCircuit(Circuit):
     '''
-    To begin, we need to specify some basic attributes surrounding the circuit we will be using. If running inference on a pytorch model, should use model_template. If other circuit, this template should suffice
-    required_keys - specify the variables in the input dictionary (and input file)
-    name - name of the rust bin to be run by the circuit
+    Note: This template is irrelevant if using the onnx circuit builder. 
+    The template only helps developers if they choose to incorporate other circuit builders into the framework.
+
+    To begin, we need to specify some basic attributes surrounding the circuit we will be using.
+    required_keys - specify the variables in the input dictionary (and input file).
+    name - name of the rust bin to be run by the circuit.
 
     scale_base - specify the base of the scaling applied to each value
     scaling - the exponent applied to the base to get the scaling factor. Scaling factor will be multiplied by each input
@@ -32,12 +35,15 @@ class SimpleCircuit(Circuit):
     The following are some important functions used by the model. get inputs should be defined to specify the inputs to the circuit
     '''
     def get_inputs(self):
+        '''
+        Specify the inputs to the circuit, based on what was specified in the __init__. Can also have inputs to this function for the inputs.
+        '''
         return {'input_a': self.input_a, 'input_b': self.input_b, 'nonce': self.nonce}
     
     def get_outputs(self, inputs = None):
         """
         Compute the output of the circuit.
-        This is decorated in the base class to ensure computation happens only once.
+        This is overwritten from the base class to ensure computation happens only once.
         """
         if inputs == None:
             inputs = {'input_a': self.input_a, 'input_b': self.input_b, 'nonce': self.nonce}

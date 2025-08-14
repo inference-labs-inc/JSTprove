@@ -105,7 +105,7 @@ def prepare_io_files(func):
                 "quantized_model": quantized_model_folder
             }
         )
-
+        # Set to defaults
         witness_file = files["witness_file"]
         input_file = files["input_file"]
         proof_path = files["proof_path"]
@@ -115,6 +115,7 @@ def prepare_io_files(func):
         weights_path = files["weights_path"]
         output_file = files["output_file"]
 
+        # If specified, in kwargs, then 
         if not kwargs.get("input_file", None) is None:
             input_file = kwargs["input_file"]
         kwargs.pop("input_file", None)

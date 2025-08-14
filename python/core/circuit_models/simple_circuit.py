@@ -1,3 +1,4 @@
+from typing import Dict
 import torch.nn as nn
 from python.core.circuits.base import Circuit, RunType
 from random import randint
@@ -23,24 +24,39 @@ class SimpleCircuit(Circuit):
 
         self.input_shape = [1]
 
-    def get_inputs(self):
+    def get_inputs(self) -> Dict[str, int]:
+        """Retrieve the current input values for the circuit.
+
+        Returns:
+            Dict[str, int]: A dictionary containing `value_a`, `value_b`, and `nonce`.
+        """        
         return {'value_a': self.input_a, 'value_b': self.input_b, 'nonce': self.nonce}
     
-    def get_outputs(self, inputs = None):
-        """
-        Compute the output of the circuit.
+    def get_outputs(self, inputs: Dict[str, int] = None) -> int:
+        """Compute the output of the circuit.
         This is decorated in the base class to ensure computation happens only once.
-        """
+
+        Args:
+            inputs (Dict[str, int], optional): A dictionary containing `value_a`, `value_b`, and `nonce`.
+            If None, uses the instance's default inputs. Defaults to None.
+
+        Returns:
+            _type_: _description_
+        """        
         if inputs == None:
             inputs = {'value_a': self.input_a, 'value_b': self.input_b, 'nonce': self.nonce}
         print(f"Performing addition operation: {inputs['value_a']} + {inputs['value_b']}")
         return inputs['value_a'] + inputs['value_b']
     
-    def format_inputs(self, inputs):
-        """
-        Format the inputs for the circuit.
-        """
-        # Convert inputs to a specific format if necessary
+    def format_inputs(self, inputs: Dict[str, int]) -> Dict[str, int]:
+        """Format the inputs for the circuit.
+
+        Args:
+            inputs (Dict[str, int]): A dictionary containing circuit input values.
+
+        Returns:
+            Dict[str, int]: A dictionary containing circuit input values.
+        """        
         return inputs
     
     
@@ -51,17 +67,8 @@ if __name__ == "__main__":
     print("\n--- Creating circuit instance ---")
     circuit = SimpleCircuit()
     
-    # print("\n--- Computing output (will happen only once) ---")
-    # output = circuit.get_outputs()
-    # print(f"Circuit output: {output}")
-    
     print("\n--- Testing different operations ---")
     
-    # # Run base testing operation
-    # print("\nRunning base testing:")
-    # circuit.base_testing(RunType.BASE_TESTING)
-    
-    # Get the output again (should use cached value)
     print("\nGetting output again (should use cached value):")
     output_again = circuit.get_outputs()
     print(f"Circuit output: {output_again}")
@@ -74,16 +81,7 @@ if __name__ == "__main__":
     print("\n--- Verifying input and output files ---")
     print(f"Input file: {circuit._file_info['input_file']}")
     print(f"Output file: {circuit._file_info['output_file']}")
-    
-    # print("\nReading input and output files:")
-    # with open(circuit._file_info['input_file'], 'r') as f:
-    #     input_data = json.load(f)
-    
-    # with open(circuit._file_info['output_file'], 'r') as f:
-    #     output_data = json.load(f)
-    
-    # print(f"Input from file: {input_data}")
-    # print(f"Output from file: {output_data}")
+
     circuit.base_testing(run_type = RunType.GEN_WITNESS, circuit_path="simple_circuit.txt", input_file="inputs/simple_circuit_input.json", output_file="output/simple_circuit_output.json", write_json=True)
 
     circuit = SimpleCircuit()

@@ -1,6 +1,6 @@
 import copy
 from dataclasses import asdict, dataclass
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import torch
 import onnx
@@ -55,11 +55,9 @@ class ONNXConverter(ModelConverter):
     def load_model(self, file_path: str, model_type = None):
         onnx_model = onnx.load(file_path)
         # Fix, can remove this next line 
-        onnx.checker.check_model(onnx_model)
         self.model = onnx_model
 
-        self.required_keys = [input.name for input in onnx_model.graph.input]
-        self.input_shape = get_input_shapes(onnx_model)
+        self._extract_model_io_info(onnx_model)
         return self.model
     
 
@@ -69,22 +67,18 @@ class ONNXConverter(ModelConverter):
     # Not sure this is ideal
     def load_quantized_model(self, file_path: str):
         # May be able to remove next few lines...
-        print(file_path) #TODO: Change to logging
+        print("Loading quantized model from: ",file_path) #TODO: Change to logging
         onnx_model = onnx.load(file_path)
         custom_domain = onnx.helper.make_operatorsetid(domain="ai.onnx.contrib", version=1)
         onnx_model.opset_import.append(custom_domain)
         # Fix, can remove this next line 
-        onnx.checker.check_model(onnx_model)
         self.quantized_model = onnx_model
-        opts = SessionOptions()
-        opts.register_custom_ops_library(get_library_path())
-        self.ort_sess =  InferenceSession(file_path, opts, providers=["CPUExecutionProvider"])
-        self.required_keys = [input.name for input in onnx_model.graph.input]
-        self.input_shape = get_input_shapes(onnx_model)
+        self.ort_sess =  self._create_inference_session(file_path)
+        self._extract_model_io_info(onnx_model)
 
         self.quantized_model_path = file_path
 
-    def analyze_layers(self, output_name_to_shape = None):
+    def analyze_layers(self, output_name_to_shape: Dict[str, List[int]] = None) -> Tuple[List[ONNXLayer], List[ONNXLayer]]:
         id_count = 0
         # Apply shape inference on the model
         if not output_name_to_shape:
@@ -103,19 +97,9 @@ class ONNXConverter(ModelConverter):
     
     
     def run_model_onnx_runtime(self, path: str, input: torch.Tensor):
-        onnx_model = onnx.load(path)
-        # Fix, can remove this next line 
-        onnx.checker.check_model(onnx_model)
-        
+        # Fix, can remove this next line        
 
-        if not hasattr(self, "ort_sess"):
-            opts = SessionOptions()
-            opts.register_custom_ops_library(get_library_path())
-            ort_sess =  InferenceSession(path, opts, providers=["CPUExecutionProvider"])
-        else:
-            opts = SessionOptions()
-            opts.register_custom_ops_library(get_library_path())
-            ort_sess =  InferenceSession(path, opts, providers=["CPUExecutionProvider"])
+        ort_sess =  self._create_inference_session(path)
         input_name = ort_sess.get_inputs()[0].name
         output_name = ort_sess.get_outputs()[0].name
         if ort_sess.get_inputs()[0].type == "tensor(double)":
@@ -176,6 +160,14 @@ class ONNXConverter(ModelConverter):
             id_count += 1
 
         return layers
+    
+    def _create_inference_session(self, model_path: str) -> InferenceSession:
+        """
+        Internal helper to create and configure an ONNX Runtime InferenceSession.
+        """
+        opts = SessionOptions()
+        opts.register_custom_ops_library(get_library_path())
+        return InferenceSession(model_path, opts, providers=["CPUExecutionProvider"])
         
 
     def analyze_layer(self, node: NodeProto, output_name_to_shape: Dict[str, List[int]], id_count: int = -1, domain_to_version: dict[str, int] = None) -> List[ONNXLayer]:
@@ -320,8 +312,6 @@ class ONNXConverter(ModelConverter):
             print(layer.name)
 
         for out in model.graph.output:
-            # if out.name == "output":
-                # out.name = "output_int"  # match Cast output
                 out.type.tensor_type.elem_type = onnx.TensorProto.INT64
         # TODO This has not been extensively tested. May need to somehow include this when quantizing layers individually (Concern is that some layers shouldnt be converted into this type...)
         # Such as multiplying up scalers etc.
@@ -332,8 +322,8 @@ class ONNXConverter(ModelConverter):
         domains = [op.domain for op in model.opset_import]
         if "ai.onnx.contrib" not in domains:
             model.opset_import.append(custom_domain)
-        onnx.checker.check_model(model)
-        onnx.save(model, "debug_test.onnx")
+        # onnx.checker.check_model(model)
+        # onnx.save(model, "debug_test.onnx")
         return model
         
 
@@ -341,7 +331,7 @@ class ONNXConverter(ModelConverter):
         quant_nodes = self.op_quantizer.quantize(node, rescale, model.graph, scale, scale_base, initializer_map)
         return quant_nodes
     
-    def quantize_input(self, input_name, op_quantizer: ONNXOpQuantizer, scale_base, scale):
+    def quantize_input(self, input_name: str, op_quantizer: ONNXOpQuantizer, scale_base: int, scale: int):
         scale_value = scale_base ** scale
 
         # === Create scale constant ===
@@ -377,9 +367,13 @@ class ONNXConverter(ModelConverter):
         )
         return output_name, mul_node, floor_node, cast_to_int64
     
+    def _extract_model_io_info(self, onnx_model):
+        self.required_keys = [input.name for input in onnx_model.graph.input]
+        self.input_shape = get_input_shapes(onnx_model)
+    
 
     # TODO JG suggestion - can maybe make the layers into a factory here, similar to how its done in Rust? Can refactor to this later imo.
-    def get_weights(self, flatten = False):
+    def get_weights(self, flatten: bool = False):
         '''
         1. Analyze the model for architecture + w & b
         2. Put arch into format to be read by ECC circuit builder
@@ -389,6 +383,7 @@ class ONNXConverter(ModelConverter):
         inferred_model = shape_inference.infer_shapes(self.model) 
 
         # Check the model and print Y"s shape information
+        # TODO ERRORS handle gently
         onnx.checker.check_model(inferred_model)
         output_name_to_shape = extract_shape_dict(inferred_model)
         (architecture, w_and_b) = self.analyze_layers(output_name_to_shape)
@@ -438,7 +433,7 @@ class ONNXConverter(ModelConverter):
             raise FileNotFoundError("An ONNX model is required at the specified path")
         self.quantized_model = self.quantize_model(self.model, getattr(self,"scale_base", 2), getattr(self,"scaling", 18), rescale_config=getattr(self,"rescale_config", {}))
 
-    def get_outputs(self, inputs):
+    def get_outputs(self, inputs: Any):
         input_name = self.ort_sess.get_inputs()[0].name
         output_name = self.ort_sess.get_outputs()[0].name
 
@@ -458,8 +453,7 @@ class ONNXConverter(ModelConverter):
 
 
 if __name__ == "__main__":
-    # path  ="./models_onnx/doom.onnx"
-    path  = "./models_onnx/test_doom_cut.onnx"
+    path  ="./models_onnx/doom.onnx"
 
 
     converter = ONNXConverter()

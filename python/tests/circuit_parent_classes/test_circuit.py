@@ -382,41 +382,25 @@ def test_base_testing_calls_parse_proof_run_type_correctly(mock_parse):
     )
 
     mock_parse.assert_called_once()
-    args = mock_parse.call_args[0]
-    expected_args = ("w.wtns",
-                    "i.json",
-                    "p.json",
-                    "pub.json",
-                    "vk.key",
-                    "circuit_model",
-                    "circuit_path.txt",
-                    None,
-                    "o.json",
-                    "weights/model_weights.json",
-                    "quantized_path.pt",
-                    RunType.GEN_WITNESS,
-                    False,
-                    True,
-                    True,
-                    False
+    mock_parse.assert_called_once_with(
+        witness_file='w.wtns',
+        input_file='i.json',
+        proof_path='p.json',
+        public_path='pub.json',
+        verification_key='vk.key',
+        circuit_name='circuit_model',
+        circuit_path='circuit_path.txt',
+        proof_system=None,
+        output_file='o.json',
+        weights_path='weights/model_weights.json',
+        quantized_path='quantized_path.pt',
+        run_type=RunType.GEN_WITNESS,
+        dev_mode=False,
+        ecc=True,
+        write_json=True,
+        bench=False
     )
-
-    assert args == expected_args
-    assert args[0] == "w.wtns"
-    assert args[1] == "i.json"
-    assert args[2] == "p.json"
-    assert args[3] == "pub.json"
-    assert args[4] == "vk.key"
-    assert args[5] == "circuit_model"
-    assert args[6] == "circuit_path.txt"
-    assert args[7] is None  # proof_system not specified
-    assert args[8] == "o.json"
-    assert args[9] == "weights/model_weights.json"
-    assert args[10] == "quantized_path.pt"
-    assert args[11] == RunType.GEN_WITNESS
-    assert args[12] is False
-    assert args[13] is True
-    assert args[14] is True
+    
 
 @pytest.mark.unit
 @patch.object(Circuit, "parse_proof_run_type")
@@ -431,8 +415,11 @@ def test_base_testing_uses_default_circuit_path(mock_parse):
     c.base_testing(circuit_name="test_model")
 
     mock_parse.assert_called_once()
-    args = mock_parse.call_args[0]
-    assert args[6] == "test_model.txt"  # default circuit_path
+    args, kwargs = mock_parse.call_args
+    
+    assert kwargs["circuit_name"] == "test_model"
+    assert kwargs["circuit_path"] == "test_model.txt"
+    assert kwargs["weights_path"] == "weights.json"
 
 @pytest.mark.unit
 @patch.object(Circuit, "parse_proof_run_type")

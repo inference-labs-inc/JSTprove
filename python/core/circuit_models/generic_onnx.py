@@ -1,4 +1,6 @@
 import math
+import os
+from typing import Any, Dict, List
 import numpy as np
 import torch
 # from core.utils.pytorch_helpers import Layer, ZKTorchModel, RunType, filter_dict_for_dataclass
@@ -7,34 +9,81 @@ from python.core.circuits.zk_model_base import ZKModelBase
 from python.core.utils.helper_functions import RunType
 
 class GenericModelONNX(ONNXConverter, ZKModelBase):
-    def __init__(self, model_name, models_folder = None, model_file_path: str = None, quantized_model_file_path: str = None, layers = None):
-        self.max_value = 2**32
+    """
+    A generic ONNX-based Zero-Knowledge (ZK) circuit model wrapper.
+
+    This class provides:
+        - Integration between ONNX model loading/conversion (`ONNXConverter`) 
+          and ZK circuit infrastructure (`ZKModelBase`).
+        - Support for model quantization via `ONNXOpQuantizer`.
+        - Input/output scaling and formatting utilities for ZK compatibility.
+
+    Attributes
+    ----------
+    name : str
+        Internal identifier for the binary to be run in rust backend.
+    op_quantizer : ONNXOpQuantizer
+        Operator quantizer for applying custom ONNX quantization rules.
+    rescale_config : dict
+        Per-node override for rescaling during quantization.
+        Keys are node names, values are booleans.
+    model_file_name : str
+        Path to the ONNX model file used for the circuit.
+    scale_base : int
+        Base multiplier for scaling (default: 2).
+    scaling : int
+        Exponent applied to `scale_base` for final scaling factor.
+
+    Parameters
+    ----------
+    model_name : str
+        Name of the model to load (with or without `.onnx` extension).
+
+    Notes
+    -----
+    - The scaling factor (`scale_base ** scaling`) determines how floating point
+      inputs/outputs are represented as integers inside the ZK circuit.
+    - By default, scaling is fixed; dynamic scaling based on model analysis 
+      is planned for future implementation.
+    - The quantization logic assumes operators are registered with 
+      `ONNXOpQuantizer`.
+    """
+    def __init__(self, model_name: str):
+        # self.max_value = 2**32
         self.name = "onnx_generic_circuit"
         self.op_quantizer = ONNXOpQuantizer()
         self.rescale_config = {} 
         # self.rescale_config = {"/conv1/Conv": False} 
         self.model_file_name = self.find_model(model_name)
-        self.model_params = {}
-        # Temp hardcoded
         self.scale_base = 2
         self.scaling = 18
 
-    def find_model(self, model_name):
-        # Look for model in models_for_circuit_folder
+    def find_model(self, model_name: str):
+        """Resolve the ONNX model file path.
+
+        Args:
+            model_name (str): Name of the model (with or without `.onnx` extension).
+
+        Returns:
+            str: Full path to the model file.
+        """        
         if not ".onnx" in model_name:
             model_name = model_name + ".onnx"
+        if os.path.exists(model_name):
+            return model_name
         if "models_onnx" in model_name:
             return model_name
         return f"models_onnx/{model_name}"
-
-    def determine_scaling(self, scaling, scale_base, max_value):
-        # Determine scaling based on the max_value we want to be present in the circuit. we also need the model and dummy inputs to determine this. This will require analysis before a future implementation.
-        if scaling != -1:
-            return scaling
-        # return int(18 / math.log2(scale_base))
-        raise ValueError("Scaling not specified")
     
-    def adjust_inputs(self, input_file):
+    def adjust_inputs(self, input_file: str) -> str:
+        """Preprocess and flatten model inputs for the circuit.
+
+        Args:
+            input_file (str): Input data file or array compatible with the model.
+
+        Returns:
+            str: Adjusted input file after reshaping and scaling.
+        """        
         input_shape = self.input_shape.copy()
         shape = self.adjust_shape(input_shape)
         self.input_shape = [math.prod(shape)]
@@ -42,10 +91,27 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         self.input_shape = input_shape.copy()
         return x
     
-    def get_outputs(self, inputs):
+    def get_outputs(self, inputs: Any) -> torch.Tensor:
+        """Run inference and flatten outputs.
+
+        Args:
+            inputs (List[int]): Preprocessed model inputs.
+
+        Returns:
+            torch.Tensor: Flattened model outputs as a tensor.
+        """ 
         return torch.as_tensor(np.array(super().get_outputs(inputs))).flatten()
     
-    def format_inputs(self, inputs):
+    def format_inputs(self, inputs: Any) -> Dict[str, List[int]]:
+        """Format raw inputs into scaled integer tensors for the circuit and transformed into json to be sent to rust backend.
+        Inputs are scaled by `scale_base ** scaling` and converted to `long` to ensure compatibility with ZK circuits
+
+        Args:
+            inputs (Any): Raw model inputs.
+
+        Returns:
+            Dict[str, List[int]]: Dictionary mapping `"input"` to scaled integer values.
+        """
         x = {"input": inputs}
         for key in x:
             x[key] = torch.as_tensor(x[key]).flatten().tolist()
@@ -53,11 +119,6 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         return x
 
 if __name__ == "__main__":
-    names = ["doom"]
-    for name in names:
-        d = GenericModelONNX(name)
-        d.base_testing(run_type=RunType.COMPILE_CIRCUIT, dev_mode=True, circuit_path=f"{name}_circuit.txt")
-        d_2 = GenericModelONNX(name)
-        d_2.base_testing(run_type=RunType.GEN_WITNESS, dev_mode=False, witness_file=f"{name}_witness.txt", circuit_path=f"{name}_circuit.txt", write_json = True)
+    pass
 
 
