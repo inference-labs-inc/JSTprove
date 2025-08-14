@@ -95,6 +95,24 @@ pub fn collect_all_shapes(layers: &[ONNXLayer], ios: &[ONNXIO]) -> HashMap<Strin
     result
 }
 
+pub fn extract_params_and_expected_shape(
+    layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
+    layer:  &crate::circuit_functions::utils::onnx_types::ONNXLayer
+) -> (Value, Vec<usize>){
+    let params = layer.params.clone()
+        .ok_or_else(|| panic!("Missing Params for: {}", layer.name.clone())).unwrap();
+    
+    let key = layer.inputs.first()
+        .ok_or_else(|| panic!("Missing input keys for: {}", layer.name.clone())).unwrap();
+    
+    let expected_shape = layer_context.shapes_map
+        .get(key)
+        .ok_or_else(|| panic!("Missing input shape for: {}", layer.name.clone())).unwrap()
+        .clone();
+
+    (params, expected_shape)
+}
+
 pub fn get_param<I:DeserializeOwned>(layer_name: &String, param_name: &str, params: &Value) -> I {
     match params.get(param_name){
         Some(param) => {

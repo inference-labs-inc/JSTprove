@@ -7,7 +7,7 @@ use ndarray::{s, ArrayD};
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
-use crate::circuit_functions::{utils::{onnx_model::{get_param, get_param_or_default, get_w_or_b}}};
+use crate::circuit_functions::utils::{constants::{DILATION, GROUP, KERNEL_SHAPE, PADS, STRIDES}, onnx_model::{extract_params_and_expected_shape, get_param, get_param_or_default, get_w_or_b}};
 
 /// Internal module imports
 use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{graph_pattern_matching::GraphPattern, quantization::rescale_array, tensor_ops::{load_array_constants, load_circuit_constant}}};
@@ -50,10 +50,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
                     _ => false
                 };
 
-        let layer_input = input.get(&self.inputs[0]).unwrap().clone();
-        // Reshape inputs
-        // TODO work on removing
-        // let layer_input = reshape_layer(layer_input, &self.input_shape);
+        let layer_input = input.get(&self.inputs[0])
+        .ok_or_else(|| panic!("Missing input {}", self.inputs[0].clone())).unwrap()
+    .clone();
 
         // Convert weights
         let weights = load_array_constants(api, &self.weights);
@@ -97,23 +96,19 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
     ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
+
+        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer);
         
-        let params = layer.params.clone().unwrap();                
-        // We can move this inside the layer op
-        let expected_shape = match layer_context.shapes_map.get(&layer.inputs[0]){
-            Some(input_shape) => input_shape,
-            None => panic!("Error getting output shape for layer {}", layer.name)
-        };
         let conv = Self{
             name: layer.name.clone(),
             index: index,
             weights: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[1]),
             bias: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[2]),
-            strides: get_param(&layer.name, &"strides", &params),
-            kernel_shape: get_param(&layer.name, &"kernel_shape", &params),
-            group: vec![get_param_or_default(&layer.name, &"group", &params, Some(&1))],
-            dilation: get_param(&layer.name, &"dilations", &params),
-            pads: get_param(&layer.name, &"pads", &params),
+            strides: get_param(&layer.name, STRIDES, &params),
+            kernel_shape: get_param(&layer.name, KERNEL_SHAPE, &params),
+            group: vec![get_param_or_default(&layer.name, GROUP, &params, Some(&1))],
+            dilation: get_param(&layer.name, DILATION, &params),
+            pads: get_param(&layer.name, PADS, &params),
             input_shape: expected_shape.to_vec(),
             scaling: circuit_params.scaling.into(),
             optimization_pattern: optimization_pattern,

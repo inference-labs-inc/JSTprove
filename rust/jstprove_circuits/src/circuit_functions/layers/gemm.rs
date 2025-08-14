@@ -6,7 +6,7 @@ use ndarray::{Array2, ArrayD, Ix2, IxDyn};
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
-use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{graph_pattern_matching::GraphPattern, onnx_model::{get_param_or_default, get_w_or_b}, quantization::rescale_array, shaping::check_and_apply_transpose_array, tensor_ops::load_array_constants}};
+use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{constants::{ALPHA, BETA, GEMM, TRANS_A, TRANS_B}, graph_pattern_matching::GraphPattern, onnx_model::{extract_params_and_expected_shape, get_param_or_default, get_w_or_b}, quantization::rescale_array, shaping::check_and_apply_transpose_array, tensor_ops::load_array_constants}};
 
 // -------- Struct --------
 #[allow(dead_code)]
@@ -44,7 +44,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
                     _ => false
                 };
 
-        let layer_input = input.get(&self.inputs[0]).unwrap().clone();
+        let layer_input = input.get(&self.inputs[0])
+        .ok_or_else(|| panic!("Missing input {}", self.inputs[0].clone())).unwrap()
+    .clone();
         let mut input_array = layer_input
             .into_dimensionality::<Ix2>()
             .map_err(|_| format!("Expected 2D input for layer {}", self.name))?;
@@ -52,14 +54,14 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         .into_dimensionality::<Ix2>()
             .map_err(|_| format!("Expected 2D input for layer {}", self.name))?;
 
-        input_array = check_and_apply_transpose_array(input_array, self.transa, "transa", "Gemm", &self.name);
-        weights_array = check_and_apply_transpose_array(weights_array, self.transb, "transb", "Gemm", &self.name);
+        input_array = check_and_apply_transpose_array(input_array, self.transa, TRANS_A, GEMM, &self.name);
+        weights_array = check_and_apply_transpose_array(weights_array, self.transb, TRANS_B, GEMM, &self.name);
 
         let bias_array = load_array_constants(api, &self.bias);
 
         // Sanity check alpha and beta
-        check_alpha_beta(self.alpha, "alpha", "Gemm", &self.name);
-        check_alpha_beta(self.beta, "beta", "Gemm", &self.name);
+        check_alpha_beta(self.alpha, ALPHA, GEMM, &self.name);
+        check_alpha_beta(self.beta, BETA, GEMM, &self.name);
 
         // Matrix multiplication and bias addition
         let mut result = matrix_multiplication(api, input_array.into_dyn(), weights_array.into_dyn());
@@ -85,12 +87,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
     ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
         
-        let params = layer.params.clone().unwrap();
-        // We can move this inside the layer op
-        let expected_shape = match layer_context.shapes_map.get(&layer.inputs[0]){
-            Some(input_shape) => input_shape,
-            None => panic!("Error getting output shape for layer {}", layer.name)
-        };
+        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer);
         let gemm = Self {
             name: layer.name.clone(),
             index: index,
@@ -103,10 +100,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             optimization_pattern: optimization_pattern,
             scaling: circuit_params.scaling.into(), // TODO: Becomes scaling_in?
             input_shape: expected_shape.to_vec(),
-            alpha: get_param_or_default(&layer.name, &"alpha", &params, Some(&1.0)),
-            beta: get_param_or_default(&layer.name, &"beta", &params, Some(&1.0)),
-            transa: get_param_or_default(&layer.name, &"transA", &params, Some(&0)),
-            transb: get_param_or_default(&layer.name, &"transB", &params, Some(&0)),
+            alpha: get_param_or_default(&layer.name, ALPHA, &params, Some(&1.0)),
+            beta: get_param_or_default(&layer.name, BETA, &params, Some(&1.0)),
+            transa: get_param_or_default(&layer.name, TRANS_A, &params, Some(&0)),
+            transb: get_param_or_default(&layer.name, TRANS_B, &params, Some(&0)),
             inputs: layer.inputs.to_vec(),
             outputs: layer.outputs.to_vec(),
         };

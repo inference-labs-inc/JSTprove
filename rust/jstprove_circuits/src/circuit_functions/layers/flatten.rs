@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use ndarray::ArrayD;
 use expander_compiler::frontend::*;
 
-use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{onnx_model::get_param_or_default, shaping::onnx_flatten}};
+use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{constants::AXIS, onnx_model::{extract_params_and_expected_shape, get_param_or_default}, shaping::onnx_flatten}};
 
 // -------- Struct --------
 #[allow(dead_code)]
@@ -25,7 +25,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
         input: HashMap<String,ArrayD<Variable>>,
     ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
         let reshape_axis = self.axis.clone();
-        let layer_input = input.get(&self.inputs[0]).unwrap();
+        let layer_input = input.get(&self.inputs[0])
+        .ok_or_else(|| panic!("Missing input {}", self.inputs[0].clone())).unwrap()
+    .clone();
 
         let out = onnx_flatten(layer_input.clone(), reshape_axis);
 
@@ -39,15 +41,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
     ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
-        let params = layer.params.clone().unwrap();
-                
-        let expected_shape = match layer_context.shapes_map.get(&layer.inputs[0]){
-            Some(input_shape) => input_shape,
-            None => panic!("Error getting output shape for layer {}", layer.name)
-        };
+        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer);
         let flatten = Self{
             name: layer.name.clone(),
-            axis: get_param_or_default(&layer.name, &"axis", &params, Some(&1)),
+            axis: get_param_or_default(&layer.name, AXIS, &params, Some(&1)),
             input_shape: expected_shape.to_vec(),
             inputs: layer.inputs.to_vec(),
             outputs: layer.outputs.to_vec(),

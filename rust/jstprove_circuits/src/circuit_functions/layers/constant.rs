@@ -4,7 +4,7 @@ use ndarray::{ArrayD, IxDyn};
 use serde_json::Value;
 use expander_compiler::frontend::*;
 
-use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::onnx_model::get_param};
+use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{constants::VALUE, onnx_model::get_param}};
 
 // -------- Struct --------
 #[allow(dead_code)]
@@ -39,7 +39,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConstantLayer {
     ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
         let constant = Self {
             name: layer.name.clone(),
-            value: get_param(&layer.name, &"value", &layer.params.clone().unwrap()),
+            value: get_param(&layer.name, VALUE, &layer.params.clone().unwrap()),
             outputs: layer.outputs.to_vec()
         };
 

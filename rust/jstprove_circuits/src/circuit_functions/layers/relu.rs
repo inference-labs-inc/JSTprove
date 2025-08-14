@@ -7,10 +7,10 @@ use ndarray::ArrayD;
 use expander_compiler::frontend::*;
 
 /// Internal crate imports
-use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::core_math::{
+use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{core_math::{
     assert_is_bitstring_and_reconstruct,
     unconstrained_to_bits,
-}};
+}, onnx_model::extract_params_and_expected_shape}};
 
 // -------- Struct --------
 #[allow(dead_code)]
@@ -32,7 +32,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
         input: HashMap<String,ArrayD<Variable>>,
     ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
         eprintln!("{:?}", self);
-        let layer_input = input.get(&self.inputs[0]).unwrap().clone();
+        let layer_input = input.get(&self.inputs[0])
+        .ok_or_else(|| panic!("Missing input {}", self.inputs[0].clone())).unwrap()
+    .clone();
         let out = layer_input;
         let out = relu_array(api, out, self.n_bits - 1);
 
@@ -47,10 +49,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
         index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
     ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
-        let expected_shape = match layer_context.shapes_map.get(&layer.inputs[0]){
-            Some(input_shape) => input_shape,
-            None => panic!("Error getting output shape for layer {}", layer.name)
-        };
+
+        let (_params, expected_shape) = extract_params_and_expected_shape(layer_context, layer);
         let relu = Self{
             name: layer.name.clone(),
             index: index,
