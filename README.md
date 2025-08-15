@@ -72,7 +72,7 @@ We must run the cargo files with release for reasonable time process
 
 4. Make sure weights being loaded into rust file are from correct circuit (the naming is correct)
 
-# Command Line Interface
+# Command-Line Interface
 
 The JSTProve CLI runs four steps: **compile → witness → prove → verify**. It's intentionally barebones: no circuit class flags, no path inference. You must pass correct paths.
 
