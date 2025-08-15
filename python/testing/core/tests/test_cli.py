@@ -1,160 +1,114 @@
-import argparse
-import pytest
-from unittest.mock import patch, MagicMock
+# python/testing/core/tests/test_cli.py
+
+from __future__ import annotations
+import json
 from pathlib import Path
-from python.frontend.cli import (
-    PROJECT_ROOT, parse_args, get_run_operations, find_file, load_circuit, resolve_file_paths
-)
-from python.testing.core.circuit_components.circuit_helpers import RunType
+import pytest
+
+from python.frontend.cli import main
 
 
-# ---------- parse_args ----------
-@pytest.mark.unit
-def test_parse_args_defaults(monkeypatch):
-    monkeypatch.setattr("sys.argv", ["python/frontend/cli.py", "--circuit", "my_circuit", "--compile"])
-    args = parse_args()
-    assert args.circuit == "my_circuit"
-    assert args.compile is True
-    assert args.class_name == "SimpleCircuit"
+# ----- helpers -----
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+
+def _runner_exists() -> bool:
+    return (REPO_ROOT / "target" / "release" / "onnx_generic_circuit").exists()
+
+def _artifacts(tmp_path: Path, name: str = "doom") -> dict[str, Path]:
+    base = tmp_path / "artifacts" / name
+    base.mkdir(parents=True, exist_ok=True)
+    return {
+        "base": base,
+        "circuit": base / "circuit.txt",
+        "quant": base / "quantized.onnx",
+        "input": REPO_ROOT / "python_testing" / "models" / "inputs" / "doom_input.json",
+        "output": base / "output.json",
+        "witness": base / "witness.bin",
+        "proof": base / "proof.bin",
+        "onnx": REPO_ROOT / "python" / "models" / "models_onnx" / "doom.onnx",
+    }
 
 
-# ---------- get_run_operations ----------
-@pytest.mark.unit
-@pytest.mark.parametrize("flags,expected", [
-    (["--all"], [RunType.COMPILE_CIRCUIT, RunType.GEN_WITNESS, RunType.PROVE_WITNESS, RunType.GEN_VERIFY]),
-    (["--compile"], [RunType.COMPILE_CIRCUIT]),
-    (["--gen_witness"], [RunType.GEN_WITNESS]),
-    (["--prove"], [RunType.PROVE_WITNESS]),
-    (["--verify"], [RunType.GEN_VERIFY]),
-    (["--end_to_end"], [RunType.END_TO_END]),
-])
-def test_get_run_operations(monkeypatch, flags, expected):
-    monkeypatch.setattr("sys.argv", ["python/frontend/cli.py", "--circuit", "foo"] + flags)
-    args = parse_args()
-    result = get_run_operations(args)
-    assert result == expected
-
-
-# ---------- find_file ----------
-@pytest.mark.unit
-def test_find_file_appends_json_extension():
-    result = find_file("data")
-    assert result == "data.json"
+# ----- unit: parser behavior (no heavy work) -----
 
 @pytest.mark.unit
-@patch("python.frontend.cli.Path.is_file", return_value=True)
-def test_find_file_returns_valid_default_path(mock_isfile):
-    path = Path("inputs/some_file.json")
-    result = find_file("ignored_name", default_path=path)
-    assert result == PROJECT_ROOT / path
-    mock_isfile.assert_called_once()
+def test_unknown_subcommand_errors():
+    # not an alias and abbrev disabled → argparse should SystemExit
+    with pytest.raises(SystemExit):
+        main(["--no-banner", "compil"])  # typo
 
 @pytest.mark.unit
-@patch("python.frontend.cli.Path.is_file", return_value=False)
-def test_find_file_returns_filename_if_default_path_missing(mock_isfile):
-    result = find_file("myfile", default_path=Path("fake/path.json"))
-    assert result == "myfile.json"
-    mock_isfile.assert_called_once()
-
-@pytest.mark.unit
-def test_find_file_no_default_path():
-    result = find_file("model_output")
-    assert result == "model_output.json"
+def test_known_aliases_are_accepted_but_require_args():
+    # 'comp' is our alias; missing required flags should error (parser works)
+    with pytest.raises(SystemExit):
+        main(["--no-banner", "comp"])
 
 
-# ---------- resolve_file_paths ----------
-@pytest.mark.unit
-@patch("python.frontend.cli.find_file")
-def test_resolve_file_paths_with_overrides(mock_find):
-    mock_find.side_effect = lambda x, default=None: Path(f"/resolved/{x}")
-    input_path, output_path = resolve_file_paths("my_circuit", "input.json", "output.json", None)
-    assert input_path == "/resolved/input.json"
-    assert output_path == "/resolved/output.json"
+# ----- integration: end-to-end flows (skip if runner missing) -----
 
-@pytest.mark.unit
-@patch("python.frontend.cli.find_file")
-def test_resolve_file_paths_with_pattern(mock_find):
-    mock_find.side_effect = lambda x, default=None: Path(f"/matched/{x}")
-    i, o = resolve_file_paths("cnn", None, None, "{circuit}_input.json")
-    assert i == "/matched/cnn_input.json"
-    assert o == "/matched/cnn_output.json"
+pytestmark_integration = pytest.mark.integration
+skip_no_runner = pytest.mark.skipif(not _runner_exists(), reason="runner binary not built")
 
+@skip_no_runner
+@pytestmark_integration
+def test_cli_compile(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # ensure reshaped input etc. land in tmp dir
+    p = _artifacts(tmp_path)
 
-# ---------- load_circuit ----------
-@pytest.mark.unit
-@patch("python.frontend.cli.importlib.import_module")
-def test_load_circuit_success(mock_import):
-    mock_module = MagicMock()
-    mock_import.return_value = mock_module
-    mock_module.SimpleCircuit = lambda: "instance"
-    result = load_circuit("my_mod", "SimpleCircuit")
-    assert result == "instance"
-
-@pytest.mark.unit
-@patch("python.frontend.cli.importlib.import_module", side_effect=ModuleNotFoundError)
-def test_load_circuit_fail(mock_import):
-    with pytest.raises(ValueError):
-        load_circuit("bad_mod", "FakeClass")
+    rc = main([
+        "--no-banner",
+        "compile",
+        "-m", str(p["onnx"]),
+        "-c", str(p["circuit"]),
+        "-q", str(p["quant"]),
+    ])
+    assert rc == 0
+    assert p["circuit"].exists()
+    assert p["quant"].exists()
 
 
-# ---------- main ----------
-@pytest.mark.unit
-@patch("python.frontend.cli.parse_args")
-@patch("python.frontend.cli.list_available_circuits")
-def test_main_lists_and_exits(mock_list, mock_args):
-    from python.frontend import cli
-    mock_args.return_value = argparse.Namespace(
-        list_circuits=True,
-        circuit=None,
-        circuit_search_path=None
-    )
-    cli.main()
-    mock_list.assert_called_once()
+@skip_no_runner
+@pytestmark_integration
+def test_cli_witness(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    p = _artifacts(tmp_path)
 
-@pytest.mark.unit
-@patch("python.frontend.cli.parse_args")
-@patch("python.frontend.cli.load_circuit")
-@patch("python.frontend.cli.resolve_file_paths")
-@patch("python.frontend.cli.get_run_operations", return_value=[RunType.COMPILE_CIRCUIT])
-def test_main_executes_operations(mock_ops, mock_paths, mock_load, mock_args):
-    from python.frontend import cli
-    mock_args.return_value = argparse.Namespace(
-        list_circuits=False,
-        circuit="mycircuit",
-        class_name="SimpleCircuit",
-        circuit_search_path=None,
-        input="in.json",
-        output="out.json",
-        pattern=None,
-        compile=True,
-        gen_witness=False,
-        prove=False,
-        verify=False,
-        end_to_end=False,
-        all=False,
-        fresh_compile=True,
-        circuit_path="cp.txt",
-        witness=None,
-        proof=None,
-        ecc = None,
-        bench = None,
-        quantized_path = "test_quantized_path.pt"
-    )
-    circuit_instance = MagicMock()
-    mock_load.return_value = circuit_instance
-    mock_paths.return_value = ("input.json", "output.json")
+    assert main(["--no-banner", "compile", "-m", str(p["onnx"]), "-c", str(p["circuit"]), "-q", str(p["quant"])]) == 0
 
-    cli.main()
+    rc = main([
+        "--no-banner",
+        "witness",
+        "-c", str(p["circuit"]),
+        "-q", str(p["quant"]),
+        "-i", str(p["input"]),
+        "-o", str(p["output"]),
+        "-w", str(p["witness"]),
+    ])
+    assert rc == 0
+    assert p["witness"].exists()
+    assert p["output"].exists()
+    # output JSON is valid
+    json.load(open(p["output"]))
 
-    circuit_instance.base_testing.assert_called_once_with(
-        run_type=RunType.COMPILE_CIRCUIT,
-        dev_mode=True,
-        circuit_path="cp.txt",
-        input_file="in.json",
-        output_file="out.json",
-        witness_file=None,
-        proof_file=None,
-        ecc = None,
-        bench = None,
-        quantized_path = "test_quantized_path.pt"
-    )
+
+@skip_no_runner
+@pytestmark_integration
+def test_cli_prove_and_verify(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    p = _artifacts(tmp_path)
+
+    assert main(["--no-banner", "compile", "-m", str(p["onnx"]), "-c", str(p["circuit"]), "-q", str(p["quant"])]) == 0
+    assert main(["--no-banner", "witness", "-c", str(p["circuit"]), "-q", str(p["quant"]),
+                 "-i", str(p["input"]), "-o", str(p["output"]), "-w", str(p["witness"])]) == 0
+
+    # prove
+    assert main(["--no-banner", "prove",
+                 "-c", str(p["circuit"]), "-w", str(p["witness"]), "-p", str(p["proof"])]) == 0
+    assert p["proof"].exists()
+
+    # verify (requires -q to hydrate input shapes)
+    assert main(["--no-banner", "verify",
+                 "-c", str(p["circuit"]), "-q", str(p["quant"]),
+                 "-i", str(p["input"]), "-o", str(p["output"]),
+                 "-w", str(p["witness"]), "-p", str(p["proof"])]) == 0
