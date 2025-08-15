@@ -4,12 +4,12 @@ import torch
 import sys
 import os
 
-# Add the models directory to Python path
-sys.path.append('/Users/elenapashkova/GravyTesting-Internal/python/models/models_onnx')
+# Add the models directory to Python path - using relative path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'models', 'models_onnx')))
 
 try:
     from wrong_dimension_model import WrongDimensionModel
-
+    
     model = WrongDimensionModel()
     model.eval()
     dummy_input = torch.randn(1, 1, 28, 28)
