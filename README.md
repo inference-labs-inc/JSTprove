@@ -79,13 +79,9 @@ The JSTProve CLI runs four steps: **compile → witness → prove → verify**. 
 ## Prereqs
 
 * **Python 3.12** (with project deps installed).
-* **Rust runner built** (from repo root):
-
-  ```bash
-  cargo build --release -p jstprove_circuits --bins
-  # produces ./target/release/onnx_generic_circuit (and simple_circuit)
-  ```
-* Run commands **from the repo root** so `./target/release/onnx_generic_circuit` is found.
+ - Run commands **from the repo root** so `./target/release/onnx_generic_circuit` is found.
+ - You do **not** have to build the Rust runner manually — the **compile** step
+   (with `dev_mode=True`) will (re)build it as needed.
 
 Tip: add `--no-banner` to hide the ASCII header.
 
@@ -197,4 +193,5 @@ python -m python.frontend.cli verify \
 * The default circuit is **GenericModelONNX**; you don’t pass a circuit class or name.
 * All paths are **mandatory**; no automatic discovery or inference.
 * Use a **`.onnx`** file for `--quantized-path`. If you see `ONNXRuntimeError … Protobuf parsing failed`, you likely pointed to a `.json` by mistake.
-* If the runner isn’t found, make sure you’re launching from the **repo root** (where `./target/release/onnx_generic_circuit` lives) and that you **built** it with cargo.
+* If the runner isn't found, make sure you're launching from the repo root.
+* The compile step will auto-build the runner if needed.

@@ -219,6 +219,7 @@ def main(argv: list[str] | None = None) -> int:
                 run_type=RunType.COMPILE_CIRCUIT,
                 circuit_path=args.circuit_path,
                 quantized_path=args.quantized_path,
+                dev_mode=True,
             )
             print(f"[compile] done → circuit={args.circuit_path}, quantized={args.quantized_path}")
 
@@ -257,6 +258,7 @@ def main(argv: list[str] | None = None) -> int:
                 circuit_path=args.circuit_path,
                 witness_file=args.witness_path,
                 proof_file=args.proof_path,
+                ecc=False,
             )
             print(f"[prove] wrote proof → {args.proof_path}")
 
@@ -294,6 +296,7 @@ def main(argv: list[str] | None = None) -> int:
                 output_file=args.output_path,
                 witness_file=args.witness_path,
                 proof_file=args.proof_path,
+                ecc=False,
             )
             print(f"[verify] verification complete for proof → {args.proof_path}")
 

@@ -58,12 +58,12 @@ def test_prove_dispatch(tmp_path: Path):
         ])
 
     assert rc == 0
-    fake_circuit.base_testing.assert_called_once_with(
-        run_type=RunType.PROVE_WITNESS,
-        circuit_path=str(circuit),
-        witness_file=str(witness),
-        proof_file=str(proof),
-    )
+    kwargs = fake_circuit.base_testing.call_args.kwargs
+    assert kwargs["run_type"] == RunType.PROVE_WITNESS
+    assert kwargs["circuit_path"] == str(circuit)
+    assert kwargs["witness_file"] == str(witness)
+    assert kwargs["proof_file"] == str(proof)
+    assert kwargs.get("ecc") is False
 
 
 @pytest.mark.unit
@@ -92,11 +92,11 @@ def test_verify_dispatch(tmp_path: Path):
 
     assert rc == 0
     fake_circuit.load_quantized_model.assert_called_once_with(str(quant))
-    fake_circuit.base_testing.assert_called_once_with(
-        run_type=RunType.GEN_VERIFY,
-        circuit_path=str(circuit),
-        input_file=str(inputj),
-        output_file=str(outputj),
-        witness_file=str(witness),
-        proof_file=str(proof),
-    )
+    kwargs = fake_circuit.base_testing.call_args.kwargs
+    assert kwargs["run_type"] == RunType.GEN_VERIFY
+    assert kwargs["circuit_path"] == str(circuit)
+    assert kwargs["input_file"] == str(inputj)
+    assert kwargs["output_file"] == str(outputj)
+    assert kwargs["witness_file"] == str(witness)
+    assert kwargs["proof_file"] == str(proof)
+    assert kwargs.get("ecc") is False
