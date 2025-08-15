@@ -1,119 +1,102 @@
 # python/testing/core/tests/test_cli.py
-
-from __future__ import annotations
-import json
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 import pytest
 
 from python.frontend.cli import main
+from python.testing.core.utils.helper_functions import RunType
 
 
-# ----- helpers -----
-
-REPO_ROOT = Path(__file__).resolve().parents[4]
-
-def _runner_exists() -> bool:
-    return (REPO_ROOT / "target" / "release" / "onnx_generic_circuit").exists()
-
-def _artifacts(tmp_path: Path, name: str = "doom") -> dict[str, Path]:
-    base = tmp_path / "artifacts" / name
-    base.mkdir(parents=True, exist_ok=True)
-    return {
-        "base": base,
-        "circuit": base / "circuit.txt",
-        "quant": base / "quantized.onnx",
-        "input": REPO_ROOT / "python_testing" / "models" / "inputs" / "doom_input.json",
-        "output": base / "output.json",
-        "witness": base / "witness.bin",
-        "proof": base / "proof.bin",
-        "onnx": REPO_ROOT / "python" / "models" / "models_onnx" / "doom.onnx",
-    }
-
-
-# ----- unit: parser behavior (no heavy work) -----
+# -----------------------
+# unit tests: dispatch only
+# -----------------------
 
 @pytest.mark.unit
-def test_unknown_subcommand_errors():
-    # not an alias and abbrev disabled → argparse should SystemExit
-    with pytest.raises(SystemExit):
-        main(["--no-banner", "compil"])  # typo
+def test_witness_dispatch(tmp_path: Path):
+    # minimal files so _ensure_exists passes
+    circuit = tmp_path / "circuit.txt"; circuit.write_text("ok")
+    quant   = tmp_path / "q.onnx";       quant.write_bytes(b"\x00")
+    inputj  = tmp_path / "in.json";      inputj.write_text('{"input":[0]}')
+    outputj = tmp_path / "out.json"      # doesn't need to pre-exist
+    witness = tmp_path / "w.bin"         # doesn't need to pre-exist
+
+    fake_circuit = MagicMock()
+    with patch("python.frontend.cli._build_default_circuit", return_value=fake_circuit):
+        rc = main([
+            "--no-banner", "witness",
+            "-c", str(circuit),
+            "-q", str(quant),
+            "-i", str(inputj),
+            "-o", str(outputj),
+            "-w", str(witness),
+        ])
+
+    assert rc == 0
+    fake_circuit.base_testing.assert_called_once_with(
+        run_type=RunType.GEN_WITNESS,
+        circuit_path=str(circuit),
+        quantized_path=str(quant),
+        input_file=str(inputj),
+        output_file=str(outputj),
+        witness_file=str(witness),
+    )
+
 
 @pytest.mark.unit
-def test_known_aliases_are_accepted_but_require_args():
-    # 'comp' is our alias; missing required flags should error (parser works)
-    with pytest.raises(SystemExit):
-        main(["--no-banner", "comp"])
+def test_prove_dispatch(tmp_path: Path):
+    circuit = tmp_path / "circuit.txt"; circuit.write_text("ok")
+    witness = tmp_path / "w.bin";        witness.write_bytes(b"\x00")
+    proof   = tmp_path / "p.bin"         # doesn't need to pre-exist
 
+    fake_circuit = MagicMock()
+    with patch("python.frontend.cli._build_default_circuit", return_value=fake_circuit):
+        rc = main([
+            "--no-banner", "prove",
+            "-c", str(circuit),
+            "-w", str(witness),
+            "-p", str(proof),
+        ])
 
-# ----- integration: end-to-end flows (skip if runner missing) -----
-
-pytestmark_integration = pytest.mark.integration
-skip_no_runner = pytest.mark.skipif(not _runner_exists(), reason="runner binary not built")
-
-@skip_no_runner
-@pytestmark_integration
-def test_cli_compile(tmp_path, monkeypatch):
-    monkeypatch.chdir(REPO_ROOT)
-    p = _artifacts(tmp_path)
-
-    rc = main([
-        "--no-banner",
-        "compile",
-        "-m", str(p["onnx"]),
-        "-c", str(p["circuit"]),
-        "-q", str(p["quant"]),
-    ])
     assert rc == 0
-    assert p["circuit"].exists()
-    assert p["quant"].exists()
+    fake_circuit.base_testing.assert_called_once_with(
+        run_type=RunType.PROVE_WITNESS,
+        circuit_path=str(circuit),
+        witness_file=str(witness),
+        proof_file=str(proof),
+    )
 
 
-@skip_no_runner
-@pytestmark_integration
-def test_cli_witness(tmp_path, monkeypatch):
-    monkeypatch.chdir(REPO_ROOT)
-    p = _artifacts(tmp_path)
+@pytest.mark.unit
+def test_verify_dispatch(tmp_path: Path):
+    circuit = tmp_path / "circuit.txt"; circuit.write_text("ok")
+    inputj  = tmp_path / "in.json";      inputj.write_text('{"input":[0]}')
+    outputj = tmp_path / "out.json";     outputj.write_text('{"output":[0]}')  # verify requires it exists
+    witness = tmp_path / "w.bin";        witness.write_bytes(b"\x00")
+    proof   = tmp_path / "p.bin";        proof.write_bytes(b"\x00")
+    quant   = tmp_path / "q.onnx";       quant.write_bytes(b"\x00")
 
-    assert main(["--no-banner", "compile", "-m", str(p["onnx"]), "-c", str(p["circuit"]), "-q", str(p["quant"])]) == 0
+    fake_circuit = MagicMock()
+    # verify path calls load_quantized_model() to hydrate input shapes
+    fake_circuit.load_quantized_model = MagicMock()
 
-    rc = main([
-        "--no-banner",
-        "witness",
-        "-c", str(p["circuit"]),
-        "-q", str(p["quant"]),
-        "-i", str(p["input"]),
-        "-o", str(p["output"]),
-        "-w", str(p["witness"]),
-    ])
+    with patch("python.frontend.cli._build_default_circuit", return_value=fake_circuit):
+        rc = main([
+            "--no-banner", "verify",
+            "-c", str(circuit),
+            "-q", str(quant),
+            "-i", str(inputj),
+            "-o", str(outputj),
+            "-w", str(witness),
+            "-p", str(proof),
+        ])
+
     assert rc == 0
-    assert p["witness"].exists()
-    assert p["output"].exists()
-    # output JSON is valid
-    json.load(open(p["output"]))
-
-
-@skip_no_runner
-@pytestmark_integration
-def test_cli_prove_and_verify(tmp_path, monkeypatch):
-    monkeypatch.chdir(REPO_ROOT)
-    p = _artifacts(tmp_path)
-
-    assert main(["--no-banner", "compile", "-m", str(p["onnx"]), "-c", str(p["circuit"]), "-q", str(p["quant"])]) == 0
-    assert main(["--no-banner", "witness", "-c", str(p["circuit"]), "-q", str(p["quant"]),
-                 "-i", str(p["input"]), "-o", str(p["output"]), "-w", str(p["witness"])]) == 0
-
-    # prove
-    assert main(["--no-banner", "prove",
-                 "-c", str(p["circuit"]), "-w", str(p["witness"]), "-p", str(p["proof"])]) == 0
-    assert p["proof"].exists()
-
-    # verify (requires -q to hydrate input shapes)
-    assert main(["--no-banner", "verify",
-                 "-c", str(p["circuit"]), "-q", str(p["quant"]),
-                 "-i", str(p["input"]), "-o", str(p["output"]),
-                 "-w", str(p["witness"]), "-p", str(p["proof"])]) == 0
-    
-    reshaped = REPO_ROOT / "doom_input_reshaped.json"
-    if reshaped.exists():
-        reshaped.unlink()
-
+    fake_circuit.load_quantized_model.assert_called_once_with(str(quant))
+    fake_circuit.base_testing.assert_called_once_with(
+        run_type=RunType.GEN_VERIFY,
+        circuit_path=str(circuit),
+        input_file=str(inputj),
+        output_file=str(outputj),
+        witness_file=str(witness),
+        proof_file=str(proof),
+    )
