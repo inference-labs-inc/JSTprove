@@ -1,160 +1,102 @@
-import argparse
-import pytest
-from unittest.mock import patch, MagicMock
+# python/testing/core/tests/test_cli.py
 from pathlib import Path
-from python.frontend.cli import (
-    PROJECT_ROOT, parse_args, get_run_operations, find_file, load_circuit, resolve_file_paths
-)
-from python.testing.core.circuit_components.circuit_helpers import RunType
+from unittest.mock import MagicMock, patch
+import pytest
+
+from python.frontend.cli import main
+from python.testing.core.utils.helper_functions import RunType
 
 
-# ---------- parse_args ----------
-@pytest.mark.unit
-def test_parse_args_defaults(monkeypatch):
-    monkeypatch.setattr("sys.argv", ["python/frontend/cli.py", "--circuit", "my_circuit", "--compile"])
-    args = parse_args()
-    assert args.circuit == "my_circuit"
-    assert args.compile is True
-    assert args.class_name == "SimpleCircuit"
-
-
-# ---------- get_run_operations ----------
-@pytest.mark.unit
-@pytest.mark.parametrize("flags,expected", [
-    (["--all"], [RunType.COMPILE_CIRCUIT, RunType.GEN_WITNESS, RunType.PROVE_WITNESS, RunType.GEN_VERIFY]),
-    (["--compile"], [RunType.COMPILE_CIRCUIT]),
-    (["--gen_witness"], [RunType.GEN_WITNESS]),
-    (["--prove"], [RunType.PROVE_WITNESS]),
-    (["--verify"], [RunType.GEN_VERIFY]),
-    (["--end_to_end"], [RunType.END_TO_END]),
-])
-def test_get_run_operations(monkeypatch, flags, expected):
-    monkeypatch.setattr("sys.argv", ["python/frontend/cli.py", "--circuit", "foo"] + flags)
-    args = parse_args()
-    result = get_run_operations(args)
-    assert result == expected
-
-
-# ---------- find_file ----------
-@pytest.mark.unit
-def test_find_file_appends_json_extension():
-    result = find_file("data")
-    assert result == "data.json"
+# -----------------------
+# unit tests: dispatch only
+# -----------------------
 
 @pytest.mark.unit
-@patch("python.frontend.cli.Path.is_file", return_value=True)
-def test_find_file_returns_valid_default_path(mock_isfile):
-    path = Path("inputs/some_file.json")
-    result = find_file("ignored_name", default_path=path)
-    assert result == PROJECT_ROOT / path
-    mock_isfile.assert_called_once()
+def test_witness_dispatch(tmp_path: Path):
+    # minimal files so _ensure_exists passes
+    circuit = tmp_path / "circuit.txt"; circuit.write_text("ok")
+    quant   = tmp_path / "q.onnx";       quant.write_bytes(b"\x00")
+    inputj  = tmp_path / "in.json";      inputj.write_text('{"input":[0]}')
+    outputj = tmp_path / "out.json"      # doesn't need to pre-exist
+    witness = tmp_path / "w.bin"         # doesn't need to pre-exist
 
-@pytest.mark.unit
-@patch("python.frontend.cli.Path.is_file", return_value=False)
-def test_find_file_returns_filename_if_default_path_missing(mock_isfile):
-    result = find_file("myfile", default_path=Path("fake/path.json"))
-    assert result == "myfile.json"
-    mock_isfile.assert_called_once()
+    fake_circuit = MagicMock()
+    with patch("python.frontend.cli._build_default_circuit", return_value=fake_circuit):
+        rc = main([
+            "--no-banner", "witness",
+            "-c", str(circuit),
+            "-q", str(quant),
+            "-i", str(inputj),
+            "-o", str(outputj),
+            "-w", str(witness),
+        ])
 
-@pytest.mark.unit
-def test_find_file_no_default_path():
-    result = find_file("model_output")
-    assert result == "model_output.json"
-
-
-# ---------- resolve_file_paths ----------
-@pytest.mark.unit
-@patch("python.frontend.cli.find_file")
-def test_resolve_file_paths_with_overrides(mock_find):
-    mock_find.side_effect = lambda x, default=None: Path(f"/resolved/{x}")
-    input_path, output_path = resolve_file_paths("my_circuit", "input.json", "output.json", None)
-    assert input_path == "/resolved/input.json"
-    assert output_path == "/resolved/output.json"
-
-@pytest.mark.unit
-@patch("python.frontend.cli.find_file")
-def test_resolve_file_paths_with_pattern(mock_find):
-    mock_find.side_effect = lambda x, default=None: Path(f"/matched/{x}")
-    i, o = resolve_file_paths("cnn", None, None, "{circuit}_input.json")
-    assert i == "/matched/cnn_input.json"
-    assert o == "/matched/cnn_output.json"
-
-
-# ---------- load_circuit ----------
-@pytest.mark.unit
-@patch("python.frontend.cli.importlib.import_module")
-def test_load_circuit_success(mock_import):
-    mock_module = MagicMock()
-    mock_import.return_value = mock_module
-    mock_module.SimpleCircuit = lambda: "instance"
-    result = load_circuit("my_mod", "SimpleCircuit")
-    assert result == "instance"
-
-@pytest.mark.unit
-@patch("python.frontend.cli.importlib.import_module", side_effect=ModuleNotFoundError)
-def test_load_circuit_fail(mock_import):
-    with pytest.raises(ValueError):
-        load_circuit("bad_mod", "FakeClass")
-
-
-# ---------- main ----------
-@pytest.mark.unit
-@patch("python.frontend.cli.parse_args")
-@patch("python.frontend.cli.list_available_circuits")
-def test_main_lists_and_exits(mock_list, mock_args):
-    from python.frontend import cli
-    mock_args.return_value = argparse.Namespace(
-        list_circuits=True,
-        circuit=None,
-        circuit_search_path=None
+    assert rc == 0
+    fake_circuit.base_testing.assert_called_once_with(
+        run_type=RunType.GEN_WITNESS,
+        circuit_path=str(circuit),
+        quantized_path=str(quant),
+        input_file=str(inputj),
+        output_file=str(outputj),
+        witness_file=str(witness),
     )
-    cli.main()
-    mock_list.assert_called_once()
+
 
 @pytest.mark.unit
-@patch("python.frontend.cli.parse_args")
-@patch("python.frontend.cli.load_circuit")
-@patch("python.frontend.cli.resolve_file_paths")
-@patch("python.frontend.cli.get_run_operations", return_value=[RunType.COMPILE_CIRCUIT])
-def test_main_executes_operations(mock_ops, mock_paths, mock_load, mock_args):
-    from python.frontend import cli
-    mock_args.return_value = argparse.Namespace(
-        list_circuits=False,
-        circuit="mycircuit",
-        class_name="SimpleCircuit",
-        circuit_search_path=None,
-        input="in.json",
-        output="out.json",
-        pattern=None,
-        compile=True,
-        gen_witness=False,
-        prove=False,
-        verify=False,
-        end_to_end=False,
-        all=False,
-        fresh_compile=True,
-        circuit_path="cp.txt",
-        witness=None,
-        proof=None,
-        ecc = None,
-        bench = None,
-        quantized_path = "test_quantized_path.pt"
-    )
-    circuit_instance = MagicMock()
-    mock_load.return_value = circuit_instance
-    mock_paths.return_value = ("input.json", "output.json")
+def test_prove_dispatch(tmp_path: Path):
+    circuit = tmp_path / "circuit.txt"; circuit.write_text("ok")
+    witness = tmp_path / "w.bin";        witness.write_bytes(b"\x00")
+    proof   = tmp_path / "p.bin"         # doesn't need to pre-exist
 
-    cli.main()
+    fake_circuit = MagicMock()
+    with patch("python.frontend.cli._build_default_circuit", return_value=fake_circuit):
+        rc = main([
+            "--no-banner", "prove",
+            "-c", str(circuit),
+            "-w", str(witness),
+            "-p", str(proof),
+        ])
 
-    circuit_instance.base_testing.assert_called_once_with(
-        run_type=RunType.COMPILE_CIRCUIT,
-        dev_mode=True,
-        circuit_path="cp.txt",
-        input_file="in.json",
-        output_file="out.json",
-        witness_file=None,
-        proof_file=None,
-        ecc = None,
-        bench = None,
-        quantized_path = "test_quantized_path.pt"
-    )
+    assert rc == 0
+    kwargs = fake_circuit.base_testing.call_args.kwargs
+    assert kwargs["run_type"] == RunType.PROVE_WITNESS
+    assert kwargs["circuit_path"] == str(circuit)
+    assert kwargs["witness_file"] == str(witness)
+    assert kwargs["proof_file"] == str(proof)
+    assert kwargs.get("ecc") is False
+
+
+@pytest.mark.unit
+def test_verify_dispatch(tmp_path: Path):
+    circuit = tmp_path / "circuit.txt"; circuit.write_text("ok")
+    inputj  = tmp_path / "in.json";      inputj.write_text('{"input":[0]}')
+    outputj = tmp_path / "out.json";     outputj.write_text('{"output":[0]}')  # verify requires it exists
+    witness = tmp_path / "w.bin";        witness.write_bytes(b"\x00")
+    proof   = tmp_path / "p.bin";        proof.write_bytes(b"\x00")
+    quant   = tmp_path / "q.onnx";       quant.write_bytes(b"\x00")
+
+    fake_circuit = MagicMock()
+    # verify path calls load_quantized_model() to hydrate input shapes
+    fake_circuit.load_quantized_model = MagicMock()
+
+    with patch("python.frontend.cli._build_default_circuit", return_value=fake_circuit):
+        rc = main([
+            "--no-banner", "verify",
+            "-c", str(circuit),
+            "-q", str(quant),
+            "-i", str(inputj),
+            "-o", str(outputj),
+            "-w", str(witness),
+            "-p", str(proof),
+        ])
+
+    assert rc == 0
+    fake_circuit.load_quantized_model.assert_called_once_with(str(quant))
+    kwargs = fake_circuit.base_testing.call_args.kwargs
+    assert kwargs["run_type"] == RunType.GEN_VERIFY
+    assert kwargs["circuit_path"] == str(circuit)
+    assert kwargs["input_file"] == str(inputj)
+    assert kwargs["output_file"] == str(outputj)
+    assert kwargs["witness_file"] == str(witness)
+    assert kwargs["proof_file"] == str(proof)
+    assert kwargs.get("ecc") is False
