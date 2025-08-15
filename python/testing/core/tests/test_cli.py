@@ -53,7 +53,7 @@ skip_no_runner = pytest.mark.skipif(not _runner_exists(), reason="runner binary 
 @skip_no_runner
 @pytestmark_integration
 def test_cli_compile(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)  # ensure reshaped input etc. land in tmp dir
+    monkeypatch.chdir(REPO_ROOT)
     p = _artifacts(tmp_path)
 
     rc = main([
@@ -71,7 +71,7 @@ def test_cli_compile(tmp_path, monkeypatch):
 @skip_no_runner
 @pytestmark_integration
 def test_cli_witness(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.chdir(REPO_ROOT)
     p = _artifacts(tmp_path)
 
     assert main(["--no-banner", "compile", "-m", str(p["onnx"]), "-c", str(p["circuit"]), "-q", str(p["quant"])]) == 0
@@ -95,7 +95,7 @@ def test_cli_witness(tmp_path, monkeypatch):
 @skip_no_runner
 @pytestmark_integration
 def test_cli_prove_and_verify(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.chdir(REPO_ROOT)
     p = _artifacts(tmp_path)
 
     assert main(["--no-banner", "compile", "-m", str(p["onnx"]), "-c", str(p["circuit"]), "-q", str(p["quant"])]) == 0
@@ -112,3 +112,8 @@ def test_cli_prove_and_verify(tmp_path, monkeypatch):
                  "-c", str(p["circuit"]), "-q", str(p["quant"]),
                  "-i", str(p["input"]), "-o", str(p["output"]),
                  "-w", str(p["witness"]), "-p", str(p["proof"])]) == 0
+    
+    reshaped = REPO_ROOT / "doom_input_reshaped.json"
+    if reshaped.exists():
+        reshaped.unlink()
+
