@@ -4,18 +4,20 @@ import json
 import os
 import functools
 from typing import Dict, Any
-from python.core.utils.run_proofs import ZKProofSystems
 from enum import Enum
 import subprocess
 from python.core.utils.benchmarking_helpers import end_memory_collection, start_memory_collection
 
 class RunType(Enum):
-    BASE_TESTING = 'base_testing'
     END_TO_END = 'end_to_end'
     COMPILE_CIRCUIT = 'compile_circuit'
     GEN_WITNESS = 'gen_witness'
     PROVE_WITNESS = 'prove_witness'
     GEN_VERIFY = 'gen_verify'
+
+class ZKProofSystems(Enum):
+    Circom = "Circom"
+    Expander = "Expander"
 
 # Decorator to compute outputs once and store in temp folder
 def compute_and_store_output(func):
@@ -77,8 +79,7 @@ def prepare_io_files(func):
             if file_key in kwargs and kwargs[file_key] is not None:
                 return str(Path(kwargs[file_key]).parent)
             return getattr(self, key, default)
-        
-        # TODO These may need to be fixed as I think the function brings in files not folders, too much default
+    
         
         # temp_folder = kwargs.get("temp_folder") or getattr(self, 'temp_folder', "python/models/temp")
         input_folder = resolve_folder("input_folder", "input_file", default = "python/models/inputs")
@@ -110,7 +111,6 @@ def prepare_io_files(func):
         input_file = files["input_file"]
         proof_path = files["proof_path"]
         public_path = files["public_path"]
-        # verification_key = files["verification_key"]
         circuit_name = files["circuit_name"]
         weights_path = files["weights_path"]
         output_file = files["output_file"]
@@ -161,7 +161,6 @@ def prepare_io_files(func):
             'input_file': input_file,
             'proof_file': proof_path,
             'public_path': public_path,
-            # 'verification_key': verification_key,
             'circuit_name': circuit_name,
             'weights_path': weights_path,
             'output_file': output_file,
@@ -196,7 +195,7 @@ def read_from_json(public_path: str) -> Dict[str, Any]:
         d = json.load(json_data)
         return d
 
-def run_cargo_command(binary_name, command_type, args=None, dev_mode = False, bench = False):
+def run_cargo_command(binary_name: str, command_type: str, args: Dict[str, str]=None, dev_mode: bool = False, bench: bool = False) -> int:
     """
     Run a cargo command with the correct format based on the command type.
     
@@ -208,8 +207,7 @@ def run_cargo_command(binary_name, command_type, args=None, dev_mode = False, be
     Returns:
         Process return code
     """
-    # Build the command
-    import subprocess
+    
     
     # Base command
     if dev_mode:
@@ -253,9 +251,9 @@ def run_cargo_command(binary_name, command_type, args=None, dev_mode = False, be
         print(f"Error output: {e.stderr}")
         raise e
 
-def prove_and_verify(witness_file, input_file, proof_path, public_path, verification_key, 
-                    circuit_name, proof_system: ZKProofSystems = ZKProofSystems.Expander, 
-                    output_file=None, demo=False, dev_mode = False, ecc = True) -> None:
+def prove_and_verify(witness_file: str, input_file: str, proof_path: str, public_path: str, verification_key: str, 
+                    circuit_name: str, proof_system: ZKProofSystems = ZKProofSystems.Expander, 
+                    output_file: str=None, demo: bool=False, dev_mode: bool = False, ecc: bool = True) -> None:
     """Process ZK proof based on the proof system type."""
     if proof_system == ZKProofSystems.Expander:
         assert output_file is not None, "Output_file must be specified for Expander proof system"
@@ -300,7 +298,7 @@ def prove_and_verify(witness_file, input_file, proof_path, public_path, verifica
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
     
-def get_expander_file_paths(circuit_name: str):
+def get_expander_file_paths(circuit_name: str) -> Dict[str, str]:
     return {
         "circuit_file": f"{circuit_name}_circuit.txt",
         "witness_file": f"{circuit_name}_witness.txt",
@@ -308,7 +306,7 @@ def get_expander_file_paths(circuit_name: str):
     }
     
 
-def run_expander_exec(mode: str, circuit_file: str, witness_file: str, proof_file: str):
+def run_expander_exec(mode: str, circuit_file: str, witness_file: str, proof_file: str) -> int:
     assert mode in {"prove", "verify"}
     binary = "./expander-exec"  # or full path if needed
 
@@ -327,13 +325,15 @@ def run_expander_exec(mode: str, circuit_file: str, witness_file: str, proof_fil
     else:
         print(f"✅ expander-exec {mode} succeeded:\n{result.stdout}")
 
+    return result.returncode
 
 
-def run_expander_raw(mode: str, circuit_file: str, witness_file: str, proof_file: str, pcs_type: str = "Raw", bench = False):
+
+def run_expander_raw(mode: str, circuit_file: str, witness_file: str, proof_file: str, pcs_type: str = "Raw", bench: bool = False) -> int:
     assert mode in {"prove", "verify"}
 
-    pcs_type = "Raw" #or Hyrax
-    # pcs_type = "Hyrax"
+    # pcs_type = "Raw" #or Hyrax
+    pcs_type = "Hyrax"
 
     env = os.environ.copy()
     env["RUSTFLAGS"] = "-C target-cpu=native"
@@ -386,11 +386,13 @@ def run_expander_raw(mode: str, circuit_file: str, witness_file: str, proof_file
         print(f"✅ expander-exec {mode} succeeded:\n{result.stdout}")
 
     print(f"Time taken: {end_time - start_time:.4f} seconds")
+
+    return result.returncode
     
 
 
 
-def compile_circuit(circuit_name, circuit_path, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False, bench = False):
+def compile_circuit(circuit_name: str, circuit_path: str, proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode: bool = False, bench: bool = False) -> int:
     """Compile a circuit."""
 
     if proof_system == ZKProofSystems.Expander:
@@ -404,7 +406,7 @@ def compile_circuit(circuit_name, circuit_path, proof_system: ZKProofSystems = Z
         }
         # Run the command
         try:
-            run_cargo_command(binary_name, 'run_compile_circuit', args, dev_mode, bench)
+            return run_cargo_command(binary_name, 'run_compile_circuit', args, dev_mode, bench)
         except Exception as e:
             print(f"Warning: Compile operation failed: {e}")
             print(f"Using binary: {binary_name}")
@@ -414,8 +416,8 @@ def compile_circuit(circuit_name, circuit_path, proof_system: ZKProofSystems = Z
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
-def generate_witness(circuit_name, circuit_path, witness_file, input_file, output_file, 
-                    proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False, bench = False):
+def generate_witness(circuit_name: str, circuit_path: str, witness_file: str, input_file: str, output_file: str, 
+                    proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode: bool = False, bench: bool = False) -> int:
     """Generate witness for a circuit."""
     if proof_system == ZKProofSystems.Expander:
         # Extract the binary name from the circuit path
@@ -431,7 +433,7 @@ def generate_witness(circuit_name, circuit_path, witness_file, input_file, outpu
         }
         # Run the command
         try:
-            run_cargo_command(binary_name, 'run_gen_witness', args, dev_mode, bench)
+            return run_cargo_command(binary_name, 'run_gen_witness', args, dev_mode, bench)
         except Exception as e:
             print(f"Warning: Witness generation failed: {e}")
             
@@ -441,8 +443,8 @@ def generate_witness(circuit_name, circuit_path, witness_file, input_file, outpu
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
 
-def generate_proof(circuit_name, circuit_path, witness_file, proof_file, 
-                    proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode = False, ecc = True, bench = False):
+def generate_proof(circuit_name: str, circuit_path: str, witness_file: str, proof_file: str, 
+                    proof_system: ZKProofSystems = ZKProofSystems.Expander, dev_mode: bool = False, ecc: bool = True, bench: bool = False) -> int:
     """Generate witness for a circuit."""
     if proof_system == ZKProofSystems.Expander:
         if ecc:
@@ -459,11 +461,11 @@ def generate_proof(circuit_name, circuit_path, witness_file, proof_file,
             
             # Run the command
             try:
-                run_cargo_command(binary_name, 'run_prove_witness', args, dev_mode, bench)
+                return run_cargo_command(binary_name, 'run_prove_witness', args, dev_mode, bench)
             except Exception as e:
                 print(f"Warning: Proof generation failed: {e}")
         else:
-            run_expander_raw(
+            return run_expander_raw(
                 mode="prove",
                 circuit_file=circuit_path,
                 witness_file=witness_file,

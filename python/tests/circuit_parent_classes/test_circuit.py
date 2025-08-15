@@ -162,13 +162,6 @@ def test_parse_proof_dispatch_logic(
     assert c._compile_preprocessing.call_count >= 2
     assert c._gen_witness_preprocessing.call_count >= 2
 
-    # BASE_TESTING
-    c.parse_proof_run_type(
-        "w", "i", "p", "pub", "vk", "circuit", "path", ZKProofSystems.Expander,
-        "out", "weights", "q", RunType.BASE_TESTING
-    )
-    mock_prove_and_verify.assert_called_once()
-
 
 # ---------- Optional: test get_weights ----------
 @pytest.mark.unit
