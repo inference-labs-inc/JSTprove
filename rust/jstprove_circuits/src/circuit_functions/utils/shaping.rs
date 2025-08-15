@@ -15,7 +15,7 @@ pub fn onnx_flatten<T>(array: ArrayD<T>, axis: usize) -> ArrayD<T> {
     array.into_shape_with_order(IxDyn(&[dim0, dim1])).unwrap()
 }
 
-pub fn get_inputs<T: Clone>(v: Vec<T>, inputs: Vec<ONNXIO>) -> HashMap<String, ArrayD<T>>{
+pub fn get_inputs<T: Clone>(v: Vec<T>, inputs: Vec<ONNXIO>) -> HashMap<String, ArrayD<T>> {
     // Step 1: Compute total number of elements required
     let total_required: usize = inputs
         .iter()

@@ -3,7 +3,9 @@
 use core::panic;
 use std::collections::HashMap;
 
-use jstprove_circuits::circuit_functions::utils::graph_pattern_matching::{optimization_skip_layers, GraphPattern, PatternMatcher};
+use jstprove_circuits::circuit_functions::utils::graph_pattern_matching::{
+    optimization_skip_layers, GraphPattern, PatternMatcher,
+};
 /// External crate imports
 use lazy_static::lazy_static;
 use ndarray::{ArrayD, Ix1, Ix2, IxDyn};
@@ -15,65 +17,51 @@ use expander_compiler::frontend::*;
 
 /// Internal crate imports
 use jstprove_circuits::circuit_functions::utils::onnx_model::{
-    collect_all_shapes,
-    get_param,
-    get_param_or_default,
-    get_w_or_b,
+    collect_all_shapes, get_param, get_param_or_default, get_w_or_b,
 };
 
 use jstprove_circuits::circuit_functions::utils::shaping::{
-    get_inputs,
-    onnx_flatten,
-    check_and_apply_transpose_array
+    check_and_apply_transpose_array, get_inputs, onnx_flatten,
 };
 
 use jstprove_circuits::circuit_functions::layers::conv::conv_4d_run;
 
-use jstprove_circuits::circuit_functions::layers::gemm::{
-    matrix_addition,
-    matrix_multiplication,
-};
+use jstprove_circuits::circuit_functions::layers::gemm::{matrix_addition, matrix_multiplication};
 
-use jstprove_circuits::circuit_functions::layers::maxpool::{
-    maxpooling_2d,
-    setup_maxpooling_2d,
-};
+use jstprove_circuits::circuit_functions::layers::maxpool::{maxpooling_2d, setup_maxpooling_2d};
 
 use jstprove_circuits::circuit_functions::layers::relu::relu_array;
 
 use jstprove_circuits::circuit_functions::utils::quantization::rescale_array;
 
 use jstprove_circuits::circuit_functions::utils::tensor_ops::{
-    get_nd_circuit_inputs,
-    load_array_constants,
-    load_circuit_constant,
+    get_nd_circuit_inputs, load_array_constants, load_circuit_constant,
 };
 
 use jstprove_circuits::io::io_reader::{FileReader, IOReader};
 
-use jstprove_circuits::runner::main_runner::{ConfigurableCircuit, handle_args};
+use jstprove_circuits::runner::main_runner::{handle_args, ConfigurableCircuit};
 
-use jstprove_circuits::circuit_functions::utils::onnx_types::{ONNXIO, ONNXLayer};
-
+use jstprove_circuits::circuit_functions::utils::onnx_types::{ONNXLayer, ONNXIO};
 
 type WeightsData = (Architecture, WANDB, CircuitParams);
 #[derive(Deserialize, Clone, Debug)]
-struct Architecture{
+struct Architecture {
     inputs: Vec<ONNXIO>,
     outputs: Vec<ONNXIO>,
     architecture: Vec<ONNXLayer>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
-struct WANDB{
+struct WANDB {
     w_and_b: Vec<ONNXLayer>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
-struct CircuitParams{
+struct CircuitParams {
     scale_base: u32,
     scaling: u32,
-    rescale_config: HashMap<String, bool>
+    rescale_config: HashMap<String, bool>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -87,7 +75,8 @@ struct OutputData {
 }
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../python/models/weights/onnx_generic_circuit_weights.json");
+const MATRIX_WEIGHTS_FILE: &str =
+    include_str!("../../../python/models/weights/onnx_generic_circuit_weights.json");
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
 // Weights will be read in
@@ -100,7 +89,6 @@ lazy_static! {
     static ref ARCHITECTURE: Architecture = WEIGHTS_INPUT.0.clone();
     static ref W_AND_B: WANDB = WEIGHTS_INPUT.1.clone();
     static ref CIRCUITPARAMS: CircuitParams = WEIGHTS_INPUT.2.clone();
-
 }
 
 declare_circuit!(Circuit {
@@ -197,14 +185,17 @@ struct MaxPoolLayer {
     dilation: Vec<usize>,
     padding: Vec<usize>,
     input_shape: Vec<usize>,
-    shift_exponent: usize, 
+    shift_exponent: usize,
     inputs: Vec<String>,
     outputs: Vec<String>,
 }
 
 trait LayerOp<C: Config, Builder: RootAPI<C>> {
-    fn apply(&self, api: &mut Builder, input: HashMap<String,ArrayD<Variable>>)
-        -> Result<(Vec<String>,ArrayD<Variable>), String>;
+    fn apply(
+        &self,
+        api: &mut Builder,
+        input: HashMap<String, ArrayD<Variable>>,
+    ) -> Result<(Vec<String>, ArrayD<Variable>), String>;
 
     // fn build for every Layer type
 }
@@ -213,8 +204,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
+        input: HashMap<String, ArrayD<Variable>>,
+    ) -> Result<(Vec<String>, ArrayD<Variable>), String> {
         eprintln!("{:?}", self);
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         // Reshape inputs
@@ -234,12 +225,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
-        let is_relu = match self.optimization_pattern.name{
-                    "Conv+Relu" => true,
-                    _ => false
-                };
+        input: HashMap<String, ArrayD<Variable>>,
+    ) -> Result<(Vec<String>, ArrayD<Variable>), String> {
+        let is_relu = match self.optimization_pattern.name {
+            "Conv+Relu" => true,
+            _ => false,
+        };
 
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         // Reshape inputs
@@ -255,7 +246,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         let alpha_two_v = api.mul(self.two_v as u32, scale_factor as u32);
 
         // Get shape
-        let in_shape = layer_input.shape().iter().map(|&x| x as u32).collect::<Vec<_>>();
+        let in_shape = layer_input
+            .shape()
+            .iter()
+            .map(|&x| x as u32)
+            .collect::<Vec<_>>();
 
         // Convolution
         let out = conv_4d_run(
@@ -285,23 +280,30 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
-        let is_relu = match self.optimization_pattern.name{
-                    "Gemm+Relu" => true,
-                    _ => false
-                };
+        input: HashMap<String, ArrayD<Variable>>,
+    ) -> Result<(Vec<String>, ArrayD<Variable>), String> {
+        let is_relu = match self.optimization_pattern.name {
+            "Gemm+Relu" => true,
+            _ => false,
+        };
 
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         let mut input_array = layer_input
             .into_dimensionality::<Ix2>()
             .map_err(|_| format!("Expected 2D input for layer {}", self.name))?;
         let mut weights_array = load_array_constants(api, &self.weights)
-        .into_dimensionality::<Ix2>()
+            .into_dimensionality::<Ix2>()
             .map_err(|_| format!("Expected 2D input for layer {}", self.name))?;
 
-        input_array = check_and_apply_transpose_array(input_array, self.transa, "transa", "Gemm", &self.name);
-        weights_array = check_and_apply_transpose_array(weights_array, self.transb, "transb", "Gemm", &self.name);
+        input_array =
+            check_and_apply_transpose_array(input_array, self.transa, "transa", "Gemm", &self.name);
+        weights_array = check_and_apply_transpose_array(
+            weights_array,
+            self.transb,
+            "transb",
+            "Gemm",
+            &self.name,
+        );
 
         let bias_array = load_array_constants(api, &self.bias);
 
@@ -310,7 +312,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         check_alpha_beta(self.beta, "beta", "Gemm", &self.name);
 
         // Matrix multiplication and bias addition
-        let mut result = matrix_multiplication(api, input_array.into_dyn(), weights_array.into_dyn());
+        let mut result =
+            matrix_multiplication(api, input_array.into_dyn(), weights_array.into_dyn());
         result = matrix_addition(api, result, bias_array);
 
         api.display("3", result[[0, 0]]);
@@ -318,7 +321,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         let mut out_array = result.into_dyn(); // back to ArrayD<Variable>
         if self.is_rescale {
             let k = CIRCUITPARAMS.scaling as usize;
-            let s = self.v_plus_one.checked_sub(1).expect("v_plus_one must be at least 1");
+            let s = self
+                .v_plus_one
+                .checked_sub(1)
+                .expect("v_plus_one must be at least 1");
             out_array = rescale_array(api, out_array, k, s, is_relu);
         }
 
@@ -327,22 +333,24 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
 }
 
 fn check_alpha_beta(val: f32, var_name: &str, layer_type: &str, layer_name: &str) {
-    if val != 1.0{
-        panic!("Only {} = 1 is currently supported for {} layers: {}", var_name, layer_type, layer_name);
+    if val != 1.0 {
+        panic!(
+            "Only {} = 1 is currently supported for {} layers: {}",
+            var_name, layer_type, layer_name
+        );
     }
 }
-
-
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
+        input: HashMap<String, ArrayD<Variable>>,
+    ) -> Result<(Vec<String>, ArrayD<Variable>), String> {
         let reshape_shape = self.shape.clone();
         let layer_input = input.get(&self.inputs[0]).unwrap();
-        let out = &layer_input.clone()
+        let out = &layer_input
+            .clone()
             .into_shape_with_order(IxDyn(&reshape_shape))
             .expect("Shape mismatch: Cannot reshape into the given dimensions.");
 
@@ -350,14 +358,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
     }
 }
 
-
-
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
+        input: HashMap<String, ArrayD<Variable>>,
+    ) -> Result<(Vec<String>, ArrayD<Variable>), String> {
         let reshape_axis = self.axis.clone();
         let layer_input = input.get(&self.inputs[0]).unwrap();
 
@@ -372,10 +378,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConstantLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
-
-        Ok((self.outputs.clone(), ArrayD::from_shape_vec(IxDyn(&[1]), vec![api.constant(0)]).unwrap()))
+        input: HashMap<String, ArrayD<Variable>>,
+    ) -> Result<(Vec<String>, ArrayD<Variable>), String> {
+        Ok((
+            self.outputs.clone(),
+            ArrayD::from_shape_vec(IxDyn(&[1]), vec![api.constant(0)]).unwrap(),
+        ))
     }
 }
 
@@ -384,10 +392,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>, ArrayD<Variable>), String> {
         let layer_input = input.get(&self.inputs[0]).unwrap().clone();
         let shape = layer_input.shape();
-        assert_eq!(shape.len(), 4, "Expected 4D input for max pooling, got shape: {:?}", shape);
+        assert_eq!(
+            shape.len(),
+            4,
+            "Expected 4D input for max pooling, got shape: {:?}",
+            shape
+        );
 
         let ceil_mode = false;
         let (kernel, strides, dilation, out_shape, pads) = setup_maxpooling_2d(
@@ -415,7 +428,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
     }
 }
 
-
 type BoxedDynLayer<C, B> = Box<dyn LayerOp<C, B>>;
 
 fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Builder>>> {
@@ -431,7 +443,9 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
     TODO: Inject weights + bias data with external functions instead of regular assignment in function.
      */
 
-    let w_and_b_map: HashMap<String, ONNXLayer> = W_AND_B.w_and_b.clone()
+    let w_and_b_map: HashMap<String, ONNXLayer> = W_AND_B
+        .w_and_b
+        .clone()
         .into_iter()
         .map(|layer| (layer.name.clone(), layer))
         .collect();
@@ -441,65 +455,56 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
     // I want to figure out a way to identify these patterns in the graph should they appear, so that I can mark them off
     //  as I proceed through the graph layers later. Can you help me with this please?
 
-
-    
-    let mut skip_next_layer: HashMap<String, bool>  = HashMap::new();
-
+    let mut skip_next_layer: HashMap<String, bool> = HashMap::new();
 
     // let skip_future_layers = Set();
 
     let inputs = &ARCHITECTURE.inputs;
 
     // TODO havent figured out how but this can maybe go in build layers?
-    let shapes_map: HashMap<String, Vec<usize>> = collect_all_shapes(&ARCHITECTURE.architecture, inputs);
+    let shapes_map: HashMap<String, Vec<usize>> =
+        collect_all_shapes(&ARCHITECTURE.architecture, inputs);
     // TODO should account for multiple inputs
-
 
     let matcher = PatternMatcher::new();
     let opt_patterns_by_layername = matcher.run(&ARCHITECTURE.architecture);
 
-    
-
-
     for (i, layer) in ARCHITECTURE.architecture.iter().enumerate() {
         /*
-            Track layer combo optimizations
-         */
+           Track layer combo optimizations
+        */
 
-        if *skip_next_layer.get(&layer.name).unwrap_or(&false){
-            continue
+        if *skip_next_layer.get(&layer.name).unwrap_or(&false) {
+            continue;
         }
         let outputs = layer.outputs.to_vec();
 
         let optimization_pattern_match = opt_patterns_by_layername.get(&layer.name);
-        let (optimization_pattern, outputs, layers_to_skip) =  match optimization_skip_layers(optimization_pattern_match, outputs.clone()) {
-            Some(opt) => opt,
-            None => (GraphPattern::default(), outputs.clone(), vec![])
-        };
-        // Save layers to skip
-        layers_to_skip.into_iter()
-            .for_each(|item| {
-                skip_next_layer.insert(item.to_string(), true);
-            });
-        /*
-            End tracking layer combo optimizations
-         */
-
-        
-        
-
-        let is_rescale = match  CIRCUITPARAMS.rescale_config.get(&layer.name){
-                Some(config) => config,
-                None => &true
+        let (optimization_pattern, outputs, layers_to_skip) =
+            match optimization_skip_layers(optimization_pattern_match, outputs.clone()) {
+                Some(opt) => opt,
+                None => (GraphPattern::default(), outputs.clone(), vec![]),
             };
+        // Save layers to skip
+        layers_to_skip.into_iter().for_each(|item| {
+            skip_next_layer.insert(item.to_string(), true);
+        });
+        /*
+           End tracking layer combo optimizations
+        */
+
+        let is_rescale = match CIRCUITPARAMS.rescale_config.get(&layer.name) {
+            Some(config) => config,
+            None => &true,
+        };
 
         match layer.op_type.as_str() {
             "Conv" => {
-                let params = layer.params.clone().unwrap();                
+                let params = layer.params.clone().unwrap();
                 // We can move this inside the layer op
-                let expected_shape = match shapes_map.get(&layer.inputs[0]){
+                let expected_shape = match shapes_map.get(&layer.inputs[0]) {
                     Some(input_shape) => input_shape,
-                    None => panic!("Error getting output shape for layer {}", layer.name)
+                    None => panic!("Error getting output shape for layer {}", layer.name),
                 };
                 let conv = ConvLayer {
                     name: layer.name.clone(),
@@ -508,7 +513,12 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                     bias: get_w_or_b(&w_and_b_map, &layer.inputs[2]),
                     strides: get_param(&layer.name, &"strides", &params),
                     kernel_shape: get_param(&layer.name, &"kernel_shape", &params),
-                    group: vec![get_param_or_default(&layer.name, &"group", &params, Some(&1))],
+                    group: vec![get_param_or_default(
+                        &layer.name,
+                        &"group",
+                        &params,
+                        Some(&1),
+                    )],
                     dilation: get_param(&layer.name, &"dilations", &params),
                     pads: get_param(&layer.name, &"pads", &params),
                     input_shape: expected_shape.to_vec(),
@@ -519,7 +529,7 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                     alpha_two_v: alpha_two_v,
                     is_rescale: *is_rescale,
                     inputs: layer.inputs.to_vec(),
-                    outputs: outputs
+                    outputs: outputs,
                 };
 
                 layers.push(Box::new(conv));
@@ -527,10 +537,10 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
             "Reshape" => {
                 let shape_name = layer.inputs[1].clone();
                 let params = layer.params.clone().unwrap();
-                
-                let expected_shape = match shapes_map.get(&layer.inputs[0]){
+
+                let expected_shape = match shapes_map.get(&layer.inputs[0]) {
                     Some(input_shape) => input_shape,
-                    None => panic!("Error getting output shape for layer {}", layer.name)
+                    None => panic!("Error getting output shape for layer {}", layer.name),
                 };
                 let output_shape = shapes_map.get(&layer.outputs.to_vec()[0]);
                 let reshape = ReshapeLayer {
@@ -538,17 +548,16 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                     input_shape: expected_shape.to_vec(),
                     inputs: layer.inputs.to_vec(),
                     outputs: layer.outputs.to_vec(),
-                    shape: get_param_or_default(&layer.name, &shape_name, &params, output_shape)
+                    shape: get_param_or_default(&layer.name, &shape_name, &params, output_shape),
                 };
                 layers.push(Box::new(reshape));
             }
             "Gemm" => {
-
                 let params = layer.params.clone().unwrap();
                 // We can move this inside the layer op
-                let expected_shape = match shapes_map.get(&layer.inputs[0]){
+                let expected_shape = match shapes_map.get(&layer.inputs[0]) {
                     Some(input_shape) => input_shape,
-                    None => panic!("Error getting output shape for layer {}", layer.name)
+                    None => panic!("Error getting output shape for layer {}", layer.name),
                 };
                 let gemm = GemmLayer {
                     name: layer.name.clone(),
@@ -567,8 +576,7 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                     transa: get_param_or_default(&layer.name, &"transA", &params, Some(&0)),
                     transb: get_param_or_default(&layer.name, &"transB", &params, Some(&0)),
                     inputs: layer.inputs.to_vec(),
-                    outputs: outputs
-
+                    outputs: outputs,
                 };
                 layers.push(Box::new(gemm));
             }
@@ -581,8 +589,8 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
             "MaxPool" => {
                 let params = layer.params.clone().unwrap();
                 let expected_shape = match shapes_map.get(&layer.inputs[0]) {
-                Some(s) => s,
-                None => panic!("Missing shape for MaxPool input {}", layer.name),
+                    Some(s) => s,
+                    None => panic!("Missing shape for MaxPool input {}", layer.name),
                 };
 
                 let maxpool = MaxPoolLayer {
@@ -600,27 +608,27 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
             }
             "Flatten" => {
                 let params = layer.params.clone().unwrap();
-                
-                let expected_shape = match shapes_map.get(&layer.inputs[0]){
+
+                let expected_shape = match shapes_map.get(&layer.inputs[0]) {
                     Some(input_shape) => input_shape,
-                    None => panic!("Error getting output shape for layer {}", layer.name)
+                    None => panic!("Error getting output shape for layer {}", layer.name),
                 };
                 let flatten = FlattenLayer {
                     name: layer.name.clone(),
                     input_shape: expected_shape.to_vec(),
                     inputs: layer.inputs.to_vec(),
                     outputs: layer.outputs.to_vec(),
-                    axis: get_param_or_default(&layer.name, &"axis", &params, Some(&1))
+                    axis: get_param_or_default(&layer.name, &"axis", &params, Some(&1)),
                 };
                 layers.push(Box::new(flatten));
             }
-            // Just in case the relu is not following a gemm or conv layer 
-            "Relu" =>{
-                let expected_shape = match shapes_map.get(&layer.inputs[0]){
+            // Just in case the relu is not following a gemm or conv layer
+            "Relu" => {
+                let expected_shape = match shapes_map.get(&layer.inputs[0]) {
                     Some(input_shape) => input_shape,
-                    None => panic!("Error getting output shape for layer {}", layer.name)
+                    None => panic!("Error getting output shape for layer {}", layer.name),
                 };
-                let relu = ReluLayer{
+                let relu = ReluLayer {
                     name: layer.name.clone(),
                     index: i,
                     input_shape: expected_shape.to_vec(),
@@ -632,7 +640,7 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
             }
             other => panic!("Unsupported layer type: {}", other),
         }
-        eprintln!("layer added: {}", layer.op_type.as_str() );
+        eprintln!("layer added: {}", layer.op_type.as_str());
     }
     layers
 }
@@ -641,14 +649,13 @@ impl<C: Config> Define<C> for Circuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         // Getting inputs
         let mut out = get_inputs(self.input_arr.clone(), ARCHITECTURE.inputs.clone());
-        
+
         // let mut out = out2.remove("input").unwrap().clone();
         let layers = build_layers::<C, Builder>();
-        
+
         assert!(ARCHITECTURE.architecture.len() > 0);
 
         for (i, layer) in layers.iter().enumerate() {
-
             eprintln!("Applying Layer {:?}", &ARCHITECTURE.architecture[i].name);
             // TODO worried about clone in here being very expensive
             let result = layer
@@ -658,20 +665,24 @@ impl<C: Config> Define<C> for Circuit<Variable> {
                 // out.insert(key, Arc::clone(&value)); Depending on memory constraints here
                 out.insert(key, result.1.clone());
             });
-
         }
-        
+
         eprint!("Flatten output");
-        let flatten_shape: Vec<usize> = vec![ARCHITECTURE.outputs.iter()
+        let flatten_shape: Vec<usize> = vec![ARCHITECTURE
+            .outputs
+            .iter()
             .map(|obj| obj.shape.iter().product::<usize>())
             .product()];
 
         // TODO only support single output
         let output_name = ARCHITECTURE.outputs[0].name.clone();
 
-        let output = out.get(&output_name).unwrap().clone()
+        let output = out
+            .get(&output_name)
+            .unwrap()
+            .clone()
             .into_shape_with_order(IxDyn(&flatten_shape))
-            .expect("Shape mismatch: Cannot reshape into the given dimensions"); 
+            .expect("Shape mismatch: Cannot reshape into the given dimensions");
 
         let output = output.as_slice().expect("Output not contiguous");
 
@@ -686,22 +697,24 @@ impl<C: Config> Define<C> for Circuit<Variable> {
         api.assert_is_equal(self.dummy[0], 1);
         api.assert_is_equal(self.dummy[1], 1);
         eprintln!("Outputs match");
-
     }
 }
-
 
 impl ConfigurableCircuit for Circuit<Variable> {
     fn configure(&mut self) {
         // Change input and outputs as needed
         // Outputs
-        let output_dims: usize = ARCHITECTURE.outputs.iter()
-        .map(|obj| obj.shape.iter().product::<usize>())
-        .product();
+        let output_dims: usize = ARCHITECTURE
+            .outputs
+            .iter()
+            .map(|obj| obj.shape.iter().product::<usize>())
+            .product();
         self.outputs = vec![Variable::default(); output_dims];
 
         // Inputs
-        let input_dims: usize = ARCHITECTURE.inputs.iter()
+        let input_dims: usize = ARCHITECTURE
+            .inputs
+            .iter()
             .map(|obj| obj.shape.iter().product::<usize>())
             .product();
         self.input_arr = vec![Variable::default(); input_dims];
@@ -728,8 +741,7 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
         assignment.dummy[1] = CircuitField::<C>::from(1);
 
         // 1) get back an ArrayD<CircuitField<C>>
-        let arr: ArrayD<CircuitField<C>> =
-            get_nd_circuit_inputs::<C>(&data.input, input_dims);
+        let arr: ArrayD<CircuitField<C>> = get_nd_circuit_inputs::<C>(&data.input, input_dims);
 
         // 2) downcast to Ix1 and collect into a Vec
         let flat: Vec<CircuitField<C>> = arr
@@ -755,8 +767,7 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
             .map(|obj| obj.shape.iter().product::<usize>())
             .product()];
 
-        let arr: ArrayD<CircuitField<C>> =
-            get_nd_circuit_inputs::<C>(&data.output, output_dims);
+        let arr: ArrayD<CircuitField<C>> = get_nd_circuit_inputs::<C>(&data.output, output_dims);
 
         let flat: Vec<CircuitField<C>> = arr
             .into_dimensionality::<Ix1>()
@@ -771,8 +782,6 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
         &self.path
     }
 }
-
-
 
 fn main() {
     let mut file_reader = FileReader {

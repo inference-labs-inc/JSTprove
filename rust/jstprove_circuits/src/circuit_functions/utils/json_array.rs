@@ -47,7 +47,7 @@ impl FromJsonNumber for u64 {
 fn get_array_shape(value: &Value) -> Result<Vec<usize>, String> {
     let mut shape = Vec::new();
     let mut current = value;
-    
+
     loop {
         match current {
             Value::Array(arr) => {
@@ -62,7 +62,7 @@ fn get_array_shape(value: &Value) -> Result<Vec<usize>, String> {
             _ => return Err("Invalid array structure".to_string()),
         }
     }
-    
+
     Ok(shape)
 }
 
@@ -96,25 +96,24 @@ where
             let val = T::from_json_number(&n).ok_or("Invalid number for target type")?;
             Ok(ArrayD::from_elem(IxDyn(&[]), val))
         }
-        
+
         // Array -> determine dimensions and convert
         Value::Array(arr) => {
             if arr.is_empty() {
                 return Ok(ArrayD::from_shape_vec(IxDyn(&[0]), vec![]).unwrap());
             }
-            
+
             // Get the shape by walking through the nested structure
             let shape = get_array_shape(&Value::Array(arr.clone()))?;
-            
+
             // Flatten all the data
             let mut data = Vec::new();
             flatten_to_typed_data::<T>(&Value::Array(arr), &mut data)?;
-            
+
             // Create the ArrayD
-            ArrayD::from_shape_vec(IxDyn(&shape), data)
-                .map_err(|e| format!("Shape error: {}", e))
+            ArrayD::from_shape_vec(IxDyn(&shape), data).map_err(|e| format!("Shape error: {}", e))
         }
-        
+
         _ => Err("Expected number or array".to_string()),
     }
 }

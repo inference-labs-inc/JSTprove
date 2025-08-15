@@ -138,7 +138,10 @@ pub fn matrix_multiplication<C: Config, Builder: RootAPI<C>>(
 
     let (m, n) = a.dim();
     let (n2, p) = b.dim();
-    assert_eq!(n, n2, "Inner dimensions must match for matrix multiplication");
+    assert_eq!(
+        n, n2,
+        "Inner dimensions must match for matrix multiplication"
+    );
 
     let mut result = Array2::default((m, p));
 
