@@ -15,28 +15,17 @@ permissions:
   contents: read
 
 jobs:
-  format:
-    name: rustfmt Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      # Ensure rustfmt is installed and setup problem matcher
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: rustfmt
-      - name: Rustfmt Check
-        uses: actions-rust-lang/rustfmt@v1
-  
   build:
 
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python 3.10
         uses: actions/setup-python@v3
         with:
           python-version: "3.10"  #Should we specify more versions?
+      - run: pip install pre-commit
+      - run:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip

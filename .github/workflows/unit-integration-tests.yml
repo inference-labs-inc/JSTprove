@@ -15,18 +15,6 @@ permissions:
   contents: read
 
 jobs:
-  format:
-    name: rustfmt Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      # Ensure rustfmt is installed and setup problem matcher
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: rustfmt
-      - name: Rustfmt Check
-        uses: actions-rust-lang/rustfmt@v1
-          
   build:
 
     runs-on: ubuntu-latest
