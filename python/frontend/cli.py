@@ -7,8 +7,34 @@ from pathlib import Path
 from python.testing.core.utils.helper_functions import RunType
 import onnx
 from python.testing.core.utils.onnx_helpers import get_input_shapes
+import os
 
 DEFAULT_CIRCUIT_DOTTED = "python.testing.core.circuit_models.generic_onnx:GenericModelONNX"
+
+try:
+    from colorama import Fore, Style, init as colorama_init
+    colorama_init(autoreset=True)
+except Exception:  # colorama optional
+    class _No:
+        def __getattr__(self, _): return ""
+    Fore = Style = _No()
+
+BANNER_TITLE = r"""
+         _/    _/_/_/  _/_/_/_/_/  _/_/_/                                             
+        _/  _/            _/      _/    _/  _/  _/_/    _/_/    _/      _/    _/_/    
+       _/    _/_/        _/      _/_/_/    _/_/      _/    _/  _/      _/  _/_/_/_/   
+_/    _/        _/      _/      _/        _/        _/    _/    _/  _/    _/          
+ _/_/    _/_/_/        _/      _/        _/          _/_/        _/        _/_/_/     
+"""
+
+def print_header():
+    subtitle = "Verifiable ML by Inference Labs"
+    footer = "Based on Polyhedra Network's Expander (GKR-based proving system)"
+    print(
+        f"{Fore.CYAN}{BANNER_TITLE}{Style.RESET_ALL}"
+        f"{Fore.YELLOW}JSTProve{Style.RESET_ALL} — {subtitle}\n"
+        f"{Fore.WHITE}{footer}{Style.RESET_ALL}\n"
+    )
 
 def _import_default_circuit():
     mod_name, cls_name = DEFAULT_CIRCUIT_DOTTED.split(":", 1)
@@ -55,6 +81,10 @@ def main(argv: list[str] | None = None) -> int:
         prog="jstprove",
         description="ZK-ML CLI (compile, witness, prove, verify)."
     )
+    parser.add_argument(
+    "--no-banner", action="store_true",
+    help="Suppress the startup banner."
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     # compile
@@ -87,6 +117,9 @@ def main(argv: list[str] | None = None) -> int:
     p_verify.add_argument("--quantized-path", required=True, help="Path to the quantized ONNX (used to infer input shapes).")
 
     args = parser.parse_args(argv)
+
+    if not args.no_banner and not os.environ.get("JSTPROVE_NO_BANNER"):
+        print_header()
 
     try:
         if args.cmd == "compile":
