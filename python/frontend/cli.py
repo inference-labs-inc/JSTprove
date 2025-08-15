@@ -24,16 +24,15 @@ BANNER_TITLE = r"""
         _/  _/            _/      _/    _/  _/  _/_/    _/_/    _/      _/    _/_/    
        _/    _/_/        _/      _/_/_/    _/_/      _/    _/  _/      _/  _/_/_/_/   
 _/    _/        _/      _/      _/        _/        _/    _/    _/  _/    _/          
- _/_/    _/_/_/        _/      _/        _/          _/_/        _/        _/_/_/     
+ _/_/    _/_/_/        _/      _/        _/          _/_/        _/        _/_/_/
 """
 
 def print_header():
-    subtitle = "Verifiable ML by Inference Labs"
-    footer = "Based on Polyhedra Network's Expander (GKR-based proving system)"
     print(
-        f"{Fore.CYAN}{BANNER_TITLE}{Style.RESET_ALL}"
-        f"{Fore.YELLOW}JSTProve{Style.RESET_ALL} — {subtitle}\n"
-        f"{Fore.WHITE}{footer}{Style.RESET_ALL}\n"
+        BANNER_TITLE
+        + "\n"
+        + "JSTProve — Verifiable ML by Inference Labs\n"
+        + "Based on Polyhedra Network’s Expander (GKR-based proving system)\n"
     )
 
 def _import_default_circuit():
@@ -79,12 +78,11 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(
         prog="jstprove",
-        description="ZK-ML CLI (compile, witness, prove, verify)."
+        description="ZKML CLI (compile, witness, prove, verify)."
     )
-    parser.add_argument(
-    "--no-banner", action="store_true",
-    help="Suppress the startup banner."
-    )
+    
+    parser.add_argument("--no-banner", action="store_true", help="Suppress the startup banner.")
+
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     # compile
