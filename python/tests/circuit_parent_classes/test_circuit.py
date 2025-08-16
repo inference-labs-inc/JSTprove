@@ -80,7 +80,6 @@ def test_get_outputs_not_implemented():
 # ---------- Test parse_proof_run_type ----------
 
 @pytest.mark.unit
-@patch("python.core.circuits.base.prove_and_verify")
 @patch("python.core.circuits.base.compile_circuit")
 @patch("python.core.circuits.base.generate_witness")
 @patch("python.core.circuits.base.generate_proof")
@@ -92,7 +91,6 @@ def test_parse_proof_dispatch_logic(
     mock_proof,
     mock_witness,
     mock_compile,
-    mock_prove_and_verify
 ):
     c = Circuit()
 

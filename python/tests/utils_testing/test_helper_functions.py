@@ -2,7 +2,7 @@ import subprocess
 import pytest
 import json
 from unittest.mock import MagicMock, patch, mock_open
-from python.core.utils.helper_functions import compile_circuit, compute_and_store_output, create_folder, generate_proof, generate_verification, generate_witness, get_expander_file_paths, get_files, prepare_io_files, run_end_to_end, run_expander_exec, to_json, read_from_json, run_cargo_command, prove_and_verify
+from python.core.utils.helper_functions import compile_circuit, compute_and_store_output, create_folder, generate_proof, generate_verification, generate_witness, get_expander_file_paths, get_files, prepare_io_files, run_end_to_end, to_json, read_from_json, run_cargo_command
 from python.core.utils.helper_functions import RunType, ZKProofSystems
 
 
@@ -145,7 +145,7 @@ def test_run_cargo_command_normal(mock_run):
     assert args[0] == "./target/release/zkbinary"
     assert "run" in args
     assert "-i" in args and "input.json" in args
-    assert code == 0
+    assert code.returncode == 0
 
 @pytest.mark.unit
 @patch("python.core.utils.helper_functions.subprocess.run")
@@ -189,90 +189,6 @@ def test_run_command_failure(mock_run):
 
     assert excinfo.value.returncode == 1
 
-
-
-# ---------- Expander with ECC (happy path) ----------
-@pytest.mark.integration
-@patch("python.core.utils.helper_functions.run_cargo_command")
-def test_prove_and_verify_expander_ecc_calls_cargo(mock_cargo):
-    prove_and_verify(
-        witness_file="w.wtns",
-        input_file="i.json",
-        proof_path="p.json",
-        public_path="pub.json",
-        verification_key="vk.key",
-        circuit_name="circuits/mnist",
-        output_file="out.json",
-        proof_system=ZKProofSystems.Expander,
-        ecc=True
-    )
-    mock_cargo.assert_called_once()
-    args = mock_cargo.call_args[0][0]
-    assert args == "mnist"  # basename of circuit_name
-
-
-# ---------- Expander with ECC (error fallback) ----------
-@pytest.mark.integration
-@patch("python.core.utils.helper_functions.run_cargo_command", side_effect=Exception("boom"))
-def test_prove_and_verify_expander_ecc_fails_gracefully(mock_cargo, capsys):
-    prove_and_verify(
-        witness_file="w.wtns",
-        input_file="i.json",
-        proof_path="p.json",
-        public_path="pub.json",
-        verification_key="vk.key",
-        circuit_name="mnist",
-        output_file="out.json",
-        proof_system=ZKProofSystems.Expander,
-        ecc=True
-    )
-    captured = capsys.readouterr()
-    assert "Warning: Could not complete prove_and_verify" in captured.out
-    assert "boom" in captured.out
-
-
-# ---------- Expander with NO ECC ----------
-@pytest.mark.integration
-@patch("python.core.utils.helper_functions.run_expander_raw")
-@patch("python.core.utils.helper_functions.get_expander_file_paths", return_value={
-    "circuit_file": "c.circ",
-    "witness_file": "w.wtns",
-    "proof_file": "p.pf"
-})
-def test_prove_and_verify_expander_no_ecc_runs_exec(mock_paths, mock_exec):
-    prove_and_verify(
-        witness_file="w.wtns",
-        input_file="i.json",
-        proof_path="p.json",
-        public_path="pub.json",
-        verification_key="vk.key",
-        circuit_name="some/circuit/path",
-        output_file="out.json",
-        proof_system=ZKProofSystems.Expander,
-        ecc=False
-    )
-    assert mock_exec.call_count == 2
-    mock_exec.assert_any_call(mode="prove", circuit_file="c.circ", witness_file="w.wtns", proof_file="p.pf")
-    mock_exec.assert_any_call(mode="verify", circuit_file="c.circ", witness_file="w.wtns", proof_file="p.pf")
-
-
-# ---------- Unsupported proof system ----------
-@pytest.mark.unit
-def test_prove_and_verify_unknown_system_raises():
-    with pytest.raises(NotImplementedError, match="not implemented"):
-        prove_and_verify(
-            witness_file="w",
-            input_file="i",
-            proof_path="p",
-            public_path="pub",
-            verification_key="vk",
-            circuit_name="circuit",
-            output_file="out",
-            proof_system="UnicornZK"
-        )
-
-
-# 
 # ---------- get_expander_file_paths ----------
 @pytest.mark.unit
 def test_get_expander_file_paths():
@@ -283,45 +199,6 @@ def test_get_expander_file_paths():
     assert paths["proof_file"] == "model_proof.txt"
 
 
-# ---------- run_expander_exec ----------
-@pytest.mark.integration
-@patch("python.core.utils.helper_functions.subprocess.run")
-def test_run_expander_exec_calls_correct_args(mock_run):
-    mock_run.return_value.returncode = 0
-    run_expander_exec("prove", "circuit.txt", "witness.txt", "proof.txt")
-    args = mock_run.call_args[0][0]
-    assert "prove" in args
-    assert "--output-proof-file" in args
-    assert not "--input-proof-file" in args
-
-@pytest.mark.integration
-@patch("python.core.utils.helper_functions.subprocess.run")
-def test_run_expander_exec_calls_verify_correct_args(mock_run):
-    mock_run.return_value.returncode = 0
-    run_expander_exec("verify", "circuit.txt", "witness.txt", "proof.txt")
-    args = mock_run.call_args[0][0]
-    assert "verify" in args
-    assert "--input-proof-file" in args
-    assert not "--output-proof-file" in args
-
-@pytest.mark.integration
-@patch("python.core.utils.helper_functions.subprocess.run")
-def test_run_expander_exec_bad_mode(mock_run):
-    mock_run.return_value.returncode = 0
-    with pytest.raises(AssertionError):
-        run_expander_exec("Unicorn", "circuit.txt", "witness.txt", "proof.txt")
-
-@pytest.mark.integration
-@patch("python.core.utils.helper_functions.subprocess.run")
-def test_run_expander_exec_handles_failure(mock_run, capsys):
-    mock_run.return_value.returncode = 1
-    mock_run.return_value.stderr = "failed!"
-    run_expander_exec("verify", "c", "w", "p")
-    captured = capsys.readouterr()
-    assert "❌" in captured.out
-    assert "failed!" in captured.out
-
-
 # ---------- compile_circuit ----------
 @pytest.mark.integration
 @patch("python.core.utils.helper_functions.run_cargo_command")
@@ -330,7 +207,7 @@ def test_compile_circuit_expander(mock_run):
     args = mock_run.call_args[0][2]
     assert args["n"] == "model"
     assert args["c"] == "path/to/circuit"
-    assert mock_run.call_args[0][3] == False
+    assert mock_run.call_args[0][3] == True
 
 @pytest.mark.integration
 @patch("python.core.utils.helper_functions.run_cargo_command")
@@ -517,18 +394,6 @@ def test_circom_not_implemented_full_process():
         generate_witness("m", "p","witness", "input", "output",  ZKProofSystems.Circom)
     with pytest.raises(NotImplementedError, match="Circom is not implemented"):
         compile_circuit("model", "path/to/circuit", ZKProofSystems.Circom)
-    with pytest.raises(NotImplementedError, match="Circom is not implemented"):
-        prove_and_verify(
-        witness_file="w.wtns",
-        input_file="i.json",
-        proof_path="p.json",
-        public_path="pub.json",
-        verification_key="vk.key",
-        circuit_name="circuits/mnist",
-        output_file="out.json",
-        proof_system=ZKProofSystems.Circom,
-        ecc=True
-        )
 
 @pytest.mark.unit
 @patch("python.core.utils.helper_functions.run_cargo_command", side_effect = Exception("TEST"))
