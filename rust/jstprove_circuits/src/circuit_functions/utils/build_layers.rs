@@ -52,7 +52,7 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
     };
 
     let matcher = PatternMatcher::new();
-    let opt_patterns_by_layername = matcher.run(&arcitecture.architecture);
+    let opt_patterns_by_layername = matcher.run(&arcitecture.architecture).unwrap();
     
     for (i, original_layer) in arcitecture.architecture.iter().enumerate() {
         /*
@@ -65,7 +65,7 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
         let outputs = layer.outputs.to_vec();
 
         let optimization_pattern_match = opt_patterns_by_layername.get(&layer.name);
-        let (optimization_pattern, outputs, layers_to_skip) =  match optimization_skip_layers(optimization_pattern_match, outputs.clone()) {
+        let (optimization_pattern, outputs, layers_to_skip) =  match optimization_skip_layers(optimization_pattern_match, outputs.clone()).unwrap() {
             Some(opt) => opt,
             None => (GraphPattern::default(), outputs.clone(), vec![])
         };

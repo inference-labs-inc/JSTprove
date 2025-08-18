@@ -10,7 +10,7 @@ use expander_compiler::frontend::*;
 use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{core_math::{
     assert_is_bitstring_and_reconstruct,
     unconstrained_to_bits,
-}, onnx_model::extract_params_and_expected_shape}};
+}, onnx_model::extract_params_and_expected_shape}, CircuitError};
 
 // -------- Struct --------
 #[allow(dead_code)]
@@ -30,7 +30,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>,ArrayD<Variable>), CircuitError> {
         eprintln!("{:?}", self);
         let layer_input = input.get(&self.inputs[0])
         .ok_or_else(|| panic!("Missing input {}", self.inputs[0].clone())).unwrap()
@@ -48,7 +48,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
         _is_rescale: bool,
         index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
-    ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
+    ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
 
         let (_params, expected_shape) = extract_params_and_expected_shape(layer_context, layer);
         let relu = Self{
@@ -152,8 +152,8 @@ pub fn relu<C: Config, Builder: RootAPI<C>>(
     let shifted_x = api.add(context.shift, *x);
     let n_bits = context.shift_exponent + 1;
 
-    let bits = unconstrained_to_bits(api, shifted_x, n_bits);
-    let reconstructed = assert_is_bitstring_and_reconstruct(api, &bits);
+    let bits = unconstrained_to_bits(api, shifted_x, n_bits).unwrap();
+    let reconstructed = assert_is_bitstring_and_reconstruct(api, &bits).unwrap();
     api.assert_is_equal(shifted_x, reconstructed);
 
     let sign_bit = bits[context.shift_exponent];

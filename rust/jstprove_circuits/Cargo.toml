@@ -31,6 +31,7 @@ goldilocks.workspace = true
 serdes.workspace = true
 ndarray.workspace = true
 mpi.workspace = true
+thiserror.workspace = true
 
 
 [dev-dependencies]

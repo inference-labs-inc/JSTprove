@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use ndarray::ArrayD;
 use expander_compiler::frontend::*;
 
-use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{constants::AXIS, onnx_model::{extract_params_and_expected_shape, get_param_or_default}, shaping::onnx_flatten}};
+use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{constants::AXIS, onnx_model::{extract_params_and_expected_shape, get_param_or_default}, shaping::onnx_flatten}, CircuitError};
 
 // -------- Struct --------
 #[allow(dead_code)]
@@ -23,7 +23,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
         &self,
         _api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>,ArrayD<Variable>), CircuitError> {
         let reshape_axis = self.axis.clone();
         let layer_input = input.get(&self.inputs[0])
         .ok_or_else(|| panic!("Missing input {}", self.inputs[0].clone())).unwrap()
@@ -40,7 +40,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
         _is_rescale: bool,
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
-    ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
+    ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
         let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer);
         let flatten = Self{
             name: layer.name.clone(),

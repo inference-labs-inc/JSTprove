@@ -6,3 +6,6 @@ pub mod reshape;
 pub mod flatten;
 pub mod constant;
 pub mod layer_ops;
+mod errors;
+
+pub use errors::{LayerError, LayerKind};

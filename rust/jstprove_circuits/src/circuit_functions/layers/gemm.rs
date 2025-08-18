@@ -6,7 +6,7 @@ use ndarray::{Array2, ArrayD, Ix2, IxDyn};
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
-use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{constants::{ALPHA, BETA, GEMM, TRANS_A, TRANS_B}, graph_pattern_matching::GraphPattern, onnx_model::{extract_params_and_expected_shape, get_param_or_default, get_w_or_b}, quantization::rescale_array, shaping::check_and_apply_transpose_array, tensor_ops::load_array_constants}};
+use crate::circuit_functions::{layers::{layer_ops::LayerOp, LayerError, LayerKind}, utils::{constants::{ALPHA, BETA, GEMM, TRANS_A, TRANS_B}, graph_pattern_matching::GraphPattern, onnx_model::{extract_params_and_expected_shape, get_param_or_default, get_w_or_b}, quantization::rescale_array, shaping::check_and_apply_transpose_array, tensor_ops::load_array_constants}, CircuitError};
 
 // -------- Struct --------
 #[allow(dead_code)]
@@ -38,7 +38,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>,ArrayD<Variable>), CircuitError> {
         let is_relu = match self.optimization_pattern.name{
                     "Gemm+Relu" => true,
                     _ => false
@@ -49,10 +49,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
     .clone();
         let mut input_array = layer_input
             .into_dimensionality::<Ix2>()
-            .map_err(|_| format!("Expected 2D input for layer {}", self.name))?;
+            .map_err(|_| LayerError::InvalidShape { layer: LayerKind::Gemm, msg: format!("Expected 2D input for layer {}", self.name) })?;
         let mut weights_array = load_array_constants(api, &self.weights)
         .into_dimensionality::<Ix2>()
-            .map_err(|_| format!("Expected 2D input for layer {}", self.name))?;
+            .map_err(|_| LayerError::InvalidShape { layer: LayerKind::Gemm, msg: format!("Expected 2D weights array for layer {}", self.name) })?;
 
         input_array = check_and_apply_transpose_array(input_array, self.transa, TRANS_A, GEMM, &self.name);
         weights_array = check_and_apply_transpose_array(weights_array, self.transb, TRANS_B, GEMM, &self.name);
@@ -85,7 +85,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         is_rescale: bool,
         index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
-    ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
+    ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
         
         let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer);
         let gemm = Self {

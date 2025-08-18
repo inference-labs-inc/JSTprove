@@ -6,7 +6,7 @@ use ndarray::{ArrayD, Array4, Ix4};
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
-use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{constants::{DILATION, KERNEL_SHAPE, PADS, STRIDES}, onnx_model::{extract_params_and_expected_shape, get_param}}};
+use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{constants::{DILATION, KERNEL_SHAPE, PADS, STRIDES}, onnx_model::{extract_params_and_expected_shape, get_param}}, CircuitError};
 /// Internal crate imports
 use super::super::utils::core_math::{unconstrained_to_bits, assert_is_bitstring_and_reconstruct};
 
@@ -32,7 +32,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>,ArrayD<Variable>), CircuitError> {
         let layer_input = input.get(&self.inputs[0])
         .ok_or_else(|| panic!("Missing input {}", self.inputs[0].clone())).unwrap()
     .clone();
@@ -71,7 +71,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         _is_rescale: bool,
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
-    ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
+    ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
 
         let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer);
 
@@ -276,9 +276,9 @@ pub fn assert_is_max<C: Config, Builder: RootAPI<C>>(
         let delta = api.sub(max_raw, x);
 
         // Δ ∈ [0, T] ⇔ ∃ bitstring of length s + 1 summing to Δ
-        let bits = unconstrained_to_bits(api, delta, n_bits);
+        let bits = unconstrained_to_bits(api, delta, n_bits).unwrap();
         // TO DO: elaborate/make more explicit, e.g. "Range check enforcing Δ >= 0"
-        let recon = assert_is_bitstring_and_reconstruct(api, &bits);
+        let recon = assert_is_bitstring_and_reconstruct(api, &bits).unwrap();
         api.assert_is_equal(delta, recon);
 
         // Multiply all Δ_i together

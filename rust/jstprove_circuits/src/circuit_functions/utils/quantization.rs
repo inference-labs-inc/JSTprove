@@ -173,16 +173,16 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
     api.assert_is_equal(shifted_dividend, rhs);
 
     // Step 4: Range-check r ∈ [0, α − 1] using κ bits
-    let rem_bits = unconstrained_to_bits(api, remainder, context.scaling_exponent);
-    let rem_recon = assert_is_bitstring_and_reconstruct(api, &rem_bits);
+    let rem_bits = unconstrained_to_bits(api, remainder, context.scaling_exponent).unwrap();
+    let rem_recon = assert_is_bitstring_and_reconstruct(api, &rem_bits).unwrap();
     api.assert_is_equal(remainder, rem_recon);
 
     // Step 5: Range-check q^♯ ∈ [0, 2^(s + 1) − 1] using s + 1 bits
     let n_bits_q = context.shift_exponent
         .checked_add(1)
         .expect("shift_exponent + 1 fits in usize");
-    let q_bits = unconstrained_to_bits(api, shifted_q, n_bits_q);
-    let q_recon = assert_is_bitstring_and_reconstruct(api, &q_bits);
+    let q_bits = unconstrained_to_bits(api, shifted_q, n_bits_q).unwrap();
+    let q_recon = assert_is_bitstring_and_reconstruct(api, &q_bits).unwrap();
     api.assert_is_equal(shifted_q, q_recon);
 
     // Step 6: Recover quotient q = q^♯ − S

@@ -10,3 +10,7 @@ pub mod tensor_ops;      // Conversions between nested Vecs and ArrayD
 pub mod graph_pattern_matching;
 pub mod build_layers;
 pub mod constants;
+
+mod errors;
+
+pub use errors::{UtilsError, PatternError};

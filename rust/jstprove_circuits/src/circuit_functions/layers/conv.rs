@@ -7,7 +7,7 @@ use ndarray::{s, ArrayD};
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
-use crate::circuit_functions::utils::{constants::{DILATION, GROUP, KERNEL_SHAPE, PADS, STRIDES}, onnx_model::{extract_params_and_expected_shape, get_param, get_param_or_default, get_w_or_b}};
+use crate::circuit_functions::{utils::{constants::{DILATION, GROUP, KERNEL_SHAPE, PADS, STRIDES}, onnx_model::{extract_params_and_expected_shape, get_param, get_param_or_default, get_w_or_b}}, CircuitError};
 
 /// Internal module imports
 use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{graph_pattern_matching::GraphPattern, quantization::rescale_array, tensor_ops::{load_array_constants, load_circuit_constant}}};
@@ -44,7 +44,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String,ArrayD<Variable>>,
-    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
+    ) -> Result<(Vec<String>,ArrayD<Variable>), CircuitError> {
         let is_relu = match self.optimization_pattern.name{
                     "Conv+Relu" => true,
                     _ => false
@@ -95,7 +95,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         is_rescale: bool,
         index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
-    ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
+    ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
 
         let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer);
         

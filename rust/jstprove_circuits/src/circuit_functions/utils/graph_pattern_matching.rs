@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 /// External crate imports
-use crate::circuit_functions::utils::onnx_types::ONNXLayer;
+use crate::circuit_functions::utils::{onnx_types::ONNXLayer, PatternError};
 
 /*
 
@@ -9,41 +9,56 @@ Pattern matching of layers
 
 */
 
-pub fn optimization_skip_layers(optimization_match: Option<&Vec<OptimizationMatch>>, outputs: Vec<String>) -> Option<(GraphPattern, Vec<String>, Vec<String>)> {
+pub fn optimization_skip_layers(optimization_match: Option<&Vec<OptimizationMatch>>, outputs: Vec<String>) -> Result<Option<(GraphPattern, Vec<String>, Vec<String>)>, PatternError> {
     match optimization_match {
         Some(opt) => {
-            let pattern = opt[0].pattern;
+            let pattern = opt
+                .first()
+                .ok_or_else(|| PatternError::EmptyMatch)?.pattern;
+
             let mut new_outputs = Vec::new();
             let mut skipped_layers: Vec<String> = Vec::new();
+            
             // Loop through all potential branches
             for opt_match in opt{
                 // Assert all the patterns are the same
-                assert!(pattern.name == opt_match.pattern.name);
+                if pattern.name != opt_match.pattern.name {
+                    return Err(PatternError::InconsistentPattern {
+                        expected: pattern.name.to_string(),
+                        got: opt_match.pattern.name.to_string(),
+                    });
+                }
                 // Get final layer of pattern
                 let layers = opt_match.layers.clone();
-                let final_layer = layers[layers.len() - 1].clone();
-                let first_layer = layers[0].clone();
+                let final_layer = layers
+                    .last()
+                    .cloned()
+                    .ok_or_else(|| PatternError::EmptyMatch)?; // or a more specific variant
+
+                let first_layer = layers
+                    .first()
+                    .cloned()
+                    .ok_or_else(|| PatternError::EmptyMatch)?;
 
                 // Assert outputs match 
                 eprintln!("{:?}", first_layer.outputs);
                 eprintln!("{:?}", outputs);
-                assert!(first_layer.outputs.iter().all(|item| outputs.contains(item)));
+                if !first_layer.outputs.iter().all(|o| outputs.contains(o)) {
+                    return Err(PatternError::OutputMismatch {
+                        expected: outputs.clone(),
+                        actual: first_layer.outputs.clone(),
+                    });
+                }
                 new_outputs.extend(final_layer.outputs);
                 skipped_layers.extend(opt_match.layers.iter().map(|layer| layer.name.clone()))
             }
-            // Search the other way. Makes sure both sides of inequality holds
-            // assert!(outputs.iter().all(|item| new_outputs.contains(item)));
 
             let set: HashSet<_> = new_outputs.into_iter().collect();
             let unique_new_outputs: Vec<String> = set.into_iter().collect();
-            // let set: HashSet<_> = outputs.into_iter().collect();
-            // let unique_old_outputs: Vec<String> = set.into_iter().collect();
-
-            // assert!(unique_new_outputs.len() == unique_old_outputs.len());
     
-            Some((pattern, unique_new_outputs, skipped_layers))
+            Ok(Some((pattern, unique_new_outputs, skipped_layers)))
         },
-        None => return None
+        None => return Ok(None)
     }
 }
 
@@ -58,10 +73,19 @@ fn find_pattern_matches<'a>(
     layers: &'a [ONNXLayer],
     pattern: &GraphPattern,
     mode: BranchMatchMode,
-) -> Vec<Vec<&'a ONNXLayer>> {
+) -> Result<Vec<Vec<&'a ONNXLayer>>, PatternError> {
+    if pattern.ops.is_empty() {
+        return Err(PatternError::EmptyMatch);
+    }
     let mut matches = Vec::new();
+
+    let first_op = pattern
+        .ops
+        .first()
+        .ok_or_else(|| PatternError::EmptyMatch)?;
+
     for layer in layers {
-        if layer.op_type == pattern.ops[0] {
+        if &layer.op_type == first_op {
             dfs(
                 layer,
                 pattern.ops,
@@ -73,7 +97,7 @@ fn find_pattern_matches<'a>(
             );
         }
     }
-    matches
+    Ok(matches)
 }
 /*
 Inputs:
@@ -94,12 +118,17 @@ fn dfs<'a>(
     all_matches: &mut Vec<Vec<&'a ONNXLayer>>,
     mode: BranchMatchMode,
 ) {
+    if depth > ops.len() {
+        return;
+    }
+
     // Base case
     // Save full match if we reach the end of the pattern
     if depth == ops.len() {
         all_matches.push(path.clone());
         return;
     }
+    
 
     // Only consider layers that:
     // - Those whose op matches the next step in the pattern (ops[depth])
@@ -208,14 +237,14 @@ impl PatternMatcher {
         }
     }
 
-    pub fn run(&self, layers: &[ONNXLayer]) -> HashMap<std::string::String, Vec<OptimizationMatch>>{
+    pub fn run(&self, layers: &[ONNXLayer]) -> Result<HashMap<std::string::String, Vec<OptimizationMatch>>, PatternError>{
         use std::time::SystemTime;
         let now = SystemTime::now();
 
         let mut all_matches: HashMap<String, Vec<OptimizationMatch>> = HashMap::new();
    
         for pat in &self.patterns {
-            let matches = find_pattern_matches(layers, pat, BranchMatchMode::All);
+            let matches = find_pattern_matches(layers, pat, BranchMatchMode::All).unwrap();
             eprintln!("Pattern `{}` matched {} times", pat.name, matches.len());
 
             for m in matches{
@@ -235,8 +264,7 @@ impl PatternMatcher {
                 eprintln!("Error calculating time: {e:?}");
             }
         }
-        all_matches
-        // panic!("");
+        Ok(all_matches)
     }
 }
 
