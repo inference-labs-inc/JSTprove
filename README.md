@@ -72,168 +72,126 @@ We must run the cargo files with release for reasonable time process
 
 4. Make sure weights being loaded into rust file are from correct circuit (the naming is correct)
 
-# Command Line Interface
+# Command-Line Interface
 
-This CLI tool runs various circuit operations such as compilation, witness generation, proof generation, and verification. It dynamically loads circuit modules, resolves file paths using fuzzy matching, and can list all available circuit files that inherit from a `Circuit` or `ZKModel` class.
+The JSTProve CLI runs four steps: **compile → witness → prove → verify**. It's intentionally barebones: no circuit class flags, no path inference. You must pass correct paths.
 
-## Features
+## Prereqs
 
-1. **Dynamic Module Loading**  
-   - By default, the CLI looks for circuit modules in:
-     - `python/testing/core.circuit_models`
-     - `python/testing/core.circuit_components`
-   - You can also specify a custom search path relative to `python/testing/core` with the `--circuit_search_path` flag.
+* **Python 3.12** (with project deps installed).
+ - Run commands **from the repo root** so `./target/release/onnx_generic_circuit` is found.
+ - You do **not** have to build the Rust runner manually — the **compile** step
+   (with `dev_mode=True`) will (re)build it as needed.
 
-2. **File Resolution**  
-   - Automatically searches the project root for JSON input and output files using a simple or fuzzy match.
-   - You can override the default filenames (e.g., `{circuit}_input.json` and `{circuit}_output.json`) with:
-     - `--input` to point to an exact input file
-     - `--output` to point to an exact output file
-     - `--pattern` to use a custom format (e.g., `my_{circuit}_input.json`).
+Tip: add `--no-banner` to hide the ASCII header.
 
-3. **Operation Flags**  
-   - Run specific stages of your circuit workflow:
-     - `--compile_circuit`: Compile the circuit.
-     - `--gen_witness`: Generate a witness.
-     - `--prove_witness`: Generate both the witness and proof.
-     - `--gen_verify`: Run verification.   
-     - `--end_to_end`: Run an all-in-one test if your circuit supports it.
-   - `--all`: Run the main four stages in sequence:  
-     1. Compile (`--compile_circuit`)  
-     2. Generate Witness (`--gen_witness`)  
-     3. Prove Witness (`--prove_witness`)  
-     4. Verify (`--gen_verify`)
+## Help
 
-4. **List Available Circuits**  
-   - Use the `--list_circuits` flag to recursively search for Python files containing a class that inherits from `Circuit` or `ZKModel`.  
-   - By default, it searches in:
-     - `python/testing/core/circuit_components`
-     - `python/testing/core/circuit_models`
-   - Override with `--circuit_search_path <some_relative_folder>` to search elsewhere.
+```bash
+python -m python.frontend.cli --help
+python -m python.frontend.cli <subcommand> --help
+# e.g.
+python -m python.frontend.cli witness --help
+```
 
-## Basic Usage
+## Commands (with Doom model example)
 
-1. **Install Dependencies**  
-   Ensure you have **Python 3.12.x** installed and all required dependencies listed in `requirements.txt`:
+Paths used below:
 
-2. **Run the CLI**  
-   From the project root (`JSTProve`):
+* ONNX model: `python/models/models_onnx/doom.onnx`
+* Example input JSON: `python_testing/models/inputs/doom_input.json`
+* Artifacts: `artifacts/doom/*`
 
-   ```bash
-   python -m cli --circuit simple_circuit --compile --circuit <circuit_file_path>
-   python -m cli --circuit simple_circuit --gen_witness --witness <witness_file_path> --input <input_json_file_path> --output <output_json_file_path> --circuit_path <circuit_file_path>
-   python -m cli --circuit simple_circuit --prove --witness <witness_file_path> --proof <proof_file_path> --circuit_path <circuit_file_path>
-   python -m cli --circuit simple_circuit --verify --witness <witness_file_path> --proof <proof_file_path> --input <input_json_file_path> --output <output_json_file_path> --circuit_path <circuit_file_path>
-   ```
+### 1) Compile
 
-   Dummy demo run through:
-   ```bash
-   Demo
-   run through
-   python -m cli --circuit simple_circuit --compile --circuit_path basic_circuit.txt
-   python cli.py --circuit simple_circuit --gen_witness --witness witness.txt --input inputs/simple_circuit_input.json --output output/simple_circuit_output.json --circuit_path basic_circuit.txt
-   python cli.py --circuit simple_circuit --prove --witness witness.txt --proof proof.bin --circuit_path basic_circuit.txt
-   python cli.py --circuit simple_circuit --verify --witness witness.txt --proof proof.bin --input inputs/simple_circuit_input.json --output output/simple_circuit_output.json --circuit_path basic_circuit.txt
+Generates a circuit file and a **quantized ONNX** model.
 
-   Error about inputs not matching
-   python cli.py --circuit simple_circuit --verify --witness witness.txt --proof proof.bin --circuit_path basic_circuit.txt
-   Error around verification
-   python cli.py --circuit simple_circuit --verify --witness witness.txt --input input.json --output output.json --circuit_path basic_circuit.txt
-   run through 
-   python cli.py --circuit simple_circuit --verify --witness witness.txt --proof proof.bin --input input.json --output output.json --circuit_path basic_circuit.txt
+```bash
+python -m python.frontend.cli compile \
+  -m python/models/models_onnx/doom.onnx \
+  -c artifacts/doom/circuit.txt \
+  -q artifacts/doom/quantized.onnx
+```
 
+**Flags**
 
-   python cli.py --circuit demo_cnn --class Demo --compile --circuit_path demo_circuit.txt
-   python cli.py --circuit demo_cnn --class Demo --gen_witness --input inputs/demo_cnn_input.json --output output/demo_cnn_output.json  --circuit_path demo_circuit.txt
+* `-m/--model-path` (required): original ONNX model
+* `-c/--circuit-path` (required): output circuit path
+* `-q/--quantized-path` (required): output quantized ONNX path
 
-   ```
+---
 
+### 2) Witness
 
-   To run Doom and the relevant slices
+Reshapes/scales inputs, runs the (quantized) model to produce outputs, and writes the witness.
 
-   python cli.py --circuit doom_model --class Doom --compile --circuit_path doom_circuit.txt
-   python cli.py --circuit doom_model --class Doom --gen_witness --input inputs/doom_input.json --output output/doom_output.json  --circuit_path doom_circuit.txt
+```bash
+python -m python.frontend.cli witness \
+  -c artifacts/doom/circuit.txt \
+  -q artifacts/doom/quantized.onnx \
+  -i python_testing/models/inputs/doom_input.json \
+  -o artifacts/doom/output.json \
+  -w artifacts/doom/witness.bin
+```
 
+**Flags**
 
-   python cli.py --circuit doom_slices --class DoomConv1 --compile --circuit_path doom_conv1_circuit.txt
-   python cli.py --circuit doom_slices --class DoomConv1 --gen_witness --input inputs/doom_input.json --output output/doom_conv1_output.json  --circuit_path doom_conv1_circuit.txt
+* `-c/--circuit-path` (required): compiled circuit
+* `-q/--quantized-path` (required): quantized ONNX
+* `-i/--input-path` (required): input JSON
+* `-o/--output-path` (required): output JSON (written)
+* `-w/--witness-path` (required): witness file (written)
 
-   python cli.py --circuit doom_slices --class DoomConv2 --compile --circuit_path doom_conv2_circuit.txt
-   python cli.py --circuit doom_slices --class DoomConv2 --gen_witness --input output/doom_conv1_output.json --output output/doom_conv2_output.json  --circuit_path doom_conv2_circuit.txt
+---
 
+### 3) Prove
 
-   python cli.py --circuit doom_slices --class DoomConv3 --compile --circuit_path doom_conv3_circuit.txt
-   python cli.py --circuit doom_slices --class DoomConv3 --gen_witness --input output/doom_conv2_output.json --output output/doom_conv3_output.json  --circuit_path doom_conv3_circuit.txt
+Creates a proof from the circuit + witness.
 
-   python cli.py --circuit doom_slices --class DoomFC1 --compile --circuit_path doom_fc1_circuit.txt
-   python cli.py --circuit doom_slices --class DoomFC1 --gen_witness --input output/doom_conv3_output.json --output output/doom_fc1_output.json  --circuit_path doom_fc1_circuit.txt
+```bash
+python -m python.frontend.cli prove \
+  -c artifacts/doom/circuit.txt \
+  -w artifacts/doom/witness.bin \
+  -p artifacts/doom/proof.bin
+```
 
-   python cli.py --circuit doom_slices --class DoomFC2 --compile --circuit_path doom_fc2_circuit.txt
-   python cli.py --circuit doom_slices --class DoomFC2 --gen_witness --input output/doom_fc1_output.json --output output/doom_fc2_output.json  --circuit_path doom_fc2_circuit.txt
-   python cli.py --circuit doom_slices --class DoomFC2 --gen_witness --input output/doom_fc1_output.json --output output/doom_output.json  --circuit_path doom_fc2_circuit.txt
-   
+**Flags**
 
-   python cli.py --circuit maxpooling --class MaxPooling2D --compile --circuit_path maxpool_circuit.txt
-   python cli.py --circuit maxpooling --class MaxPooling2D --gen_witness --input inputs/maxpooling_input.json --output output/maxpooling_output.json  --circuit_path maxpool_circuit.txt
+* `-c/--circuit-path` (required): compiled circuit
+* `-w/--witness-path` (required): witness file
+* `-p/--proof-path` (required): proof file (written)
 
-   To run Net and the relevant slices
+---
 
-   python cli.py --circuit net_model --class NetModel --compile --circuit_path net_circuit.txt
-   python cli.py --circuit net_model --class NetModel --gen_witness --input inputs/net_input.json --output output/net_output.json  --circuit_path net_circuit.txt
+### 4) Verify
 
+Verifies the proof (requires the quantized model to hydrate input shapes).
 
-   python cli.py --circuit net_model --class NetConv1Model --compile --circuit_path net_conv1_circuit.txt
-   python cli.py --circuit net_model --class NetConv1Model --gen_witness --input inputs/net_input.json --output output/net_conv1_output.json  --circuit_path net_conv1_circuit.txt
+```bash
+python -m python.frontend.cli verify \
+  -c artifacts/doom/circuit.txt \
+  -q artifacts/doom/quantized.onnx \
+  -i python_testing/models/inputs/doom_input.json \
+  -o artifacts/doom/output.json \
+  -w artifacts/doom/witness.bin \
+  -p artifacts/doom/proof.bin
+```
 
-   python cli.py --circuit net_model --class NetConv2Model --compile --circuit_path net_conv2_circuit.txt
-   python cli.py --circuit net_model --class NetConv2Model --gen_witness --input output/net_conv1_output.json --output output/net_conv2_output.json  --circuit_path net_conv2_circuit.txt
+**Flags**
 
+* `-c/--circuit-path` (required): compiled circuit
+* `-q/--quantized-path` (required): quantized ONNX
+* `-i/--input-path` (required): input JSON
+* `-o/--output-path` (required): expected outputs JSON
+* `-w/--witness-path` (required): witness file
+* `-p/--proof-path` (required): proof file
 
-   python cli.py --circuit net_model --class NetFC1Model --compile --circuit_path net_fc1_circuit.txt
-   python cli.py --circuit net_model --class NetFC1Model --gen_witness --input output/net_conv2_output.json --output output/net_fc1_output.json  --circuit_path net_fc1_circuit.txt
+---
 
-   python cli.py --circuit net_model --class NetFC2Model --compile --circuit_path net_fc2_circuit.txt
-   python cli.py --circuit net_model --class NetFC2Model --gen_witness --input output/net_fc1_output.json --output output/net_fc2_output.json  --circuit_path net_fc2_circuit.txt
+## Notes & gotchas
 
-   python cli.py --circuit net_model --class NetFC3Model --compile --circuit_path net_fc3_circuit.txt
-   python cli.py --circuit net_model --class NetFC3Model --gen_witness --input output/net_fc2_output.json --output output/net_fc3_output.json  --circuit_path net_fc3_circuit.txt
-   python cli.py --circuit net_model --class NetFC3Model --gen_witness --input output/net_fc2_output.json --output output/net_output.json  --circuit_path net_fc3_circuit.txt
-   
-
-   python cli.py --circuit net_model --class NetFC3Model --compile --circuit_path slices/segment_4/segment_4_circuit.compiled 
-   python cli.py --circuit net_model --class NetFC3Model --gen_witness --input slices/segment_4/segment_4_input.json --output slices/segment_4/segment_4_output.json  --circuit_path slices/segment_4/segment_4_circuit.compiled --witness slices/segment_4/segment_4_witness.compiled
-   python cli.py --circuit net_model --class NetFC3Model --prove --witness slices/segment_4/segment_4_witness.compiled  --circuit_path slices/segment_4/segment_4_circuit.compiled  --proof slices/segment_4/segment_4_proof.bin
-
-   python cli.py --circuit net_model --class NetFC3Model --verify --input slices/segment_4/segment_4_input.json --output slices/segment_4/segment_4_output.json  --circuit_path slices/segment_4/segment_4_circuit.compiled --witness slices/segment_4/segment_4_witness.compiled --proof slices/segment_4/segment_4_proof.bin
-
-
-   RUSTFLAGS="-C target-cpu=native" cargo run \
-  --manifest-path Expander/Cargo.toml \
-  --bin expander-exec \
-  --release -- prove \
-
-  env RUSTFLAGS="-C target-cpu=native" mpiexec -n 1 cargo run --manifest-path Expander/Cargo.toml --bin expander-exec --release -- -p Raw prove -c slices/segment_4/segment_4_circuit.compiled -w slices/segment_4/segment_4_witness.compiled -o slices/segment_4/segment_4_proof.bin
-
-  env RUSTFLAGS="-C target-cpu=native" mpiexec -n 1 cargo run --manifest-path Expander/Cargo.toml --bin expander-exec --release -- -p Raw verify -c slices/segment_4/segment_4_circuit.compiled -w slices/segment_4/segment_4_witness.compiled -i slices/segment_4/segment_4_proof.bin
-  
-
-   <!-- python cli.py --circuit maxpooling --class MaxPooling2D --compile --circuit_path maxpool_circuit.txt
-   python cli.py --circuit maxpooling --class MaxPooling2D --gen_witness --input inputs/maxpooling_input.json --output output/maxpooling_output.json  --circuit_path maxpool_circuit.txt -->
-
-
-
-   python cli.py --circuit eth_fraud --class Eth --compile --circuit_path eth_fraud_circuit.txt
-   python cli.py --circuit eth_fraud --class Eth --gen_witness --input inputs/eth_fraud_input.json --output output/eth_fraud_output.json  --circuit_path eth_fraud_circuit.txt
-
-
-
-   If you see this error, it means you need some private variables:
-   called `Result::unwrap()` on an `Err` value: UserError("dest ir circuit invalid: circuit has no inputs")
-
-
-   pipreqs ./ --ignore .venv,.venv_new
-
-   ONNX 1.17 does not support python 3.13
-   brew install libffi, open
-
-
+* The default circuit is **GenericModelONNX**; you don’t pass a circuit class or name.
+* All paths are **mandatory**; no automatic discovery or inference.
+* Use a **`.onnx`** file for `--quantized-path`. If you see `ONNXRuntimeError … Protobuf parsing failed`, you likely pointed to a `.json` by mistake.
+* If the runner isn't found, make sure you're launching from the repo root.
+* The compile step will auto-build the runner if needed.

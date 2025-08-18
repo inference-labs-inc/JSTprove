@@ -1,8 +1,8 @@
-pub mod relu;
 pub mod conv;
-pub mod gemm;
-pub mod maxpool;
-pub mod reshape;
-pub mod flatten;
 pub mod constant;
+pub mod flatten;
+pub mod gemm;
 pub mod layer_ops;
+pub mod maxpool;
+pub mod relu;
+pub mod reshape;

@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
 /// External crate imports
-use ndarray::{ArrayD, Array4, Ix4};
+use ndarray::{Array4, ArrayD, Ix4};
 
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
 use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{constants::{DILATION, KERNEL_SHAPE, PADS, STRIDES}, onnx_model::{extract_params_and_expected_shape, get_param}}};
 /// Internal crate imports
-use super::super::utils::core_math::{unconstrained_to_bits, assert_is_bitstring_and_reconstruct};
+use super::super::utils::core_math::{assert_is_bitstring_and_reconstruct, unconstrained_to_bits};
 
 // -------- Struct --------
 #[allow(dead_code)]
@@ -294,7 +294,6 @@ pub fn setup_maxpooling_2d_params(
     kernel_shape: &Vec<usize>,
     strides: &Vec<usize>,
     dilation: &Vec<usize>,
-
 ) -> (Vec<usize>, Vec<usize>, Vec<usize>, Vec<usize>) {
     let padding = match padding.len() {
         0 => vec![0; 4],
@@ -305,7 +304,7 @@ pub fn setup_maxpooling_2d_params(
         _ => panic!("Padding must have between 1 and 4 elements"),
     };
 
-    let kernel_shape  = match kernel_shape.len() {
+    let kernel_shape = match kernel_shape.len() {
         1 => vec![kernel_shape[0]; 2],
         2 => vec![kernel_shape[0], kernel_shape[1]],
         _ => panic!("Kernel shape must have between 1 and 2 elements"),
@@ -334,11 +333,16 @@ pub fn setup_maxpooling_2d(
     dilation: &Vec<usize>,
     ceil_mode: bool,
     x_shape: &Vec<usize>,
+) -> (
+    Vec<usize>,
+    Vec<usize>,
+    Vec<usize>,
+    Vec<usize>,
+    Vec<[usize; 2]>,
+) {
+    let (pads, kernel_shape, strides, dilation) =
+        setup_maxpooling_2d_params(&padding, &kernel_shape, &strides, &dilation);
 
-
-)-> (Vec<usize>, Vec<usize>, Vec<usize>, Vec<usize>, Vec<[usize; 2]>) {
-    let (pads, kernel_shape, strides, dilation) = setup_maxpooling_2d_params(&padding, &kernel_shape, &strides, &dilation);
-    
     let n_dims = kernel_shape.len();
 
     // Create new_pads as Vec<[usize; 2]>
@@ -346,7 +350,6 @@ pub fn setup_maxpooling_2d(
     for i in 0..n_dims {
         new_pads[i] = [pads[i], pads[i + n_dims]];
     }
-
 
     let input_spatial_shape = &x_shape[2..];
     let mut output_spatial_shape = vec![0; input_spatial_shape.len()];
@@ -368,14 +371,18 @@ pub fn setup_maxpooling_2d(
             output_spatial_shape[i] = (numerator / strides[i]) + 1;
         }
     }
-    return (kernel_shape, strides, dilation, output_spatial_shape, new_pads);
+    return (
+        kernel_shape,
+        strides,
+        dilation,
+        output_spatial_shape,
+        new_pads,
+    );
 }
-
 
 /// Reshape a flat array into a 4D `ArrayD`.
 pub fn reshape_4d(flat: &[Variable], dims: [usize; 4]) -> ArrayD<Variable> {
-    let array4 = Array4::from_shape_vec(dims, flat.to_vec())
-        .expect("reshape_4d: shape mismatch");
+    let array4 = Array4::from_shape_vec(dims, flat.to_vec()).expect("reshape_4d: shape mismatch");
     array4.into_dyn()
 }
 
@@ -395,7 +402,11 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
     let batch = x_shape[0];
     let channels = x_shape[1];
     let height = x_shape[2];
-    let width = if kernel_shape.len() > 1 { x_shape[3] } else { 1 };
+    let width = if kernel_shape.len() > 1 {
+        x_shape[3]
+    } else {
+        1
+    };
 
     let pooled_height = output_spatial_shape[0];
     let pooled_width = if kernel_shape.len() > 1 {
@@ -417,13 +428,12 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
     };
 
     let dilation_h = dilation[0];
-    let dilation_w = if dilation.len() > 1 {
-        dilation[1]
-    } else {
-        1
-    };
+    let dilation_w = if dilation.len() > 1 { dilation[1] } else { 1 };
 
-    let array4 = x.clone().into_dimensionality::<Ix4>().expect("Expected 4D input for maxpooling");
+    let array4 = x
+        .clone()
+        .into_dimensionality::<Ix4>()
+        .expect("Expected 4D input for maxpooling");
 
     let context = MaxAssertionContext::new(api, shift_exponent);
 

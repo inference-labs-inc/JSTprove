@@ -192,11 +192,11 @@ fn conv_shape_4_setup_res<C: Config, Builder: RootAPI<C>>(
     shape_3: usize,
 ) -> ArrayD<Variable> {
     let shape = vec![shape_0, shape_1, shape_2, shape_3];
-    
+
     if bias.len() > 0 {
         // Create array filled with bias values
         let mut res = ArrayD::from_elem(shape, bias[[0]]);
-        
+
         for i in 0..shape_0 {
             for j in 0..shape_1 {
                 for k in 0..shape_2 as usize {
@@ -214,10 +214,7 @@ fn conv_shape_4_setup_res<C: Config, Builder: RootAPI<C>>(
     }
 }
 
-fn have_matching_shapes(
-    x: &ArrayD<Variable>,
-    y: &ArrayD<Variable>,
-) -> bool {
+fn have_matching_shapes(x: &ArrayD<Variable>, y: &ArrayD<Variable>) -> bool {
     x.shape() == y.shape()
 }
 
@@ -231,7 +228,6 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
     weights: &ArrayD<Variable>,
     bias: &ArrayD<Variable>,
 ) -> ArrayD<Variable> {
-
     if pads.len() < 4 {
         panic!("Pads is not long enough");
     }
@@ -267,7 +263,6 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
     let eh = h_out * sth;
     let ew = w_out * stw;
 
-
     let mut res = conv_shape_4_setup_res(
         api,
         bias,
@@ -280,17 +275,19 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
     for n in 0..s_n {
         for nw in 0..weights.shape()[0] {
             for c in 0..s_c {
-                let w = weights.slice(s![nw..nw + 1, c..c + 1, .., ..]).into_dyn().to_owned();
-                
+                let w = weights
+                    .slice(s![nw..nw + 1, c..c + 1, .., ..])
+                    .into_dyn()
+                    .to_owned();
+
                 for io in (bh..eh as i32).step_by(sth as usize) {
                     let hr = (io - bh) / sth as i32;
                     if hr >= h_out as i32 {
                         continue;
                     }
-                    let i = io + kh as i32 % 2; 
+                    let i = io + kh as i32 % 2;
                     let ih1 = max(0, i + oh) as usize;
                     let ih2 = min(i + oh + kh as i32, s_h as i32) as usize;
-
 
                     for jo in (bw..ew as i32).step_by(stw as usize) {
                         let wr = (jo - bw) / stw as i32;
@@ -302,21 +299,24 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
                         let iw2 = min(j + ow + kw as i32, s_w as i32) as usize;
 
                         let n_usize = n as usize;
-                        
-                        let img = input_arr.slice(s![n_usize..n_usize + 1, c..c + 1, ih1..ih2, iw1..iw2]).into_dyn().to_owned();
+
+                        let img = input_arr
+                            .slice(s![n_usize..n_usize + 1, c..c + 1, ih1..ih2, iw1..iw2])
+                            .into_dyn()
+                            .to_owned();
 
                         if !have_matching_shapes(&img, &w) {
                             let jh1 = max(-oh - i, 0) as usize;
-                            let jh2 =
-                                min(kh as i32, kh as i32 + s_h as i32 - (i + oh + kh as i32))
-                                    as usize;
+                            let jh2 = min(kh as i32, kh as i32 + s_h as i32 - (i + oh + kh as i32))
+                                as usize;
 
                             let jw1 = max(-ow - j, 0) as usize;
-                            let jw2 =
-                                min(kw as i32, kw as i32 + s_w as i32 - (j + ow + kw as i32))
-                                    as usize;
-                            let w_ = w.slice(s![0..1, 0..1, jh1..jh2, jw1..jw2]).into_dyn().to_owned();
-
+                            let jw2 = min(kw as i32, kw as i32 + s_w as i32 - (j + ow + kw as i32))
+                                as usize;
+                            let w_ = w
+                                .slice(s![0..1, 0..1, jh1..jh2, jw1..jw2])
+                                .into_dyn()
+                                .to_owned();
 
                             if !have_matching_shapes(&w_.clone(), &img) {
                                 panic!("Unexpected shape!! img != w_, oh={oh}, ow={ow}, i={i}, j={j}, kh={kh}, kw={kw}, sH={s_h}, sW={s_w}, sth={sth}, stw={stw}")
@@ -346,9 +346,11 @@ fn flatten_and_perform_dot<C: Config, Builder: RootAPI<C>>(
     img: &ArrayD<Variable>,
     w_: &ArrayD<Variable>,
 ) -> Variable {
-    let flattened_img: ArrayD<&Variable> = ArrayD::from_shape_vec(ndarray::IxDyn(&[img.len()]), img.iter().collect()).unwrap();
-    let flattened_w_: ArrayD<&Variable> = ArrayD::from_shape_vec(ndarray::IxDyn(&[w_.len()]), w_.iter().collect()).unwrap();
-    
+    let flattened_img: ArrayD<&Variable> =
+        ArrayD::from_shape_vec(ndarray::IxDyn(&[img.len()]), img.iter().collect()).unwrap();
+    let flattened_w_: ArrayD<&Variable> =
+        ArrayD::from_shape_vec(ndarray::IxDyn(&[w_.len()]), w_.iter().collect()).unwrap();
+
     let mut sum = api.constant(0);
     for (a, b) in flattened_img.iter().zip(flattened_w_.iter()) {
         let prod = api.mul(*a, *b);
@@ -361,7 +363,7 @@ pub fn conv_4d_run<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
     api: &mut Builder,
     input_arr: ArrayD<Variable>,
     weights: ArrayD<Variable>,
-    bias: ArrayD<Variable>,  // formerly Vec<Variable>
+    bias: ArrayD<Variable>, // formerly Vec<Variable>
     dilations_in: &Vec<u32>,
     kernel_shape_in: &Vec<u32>,
     pads_in: &Vec<u32>,
@@ -383,7 +385,6 @@ pub fn conv_4d_run<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
         input_shape_in,
     );
     not_yet_implemented_conv(input_shape_in, group_in, &dilations);
-    
 
     let out = conv_shape_4(
         api,
@@ -398,7 +399,8 @@ pub fn conv_4d_run<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
 
     if quantized {
         let scaling_exponent = scaling_in as usize;
-        let shift_exponent = v_plus_one.checked_sub(1)
+        let shift_exponent = v_plus_one
+            .checked_sub(1)
             .expect("v_plus_one must be at least 1");
         rescale_array(api, out, scaling_exponent, shift_exponent, is_relu)
     } else {

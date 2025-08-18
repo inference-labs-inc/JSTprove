@@ -68,7 +68,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Context for asserting a ReLU operation on signed integers represented in least residue form.
-/// 
+///
 /// # Details
 /// - We assume each input `x` satisfies:  
 ///   `x = c mod p`, where `c ∈ [-2^s, 2^s - 1]`
@@ -92,7 +92,7 @@ impl ReluContext {
     /// Constructs a `ReluContext` with the given `shift_exponent` (s).
     ///
     /// Precomputes `shift = 2^s` as a constant lifted into the circuit.
-    /// 
+    ///
     /// # Panics
     /// Panics if `shift_exponent ≥ 32` due to `u32` shift overflow.
     pub fn new<C: Config, Builder: RootAPI<C>>(api: &mut Builder, shift_exponent: usize) -> Self {
@@ -116,7 +116,7 @@ impl ReluContext {
 /// # Overview
 /// The input `x` is assumed to be the least nonnegative residue of a signed integer `c`,
 /// where `c` is considered *valid* if it lies in the symmetric range:
-/// 
+///
 /// ```text
 ///     c ∈ [-S, T - S] = [-2^s, 2^s - 1]
 /// ```
