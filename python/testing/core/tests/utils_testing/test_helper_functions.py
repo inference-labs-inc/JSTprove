@@ -592,5 +592,3 @@ def test_create_folder_creates(mock_exists, mock_mkdir):
 def test_create_folder_skips_existing(mock_exists, mock_mkdir):
     create_folder("existing")
     mock_mkdir.assert_not_called()
-
-

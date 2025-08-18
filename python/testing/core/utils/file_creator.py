@@ -58,4 +58,3 @@ if __name__ == "__main__":
     copy_and_rename_file(source_file, destination_file)
 
     add_bin_section_to_toml("ExpanderCompilerCollection/expander_compiler/Cargo.toml", circuit_name)
-

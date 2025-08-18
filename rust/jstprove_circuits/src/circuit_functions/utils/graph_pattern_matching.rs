@@ -9,14 +9,17 @@ Pattern matching of layers
 
 */
 
-pub fn optimization_skip_layers(optimization_match: Option<&Vec<OptimizationMatch>>, outputs: Vec<String>) -> Option<(GraphPattern, Vec<String>, Vec<String>)> {
+pub fn optimization_skip_layers(
+    optimization_match: Option<&Vec<OptimizationMatch>>,
+    outputs: Vec<String>,
+) -> Option<(GraphPattern, Vec<String>, Vec<String>)> {
     match optimization_match {
         Some(opt) => {
             let pattern = opt[0].pattern;
             let mut new_outputs = Vec::new();
             let mut skipped_layers: Vec<String> = Vec::new();
             // Loop through all potential branches
-            for opt_match in opt{
+            for opt_match in opt {
                 // Assert all the patterns are the same
                 assert!(pattern.name == opt_match.pattern.name);
                 // Get final layer of pattern
@@ -24,10 +27,13 @@ pub fn optimization_skip_layers(optimization_match: Option<&Vec<OptimizationMatc
                 let final_layer = layers[layers.len() - 1].clone();
                 let first_layer = layers[0].clone();
 
-                // Assert outputs match 
+                // Assert outputs match
                 eprintln!("{:?}", first_layer.outputs);
                 eprintln!("{:?}", outputs);
-                assert!(first_layer.outputs.iter().all(|item| outputs.contains(item)));
+                assert!(first_layer
+                    .outputs
+                    .iter()
+                    .all(|item| outputs.contains(item)));
                 new_outputs.extend(final_layer.outputs);
                 skipped_layers.extend(opt_match.layers.iter().map(|layer| layer.name.clone()))
             }
@@ -40,10 +46,10 @@ pub fn optimization_skip_layers(optimization_match: Option<&Vec<OptimizationMatc
             // let unique_old_outputs: Vec<String> = set.into_iter().collect();
 
             // assert!(unique_new_outputs.len() == unique_old_outputs.len());
-    
+
             Some((pattern, unique_new_outputs, skipped_layers))
-        },
-        None => return None
+        }
+        None => return None,
     }
 }
 
@@ -108,10 +114,11 @@ fn dfs<'a>(
         .iter()
         .filter(|l| {
             l.op_type == ops[depth]
-                && l.inputs.iter().any(|inp| current_layer.outputs.contains(inp))
+                && l.inputs
+                    .iter()
+                    .any(|inp| current_layer.outputs.contains(inp))
         })
         .collect();
-
 
     match mode {
         BranchMatchMode::Any => {
@@ -194,7 +201,7 @@ pub struct GraphPattern {
 #[derive(Debug, Clone)]
 pub struct OptimizationMatch {
     pub pattern: GraphPattern,
-    pub layers: Vec<ONNXLayer>
+    pub layers: Vec<ONNXLayer>,
 }
 
 pub struct PatternMatcher {
@@ -208,18 +215,27 @@ impl PatternMatcher {
         }
     }
 
-    pub fn run(&self, layers: &[ONNXLayer]) -> HashMap<std::string::String, Vec<OptimizationMatch>>{
+    pub fn run(
+        &self,
+        layers: &[ONNXLayer],
+    ) -> HashMap<std::string::String, Vec<OptimizationMatch>> {
         use std::time::SystemTime;
         let now = SystemTime::now();
 
         let mut all_matches: HashMap<String, Vec<OptimizationMatch>> = HashMap::new();
-   
+
         for pat in &self.patterns {
             let matches = find_pattern_matches(layers, pat, BranchMatchMode::All);
             eprintln!("Pattern `{}` matched {} times", pat.name, matches.len());
 
-            for m in matches{
-                all_matches.entry(m[0].name.clone()).or_default().push(OptimizationMatch { pattern: *pat, layers: m.into_iter().cloned().collect()});
+            for m in matches {
+                all_matches
+                    .entry(m[0].name.clone())
+                    .or_default()
+                    .push(OptimizationMatch {
+                        pattern: *pat,
+                        layers: m.into_iter().cloned().collect(),
+                    });
             }
             // eprintln!("{:?}", matches[0]);
         }
@@ -228,7 +244,10 @@ impl PatternMatcher {
         match now.elapsed() {
             Ok(elapsed) => {
                 // it prints '2'
-                eprintln!("Model pattern match took: {} nano seconds", elapsed.as_nanos());
+                eprintln!(
+                    "Model pattern match took: {} nano seconds",
+                    elapsed.as_nanos()
+                );
             }
             Err(e) => {
                 // an error occurred!
@@ -239,7 +258,6 @@ impl PatternMatcher {
         // panic!("");
     }
 }
-
 
 /*
 

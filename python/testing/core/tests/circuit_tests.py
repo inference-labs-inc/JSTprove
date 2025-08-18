@@ -70,4 +70,3 @@ if __name__ == "__main__":
     print("Testing Scaled Matrix Product")
     test_circuit = ScaledMatrixProduct()
     test_circuit.base_testing(input_folder,proof_folder, temp_folder, weights_folder, circuit_folder, proof_system, output_folder)
-

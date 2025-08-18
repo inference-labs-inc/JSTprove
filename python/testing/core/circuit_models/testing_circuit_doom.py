@@ -314,5 +314,3 @@ class Doom():
 
 if __name__ == "__main__":
     Doom().run_circuit()
-
-

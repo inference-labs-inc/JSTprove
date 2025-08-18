@@ -57,8 +57,7 @@ fn flatten_recursive(value: &Value, out: &mut Vec<i64>) {
             // let mut file = File::create("foo.txt").unwrap();
             // file.write_all(format!("{:#?}",value).as_bytes()).unwrap();
             panic!("Unexpected non-number value in array {:#?}", value)
-            
-        },
+        }
     }
 }
 
@@ -96,7 +95,9 @@ pub fn get_nd_circuit_inputs<C: Config>(
 }
 
 // TODO change 64 bits to 128 across the board, or add checks. If more than 64 bits, fail
-fn convert_val_to_field_element<C: Config>(val: i64) -> <<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField {
+fn convert_val_to_field_element<C: Config>(
+    val: i64,
+) -> <<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField {
     let converted = if val < 0 {
         CircuitField::<C>::from_u256(U256::from(val.abs() as u64)).neg()
     } else {

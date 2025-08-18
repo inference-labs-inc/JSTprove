@@ -48,16 +48,16 @@ use super::core_math::{assert_is_bitstring_and_reconstruct, unconstrained_to_bit
 
 /// Holds integer and circuit-level constants for rescaling by `α = 2^κ` and shifting by `S = 2^s`.
 pub struct RescalingContext {
-    pub scaling_exponent: usize,    // κ: exponent such that α = 2^κ
-    pub shift_exponent: usize,      // s: exponent such that S = 2^s
+    pub scaling_exponent: usize, // κ: exponent such that α = 2^κ
+    pub shift_exponent: usize,   // s: exponent such that S = 2^s
 
-    pub scaling_factor_: u32,       // α = 2^κ, as a native u32
-    pub shift_: u32,                // S = 2^s, as a native u32
-    pub scaled_shift_: U256,        // α·S = 2^{κ + s}, as a U256 for overflow safety
+    pub scaling_factor_: u32, // α = 2^κ, as a native u32
+    pub shift_: u32,          // S = 2^s, as a native u32
+    pub scaled_shift_: U256,  // α·S = 2^{κ + s}, as a U256 for overflow safety
 
-    pub scaling_factor: Variable,   // α = 2^κ, lifted to the circuit as a Variable
-    pub shift: Variable,            // S = 2^s, lifted to the circuit as a Variable
-    pub scaled_shift: Variable,     // α·S = 2^{κ + s}, lifted to the circuit as a Variable
+    pub scaling_factor: Variable, // α = 2^κ, lifted to the circuit as a Variable
+    pub shift: Variable,          // S = 2^s, lifted to the circuit as a Variable
+    pub scaled_shift: Variable,   // α·S = 2^{κ + s}, lifted to the circuit as a Variable
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,27 +85,27 @@ impl RescalingContext {
         scaling_exponent: usize,
         shift_exponent: usize,
     ) -> Self {
-        let scaling_factor_ = 1u32.checked_shl(scaling_exponent as u32)
+        let scaling_factor_ = 1u32
+            .checked_shl(scaling_exponent as u32)
             .expect("scaling_exponent < 32"); // α = 2^κ
-        let shift_ = 1u32.checked_shl(shift_exponent as u32)
-            .expect("shift_exponent < 32");   // S = 2^s
+        let shift_ = 1u32
+            .checked_shl(shift_exponent as u32)
+            .expect("shift_exponent < 32"); // S = 2^s
         let scaled_shift_ = U256::from(scaling_factor_) * U256::from(shift_); // α·S = 2^{κ + s}
 
         let scaling_factor = api.constant(scaling_factor_); // α as Variable
-        let shift = api.constant(shift_);                   // S as Variable
-        let scaled_shift = api.constant(
-            CircuitField::<C>::from_u256(scaled_shift_)
-        ); // α·S as Variable
+        let shift = api.constant(shift_); // S as Variable
+        let scaled_shift = api.constant(CircuitField::<C>::from_u256(scaled_shift_)); // α·S as Variable
 
         Self {
-            scaling_exponent,  // κ
-            shift_exponent,    // s
-            scaling_factor_,   // α = 2^κ
-            shift_,            // S = 2^s
-            scaled_shift_,     // α·S = 2^{κ + s}
-            scaling_factor,    // α as Variable
-            shift,             // S as Variable
-            scaled_shift,      // α·S as Variable
+            scaling_exponent, // κ
+            shift_exponent,   // s
+            scaling_factor_,  // α = 2^κ
+            shift_,           // S = 2^s
+            scaled_shift_,    // α·S = 2^{κ + s}
+            scaling_factor,   // α as Variable
+            shift,            // S as Variable
+            scaled_shift,     // α·S as Variable
         }
     }
 }
@@ -156,7 +156,7 @@ impl RescalingContext {
 /// - `apply_relu`: If `true`, returns `max(q, 0)` instead of `q`.
 pub fn rescale<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    context: &RescalingContext, 
+    context: &RescalingContext,
     dividend: Variable,
     apply_relu: bool,
 ) -> Variable {
@@ -167,7 +167,7 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
     let shifted_q = api.unconstrained_int_div(shifted_dividend, context.scaling_factor_); // q^♯
     let remainder = api.unconstrained_mod(shifted_dividend, context.scaling_factor_); // r
 
-    // Step 3: Enforce α·S + c = α·q^♯ + r 
+    // Step 3: Enforce α·S + c = α·q^♯ + r
     let rhs_first_term = api.mul(context.scaling_factor, shifted_q);
     let rhs = api.add(rhs_first_term, remainder);
     api.assert_is_equal(shifted_dividend, rhs);
@@ -178,7 +178,8 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
     api.assert_is_equal(remainder, rem_recon);
 
     // Step 5: Range-check q^♯ ∈ [0, 2^(s + 1) − 1] using s + 1 bits
-    let n_bits_q = context.shift_exponent
+    let n_bits_q = context
+        .shift_exponent
         .checked_add(1)
         .expect("shift_exponent + 1 fits in usize");
     let q_bits = unconstrained_to_bits(api, shifted_q, n_bits_q);
@@ -201,7 +202,6 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
         quotient
     }
 }
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: rescale_array
@@ -232,5 +232,3 @@ pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
     let context = RescalingContext::new(api, scaling_exponent, shift_exponent);
     array.map(|x| rescale(api, &context, *x, apply_relu))
 }
-
-
