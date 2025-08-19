@@ -73,4 +73,3 @@ class UnsupportedOpError(QuantizationError):
             error_msg += f" in node '{node_name}'"
         error_msg += ". Please check out the documentation for supported layers."
         super().__init__(error_msg)
-

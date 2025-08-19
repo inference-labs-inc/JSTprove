@@ -1,44 +1,47 @@
 import pytest
+<<<<<<< HEAD
 from python.core.utils.model_registry import get_models_to_test, list_available_models
+=======
+from python.testing.core.utils.model_registry import (
+    get_models_to_test,
+    list_available_models,
+)
+
+>>>>>>> main
 
 def pytest_addoption(parser):
     parser.addoption(
         "--model",
         action="append",
         default=None,
-        help="Model(s) to test. Use multiple times to test more than one."
+        help="Model(s) to test. Use multiple times to test more than one.",
     )
     parser.addoption(
         "--list-models",
         action="store_true",
         default=False,
-        help="List all available circuit models."
+        help="List all available circuit models.",
     )
     parser.addoption(
         "--source",
         action="store",
         choices=["class", "pytorch", "onnx"],
         default=None,
-        help="Restrict models to a specific source: class, pytorch, or onnx."
+        help="Restrict models to a specific source: class, pytorch, or onnx.",
     )
     parser.addoption(
-        "--unit",
-        action="store_true",
-        default=False,
-        help="Run only unit tests."
+        "--unit", action="store_true", default=False, help="Run only unit tests."
     )
     parser.addoption(
         "--integration",
         action="store_true",
         default=False,
-        help="Run only integration tests."
+        help="Run only integration tests.",
     )
     parser.addoption(
-        "--e2e",
-        action="store_true",
-        default=False,
-        help="Run only end-to-end tests."
+        "--e2e", action="store_true", default=False, help="Run only end-to-end tests."
     )
+
 
 def pytest_collection_modifyitems(config, items):
     run_unit = config.getoption("--unit")
@@ -76,9 +79,14 @@ def pytest_generate_tests(metafunc):
         selected_source = metafunc.config.getoption("source")
 
         models = get_models_to_test(selected_models, selected_source)
-        ids = [f"{model.name}:{model.source}" for model in models]  # Extract readable names
+        ids = [
+            f"{model.name}:{model.source}" for model in models
+        ]  # Extract readable names
 
-        metafunc.parametrize("model_fixture", models, indirect=True, scope="module", ids=ids)
+        metafunc.parametrize(
+            "model_fixture", models, indirect=True, scope="module", ids=ids
+        )
+
 
 def pytest_configure(config):
     # If the --list-models option is used, list models and exit
@@ -87,4 +95,6 @@ def pytest_configure(config):
         print("\nAvailable Circuit Models:")
         for model in available_models:
             print(f"- {model}")
-        pytest.exit("Exiting after listing available models.")  # This prevents tests from running
+        pytest.exit(
+            "Exiting after listing available models."
+        )  # This prevents tests from running

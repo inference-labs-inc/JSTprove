@@ -1,14 +1,13 @@
 use expander_compiler::frontend::internal::DumpLoadTwoVariables;
 use expander_compiler::frontend::Config;
+use gkr_engine::{FieldEngine, GKREngine};
 use serde::de::DeserializeOwned;
 use std::io::Read;
-use gkr_engine::{GKREngine, FieldEngine};
-
 
 /// Implement io_reader to read inputs and outputs of the circuit.
-/// 
+///
 /// This is primarily used for witness generation
-pub trait IOReader<CircuitType,C: Config>
+pub trait IOReader<CircuitType, C: Config>
 where
     CircuitType: Default
         +
