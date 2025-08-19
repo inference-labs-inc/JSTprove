@@ -17,7 +17,7 @@ This page covers setting up JSTProve for local development and CLI use.
 ## 1) Clone and create a virtualenv
 
 ```bash
-git clone <YOUR_JSTPROVE_REPO_URL>
+git clone <https://github.com/inference-labs-inc/JSTProve.git>
 cd jstprove
 
 # create & activate a virtualenv
