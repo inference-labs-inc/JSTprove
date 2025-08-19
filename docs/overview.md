@@ -20,7 +20,7 @@ You bring an **ONNX** model; JSTProve handles **quantization**, **circuit genera
 ```text
 ONNX model  ──► Quantizer ──► Circuit (ECC/Expander) ──► Witness ──► Proof ──► Verify
                   (Py)            (Rust)                 (Rust)       (Rust)    (Rust)
-
+```
 ---
 
 ## Supported operators (current)
