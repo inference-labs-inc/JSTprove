@@ -15,8 +15,42 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  formatting-and-linting:
+    name: Check Formatting and Linting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      # Setup Python
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.10"
+      
+      # Setup Rust
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2025-03-27
+          components: rustfmt, clippy
+          override: true
+      
+      # Run formatters and linters
+      - name: Install pre-commit
+        run: pip install pre-commit
+      
+      - name: Run pre-commit checks
+        run: pre-commit run --all-files --show-diff-on-failure
+        
+      # Additional Rust checks
+      - name: Run cargo fmt check
+        run: cargo fmt --all -- --check
+        
+      - name: Run cargo clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
+  build:
+    needs: formatting-and-linting
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,14 +58,13 @@ jobs:
         uses: actions/setup-python@v3
         with:
           python-version: "3.10"  #Should we specify more versions?
-      - name: Check Formatting
-      - run: pip install pre-commit
-      - run: pre-commit run --show-diff-on-failure
+      
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pytest pytest-html
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      
       - name: Install OMPI
         run: |
           sudo apt-get update && sudo apt-get install -y \
@@ -40,12 +73,14 @@ jobs:
             libclang-dev \
             clang \
             openmpi-bin \
+      
       - name: Clone ECC
         run: git clone https://github.com/PolyhedraZK/Expander.git
-      - name: Run E2E Tests with Standard Model #TODO: Have a standardized model to run from, multiple sources (other than ONNX)?
+      
+      - name: Run E2E Tests with Standard Model
         run: |
           mkdir -p report
-          pytest --e2e --model net_model --source onnx -k "not witness_prove_verify_true_inputs_dev_expander_call" --html=report/e2e_tests.html #TODO: Should configure E2E tests to run.
+          pytest --e2e --model net_model --source onnx -k "not witness_prove_verify_true_inputs_dev_expander_call" --html=report/e2e_tests.html
 
       - name: Upload Pytest HTML Report
         uses: actions/upload-artifact@v4

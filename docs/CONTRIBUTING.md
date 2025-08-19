@@ -10,8 +10,8 @@ consistent with project standards.
 1. **Clone the repository**:
 
 ```bash
-git clone <repo-url>
-cd <repo-name>
+git clone https://github.com/inference-labs-inc/JSTProve.git
+cd JSTProve
 ```
 
 2. **Create a virtual environment** (recommended):
@@ -88,6 +88,8 @@ stage the files again, and commit.
 
 * Always make sure your branch is up-to-date with the main branch.
 * Ensure all pre-commit hooks pass locally before opening a PR.
+* Run the full test suite locally and update/add tests as needed to cover your changes.
+* Update documentation (README, code comments, API docs, etc.) if your changes affect usage or behavior.
 * The CI pipeline will also run formatting checks and tests. Any failures must be resolved before merging.
 
 ---

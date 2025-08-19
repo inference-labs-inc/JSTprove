@@ -1,7 +1,31 @@
 repos:
-  # Rustfmt from rust-lang repo
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:
       - id: end-of-file-fixer
         files: \.(py|rs)$
+      - id: trailing-whitespace
+        files: \.(py|rs)$
+
+  # Python formatting with black
+  - repo: https://github.com/psf/black
+    rev: 24.2.0
+    hooks:
+      - id: black
+        language_version: python3.10
+
+  # Python linting with ruff
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.3
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+
+  # Rust formatting with rustfmt
+  - repo: https://github.com/doublify/pre-commit-rust
+    rev: v1.0
+    hooks:
+      - id: fmt
+        args: ['--manifest-path=./Cargo.toml', '--all', '--', '--check']
+      - id: clippy
+        args: ['--manifest-path=./Cargo.toml', '--all', '--', -D, warnings]
