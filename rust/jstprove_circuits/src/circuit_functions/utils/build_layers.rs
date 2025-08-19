@@ -24,11 +24,9 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
     const V_PLUS_ONE: usize = N_BITS;
     const TWO_V: u32 = 1 << (V_PLUS_ONE - 1);
     let alpha_two_v: u64 = ((1 << circuit_params.scaling) * TWO_V) as u64;
-
     /*
     TODO: Inject weights + bias data with external functions instead of regular assignment in function.
      */
-
     let w_and_b_map: HashMap<String, ONNXLayer> = w_and_b.w_and_b.clone()
         .into_iter()
         .map(|layer| (layer.name.clone(), layer))
