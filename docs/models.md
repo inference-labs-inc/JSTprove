@@ -1,0 +1,76 @@
+# Models
+
+This page explains what kinds of models JSTProve supports and how they're handled internally.
+
+---
+
+## Supported operators
+
+- **Linear:** Fully Connected / **GEMM**, **MatMul**
+- **Convolution:** **Conv2D**
+- **Activation:** **ReLU**
+- **Pooling:** **MaxPool2D**
+
+---
+
+## ONNX expectations
+
+- Export models with ops limited to **Conv2D**, **GEMM/MatMul**, **MaxPool2D**, **ReLU**.
+- **Dynamic dimensions** (e.g., batch size = `-1`) are normalized to at least `1` internally for shape inference.
+- **Single-input** models are the standard path. Multi-input models may require customized input handling (provide all inputs with the correct names and shapes).
+
+**Tip:** Keep inputs in **NCHW** for Conv2D (batch, channels, height, width). If your exporter uses a different layout, convert before running JSTProve.
+
+---
+
+## Quantization
+
+- Quantization is **automatic** in the pipeline during **compile**.
+- Internally, inputs and weights are scaled to integers (power-of-two base), and tensors are reshaped to the expected shapes before witness generation.
+- The CLI's **witness** and **verify** stages take care of **rescale + reshape** via circuit helpers.
+
+**Important:** Always pass a **`.onnx`** file to `--quantized-path` (not `.json`).  
+If you pass a `.json` by mistake you'll get an ONNX runtime parse error.
+
+---
+
+## Input / Output JSON
+
+- **Input JSON** should contain your model inputs as numeric arrays.  
+  - If values are floats, they'll be **scaled and rounded** automatically during witness/verify.
+  - If your key is named exactly `"input"` (single-input models), it will be reshaped to the model's input shape.
+  - For **multi-input** models, provide keys matching the model's input names.
+
+**Single-input example (flattened vector):**
+```json
+{
+  "input": [0, 1, 2, 3, 4, 5]
+}
+````
+
+**Single-input example (already shaped, e.g., 1×1×28×28):**
+
+```json
+{
+  "input": [[[ 
+    [0, 1, 2, "... 28 values ..."],
+    "... 28 rows ..."
+  ]]]
+}
+```
+
+* **Output JSON** produced by the pipeline is written under the key `"output"`, e.g.:
+
+```json
+{
+  "output": [0, 0, 1, 0, 0, 0, 0]
+}
+```
+
+---
+
+## Best practices
+
+* Use **one** ONNX model per compile. If you change the model, **re-run compile** to refresh the circuit and quantization.
+* Keep a consistent set of artifacts: `circuit.txt`, `quantized.onnx`, `input.json`, `output.json`, `witness.bin`, `proof.bin`.
+* For large CNNs, start with a small batch size and small inputs to validate the pipeline before scaling up.
