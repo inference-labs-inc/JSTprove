@@ -124,7 +124,7 @@ def check_witness_generated(model_fixture):
 
 def assert_very_close(inputs_1, inputs_2, model):
     for i in inputs_1.keys():
-        x = torch.div(torch.as_tensor(inputs_1[i]), model.scale_base**model.scaling)
-        y = torch.div(torch.as_tensor(inputs_2[i]), model.scale_base**model.scaling)
+        x = torch.div(torch.as_tensor(inputs_1[i]), model.scale_base**model.scale_exponent)
+        y = torch.div(torch.as_tensor(inputs_2[i]), model.scale_base**model.scale_exponent)
 
         assert torch.isclose(x, y, rtol = 1e-8).all()

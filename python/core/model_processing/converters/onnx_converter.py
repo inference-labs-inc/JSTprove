@@ -358,7 +358,7 @@ class ONNXConverter(ModelConverter):
             )
         return layer
     
-    def quantize_model(self, unscaled_model: onnx.ModelProto, scale_base: int,  scale: int, rescale_config: dict = None) -> onnx.ModelProto:
+    def quantize_model(self, unscaled_model: onnx.ModelProto, scale_base: int,  scale_exponent: int, rescale_config: dict = None) -> onnx.ModelProto:
         """Produce a quantized ONNX graph from a floating-point model.
 
         1. Read in the model and layers + analyze
@@ -369,7 +369,7 @@ class ONNXConverter(ModelConverter):
         Args:
             unscaled_model (onnx.ModelProto): The original unscaled model.
             scale_base (int): Base for fixed-point scaling (e.g., 2).
-            scale (int): Exponent for scaling (e.g., 18 would lead to a scale factor 2**18).
+            scale_exponent (int): Exponent for scaling (e.g., 18 would lead to a scale factor 2**18).
             rescale_config (dict, optional): mapping of node name -> bool to control
                 whether a given node should apply a final rescale. Defaults to None.
 
@@ -389,7 +389,7 @@ class ONNXConverter(ModelConverter):
 
         new_nodes = []
         for i, name in enumerate(input_names):
-            output_name, mul_node, floor_node, cast_to_int64 = self.quantize_input(name, self.op_quantizer, scale_base, scale)
+            output_name, mul_node, floor_node, cast_to_int64 = self.quantize_input(input_name = name, op_quantizer = self.op_quantizer, scale_base = scale_base, scale_exponent = scale_exponent)
             new_nodes.append(mul_node)
             # new_nodes.append(floor_node)
             new_nodes.append(cast_to_int64)
@@ -408,7 +408,7 @@ class ONNXConverter(ModelConverter):
 
         for node in model.graph.node:
             rescale = rescale_config.get(node.name, False) if rescale_config else True
-            quant_nodes = self.quantize_layer(node, rescale, model, scale, scale_base, initializer_map)
+            quant_nodes = self.quantize_layer(node = node, rescale = rescale, model = model, scale_exponent = scale_exponent, scale_base = scale_base, initializer_map = initializer_map)
             if isinstance(quant_nodes, list):
                 new_nodes.extend(quant_nodes)
             else:
@@ -468,24 +468,24 @@ class ONNXConverter(ModelConverter):
         return model
         
 
-    def quantize_layer(self, node: onnx.NodeProto, rescale: bool, model: onnx.ModelProto, scale: int, scale_base: int, initializer_map: dict[str, onnx.TensorProto]) -> onnx.NodeProto:
+    def quantize_layer(self, node: onnx.NodeProto, rescale: bool, model: onnx.ModelProto, scale_exponent: int, scale_base: int, initializer_map: dict[str, onnx.TensorProto]) -> onnx.NodeProto:
         """Quantize a single ONNX node using the configured op quantizer.
 
         Args:
             node (onnx.NodeProto): The original onnx node to quantize.
             rescale (bool): Whether to apply output rescaling for this node.
             model (onnx.ModelProto): The original model used for context
-            scale (int): Exponent for scaling (e.g., 18 would lead to a scale factor 2**18).
+            scale_exponent (int): Exponent for scaling (e.g., 18 would lead to a scale factor 2**18).
             scale_base (int): Base for fixed-point scaling (e.g., 2).
             initializer_map (dict[str, onnx.TensorProto]): Mapping from initializer name to tensor.
 
         Returns:
             onnx.NodeProto: A quantized node or list of nodes replacing the initial node.
         """
-        quant_nodes = self.op_quantizer.quantize(node, rescale, model.graph, scale, scale_base, initializer_map)
+        quant_nodes = self.op_quantizer.quantize(node = node, rescale = rescale, graph = model.graph, scale_exponent = scale_exponent, scale_base = scale_base, initializer_map = initializer_map)
         return quant_nodes
     
-    def quantize_input(self, input_name: str, op_quantizer: ONNXOpQuantizer, scale_base: int, scale: int) -> Tuple[str, onnx.NodeProto, onnx.NodeProto, onnx.NodeProto]:
+    def quantize_input(self, input_name: str, op_quantizer: ONNXOpQuantizer, scale_base: int, scale_exponent: int) -> Tuple[str, onnx.NodeProto, onnx.NodeProto, onnx.NodeProto]:
         """Insert scaling and casting nodes to quantize a model input.
 
         Creates:
@@ -497,13 +497,13 @@ class ONNXConverter(ModelConverter):
             op_quantizer (ONNXOpQuantizer): The op quantizer whose ``new_initializers`` list is
                 used to store the created scale constant.
             scale_base (int): Base for fixed-point scaling (e.g., 2).
-            scale (int): Exponent for scaling (e.g., 18 would lead to a scale factor 2**18).
+            scale_exponent (int): Exponent for scaling (e.g., 18 would lead to a scale factor 2**18).
 
         Returns:
             Tuple[str, onnx.NodeProto, onnx.NodeProto, onnx.NodeProto]: A tuple ``(output_name, mul_node, floor_node, cast_node)`` where
             ``output_name`` is the name of the quantized input tensor and the nodes are nodes to add to the graph.
         """
-        scale_value = scale_base ** scale
+        scale_value = scale_base ** scale_exponent
 
         # === Create scale constant ===
         scale_const_name = input_name + "_scale"
@@ -578,9 +578,9 @@ class ONNXConverter(ModelConverter):
             w_and_b_array = np.asarray(w.tensor)
             # VERY VERY TEMPORARY FIX
             if "bias" in w.name:
-                w_and_b_scaled = w_and_b_array * (getattr(self, "scale_base", 2)**(getattr(self,"scaling", 18)*2))
+                w_and_b_scaled = w_and_b_array * (getattr(self, "scale_base", 2)**(getattr(self,"scale_exponent", 18)*2))
             else:
-                w_and_b_scaled = w_and_b_array * (getattr(self, "scale_base", 2)**getattr(self,"scaling", 18))
+                w_and_b_scaled = w_and_b_array * (getattr(self, "scale_base", 2)**getattr(self,"scale_exponent", 18))
             w_and_b_out = w_and_b_scaled.astype(np.int64).tolist()
             w.tensor = w_and_b_out
         
@@ -606,7 +606,7 @@ class ONNXConverter(ModelConverter):
         }
         circuit_params = {
             "scale_base": getattr(self, "scale_base", 2),
-            "scaling": getattr(self,"scaling", 18),
+            "scale_exponent": getattr(self,"scale_exponent", 18),
             "rescale_config": getattr(self, "rescale_config", {})
         }
         self.save_quantized_model("test.onnx")
@@ -624,7 +624,7 @@ class ONNXConverter(ModelConverter):
             self.load_model(self.model_file_name)
         else:
             raise FileNotFoundError("An ONNX model is required at the specified path")
-        self.quantized_model = self.quantize_model(self.model, getattr(self,"scale_base", 2), getattr(self,"scaling", 18), rescale_config=getattr(self,"rescale_config", {}))
+        self.quantized_model = self.quantize_model(self.model, getattr(self,"scale_base", 2), getattr(self,"scale_exponent", 18), rescale_config=getattr(self,"rescale_config", {}))
 
     def get_outputs(self, inputs: Any) -> Any:
         """Run the currently loaded (quantized) model via ONNX Runtime.
@@ -642,7 +642,7 @@ class ONNXConverter(ModelConverter):
         inputs = torch.as_tensor(inputs)
         if inputs.dtype in (torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8):
             inputs = inputs.double()
-            inputs = inputs / (self.scale_base**self.scaling)
+            inputs = inputs / (self.scale_base**self.scale_exponent)
 
         # TODO add for all inputs (we should be able to account for multiple inputs...)
         # TODO this may not be optimal or robust
@@ -659,7 +659,7 @@ if __name__ == "__main__":
 
     converter = ONNXConverter()
     converter.model_file_name, converter.quantized_model_file_name = path, "quantized_doom.onnx"
-    converter.scale_base, converter.scaling = 2,18
+    converter.scale_base, converter.scale_exponent = 2,18
 
     converter.load_model(path)
     converter.get_model_and_quantize()

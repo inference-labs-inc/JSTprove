@@ -27,7 +27,7 @@ class ONNXOpQuantizer:
     -------
     register(op_type, handler)
         Registers a handler for an ONNX op_type.
-    quantize(node, rescale, graph, scale, scale_base, initializer_map)
+    quantize(node, rescale, graph, scale_exponent, scale_base, initializer_map)
         Apply quantization to a specific ONNX node using its registered handler.
     check_model(model)
         Ensure all operations in the model are supported and validate each layer's parameters are valid and supported.
@@ -59,14 +59,14 @@ class ONNXOpQuantizer:
         """
         self.handlers[op_type] = handler
 
-    def quantize(self, node: onnx.NodeProto, rescale: bool, graph: onnx.GraphProto, scale: int, scale_base: int, initializer_map: dict[str, onnx.TensorProto]) -> Union[onnx.NodeProto, List[onnx.NodeProto]]:
+    def quantize(self, node: onnx.NodeProto, rescale: bool, graph: onnx.GraphProto, scale_exponent: int, scale_base: int, initializer_map: dict[str, onnx.TensorProto]) -> Union[onnx.NodeProto, List[onnx.NodeProto]]:
         """Quantize an ONNX node using its registered handler.
 
         Args:
             node (onnx.NodeProto): The ONNX node to quantize.
             rescale (bool): Whether to apply rescaling.
             graph (onnx.GraphProto): The ONNX graph containing the node.
-            scale (int): Quantization scale value. The scaling becomes scale_base**scale.
+            scale_exponent (int): Quantization scale value. The scaling becomes scale_base**scale_exponent.
             scale_base (int): Base for the quantization scale. The scaling becomes scale_base**scale.
             initializer_map (dict[str, onnx.TensorProto]): Mapping of initializer names (typically weights and biases) to tensors.
 
@@ -75,7 +75,7 @@ class ONNXOpQuantizer:
         """
         handler = self.handlers.get(node.op_type)
         if handler:
-            return handler.quantize(node, rescale, graph, scale, scale_base, initializer_map)
+            return handler.quantize(node, rescale, graph, scale_exponent, scale_base, initializer_map)
         
         print(f"⚠️ No quantizer implemented for op_type: {node.op_type}")
         return node

@@ -11,7 +11,7 @@ class SimpleCircuit(Circuit):
         # Circuit-specific parameters
         # self.layers = {}
         self.name = "simple_circuit"  # Use exact name that matches the binary
-        self.scaling = 1
+        self.scale_exponent = 1
         self.scale_base = 1
         # self.cargo_binary_name = "simple_circuit"
         

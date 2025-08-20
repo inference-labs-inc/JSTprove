@@ -26,7 +26,7 @@ class GeneralLayerFunctions():
         Args:
             file_name (str): Path to the file containing input data.
             is_scaled (bool, optional): If True, returns unscaled values. If False, applies scaling using 
-                                        `self.scale_base ** self.scaling`. Defaults to False.
+                                        `self.scale_base ** self.scale_exponent`. Defaults to False.
 
         Returns:
             torch.Tensor: The loaded, reshaped, and potentially rescaled input tensor.
@@ -35,7 +35,7 @@ class GeneralLayerFunctions():
         if is_scaled:
             out =  torch.as_tensor(inputs).long()
         else:
-            out =  torch.mul(torch.as_tensor(inputs),self.scale_base**self.scaling).long()
+            out =  torch.mul(torch.as_tensor(inputs),self.scale_base**self.scale_exponent).long()
 
 
         if hasattr(self, "input_shape"):
@@ -92,7 +92,7 @@ class GeneralLayerFunctions():
                 inputs[key] = self.get_rand_inputs(input_shape)
             return inputs
         
-        return torch.mul(self.get_rand_inputs(self.input_shape), self.scale_base**self.scaling).long()
+        return torch.mul(self.get_rand_inputs(self.input_shape), self.scale_base**self.scale_exponent).long()
     
     def get_rand_inputs(self, input_shape: List[int]) -> torch.Tensor:
         """Generate random input values in the range [-1, 1).
@@ -127,8 +127,8 @@ class GeneralLayerFunctions():
                   - "output": the raw output tensor as a list of integers.
                   - "rescaled_output": the output divided by the scaling factor.
         """       
-        if hasattr(self, "scaling") and hasattr(self, "scale_base"):
-            return {"output": outputs.long().tolist(), "rescaled_output": torch.div(outputs, self.scale_base**(self.scaling)).tolist()}
+        if hasattr(self, "scale_exponent") and hasattr(self, "scale_base"):
+            return {"output": outputs.long().tolist(), "rescaled_output": torch.div(outputs, self.scale_base**(self.scale_exponent)).tolist()}
         return {"output": outputs.long().tolist()}
     
     def format_inputs_outputs(self, inputs: torch.Tensor, outputs: torch.Tensor) -> Tuple[Dict[str, List[int]], Dict[str, List[int]]]:

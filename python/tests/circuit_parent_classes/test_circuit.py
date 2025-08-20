@@ -171,7 +171,7 @@ def test_get_weights_default():
 def test_get_inputs_from_file():
     c = Circuit()
     c.scale_base = 2
-    c.scaling = 2
+    c.scale_exponent = 2
     with patch('python.core.circuits.base.read_from_json', return_value = {"input":[1,2,3,4]}):
         x = c.get_inputs_from_file("", is_scaled=True)
         assert x == {"input":[1,2,3,4]}
@@ -183,7 +183,7 @@ def test_get_inputs_from_file():
 def test_get_inputs_from_file_multiple_inputs():
     c = Circuit()
     c.scale_base = 2
-    c.scaling = 2
+    c.scale_exponent = 2
     with patch('python.core.circuits.base.read_from_json', return_value = {"input":[1,2,3,4], "nonce": 25}):
         x = c.get_inputs_from_file("", is_scaled=True)
         assert x == {"input":[1,2,3,4], "nonce": 25}
@@ -195,7 +195,7 @@ def test_get_inputs_from_file_multiple_inputs():
 def test_get_inputs_from_file_dne():
     c = Circuit()
     c.scale_base = 2
-    c.scaling = 2
+    c.scale_exponent = 2
     with pytest.raises(FileNotFoundError, match="No such file or directory"):
         c.get_inputs_from_file("", is_scaled=True)
 
@@ -303,7 +303,7 @@ def test_check_attributes_true():
     c = Circuit()
     c.required_keys = ["input"]
     c.name = "test"
-    c.scaling = 2
+    c.scale_exponent = 2
     c.scale_base = 2
     c.check_attributes()
 
@@ -318,14 +318,14 @@ def test_check_attributes_no_scaling():
 
     msg = str(exc_info.value)
     assert "Subclasses must define" in msg
-    assert "'scaling'" in msg
+    assert "'scale_exponent'" in msg
 
 @pytest.mark.unit
 def test_check_attributes_no_scalebase():
     c = Circuit()
     c.required_keys = ["input"]
     c.name = "test"
-    c.scaling = 2
+    c.scale_exponent = 2
 
     with pytest.raises(NotImplementedError) as exc_info:
         c.check_attributes()
@@ -339,7 +339,7 @@ def test_check_attributes_no_name():
     c = Circuit()
     c.required_keys = ["input"]
     c.scale_base = 2
-    c.scaling = 2
+    c.scale_exponent = 2
 
     with pytest.raises(NotImplementedError) as exc_info:
         c.check_attributes()

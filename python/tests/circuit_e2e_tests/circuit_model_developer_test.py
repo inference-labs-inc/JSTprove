@@ -427,10 +427,10 @@ def test_witness_unscaled(
     with open(temp_input_file, "r") as f:
         written_input_data = f.read()
     input_data = json.loads(written_input_data)
-    if hasattr(model_write, "scale_base") and hasattr(model_write, "scaling"):
+    if hasattr(model_write, "scale_base") and hasattr(model_write, "scale_exponent"):
         for key in input_data:
             print(input_data[key])
-            input_data[key] = torch.div(torch.as_tensor(input_data[key]), model_write.scale_base**model_write.scaling).tolist()
+            input_data[key] = torch.div(torch.as_tensor(input_data[key]), model_write.scale_base**model_write.scale_exponent).tolist()
             print(input_data[key])
     else:
         raise NotImplementedError("Model does not have scale_base attribute")
@@ -534,9 +534,9 @@ def test_witness_unscaled_and_incorrect_shape_input(
     with open(temp_input_file, "r") as f:
         written_input_data = f.read()
     input_data = json.loads(written_input_data)
-    if hasattr(model_write, "scale_base") and hasattr(model_write, "scaling"):
+    if hasattr(model_write, "scale_base") and hasattr(model_write, "scale_exponent"):
         for key in input_data:
-            input_data[key] = torch.div(torch.as_tensor(input_data[key]), model_write.scale_base**model_write.scaling).tolist()
+            input_data[key] = torch.div(torch.as_tensor(input_data[key]), model_write.scale_base**model_write.scale_exponent).tolist()
     else:
         raise NotImplementedError("Model does not have scale_base attribute")
     assert contains_float(input_data), f"This is a testing error, not a model error. Please fix this test to properly turn data to float."
@@ -642,9 +642,9 @@ def test_witness_unscaled_and_incorrect_and_bad_named_input(
     with open(temp_input_file, "r") as f:
         written_input_data = f.read()
     input_data = json.loads(written_input_data)
-    if hasattr(model_write, "scale_base") and hasattr(model_write, "scaling"):
+    if hasattr(model_write, "scale_base") and hasattr(model_write, "scale_exponent"):
         for key in input_data:
-            input_data[key] = torch.div(torch.as_tensor(input_data[key]), model_write.scale_base**model_write.scaling).tolist()
+            input_data[key] = torch.div(torch.as_tensor(input_data[key]), model_write.scale_base**model_write.scale_exponent).tolist()
     else:
         raise NotImplementedError("Model does not have scale_base attribute")
     assert contains_float(input_data), f"This is a testing error, not a model error. Please fix this test to properly turn data to float."

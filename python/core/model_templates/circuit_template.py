@@ -12,7 +12,7 @@ class SimpleCircuit(Circuit):
     name - name of the rust bin to be run by the circuit.
 
     scale_base - specify the base of the scaling applied to each value
-    scaling - the exponent applied to the base to get the scaling factor. Scaling factor will be multiplied by each input
+    scale_exponent - the exponent applied to the base to get the scaling factor. Scaling factor will be multiplied by each input
 
     Other default inputs can be defined below
     '''
@@ -24,7 +24,7 @@ class SimpleCircuit(Circuit):
         self.required_keys = ["input_a", "input_b", "nonce"]
         self.name = "simple_circuit"  # Use exact name that matches the binary
 
-        self.scaling = 1
+        self.scale_exponent = 1
         self.scale_base = 1
     
         self.input_a = 100

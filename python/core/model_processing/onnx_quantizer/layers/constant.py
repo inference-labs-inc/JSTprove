@@ -25,7 +25,7 @@ class ConstantQuantizer(BaseOpQuantizer):
         node: onnx.NodeProto,
         rescale: bool,
         graph: onnx.GraphProto,
-        scale: int,
+        scale_exponent: int,
         scale_base: int,
         initializer_map: dict[str, onnx.TensorProto],
     ) -> List[onnx.NodeProto]:
@@ -35,7 +35,7 @@ class ConstantQuantizer(BaseOpQuantizer):
             node (onnx.NodeProto): The Constant node to quantize.
             rescale (bool): Whether rescaling is enabled (Doesnt have an affect on this op type)
             graph (onnx.GraphProto): The ONNX graph.
-            scale (int): Scale exponent.
+            scale_exponent (int): Scale exponent.
             scale_base (int): The base of scaling
             initializer_map (dict[str, onnx.TensorProto]): Map of initializer names to tensor data.
 
@@ -58,7 +58,7 @@ class ConstantQuantizer(BaseOpQuantizer):
         for attr in node.attribute:
             if attr.name == "value" and attr.type == onnx.AttributeProto.TENSOR:
                 arr = numpy_helper.to_array(attr.t).astype(np.float64)
-                arr *= scale_base ** scale
+                arr *= scale_base ** scale_exponent
                 attr.t.CopyFrom(numpy_helper.from_array(arr, name=""))
         node.name += "_quant"
         return node

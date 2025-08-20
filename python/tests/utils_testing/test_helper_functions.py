@@ -77,14 +77,14 @@ def test_compute_and_store_output_on_json_error(mock_dump, mock_load, mock_file,
     "output_file": "out.json"
 })
 @patch("python.core.utils.helper_functions.to_json")
-@patch("python.core.utils.helper_functions.os.path.splitext", return_value=("model", ".circom"))
+@patch("python.core.utils.helper_functions.os.path.splitext", return_value=("model", ".onnx"))
 @patch("python.core.utils.helper_functions.open", new_callable=mock_open)
 def test_prepare_io_files_runs_func(mock_file, mock_splitext, mock_json, mock_get_files):
     class Dummy:
         name = "model"
         input_shape = (1, 4)
         scale_base = 10
-        scaling = 1
+        scale_exponent = 1
         def __init__(self):
             self.get_inputs = lambda: 1
             self.get_outputs = lambda x=None: 2
@@ -385,15 +385,15 @@ def test_generate_verify_unknown_raises():
         generate_verification("model", "cp", "i", "o", "w", "p",  "unsupported")
 
 @pytest.mark.unit
-def test_circom_not_implemented_full_process():
-    with pytest.raises(NotImplementedError, match="Circom is not implemented"):
-        generate_verification("model", "cp", "i", "o", "w", "p", ZKProofSystems.Circom)
-    with pytest.raises(NotImplementedError, match="Circom is not implemented"):
-        generate_proof("m", "p", "w", "proof", ZKProofSystems.Circom)
-    with pytest.raises(NotImplementedError, match="Circom is not implemented"):
-        generate_witness("m", "p","witness", "input", "output",  ZKProofSystems.Circom)
-    with pytest.raises(NotImplementedError, match="Circom is not implemented"):
-        compile_circuit("model", "path/to/circuit", ZKProofSystems.Circom)
+def test_proof_system_not_implemented_full_process():
+    with pytest.raises(NotImplementedError, match="Proof system UnknownProofSystem not implemented"):
+        generate_verification("model", "cp", "i", "o", "w", "p", "UnknownProofSystem")
+    with pytest.raises(NotImplementedError, match="Proof system UnknownProofSystem not implemented"):
+        generate_proof("m", "p", "w", "proof", "UnknownProofSystem")
+    with pytest.raises(NotImplementedError, match="Proof system UnknownProofSystem not implemented"):
+        generate_witness("m", "p","witness", "input", "output",  "UnknownProofSystem")
+    with pytest.raises(NotImplementedError, match="Proof system UnknownProofSystem not implemented"):
+        compile_circuit("model", "path/to/circuit", "UnknownProofSystem")
 
 @pytest.mark.unit
 @patch("python.core.utils.helper_functions.run_cargo_command", side_effect = Exception("TEST"))
@@ -423,8 +423,8 @@ def test_run_end_to_end_calls_all(mock_compile, mock_witness, mock_proof, mock_v
 @patch("python.core.utils.helper_functions.generate_witness")
 @patch("python.core.utils.helper_functions.compile_circuit")
 def test_circom_proof_system_errors_end_to_end(mock_compile, mock_witness, mock_proof, mock_verify):
-    with pytest.raises(NotImplementedError, match="Circom is not implemented"):
-        run_end_to_end("m", "m_circuit.txt", "i.json", "o.json", ZKProofSystems.Circom)
+    with pytest.raises(NotImplementedError, match="Proof system UnknownProofSystem not implemented"):
+        run_end_to_end("m", "m_circuit.txt", "i.json", "o.json", "UnknownProofSystem")
     
     
 
@@ -445,22 +445,6 @@ def test_get_files_and_create(mock_create):
     paths = get_files("model", ZKProofSystems.Expander, folders)
     assert paths["input_file"].endswith("model_input.json")
     assert mock_create.call_count == len(folders)
-
-@pytest.mark.unit
-@patch("python.core.utils.helper_functions.create_folder")
-def test_get_files_circom(mock_create):
-    folders = {
-        "input": "inputs",
-        "proof": "proofs",
-        "temp": "tmp",
-        "circuit": "circuits",
-        "weights": "weights",
-        "output": "out",
-        "quantized_model": "quantized_models"
-    }
-    with pytest.raises(NotImplementedError, match="Circom is not implemented"):
-        # paths = get_files("inputs", "proofs", "tmp", "circuits", "weights", "model", "out", "quantized_models", ZKProofSystems.Circom)
-        get_files("model", ZKProofSystems.Circom, folders)
 
 @pytest.mark.unit
 @patch("python.core.utils.helper_functions.create_folder")

@@ -37,8 +37,8 @@ class Circuit:
         Check if the necessary attributes are defined in subclasses.
         Must be overridden in subclasses
         """
-        if not hasattr(self, 'required_keys') or not hasattr(self, 'name') or not hasattr(self, 'scaling') or not hasattr(self, 'scale_base'):
-            raise NotImplementedError("Subclasses must define 'required_keys', 'name', 'scaling' and 'scale_base'.")
+        if not hasattr(self, 'required_keys') or not hasattr(self, 'name') or not hasattr(self, 'scale_exponent') or not hasattr(self, 'scale_base'):
+            raise NotImplementedError("Subclasses must define 'required_keys', 'name', 'scale_exponent' and 'scale_base'.")
     
     def parse_inputs(self, **kwargs):
         """Parse and validate required input parameters for the circuit into an instance attribute.
@@ -264,7 +264,7 @@ class Circuit:
             Any: The scaled and rounded values, preserving the original structure.
         """
         if self.contains_float(value):
-            return torch.round(torch.tensor(value) * (self.scale_base ** self.scaling)).long().tolist()
+            return torch.round(torch.tensor(value) * (self.scale_base ** self.scale_exponent)).long().tolist()
         return value
     
     def adjust_inputs(self, input_file: str) -> str:
@@ -479,7 +479,7 @@ class Circuit:
         out = {}
         read = read_from_json(input_file)
         for k in read.keys():
-            out[k] = torch.as_tensor(read[k])*(self.scale_base**self.scaling)
+            out[k] = torch.as_tensor(read[k])*(self.scale_base**self.scale_exponent)
             out[k] = out[k].tolist()
         return  out
     

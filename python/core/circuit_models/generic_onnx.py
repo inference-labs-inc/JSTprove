@@ -31,7 +31,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         Path to the ONNX model file used for the circuit.
     scale_base : int
         Base multiplier for scaling (default: 2).
-    scaling : int
+    scale_exponent : int
         Exponent applied to `scale_base` for final scaling factor.
 
     Parameters
@@ -41,7 +41,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
 
     Notes
     -----
-    - The scaling factor (`scale_base ** scaling`) determines how floating point
+    - The scaling factor (`scale_base ** scale_exponent`) determines how floating point
       inputs/outputs are represented as integers inside the ZK circuit.
     - By default, scaling is fixed; dynamic scaling based on model analysis 
       is planned for future implementation.
@@ -56,7 +56,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         # self.rescale_config = {"/conv1/Conv": False} 
         self.model_file_name = self.find_model(model_name)
         self.scale_base = 2
-        self.scaling = 18
+        self.scale_exponent = 18
 
     def find_model(self, model_name: str):
         """Resolve the ONNX model file path.
@@ -104,7 +104,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
     
     def format_inputs(self, inputs: Any) -> Dict[str, List[int]]:
         """Format raw inputs into scaled integer tensors for the circuit and transformed into json to be sent to rust backend.
-        Inputs are scaled by `scale_base ** scaling` and converted to `long` to ensure compatibility with ZK circuits
+        Inputs are scaled by `scale_base ** scale_exponent` and converted to `long` to ensure compatibility with ZK circuits
 
         Args:
             inputs (Any): Raw model inputs.
@@ -115,10 +115,8 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         x = {"input": inputs}
         for key in x:
             x[key] = torch.as_tensor(x[key]).flatten().tolist()
-            x[key] = (torch.as_tensor(x[key]) * self.scale_base**self.scaling).long().tolist()
+            x[key] = (torch.as_tensor(x[key]) * self.scale_base**self.scale_exponent).long().tolist()
         return x
 
 if __name__ == "__main__":
     pass
-
-

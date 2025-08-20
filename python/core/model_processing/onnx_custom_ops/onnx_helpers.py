@@ -99,26 +99,13 @@ def create_quantized_initializer(orig_tensor: onnx.TensorProto, scale_exponent: 
 
     Args:
         orig_tensor (onnx.TensorProto): The original tensor.
-        scale_exponent (int): _description_
-        scale (int): _description_
-        scale_base (int): _description_
-
-    Returns:
-        Tuple[onnx.TensorProto, str]: _description_
-    """   
-    """
-    Create a quantized ONNX tensor initializer from a floating-point tensor.
-
-    Args:
-        orig_tensor (onnx.TensorProto): The original tensor.
-        scale_exponent (int): Exponent for scaling (e.g., 18 would lead to a scale factor 2**18).        
-        scale (int): The scale multiplier (eg. bias must often be multiplied twice).
+        scale_exponent (int): Exponent for scaling (e.g., 18 would lead to a scale factor 2**18).    
+        scale_exponent (int): The scale multiplier (eg. bias must often be multiplied twice).
         scale_base (int): Base for fixed-point scaling (e.g., 2).
-        
 
     Returns:
         Tuple[onnx.TensorProto, str]: A tuple containing the quantized tensor and its new name.
-    """ 
+    """
     factor = scale_base ** (scale * scale_exponent)
     arr = to_array(orig_tensor).astype(np.float64) * factor
     arr = arr.astype(np.int64)

@@ -60,7 +60,7 @@ struct WANDB {
 #[derive(Deserialize, Clone, Debug)]
 struct CircuitParams {
     scale_base: u32,
-    scaling: u32,
+    scale_exponent: u32,
     rescale_config: HashMap<String, bool>,
 }
 
@@ -320,7 +320,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
 
         let mut out_array = result.into_dyn(); // back to ArrayD<Variable>
         if self.is_rescale {
-            let k = CIRCUITPARAMS.scaling as usize;
+            let k = CIRCUITPARAMS.scale_exponent as usize;
             let s = self
                 .v_plus_one
                 .checked_sub(1)
@@ -435,7 +435,7 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
     const N_BITS: usize = 32;
     const V_PLUS_ONE: usize = N_BITS;
     const TWO_V: u32 = 1 << (V_PLUS_ONE - 1);
-    let alpha_two_v: u64 = ((1 << CIRCUITPARAMS.scaling) * TWO_V) as u64;
+    let alpha_two_v: u64 = ((1 << CIRCUITPARAMS.scale_exponent) * TWO_V) as u64;
 
     // Load weights and biases into hashmap
 
@@ -522,7 +522,7 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                     dilation: get_param(&layer.name, &"dilations", &params),
                     pads: get_param(&layer.name, &"pads", &params),
                     input_shape: expected_shape.to_vec(),
-                    scaling: CIRCUITPARAMS.scaling.into(),
+                    scaling: CIRCUITPARAMS.scale_exponent.into(),
                     optimization_pattern: optimization_pattern,
                     v_plus_one: N_BITS,
                     two_v: TWO_V,
@@ -569,7 +569,7 @@ fn build_layers<C: Config, Builder: RootAPI<C>>() -> Vec<Box<dyn LayerOp<C, Buil
                     two_v: TWO_V,
                     alpha_two_v: alpha_two_v,
                     is_rescale: is_rescale.clone(),
-                    scaling: CIRCUITPARAMS.scaling.into(), // TODO: Becomes scaling_in?
+                    scaling: CIRCUITPARAMS.scale_exponent.into(), // TODO: Becomes scaling_in?
                     input_shape: expected_shape.to_vec(),
                     alpha: get_param_or_default(&layer.name, &"alpha", &params, Some(&1.0)),
                     beta: get_param_or_default(&layer.name, &"beta", &params, Some(&1.0)),

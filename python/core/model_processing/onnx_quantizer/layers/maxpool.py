@@ -24,7 +24,7 @@ class MaxpoolQuantizer(BaseOpQuantizer):
         node: onnx.NodeProto,
         rescale: bool,
         graph: onnx.GraphProto,
-        scale: int,
+        scale_exponent: int,
         scale_base: int,
         initializer_map: dict[str, onnx.TensorProto],
     ) -> List[onnx.NodeProto]:
@@ -35,7 +35,7 @@ class MaxpoolQuantizer(BaseOpQuantizer):
             node (onnx.NodeProto): The Constant node to quantize.
             rescale (bool): Whether rescaling is enabled (Doesnt have an affect on this op type)
             graph (onnx.GraphProto): The ONNX graph.
-            scale (int): Scale exponent.
+            scale_exponent (int): Scale exponent.
             scale_base (int): The base of scaling.
             initializer_map (dict[str, onnx.TensorProto]): Map of initializer names to tensor data.
 

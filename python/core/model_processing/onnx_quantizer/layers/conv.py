@@ -23,7 +23,7 @@ class ConvQuantizer(BaseOpQuantizer):
         node: onnx.NodeProto,
         rescale: bool,
         graph: onnx.GraphProto,
-        scale: int,
+        scale_exponent: int,
         scale_base: int,
         initializer_map: dict[str, onnx.TensorProto],
     ) -> List[onnx.NodeProto]:
@@ -37,7 +37,7 @@ class ConvQuantizer(BaseOpQuantizer):
             node (onnx.NodeProto): The node to quantize.
             rescale (bool): Whether rescaling is enabled (Doesnt have an affect on this op type)
             graph (onnx.GraphProto): The ONNX graph.
-            scale (int): Scale exponent.
+            scale_exponent (int): Scale exponent.
             scale_base (int): The base of scaling.
             initializer_map (dict[str, onnx.TensorProto]): Map of initializer names to tensor data.
 
@@ -47,7 +47,7 @@ class ConvQuantizer(BaseOpQuantizer):
         nodes = []
         output_name = f"{node.name}_int"
 
-        nodes, node.input[:] = self.add_nodes_w_and_b(node, scale, scale_base, initializer_map, graph)
+        nodes, node.input[:] = self.add_nodes_w_and_b(node = node, scale_exponent = scale_exponent, scale_base = scale_base, initializer_map = initializer_map, graph = graph)
         attrs = extract_attributes(node)
         attrs.setdefault("group", 1)
         attrs.setdefault("auto_pad", "NOTSET")
@@ -56,7 +56,7 @@ class ConvQuantizer(BaseOpQuantizer):
             
         attrs["rescale"] = int(rescale)
 
-        scale_value = scale_base ** scale
+        scale_value = scale_base ** scale_exponent
         
         # TODO make this constant to all layers
         # Create scale constant 

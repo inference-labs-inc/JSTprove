@@ -55,12 +55,12 @@ class ModelConverter(ABC):
         pass
     
     @abstractmethod
-    def quantize_model(self, model, scale: int, rescale_config: dict = None):
+    def quantize_model(self, model, scale_exponent: int, rescale_config: dict = None):
         """Quantize a model with a given scale and optional rescaling configuration.
 
         Args:
             model (_type_): The model instance to quantize.
-            scale (int): Quantization scale factor.
+            scale_exponent (int): Quantization scale factor.
             rescale_config (dict, optional): Configuration for rescaling layers or weights during quantization.. Defaults to None.
         """
         pass

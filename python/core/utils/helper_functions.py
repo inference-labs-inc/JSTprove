@@ -16,7 +16,6 @@ class RunType(Enum):
     GEN_VERIFY = 'gen_verify'
 
 class ZKProofSystems(Enum):
-    Circom = "Circom"
     Expander = "Expander"
 
 # Decorator to compute outputs once and store in temp folder
@@ -375,8 +374,6 @@ def compile_circuit(circuit_name: str,
             print(f"Warning: Compile operation failed: {e}")
             print(f"Using binary: {binary_name}")
             
-    elif proof_system == ZKProofSystems.Circom:
-        raise NotImplementedError("Circom is not implemented")
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
@@ -423,10 +420,7 @@ def generate_witness(circuit_name: str,
         try:
             return run_cargo_command(binary_name, 'run_gen_witness', args, dev_mode, bench)
         except Exception as e:
-            print(f"Warning: Witness generation failed: {e}")
-            
-    elif proof_system == ZKProofSystems.Circom:
-        raise NotImplementedError("Circom is not implemented")
+            print(f"Warning: Witness generation failed: {e}")        
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
@@ -484,9 +478,6 @@ def generate_proof(circuit_name: str,
                 proof_file=proof_file,
                 bench = bench
             )
-            
-    elif proof_system == ZKProofSystems.Circom:
-        raise NotImplementedError("Circom is not implemented")
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
@@ -549,9 +540,6 @@ def generate_verification(circuit_name: str,
                 proof_file=proof_file,
                 bench = bench
             )
-            
-    elif proof_system == ZKProofSystems.Circom:
-        raise NotImplementedError("Circom is not implemented")
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
@@ -597,8 +585,6 @@ def run_end_to_end(circuit_name: str,
         generate_witness(circuit_name, circuit_path, witness_file, input_file, output_file, proof_system, dev_mode)
         generate_proof(circuit_name, circuit_path, witness_file, proof_file, proof_system, dev_mode, ecc)
         return generate_verification(circuit_name, circuit_path, input_file, output_file, witness_file, proof_file, proof_system, dev_mode, ecc)
-    elif proof_system == ZKProofSystems.Circom:
-        raise NotImplementedError("Circom is not implemented")
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
@@ -642,8 +628,6 @@ def get_files(
             "witness_file": os.path.join(folders["input"], f"{name}_witness.txt"),
             "proof_path": os.path.join(folders["proof"], f"{name}_proof.bin"),
         })
-    elif proof_system == ZKProofSystems.Circom:
-        raise NotImplementedError("Circom is not implemented")
     else:
         raise NotImplementedError(f"Proof system {proof_system} not implemented")
 
