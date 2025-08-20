@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 /// External crate imports
 use ndarray::ArrayD;
 
@@ -5,9 +7,61 @@ use ndarray::ArrayD;
 use expander_compiler::frontend::*;
 
 /// Internal crate imports
-use crate::circuit_functions::utils::core_math::{
-    assert_is_bitstring_and_reconstruct, unconstrained_to_bits,
-};
+use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{core_math::{
+    assert_is_bitstring_and_reconstruct,
+    unconstrained_to_bits,
+}, onnx_model::extract_params_and_expected_shape}};
+
+// -------- Struct --------
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct ReluLayer {
+    name: String,
+    index: usize,
+    input_shape: Vec<usize>,
+    inputs: Vec<String>,
+    outputs: Vec<String>,
+    n_bits: usize,
+}
+// -------- Implementations --------
+
+impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
+    fn apply(
+        &self,
+        api: &mut Builder,
+        input: HashMap<String,ArrayD<Variable>>,
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
+        eprintln!("{:?}", self);
+        let layer_input = input.get(&self.inputs[0])
+        .ok_or_else(|| panic!("Missing input {}", self.inputs[0].clone())).unwrap()
+    .clone();
+        let out = layer_input;
+        let out = relu_array(api, out, self.n_bits - 1);
+
+        Ok((self.outputs.clone(), out))
+    }
+
+    fn build(
+        layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
+        _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
+        _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::GraphPattern,
+        _is_rescale: bool,
+        index: usize,
+        layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
+    ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
+
+        let (_params, expected_shape) = extract_params_and_expected_shape(layer_context, layer);
+        let relu = Self{
+            name: layer.name.clone(),
+            index: index,
+            input_shape: expected_shape.to_vec(),
+            inputs: layer.inputs.to_vec(),
+            outputs: layer.outputs.to_vec(),
+            n_bits: layer_context.n_bits,
+        };
+        Ok(Box::new(relu))
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STRUCT: ReluContext

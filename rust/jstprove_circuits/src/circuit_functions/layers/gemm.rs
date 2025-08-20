@@ -1,8 +1,117 @@
+use std::collections::HashMap;
+
 /// External crate imports
 use ndarray::{Array2, ArrayD, Ix2, IxDyn};
 
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
+
+use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{constants::{ALPHA, BETA, GEMM, TRANS_A, TRANS_B}, graph_pattern_matching::GraphPattern, onnx_model::{extract_params_and_expected_shape, get_param_or_default, get_w_or_b}, quantization::rescale_array, shaping::check_and_apply_transpose_array, tensor_ops::load_array_constants}};
+
+// -------- Struct --------
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct GemmLayer {
+    name: String,
+    index: usize,
+    weights: ArrayD<i64>,
+    bias: ArrayD<i64>,
+    is_rescale: bool,
+    v_plus_one: usize,
+    two_v: u32,
+    alpha_two_v: u64,
+    optimization_pattern: GraphPattern,
+    scaling: u64,
+    input_shape: Vec<usize>,
+    alpha: f32,
+    beta: f32,
+    transa: usize,
+    transb: usize,
+    inputs: Vec<String>,
+    outputs: Vec<String>,
+}
+
+// -------- Implementation --------
+
+impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
+    fn apply(
+        &self,
+        api: &mut Builder,
+        input: HashMap<String,ArrayD<Variable>>,
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
+        let is_relu = match self.optimization_pattern.name{
+                    "Gemm+Relu" => true,
+                    _ => false
+                };
+
+        let layer_input = input.get(&self.inputs[0])
+        .ok_or_else(|| panic!("Missing input {}", self.inputs[0].clone())).unwrap()
+    .clone();
+        let mut input_array = layer_input
+            .into_dimensionality::<Ix2>()
+            .map_err(|_| format!("Expected 2D input for layer {}", self.name))?;
+        let mut weights_array = load_array_constants(api, &self.weights)
+        .into_dimensionality::<Ix2>()
+            .map_err(|_| format!("Expected 2D input for layer {}", self.name))?;
+
+        input_array = check_and_apply_transpose_array(input_array, self.transa, TRANS_A, GEMM, &self.name);
+        weights_array = check_and_apply_transpose_array(weights_array, self.transb, TRANS_B, GEMM, &self.name);
+
+        let bias_array = load_array_constants(api, &self.bias);
+
+        // Sanity check alpha and beta
+        check_alpha_beta(self.alpha, ALPHA, GEMM, &self.name);
+        check_alpha_beta(self.beta, BETA, GEMM, &self.name);
+
+        // Matrix multiplication and bias addition
+        let mut result = matrix_multiplication(api, input_array.into_dyn(), weights_array.into_dyn());
+        result = matrix_addition(api, result, bias_array);
+
+        api.display("3", result[[0, 0]]);
+
+        let mut out_array = result.into_dyn(); // back to ArrayD<Variable>
+        if self.is_rescale {
+            let k = self.scaling as usize;
+            let s = self.v_plus_one.checked_sub(1).expect("v_plus_one must be at least 1");
+            out_array = rescale_array(api, out_array, k, s, is_relu);
+        }
+
+        Ok((self.outputs.clone(), out_array))
+    }
+    fn build(
+        layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
+        circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
+        optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::GraphPattern,
+        is_rescale: bool,
+        index: usize,
+        layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
+    ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
+        
+        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer);
+        let gemm = Self {
+            name: layer.name.clone(),
+            index: index,
+            weights: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[1]),
+            bias: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[2]),
+            is_rescale: is_rescale.clone(),
+            v_plus_one: layer_context.n_bits,
+            two_v: layer_context.two_v,
+            alpha_two_v: layer_context.alpha_two_v,
+            optimization_pattern: optimization_pattern,
+            scaling: circuit_params.scale_exponent.into(), // TODO: Becomes scaling_in?
+            input_shape: expected_shape.to_vec(),
+            alpha: get_param_or_default(&layer.name, ALPHA, &params, Some(&1.0)),
+            beta: get_param_or_default(&layer.name, BETA, &params, Some(&1.0)),
+            transa: get_param_or_default(&layer.name, TRANS_A, &params, Some(&0)),
+            transb: get_param_or_default(&layer.name, TRANS_B, &params, Some(&0)),
+            inputs: layer.inputs.to_vec(),
+            outputs: layer.outputs.to_vec(),
+        };
+        Ok(Box::new(gemm))
+    }
+}
+
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: dot
@@ -157,4 +266,10 @@ pub fn matrix_multiplication<C: Config, Builder: RootAPI<C>>(
     }
 
     result.into_dyn()
+}
+
+fn check_alpha_beta(val: f32, var_name: &str, layer_type: &str, layer_name: &str) {
+    if val != 1.0{
+        panic!("Only {} = 1 is currently supported for {} layers: {}", var_name, layer_type, layer_name);
+    }
 }

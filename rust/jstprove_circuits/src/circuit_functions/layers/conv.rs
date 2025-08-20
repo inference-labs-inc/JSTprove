@@ -1,5 +1,5 @@
 /// Standard library imports
-use std::cmp::{max, min};
+use std::{cmp::{max, min}, collections::HashMap};
 
 /// External crate imports
 use ndarray::{s, ArrayD};
@@ -7,8 +7,124 @@ use ndarray::{s, ArrayD};
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
+use crate::circuit_functions::utils::{constants::{DILATION, GROUP, KERNEL_SHAPE, PADS, STRIDES}, onnx_model::{extract_params_and_expected_shape, get_param, get_param_or_default, get_w_or_b}};
+
 /// Internal module imports
-use crate::circuit_functions::utils::quantization::rescale_array;
+use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{graph_pattern_matching::GraphPattern, quantization::rescale_array, tensor_ops::{load_array_constants, load_circuit_constant}}};
+
+// -------- Struct --------
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct ConvLayer {
+    name: String,
+    index: usize,
+    weights: ArrayD<i64>,
+    bias: ArrayD<i64>,
+    strides: Vec<u32>,
+    kernel_shape: Vec<u32>,
+    group: Vec<u32>,
+    dilation: Vec<u32>,
+    pads: Vec<u32>,
+    input_shape: Vec<usize>,
+    scaling: u64,
+    optimization_pattern: GraphPattern,
+    v_plus_one: usize,
+    two_v: u32,
+    alpha_two_v: u64,
+    is_rescale: bool,
+    inputs: Vec<String>,
+    outputs: Vec<String>,
+}
+
+// -------- Implementations --------
+
+impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
+    fn apply(
+        &self,
+        api: &mut Builder,
+        input: HashMap<String,ArrayD<Variable>>,
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
+        let is_relu = match self.optimization_pattern.name{
+                    "Conv+Relu" => true,
+                    _ => false
+                };
+
+        let layer_input = input.get(&self.inputs[0])
+        .ok_or_else(|| panic!("Missing input {}", self.inputs[0].clone())).unwrap()
+    .clone();
+
+        // Convert weights
+        let weights = load_array_constants(api, &self.weights);
+
+        let bias = self.bias.mapv(|x| load_circuit_constant(api, x));
+        // Scaling
+        let scale_factor = 1 << self.scaling;
+        let alpha_two_v = api.mul(self.two_v as u32, scale_factor as u32);
+
+        // Get shape
+        let in_shape = layer_input.shape().iter().map(|&x| x as u32).collect::<Vec<_>>();
+
+        // Convolution
+        let out = conv_4d_run(
+            api,
+            layer_input,
+            weights,
+            bias,
+            &self.dilation,
+            &self.kernel_shape,
+            &self.pads,
+            &self.strides,
+            &in_shape,
+            self.scaling,
+            &self.group,
+            self.is_rescale,
+            self.v_plus_one,
+            self.two_v,
+            alpha_two_v,
+            is_relu,
+        );
+
+        Ok((self.outputs.clone(), out))
+    }
+
+    fn build(
+        layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
+        circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
+        optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::GraphPattern,
+        is_rescale: bool,
+        index: usize,
+        layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
+    ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
+
+        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer);
+        
+        let conv = Self{
+            name: layer.name.clone(),
+            index: index,
+            weights: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[1]),
+            bias: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[2]),
+            strides: get_param(&layer.name, STRIDES, &params),
+            kernel_shape: get_param(&layer.name, KERNEL_SHAPE, &params),
+            group: vec![get_param_or_default(&layer.name, GROUP, &params, Some(&1))],
+            dilation: get_param(&layer.name, DILATION, &params),
+            pads: get_param(&layer.name, PADS, &params),
+            input_shape: expected_shape.to_vec(),
+            scaling: circuit_params.scale_exponent.into(),
+            optimization_pattern: optimization_pattern,
+            v_plus_one: layer_context.n_bits,
+            two_v: layer_context.two_v,
+            alpha_two_v: layer_context.alpha_two_v,
+            is_rescale: is_rescale,
+            inputs: layer.inputs.to_vec(),
+            outputs: layer.outputs.to_vec(),
+        };
+        Ok(Box::new(conv))
+    }
+}
+
+
+
 
 /// Untested
 /// Set default parameters if not set
