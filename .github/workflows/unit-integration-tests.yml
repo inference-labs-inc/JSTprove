@@ -39,6 +39,10 @@ jobs:
       - name: Install pre-commit
         run: pip install pre-commit
       
+      # Get latest version
+      - name: Update Pre-commit
+        run: pre-commit autoupdate --repo https://github.com/pre-commit/pre-commit-hooks
+      
       - name: Run pre-commit checks
         run: pre-commit run --all-files --show-diff-on-failure
         
@@ -50,7 +54,7 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
 
   build:
-#    needs: formatting-and-linting
+    needs: formatting-and-linting
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
