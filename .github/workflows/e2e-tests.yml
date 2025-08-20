@@ -50,7 +50,7 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
 
   build:
-    needs: formatting-and-linting
+#    needs: formatting-and-linting
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
