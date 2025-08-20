@@ -4,12 +4,42 @@ use std::collections::HashMap;
 use ndarray::ArrayD;
 /// External crate imports
 use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use serde_json::Value;
 
 /// Internal crate imports
 use crate::circuit_functions::utils::json_array::value_to_arrayd;
 use crate::circuit_functions::utils::json_array::FromJsonNumber;
 use crate::circuit_functions::utils::onnx_types::{ONNXLayer, ONNXIO};
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct Architecture{
+    pub inputs: Vec<ONNXIO>,
+    pub outputs: Vec<ONNXIO>,
+    pub architecture: Vec<ONNXLayer>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct WANDB{
+    pub w_and_b: Vec<ONNXLayer>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct CircuitParams{
+    pub scale_base: u32,
+    pub scaling: u32,
+    pub rescale_config: HashMap<String, bool>
+}
+
+#[derive(Deserialize, Clone)]
+pub struct InputData {
+    pub input: Value,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct OutputData {
+    pub output: Value,
+}
 
 pub fn get_w_or_b<I: DeserializeOwned + Clone + FromJsonNumber + 'static>(
     w_and_b_map: &HashMap<String, ONNXLayer>,
@@ -71,8 +101,27 @@ pub fn collect_all_shapes(layers: &[ONNXLayer], ios: &[ONNXIO]) -> HashMap<Strin
     result
 }
 
+pub fn extract_params_and_expected_shape(
+    layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
+    layer:  &crate::circuit_functions::utils::onnx_types::ONNXLayer
+) -> (Value, Vec<usize>){
+    let params = layer.params.clone()
+        .ok_or_else(|| panic!("Missing Params for: {}", layer.name.clone())).unwrap();
+    
+    let key = layer.inputs.first()
+        .ok_or_else(|| panic!("Missing input keys for: {}", layer.name.clone())).unwrap();
+    
+    let expected_shape = layer_context.shapes_map
+        .get(key)
+        .ok_or_else(|| panic!("Missing input shape for: {}", layer.name.clone())).unwrap()
+        .clone();
+
+    (params, expected_shape)
+}
+
 pub fn get_param<I: DeserializeOwned>(layer_name: &String, param_name: &str, params: &Value) -> I {
-    match params.get(param_name) {
+    match params.get(param_name){
+
         Some(param) => {
             let x = param.clone();
             serde_json::from_value(x.clone()).expect(&format!(

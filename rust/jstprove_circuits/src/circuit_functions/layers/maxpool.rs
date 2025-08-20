@@ -1,11 +1,97 @@
+use std::collections::HashMap;
+
 /// External crate imports
 use ndarray::{Array4, ArrayD, Ix4};
 
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
+use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{constants::{DILATION, KERNEL_SHAPE, PADS, STRIDES}, onnx_model::{extract_params_and_expected_shape, get_param}}};
 /// Internal crate imports
 use super::super::utils::core_math::{assert_is_bitstring_and_reconstruct, unconstrained_to_bits};
+
+// -------- Struct --------
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct MaxPoolLayer {
+    name: String,
+    kernel_shape: Vec<usize>,
+    strides: Vec<usize>,
+    dilation: Vec<usize>,
+    padding: Vec<usize>,
+    input_shape: Vec<usize>,
+    shift_exponent: usize, 
+    inputs: Vec<String>,
+    outputs: Vec<String>,
+}
+
+// -------- Implementations --------
+
+impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
+    fn apply(
+        &self,
+        api: &mut Builder,
+        input: HashMap<String, ArrayD<Variable>>,
+    ) -> Result<(Vec<String>,ArrayD<Variable>), String> {
+        let layer_input = input.get(&self.inputs[0])
+        .ok_or_else(|| panic!("Missing input {}", self.inputs[0].clone())).unwrap()
+    .clone();
+        let shape = layer_input.shape();
+        assert_eq!(shape.len(), 4, "Expected 4D input for max pooling, got shape: {:?}", shape);
+
+        let ceil_mode = false;
+        let (kernel, strides, dilation, out_shape, pads) = setup_maxpooling_2d(
+            &self.padding,
+            &self.kernel_shape,
+            &self.strides,
+            &self.dilation,
+            ceil_mode,
+            &self.input_shape,
+        );
+
+        let output = maxpooling_2d::<C, Builder>(
+            api,
+            &layer_input,
+            &kernel,
+            &strides,
+            &dilation,
+            &out_shape,
+            &self.input_shape,
+            &pads,
+            self.shift_exponent,
+        );
+
+        Ok((self.outputs.clone(), output))
+    }
+
+    fn build(
+        layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
+        _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
+        _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::GraphPattern,
+        _is_rescale: bool,
+        _index: usize,
+        layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
+    ) -> Result<Box<dyn LayerOp<C, Builder>>, Error> {
+
+        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer);
+
+        let maxpool = Self{
+            name: layer.name.clone(),
+            kernel_shape: get_param(&layer.name, KERNEL_SHAPE, &params),
+            strides: get_param(&layer.name, STRIDES, &params),
+            dilation: get_param(&layer.name, DILATION, &params),
+            padding: get_param(&layer.name, PADS, &params),
+            input_shape: expected_shape.clone(),
+            shift_exponent: layer_context.n_bits - 1,
+            inputs: layer.inputs.to_vec(),
+            outputs: layer.outputs.to_vec(),
+        };
+        Ok(Box::new(maxpool))
+    }
+}
+
+
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: unconstrained_max
