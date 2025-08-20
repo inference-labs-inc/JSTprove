@@ -1,0 +1,84 @@
+name: Python CI
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "python/**"
+      - "requirements.txt"
+      - "setup.py"
+      - "pyproject.toml"
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - "python/**"
+      - "requirements.txt"
+      - "setup.py"
+      - "pyproject.toml"
+
+jobs:
+  verify-formatting:
+    name: Verify Changed Files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for changed files detection
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v46
+        with:
+          files: |
+            **/*.py
+            **/*.rs
+
+      # Only run basic format checks on changed files
+      - name: Check formatting
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          pip install black ruff
+          black --check ${{ steps.changed-files.outputs.all_changed_files }}
+          ruff check --select=E,F,B ${{ steps.changed-files.outputs.all_changed_files }}
+
+  python-test:
+    name: Python Tests
+    needs: verify-formatting
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10"]  # Reduced matrix since we check others locally
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v3
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-html pytest-cov
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Install OMPI
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            libopenmpi-dev \
+            pkg-config \
+            libclang-dev \
+            clang \
+            openmpi-bin
+
+      - name: Run tests with coverage
+        run: |
+          mkdir -p report
+          pytest --cov=python --cov-report=xml --unit --integration
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: true

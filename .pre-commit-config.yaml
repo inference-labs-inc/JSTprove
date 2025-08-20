@@ -3,29 +3,57 @@ repos:
     rev: v4.6.0
     hooks:
       - id: end-of-file-fixer
-        files: \.(py|rs)$
       - id: trailing-whitespace
-        files: \.(py|rs)$
-
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+      - id: detect-private-key
+        
   # Python formatting with black
   - repo: https://github.com/psf/black
     rev: 24.2.0
     hooks:
       - id: black
         language_version: python3.10
+        args: [--check]
 
-  # Rust formatting with rustfmt
+  # Python linting with ruff (comprehensive)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.3
+    hooks:
+      - id: ruff
+        args: [
+          --fix,
+          --exit-non-zero-on-fix,
+          --select=ALL,  # Enable all rules for local checks
+          --ignore=D,    # Ignore documentation warnings
+        ]
+
+  # Rust formatting and linting
   - repo: https://github.com/doublify/pre-commit-rust
     rev: v1.0
     hooks:
       - id: fmt
         args: ['--manifest-path=./Cargo.toml', '--all', '--', '--check']
       - id: clippy
-        args: ['--manifest-path=./Cargo.toml', '--all', '--', -D, warnings]
+        args: [
+          '--manifest-path=./Cargo.toml',
+          '--all',
+          '--',
+          -W, clippy::all,
+          -W, clippy::pedantic,
+          -D, warnings,
+        ]
 
-  # Python linting with ruff
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.3.3
+  # Security checks
+  - repo: https://github.com/python-security/safety-checker
+    rev: 2.1.1
     hooks:
-      - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
+      - id: safety-checker
+
+  # Dependency checks
+  - repo: https://github.com/python-poetry/poetry
+    rev: 1.7.0
+    hooks:
+      - id: poetry-check  # Validates pyproject.toml
+      - id: poetry-lock   # Updates poetry.lock if needed

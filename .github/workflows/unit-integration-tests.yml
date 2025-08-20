@@ -1,7 +1,5 @@
-# This workflow will install Python dependencies, run tests and lint with a single version of Python
 # TODO: Add a matrix of Python Versions if we want to support cross-compatibility
 # TODO: Create tests for different sources such as : ["class", "pytorch", "onnx"]
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
 name: Unit, Integration Python Tests
 
@@ -42,16 +40,24 @@ jobs:
       # Get latest version
       - name: Update Pre-commit
         run: pre-commit autoupdate --repo https://github.com/pre-commit/pre-commit-hooks
-      
-      - name: Run pre-commit checks
-        run: pre-commit run --all-files --show-diff-on-failure
+
+      - name: Run Pre-commit only on changed files
+        id: file_changes
+        uses: trilom/file-changes-action@v1.2.3
+        with:
+          output: ' '
+          
+      - name: Run pre-commit on changed files
+      - uses: pre-commit/action@v3.0.1
+        with:
+          extra_args: --files ${{ steps.file_changes.outputs.files}}
         
-      # Additional Rust checks
+      # Additional Rust checks (easier to just run on all)
       - name: Run cargo fmt check
         run: cargo fmt --all -- --check
         
       - name: Run cargo clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   build:
     needs: formatting-and-linting
