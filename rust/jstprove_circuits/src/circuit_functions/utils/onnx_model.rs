@@ -7,10 +7,13 @@ use serde::Deserialize;
 use serde_json::Value;
 use ndarray::ArrayD;
 
+use crate::circuit_functions::layers::LayerKind;
 /// Internal crate imports
 use crate::circuit_functions::utils::json_array::value_to_arrayd;
 use crate::circuit_functions::utils::json_array::FromJsonNumber;
 use crate::circuit_functions::utils::onnx_types::{ONNXIO, ONNXLayer};
+use crate::circuit_functions::utils::UtilsError;
+use crate::circuit_functions::layers::LayerError;
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct Architecture{
@@ -44,17 +47,20 @@ pub struct OutputData {
 pub fn get_w_or_b<I: DeserializeOwned + Clone + FromJsonNumber + 'static>(
     w_and_b_map: &HashMap<String, ONNXLayer>,
     weights_input: &String,
-) -> ArrayD<I> {
-    let weights_tensor_option = match w_and_b_map.get(weights_input) {
-        Some(tensor) => tensor.tensor.clone(),
-        None => panic!("🚨 ModelError - missing weights and biases: {}", weights_input),
-    };
+) -> Result<ArrayD<I>, UtilsError> {
+    let weights_tensor_option = w_and_b_map
+        .get(weights_input)
+        .ok_or_else(|| UtilsError::MissingTensor { tensor: weights_input.clone() })?
+        .tensor
+        .clone();
 
     match weights_tensor_option {
         Some(tensor_json) => {
             // Unwrap "value" if tensor is an object with that key
             let inner_value = match &tensor_json {
-                Value::Object(map) if map.contains_key("value") => map.get("value").cloned().unwrap(),
+                Value::Object(map) if map.contains_key("value") => map.get("value").cloned().ok_or_else(|| {
+                        UtilsError::MissingTensor { tensor: weights_input.clone() }
+                    })?,
                 _ => tensor_json.clone(),
             };
             
@@ -70,10 +76,10 @@ pub fn get_w_or_b<I: DeserializeOwned + Clone + FromJsonNumber + 'static>(
                     _ => "Other",
                 }
             );
-            return value_to_arrayd(inner_value).unwrap();
+            value_to_arrayd(inner_value).map_err(UtilsError::ArrayConversionError)
             
         }
-        None => panic!("🚨 ModelError - missing tensor in expected weights/bias: {}", weights_input),
+        None => Err(UtilsError::MissingTensor { tensor: weights_input.clone() }),
     }
 }
 
@@ -98,30 +104,36 @@ pub fn collect_all_shapes(layers: &[ONNXLayer], ios: &[ONNXIO]) -> HashMap<Strin
 pub fn extract_params_and_expected_shape(
     layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     layer:  &crate::circuit_functions::utils::onnx_types::ONNXLayer
-) -> (Value, Vec<usize>){
+) -> Result<(Value, Vec<usize>), LayerError>{
+    let kind: LayerKind = layer.try_into()?; 
+
     let params = layer.params.clone()
-        .ok_or_else(|| panic!("Missing Params for: {}", layer.name.clone())).unwrap();
+        .ok_or_else(|| LayerError::MissingParameter { layer: kind.clone(), param: "params".to_string() })?;
     
     let key = layer.inputs.first()
-        .ok_or_else(|| panic!("Missing input keys for: {}", layer.name.clone())).unwrap();
+        .ok_or_else(|| LayerError::MissingInput { layer: kind.clone(), name: layer.name.clone() })?;
     
     let expected_shape = layer_context.shapes_map
         .get(key)
-        .ok_or_else(|| panic!("Missing input shape for: {}", layer.name.clone())).unwrap()
+        .ok_or_else(||LayerError::InvalidShape { layer: kind.clone(), msg: format!("Missing shape for input '{}'", key) })?
         .clone();
 
-    (params, expected_shape)
+    Ok((params, expected_shape))
 }
 
-pub fn get_param<I:DeserializeOwned>(layer_name: &String, param_name: &str, params: &Value) -> I {
-    match params.get(param_name){
-        Some(param) => {
-            let x = param.clone();
-            serde_json::from_value(x.clone()).expect(&format!("❌ Failed to parse param '{}': got value {}", param_name, x))
+pub fn get_param<I:DeserializeOwned>(layer_name: &String, param_name: &str, params: &Value) -> Result<I, UtilsError> {
+    let param_value = params.get(param_name)
+        .ok_or_else(|| UtilsError::MissingParam { 
+            layer: layer_name.to_string(), 
+            param: param_name.to_string() 
+        })?;
 
-        },
-        None => panic!("ParametersError: {} is missing {}", layer_name, param_name)
-    }
+    serde_json::from_value(param_value.clone())
+        .map_err(|source| UtilsError::ParseError {
+            layer: layer_name.to_string(),
+            param: param_name.to_string(),
+            source,
+        })
 }
 
 
@@ -130,21 +142,23 @@ pub fn get_param_or_default<I: DeserializeOwned + Clone>(
     param_name: &str,
     params: &Value,
     default: Option<&I>,
-) -> I {
+) -> Result<I, UtilsError> {
     match params.get(param_name) {
-        Some(param) => {
-            let x = param.clone();
-            match serde_json::from_value(x.clone()) {
-                Ok(value) => value,
-                Err(_) => {
-                    eprintln!("⚠️ Warning: Failed to parse param '{}': got value {} — using default", param_name, x);
-                    default.unwrap().clone()
-                }
-            }
-        },
+        Some(param_value) => {
+            serde_json::from_value(param_value.clone()).map_err(|source| UtilsError::ParseError {
+                layer: layer_name.to_string(),
+                param: param_name.to_string(),
+                source,
+            })
+        }
         None => {
-            eprintln!("⚠️ Warning: ParametersError: '{}' is missing '{}' — using default", layer_name, param_name);
-            default.unwrap().clone()
+            match default {
+                Some(d) => Ok(d.clone()),
+                None => Err(UtilsError::MissingParam {
+                    layer: layer_name.to_string(),
+                    param: param_name.to_string(),
+                }),
+            }
         }
     }
 }

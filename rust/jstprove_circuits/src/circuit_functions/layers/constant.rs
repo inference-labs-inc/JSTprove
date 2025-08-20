@@ -46,7 +46,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConstantLayer {
         })?;
         let constant = Self {
             name: layer.name.clone(),
-            value: get_param(&layer.name, VALUE, &params),
+            value: get_param(&layer.name, VALUE, &params)?,
             outputs: layer.outputs.to_vec()
         };
 

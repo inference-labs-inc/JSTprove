@@ -1,6 +1,8 @@
 use thiserror::Error;
 
-#[derive(Debug)]
+use crate::circuit_functions::utils::onnx_types::ONNXLayer;
+
+#[derive(Debug, Clone)]
 pub enum LayerKind {
     Constant,
     Conv,
@@ -25,6 +27,24 @@ impl std::fmt::Display for LayerKind {
     }
 }
 
+impl TryFrom<&ONNXLayer> for LayerKind {
+    type Error = LayerError;
+
+    fn try_from(layer: &ONNXLayer) -> Result<Self, Self::Error> {
+        match layer.op_type.as_str() {
+            "Constant" => Ok(LayerKind::Constant),
+            "Conv" => Ok(LayerKind::Conv),
+            "Flatten" => Ok(LayerKind::Flatten),
+            "Gemm" => Ok(LayerKind::Gemm),
+            "MaxPool" => Ok(LayerKind::MaxPool),
+            "Relu" => Ok(LayerKind::ReLU),
+            "Reshape" => Ok(LayerKind::Reshape),
+            other      => Err(LayerError::UnknownOp { op_type: other.to_string() }),
+            // _ => Err(())
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum LayerError {
     #[error("{layer} is missing input: {name}")]
@@ -41,6 +61,9 @@ pub enum LayerError {
 
     #[error("Invalid shape in {layer}: {msg}")]
     InvalidShape { layer: LayerKind, msg: String },
+
+    #[error("Unknown operator type: {op_type}")]
+    UnknownOp { op_type: String },
 
     #[error("Other error in {layer}: {msg}")]
     Other{layer: LayerKind, msg: String},

@@ -2,6 +2,8 @@
 use ndarray::{ArrayD, IxDyn};
 use serde_json::Value;
 
+use crate::circuit_functions::utils::errors::ArrayConversionError;
+
 pub trait FromJsonNumber {
     fn from_json_number(n: &serde_json::Number) -> Option<Self>
     where
@@ -44,9 +46,10 @@ impl FromJsonNumber for u64 {
     }
 }
 
-fn get_array_shape(value: &Value) -> Result<Vec<usize>, String> {
+fn get_array_shape(value: &Value) -> Result<Vec<usize>, ArrayConversionError> {
     let mut shape = Vec::new();
     let mut current = value;
+    let mut path = vec![];
     
     loop {
         match current {
@@ -56,23 +59,26 @@ fn get_array_shape(value: &Value) -> Result<Vec<usize>, String> {
                     break;
                 }
                 shape.push(arr.len());
+                path.push(0); // always following index 0 for shape
                 current = &arr[0];
             }
             Value::Number(_) => break,
-            _ => return Err("Invalid array structure".to_string()),
+            _ => return Err(ArrayConversionError::InvalidArrayStructure {
+                    expected: "array or number".to_string(),
+                    found: format!("{:?}", current.clone()) 
+                }),
         }
     }
-    
     Ok(shape)
 }
 
-fn flatten_to_typed_data<T>(value: &Value, data: &mut Vec<T>) -> Result<(), String>
+fn flatten_to_typed_data<T>(value: &Value, data: &mut Vec<T>) -> Result<(), ArrayConversionError>
 where
     T: Clone + FromJsonNumber,
 {
     match value {
         Value::Number(n) => {
-            let val = T::from_json_number(n).ok_or("Invalid number for target type")?;
+            let val = T::from_json_number(n).ok_or(ArrayConversionError::InvalidNumber)?;
             data.push(val);
             Ok(())
         }
@@ -82,25 +88,29 @@ where
             }
             Ok(())
         }
-        _ => Err("Expected number or array".to_string()),
+        _ => Err(ArrayConversionError::InvalidArrayStructure { 
+                    expected: "array or number".to_string(),
+                    found: format!("{:?}", value.clone()) 
+                }),
     }
 }
 
-pub fn value_to_arrayd<T>(value: Value) -> Result<ArrayD<T>, String>
+pub fn value_to_arrayd<T>(value: Value) -> Result<ArrayD<T>, ArrayConversionError>
 where
     T: Clone + FromJsonNumber + 'static,
 {
     match value {
         // Single number -> 0D array (scalar)
         Value::Number(n) => {
-            let val = T::from_json_number(&n).ok_or("Invalid number for target type")?;
+            let val = T::from_json_number(&n).ok_or_else(|| ArrayConversionError::InvalidNumber)?;
             Ok(ArrayD::from_elem(IxDyn(&[]), val))
         }
         
         // Array -> determine dimensions and convert
         Value::Array(arr) => {
             if arr.is_empty() {
-                return Ok(ArrayD::from_shape_vec(IxDyn(&[0]), vec![]).unwrap());
+
+                return ArrayD::from_shape_vec(IxDyn(&[0]), vec![]).map_err(ArrayConversionError::ShapeError);
             }
             
             // Get the shape by walking through the nested structure
@@ -111,10 +121,12 @@ where
             flatten_to_typed_data::<T>(&Value::Array(arr), &mut data)?;
             
             // Create the ArrayD
-            ArrayD::from_shape_vec(IxDyn(&shape), data)
-                .map_err(|e| format!("Shape error: {}", e))
+            ArrayD::from_shape_vec(IxDyn(&shape), data).map_err( ArrayConversionError::ShapeError)
         }
         
-        _ => Err("Expected number or array".to_string()),
+        other => Err(ArrayConversionError::InvalidArrayStructure {
+                    expected: "array or number".to_string(),
+                    found: format!("{:?}", other.clone()) 
+                }),
     }
 }

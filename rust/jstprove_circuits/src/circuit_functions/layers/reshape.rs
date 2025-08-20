@@ -46,14 +46,14 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
         let shape_name = layer.inputs.get(1)
         .ok_or_else(|| panic!("Missing input shape name")).unwrap()
         .clone();
-        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer);
+        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer).unwrap();
         let output_shape = layer_context.shapes_map.get(&layer.outputs.to_vec()[0]);
         let reshape = Self{
             name: layer.name.clone(),
             input_shape: expected_shape.to_vec(),
             inputs: layer.inputs.to_vec(),
             outputs: layer.outputs.to_vec(),
-            shape: get_param_or_default(&layer.name, &shape_name, &params, output_shape)
+            shape: get_param_or_default(&layer.name, &shape_name, &params, output_shape)?
         };
         Ok(Box::new(reshape))
     }

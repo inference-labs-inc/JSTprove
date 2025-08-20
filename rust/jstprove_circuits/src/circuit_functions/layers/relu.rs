@@ -50,7 +50,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
 
-        let (_params, expected_shape) = extract_params_and_expected_shape(layer_context, layer);
+        let (_params, expected_shape) = extract_params_and_expected_shape(layer_context, layer).unwrap();
         let relu = Self{
             name: layer.name.clone(),
             index: index,

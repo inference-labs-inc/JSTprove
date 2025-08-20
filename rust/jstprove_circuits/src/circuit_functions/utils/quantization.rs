@@ -39,6 +39,8 @@ use ndarray::ArrayD;
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
+use crate::circuit_functions::utils::{errors::RescaleError, UtilsError};
+
 // Internal modules
 use super::core_math::{assert_is_bitstring_and_reconstruct, unconstrained_to_bits};
 
@@ -84,11 +86,11 @@ impl RescalingContext {
         api: &mut Builder,
         scaling_exponent: usize,
         shift_exponent: usize,
-    ) -> Self {
+    ) -> Result<Self, RescaleError> {
         let scaling_factor_ = 1u32.checked_shl(scaling_exponent as u32)
-            .expect("scaling_exponent < 32"); // α = 2^κ
+            .ok_or(RescaleError::ScalingExponentTooLargeError{exp: scaling_exponent, type_name: "u32"} )?;
         let shift_ = 1u32.checked_shl(shift_exponent as u32)
-            .expect("shift_exponent < 32");   // S = 2^s
+            .ok_or(RescaleError::ShiftExponentTooLargeError {exp: scaling_exponent, type_name: "u32"} )?;
         let scaled_shift_ = U256::from(scaling_factor_) * U256::from(shift_); // α·S = 2^{κ + s}
 
         let scaling_factor = api.constant(scaling_factor_); // α as Variable
@@ -97,7 +99,7 @@ impl RescalingContext {
             CircuitField::<C>::from_u256(scaled_shift_)
         ); // α·S as Variable
 
-        Self {
+        Ok(Self {
             scaling_exponent,  // κ
             shift_exponent,    // s
             scaling_factor_,   // α = 2^κ
@@ -106,7 +108,7 @@ impl RescalingContext {
             scaling_factor,    // α as Variable
             shift,             // S as Variable
             scaled_shift,      // α·S as Variable
-        }
+        })
     }
 }
 
@@ -159,7 +161,7 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
     context: &RescalingContext, 
     dividend: Variable,
     apply_relu: bool,
-) -> Variable {
+) -> Result<Variable, RescaleError> {
     // Step 1: compute shifted_dividend = α·S + c
     let shifted_dividend = api.add(context.scaled_shift, dividend);
 
@@ -173,32 +175,41 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
     api.assert_is_equal(shifted_dividend, rhs);
 
     // Step 4: Range-check r ∈ [0, α − 1] using κ bits
-    let rem_bits = unconstrained_to_bits(api, remainder, context.scaling_exponent).unwrap();
-    let rem_recon = assert_is_bitstring_and_reconstruct(api, &rem_bits).unwrap();
+    let rem_bits = unconstrained_to_bits(api, remainder, context.scaling_exponent)
+    .map_err(|_| RescaleError::BitDecompositionError{var_name: "remainder".to_string(), n_bits: context.scaling_exponent})?;
+
+    let rem_recon = assert_is_bitstring_and_reconstruct(api, &rem_bits)
+    .map_err(|_| RescaleError::BitReconstructionError{var_name: "remainder".to_string(), n_bits: context.scaling_exponent})?;
+
     api.assert_is_equal(remainder, rem_recon);
 
     // Step 5: Range-check q^♯ ∈ [0, 2^(s + 1) − 1] using s + 1 bits
     let n_bits_q = context.shift_exponent
         .checked_add(1)
         .expect("shift_exponent + 1 fits in usize");
-    let q_bits = unconstrained_to_bits(api, shifted_q, n_bits_q).unwrap();
-    let q_recon = assert_is_bitstring_and_reconstruct(api, &q_bits).unwrap();
+
+    let q_bits = unconstrained_to_bits(api, shifted_q, n_bits_q)
+    .map_err(|_| RescaleError::BitDecompositionError{var_name: "quotient".to_string(), n_bits: context.scaling_exponent})?;
+
+    let q_recon = assert_is_bitstring_and_reconstruct(api, &q_bits)
+    .map_err(|_| RescaleError::BitReconstructionError{var_name: "quotient".to_string(), n_bits: context.scaling_exponent})?;
+    
     api.assert_is_equal(shifted_q, q_recon);
 
     // Step 6: Recover quotient q = q^♯ − S
     // let quotient = api.sub(shifted_q, context.shift); // q = q^♯ − S
     let quotient = api.sub(
         shifted_q,
-        CircuitField::<C>::from_u256(U256::from(context.shift_ as u64)),
+        CircuitField::<C>::from_u256(U256::from(context.shift_ as u128)),
     ); // q = q^♯ − S
 
     // Step 7: If ReLU is applied, zero out negatives using MSB of q^♯
     if apply_relu {
         // q ≥ 0 ⇔ q^♯ ≥ S ⇔ MSB (bit d_s) is 1, where q^♯ ≤ 2^(s + 1) - 1
         let sign_bit = q_bits[context.shift_exponent]; // the (s + 1)-st bit d_s
-        api.mul(quotient, sign_bit)
+        Ok(api.mul(quotient, sign_bit))
     } else {
-        quotient
+        Ok(quotient)
     }
 }
 
@@ -228,9 +239,18 @@ pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
     scaling_exponent: usize,
     shift_exponent: usize,
     apply_relu: bool,
-) -> ArrayD<Variable> {
-    let context = RescalingContext::new(api, scaling_exponent, shift_exponent);
-    array.map(|x| rescale(api, &context, *x, apply_relu))
+) -> Result<ArrayD<Variable>, UtilsError> {
+    let context = RescalingContext::new(api, scaling_exponent, shift_exponent)?;
+    
+    // Ok(array.map(|x| rescale(api, &context, *x, apply_relu).unwrap()))
+    // Convert to Vec, map with error handling, then back to ArrayD
+    let shape = array.shape().to_vec();
+    let results: Result<Vec<Variable>, RescaleError> = array
+        .into_iter()
+        .map(|x| rescale(api, &context, x, apply_relu))
+        .collect();
+    
+    let rescaled_data = results?;
+    Ok(ArrayD::from_shape_vec(shape, rescaled_data)
+        .map_err(|e| UtilsError::ShapeError(e))?) //
 }
-
-

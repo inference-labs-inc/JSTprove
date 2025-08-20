@@ -73,14 +73,14 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
 
-        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer);
+        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer)?;
 
         let maxpool = Self{
             name: layer.name.clone(),
-            kernel_shape: get_param(&layer.name, KERNEL_SHAPE, &params),
-            strides: get_param(&layer.name, STRIDES, &params),
-            dilation: get_param(&layer.name, DILATION, &params),
-            padding: get_param(&layer.name, PADS, &params),
+            kernel_shape: get_param(&layer.name, KERNEL_SHAPE, &params)?,
+            strides: get_param(&layer.name, STRIDES, &params)?,
+            dilation: get_param(&layer.name, DILATION, &params)?,
+            padding: get_param(&layer.name, PADS, &params)?,
             input_shape: expected_shape.clone(),
             shift_exponent: layer_context.n_bits - 1,
             inputs: layer.inputs.to_vec(),

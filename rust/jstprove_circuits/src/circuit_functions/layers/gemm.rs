@@ -73,7 +73,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         if self.is_rescale {
             let k = self.scaling as usize;
             let s = self.v_plus_one.checked_sub(1).expect("v_plus_one must be at least 1");
-            out_array = rescale_array(api, out_array, k, s, is_relu);
+            out_array = rescale_array(api, out_array, k, s, is_relu).unwrap();
         }
 
         Ok((self.outputs.clone(), out_array))
@@ -87,12 +87,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
         
-        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer);
+        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer).unwrap();
         let gemm = Self {
             name: layer.name.clone(),
             index: index,
-            weights: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[1]),
-            bias: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[2]),
+            weights: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[1]).unwrap(),
+            bias: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[2]).unwrap(),
             is_rescale: is_rescale.clone(),
             v_plus_one: layer_context.n_bits,
             two_v: layer_context.two_v,
@@ -100,10 +100,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             optimization_pattern: optimization_pattern,
             scaling: circuit_params.scaling.into(), // TODO: Becomes scaling_in?
             input_shape: expected_shape.to_vec(),
-            alpha: get_param_or_default(&layer.name, ALPHA, &params, Some(&1.0)),
-            beta: get_param_or_default(&layer.name, BETA, &params, Some(&1.0)),
-            transa: get_param_or_default(&layer.name, TRANS_A, &params, Some(&0)),
-            transb: get_param_or_default(&layer.name, TRANS_B, &params, Some(&0)),
+            alpha: get_param_or_default(&layer.name, ALPHA, &params, Some(&1.0))?,
+            beta: get_param_or_default(&layer.name, BETA, &params, Some(&1.0))?,
+            transa: get_param_or_default(&layer.name, TRANS_A, &params, Some(&0))?,
+            transb: get_param_or_default(&layer.name, TRANS_B, &params, Some(&0))?,
             inputs: layer.inputs.to_vec(),
             outputs: layer.outputs.to_vec(),
         };

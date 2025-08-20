@@ -244,25 +244,22 @@ impl PatternMatcher {
         let mut all_matches: HashMap<String, Vec<OptimizationMatch>> = HashMap::new();
    
         for pat in &self.patterns {
-            let matches = find_pattern_matches(layers, pat, BranchMatchMode::All).unwrap();
+            if pat.ops.is_empty() {
+                return Err(PatternError::EmptyPattern { pattern: pat.name.to_string() } );
+            }
+            let matches = find_pattern_matches(layers, pat, BranchMatchMode::All)?;
             eprintln!("Pattern `{}` matched {} times", pat.name, matches.len());
 
             for m in matches{
-                all_matches.entry(m[0].name.clone()).or_default().push(OptimizationMatch { pattern: *pat, layers: m.into_iter().cloned().collect()});
+                let first_match = m.first().ok_or_else(||PatternError::EmptyMatch)?;
+                all_matches.entry(first_match.name.clone()).or_default().push(OptimizationMatch { pattern: *pat, layers: m.into_iter().cloned().collect()});
             }
-            // eprintln!("{:?}", matches[0]);
         }
         eprintln!("{:?}", all_matches);
 
         match now.elapsed() {
-            Ok(elapsed) => {
-                // it prints '2'
-                eprintln!("Model pattern match took: {} nano seconds", elapsed.as_nanos());
-            }
-            Err(e) => {
-                // an error occurred!
-                eprintln!("Error calculating time: {e:?}");
-            }
+            Ok(elapsed) => eprintln!("Model pattern match took: {} nano seconds", elapsed.as_nanos()),
+            Err(e) => eprintln!("Error calculating time: {e:?}"),
         }
         Ok(all_matches)
     }

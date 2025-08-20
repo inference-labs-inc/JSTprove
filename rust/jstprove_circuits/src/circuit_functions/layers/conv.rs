@@ -97,18 +97,18 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
 
-        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer);
+        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer).unwrap();
         
         let conv = Self{
             name: layer.name.clone(),
             index: index,
-            weights: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[1]),
-            bias: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[2]),
-            strides: get_param(&layer.name, STRIDES, &params),
-            kernel_shape: get_param(&layer.name, KERNEL_SHAPE, &params),
-            group: vec![get_param_or_default(&layer.name, GROUP, &params, Some(&1))],
-            dilation: get_param(&layer.name, DILATION, &params),
-            pads: get_param(&layer.name, PADS, &params),
+            weights: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[1]).unwrap(),
+            bias: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[2]).unwrap(),
+            strides: get_param(&layer.name, STRIDES, &params)?,
+            kernel_shape: get_param(&layer.name, KERNEL_SHAPE, &params)?,
+            group: vec![get_param_or_default(&layer.name, GROUP, &params, Some(&1))?],
+            dilation: get_param(&layer.name, DILATION, &params)?,
+            pads: get_param(&layer.name, PADS, &params)?,
             input_shape: expected_shape.to_vec(),
             scaling: circuit_params.scaling.into(),
             optimization_pattern: optimization_pattern,
@@ -400,7 +400,7 @@ pub fn conv_4d_run<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
         let scaling_exponent = scaling_in as usize;
         let shift_exponent = v_plus_one.checked_sub(1)
             .expect("v_plus_one must be at least 1");
-        rescale_array(api, out, scaling_exponent, shift_exponent, is_relu)
+        rescale_array(api, out, scaling_exponent, shift_exponent, is_relu).unwrap()
     } else {
         out
     }

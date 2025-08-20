@@ -41,10 +41,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer);
+        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer).unwrap();
         let flatten = Self{
             name: layer.name.clone(),
-            axis: get_param_or_default(&layer.name, AXIS, &params, Some(&1)),
+            axis: get_param_or_default(&layer.name, AXIS, &params, Some(&1))?,
             input_shape: expected_shape.to_vec(),
             inputs: layer.inputs.to_vec(),
             outputs: layer.outputs.to_vec(),
