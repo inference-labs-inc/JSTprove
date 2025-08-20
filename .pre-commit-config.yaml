@@ -14,13 +14,6 @@ repos:
       - id: black
         language_version: python3.10
 
-  # Python linting with ruff
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.3.3
-    hooks:
-      - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
-
   # Rust formatting with rustfmt
   - repo: https://github.com/doublify/pre-commit-rust
     rev: v1.0
@@ -29,3 +22,10 @@ repos:
         args: ['--manifest-path=./Cargo.toml', '--all', '--', '--check']
       - id: clippy
         args: ['--manifest-path=./Cargo.toml', '--all', '--', -D, warnings]
+
+  # Python linting with ruff
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.3
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
