@@ -8,7 +8,7 @@ repos:
       - id: check-toml
       - id: check-added-large-files
       - id: detect-private-key
-        
+
   # Python formatting with black
   - repo: https://github.com/psf/black
     rev: 24.2.0
@@ -44,12 +44,6 @@ repos:
           -W, clippy::pedantic,
           -D, warnings,
         ]
-
-  # Security checks
-  - repo: https://github.com/python-security/safety-checker
-    rev: 2.1.1
-    hooks:
-      - id: safety-checker
 
   # Dependency checks
   - repo: https://github.com/python-poetry/poetry

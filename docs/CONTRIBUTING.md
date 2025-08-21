@@ -43,7 +43,7 @@ pip install pre-commit
 2. **Install Git hooks**:
 
 ```bash
-pre-commit install
+pre-commit install --hook-type pre-commit --hook-type pre-push
 ```
 
 This ensures that every commit automatically runs the pre-commit hooks locally, including:

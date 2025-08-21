@@ -1,17 +1,17 @@
 # python/testing/core/tests/test_cli.py
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 import pytest
 
 from python.frontend.cli import main
 from python.testing.core.utils.helper_functions import RunType
 
-
 # -----------------------
 # unit tests: dispatch only
 # -----------------------
 
-@pytest.mark.unit
+@pytest.mark.unit()
 def test_witness_dispatch(tmp_path: Path):
     # minimal files so _ensure_exists passes
     circuit = tmp_path / "circuit.txt"; circuit.write_text("ok")
@@ -42,7 +42,7 @@ def test_witness_dispatch(tmp_path: Path):
     )
 
 
-@pytest.mark.unit
+@pytest.mark.unit()
 def test_prove_dispatch(tmp_path: Path):
     circuit = tmp_path / "circuit.txt"; circuit.write_text("ok")
     witness = tmp_path / "w.bin";        witness.write_bytes(b"\x00")
@@ -66,7 +66,7 @@ def test_prove_dispatch(tmp_path: Path):
     assert kwargs.get("ecc") is False
 
 
-@pytest.mark.unit
+@pytest.mark.unit()
 def test_verify_dispatch(tmp_path: Path):
     circuit = tmp_path / "circuit.txt"; circuit.write_text("ok")
     inputj  = tmp_path / "in.json";      inputj.write_text('{"input":[0]}')

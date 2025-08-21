@@ -1,4 +1,5 @@
 import pytest
+
 from python.testing.core.utils.model_registry import (
     get_models_to_test,
     list_available_models,
@@ -26,7 +27,7 @@ def pytest_addoption(parser):
         help="Restrict models to a specific source: class, pytorch, or onnx.",
     )
     parser.addoption(
-        "--unit", action="store_true", default=False, help="Run only unit tests."
+        "--unit", action="store_true", default=False, help="Run only unit tests.",
     )
     parser.addoption(
         "--integration",
@@ -35,7 +36,7 @@ def pytest_addoption(parser):
         help="Run only integration tests.",
     )
     parser.addoption(
-        "--e2e", action="store_true", default=False, help="Run only end-to-end tests."
+        "--e2e", action="store_true", default=False, help="Run only end-to-end tests.",
     )
 
 
@@ -56,11 +57,7 @@ def pytest_collection_modifyitems(config, items):
         has_integration = "integration" in item.keywords and "e2e" not in item.keywords
         has_e2e = "e2e" in item.keywords
 
-        if run_unit and has_unit:
-            selected.append(item)
-        elif run_integration and has_integration:
-            selected.append(item)
-        elif run_e2e and has_e2e:
+        if run_unit and has_unit or run_integration and has_integration or run_e2e and has_e2e:
             selected.append(item)
         else:
             deselected.append(item)
@@ -80,7 +77,7 @@ def pytest_generate_tests(metafunc):
         ]  # Extract readable names
 
         metafunc.parametrize(
-            "model_fixture", models, indirect=True, scope="module", ids=ids
+            "model_fixture", models, indirect=True, scope="module", ids=ids,
         )
 
 
@@ -92,5 +89,6 @@ def pytest_configure(config):
         for model in available_models:
             print(f"- {model}")
         pytest.exit(
-            "Exiting after listing available models."
+            "Exiting after listing available models.",
         )  # This prevents tests from running
+
