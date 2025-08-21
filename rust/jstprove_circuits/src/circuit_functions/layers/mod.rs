@@ -7,5 +7,7 @@ pub mod flatten;
 pub mod constant;
 pub mod layer_ops;
 mod errors;
+mod layer_kinds;
 
-pub use errors::{LayerError, LayerKind};
+pub use errors::LayerError;
+pub use layer_kinds::LayerKind;

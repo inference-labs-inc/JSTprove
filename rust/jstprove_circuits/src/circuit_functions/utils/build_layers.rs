@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::circuit_functions::{layers::{constant::ConstantLayer, conv::ConvLayer, flatten::FlattenLayer, gemm::GemmLayer, layer_ops::LayerOp, maxpool::MaxPoolLayer, relu::ReluLayer, reshape::ReshapeLayer}, utils::{graph_pattern_matching::{optimization_skip_layers, GraphPattern, PatternMatcher}, onnx_model::{collect_all_shapes, Architecture, CircuitParams, WANDB}, onnx_types::ONNXLayer}};
+use crate::circuit_functions::{layers::{layer_ops::LayerOp,LayerKind}, utils::{graph_pattern_matching::{optimization_skip_layers, GraphPattern, PatternMatcher}, onnx_model::{collect_all_shapes, Architecture, CircuitParams, WANDB}, onnx_types::ONNXLayer}};
 
 use expander_compiler::frontend::*;
 
@@ -84,16 +84,10 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
             None => &true
         };
 
-        let builder = match layer.op_type.as_str() {
-            "Conv"     => ConvLayer::build,
-            "Reshape"  => ReshapeLayer::build,
-            "Gemm"     => GemmLayer::build,
-            "Constant" => ConstantLayer::build,
-            "MaxPool"  => MaxPoolLayer::build,
-            "Flatten"  => FlattenLayer::build,
-            "Relu"     => ReluLayer::build,
-            other      => panic!("Unsupported layer type: {}", other),
-        };
+        let layer_kind = LayerKind::try_from(layer.op_type.as_str())
+            .unwrap_or_else(|_e| panic!("Unsupported layer type: {}", layer.op_type));
+
+        let builder = layer_kind.builder::<C, Builder>();
 
         let built = builder(&layer, &circuit_params, optimization_pattern, *is_rescale, i, &layer_context)
             .unwrap();

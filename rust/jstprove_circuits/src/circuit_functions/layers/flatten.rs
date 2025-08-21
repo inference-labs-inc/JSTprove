@@ -29,7 +29,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
         .ok_or_else(|| panic!("Missing input {}", self.inputs[0].clone())).unwrap()
     .clone();
 
-        let out = onnx_flatten(layer_input.clone(), reshape_axis);
+        let out = onnx_flatten(layer_input.clone(), reshape_axis)?;
 
         Ok((self.outputs.clone(), out.clone()))
     }

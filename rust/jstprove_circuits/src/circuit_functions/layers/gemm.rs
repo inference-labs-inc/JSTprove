@@ -54,8 +54,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         .into_dimensionality::<Ix2>()
             .map_err(|_| LayerError::InvalidShape { layer: LayerKind::Gemm, msg: format!("Expected 2D weights array for layer {}", self.name) })?;
 
-        input_array = check_and_apply_transpose_array(input_array, self.transa, TRANS_A, GEMM, &self.name);
-        weights_array = check_and_apply_transpose_array(weights_array, self.transb, TRANS_B, GEMM, &self.name);
+        input_array = check_and_apply_transpose_array(input_array, self.transa, TRANS_A, GEMM, &self.name)?;
+        weights_array = check_and_apply_transpose_array(weights_array, self.transb, TRANS_B, GEMM, &self.name)?;
 
         let bias_array = load_array_constants(api, &self.bias);
 

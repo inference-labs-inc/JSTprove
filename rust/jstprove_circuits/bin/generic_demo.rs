@@ -48,7 +48,7 @@ declare_circuit!(Circuit {
 impl<C: Config> Define<C> for Circuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         // Getting inputs
-        let mut out = get_inputs(self.input_arr.clone(), ARCHITECTURE.inputs.clone());
+        let mut out = get_inputs(self.input_arr.clone(), ARCHITECTURE.inputs.clone()).unwrap();
         
         // let mut out = out2.remove("input").unwrap().clone();
         let layers = build_layers::<C, Builder>(&CIRCUITPARAMS, &ARCHITECTURE, &W_AND_B);
@@ -93,7 +93,6 @@ impl<C: Config> Define<C> for Circuit<Variable> {
         api.assert_is_equal(self.dummy[0], 1);
         api.assert_is_equal(self.dummy[1], 1);
         eprintln!("Outputs match");
-
     }
 }
 
@@ -136,7 +135,7 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
 
         // 1) get back an ArrayD<CircuitField<C>>
         let arr: ArrayD<CircuitField<C>> =
-            get_nd_circuit_inputs::<C>(&data.input, input_dims);
+            get_nd_circuit_inputs::<C>(&data.input, input_dims).unwrap();
 
         // 2) downcast to Ix1 and collect into a Vec
         let flat: Vec<CircuitField<C>> = arr
@@ -163,7 +162,7 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
             .product()];
 
         let arr: ArrayD<CircuitField<C>> =
-            get_nd_circuit_inputs::<C>(&data.output, output_dims);
+            get_nd_circuit_inputs::<C>(&data.output, output_dims).unwrap();
 
         let flat: Vec<CircuitField<C>> = arr
             .into_dimensionality::<Ix1>()

@@ -16,14 +16,20 @@ pub enum UtilsError {
         source: serde_json::Error,
     },
 
+    #[error("Invalid axis {axis} for rank {rank}")]
+    InvalidAxis { axis: usize, rank: usize },
+
+    #[error("Inputs length mismatch: got {got}, required {required}")]
+    InputDataLengthMismatch { got: usize, required: usize },
+
     #[error("Missing tensor '{tensor}' in weights map")]
     MissingTensor { tensor: String },
 
     #[error("Bitstring too long: bit index {value} exceeds limit {max}")]
     ValueTooLarge { value: usize, max: u128 },
 
-    #[error("Invalid number for target type during array conversion")]
-    InvalidNumber,
+    #[error("Expected number, but got {value}")]
+    InvalidNumber { value: serde_json::Value },
 
     #[error("Shape error while building array: {0}")]
     ShapeError(#[from] ndarray::ShapeError),

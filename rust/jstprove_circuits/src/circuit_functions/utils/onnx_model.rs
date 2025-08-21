@@ -56,7 +56,6 @@ pub fn get_w_or_b<I: DeserializeOwned + Clone + FromJsonNumber + 'static>(
 
     match weights_tensor_option {
         Some(tensor_json) => {
-            // Unwrap "value" if tensor is an object with that key
             let inner_value = match &tensor_json {
                 Value::Object(map) if map.contains_key("value") => map.get("value").cloned().ok_or_else(|| {
                         UtilsError::MissingTensor { tensor: weights_input.clone() }

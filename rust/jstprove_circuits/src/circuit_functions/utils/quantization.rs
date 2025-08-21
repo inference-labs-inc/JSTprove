@@ -242,7 +242,6 @@ pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
 ) -> Result<ArrayD<Variable>, UtilsError> {
     let context = RescalingContext::new(api, scaling_exponent, shift_exponent)?;
     
-    // Ok(array.map(|x| rescale(api, &context, *x, apply_relu).unwrap()))
     // Convert to Vec, map with error handling, then back to ArrayD
     let shape = array.shape().to_vec();
     let results: Result<Vec<Variable>, RescaleError> = array
