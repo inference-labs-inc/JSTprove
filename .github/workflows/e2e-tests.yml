@@ -2,9 +2,9 @@ name: End-to-End Tests
 
 on:
   push:
-    branches: [ "main", "rustfmt" ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ "main", "rustfmt" ]
+    branches: [ "main" ]
 
 jobs:
   formatting-and-linting:
@@ -14,13 +14,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Required for file change detection
-      
+
       # Setup Python
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      
+
       # Setup Rust
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -28,11 +28,11 @@ jobs:
           toolchain: nightly-2025-03-27
           components: rustfmt, clippy
           override: true
-      
+
       # Run formatters and linters
       - name: Install pre-commit
         run: pip install pre-commit
-      
+
       # Get latest version
       - name: Update Pre-commit
         run: pre-commit autoupdate --repo https://github.com/pre-commit/pre-commit-hooks
@@ -44,17 +44,17 @@ jobs:
           files: |
             **/*.py
             **/*.rs
-          
+
       - name: Run pre-commit on changed files
         if: steps.changed-files.outputs.any_changed == 'true'
         uses: pre-commit/action@v3.0.1
         with:
           extra_args: --files ${{ steps.changed-files.outputs.all_changed_files}}
-        
+
       # Additional Rust checks (easier to just run on all)
       - name: Run cargo fmt check
         run: cargo fmt --all -- --check
-        
+
       - name: Run cargo clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
