@@ -2,9 +2,9 @@ name: End-to-End Tests
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "rustfmt" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "rustfmt" ]
 
 jobs:
   e2e-test:
@@ -16,6 +16,8 @@ jobs:
         python-version: ["3.10"]  # Add more versions if needed
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5

@@ -4,12 +4,14 @@ on:
   schedule:
     - cron: '0 0 * * *'  # Run daily at midnight
   push:
+    branches: [ "main", "rustfmt" ]
     paths:
       - '**/Cargo.toml'
       - '**/Cargo.lock'
       - 'requirements.txt'
       - 'pyproject.toml'
   pull_request:
+    branches: [ "main", "rustfmt" ]
     paths:
       - '**/Cargo.toml'
       - '**/Cargo.lock'
@@ -22,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       
       - name: Review Dependencies
         uses: actions/dependency-review-action@v3

@@ -2,14 +2,14 @@ name: Rust CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "rustfmt" ]
     paths:
       - "rust/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "rustfmt" ]
     paths:
       - "rust/**"
       - "Cargo.toml"
@@ -22,6 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -41,10 +43,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v46
+        with:
+          files: |
+            **/*.rs
+          since_last_remote_commit: true
+
       - name: Run cargo fmt check
+        if: steps.changed-files.outputs.any_changed == 'true'
         run: cargo fmt --all -- --check
 
       - name: Run cargo clippy
+        if: steps.changed-files.outputs.any_changed == 'true'
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   rust-test:
@@ -82,21 +94,3 @@ jobs:
 
       - name: Run cargo test
         run: cargo test --workspace --all-features
-
-  rust-security:
-    name: Rust Security Audit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly-2025-03-27
-          override: true
-
-      - name: Install cargo-audit
-        run: cargo install cargo-audit
-
-      - name: Run security audit
-        run: cargo audit
