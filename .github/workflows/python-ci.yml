@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Required for changed files detection
+          fetch-depth: 0  # Required for file change detection
 
       - name: Get changed files
         id: changed-files
@@ -32,6 +32,7 @@ jobs:
           files: |
             **/*.py
             **/*.rs
+          since_last_remote_commit: true  # This helps handle both push and PR events
 
       # Only run basic format checks on changed files
       - name: Check formatting
