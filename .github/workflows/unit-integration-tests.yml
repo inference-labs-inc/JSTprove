@@ -13,9 +13,7 @@ permissions:
   contents: read
 
 jobs:
-
   build:
-    needs: formatting-and-linting
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
