@@ -228,12 +228,8 @@ See **[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)** for dev setup, pre-commit h
 
 ## Acknowledgments
 
-We gratefully acknowledge **Polyhedra Network** for:
+We gratefully acknowledge [**Polyhedra Network**](https://polyhedra.network/) for:
 
-* **Expander** — the GKR/sumcheck proving system we build on.
+* [**Expander**](https://github.com/PolyhedraZK/Expander) — the GKR/sumcheck proving system we build on.
 
-* **Expander Compiler Collection (ECC)** — the circuit frontend used to construct arithmetic circuits for ML layers.
-
-* Expander: [https://github.com/PolyhedraZK/Expander](https://github.com/PolyhedraZK/Expander)
-
-* ECC: [https://github.com/PolyhedraZK/ExpanderCompilerCollection](https://github.com/PolyhedraZK/ExpanderCompilerCollection)
+* [**Expander Compiler Collection (ECC)**]() — the circuit frontend used to construct arithmetic circuits for ML layers.

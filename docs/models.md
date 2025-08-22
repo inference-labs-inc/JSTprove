@@ -16,14 +16,14 @@ This page explains what kinds of models JSTProve supports and how they're handle
 ## ONNX expectations
 
 - Export models with ops limited to **Conv2D**, **GEMM/MatMul**, **MaxPool2D**, **ReLU**.
-- **Single-input** models are the standard path. Multi-input models may require customized input handling (provide all inputs with the correct names and shapes).
+- **Currently supported:** **single-input** models. Multi-input models are **not supported** by the CLI at this time.
 
 ---
 
 ## Quantization
 
 - Quantization is **automatic** in the pipeline during **compile**.
-- Internally, inputs and weights are scaled to integers (power-of-two base), and tensors are reshaped to the expected shapes before witness generation.
+- Internally, inputs and weights are scaled to integers, and tensors are reshaped to the expected shapes before witness generation.
 - The CLI's **witness** and **verify** stages take care of **rescale + reshape** via circuit helpers.
 
 **Important:** Always pass a **`.onnx`** file to `--quantized-path` (not `.json`).  
@@ -36,7 +36,7 @@ If you pass a `.json` by mistake you'll get an ONNX runtime parse error.
 - **Input JSON** should contain your model inputs as numeric arrays.  
   - If values are floats, they'll be **scaled and rounded** automatically during witness/verify.
   - If your key is named exactly `"input"` (single-input models), it will be reshaped to the model's input shape.
-  - For **multi-input** models, provide keys matching the model's input names.
+- Multi-input models are **not supported** yet; the CLI expects a single key `"input"`.
 
 **Single-input example (flattened vector):**
 ```json

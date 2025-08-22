@@ -45,10 +45,10 @@ quantized.onnx
 output.json
 witness.bin
 proof.bin
-python\_testing/
+python_testing/
 models/
 inputs/
-doom\_input.json
+doom_input.json
 
 ```
 

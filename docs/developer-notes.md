@@ -16,7 +16,7 @@ Internal notes for contributors working on JSTProve (Python + Rust).
 ├─ python/testing/            # unit/integration tests
 │  └─ core/tests/             # CLI tests, etc.
 └─ rust/
-   └─ jstprove\_circuits/     # Rust crate: circuits + runner
+   └─ jstprove_circuits/     # Rust crate: circuits + runner
 
 ````
 
