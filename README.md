@@ -196,8 +196,6 @@ python -m python.frontend.cli verify \
 
 If it prints **Verified**, you're done 🎉
 
-> Tip: add `--no-banner` or set `JSTPROVE_NO_BANNER=1` to suppress the ASCII header.
-
 ---
 
 ## CLI reference
