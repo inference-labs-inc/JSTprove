@@ -4,7 +4,7 @@ This page explains what kinds of models JSTProve supports and how they're handle
 
 ---
 
-## Supported operators
+## Supported operators (current)
 
 - **Linear:** Fully Connected / **GEMM**, **MatMul**
 - **Convolution:** **Conv2D**

@@ -11,7 +11,7 @@ _/    _/        _/      _/      _/        _/        _/    _/    _/  _/    _/
 
 Zero-knowledge proofs of ML inference on **ONNX** models — powered by [Polyhedra Network’s **Expander**](https://github.com/PolyhedraZK/Expander) (GKR/sum-check prover) and [**Expander Compiler Collection (ECC)**](https://github.com/PolyhedraZK/ExpanderCompilerCollection).
 
-* 🎯 **You bring ONNX** → we compile to a circuit, generate a witness, prove, and verify — via a simple CLI.
+* 🎯 **You bring ONNX** → we quantize, compile to a circuit, generate a witness, prove, and verify — via a simple CLI.
 * ✅ Supported ops (current): **Conv2D**, **GEMM/MatMul (FC)**, **ReLU**, **MaxPool2D**.
 * 🧰 CLI details: see **[docs/cli.md](docs/cli.md)**
 
@@ -42,7 +42,6 @@ ONNX model ─► Quantizer (Py) ─► Circuit via ECC (Rust) ─► Witness (R
 - **Small, fast circuits when possible:** Where safe, we fuse common patterns (e.g., **Linear + ReLU**, **Conv + ReLU**) into streamlined circuit fragments to reduce constraints.
 - **Deterministic debugging:** We prefer loud failures and inspectable intermediates (e.g., `*_reshaped.json`) over implicit magic.
 - **Cost-aware testing:** Unit/CLI tests mock heavy code paths for speed; end-to-end runs are reserved for targeted scenarios.
-
 
 ---
 
