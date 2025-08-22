@@ -53,8 +53,9 @@ Examples:
 # run unit + integration markers from repo root
 pytest --unit --integration
 
-# run only CLI tests
-pytest python/testing/core/tests/test_cli.py -q
+# run e2e tests. 
+Place model to be run in python/models/models_onnx/<model_name>.onnx
+pytest --e2e --<model_name>
 ```
 
 ---

@@ -10,6 +10,7 @@ This page explains what kinds of models JSTProve supports and how they're handle
 - **Convolution:** **Conv2D**
 - **Activation:** **ReLU**
 - **Pooling:** **MaxPool2D**
+- **Shaping / graph ops:** **Flatten**, **Reshape**, **Constant** 
 
 ---
 

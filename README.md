@@ -24,10 +24,10 @@ You provide an **ONNX** model and inputs; JSTProve handles **quantization**, **c
 
 ### High-level architecture
 
-* **Prover backend:** [Expander](https://github.com/PolyhedraZK/Expander) (GKR/sum-check prover/verification).
-* **Circuit frontend:** [ECC](https://github.com/PolyhedraZK/ExpanderCompilerCollection) Rust API for arithmetic circuits.
-* **Rust crate:** `rust/jstprove_circuits` implements layer circuits (Conv2D, ReLU, MaxPool2D, GEMM/FC) and a runner.
 * **Python pipeline:** Converts **ONNX → quantized ONNX**, prepares I/O, drives the Rust runner, exposes the **CLI**.
+* **Rust crate:** `rust/jstprove_circuits` implements layer circuits (Conv2D, ReLU, MaxPool2D, GEMM/FC) and a runner.
+* **Circuit frontend:** [ECC](https://github.com/PolyhedraZK/ExpanderCompilerCollection) Rust API for arithmetic circuits.
+* **Prover backend:** [Expander](https://github.com/PolyhedraZK/Expander) (GKR/sum-check prover/verification).
 
 ```
 ONNX model ─► Quantizer (Py) ─► Circuit via ECC (Rust) ─► Witness (Rust) ─► Proof (Rust) ─► Verify (Rust)
@@ -41,7 +41,6 @@ ONNX model ─► Quantizer (Py) ─► Circuit via ECC (Rust) ─► Witness (R
 - **Quantization that's simple & faithful:** We scale tensors, **round to integers**, run the model, and (where needed) **rescale** outputs back. Scaling keeps arithmetic cheap while remaining close to the original FP behavior.
 - **Small, fast circuits when possible:** Where safe, we fuse common patterns (e.g., **Linear + ReLU**, **Conv + ReLU**) into streamlined circuit fragments to reduce constraints.
 - **Deterministic debugging:** We prefer loud failures and inspectable intermediates (e.g., `*_reshaped.json`) over implicit magic.
-- **Cost-aware testing:** Unit/CLI tests mock heavy code paths for speed; end-to-end runs are reserved for targeted scenarios.
 
 ---
 
@@ -55,26 +54,44 @@ ONNX model ─► Quantizer (Py) ─► Circuit via ECC (Rust) ─► Witness (R
 ```bash
 sudo apt-get update && sudo apt-get install -y \
   libopenmpi-dev openmpi-bin pkg-config libclang-dev clang
+  pip install -e .
 ````
 
 #### macOS
 
 ```bash
 brew install open-mpi llvm
-# If clang/llvm is keg-only, you may need this for builds that look for libclang:
-# export LIBCLANG_PATH="$(brew --prefix llvm)/lib"
+pip install -e .
 ```
 
 ---
 
-### 1) Rust toolchain (nightly)
+### 1) Rust toolchain
+
+Install Rust via rustup (if you don't have it):
 
 ```bash
-# Install nightly and set it for this repo
-rustup toolchain install nightly
-rustup override set nightly
+# macOS/Linux:
+curl https://sh.rustup.rs -sSf | sh
+# then restart your shell
+````
+
+Verify your install:
+
+```bash
+rustup --version
 rustc --version
 cargo --version
+```
+
+> This repo includes a `rust-toolchain.toml` that pins the required **nightly**.
+> When you run `cargo` in this directory, rustup will automatically download/use
+> the correct toolchain. You **do not** need to run `rustup override set nightly`.
+
+(Optional) If you want to prefetch nightly ahead of time:
+
+```bash
+rustup toolchain install nightly
 ```
 
 ---
@@ -204,14 +221,9 @@ See **[docs/cli.md](docs/cli.md)** for subcommands, flags, and examples.
 
 ---
 
-## Troubleshooting (quick)
+## Troubleshooting
 
-* **Runner not found** → run from repo root; re-run **compile** (builds the runner if needed).
-* **`Protobuf parsing failed`** on `--quantized-path` → you likely passed a `.json`; use a **`.onnx`**.
-* Shape/out-of-bounds during witness → ensure your input JSON matches the model’s expected shape; re-run **compile** after changing models.
-* Verify shape issues → always pass `--quantized-path` to `verify`.
-
-For more detail: **[docs/troubleshooting.md](docs/troubleshooting.md)**
+See **[docs/troubleshooting.md](docs/troubleshooting.md)**
 
 ---
 
