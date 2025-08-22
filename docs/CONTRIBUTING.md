@@ -1,4 +1,4 @@
-# **Contributing to JSTProve
+# Contributing to JSTProve
 
 Thank you for your interest in contributing! Please follow these steps to ensure your contributions are smooth and
 consistent with project standards.
