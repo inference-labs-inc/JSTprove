@@ -37,9 +37,6 @@ ONNX model ─► Quantizer (Py) ─► Circuit via ECC (Rust) ─► Witness (R
 
 ---
 
-Great call. Here’s an updated, copy-pasteable **Installation** section that reflects your points (nightly Rust, Expander first, OS deps, and a verification step for Expander). It replaces the old one.
-
-````md
 ## Installation
 
 > Run commands from the **repo root** so the runner binary path (e.g., `./target/release/onnx_generic_circuit`) resolves.
