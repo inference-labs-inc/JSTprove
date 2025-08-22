@@ -16,10 +16,7 @@ This page explains what kinds of models JSTProve supports and how they're handle
 ## ONNX expectations
 
 - Export models with ops limited to **Conv2D**, **GEMM/MatMul**, **MaxPool2D**, **ReLU**.
-- **Dynamic dimensions** (e.g., batch size = `-1`) are normalized to at least `1` internally for shape inference.
 - **Single-input** models are the standard path. Multi-input models may require customized input handling (provide all inputs with the correct names and shapes).
-
-**Tip:** Keep inputs in **NCHW** for Conv2D (batch, channels, height, width). If your exporter uses a different layout, convert before running JSTProve.
 
 ---
 

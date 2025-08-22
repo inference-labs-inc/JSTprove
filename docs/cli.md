@@ -15,16 +15,6 @@ python -m python.frontend.cli [--no-banner] <command> [options]
 
 ---
 
-## Prereqs
-
-* **Python 3.12** (with project deps installed).
-* Run commands **from the repo root** so `./target/release/onnx_generic_circuit` is found.
-* You do **not** have to build the Rust runner manually — the **compile** step will (re)build it as needed.
-
-> Tip: add `--no-banner` to hide the ASCII header.
-
----
-
 ## Help
 
 ```bash
