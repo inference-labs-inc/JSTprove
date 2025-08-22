@@ -1,3 +1,11 @@
+         _/    _/_/_/  _/_/_/_/_/  _/_/_/                                             
+        _/  _/            _/      _/    _/  _/  _/_/    _/_/    _/      _/    _/_/    
+       _/    _/_/        _/      _/_/_/    _/_/      _/    _/  _/      _/  _/_/_/_/   
+_/    _/        _/      _/      _/        _/        _/    _/    _/  _/    _/          
+ _/_/    _/_/_/        _/      _/        _/          _/_/        _/        _/_/_/
+ 
+---
+
 # JSTProve
 
 Zero-knowledge proofs of ML inference on **ONNX** models — powered by [Polyhedra Network’s **Expander**](https://github.com/PolyhedraZK/Expander) (GKR/sum-check prover) and [**Expander Compiler Collection (ECC)**](https://github.com/PolyhedraZK/ExpanderCompilerCollection).
@@ -136,53 +144,53 @@ You can now follow the **Quickstart** commands (compile → witness → prove �
 
 ---
 
-## Quickstart (Doom demo)
+## Quickstart (LeNet demo)
 
 Demo paths:
 
-* ONNX: `python/models/models_onnx/doom.onnx`
-* Input JSON: `python_testing/models/inputs/doom_input.json`
-* Artifacts: `artifacts/doom/*`
+* ONNX: `python/models/models_onnx/lenet.onnx`
+* Input JSON: `python_testing/models/inputs/lenet_input.json`
+* Artifacts: `artifacts/lenet/*`
 
 1. **Compile** → circuit + **quantized ONNX**
 
 ```bash
 python -m python.frontend.cli compile \
-  -m python/models/models_onnx/doom.onnx \
-  -c artifacts/doom/circuit.txt \
-  -q artifacts/doom/quantized.onnx
+  -m python/models/models_onnx/lenet.onnx \
+  -c artifacts/lenet/circuit.txt \
+  -q artifacts/lenet/quantized.onnx
 ```
 
 2. **Witness** → reshape/scale inputs, run model, write witness + outputs
 
 ```bash
 python -m python.frontend.cli witness \
-  -c artifacts/doom/circuit.txt \
-  -q artifacts/doom/quantized.onnx \
-  -i python_testing/models/inputs/doom_input.json \
-  -o artifacts/doom/output.json \
-  -w artifacts/doom/witness.bin
+  -c artifacts/lenet/circuit.txt \
+  -q artifacts/lenet/quantized.onnx \
+  -i python_testing/models/inputs/lenet_input.json \
+  -o artifacts/lenet/output.json \
+  -w artifacts/lenet/witness.bin
 ```
 
 3. **Prove** → witness → proof
 
 ```bash
 python -m python.frontend.cli prove \
-  -c artifacts/doom/circuit.txt \
-  -w artifacts/doom/witness.bin \
-  -p artifacts/doom/proof.bin
+  -c artifacts/lenet/circuit.txt \
+  -w artifacts/lenet/witness.bin \
+  -p artifacts/lenet/proof.bin
 ```
 
 4. **Verify** → check the proof (needs quantized ONNX for input shapes)
 
 ```bash
 python -m python.frontend.cli verify \
-  -c artifacts/doom/circuit.txt \
-  -q artifacts/doom/quantized.onnx \
-  -i python_testing/models/inputs/doom_input.json \
-  -o artifacts/doom/output.json \
-  -w artifacts/doom/witness.bin \
-  -p artifacts/doom/proof.bin
+  -c artifacts/lenet/circuit.txt \
+  -q artifacts/lenet/quantized.onnx \
+  -i python_testing/models/inputs/lenet_input.json \
+  -o artifacts/lenet/output.json \
+  -w artifacts/lenet/witness.bin \
+  -p artifacts/lenet/proof.bin
 ```
 
 If it prints **Verified**, you're done 🎉

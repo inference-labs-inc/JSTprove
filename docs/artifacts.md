@@ -39,7 +39,7 @@ You control all paths; the CLI **does not** infer directories.
 ```
 
 artifacts/
-doom/
+lenet/
 circuit.txt
 quantized.onnx
 output.json
@@ -48,7 +48,7 @@ proof.bin
 python_testing/
 models/
 inputs/
-doom_input.json
+lenet_input.json
 
 ```
 

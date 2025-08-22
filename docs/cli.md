@@ -28,9 +28,9 @@ python -m python.frontend.cli witness --help
 
 ## Example paths used below
 
-* ONNX model: `python/models/models_onnx/doom.onnx`
-* Example input JSON: `python_testing/models/inputs/doom_input.json`
-* Artifacts: `artifacts/doom/*`
+* ONNX model: `python/models/models_onnx/lenet.onnx`
+* Example input JSON: `python_testing/models/inputs/lenet_input.json`
+* Artifacts: `artifacts/lenet/*`
 
 ---
 
@@ -50,9 +50,9 @@ Generate a circuit file and a **quantized ONNX** model.
 
 ```bash
 python -m python.frontend.cli compile \
-  -m python/models/models_onnx/doom.onnx \
-  -c artifacts/doom/circuit.txt \
-  -q artifacts/doom/quantized.onnx
+  -m python/models/models_onnx/lenet.onnx \
+  -c artifacts/lenet/circuit.txt \
+  -q artifacts/lenet/quantized.onnx
 ```
 
 ---
@@ -73,11 +73,11 @@ Reshapes/scales inputs, runs the quantized model to produce outputs, and writes 
 
 ```bash
 python -m python.frontend.cli witness \
-  -c artifacts/doom/circuit.txt \
-  -q artifacts/doom/quantized.onnx \
-  -i python_testing/models/inputs/doom_input.json \
-  -o artifacts/doom/output.json \
-  -w artifacts/doom/witness.bin
+  -c artifacts/lenet/circuit.txt \
+  -q artifacts/lenet/quantized.onnx \
+  -i python_testing/models/inputs/lenet_input.json \
+  -o artifacts/lenet/output.json \
+  -w artifacts/lenet/witness.bin
 ```
 
 ---
@@ -96,9 +96,9 @@ Create a proof from the circuit + witness.
 
 ```bash
 python -m python.frontend.cli prove \
-  -c artifacts/doom/circuit.txt \
-  -w artifacts/doom/witness.bin \
-  -p artifacts/doom/proof.bin
+  -c artifacts/lenet/circuit.txt \
+  -w artifacts/lenet/witness.bin \
+  -p artifacts/lenet/proof.bin
 ```
 
 ---
@@ -120,12 +120,12 @@ Verify the proof (requires the quantized model to hydrate input shapes).
 
 ```bash
 python -m python.frontend.cli verify \
-  -c artifacts/doom/circuit.txt \
-  -q artifacts/doom/quantized.onnx \
-  -i python_testing/models/inputs/doom_input.json \
-  -o artifacts/doom/output.json \
-  -w artifacts/doom/witness.bin \
-  -p artifacts/doom/proof.bin
+  -c artifacts/lenet/circuit.txt \
+  -q artifacts/lenet/quantized.onnx \
+  -i python_testing/models/inputs/lenet_input.json \
+  -o artifacts/lenet/output.json \
+  -w artifacts/lenet/witness.bin \
+  -p artifacts/lenet/proof.bin
 ```
 
 ---
