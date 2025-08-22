@@ -1,5 +1,4 @@
 # TODO: Add a matrix of Python Versions if we want to support cross-compatibility
-# TODO: Create tests for different sources such as : ["class", "pytorch", "onnx"]
 
 name: Unit, Integration Python Tests
 
