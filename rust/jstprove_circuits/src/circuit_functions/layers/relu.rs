@@ -7,10 +7,10 @@ use ndarray::ArrayD;
 use expander_compiler::frontend::*;
 
 /// Internal crate imports
-use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{core_math::{
+use crate::circuit_functions::{layers::{layer_ops::LayerOp, LayerError, LayerKind}, utils::{core_math::{
     assert_is_bitstring_and_reconstruct,
     unconstrained_to_bits,
-}, onnx_model::extract_params_and_expected_shape}, CircuitError};
+}, onnx_model::{extract_params_and_expected_shape, get_input_name}, ArrayConversionError, RescaleError}, CircuitError};
 
 // -------- Struct --------
 #[allow(dead_code)]
@@ -32,11 +32,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
         input: HashMap<String,ArrayD<Variable>>,
     ) -> Result<(Vec<String>,ArrayD<Variable>), CircuitError> {
         eprintln!("{:?}", self);
-        let layer_input = input.get(&self.inputs[0])
-        .ok_or_else(|| panic!("Missing input {}", self.inputs[0].clone())).unwrap()
-    .clone();
+        let input_name = get_input_name(&self.inputs, 0, LayerKind::Conv, "input")?;
+        let layer_input = input.get(&input_name.clone())
+            .ok_or_else(|| LayerError::MissingInput { layer: LayerKind::Conv, name: input_name.clone() })?
+        .clone();
         let out = layer_input;
-        let out = relu_array(api, out, self.n_bits - 1);
+        let out = relu_array(api, out, self.n_bits - 1)?;
 
         Ok((self.outputs.clone(), out))
     }
@@ -50,7 +51,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
 
-        let (_params, expected_shape) = extract_params_and_expected_shape(layer_context, layer).unwrap();
+        let (_params, expected_shape) = extract_params_and_expected_shape(layer_context, layer)
+        .map_err(|e| LayerError::Other {
+                layer: LayerKind::ReLU,
+                msg: format!("extract_params_and_expected_shape failed: {e}"),
+            })
+            ?;
         let relu = Self{
             name: layer.name.clone(),
             index: index,
@@ -95,15 +101,18 @@ impl ReluContext {
     /// 
     /// # Panics
     /// Panics if `shift_exponent ≥ 32` due to `u32` shift overflow.
-    pub fn new<C: Config, Builder: RootAPI<C>>(api: &mut Builder, shift_exponent: usize) -> Self {
+    pub fn new<C: Config, Builder: RootAPI<C>>(api: &mut Builder, shift_exponent: usize) -> Result<Self, RescaleError> {
         let shift_const = 1u32
             .checked_shl(shift_exponent as u32)
-            .expect("shift_exponent must be < 32");
+            .ok_or_else(|| RescaleError::ShiftExponentTooLargeError {
+                exp: shift_exponent,
+                type_name: "u32",
+            })?;
         let shift = api.constant(shift_const);
-        Self {
+        Ok( Self {
             shift_exponent,
             shift,
-        }
+        } )
     }
 }
 
@@ -148,16 +157,16 @@ pub fn relu<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     x: &Variable,
     context: &ReluContext,
-) -> Variable {
+) -> Result<Variable, CircuitError> {
     let shifted_x = api.add(context.shift, *x);
     let n_bits = context.shift_exponent + 1;
 
-    let bits = unconstrained_to_bits(api, shifted_x, n_bits).unwrap();
-    let reconstructed = assert_is_bitstring_and_reconstruct(api, &bits).unwrap();
+    let bits = unconstrained_to_bits(api, shifted_x, n_bits)?;
+    let reconstructed = assert_is_bitstring_and_reconstruct(api, &bits)?;
     api.assert_is_equal(shifted_x, reconstructed);
 
     let sign_bit = bits[context.shift_exponent];
-    api.mul(*x, sign_bit)
+    Ok(api.mul(*x, sign_bit))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -171,7 +180,9 @@ pub fn relu_array<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     array: ArrayD<Variable>,
     shift_exponent: usize,
-) -> ArrayD<Variable> {
-    let context = ReluContext::new(api, shift_exponent);
-    array.map(|x| relu(api, x, &context))
+) -> Result<ArrayD<Variable>, CircuitError> {
+    let context = ReluContext::new(api, shift_exponent)?;
+    let flat_results: Result<Vec<_>, _> = array.iter().map(|x| relu(api, x, &context)).collect();
+    let out = ArrayD::from_shape_vec(array.raw_dim(), flat_results?).map_err(|e| ArrayConversionError::ShapeError(e))?;
+    Ok(out)
 }

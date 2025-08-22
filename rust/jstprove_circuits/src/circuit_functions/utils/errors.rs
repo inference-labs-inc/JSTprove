@@ -16,9 +16,6 @@ pub enum UtilsError {
         source: serde_json::Error,
     },
 
-    #[error("Invalid axis {axis} for rank {rank}")]
-    InvalidAxis { axis: usize, rank: usize },
-
     #[error("Inputs length mismatch: got {got}, required {required}")]
     InputDataLengthMismatch { got: usize, required: usize },
 
@@ -31,9 +28,6 @@ pub enum UtilsError {
     #[error("Expected number, but got {value}")]
     InvalidNumber { value: serde_json::Value },
 
-    #[error("Shape error while building array: {0}")]
-    ShapeError(#[from] ndarray::ShapeError),
-
     #[error("Graph error: {0}")]
     GraphPatternError(#[from] PatternError),
 
@@ -42,6 +36,9 @@ pub enum UtilsError {
 
     #[error("Rescaling error: {0}")]
     RescaleError(#[from] RescaleError),
+
+    #[error("Build error: {0}")]
+    BuildError(#[from] BuildError),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -57,6 +54,9 @@ pub enum ArrayConversionError {
     
     #[error("Shape error: {0}")]
     ShapeError(#[from] ndarray::ShapeError),
+
+    #[error("Invalid axis {axis} for rank {rank}")]
+    InvalidAxis { axis: usize, rank: usize },
 }
 
 
@@ -94,4 +94,16 @@ pub enum RescaleError {
         var_name: String,
         n_bits: usize,
     },
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum BuildError {
+    #[error("Pattern matcher failed: {0}")]
+    PatternMatcher(#[from] PatternError),
+
+    #[error("Unsupported layer type: {0}")]
+    UnsupportedLayer(String),
+    
+    #[error("Layer build failed: {0}")]
+    LayerBuild(String),
 }

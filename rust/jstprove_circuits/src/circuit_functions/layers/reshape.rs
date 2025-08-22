@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use ndarray::{ArrayD, IxDyn};
 use expander_compiler::frontend::*;
 
-use crate::circuit_functions::{layers::{layer_ops::LayerOp, LayerError, LayerKind}, utils::{onnx_model::{extract_params_and_expected_shape, get_param_or_default}, shaping::infer_reshape_shape}, CircuitError};
+use crate::circuit_functions::{layers::{layer_ops::LayerOp, LayerError, LayerKind}, utils::{onnx_model::{extract_params_and_expected_shape, get_input_name, get_param_or_default}, shaping::infer_reshape_shape}, CircuitError};
 
 
 // -------- Struct --------
@@ -25,9 +25,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
         input: HashMap<String,ArrayD<Variable>>,
     ) -> Result<(Vec<String>,ArrayD<Variable>), CircuitError> {
         let reshape_shape = self.shape.clone();
-        let layer_input = input.get(&self.inputs[0])
-        .ok_or_else(|| panic!("Missing input {}", self.inputs[0].clone())).unwrap()
-    .clone();
+        let input_name = get_input_name(&self.inputs, 0, LayerKind::Conv, "input")?;
+        let layer_input = input.get(&input_name.clone())
+            .ok_or_else(|| LayerError::MissingInput { layer: LayerKind::Conv, name: input_name.clone() })?
+        .clone();
+    
         let inferred_shape = infer_reshape_shape(layer_input.len(), &reshape_shape)?;
 
         let out = layer_input.into_shape_with_order(IxDyn(&inferred_shape))
@@ -44,10 +46,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let shape_name = layer.inputs.get(1)
-        .ok_or_else(|| panic!("Missing input shape name")).unwrap()
-        .clone();
-        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer).unwrap();
+        let shape_name     = get_input_name(&layer.inputs, 1, LayerKind::Reshape, "input shape")?;
+        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer)
+        .map_err(|e| LayerError::Other {
+                layer: LayerKind::Reshape,
+                msg: format!("extract_params_and_expected_shape failed: {e}"),
+            })
+            ?;
         let output_shape = layer_context.shapes_map.get(&layer.outputs.to_vec()[0]);
         let output_shape_isize = output_shape.map(|v| v.iter().map(|&x| x as isize).collect());
 

@@ -1,3 +1,11 @@
+use crate::circuit_functions::utils::onnx_types::ONNXLayer;
+use crate::circuit_functions::CircuitError;
+use crate::circuit_functions::layers::LayerError;
+use crate::circuit_functions::utils::onnx_model::CircuitParams;
+use crate::circuit_functions::utils::graph_pattern_matching::GraphPattern;
+use crate::circuit_functions::utils::build_layers::BuildLayerContext;
+use crate::circuit_functions::layers::layer_ops::LayerOp;
+
 use crate::circuit_functions::layers::constant::ConstantLayer;
 use crate::circuit_functions::layers::conv::ConvLayer;
 use crate::circuit_functions::layers::flatten::FlattenLayer;
@@ -5,14 +13,6 @@ use crate::circuit_functions::layers::gemm::GemmLayer;
 use crate::circuit_functions::layers::maxpool::MaxPoolLayer;
 use crate::circuit_functions::layers::relu::ReluLayer;
 use crate::circuit_functions::layers::reshape::ReshapeLayer;
-use crate::circuit_functions::utils::onnx_types::ONNXLayer;
-use crate::circuit_functions::CircuitError;
-use crate::circuit_functions::layers::LayerError;
-
-use crate::circuit_functions::utils::onnx_model::CircuitParams;
-use crate::circuit_functions::utils::graph_pattern_matching::GraphPattern;
-use crate::circuit_functions::utils::build_layers::BuildLayerContext;
-use crate::circuit_functions::layers::layer_ops::LayerOp;
 
 use expander_compiler::frontend::*;
 

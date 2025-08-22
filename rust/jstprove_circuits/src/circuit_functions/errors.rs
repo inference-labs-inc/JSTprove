@@ -1,5 +1,5 @@
 use thiserror::Error;
-use crate::circuit_functions::{layers::LayerError, utils::{UtilsError, PatternError}};
+use crate::circuit_functions::{layers::LayerError, utils::{ArrayConversionError, PatternError, RescaleError, UtilsError}};
 
 #[derive(Debug, Error)]
 pub enum CircuitError {
@@ -17,6 +17,12 @@ pub enum CircuitError {
 
     #[error("Graph error: {0}")]
     GraphPatternError(#[from] PatternError),
+
+    #[error("Array conversion error: {0}")]
+    ArrayConversionError(#[from] ArrayConversionError),
+
+    #[error("Rescaling error: {0}")]
+    RescaleError(#[from] RescaleError),
 
     #[error("Other circuit error: {0}")]
     Other(String),

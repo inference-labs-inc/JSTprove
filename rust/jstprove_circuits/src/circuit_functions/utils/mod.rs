@@ -13,4 +13,4 @@ pub mod constants;
 
 mod errors;
 
-pub use errors::{UtilsError, PatternError};
+pub use errors::{UtilsError, PatternError, ArrayConversionError, RescaleError};

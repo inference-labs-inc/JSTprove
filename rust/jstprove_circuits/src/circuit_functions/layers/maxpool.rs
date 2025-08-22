@@ -6,7 +6,7 @@ use ndarray::{ArrayD, Array4, Ix4};
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
-use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{constants::{DILATION, KERNEL_SHAPE, PADS, STRIDES}, onnx_model::{extract_params_and_expected_shape, get_param}}, CircuitError};
+use crate::circuit_functions::{layers::{layer_ops::LayerOp, LayerError, LayerKind}, utils::{constants::{DILATION, KERNEL_SHAPE, PADS, STRIDES}, onnx_model::{extract_params_and_expected_shape, get_input_name, get_param}}, CircuitError};
 /// Internal crate imports
 use super::super::utils::core_math::{unconstrained_to_bits, assert_is_bitstring_and_reconstruct};
 
@@ -33,11 +33,18 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         api: &mut Builder,
         input: HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>,ArrayD<Variable>), CircuitError> {
-        let layer_input = input.get(&self.inputs[0])
-        .ok_or_else(|| panic!("Missing input {}", self.inputs[0].clone())).unwrap()
-    .clone();
+        let input_name = get_input_name(&self.inputs, 0, LayerKind::Gemm, "input")?;
+        let layer_input = input.get(&input_name.clone())
+        .ok_or_else(|| LayerError::MissingInput { layer: LayerKind::Gemm, name: input_name.clone() })?
+        .clone();
+
         let shape = layer_input.shape();
-        assert_eq!(shape.len(), 4, "Expected 4D input for max pooling, got shape: {:?}", shape);
+        if shape.len() != 4 {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::MaxPool,
+                msg: format!("Expected 4D input for max pooling, got shape: {:?}", shape),
+            }.into());
+        }
 
         let ceil_mode = false;
         let (kernel, strides, dilation, out_shape, pads) = setup_maxpooling_2d(
@@ -47,7 +54,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
             &self.dilation,
             ceil_mode,
             &self.input_shape,
-        );
+        )?;
 
         let output = maxpooling_2d::<C, Builder>(
             api,
@@ -59,7 +66,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
             &self.input_shape,
             &pads,
             self.shift_exponent,
-        );
+        )?;
 
         Ok((self.outputs.clone(), output))
     }
@@ -104,7 +111,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
 /// and selects the maximum via weighted sums:  
 /// `current_max ← v·(v > current_max) + current_max·(v ≤ current_max)`
 ///
-/// # Panics
+/// # Errors
 /// - If `values` is empty.
 ///
 /// # Arguments
@@ -121,15 +128,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
 pub fn unconstrained_max<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     values: &[Variable],
-) -> Variable {
-    assert!(
-        !values.is_empty(),
-        "unconstrained_max: input slice must be nonempty"
-    );
+) -> Result<Variable, CircuitError> {
+
+    if values.is_empty() {
+        return Err(LayerError::Other {
+            layer: LayerKind::MaxPool,
+            msg: "unconstrained_max: input slice must be nonempty".to_string(),
+        }.into());
+    }
 
     // Initialize with the first element
     let mut current_max = values[0];
-
     for &v in &values[1..] {
         // Compute indicators: is_greater = 1 if v > current_max, else 0
         let is_greater = api.unconstrained_greater(v, current_max);
@@ -143,7 +152,7 @@ pub fn unconstrained_max<C: Config, Builder: RootAPI<C>>(
         current_max = api.unconstrained_add(take_v, keep_old);
     }
 
-    current_max
+    Ok(current_max)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -164,15 +173,17 @@ impl MaxAssertionContext {
     /// Creates a new context for asserting maximums, given a `shift_exponent = s`.
     ///
     /// Computes `S = 2^s` and lifts it to a constant for reuse.
-    pub fn new<C: Config, Builder: RootAPI<C>>(api: &mut Builder, shift_exponent: usize) -> Self {
+    pub fn new<C: Config, Builder: RootAPI<C>>(api: &mut Builder, shift_exponent: usize) -> Result<Self, LayerError>  {
         let offset_: u32 = 1u32
             .checked_shl(shift_exponent as u32)
-            .expect("shift_exponent must be less than 32");
+            .ok_or_else(|| LayerError::InvalidParameterValue {
+                layer: LayerKind::MaxPool,
+                layer_name: "MaxAssertionContext".to_string(),
+                param_name: "shift_exponent".to_string(),
+                value: shift_exponent.to_string(),
+            })?;
         let offset = api.constant(offset_);
-        Self {
-            shift_exponent,
-            offset,
-        }
+        Ok( Self { shift_exponent, offset } )
     }
 }
 
@@ -230,7 +241,7 @@ impl MaxAssertionContext {
 /// - All values `x_i` are `Variable`s in `𝔽_p` that **encode signed integers** in `[-S, T − S]`.
 /// - The prime `p` satisfies `p > T = 2^(s + 1) − 1`, so no wraparound occurs in `x_i + S`.
 ///
-/// # Panics
+/// # Error
 /// - If `values` is empty.
 /// - If computing `2^s` or `s + 1` overflows a `u32`.
 ///
@@ -246,12 +257,14 @@ pub fn assert_is_max<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     context: &MaxAssertionContext, // S = 2^s = context.offset
     values: &[Variable],
-) {
+) -> Result<(), CircuitError> {
     // 0) Require nonempty input
-    assert!(
-        !values.is_empty(),
-        "assert_is_max: input slice must be nonempty"
-    );
+    if values.is_empty() {
+        return Err(LayerError::Other {
+            layer: LayerKind::MaxPool,
+            msg: "assert_is_max: input slice must be nonempty".to_string(),
+        }.into());
+    }
 
     // 1) Form offset-shifted values: x_i^♯ = x_i + S
     let mut values_offset = Vec::with_capacity(values.len());
@@ -260,7 +273,7 @@ pub fn assert_is_max<C: Config, Builder: RootAPI<C>>(
     }
 
     // 2) Compute max_i (x_i^♯), which equals M^♯ = M + S
-    let max_offset = unconstrained_max(api, &values_offset);
+    let max_offset = unconstrained_max(api, &values_offset)?;
 
     // 3) Recover M = M^♯ − S
     let max_raw = api.sub(max_offset, context.offset);
@@ -269,16 +282,28 @@ pub fn assert_is_max<C: Config, Builder: RootAPI<C>>(
     let n_bits = context
         .shift_exponent
         .checked_add(1)
-        .expect("shift_exponent + 1 must fit in usize");
+        .ok_or_else(|| LayerError::InvalidParameterValue {
+            layer: LayerKind::MaxPool,
+            layer_name: "MaxAssertionContext".to_string(),
+            param_name: "shift_exponent".to_string(),
+            value: context.shift_exponent.to_string(),
+        })?;
     let mut prod = api.constant(1);
 
     for &x in values {
         let delta = api.sub(max_raw, x);
 
         // Δ ∈ [0, T] ⇔ ∃ bitstring of length s + 1 summing to Δ
-        let bits = unconstrained_to_bits(api, delta, n_bits).unwrap();
+        let bits = unconstrained_to_bits(api, delta, n_bits)
+            .map_err(|e| LayerError::Other { 
+                    layer: LayerKind::MaxPool, 
+                    msg: format!("unconstrained_to_bits failed: {}", e) 
+                })?;
         // TO DO: elaborate/make more explicit, e.g. "Range check enforcing Δ >= 0"
-        let recon = assert_is_bitstring_and_reconstruct(api, &bits).unwrap();
+        let recon = assert_is_bitstring_and_reconstruct(api, &bits).map_err(|e| LayerError::Other { 
+                layer: LayerKind::MaxPool, 
+                msg: format!("assert_is_bitstring_and_reconstruct failed: {}", e) 
+            })?;
         api.assert_is_equal(delta, recon);
 
         // Multiply all Δ_i together
@@ -287,6 +312,7 @@ pub fn assert_is_max<C: Config, Builder: RootAPI<C>>(
 
     // 5) Final check: ∏ Δ_i = 0 ⇔ ∃ x_i such that Δ_i = 0 ⇔ x_i = M
     api.assert_is_zero(prod);
+    Ok(())
 }
 
 pub fn setup_maxpooling_2d_params(
@@ -295,36 +321,55 @@ pub fn setup_maxpooling_2d_params(
     strides: &Vec<usize>,
     dilation: &Vec<usize>,
 
-) -> (Vec<usize>, Vec<usize>, Vec<usize>, Vec<usize>) {
+) -> Result<(Vec<usize>, Vec<usize>, Vec<usize>, Vec<usize>), CircuitError> {
     let padding = match padding.len() {
         0 => vec![0; 4],
         1 => vec![padding[0]; 4],
         2 => vec![padding[0], padding[1], padding[0], padding[1]],
-        3 => panic!("Padding cannot have 3 elements"),
         4 => padding.clone(),
-        _ => panic!("Padding must have between 1 and 4 elements"),
+        n => return Err(LayerError::InvalidParameterValue {
+            layer: LayerKind::MaxPool,
+            layer_name: "MaxPoolLayer".to_string(),
+            param_name: "padding".to_string(),
+            value: format!("{} elements", n),
+        }.into()),
     };
 
     let kernel_shape  = match kernel_shape.len() {
         1 => vec![kernel_shape[0]; 2],
         2 => vec![kernel_shape[0], kernel_shape[1]],
-        _ => panic!("Kernel shape must have between 1 and 2 elements"),
+        n => return Err(LayerError::InvalidParameterValue {
+            layer: LayerKind::MaxPool,
+            layer_name: "MaxPoolLayer".to_string(),
+            param_name: "kernel_shape".to_string(),
+            value: format!("{} elements", n),
+        }.into()),
     };
 
     let dilation = match dilation.len() {
         0 => vec![1; 2],
         1 => vec![dilation[0]; 2],
         2 => vec![dilation[0], dilation[1]],
-        _ => panic!("Dilation must have between 1 and 2 elements"),
+        n => return Err(LayerError::InvalidParameterValue {
+            layer: LayerKind::MaxPool,
+            layer_name: "MaxPoolLayer".to_string(),
+            param_name: "dilation".to_string(),
+            value: format!("{} elements", n),
+        }.into()),
     };
 
     let strides = match strides.len() {
         0 => vec![1; 2],
         1 => vec![strides[0]; 2],
         2 => vec![strides[0], strides[1]],
-        _ => panic!("Strides must have between 1 and 2 elements"),
+        n => return Err(LayerError::InvalidParameterValue {
+            layer: LayerKind::MaxPool,
+            layer_name: "MaxPoolLayer".to_string(),
+            param_name: "strides".to_string(),
+            value: format!("{} elements", n),
+        }.into()),
     };
-    return (padding, kernel_shape, strides, dilation);
+    Ok((padding, kernel_shape, strides, dilation))
 }
 
 pub fn setup_maxpooling_2d(
@@ -336,11 +381,20 @@ pub fn setup_maxpooling_2d(
     x_shape: &Vec<usize>,
 
 
-)-> (Vec<usize>, Vec<usize>, Vec<usize>, Vec<usize>, Vec<[usize; 2]>) {
-    let (pads, kernel_shape, strides, dilation) = setup_maxpooling_2d_params(&padding, &kernel_shape, &strides, &dilation);
+)-> Result<(Vec<usize>, Vec<usize>, Vec<usize>, Vec<usize>, Vec<[usize; 2]>), CircuitError> {
+    let (pads, kernel_shape, strides, dilation) = setup_maxpooling_2d_params(&padding, &kernel_shape, &strides, &dilation)?;
     
-    let n_dims = kernel_shape.len();
+    if kernel_shape.is_empty() {
+        return Err(LayerError::InvalidParameterValue {
+            layer: LayerKind::MaxPool,
+            layer_name: "MaxPoolLayer".to_string(),
+            param_name: "kernel_shape".to_string(),
+            value: "empty".to_string(),
+        }.into());
+    }
 
+    let n_dims = kernel_shape.len();
+    
     // Create new_pads as Vec<[usize; 2]>
     let mut new_pads = vec![[0; 2]; n_dims];
     for i in 0..n_dims {
@@ -368,15 +422,18 @@ pub fn setup_maxpooling_2d(
             output_spatial_shape[i] = (numerator / strides[i]) + 1;
         }
     }
-    return (kernel_shape, strides, dilation, output_spatial_shape, new_pads);
+    Ok((kernel_shape, strides, dilation, output_spatial_shape, new_pads))
 }
 
 
 /// Reshape a flat array into a 4D `ArrayD`.
-pub fn reshape_4d(flat: &[Variable], dims: [usize; 4]) -> ArrayD<Variable> {
-    let array4 = Array4::from_shape_vec(dims, flat.to_vec())
-        .expect("reshape_4d: shape mismatch");
-    array4.into_dyn()
+pub fn reshape_4d(flat: &[Variable], dims: [usize; 4]) -> Result<ArrayD<Variable>, LayerError> {
+    Array4::from_shape_vec(dims, flat.to_vec())
+        .map(|a| a.into_dyn())
+        .map_err(|_| LayerError::InvalidShape {
+            layer: LayerKind::MaxPool,
+            msg: format!("reshape_4d: cannot reshape into {:?}", dims),
+        })
 }
 
 /// Perform 2D max pooling using `ArrayD` instead of nested vectors.
@@ -390,12 +447,26 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
     x_shape: &Vec<usize>,
     new_pads: &Vec<[usize; 2]>,
     shift_exponent: usize,
-) -> ArrayD<Variable> {
+) -> Result<ArrayD<Variable>, CircuitError> {
     let global_pooling = false;
     let batch = x_shape[0];
     let channels = x_shape[1];
     let height = x_shape[2];
     let width = if kernel_shape.len() > 1 { x_shape[3] } else { 1 };
+
+    if x_shape.len() < 3 {
+        return Err(LayerError::InvalidShape {
+            layer: LayerKind::MaxPool,
+            msg: format!("Expected at least 3D input, got {:?}", x_shape),
+        }.into());
+    }
+    if kernel_shape.len() > 1 && x_shape.len() < 4 {
+        return Err(LayerError::InvalidShape {
+            layer: LayerKind::MaxPool,
+            msg: format!("Expected 4D input for 2D kernel, got {:?}", x_shape),
+        }.into());
+    }
+
 
     let pooled_height = output_spatial_shape[0];
     let pooled_width = if kernel_shape.len() > 1 {
@@ -423,9 +494,13 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
         1
     };
 
-    let array4 = x.clone().into_dimensionality::<Ix4>().expect("Expected 4D input for maxpooling");
+    let array4 = x.clone().into_dimensionality::<Ix4>()
+        .map_err(|_| LayerError::InvalidShape {
+            layer: LayerKind::MaxPool,
+            msg: "Expected 4D input for maxpooling".to_string(),
+        })?;
 
-    let context = MaxAssertionContext::new(api, shift_exponent);
+    let context = MaxAssertionContext::new(api, shift_exponent)?;
 
     for n in 0..batch {
         for c in 0..channels {
@@ -454,8 +529,8 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
                     }
 
                     if !values.is_empty() {
-                        let max = unconstrained_max(api, &values);
-                        assert_is_max(api, &context, &values);
+                        let max = unconstrained_max(api, &values)?;
+                        assert_is_max(api, &context, &values)?;
                         y[[n, c, ph, pw]] = max;
                     }
                 }
@@ -463,5 +538,5 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
         }
     }
 
-    y.into_dyn()
+    Ok(y.into_dyn())
 }

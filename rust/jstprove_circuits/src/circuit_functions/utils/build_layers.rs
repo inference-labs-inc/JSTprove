@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::circuit_functions::{layers::{layer_ops::LayerOp,LayerKind}, utils::{graph_pattern_matching::{optimization_skip_layers, GraphPattern, PatternMatcher}, onnx_model::{collect_all_shapes, Architecture, CircuitParams, WANDB}, onnx_types::ONNXLayer}};
+use crate::circuit_functions::{layers::{layer_ops::LayerOp,LayerKind}, utils::{errors::BuildError, graph_pattern_matching::{optimization_skip_layers, GraphPattern, PatternMatcher}, onnx_model::{collect_all_shapes, Architecture, CircuitParams, WANDB}, onnx_types::ONNXLayer}};
 
 use expander_compiler::frontend::*;
 
@@ -18,7 +18,7 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
     circuit_params: &CircuitParams,
     arcitecture: &Architecture,
     w_and_b: &WANDB
-) -> Vec<Box<dyn LayerOp<C, Builder>>> {
+) -> Result<Vec<Box<dyn LayerOp<C, Builder>>>, BuildError> {
     let mut layers: Vec<BoxedDynLayer<C, Builder>> = vec![];
     const N_BITS: usize = 32;
     const V_PLUS_ONE: usize = N_BITS;
@@ -52,7 +52,7 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
     };
 
     let matcher = PatternMatcher::new();
-    let opt_patterns_by_layername = matcher.run(&arcitecture.architecture).unwrap();
+    let opt_patterns_by_layername = matcher.run(&arcitecture.architecture)?;
     
     for (i, original_layer) in arcitecture.architecture.iter().enumerate() {
         /*
@@ -65,7 +65,7 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
         let outputs = layer.outputs.to_vec();
 
         let optimization_pattern_match = opt_patterns_by_layername.get(&layer.name);
-        let (optimization_pattern, outputs, layers_to_skip) =  match optimization_skip_layers(optimization_pattern_match, outputs.clone()).unwrap() {
+        let (optimization_pattern, outputs, layers_to_skip) =  match optimization_skip_layers(optimization_pattern_match, outputs.clone()).unwrap_or(None) {
             Some(opt) => opt,
             None => (GraphPattern::default(), outputs.clone(), vec![])
         };
@@ -85,14 +85,14 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
         };
 
         let layer_kind = LayerKind::try_from(layer.op_type.as_str())
-            .unwrap_or_else(|_e| panic!("Unsupported layer type: {}", layer.op_type));
+            .map_err(|_| BuildError::UnsupportedLayer(layer.op_type.clone()))?;
 
         let builder = layer_kind.builder::<C, Builder>();
 
-        let built = builder(&layer, &circuit_params, optimization_pattern, *is_rescale, i, &layer_context)
-            .unwrap();
+        let built = builder(&layer, circuit_params, optimization_pattern, *is_rescale, i, &layer_context)
+            .map_err(|e| BuildError::LayerBuild(format!("Failed to build {}: {}", layer.name, e)))?;
         layers.push(built);
-        eprintln!("layer added: {}", layer.op_type.as_str() );
+        // tracing::info!("Layer added: {}", layer.op_type);
     }
-    layers
+    Ok(layers)
 }

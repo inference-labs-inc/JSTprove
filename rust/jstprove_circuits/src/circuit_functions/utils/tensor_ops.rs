@@ -10,7 +10,7 @@ use serde_json::Value;
 use expander_compiler::frontend::*;
 use gkr_engine::{FieldEngine, GKREngine};
 
-use crate::circuit_functions::utils::UtilsError;
+use crate::circuit_functions::utils::{ArrayConversionError, UtilsError};
 
 /// Load in circuit constant given i64, negative values are represented by p-x and positive values are x
 pub fn load_circuit_constant<C: Config, Builder: RootAPI<C>>(
@@ -129,7 +129,7 @@ pub fn get_nd_circuit_inputs<C: Config>(
 
     // 3) build the i64 ndarray
     let a_i64: ArrayD<i64> =
-        ArrayD::from_shape_vec(IxDyn(&shape), flat).map_err(|err| UtilsError::ShapeError(err))?;
+        ArrayD::from_shape_vec(IxDyn(&shape), flat).map_err(|err| ArrayConversionError::ShapeError(err))?;
 
     // 4) map to your circuit field type
     Ok(a_i64.mapv(|val| convert_val_to_field_element::<C>(val)))

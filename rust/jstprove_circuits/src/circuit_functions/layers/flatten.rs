@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use ndarray::ArrayD;
 use expander_compiler::frontend::*;
 
-use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{constants::AXIS, onnx_model::{extract_params_and_expected_shape, get_param_or_default}, shaping::onnx_flatten}, CircuitError};
+use crate::circuit_functions::{layers::{layer_ops::LayerOp, LayerError, LayerKind}, utils::{constants::AXIS, onnx_model::{extract_params_and_expected_shape, get_input_name, get_param_or_default}, shaping::onnx_flatten}, CircuitError};
 
 // -------- Struct --------
 #[allow(dead_code)]
@@ -25,9 +25,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
         input: HashMap<String,ArrayD<Variable>>,
     ) -> Result<(Vec<String>,ArrayD<Variable>), CircuitError> {
         let reshape_axis = self.axis.clone();
-        let layer_input = input.get(&self.inputs[0])
-        .ok_or_else(|| panic!("Missing input {}", self.inputs[0].clone())).unwrap()
-    .clone();
+        let input_name = get_input_name(&self.inputs, 0, LayerKind::Flatten, "input")?;
+        let layer_input = input.get(&input_name.clone())
+        .ok_or_else(|| LayerError::MissingInput { layer: LayerKind::Flatten, name: input_name.clone() })?
+        .clone();
 
         let out = onnx_flatten(layer_input.clone(), reshape_axis)?;
 
@@ -41,7 +42,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer).unwrap();
+        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer)
+        .map_err(|e| LayerError::Other {
+                layer: LayerKind::Flatten,
+                msg: format!("extract_params_and_expected_shape failed: {e}"),
+            })?;
         let flatten = Self{
             name: layer.name.clone(),
             axis: get_param_or_default(&layer.name, AXIS, &params, Some(&1))?,

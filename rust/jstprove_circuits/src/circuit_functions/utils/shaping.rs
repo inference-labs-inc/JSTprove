@@ -5,17 +5,17 @@ use std::collections::HashMap;
 use ndarray::{Array2, ArrayD, IxDyn};
 
 /// Internal crate imports
-use crate::circuit_functions::{layers::LayerError, utils::{onnx_types::ONNXIO, UtilsError}};
+use crate::circuit_functions::{layers::{LayerError, LayerKind}, utils::{errors::ArrayConversionError, onnx_types::ONNXIO, UtilsError}};
 
 /// Flattens an N-D array into shape `[prod(0..axis), prod(axis..)]`.
 /// Returns `InvalidAxis` if `axis > ndim`.
 pub fn onnx_flatten<T>(
     array: ArrayD<T>,
     axis: usize,
-) -> Result<ArrayD<T>, UtilsError> {
+) -> Result<ArrayD<T>, ArrayConversionError> {
     let rank = array.ndim();
     if axis > rank {
-        return Err(UtilsError::InvalidAxis { axis, rank });
+        return Err(ArrayConversionError::InvalidAxis { axis, rank });
     }
 
     let shape = array.shape();
@@ -53,7 +53,7 @@ pub fn get_inputs<T: Clone>(v: Vec<T>, inputs: Vec<ONNXIO>) -> Result<HashMap<St
         let end = start + num_elements;
 
         let slice = v[start..end].to_vec(); // clone slice
-        let arr = ArrayD::from_shape_vec(IxDyn(&input_info.shape), slice)?;
+        let arr = ArrayD::from_shape_vec(IxDyn(&input_info.shape), slice).map_err(|e| ArrayConversionError::ShapeError(e))?;
 
         result.insert(input_info.name.clone(), arr);
         start = end;
@@ -84,13 +84,13 @@ pub fn check_and_apply_transpose_array<T: Clone>(
     matrix: Array2<T>,
     flag: usize,
     var_name: &str,
-    layer_type: &str,
+    layer_type: &LayerKind,
     layer_name: &str,
 ) -> Result<Array2<T>, LayerError> {
     match flag {
         0 => Ok(matrix),
         1 => Ok(matrix.reversed_axes()),
-        other => Err(LayerError::InvalidParameterValue{layer: layer_type.try_into()?, layer_name: layer_name.to_string(), param_name: var_name.to_string(), value: other.to_string() }
+        other => Err(LayerError::InvalidParameterValue{layer: layer_type.clone(), layer_name: layer_name.to_string(), param_name: var_name.to_string(), value: other.to_string() }
     ),
     }
 }

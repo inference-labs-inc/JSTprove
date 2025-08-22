@@ -39,7 +39,7 @@ use ndarray::ArrayD;
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
-use crate::circuit_functions::utils::{errors::RescaleError, UtilsError};
+use crate::circuit_functions::utils::{errors::{ArrayConversionError, RescaleError}, UtilsError};
 
 // Internal modules
 use super::core_math::{assert_is_bitstring_and_reconstruct, unconstrained_to_bits};
@@ -251,5 +251,5 @@ pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
     
     let rescaled_data = results?;
     Ok(ArrayD::from_shape_vec(shape, rescaled_data)
-        .map_err(|e| UtilsError::ShapeError(e))?) //
+        .map_err(|e| ArrayConversionError::ShapeError(e))?) //
 }

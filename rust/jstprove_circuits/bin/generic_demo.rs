@@ -51,7 +51,7 @@ impl<C: Config> Define<C> for Circuit<Variable> {
         let mut out = get_inputs(self.input_arr.clone(), ARCHITECTURE.inputs.clone()).unwrap();
         
         // let mut out = out2.remove("input").unwrap().clone();
-        let layers = build_layers::<C, Builder>(&CIRCUITPARAMS, &ARCHITECTURE, &W_AND_B);
+        let layers = build_layers::<C, Builder>(&CIRCUITPARAMS, &ARCHITECTURE, &W_AND_B).unwrap();
         
         assert!(ARCHITECTURE.architecture.len() > 0);
 

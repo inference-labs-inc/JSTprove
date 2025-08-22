@@ -135,6 +135,22 @@ pub fn get_param<I:DeserializeOwned>(layer_name: &String, param_name: &str, para
         })
 }
 
+pub fn get_input_name<'a>(
+    inputs: &'a [String],
+    index: usize,
+    layer: LayerKind,
+    param: &str,
+) -> Result<&'a String, LayerError> {
+    inputs.get(index).ok_or_else(|| {
+        LayerError::MissingParameter {
+            layer,
+            param: format!("{param} (index {index})"),
+        }
+        .into()
+    })
+}
+
+
 
 pub fn get_param_or_default<I: DeserializeOwned + Clone>(
     layer_name: &str,

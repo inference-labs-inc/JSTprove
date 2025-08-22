@@ -7,7 +7,7 @@ use ndarray::{s, ArrayD};
 /// ExpanderCompilerCollection imports
 use expander_compiler::frontend::*;
 
-use crate::circuit_functions::{utils::{constants::{DILATION, GROUP, KERNEL_SHAPE, PADS, STRIDES}, onnx_model::{extract_params_and_expected_shape, get_param, get_param_or_default, get_w_or_b}}, CircuitError};
+use crate::circuit_functions::{layers::{LayerError, LayerKind}, utils::{constants::{DILATION, GROUP, KERNEL_SHAPE, PADS, STRIDES}, onnx_model::{extract_params_and_expected_shape, get_input_name, get_param, get_param_or_default, get_w_or_b}}, CircuitError};
 
 /// Internal module imports
 use crate::circuit_functions::{layers::layer_ops::LayerOp, utils::{graph_pattern_matching::GraphPattern, quantization::rescale_array, tensor_ops::{load_array_constants, load_circuit_constant}}};
@@ -50,20 +50,29 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
                     _ => false
                 };
 
-        let layer_input = input.get(&self.inputs[0])
-        .ok_or_else(|| panic!("Missing input {}", self.inputs[0].clone())).unwrap()
-    .clone();
+        let input_name = get_input_name(&self.inputs, 0, LayerKind::Conv, "input")?;
+        let layer_input = input.get(&input_name.clone())
+            .ok_or_else(|| LayerError::MissingInput { layer: LayerKind::Conv, name: input_name.clone() })?
+        .clone();
 
         // Convert weights
         let weights = load_array_constants(api, &self.weights);
 
         let bias = self.bias.mapv(|x| load_circuit_constant(api, x));
         // Scaling
-        let scale_factor = 1 << self.scaling;
+        let scale_factor = 1u64
+            .checked_shl(self.scaling as u32)
+            .ok_or_else(|| LayerError::InvalidParameterValue {
+                layer: LayerKind::Conv,
+                layer_name: self.name.clone(),
+                param_name: "scaling".into(),
+                value: self.scaling.to_string(),
+            })?;
         let alpha_two_v = api.mul(self.two_v as u32, scale_factor as u32);
 
         // Get shape
-        let in_shape = layer_input.shape().iter().map(|&x| x as u32).collect::<Vec<_>>();
+        let in_shape = layer_input.shape().iter().map(|&x| x as u32).collect();
+
 
         // Convolution
         let out = conv_4d_run(
@@ -85,7 +94,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             is_relu,
         );
 
-        Ok((self.outputs.clone(), out))
+        Ok((self.outputs.clone(), out?))
     }
 
     fn build(
@@ -97,13 +106,34 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
 
-        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer).unwrap();
+        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer)
+        .map_err(|e| LayerError::Other {
+                layer: LayerKind::Conv,
+                msg: format!("extract_params_and_expected_shape failed: {e}"),
+            })
+            ?;
+        let w_name     = get_input_name(&layer.inputs, 1, LayerKind::Conv, "weights")?;
+
+        let weights = get_w_or_b(&layer_context.w_and_b_map, w_name).map_err(|_| {
+            LayerError::MissingParameter {
+                layer: LayerKind::Conv,
+                param: format!("weights (W), requested={}", w_name),
+            }
+        })?;
+
+        let b_name     = get_input_name(&layer.inputs, 2, LayerKind::Conv, "bias")?;
+        let bias = get_w_or_b(&layer_context.w_and_b_map, b_name).map_err(|_| {
+            LayerError::MissingParameter {
+                layer: LayerKind::Conv,
+                param: format!("bias (B), requested={}", b_name),
+            }
+        })?;
         
         let conv = Self{
             name: layer.name.clone(),
             index: index,
-            weights: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[1]).unwrap(),
-            bias: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[2]).unwrap(),
+            weights: weights,
+            bias: bias,
             strides: get_param(&layer.name, STRIDES, &params)?,
             kernel_shape: get_param(&layer.name, KERNEL_SHAPE, &params)?,
             group: vec![get_param_or_default(&layer.name, GROUP, &params, Some(&1))?],
@@ -134,7 +164,16 @@ pub fn set_default_params(
     pads: &Vec<u32>,
     strides: &Vec<u32>,
     input_shape: &Vec<u32>,
-) -> (Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>) {
+) -> Result<(Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>), LayerError> {
+
+    if input_shape.len() < 3 {
+        return Err(LayerError::InvalidShape {
+            layer: LayerKind::Conv,
+            msg: format!("input_shape must be at least 3, got {:?}", input_shape),
+        }
+        .into());
+    }
+
     // If dilations is empty, fill it with 1s of the appropriate length
     let mut dilations_out = dilations.clone();
     let mut kernel_shape_out = kernel_shape.clone();
@@ -160,26 +199,57 @@ pub fn set_default_params(
     if strides.is_empty() {
         strides_out = vec![1; input_shape[2..].len()];
     }
-    (dilations_out, kernel_shape_out, pads_out, strides_out)
+    Ok((dilations_out, kernel_shape_out, pads_out, strides_out))
 }
 
 /// Check if any parameters are not suitable
-pub fn not_yet_implemented_conv(input_shape: &Vec<u32>, group: &Vec<u32>, dilations: &Vec<u32>) {
+pub fn not_yet_implemented_conv(input_shape: &Vec<u32>, group: &Vec<u32>, dilations: &Vec<u32>) -> Result<(), CircuitError>  {
+
     if input_shape[1] != input_shape[1] * group[0] || input_shape[0] % group[0] != 0 {
-        panic!("Shape inconsistencies");
+        return Err(LayerError::InvalidShape {
+            layer: LayerKind::Conv,
+            msg: "shape inconsistencies (channels or batch vs group)".into(),
+        }
+        .into());
     }
     if group[0] > 1 {
-        panic!("Not yet implemented for group > 1");
+        return Err(LayerError::UnsupportedConfig {
+            layer: LayerKind::Conv,
+            msg: "Not yet implemented for group > 1".into(),
+        }
+        .into());
     }
-    if (dilations[0] != 1) || (dilations.iter().min() != dilations.iter().max()) {
-        panic!("Not yet implemented for this dilation");
+    if (dilations.get(0).copied().unwrap_or(1) != 1)
+        || (dilations.iter().min() != dilations.iter().max())
+    {
+        return Err(LayerError::UnsupportedConfig {
+            layer: LayerKind::Conv,
+            msg: format!("unsupported dilation {:?}", dilations),
+        }
+        .into());
     }
     if input_shape.len() == 3 {
-        panic!("Not yet implemented for Input shape length 3");
+        return Err(LayerError::InvalidShape {
+            layer: LayerKind::Conv,
+            msg: format!("expected NCHW (len >= 4), got {:?}", input_shape),
+        }
+        .into());
+    }
+    if input_shape.len() == 3 {
+        return Err(LayerError::UnsupportedConfig {
+            layer: LayerKind::Conv,
+            msg: "Input shape length 3 not yet implemented".into(),
+        }
+        .into());
     }
     if input_shape.len() == 5 {
-        panic!("Not yet implemented for Input shape length 5");
+        return Err(LayerError::UnsupportedConfig {
+            layer: LayerKind::Conv,
+            msg: "Input shape length 5 not yet implemented".into(),
+        }
+        .into());
     }
+    Ok(())
 }
 
 /// Setup the initial array for convolution. Incorporates bias
@@ -190,7 +260,7 @@ fn conv_shape_4_setup_res<C: Config, Builder: RootAPI<C>>(
     shape_1: usize,
     shape_2: usize,
     shape_3: usize,
-) -> ArrayD<Variable> {
+) -> Result<ArrayD<Variable>, CircuitError> {
     let shape = vec![shape_0, shape_1, shape_2, shape_3];
     
     if bias.len() > 0 {
@@ -201,17 +271,34 @@ fn conv_shape_4_setup_res<C: Config, Builder: RootAPI<C>>(
             for j in 0..shape_1 {
                 for k in 0..shape_2 as usize {
                     for l in 0..shape_3 {
-                        res[[i, j, k, l]] = bias[[j]];
+                        res[[i, j, k, l]] = *bias.get(j).ok_or_else(|| {
+                            LayerError::InvalidShape {
+                                layer: LayerKind::Conv,
+                                msg: format!("Bias missing index {j}, bias len={}", bias.len()),
+                            }
+                        })?;
                     }
                 }
             }
         }
-        res
+        Ok(res)
     } else {
         // Create array filled with zeros
         let zero = api.constant(0);
-        ArrayD::from_elem(shape, zero)
+        Ok(ArrayD::from_elem(shape, zero))
     }
+}
+
+fn get_u(input: &Vec<u32>, idx: usize, what: &str) -> Result<usize, CircuitError> {
+    input.get(idx).copied().map(|v| v as usize).ok_or_else(|| {
+        LayerError::InvalidParameterValue {
+            layer: LayerKind::Conv,
+            layer_name: "Conv".into(),
+            param_name: what.into(),
+            value: format!("missing index {}", idx),
+        }
+        .into()
+    })
 }
 
 fn have_matching_shapes(
@@ -230,33 +317,61 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
     pads: &Vec<u32>,
     weights: &ArrayD<Variable>,
     bias: &ArrayD<Variable>,
-) -> ArrayD<Variable> {
+) -> Result<ArrayD<Variable>, CircuitError> {
 
     if pads.len() < 4 {
-        panic!("Pads is not long enough");
+        return Err(LayerError::InvalidParameterValue {
+            layer: LayerKind::Conv,
+            layer_name: "Conv".into(),
+            param_name: "pads".into(),
+            value: format!("len {} < 4", pads.len()),
+        }
+        .into());
     }
-    let s_n = *input_shape.get(0).expect("Missing input shape index 0") as usize;
-    let s_c = *input_shape.get(1).expect("Missing input shape index 1") as usize;
-    let s_h = *input_shape.get(2).expect("Missing input shape index 2") as usize;
-    let s_w = *input_shape.get(3).expect("Missing input shape index 3") as usize;
+    
+    let s_n = get_u(input_shape, 0, "input_shape[0]")?;
+    let s_c = get_u(input_shape, 1, "input_shape[1]")?;
+    let s_h = get_u(input_shape, 2, "input_shape[2]")?;
+    let s_w = get_u(input_shape, 3, "input_shape[3]")?;
 
     // # M, C_group, kH, kW = W.shape
-    let kh = *kernel_shape.get(0).expect("Missing kernel shape index 0") as usize;
-    let kw = *kernel_shape.get(1).expect("Missing kernel shape index 1") as usize;
+    let kh = get_u(kernel_shape, 0, "kernel_shape[0]")?;
+    let kw = get_u(kernel_shape, 1, "kernel_shape[1]")?;
 
-    let sth = *strides.get(0).expect("Missing strides index 0") as usize;
-    let stw = *strides.get(1).expect("Missing strides index 1") as usize;
-    let pad_0 = *pads.get(0).expect("Missing pads 0 index") as usize;
-    let pad_1 = *pads.get(1).expect("Missing pads 1 index") as usize;
-    let pad_2 = *pads.get(2).expect("Missing pads 2 index") as usize;
-    let pad_3 = *pads.get(3).expect("Missing pads 3 index") as usize;
+    let sth = get_u(strides, 0, "strides[0]")?;
+    let stw = get_u(strides, 1, "strides[1]")?;
+
+    let pad_0 = get_u(pads, 0, "pads[0]")?;
+    let pad_1 = get_u(pads, 1, "pads[1]")?;
+    let pad_2 = get_u(pads, 2, "pads[2]")?;
+    let pad_3 = get_u(pads, 3, "pads[3]")?;
 
     //Need to make sure there is no overflow/casting issues here. Dont think there should be
-    let h_out = ((s_h - kh + pad_0 + pad_2) / sth) + 1;
-    let w_out = ((s_w - kw + pad_1 + pad_3) / stw) + 1;
+    if sth == 0 || stw == 0 {
+        return Err(LayerError::InvalidParameterValue {
+            layer: LayerKind::Conv,
+            layer_name: "Conv".into(),
+            param_name: "strides".into(),
+            value: format!("strides must be > 0, got ({sth}, {stw})"),
+        }
+        .into());
+    }
+    
+    let h_out = (((s_h + pad_0 + pad_2).saturating_sub(kh)) / sth) + 1;
+    let w_out = (((s_w + pad_1 + pad_3).saturating_sub(kw)) / stw) + 1;
 
-    let h0 = pads.get(0).expect("Missing pads 0 index");
-    let w0 = pads.get(1).expect("Missing pads 1 index");
+    let h0 = pads.get(0).ok_or_else(|| LayerError::InvalidParameterValue {
+        layer: LayerKind::Conv,
+        layer_name: "Conv".into(),
+        param_name: "pads[0]".into(),
+        value: format!("pads={:?}", pads),
+    })?;
+    let w0 = pads.get(1).ok_or_else(|| LayerError::InvalidParameterValue {
+        layer: LayerKind::Conv,
+        layer_name: "Conv".into(),
+        param_name: "pads[1]".into(),
+        value: format!("pads={:?}", pads),
+    })?;
 
     let oh = -1 * (kh % 2) as i32;
     let ow = -1 * (kw % 2) as i32;
@@ -275,7 +390,7 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
         weights.shape()[0],
         h_out as usize,
         w_out as usize,
-    );
+    )?;
 
     for n in 0..s_n {
         for nw in 0..weights.shape()[0] {
@@ -317,17 +432,25 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
                                     as usize;
                             let w_ = w.slice(s![0..1, 0..1, jh1..jh2, jw1..jw2]).into_dyn().to_owned();
 
-
                             if !have_matching_shapes(&w_.clone(), &img) {
-                                panic!("Unexpected shape!! img != w_, oh={oh}, ow={ow}, i={i}, j={j}, kh={kh}, kw={kw}, sH={s_h}, sW={s_w}, sth={sth}, stw={stw}")
+                                return Err(LayerError::InvalidShape {
+                                    layer: LayerKind::Conv,
+                                    msg: format!(
+                                        "Mismatched shapes in convolution: img {:?} vs w_ {:?}. \
+                                        oh={oh}, ow={ow}, i={i}, j={j}, kh={kh}, kw={kw}, \
+                                        sH={s_h}, sW={s_w}, sth={sth}, stw={stw}",
+                                        img.shape(),
+                                        w_.shape(),
+                                    ),
+                                }.into());
                             }
                             // TODO check if bias is empty
-                            let s = flatten_and_perform_dot(api, &img, &w_);
+                            let s = flatten_and_perform_dot(api, &img, &w_)?;
                             res[[n as usize, nw, hr as usize, wr as usize]] =
                                 api.add(s, res[[n as usize, nw, hr as usize, wr as usize]]);
                         } else {
                             // TODO check if bias is empty
-                            let s = flatten_and_perform_dot(api, &img, &w);
+                            let s = flatten_and_perform_dot(api, &img, &w)?;
                             res[[n as usize, nw, hr as usize, wr as usize]] =
                                 api.add(s, res[[n as usize, nw, hr as usize, wr as usize]]);
                         }
@@ -337,7 +460,7 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
         }
     }
 
-    res
+    Ok(res)
 }
 
 /// Flatten vector and perform dot product
@@ -345,16 +468,20 @@ fn flatten_and_perform_dot<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     img: &ArrayD<Variable>,
     w_: &ArrayD<Variable>,
-) -> Variable {
-    let flattened_img: ArrayD<&Variable> = ArrayD::from_shape_vec(ndarray::IxDyn(&[img.len()]), img.iter().collect()).unwrap();
-    let flattened_w_: ArrayD<&Variable> = ArrayD::from_shape_vec(ndarray::IxDyn(&[w_.len()]), w_.iter().collect()).unwrap();
+) -> Result<Variable, CircuitError> {
+    let flattened_img: ArrayD<&Variable> = ArrayD::from_shape_vec(ndarray::IxDyn(&[img.len()]), img.iter().collect())
+    .map_err(|e| LayerError::InvalidShape { layer: LayerKind::Conv, msg: format!("Failed to flatten img: {e}") }
+    )?;
+    let flattened_w_: ArrayD<&Variable> = ArrayD::from_shape_vec(ndarray::IxDyn(&[w_.len()]), w_.iter().collect())
+    .map_err(|e| LayerError::InvalidShape { layer: LayerKind::Conv, msg: format!("Failed to flatten weights: {e}") }
+    )?;
     
     let mut sum = api.constant(0);
     for (a, b) in flattened_img.iter().zip(flattened_w_.iter()) {
         let prod = api.mul(*a, *b);
         sum = api.add(sum, prod);
     }
-    sum
+    Ok(sum)
 }
 /// Run of convolution
 pub fn conv_4d_run<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
@@ -374,15 +501,15 @@ pub fn conv_4d_run<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
     _two_v: T,
     _alpha_two_v: Variable,
     is_relu: bool,
-) -> ArrayD<Variable> {
+) -> Result<ArrayD<Variable>, CircuitError> {
     let (dilations, kernel_shape, pads, strides) = set_default_params(
         dilations_in,
         kernel_shape_in,
         pads_in,
         strides_in,
         input_shape_in,
-    );
-    not_yet_implemented_conv(input_shape_in, group_in, &dilations);
+    )?;
+    not_yet_implemented_conv(input_shape_in, group_in, &dilations)?;
     
 
     let out = conv_shape_4(
@@ -394,14 +521,21 @@ pub fn conv_4d_run<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
         &pads,
         &weights,
         &bias,
-    );
+    )?;
 
     if quantized {
         let scaling_exponent = scaling_in as usize;
-        let shift_exponent = v_plus_one.checked_sub(1)
-            .expect("v_plus_one must be at least 1");
-        rescale_array(api, out, scaling_exponent, shift_exponent, is_relu).unwrap()
+        let shift_exponent = v_plus_one.checked_sub(1).ok_or_else(|| {
+            LayerError::InvalidParameterValue {
+                layer: LayerKind::Conv,
+                layer_name: "Conv".into(),
+                param_name: "v_plus_one".into(),
+                value: v_plus_one.to_string(),
+            }
+        })?;
+        let rescaled = rescale_array(api, out, scaling_exponent, shift_exponent, is_relu)?;
+        Ok(rescaled)
     } else {
-        out
+        Ok(out)
     }
 }
