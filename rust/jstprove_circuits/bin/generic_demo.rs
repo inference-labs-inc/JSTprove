@@ -3,6 +3,9 @@
 use core::panic;
 
 use jstprove_circuits::circuit_functions::utils::build_layers::build_layers;
+use jstprove_circuits::circuit_functions::utils::ArrayConversionError;
+use jstprove_circuits::circuit_functions::CircuitError;
+use jstprove_circuits::runner::errors::RunError;
 /// External crate imports
 use lazy_static::lazy_static;
 use ndarray::{ArrayD, Ix1, IxDyn};
@@ -47,20 +50,36 @@ declare_circuit!(Circuit {
 // Memorization, in a better place
 impl<C: Config> Define<C> for Circuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
+        if let Err(e) = self.try_define(api) {
+            panic!("Circuit definition failed: {e:?}");
+            // or:
+            // eprintln!("Circuit definition failed: {e}");
+            // return;
+        }
+    }
+}
+
+impl Circuit<Variable> {
+    fn try_define<C: Config, Builder: RootAPI<C>>(
+        &self,
+        api: &mut Builder,
+    ) -> Result<(), CircuitError> {
+
         // Getting inputs
-        let mut out = get_inputs(self.input_arr.clone(), ARCHITECTURE.inputs.clone()).unwrap();
+        let mut out = get_inputs(self.input_arr.clone(), ARCHITECTURE.inputs.clone())?;
         
         // let mut out = out2.remove("input").unwrap().clone();
-        let layers = build_layers::<C, Builder>(&CIRCUITPARAMS, &ARCHITECTURE, &W_AND_B).unwrap();
+        let layers = build_layers::<C, Builder>(&CIRCUITPARAMS, &ARCHITECTURE, &W_AND_B)?;
         
-        assert!(ARCHITECTURE.architecture.len() > 0);
+        if ARCHITECTURE.architecture.is_empty() {
+            return Err(CircuitError::EmptyArchitecture);
+        }
 
         for (i, layer) in layers.iter().enumerate() {
 
             eprintln!("Applying Layer {:?}", &ARCHITECTURE.architecture[i].name);
             let result = layer
-                .apply(api, out.clone())
-                .expect(&format!("Failed to apply layer {}", i));
+                .apply(api, out.clone())?;
             result.0.into_iter().for_each(|key| {
                 // out.insert(key, Arc::clone(&value)); Depending on memory constraints here
                 out.insert(key, result.1.clone());
@@ -74,15 +93,19 @@ impl<C: Config> Define<C> for Circuit<Variable> {
             .product()];
 
         // TODO only support single output
-        let output_name = ARCHITECTURE.outputs[0].name.clone();
+        let output_name = ARCHITECTURE.outputs
+            .get(0)
+            .ok_or_else(|| CircuitError::Other("No outputs defined in ARCHITECTURE".to_string()))?
+            .name
+            .clone();
 
-        let output = out.get(&output_name).unwrap().clone()
+        let output = out.get(&output_name)
+            .ok_or_else(|| CircuitError::Other("Missing output in map".into()))?
+            .clone()
             .into_shape_with_order(IxDyn(&flatten_shape))
-            .expect("Shape mismatch: Cannot reshape into the given dimensions"); 
+            .map_err(|e| ArrayConversionError::ShapeError(e))?;
 
-        let output = output.as_slice().expect("Output not contiguous");
-
-        eprint!("Assert outputs match");
+        let output = output.as_slice().ok_or_else(|| CircuitError::Other("Output array not contiguous".into()))?;
 
         for (j, _) in self.outputs.iter().enumerate() {
             api.display("out1", self.outputs[j]);
@@ -92,7 +115,8 @@ impl<C: Config> Define<C> for Circuit<Variable> {
 
         api.assert_is_equal(self.dummy[0], 1);
         api.assert_is_equal(self.dummy[1], 1);
-        eprintln!("Outputs match");
+
+        Ok(())
     }
 }
 
@@ -119,9 +143,9 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
         &mut self,
         file_path: &str,
         mut assignment: Circuit<CircuitField<C>>,
-    ) -> Circuit<CircuitField<C>> {
+    ) -> Result<Circuit<CircuitField<C>>, RunError> {
         let data: InputData =
-            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<InputData>(file_path);
+            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<InputData>(file_path)?;
 
         // compute the total number of inputs
         let input_dims: &[usize] = &[ARCHITECTURE
@@ -135,25 +159,25 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
 
         // 1) get back an ArrayD<CircuitField<C>>
         let arr: ArrayD<CircuitField<C>> =
-            get_nd_circuit_inputs::<C>(&data.input, input_dims).unwrap();
+            get_nd_circuit_inputs::<C>(&data.input, input_dims).map_err(|e| RunError::Json(format!("Invalid input shape: {e}")))?;
 
         // 2) downcast to Ix1 and collect into a Vec
         let flat: Vec<CircuitField<C>> = arr
             .into_dimensionality::<Ix1>()
-            .expect("Expected a 1-D array here")
+            .map_err(|_| RunError::Json("Expected a 1-D input array".into()))?
             .to_vec();
 
         assignment.input_arr = flat;
-        assignment
+        Ok(assignment)
     }
 
     fn read_outputs(
         &mut self,
         file_path: &str,
         mut assignment: Circuit<CircuitField<C>>,
-    ) -> Circuit<CircuitField<C>> {
+    ) -> Result<Circuit<CircuitField<C>>, RunError> {
         let data: OutputData =
-            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<OutputData>(file_path);
+            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<OutputData>(file_path)?;
 
         let output_dims: &[usize] = &[ARCHITECTURE
             .outputs
@@ -162,15 +186,15 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
             .product()];
 
         let arr: ArrayD<CircuitField<C>> =
-            get_nd_circuit_inputs::<C>(&data.output, output_dims).unwrap();
+            get_nd_circuit_inputs::<C>(&data.output, output_dims).map_err(|e| RunError::Json(format!("Invalid output shape: {e}")))?;
 
         let flat: Vec<CircuitField<C>> = arr
             .into_dimensionality::<Ix1>()
-            .expect("Expected a 1-D array here")
+            .map_err(|_| RunError::Json("Expected a 1-D output array".into()))?
             .to_vec();
 
         assignment.outputs = flat;
-        assignment
+        Ok(assignment)
     }
 
     fn get_path(&self) -> &str {
@@ -185,5 +209,10 @@ fn main() {
         path: "demo_cnn".to_owned(),
     };
 
-    handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(&mut file_reader);
+    if let Err(err) =
+        handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(&mut file_reader)
+    {
+        eprintln!("Error: {err}");
+        std::process::exit(1);
+    }
 }

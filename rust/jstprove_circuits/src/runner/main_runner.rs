@@ -10,12 +10,12 @@ use peakmem_alloc::*;
 use serdes::ExpSerde;
 // use serde_json::{from_reader, to_writer};
 use std::alloc::System;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 // use std::io::{Read, Write};
 use std::time::Instant;
 
 use crate::io::io_reader;
-use crate::runner::errors::CliError;
+use crate::runner::errors::{CliError, RunError};
 use expander_binary::executor;
 
 // use crate::io::io_reader;
@@ -24,19 +24,20 @@ use expander_binary::executor;
 #[global_allocator]
 static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
 
-fn get_witness_solver_path(input: &str) -> String {
+fn get_witness_solver_path(input: &str) -> PathBuf {
     let path = Path::new(input);
-    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-        if let Some(extension) = path.extension().and_then(|e| e.to_str()) {
-            return format!("{}_witness_solver.{}", stem, extension);
-        } else {
-            return format!("{}_witness_solver", stem);
-        }
-    }
-    input.to_string()
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or(input);
+
+    let file_name = if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        format!("{}_witness_solver.{}", stem, ext)
+    } else {
+        format!("{}_witness_solver", stem)
+    };
+
+    PathBuf::from(file_name)
 }
 
-pub fn run_compile_and_serialize<C: Config, CircuitType>(circuit_path: &str)
+pub fn run_compile_and_serialize<C: Config, CircuitType>(circuit_path: &str) -> Result<(), RunError>
 where
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone,
 {
@@ -49,22 +50,22 @@ where
     
 
     let compile_result =
-        compile(&circuit, CompileOptions::default()).unwrap();
+        compile(&circuit, CompileOptions::default()).map_err(|e| RunError::Compile(format!("{:?}", e)))?;
     println!(
         "Peak Memory used Overall : {:.2}",
         GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
     );
     let duration = start.elapsed();
 
-    let file = std::fs::File::create(circuit_path).unwrap();
+    let file = std::fs::File::create(circuit_path).map_err(|e| RunError::Io { source: e, path: circuit_path.into() })?;
 
     let writer = std::io::BufWriter::new(file);
-    compile_result.layered_circuit.serialize_into(writer).unwrap();
+    compile_result.layered_circuit.serialize_into(writer).map_err(|e| RunError::Serialize(format!("{:?}", e)))?;
 
-    let file = std::fs::File::create(get_witness_solver_path(circuit_path)).unwrap();
-    // let file = std::fs::File::create(format!("{}_witness_solver.txt", name)).unwrap();
+    let witness_path = get_witness_solver_path(circuit_path);
+    let file = std::fs::File::create(&witness_path).map_err(|e| RunError::Io { source: e, path: witness_path.display().to_string() })?;
     let writer = std::io::BufWriter::new(file);
-    compile_result.witness_solver.serialize_into(writer).unwrap();
+    compile_result.witness_solver.serialize_into(writer).map_err(|e| RunError::Serialize(format!("{:?}", e)))?;
 
 
     println!(
@@ -72,9 +73,10 @@ where
         duration.as_secs(),
         duration.subsec_millis()
     );
+    Ok(())
 }
 
-pub fn run_witness<C: Config, I, CircuitDefaultType>(io_reader: &mut I, input_path: &str, output_path:&str, witness_path: &str, circuit_path: &str)
+pub fn run_witness<C: Config, I, CircuitDefaultType>(io_reader: &mut I, input_path: &str, output_path:&str, witness_path: &str, circuit_path: &str) -> Result<(), RunError>
 where
     I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
@@ -82,32 +84,27 @@ where
         + Clone,
     
 {
-    // GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    // let start = Instant::now();
-    // println!("{:?}", format!("{}_witness_solver.txt", io_reader.get_path()));
-    // let file = std::fs::File::open(format!("{}_witness_solver.txt", io_reader.get_path())).unwrap();
-    println!("{}", get_witness_solver_path(circuit_path));
-    let file = std::fs::File::open(get_witness_solver_path(circuit_path)).unwrap();
+    let witness_file = get_witness_solver_path(circuit_path);
+    let file = std::fs::File::open(&witness_file).map_err(|e| RunError::Io { source: e, path: witness_file.display().to_string() })?;
     let reader = std::io::BufReader::new(file);
-    let witness_solver = WitnessSolver::<C>::deserialize_from(reader).unwrap();
+    let witness_solver = WitnessSolver::<C>::deserialize_from(reader).map_err(|e| RunError::Deserialize(format!("{:?}", e)))?;
 
-    let file = std::fs::File::open(circuit_path).unwrap();
-    // let file = std::fs::File::open(format!("{}_circuit.txt", io_reader.get_path())).unwrap();
+    let file = std::fs::File::open(circuit_path).map_err(|e| RunError::Io { source: e, path: circuit_path.into() })?;
     let reader = std::io::BufReader::new(file);
-    let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
+    let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).map_err(|e| RunError::Deserialize(format!("{:?}", e)))?;
 
     let assignment = CircuitDefaultType::default();
 
-    let assignment = io_reader.read_inputs(input_path, assignment);
-    let assignment = io_reader.read_outputs(output_path, assignment);
+    let assignment = io_reader.read_inputs(input_path, assignment)?;
+    let assignment = io_reader.read_outputs(output_path, assignment)?;
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
 
     let assignments = vec![assignment; 1];
-    let witness = witness_solver.solve_witnesses(&assignments).unwrap();
-    // This can be removed
+    let witness = witness_solver.solve_witnesses(&assignments).map_err(|e| RunError::Witness(format!("{:?}", e)))?;
+    // #### Sanity check, can be removed in prod ####
     let output = layered_circuit.run(&witness);
-
+    // unwrap
     for x in output.iter() {
         assert_eq!(*x, true);
     }
@@ -122,21 +119,20 @@ where
     );
     let duration = start.elapsed();
     println!(
-        "Time elapsed: {}.{} seconds {}",
+        "Time elapsed: {}.{} seconds",
         duration.as_secs(),
         duration.subsec_millis(),
-        duration.as_nanos()
     );
 
-    let file = std::fs::File::create(witness_path).unwrap();
+    let file = std::fs::File::create(witness_path).map_err(|e| RunError::Io { source: e, path: witness_path.into() })?;
     let writer = std::io::BufWriter::new(file);
-    witness.serialize_into(writer).unwrap();
+    witness.serialize_into(writer).map_err(|e| RunError::Serialize(format!("{:?}", e)))?;
     // layered_circuit.evaluate();
-    
+    Ok(())
 }
 
 
-pub fn debug_witness<C: Config, I, CircuitDefaultType, CircuitType>(io_reader: &mut I, input_path: &str, output_path:&str, _witness_path: &str, circuit_path: &str)
+pub fn debug_witness<C: Config, I, CircuitDefaultType, CircuitType>(io_reader: &mut I, input_path: &str, output_path:&str, _witness_path: &str, circuit_path: &str) -> Result<(), RunError>
 where
     I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
@@ -147,19 +143,20 @@ where
         + expander_compiler::frontend::Define<C>
         + Clone
 {
-    let file = std::fs::File::open(get_witness_solver_path(circuit_path)).unwrap();
+    let witness_path = get_witness_solver_path(circuit_path);
+    let file = std::fs::File::open(&witness_path).map_err(|e| RunError::Io { source: e, path: witness_path.display().to_string() })?;
     let reader = std::io::BufReader::new(file);
-    let witness_solver = WitnessSolver::<C>::deserialize_from(reader).unwrap();
+    let witness_solver = WitnessSolver::<C>::deserialize_from(reader).map_err(|e| RunError::Deserialize(format!("{:?}", e)))?;
     
 
-    let file = std::fs::File::open(circuit_path).unwrap();
+    let file = std::fs::File::open(circuit_path).map_err(|e| RunError::Io { source: e, path: circuit_path.into() })?;
     let reader = std::io::BufReader::new(file);
-    let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
+    let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).map_err(|e| RunError::Deserialize(format!("{:?}", e)))?;
 
 
     let assignment = CircuitDefaultType::default();
-    let assignment = io_reader.read_inputs(input_path, assignment);
-    let assignment = io_reader.read_outputs(output_path, assignment);
+    let assignment = io_reader.read_inputs(input_path, assignment)?;
+    let assignment = io_reader.read_outputs(output_path, assignment)?;
     let assignments = vec![assignment.clone(); 1];
 
 
@@ -168,16 +165,17 @@ where
     debug_eval(&circuit, &assignment, EmptyHintCaller);
 
 
-    let witness = witness_solver.solve_witnesses(&assignments).unwrap();
+    let witness = witness_solver.solve_witnesses(&assignments).map_err(|e| RunError::Witness(format!("{:?}", e)))?;
     let output = layered_circuit.run(&witness);
     for x in output.iter() {
         assert_eq!(*x, true);
     }
+    Ok(())
 
     
 }
 
-pub fn run_prove_witness<C: Config, CircuitDefaultType>(circuit_path: &str, witness_path: &str, proof_path: &str)
+pub fn run_prove_witness<C: Config, CircuitDefaultType>(circuit_path: &str, witness_path: &str, proof_path: &str) -> Result<(), RunError>
 where
     // I: IOReader<CircuitDefaultType,C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
@@ -188,17 +186,16 @@ where
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     let start = Instant::now();
 
-    let file = std::fs::File::open(circuit_path).unwrap();
+    let file = std::fs::File::open(circuit_path).map_err(|e| RunError::Io { source: e, path: circuit_path.into() })?;
     let reader = std::io::BufReader::new(file);
-    let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
+    let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).map_err(|e| RunError::Deserialize(format!("{:?}", e)))?;
 
     let mut expander_circuit = layered_circuit.export_to_expander_flatten();
-
     let mpi_config = MPIConfig::prover_new(None, None);
 
-    let file = std::fs::File::open(witness_path).unwrap();
+    let file = std::fs::File::open(witness_path).map_err(|e| RunError::Io { source: e, path: witness_path.into() })?;
     let reader = std::io::BufReader::new(file);
-    let witness: Witness<C> = Witness::deserialize_from(reader).unwrap();
+    let witness: Witness<C> = Witness::deserialize_from(reader).map_err(|e| RunError::Deserialize(format!("{:?}", e)))?;
 
     let (simd_input, simd_public_input) = witness.to_simd();
     println!("{} {}", simd_input.len(), simd_public_input.len());
@@ -209,17 +206,13 @@ where
     expander_circuit.evaluate();
     let (claimed_v, proof) = executor::prove::<C>(&mut expander_circuit, mpi_config.clone());
 
-    let proof: Vec<u8> = executor::dump_proof_and_claimed_v(&proof, &claimed_v).map_err(|e| e.to_string()).unwrap();
+    let proof: Vec<u8> = executor::dump_proof_and_claimed_v(&proof, &claimed_v).map_err(|e| RunError::Serialize(format!("{:?}", e)))?;
 
-    let file = std::fs::File::create(proof_path).unwrap();
+    let file = std::fs::File::create(proof_path).map_err(|e| RunError::Io { source: e, path: proof_path.into() })?;
     let writer = std::io::BufWriter::new(file);
-    proof.serialize_into(writer).unwrap();
-    // to_writer(writer, &proof).unwrap();
-
-
+    proof.serialize_into(writer).map_err(|e| RunError::Serialize(format!("{:?}", e)))?;
 
     println!("Proved");
-    // println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
     println!(
         "Peak Memory used Overall : {:.2}",
         GLOBAL.get_peak_memory() as f64 / (1024.0 * 1024.0)
@@ -229,10 +222,11 @@ where
         "Time elapsed: {}.{} seconds",
         duration.as_secs(),
         duration.subsec_millis()
-    )
+    );
+    Ok(())
 }
 
-pub fn run_verify_io<C: Config, I, CircuitDefaultType>(circuit_path: &str, io_reader: &mut I, input_path: &str, output_path:&str, witness_path: &str, proof_path: &str)
+pub fn run_verify_io<C: Config, I, CircuitDefaultType>(circuit_path: &str, io_reader: &mut I, input_path: &str, output_path:&str, witness_path: &str, proof_path: &str) -> Result<(), RunError>
 where
     I: IOReader<CircuitDefaultType, C>, // `CircuitType` should be the same type used in the `IOReader` impl
     CircuitDefaultType: Default
@@ -245,18 +239,17 @@ where
     // let mpi_config = MPIConfig::prover_new(None, None);
     let mpi_config = gkr_engine::MPIConfig::verifier_new(1);
 
-    // let file = std::fs::File::open(format!("{}_circuit.txt", name)).unwrap();
-    let file = std::fs::File::open(circuit_path).unwrap();
+    let file = std::fs::File::open(circuit_path).map_err(|e| RunError::Io { source: e, path: circuit_path.into() })?;
 
     let reader = std::io::BufReader::new(file);
-    let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).unwrap();
+    let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader).map_err(|e| RunError::Deserialize(format!("{:?}", e)))?;
 
     let mut expander_circuit = layered_circuit.export_to_expander_flatten();
 
 
-    let file = std::fs::File::open(witness_path).unwrap();
+    let file = std::fs::File::open(witness_path).map_err(|e| RunError::Io { source: e, path: witness_path.into() })?;
     let reader = std::io::BufReader::new(file);
-    let witness = Witness::<C>::deserialize_from(reader).unwrap();
+    let witness = Witness::<C>::deserialize_from(reader).map_err(|e| RunError::Deserialize(format!("{:?}", e)))?;
     // let witness =
     //     layered::witness::Witness::<C>::deserialize_from(witness).map_err(|e| e.to_string())?;
     let (simd_input, simd_public_input) = witness.to_simd();
@@ -265,8 +258,8 @@ where
     expander_circuit.public_input = simd_public_input.clone();
     let assignment = CircuitDefaultType::default();
     
-    let assignment = io_reader.read_inputs(input_path, assignment);
-    let assignment = io_reader.read_outputs(output_path, assignment);
+    let assignment = io_reader.read_inputs(input_path, assignment)?;
+    let assignment = io_reader.read_outputs(output_path, assignment)?;
 
     // let mut vars: Vec<<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField> = Vec::new();
     let mut vars: Vec<_> = Vec::new();
@@ -278,36 +271,27 @@ where
         let x = format!("{:?}", public_vars[i]);
         let y = format!("{:?}",expander_circuit.public_input[i]);
 
-        // println!("{}", x);
-        // println!("{}", y);
-        //TODO This can potentially be improved
-
         assert_eq!(x,y);
     }
-    println!("{}",proof_path);
-    println!("{}",witness_path);
 
-    let file = std::fs::File::open(proof_path).unwrap();
+    let file = std::fs::File::open(proof_path).map_err(|e| RunError::Io { source: e, path: proof_path.into() })?;
     let reader = std::io::BufReader::new(file);
-    let proof_and_claimed_v: Vec<u8> = Vec::deserialize_from(reader).unwrap();
+    let proof_and_claimed_v: Vec<u8> = Vec::deserialize_from(reader).map_err(|e| RunError::Deserialize(format!("{:?}", e)))?;
 
 
-
-
-
-    let (proof, claimed_v) = match executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v) {
-        Ok((proof, claimed_v)) => (proof, claimed_v),
-        Err(_) => {
-            return;
-        }
-    };
+    let (proof, claimed_v) =
+        executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v)
+            .map_err(|e| RunError::Deserialize(format!("{:?}", e)))?;
     // verify
-    assert!(executor::verify::<C>(
-        &mut expander_circuit,
-        mpi_config,
-        &proof,
-        &claimed_v
-    ));
+    // assert!(executor::verify::<C>(
+    //     &mut expander_circuit,
+    //     mpi_config,
+    //     &proof,
+    //     &claimed_v
+    // ));
+    if !executor::verify::<C>(&mut expander_circuit, mpi_config, &proof, &claimed_v) {
+        return Err(RunError::Verify("Verification failed".into()));
+    }
 
     println!("Verified");
     println!(
@@ -319,7 +303,8 @@ where
         "Time elapsed: {}.{} seconds",
         duration.as_secs(),
         duration.subsec_millis()
-    )
+    );
+    Ok(())
 }
 
 pub trait ConfigurableCircuit {
@@ -435,7 +420,7 @@ where
     match command.as_str() {                                    
         "run_compile_circuit" => {
             let circuit_path = get_arg(&matches, "circuit_path")?;
-            run_compile_and_serialize::<C,CircuitType>(&circuit_path);
+            run_compile_and_serialize::<C,CircuitType>(&circuit_path)?;
         }
         "run_gen_witness" => {
 
@@ -443,7 +428,7 @@ where
             let output_path = get_arg(&matches, "output")?;
             let witness_path = get_arg(&matches, "witness")?;
             let circuit_path = get_arg(&matches, "circuit_path")?;
-            run_witness::<C, _, CircuitDefaultType>(file_reader, &input_path, &output_path, &witness_path, &circuit_path);
+            run_witness::<C, _, CircuitDefaultType>(file_reader, &input_path, &output_path, &witness_path, &circuit_path)?;
             // debug_witness::<C, _, CircuitDefaultType, CircuitType>(file_reader, input_path, output_path, &witness_path, circuit_path);
         }
         "run_debug_witness" => {
@@ -452,14 +437,14 @@ where
             let output_path = get_arg(&matches, "output")?;
             let witness_path = get_arg(&matches, "witness")?;
             let circuit_path = get_arg(&matches, "circuit_path")?;
-            debug_witness::<C, _, CircuitDefaultType, CircuitType>(file_reader, &input_path, &output_path, &witness_path, &circuit_path);
+            debug_witness::<C, _, CircuitDefaultType, CircuitType>(file_reader, &input_path, &output_path, &witness_path, &circuit_path)?;
         }
         "run_prove_witness" => {
             let witness_path = get_arg(&matches, "witness")?;
         let proof_path = get_arg(&matches, "proof")?;
         let circuit_path = get_arg(&matches, "circuit_path")?;
 
-            run_prove_witness::<C, CircuitDefaultType>( &circuit_path, &witness_path, &proof_path);
+            run_prove_witness::<C, CircuitDefaultType>( &circuit_path, &witness_path, &proof_path)?;
         }
         "run_gen_verify"=> {
             let input_path = get_arg(&matches, "input")?;
@@ -470,7 +455,7 @@ where
 
 
             // run_verify::<BN254Config, Filereader, CircuitDefaultType>(&circuit_name);
-            run_verify_io::<C, Filereader, CircuitDefaultType>(&circuit_path, file_reader, &input_path, &output_path, &witness_path, &proof_path);
+            run_verify_io::<C, Filereader, CircuitDefaultType>(&circuit_path, file_reader, &input_path, &output_path, &witness_path, &proof_path)?;
         }
         _ => return Err(CliError::UnknownCommand(command.to_string())),
     };

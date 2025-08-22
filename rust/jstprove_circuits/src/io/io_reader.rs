@@ -4,6 +4,8 @@ use serde::de::DeserializeOwned;
 use std::io::Read;
 use gkr_engine::{GKREngine, FieldEngine};
 
+use crate::runner::errors::RunError;
+
 
 /// Implement io_reader to read inputs and outputs of the circuit.
 /// 
@@ -17,31 +19,28 @@ where
         // + expander_compiler::frontend::Define<C>
         + Clone,
 {
-    fn read_data_from_json<I>(file_path: &str) -> I
+    fn read_data_from_json<I>(file_path: &str) -> Result<I, RunError>
     where
         I: DeserializeOwned,
     {
         // Read the JSON file into a string
-        let mut file = std::fs::File::open(file_path).expect("Unable to open file");
+        let mut file = std::fs::File::open(file_path).map_err(|e| RunError::Io { source: e, path: file_path.into() })?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)
-            .expect("Unable to read file");
-        // panic!("{}", type_name::<I>());
+            .map_err(|e| RunError::Io { source: e, path: file_path.into() })?;
         // Deserialize the JSON into the InputData struct
-        let data: I = serde_json::from_str(&contents).unwrap();
-
-        data
+        serde_json::from_str(&contents).map_err(|e| RunError::Json(format!("{:?}", e)))
     }
     fn read_inputs(
         &mut self,
         file_path: &str,
         assignment: CircuitType, // Mutate the concrete `Circuit` type
-    ) -> CircuitType;
+    ) -> Result<CircuitType, RunError>;
     fn read_outputs(
         &mut self,
         file_path: &str,
         assignment: CircuitType, // Mutate the concrete `Circuit` type
-    ) -> CircuitType;
+    ) -> Result<CircuitType, RunError>;
     fn get_path(&self) -> &str;
 }
 /// To implement IOReader in each binary to read in inputs and outputs of the circuit as is needed on an individual circuit basis

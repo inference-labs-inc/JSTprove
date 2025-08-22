@@ -1,3 +1,3 @@
 pub mod main_runner;
 
-mod errors;
+pub mod errors;
