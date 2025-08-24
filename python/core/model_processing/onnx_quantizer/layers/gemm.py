@@ -35,7 +35,7 @@ class GemmQuantizer(BaseOpQuantizer):
         3. Replacing it with an Int64Gemm node.
 
         Args:
-            node (onnx.NodeProto): The Constant node to quantize.
+            node (onnx.NodeProto): The node to quantize.
             rescale (bool): Whether rescaling is enabled (Doesnt have an affect on this op type)
             graph (onnx.GraphProto): The ONNX graph.
             scale_exponent (int): Scale exponent.
@@ -48,7 +48,7 @@ class GemmQuantizer(BaseOpQuantizer):
         nodes = []
         output_name = f"{node.name}_int"
 
-        nodes, node.input[:] = self.add_nodes_w_and_b(node = node, scale_exponent = scale_exponent, scale_base = scale_base, initializer_map = initializer_map, graph =graph)
+        nodes, node.input[:] = self.add_nodes_w_and_b(node = node, scale_exponent = scale_exponent, scale_base = scale_base, initializer_map = initializer_map, graph = graph)
 
         attrs = extract_attributes(node)
         attrs.setdefault("transA", 0)

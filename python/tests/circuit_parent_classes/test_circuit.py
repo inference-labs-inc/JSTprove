@@ -109,9 +109,15 @@ def test_parse_proof_dispatch_logic(
         "out", "weights", "q", RunType.COMPILE_CIRCUIT
     )
     mock_compile.assert_called_once()
-    c._compile_preprocessing.assert_called_once_with("weights", "q")
-    args = mock_compile.call_args[0]
-    assert args == ('circuit', "path", ZKProofSystems.Expander, False, False)
+    c._compile_preprocessing.assert_called_once_with(weights_path="weights", quantized_path="q")
+    args, kwargs = mock_compile.call_args
+    assert kwargs == {
+        "circuit_name": "circuit",
+        "circuit_path": "path",
+        "proof_system": ZKProofSystems.Expander,
+        "dev_mode": False,
+        "bench": False,
+    }
 
     # GEN_WITNESS
     c.parse_proof_run_type(
@@ -120,8 +126,8 @@ def test_parse_proof_dispatch_logic(
     )
     mock_witness.assert_called_once()
     c._gen_witness_preprocessing.assert_called()
-    args = mock_witness.call_args[0]
-    assert args == ('circuit', "path", "w","i", "out", ZKProofSystems.Expander, False, False)
+    args, kwargs = mock_witness.call_args
+    assert kwargs == {'circuit_name': 'circuit', 'circuit_path': 'path', 'witness_file': 'w', 'input_file': 'i', 'output_file': 'out', 'proof_system': ZKProofSystems.Expander, 'dev_mode': False, 'bench': False}
 
     # PROVE_WITNESS
     c.parse_proof_run_type(
@@ -129,13 +135,9 @@ def test_parse_proof_dispatch_logic(
         "out", "weights", "q", RunType.PROVE_WITNESS
     )
     mock_proof.assert_called_once()
-    args = mock_proof.call_args[0]
-    kwargs = mock_proof.call_args[1]
-
-
-
-    assert args == ('circuit', "path", "w","p", ZKProofSystems.Expander, False)
-    assert kwargs == {'ecc': True, 'bench': False}
+    args, kwargs = mock_proof.call_args
+    
+    assert kwargs == {'circuit_name': 'circuit', 'circuit_path': 'path', 'witness_file': 'w', 'proof_file': 'p', 'proof_system': ZKProofSystems.Expander, 'dev_mode': False, 'ecc': True, 'bench': False}
 
 
     # GEN_VERIFY
@@ -144,10 +146,8 @@ def test_parse_proof_dispatch_logic(
         "out", "weights", "q", RunType.GEN_VERIFY
     )
     mock_verify.assert_called_once()
-    args = mock_verify.call_args[0]
-    kwargs = mock_proof.call_args[1]
-    assert args == ('circuit', "path", "i","out", "w", "p", ZKProofSystems.Expander, False)
-    assert kwargs == {'ecc': True, 'bench': False}
+    args, kwargs = mock_verify.call_args
+    assert kwargs == {'circuit_name': 'circuit', 'circuit_path': 'path', 'input_file': 'i', 'output_file': 'out', 'witness_file': 'w', 'proof_file': 'p', 'proof_system': ZKProofSystems.Expander, 'dev_mode': False, 'ecc': True, 'bench': False}
 
 
 

@@ -100,7 +100,7 @@ def create_quantized_initializer(orig_tensor: onnx.TensorProto, scale_exponent: 
     Args:
         orig_tensor (onnx.TensorProto): The original tensor.
         scale_exponent (int): Exponent for scaling (e.g., 18 would lead to a scale factor 2**18).    
-        scale_exponent (int): The scale multiplier (eg. bias must often be multiplied twice).
+        scale (int): The scale multiplier (eg. bias must often be multiplied twice).
         scale_base (int): Base for fixed-point scaling (e.g., 2).
 
     Returns:

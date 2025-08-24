@@ -32,7 +32,7 @@ class MaxpoolQuantizer(BaseOpQuantizer):
         Quantize a node by converting the node to Int64 version
 
         Args:
-            node (onnx.NodeProto): The Constant node to quantize.
+            node (onnx.NodeProto): The node to quantize.
             rescale (bool): Whether rescaling is enabled (Doesnt have an affect on this op type)
             graph (onnx.GraphProto): The ONNX graph.
             scale_exponent (int): Scale exponent.

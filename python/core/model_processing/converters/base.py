@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 
+import onnx
+
 class ModelConverter(ABC):
     """
     Abstract base class for AI model conversion, quantization, and I/O operations.
@@ -55,11 +57,11 @@ class ModelConverter(ABC):
         pass
     
     @abstractmethod
-    def quantize_model(self, model, scale_exponent: int, rescale_config: dict = None):
+    def quantize_model(self, model: onnx.ModelProto, scale_exponent: int, rescale_config: dict = None):
         """Quantize a model with a given scale and optional rescaling configuration.
 
         Args:
-            model (_type_): The model instance to quantize.
+            model (onnx.ModelProto): The model instance to quantize.
             scale_exponent (int): Quantization scale factor.
             rescale_config (dict, optional): Configuration for rescaling layers or weights during quantization.. Defaults to None.
         """
@@ -67,11 +69,11 @@ class ModelConverter(ABC):
 
     # TODO JG suggestion - can maybe make the layers into a factory here, similar to how its done in Rust? Can refactor to this later imo?
     @abstractmethod
-    def get_weights(self, flatten = False):
+    def get_weights(self, flatten: bool = False):
         """Retrieve the model's weights.
 
         Args:
-            flatten (bool, optional): _description_. Defaults to False.
+            flatten (bool, optional): To flatten or not. Defaults to False.
         
         Returns:
             The model's weights in the specified format which can be read by rust backend.

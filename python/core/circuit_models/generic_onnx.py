@@ -13,8 +13,8 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
     A generic ONNX-based Zero-Knowledge (ZK) circuit model wrapper.
 
     This class provides:
-        - Integration between ONNX model loading/conversion (`ONNXConverter`) 
-          and ZK circuit infrastructure (`ZKModelBase`).
+        - Integration frp, ONNX model loading (in `ONNXConverter`) 
+          and ZK circuit infrastructure (in `ZKModelBase`).
         - Support for model quantization via `ONNXOpQuantizer`.
         - Input/output scaling and formatting utilities for ZK compatibility.
 
@@ -27,6 +27,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
     rescale_config : dict
         Per-node override for rescaling during quantization.
         Keys are node names, values are booleans.
+        If not specified, assumption is to rescale each layer
     model_file_name : str
         Path to the ONNX model file used for the circuit.
     scale_base : int
@@ -104,13 +105,13 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
     
     def format_inputs(self, inputs: Any) -> Dict[str, List[int]]:
         """Format raw inputs into scaled integer tensors for the circuit and transformed into json to be sent to rust backend.
-        Inputs are scaled by `scale_base ** scale_exponent` and converted to `long` to ensure compatibility with ZK circuits
+        Inputs are scaled by `scale_base ** scale_exponent` and converted to long to ensure compatibility with ZK circuits
 
         Args:
             inputs (Any): Raw model inputs.
 
         Returns:
-            Dict[str, List[int]]: Dictionary mapping `"input"` to scaled integer values.
+            Dict[str, List[int]]: Dictionary mapping `input` to scaled integer values.
         """
         x = {"input": inputs}
         for key in x:

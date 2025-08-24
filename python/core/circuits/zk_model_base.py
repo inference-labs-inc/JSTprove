@@ -2,15 +2,15 @@ from typing import Optional
 
 
 from python.core.circuits.base import Circuit, RunType
-from python.core.utils.helper_functions import prepare_io_files
+from python.core.utils.helper_functions import ZKProofSystems, prepare_io_files
 from python.core.utils.general_layer_functions import GeneralLayerFunctions
 
 
 class ZKModelBase(GeneralLayerFunctions, Circuit):
     """
-    Abstract base class for Zero-Knowledge (ZK) models.
+    Abstract base class for Zero-Knowledge (ZK) ML models.
 
-    This class provides a standard interface for ZK circuit models.
+    This class provides a standard interface for ZK circuit ML models.
     Instantiates Circuit and GeneralLayerFunctions.
 
     Subclasses must implement the constructor to define the model's 
@@ -36,7 +36,7 @@ class ZKModelBase(GeneralLayerFunctions, Circuit):
                     circuit_name: str = None,
                     weights_path: str = None,
                     output_file: str = None,
-                    proof_system: str = None,
+                    proof_system: ZKProofSystems = ZKProofSystems.Expander,
                     dev_mode: str = False,
                     ecc: str = True,
                     circuit_path: Optional[str] = None,
@@ -57,7 +57,7 @@ class ZKModelBase(GeneralLayerFunctions, Circuit):
             circuit_name (str, optional): Name of the circuit. Defaults to None.
             weights_path (str, optional): Path to weights file. Defaults to None.
             output_file (str, optional): Path to output JSON file. Defaults to None.
-            proof_system (str, optional): Proof system identifier. Defaults to None.
+            proof_system (ZKProofSystems, optional): Proof system identifier. Defaults to ZKProofSystems.Expander.
             dev_mode (str, optional):  Enable developer mode. Defaults to False.
             ecc (str, optional): Use ECC version of Expander for prove and verify. Defaults to True.
             circuit_path (Optional[str], optional): Path to compiled circuit file. Defaults to None.
@@ -76,4 +76,4 @@ class ZKModelBase(GeneralLayerFunctions, Circuit):
         if not weights_path:
             weights_path = f"weights/{circuit_name}_weights.json"
 
-        self.parse_proof_run_type(witness_file, input_file, proof_file, public_path, verification_key, circuit_name, circuit_path, proof_system, output_file, weights_path, quantized_path, run_type, dev_mode, ecc, write_json, bench)
+        self.parse_proof_run_type(witness_file = witness_file, input_file = input_file, proof_path = proof_file, public_path = public_path, verification_key = verification_key, circuit_name = circuit_name, circuit_path = circuit_path, proof_system = proof_system, output_file = output_file, weights_path = weights_path, quantized_path =quantized_path, run_type = run_type, dev_mode = dev_mode, ecc = ecc, write_json = write_json, bench =bench)

@@ -74,23 +74,11 @@ class ONNXConverter(ModelConverter):
 
         Args:
             file_path (str): Path to the `.onnx` file.
-            model_type (_type_, optional): Placeholder for future multi-format loaders. Defaults to None.
+            model_type (optional): Placeholder for future multi-format loaders. Defaults to None.
 
         Returns:
             onnx.ModelProto: The loaded onnx model.
         """        
-        """
-
-        Side effects:
-            - Sets ``self.model``.
-            - Populates ``self.required_keys`` (model input names).
-            - Populates ``self.input_shape`` (dict of input name -> shape).
-
-        Raises:
-            OSError: If the file cannot be read.
-            onnx.onnx_cpp2py_export.checker.ValidationError:
-                If the model is malformed (during later checks).
-        """
         onnx_model = onnx.load(file_path)
         self.model = onnx_model
 

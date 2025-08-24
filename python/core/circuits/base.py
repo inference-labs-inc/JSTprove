@@ -92,8 +92,8 @@ class Circuit:
                     ecc: str = True,
                     circuit_path: Optional[str] = None,
                     write_json: Optional[bool] = False, 
-                    bench = False,
-                    quantized_path = None):
+                    bench: bool = False,
+                    quantized_path: str = None):
         """Run the circuit in a specified mode (testing, proving, compiling, etc.).
 
         File path resolution is handled automatically by the `prepare_io_files` decorator.
@@ -112,9 +112,9 @@ class Circuit:
             dev_mode (str, optional):  Enable developer mode. Defaults to False.
             ecc (str, optional): Use ECC version of Expander for prove and verify. Defaults to True.
             circuit_path (Optional[str], optional): Path to compiled circuit file. Defaults to None.
-            write_json (Optional[bool], optional): Whether to write inputs/outputs directly to JSON. Defaults to False.
+            write_json (Optional[bool], optional): Whether to write inputs directly to JSON. Defaults to False.
             bench (bool, optional): Enable benchmarking mode. Defaults to False.
-            quantized_path (_type_, optional): Path to quantized model file. Defaults to None.
+            quantized_path (str, optional): Path to quantized model file. Defaults to None.
 
         Raises:
             KeyError: If `_file_info` is not set by the decorator.
@@ -182,8 +182,8 @@ class Circuit:
             quantized_path (str): Path to quantized model file.
             run_type (RunType): Type of proof run.
             dev_mode (bool, optional): Enable developer mode. Defaults to False.
-            ecc (bool, optional): Use ECC mode. Defaults to True.
-            write_json (bool, optional): Write inputs/outputs to JSON. Defaults to False.
+            ecc (bool, optional): Use ECC mode, for prove/verify. Defaults to True.
+            write_json (bool, optional): Write inputs to JSON. Defaults to False.
             bench (bool, optional): Enable benchmarking. Defaults to False.
 
         Raises:
@@ -193,20 +193,20 @@ class Circuit:
         
         try:
             if run_type == RunType.END_TO_END:
-                self._compile_preprocessing(weights_path, quantized_path)
-                input_file = self._gen_witness_preprocessing(input_file, output_file, quantized_path, write_json, is_scaled)
-                run_end_to_end(circuit_name, circuit_path, input_file, output_file, proof_system, dev_mode)
+                self._compile_preprocessing(weights_path = weights_path, quantized_path = quantized_path)
+                input_file = self._gen_witness_preprocessing(input_file = input_file, output_file = output_file, quantized_path = quantized_path, write_json = write_json, is_scaled = is_scaled)
+                run_end_to_end(circuit_name = circuit_name, circuit_path = circuit_path, input_file = input_file, output_file = output_file, proof_system = proof_system, dev_mode = dev_mode, ecc = ecc)
             elif run_type == RunType.COMPILE_CIRCUIT:
-                self._compile_preprocessing(weights_path, quantized_path)
-                compile_circuit(circuit_name, circuit_path, proof_system, dev_mode, bench)
+                self._compile_preprocessing(weights_path = weights_path, quantized_path = quantized_path)
+                compile_circuit(circuit_name = circuit_name, circuit_path = circuit_path, proof_system = proof_system, dev_mode = dev_mode, bench = bench)
             elif run_type == RunType.GEN_WITNESS:
-                input_file = self._gen_witness_preprocessing(input_file, output_file, quantized_path, write_json, is_scaled)
-                generate_witness(circuit_name, circuit_path, witness_file, input_file, output_file, proof_system, dev_mode, bench)
+                input_file = self._gen_witness_preprocessing(input_file = input_file, output_file = output_file, quantized_path = quantized_path, write_json = write_json, is_scaled = is_scaled)
+                generate_witness(circuit_name = circuit_name, circuit_path = circuit_path, witness_file = witness_file, input_file = input_file, output_file = output_file, proof_system = proof_system, dev_mode = dev_mode, bench = bench)
             elif run_type == RunType.PROVE_WITNESS:
-                generate_proof(circuit_name, circuit_path, witness_file, proof_path, proof_system, dev_mode, ecc = ecc, bench = bench)
+                generate_proof(circuit_name = circuit_name, circuit_path = circuit_path, witness_file = witness_file, proof_file = proof_path, proof_system = proof_system, dev_mode = dev_mode, ecc = ecc, bench = bench)
             elif run_type == RunType.GEN_VERIFY:
                 input_file = self.adjust_inputs(input_file)
-                generate_verification(circuit_name, circuit_path, input_file, output_file, witness_file, proof_path, proof_system, dev_mode, ecc=ecc, bench = bench)
+                generate_verification(circuit_name = circuit_name, circuit_path = circuit_path, input_file = input_file, output_file = output_file, witness_file = witness_file, proof_file = proof_path, proof_system = proof_system, dev_mode = dev_mode, ecc=ecc, bench = bench)
             else:
                 print(f"Unknown entry: {run_type}")
                 raise ValueError(f"Unknown run type: {run_type}")

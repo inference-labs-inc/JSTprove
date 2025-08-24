@@ -96,8 +96,8 @@ class BaseOpQuantizer:
 
         Args:
             node (onnx.NodeProto): Node to find used weights and biases.
-            scale_exponent (int): Base for the scaling exponent.
-            scale_base (int): Scaling exponent.
+            scale_exponent (int): Scaling exponent.
+            scale_base (int): Base for the scaling exponent.
             initializer_map (dict[str, onnx.TensorProto]): The initializer map.
             graph (onnx.GraphProto): ONNX Graph
 

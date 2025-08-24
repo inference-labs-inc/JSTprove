@@ -22,7 +22,7 @@ class QuantizationError(Exception):
 
 class InvalidParamError(QuantizationError):
     """
-    Exception raised when invalid parameters or unsupported parameters are encountered in a node is reached during quantization the quantization process.
+    Exception raised when invalid parameters or unsupported parameters are encountered in a node that is reached during quantization the quantization process.
     """
     def __init__(
         self,
@@ -59,7 +59,7 @@ class InvalidParamError(QuantizationError):
 
 class UnsupportedOpError(QuantizationError):
     """
-    Exception to be raised when an unsupported operation type is reached during quantization the quantization process.
+    Exception to be raised when an unsupported operation type is reached during quantization.
     """
     def __init__(self, op_type: str, node_name: str = None):
         """Initialize UnsupportedOpError with details about the unsupported operation.

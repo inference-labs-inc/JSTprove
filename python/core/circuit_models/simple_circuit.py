@@ -33,15 +33,15 @@ class SimpleCircuit(Circuit):
         return {'value_a': self.input_a, 'value_b': self.input_b, 'nonce': self.nonce}
     
     def get_outputs(self, inputs: Dict[str, int] = None) -> int:
+        
         """Compute the output of the circuit.
-        This is decorated in the base class to ensure computation happens only once.
 
         Args:
             inputs (Dict[str, int], optional): A dictionary containing `value_a`, `value_b`, and `nonce`.
             If None, uses the instance's default inputs. Defaults to None.
 
         Returns:
-            _type_: _description_
+            int: output of function
         """        
         if inputs == None:
             inputs = {'value_a': self.input_a, 'value_b': self.input_b, 'nonce': self.nonce}

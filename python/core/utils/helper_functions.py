@@ -196,7 +196,7 @@ def run_cargo_command(binary_name: str,
         binary_name (str): Name of the Cargo binary.
         command_type (str): Command type (e.g., 'run_proof', 'run_compile_circuit').
         args (Dict[str, str], optional): dictionary of CLI arguments. Defaults to None.
-        dev_mode (bool, optional): f True, run with `cargo run --release` instead of prebuilt binary. Defaults to False.
+        dev_mode (bool, optional): If True, run with `cargo run --release` instead of prebuilt binary. Defaults to False.
         bench (bool, optional): If True, measure execution time and memory usage. Defaults to False.
 
     Raises:
@@ -351,7 +351,7 @@ def compile_circuit(circuit_name: str,
         circuit_path (str):  Path to the circuit source file.
         proof_system (ZKProofSystems, optional): Proof system to use. Defaults to ZKProofSystems.Expander.
         dev_mode (bool, optional): If True, recompiles the rust binary (run in development mode). Defaults to True.
-        bench (bool, optional): _description_. Defaults to False.
+        bench (bool, optional): Whether or not to run benchmarking metrics. Defaults to False.
 
     Raises:
         NotImplementedError: If proof system is not supported.
@@ -572,7 +572,6 @@ def run_end_to_end(circuit_name: str,
 
     Raises:
         NotImplementedError: If proof system is not supported.
-        NotImplementedError: _description_
 
     Returns:
         int: Exit code from the verification step (0 = success, non-zero = failure).
