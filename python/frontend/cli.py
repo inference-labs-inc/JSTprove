@@ -17,7 +17,7 @@ from python.core.model_processing.onnx_custom_ops.onnx_helpers import get_input_
 """JSTProve CLI."""
 
 # --- constants ---------------------------------------------------------------
-DEFAULT_CIRCUIT_MODULE = "python.testing.core.circuit_models.generic_onnx"
+DEFAULT_CIRCUIT_MODULE = "python.core.circuit_models.generic_onnx"
 DEFAULT_CIRCUIT_CLASS  = "GenericModelONNX"
 
 BANNER_TITLE = r"""
