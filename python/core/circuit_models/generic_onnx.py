@@ -13,7 +13,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
     A generic ONNX-based Zero-Knowledge (ZK) circuit model wrapper.
 
     This class provides:
-        - Integration frp, ONNX model loading (in `ONNXConverter`) 
+        - Integration for ONNX model loading, quantization (in `ONNXConverter`) 
           and ZK circuit infrastructure (in `ZKModelBase`).
         - Support for model quantization via `ONNXOpQuantizer`.
         - Input/output scaling and formatting utilities for ZK compatibility.
