@@ -1,9 +1,5 @@
 import pytest
-from python.testing.core.utils.model_registry import (
-    get_models_to_test,
-    list_available_models,
-)
-
+from python.core.utils.model_registry import get_models_to_test, list_available_models
 
 def pytest_addoption(parser):
     parser.addoption(

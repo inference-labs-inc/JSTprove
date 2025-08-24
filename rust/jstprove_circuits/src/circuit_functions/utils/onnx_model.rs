@@ -27,7 +27,7 @@ pub struct WANDB{
 #[derive(Deserialize, Clone, Debug)]
 pub struct CircuitParams{
     pub scale_base: u32,
-    pub scaling: u32,
+    pub scale_exponent: u32,
     pub rescale_config: HashMap<String, bool>
 }
 

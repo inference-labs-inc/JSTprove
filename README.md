@@ -166,7 +166,7 @@ You can now follow the **Quickstart** commands (compile → witness → prove �
 Demo paths:
 
 * ONNX: `python/models/models_onnx/lenet.onnx`
-* Input JSON: `python_testing/models/inputs/lenet_input.json`
+* Input JSON: `python/models/inputs/lenet_input.json`
 * Artifacts: `artifacts/lenet/*`
 
 1. **Compile** → circuit + **quantized ONNX**
@@ -184,7 +184,7 @@ python -m python.frontend.cli compile \
 python -m python.frontend.cli witness \
   -c artifacts/lenet/circuit.txt \
   -q artifacts/lenet/quantized.onnx \
-  -i python_testing/models/inputs/lenet_input.json \
+  -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \
   -w artifacts/lenet/witness.bin
 ```
@@ -204,7 +204,7 @@ python -m python.frontend.cli prove \
 python -m python.frontend.cli verify \
   -c artifacts/lenet/circuit.txt \
   -q artifacts/lenet/quantized.onnx \
-  -i python_testing/models/inputs/lenet_input.json \
+  -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \
   -w artifacts/lenet/witness.bin \
   -p artifacts/lenet/proof.bin

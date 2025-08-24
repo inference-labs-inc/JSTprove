@@ -110,7 +110,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             dilation: get_param(&layer.name, DILATION, &params),
             pads: get_param(&layer.name, PADS, &params),
             input_shape: expected_shape.to_vec(),
-            scaling: circuit_params.scaling.into(),
+            scaling: circuit_params.scale_exponent.into(),
             optimization_pattern: optimization_pattern,
             v_plus_one: layer_context.n_bits,
             two_v: layer_context.two_v,

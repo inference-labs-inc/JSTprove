@@ -23,7 +23,7 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
     const N_BITS: usize = 32;
     const V_PLUS_ONE: usize = N_BITS;
     const TWO_V: u32 = 1 << (V_PLUS_ONE - 1);
-    let alpha_two_v: u64 = ((1 << circuit_params.scaling) * TWO_V) as u64;
+    let alpha_two_v: u64 = ((1 << circuit_params.scale_exponent) * TWO_V) as u64;
     /*
     TODO: Inject weights + bias data with external functions instead of regular assignment in function.
      */

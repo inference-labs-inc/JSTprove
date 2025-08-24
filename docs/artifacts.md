@@ -45,7 +45,6 @@ quantized.onnx
 output.json
 witness.bin
 proof.bin
-python_testing/
 models/
 inputs/
 lenet_input.json

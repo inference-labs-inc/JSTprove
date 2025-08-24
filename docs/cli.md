@@ -29,7 +29,7 @@ python -m python.frontend.cli witness --help
 ## Example paths used below
 
 * ONNX model: `python/models/models_onnx/lenet.onnx`
-* Example input JSON: `python_testing/models/inputs/lenet_input.json`
+* Example input JSON: `python/models/inputs/lenet_input.json`
 * Artifacts: `artifacts/lenet/*`
 
 ---
@@ -75,7 +75,7 @@ Reshapes/scales inputs, runs the quantized model to produce outputs, and writes 
 python -m python.frontend.cli witness \
   -c artifacts/lenet/circuit.txt \
   -q artifacts/lenet/quantized.onnx \
-  -i python_testing/models/inputs/lenet_input.json \
+  -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \
   -w artifacts/lenet/witness.bin
 ```
@@ -122,7 +122,7 @@ Verify the proof (requires the quantized model to hydrate input shapes).
 python -m python.frontend.cli verify \
   -c artifacts/lenet/circuit.txt \
   -q artifacts/lenet/quantized.onnx \
-  -i python_testing/models/inputs/lenet_input.json \
+  -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \
   -w artifacts/lenet/witness.bin \
   -p artifacts/lenet/proof.bin
