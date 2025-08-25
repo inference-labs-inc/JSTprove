@@ -98,7 +98,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             two_v: layer_context.two_v,
             alpha_two_v: layer_context.alpha_two_v,
             optimization_pattern: optimization_pattern,
-            scaling: circuit_params.scaling.into(), // TODO: Becomes scaling_in?
+            scaling: circuit_params.scale_exponent.into(), // TODO: Becomes scaling_in?
             input_shape: expected_shape.to_vec(),
             alpha: get_param_or_default(&layer.name, ALPHA, &params, Some(&1.0)),
             beta: get_param_or_default(&layer.name, BETA, &params, Some(&1.0)),

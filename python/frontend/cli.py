@@ -11,13 +11,13 @@ from pathlib import Path
 import onnx
 
 # local
-from python.testing.core.utils.helper_functions import RunType
-from python.testing.core.utils.onnx_helpers import get_input_shapes
+from python.core.circuits.base import RunType
+from python.core.model_processing.onnx_custom_ops.onnx_helpers import get_input_shapes
 
 """JSTProve CLI."""
 
 # --- constants ---------------------------------------------------------------
-DEFAULT_CIRCUIT_MODULE = "python.testing.core.circuit_models.generic_onnx"
+DEFAULT_CIRCUIT_MODULE = "python.core.circuit_models.generic_onnx"
 DEFAULT_CIRCUIT_CLASS  = "GenericModelONNX"
 
 BANNER_TITLE = r"""

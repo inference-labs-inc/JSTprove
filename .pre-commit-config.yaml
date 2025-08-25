@@ -27,6 +27,7 @@ repos:
           --exit-non-zero-on-fix,
           --select=ALL,  # Enable all rules for local checks
           --ignore=D,    # Ignore documentation warnings
+          '--per-file-ignores=python/tests/**.py:S101',
         ]
 
   # Rust formatting and linting
@@ -40,8 +41,8 @@ repos:
           '--manifest-path=./Cargo.toml',
           '--all',
           '--',
-          -W, clippy::all,
-          -W, clippy::pedantic,
+          -W, 'clippy::all',
+          -W, 'clippy::pedantic',
           -D, warnings,
         ]
 

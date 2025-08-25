@@ -1,12 +1,17 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from _pytest.config import Config, Parser
+    from _pytest.nodes import Item
+    from _pytest.python import Metafunc
 import pytest
 
-from python.testing.core.utils.model_registry import (
-    get_models_to_test,
-    list_available_models,
-)
+from python.core.utils.model_registry import get_models_to_test, list_available_models
 
 
-def pytest_addoption(parser):
+def pytest_addoption(parser: Parser) -> None:
     parser.addoption(
         "--model",
         action="append",
@@ -27,7 +32,10 @@ def pytest_addoption(parser):
         help="Restrict models to a specific source: class, pytorch, or onnx.",
     )
     parser.addoption(
-        "--unit", action="store_true", default=False, help="Run only unit tests.",
+        "--unit",
+        action="store_true",
+        default=False,
+        help="Run only unit tests.",
     )
     parser.addoption(
         "--integration",
@@ -36,11 +44,14 @@ def pytest_addoption(parser):
         help="Run only integration tests.",
     )
     parser.addoption(
-        "--e2e", action="store_true", default=False, help="Run only end-to-end tests.",
+        "--e2e",
+        action="store_true",
+        default=False,
+        help="Run only end-to-end tests.",
     )
 
 
-def pytest_collection_modifyitems(config, items):
+def pytest_collection_modifyitems(config: Config, items: list[Item]) -> None:
     run_unit = config.getoption("--unit")
     run_integration = config.getoption("--integration")
     run_e2e = config.getoption("--e2e")
@@ -57,7 +68,14 @@ def pytest_collection_modifyitems(config, items):
         has_integration = "integration" in item.keywords and "e2e" not in item.keywords
         has_e2e = "e2e" in item.keywords
 
-        if run_unit and has_unit or run_integration and has_integration or run_e2e and has_e2e:
+        if (
+            run_unit
+            and has_unit
+            or run_integration
+            and has_integration
+            or run_e2e
+            and has_e2e
+        ):
             selected.append(item)
         else:
             deselected.append(item)
@@ -66,7 +84,7 @@ def pytest_collection_modifyitems(config, items):
     config.hook.pytest_deselected(items=deselected)
 
 
-def pytest_generate_tests(metafunc):
+def pytest_generate_tests(metafunc: Metafunc) -> None:
     if "model_fixture" in metafunc.fixturenames:
         selected_models = metafunc.config.getoption("model")
         selected_source = metafunc.config.getoption("source")
@@ -77,17 +95,21 @@ def pytest_generate_tests(metafunc):
         ]  # Extract readable names
 
         metafunc.parametrize(
-            "model_fixture", models, indirect=True, scope="module", ids=ids,
+            "model_fixture",
+            models,
+            indirect=True,
+            scope="module",
+            ids=ids,
         )
 
 
-def pytest_configure(config):
+def pytest_configure(config: Config) -> None:
     # If the --list-models option is used, list models and exit
     if config.getoption("list_models"):
         available_models = list_available_models()
-        print("\nAvailable Circuit Models:")
+        print("\nAvailable Circuit Models:")  # noqa: T201
         for model in available_models:
-            print(f"- {model}")
+            print(f"- {model}")  # noqa: T201
         pytest.exit(
             "Exiting after listing available models.",
         )  # This prevents tests from running
