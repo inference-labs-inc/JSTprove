@@ -1,0 +1,65 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Verify tag matches project version
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PYPROJECT_VERSION=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "Tag: $TAG_VERSION, pyproject: $PYPROJECT_VERSION"
+          test "$TAG_VERSION" = "$PYPROJECT_VERSION"
+
+      - name: Clean dist
+        run: rm -rf dist
+
+      - name: Generate version file
+        run: |
+          VERSION=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "# This file is auto-generated during build" > python/_version.py
+          echo "\n__version__ = \"$VERSION\"" >> python/_version.py
+
+      - name: Build distributions
+        run: uv build
+        env:
+          CI: true
+
+      - name: Verify package metadata
+        run: uvx twine check dist/*
+
+      - name: Smoke install wheel (no network)
+        run: uv run --no-project --with "$(ls dist/*.whl)" -- python -c "import importlib.metadata as m; print(m.version('jstprove'))"
+        env:
+          CI: true
+
+      - name: Publish to PyPI
+        run: uv publish --trusted-publishing always

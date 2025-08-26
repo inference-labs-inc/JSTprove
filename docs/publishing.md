@@ -1,8 +1,31 @@
 # Publishing jstprove to PyPI
 
-This document explains how to build, test, and publish a new release of the `jstprove` Python package.
+This guide documents the release process using GitHub Actions (tag-based publish), plus a manual fallback.
 
-## Prerequisites
+## Release via GitHub Actions (recommended)
+
+Steps to cut a release:
+
+1. Update version in `pyproject.toml` under `[project].version` (semver recommended).
+2. Commit the change; ensure CI is green.
+3. Create and push a tag that matches the version, prefixed with `v`.
+
+```bash
+git add pyproject.toml
+git commit -m "chore(release): v0.1.1"
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+The workflow will build and publish automatically when the tag lands.
+Ensure PyPI Trusted Publishing is configured for the repo/org.
+
+## Manual build/publish (fallback)
+
+<details>
+<summary><strong>If you need to publish manually (e.g., testing or local validation)</strong></summary>
+
+### Prerequisites
 
 - Python 3.10+
 - A virtual environment (recommended)
@@ -38,17 +61,11 @@ export TWINE_USERNAME=__token__
 export TWINE_PASSWORD=pypi-<your-token>
 ```
 
-## Build the package
-
-Builds sdist and wheel into `dist/`.
+### Build the package
 
 ```bash
+python -m pip install --upgrade pip build twine
 python -m build
-```
-
-Sanity check the artifacts:
-
-```bash
 python -m twine check dist/*
 ```
 
@@ -58,7 +75,7 @@ Optional: inspect file contents (sdist):
 tar -tf dist/jstprove-<version>.tar.gz | head -n 50
 ```
 
-## Test the package locally
+### Test the package locally
 
 Install the wheel into a clean environment and smoke-test the CLI.
 
@@ -66,12 +83,10 @@ Install the wheel into a clean environment and smoke-test the CLI.
 python -m venv .venv-test
 source .venv-test/bin/activate
 pip install dist/jstprove-*.whl
-
-# Verify CLI is wired
 jstprove --help
 ```
 
-## Publish to TestPyPI (recommended)
+### Publish to TestPyPI (recommended)
 
 Upload to TestPyPI first to validate metadata and installability.
 
@@ -85,7 +100,7 @@ Test install from TestPyPI (note: dependencies resolve from PyPI):
 pip install --index-url https://test.pypi.org/simple --extra-index-url https://pypi.org/simple jstprove==<version>
 ```
 
-## Publish to PyPI
+### Publish to PyPI
 
 When satisfied with testing, upload to PyPI:
 
@@ -93,9 +108,4 @@ When satisfied with testing, upload to PyPI:
 python -m twine upload dist/*
 ```
 
-## Notes and tips
-
-- Entry point: the CLI is `jstprove` which maps to `python.frontend.cli:main`.
-- Data files: we include ONNX models under `python/models/models_onnx/*.onnx` via `MANIFEST.in` and `tool.setuptools.package-data`.
-- Dependencies: runtime dependencies are pinned in `pyproject.toml`. Heavy packages (torch, onnxruntime, transformers) will make installs large. Consider reviewing pins as needed.
-- If you add new data files or packages, update `pyproject.toml` and/or `MANIFEST.in` accordingly.
+</details>
