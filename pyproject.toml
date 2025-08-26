@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jstprove"
+version = "0.1.0"
+description = "JSTProve — Verifiable ML by Inference Labs (Python CLI)"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Inference Labs" }]
+keywords = ["zkml", "ml", "onnx", "proofs", "gkr"]
+
+# Runtime dependencies. Dev/test deps are provided as an optional extra below.
+dependencies = [
+  "numpy==2.2.6",
+  "onnx==1.17.0",
+  "onnxruntime==1.21.0",
+  "onnxruntime-extensions==0.14.0",
+  "psutil==7.0.0",
+  "requests==2.32.3",
+  "scikit-learn==1.6.1",
+  "toml==0.10.2",
+  "torch==2.6.0",
+  "transformers==4.52.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==8.3.5", "pytest-html==4.1.1", "pre-commit"]
+
+[project.scripts]
+jstprove = "python.frontend.cli:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["python*"]
+
+[tool.setuptools.package-data]
+# Include bundled ONNX models shipped under the python/ package
+python = ["models/models_onnx/*.onnx"]
+
+# Include non-package files and directories in the wheel (to mirror MANIFEST.in)
+[tool.setuptools.data-files]
+"." = ["README.md", "rust-toolchain.toml", "input.json", "Cargo.*"]
+"jstprove_data/rust" = ["rust/**/*.*"]
+"jstprove_data/python_testing" = ["python_testing/**/*.*"]
+"jstprove_data/weights" = ["weights/**/*.*"]
+"jstprove_data/jstprove" = ["jstprove/**/*.*"]
