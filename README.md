@@ -1,19 +1,20 @@
 ```
-         _/    _/_/_/  _/_/_/_/_/  _/_/_/                                             
-        _/  _/            _/      _/    _/  _/  _/_/    _/_/    _/      _/    _/_/    
-       _/    _/_/        _/      _/_/_/    _/_/      _/    _/  _/      _/  _/_/_/_/   
-_/    _/        _/      _/      _/        _/        _/    _/    _/  _/    _/          
+         _/    _/_/_/  _/_/_/_/_/  _/_/_/
+        _/  _/            _/      _/    _/  _/  _/_/    _/_/    _/      _/    _/_/
+       _/    _/_/        _/      _/_/_/    _/_/      _/    _/  _/      _/  _/_/_/_/
+_/    _/        _/      _/      _/        _/        _/    _/    _/  _/    _/
  _/_/    _/_/_/        _/      _/        _/          _/_/        _/        _/_/_/
-``` 
+```
+
 ---
 
 # JSTProve
 
 Zero-knowledge proofs of ML inference on **ONNX** models — powered by [Polyhedra Network’s **Expander**](https://github.com/PolyhedraZK/Expander) (GKR/sum-check prover) and [**Expander Compiler Collection (ECC)**](https://github.com/PolyhedraZK/ExpanderCompilerCollection).
 
-* 🎯 **You bring ONNX** → we quantize, compile to a circuit, generate a witness, prove, and verify — via a simple CLI.
-* ✅ Supported ops (current): **Conv2D**, **GEMM/MatMul (FC)**, **ReLU**, **MaxPool2D**.
-* 🧰 CLI details: see **[docs/cli.md](docs/cli.md)**
+- 🎯 **You bring ONNX** → we quantize, compile to a circuit, generate a witness, prove, and verify — via a simple CLI.
+- ✅ Supported ops (current): **Conv2D**, **GEMM/MatMul (FC)**, **ReLU**, **MaxPool2D**.
+- 🧰 CLI details: see **[docs/cli.md](docs/cli.md)**
 
 ---
 
@@ -24,10 +25,10 @@ You provide an **ONNX** model and inputs; JSTProve handles **quantization**, **c
 
 ### High-level architecture
 
-* **Python pipeline:** Converts **ONNX → quantized ONNX**, prepares I/O, drives the Rust runner, exposes the **CLI**.
-* **Rust crate:** `rust/jstprove_circuits` implements layer circuits (Conv2D, ReLU, MaxPool2D, GEMM/FC) and a runner.
-* **Circuit frontend:** [ECC](https://github.com/PolyhedraZK/ExpanderCompilerCollection) Rust API for arithmetic circuits.
-* **Prover backend:** [Expander](https://github.com/PolyhedraZK/Expander) (GKR/sum-check prover/verification).
+- **Python pipeline:** Converts **ONNX → quantized ONNX**, prepares I/O, drives the Rust runner, exposes the **CLI**.
+- **Rust crate:** `rust/jstprove_circuits` implements layer circuits (Conv2D, ReLU, MaxPool2D, GEMM/FC) and a runner.
+- **Circuit frontend:** [ECC](https://github.com/PolyhedraZK/ExpanderCompilerCollection) Rust API for arithmetic circuits.
+- **Prover backend:** [Expander](https://github.com/PolyhedraZK/Expander) (GKR/sum-check prover/verification).
 
 ```
 ONNX model ─► Quantizer (Py) ─► Circuit via ECC (Rust) ─► Witness (Rust) ─► Proof (Rust) ─► Verify (Rust)
@@ -51,17 +52,16 @@ ONNX model ─► Quantizer (Py) ─► Circuit via ECC (Rust) ─► Witness (R
 ### 0) System packages
 
 #### Ubuntu/Debian
+
 ```bash
 sudo apt-get update && sudo apt-get install -y \
   libopenmpi-dev openmpi-bin pkg-config libclang-dev clang
-  pip install -e .
-````
+```
 
 #### macOS
 
 ```bash
 brew install open-mpi llvm
-pip install -e .
 ```
 
 ---
@@ -74,7 +74,7 @@ Install Rust via rustup (if you don't have it):
 # macOS/Linux:
 curl https://sh.rustup.rs -sSf | sh
 # then restart your shell
-````
+```
 
 Verify your install:
 
@@ -96,17 +96,34 @@ rustup toolchain install nightly
 
 ---
 
-### 2) Clone JSTProve & set up Python
+### 2) Install the app
+
+#### Install from PyPI
+
+```bash
+pip install jstprove
+```
+
+#### Or install from source
+
+Clone the repository:
 
 ```bash
 git clone https://github.com/inference-labs-inc/JSTProve.git
 cd JSTProve
+```
 
+Use `venv` to create a virtual environment (recommended):
+
+```bash
 python -m venv .venv
 # macOS/Linux:
 source .venv/bin/activate
+```
 
-# Project deps
+Install project dependencies:
+
+```bash
 pip install -r requirements.txt
 ```
 
@@ -135,7 +152,7 @@ cargo test --release
 
 > Refer to the Expander README for the authoritative verification command(s), which may change over time.
 
-*(You do **not** need to clone ECC separately unless you plan to override Cargo git sources; Cargo will fetch ECC automatically when building JSTProve.)*
+_(You do **not** need to clone ECC separately unless you plan to override Cargo git sources; Cargo will fetch ECC automatically when building JSTProve.)_
 
 ---
 
@@ -154,7 +171,7 @@ cargo build --release
 ### 5) Try the CLI
 
 ```bash
-python -m python.frontend.cli --help
+jstprove --help
 ```
 
 You can now follow the **Quickstart** commands (compile → witness → prove → verify).
@@ -165,14 +182,14 @@ You can now follow the **Quickstart** commands (compile → witness → prove �
 
 Demo paths:
 
-* ONNX: `python/models/models_onnx/lenet.onnx`
-* Input JSON: `python/models/inputs/lenet_input.json`
-* Artifacts: `artifacts/lenet/*`
+- ONNX: `python/models/models_onnx/lenet.onnx`
+- Input JSON: `python/models/inputs/lenet_input.json`
+- Artifacts: `artifacts/lenet/*`
 
 1. **Compile** → circuit + **quantized ONNX**
 
 ```bash
-python -m python.frontend.cli compile \
+jstprove compile \
   -m python/models/models_onnx/lenet.onnx \
   -c artifacts/lenet/circuit.txt \
   -q artifacts/lenet/quantized.onnx
@@ -181,7 +198,7 @@ python -m python.frontend.cli compile \
 2. **Witness** → reshape/scale inputs, run model, write witness + outputs
 
 ```bash
-python -m python.frontend.cli witness \
+jstprove witness \
   -c artifacts/lenet/circuit.txt \
   -q artifacts/lenet/quantized.onnx \
   -i python/models/inputs/lenet_input.json \
@@ -192,7 +209,7 @@ python -m python.frontend.cli witness \
 3. **Prove** → witness → proof
 
 ```bash
-python -m python.frontend.cli prove \
+jstprove prove \
   -c artifacts/lenet/circuit.txt \
   -w artifacts/lenet/witness.bin \
   -p artifacts/lenet/proof.bin
@@ -201,7 +218,7 @@ python -m python.frontend.cli prove \
 4. **Verify** → check the proof (needs quantized ONNX for input shapes)
 
 ```bash
-python -m python.frontend.cli verify \
+jstprove verify \
   -c artifacts/lenet/circuit.txt \
   -q artifacts/lenet/quantized.onnx \
   -i python/models/inputs/lenet_input.json \
@@ -237,10 +254,10 @@ See **[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)** for dev setup, pre-commit h
 
 > **Placeholder (subject to change):**
 >
-> * **License:** See `LICENSE` (TBD). Third-party components (e.g., Expander, ECC) are licensed under their respective terms.
-> * **No warranty:** Provided “as is” without warranties or conditions of any kind. Use at your own risk.
-> * **Security & export:** Cryptography may be subject to local laws. Conduct your own security review before production use.
-> * **Trademarks:** All product names, logos, and brands are property of their respective owners.
+> - **License:** See `LICENSE` (TBD). Third-party components (e.g., Expander, ECC) are licensed under their respective terms.
+> - **No warranty:** Provided “as is” without warranties or conditions of any kind. Use at your own risk.
+> - **Security & export:** Cryptography may be subject to local laws. Conduct your own security review before production use.
+> - **Trademarks:** All product names, logos, and brands are property of their respective owners.
 
 ---
 
@@ -248,6 +265,6 @@ See **[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)** for dev setup, pre-commit h
 
 We gratefully acknowledge [**Polyhedra Network**](https://polyhedra.network/) for:
 
-* [**Expander**](https://github.com/PolyhedraZK/Expander) — the GKR/sumcheck proving system we build on.
+- [**Expander**](https://github.com/PolyhedraZK/Expander) — the GKR/sumcheck proving system we build on.
 
-* [**Expander Compiler Collection (ECC)**]() — the circuit frontend used to construct arithmetic circuits for ML layers.
+- [**Expander Compiler Collection (ECC)**]() — the circuit frontend used to construct arithmetic circuits for ML layers.

@@ -6,6 +6,7 @@ temp/
 
 # Virtual environments
 .venv/
+.venv-test/
 env/
 venv/
 
@@ -25,9 +26,11 @@ __pycache__/
 *.py[cod]
 *.ipynb_checkpoints/
 *.cfg
+*.egg-info/
 lib/
 bin/
 share/
+dist/
 report
 
 # Rust Binaries

@@ -1,0 +1,9 @@
+include README.md
+include rust-toolchain.toml
+include input.json
+include Cargo.*
+recursive-include python/models/models_onnx *.onnx
+recursive-include rust *
+recursive-include python_testing *
+recursive-include weights *
+recursive-include jstprove *
