@@ -47,7 +47,7 @@ jobs:
         run: uvx twine check dist/*
 
       - name: Smoke install wheel (no network)
-        run: uv run --no-project --with "$(ls dist/*.whl)" -- python -c "import importlib.metadata as m; print(m.version('jstprove'))"
+        run: uv run --no-project --with "$(ls dist/*.whl)" -- python -c "import importlib.metadata as m; print(m.version('jstprove-test'))"
         env:
           CI: true
 
