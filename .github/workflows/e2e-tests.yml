@@ -29,6 +29,15 @@ jobs:
           components: rustfmt, clippy
           override: true
 
+      - name: Install OMPI
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            libopenmpi-dev \
+            pkg-config \
+            libclang-dev \
+            clang \
+            openmpi-bin
+
       # Run formatters and linters
       - name: Install pre-commit
         run: pip install pre-commit
