@@ -61,6 +61,7 @@ jobs:
   e2e-test:
     name: End-to-End Testing
     needs: [python-setup, rust-setup, formatting-and-linting]
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
