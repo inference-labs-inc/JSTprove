@@ -4,7 +4,7 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 use ndarray::ArrayD;
 
 use crate::circuit_functions::CircuitError;
-use crate::circuit_functions::utils::graph_pattern_matching::GraphPattern;
+use crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry;
 use crate::circuit_functions::utils::onnx_model::CircuitParams;
 use crate::circuit_functions::utils::onnx_types::ONNXLayer;
 
@@ -51,7 +51,7 @@ pub trait LayerOp<C: Config, Builder: RootAPI<C>> {
     fn build(
         layer: &ONNXLayer,
         circuit_params: &CircuitParams,
-        optimization_pattern: GraphPattern,
+        optimization_pattern: PatternRegistry,
         is_rescale: bool,
         index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,

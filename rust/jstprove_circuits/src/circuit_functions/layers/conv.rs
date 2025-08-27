@@ -16,6 +16,7 @@ use crate::circuit_functions::{
     utils::{
         UtilsError,
         constants::{BIAS, DILATION, GROUP, INPUT, KERNEL_SHAPE, PADS, STRIDES, WEIGHTS},
+        graph_pattern_matching::PatternRegistry,
         onnx_model::{
             extract_params_and_expected_shape, get_input_name, get_param, get_param_or_default,
             get_w_or_b,
@@ -28,7 +29,6 @@ use crate::circuit_functions::{
 use crate::circuit_functions::{
     layers::layer_ops::LayerOp,
     utils::{
-        graph_pattern_matching::GraphPattern,
         quantization::rescale_array,
         tensor_ops::{load_array_constants, load_circuit_constant},
     },
@@ -50,7 +50,7 @@ pub struct ConvLayer {
     pads: Vec<u32>,
     input_shape: Vec<usize>,
     scaling: u64,
-    optimization_pattern: GraphPattern,
+    optimization_pattern: PatternRegistry,
     v_plus_one: usize,
     two_v: u32,
     alpha_two_v: u64,
@@ -67,7 +67,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         api: &mut Builder,
         input: HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
-        let is_relu = matches!(self.optimization_pattern.name, "Conv+Relu");
+        let is_relu = matches!(self.optimization_pattern, PatternRegistry::ConvRelu);
 
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Conv, INPUT)?;
         let layer_input = input
@@ -130,7 +130,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
-        optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::GraphPattern,
+        optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
         is_rescale: bool,
         index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,

@@ -11,7 +11,7 @@ use crate::circuit_functions::{
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::{ALPHA, BETA, INPUT, TRANS_A, TRANS_B},
-        graph_pattern_matching::GraphPattern,
+        graph_pattern_matching::PatternRegistry,
         onnx_model::{
             extract_params_and_expected_shape, get_input_name, get_param_or_default, get_w_or_b,
         },
@@ -33,7 +33,7 @@ pub struct GemmLayer {
     v_plus_one: usize,
     two_v: u32,
     alpha_two_v: u64,
-    optimization_pattern: GraphPattern,
+    optimization_pattern: PatternRegistry,
     scaling: u64,
     input_shape: Vec<usize>,
     alpha: f32,
@@ -52,7 +52,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         api: &mut Builder,
         input: HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
-        let is_relu = matches!(self.optimization_pattern.name, "Gemm+Relu");
+        let is_relu = matches!(self.optimization_pattern, PatternRegistry::GemmRelu);
 
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Gemm, INPUT)?;
         let layer_input = input
@@ -129,7 +129,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
-        optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::GraphPattern,
+        optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
         is_rescale: bool,
         index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,

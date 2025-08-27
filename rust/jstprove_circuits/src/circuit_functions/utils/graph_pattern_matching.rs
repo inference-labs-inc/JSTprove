@@ -11,7 +11,8 @@ Pattern matching of layers
 
 */
 
-type PatternMatchResult = Result<Option<(GraphPattern, Vec<String>, Vec<String>)>, PatternError>;
+type PatternMatchResult = Result<Option<(PatternRegistry, Vec<String>, Vec<String>)>, PatternError>;
+// type PatternMatchResult = Result<Option<(GraphPattern, Vec<String>, Vec<String>)>, PatternError>;
 /// Attempts to optimize a sequence of layers by skipping redundant ones.
 ///
 /// Examines the provided `optimization_match` for consistent patterns and validates
@@ -44,7 +45,7 @@ pub fn optimization_skip_layers(
 ) -> PatternMatchResult {
     match optimization_match {
         Some(opt) => {
-            let pattern = opt.first().ok_or(PatternError::EmptyMatch)?.pattern;
+            let pattern = opt.first().ok_or(PatternError::EmptyMatch)?.pattern.clone();
 
             let mut new_outputs = Vec::new();
             let mut skipped_layers: Vec<String> = Vec::new();
@@ -52,10 +53,10 @@ pub fn optimization_skip_layers(
             // Loop through all potential branches
             for opt_match in opt {
                 // Assert all the patterns are the same
-                if pattern.name != opt_match.pattern.name {
+                if pattern.as_graph_pattern().name != opt_match.pattern.as_graph_pattern().name {
                     return Err(PatternError::InconsistentPattern {
-                        expected: pattern.name.to_string(),
-                        got: opt_match.pattern.name.to_string(),
+                        expected: pattern.as_graph_pattern().name.to_string(),
+                        got: opt_match.pattern.as_graph_pattern().name.to_string(),
                     });
                 }
                 // Get final layer of pattern
@@ -216,8 +217,9 @@ fn dfs<'a>(
 
 // TODO, somewhere must include priority in sequence, for example, conv relu batchnorm takes priority over conv relu
 
-#[derive(Debug, EnumIter, AsRefStr)]
+#[derive(Debug, EnumIter, AsRefStr, Clone)]
 pub enum PatternRegistry {
+    None,
     ConvRelu,
     GemmRelu,
 }
@@ -226,6 +228,10 @@ impl PatternRegistry {
     #[must_use]
     pub fn as_graph_pattern(&self) -> GraphPattern {
         match self {
+            PatternRegistry::None => GraphPattern {
+                name: "None",
+                ops: &[],
+            },
             PatternRegistry::ConvRelu => GraphPattern {
                 name: "Conv+Relu",
                 ops: &["Conv", "Relu"],
@@ -246,7 +252,7 @@ pub struct GraphPattern {
 
 #[derive(Debug, Clone)]
 pub struct OptimizationMatch {
-    pub pattern: GraphPattern,
+    pub pattern: PatternRegistry,
     pub layers: Vec<ONNXLayer>,
 }
 
@@ -291,14 +297,11 @@ impl PatternMatcher {
         let mut all_matches: HashMap<String, Vec<OptimizationMatch>> = HashMap::new();
 
         for pat_enum in PatternRegistry::iter() {
-            let pat = pat_enum.as_graph_pattern();
-            if pat.ops.is_empty() {
-                return Err(PatternError::EmptyPattern {
-                    pattern: pat.name.to_string(),
-                });
+            let graph_pat = pat_enum.as_graph_pattern();
+            if graph_pat.ops.is_empty() {
+                continue;
             }
-            let matches = find_pattern_matches(layers, &pat, BranchMatchMode::All)?;
-            eprintln!("Pattern `{}` matched {} times", pat.name, matches.len());
+            let matches = find_pattern_matches(layers, &graph_pat, BranchMatchMode::All)?;
 
             for m in matches {
                 let first_match = m.first().ok_or(PatternError::EmptyMatch)?;
@@ -306,7 +309,7 @@ impl PatternMatcher {
                     .entry(first_match.name.clone())
                     .or_default()
                     .push(OptimizationMatch {
-                        pattern: pat,
+                        pattern: pat_enum.clone(), // store the enum, not the GraphPattern
                         layers: m.into_iter().cloned().collect(),
                     });
             }

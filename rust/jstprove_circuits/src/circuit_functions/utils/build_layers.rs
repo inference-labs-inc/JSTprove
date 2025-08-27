@@ -4,7 +4,7 @@ use crate::circuit_functions::{
     layers::{LayerKind, layer_ops::LayerOp},
     utils::{
         errors::BuildError,
-        graph_pattern_matching::{GraphPattern, PatternMatcher, optimization_skip_layers},
+        graph_pattern_matching::{PatternMatcher, PatternRegistry, optimization_skip_layers},
         onnx_model::{Architecture, CircuitParams, WANDB, collect_all_shapes},
         onnx_types::ONNXLayer,
     },
@@ -94,7 +94,7 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
         let (optimization_pattern, outputs, layers_to_skip) =
             match optimization_skip_layers(optimization_pattern_match, &outputs).unwrap_or(None) {
                 Some(opt) => opt,
-                None => (GraphPattern::default(), outputs.clone(), vec![]),
+                None => (PatternRegistry::None, outputs.clone(), vec![]),
             };
         // Save layers to skip
         for item in layers_to_skip {

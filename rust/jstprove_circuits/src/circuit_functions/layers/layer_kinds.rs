@@ -2,7 +2,7 @@ use crate::circuit_functions::CircuitError;
 use crate::circuit_functions::layers::LayerError;
 use crate::circuit_functions::layers::layer_ops::LayerOp;
 use crate::circuit_functions::utils::build_layers::BuildLayerContext;
-use crate::circuit_functions::utils::graph_pattern_matching::GraphPattern;
+use crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry;
 use crate::circuit_functions::utils::onnx_model::CircuitParams;
 use crate::circuit_functions::utils::onnx_types::ONNXLayer;
 
@@ -81,7 +81,7 @@ macro_rules! define_layers {
             ) -> fn(
                 &ONNXLayer,
                 &CircuitParams,
-                GraphPattern,
+                PatternRegistry,
                 bool,
                 usize,
                 &BuildLayerContext,
