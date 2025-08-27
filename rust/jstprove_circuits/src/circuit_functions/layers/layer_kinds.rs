@@ -1,10 +1,10 @@
-use crate::circuit_functions::utils::onnx_types::ONNXLayer;
 use crate::circuit_functions::CircuitError;
 use crate::circuit_functions::layers::LayerError;
-use crate::circuit_functions::utils::onnx_model::CircuitParams;
-use crate::circuit_functions::utils::graph_pattern_matching::GraphPattern;
-use crate::circuit_functions::utils::build_layers::BuildLayerContext;
 use crate::circuit_functions::layers::layer_ops::LayerOp;
+use crate::circuit_functions::utils::build_layers::BuildLayerContext;
+use crate::circuit_functions::utils::graph_pattern_matching::GraphPattern;
+use crate::circuit_functions::utils::onnx_model::CircuitParams;
+use crate::circuit_functions::utils::onnx_types::ONNXLayer;
 
 use crate::circuit_functions::layers::constant::ConstantLayer;
 use crate::circuit_functions::layers::conv::ConvLayer;
@@ -14,7 +14,8 @@ use crate::circuit_functions::layers::maxpool::MaxPoolLayer;
 use crate::circuit_functions::layers::relu::ReluLayer;
 use crate::circuit_functions::layers::reshape::ReshapeLayer;
 
-use expander_compiler::frontend::*;
+use expander_compiler::frontend::{Config, RootAPI};
+use std::str::FromStr;
 
 // Macro to define layers
 macro_rules! define_layers {
@@ -43,12 +44,10 @@ macro_rules! define_layers {
                 }
             }
         }
+        impl FromStr for LayerKind {
+            type Err = LayerError;
 
-        // --------------------------
-        // FromStr / TryFrom impls
-        // --------------------------
-        impl LayerKind {
-            pub fn from_str(s: &str) -> Result<Self, LayerError> {
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
                 match s {
                     $(
                         $name => Ok(LayerKind::$variant),
@@ -59,8 +58,25 @@ macro_rules! define_layers {
                     other => Err(LayerError::UnknownOp { op_type: other.to_string() }),
                 }
             }
+        }
 
-            pub fn builder<C: Config, Builder: RootAPI<C>>(
+        // --------------------------
+        // FromStr / TryFrom impls
+        // --------------------------
+        impl LayerKind {
+            // pub fn from_str(s: &str) -> Result<Self, LayerError> {
+            //     match s {
+            //         $(
+            //             $name => Ok(LayerKind::$variant),
+            //             $(
+            //                 $( $alias => Ok(LayerKind::$variant), )*
+            //             )?
+            //         )*
+            //         other => Err(LayerError::UnknownOp { op_type: other.to_string() }),
+            //     }
+            // }
+
+            #[must_use] pub fn builder<C: Config, Builder: RootAPI<C>>(
                 &self
             ) -> fn(
                 &ONNXLayer,
@@ -102,7 +118,7 @@ macro_rules! define_layers {
         }
     }
 }
-/* 
+/*
 Layer Registry
 When defining new layers, make sure to activate them by placing the new layer in the registry below.
 */

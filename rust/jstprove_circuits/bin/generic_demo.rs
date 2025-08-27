@@ -2,44 +2,47 @@
 /// Standard library imports
 use core::panic;
 
-use jstprove_circuits::circuit_functions::utils::build_layers::build_layers;
-use jstprove_circuits::circuit_functions::utils::ArrayConversionError;
 use jstprove_circuits::circuit_functions::CircuitError;
+use jstprove_circuits::circuit_functions::utils::ArrayConversionError;
+use jstprove_circuits::circuit_functions::utils::build_layers::build_layers;
 use jstprove_circuits::runner::errors::RunError;
 /// External crate imports
-use lazy_static::lazy_static;
+use std::sync::LazyLock;
+
 use ndarray::{ArrayD, Ix1, IxDyn};
 
-/// ExpanderCompilerCollection imports
-use expander_compiler::frontend::*;
+/// `ExpanderCompilerCollection` imports
+use expander_compiler::frontend::{
+    BN254Config, CircuitField, Config, Define, RootAPI, Variable, declare_circuit,
+};
 
 /// Internal crate imports
-use jstprove_circuits::circuit_functions::utils::onnx_model::{Architecture, CircuitParams, InputData, OutputData, WANDB};
+use jstprove_circuits::circuit_functions::utils::onnx_model::{
+    Architecture, CircuitParams, InputData, OutputData, WANDB,
+};
 use jstprove_circuits::circuit_functions::utils::shaping::get_inputs;
 
 use jstprove_circuits::circuit_functions::utils::tensor_ops::get_nd_circuit_inputs;
 use jstprove_circuits::io::io_reader::{FileReader, IOReader};
 use jstprove_circuits::runner::main_runner::{ConfigurableCircuit, handle_args};
 
-
 type WeightsData = (Architecture, WANDB, CircuitParams);
 
 // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str = include_str!("../../../python/models/weights/onnx_generic_circuit_weights.json");
+const MATRIX_WEIGHTS_FILE: &str =
+    include_str!("../../../python/models/weights/onnx_generic_circuit_weights.json");
 
 //lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
 // Weights will be read in
-lazy_static! {
-    static ref WEIGHTS_INPUT: WeightsData = {
-        let x: WeightsData =
-            serde_json::from_str(MATRIX_WEIGHTS_FILE).expect("JSON was not well-formatted");
-        x
-    };
-    static ref ARCHITECTURE: Architecture = WEIGHTS_INPUT.0.clone();
-    static ref W_AND_B: WANDB = WEIGHTS_INPUT.1.clone();
-    static ref CIRCUITPARAMS: CircuitParams = WEIGHTS_INPUT.2.clone();
+// Lazily parse the weights JSON file on first access
+static WEIGHTS_INPUT: LazyLock<WeightsData> = LazyLock::new(|| {
+    serde_json::from_str(MATRIX_WEIGHTS_FILE).expect("JSON was not well-formatted")
+});
 
-}
+// Extract components from WEIGHTS_INPUT lazily
+static ARCHITECTURE: LazyLock<Architecture> = LazyLock::new(|| WEIGHTS_INPUT.0.clone());
+static W_AND_B: LazyLock<WANDB> = LazyLock::new(|| WEIGHTS_INPUT.1.clone());
+static CIRCUITPARAMS: LazyLock<CircuitParams> = LazyLock::new(|| WEIGHTS_INPUT.2.clone());
 
 declare_circuit!(Circuit {
     input_arr: [PublicVariable],
@@ -64,48 +67,52 @@ impl Circuit<Variable> {
         &self,
         api: &mut Builder,
     ) -> Result<(), CircuitError> {
-
         // Getting inputs
-        let mut out = get_inputs(self.input_arr.clone(), ARCHITECTURE.inputs.clone())?;
-        
+        let mut out = get_inputs(&self.input_arr, ARCHITECTURE.inputs.clone())?;
+
         // let mut out = out2.remove("input").unwrap().clone();
         let layers = build_layers::<C, Builder>(&CIRCUITPARAMS, &ARCHITECTURE, &W_AND_B)?;
-        
+
         if ARCHITECTURE.architecture.is_empty() {
             return Err(CircuitError::EmptyArchitecture);
         }
 
         for (i, layer) in layers.iter().enumerate() {
-
             eprintln!("Applying Layer {:?}", &ARCHITECTURE.architecture[i].name);
-            let result = layer
-                .apply(api, out.clone())?;
+            let result = layer.apply(api, out.clone())?;
             result.0.into_iter().for_each(|key| {
                 // out.insert(key, Arc::clone(&value)); Depending on memory constraints here
                 out.insert(key, result.1.clone());
             });
-
         }
-        
+
         eprint!("Flatten output");
-        let flatten_shape: Vec<usize> = vec![ARCHITECTURE.outputs.iter()
-            .map(|obj| obj.shape.iter().product::<usize>())
-            .product()];
+        let flatten_shape: Vec<usize> = vec![
+            ARCHITECTURE
+                .outputs
+                .iter()
+                .map(|obj| obj.shape.iter().product::<usize>())
+                .product(),
+        ];
 
         // TODO only support single output
-        let output_name = ARCHITECTURE.outputs
-            .get(0)
+        let output_name = ARCHITECTURE
+            .outputs
+            .first()
             .ok_or_else(|| CircuitError::Other("No outputs defined in ARCHITECTURE".to_string()))?
             .name
             .clone();
 
-        let output = out.get(&output_name)
+        let output = out
+            .get(&output_name)
             .ok_or_else(|| CircuitError::Other("Missing output in map".into()))?
             .clone()
             .into_shape_with_order(IxDyn(&flatten_shape))
-            .map_err(|e| ArrayConversionError::ShapeError(e))?;
+            .map_err(ArrayConversionError::ShapeError)?;
 
-        let output = output.as_slice().ok_or_else(|| CircuitError::Other("Output array not contiguous".into()))?;
+        let output = output
+            .as_slice()
+            .ok_or_else(|| CircuitError::Other("Output array not contiguous".into()))?;
 
         for (j, _) in self.outputs.iter().enumerate() {
             api.display("out1", self.outputs[j]);
@@ -120,18 +127,21 @@ impl Circuit<Variable> {
     }
 }
 
-
 impl ConfigurableCircuit for Circuit<Variable> {
     fn configure(&mut self) {
         // Change input and outputs as needed
         // Outputs
-        let output_dims: usize = ARCHITECTURE.outputs.iter()
-        .map(|obj| obj.shape.iter().product::<usize>())
-        .product();
+        let output_dims: usize = ARCHITECTURE
+            .outputs
+            .iter()
+            .map(|obj| obj.shape.iter().product::<usize>())
+            .product();
         self.outputs = vec![Variable::default(); output_dims];
 
         // Inputs
-        let input_dims: usize = ARCHITECTURE.inputs.iter()
+        let input_dims: usize = ARCHITECTURE
+            .inputs
+            .iter()
             .map(|obj| obj.shape.iter().product::<usize>())
             .product();
         self.input_arr = vec![Variable::default(); input_dims];
@@ -158,8 +168,8 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
         assignment.dummy[1] = CircuitField::<C>::from(1);
 
         // 1) get back an ArrayD<CircuitField<C>>
-        let arr: ArrayD<CircuitField<C>> =
-            get_nd_circuit_inputs::<C>(&data.input, input_dims).map_err(|e| RunError::Json(format!("Invalid input shape: {e}")))?;
+        let arr: ArrayD<CircuitField<C>> = get_nd_circuit_inputs::<C>(&data.input, input_dims)
+            .map_err(|e| RunError::Json(format!("Invalid input shape: {e}")))?;
 
         // 2) downcast to Ix1 and collect into a Vec
         let flat: Vec<CircuitField<C>> = arr
@@ -185,8 +195,8 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
             .map(|obj| obj.shape.iter().product::<usize>())
             .product()];
 
-        let arr: ArrayD<CircuitField<C>> =
-            get_nd_circuit_inputs::<C>(&data.output, output_dims).map_err(|e| RunError::Json(format!("Invalid output shape: {e}")))?;
+        let arr: ArrayD<CircuitField<C>> = get_nd_circuit_inputs::<C>(&data.output, output_dims)
+            .map_err(|e| RunError::Json(format!("Invalid output shape: {e}")))?;
 
         let flat: Vec<CircuitField<C>> = arr
             .into_dimensionality::<Ix1>()
@@ -202,15 +212,12 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
     }
 }
 
-
-
 fn main() {
     let mut file_reader = FileReader {
         path: "demo_cnn".to_owned(),
     };
 
-    if let Err(err) =
-        handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(&mut file_reader)
+    if let Err(err) = handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(&mut file_reader)
     {
         eprintln!("Error: {err}");
         std::process::exit(1);

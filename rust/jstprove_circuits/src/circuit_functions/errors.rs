@@ -1,5 +1,8 @@
+use crate::circuit_functions::{
+    layers::LayerError,
+    utils::{ArrayConversionError, BuildError, PatternError, RescaleError, UtilsError},
+};
 use thiserror::Error;
-use crate::circuit_functions::{layers::LayerError, utils::{ArrayConversionError, BuildError, PatternError, RescaleError, UtilsError}};
 
 #[derive(Debug, Error)]
 pub enum CircuitError {

@@ -1,239 +1,253 @@
-`# Testing Environment
+```
+         _/    _/_/_/  _/_/_/_/_/  _/_/_/                                             
+        _/  _/            _/      _/    _/  _/  _/_/    _/_/    _/      _/    _/_/    
+       _/    _/_/        _/      _/_/_/    _/_/      _/    _/  _/      _/  _/_/_/_/   
+_/    _/        _/      _/      _/        _/        _/    _/    _/  _/    _/          
+ _/_/    _/_/_/        _/      _/        _/          _/_/        _/        _/_/_/
+``` 
+---
 
-## Setup python environment
+# JSTProve
+
+Zero-knowledge proofs of ML inference on **ONNX** models — powered by [Polyhedra Network’s **Expander**](https://github.com/PolyhedraZK/Expander) (GKR/sum-check prover) and [**Expander Compiler Collection (ECC)**](https://github.com/PolyhedraZK/ExpanderCompilerCollection).
+
+* 🎯 **You bring ONNX** → we quantize, compile to a circuit, generate a witness, prove, and verify — via a simple CLI.
+* ✅ Supported ops (current): **Conv2D**, **GEMM/MatMul (FC)**, **ReLU**, **MaxPool2D**.
+* 🧰 CLI details: see **[docs/cli.md](docs/cli.md)**
+
+---
+
+## What is JSTProve?
+
+**JSTProve** is a [zkML](https://docs.inferencelabs.com/zk-ml) toolkit/CLI that produces [**zero-knowledge proofs**](https://docs.inferencelabs.com/resources/glossary#zero-knowledge-proof) **of AI** [**inference**](https://docs.inferencelabs.com/resources/glossary#inference).
+You provide an **ONNX** model and inputs; JSTProve handles **quantization**, **circuit generation** (via ECC), **witness creation**, **proving** (via Expander), and **verification** — with explicit, user-controlled file paths.
+
+### High-level architecture
+
+* **Python pipeline:** Converts **ONNX → quantized ONNX**, prepares I/O, drives the Rust runner, exposes the **CLI**.
+* **Rust crate:** `rust/jstprove_circuits` implements layer circuits (Conv2D, ReLU, MaxPool2D, GEMM/FC) and a runner.
+* **Circuit frontend:** [ECC](https://github.com/PolyhedraZK/ExpanderCompilerCollection) Rust API for arithmetic circuits.
+* **Prover backend:** [Expander](https://github.com/PolyhedraZK/Expander) (GKR/sum-check prover/verification).
 
 ```
+ONNX model ─► Quantizer (Py) ─► Circuit via ECC (Rust) ─► Witness (Rust) ─► Proof (Rust) ─► Verify (Rust)
+```
+
+### Design principles
+
+- **User-friendly frontend to Expander:** A thin, practical, circuit-based layer that makes Expander/ECC easy to use from a simple CLI — no circuit classes, no path inference, predictable artifacts.
+- **Explicit & reproducible:** You pass exact paths; we emit concrete artifacts (circuit, quantized ONNX, witness, proof). No hidden discovery or heuristics.
+- **Clear separation:** Python orchestrates the pipeline and I/O; Rust implements the circuits and invokes Expander/ECC.
+- **Quantization that's simple & faithful:** We scale tensors, **round to integers**, run the model, and (where needed) **rescale** outputs back. Scaling keeps arithmetic cheap while remaining close to the original FP behavior.
+- **Small, fast circuits when possible:** Where safe, we fuse common patterns (e.g., **Linear + ReLU**, **Conv + ReLU**) into streamlined circuit fragments to reduce constraints.
+- **Deterministic debugging:** We prefer loud failures and inspectable intermediates (e.g., `*_reshaped.json`) over implicit magic.
+
+---
+
+## Installation
+
+> Run commands from the **repo root** so the runner binary path (e.g., `./target/release/onnx_generic_circuit`) resolves.
+
+### 0) System packages
+
+#### Ubuntu/Debian
+```bash
+sudo apt-get update && sudo apt-get install -y \
+  libopenmpi-dev openmpi-bin pkg-config libclang-dev clang
+  pip install -e .
+````
+
+#### macOS
+
+```bash
+brew install open-mpi llvm
+pip install -e .
+```
+
+---
+
+### 1) Rust toolchain
+
+Install Rust via rustup (if you don't have it):
+
+```bash
+# macOS/Linux:
+curl https://sh.rustup.rs -sSf | sh
+# then restart your shell
+````
+
+Verify your install:
+
+```bash
+rustup --version
+rustc --version
+cargo --version
+```
+
+> This repo includes a `rust-toolchain.toml` that pins the required **nightly**.
+> When you run `cargo` in this directory, rustup will automatically download/use
+> the correct toolchain. You **do not** need to run `rustup override set nightly`.
+
+(Optional) If you want to prefetch nightly ahead of time:
+
+```bash
+rustup toolchain install nightly
+```
+
+---
+
+### 2) Clone JSTProve & set up Python
+
+```bash
+git clone https://github.com/inference-labs-inc/JSTProve.git
+cd JSTProve
+
+python -m venv .venv
+# macOS/Linux:
+source .venv/bin/activate
+
+# Project deps
 pip install -r requirements.txt
 ```
 
-## Building Structure
+---
 
-The development/building process will involve working in two different areas of the codebase. We will begin with the python testing files. 
+### 3) Install & verify **Expander** (before building JSTProve)
 
-In `python/testing/core` directory, we will build the python representation of the code. With this, we can test the function we are trying to circuitize line by line for easier development. Additionally, through this code, we will write the inputs and outputs (and weights if applicable) of our function/circuit to file, so that the rust circuit can read this in. Next we will call our rust code to compile the circuit, run the witness and prove and verify the given inputs and outputs. For this process, use `python/testing/core/testing_circuits_base_functions.py` as an example/template.
+JSTProve relies on Polyhedra Network’s **Expander** (prover) and **Expander Compiler Collection (ECC)** crates.
+For a clean environment, install Expander and run its self-checks first.
 
-In `jstprove_circuits` directory, we will build the Expander circuits in rust for proving. We can follow the template in `jstprove_circuits/bin/testing.rs`. The templates have been designed to make the development process as easy as possible. The helper functions are in `jstprove_circuits/src/`. For creating circuits, we must define the inputs and outpsuts structure of the circuits. We must then specify how these get read into the circuit. Finally, we must design the circuit
+```bash
+# In a sibling folder (or anywhere you keep deps)
+git clone https://github.com/PolyhedraZK/Expander.git
+cd Expander
 
-## Python Testing
-
-To run testing environment in python:
-
-```
-python -m python/testing/core.testing_circuit
-```
-
-## Circuit creation Instructions
-
-The circuit creation process involves working with two (or three) files. 
-
-1. Create the circuit file using `gravy_circuits/bin/testing.rs` as a template. The binary should belong in `gravy_circuits/bin/`. Add the name of the circuit and path to the binary in `gravy_circuits/Cargo.toml`
-
-2. Work in `python/testing/core/testing_circuit`
-
-    a. Change the self.name in the `__init__` to the name of the circuit [circuit_name], used in the file creation code specified in section 1.
-
-    b. Generate inputs to the function in the `___init__` 
-
-    c. Code the function to circuitize in `python/testing/core/testing_circuit`, 
-  
-    d. Define the inputs and outputs, to be sent to json for circuits
-
-3. Create rust file in `jstprove_circuits/bin` and add the relevant binary to the Cargo.toml in `jstprove_circuits`
-
-    a. Define inputs and outputs, to read into the circuit
-
-    b. Define circuit
-
-4. Run ``` python -m python/testing/core.circuit_tests``` to test the accuracy of the circuit
-
-TODO: Incorporate proof time, proof size and max memory used results, into the circuit testing 
-
-### Circuit Example
-
-To run circuit example:
-```
-python -m python/testing/core.matrix_multiplication
+# Build (uses the toolchain you configured with rustup)
+cargo build --release
 ```
 
-Relevent files to explore -> `python/testing/core/matrix_multiplication.py` and `jstprove_circuits/bin/matrix_multiplication.rs`
+**Verify Expander:** follow the “Correctness Test” (or equivalent) in the Expander README.
+If you’re unsure, a quick smoke test is often:
 
+```bash
+cargo test --release
+```
 
-## Important note
+> Refer to the Expander README for the authoritative verification command(s), which may change over time.
 
-We must run the cargo files with release for reasonable time process
+*(You do **not** need to clone ECC separately unless you plan to override Cargo git sources; Cargo will fetch ECC automatically when building JSTProve.)*
 
-## Common debugging issues
+---
 
-1. Outputs have not been quantized back down
+### 4) Build the JSTProve runner (optional; the CLI can build on demand)
 
-2. Inputs must be converted to int, before process in python
+```bash
+# From JSTProve repo root
+cargo build --release
+./target/release/onnx_generic_circuit --help
+```
 
-3. Quantized parameter set to false when it should be true
+> The CLI `compile` step will **(re)build** the runner automatically when needed, so this step is just a sanity check.
 
-4. Make sure weights being loaded into rust file are from correct circuit (the naming is correct)
+---
 
-# Command Line Interface
+### 5) Try the CLI
 
-This CLI tool runs various circuit operations such as compilation, witness generation, proof generation, and verification. It dynamically loads circuit modules, resolves file paths using fuzzy matching, and can list all available circuit files that inherit from a `Circuit` or `ZKModel` class.
+```bash
+python -m python.frontend.cli --help
+```
 
-## Features
+You can now follow the **Quickstart** commands (compile → witness → prove → verify).
 
-1. **Dynamic Module Loading**  
-   - By default, the CLI looks for circuit modules in:
-     - `python/testing/core.circuit_models`
-     - `python/testing/core.circuit_components`
-   - You can also specify a custom search path relative to `python/testing/core` with the `--circuit_search_path` flag.
+---
 
-2. **File Resolution**  
-   - Automatically searches the project root for JSON input and output files using a simple or fuzzy match.
-   - You can override the default filenames (e.g., `{circuit}_input.json` and `{circuit}_output.json`) with:
-     - `--input` to point to an exact input file
-     - `--output` to point to an exact output file
-     - `--pattern` to use a custom format (e.g., `my_{circuit}_input.json`).
+## Quickstart (LeNet demo)
 
-3. **Operation Flags**  
-   - Run specific stages of your circuit workflow:
-     - `--compile_circuit`: Compile the circuit.
-     - `--gen_witness`: Generate a witness.
-     - `--prove_witness`: Generate both the witness and proof.
-     - `--gen_verify`: Run verification.   
-     - `--end_to_end`: Run an all-in-one test if your circuit supports it.
-   - `--all`: Run the main four stages in sequence:  
-     1. Compile (`--compile_circuit`)  
-     2. Generate Witness (`--gen_witness`)  
-     3. Prove Witness (`--prove_witness`)  
-     4. Verify (`--gen_verify`)
+Demo paths:
 
-4. **List Available Circuits**  
-   - Use the `--list_circuits` flag to recursively search for Python files containing a class that inherits from `Circuit` or `ZKModel`.  
-   - By default, it searches in:
-     - `python/testing/core/circuit_components`
-     - `python/testing/core/circuit_models`
-   - Override with `--circuit_search_path <some_relative_folder>` to search elsewhere.
+* ONNX: `python/models/models_onnx/lenet.onnx`
+* Input JSON: `python/models/inputs/lenet_input.json`
+* Artifacts: `artifacts/lenet/*`
 
-## Basic Usage
+1. **Compile** → circuit + **quantized ONNX**
 
-1. **Install Dependencies**  
-   Ensure you have **Python 3.12.x** installed and all required dependencies listed in `requirements.txt`:
+```bash
+python -m python.frontend.cli compile \
+  -m python/models/models_onnx/lenet.onnx \
+  -c artifacts/lenet/circuit.txt \
+  -q artifacts/lenet/quantized.onnx
+```
 
-2. **Run the CLI**  
-   From the project root (`JSTProve`):
+2. **Witness** → reshape/scale inputs, run model, write witness + outputs
 
-   ```bash
-   python -m cli --circuit simple_circuit --compile --circuit <circuit_file_path>
-   python -m cli --circuit simple_circuit --gen_witness --witness <witness_file_path> --input <input_json_file_path> --output <output_json_file_path> --circuit_path <circuit_file_path>
-   python -m cli --circuit simple_circuit --prove --witness <witness_file_path> --proof <proof_file_path> --circuit_path <circuit_file_path>
-   python -m cli --circuit simple_circuit --verify --witness <witness_file_path> --proof <proof_file_path> --input <input_json_file_path> --output <output_json_file_path> --circuit_path <circuit_file_path>
-   ```
+```bash
+python -m python.frontend.cli witness \
+  -c artifacts/lenet/circuit.txt \
+  -q artifacts/lenet/quantized.onnx \
+  -i python/models/inputs/lenet_input.json \
+  -o artifacts/lenet/output.json \
+  -w artifacts/lenet/witness.bin
+```
 
-   Dummy demo run through:
-   ```bash
-   Demo
-   run through
-   python -m cli --circuit simple_circuit --compile --circuit_path basic_circuit.txt
-   python cli.py --circuit simple_circuit --gen_witness --witness witness.txt --input inputs/simple_circuit_input.json --output output/simple_circuit_output.json --circuit_path basic_circuit.txt
-   python cli.py --circuit simple_circuit --prove --witness witness.txt --proof proof.bin --circuit_path basic_circuit.txt
-   python cli.py --circuit simple_circuit --verify --witness witness.txt --proof proof.bin --input inputs/simple_circuit_input.json --output output/simple_circuit_output.json --circuit_path basic_circuit.txt
+3. **Prove** → witness → proof
 
-   Error about inputs not matching
-   python cli.py --circuit simple_circuit --verify --witness witness.txt --proof proof.bin --circuit_path basic_circuit.txt
-   Error around verification
-   python cli.py --circuit simple_circuit --verify --witness witness.txt --input input.json --output output.json --circuit_path basic_circuit.txt
-   run through 
-   python cli.py --circuit simple_circuit --verify --witness witness.txt --proof proof.bin --input input.json --output output.json --circuit_path basic_circuit.txt
+```bash
+python -m python.frontend.cli prove \
+  -c artifacts/lenet/circuit.txt \
+  -w artifacts/lenet/witness.bin \
+  -p artifacts/lenet/proof.bin
+```
 
+4. **Verify** → check the proof (needs quantized ONNX for input shapes)
 
-   python cli.py --circuit demo_cnn --class Demo --compile --circuit_path demo_circuit.txt
-   python cli.py --circuit demo_cnn --class Demo --gen_witness --input inputs/demo_cnn_input.json --output output/demo_cnn_output.json  --circuit_path demo_circuit.txt
+```bash
+python -m python.frontend.cli verify \
+  -c artifacts/lenet/circuit.txt \
+  -q artifacts/lenet/quantized.onnx \
+  -i python/models/inputs/lenet_input.json \
+  -o artifacts/lenet/output.json \
+  -w artifacts/lenet/witness.bin \
+  -p artifacts/lenet/proof.bin
+```
 
-   ```
+If it prints **Verified**, you're done 🎉
 
+---
 
-   To run Doom and the relevant slices
+## CLI reference
 
-   python cli.py --circuit doom_model --class Doom --compile --circuit_path doom_circuit.txt
-   python cli.py --circuit doom_model --class Doom --gen_witness --input inputs/doom_input.json --output output/doom_output.json  --circuit_path doom_circuit.txt
+The CLI is intentionally minimal and **doesn't infer paths**.
+See **[docs/cli.md](docs/cli.md)** for subcommands, flags, and examples.
 
+---
 
-   python cli.py --circuit doom_slices --class DoomConv1 --compile --circuit_path doom_conv1_circuit.txt
-   python cli.py --circuit doom_slices --class DoomConv1 --gen_witness --input inputs/doom_input.json --output output/doom_conv1_output.json  --circuit_path doom_conv1_circuit.txt
+## Troubleshooting
 
-   python cli.py --circuit doom_slices --class DoomConv2 --compile --circuit_path doom_conv2_circuit.txt
-   python cli.py --circuit doom_slices --class DoomConv2 --gen_witness --input output/doom_conv1_output.json --output output/doom_conv2_output.json  --circuit_path doom_conv2_circuit.txt
+See **[docs/troubleshooting.md](docs/troubleshooting.md)**
 
+---
 
-   python cli.py --circuit doom_slices --class DoomConv3 --compile --circuit_path doom_conv3_circuit.txt
-   python cli.py --circuit doom_slices --class DoomConv3 --gen_witness --input output/doom_conv2_output.json --output output/doom_conv3_output.json  --circuit_path doom_conv3_circuit.txt
+## Contributing
 
-   python cli.py --circuit doom_slices --class DoomFC1 --compile --circuit_path doom_fc1_circuit.txt
-   python cli.py --circuit doom_slices --class DoomFC1 --gen_witness --input output/doom_conv3_output.json --output output/doom_fc1_output.json  --circuit_path doom_fc1_circuit.txt
+See **[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)** for dev setup, pre-commit hooks, and PR guidelines.
 
-   python cli.py --circuit doom_slices --class DoomFC2 --compile --circuit_path doom_fc2_circuit.txt
-   python cli.py --circuit doom_slices --class DoomFC2 --gen_witness --input output/doom_fc1_output.json --output output/doom_fc2_output.json  --circuit_path doom_fc2_circuit.txt
-   python cli.py --circuit doom_slices --class DoomFC2 --gen_witness --input output/doom_fc1_output.json --output output/doom_output.json  --circuit_path doom_fc2_circuit.txt
-   
+---
 
-   python cli.py --circuit maxpooling --class MaxPooling2D --compile --circuit_path maxpool_circuit.txt
-   python cli.py --circuit maxpooling --class MaxPooling2D --gen_witness --input inputs/maxpooling_input.json --output output/maxpooling_output.json  --circuit_path maxpool_circuit.txt
+## Legal
 
-   To run Net and the relevant slices
+> **Placeholder (subject to change):**
+>
+> * **License:** See `LICENSE` (TBD). Third-party components (e.g., Expander, ECC) are licensed under their respective terms.
+> * **No warranty:** Provided “as is” without warranties or conditions of any kind. Use at your own risk.
+> * **Security & export:** Cryptography may be subject to local laws. Conduct your own security review before production use.
+> * **Trademarks:** All product names, logos, and brands are property of their respective owners.
 
-   python cli.py --circuit net_model --class NetModel --compile --circuit_path net_circuit.txt
-   python cli.py --circuit net_model --class NetModel --gen_witness --input inputs/net_input.json --output output/net_output.json  --circuit_path net_circuit.txt
+---
 
+## Acknowledgments
 
-   python cli.py --circuit net_model --class NetConv1Model --compile --circuit_path net_conv1_circuit.txt
-   python cli.py --circuit net_model --class NetConv1Model --gen_witness --input inputs/net_input.json --output output/net_conv1_output.json  --circuit_path net_conv1_circuit.txt
+We gratefully acknowledge [**Polyhedra Network**](https://polyhedra.network/) for:
 
-   python cli.py --circuit net_model --class NetConv2Model --compile --circuit_path net_conv2_circuit.txt
-   python cli.py --circuit net_model --class NetConv2Model --gen_witness --input output/net_conv1_output.json --output output/net_conv2_output.json  --circuit_path net_conv2_circuit.txt
+* [**Expander**](https://github.com/PolyhedraZK/Expander) — the GKR/sumcheck proving system we build on.
 
-
-   python cli.py --circuit net_model --class NetFC1Model --compile --circuit_path net_fc1_circuit.txt
-   python cli.py --circuit net_model --class NetFC1Model --gen_witness --input output/net_conv2_output.json --output output/net_fc1_output.json  --circuit_path net_fc1_circuit.txt
-
-   python cli.py --circuit net_model --class NetFC2Model --compile --circuit_path net_fc2_circuit.txt
-   python cli.py --circuit net_model --class NetFC2Model --gen_witness --input output/net_fc1_output.json --output output/net_fc2_output.json  --circuit_path net_fc2_circuit.txt
-
-   python cli.py --circuit net_model --class NetFC3Model --compile --circuit_path net_fc3_circuit.txt
-   python cli.py --circuit net_model --class NetFC3Model --gen_witness --input output/net_fc2_output.json --output output/net_fc3_output.json  --circuit_path net_fc3_circuit.txt
-   python cli.py --circuit net_model --class NetFC3Model --gen_witness --input output/net_fc2_output.json --output output/net_output.json  --circuit_path net_fc3_circuit.txt
-   
-
-   python cli.py --circuit net_model --class NetFC3Model --compile --circuit_path slices/segment_4/segment_4_circuit.compiled 
-   python cli.py --circuit net_model --class NetFC3Model --gen_witness --input slices/segment_4/segment_4_input.json --output slices/segment_4/segment_4_output.json  --circuit_path slices/segment_4/segment_4_circuit.compiled --witness slices/segment_4/segment_4_witness.compiled
-   python cli.py --circuit net_model --class NetFC3Model --prove --witness slices/segment_4/segment_4_witness.compiled  --circuit_path slices/segment_4/segment_4_circuit.compiled  --proof slices/segment_4/segment_4_proof.bin
-
-   python cli.py --circuit net_model --class NetFC3Model --verify --input slices/segment_4/segment_4_input.json --output slices/segment_4/segment_4_output.json  --circuit_path slices/segment_4/segment_4_circuit.compiled --witness slices/segment_4/segment_4_witness.compiled --proof slices/segment_4/segment_4_proof.bin
-
-
-   RUSTFLAGS="-C target-cpu=native" cargo run \
-  --manifest-path Expander/Cargo.toml \
-  --bin expander-exec \
-  --release -- prove \
-
-  env RUSTFLAGS="-C target-cpu=native" mpiexec -n 1 cargo run --manifest-path Expander/Cargo.toml --bin expander-exec --release -- -p Raw prove -c slices/segment_4/segment_4_circuit.compiled -w slices/segment_4/segment_4_witness.compiled -o slices/segment_4/segment_4_proof.bin
-
-  env RUSTFLAGS="-C target-cpu=native" mpiexec -n 1 cargo run --manifest-path Expander/Cargo.toml --bin expander-exec --release -- -p Raw verify -c slices/segment_4/segment_4_circuit.compiled -w slices/segment_4/segment_4_witness.compiled -i slices/segment_4/segment_4_proof.bin
-  
-
-   <!-- python cli.py --circuit maxpooling --class MaxPooling2D --compile --circuit_path maxpool_circuit.txt
-   python cli.py --circuit maxpooling --class MaxPooling2D --gen_witness --input inputs/maxpooling_input.json --output output/maxpooling_output.json  --circuit_path maxpool_circuit.txt -->
-
-
-
-   python cli.py --circuit eth_fraud --class Eth --compile --circuit_path eth_fraud_circuit.txt
-   python cli.py --circuit eth_fraud --class Eth --gen_witness --input inputs/eth_fraud_input.json --output output/eth_fraud_output.json  --circuit_path eth_fraud_circuit.txt
-
-
-
-   If you see this error, it means you need some private variables:
-   called `Result::unwrap()` on an `Err` value: UserError("dest ir circuit invalid: circuit has no inputs")
-
-
-   pipreqs ./ --ignore .venv,.venv_new
-
-   ONNX 1.17 does not support python 3.13
-   brew install libffi, open
-
-
+* [**Expander Compiler Collection (ECC)**]() — the circuit frontend used to construct arithmetic circuits for ML layers.

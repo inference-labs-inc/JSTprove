@@ -8,13 +8,18 @@ pub enum UtilsError {
     #[error("{layer_name} is missing input: {name}")]
     MissingInput { layer_name: String, name: String },
 
-
     #[error("Failed to parse param '{param}' for layer '{layer}': {source}")]
     ParseError {
         layer: String,
         param: String,
         #[source]
         source: serde_json::Error,
+    },
+
+    #[error("Cannot convert variable of type '{initial_var_type}' to '{converted_var_type}'")]
+    ValueConversionError {
+        initial_var_type: String,
+        converted_var_type: String,
     },
 
     #[error("Inputs length mismatch: got {got}, required {required}")]
@@ -45,14 +50,11 @@ pub enum UtilsError {
 #[derive(Debug, thiserror::Error)]
 pub enum ArrayConversionError {
     #[error("Invalid array structure: expected {expected}, found {found}")]
-    InvalidArrayStructure {
-        expected: String,
-        found: String,
-    },
-    
+    InvalidArrayStructure { expected: String, found: String },
+
     #[error("Invalid number for target type")]
     InvalidNumber,
-    
+
     #[error("Shape error: {0}")]
     ShapeError(#[from] ndarray::ShapeError),
 
@@ -60,20 +62,24 @@ pub enum ArrayConversionError {
     InvalidAxis { axis: usize, rank: usize },
 }
 
-
 #[derive(Debug, Error)]
 pub enum PatternError {
     #[error("Optimization matches have inconsistent patterns: expected {expected}, got {got}")]
     InconsistentPattern { expected: String, got: String },
 
     #[error("Outputs do not match: expected all in {expected:?}, but got {actual:?}")]
-    OutputMismatch { expected: Vec<String>, actual: Vec<String> },
+    OutputMismatch {
+        expected: Vec<String>,
+        actual: Vec<String>,
+    },
 
     #[error("Optimization pattern has no layers")]
     EmptyMatch,
 
-    #[error("Developer error: Empty optimization pattern {pattern} has been attempted to be created. This is not allowed")]
-    EmptyPattern { pattern: String},
+    #[error(
+        "Developer error: Empty optimization pattern {pattern} has been attempted to be created. This is not allowed"
+    )]
+    EmptyPattern { pattern: String },
 }
 
 #[derive(Debug, Error)]
@@ -85,16 +91,10 @@ pub enum RescaleError {
     ShiftExponentTooLargeError { exp: usize, type_name: &'static str },
 
     #[error("Bit decomposition failed for {var_name} into {n_bits} bits")]
-    BitDecompositionError{
-        var_name: String,
-        n_bits: usize,
-    },
+    BitDecompositionError { var_name: String, n_bits: usize },
 
     #[error("Bit reconstruction failed for {var_name} into {n_bits} bits")]
-    BitReconstructionError{
-        var_name: String,
-        n_bits: usize,
-    },
+    BitReconstructionError { var_name: String, n_bits: usize },
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -104,7 +104,7 @@ pub enum BuildError {
 
     #[error("Unsupported layer type: {0}")]
     UnsupportedLayer(String),
-    
+
     #[error("Layer build failed: {0}")]
     LayerBuild(String),
 }

@@ -37,6 +37,8 @@ goldilocks = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" 
 serdes = { git = "https://github.com/PolyhedraZK/Expander", branch = "main"}
 mpi = "0.8.0"
 thiserror = "2.0.15"
+strum = "0.27.2"
+strum_macros = "0.27.2"
 
 # ndarray = "0.16.1"
 

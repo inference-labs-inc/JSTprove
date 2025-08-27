@@ -2,14 +2,18 @@ use thiserror::Error;
 
 use crate::circuit_functions::layers::LayerKind;
 
-
 #[derive(Debug, Error)]
 pub enum LayerError {
     #[error("{layer} is missing input: {name}")]
     MissingInput { layer: LayerKind, name: String },
 
     #[error("Shape mismatch in {layer} for {var_name}: expected {expected:?}, got {got:?}")]
-    ShapeMismatch { layer: LayerKind, expected: Vec<usize>, got: Vec<usize>, var_name: String },
+    ShapeMismatch {
+        layer: LayerKind,
+        expected: Vec<usize>,
+        got: Vec<usize>,
+        var_name: String,
+    },
 
     #[error("{layer} is missing parameter: {param}")]
     MissingParameter { layer: LayerKind, param: String },
@@ -32,5 +36,5 @@ pub enum LayerError {
     UnknownOp { op_type: String },
 
     #[error("Other error in {layer}: {msg}")]
-    Other{layer: LayerKind, msg: String},
+    Other { layer: LayerKind, msg: String },
 }

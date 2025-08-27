@@ -1,8 +1,8 @@
 use ethnum::U256;
-/// ExpanderCompilerCollection imports
-use expander_compiler::frontend::*;
+/// `ExpanderCompilerCollection` imports
+use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
 
-use crate::circuit_functions::{utils::UtilsError, CircuitError};
+use crate::circuit_functions::{CircuitError, utils::UtilsError};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: unconstrained_to_bits
@@ -30,6 +30,11 @@ use crate::circuit_functions::{utils::UtilsError, CircuitError};
 /// A vector of `n_bits` `Variable`s representing the bit decomposition of `input`,
 /// in little-endian order.
 ///
+/// # Errors
+/// - [`CircuitError::Other`] if `n_bits == 0`.
+/// - [`UtilsError::ValueTooLarge`] if `n_bits` cannot fit into a `u32`.
+/// - [`CircuitError::Other`] if `2^n_bits >= MODULUS/2`, where `MODULUS` is the circuit field modulus.
+///
 /// # Example
 /// ```ignore
 /// // For input = 43 and n_bits = 4:
@@ -40,12 +45,17 @@ pub fn unconstrained_to_bits<C: Config, Builder: RootAPI<C>>(
     input: Variable,
     n_bits: usize,
 ) -> Result<Vec<Variable>, CircuitError> {
-
     if n_bits == 0 {
         return Err(CircuitError::Other("Cannot convert to 0 bits".into()));
     }
     let base: U256 = U256::from(2u32);
-    if base.pow(n_bits as u32) >= (CircuitField::<C>::MODULUS/2) {
+    if base.pow(
+        u32::try_from(n_bits).map_err(|_| UtilsError::ValueTooLarge {
+            value: n_bits,
+            max: u128::from(u32::MAX),
+        })?,
+    ) >= (CircuitField::<C>::MODULUS / 2)
+    {
         return Err(CircuitError::Other("n_bits must be ".into()));
     }
 
@@ -81,6 +91,10 @@ pub fn unconstrained_to_bits<C: Config, Builder: RootAPI<C>>(
 /// - `api`: A mutable reference to the circuit builder implementing `RootAPI<C>`.
 /// - `least_significant_bits`: A slice of `Variable`s representing a bitstring in little-endian order.
 ///
+/// # Errors
+/// - [`UtilsError::ValueTooLarge`] if the bit index `i` cannot be converted to `u32`.
+/// - [`UtilsError::ValueTooLarge`] if computing `2^i` overflows a `u32` (i ≥ 32).
+///
 /// # Returns
 /// A `Variable` encoding the integer reconstructed from the bitstring.
 ///
@@ -100,10 +114,16 @@ pub fn assert_is_bitstring_and_reconstruct<C: Config, Builder: RootAPI<C>>(
         // Enforce bᵢ ∈ {0, 1} via b(b − 1) = 0
         api.assert_is_bool(bit);
         // Compute bᵢ · 2ⁱ
-        
+
         let weight = 1u32
-            .checked_shl(i as u32)
-            .ok_or_else(|| UtilsError::ValueTooLarge{value: i, max: u32::MAX as u128})?;
+            .checked_shl(u32::try_from(i).map_err(|_| UtilsError::ValueTooLarge {
+                value: i,
+                max: u128::from(u32::MAX),
+            })?)
+            .ok_or(UtilsError::ValueTooLarge {
+                value: i,
+                max: u128::from(u32::MAX),
+            })?;
         let weight_const = api.constant(weight);
         let term = api.mul(weight_const, bit);
         reconstructed = api.add(reconstructed, term);
