@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generator, TypeAlias, Union
+from typing import TYPE_CHECKING, Any, Generator, Mapping, Sequence, TypeAlias, Union
 
 import numpy as np
 import pytest
@@ -134,6 +134,18 @@ def add_1_to_first_element(x: NestedArray) -> NestedArray:
 # Define models to be tested
 circuit_compile_results = {}
 witness_generated_results = {}
+
+Nested: TypeAlias = Union[float, Mapping[str, "Nested"], Sequence["Nested"]]
+
+
+def contains_float(obj: Nested) -> bool:
+    if isinstance(obj, float):
+        return True
+    if isinstance(obj, dict):
+        return any(contains_float(v) for v in obj.values())
+    if isinstance(obj, list):
+        return any(contains_float(i) for i in obj)
+    return False
 
 
 @pytest.fixture(scope="module")
