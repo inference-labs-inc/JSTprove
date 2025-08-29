@@ -1,5 +1,6 @@
 import numpy as np
-from onnxruntime_extensions import onnx_op, PyCustomOpDef
+from onnxruntime_extensions import PyCustomOpDef, onnx_op
+
 
 @onnx_op(
     op_type="Int64Relu",
@@ -7,12 +8,13 @@ from onnxruntime_extensions import onnx_op, PyCustomOpDef
     inputs=[PyCustomOpDef.dt_int64],
     outputs=[PyCustomOpDef.dt_int64],
 )
-def int64_relu(X):
+def int64_relu(x: np.ndarray) -> np.ndarray:
     """
     Performs a ReLU operation on int64 input tensors.
 
     This function is registered as a custom ONNX operator via onnxruntime_extensions
-    and is used in the JSTProve quantized inference pipeline. It applies ReLU as is (there are no attributes to ReLU).
+    and is used in the JSTProve quantized inference pipeline.
+    It applies ReLU as is (there are no attributes to ReLU).
 
     Parameters
     ----------
@@ -34,4 +36,8 @@ def int64_relu(X):
     ONNX standard ReLU operator documentation:
     https://onnx.ai/onnx/operators/onnx__Relu.html
     """
-    return np.maximum(X, 0).astype(np.int64)
+    try:
+        return np.maximum(x, 0).astype(np.int64)
+    except Exception as e:  # noqa: BLE001
+        msg = f"Int64Gemm failed: {e}"
+        raise RuntimeError(msg) from e

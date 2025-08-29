@@ -1,8 +1,9 @@
-from typing import Any
+from __future__ import annotations
+
 import numpy as np
-from onnxruntime_extensions import onnx_op, PyCustomOpDef
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as f
+from onnxruntime_extensions import PyCustomOpDef, onnx_op
 
 from .custom_helpers import parse_attr
 
@@ -10,27 +11,25 @@ from .custom_helpers import parse_attr
 @onnx_op(
     op_type="Int64MaxPool",
     domain="ai.onnx.contrib",
-    inputs=[
-        PyCustomOpDef.dt_int64  # input tensor
-    ],
+    inputs=[PyCustomOpDef.dt_int64],  # input tensor
     outputs=[PyCustomOpDef.dt_int64],
     attrs={
         "strides": PyCustomOpDef.dt_string,
         "pads": PyCustomOpDef.dt_string,
         "kernel_shape": PyCustomOpDef.dt_string,
-    }
+    },
 )
 def int64_maxpool(
-    X: Any,
-    strides: Any | None = None,
-    pads: Any | None = None,
-    kernel_shape: Any | None = None,
-):
+    x: np.ndarray,
+    strides: str | None = None,
+    pads: str | None = None,
+    kernel_shape: str | None = None,
+) -> np.ndarray:
     """
     Performs a MaxPool operation on int64 input tensors.
 
     This function is registered as a custom ONNX operator via onnxruntime_extensions
-    and is used in the JSTProve quantized inference pipeline. It parses ONNX-style 
+    and is used in the JSTProve quantized inference pipeline. It parses ONNX-style
     maxpool attributes and applies maxpool.
 
     Parameters
@@ -56,10 +55,19 @@ def int64_maxpool(
     ONNX standard MaxPool operator documentation:
     https://onnx.ai/onnx/operators/onnx__MaxPool.html
     """
-    strides = parse_attr(strides, [1, 1])
-    pads = parse_attr(pads, [0, 0])
-    kernel_size = parse_attr(kernel_shape, [2, 2])
+    try:
+        strides = parse_attr(strides, [1, 1])
+        pads = parse_attr(pads, [0, 0])
+        kernel_size = parse_attr(kernel_shape, [2, 2])
 
-    X = torch.from_numpy(X)
-    result = F.max_pool2d(X, kernel_size=kernel_size, stride=strides, padding=pads[:2])
-    return result.numpy().astype(np.int64)
+        x = torch.from_numpy(x)
+        result = f.max_pool2d(
+            x,
+            kernel_size=kernel_size,
+            stride=strides,
+            padding=pads[:2],
+        )
+        return result.numpy().astype(np.int64)
+    except Exception as e:  # noqa: BLE001
+        msg = f"Int64Gemm failed: {e}"
+        raise RuntimeError(msg) from e

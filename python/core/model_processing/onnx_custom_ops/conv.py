@@ -1,9 +1,12 @@
-from typing import Any
+from __future__ import annotations
+
 import numpy as np
-from onnxruntime_extensions import onnx_op, PyCustomOpDef
 import torch
-import torch.nn.functional as F
-from .custom_helpers import rescaling, parse_attr
+import torch.nn.functional as f
+from onnxruntime_extensions import PyCustomOpDef, onnx_op
+
+from .custom_helpers import parse_attr, rescaling
+
 
 @onnx_op(
     op_type="Int64Conv",
@@ -11,8 +14,8 @@ from .custom_helpers import rescaling, parse_attr
     inputs=[
         PyCustomOpDef.dt_int64,  # X
         PyCustomOpDef.dt_int64,  # W
-        PyCustomOpDef.dt_int64,   # B
-        PyCustomOpDef.dt_int64, # scaling factor
+        PyCustomOpDef.dt_int64,  # B
+        PyCustomOpDef.dt_int64,  # scaling factor
     ],
     outputs=[PyCustomOpDef.dt_int64],
     attrs={
@@ -22,27 +25,27 @@ from .custom_helpers import rescaling, parse_attr
         "dilations": PyCustomOpDef.dt_string,
         "group": PyCustomOpDef.dt_int64,
         "kernel_shape": PyCustomOpDef.dt_string,
-        "rescale": PyCustomOpDef.dt_int64
-    }
+        "rescale": PyCustomOpDef.dt_int64,
+    },
 )
 def int64_conv(
-    X: Any,
-    W: Any,
-    B: Any | None = None,
-    scaling_factor: Any | None = None,
-    auto_pad: Any | None = None,
-    dilations: Any | None = None,
-    group: Any | None = None,
-    kernel_shape: Any | None = None,
-    pads: Any | None = None,
-    strides: Any | None = None,
-    rescale: Any | None = None,
-): 
+    x: np.ndarray,
+    w: np.ndarray,
+    b: np.ndarray | None = None,
+    scaling_factor: np.ndarray | None = None,
+    auto_pad: str | None = None,
+    dilations: str | None = None,
+    group: int | None = None,
+    kernel_shape: str | None = None,
+    pads: str | None = None,
+    strides: str | None = None,
+    rescale: int | None = None,
+) -> np.ndarray:
     """
     Performs a convolution on int64 input tensors.
 
     This function is registered as a custom ONNX operator via onnxruntime_extensions
-    and is used in the JSTProve quantized inference pipeline. It parses ONNX-style 
+    and is used in the JSTProve quantized inference pipeline. It parses ONNX-style
     convolution attributes, applies convolution
     and optionally rescales the result.
 
@@ -76,18 +79,33 @@ def int64_conv(
     ONNX standard Conv operator documentation:
     https://onnx.ai/onnx/operators/onnx__Conv.html
     """
+    _ = auto_pad
+    try:
+        strides = parse_attr(strides, [1, 1])
+        dilations = parse_attr(dilations, [1, 1])
+        pads = parse_attr(pads, [0, 0, 0, 0])
+        kernel_shape = parse_attr(kernel_shape, [3, 3])
 
-    
-    strides = parse_attr(strides, [1, 1])
-    dilations = parse_attr(dilations, [1, 1])
-    pads = parse_attr(pads, [0, 0, 0, 0])
-    kernel_shape = parse_attr(kernel_shape, [3, 3])
+        x = torch.from_numpy(x)
+        w = torch.from_numpy(w)
+        b = torch.from_numpy(b)
 
-    
-    X = torch.from_numpy(X)
-    W = torch.from_numpy(W)
-    B = torch.from_numpy(B)
+        result = (
+            f.conv2d(
+                x,
+                w,
+                bias=b,
+                stride=strides,
+                padding=pads[:2],
+                dilation=dilations,
+                groups=group,
+            )
+            .numpy()
+            .astype(np.int64)
+        )
+        result = rescaling(scaling_factor, rescale, result)
+        return result.astype(np.int64)
 
-    result = F.conv2d(X, W, bias=B, stride=strides, padding=pads[:2], dilation=dilations, groups=group).numpy().astype(np.int64)
-    result = rescaling(scaling_factor, rescale, result)
-    return result.astype(np.int64)
+    except Exception as e:  # noqa: BLE001
+        msg = f"Int64Conv failed: {e}"
+        raise RuntimeError(msg) from e
