@@ -60,13 +60,19 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
     """
 
     def __init__(self: T, model_name: str) -> None:
-        self.name = "onnx_generic_circuit"
-        self.op_quantizer = ONNXOpQuantizer()
-        self.rescale_config = {}
-        self.model_file_name = self.find_model(model_name)
-        self.scale_base = 2
-        self.scale_exponent = 18
-        ONNXConverter.__init__(self)
+        try:
+            self.name = "onnx_generic_circuit"
+            self.op_quantizer = ONNXOpQuantizer()
+            self.rescale_config = {}
+            self.model_file_name = self.find_model(model_name)
+            self.scale_base = 2
+            self.scale_exponent = 18
+            ONNXConverter.__init__(self)
+        except (FileNotFoundError, ValueError, TypeError, RuntimeError, OSError) as e:
+            msg = (
+                f"Failed to initialize GenericModelONNX with model '{model_name}': {e}"
+            )
+            raise RuntimeError(msg) from e
 
     def find_model(self: T, model_name: str) -> str:
         """Resolve the ONNX model file path.
@@ -79,11 +85,25 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         """
         if ".onnx" not in model_name:
             model_name = model_name + ".onnx"
+
+        # Check direct path first
         if Path(model_name).exists():
             return model_name
+
+        # Check models_onnx directory
         if "models_onnx" in model_name:
-            return model_name
-        return f"models_onnx/{model_name}"
+            if Path(model_name).exists():
+                return model_name
+            models_onnx_path = model_name
+        else:
+            models_onnx_path = f"models_onnx/{model_name}"
+
+        if not Path(models_onnx_path).exists():
+            msg = f"Model file not found: '{model_name}'"
+            f" (checked '{model_name}' and '{models_onnx_path}')"
+            raise FileNotFoundError(msg)
+
+        return models_onnx_path
 
     def adjust_inputs(self: T, input_file: str) -> str:
         """Preprocess and flatten model inputs for the circuit.
@@ -94,12 +114,17 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         Returns:
             str: Adjusted input file after reshaping and scaling.
         """
-        input_shape = self.input_shape.copy()
-        shape = self.adjust_shape(input_shape)
-        self.input_shape = [math.prod(shape)]
-        x = super().adjust_inputs(input_file)
-        self.input_shape = input_shape.copy()
-        return x
+        try:
+            input_shape = self.input_shape.copy()
+            shape = self.adjust_shape(input_shape)
+            self.input_shape = [math.prod(shape)]
+            x = super().adjust_inputs(input_file)
+            self.input_shape = input_shape.copy()
+        except (ValueError, TypeError, AttributeError, OSError) as e:
+            msg = f"Failed to adjust inputs for GenericModelONNX: {e}"
+            raise ValueError(msg) from e
+        else:
+            return x
 
     def get_outputs(
         self: T,
@@ -113,7 +138,13 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         Returns:
             torch.Tensor: Flattened model outputs as a tensor.
         """
-        return torch.as_tensor(np.array(super().get_outputs(inputs))).flatten()
+        try:
+            raw_outputs = super().get_outputs(inputs)
+        except (ValueError, TypeError, RuntimeError, OSError) as e:
+            msg = f"Failed to get outputs for GenericModelONNX: {e}"
+            raise RuntimeError(msg) from e
+        else:
+            return torch.as_tensor(np.array(raw_outputs)).flatten()
 
     def format_inputs(
         self: T,
@@ -130,15 +161,20 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         Returns:
             Dict[str, List[int]]: Dictionary mapping `input` to scaled integer values.
         """
-        x = {"input": inputs}
-        scaling = BaseOpQuantizer.get_scaling(
-            scale_base=self.scale_base,
-            scale_exponent=self.scale_exponent,
-        )
-        for key in x:
-            x[key] = torch.as_tensor(x[key]).flatten().tolist()
-            x[key] = (torch.as_tensor(x[key]) * scaling).long().tolist()
-        return x
+        try:
+            x = {"input": inputs}
+            scaling = BaseOpQuantizer.get_scaling(
+                scale_base=self.scale_base,
+                scale_exponent=self.scale_exponent,
+            )
+            for key in x:
+                x[key] = torch.as_tensor(x[key]).flatten().tolist()
+                x[key] = (torch.as_tensor(x[key]) * scaling).long().tolist()
+        except (ValueError, TypeError, OverflowError) as e:
+            msg = f"Failed to format inputs for GenericModelONNX: {e}"
+            raise ValueError(msg) from e
+        else:
+            return x
 
 
 if __name__ == "__main__":
