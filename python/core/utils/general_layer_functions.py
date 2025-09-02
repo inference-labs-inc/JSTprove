@@ -6,7 +6,7 @@ from pathlib import Path
 import torch
 
 from python.core.utils.errors import (
-    CircuitUtilsErrors,
+    CircuitUtilsError,
     InputFileError,
     MissingCircuitAttributeError,
     ShapeMismatchError,
@@ -165,7 +165,7 @@ class GeneralLayerFunctions:
                     tuple,
                 ):
                     msg = f"Invalid input shape for key '{key}': {input_shape}"
-                    raise CircuitUtilsErrors(msg)
+                    raise CircuitUtilsError(msg)
                 input_shape[0] = 1 if input_shape[0] < 1 else input_shape[0]
                 inputs[key] = self.get_rand_inputs(input_shape)
             return inputs
@@ -197,7 +197,7 @@ class GeneralLayerFunctions:
         if not isinstance(input_shape, (list, tuple)):
             msg = f"Invalid input_shape type: {type(input_shape)}."
             " Expected list or tuple of ints."
-            raise CircuitUtilsErrors(msg)
+            raise CircuitUtilsError(msg)
         if not all(isinstance(x, int) and x > 0 for x in input_shape):
             raise ShapeMismatchError(
                 expected_shape="positive integers",
@@ -243,7 +243,7 @@ class GeneralLayerFunctions:
                 msg = "Failed to rescale outputs using scale_base="
                 f"{getattr(self, 'scale_base', None)} "
                 f"and scale_exponent={getattr(self, 'scale_exponent', None)}: {e}"
-                raise CircuitUtilsErrors(msg) from e
+                raise CircuitUtilsError(msg) from e
             return {
                 "output": outputs.long().tolist(),
                 "rescaled_output": rescaled.tolist(),
