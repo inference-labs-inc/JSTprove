@@ -18,7 +18,7 @@ import sys
 import tempfile
 import socket
 import platform
-from datetime import datetime
+from datetime import datetime, timezone
 from contextlib import redirect_stdout
 
 from python.testing.core.utils.helper_functions import RunType
@@ -153,6 +153,64 @@ def make_phase_kwargs(tmpdir: str, *, input_path: str | None) -> dict:
 
 
 # ---------------------------
+# Model selection normalization
+# ---------------------------
+
+def normalize_selected_models(selected):
+    """
+    Accepts whatever get_models_to_test(...) returns and normalizes to an
+    iterable of (name, cls, init_args, init_kwargs).
+
+    Supported shapes:
+      - dict-like: {name: cls, ...}
+      - list of classes: [ClsA, ClsB]
+      - list of tuples:
+          (name, cls)
+          (name, cls, dict_kwargs)
+          (name, cls, tuple/list args)
+          (cls,)  -> name inferred from class
+    """
+    # Dict-like
+    if hasattr(selected, "items"):
+        for name, cls in selected.items():
+            yield str(name), cls, (), {}
+        return
+
+    # Sequence
+    for item in selected:
+        # Tuple-like
+        if isinstance(item, tuple):
+            if len(item) == 2:
+                name, cls = item
+                yield str(name), cls, (), {}
+            elif len(item) >= 3:
+                name, cls = item[0], item[1]
+                third = item[2]
+                if isinstance(third, dict):
+                    yield str(name), cls, (), third
+                elif isinstance(third, (list, tuple)):
+                    yield str(name), cls, tuple(third), {}
+                else:
+                    yield str(name), cls, (), {}
+            elif len(item) == 1:
+                cls = item[0]
+                name = getattr(cls, "NAME", getattr(cls, "__name__", "model"))
+                yield str(name), cls, (), {}
+            continue
+
+        # Class only
+        if hasattr(item, "__name__"):
+            cls = item
+            name = getattr(cls, "NAME", getattr(cls, "__name__", "model"))
+            yield str(name), cls, (), {}
+            continue
+
+        # Fallback: skip unknown shapes
+        # (Optionally: print warning)
+        # print(f"[warn] unknown model entry shape: {item!r}", file=sys.stderr)
+
+
+# ---------------------------
 # Aggregation helpers
 # ---------------------------
 
@@ -161,7 +219,6 @@ def _safe_mean(values):
     return (sum(vals) / len(vals)) if vals else None
 
 def _safe_stdev(values):
-    # naive sample stdev; fine for quick summaries
     vals = [v for v in values if isinstance(v, (int, float))]
     n = len(vals)
     if n < 2:
@@ -171,7 +228,7 @@ def _safe_stdev(values):
     return var ** 0.5
 
 def _now_iso():
-    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 def _env_metadata():
     return {
@@ -193,14 +250,12 @@ def run_benchmarks(selected_models, *, iterations: int, input_path: str | None,
     Write per-run JSON lines to jsonl_path. If summarize=True, append
     summary records at the end of the same JSONL file.
     """
-
-    # Prepare file
     os.makedirs(os.path.dirname(os.path.abspath(jsonl_path)) or ".", exist_ok=True)
 
     with open(jsonl_path, "w", encoding="utf-8") as out_f:
         meta = _env_metadata()
 
-        for model_name, model_cls in selected_models:
+        for model_name, model_cls, init_args, init_kwargs in normalize_selected_models(selected_models):
             print(f"\n=== Benchmarking {model_name} for {iterations} iteration(s) ===")
 
             per_phase_times = { "compile": [], "witness": [], "prove": [], "verify": [] }
@@ -213,7 +268,7 @@ def run_benchmarks(selected_models, *, iterations: int, input_path: str | None,
                 temp_mgr = ctx if not keep_tmp else None  # keep handle alive unless keep_tmp
 
                 phase_kwargs = make_phase_kwargs(tmpdir, input_path=input_path)
-                model = model_cls()  # fresh instance each iteration
+                model = model_cls(*init_args, **init_kwargs)  # fresh instance each iteration
 
                 for phase in ("compile", "witness", "prove", "verify"):
                     rc, metrics, raw = _run_with_capture(model.base_testing, **phase_kwargs[phase])
