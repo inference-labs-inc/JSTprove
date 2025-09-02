@@ -163,24 +163,22 @@ def resolve_model_class(spec):
     Supports:
       - "pkg.mod:Class"
       - "pkg.mod.Class"
-      - bare "Class" (tries a few common modules)
+      - bare "Class" (we try a few known modules)
     """
     if not isinstance(spec, str):
         return spec
 
     s = spec.strip()
-    mod = name = None
-
     if ":" in s:
         mod, name = s.split(":", 1)
     elif "." in s:
         mod, name = s.rsplit(".", 1)
     else:
-        # Bare class name; try a few known modules in your tree
+        # Bare class name — look in common places in your tree
         for base in (
             "python.testing.core.model_registry",
-            "python.testing.core.models",
             "python.testing.core.circuit_models",
+            "python.testing.core.models",
         ):
             try:
                 m = importlib.import_module(base)
@@ -190,8 +188,7 @@ def resolve_model_class(spec):
                 pass
         raise SystemExit(
             f"Model '{s}' is a bare name I couldn't resolve. "
-            f"Please use a dotted path like 'pkg.mod:Class' or ensure it's exportable "
-            f"from one of the known modules."
+            f"Use a dotted path like 'pkg.mod:Class' or export it from a known module."
         )
 
     try:
@@ -199,6 +196,82 @@ def resolve_model_class(spec):
         return getattr(m, name)
     except Exception as e:
         raise SystemExit(f"Cannot import model class '{s}': {e}")
+
+
+def iter_models(selected):
+    """
+    Yields tuples: (model_name, model_class, init_args_tuple, init_kwargs_dict)
+    Handles:
+      - dict: { 'name': ..., 'class': ..., 'args': [...], 'kwargs': {...} }
+      - dict mapping name -> class or -> {class/args/kwargs}
+      - list/tuple of any of the above
+      - dotted strings ("pkg.mod:Class" / "pkg.mod.Class")
+      - bare class objects
+      - tuples like (name, class) or (name, class, args|kwargs)
+    """
+    # Mapping of name -> spec (class or dict)
+    if isinstance(selected, dict):
+        for key, val in selected.items():
+            if isinstance(val, dict):
+                cls_spec = val.get("class") or val.get("cls") or val.get("spec")
+                if cls_spec is None:
+                    raise SystemExit(f"Model entry for '{key}' missing 'class' field.")
+                args = val.get("args", [])
+                kwargs = val.get("kwargs", {})
+                name = val.get("name", key)
+            else:
+                cls_spec = val
+                args, kwargs = [], {}
+                name = key
+            cls = resolve_model_class(cls_spec)
+            yield str(name), cls, tuple(args), dict(kwargs)
+        return
+
+    # Sequence of items
+    for item in selected:
+        # Dict item with metadata
+        if isinstance(item, dict):
+            cls_spec = item.get("class") or item.get("cls") or item.get("spec")
+            if cls_spec is None:
+                raise SystemExit(f"Model dict item missing 'class': {item}")
+            cls = resolve_model_class(cls_spec)
+            name = item.get("name") or getattr(cls, "NAME", getattr(cls, "__name__", "model"))
+            args = item.get("args", [])
+            kwargs = item.get("kwargs", {})
+            yield str(name), cls, tuple(args), dict(kwargs)
+            continue
+
+        # Tuple forms
+        if isinstance(item, tuple):
+            if len(item) == 2:
+                name, cls_spec = item
+                cls = resolve_model_class(cls_spec)
+                yield str(name), cls, (), {}
+                continue
+            if len(item) >= 3:
+                name, cls_spec, third, *rest = item
+                cls = resolve_model_class(cls_spec)
+                if isinstance(third, dict):
+                    yield str(name), cls, (), third
+                elif isinstance(third, (list, tuple)):
+                    yield str(name), cls, tuple(third), (rest[0] if rest and isinstance(rest[0], dict) else {})
+                else:
+                    yield str(name), cls, (), {}
+                continue
+
+        # Already a class object
+        if hasattr(item, "__name__"):
+            cls = item
+            yield getattr(cls, "NAME", getattr(cls, "__name__", "model")), cls, (), {}
+            continue
+
+        # Dotted path string
+        if isinstance(item, str):
+            cls = resolve_model_class(item)
+            yield getattr(cls, "NAME", getattr(cls, "__name__", item)), cls, (), {}
+            continue
+
+        raise SystemExit(f"Unrecognized model spec: {item!r}")
 
 
 def normalize_selected_models(selected):
@@ -291,7 +364,7 @@ def run_benchmarks(selected_models, *, iterations: int, input_path: str | None,
     with open(jsonl_path, "w", encoding="utf-8") as out_f:
         meta = _env_metadata()
 
-        for model_name, model_cls, init_args, init_kwargs in normalize_selected_models(selected_models):
+        for model_name, model_cls, init_args, init_kwargs in iter_models(selected_models):
             print(f"\n=== Benchmarking {model_name} for {iterations} iteration(s) ===")
 
             per_phase_times = { "compile": [], "witness": [], "prove": [], "verify": [] }
