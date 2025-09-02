@@ -32,6 +32,10 @@ _/    _/        _/      _/      _/        _/        _/    _/    _/  _/    _/
 """
 
 
+class CLIError(Exception):
+    """Base exception for known CLI errors."""
+
+
 # --- ui helpers --------------------------------------------------------------
 def print_header() -> None:
     """Print the CLI banner (no side-effects at import time)."""
@@ -49,10 +53,14 @@ def _import_default_circuit() -> type[Any]:
     mod = importlib.import_module(DEFAULT_CIRCUIT_MODULE)
     try:
         return getattr(mod, DEFAULT_CIRCUIT_CLASS)
+    except (ImportError, ModuleNotFoundError) as e:
+        msg = "Could not import default circuit module "
+        f"'{DEFAULT_CIRCUIT_MODULE}': {e}"
+        raise CLIError(msg) from e
     except AttributeError as e:
         msg = f"Default circuit class '{DEFAULT_CIRCUIT_CLASS}'"
         f" not found in '{DEFAULT_CIRCUIT_MODULE}'"
-        raise SystemExit(msg) from e
+        raise CLIError(msg) from e
 
 
 def _build_default_circuit(model_name_hint: str | None = None) -> None:
@@ -106,12 +114,20 @@ def _ensure_exists(path: str, kind: str = "file") -> None:
         SystemExit: if the required file/dir does not exist.
     """
     p = Path(path)
-    if kind == "file" and not p.is_file():
-        msg = f"Required {kind} not found: {path}"
-        raise SystemExit(msg)
-    if kind == "dir" and not p.is_dir():
-        msg = f"Required {kind} not found: {path}"
-        raise SystemExit(msg)
+    if kind == "file":
+        if not p.is_file():
+            msg = f"Required file not found: {path}"
+            raise CLIError(msg)
+        if not os.access(p, os.R_OK):
+            msg = f"Cannot read file: {path}"
+            raise CLIError(msg)
+    elif kind == "dir":
+        if not p.is_dir():
+            msg = f"Required directory not found: {path}"
+            raise CLIError(msg)
+        if not os.access(p, os.X_OK):
+            msg = f"Cannot access directory: {path}"
+            raise CLIError(msg)
 
 
 def _ensure_parent_dir(path: str) -> None:
@@ -142,14 +158,18 @@ def _run_compile(args: argparse.Namespace) -> None:
     circuit.model_path = args.model_path
 
     # Compile: writes circuit + quantized model
-    circuit.base_testing(
-        CircuitExecutionConfig(
-            run_type=RunType.COMPILE_CIRCUIT,
-            circuit_path=args.circuit_path,
-            quantized_path=args.quantized_path,
-            dev_mode=True,
-        ),
-    )
+    try:
+        circuit.base_testing(
+            CircuitExecutionConfig(
+                run_type=RunType.COMPILE_CIRCUIT,
+                circuit_path=args.circuit_path,
+                quantized_path=args.quantized_path,
+                dev_mode=True,
+            ),
+        )
+    except Exception as e:  # noqa: BLE001
+        msg = f"Process execution failed with args '{args.cmd}': {e}"
+        raise CLIError(msg) from e
     print(  # noqa: T201
         f"[compile] done → circuit={args.circuit_path},"
         f" quantized={args.quantized_path}",
@@ -172,7 +192,16 @@ def _run_verify(args: argparse.Namespace) -> None:
         circuit.load_quantized_model(args.quantized_path)
     else:
         # fallback: infer from ONNX directly
-        m = onnx.load(args.quantized_path)
+        # TODO: This should go in the middle end eventually # noqa: FIX002, TD003, TD002
+        try:
+            m = onnx.load(args.quantized_path)
+        except (
+            onnx.onnx_cpp2py_export.checker.ValidationError,
+            onnx.OnnxInvalidProtoError,
+            OSError,
+        ) as e:
+            msg = f"Failed to load ONNX model '{args.quantized_path}': {e}"
+            raise CLIError(msg) from e
         shapes = get_input_shapes(m)  # dict of input_name -> shape
         if len(shapes) == 1:
             circuit.input_shape = [
@@ -184,17 +213,21 @@ def _run_verify(args: argparse.Namespace) -> None:
             raise SystemExit(msg)
 
             # Verify: checks proof; some backends also emit verifier artifacts
-    circuit.base_testing(
-        CircuitExecutionConfig(
-            run_type=RunType.GEN_VERIFY,
-            circuit_path=args.circuit_path,
-            input_file=args.input_path,
-            output_file=args.output_path,
-            witness_file=args.witness_path,
-            proof_file=args.proof_path,
-            ecc=False,
-        ),
-    )
+    try:
+        circuit.base_testing(
+            CircuitExecutionConfig(
+                run_type=RunType.GEN_VERIFY,
+                circuit_path=args.circuit_path,
+                input_file=args.input_path,
+                output_file=args.output_path,
+                witness_file=args.witness_path,
+                proof_file=args.proof_path,
+                ecc=False,
+            ),
+        )
+    except Exception as e:  # noqa: BLE001
+        msg = f"Process execution failed with args '{args.cmd}': {e}"
+        raise CLIError(msg) from e
     print(f"[verify] verification complete for proof → {args.proof_path}")  # noqa: T201
 
 
@@ -206,15 +239,20 @@ def _run_prove(args: argparse.Namespace) -> None:
     circuit = _build_default_circuit("cli")
 
     # Prove: witness → proof
-    circuit.base_testing(
-        CircuitExecutionConfig(
-            run_type=RunType.PROVE_WITNESS,
-            circuit_path=args.circuit_path,
-            witness_file=args.witness_path,
-            proof_file=args.proof_path,
-            ecc=False,
-        ),
-    )
+    try:
+        circuit.base_testing(
+            CircuitExecutionConfig(
+                run_type=RunType.PROVE_WITNESS,
+                circuit_path=args.circuit_path,
+                witness_file=args.witness_path,
+                proof_file=args.proof_path,
+                ecc=False,
+            ),
+        )
+    except Exception as e:  # noqa: BLE001
+        msg = f"Process execution failed with args '{args.cmd}': {e}"
+        raise CLIError(msg) from e
+
     print(f"[prove] wrote proof → {args.proof_path}")  # noqa: T201
 
 
@@ -228,16 +266,20 @@ def _run_witness(args: argparse.Namespace) -> None:
     circuit = _build_default_circuit("cli")
 
     # Witness: adjusts inputs (reshape/scale), computes outputs, writes witness
-    circuit.base_testing(
-        CircuitExecutionConfig(
-            run_type=RunType.GEN_WITNESS,
-            circuit_path=args.circuit_path,
-            quantized_path=args.quantized_path,
-            input_file=args.input_path,
-            output_file=args.output_path,
-            witness_file=args.witness_path,
-        ),
-    )
+    try:
+        circuit.base_testing(
+            CircuitExecutionConfig(
+                run_type=RunType.GEN_WITNESS,
+                circuit_path=args.circuit_path,
+                quantized_path=args.quantized_path,
+                input_file=args.input_path,
+                output_file=args.output_path,
+                witness_file=args.witness_path,
+            ),
+        )
+    except Exception as e:  # noqa: BLE001
+        msg = f"Process execution failed with args '{args.cmd}': {e}"
+        raise CLIError(msg) from e
     print(  # noqa: T201
         f"[witness] wrote witness → {args.witness_path} and outputs "
         f"→ {args.output_path}",
@@ -428,6 +470,9 @@ def main(argv: list[str] | None = None) -> int:
     # Preserve argparse/our own explicit exits
     except SystemExit:
         raise
+    except CLIError as e:
+        print(f"Error: {e}", file=sys.stderr)  # noqa: T201
+        return 1
     # Convert unexpected exceptions to a clean non-zero exit
     except Exception as e:  # noqa: BLE001
         print(f"Error: {e}", file=sys.stderr)  # noqa: T201
