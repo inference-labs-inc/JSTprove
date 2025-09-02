@@ -1,187 +1,315 @@
+# python/scripts/benchmark_runner.py
+"""
+Benchmark JSTProve phases (compile → witness → prove → verify) and write results to JSONL.
+
+JSONL = "JSON Lines": one JSON object per line. Easy to append/parse and ideal for later analysis.
+
+Example:
+  python -m python.scripts.benchmark_runner --list-models
+  python -m python.scripts.benchmark_runner --model lenet --iterations 5 --output results.jsonl --summarize
+"""
+
 import argparse
 import io
-from contextlib import redirect_stdout
 import json
 import os
 import re
+import sys
 import tempfile
+import socket
+import platform
+from datetime import datetime
+from contextlib import redirect_stdout
+
 from python.testing.core.utils.helper_functions import RunType
 from python.testing.core.utils.model_registry import list_available_models, get_models_to_test
-# slow, not sure why?
 
 
+# ---------------------------
+# Parse runner stdout
+# ---------------------------
 
-def benchmark_tests(fn, *args, **kwargs):
-    f = io.StringIO()
-    kwargs["bench"] = True
-    with redirect_stdout(f):
-        returncode = fn(*args, **kwargs)
-    output = f.getvalue()
-    return returncode, output
+_TIME_PATTERNS = [
+    re.compile(r"Rust time taken:\s*([0-9.]+)"),            # common in compile/prove/verify
+    re.compile(r"Time elapsed:\s*([0-9.]+)\s*seconds"),     # common in witness/prove/verify
+]
+_MEM_PATTERNS = [
+    re.compile(r"Peak Memory used Overall\s*:\s*([0-9.]+)"),   # common runner print
+    re.compile(r"Rust subprocess memory\s*:\s*([0-9.]+)"),     # legacy
+]
+
+def parse_benchmark_output(output: str) -> dict:
+    """Extract time (seconds) and peak memory (MB) from runner output."""
+    time_s = None
+    mem_mb = None
+
+    for pat in _TIME_PATTERNS:
+        m = pat.search(output)
+        if m:
+            try:
+                time_s = float(m.group(1))
+                break
+            except ValueError:
+                pass
+
+    for pat in _MEM_PATTERNS:
+        m = pat.search(output)
+        if m:
+            try:
+                mem_mb = float(m.group(1))
+                break
+            except ValueError:
+                pass
+
+    return {"time_s": time_s, "mem_mb": mem_mb}
 
 
+# ---------------------------
+# Run a single phase with capture
+# ---------------------------
 
-def parse_benchmark_output(output: str):
-    result = {}
+def _run_with_capture(fn, **kwargs) -> tuple[int, dict, str]:
+    """
+    Calls model.base_testing(**kwargs) while capturing stdout.
+    Returns (return_code, parsed_metrics_dict, raw_stdout).
+    """
+    buf = io.StringIO()
+    kwargs["bench"] = True  # ensure the runner prints timing/memory
+    rc = 0
+    with redirect_stdout(buf):
+        try:
+            ret = fn(**kwargs)
+            rc = int(ret) if isinstance(ret, int) else 0
+        except SystemExit as e:
+            rc = int(e.code) if isinstance(e.code, int) else 1
+        except Exception:
+            rc = 1
+            raise
+    out = buf.getvalue()
+    metrics = parse_benchmark_output(out)
+    return rc, metrics, out
 
-    time_match = re.search(r"Rust time taken:\s*([0-9.]+)", output)
-    mem_match = re.search(r"Rust subprocess memory:\s*([0-9.]+)", output)
-    full_time = re.search(r"Full function time\s*:\s*([0-9.]+)", output)
-    full_mem = re.search(r"Full function memory\s*:\s*([0-9.]+)", output)
-    if not mem_match:
-        print(output)
 
-    if time_match:
-        result["subprocess_time"] = float(time_match.group(1))
-    if mem_match:
-        result["subprocess_memory"] = float(mem_match.group(1))
-    if full_time:
-        result["full_time"] = float(full_time.group(1))
-    if full_mem:
-        result["full_memory"] = float(full_mem.group(1))
+# ---------------------------
+# Canonical kwargs per phase
+# ---------------------------
 
-    return result
+def make_phase_kwargs(tmpdir: str, *, input_path: str | None) -> dict:
+    """
+    Construct a dict with per-phase kwargs (each is a dict) pointing
+    to temp artifacts in tmpdir; reuses input_path if provided.
+    """
+    circuit_path   = os.path.join(tmpdir, "circuit.txt")
+    quantized_path = os.path.join(tmpdir, "quantized.onnx")
+    output_path    = os.path.join(tmpdir, "output.json")
+    witness_path   = os.path.join(tmpdir, "witness.bin")
+    proof_path     = os.path.join(tmpdir, "proof.bin")
 
-def get_model_run_kwargs():
-    compile_kwargs = {
-                "run_type": RunType.COMPILE_CIRCUIT,
-                "dev_mode": True,
-                # "circuit_path": str(model.circuit_path),
-                # "quantized_path": str(model.quantized_model_file_path),
-                "bench": True
-            }
-    witness_kwargs = {
-                "run_type": RunType.GEN_WITNESS,
-                "dev_mode": False,
-                "bench": True,
-                "write_json": True
-            }
-    prove_kwargs = {
-                "run_type": RunType.PROVE_WITNESS,
-                "dev_mode": False,
-                "bench": True,
-                "ecc": False
-            }
-    verify_kwargs = {
-                "run_type": RunType.GEN_VERIFY,
-                "dev_mode": False,
-                "bench": True,
-                "ecc": False
+    # If user provided a fixed input, use it; otherwise let the model
+    # implementation handle input generation or defaults (if it can).
+    input_file = input_path if input_path else os.path.join(tmpdir, "input.json")
 
-            }
-    return compile_kwargs, witness_kwargs, prove_kwargs, verify_kwargs 
+    compile_kwargs = dict(
+        run_type=RunType.COMPILE_CIRCUIT,
+        dev_mode=True,                # refresh dev build path when compiling circuits
+        circuit_path=circuit_path,
+        quantized_path=quantized_path,
+    )
+    witness_kwargs = dict(
+        run_type=RunType.GEN_WITNESS,
+        dev_mode=False,
+        circuit_path=circuit_path,
+        quantized_path=quantized_path,
+        input_file=input_file,
+        output_file=output_path,
+        witness_file=witness_path,
+        write_json=True,             # ask pipeline to persist I/O
+    )
+    prove_kwargs = dict(
+        run_type=RunType.PROVE_WITNESS,
+        dev_mode=False,
+        circuit_path=circuit_path,
+        witness_file=witness_path,
+        proof_file=proof_path,
+        ecc=False,                   # run proof directly via Expander
+    )
+    verify_kwargs = dict(
+        run_type=RunType.GEN_VERIFY,
+        dev_mode=False,
+        circuit_path=circuit_path,
+        quantized_path=quantized_path,  # hydrate shapes if needed
+        input_file=input_file,
+        output_file=output_path,
+        witness_file=witness_path,
+        proof_file=proof_path,
+        ecc=False,
+    )
+    return dict(
+        compile=compile_kwargs,
+        witness=witness_kwargs,
+        prove=prove_kwargs,
+        verify=verify_kwargs,
+    )
 
-def benchmark_model(model_name, model_cls, model_run_kwargs,  args=(), kwargs=None, runs = 1):
-    if kwargs is None:
-        kwargs = {}
-    times = []
-    memories = []
-    for _ in range(runs):
-        model = model_cls(*args, **kwargs)
-        
-        
-        returncode, output = benchmark_tests(model.base_testing, **model_run_kwargs)
-        # if returncode != 0:
-        #     raise RuntimeError(f"Benchmarking failed for {model_name} with return code {returncode}")
-        result = parse_benchmark_output(output)
-        times.append(result.get("subprocess_time", "ERR"))
-        memories.append(result.get("subprocess_memory", "ERR"))
 
-    avg_time = sum(times) / len(times) if "ERR" not in times else -1
-    avg_memory = sum(memories) / len(memories) if "ERR" not in memories else -1
+# ---------------------------
+# Aggregation helpers
+# ---------------------------
 
+def _safe_mean(values):
+    vals = [v for v in values if isinstance(v, (int, float))]
+    return (sum(vals) / len(vals)) if vals else None
+
+def _safe_stdev(values):
+    # naive sample stdev; fine for quick summaries
+    vals = [v for v in values if isinstance(v, (int, float))]
+    n = len(vals)
+    if n < 2:
+        return None
+    mean = sum(vals) / n
+    var = sum((x - mean) ** 2 for x in vals) / (n - 1)
+    return var ** 0.5
+
+def _now_iso():
+    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+def _env_metadata():
     return {
-        "model": model_name,
-        "testing_type": model_run_kwargs["run_type"].name,
-        "runs": runs,
-        "avg_time": avg_time,
-        "avg_memory": avg_memory
+        "ts": _now_iso(),
+        "host": socket.gethostname(),
+        "os": platform.platform(),
+        "python": sys.version.split()[0],
     }
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", nargs="+", help="Model(s) to benchmark. Example: --model demo relu_dual")
-    parser.add_argument("--runs", type=int, default=1, help = "Number of runs to average the results.")
-    parser.add_argument("--output", type=str, default=None)
-    parser.add_argument("--list-models", action="store_true")
+# ---------------------------
+# Main benchmark routine
+# ---------------------------
 
-    args = parser.parse_args()
+def run_benchmarks(selected_models, *, iterations: int, input_path: str | None,
+                   keep_tmp: bool, jsonl_path: str, summarize: bool):
+    """
+    For each model: run compile→witness→prove→verify for N iterations.
+    Write per-run JSON lines to jsonl_path. If summarize=True, append
+    summary records at the end of the same JSONL file.
+    """
+
+    # Prepare file
+    os.makedirs(os.path.dirname(os.path.abspath(jsonl_path)) or ".", exist_ok=True)
+
+    with open(jsonl_path, "w", encoding="utf-8") as out_f:
+        meta = _env_metadata()
+
+        for model_name, model_cls in selected_models:
+            print(f"\n=== Benchmarking {model_name} for {iterations} iteration(s) ===")
+
+            per_phase_times = { "compile": [], "witness": [], "prove": [], "verify": [] }
+            per_phase_mems  = { "compile": [], "witness": [], "prove": [], "verify": [] }
+
+            for it in range(1, iterations + 1):
+                # Fresh temp dir per iteration to avoid artifact reuse
+                ctx = tempfile.TemporaryDirectory()
+                tmpdir = ctx.name
+                temp_mgr = ctx if not keep_tmp else None  # keep handle alive unless keep_tmp
+
+                phase_kwargs = make_phase_kwargs(tmpdir, input_path=input_path)
+                model = model_cls()  # fresh instance each iteration
+
+                for phase in ("compile", "witness", "prove", "verify"):
+                    rc, metrics, raw = _run_with_capture(model.base_testing, **phase_kwargs[phase])
+
+                    record = {
+                        "record_type": "run",
+                        "model": model_name,
+                        "iteration": it,
+                        "phase": phase,
+                        "return_code": rc,
+                        "time_s": metrics.get("time_s"),
+                        "mem_mb": metrics.get("mem_mb"),
+                        "tmpdir": tmpdir if keep_tmp else None,
+                        **meta,
+                    }
+                    out_f.write(json.dumps(record) + "\n")
+                    out_f.flush()
+
+                    # Collect for summary
+                    t = metrics.get("time_s")
+                    m = metrics.get("mem_mb")
+                    per_phase_times[phase].append(t if isinstance(t, (int, float)) else None)
+                    per_phase_mems[phase].append(m if isinstance(m, (int, float)) else None)
+
+                    if rc != 0:
+                        print(f"[{model_name}][{phase}][iter {it}] return_code={rc} — recorded; continuing.")
+
+                # Drop the tempdir unless --keep-tmp set
+                if temp_mgr is None:
+                    ctx.cleanup()
+
+            if summarize:
+                # Append summary records (one per phase) for this model
+                for phase in ("compile", "witness", "prove", "verify"):
+                    times = [x for x in per_phase_times[phase] if isinstance(x, (int, float))]
+                    mems  = [x for x in per_phase_mems[phase]  if isinstance(x, (int, float))]
+                    summary = {
+                        "record_type": "summary",
+                        "model": model_name,
+                        "phase": phase,
+                        "iterations": iterations,
+                        "n_ok_time": len(times),
+                        "mean_time_s": _safe_mean(times),
+                        "stdev_time_s": _safe_stdev(times),
+                        "n_ok_mem": len(mems),
+                        "mean_mem_mb": _safe_mean(mems),
+                        "stdev_mem_mb": _safe_stdev(mems),
+                        **meta,
+                    }
+                    out_f.write(json.dumps(summary) + "\n")
+                    out_f.flush()
+
+    print(f"\n✔ Wrote results to {jsonl_path} (per-run records{' + summaries' if summarize else ''}).")
+
+
+# ---------------------------
+# CLI
+# ---------------------------
+
+def main():
+    p = argparse.ArgumentParser(description="Benchmark JSTProve phases (compile→witness→prove→verify).")
+    p.add_argument("--model", nargs="+", help="Model(s) to benchmark (see --list-models).")
+    p.add_argument("--list-models", action="store_true", help="List available models and exit.")
+    p.add_argument("--iterations", type=int, default=5, help="Number of full E2E loops (default: 5).")
+    p.add_argument("--input", type=str, default=None,
+                   help="Optional path to input JSON. If omitted, model may generate its own (depends on model).")
+    p.add_argument("--output", type=str, default="benchmark_results.jsonl",
+                   help="Output JSONL path (per-run records; summaries appended if --summarize).")
+    p.add_argument("--keep-tmp", action="store_true", help="Keep per-iteration temp dirs (debugging).")
+    p.add_argument("--summarize", action="store_true", help="Append per-model summary rows to the JSONL.")
+
+    args = p.parse_args()
 
     if args.list_models:
         for m in list_available_models():
             print(m)
-        return
+        return 0
 
-    # class DummyConfig:
-    #     def getoption(self, name):
-    #         return getattr(args, name.replace("-", "_"))
-    print(args.model)
-    selected_models = get_models_to_test(args.model)
-    print(selected_models)
-    results = []
-    compile_kwargs, witness_kwargs, prove_kwargs, verify_kwargs = get_model_run_kwargs()
+    selected = get_models_to_test(args.model)
+    if not selected:
+        print("No models selected. Use --list-models to see options.", file=sys.stderr)
+        return 2
 
+    input_path = os.path.abspath(args.input) if args.input else None
+    jsonl_path = os.path.abspath(args.output)
 
-    for name, cls in selected_models:
-        a = ()
-        kw = {}
-        print(f"Benchmarking {name}...")
-        with tempfile.TemporaryDirectory() as tmpdir:
-            circuit_file = os.path.join(tmpdir, "circuit.txt")
-            quantized_file = os.path.join(tmpdir, "quantized.pt")
-            input_file = os.path.join(tmpdir, "input.json")
-            output_file = os.path.join(tmpdir, "output.json")
-            witness_file = os.path.join(tmpdir, "witness.txt")
-            proof_file = os.path.join(tmpdir, "proof.pf")
+    run_benchmarks(
+        selected_models=selected,
+        iterations=args.iterations,
+        input_path=input_path,
+        keep_tmp=args.keep_tmp,
+        jsonl_path=jsonl_path,
+        summarize=args.summarize,
+    )
+    return 0
 
-            compile_kwargs["circuit_path"] = circuit_file
-            compile_kwargs["quantized_path"] = quantized_file
-            compile_kwargs["input_file"] = input_file
-            compile_kwargs["output_file"] = output_file
-            compile_kwargs["witness_file"] = witness_file
-            compile_kwargs["proof_file"] = proof_file
-
-            witness_kwargs["circuit_path"] = circuit_file
-            witness_kwargs["quantized_path"] = quantized_file
-            witness_kwargs["input_file"] = input_file
-            witness_kwargs["output_file"] = output_file
-            witness_kwargs["witness_file"] = witness_file
-            witness_kwargs["proof_file"] = proof_file
-
-            prove_kwargs["circuit_path"] = circuit_file
-            prove_kwargs["quantized_path"] = quantized_file
-            prove_kwargs["input_file"] = input_file
-            prove_kwargs["output_file"] = output_file
-            prove_kwargs["witness_file"] = witness_file
-            prove_kwargs["proof_file"] = proof_file
-
-            verify_kwargs["circuit_path"] = circuit_file
-            verify_kwargs["quantized_path"] = quantized_file
-            verify_kwargs["input_file"] = input_file
-            verify_kwargs["output_file"] = output_file
-            verify_kwargs["witness_file"] = witness_file
-            verify_kwargs["proof_file"] = proof_file
-
-            result = benchmark_model(name, cls, compile_kwargs, a, kw, runs=1)
-            print(result)
-            results.append(result)
-
-            result = benchmark_model(name, cls, witness_kwargs, a, kw, runs=args.runs)
-            print(result)
-            results.append(result)
-
-            result = benchmark_model(name, cls, prove_kwargs, a, kw, runs=args.runs)
-            print(result)
-            results.append(result)
-
-            result = benchmark_model(name, cls, verify_kwargs, a, kw, runs=args.runs)
-            print(result)
-            results.append(result)
-
-    if args.output:
-        with open(args.output, "w") as f:
-            json.dump(results, f, indent=2)
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
