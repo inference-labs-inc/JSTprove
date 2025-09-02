@@ -10,7 +10,6 @@ pub const BETA: &str = "beta";
 pub const GEMM: &str = "Gemm";
 
 /// Value for Constant layer
-
 pub const VALUE: &str = "value";
 
 /// AXIS for reshaping
@@ -21,3 +20,8 @@ pub const STRIDES: &str = "strides";
 pub const DILATION: &str = "dilations";
 pub const PADS: &str = "pads";
 pub const GROUP: &str = "group";
+
+pub const INPUT: &str = "input";
+pub const WEIGHTS: &str = "weights";
+pub const BIAS: &str = "bias";
+pub const INPUT_SHAPE: &str = "input shape";

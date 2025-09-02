@@ -1,4 +1,4 @@
-//! Circuit construction utilities for JSTProve, a zero-knowledge proof system
+//! Circuit construction utilities for `JSTProve`, a zero-knowledge proof system
 //! supporting fixed-point quantization, neural network inference, and modular
 //! arithmetic over finite fields.
 //!
@@ -6,7 +6,7 @@
 //!
 //! - [`circuit_functions`]: Defines both low-level arithmetic gadgets and
 //!   high-level building blocks for layers such as matmul, convolution,
-//!   ReLU activation, and quantized rescaling.
+//!   `ReLU` activation, and quantized rescaling.
 //!
 //! - [`runner`]: Provides CLI-based orchestration for compiling, proving, and
 //!   verifying circuits, including witness generation and memory tracking.
@@ -21,7 +21,7 @@
 //! # Feature Flags
 //! This crate requires the `specialization` nightly feature.
 
-#![feature(specialization)]
+#![feature(min_specialization)]
 
 pub mod circuit_functions;
 pub mod io;

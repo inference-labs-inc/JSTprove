@@ -36,14 +36,23 @@ gkr_hashers = { git = "https://github.com/PolyhedraZK/Expander", branch = "main"
 goldilocks = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
 serdes = { git = "https://github.com/PolyhedraZK/Expander", branch = "main"}
 mpi = "0.8.0"
+thiserror = "2.0.15"
+strum = "0.27.2"
+strum_macros = "0.27.2"
 
 # ndarray = "0.16.1"
 
 ndarray = { version = "0.16.1", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 
+[patch."https://github.com/rsmpi/rsmpi"]
+mpi = { git = "https://github.com/0pendansor/rsmpi", branch = "patch-1" }
+mpi-sys = { git = "https://github.com/0pendansor/rsmpi", branch = "patch-1", package = "mpi-sys" }
+
 [patch.crates-io]
 mpi = { git = "https://github.com/0pendansor/rsmpi", branch = "patch-1" }
+mpi-sys = { git = "https://github.com/0pendansor/rsmpi", branch = "patch-1", package = "mpi-sys" }
+
 
 # serde_json = "1.0"
 

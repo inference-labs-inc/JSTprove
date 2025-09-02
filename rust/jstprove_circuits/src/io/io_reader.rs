@@ -1,49 +1,120 @@
-use expander_compiler::frontend::internal::DumpLoadTwoVariables;
+use crate::runner::errors::RunError;
 use expander_compiler::frontend::Config;
+use expander_compiler::frontend::internal::DumpLoadTwoVariables;
 use gkr_engine::{FieldEngine, GKREngine};
 use serde::de::DeserializeOwned;
 use std::io::Read;
 
-/// Implement io_reader to read inputs and outputs of the circuit.
+/// Implement `io_reader` to read inputs and outputs of the circuit.
 ///
 /// This is primarily used for witness generation
 pub trait IOReader<CircuitType, C: Config>
 where
     CircuitType: Default
-        +
-        // DumpLoadTwoVariables<Variable> +
-        DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
-        // + expander_compiler::frontend::Define<C>
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
         + Clone,
 {
-    fn read_data_from_json<I>(file_path: &str) -> I
+    /// Reads and deserializes a JSON file into a strongly typed struct.
+    ///
+    /// This helper function:
+    /// - Opens the file at `file_path`.
+    /// - Reads its contents into a string.
+    /// - Uses [`serde_json`] to deserialize the string into the target type `I`.
+    /// - Converts any I/O or deserialization failures into [`RunError`].
+    ///
+    /// # Type Parameters
+    ///
+    /// - `I` – The type to deserialize into. Must implement [`DeserializeOwned`].
+    ///
+    /// # Arguments
+    ///
+    /// - `file_path` – Path to the JSON file to read.
+    ///
+    /// # Returns
+    ///
+    /// An instance of type `I` populated from the JSON contents.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`RunError`] if:
+    /// - The file cannot be opened or read (`RunError::Io`).
+    /// - The JSON cannot be parsed into the expected type (`RunError::Json`).
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let inputs: InputData = read_data_from_json("inputs.json")?;
+    /// let outputs: OutputData = read_data_from_json("outputs.json")?;
+    /// ```
+    fn read_data_from_json<I>(file_path: &str) -> Result<I, RunError>
     where
         I: DeserializeOwned,
     {
         // Read the JSON file into a string
-        let mut file = std::fs::File::open(file_path).expect("Unable to open file");
+        let mut file = std::fs::File::open(file_path).map_err(|e| RunError::Io {
+            source: e,
+            path: file_path.into(),
+        })?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)
-            .expect("Unable to read file");
-        // panic!("{}", type_name::<I>());
+            .map_err(|e| RunError::Io {
+                source: e,
+                path: file_path.into(),
+            })?;
         // Deserialize the JSON into the InputData struct
-        let data: I = serde_json::from_str(&contents).unwrap();
-
-        data
+        serde_json::from_str(&contents).map_err(|e| RunError::Json(format!("{e:?}")))
     }
+    /// Reads circuit inputs from a JSON file and applies them to a circuit assignment.
+    ///
+    /// # Arguments
+    ///
+    /// - `file_path` – Path to a JSON file containing input values.
+    /// - `assignment` – The circuit assignment to populate.
+    ///
+    /// # Returns
+    ///
+    /// A new [`Circuit`] with its inputs populated from the JSON file.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`RunError`] if:
+    /// - The file cannot be read (`RunError::Io`)
+    /// - The JSON cannot be parsed (`RunError::Json`)
+    /// - The input shape does not match the expected architecture
+    /// - The array cannot be flattened into 1-D
+    ///
     fn read_inputs(
         &mut self,
         file_path: &str,
-        assignment: CircuitType, // Mutate the concrete `Circuit` type
-    ) -> CircuitType;
+        assignment: CircuitType,
+    ) -> Result<CircuitType, RunError>;
+    /// Reads circuit outputs from a JSON file and applies them to a circuit assignment.
+    ///
+    /// # Arguments
+    ///
+    /// - `file_path` – Path to a JSON file containing expected output values.
+    /// - `assignment` – The circuit assignment to populate.
+    ///
+    /// # Returns
+    ///
+    /// A new [`Circuit`] with its outputs populated from the JSON file.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`RunError`] if:
+    /// - The file cannot be read (`RunError::Io`)
+    /// - The JSON cannot be parsed (`RunError::Json`)
+    /// - The output shape does not match the expected architecture
+    /// - The array cannot be flattened into 1-D
+    ///
     fn read_outputs(
         &mut self,
         file_path: &str,
-        assignment: CircuitType, // Mutate the concrete `Circuit` type
-    ) -> CircuitType;
+        assignment: CircuitType,
+    ) -> Result<CircuitType, RunError>;
     fn get_path(&self) -> &str;
 }
-/// To implement IOReader in each binary to read in inputs and outputs of the circuit as is needed on an individual circuit basis
+/// To implement `IOReader` in each binary to read in inputs and outputs of the circuit as is needed on an individual circuit basis
 pub struct FileReader {
     pub path: String,
 }

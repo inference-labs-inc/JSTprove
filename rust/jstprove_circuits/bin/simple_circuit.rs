@@ -1,6 +1,9 @@
-use expander_compiler::frontend::*;
+use expander_compiler::frontend::{
+    BN254Config, CircuitField, Config, Define, RootAPI, Variable, declare_circuit,
+};
 use jstprove_circuits::io::io_reader::{FileReader, IOReader};
-use jstprove_circuits::runner::main_runner::handle_args;
+use jstprove_circuits::runner::errors::RunError;
+use jstprove_circuits::runner::main_runner::{ConfigurableCircuit, handle_args};
 use serde::Deserialize;
 
 declare_circuit!(Circuit {
@@ -39,14 +42,18 @@ struct OutputData {
     output: u32,
 }
 
+impl ConfigurableCircuit for Circuit<Variable> {
+    fn configure(&mut self) {}
+}
+
 impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
         mut assignment: Circuit<CircuitField<C>>,
-    ) -> Circuit<CircuitField<C>> {
+    ) -> Result<Circuit<CircuitField<C>>, RunError> {
         let data: InputData =
-            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<InputData>(file_path);
+            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<InputData>(file_path)?;
 
         // Assign inputs to assignment
         assignment.input_a = CircuitField::<C>::from(data.value_a);
@@ -55,20 +62,20 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
         assignment.dummy = [CircuitField::<C>::from(0); 2];
 
         // Return the assignment
-        assignment
+        Ok(assignment)
     }
     fn read_outputs(
         &mut self,
         file_path: &str,
         mut assignment: Circuit<CircuitField<C>>,
-    ) -> Circuit<CircuitField<C>> {
+    ) -> Result<Circuit<CircuitField<C>>, RunError> {
         let data: OutputData =
-            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<OutputData>(file_path);
+            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<OutputData>(file_path)?;
 
         // Assign inputs to assignment
         assignment.output = CircuitField::<C>::from(data.output);
 
-        assignment
+        Ok(assignment)
     }
     fn get_path(&self) -> &str {
         &self.path
@@ -80,7 +87,9 @@ fn main() {
         path: "simple_circuit".to_owned(),
     };
 
-    handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(&mut file_reader);
-    // handle_args::<M31Config, Circuit<Variable>,Circuit<_>,_>(&mut file_reader);
-    // handle_args::<GF2Config, Circuit<Variable>,Circuit<_>,_>(&mut file_reader);
+    if let Err(err) = handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(&mut file_reader)
+    {
+        eprintln!("Error: {err}");
+        std::process::exit(1);
+    }
 }
