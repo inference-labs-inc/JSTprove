@@ -59,12 +59,16 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
       `ONNXOpQuantizer`.
     """
 
-    def __init__(self: T, model_name: str) -> None:
+    def __init__(self: T, model_name: str, *, use_find_model: bool = False) -> None:
         try:
             self.name = "onnx_generic_circuit"
             self.op_quantizer = ONNXOpQuantizer()
             self.rescale_config = {}
-            self.model_file_name = self.find_model(model_name)
+            if use_find_model:
+                self.model_file_name = self.find_model(model_name)
+            else:
+                self.model_file_name = model_name
+
             self.scale_base = 2
             self.scale_exponent = 18
             ONNXConverter.__init__(self)
@@ -102,7 +106,6 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
             msg = f"Model file not found: '{model_name}'"
             f" (checked '{model_name}' and '{models_onnx_path}')"
             raise FileNotFoundError(msg)
-
         return models_onnx_path
 
     def adjust_inputs(self: T, input_file: str) -> str:

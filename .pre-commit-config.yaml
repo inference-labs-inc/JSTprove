@@ -30,7 +30,9 @@ repos:
           '--per-file-ignores=python/tests/**.py:S101', # allows assert statements in tests
           '--per-file-ignores=python/tests/**.py:T201', # Allows print lines in tests
           '--per-file-ignores=python/tests/**.py:F811', # Allows redefinition of unused name in tests (For fixtures which skip tests)
-          '--per-file-ignores=python/tests/**.py:PLR0913', # Allows more arguments in function definition in tests (Fixtures etc.) PLR0913
+          '--per-file-ignores=python/tests/**.py:PLR0913', # Allows more arguments in function definition in tests (Fixtures etc.)
+          '--per-file-ignores=python/tests/**.py:SLF001', # Allows private members to be accessed in tests (_file_info, _compile_preprocessing)
+          '--per-file-ignores=python/tests/**.py:ARG001', # Allows unused function arguments in tests (used for mocked variables)
           '--per-file-ignores=python/core/model_processing/onnx_custom_ops/**.py:PLR0913', # Allows more arguments in onnx_custom_ops, due to necessity of integration
 
 

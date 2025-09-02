@@ -4,6 +4,7 @@ from random import randint
 from typing import TypeVar
 
 from python.core.circuits.base import Circuit, RunType
+from python.core.utils.helper_functions import CircuitExecutionConfig, ZKProofSystems
 
 T = TypeVar("T", bound="SimpleCircuit")
 
@@ -86,11 +87,14 @@ if __name__ == "__main__":
     # Run another operation
     print("\nRunning compilation:")  # noqa: T201
     circuit.base_testing(
-        run_type=RunType.COMPILE_CIRCUIT,
-        dev_mode=True,
-        circuit_path="simple_circuit.txt",
-        input_file="inputs/simple_circuit_input.json",
-        output_file="output/simple_circuit_output.txt",
+        CircuitExecutionConfig(
+            run_type=RunType.COMPILE_CIRCUIT,
+            dev_mode=True,
+            circuit_path="simple_circuit.txt",
+            input_file="inputs/simple_circuit_input.json",
+            output_file="output/simple_circuit_output.txt",
+            proof_system=ZKProofSystems.Expander,
+        ),
     )
 
     # Read the input and output files to verify
@@ -99,25 +103,34 @@ if __name__ == "__main__":
     print(f"Output file: {circuit._file_info['output_file']}")  # noqa: SLF001, T201
 
     circuit.base_testing(
-        run_type=RunType.GEN_WITNESS,
-        circuit_path="simple_circuit.txt",
-        input_file="inputs/simple_circuit_input.json",
-        output_file="output/simple_circuit_output.json",
-        write_json=True,
+        CircuitExecutionConfig(
+            run_type=RunType.GEN_WITNESS,
+            circuit_path="simple_circuit.txt",
+            input_file="inputs/simple_circuit_input.json",
+            output_file="output/simple_circuit_output.json",
+            write_json=True,
+            proof_system=ZKProofSystems.Expander,
+        ),
     )
 
     circuit = SimpleCircuit()
     circuit.base_testing(
-        run_type=RunType.PROVE_WITNESS,
-        circuit_path="simple_circuit.txt",
-        input_file="inputs/simple_circuit_input.json",
-        output_file="output/simple_circuit_output.json",
+        CircuitExecutionConfig(
+            run_type=RunType.PROVE_WITNESS,
+            circuit_path="simple_circuit.txt",
+            input_file="inputs/simple_circuit_input.json",
+            output_file="output/simple_circuit_output.json",
+            proof_system=ZKProofSystems.Expander,
+        ),
     )
 
     circuit = SimpleCircuit()
     circuit.base_testing(
-        run_type=RunType.GEN_VERIFY,
-        circuit_path="simple_circuit.txt",
-        input_file="inputs/simple_circuit_input.json",
-        output_file="output/simple_circuit_output.json",
+        CircuitExecutionConfig(
+            run_type=RunType.GEN_VERIFY,
+            circuit_path="simple_circuit.txt",
+            input_file="inputs/simple_circuit_input.json",
+            output_file="output/simple_circuit_output.json",
+            proof_system=ZKProofSystems.Expander,
+        ),
     )
