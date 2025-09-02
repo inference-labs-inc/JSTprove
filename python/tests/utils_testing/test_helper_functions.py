@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
+from python.core.utils.errors import ProofBackendError, ProofSystemNotImplementedError
 from python.core.utils.helper_functions import (
     CircuitExecutionConfig,
     ExpanderMode,
@@ -314,7 +315,7 @@ def test_compile_circuit_expander_dev_mode_true(mock_run: MagicMock) -> None:
 @pytest.mark.integration()
 @patch(
     "python.core.utils.helper_functions.run_cargo_command",
-    side_effect=Exception("TEST"),
+    side_effect=ProofBackendError("TEST"),
 )
 def test_compile_circuit_expander_rust_error(
     mock_run: MagicMock,
@@ -333,7 +334,7 @@ def test_compile_circuit_expander_rust_error(
 
 @pytest.mark.integration()
 def test_compile_circuit_unknown_raises() -> None:
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ProofSystemNotImplementedError):
         compile_circuit("m", "p", "unsupported")
 
 
@@ -384,7 +385,7 @@ def test_generate_witness_expander_dev_mode_true(mock_run: MagicMock) -> None:
 @pytest.mark.integration()
 @patch(
     "python.core.utils.helper_functions.run_cargo_command",
-    side_effect=Exception("TEST"),
+    side_effect=ProofBackendError("TEST"),
 )
 def test_generate_witness_expander_rust_error(
     mock_run: MagicMock,
@@ -405,7 +406,7 @@ def test_generate_witness_expander_rust_error(
 
 @pytest.mark.unit()
 def test_generate_witness_unknown_raises() -> None:
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ProofSystemNotImplementedError):
         generate_witness("m", "p", "witness", "input", "output", "unsupported")
 
 
@@ -471,14 +472,14 @@ def test_generate_proof_expander_with_ecc_dev_mode_true(mock_run: MagicMock) -> 
 
 @pytest.mark.unit()
 def test_generate_proof_unknown_raises() -> None:
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ProofSystemNotImplementedError):
         generate_proof("m", "p", "w", "proof", "unsupported")
 
 
 @pytest.mark.unit()
 @patch(
     "python.core.utils.helper_functions.run_cargo_command",
-    side_effect=Exception("TEST"),
+    side_effect=ProofBackendError("TEST"),
 )
 def test_generate_proof_expander_rust_error(
     mock_run: MagicMock,
@@ -582,29 +583,29 @@ def test_generate_verify_expander_with_ecc_dev_mode_true(mock_run: MagicMock) ->
 
 @pytest.mark.unit()
 def test_generate_verify_unknown_raises() -> None:
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ProofSystemNotImplementedError):
         generate_verification("model", "cp", "i", "o", "w", "p", "unsupported")
 
 
 @pytest.mark.unit()
 def test_proof_system_not_implemented_full_process() -> None:
     with pytest.raises(
-        NotImplementedError,
+        ProofSystemNotImplementedError,
         match="Proof system UnknownProofSystem not implemented",
     ):
         generate_verification("model", "cp", "i", "o", "w", "p", "UnknownProofSystem")
     with pytest.raises(
-        NotImplementedError,
+        ProofSystemNotImplementedError,
         match="Proof system UnknownProofSystem not implemented",
     ):
         generate_proof("m", "p", "w", "proof", "UnknownProofSystem")
     with pytest.raises(
-        NotImplementedError,
+        ProofSystemNotImplementedError,
         match="Proof system UnknownProofSystem not implemented",
     ):
         generate_witness("m", "p", "witness", "input", "output", "UnknownProofSystem")
     with pytest.raises(
-        NotImplementedError,
+        ProofSystemNotImplementedError,
         match="Proof system UnknownProofSystem not implemented",
     ):
         compile_circuit("model", "path/to/circuit", "UnknownProofSystem")
@@ -613,7 +614,7 @@ def test_proof_system_not_implemented_full_process() -> None:
 @pytest.mark.unit()
 @patch(
     "python.core.utils.helper_functions.run_cargo_command",
-    side_effect=Exception("TEST"),
+    side_effect=ProofBackendError("TEST"),
 )
 def test_generate_verify_expander_rust_error(
     mock_run: MagicMock,
@@ -657,14 +658,14 @@ def test_run_end_to_end_calls_all(
 @patch("python.core.utils.helper_functions.generate_proof")
 @patch("python.core.utils.helper_functions.generate_witness")
 @patch("python.core.utils.helper_functions.compile_circuit")
-def test_circom_proof_system_errors_end_to_end(
+def test_unknown_proof_system_errors_end_to_end(
     mock_compile: MagicMock,
     mock_witness: MagicMock,
     mock_proof: MagicMock,
     mock_verify: MagicMock,
 ) -> None:
     with pytest.raises(
-        NotImplementedError,
+        ProofSystemNotImplementedError,
         match="Proof system UnknownProofSystem not implemented",
     ):
         run_end_to_end("m", "m_circuit.txt", "i.json", "o.json", "UnknownProofSystem")
@@ -703,7 +704,7 @@ def test_get_files_non_proof_system(mock_create: MagicMock) -> None:
     }
     fake_proof_system = "unknown"
     with pytest.raises(
-        NotImplementedError,
+        ProofSystemNotImplementedError,
         match=f"Proof system {fake_proof_system} not implemented",
     ):
         get_files("model", fake_proof_system, folders)

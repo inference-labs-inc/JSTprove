@@ -15,6 +15,12 @@ from python.core.utils.benchmarking_helpers import (
     end_memory_collection,
     start_memory_collection,
 )
+from python.core.utils.errors import (
+    FileCacheError,
+    MissingFileError,
+    ProofBackendError,
+    ProofSystemNotImplementedError,
+)
 
 F = TypeVar("F", bound=Callable[..., Any])
 logger = logging.getLogger(__name__)
@@ -76,17 +82,21 @@ def compute_and_store_output(func: Callable) -> Callable:
     def wrapper(self: object, *args: tuple, **kwargs: dict) -> object:
         # Define paths for storing outputs in temp folder
         temp_folder = getattr(self, "temp_folder", "temp")
-        if not Path(temp_folder).exists():
-            Path(temp_folder).mkdir(parents=True)
+        try:
+            Path(temp_folder).mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            msg = f"Could not create temp folder {temp_folder}: {e}"
+            logger.exception(msg)
+            raise FileCacheError(msg) from e
 
         output_cache_path = Path(temp_folder) / f"{self.name}_output_cache.json"
 
         # Check if cached output exists
-        if Path(output_cache_path).exists():
+        if output_cache_path.exists():
             msg = f"Loading cached outputs for {self.name} from {output_cache_path}"
             logger.info(msg)
             try:
-                with Path(output_cache_path).open() as f:
+                with output_cache_path.open() as f:
                     return json.load(f)
             except (OSError, json.JSONDecodeError) as e:
                 msg = f"Error loading cached output: {e}"
@@ -301,10 +311,11 @@ def run_cargo_command(
             if not (isinstance(value, bool) and value):
                 cmd.append(str(value))
 
-    print(f"Running cargo command: {' '.join(cmd)}")  # noqa: T201
+    msg = f"Running cargo command: {' '.join(cmd)}"
+    print(msg)  # noqa: T201
+    logger.info(msg)
 
     try:
-
         if bench:
             stop_event, monitor_thread, monitor_results = start_memory_collection(
                 binary_name,
@@ -320,16 +331,32 @@ def run_cargo_command(
         end_time = time()
         print("\n--- BENCHMARK RESULTS ---")  # noqa: T201
         print(f"Rust time taken: {end_time - start_time:.4f} seconds")  # noqa: T201
+        msg = f"Rust command completed in {end_time - start_time:.4f} seconds"
+        logger.info(msg)
 
         if bench:
             memory = end_memory_collection(stop_event, monitor_thread, monitor_results)
-            print(f"Rust subprocess memory: {memory['total']:.2f} MB")  # noqa: T201
+            msg = f"Rust subprocess memory: {memory['total']:.2f} MB"
+            print(msg)  # noqa: T201
+            logger.info(msg)
 
         print(result.stdout)  # noqa: T201
+        logger.info(result.stdout)
         if result.returncode != 0:
-            msg = f"Expander {command_type.value} failed:\n{result.stderr}"
-            raise RuntimeError(msg)
-
+            msg = f"Proving Backend failed (code {result.returncode}):\n{result.stderr}"
+            logger.error(msg)
+            msg = f"Proving Backend command '{' '.join(cmd)}'"
+            f" failed with code {result.returncode}:\n"
+            f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+            raise ProofBackendError(
+                msg,
+            )
+    except OSError as e:
+        msg = f"Failed to execute proof backend command '{cmd}': {e}"
+        logger.exception(msg)
+        raise ProofBackendError(
+            msg,
+        ) from e
     except subprocess.CalledProcessError as e:
         msg = f"Cargo command failed (return code {e.returncode}): {e.stderr}"
         logger.exception(msg)
@@ -382,6 +409,15 @@ def run_expander_raw(  # noqa: PLR0913
     Returns:
         subprocess.CompletedProcess[str]: Exit message from the subprocess.
     """
+    for file_path, label in [
+        (circuit_file, "circuit_file"),
+        (witness_file, "witness_file"),
+        # For VERIFY mode, the proof_file is an input, not just an output
+        (proof_file, "proof_file") if mode == ExpanderMode.VERIFY else (None, None),
+    ]:
+        if file_path and not Path(file_path).exists():
+            msg = f"Missing file required for {label}"
+            raise MissingFileError(msg, file_path)
 
     env = os.environ.copy()
     env["RUSTFLAGS"] = "-C target-cpu=native"
@@ -420,44 +456,58 @@ def run_expander_raw(  # noqa: PLR0913
         args.append(mode.value)
         proof_command = "-i"
 
-    args.append("-c")
-    args.append(circuit_file)
+    args.extend(["-c", circuit_file])
+    args.extend(["-w", witness_file])
+    args.extend([proof_command, proof_file])
 
-    args.append("-w")
-    args.append(witness_file)
-
-    args.append(proof_command)
-    args.append(proof_file)
-    if bench:
-        stop_event, monitor_thread, monitor_results = start_memory_collection(
-            "expander-exec",
+    try:
+        if bench:
+            stop_event, monitor_thread, monitor_results = start_memory_collection(
+                "expander-exec",
+            )
+        start_time = time()
+        result = subprocess.run(
+            args,  # noqa: S603
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
         )
-    start_time = time()
-    result = subprocess.run(
-        args,  # noqa: S603
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    end_time = time()
+        end_time = time()
 
-    print("\n--- BENCHMARK RESULTS ---")  # noqa: T201
-    print(f"Rust time taken: {end_time - start_time:.4f} seconds")  # noqa: T201
+        print("\n--- BENCHMARK RESULTS ---")  # noqa: T201
+        print(f"Rust time taken: {end_time - start_time:.4f} seconds")  # noqa: T201
 
-    if bench:
-        memory = end_memory_collection(stop_event, monitor_thread, monitor_results)
-        print(f"Rust subprocess memory: {memory['total']:.2f} MB")  # noqa: T201
+        if bench:
+            memory = end_memory_collection(stop_event, monitor_thread, monitor_results)
+            print(f"Rust subprocess memory: {memory['total']:.2f} MB")  # noqa: T201
 
-    if result.returncode != 0:
-        msg = f"Expander {mode.value} failed:\n{result.stderr}"
-        raise RuntimeError(msg)
+        if result.returncode != 0:
+            msg = f"Expander {mode.value} failed:\n{result.stderr}"
+            logger.warning(msg)
+            msg = f"Expander {mode.value} failed"
+            raise ProofBackendError(
+                msg,
+                command=args,
+                returncode=result.returncode,
+                stdout=result.stdout,
+                stderr=result.stderr,
+            )
 
-    print(f"✅ expander-exec {mode.value} succeeded:\n{result.stdout}")  # noqa: T201
+        print(  # noqa: T201
+            f"✅ expander-exec {mode.value} succeeded:\n{result.stdout}",
+        )
 
-    print(f"Time taken: {end_time - start_time:.4f} seconds")  # noqa: T201
-
-    return result
+        print(f"Time taken: {end_time - start_time:.4f} seconds")  # noqa: T201
+    except OSError as e:
+        msg = f"Failed to execute Expander {mode.value}: {e}"
+        logger.exception(msg)
+        raise ProofBackendError(
+            msg,
+            command=args,
+        ) from e
+    else:
+        return result
 
 
 def compile_circuit(
@@ -504,15 +554,16 @@ def compile_circuit(
                 dev_mode=dev_mode,
                 bench=bench,
             )
-        except Exception as e:
+        except ProofBackendError as e:
             warning = f"Warning: Compile operation failed: {e}."
-            f" Using binary: {binary_name}"
+            warning2 = f" Using binary: {binary_name}"
             logger.warning(warning)
+            logger.warning(warning2)
             raise
 
     else:
         msg = f"Proof system {proof_system} not implemented"
-        raise NotImplementedError(msg)
+        raise ProofSystemNotImplementedError(msg)
 
 
 def generate_witness(  # noqa: PLR0913
@@ -569,13 +620,13 @@ def generate_witness(  # noqa: PLR0913
                 dev_mode=dev_mode,
                 bench=bench,
             )
-        except Exception as e:
+        except ProofBackendError as e:
             warning = f"Warning: Witness generation failed: {e}"
             logger.warning(warning)
             raise
     else:
         msg = f"Proof system {proof_system} not implemented"
-        raise NotImplementedError(msg)
+        raise ProofSystemNotImplementedError(msg)
 
 
 def generate_proof(  # noqa: PLR0913
@@ -635,7 +686,7 @@ def generate_proof(  # noqa: PLR0913
                     dev_mode=dev_mode,
                     bench=bench,
                 )
-            except Exception as e:
+            except ProofBackendError as e:
                 warning = f"Warning: Proof generation failed: {e}"
                 logger.warning(warning)
                 raise
@@ -649,7 +700,7 @@ def generate_proof(  # noqa: PLR0913
             )
     else:
         msg = f"Proof system {proof_system} not implemented"
-        raise NotImplementedError(msg)
+        raise ProofSystemNotImplementedError(msg)
 
 
 def generate_verification(  # noqa: PLR0913
@@ -714,7 +765,7 @@ def generate_verification(  # noqa: PLR0913
                     dev_mode=dev_mode,
                     bench=bench,
                 )
-            except Exception as e:
+            except ProofBackendError as e:
                 warning = f"Warning: Verification generation failed: {e}"
                 logger.warning(warning)
                 raise
@@ -728,7 +779,7 @@ def generate_verification(  # noqa: PLR0913
             )
     else:
         msg = f"Proof system {proof_system} not implemented"
-        raise NotImplementedError(msg)
+        raise ProofSystemNotImplementedError(msg)
 
 
 def run_end_to_end(  # noqa: PLR0913
@@ -811,7 +862,7 @@ def run_end_to_end(  # noqa: PLR0913
             ecc,
         )
     msg = f"Proof system {proof_system} not implemented"
-    raise NotImplementedError(msg)
+    raise ProofSystemNotImplementedError(msg)
 
 
 def get_files(
@@ -859,7 +910,7 @@ def get_files(
         )
     else:
         msg = f"Proof system {proof_system} not implemented"
-        raise NotImplementedError(msg)
+        raise ProofSystemNotImplementedError(msg)
 
     return paths
 
