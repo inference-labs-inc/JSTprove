@@ -20,6 +20,7 @@ import socket
 import platform
 from datetime import datetime, timezone
 from contextlib import redirect_stdout
+import importlib
 
 from python.testing.core.utils.helper_functions import RunType
 from python.testing.core.utils.model_registry import list_available_models, get_models_to_test
@@ -156,35 +157,68 @@ def make_phase_kwargs(tmpdir: str, *, input_path: str | None) -> dict:
 # Model selection normalization
 # ---------------------------
 
-def normalize_selected_models(selected):
+def resolve_model_class(spec):
     """
-    Accepts whatever get_models_to_test(...) returns and normalizes to an
-    iterable of (name, cls, init_args, init_kwargs).
+    Accepts a class object or a string and returns a class object.
+    Supports:
+      - "pkg.mod:Class"
+      - "pkg.mod.Class"
+      - bare "Class" (tries a few common modules)
+    """
+    if not isinstance(spec, str):
+        return spec
 
-    Supported shapes:
-      - dict-like: {name: cls, ...}
-      - list of classes: [ClsA, ClsB]
-      - list of tuples:
-          (name, cls)
-          (name, cls, dict_kwargs)
-          (name, cls, tuple/list args)
-          (cls,)  -> name inferred from class
-    """
+    s = spec.strip()
+    mod = name = None
+
+    if ":" in s:
+        mod, name = s.split(":", 1)
+    elif "." in s:
+        mod, name = s.rsplit(".", 1)
+    else:
+        # Bare class name; try a few known modules in your tree
+        for base in (
+            "python.testing.core.model_registry",
+            "python.testing.core.models",
+            "python.testing.core.circuit_models",
+        ):
+            try:
+                m = importlib.import_module(base)
+                if hasattr(m, s):
+                    return getattr(m, s)
+            except Exception:
+                pass
+        raise SystemExit(
+            f"Model '{s}' is a bare name I couldn't resolve. "
+            f"Please use a dotted path like 'pkg.mod:Class' or ensure it's exportable "
+            f"from one of the known modules."
+        )
+
+    try:
+        m = importlib.import_module(mod)
+        return getattr(m, name)
+    except Exception as e:
+        raise SystemExit(f"Cannot import model class '{s}': {e}")
+
+
+def normalize_selected_models(selected):
     # Dict-like
     if hasattr(selected, "items"):
         for name, cls in selected.items():
+            cls = resolve_model_class(cls)  
             yield str(name), cls, (), {}
         return
 
     # Sequence
     for item in selected:
-        # Tuple-like
         if isinstance(item, tuple):
             if len(item) == 2:
                 name, cls = item
+                cls = resolve_model_class(cls)  
                 yield str(name), cls, (), {}
             elif len(item) >= 3:
                 name, cls = item[0], item[1]
+                cls = resolve_model_class(cls) 
                 third = item[2]
                 if isinstance(third, dict):
                     yield str(name), cls, (), third
@@ -193,7 +227,7 @@ def normalize_selected_models(selected):
                 else:
                     yield str(name), cls, (), {}
             elif len(item) == 1:
-                cls = item[0]
+                cls = resolve_model_class(item[0])  
                 name = getattr(cls, "NAME", getattr(cls, "__name__", "model"))
                 yield str(name), cls, (), {}
             continue
@@ -201,13 +235,15 @@ def normalize_selected_models(selected):
         # Class only
         if hasattr(item, "__name__"):
             cls = item
-            name = getattr(cls, "NAME", getattr(cls, "__name__", "model"))
-            yield str(name), cls, (), {}
+            yield getattr(cls, "NAME", getattr(cls, "__name__", "model")), cls, (), {}
             continue
 
-        # Fallback: skip unknown shapes
-        # (Optionally: print warning)
-        # print(f"[warn] unknown model entry shape: {item!r}", file=sys.stderr)
+        # String only (e.g., "pkg.mod:Class" or "Class")
+        if isinstance(item, str):
+            cls = resolve_model_class(item)  
+            name = getattr(cls, "NAME", getattr(cls, "__name__", item))
+            yield str(name), cls, (), {}
+            continue
 
 
 # ---------------------------
