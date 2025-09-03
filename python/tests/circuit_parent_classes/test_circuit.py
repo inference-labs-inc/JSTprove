@@ -478,7 +478,7 @@ def test_check_attributes_no_scaling() -> None:
         c.check_attributes()
 
     msg = str(exc_info.value)
-    assert "Circuit is misconfigured" in msg
+    assert "Circuit class (python) is misconfigured" in msg
     assert "scale_exponent" in msg
 
 
@@ -493,7 +493,7 @@ def test_check_attributes_no_scalebase() -> None:
         c.check_attributes()
 
     msg = str(exc_info.value)
-    assert "Circuit is misconfigured" in msg
+    assert "Circuit class (python) is misconfigured" in msg
     assert "scale_base" in msg
 
 
@@ -508,7 +508,7 @@ def test_check_attributes_no_name() -> None:
         c.check_attributes()
 
     msg = str(exc_info.value)
-    assert "Circuit is misconfigured" in msg
+    assert "Circuit class (python) is misconfigured" in msg
     assert "name" in msg
 
 
