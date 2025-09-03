@@ -106,6 +106,6 @@ def int64_conv(
         result = rescaling(scaling_factor, rescale, result)
         return result.astype(np.int64)
 
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         msg = f"Int64Conv failed: {e}"
         raise RuntimeError(msg) from e

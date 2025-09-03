@@ -167,7 +167,7 @@ def _run_compile(args: argparse.Namespace) -> None:
                 dev_mode=True,
             ),
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         msg = f"Process execution failed with args '{args.cmd}': {e}"
         raise CLIError(msg) from e
     print(  # noqa: T201
@@ -225,7 +225,7 @@ def _run_verify(args: argparse.Namespace) -> None:
                 ecc=False,
             ),
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         msg = f"Process execution failed with args '{args.cmd}': {e}"
         raise CLIError(msg) from e
     print(f"[verify] verification complete for proof → {args.proof_path}")  # noqa: T201
@@ -249,7 +249,7 @@ def _run_prove(args: argparse.Namespace) -> None:
                 ecc=False,
             ),
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         msg = f"Process execution failed with args '{args.cmd}': {e}"
         raise CLIError(msg) from e
 
@@ -277,7 +277,7 @@ def _run_witness(args: argparse.Namespace) -> None:
                 witness_file=args.witness_path,
             ),
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         msg = f"Process execution failed with args '{args.cmd}': {e}"
         raise CLIError(msg) from e
     print(  # noqa: T201
@@ -474,7 +474,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Error: {e}", file=sys.stderr)  # noqa: T201
         return 1
     # Convert unexpected exceptions to a clean non-zero exit
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         print(f"Error: {e}", file=sys.stderr)  # noqa: T201
         return 1
     else:

@@ -66,7 +66,7 @@ class GeneralLayerFunctions:
         inputs = self.read_input(file_name)
         try:
             tensor = torch.as_tensor(inputs)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raise InputFileError(
                 file_name,
                 f"Invalid input data for tensor conversion: {e}",
@@ -239,7 +239,7 @@ class GeneralLayerFunctions:
         if hasattr(self, "scale_exponent") and hasattr(self, "scale_base"):
             try:
                 rescaled = torch.div(outputs, self.scale_base**self.scale_exponent)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 msg = "Failed to rescale outputs using scale_base="
                 f"{getattr(self, 'scale_base', None)} "
                 f"and scale_exponent={getattr(self, 'scale_exponent', None)}: {e}"

@@ -68,6 +68,6 @@ def int64_maxpool(
             padding=pads[:2],
         )
         return result.numpy().astype(np.int64)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         msg = f"Int64Gemm failed: {e}"
         raise RuntimeError(msg) from e

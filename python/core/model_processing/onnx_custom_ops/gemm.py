@@ -86,6 +86,6 @@ def int64_gemm7(
         result = rescaling(scaling_factor, rescale, result)
         return result.astype(np.int64)
 
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         msg = f"Int64Gemm failed: {e}"
         raise RuntimeError(msg) from e

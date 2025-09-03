@@ -38,6 +38,6 @@ def int64_relu(x: np.ndarray) -> np.ndarray:
     """
     try:
         return np.maximum(x, 0).astype(np.int64)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         msg = f"Int64Gemm failed: {e}"
         raise RuntimeError(msg) from e
