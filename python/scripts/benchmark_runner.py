@@ -12,6 +12,7 @@ import importlib  # NEW: to load GenericModelONNX dynamically
 
 from python.testing.core.utils.helper_functions import RunType
 from python.testing.core.utils.model_registry import list_available_models, get_models_to_test
+from python.testing.core.circuit_models.generic_onnx import GenericModelONNX
 
 
 def benchmark_tests(fn, *args, **kwargs):
@@ -75,7 +76,14 @@ def get_model_run_kwargs():
     return compile_kwargs, witness_kwargs, prove_kwargs, verify_kwargs
 
 
-# NEW: minimal helper to build the default circuit and target a specific ONNX file
+def _mk_model_for_onnx(onnx_path: str, name_hint: str):
+    m = GenericModelONNX(model_name=name_hint)
+    # make sure the pipeline knows which ONNX to load
+    setattr(m, "model_file_name", onnx_path)
+    setattr(m, "onnx_path", onnx_path)
+    setattr(m, "model_path", onnx_path)
+    return m
+
 def _build_default_circuit_for_onnx(onnx_path: str, name_hint: str | None = None):
     mod = importlib.import_module("python.testing.core.circuit_models.generic_onnx")
     cls = getattr(mod, "GenericModelONNX")
@@ -103,38 +111,29 @@ def _build_default_circuit_for_onnx(onnx_path: str, name_hint: str | None = None
     return inst
 
 
-def benchmark_model(model_name, model_cls_or_onnx, model_run_kwargs, args=(), kwargs=None, runs=1):
+def benchmark_model(model_name, model_spec, model_run_kwargs, args=(), kwargs=None, runs=1):
     if kwargs is None:
         kwargs = {}
-    times = []
-    memories = []
-
-    # Detect whether we were given a class or an ONNX path
-    is_callable = callable(model_cls_or_onnx)
-    is_pathlike = isinstance(model_cls_or_onnx, str)
-
+    times, memories = [], []
     for _ in range(runs):
-        if is_callable:
-            model = model_cls_or_onnx(*args, **kwargs)
-        elif is_pathlike:
-            model = _build_default_circuit_for_onnx(model_cls_or_onnx, name_hint=model_name)
+        if isinstance(model_spec, str) and model_spec.lower().endswith(".onnx"):
+            model = _mk_model_for_onnx(model_spec, model_name)
         else:
-            raise TypeError(f"Unrecognized model spec for '{model_name}': {type(model_cls_or_onnx)}")
+            model = model_spec(*args, **kwargs)
 
         returncode, output = benchmark_tests(model.base_testing, **model_run_kwargs)
         result = parse_benchmark_output(output)
         times.append(result.get("subprocess_time", "ERR"))
         memories.append(result.get("subprocess_memory", "ERR"))
 
-    avg_time = sum(t for t in times if t != "ERR") / len([t for t in times if t != "ERR"]) if "ERR" not in times else -1
-    avg_memory = sum(m for m in memories if m != "ERR") / len([m for m in memories if m != "ERR"]) if "ERR" not in memories else -1
-
+    avg_time = sum(times) / len(times) if "ERR" not in times else -1
+    avg_memory = sum(memories) / len(memories) if "ERR" not in memories else -1
     return {
         "model": model_name,
         "testing_type": model_run_kwargs["run_type"].name,
         "runs": runs,
         "avg_time": avg_time,
-        "avg_memory": avg_memory,
+        "avg_memory": avg_memory
     }
 
 
@@ -154,6 +153,18 @@ def main():
 
     print(args.model)
     selected_models = get_models_to_test(args.model)
+
+    # Fallback: treat tokens ending with .onnx as direct files
+    if not selected_models:
+        pairs = []
+        for tok in (args.model or []):
+            p = Path(tok.replace("\\", "/"))  # normalize if someone pasted backslashes
+            if p.suffix.lower() == ".onnx" and p.is_file():
+                pairs.append((p.stem, str(p)))
+            else:
+                raise SystemExit(f"ONNX file not found: {tok}")
+        selected_models = pairs
+
     print(selected_models)
 
     results = []
@@ -183,13 +194,11 @@ def main():
         print(f"Benchmarking {name}...")
         with tempfile.TemporaryDirectory() as tmpdir:
             circuit_file = os.path.join(tmpdir, "circuit.txt")
-            # CHANGED: quantized model should be .onnx, not .pt
-            quantized_file = os.path.join(tmpdir, "quantized.onnx")
+            quantized_file = os.path.join(tmpdir, "quantized.onnx")   
+            witness_file   = os.path.join(tmpdir, "witness.bin")
+            proof_file     = os.path.join(tmpdir, "proof.bin")
             input_file = os.path.join(tmpdir, "input.json")
             output_file = os.path.join(tmpdir, "output.json")
-            # CHANGED: use .bin for witness/proof (consistent with CLI)
-            witness_file = os.path.join(tmpdir, "witness.bin")
-            proof_file = os.path.join(tmpdir, "proof.bin")
 
             compile_kwargs["circuit_path"] = circuit_file
             compile_kwargs["quantized_path"] = quantized_file
