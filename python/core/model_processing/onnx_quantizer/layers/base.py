@@ -64,7 +64,7 @@ class BaseOpQuantizer:
 
         try:
             return scale_base**scale_exponent
-        except (TypeError, OverflowError, ValueError) as e:
+        except (TypeError, OverflowError, ValueError, Exception) as e:
             key = "scaling"
             raise InvalidConfigError(
                 key,

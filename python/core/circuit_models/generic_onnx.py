@@ -79,7 +79,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
             self.scale_base = 2
             self.scale_exponent = 18
             ONNXConverter.__init__(self)
-        except (FileNotFoundError, ValueError, TypeError, RuntimeError, OSError) as e:
+        except Exception as e:
 
             msg = f"Failed to initialize GenericModelONNX with model '{model_name}'"
             raise CircuitFileError(
@@ -135,7 +135,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
             self.input_shape = [math.prod(shape)]
             x = super().adjust_inputs(input_file)
             self.input_shape = input_shape.copy()
-        except (ValueError, TypeError, AttributeError, OSError) as e:
+        except Exception as e:
             msg = f"Failed to adjust inputs for GenericModelONNX: {e}"
             raise ValueError(msg) from e
         else:
@@ -155,7 +155,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         """
         try:
             raw_outputs = super().get_outputs(inputs)
-        except (ValueError, TypeError, RuntimeError, OSError) as e:
+        except Exception as e:
             msg = "Failed to get outputs for GenericModelONNX"
             raise CircuitRunError(
                 msg,
@@ -189,7 +189,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
             for key in x:
                 x[key] = torch.as_tensor(x[key]).flatten().tolist()
                 x[key] = (torch.as_tensor(x[key]) * scaling).long().tolist()
-        except (ValueError, TypeError, OverflowError) as e:
+        except Exception as e:
             msg = f"Failed to format inputs for GenericModelONNX: {e}"
             raise CircuitProcessingError(
                 msg,

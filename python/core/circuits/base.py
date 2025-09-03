@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from json import JSONDecodeError
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -536,7 +535,7 @@ class Circuit:
 
         try:
             return torch.tensor(value).reshape(shape).tolist()
-        except (RuntimeError, ValueError) as e:
+        except Exception as e:
             msg = f"Failed to reshape input data for '{input_key}'."
             raise CircuitProcessingError(
                 msg,
@@ -560,7 +559,7 @@ class Circuit:
         """
         try:
             to_json(inputs, input_file)
-        except (OSError, TypeError, ValueError) as e:
+        except Exception as e:
             msg = f"Failed to write {var_name} file: {input_file}"
             raise CircuitFileError(
                 msg,
@@ -582,7 +581,7 @@ class Circuit:
         """
         try:
             return read_from_json(input_file)
-        except (FileNotFoundError, JSONDecodeError) as e:
+        except Exception as e:
             msg = f"Failed to read input file: {input_file}"
             raise CircuitFileError(
                 msg,
@@ -752,7 +751,7 @@ class Circuit:
 
                 out[k] = torch.as_tensor(read[k]) * scaling
                 out[k] = out[k].tolist()
-        except (RuntimeError, ValueError, TypeError) as e:
+        except Exception as e:
             msg = f"Failed to scale input data for key '{k}'"
             raise CircuitProcessingError(
                 msg,

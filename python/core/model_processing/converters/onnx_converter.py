@@ -138,7 +138,7 @@ class ONNXConverter(ModelConverter):
         """
         try:
             onnx.save(self.model, file_path)
-        except (OSError, onnx.ONNXException, ValueError) as e:
+        except Exception as e:
             raise ModelSaveError(
                 file_path,
                 model_type=self.model_type,
@@ -159,14 +159,7 @@ class ONNXConverter(ModelConverter):
         """
         try:
             onnx_model = onnx.load(file_path)
-        except (
-            onnx.ONNXException,
-            FileNotFoundError,
-            OSError,
-            ValueError,
-            TypeError,
-            RuntimeError,
-        ) as e:
+        except Exception as e:
             raise ModelLoadError(
                 file_path,
                 model_type=self.model_type,
@@ -177,7 +170,7 @@ class ONNXConverter(ModelConverter):
 
         try:
             self._extract_model_io_info(onnx_model)
-        except (ValueError, TypeError, RuntimeError, OSError) as e:
+        except Exception as e:
             raise IOInfoExtractionError(
                 model_path=file_path,
                 model_type=self.model_type,
@@ -193,7 +186,7 @@ class ONNXConverter(ModelConverter):
         """
         try:
             onnx.save(self.quantized_model, file_path)
-        except (OSError, onnx.ONNXException, ValueError) as e:
+        except Exception as e:
             raise ModelSaveError(
                 file_path,
                 model_type=self.model_type,
@@ -235,7 +228,7 @@ class ONNXConverter(ModelConverter):
     def _onnx_check_model_safely(self: T, model: onnx.ModelProto) -> None:
         try:
             onnx.checker.check_model(model)
-        except (onnx.ONNXException, ValueError) as e:
+        except Exception as e:
             raise InvalidModelError(
                 model_path=getattr(self, "model_file_name", None),
                 reason=f"Model validation failed: {e!s}",
@@ -288,6 +281,8 @@ class ONNXConverter(ModelConverter):
             raise
         except (ValueError, TypeError, RuntimeError, OSError, onnx.ONNXException) as e:
             raise LayerAnalysisError(model_type=self.model_type, reason=str(e)) from e
+        except Exception as e:
+            raise LayerAnalysisError(model_type=self.model_type, reason=str(e)) from e
         else:
             return (architecture, w_and_b)
 
@@ -328,6 +323,7 @@ class ONNXConverter(ModelConverter):
             ValueError,
             TypeError,
             OSError,
+            Exception,
         ) as e:
             raise InferenceError(
                 model_path=path,
@@ -503,7 +499,7 @@ class ONNXConverter(ModelConverter):
                 opts,
                 providers=["CPUExecutionProvider"],
             )
-        except (OSError, onnx.ONNXException, RuntimeError) as e:
+        except (OSError, onnx.ONNXException, RuntimeError, Exception) as e:
             raise InferenceError(
                 model_path,
                 model_type=self.model_type,
@@ -593,7 +589,7 @@ class ONNXConverter(ModelConverter):
         # Can do this step in rust potentially to keep file sizes low if needed
         try:
             np_data = onnx.numpy_helper.to_array(node, constant_dtype)
-        except (ValueError, TypeError, onnx.ONNXException) as e:
+        except (ValueError, TypeError, onnx.ONNXException, Exception) as e:
             raise SerializationError(
                 tensor_name=node.name,
                 reason=f"Failed to convert tensor: {e!s}",
@@ -864,7 +860,14 @@ class ONNXConverter(ModelConverter):
 
         except (QuantizationError, ModelConversionError):
             raise
-        except (onnx.ONNXException, ValueError, TypeError, RuntimeError, OSError) as e:
+        except (
+            onnx.ONNXException,
+            ValueError,
+            TypeError,
+            RuntimeError,
+            OSError,
+            Exception,
+        ) as e:
             msg = "Quantization failed for model"
             f" '{getattr(self, 'model_file_name', 'unknown')}': {e!s}"
             raise ModelConversionError(
@@ -909,7 +912,7 @@ class ONNXConverter(ModelConverter):
             )
         except QuantizationError:
             raise
-        except (RuntimeError, ValueError, TypeError) as e:
+        except (RuntimeError, ValueError, TypeError, Exception) as e:
             raise ModelConversionError(str(e), model_type=self.model_type) from e
 
     def quantize_input(
@@ -977,7 +980,7 @@ class ONNXConverter(ModelConverter):
                 to=onnx.TensorProto.INT64,
                 name=rounded_output_name,
             )
-        except (ValueError, TypeError, RuntimeError, OSError) as e:
+        except (ValueError, TypeError, RuntimeError, OSError, Exception) as e:
             msg = f"Error quantizing inputs: {e}"
             raise ModelConversionError(
                 msg,
@@ -1031,7 +1034,7 @@ class ONNXConverter(ModelConverter):
         for w in w_and_b:
             try:
                 w_and_b_array = np.asarray(w.tensor)
-            except (ValueError, TypeError) as e:
+            except (ValueError, TypeError, Exception) as e:
                 raise SerializationError(
                     tensor_name=getattr(w, "name", None),
                     reason=f"cannot convert to ndarray: {e}",
@@ -1045,7 +1048,7 @@ class ONNXConverter(ModelConverter):
                     w_and_b_scaled = w_and_b_array * scaling
                 w_and_b_out = w_and_b_scaled.astype(np.int64).tolist()
                 w.tensor = w_and_b_out
-            except (ValueError, TypeError, OverflowError) as e:
+            except (ValueError, TypeError, OverflowError, Exception) as e:
                 raise SerializationError(
                     tensor_name=getattr(w, "name", None),
                     reason=str(e),
@@ -1133,7 +1136,7 @@ class ONNXConverter(ModelConverter):
                 [output_name],
                 {input_name: np.asarray(inputs)},
             )
-        except (RuntimeError, ValueError, TypeError) as e:
+        except (RuntimeError, ValueError, TypeError, Exception) as e:
             raise InferenceError(
                 model_path=getattr(self, "quantized_model_path", None),
                 model_type=self.model_type,
