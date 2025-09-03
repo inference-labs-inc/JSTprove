@@ -2,19 +2,21 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import TypeVar
 
 import numpy as np
 import torch
 
+from python.core.circuits.errors import (
+    CircuitFileError,
+    CircuitProcessingError,
+    CircuitRunError,
+)
 from python.core.circuits.zk_model_base import ZKModelBase
 from python.core.model_processing.converters.onnx_converter import (
     ONNXConverter,
     ONNXOpQuantizer,
 )
 from python.core.model_processing.onnx_quantizer.layers.base import BaseOpQuantizer
-
-T = TypeVar("T", bound="ONNXConverter")
 
 
 class GenericModelONNX(ONNXConverter, ZKModelBase):
@@ -59,7 +61,12 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
       `ONNXOpQuantizer`.
     """
 
-    def __init__(self: T, model_name: str, *, use_find_model: bool = False) -> None:
+    def __init__(
+        self: GenericModelONNX,
+        model_name: str,
+        *,
+        use_find_model: bool = False,
+    ) -> None:
         try:
             self.name = "onnx_generic_circuit"
             self.op_quantizer = ONNXOpQuantizer()
@@ -73,12 +80,15 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
             self.scale_exponent = 18
             ONNXConverter.__init__(self)
         except (FileNotFoundError, ValueError, TypeError, RuntimeError, OSError) as e:
-            msg = (
-                f"Failed to initialize GenericModelONNX with model '{model_name}': {e}"
-            )
-            raise RuntimeError(msg) from e
 
-    def find_model(self: T, model_name: str) -> str:
+            msg = f"Failed to initialize GenericModelONNX with model '{model_name}'"
+            raise CircuitFileError(
+                msg,
+                file_path=model_name,
+                details={"original_error": str(e)},
+            ) from e
+
+    def find_model(self: GenericModelONNX, model_name: str) -> str:
         """Resolve the ONNX model file path.
 
         Args:
@@ -104,11 +114,13 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
 
         if not Path(models_onnx_path).exists():
             msg = f"Model file not found: '{model_name}'"
-            f" (checked '{model_name}' and '{models_onnx_path}')"
-            raise FileNotFoundError(msg)
+            raise CircuitFileError(
+                msg,
+                file_path=models_onnx_path,
+            )
         return models_onnx_path
 
-    def adjust_inputs(self: T, input_file: str) -> str:
+    def adjust_inputs(self: GenericModelONNX, input_file: str) -> str:
         """Preprocess and flatten model inputs for the circuit.
 
         Args:
@@ -130,7 +142,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
             return x
 
     def get_outputs(
-        self: T,
+        self: GenericModelONNX,
         inputs: np.ndarray | list[int] | torch.Tensor,
     ) -> torch.Tensor:
         """Run inference and flatten outputs.
@@ -144,13 +156,17 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         try:
             raw_outputs = super().get_outputs(inputs)
         except (ValueError, TypeError, RuntimeError, OSError) as e:
-            msg = f"Failed to get outputs for GenericModelONNX: {e}"
-            raise RuntimeError(msg) from e
+            msg = "Failed to get outputs for GenericModelONNX"
+            raise CircuitRunError(
+                msg,
+                operation="get_outputs",
+                details={"original_error": str(e)},
+            ) from e
         else:
             return torch.as_tensor(np.array(raw_outputs)).flatten()
 
     def format_inputs(
-        self: T,
+        self: GenericModelONNX,
         inputs: np.ndarray | list[int] | torch.Tensor,
     ) -> dict[str, list[int]]:
         """Format raw inputs into scaled integer tensors for the circuit
@@ -175,7 +191,12 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
                 x[key] = (torch.as_tensor(x[key]) * scaling).long().tolist()
         except (ValueError, TypeError, OverflowError) as e:
             msg = f"Failed to format inputs for GenericModelONNX: {e}"
-            raise ValueError(msg) from e
+            raise CircuitProcessingError(
+                msg,
+                operation="format_inputs",
+                data_type=type(inputs).__name__,
+                details={"original_error": str(e)},
+            ) from e
         else:
             return x
 
