@@ -14,6 +14,9 @@ from python.testing.core.utils.helper_functions import RunType
 from python.testing.core.utils.model_registry import list_available_models, get_models_to_test
 from python.testing.core.circuit_models.generic_onnx import GenericModelONNX
 
+os.environ.setdefault("OMPI_MCA_plm", "isolated")
+os.environ.setdefault("OMPI_MCA_btl", "self,tcp")
+
 
 def benchmark_tests(fn, *args, **kwargs):
     f = io.StringIO()
