@@ -24,7 +24,7 @@ class MaxpoolQuantizer(BaseOpQuantizer):
     """
 
     def __init__(
-        self: BaseOpQuantizer,
+        self: MaxpoolQuantizer,
         new_initializer: dict[str, onnx.TensorProto] | None = None,
     ) -> None:
         super().__init__()
@@ -76,7 +76,7 @@ class MaxpoolQuantizer(BaseOpQuantizer):
         ]
 
     def check_supported(
-        self: BaseOpQuantizer,
+        self: MaxpoolQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto],
     ) -> None:
@@ -96,7 +96,7 @@ class MaxpoolQuantizer(BaseOpQuantizer):
         self.check_all_params_exist(node)
         self.check_params_size(node)
 
-    def check_all_params_exist(self: BaseOpQuantizer, node: onnx.NodeProto) -> None:
+    def check_all_params_exist(self: MaxpoolQuantizer, node: onnx.NodeProto) -> None:
         """Checks all parameters that are needed, do exist
 
         Args:
@@ -120,7 +120,7 @@ class MaxpoolQuantizer(BaseOpQuantizer):
                 "2D",
             )
 
-    def check_params_size(self: BaseOpQuantizer, node: onnx.NodeProto) -> None:
+    def check_params_size(self: MaxpoolQuantizer, node: onnx.NodeProto) -> None:
         """Checks dimension of the layer and ensures that it is supported
 
         Args:

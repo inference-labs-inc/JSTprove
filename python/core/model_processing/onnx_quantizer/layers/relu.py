@@ -18,14 +18,14 @@ class ReluQuantizer(BaseOpQuantizer):
     """
 
     def __init__(
-        self: BaseOpQuantizer,
+        self: ReluQuantizer,
         new_initializer: dict[str, onnx.TensorProto] | None = None,
     ) -> None:
         super().__init__()
         _ = new_initializer
 
     def quantize(
-        self: BaseOpQuantizer,
+        self: ReluQuantizer,
         node: onnx.NodeProto,
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
@@ -59,7 +59,7 @@ class ReluQuantizer(BaseOpQuantizer):
         ]
 
     def check_supported(
-        self: BaseOpQuantizer,
+        self: ReluQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto] | None = None,
     ) -> None:

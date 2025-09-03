@@ -22,13 +22,13 @@ class ConvQuantizer(BaseOpQuantizer):
     """
 
     def __init__(
-        self: BaseOpQuantizer,
+        self: ConvQuantizer,
         new_initializers: dict[str, onnx.TensorProto],
     ) -> None:
         self.new_initializers = new_initializers
 
     def quantize(
-        self: BaseOpQuantizer,
+        self: ConvQuantizer,
         node: onnx.NodeProto,
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
@@ -97,7 +97,7 @@ class ConvQuantizer(BaseOpQuantizer):
         return nodes
 
     def check_supported(
-        self: BaseOpQuantizer,
+        self: ConvQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto],
     ) -> None:
@@ -133,7 +133,7 @@ class ConvQuantizer(BaseOpQuantizer):
         self.check_supported_shape(node, initializer_map)
         self.check_all_params_exist(node)
 
-    def check_all_params_exist(self: BaseOpQuantizer, node: onnx.NodeProto) -> None:
+    def check_all_params_exist(self: ConvQuantizer, node: onnx.NodeProto) -> None:
         """Verify that all required Conv attributes are present.
 
         Args:
@@ -146,7 +146,7 @@ class ConvQuantizer(BaseOpQuantizer):
         self.validate_required_attrs(node, required_attrs)
 
     def check_supported_shape(
-        self: BaseOpQuantizer,
+        self: ConvQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto],
     ) -> None:

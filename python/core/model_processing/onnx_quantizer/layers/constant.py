@@ -37,14 +37,14 @@ class ConstantQuantizer(BaseOpQuantizer):
     }  # ops that consume numeric constants
 
     def __init__(
-        self: BaseOpQuantizer,
+        self: ConstantQuantizer,
         new_initializer: dict[str, onnx.TensorProto] | None = None,
     ) -> None:
         super().__init__()
         _ = new_initializer
 
     def quantize(
-        self: BaseOpQuantizer,
+        self: ConstantQuantizer,
         node: onnx.NodeProto,
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
@@ -104,7 +104,7 @@ class ConstantQuantizer(BaseOpQuantizer):
         return [node]
 
     def check_supported(
-        self: BaseOpQuantizer,
+        self: ConstantQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto] | None = None,
     ) -> None:

@@ -22,13 +22,13 @@ class GemmQuantizer(BaseOpQuantizer):
     """
 
     def __init__(
-        self: BaseOpQuantizer,
+        self: GemmQuantizer,
         new_initializers: dict[str, onnx.TensorProto],
     ) -> None:
         self.new_initializers = new_initializers
 
     def quantize(
-        self: BaseOpQuantizer,
+        self: GemmQuantizer,
         node: onnx.NodeProto,
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
@@ -95,7 +95,7 @@ class GemmQuantizer(BaseOpQuantizer):
         return nodes
 
     def check_supported(
-        self: BaseOpQuantizer,
+        self: GemmQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto] | None = None,
     ) -> None:

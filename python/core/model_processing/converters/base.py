@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import TYPE_CHECKING, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Optional, Union
 
 if TYPE_CHECKING:
     import numpy as np
@@ -21,8 +21,6 @@ ONNXLayerDict = dict[
 
 CircuitParamsDict = dict[str, Union[int, dict[str, bool]]]
 
-T = TypeVar("T", bound="ModelConverter")
-
 
 class ModelConverter(ABC):
     """
@@ -40,7 +38,7 @@ class ModelConverter(ABC):
     """
 
     @abstractmethod
-    def save_model(self: T, file_path: str) -> None:
+    def save_model(self: ModelConverter, file_path: str) -> None:
         """Save the current model to the specified file path.
 
         Args:
@@ -49,7 +47,7 @@ class ModelConverter(ABC):
 
     @abstractmethod
     def load_model(
-        self: T,
+        self: ModelConverter,
         file_path: str,
         model_type: ModelType | None = None,
     ) -> onnx.ModelProto:
@@ -67,7 +65,7 @@ class ModelConverter(ABC):
         """
 
     @abstractmethod
-    def save_quantized_model(self: T, file_path: str) -> None:
+    def save_quantized_model(self: ModelConverter, file_path: str) -> None:
         """Save the quantized version of the model to the specified file path.
 
         Args:
@@ -75,7 +73,7 @@ class ModelConverter(ABC):
         """
 
     @abstractmethod
-    def load_quantized_model(self: T, file_path: str) -> None:
+    def load_quantized_model(self: ModelConverter, file_path: str) -> None:
         """Load a quantized model from a file.
 
         Args:
@@ -84,7 +82,7 @@ class ModelConverter(ABC):
 
     @abstractmethod
     def quantize_model(
-        self: T,
+        self: ModelConverter,
         model: onnx.ModelProto,
         scale_base: int,
         scale_exponent: int,
@@ -106,7 +104,7 @@ class ModelConverter(ABC):
 
     @abstractmethod
     def get_weights(
-        self: T,
+        self: ModelConverter,
     ) -> tuple[
         dict[str, list[ONNXLayerDict]],
         dict[str, list[ONNXLayerDict]],
@@ -125,11 +123,14 @@ class ModelConverter(ABC):
         """
 
     @abstractmethod
-    def get_model_and_quantize(self: T) -> None:
+    def get_model_and_quantize(self: ModelConverter) -> None:
         """Retrieve the model and quantize it in a single operation."""
 
     @abstractmethod
-    def get_outputs(self: T, inputs: np.ndarray | torch.Tensor) -> list[np.ndarray]:
+    def get_outputs(
+        self: ModelConverter,
+        inputs: np.ndarray | torch.Tensor,
+    ) -> list[np.ndarray]:
         """
         Run inference on the given inputs and return model outputs.
 

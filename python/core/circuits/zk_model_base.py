@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from python.core.circuits.base import Circuit
 from python.core.utils.general_layer_functions import GeneralLayerFunctions
 
@@ -13,7 +15,7 @@ class ZKModelBase(GeneralLayerFunctions, Circuit):
     architecture, layers, and circuit details.
     """
 
-    def __init__(self: "ZKModelBase") -> None:
+    def __init__(self: ZKModelBase) -> None:
         """Initialize the ZK model. Must be overridden by subclasses
 
         Raises:

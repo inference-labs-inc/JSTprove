@@ -4,7 +4,7 @@ import copy
 import logging
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional, TypeVar, Union
+from typing import Optional, Union
 
 import numpy as np
 import onnx
@@ -50,8 +50,6 @@ ONNXLayerDict = dict[
 ONNXIODict = dict[str, Union[str, int, list[int]]]
 
 CircuitParamsDict = dict[str, Union[int, dict[str, bool]]]
-
-T = TypeVar("T", bound="ONNXConverter")
 
 
 @dataclass
@@ -112,7 +110,7 @@ class ONNXIO:
 class ONNXConverter(ModelConverter):
     """Concrete implementation of `ModelConverter` for ONNX models."""
 
-    def __init__(self: T) -> None:
+    def __init__(self: ONNXConverter) -> None:
         """Initialize the converter and its operator quantizer.
 
         Initializes:
@@ -123,7 +121,7 @@ class ONNXConverter(ModelConverter):
         self.model_type = ModelType.ONNX
         self.logger = logging.getLogger(__name__)
 
-    def save_model(self: T, file_path: str) -> None:
+    def save_model(self: ONNXConverter, file_path: str) -> None:
         """Serialize the ONNX model to file.
 
         Args:
@@ -145,7 +143,7 @@ class ONNXConverter(ModelConverter):
                 reason=str(e),
             ) from e
 
-    def load_model(self: T, file_path: str) -> onnx.ModelProto:
+    def load_model(self: ONNXConverter, file_path: str) -> onnx.ModelProto:
         """Load an ONNX model from file and extract basic I/O metadata.
 
         Args:
@@ -178,7 +176,7 @@ class ONNXConverter(ModelConverter):
             ) from e
         return self.model
 
-    def save_quantized_model(self: T, file_path: str) -> None:
+    def save_quantized_model(self: ONNXConverter, file_path: str) -> None:
         """Serialize the quantized ONNX model to file.
 
         Args:
@@ -194,7 +192,7 @@ class ONNXConverter(ModelConverter):
             ) from e
 
     # Not sure this is ideal
-    def load_quantized_model(self: T, file_path: str) -> None:
+    def load_quantized_model(self: ONNXConverter, file_path: str) -> None:
         """Load a quantized ONNX model and create an inference session.
 
         Note
@@ -225,7 +223,7 @@ class ONNXConverter(ModelConverter):
 
         self.quantized_model_path = file_path
 
-    def _onnx_check_model_safely(self: T, model: onnx.ModelProto) -> None:
+    def _onnx_check_model_safely(self: ONNXConverter, model: onnx.ModelProto) -> None:
         try:
             onnx.checker.check_model(model)
         except Exception as e:
@@ -235,7 +233,7 @@ class ONNXConverter(ModelConverter):
             ) from e
 
     def analyze_layers(
-        self: T,
+        self: ONNXConverter,
         output_name_to_shape: dict[str, list[int]] | None = None,
     ) -> tuple[list[ONNXLayer], list[ONNXLayer]]:
         """Analyze the onnx model graph into
@@ -287,7 +285,7 @@ class ONNXConverter(ModelConverter):
             return (architecture, w_and_b)
 
     def run_model_onnx_runtime(
-        self: T,
+        self: ONNXConverter,
         path: str,
         inputs: torch.Tensor,
     ) -> list[np.ndarray]:
@@ -334,7 +332,7 @@ class ONNXConverter(ModelConverter):
             return outputs
 
     def _collect_constant_values(
-        self: T,
+        self: ONNXConverter,
         model: onnx.ModelProto,
     ) -> dict[str, np.ndarray]:
         """Collect constant values from Constant nodes in the model.
@@ -357,7 +355,7 @@ class ONNXConverter(ModelConverter):
         return constant_values
 
     def _attach_constant_parameters(
-        self: T,
+        self: ONNXConverter,
         layer: ONNXLayer,
         node: NodeProto,
         constant_values: dict[str, np.ndarray],
@@ -388,7 +386,7 @@ class ONNXConverter(ModelConverter):
                 )
 
     def get_model_architecture(
-        self: T,
+        self: ONNXConverter,
         model: onnx.ModelProto,
         output_name_to_shape: dict[str, list[int]],
         domain_to_version: dict[str, int] | None = None,
@@ -442,7 +440,7 @@ class ONNXConverter(ModelConverter):
         return layers
 
     def get_model_w_and_b(
-        self: T,
+        self: ONNXConverter,
         model: onnx.ModelProto,
         output_name_to_shape: dict[str, list[int]],
         id_count: int = 0,
@@ -480,7 +478,10 @@ class ONNXConverter(ModelConverter):
 
         return layers
 
-    def _create_inference_session(self: T, model_path: str) -> InferenceSession:
+    def _create_inference_session(
+        self: ONNXConverter,
+        model_path: str,
+    ) -> InferenceSession:
         """Internal helper to create and configure an ONNX Runtime InferenceSession.
         Registers a custom ops shared library for use with the
         custom quantized operations.
@@ -507,7 +508,7 @@ class ONNXConverter(ModelConverter):
             ) from e
 
     def analyze_layer(
-        self: T,
+        self: ONNXConverter,
         node: NodeProto,
         output_name_to_shape: dict[str, list[int]],
         id_count: int = -1,
@@ -539,7 +540,7 @@ class ONNXConverter(ModelConverter):
         )
         params = parse_attributes(node.attribute)
 
-        # 💡 Extract output shapes
+        # Extract output shapes
         output_shapes = {
             out_name: output_name_to_shape.get(out_name, []) for out_name in outputs
         }
@@ -556,7 +557,7 @@ class ONNXConverter(ModelConverter):
         )
 
     def analyze_constant(
-        self: T,
+        self: ONNXConverter,
         node: TensorProto,
         output_name_to_shape: dict[str, list[int]],
         id_count: int = -1,
@@ -611,7 +612,7 @@ class ONNXConverter(ModelConverter):
         )
 
     def _prepare_model_for_quantization(
-        self: T,
+        self: ONNXConverter,
         unscaled_model: onnx.ModelProto,
     ) -> tuple[onnx.ModelProto, dict[str, onnx.TensorProto], list[str]]:
         """Prepare the model for quantization by creating a copy and necessary mappings.
@@ -630,7 +631,7 @@ class ONNXConverter(ModelConverter):
         return model, initializer_map, input_names
 
     def _quantize_inputs(
-        self: T,
+        self: ONNXConverter,
         model: onnx.ModelProto,
         input_names: list[str],
         scale_base: int,
@@ -664,7 +665,7 @@ class ONNXConverter(ModelConverter):
                         node.input[idx] = output_name
         return new_nodes
 
-    def _update_input_types(self: T, model: onnx.ModelProto) -> None:
+    def _update_input_types(self: ONNXConverter, model: onnx.ModelProto) -> None:
         """Update input tensor types from float32 to float64.
 
         Args:
@@ -676,7 +677,7 @@ class ONNXConverter(ModelConverter):
                 tensor_type.elem_type = TensorProto.DOUBLE
 
     def _quantize_nodes(
-        self: T,
+        self: ONNXConverter,
         model: onnx.ModelProto,
         scale_config: ScaleConfig,
         rescale_config: dict | None,
@@ -714,7 +715,7 @@ class ONNXConverter(ModelConverter):
         return quantized_nodes
 
     def _process_initializers(
-        self: T,
+        self: ONNXConverter,
         model: onnx.ModelProto,
         initializer_map: dict[str, onnx.TensorProto],
     ) -> list[onnx.TensorProto]:
@@ -746,7 +747,7 @@ class ONNXConverter(ModelConverter):
 
         return kept_initializers
 
-    def _update_graph_types(self: T, model: onnx.ModelProto) -> None:
+    def _update_graph_types(self: ONNXConverter, model: onnx.ModelProto) -> None:
         """Update output and value_info types to INT64.
 
         Args:
@@ -758,7 +759,7 @@ class ONNXConverter(ModelConverter):
         for vi in model.graph.value_info:
             vi.type.tensor_type.elem_type = TensorProto.INT64
 
-    def _add_custom_domain(self: T, model: onnx.ModelProto) -> None:
+    def _add_custom_domain(self: ONNXConverter, model: onnx.ModelProto) -> None:
         """Add custom opset domain if not present.
 
         Args:
@@ -772,7 +773,7 @@ class ONNXConverter(ModelConverter):
         if "ai.onnx.contrib" not in domains:
             model.opset_import.append(custom_domain)
 
-    def _log_quantization_results(self: T, model: onnx.ModelProto) -> None:
+    def _log_quantization_results(self: ONNXConverter, model: onnx.ModelProto) -> None:
         """Log quantization results for debugging.
 
         Args:
@@ -793,7 +794,7 @@ class ONNXConverter(ModelConverter):
             self.logger.debug("Initializer", extra={"layer_name": layer.name})
 
     def quantize_model(
-        self: T,
+        self: ONNXConverter,
         unscaled_model: onnx.ModelProto,
         scale_base: int,
         scale_exponent: int,
@@ -878,7 +879,7 @@ class ONNXConverter(ModelConverter):
             return model
 
     def quantize_layer(
-        self: T,
+        self: ONNXConverter,
         node: onnx.NodeProto,
         model: onnx.ModelProto,
         scale_config: ScaleConfig,
@@ -916,7 +917,7 @@ class ONNXConverter(ModelConverter):
             raise ModelConversionError(str(e), model_type=self.model_type) from e
 
     def quantize_input(
-        self: T,
+        self: ONNXConverter,
         input_name: str,
         op_quantizer: ONNXOpQuantizer,
         scale_base: int,
@@ -989,7 +990,10 @@ class ONNXConverter(ModelConverter):
         else:
             return output_name, mul_node, floor_node, cast_to_int64
 
-    def _extract_model_io_info(self: T, onnx_model: onnx.ModelProto) -> None:
+    def _extract_model_io_info(
+        self: ONNXConverter,
+        onnx_model: onnx.ModelProto,
+    ) -> None:
         """Populate input metadata from a loaded ONNX model.
 
         Args:
@@ -1000,7 +1004,7 @@ class ONNXConverter(ModelConverter):
         ]
         self.input_shape = get_input_shapes(onnx_model)
 
-    def get_weights(self: T) -> tuple[
+    def get_weights(self: ONNXConverter) -> tuple[
         dict[str, list[ONNXLayerDict]],
         dict[str, list[ONNXLayerDict]],
         CircuitParamsDict,
@@ -1080,7 +1084,7 @@ class ONNXConverter(ModelConverter):
         self.save_quantized_model("test.onnx")
         return architecture, weights, circuit_params
 
-    def get_model_and_quantize(self: T) -> None:
+    def get_model_and_quantize(self: ONNXConverter) -> None:
         """Load the configured model (by path) and build its quantized form.
 
         Expects the instance to define ``self.model_file_name`` beforehand.
@@ -1100,7 +1104,10 @@ class ONNXConverter(ModelConverter):
             rescale_config=getattr(self, "rescale_config", {}),
         )
 
-    def get_outputs(self: T, inputs: np.ndarray | torch.Tensor) -> list[np.ndarray]:
+    def get_outputs(
+        self: ONNXConverter,
+        inputs: np.ndarray | torch.Tensor,
+    ) -> list[np.ndarray]:
         """Run the currently loaded (quantized) model via ONNX Runtime.
 
         Args:

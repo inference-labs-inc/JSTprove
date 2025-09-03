@@ -42,7 +42,7 @@ class CircuitConfigurationError(CircuitError):
     ) -> None:
         if missing_attributes and not message:
             message = (
-                "Circuit is misconfigured."
+                "Circuit class (python) is misconfigured."
                 f" Missing required attributes: {', '.join(missing_attributes)}"
             )
         elif not message:
@@ -77,7 +77,7 @@ class CircuitInputError(CircuitError):
                 msg_parts.append(f"Got: {actual!r}.")
             message = " ".join(msg_parts)
         elif not message:
-            message = "Invalid circuit input."
+            message = "Invalid circuit class (python) input."
         super().__init__(message, details)
         self.parameter = parameter
         self.expected = expected
