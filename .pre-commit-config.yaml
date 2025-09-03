@@ -34,9 +34,6 @@ repos:
           '--per-file-ignores=python/tests/**.py:SLF001', # Allows private members to be accessed in tests (_file_info, _compile_preprocessing)
           '--per-file-ignores=python/tests/**.py:ARG001', # Allows unused function arguments in tests (used for mocked variables)
           '--per-file-ignores=python/core/model_processing/onnx_custom_ops/**.py:PLR0913', # Allows more arguments in onnx_custom_ops, due to necessity of integration
-
-
-
         ]
 
   # Rust formatting and linting
