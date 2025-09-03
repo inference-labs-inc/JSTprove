@@ -60,7 +60,7 @@ def test_compute_and_store_output_saves(
 
 
 @pytest.mark.unit()
-@patch("python.core.utils.helper_functions.os.path.exists", return_value=True)
+@patch("python.core.utils.helper_functions.Path.exists", return_value=True)
 @patch(
     "python.core.utils.helper_functions.open",
     new_callable=mock_open,
@@ -83,6 +83,7 @@ def test_compute_and_store_output_loads_from_cache(
 
     d = Dummy()
     output = d.get_outputs()
+    print(output)
     assert output == {"out": 456}
 
 

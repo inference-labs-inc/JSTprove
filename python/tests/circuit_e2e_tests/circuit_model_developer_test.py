@@ -13,7 +13,6 @@ from python.core.circuits.errors import CircuitRunError
 # Assume these are your models
 # Enums, utils
 from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
-
 from python.tests.circuit_e2e_tests.helper_fns_for_tests import (
     BAD_OUTPUT,
     GOOD_OUTPUT,
@@ -338,7 +337,8 @@ def test_witness_prove_verify_true_inputs_dev_expander_call(
     ), "Expected 'expander-exec prove succeeded' but it was not found."
 
     assert stdout.count("proving") == 1, "Expected 'proving' but it was not found."
-    
+
+
 @pytest.mark.e2e()
 def test_witness_read_after_write_json(
     model_fixture: dict[str, Any],
@@ -752,7 +752,6 @@ def test_witness_unscaled_and_incorrect_shape_input(
             write_json=False,
             quantized_path=str(model_fixture["quantized_model"]),
         ),
-
     )
 
     # Step 3: Validate expected outputs and no errors
