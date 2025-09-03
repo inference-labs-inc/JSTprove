@@ -60,18 +60,19 @@ def test_compute_and_store_output_saves(
 
 
 @pytest.mark.unit()
-@patch("python.core.utils.helper_functions.Path.exists", return_value=True)
-@patch(
-    "python.core.utils.helper_functions.open",
-    new_callable=mock_open,
-    read_data='{"out": 456}',
-)
+@patch("python.core.utils.helper_functions.Path")
 @patch("python.core.utils.helper_functions.json.load", return_value={"out": 456})
 def test_compute_and_store_output_loads_from_cache(
     mock_load: MagicMock,
-    mock_file: MagicMock,
-    mock_exists: MagicMock,
+    mock_path_class: MagicMock,
 ) -> None:
+    # Arrange the Path mock
+    mock_path_instance = MagicMock()
+    mock_path_instance.exists.return_value = True
+    mock_path_instance.open.return_value = mock_open(
+        read_data='{"out": 456}',
+    ).return_value
+    mock_path_class.return_value = mock_path_instance
 
     class Dummy:
         name = "test"
@@ -81,9 +82,11 @@ def test_compute_and_store_output_loads_from_cache(
         def get_outputs(self: Dummy) -> dict[str, int]:
             return {"out": 999}  # should not run
 
+    # Act
     d = Dummy()
     output = d.get_outputs()
-    print(output)
+
+    # Assert
     assert output == {"out": 456}
 
 
