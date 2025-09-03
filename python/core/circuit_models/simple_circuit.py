@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 from random import randint
-from typing import TypeVar
 
 from python.core.circuits.base import Circuit, RunType
 from python.core.utils.helper_functions import CircuitExecutionConfig, ZKProofSystems
 
-T = TypeVar("T", bound="SimpleCircuit")
-
 
 class SimpleCircuit(Circuit):
-    def __init__(self: T) -> None:
+    def __init__(self: SimpleCircuit) -> None:
         # Initialize the base class
         super().__init__()
 
@@ -30,7 +27,7 @@ class SimpleCircuit(Circuit):
 
         self.input_shape = [1]
 
-    def get_inputs(self: T) -> dict[str, int]:
+    def get_inputs(self: SimpleCircuit) -> dict[str, int]:
         """Retrieve the current input values for the circuit.
 
         Returns:
@@ -38,7 +35,7 @@ class SimpleCircuit(Circuit):
         """
         return {"value_a": self.input_a, "value_b": self.input_b, "nonce": self.nonce}
 
-    def get_outputs(self: T, inputs: dict[str, int] | None = None) -> int:
+    def get_outputs(self: SimpleCircuit, inputs: dict[str, int] | None = None) -> int:
         """Compute the output of the circuit.
 
         Args:
@@ -60,7 +57,7 @@ class SimpleCircuit(Circuit):
         )
         return inputs["value_a"] + inputs["value_b"]
 
-    def format_inputs(self: T, inputs: dict[str, int]) -> dict[str, int]:
+    def format_inputs(self: SimpleCircuit, inputs: dict[str, int]) -> dict[str, int]:
         """Format the inputs for the circuit.
 
         Args:
