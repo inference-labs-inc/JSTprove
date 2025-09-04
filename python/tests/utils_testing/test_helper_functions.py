@@ -181,6 +181,7 @@ def test_prepare_io_files_runs_func(
 
 
 # ---------- to_json ----------
+@pytest.mark.unit()
 @patch("python.core.utils.helper_functions.Path")
 @patch("python.core.utils.helper_functions.json.dump")
 def test_to_json_saves_json(mock_dump: MagicMock, mock_path: MagicMock) -> None:
@@ -200,6 +201,7 @@ def test_to_json_saves_json(mock_dump: MagicMock, mock_path: MagicMock) -> None:
 
 
 # ---------- read_from_json ----------
+@pytest.mark.unit()
 @patch("python.core.utils.helper_functions.Path")
 @patch("python.core.utils.helper_functions.json.load", return_value={"x": 42})
 def test_read_from_json_loads_json(mock_load: MagicMock, mock_path: MagicMock) -> None:

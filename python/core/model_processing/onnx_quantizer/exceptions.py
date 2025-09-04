@@ -10,10 +10,8 @@ class QuantizationError(Exception):
     """
 
     GENERIC_MESSAGE = (
-        "\nThe model submitted is not currently supported by JSTProve."
-        "\nTo enter your model in our support integration queue,"
-        "please request support for your model in the JSTProve channel"
-        f"of the Inference Labs Discord:{REPORTING_URL}"
+        "\nThis model is not supported by JSTProve."
+        "\nSubmit model support requests via the JSTProve channel: {REPORTING_URL},"
     )
 
     def __init__(self: Exception, message: str) -> None:
