@@ -1,9 +1,27 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
 import numpy as np
 import onnx
 from onnx import helper, numpy_helper
-from typing import List, Optional
 
-from python.core.model_processing.onnx_custom_ops.onnx_helpers import create_quantized_initializer, replace_input_references
+from python.core.model_processing.onnx_custom_ops.onnx_helpers import (
+    replace_input_references,
+)
+from python.core.model_processing.onnx_quantizer.exceptions import (
+    HandlerImplementationError,
+    InitializerNotFoundError,
+    InvalidConfigError,
+    InvalidParamError,
+)
+
+
+@dataclass
+class ScaleConfig:
+    exponent: int
+    base: int
+    rescale: bool
 
 
 class BaseOpQuantizer:
@@ -19,45 +37,142 @@ class BaseOpQuantizer:
             A list of initializers created during quantization.
             These should be added to the graph after processing.
     """
-    def __init__(self):
+
+    def __init__(self: BaseOpQuantizer) -> None:
         self.new_initializers: list[onnx.TensorProto] = []
 
-    def quantize(self,
+    @staticmethod
+    def get_scaling(scale_base: int, scale_exponent: int) -> int:
+        """Validate and compute the scaling factor.
+
+        Args:
+            scale_base (int): Base for the scaling exponent.
+            scale_exponent (int): Scaling exponent.
+
+        Returns:
+            int: The computed scaling factor (scale_base ** scale_exponent).
+
+        Raises:
+            InvalidConfigError: If parameters are invalid.
+        """
+        if scale_base <= 0:
+            key = "scale_base"
+            raise InvalidConfigError(key, scale_base, expected="> 0")
+        if scale_exponent < 0:
+            key = "scale_exponent"
+            raise InvalidConfigError(key, scale_exponent, expected=">= 0")
+
+        try:
+            return scale_base**scale_exponent
+        except (TypeError, OverflowError, ValueError, Exception) as e:
+            key = "scaling"
+            raise InvalidConfigError(
+                key,
+                f"{scale_base}^{scale_exponent}",
+                str(e),
+            ) from e
+
+    @staticmethod
+    def validate_node_has_output(node: onnx.NodeProto) -> None:
+        """Ensure a node has at least one output.
+
+        Args:
+            node (onnx.NodeProto): The node to validate.
+            op_type (str): Name of the operator type for error reporting.
+
+        Raises:
+            HandlerImplementationError: If the node has no outputs.
+        """
+        if not node.output or len(node.output) == 0:
+            raise HandlerImplementationError(
+                op_type=node.op_type,
+                message=f"Node '{node.name or '<unnamed>'}' of type '{node.op_type}'"
+                " has no outputs.",
+            )
+
+    @staticmethod
+    def validate_required_attrs(
         node: onnx.NodeProto,
-        rescale: bool,
+        required_attrs: list[str],
+    ) -> None:
+        """
+        Ensure that a node contains all required attributes.
+
+        Args:
+            node (onnx.NodeProto): The ONNX node to validate.
+            required_attrs (list[str]): list of attribute names that must exist.
+            op_type (str): Name of the operator type for error reporting.
+
+        Raises:
+            InvalidParamError: If any required attribute is missing.
+        """
+        missing_attrs = []
+        for attr_name in required_attrs:
+            found = any(attr.name == attr_name for attr in node.attribute)
+            if not found:
+                missing_attrs.append(attr_name)
+
+        if missing_attrs:
+            missing_str = ", ".join(missing_attrs)
+            raise InvalidParamError(
+                node_name=node.name,
+                op_type=node.op_type,
+                message=f"Missing required attributes: {missing_str}",
+            )
+
+    def quantize(
+        self: BaseOpQuantizer,
+        node: onnx.NodeProto,
         graph: onnx.GraphProto,
-        scale_exponent: int,
-        scale_base: int,
+        scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
-    ) -> List[onnx.NodeProto]:      
+    ) -> list[onnx.NodeProto]:
         """
         Quantize the given node.
 
         Must be implemented by subclasses.
 
         Raises:
-            NotImplementedError: If called on BaseOpQuantizer directly.
+            HandlerImplementationError: If subclass does not implement quantize
         """
-        # TODO should indicate this is a developer error, for not implementing the op
-        raise NotImplementedError("Must implement quantize method for used layer")
-    
-    def check_supported(self, node: onnx.NodeProto, initializer_map: dict[str, onnx.TensorProto] = None) -> Optional[str]:
+        _ = node, graph, scale_config, initializer_map
+        raise HandlerImplementationError(
+            op_type=self.__class__.__name__,
+            message="quantize() not implemented in subclass.",
+        )
+
+    def check_supported(
+        self: BaseOpQuantizer,
+        node: onnx.NodeProto,
+        initializer_map: dict[str, onnx.TensorProto] | None = None,
+    ) -> str | None:
         """
         Check if the node is supported by the quantizer.
 
         Must be overridden by subclasses to validate parameters.
 
         Raises:
-            NotImplementedError: If called on BaseOpQuantizer directly.
+            HandlerImplementationError: If called on BaseOpQuantizer directly.
         """
-        # TODO should indicate this is a developer error, for not implementing the op
-        raise NotImplementedError("Must implement check_supported method for used layer")
-    
-    def rescale_layer(self, node: onnx.NodeProto, scale_base: int, scale_exponent: int, graph: onnx.GraphProto) -> List[onnx.NodeProto]:
-        """
-        Helper function for any quantizer. Used to add a rescaling step after the given node.
+        _ = node, initializer_map
+        raise HandlerImplementationError(
+            op_type=self.__class__.__name__,
+            message="check_supported() not implemented in subclass.",
+        )
 
-        This replaces the node's output with a scaled version using a Div op. This function incorporates the logic to insert and restructure the graph.
+    def rescale_layer(
+        self: BaseOpQuantizer,
+        node: onnx.NodeProto,
+        scale_base: int,
+        scale_exponent: int,
+        graph: onnx.GraphProto,
+    ) -> list[onnx.NodeProto]:
+        """
+        Helper function for any quantizer.
+        Used to add a rescaling step after the given node.
+
+        This replaces the node's output with a scaled version using a Div op.
+        This function incorporates the logic to insert and restructure the graph.
 
         Args:
             node (onnx.NodeProto): Node to rescale.
@@ -66,16 +181,25 @@ class BaseOpQuantizer:
             graph (onnx.GraphProto): The ONNX graph.
 
         Returns:
-            List[onnx.NodeProto]: Original node and the inserted Div node.
+            list[onnx.NodeProto]: Original node and the inserted Div node.
+
+        Raises:
+            HandlerImplementationError if there are no outputs to be rescaled
         """
-        original_output = node.output[0]
+        self.validate_node_has_output(node)
+
+        original_output = node.output.get(0)
         quantized_output = original_output + "_raw"
         node.output[0] = quantized_output
 
         # Create scale constant initializer
         scale_const_name = node.name + "_scale"
-        scale_value = scale_base ** scale_exponent
-        scale_tensor = numpy_helper.from_array(np.array([scale_value], dtype=np.int64), name=scale_const_name)
+
+        scale_value = self.get_scaling(scale_base, scale_exponent)
+        scale_tensor = numpy_helper.from_array(
+            np.array([scale_value], dtype=np.int64),
+            name=scale_const_name,
+        )
         self.new_initializers.append(scale_tensor)
 
         # Create Div node for rescaling output
@@ -83,16 +207,27 @@ class BaseOpQuantizer:
             "Div",
             inputs=[quantized_output, scale_const_name],
             outputs=[original_output],  # restore original output name
-            name=node.name + "_rescale"
+            name=node.name + "_rescale",
         )
 
         # Rewire consumers to point to the new output
-        replace_input_references(graph = graph, old_output = original_output, new_output = div_node.output[0])
+        replace_input_references(
+            graph=graph,
+            old_output=original_output,
+            new_output=div_node.output[0],
+        )
 
         return [node, div_node]
 
-    def add_nodes_w_and_b(self, node: onnx.NodeProto, scale_exponent: int, scale_base: int, initializer_map: dict[str, onnx.TensorProto], graph: onnx.GraphProto) -> tuple[list[onnx.NodeProto], list[str]]:
-        """Insert scaling and casting nodes for weight and bias, to convert from float to scaled int64 values.
+    def add_nodes_w_and_b(
+        self: BaseOpQuantizer,
+        node: onnx.NodeProto,
+        scale_exponent: int,
+        scale_base: int,
+        initializer_map: dict[str, onnx.TensorProto],
+    ) -> tuple[list[onnx.NodeProto], list[str]]:
+        """Insert scaling and casting nodes for weight and bias,
+            to convert from float to scaled int64 values.
 
         Args:
             node (onnx.NodeProto): Node to find used weights and biases.
@@ -102,30 +237,69 @@ class BaseOpQuantizer:
             graph (onnx.GraphProto): ONNX Graph
 
         Returns:
-            tuple[list[onnx.NodeProto], list[str]]: List of new nodes added, updated input names for nodes
-        """        
+            tuple[list[onnx.NodeProto], list[str]]:
+                list of new nodes added, updated input names for nodes.
+
+        Raises:
+            InitializerNotFoundError: If weights or biases are missing from the graph.
+            HandlerImplementationError:
+                If there are no weights or biases to add to the graph.
+        """
+        weights_input_length = 2
+        if len(node.input) < weights_input_length:
+            raise HandlerImplementationError(
+                op_type=node.op_type,
+                message=f"Node '{node.name}'"
+                " has fewer than 2 inputs (weights missing).",
+            )
         # Quantize weight
         weight_name = node.input[1]
+        if not weight_name or weight_name not in initializer_map:
+            raise InitializerNotFoundError(node.name, weight_name or "<missing>")
+
         weight_tensor = initializer_map[weight_name]
-        quant_weight_name, mul_node, cast_node = self.insert_scale_node(tensor = weight_tensor, scale_base = scale_base, scale_exponent = scale_exponent, graph = graph)
+        if not weight_tensor.name:
+            raise HandlerImplementationError(
+                op_type=node.op_type,
+                message=f"Weight tensor for node '{node.name}' is missing a name.",
+            )
+
+        quant_weight_name, mul_node, cast_node = self.insert_scale_node(
+            tensor=weight_tensor,
+            scale_base=scale_base,
+            scale_exponent=scale_exponent,
+        )
 
         # Quantize bias if present
         new_inputs = [node.input[0], quant_weight_name]
         nodes = [mul_node, cast_node]
 
-        if len(node.input) > 2:
+        bias_inputs_length = 3
+
+        if len(node.input) >= bias_inputs_length:
             bias_name = node.input[2]
+            if bias_name not in initializer_map:
+                raise InitializerNotFoundError(node.name, bias_name)
+
             bias_tensor = initializer_map[bias_name]
-            quant_bias_name, mul_node_2, cast_node_2 = self.insert_scale_node(tensor = bias_tensor, scale_base = scale_base, scale_exponent = (scale_exponent*2), graph = graph)
+            quant_bias_name, mul_node_2, cast_node_2 = self.insert_scale_node(
+                tensor=bias_tensor,
+                scale_base=scale_base,
+                scale_exponent=(scale_exponent * 2),
+            )
             new_inputs.append(quant_bias_name)
             nodes.append(mul_node_2)
             nodes.append(cast_node_2)
 
-
         # === Mutate the original node ===
-        return  nodes, new_inputs
-    
-    def insert_scale_node(self, tensor: onnx.TensorProto, scale_base: int, scale_exponent: int, graph: onnx.GraphProto) -> tuple[str, onnx.NodeProto, onnx.NodeProto]: 
+        return nodes, new_inputs
+
+    def insert_scale_node(
+        self: BaseOpQuantizer,
+        tensor: onnx.TensorProto,
+        scale_base: int,
+        scale_exponent: int,
+    ) -> tuple[str, onnx.NodeProto, onnx.NodeProto]:
         """Insert Mul and Cast nodes to apply scaling to a tensor.
 
         Args:
@@ -135,14 +309,32 @@ class BaseOpQuantizer:
             graph (onnx.GraphProto): ONNX graph.
 
         Returns:
-            tuple[str, onnx.NodeProto, onnx.NodeProto]: New tensor name, Mul node, Cast node.
-        """        
-        scale_value = scale_base ** scale_exponent
+            tuple[str, onnx.NodeProto, onnx.NodeProto]:
+                New tensor name, Mul node, Cast node.
+
+        Raises:
+            HandlerImplementationError:
+                If tensor does not exist, incorrectly formatted or not named
+        """
+        if not tensor or not isinstance(tensor, onnx.TensorProto):
+            raise HandlerImplementationError(
+                op_type="insert_scale_node",
+                message="Expected a valid onnx.TensorProto, got None or wrong type.",
+            )
+
+        if not tensor.name:
+            raise HandlerImplementationError(
+                op_type="insert_scale_node",
+                message="Tensor is missing a name.",
+            )
+
+        scale_value = self.get_scaling(scale_base, scale_exponent)
 
         # Create scale constant
         scale_const_name = tensor.name + "_scale"
         scale_tensor = numpy_helper.from_array(
-            np.array([scale_value], dtype=np.float64), name=scale_const_name
+            np.array([scale_value], dtype=np.float64),
+            name=scale_const_name,
         )
         self.new_initializers.append(scale_tensor)
 
@@ -163,19 +355,42 @@ class BaseOpQuantizer:
             inputs=[scaled_output_name],
             outputs=[output_name],
             to=onnx.TensorProto.INT64,
-            name = rounded_output_name
+            name=rounded_output_name,
         )
         return output_name, mul_node, cast_to_int64
-    
+
 
 class PassthroughQuantizer(BaseOpQuantizer):
     """
     Quantizer that leaves the node unchanged.
     Useful for operators that do not require quantization, such as shaping operations.
     """
-    def __init__(self, new_initializer = None):
+
+    def __init__(
+        self: BaseOpQuantizer,
+        new_initializer: dict[str, onnx.TensorProto] | None = None,
+    ) -> None:
+        _ = new_initializer
         super().__init__()
-    def quantize(self, node, rescale, graph, scale_exponent, scale_base, initializer_map):
-        return node
-    def check_supported(self, node, initializer_map = None):
-        return None
+
+    def quantize(
+        self: BaseOpQuantizer,
+        node: onnx.NodeProto,
+        graph: onnx.GraphProto,
+        scale_config: ScaleConfig,
+        initializer_map: dict[str, onnx.TensorProto],
+    ) -> list[onnx.NodeProto]:
+        _ = graph, scale_config, initializer_map
+        if not isinstance(node, onnx.NodeProto):
+            raise HandlerImplementationError(
+                op_type="PassthroughQuantizer",
+                message="quantize() expected a NodeProto",
+            )
+        return [node]
+
+    def check_supported(
+        self: BaseOpQuantizer,
+        node: onnx.NodeProto,
+        initializer_map: dict[str, onnx.TensorProto] | None = None,
+    ) -> None:
+        _ = node, initializer_map
