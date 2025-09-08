@@ -54,14 +54,12 @@ ONNX model ─► Quantizer (Py) ─► Circuit via ECC (Rust) ─► Witness (R
 ```bash
 sudo apt-get update && sudo apt-get install -y \
   libopenmpi-dev openmpi-bin pkg-config libclang-dev clang
-  pip install -e .
 ````
 
 #### macOS
 
 ```bash
 brew install open-mpi llvm
-pip install -e .
 ```
 
 ---
@@ -144,7 +142,6 @@ cargo test --release
 ```bash
 # From JSTProve repo root
 cargo build --release
-./target/release/onnx_generic_circuit --help
 ```
 
 > The CLI `compile` step will **(re)build** the runner automatically when needed, so this step is just a sanity check.
