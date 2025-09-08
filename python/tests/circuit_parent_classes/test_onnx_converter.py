@@ -1,56 +1,63 @@
 # test_converter.py
-import os
-import pytest
+import tempfile
+from pathlib import Path
+from typing import Any, Generator
 from unittest.mock import MagicMock, patch
 
+import onnx
+import onnxruntime as ort
+import pytest
 import torch
+from onnx import TensorProto, helper
 
 from python.core.model_processing.converters.onnx_converter import ONNXConverter
 
-import onnx
-import tempfile
-from onnx import helper, TensorProto
-import onnxruntime as ort
 
-
-@pytest.fixture
-def temp_model_path(tmp_path):
+@pytest.fixture()
+def temp_model_path(
+    tmp_path: Generator[Path, None, None],
+) -> Generator[Path, Any, None]:
     model_path = tmp_path / "temp_model.onnx"
     # Give it to the test
     yield model_path
 
     # After the test is done, remove it
-    if os.path.exists(model_path):
+    if Path.exists(model_path):
         model_path.unlink()
 
-@pytest.fixture
-def temp_quant_model_path(tmp_path):
+
+@pytest.fixture()
+def temp_quant_model_path(
+    tmp_path: Generator[Path, None, None],
+) -> Generator[Path, Any, None]:
     model_path = tmp_path / "temp_quantized_model.onnx"
     # Give it to the test
     yield model_path
 
     # After the test is done, remove it
-    if os.path.exists(model_path):
+    if Path.exists(model_path):
         model_path.unlink()
 
-@pytest.fixture
-def converter(temp_model_path, temp_quant_model_path):
+
+@pytest.fixture()
+def converter() -> ONNXConverter:
     conv = ONNXConverter()
     conv.model = MagicMock(name="model")
     conv.quantized_model = MagicMock(name="quantized_model")
     return conv
 
-@pytest.mark.unit
+
+@pytest.mark.unit()
 @patch("python.core.model_processing.converters.onnx_converter.onnx.save")
-def test_save_model(mock_save, converter):
+def test_save_model(mock_save: MagicMock, converter: ONNXConverter) -> None:
     path = "model.onnx"
     converter.save_model(path)
     mock_save.assert_called_once_with(converter.model, path)
 
-@pytest.mark.unit
+
+@pytest.mark.unit()
 @patch("python.core.model_processing.converters.onnx_converter.onnx.load")
-@patch("python.core.model_processing.converters.onnx_converter.onnx.checker.check_model")
-def test_load_model(mock_check, mock_load, converter):
+def test_load_model(mock_load: MagicMock, converter: ONNXConverter) -> None:
     fake_model = MagicMock(name="onnx_model")
     mock_load.return_value = fake_model
 
@@ -58,25 +65,33 @@ def test_load_model(mock_check, mock_load, converter):
     converter.load_model(path)
 
     mock_load.assert_called_once_with(path)
-    # mock_check.assert_called_once_with(fake_model)
     assert converter.model == fake_model
 
-@pytest.mark.unit
+
+@pytest.mark.unit()
 @patch("python.core.model_processing.converters.onnx_converter.onnx.save")
-def test_save_quantized_model(mock_save, converter):
+def test_save_quantized_model(mock_save: MagicMock, converter: ONNXConverter) -> None:
     path = "quantized_model.onnx"
     converter.save_quantized_model(path)
     mock_save.assert_called_once_with(converter.quantized_model, path)
 
-@pytest.mark.unit
+
+@pytest.mark.unit()
+@patch("python.core.model_processing.converters.onnx_converter.Path.exists")
 @patch("python.core.model_processing.converters.onnx_converter.SessionOptions")
 @patch("python.core.model_processing.converters.onnx_converter.InferenceSession")
-@patch("python.core.model_processing.converters.onnx_converter.onnx.checker.check_model")
 @patch("python.core.model_processing.converters.onnx_converter.onnx.load")
-def test_load_quantized_model(mock_load, mock_check, mock_ort_sess, mock_session_opts, converter):
+def test_load_quantized_model(
+    mock_load: MagicMock,
+    mock_ort_sess: MagicMock,
+    mock_session_opts: MagicMock,
+    mock_exists: MagicMock,
+    converter: ONNXConverter,
+) -> None:
 
     fake_model = MagicMock(name="onnx_model")
     mock_load.return_value = fake_model
+    mock_exists.return_value = True  # Mock os.path.exists to return True
 
     mock_opts_instance = MagicMock(name="session_options")
     mock_session_opts.return_value = mock_opts_instance
@@ -85,12 +100,16 @@ def test_load_quantized_model(mock_load, mock_check, mock_ort_sess, mock_session
     converter.load_quantized_model(path)
 
     mock_load.assert_called_once_with(path)
-    # mock_check.assert_called_once_with(fake_model)
-    mock_ort_sess.assert_called_once_with(path, mock_opts_instance, providers=["CPUExecutionProvider"])
+    mock_ort_sess.assert_called_once_with(
+        path,
+        mock_opts_instance,
+        providers=["CPUExecutionProvider"],
+    )
     assert converter.quantized_model == fake_model
 
-@pytest.mark.unit
-def test_get_outputs_with_mocked_session(converter):
+
+@pytest.mark.unit()
+def test_get_outputs_with_mocked_session(converter: ONNXConverter) -> None:
     dummy_input = [[1.0]]
     dummy_output = [[2.0]]
 
@@ -120,17 +139,17 @@ def test_get_outputs_with_mocked_session(converter):
 # Integration test
 
 
-def create_dummy_model():
+def create_dummy_model() -> onnx.ModelProto:
     input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1])
     output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1])
     node = helper.make_node("Identity", inputs=["input"], outputs=["output"])
     graph = helper.make_graph([node], "test-graph", [input_tensor], [output_tensor])
-    
-    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
-    return model
 
-@pytest.mark.integration
-def test_save_and_load_real_model():
+    return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
+
+
+@pytest.mark.integration()
+def test_save_and_load_real_model() -> None:
     converter = ONNXConverter()
     model = create_dummy_model()
     converter.model = model
@@ -162,20 +181,21 @@ def test_save_and_load_real_model():
         assert converter.model.graph.node[0].op_type == "Identity"
 
 
-# def test_save_and_load_large_model():
-#     pass
-@pytest.mark.integration
-def test_real_inference_from_onnx():
+@pytest.mark.integration()
+def test_real_inference_from_onnx() -> None:
     converter = ONNXConverter()
     converter.model = create_dummy_model()
 
     # Save and load into onnxruntime
     with tempfile.NamedTemporaryFile(suffix=".onnx") as tmp:
         onnx.save(converter.model, tmp.name)
-        converter.ort_sess = ort.InferenceSession(tmp.name, providers=["CPUExecutionProvider"])
+        converter.ort_sess = ort.InferenceSession(
+            tmp.name,
+            providers=["CPUExecutionProvider"],
+        )
 
         dummy_input = torch.tensor([1.0], dtype=torch.float32).numpy()
         result = converter.get_outputs(dummy_input)
 
         assert isinstance(result, list)
-        print(result) # Identity op should return input
+        print(result)  # Identity op should return input

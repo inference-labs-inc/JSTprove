@@ -47,14 +47,14 @@ def test_witness_dispatch(tmp_path: Path) -> None:
         )
 
     assert rc == 0
-    fake_circuit.base_testing.assert_called_once_with(
-        run_type=RunType.GEN_WITNESS,
-        circuit_path=str(circuit),
-        quantized_path=str(quant),
-        input_file=str(inputj),
-        output_file=str(outputj),
-        witness_file=str(witness),
-    )
+    call_args = fake_circuit.base_testing.call_args
+    config = call_args[0][0]
+    assert config.run_type == RunType.GEN_WITNESS
+    assert config.circuit_path == str(circuit)
+    assert config.quantized_path == str(quant)
+    assert config.input_file == str(inputj)
+    assert config.output_file == str(outputj)
+    assert config.witness_file == str(witness)
 
 
 @pytest.mark.unit()
@@ -83,12 +83,13 @@ def test_prove_dispatch(tmp_path: Path) -> None:
         )
 
     assert rc == 0
-    kwargs = fake_circuit.base_testing.call_args.kwargs
-    assert kwargs["run_type"] == RunType.PROVE_WITNESS
-    assert kwargs["circuit_path"] == str(circuit)
-    assert kwargs["witness_file"] == str(witness)
-    assert kwargs["proof_file"] == str(proof)
-    assert kwargs.get("ecc") is False
+    call_args = fake_circuit.base_testing.call_args
+    config = call_args[0][0]
+    assert config.run_type == RunType.PROVE_WITNESS
+    assert config.circuit_path == str(circuit)
+    assert config.witness_file == str(witness)
+    assert config.proof_file == str(proof)
+    assert config.ecc is False
 
 
 @pytest.mark.unit()
@@ -137,11 +138,50 @@ def test_verify_dispatch(tmp_path: Path) -> None:
 
     assert rc == 0
     fake_circuit.load_quantized_model.assert_called_once_with(str(quant))
-    kwargs = fake_circuit.base_testing.call_args.kwargs
-    assert kwargs["run_type"] == RunType.GEN_VERIFY
-    assert kwargs["circuit_path"] == str(circuit)
-    assert kwargs["input_file"] == str(inputj)
-    assert kwargs["output_file"] == str(outputj)
-    assert kwargs["witness_file"] == str(witness)
-    assert kwargs["proof_file"] == str(proof)
-    assert kwargs.get("ecc") is False
+    call_args = fake_circuit.base_testing.call_args
+    config = call_args[0][0]
+    assert config.run_type == RunType.GEN_VERIFY
+    assert config.circuit_path == str(circuit)
+    assert config.input_file == str(inputj)
+    assert config.output_file == str(outputj)
+    assert config.witness_file == str(witness)
+    assert config.proof_file == str(proof)
+    assert config.ecc is False
+
+
+@pytest.mark.unit()
+def test_compile_dispatch(tmp_path: Path) -> None:
+    # minimal files so _ensure_exists passes
+    model = tmp_path / "model.onnx"
+    model.write_bytes(b"\x00")
+
+    circuit = tmp_path / "circuit.txt"  # doesn't need to pre-exist
+    quant = tmp_path / "q.onnx"  # doesn't need to pre-exist
+
+    fake_circuit = MagicMock()
+    with patch("python.frontend.cli._build_default_circuit", return_value=fake_circuit):
+        rc = main(
+            [
+                "--no-banner",
+                "compile",
+                "-m",
+                str(model),
+                "-c",
+                str(circuit),
+                "-q",
+                str(quant),
+            ],
+        )
+
+    assert rc == 0
+    # Check attributes set on circuit
+    assert fake_circuit.model_file_name == str(model)
+    assert fake_circuit.onnx_path == str(model)
+    assert fake_circuit.model_path == str(model)
+    # Check the base_testing call
+    call_args = fake_circuit.base_testing.call_args
+    config = call_args[0][0]
+    assert config.run_type == RunType.COMPILE_CIRCUIT
+    assert config.circuit_path == str(circuit)
+    assert config.quantized_path == str(quant)
+    assert config.dev_mode is True

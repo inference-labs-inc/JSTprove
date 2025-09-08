@@ -1,11 +1,34 @@
+from __future__ import annotations
+
+import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import numpy as np
 import torch
-from python.core.utils.helper_functions import ZKProofSystems
+
+from python.core.circuits.errors import (
+    CircuitConfigurationError,
+    CircuitFileError,
+    CircuitInputError,
+    CircuitProcessingError,
+    CircuitRunError,
+)
+from python.core.model_processing.onnx_quantizer.layers.base import BaseOpQuantizer
 from python.core.utils.helper_functions import (
-    read_from_json, to_json, compute_and_store_output,
-    prepare_io_files, compile_circuit, generate_witness, 
-    generate_verification, run_end_to_end, generate_proof, RunType
+    CircuitExecutionConfig,
+    RunType,
+    ZKProofSystems,
+    compile_circuit,
+    compute_and_store_output,
+    generate_proof,
+    generate_verification,
+    generate_witness,
+    prepare_io_files,
+    read_from_json,
+    run_end_to_end,
+    to_json,
 )
 
 
@@ -18,7 +41,8 @@ class Circuit:
     Subclasses are expected to implement circuit-specific logic such as
     input preparation, output computation, and model handling.
     """
-    def __init__(self):
+
+    def __init__(self: Circuit) -> None:
         # Default folder paths - can be overridden in subclasses
         self.input_folder = "inputs"
         self.proof_folder = "analysis"
@@ -27,320 +51,553 @@ class Circuit:
         self.weights_folder = "weights"
         self.output_folder = "output"
         self.proof_system = ZKProofSystems.Expander
-        
+
         # This will be set by prepare_io_files decorator
         self._file_info = None
         self.required_keys = None
+        self.logger = logging.getLogger(__name__)
 
-    def check_attributes(self):
+    def check_attributes(self: Circuit) -> None:
         """
         Check if the necessary attributes are defined in subclasses.
         Must be overridden in subclasses
+
+        Raises:
+            CircuitConfigurationError: If required attributes are missing.
         """
-        if not hasattr(self, 'required_keys') or not hasattr(self, 'name') or not hasattr(self, 'scale_exponent') or not hasattr(self, 'scale_base'):
-            raise NotImplementedError("Subclasses must define 'required_keys', 'name', 'scale_exponent' and 'scale_base'.")
-    
-    def parse_inputs(self, **kwargs):
-        """Parse and validate required input parameters for the circuit into an instance attribute.
+        missing = [
+            attr
+            for attr in ("required_keys", "name", "scale_exponent", "scale_base")
+            if not hasattr(self, attr)
+        ]
+        if missing:
+            raise CircuitConfigurationError(missing_attributes=missing)
+
+    def parse_inputs(self: Circuit, **kwargs: dict[str, Any]) -> None:
+        """Parse and validate required input parameters
+        for the circuit into an instance attribute.
+
+        Args:
+            **kwargs (dict[str, Any]): Input parameters to parse and validate.
 
         Raises:
             NotImplementedError: If `required_keys` is not set.
             KeyError: If any required parameter is missing.
             ValueError: If any parameter value is not an integer or list of integers.
-        """ 
+        """
         if self.required_keys is None:
-            raise NotImplementedError("self.required_keys must be specified in circuit definition")
+            msg = "self.required_keys must"
+            " be specified in the circuit definition."
+            raise CircuitConfigurationError(
+                msg,
+            )
         for key in self.required_keys:
             if key not in kwargs:
-                raise KeyError(f"Missing required parameter: {key}")
-            
+                msg = f"Missing required parameter: '{key}'"
+                raise CircuitInputError(msg)
+
             value = kwargs[key]
-            
+
             # # Validate type (ensure integer)
             if not isinstance(value, (int, list)):
-                raise ValueError(f"Expected an integer for {key}, but got {type(value).__name__}")
-            
+                msg = (
+                    f"Parameter '{key}' must be an int or list of ints, "
+                    f"got {type(value).__name__}."
+                )
+                raise CircuitInputError(
+                    msg,
+                )
             setattr(self, key, value)
 
-    
     @compute_and_store_output
-    def get_outputs(self):
+    def get_outputs(self: Circuit) -> None:
         """
-        Compute circuit outputs. This method should be implemented by subclasses.
+        Compute circuit outputs.
+        This method should be implemented by subclasses.
         """
-        raise NotImplementedError("get_outputs must be implemented")
-    
-    def get_inputs(self, file_path:str = None, is_scaled = False):
-        """
-        Compute and return the circuit's input values. This method should be implemented by subclasses.
-        """
-        raise NotImplementedError("get_inputs must be implemented")
+        msg = "get_outputs must be implemented"
+        raise NotImplementedError(msg)
 
-    @prepare_io_files
-    def base_testing(self, 
-                    run_type: RunType = RunType.END_TO_END, 
-                    witness_file: str = None,
-                    input_file: str = None,
-                    proof_file: str = None,
-                    public_path: str = None, 
-                    verification_key: str = None,
-                    circuit_name: str = None,
-                    weights_path: str = None,
-                    output_file: str = None,
-                    proof_system: str = None,
-                    dev_mode: str = False,
-                    ecc: str = True,
-                    circuit_path: Optional[str] = None,
-                    write_json: Optional[bool] = False, 
-                    bench: bool = False,
-                    quantized_path: str = None):
-        """Run the circuit in a specified mode (testing, proving, compiling, etc.).
-
-        File path resolution is handled automatically by the `prepare_io_files` decorator.
+    def get_inputs(
+        self: Circuit,
+        file_path: str | None = None,
+        *,
+        is_scaled: bool | None = False,
+    ) -> None:
+        """
+        Compute and return the circuit's input values.
+        This method should be implemented by subclasses.
 
         Args:
-            run_type (RunType, optional): Type of run (compile_circuit, generate_witness, prove, verify). Defaults to RunType.END_TO_END.
-            witness_file (str, optional): Path to witness file. Defaults to None.
-            input_file (str, optional): Path to input JSON file. Defaults to None.
-            proof_file (str, optional): Path to proof file. Defaults to None.
-            public_path (str, optional): Path to public inputs file. Defaults to None.
-            verification_key (str, optional): Path to verification key file. Defaults to None.
-            circuit_name (str, optional): Name of the circuit. Defaults to None.
-            weights_path (str, optional): Path to weights file. Defaults to None.
-            output_file (str, optional): Path to output JSON file. Defaults to None.
-            proof_system (str, optional): Proof system identifier. Defaults to None.
-            dev_mode (str, optional):  Enable developer mode. Defaults to False.
-            ecc (str, optional): Use ECC version of Expander for prove and verify. Defaults to True.
-            circuit_path (Optional[str], optional): Path to compiled circuit file. Defaults to None.
-            write_json (Optional[bool], optional): Whether to write inputs directly to JSON. Defaults to False.
-            bench (bool, optional): Enable benchmarking mode. Defaults to False.
-            quantized_path (str, optional): Path to quantized model file. Defaults to None.
+            file_path (str | None): Optional path to input file.
+            is_scaled (bool | None): Whether inputs are scaled.
+        """
+        _ = file_path, is_scaled
+        msg = "get_inputs must be implemented"
+        raise NotImplementedError(msg)
+
+    @prepare_io_files
+    def base_testing(self: Circuit, exec_config: CircuitExecutionConfig) -> None:
+        """Run the circuit in a specified mode
+        (testing, proving, compiling, etc.).
+
+        File path resolution is handled automatically by the
+        `prepare_io_files` decorator.
+
+        Args:
+            exec_config (CircuitExecutionConfig): Configuration object containing
+                run_type, file paths, and other execution parameters.
 
         Raises:
-            KeyError: If `_file_info` is not set by the decorator.
-        """ 
-        if circuit_path is None:
-            circuit_path = f"{circuit_name}.txt"
+            CircuitConfigurationError: If `_file_info` is not set by the decorator.
+        """
+        if exec_config.circuit_path is None:
+            exec_config.circuit_path = f"{exec_config.circuit_name}.txt"
 
         if not self._file_info:
-            raise KeyError("Must make sure to specify _file_info")
-        # TODO may need to have a better way to get/store weights path
-        weights_path = self._file_info.get("weights")
+            msg = (
+                "Circuit file information (_file_info)"
+                " must be set by the prepare_io_files decorator."
+            )
+            raise CircuitConfigurationError(
+                msg,
+                details={"decorator": "prepare_io_files"},
+            )
+        exec_config.weights_path = self._file_info.get("weights")
 
         # Run the appropriate proof operation based on run_type
-        self.parse_proof_run_type(
-            witness_file = witness_file,
-            input_file = input_file,
-            proof_path = proof_file,
-            public_path = public_path,
-            verification_key = verification_key,
-            circuit_name = circuit_name,
-            circuit_path = circuit_path,
-            proof_system = proof_system,
-            output_file = output_file,
-            weights_path = weights_path,
-            quantized_path = quantized_path,
-            run_type = run_type,
-            dev_mode = dev_mode,
-            ecc = ecc,
-            write_json = write_json,
-            bench = bench,
+        self.parse_proof_run_type(exec_config)
+
+    def _raise_unknown_run_type(self: Circuit, run_type: RunType) -> None:
+        self.logger.error("Unknown run type: %s", run_type)
+        msg = f"Unsupported run type: {run_type}"
+        raise CircuitRunError(
+            msg,
+            operation="parse_proof_run_type",
+            details={"run_type": run_type},
         )
-        
-        return 
-    
-    def parse_proof_run_type(self,
-                            witness_file: str,
-                            input_file: str,
-                            proof_path: str,
-                            public_path: str,
-                            verification_key: str,
-                            circuit_name: str,
-                            circuit_path: str,
-                            proof_system: ZKProofSystems,
-                            output_file: str,
-                            weights_path: str,
-                            quantized_path: str,
-                            run_type: RunType,
-                            dev_mode: bool = False,
-                            ecc: bool = True,
-                            write_json: bool = False,
-                            bench: bool = False):
+
+    def parse_proof_run_type(
+        self: Circuit,
+        exec_config: CircuitExecutionConfig,
+    ) -> None:
         """Dispatch proof-related operations based on the selected run type.
 
         Args:
-            witness_file (str): Path to witness file.
-            input_file (str): Path to input JSON file.
-            proof_path (str): Path to proof file.
-            public_path (str): Path to public inputs file.
-            verification_key (str): Path to verification key file.
-            circuit_name (str): Name of the circuit.
-            circuit_path (str): Path to compiled circuit file.
-            proof_system (ZKProofSystems): Proof system enum.
-            output_file (str): Path to output JSON file.
-            weights_path (str): Path to weights file.
-            quantized_path (str): Path to quantized model file.
-            run_type (RunType): Type of proof run.
-            dev_mode (bool, optional): Enable developer mode. Defaults to False.
-            ecc (bool, optional): Use ECC mode, for prove/verify. Defaults to True.
-            write_json (bool, optional): Write inputs to JSON. Defaults to False.
-            bench (bool, optional): Enable benchmarking. Defaults to False.
+            exec_config (CircuitExecutionConfig): Configuration object containing
+                file paths, run type, and other parameters.
 
         Raises:
-            ValueError: If `run_type` is unknown.
+            CircuitRunError: If `run_type` is unknown or operation fails.
         """
         is_scaled = True
-        
+
         try:
-            if run_type == RunType.END_TO_END:
-                self._compile_preprocessing(weights_path = weights_path, quantized_path = quantized_path)
-                input_file = self._gen_witness_preprocessing(input_file = input_file, output_file = output_file, quantized_path = quantized_path, write_json = write_json, is_scaled = is_scaled)
-                run_end_to_end(circuit_name = circuit_name, circuit_path = circuit_path, input_file = input_file, output_file = output_file, proof_system = proof_system, dev_mode = dev_mode, ecc = ecc)
-            elif run_type == RunType.COMPILE_CIRCUIT:
-                self._compile_preprocessing(weights_path = weights_path, quantized_path = quantized_path)
-                compile_circuit(circuit_name = circuit_name, circuit_path = circuit_path, proof_system = proof_system, dev_mode = dev_mode, bench = bench)
-            elif run_type == RunType.GEN_WITNESS:
-                input_file = self._gen_witness_preprocessing(input_file = input_file, output_file = output_file, quantized_path = quantized_path, write_json = write_json, is_scaled = is_scaled)
-                generate_witness(circuit_name = circuit_name, circuit_path = circuit_path, witness_file = witness_file, input_file = input_file, output_file = output_file, proof_system = proof_system, dev_mode = dev_mode, bench = bench)
-            elif run_type == RunType.PROVE_WITNESS:
-                generate_proof(circuit_name = circuit_name, circuit_path = circuit_path, witness_file = witness_file, proof_file = proof_path, proof_system = proof_system, dev_mode = dev_mode, ecc = ecc, bench = bench)
-            elif run_type == RunType.GEN_VERIFY:
-                input_file = self.adjust_inputs(input_file)
-                generate_verification(circuit_name = circuit_name, circuit_path = circuit_path, input_file = input_file, output_file = output_file, witness_file = witness_file, proof_file = proof_path, proof_system = proof_system, dev_mode = dev_mode, ecc=ecc, bench = bench)
+            if exec_config.run_type == RunType.END_TO_END:
+                self._compile_preprocessing(
+                    weights_path=exec_config.weights_path,
+                    quantized_path=exec_config.quantized_path,
+                )
+                processed_input_file = self._gen_witness_preprocessing(
+                    input_file=exec_config.input_file,
+                    output_file=exec_config.output_file,
+                    quantized_path=exec_config.quantized_path,
+                    write_json=exec_config.write_json,
+                    is_scaled=is_scaled,
+                )
+                run_end_to_end(
+                    circuit_name=exec_config.circuit_name,
+                    circuit_path=exec_config.circuit_path,
+                    input_file=processed_input_file,
+                    output_file=exec_config.output_file,
+                    proof_system=exec_config.proof_system,
+                    dev_mode=exec_config.dev_mode,
+                    ecc=exec_config.ecc,
+                )
+            elif exec_config.run_type == RunType.COMPILE_CIRCUIT:
+                self._compile_preprocessing(
+                    weights_path=exec_config.weights_path,
+                    quantized_path=exec_config.quantized_path,
+                )
+                compile_circuit(
+                    circuit_name=exec_config.circuit_name,
+                    circuit_path=exec_config.circuit_path,
+                    proof_system=exec_config.proof_system,
+                    dev_mode=exec_config.dev_mode,
+                    bench=exec_config.bench,
+                )
+            elif exec_config.run_type == RunType.GEN_WITNESS:
+                processed_input_file = self._gen_witness_preprocessing(
+                    input_file=exec_config.input_file,
+                    output_file=exec_config.output_file,
+                    quantized_path=exec_config.quantized_path,
+                    write_json=exec_config.write_json,
+                    is_scaled=is_scaled,
+                )
+                generate_witness(
+                    circuit_name=exec_config.circuit_name,
+                    circuit_path=exec_config.circuit_path,
+                    witness_file=exec_config.witness_file,
+                    input_file=processed_input_file,
+                    output_file=exec_config.output_file,
+                    proof_system=exec_config.proof_system,
+                    dev_mode=exec_config.dev_mode,
+                    bench=exec_config.bench,
+                )
+            elif exec_config.run_type == RunType.PROVE_WITNESS:
+                generate_proof(
+                    circuit_name=exec_config.circuit_name,
+                    circuit_path=exec_config.circuit_path,
+                    witness_file=exec_config.witness_file,
+                    proof_file=exec_config.proof_file,
+                    proof_system=exec_config.proof_system,
+                    dev_mode=exec_config.dev_mode,
+                    ecc=exec_config.ecc,
+                    bench=exec_config.bench,
+                )
+            elif exec_config.run_type == RunType.GEN_VERIFY:
+                processed_input_file = self.adjust_inputs(exec_config.input_file)
+                generate_verification(
+                    circuit_name=exec_config.circuit_name,
+                    circuit_path=exec_config.circuit_path,
+                    input_file=processed_input_file,
+                    output_file=exec_config.output_file,
+                    witness_file=exec_config.witness_file,
+                    proof_file=exec_config.proof_file,
+                    proof_system=exec_config.proof_system,
+                    dev_mode=exec_config.dev_mode,
+                    ecc=exec_config.ecc,
+                    bench=exec_config.bench,
+                )
             else:
-                print(f"Unknown entry: {run_type}")
-                raise ValueError(f"Unknown run type: {run_type}")
-        except Exception as e:
-            print(f"Warning: Operation {run_type} failed: {e}")
-            print("Input and output files have still been created correctly.")
-            # raise e
+                self._raise_unknown_run_type(exec_config.run_type)
+        except CircuitRunError:
+            self.logger.exception(
+                "Operation %s failed",
+                exec_config.run_type,
+                extra={"run_type": exec_config.run_type},
+            )
+            raise
+        except (
+            CircuitProcessingError,
+            CircuitInputError,
+            CircuitFileError,
+            Exception,
+        ) as e:
+            self.logger.exception(
+                "Operation %s failed",
+                exec_config.run_type,
+                extra={"run_type": exec_config.run_type},
+            )
+            msg = f"Failed during {exec_config.run_type} operation."
+            raise CircuitRunError(
+                msg,
+                operation=str(exec_config.run_type),
+                details={"original_error": str(e)},
+            ) from e
 
-
-    def contains_float(self, obj: Any) -> bool:
-        """ Recursively check whether an object contains any float values.
+    def contains_float(self: Circuit, obj: float | dict | list) -> bool:
+        """Recursively check whether an object contains any float values.
 
         Args:
-            obj (Any): The object to inspect. Can be a float, list, dict, or any other type.
+            obj (float | dict | list): The object to inspect.
+                Can be a float, list, dict.
 
         Returns:
-            bool: True if any float is found within the object (including nested lists/dicts), False otherwise.
+            bool: True if any float is found within the object
+                (including nested lists/dicts), False otherwise.
         """
         if isinstance(obj, float):
             return True
-        elif isinstance(obj, dict):
+        if isinstance(obj, dict):
             return any(self.contains_float(v) for v in obj.values())
-        elif isinstance(obj, list):
+        if isinstance(obj, list):
             return any(self.contains_float(i) for i in obj)
         return False
-    
-    def adjust_shape(self, shape: Any) -> List[int]:
+
+    def adjust_shape(self: Circuit, shape: list[int] | dict[str, int]) -> list[int]:
         """Normalize a shape representation into a valid list of positive integers.
 
         Args:
-            shape (Any): The shape, which can be a list of ints or a dict containing one shape list.
+            shape (list[int] | dict[str, int]):
+                The shape, which can be a list of ints
+                or a dict containing one shape list.
 
         Raises:
-            ValueError: If `shape` is a dict containing more than one shape definition.
+            CircuitInputError:
+                If `shape` is a dict containing more than one shape definition.
 
         Returns:
-            List[int]: The adjusted shape where all non-positive values are replaced with 1.
-        """   
+            list[int]:
+                The adjusted shape where all non-positive values are replaced with 1.
+        """
         if isinstance(shape, dict):
-                # Get the first shape from the dict (assuming only one input is relevant here)
+            # Get the first shape from the dict
+            # (assuming only one input is relevant here)
             if len(shape.values()) == 1:
                 shape = next(iter(shape.values()))
             else:
-                raise ValueError("Shape inputs in get_inputs_from_file() has too many inputs")
-        shape = [s if s > 0 else 1 for s in shape]
-        return shape
-    
-    def scale_and_round(self, value: Any) -> Any:
-        """ Scale and round numeric values to integers based on circuit scaling parameters.
+                msg = (
+                    "Shape dictionary contains multiple entries;"
+                    " only one input shape is allowed."
+                )
+                raise CircuitInputError(
+                    msg,
+                    parameter="shape",
+                    expected="dict with exactly one key-value pair",
+                    details={"shape_keys": list(shape.keys())},
+                )
+        return [s if s > 0 else 1 for s in shape]
+
+    def scale_and_round(
+        self: Circuit,
+        value: list[int] | np.ndarray | torch.Tensor,
+    ) -> list[int] | np.ndarray | torch.Tensor:
+        """Scale and round numeric values to integers based on
+        circuit scaling parameters.
 
         Args:
-            value (Any): The values to process.
+            value (list[int] | np.ndarray | torch.Tensor): The values to process.
 
         Returns:
-            Any: The scaled and rounded values, preserving the original structure.
+            list[int] | np.ndarray | torch.Tensor: The scaled and rounded values,
+                preserving the original structure.
         """
+        scaling = BaseOpQuantizer.get_scaling(
+            scale_base=self.scale_base,
+            scale_exponent=self.scale_exponent,
+        )
         if self.contains_float(value):
-            return torch.round(torch.tensor(value) * (self.scale_base ** self.scale_exponent)).long().tolist()
+            return (
+                torch.round(
+                    torch.tensor(value) * scaling,
+                )
+                .long()
+                .tolist()
+            )
         return value
-    
-    def adjust_inputs(self, input_file: str) -> str:
-        """Load, scale, reshape, and rewrite circuit input values for compatibility.
 
-        The process involves:
-            1. Reads the input JSON file.
-            2. Scales and rounds numeric values.
-            3. Reshapes them according to predefined shape attributes.
-            4. Writes the adjusted inputs to a new JSON file.
+    def adjust_inputs(self: Circuit, input_file: str) -> str:
+        """
+        Load input values from a JSON file, adjust them by scaling
+        and reshaping according to circuit parameters,
+        and save the adjusted inputs to a new file.
 
         Args:
-            input_file (str): Path to the input JSON file.
+            input_file (str):
+                Path to the input JSON file containing the original input values.
+
+        Returns:
+            str: Path to the new file containing the adjusted input values.
 
         Raises:
-            ValueError: If multiple 'input' entries are found when only one is allowed.
-            NotImplementedError: If required shape attributes are missing.
-
-        Returns:
-            str: Path to the newly written adjusted input file.
+            CircuitFileError: If reading from or writing to JSON files fails.
+            CircuitInputError: If input validation fails
+                (e.g., multiple 'input' keys when expecting single).
+            CircuitConfigurationError: If required shape attributes are missing.
+            CircuitProcessingError: If reshaping or scaling operations fail.
         """
-        # TODO dont write to file, instead handle internally and send straight to rust
+        inputs = self._read_from_json_safely(input_file)
 
-        inputs = read_from_json(input_file)
         input_variables = getattr(self, "input_variables", ["input"])
-        new_inputs = {}
-        # TODO what if multiple inputs
-        
-
         if input_variables == ["input"]:
-
-            has_input_been_found = False
-            for k in inputs:
-                v = inputs[k]
-                v = self.scale_and_round(v)
-                if "input" in k:
-                    if has_input_been_found:
-                        raise ValueError("Multiple inputs found containing 'input'. Only one allowed when input_variables = ['input']")
-                    has_input_been_found = True
-                    input_shape_attr = "input_shape"
-                    if not hasattr(self, input_shape_attr):
-                        raise NotImplementedError(f"{input_shape_attr} must be defined to reshape input")
-                    
-                    shape = getattr(self, input_shape_attr)
-                    shape = self.adjust_shape(shape)
-                    
-                    v = torch.tensor(v).reshape(shape).tolist()
-
-                    new_inputs["input"] = v
-                else:
-                    new_inputs[k] = v
-            if "input" not in new_inputs.keys() and "output" in new_inputs.keys():
-                new_inputs["input"] = inputs["output"]
-                del inputs["output"]
-
+            new_inputs = self._adjust_single_input(inputs)
         else:
-            for k in inputs:
-                v = inputs[k]
-                v = self.scale_and_round(v)
-                if k in input_variables:
-                    input_shape_attr = f"{k}_shape"
-                    if not hasattr(self, input_shape_attr):
-                        raise NotImplementedError(f"{input_shape_attr} must be defined to reshape {k}")                    
-                    v = torch.tensor(v).reshape(getattr(self, input_shape_attr)).tolist()
-                new_inputs[k] = v
-        # Save reshaped inputs
+            new_inputs = self._adjust_multiple_inputs(inputs, input_variables)
 
+        # Save reshaped inputs
         path = Path(input_file)
         new_input_file = path.stem + "_reshaped" + path.suffix
-        to_json(new_inputs, new_input_file)
-
+        self._to_json_safely(new_inputs, new_input_file, "adjusted input")
         return new_input_file
 
+    def _adjust_single_input(self: Circuit, inputs: dict) -> dict:
+        """
+        Adjust inputs when there is a single 'input' variable,
+        handling special cases like multiple keys containing 'input'
+        or fallback from 'output' to 'input'.
 
+        Args:
+            inputs (dict): Dictionary of input values loaded from JSON.
 
-    def _gen_witness_preprocessing(self, input_file: str, output_file: str, quantized_path: str, write_json: bool, is_scaled: bool) -> str:
+        Returns:
+            dict: Adjusted inputs with scaled and reshaped values.
+
+        Raises:
+            CircuitInputError:
+                If multiple keys containing 'input' are found
+                or if required shape attributes are missing.
+        """
+        new_inputs: dict[str, Any] = {}
+        has_input_been_found = False
+
+        for key, value in inputs.items():
+            value_adjusted = self.scale_and_round(value)
+            if "input" in key:
+                if has_input_been_found:
+                    msg = (
+                        "Multiple inputs found containing 'input'. "
+                        "Only one allowed when input_variables = ['input']"
+                    )
+                    raise CircuitInputError(
+                        msg,
+                        parameter="input",
+                        expected="single input key",
+                        details={"input_keys": [k for k in inputs if "input" in k]},
+                    )
+                has_input_been_found = True
+                value_adjusted = self._reshape_input_value(
+                    value_adjusted,
+                    "input_shape",
+                    key,
+                )
+                new_inputs["input"] = value_adjusted
+            else:
+                new_inputs[key] = value_adjusted
+
+        # Special case: fallback mapping output → input
+        if "input" not in new_inputs and "output" in new_inputs:
+            new_inputs["input"] = inputs["output"]
+            del inputs["output"]
+
+        return new_inputs
+
+    def _adjust_multiple_inputs(
+        self: Circuit,
+        inputs: dict,
+        input_variables: list[str],
+    ) -> dict:
+        """
+        Adjust inputs when there are multiple named input variables,
+        scaling and reshaping each according to their respective shape attributes.
+
+        Args:
+            inputs (dict): Dictionary of input values loaded from JSON.
+            input_variables (list[str]): List of input variable names to adjust.
+
+        Returns:
+            dict: Adjusted inputs with scaled and reshaped values.
+
+        Raises:
+            CircuitConfigurationError:
+                If required shape attributes are missing for any input variable.
+            CircuitProcessingError: If reshaping operations fail.
+        """
+        new_inputs: dict[str, Any] = {}
+        for key, value in inputs.items():
+            value_adjusted = self.scale_and_round(value)
+            if key in input_variables:
+                shape_attr = f"{key}_shape"
+                value_adjusted = self._reshape_input_value(
+                    value_adjusted,
+                    shape_attr,
+                    key,
+                )
+            new_inputs[key] = value_adjusted
+        return new_inputs
+
+    def _reshape_input_value(
+        self: Circuit,
+        value: list[int] | np.ndarray | torch.Tensor,
+        shape_attr: str,
+        input_key: str,
+    ) -> list[int]:
+        """
+        Reshape an input value to match the
+        specified shape attribute of the circuit.
+
+        Args:
+            value (list[int] | np.ndarray | torch.Tensor):
+                The input value to reshape, typically a list or tensor-like structure.
+            shape_attr (str):
+                Name of the attribute containing the target shape (e.g., 'input_shape').
+            input_key (str):
+                Key of the input being reshaped, used for error messages.
+
+        Returns:
+            list[int]: The reshaped value as a list.
+
+        Raises:
+            CircuitConfigurationError: If the required shape attribute is not defined.
+            CircuitProcessingError: If the reshaping operation fails.
+        """
+        if not hasattr(self, shape_attr):
+            msg = f"Required shape attribute '{shape_attr}'"
+            f" must be defined to reshape input '{input_key}'."
+            raise CircuitConfigurationError(
+                msg,
+                missing_attributes=[shape_attr],
+                details={"input_key": input_key},
+            )
+
+        shape = getattr(self, shape_attr)
+        shape = self.adjust_shape(shape)
+
+        try:
+            return torch.tensor(value).reshape(shape).tolist()
+        except Exception as e:
+            msg = f"Failed to reshape input data for '{input_key}'."
+            raise CircuitProcessingError(
+                msg,
+                operation="reshape",
+                data_type="tensor",
+                details={"shape": shape, "original_error": str(e)},
+            ) from e
+
+    def _to_json_safely(
+        self: Circuit,
+        inputs: dict,
+        input_file: str,
+        var_name: str,
+    ) -> None:
+        """Safely write data to a JSON file, handling exceptions.
+
+        Args:
+            inputs (dict): Data to write.
+            input_file (str): Path to the output file.
+            var_name (str): Name of the variable for error messages.
+        """
+        try:
+            to_json(inputs, input_file)
+        except Exception as e:
+            msg = f"Failed to write {var_name} file: {input_file}"
+            raise CircuitFileError(
+                msg,
+                file_path=input_file,
+                details={"original_error": str(e)},
+            ) from e
+
+    def _read_from_json_safely(
+        self: Circuit,
+        input_file: str,
+    ) -> dict[str, Any]:
+        """Safely read data from a JSON file, handling exceptions.
+
+        Args:
+            input_file (str): Path to the input file.
+
+        Returns:
+            dict[str, Any]: Data read from the file.
+        """
+        try:
+            return read_from_json(input_file)
+        except Exception as e:
+            msg = f"Failed to read input file: {input_file}"
+            raise CircuitFileError(
+                msg,
+                file_path=input_file,
+                details={"original_error": str(e)},
+            ) from e
+
+    def _gen_witness_preprocessing(  # noqa: PLR0913
+        self: Circuit,
+        input_file: str,
+        output_file: str,
+        quantized_path: str,
+        *,
+        write_json: bool,
+        is_scaled: bool,
+    ) -> str:
         """Preprocess inputs and outputs before witness generation.
 
         Args:
@@ -358,28 +615,33 @@ class Circuit:
             self.load_quantized_model(quantized_path)
         else:
             self.load_quantized_model(self._file_info.get("quantized_model_path"))
-        
-        
-        if write_json == True:
+
+        if write_json:
             inputs = self.get_inputs()
             outputs = self.get_outputs(inputs)
-            
+
             inputs = self.format_inputs(inputs)
 
             output = self.format_outputs(outputs)
 
-            to_json(inputs, input_file)
-            to_json(output, output_file)
+            self._to_json_safely(inputs, input_file, "input")
+            self._to_json_safely(output, output_file, "output")
+
         else:
             input_file = self.adjust_inputs(input_file)
-            inputs = self.get_inputs_from_file(input_file, is_scaled = is_scaled)
+            inputs = self.get_inputs_from_file(input_file, is_scaled=is_scaled)
             # Compute output (with caching via decorator)
             output = self.get_outputs(inputs)
             outputs = self.format_outputs(output)
-            to_json(outputs, output_file)
+
+            self._to_json_safely(outputs, output_file, "output")
         return input_file
-    
-    def _compile_preprocessing(self, weights_path: str, quantized_path: str):
+
+    def _compile_preprocessing(
+        self: Circuit,
+        weights_path: str,
+        quantized_path: str,
+    ) -> None:
         """Prepare model weights and quantized files for circuit compilation.
 
         Args:
@@ -387,14 +649,13 @@ class Circuit:
             quantized_path (str): Path to save the quantized model.
 
         Raises:
-            NotImplementedError: If model weights type is unsupported.
-        """  
-        #### TODO Fix the next couple lines
-        func_model_and_quantize = getattr(self, 'get_model_and_quantize', None)
+            CircuitConfigurationError: If model weights type is unsupported.
+        """
+        func_model_and_quantize = getattr(self, "get_model_and_quantize", None)
         if callable(func_model_and_quantize):
             func_model_and_quantize()
         if hasattr(self, "flatten"):
-            weights = self.get_weights(flatten = True)
+            weights = self.get_weights(flatten=True)
         else:
             weights = self.get_weights()
 
@@ -404,92 +665,110 @@ class Circuit:
         else:
             self.save_quantized_model(self._file_info.get("quantized_model_path"))
 
-        if type(weights) == list:
-            for (i, w) in enumerate(weights):
+        if isinstance(weights, list):
+            for i, w in enumerate(weights):
                 if i == 0:
-                    to_json(w, weights_path)
+                    self._to_json_safely(w, weights_path, "weights")
                 else:
                     val = i + 1
-                    to_json(w, weights_path[:-5] + f"{val}" + weights_path[-5:])
-        elif type(weights) == dict:
-            to_json(weights, weights_path)
-        elif isinstance(weights, tuple):
-            to_json(weights, weights_path)
+                    file_path = weights_path[:-5] + f"{val}" + weights_path[-5:]
+                    self._to_json_safely(w, file_path, "weights")
+        elif isinstance(weights, (dict, tuple)):
+            self._to_json_safely(weights, weights_path, "weights")
         else:
-            raise NotImplementedError("Weights type is incorrect")
+            msg = f"Unsupported weights type: {type(weights)}."
+            " Expected list, dict, or tuple."
+            raise CircuitConfigurationError(
+                msg,
+                details={"weights_type": str(type(weights))},
+            )
 
-    def save_model(self, file_path: str):
+    def save_model(self: Circuit, file_path: str) -> None:
         """
         Save the current model to a file. Should be overridden in subclasses
 
         Args:
             file_path (str): Path to save the model.
         """
-        pass
-    
-    def load_model(self, file_path: str):
+
+    def load_model(self: Circuit, file_path: str) -> None:
         """
         Load the model from a file. Should be overridden in subclasses
 
         Args:
             file_path (str): Path to load the model.
         """
-        pass
 
-    def save_quantized_model(self, file_path: str):
+    def save_quantized_model(self: Circuit, file_path: str) -> None:
         """
         Save the current quantized model to a file. Should be overridden in subclasses
 
         Args:
             file_path (str): Path to save the model.
         """
-        pass
 
-    
-    def load_quantized_model(self, file_path: str):
+    def load_quantized_model(self: Circuit, file_path: str) -> None:
         """
         Load the quantized model from a file. Should be overridden in subclasses
 
         Args:
             file_path (str): Path to load the model.
         """
-        pass
 
-    def get_weights(self) -> Dict:
+    def get_weights(self: Circuit) -> dict:
         """Retrieve model weights. Should be overridden in subclasses
 
         Returns:
-            Dict: Model weights.
-        """ 
+            dict: Model weights.
+        """
         return {}
-    
-    def get_inputs_from_file(self, input_file: str, is_scaled: bool = True) -> Dict[str, List[int]]:
+
+    def get_inputs_from_file(
+        self: Circuit,
+        input_file: str,
+        *,
+        is_scaled: bool = True,
+    ) -> dict[str, list[int]]:
         """Load input values from a JSON file, scaling if necessary.
 
         Args:
             input_file (str): Path to the input JSON file.
-            is_scaled (bool, optional): If False, scale inputs according to circuit settings. Defaults to True.
+            is_scaled (bool, optional): If False, scale inputs
+            according to circuit settings. Defaults to True.
 
         Returns:
-            Dict[str, List[int]]: Mapping from input names to integer lists of inputs.
-        """        
+            dict[str, list[int]]: Mapping from input names to integer lists of inputs.
+        """
         if is_scaled:
-            return read_from_json(input_file)
-        
+            return self._read_from_json_safely(input_file)
+
         out = {}
-        read = read_from_json(input_file)
-        for k in read.keys():
-            out[k] = torch.as_tensor(read[k])*(self.scale_base**self.scale_exponent)
-            out[k] = out[k].tolist()
-        return  out
-    
-    def format_outputs(self, output: Any) -> Dict:
-        """Format raw model outputs into a standard dictionary format. Can be overridden in subclasses
+        read = self._read_from_json_safely(input_file)
+
+        scaling = BaseOpQuantizer.get_scaling(self.scale_base, self.scale_exponent)
+        try:
+            for k in read:
+
+                out[k] = torch.as_tensor(read[k]) * scaling
+                out[k] = out[k].tolist()
+        except Exception as e:
+            msg = f"Failed to scale input data for key '{k}'"
+            raise CircuitProcessingError(
+                msg,
+                operation="scale",
+                data_type="tensor",
+                details={"key": k, "original_error": str(e)},
+            ) from e
+        return out
+
+    def format_outputs(self: Circuit, output: list) -> dict:
+        """Format raw model outputs into a standard dictionary format.
+        Can be overridden in subclasses
 
         Args:
-            output (Any): Raw model output.
+            output (list): Raw model output.
 
         Returns:
-            Dict: Dictionary containing the formatted output under the key 'output'.
+            dict: dictionary containing the formatted output under the key 'output'.
         """
-        return {"output":output}
+        return {"output": output}

@@ -1,8 +1,10 @@
-from typing import Any
+from __future__ import annotations
+
 import numpy as np
-from onnxruntime_extensions import onnx_op, PyCustomOpDef
+from onnxruntime_extensions import PyCustomOpDef, onnx_op
 
 from .custom_helpers import rescaling
+
 
 @onnx_op(
     op_type="Int64Gemm",
@@ -10,8 +12,8 @@ from .custom_helpers import rescaling
     inputs=[
         PyCustomOpDef.dt_int64,  # X
         PyCustomOpDef.dt_int64,  # W
-        PyCustomOpDef.dt_int64,   # B
-        PyCustomOpDef.dt_int64   # Scalar
+        PyCustomOpDef.dt_int64,  # B
+        PyCustomOpDef.dt_int64,  # Scalar
     ],
     outputs=[PyCustomOpDef.dt_int64],
     attrs={
@@ -19,28 +21,28 @@ from .custom_helpers import rescaling
         "beta": PyCustomOpDef.dt_float,
         "transA": PyCustomOpDef.dt_int64,
         "transB": PyCustomOpDef.dt_int64,
-        "rescale": PyCustomOpDef.dt_int64
-    }
+        "rescale": PyCustomOpDef.dt_int64,
+    },
 )
 def int64_gemm7(
-    a: Any,
-    b: Any,
-    c: Any | None = None,
-    scaling_factor: Any | None = None,
-    alpha: Any | None = None,
-    beta: Any | None = None,
-    transA: Any | None = None,
-    transB: Any | None = None,
-    rescale: Any | None = None
-    ):
+    a: np.ndarray,
+    b: np.ndarray,
+    c: np.ndarray | None = None,
+    scaling_factor: np.ndarray | None = None,
+    alpha: float | None = None,
+    beta: float | None = None,
+    transA: int | None = None,  # noqa: N803
+    transB: int | None = None,  # noqa: N803
+    rescale: int | None = None,
+) -> np.ndarray:
     """
     Performs a Gemm (alternatively: Linear layer) on int64 input tensors.
 
     This function is registered as a custom ONNX operator via onnxruntime_extensions
-    and is used in the JSTProve quantized inference pipeline. It parses ONNX-style 
-    gemm attributes, applies gemm 
+    and is used in the JSTProve quantized inference pipeline. It parses ONNX-style
+    gemm attributes, applies gemm
     and optionally rescales the result.
-    
+
     Parameters
     ----------
     a : Input tensor with dtype int64.
@@ -69,18 +71,21 @@ def int64_gemm7(
     ONNX standard Gemm operator documentation:
     https://onnx.ai/onnx/operators/onnx__Gemm.html
     """
-    
-    alpha = int(alpha)
-    beta = int(beta)
+    try:
+        alpha = int(alpha)
+        beta = int(beta)
 
-    a = a.T if transA else a
-    b = b.T if transB else b
+        a = a.T if transA else a
+        b = b.T if transB else b
 
-    result = alpha * (a @ b)
+        result = alpha * (a @ b)
 
-    if c is not None:
-        result += beta * c
+        if c is not None:
+            result += beta * c
 
-    # result = np.zeros([a.shape[0],b.shape[1]])
-    result = rescaling(scaling_factor, rescale, result)
-    return result.astype(np.int64)
+        result = rescaling(scaling_factor, rescale, result)
+        return result.astype(np.int64)
+
+    except Exception as e:
+        msg = f"Int64Gemm failed: {e}"
+        raise RuntimeError(msg) from e

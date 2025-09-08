@@ -9,7 +9,7 @@ import torch
 
 if TYPE_CHECKING:
     from python.core.circuits.zk_model_base import ZKModelBase
-from python.core.utils.helper_functions import RunType
+from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
 
 GOOD_OUTPUT = ["Witness Generated"]
 BAD_OUTPUT = [
@@ -46,10 +46,12 @@ def model_fixture(
     model = model_class(*args, **kwargs)
 
     model.base_testing(
-        run_type=RunType.COMPILE_CIRCUIT,
-        dev_mode=True,
-        circuit_path=str(circuit_path),
-        quantized_path=quantized_path,
+        CircuitExecutionConfig(
+            run_type=RunType.COMPILE_CIRCUIT,
+            dev_mode=True,
+            circuit_path=str(circuit_path),
+            quantized_path=quantized_path,
+        ),
     )
 
     return {

@@ -116,6 +116,94 @@ These are errors surfaced when interacting via the **command-line interface** or
 
 ---
 
+# Python Errors
+
+## 1. CLI Errors (`CLIError`)
+
+High-level errors raised when interacting via Python CLI utilities.
+
+| Error      | Meaning |
+|------------|---------|
+| **CLIError** | Base exception for CLI-related errors. Indicates improper arguments, bad commands, or other user-facing CLI issues. Also wrapping verious other errors called through the cli.|
+
+---
+
+## 2. Circuit Definition & Configuration Errors (`CircuitError` and subclasses)
+
+Errors related to **circuit definition, validation, and configuration**.
+
+| Error | Meaning |
+|-------|---------|
+| **CircuitError** | Base class for all circuit-related errors. Usually wraps a human-readable message and optional structured details. |
+| **CircuitConfigurationError** | Raised when the base circuit class is misconfigured (e.g., missing or invalid attributes such as input shape or scaling factor). Provides a list of missing attributes if known. |
+| **CircuitInputError** | Raised when input validation fails. |
+| **CircuitRunError** | Raised when a high-level circuit operation (compile, prove, verify, etc.) fails. |
+| **CircuitFileError** | Raised when file-related circuit operations (read, write, access) fail. |
+| **CircuitProcessingError** | Raised when data processing operations fail (e.g., scaling, reshaping, tensor manipulation). |
+
+---
+
+## 3. Quantization Errors (`QuantizationError` and subclasses)
+
+Errors raised during **model quantization** — typically when converting or preparing ONNX models for backend execution.
+
+| Error | Meaning |
+|-------|---------|
+| **QuantizationError** | Base class for all quantization errors. Always includes a generic JSTProve support message plus a specific description of the issue. |
+| **InvalidParamError** | Raised when a node contains invalid or unsupported parameters during quantization. |
+| **UnsupportedOpError** | Raised when an unsupported ONNX operation is encountered during quantization. Suggests reviewing supported layers. |
+| **MissingHandlerError** | Raised when no registered handler exists for a particular operator type during quantization. |
+| **InitializerNotFoundError** | Raised when a required initializer (typically weight or bias tensor) for a node is missing from the initializer map. |
+| **HandlerImplementationError** | Raised when a quantization handler does not conform to the expected interface (e.g., missing `quantize` method, wrong return type). |
+| **InvalidGraphError** | Raised when the ONNX graph is malformed or missing critical information. |
+| **InvalidConfigError** | Raised when the quantization configuration itself is invalid or unsupported (e.g., bad scaling parameters or global settings). |
+
+---
+
+## 4. Model Conversion Errors (`ModelConversionError` and subclasses)
+
+Errors raised while **loading, saving, analyzing, or converting** models (usually ONNX).
+
+| Error | Meaning |
+|-------|---------|
+| **ModelConversionError** | Base class for all model conversion errors. Includes the model type and optional context. |
+| **ModelLoadError** | Raised when an ONNX model cannot be loaded (e.g., file missing, corrupted, or incompatible). |
+| **ModelSaveError** | Raised when saving a model to disk fails. |
+| **InferenceError** | Raised when ONNX Runtime inference fails. May include the model path and reason. |
+| **LayerAnalysisError** | Raised when analyzing layers of a model fails (e.g., unsupported layer format or corrupt metadata). |
+| **IOInfoExtractionError** | Raised when extracting input/output tensor info from a model fails. |
+| **InvalidModelError** | Raised when the ONNX model fails validation (`onnx.checker`) or other structural checks. |
+| **SerializationError** | Raised when model data (e.g., tensors) cannot be serialized to the required format. |
+
+---
+
+## 5. Circuit Execution Errors (`CircuitExecutionError` and subclasses)
+
+Errors raised during **runtime execution** of the circuit (proof generation, caching, system calls).
+
+| Error | Meaning |
+|-------|---------|
+| **CircuitExecutionError** | Base exception for circuit execution-related errors. |
+| **MissingFileError** | Raised when a required file cannot be found. Provides optional path. |
+| **FileCacheError** | Raised when reading or writing cached output fails. Provides optional path. |
+| **ProofBackendError** | Raised when a backend (interfacing with proving system) command fails. Includes command, exit code, stdout, and stderr for debugging. |
+| **ProofSystemNotImplementedError** | Raised when a requested proof system is not implemented. |
+
+---
+
+## 6. Circuit Utility Errors (`CircuitUtilsError` and subclasses)
+
+Errors from **utility functions** used in circuit construction, file parsing, or tensor manipulation.
+
+| Error | Meaning |
+|-------|---------|
+| **CircuitUtilsError** | Base class for layer utility errors. |
+| **InputFileError** | Raised when reading an input file fails. Includes file path and cause if known. |
+| **MissingCircuitAttributeError** | Raised when a required attribute is missing or not set in a circuit definition. |
+| **ShapeMismatchError** | Raised when attempting to reshape tensors into incompatible shapes. Includes expected and actual shapes. |
+
+---
+
 ## Debugging Strategy
 1. **Identify the error enum** – this indicates which subsystem failed (utils, layers, circuit, CLI, etc.).
 2. **Inspect the detailed message** – most errors embed the specific layer, param, or input name.
