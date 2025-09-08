@@ -25,12 +25,13 @@ Zero-knowledge proofs of ML inference on **ONNX** models — powered by [Polyhed
   - [High-level architecture](#high-level-architecture)
   - [Design principles](#design-principles)
 - [Installation](#installation)
-  - [0) System packages](#0-system-packages)
-  - [1) Rust toolchain](#1-rust-toolchain)
-  - [2) Clone JSTProve & set up Python](#2-clone-jstprove--set-up-python)
-  - [3) Install & verify Expander (before building JSTProve)](#3-install--verify-expander-before-building-jstprove)
-  - [4) Build the JSTProve runner (optional; the CLI can build on demand)](#4-build-the-jstprove-runner-optional-the-cli-can-build-on-demand)
-  - [5) Try the CLI](#5-try-the-cli)
+  - [0) Requirements](#0-requirements)
+  - [1) System packages](#1-system-packages)
+  - [2) Rust toolchain](#2-rust-toolchain)
+  - [3) Clone JSTProve & set up Python](#3-clone-jstprove--set-up-python)
+  - [4) Install & verify Expander (before building JSTProve)](#4-install--verify-expander-before-building-jstprove)
+  - [5) Build the JSTProve runner (optional; the CLI can build on demand)](#5-build-the-jstprove-runner-optional-the-cli-can-build-on-demand)
+  - [6) Try the CLI](#6-try-the-cli)
 - [Quickstart (LeNet demo)](#quickstart-lenet-demo)
 - [CLI reference](#cli-reference)
 - [Troubleshooting](#troubleshooting)
@@ -69,9 +70,26 @@ ONNX model ─► Quantizer (Py) ─► Circuit via ECC (Rust) ─► Witness (R
 
 ## Installation
 
-> Run commands from the **repo root** so the runner binary path (e.g., `./target/release/onnx_generic_circuit`) resolves.
+### 0) Requirements
 
-### 0) System packages
+- **Python**: 3.10–3.12 (⚠️ Not compatible with Python 3.13)
+
+We recommend using [pyenv](https://github.com/pyenv/pyenv) or [conda](https://docs.conda.io/) to manage Python versions.
+
+<!--
+### Quick install (examples)
+
+**Using pyenv (Linux / macOS):**
+```bash
+# Install Python 3.12
+pyenv install 3.12.5
+pyenv local 3.12.5
+```
+--> 
+
+### 1) System packages
+
+> Run commands from the **repo root** so the runner binary path (e.g., `./target/release/onnx_generic_circuit`) resolves.
 
 #### Ubuntu/Debian
 ```bash
@@ -87,7 +105,7 @@ brew install open-mpi llvm
 
 ---
 
-### 1) Rust toolchain
+### 2) Rust toolchain
 
 Install Rust via rustup (if you don't have it):
 
@@ -117,7 +135,7 @@ rustup toolchain install nightly
 
 ---
 
-### 2) Clone JSTProve & set up Python
+### 3) Clone JSTProve & set up Python
 
 ```bash
 git clone https://github.com/inference-labs-inc/JSTProve.git
@@ -133,7 +151,7 @@ pip install -r requirements.txt
 
 ---
 
-### 3) Install & verify **Expander** (before building JSTProve)
+### 4) Install & verify **Expander** (before building JSTProve)
 
 JSTProve relies on Polyhedra Network’s **Expander** (prover) and **Expander Compiler Collection (ECC)** crates.
 For a clean environment, install Expander and run its self-checks first.
@@ -160,7 +178,7 @@ cargo test --release
 
 ---
 
-### 4) Build the JSTProve runner (optional; the CLI can build on demand)
+### 5) Build the JSTProve runner (optional; the CLI can build on demand)
 
 ```bash
 # Make sure you're back in the JSTProve repo root (not in Expander).
@@ -175,11 +193,13 @@ cargo build --release
 
 ---
 
-### 5) Try the CLI
+### 6) Try the CLI
 
 ```bash
 python -m python.frontend.cli --help
 ```
+
+> ⏳ Note: The first time you run this command it may take a little while due to Python/Rust imports and initialization. This is normal—subsequent runs will be faster.
 
 You can now follow the **Quickstart** commands (compile → witness → prove → verify).
 
@@ -192,6 +212,8 @@ Demo paths:
 * ONNX: `python/models/models_onnx/lenet.onnx`
 * Input JSON: `python/models/inputs/lenet_input.json`
 * Artifacts: `artifacts/lenet/*`
+
+> ⏳ Note: The commands below may take a little longer _the first time_ they are run, as dependencies and binaries are initialized. After that, runtime reflects the actual computation (e.g., compiling circuits, generating witnesses, or proving), which can still be intensive depending on the model.
 
 1. **Compile** → circuit + **quantized ONNX**
 
