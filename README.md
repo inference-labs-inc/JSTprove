@@ -163,7 +163,11 @@ cargo test --release
 ### 4) Build the JSTProve runner (optional; the CLI can build on demand)
 
 ```bash
-# From JSTProve repo root
+# Make sure you're back in the JSTProve repo root (not in Expander).
+# If you just followed Step 3, run:
+cd ../JSTProve
+
+# Then build:
 cargo build --release
 ```
 
