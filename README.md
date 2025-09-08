@@ -17,6 +17,29 @@ Zero-knowledge proofs of ML inference on **ONNX** models — powered by [Polyhed
 
 ---
 
+## Table of Contents
+<details>
+<summary>Click to expand</summary>
+
+- [What is JSTProve?](#what-is-jstprove)
+  - [High-level architecture](#high-level-architecture)
+  - [Design principles](#design-principles)
+- [Installation](#installation)
+  - [0) System packages](#0-system-packages)
+  - [1) Rust toolchain](#1-rust-toolchain)
+  - [2) Clone JSTProve & set up Python](#2-clone-jstprove--set-up-python)
+  - [3) Install & verify Expander (before building JSTProve)](#3-install--verify-expander-before-building-jstprove)
+  - [4) Build the JSTProve runner (optional; the CLI can build on demand)](#4-build-the-jstprove-runner-optional-the-cli-can-build-on-demand)
+  - [5) Try the CLI](#5-try-the-cli)
+- [Quickstart (LeNet demo)](#quickstart-lenet-demo)
+- [CLI reference](#cli-reference)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [Legal](#legal)
+- [Acknowledgments](#acknowledgments)
+
+</details>
+
 ## What is JSTProve?
 
 **JSTProve** is a [zkML](https://docs.inferencelabs.com/zk-ml) toolkit/CLI that produces [**zero-knowledge proofs**](https://docs.inferencelabs.com/resources/glossary#zero-knowledge-proof) **of AI** [**inference**](https://docs.inferencelabs.com/resources/glossary#inference).
