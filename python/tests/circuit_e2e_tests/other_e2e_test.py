@@ -30,12 +30,15 @@ def create_simple_gemm_onnx_model(
         [1, output_size],
     )
 
+    # Create random number generator
+    rng = np.random.default_rng()
+
     # Create weight tensor
-    weight = np.random.Generator(output_size, input_size).astype(np.float32)
+    weight = rng.standard_normal((output_size, input_size)).astype(np.float32)
     weight_tensor = numpy_helper.from_array(weight, name="weight")
 
     # Create bias tensor
-    bias = np.random.Generator(output_size).astype(np.float32)
+    bias = rng.standard_normal((output_size,)).astype(np.float32)
     bias_tensor = numpy_helper.from_array(bias, name="bias")
 
     # Create GEMM node
