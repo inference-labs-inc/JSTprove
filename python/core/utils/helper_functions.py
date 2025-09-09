@@ -4,6 +4,7 @@ import functools
 import json
 import logging
 import os
+import shutil
 import subprocess
 from dataclasses import dataclass
 from enum import Enum
@@ -266,10 +267,11 @@ def read_from_json(public_path: str) -> dict[str, Any]:
         return json.load(json_data)
 
 
-def run_cargo_command(
+def run_cargo_command(  # noqa: C901,PLR0913, PLR0912, PLR0915
     binary_name: str,
     command_type: str,
     args: dict[str, str] | None = None,
+    circuit_path: str | None = None,
     *,
     dev_mode: bool = False,
     bench: bool = False,
@@ -280,6 +282,8 @@ def run_cargo_command(
         binary_name (str): Name of the Cargo binary.
         command_type (str): Command type (e.g., 'run_proof', 'run_compile_circuit').
         args (dict[str, str], optional): dictionary of CLI arguments. Defaults to None.
+        circuit_path (str, optional):
+            Path to the circuit file, used for copying the binary.
         dev_mode (bool, optional):
             If True, run with `cargo run --release` instead of prebuilt binary.
             Defaults to False.
@@ -292,11 +296,27 @@ def run_cargo_command(
     Returns:
         subprocess.CompletedProcess[str]: Exit message from the subprocess.
     """
+    # Determine binary path
+    if circuit_path:
+        circuit_path_path = Path(circuit_path)
+        binary_name_end = f"{circuit_path_path.stem}_exc"
+        binary_path = circuit_path_path.parent / "target" / binary_name_end
+    else:
+        binary_path = Path("./target/")
+
     # Base command
     cmd = (
-        ["cargo", "run", "--bin", binary_name, "--release"]
+        [
+            "cargo",
+            "run",
+            "--bin",
+            binary_name,
+            "--release",
+            "--target-dir",
+            str(binary_path),
+        ]
         if dev_mode
-        else [f"./target/release/{binary_name}"]
+        else [str(binary_path / "release" / binary_name)]
     )
     env = os.environ.copy()
     env["RUST_BACKTRACE"] = "1"
@@ -362,6 +382,9 @@ def run_cargo_command(
         logger.exception(msg)
         raise
     else:
+        src = f"./target/release/{binary_name}"
+        if Path(src).exists() and (str(src) is not str(binary_path)) and dev_mode:
+            shutil.copy(src, binary_path)
         return result
 
 
@@ -551,6 +574,7 @@ def compile_circuit(
                 binary_name=binary_name,
                 command_type=RunType.COMPILE_CIRCUIT.value,
                 args=args,
+                circuit_path=circuit_path,
                 dev_mode=dev_mode,
                 bench=bench,
             )
@@ -617,6 +641,7 @@ def generate_witness(  # noqa: PLR0913
                 binary_name=binary_name,
                 command_type=RunType.GEN_WITNESS.value,
                 args=args,
+                circuit_path=circuit_path,
                 dev_mode=dev_mode,
                 bench=bench,
             )
@@ -683,6 +708,7 @@ def generate_proof(  # noqa: PLR0913
                     binary_name=binary_name,
                     command_type=RunType.PROVE_WITNESS.value,
                     args=args,
+                    circuit_path=circuit_path,
                     dev_mode=dev_mode,
                     bench=bench,
                 )
@@ -762,6 +788,7 @@ def generate_verification(  # noqa: PLR0913
                     binary_name=binary_name,
                     command_type=RunType.GEN_VERIFY.value,
                     args=args,
+                    circuit_path=circuit_path,
                     dev_mode=dev_mode,
                     bench=bench,
                 )

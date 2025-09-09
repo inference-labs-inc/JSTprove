@@ -224,7 +224,7 @@ def test_run_cargo_command_normal(mock_run: MagicMock) -> None:
 
     mock_run.assert_called_once()
     args = mock_run.call_args[0][0]
-    assert args[0] == "./target/release/zkbinary"
+    assert args[0] == "target/release/zkbinary"
     assert "run" in args
     assert "-i" in args
     assert "input.json" in args
