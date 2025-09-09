@@ -298,25 +298,15 @@ def run_cargo_command(  # noqa: C901,PLR0913, PLR0912, PLR0915
     """
     # Determine binary path
     if circuit_path:
-        circuit_path_path = Path(circuit_path)
-        binary_name_end = f"{circuit_path_path.stem}_exc"
-        binary_path = circuit_path_path.parent / "target" / binary_name_end
+        binary_path = f"{Path(circuit_path).parent / Path(circuit_path).stem!s}_exc"
     else:
-        binary_path = Path("./target/")
+        binary_path = f"./target/release/{binary_name}"
 
     # Base command
     cmd = (
-        [
-            "cargo",
-            "run",
-            "--bin",
-            binary_name,
-            "--release",
-            "--target-dir",
-            str(binary_path),
-        ]
+        ["cargo", "run", "--bin", binary_name, "--release"]
         if dev_mode
-        else [str(binary_path / "release" / binary_name)]
+        else [binary_path]
     )
     env = os.environ.copy()
     env["RUST_BACKTRACE"] = "1"
