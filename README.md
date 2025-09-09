@@ -15,6 +15,8 @@ Zero-knowledge proofs of ML inference on **ONNX** models — powered by [Polyhed
 * ✅ Supported ops (current): **Conv2D**, **GEMM/MatMul (FC)**, **ReLU**, **MaxPool2D**.
 * 🧰 CLI details: see **[docs/cli.md](docs/cli.md)**
 
+👉 Just want to see it in action? Jump to [Quickstart (LeNet demo)](#quickstart-lenet-demo).
+
 ---
 
 ## Table of Contents
@@ -69,6 +71,9 @@ ONNX model ─► Quantizer (Py) ─► Circuit via ECC (Rust) ─► Witness (R
 ---
 
 ## Installation
+
+<details>
+<summary>Click to expand</summary>
 
 ### 0) Requirements
 
@@ -202,6 +207,8 @@ python -m python.frontend.cli --help
 > ⏳ Note: The first time you run this command it may take a little while due to Python/Rust imports and initialization. This is normal—subsequent runs will be faster.
 
 You can now follow the **Quickstart** commands (compile → witness → prove → verify).
+
+</details>
 
 ---
 
