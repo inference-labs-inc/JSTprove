@@ -153,3 +153,23 @@ class CircuitProcessingError(CircuitError):
         super().__init__(message, details)
         self.operation = operation
         self.data_type = data_type
+
+
+class WitnessMatchError(CircuitError):
+    """
+    Raised when input validation fails (missing or invalid values).
+
+    Attributes:
+        parameter (str): Name of the problematic parameter (if known).
+        expected (str): Expected type or value description (optional).
+        actual (any): Actual value encountered (optional).
+    """
+
+    def __init__(
+        self: CircuitInputError,
+        message: str | None = None,
+    ) -> None:
+        common_message = "Witness does not match provided inputs and outputs!"
+        if message:
+            common_message += f" {message}"
+        super().__init__(common_message)

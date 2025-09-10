@@ -4,6 +4,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from python.core.utils.witness_utils import compare_witness_to_io, load_witness
+
 if TYPE_CHECKING:
     import numpy as np
 import torch
@@ -14,6 +16,7 @@ from python.core.circuits.errors import (
     CircuitInputError,
     CircuitProcessingError,
     CircuitRunError,
+    WitnessMatchError,
 )
 from python.core.model_processing.onnx_quantizer.layers.base import BaseOpQuantizer
 from python.core.utils.helper_functions import (
@@ -256,13 +259,21 @@ class Circuit:
                     bench=exec_config.bench,
                 )
             elif exec_config.run_type == RunType.GEN_VERIFY:
+                witness_file = exec_config.witness_file
+                output_file = exec_config.output_file
                 processed_input_file = self.adjust_inputs(exec_config.input_file)
+                if not self.load_and_compare_witness_to_io(
+                    witness_path=witness_file,
+                    input_path=processed_input_file,
+                    output_path=output_file,
+                ):
+                    raise WitnessMatchError  # noqa: TRY301
                 generate_verification(
                     circuit_name=exec_config.circuit_name,
                     circuit_path=exec_config.circuit_path,
                     input_file=processed_input_file,
-                    output_file=exec_config.output_file,
-                    witness_file=exec_config.witness_file,
+                    output_file=output_file,
+                    witness_file=witness_file,
                     proof_file=exec_config.proof_file,
                     proof_system=exec_config.proof_system,
                     dev_mode=exec_config.dev_mode,
@@ -295,6 +306,39 @@ class Circuit:
                 operation=str(exec_config.run_type),
                 details={"original_error": str(e)},
             ) from e
+
+    def load_and_compare_witness_to_io(
+        self: Circuit,
+        witness_path: str,
+        input_path: str,
+        output_path: str,
+    ) -> bool:
+        """
+        Load a witness from disk and compare its
+        public inputs to expected inputs and outputs.
+
+        Args:
+            witness_path (str): Path to the binary witness file.
+            input_path (str): Path to a JSON file containing expected inputs.
+            output_path (str): Path to a JSON file containing expected outputs.
+                            Only the `"outputs"` field is used for comparison.
+
+        Returns:
+            bool:
+                True if all witness public inputs match the expected inputs and outputs,
+                False otherwise.
+
+        Raises:
+            WitnessMatchError:
+                If the witness file is malformed or missing the modulus field.
+        """
+        w = load_witness(witness_path)
+        expected_inputs = self._read_from_json_safely(input_path)
+        expected_outputs = self._read_from_json_safely(output_path)
+        if "modulus" not in w:
+            msg = "Witness not correctly formed. Missing modulus."
+            raise WitnessMatchError(msg)
+        return compare_witness_to_io(w, expected_inputs, expected_outputs, w["modulus"])
 
     def contains_float(self: Circuit, obj: float | dict | list) -> bool:
         """Recursively check whether an object contains any float values.
