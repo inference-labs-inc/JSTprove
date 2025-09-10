@@ -29,11 +29,12 @@ static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
 fn get_witness_solver_path(input: &str) -> PathBuf {
     let path = Path::new(input);
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or(input);
+    let parent = path.parent().and_then(|s| s.to_str()).unwrap_or(input);
 
     let file_name = if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-        format!("{stem}_witness_solver.{ext}")
+        format!("{parent}/{stem}_witness_solver.{ext}")
     } else {
-        format!("{stem}_witness_solver")
+        format!("{parent}/{stem}_witness_solver")
     };
 
     PathBuf::from(file_name)

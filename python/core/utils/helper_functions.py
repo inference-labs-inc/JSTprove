@@ -4,6 +4,7 @@ import functools
 import json
 import logging
 import os
+import shutil
 import subprocess
 from dataclasses import dataclass
 from enum import Enum
@@ -266,10 +267,11 @@ def read_from_json(public_path: str) -> dict[str, Any]:
         return json.load(json_data)
 
 
-def run_cargo_command(
+def run_cargo_command(  # noqa: PLR0913
     binary_name: str,
     command_type: str,
     args: dict[str, str] | None = None,
+    circuit_path: str | None = None,
     *,
     dev_mode: bool = False,
     bench: bool = False,
@@ -280,6 +282,8 @@ def run_cargo_command(
         binary_name (str): Name of the Cargo binary.
         command_type (str): Command type (e.g., 'run_proof', 'run_compile_circuit').
         args (dict[str, str], optional): dictionary of CLI arguments. Defaults to None.
+        circuit_path (str, optional):
+            Path to the circuit file, used for copying the binary.
         dev_mode (bool, optional):
             If True, run with `cargo run --release` instead of prebuilt binary.
             Defaults to False.
@@ -292,77 +296,136 @@ def run_cargo_command(
     Returns:
         subprocess.CompletedProcess[str]: Exit message from the subprocess.
     """
-    # Base command
-    cmd = (
-        ["cargo", "run", "--bin", binary_name, "--release"]
-        if dev_mode
-        else [f"./target/release/{binary_name}"]
+    binary_path = _get_binary_path(circuit_path=circuit_path, binary_name=binary_name)
+    cmd = _build_command(
+        binary_path=binary_path,
+        command_type=command_type,
+        args=args,
+        dev_mode=dev_mode,
+        binary_name=binary_name,
     )
     env = os.environ.copy()
     env["RUST_BACKTRACE"] = "1"
-
-    # Add command type
-    cmd.append(command_type)
-
-    # Add arguments
-    if args:
-        for key, value in args.items():
-            cmd.append(f"-{key}")
-            if not (isinstance(value, bool) and value):
-                cmd.append(str(value))
 
     msg = f"Running cargo command: {' '.join(cmd)}"
     print(msg)  # noqa: T201
     logger.info(msg)
 
     try:
-        if bench:
-            stop_event, monitor_thread, monitor_results = start_memory_collection(
-                binary_name,
-            )
-        start_time = time()
-        result = subprocess.run(
-            cmd,  # noqa: S603
-            check=True,
-            capture_output=True,
-            text=True,
+        result = _run_subprocess_with_bench(
+            cmd=cmd,
             env=env,
+            bench=bench,
+            binary_name=binary_name,
         )
-        end_time = time()
-        print("\n--- BENCHMARK RESULTS ---")  # noqa: T201
-        print(f"Rust time taken: {end_time - start_time:.4f} seconds")  # noqa: T201
-        msg = f"Rust command completed in {end_time - start_time:.4f} seconds"
-        logger.info(msg)
-
-        if bench:
-            memory = end_memory_collection(stop_event, monitor_thread, monitor_results)
-            msg = f"Rust subprocess memory: {memory['total']:.2f} MB"
-            print(msg)  # noqa: T201
-            logger.info(msg)
-
-        print(result.stdout)  # noqa: T201
-        logger.info(result.stdout)
-        if result.returncode != 0:
-            msg = f"Proving Backend failed (code {result.returncode}):\n{result.stderr}"
-            logger.error(msg)
-            msg = f"Proving Backend command '{' '.join(cmd)}'"
-            f" failed with code {result.returncode}:\n"
-            f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
-            raise ProofBackendError(
-                msg,
-            )
+        _handle_result(result=result, cmd=cmd)
     except OSError as e:
         msg = f"Failed to execute proof backend command '{cmd}': {e}"
         logger.exception(msg)
-        raise ProofBackendError(
-            msg,
-        ) from e
+        raise ProofBackendError(msg) from e
     except subprocess.CalledProcessError as e:
         msg = f"Cargo command failed (return code {e.returncode}): {e.stderr}"
         logger.exception(msg)
         raise
     else:
+        _copy_binary_if_needed(
+            binary_name=binary_name,
+            binary_path=binary_path,
+            dev_mode=dev_mode,
+        )
         return result
+
+
+def _get_binary_path(circuit_path: str | None, binary_name: str) -> str:
+    """Determine the binary path based on circuit_path or default."""
+    if circuit_path:
+        return f"{Path(circuit_path).parent / Path(circuit_path).stem!s}_exc"
+    return f"./target/release/{binary_name}"
+
+
+def _build_command(
+    binary_path: str,
+    command_type: str,
+    args: dict[str, str] | None,
+    *,
+    dev_mode: bool,
+    binary_name: str,
+) -> list[str]:
+    """Build the command list for subprocess."""
+    cmd = (
+        ["cargo", "run", "--bin", binary_name, "--release"]
+        if dev_mode
+        else [binary_path]
+    )
+    cmd.append(command_type)
+    if args:
+        for key, value in args.items():
+            cmd.append(f"-{key}")
+            if not (isinstance(value, bool) and value):
+                cmd.append(str(value))
+    return cmd
+
+
+def _run_subprocess_with_bench(
+    cmd: list[str],
+    env: dict[str, str],
+    binary_name: str,
+    *,
+    bench: bool,
+) -> subprocess.CompletedProcess[str]:
+    """Run the subprocess with optional benchmarking."""
+    if bench:
+        stop_event, monitor_thread, monitor_results = start_memory_collection(
+            binary_name,
+        )
+    start_time = time()
+    result = subprocess.run(
+        cmd,  # noqa: S603
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    end_time = time()
+    print("\n--- BENCHMARK RESULTS ---")  # noqa: T201
+    print(f"Rust time taken: {end_time - start_time:.4f} seconds")  # noqa: T201
+    msg = f"Rust command completed in {end_time - start_time:.4f} seconds"
+    logger.info(msg)
+
+    if bench:
+        memory = end_memory_collection(stop_event, monitor_thread, monitor_results)
+        msg = f"Rust subprocess memory: {memory['total']:.2f} MB"
+        print(msg)  # noqa: T201
+        logger.info(msg)
+
+    print(result.stdout)  # noqa: T201
+    logger.info(result.stdout)
+    return result
+
+
+def _handle_result(result: subprocess.CompletedProcess[str], cmd: list[str]) -> None:
+    """Handle the subprocess result and raise errors if needed."""
+    if result.returncode != 0:
+        msg = f"Proving Backend failed (code {result.returncode}):\n{result.stderr}"
+        logger.error(msg)
+        msg = (
+            f"Proving Backend command '{' '.join(cmd)}'"
+            f" failed with code {result.returncode}:\n"
+            f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        )
+        raise ProofBackendError(msg)
+
+
+def _copy_binary_if_needed(
+    binary_name: str,
+    binary_path: str,
+    *,
+    dev_mode: bool,
+) -> None:
+    """Copy the binary if conditions are met."""
+    src = f"./target/release/{binary_name}"
+    if Path(src).exists() and (str(src) != str(binary_path)) and dev_mode:
+        shutil.copy(src, binary_path)
 
 
 def get_expander_file_paths(circuit_name: str) -> dict[str, str]:
@@ -551,6 +614,7 @@ def compile_circuit(
                 binary_name=binary_name,
                 command_type=RunType.COMPILE_CIRCUIT.value,
                 args=args,
+                circuit_path=circuit_path,
                 dev_mode=dev_mode,
                 bench=bench,
             )
@@ -617,6 +681,7 @@ def generate_witness(  # noqa: PLR0913
                 binary_name=binary_name,
                 command_type=RunType.GEN_WITNESS.value,
                 args=args,
+                circuit_path=circuit_path,
                 dev_mode=dev_mode,
                 bench=bench,
             )
@@ -683,6 +748,7 @@ def generate_proof(  # noqa: PLR0913
                     binary_name=binary_name,
                     command_type=RunType.PROVE_WITNESS.value,
                     args=args,
+                    circuit_path=circuit_path,
                     dev_mode=dev_mode,
                     bench=bench,
                 )
@@ -762,6 +828,7 @@ def generate_verification(  # noqa: PLR0913
                     binary_name=binary_name,
                     command_type=RunType.GEN_VERIFY.value,
                     args=args,
+                    circuit_path=circuit_path,
                     dev_mode=dev_mode,
                     bench=bench,
                 )
