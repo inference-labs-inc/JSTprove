@@ -70,7 +70,7 @@ def read_field_elements(f: BinaryIO, count: int) -> list[int]:
     Returns:
         list[int]: List of integers representing the field elements.
     """
-    return [int.from_bytes(f.read(32), "little") for _ in range(count)]
+    return [read_u256(f) for _ in range(count)]
 
 
 def to_field_repr(value: int, modulus: int) -> int:
