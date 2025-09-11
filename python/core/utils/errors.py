@@ -40,7 +40,9 @@ class ProofBackendError(CircuitExecutionError):
     ) -> None:
         parts = [message]
         if command is not None:
-            parts.append(f"Command: {' '.join(command)}")
+            command2 = [str(c) for c in command]
+            parts.append(f"Command: {' '.join(command2)}")
+            command = command2
         if returncode is not None:
             parts.append(f"Exit code: {returncode}")
         if stdout:
