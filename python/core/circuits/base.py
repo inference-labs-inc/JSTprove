@@ -262,10 +262,12 @@ class Circuit:
                 witness_file = exec_config.witness_file
                 output_file = exec_config.output_file
                 processed_input_file = self.adjust_inputs(exec_config.input_file)
+                proof_system = exec_config.proof_system
                 if not self.load_and_compare_witness_to_io(
                     witness_path=witness_file,
                     input_path=processed_input_file,
                     output_path=output_file,
+                    proof_system=proof_system,
                 ):
                     raise WitnessMatchError  # noqa: TRY301
                 generate_verification(
@@ -275,7 +277,7 @@ class Circuit:
                     output_file=output_file,
                     witness_file=witness_file,
                     proof_file=exec_config.proof_file,
-                    proof_system=exec_config.proof_system,
+                    proof_system=proof_system,
                     dev_mode=exec_config.dev_mode,
                     ecc=exec_config.ecc,
                     bench=exec_config.bench,
@@ -312,6 +314,7 @@ class Circuit:
         witness_path: str,
         input_path: str,
         output_path: str,
+        proof_system: ZKProofSystems,
     ) -> bool:
         """
         Load a witness from disk and compare its
@@ -322,6 +325,7 @@ class Circuit:
             input_path (str): Path to a JSON file containing expected inputs.
             output_path (str): Path to a JSON file containing expected outputs.
                             Only the `"outputs"` field is used for comparison.
+            proof_system(ZKProofSystems): Proof system to be used.
 
         Returns:
             bool:
@@ -332,13 +336,19 @@ class Circuit:
             WitnessMatchError:
                 If the witness file is malformed or missing the modulus field.
         """
-        w = load_witness(witness_path)
+        w = load_witness(witness_path, proof_system)
         expected_inputs = self._read_from_json_safely(input_path)
         expected_outputs = self._read_from_json_safely(output_path)
         if "modulus" not in w:
             msg = "Witness not correctly formed. Missing modulus."
             raise WitnessMatchError(msg)
-        return compare_witness_to_io(w, expected_inputs, expected_outputs, w["modulus"])
+        return compare_witness_to_io(
+            w,
+            expected_inputs,
+            expected_outputs,
+            w["modulus"],
+            proof_system,
+        )
 
     def contains_float(self: Circuit, obj: float | dict | list) -> bool:
         """Recursively check whether an object contains any float values.
