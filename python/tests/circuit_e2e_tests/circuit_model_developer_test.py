@@ -1048,3 +1048,109 @@ def test_witness_wrong_name(
     assert (
         new_output_file == written_output_data
     ), "Output file content does not match the expected output"
+
+
+def add_to_first_scalar(data: list, delta: float = 0.1) -> bool:
+    """
+    Traverse nested lists until the first scalar (non-list) element is found,
+    then add `delta` to it. Returns True if modified, False otherwise.
+    """
+    if isinstance(data, list) and len(data) > 0:
+        if isinstance(data[0], list):
+            return add_to_first_scalar(data[0], delta)
+        data[0] = data[0] + delta
+        return True
+    return False
+
+
+@pytest.mark.e2e()
+def test_witness_prove_verify_false_inputs_dev(
+    model_fixture: dict[str, Any],
+    capsys: Generator[pytest.CaptureFixture[str], None, None],
+    temp_witness_file: Generator[Path, None, None],
+    temp_input_file: Generator[Path, None, None],
+    temp_output_file: Generator[Path, None, None],
+    temp_proof_file: Generator[Path, None, None],
+    check_model_compiles: None,
+    check_witness_generated: None,
+) -> None:
+    """
+    Same as test_witness_prove_verify_true_inputs_dev, but deliberately
+    corrupts the witness outputs to trigger verification failure.
+    """
+    _ = check_witness_generated
+    _ = check_model_compiles
+
+    model = model_fixture["model"]
+
+    # Step 1: Generate witness
+    model.base_testing(
+        CircuitExecutionConfig(
+            run_type=RunType.GEN_WITNESS,
+            dev_mode=False,
+            witness_file=temp_witness_file,
+            circuit_path=str(model_fixture["circuit_path"]),
+            input_file=temp_input_file,
+            output_file=temp_output_file,
+            write_json=True,
+            quantized_path=str(model_fixture["quantized_model"]),
+        ),
+    )
+
+    # Step 2: Corrupt the witness file by flipping some bytes
+    with Path(temp_input_file).open(encoding="utf-8") as f:
+        input_data = json.load(f)
+
+    first_key = next(iter(input_data))  # get the first key
+    modified = add_to_first_scalar(input_data[first_key], 0.1)
+
+    if not modified:
+        pytest.skip("Input file format not suitable for tampering test.")
+
+    tampered_input_file = temp_input_file.parent / "tampered_input.json"
+    with Path(tampered_input_file).open("w", encoding="utf-8") as f:
+        json.dump(input_data, f)
+
+    # Step 3: Try to prove with corrupted witness
+    model.base_testing(
+        CircuitExecutionConfig(
+            run_type=RunType.PROVE_WITNESS,
+            dev_mode=False,
+            witness_file=temp_witness_file,
+            circuit_path=str(model_fixture["circuit_path"]),
+            input_file=temp_input_file,
+            output_file=temp_output_file,
+            proof_file=temp_proof_file,
+            quantized_path=str(model_fixture["quantized_model"]),
+            ecc=False,
+        ),
+    )
+
+    # Step 4: Attempt verification
+    with pytest.raises(CircuitRunError) as excinfo:
+        model.base_testing(
+            CircuitExecutionConfig(
+                run_type=RunType.GEN_VERIFY,
+                dev_mode=False,
+                witness_file=temp_witness_file,
+                circuit_path=str(model_fixture["circuit_path"]),
+                input_file=tampered_input_file,
+                output_file=temp_output_file,
+                proof_file=temp_proof_file,
+                quantized_path=str(model_fixture["quantized_model"]),
+                ecc=False,
+            ),
+        )
+
+    # ---- ASSERTIONS ----
+    captured = capsys.readouterr()
+    stdout = captured.out
+    stderr = captured.err
+    print(stdout)
+    print(stderr)
+
+    print(excinfo.value)
+    assert "Witness does not match provided inputs and outputs" in str(
+        excinfo.value.details,
+    )
+    assert "Failed during RunType.GEN_VERIFY" in excinfo.value.message
