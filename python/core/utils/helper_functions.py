@@ -4,6 +4,7 @@ import functools
 import json
 import logging
 import os
+import platform
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -485,7 +486,8 @@ def run_expander_raw(  # noqa: PLR0913
     env = os.environ.copy()
     env["RUSTFLAGS"] = "-C target-cpu=native"
     time_measure = "/usr/bin/time"
-    time_flag = "-l"
+
+    time_flag = "-l" if platform.system() == "Darwin" else "-v"
 
     arg_1 = "mpiexec"
     arg_2 = "-n"
