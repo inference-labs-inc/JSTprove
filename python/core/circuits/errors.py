@@ -1,6 +1,8 @@
 # python/core/utils/exceptions.py
 from __future__ import annotations
 
+from python.core.utils.helper_functions import RunType
+
 
 class CircuitError(Exception):
     """
@@ -21,9 +23,14 @@ class CircuitError(Exception):
         self.details = details or {}
 
     def __str__(self: CircuitError) -> None:
+        parts = [self.message]
         if self.details:
-            return f"{self.message} | Details: {self.details}"
-        return self.message
+            parts.append(f"Details: {self.details}")
+
+        # Show the chained exception cause if present
+        if self.__cause__ is not None:
+            parts.append(f"Caused by: {self.__cause__}")
+        return " | ".join(parts)
 
 
 class CircuitConfigurationError(CircuitError):
@@ -95,11 +102,17 @@ class CircuitRunError(CircuitError):
     def __init__(
         self: CircuitRunError,
         message: str | None = None,
-        operation: str | None = None,
+        operation: RunType | None = None,
         details: dict | None = None,
     ) -> None:
+        operations_to_name = {
+            RunType.COMPILE_CIRCUIT: "Compile",
+            RunType.GEN_VERIFY: "Verify",
+            RunType.PROVE_WITNESS: "Prove",
+            RunType.GEN_WITNESS: "Witness",
+        }
         if operation and not message:
-            message = f"Circuit operation '{operation}' failed."
+            message = f"Circuit operation '{operations_to_name.get(operation)}' failed."
         elif not message:
             message = "Circuit run failed."
         super().__init__(message, details)

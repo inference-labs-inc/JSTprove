@@ -676,7 +676,7 @@ def test_parse_proof_run_type_catches_internal_exception(
     )
 
     # This will raise inside `compile_circuit`, which is patched to raise
-    with pytest.raises(CircuitRunError, match="Failed during"):
+    with pytest.raises(CircuitRunError, match="Circuit operation 'Compile' failed"):
 
         c.parse_proof_run_type(config_exception)
 

@@ -11,7 +11,7 @@ class QuantizationError(Exception):
 
     GENERIC_MESSAGE = (
         "\nThis model is not supported by JSTProve."
-        "\nSubmit model support requests via the JSTProve channel: {REPORTING_URL},"
+        f"\nSubmit model support requests via the JSTProve channel: {REPORTING_URL},"
     )
 
     def __init__(self: Exception, message: str) -> None:
