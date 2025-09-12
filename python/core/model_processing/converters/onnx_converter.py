@@ -1081,7 +1081,6 @@ class ONNXConverter(ModelConverter):
             "scale_exponent": getattr(self, "scale_exponent", 18),
             "rescale_config": getattr(self, "rescale_config", {}),
         }
-        self.save_quantized_model("test.onnx")
         return architecture, weights, circuit_params
 
     def get_model_and_quantize(self: ONNXConverter) -> None:
