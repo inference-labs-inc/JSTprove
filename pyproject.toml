@@ -7,7 +7,7 @@ name = "jstprove"
 version = "0.1.0"
 description = "JSTProve — Verifiable ML by Inference Labs (Python CLI)"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.13"
 authors = [{ name = "Inference Labs" }]
 keywords = ["zkml", "ml", "onnx", "proofs", "gkr"]
 

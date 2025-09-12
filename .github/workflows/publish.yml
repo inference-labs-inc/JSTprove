@@ -30,14 +30,29 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
-      - name: Verify tag matches project version
-        shell: bash
+      - name: Update pyproject.toml with tag version
         run: |
           set -euo pipefail
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          PYPROJECT_VERSION=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-          echo "Tag: $TAG_VERSION, pyproject: $PYPROJECT_VERSION"
-          test "$TAG_VERSION" = "$PYPROJECT_VERSION"
+          echo "Updating pyproject.toml version to: ${{ steps.version.outputs.version }}"
+          python -c "
+          import re
+
+          version = '${{ steps.version.outputs.version }}'
+
+          with open('pyproject.toml', 'r') as f:
+              content = f.read()
+
+          # Update version in pyproject.toml
+          updated_content = re.sub(
+              r'^version\s*=\s*[\"\'](.*?)[\"\']',
+              f'version = \"{version}\"',
+              content,
+              flags=re.MULTILINE
+          )
+
+          with open('pyproject.toml', 'w') as f:
+              f.write(updated_content)
+          "
 
       - name: Clean dist
         run: rm -rf dist
