@@ -722,10 +722,13 @@ class Circuit:
         if isinstance(weights, list):
             for i, w in enumerate(weights):
                 if i == 0:
-                    self._to_json_safely(w, weights_path, "weights")
+                    self._to_json_safely(w, Path(weights_path), "weights")
                 else:
                     val = i + 1
-                    file_path = weights_path[:-5] + f"{val}" + weights_path[-5:]
+                    file_path = (
+                        Path(weights_path).parent
+                        / f"{Path(weights_path).stem!s}{val}{Path(weights_path).suffix}"
+                    )
                     self._to_json_safely(w, file_path, "weights")
         elif isinstance(weights, (dict, tuple)):
             self._to_json_safely(weights, weights_path, "weights")

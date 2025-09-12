@@ -26,9 +26,9 @@ use jstprove_circuits::circuit_functions::utils::tensor_ops::get_nd_circuit_inpu
 use jstprove_circuits::io::io_reader::{FileReader, IOReader};
 use jstprove_circuits::runner::main_runner::{ConfigurableCircuit, handle_args};
 
-type WeightsData = (Architecture, WANDB, CircuitParams);
+type WeightsData = (Architecture, CircuitParams);
 
-// This reads the weights json into a string
+// // This reads the weights json into a string
 const MATRIX_WEIGHTS_FILE: &str =
     include_str!("../../../python/models/weights/onnx_generic_circuit_weights.json");
 
@@ -38,11 +38,16 @@ const MATRIX_WEIGHTS_FILE: &str =
 static WEIGHTS_INPUT: LazyLock<WeightsData> = LazyLock::new(|| {
     serde_json::from_str(MATRIX_WEIGHTS_FILE).expect("JSON was not well-formatted")
 });
-
+static WEIGHTS_INPUT2: LazyLock<WANDB> = LazyLock::new(|| {
+    let path = std::path::Path::new("python/models/weights/onnx_generic_circuit_weights2.json");
+    let json_str =
+        std::fs::read_to_string(path).expect("Failed to read weights JSON file at runtime");
+    serde_json::from_str(&json_str).expect("JSON was not well-formatted")
+});
 // Extract components from WEIGHTS_INPUT lazily
 static ARCHITECTURE: LazyLock<Architecture> = LazyLock::new(|| WEIGHTS_INPUT.0.clone());
-static W_AND_B: LazyLock<WANDB> = LazyLock::new(|| WEIGHTS_INPUT.1.clone());
-static CIRCUITPARAMS: LazyLock<CircuitParams> = LazyLock::new(|| WEIGHTS_INPUT.2.clone());
+static W_AND_B: LazyLock<WANDB> = LazyLock::new(|| WEIGHTS_INPUT2.clone());
+static CIRCUITPARAMS: LazyLock<CircuitParams> = LazyLock::new(|| WEIGHTS_INPUT.1.clone());
 
 declare_circuit!(Circuit {
     input_arr: [PublicVariable],

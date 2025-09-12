@@ -142,7 +142,8 @@ class ConvQuantizer(BaseOpQuantizer):
         Raises:
             InvalidParamError: If any required parameter is missing.
         """
-        required_attrs = ["strides", "kernel_shape", "dilations", "pads"]
+        # May need: ["strides", "kernel_shape", "dilations", "pads"]
+        required_attrs = ["strides", "kernel_shape", "dilations"]
         self.validate_required_attrs(node, required_attrs)
 
     def check_supported_shape(

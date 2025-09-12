@@ -13,7 +13,9 @@ use crate::circuit_functions::{
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::{DILATION, INPUT, KERNEL_SHAPE, PADS, STRIDES},
-        onnx_model::{extract_params_and_expected_shape, get_input_name, get_param},
+        onnx_model::{
+            extract_params_and_expected_shape, get_input_name, get_param, get_param_or_default,
+        },
         typecasting::AsIsize,
     },
 };
@@ -90,12 +92,25 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
         let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer)?;
 
+        // Get kernel_shape first, because its length defines spatial dims
+        let kernel_shape: Vec<usize> = get_param(&layer.name, KERNEL_SHAPE, &params)?;
+        let spatial_rank = kernel_shape.len();
+
+        // Default values according to ONNX spec
+        let default_dilation: Vec<usize> = vec![1; spatial_rank];
+        let default_pads: Vec<usize> = vec![0; 2 * spatial_rank]; // begin + end for each dim
+
         let maxpool = Self {
             name: layer.name.clone(),
-            kernel_shape: get_param(&layer.name, KERNEL_SHAPE, &params)?,
+            kernel_shape,
             strides: get_param(&layer.name, STRIDES, &params)?,
-            dilation: get_param(&layer.name, DILATION, &params)?,
-            padding: get_param(&layer.name, PADS, &params)?,
+            dilation: get_param_or_default(
+                &layer.name,
+                DILATION,
+                &params,
+                Some(&default_dilation),
+            )?,
+            padding: get_param_or_default(&layer.name, PADS, &params, Some(&default_pads))?,
             input_shape: expected_shape.clone(),
             shift_exponent: layer_context.n_bits - 1,
             inputs: layer.inputs.clone(),
