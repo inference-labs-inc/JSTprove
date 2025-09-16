@@ -1,6 +1,6 @@
 # Models
 
-This page explains what kinds of models JSTProve supports and how they're handled internally.
+This page explains what kinds of models JSTprove supports and how they're handled internally.
 
 ---
 
@@ -10,7 +10,7 @@ This page explains what kinds of models JSTProve supports and how they're handle
 - **Convolution:** **Conv2D**
 - **Activation:** **ReLU**
 - **Pooling:** **MaxPool2D**
-- **Shaping / graph ops:** **Flatten**, **Reshape**, **Constant** 
+- **Shaping / graph ops:** **Flatten**, **Reshape**, **Constant**
 
 ---
 
@@ -27,14 +27,14 @@ This page explains what kinds of models JSTProve supports and how they're handle
 - Internally, inputs and weights are scaled to integers, and tensors are reshaped to the expected shapes before witness generation.
 - The CLI's **witness** and **verify** stages take care of **rescale + reshape** via circuit helpers.
 
-**Important:** Always pass a **`.onnx`** file to `--quantized-path` (not `.json`).  
+**Important:** Always pass a **`.onnx`** file to `--quantized-path` (not `.json`).
 If you pass a `.json` by mistake you'll get an ONNX runtime parse error.
 
 ---
 
 ## Input / Output JSON
 
-- **Input JSON** should contain your model inputs as numeric arrays.  
+- **Input JSON** should contain your model inputs as numeric arrays.
   - If values are floats, they'll be **scaled and rounded** automatically during witness/verify.
   - If your key is named exactly `"input"` (single-input models), it will be reshaped to the model's input shape.
 - Multi-input models are **not supported** yet; the CLI expects a single key `"input"`.
@@ -50,7 +50,7 @@ If you pass a `.json` by mistake you'll get an ONNX runtime parse error.
 
 ```json
 {
-  "input": [[[ 
+  "input": [[[
     [0, 1, 2, "... 28 values ..."],
     "... 28 rows ..."
   ]]]

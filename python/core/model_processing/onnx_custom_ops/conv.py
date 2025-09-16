@@ -45,7 +45,7 @@ def int64_conv(
     Performs a convolution on int64 input tensors.
 
     This function is registered as a custom ONNX operator via onnxruntime_extensions
-    and is used in the JSTProve quantized inference pipeline. It parses ONNX-style
+    and is used in the JSTprove quantized inference pipeline. It parses ONNX-style
     convolution attributes, applies convolution
     and optionally rescales the result.
 

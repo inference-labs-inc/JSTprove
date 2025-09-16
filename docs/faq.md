@@ -1,7 +1,7 @@
 # FAQ
 
 ## Do I need to specify a circuit class?
-**No.** JSTProve defaults to **GenericModelONNX**.
+**No.** JSTprove defaults to **GenericModelONNX**.
 
 ## Can I run only witness/prove/verify without compile?
 **Yes**, as long as you already have the **circuit** and **quantized ONNX** produced by a prior compile.
