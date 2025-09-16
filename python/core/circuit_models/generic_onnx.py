@@ -92,7 +92,6 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
             raise CircuitFileError(
                 msg,
                 file_path=model_name,
-                details={"original_error": str(e)},
             ) from e
 
     def find_model(self: GenericModelONNX, model_name: str) -> str:
@@ -167,7 +166,6 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
             raise CircuitRunError(
                 msg,
                 operation="get_outputs",
-                details={"original_error": str(e)},
             ) from e
         else:
             return torch.as_tensor(np.array(raw_outputs)).flatten()
@@ -202,7 +200,6 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
                 msg,
                 operation="format_inputs",
                 data_type=type(inputs).__name__,
-                details={"original_error": str(e)},
             ) from e
         else:
             return x

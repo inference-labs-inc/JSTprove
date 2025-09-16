@@ -4,7 +4,7 @@ import functools
 import json
 import logging
 import os
-import platform
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -65,6 +65,66 @@ class CircuitExecutionConfig:
     dev_mode: bool = False
     write_json: bool = False
     bench: bool = False
+
+
+def filter_expander_output(stderr: str) -> str:
+    """Keep Rust panic + MPI exit summary, drop system stack traces and notes."""
+    lines = stderr.splitlines()
+    filtered = []
+    rust_panic_started = False
+
+    for line in lines:
+        # Start capturing Rust panic/assertion
+        if "panicked at" in line or "assertion" in line.lower():
+            rust_panic_started = True
+            filtered.append(line)
+            continue
+
+        # Keep lines following Rust panic that are relevant
+        if rust_panic_started:
+            # Stop at system stack traces or abort messages
+            if (
+                re.match(r"\[\s*\d+\]", line)
+                or "*** Process received signal ***" in line
+            ):
+                rust_panic_started = False
+                continue
+            filtered.append(line)
+
+        # Always keep MPI exit summary
+        if line.startswith("prterun noticed that process rank"):
+            filtered.append(line)
+
+    return "\n".join(filtered)
+
+
+def extract_rust_error(stderr: str) -> str:
+    """
+    Extracts the Rust error message from stderr,
+    handling both panics and normal error prints.
+    """
+    lines = stderr.splitlines()
+    error_lines = []
+
+    # Case 1: Rust panic
+    capture = False
+    for line in lines:
+        if re.match(r"thread '.*' panicked at", line):
+            capture = True
+            continue
+        if capture:
+            if "stack backtrace:" in line.lower():
+                break
+            error_lines.append(line)
+    if error_lines:
+        return "\n".join(error_lines).strip()
+
+    # Case 2: Non-panic error (just "Error: ...")
+    for line in lines:
+        if line.strip().startswith("Error:"):
+            return line.strip()
+
+    return ""
 
 
 # Decorator to compute outputs once and store in temp folder
@@ -327,7 +387,9 @@ def run_cargo_command(  # noqa: PLR0913
     except subprocess.CalledProcessError as e:
         msg = f"Cargo command failed (return code {e.returncode}): {e.stderr}"
         logger.exception(msg)
-        raise
+        rust_error = extract_rust_error(e.stderr)
+        msg = f"Rust backend error '{rust_error}'"
+        raise ProofBackendError(msg, cmd) from e
     else:
         _copy_binary_if_needed(
             binary_name=binary_name,
@@ -487,7 +549,7 @@ def run_expander_raw(  # noqa: PLR0913
     env["RUSTFLAGS"] = "-C target-cpu=native"
     time_measure = "/usr/bin/time"
 
-    time_flag = "-l" if platform.system() == "Darwin" else "-v"
+    # If we need a timeflag time_flag = "-l" if platform.system() == "Darwin" else "-v"
 
     arg_1 = "mpiexec"
     arg_2 = "-n"
@@ -499,7 +561,7 @@ def run_expander_raw(  # noqa: PLR0913
 
     args = [
         time_measure,
-        time_flag,
+        # time_flag,
         arg_1,
         arg_2,
         arg_3,
@@ -548,7 +610,8 @@ def run_expander_raw(  # noqa: PLR0913
             print(f"Rust subprocess memory: {memory['total']:.2f} MB")  # noqa: T201
 
         if result.returncode != 0:
-            msg = f"Expander {mode.value} failed:\n{result.stderr}"
+            clean_stderr = filter_expander_output(result.stderr)
+            msg = f"Expander {mode.value} failed:\n{clean_stderr}"
             logger.warning(msg)
             msg = f"Expander {mode.value} failed"
             raise ProofBackendError(
@@ -556,7 +619,7 @@ def run_expander_raw(  # noqa: PLR0913
                 command=args,
                 returncode=result.returncode,
                 stdout=result.stdout,
-                stderr=result.stderr,
+                stderr=clean_stderr,
             )
 
         print(  # noqa: T201

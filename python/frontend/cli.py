@@ -13,9 +13,9 @@ from typing import Any
 import onnx
 
 # local
-from python.core.circuits.base import RunType
+from python.core.circuits.errors import CircuitRunError
 from python.core.model_processing.onnx_custom_ops.onnx_helpers import get_input_shapes
-from python.core.utils.helper_functions import CircuitExecutionConfig
+from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
 
 """JSTProve CLI."""
 
@@ -167,6 +167,8 @@ def _run_compile(args: argparse.Namespace) -> None:
                 dev_mode=True,
             ),
         )
+    except CircuitRunError as e:
+        raise CLIError(e) from e
     except Exception as e:
         msg = f"Process execution failed with args '{args.cmd}': {e}"
         raise CLIError(msg) from e
@@ -225,6 +227,8 @@ def _run_verify(args: argparse.Namespace) -> None:
                 ecc=False,
             ),
         )
+    except CircuitRunError as e:
+        raise CLIError(e) from e
     except Exception as e:
         msg = f"Process execution failed with args '{args.cmd}': {e}"
         raise CLIError(msg) from e
@@ -249,6 +253,8 @@ def _run_prove(args: argparse.Namespace) -> None:
                 ecc=False,
             ),
         )
+    except CircuitRunError as e:
+        raise CLIError(e) from e
     except Exception as e:
         msg = f"Process execution failed with args '{args.cmd}': {e}"
         raise CLIError(msg) from e
@@ -277,6 +283,8 @@ def _run_witness(args: argparse.Namespace) -> None:
                 witness_file=args.witness_path,
             ),
         )
+    except CircuitRunError as e:
+        raise CLIError(e) from e
     except Exception as e:
         msg = f"Process execution failed with args '{args.cmd}': {e}"
         raise CLIError(msg) from e
