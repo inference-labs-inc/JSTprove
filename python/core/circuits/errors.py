@@ -22,7 +22,7 @@ class CircuitError(Exception):
         self.message = message
         self.details = details or {}
 
-    def __str__(self: CircuitError) -> None:
+    def __str__(self: CircuitError) -> str:
         parts = [self.message]
         if self.details:
             parts.append(f"Details: {self.details}")
