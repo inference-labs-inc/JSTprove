@@ -90,7 +90,7 @@ We recommend using [pyenv](https://github.com/pyenv/pyenv) or [conda](https://do
 pyenv install 3.12.5
 pyenv local 3.12.5
 ```
---> 
+-->
 
 ### 1) System packages
 
@@ -100,7 +100,7 @@ pyenv local 3.12.5
 ```bash
 sudo apt-get update && sudo apt-get install -y \
   libopenmpi-dev openmpi-bin pkg-config libclang-dev clang
-````
+```
 
 #### macOS
 
@@ -118,7 +118,7 @@ Install Rust via rustup (if you don't have it):
 # macOS/Linux:
 curl https://sh.rustup.rs -sSf | sh
 # then restart your shell
-````
+```
 
 Verify your install:
 
@@ -150,7 +150,7 @@ python -m venv .venv
 # macOS/Linux:
 source .venv/bin/activate
 
-# Project deps
+# Project dependencies
 pip install -r requirements.txt
 ```
 
@@ -162,7 +162,7 @@ JSTProve relies on Polyhedra Network’s **Expander** (prover) and **Expander Co
 For a clean environment, install Expander and run its self-checks first.
 
 ```bash
-# In a sibling folder (or anywhere you keep deps)
+# In a sibling folder (or anywhere you keep dependencies)
 git clone https://github.com/PolyhedraZK/Expander.git
 cd Expander
 

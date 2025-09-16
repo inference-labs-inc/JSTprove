@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 from typing import Generator
 from unittest.mock import MagicMock, patch
 
@@ -442,9 +443,9 @@ def test_compile_preprocessing_weights_list(mock_to_json: MagicMock) -> None:
     call_count = 3
 
     assert mock_to_json.call_count == call_count
-    mock_to_json.assert_any_call({"w1": 1}, "weights.json")
-    mock_to_json.assert_any_call({"w2": 2}, "weights2.json")
-    mock_to_json.assert_any_call({"w3": 3}, "weights3.json")
+    mock_to_json.assert_any_call({"w1": 1}, Path("weights.json"))
+    mock_to_json.assert_any_call({"w2": 2}, Path("weights2.json"))
+    mock_to_json.assert_any_call({"w3": 3}, Path("weights3.json"))
 
 
 @pytest.mark.unit()
