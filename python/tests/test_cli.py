@@ -35,8 +35,6 @@ def test_witness_dispatch(tmp_path: Path) -> None:
                 "witness",
                 "-c",
                 str(circuit),
-                "-q",
-                str(quant),
                 "-i",
                 str(inputj),
                 "-o",
@@ -51,7 +49,6 @@ def test_witness_dispatch(tmp_path: Path) -> None:
     config = call_args[0][0]
     assert config.run_type == RunType.GEN_WITNESS
     assert config.circuit_path == str(circuit)
-    assert config.quantized_path == str(quant)
     assert config.input_file == str(inputj)
     assert config.output_file == str(outputj)
     assert config.witness_file == str(witness)
@@ -113,8 +110,6 @@ def test_verify_dispatch(tmp_path: Path) -> None:
     quant.write_bytes(b"\x00")
 
     fake_circuit = MagicMock()
-    # verify path calls load_quantized_model() to hydrate input shapes
-    fake_circuit.load_quantized_model = MagicMock()
 
     with patch("python.frontend.cli._build_default_circuit", return_value=fake_circuit):
         rc = main(
@@ -123,8 +118,6 @@ def test_verify_dispatch(tmp_path: Path) -> None:
                 "verify",
                 "-c",
                 str(circuit),
-                "-q",
-                str(quant),
                 "-i",
                 str(inputj),
                 "-o",
@@ -137,7 +130,6 @@ def test_verify_dispatch(tmp_path: Path) -> None:
         )
 
     assert rc == 0
-    fake_circuit.load_quantized_model.assert_called_once_with(str(quant))
     call_args = fake_circuit.base_testing.call_args
     config = call_args[0][0]
     assert config.run_type == RunType.GEN_VERIFY
@@ -156,7 +148,6 @@ def test_compile_dispatch(tmp_path: Path) -> None:
     model.write_bytes(b"\x00")
 
     circuit = tmp_path / "circuit.txt"  # doesn't need to pre-exist
-    quant = tmp_path / "q.onnx"  # doesn't need to pre-exist
 
     fake_circuit = MagicMock()
     with patch("python.frontend.cli._build_default_circuit", return_value=fake_circuit):
@@ -168,8 +159,6 @@ def test_compile_dispatch(tmp_path: Path) -> None:
                 str(model),
                 "-c",
                 str(circuit),
-                "-q",
-                str(quant),
             ],
         )
 
@@ -183,5 +172,4 @@ def test_compile_dispatch(tmp_path: Path) -> None:
     config = call_args[0][0]
     assert config.run_type == RunType.COMPILE_CIRCUIT
     assert config.circuit_path == str(circuit)
-    assert config.quantized_path == str(quant)
     assert config.dev_mode is True

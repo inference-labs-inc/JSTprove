@@ -47,7 +47,9 @@ static CIRCUITPARAMS: LazyLock<CircuitParams> = LazyLock::new(|| WEIGHTS_INPUT.2
 declare_circuit!(Circuit {
     input_arr: [PublicVariable],
     outputs: [PublicVariable],
-    dummy: [Variable; 2]
+    dummy: [Variable; 2],
+    scale_base: [PublicVariable; 1],
+    scale_exponent: [PublicVariable; 1],
 });
 
 // Memorization, in a better place
@@ -123,6 +125,9 @@ impl Circuit<Variable> {
         api.assert_is_equal(self.dummy[0], 1);
         api.assert_is_equal(self.dummy[1], 1);
 
+        api.assert_is_equal(self.scale_base[0], CIRCUITPARAMS.scale_base);
+        api.assert_is_equal(self.scale_exponent[0], CIRCUITPARAMS.scale_exponent);
+
         Ok(())
     }
 }
@@ -166,6 +171,9 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
 
         assignment.dummy[0] = CircuitField::<C>::from(1);
         assignment.dummy[1] = CircuitField::<C>::from(1);
+
+        assignment.scale_base[0] = CircuitField::<C>::from(CIRCUITPARAMS.scale_base);
+        assignment.scale_exponent[0] = CircuitField::<C>::from(CIRCUITPARAMS.scale_exponent);
 
         // 1) get back an ArrayD<CircuitField<C>>
         let arr: ArrayD<CircuitField<C>> = get_nd_circuit_inputs::<C>(&data.input, input_dims)

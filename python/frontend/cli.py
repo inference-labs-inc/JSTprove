@@ -10,11 +10,8 @@ from pathlib import Path
 from typing import Any
 
 # third-party
-import onnx
-
 # local
 from python.core.circuits.base import RunType
-from python.core.model_processing.onnx_custom_ops.onnx_helpers import get_input_shapes
 from python.core.utils.helper_functions import CircuitExecutionConfig
 
 """JSTProve CLI."""
@@ -145,7 +142,6 @@ def _ensure_parent_dir(path: str) -> None:
 def _run_compile(args: argparse.Namespace) -> None:
     _ensure_exists(args.model_path, "file")
     _ensure_parent_dir(args.circuit_path)
-    _ensure_parent_dir(args.quantized_path)
 
     # Instantiate the circuit. We use the model filename as a friendly hint.
     model_name_hint = Path(args.model_path).stem
@@ -163,7 +159,6 @@ def _run_compile(args: argparse.Namespace) -> None:
             CircuitExecutionConfig(
                 run_type=RunType.COMPILE_CIRCUIT,
                 circuit_path=args.circuit_path,
-                quantized_path=args.quantized_path,
                 dev_mode=True,
             ),
         )
@@ -171,8 +166,7 @@ def _run_compile(args: argparse.Namespace) -> None:
         msg = f"Process execution failed with args '{args.cmd}': {e}"
         raise CLIError(msg) from e
     print(  # noqa: T201
-        f"[compile] done → circuit={args.circuit_path},"
-        f" quantized={args.quantized_path}",
+        f"[compile] done → circuit={args.circuit_path},",
     )
 
 
@@ -182,37 +176,10 @@ def _run_verify(args: argparse.Namespace) -> None:
     _ensure_exists(args.output_path, "file")
     _ensure_exists(args.witness_path, "file")
     _ensure_exists(args.proof_path, "file")
-    _ensure_exists(args.quantized_path, "file")
 
     circuit = _build_default_circuit("cli")
 
-    # Hydrate shapes so adjust_inputs() can reshape consistently.
-    # Prefer the circuit's loader; fall back to direct ONNX parsing.
-    if hasattr(circuit, "load_quantized_model"):
-        circuit.load_quantized_model(args.quantized_path)
-    else:
-        # fallback: infer from ONNX directly
-        # TODO: This should go in the middle end eventually # noqa: FIX002, TD003, TD002
-        try:
-            m = onnx.load(args.quantized_path)
-        except (
-            onnx.onnx_cpp2py_export.checker.ValidationError,
-            onnx.OnnxInvalidProtoError,
-            OSError,
-        ) as e:
-            msg = f"Failed to load ONNX model '{args.quantized_path}': {e}"
-            raise CLIError(msg) from e
-        shapes = get_input_shapes(m)  # dict of input_name -> shape
-        if len(shapes) == 1:
-            circuit.input_shape = [
-                s if s > 0 else 1 for s in next(iter(shapes.values()))
-            ]
-        else:
-            msg = "verify needs load_quantized_model"
-            " or a single-input model to infer shape"
-            raise SystemExit(msg)
-
-            # Verify: checks proof; some backends also emit verifier artifacts
+    # Verify: checks proof; some backends also emit verifier artifacts
     try:
         circuit.base_testing(
             CircuitExecutionConfig(
@@ -258,7 +225,6 @@ def _run_prove(args: argparse.Namespace) -> None:
 
 def _run_witness(args: argparse.Namespace) -> None:
     _ensure_exists(args.circuit_path, "file")
-    _ensure_exists(args.quantized_path, "file")
     _ensure_exists(args.input_path, "file")
     _ensure_parent_dir(args.output_path)
     _ensure_parent_dir(args.witness_path)
@@ -271,7 +237,6 @@ def _run_witness(args: argparse.Namespace) -> None:
             CircuitExecutionConfig(
                 run_type=RunType.GEN_WITNESS,
                 circuit_path=args.circuit_path,
-                quantized_path=args.quantized_path,
                 input_file=args.input_path,
                 output_file=args.output_path,
                 witness_file=args.witness_path,
@@ -338,13 +303,6 @@ def main(argv: list[str] | None = None) -> int:
         required=True,
         help="Output path for the compiled circuit (e.g., circuit.txt).",
     )
-    p_compile.add_argument(
-        "-q",
-        "--quantized-path",
-        required=True,
-        help="Output path for the quantized model.",
-    )
-
     # witness
     p_wit = sub.add_parser(
         "witness",
@@ -357,12 +315,6 @@ def main(argv: list[str] | None = None) -> int:
         "--circuit-path",
         required=True,
         help="Path to the compiled circuit.",
-    )
-    p_wit.add_argument(
-        "-q",
-        "--quantized-path",
-        required=True,
-        help="Path to the quantized model (ONNX).",
     )
     p_wit.add_argument("-i", "--input-path", required=True, help="Path to input JSON.")
     p_wit.add_argument(
@@ -436,12 +388,6 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to witness.",
     )
     p_verify.add_argument("-p", "--proof-path", required=True, help="Path to proof.")
-    p_verify.add_argument(
-        "-q",
-        "--quantized-path",
-        required=True,
-        help="Path to the quantized ONNX (used to infer input shapes).",
-    )
 
     args = parser.parse_args(argv)
 
