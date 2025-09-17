@@ -9,12 +9,6 @@ Common issues and quick fixes.
 - Run commands from the **repo root** so `./target/release/*` is visible.
 - Re-run **compile** (it will build the runner automatically if needed).
 
----
-
-## ONNXRuntimeError … Protobuf parsing failed
-
-- You likely passed a **`.json`** to `--quantized-path`.
-- Use a **`.onnx`** file for `--quantized-path`.
 
 ---
 
@@ -28,7 +22,6 @@ Common issues and quick fixes.
 
 ## Verification complains about shapes
 
-- Always pass `--quantized-path` to **verify** so input shapes are hydrated.
 - If your model has multiple inputs, ensure the input JSON includes **all input keys** with correct shapes.
 
 ---

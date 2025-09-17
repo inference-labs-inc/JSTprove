@@ -44,15 +44,13 @@ Generate a circuit file and a **quantized ONNX** model.
 
 * `-m, --model-path <path>` (required) — original ONNX model
 * `-c, --circuit-path <path>` (required) — output circuit path
-* `-q, --quantized-path <path>` (required) — output quantized ONNX path
 
 **Example**
 
 ```bash
 python -m python.frontend.cli compile \
   -m python/models/models_onnx/lenet.onnx \
-  -c artifacts/lenet/circuit.txt \
-  -q artifacts/lenet/quantized.onnx
+  -c artifacts/lenet/circuit.txt
 ```
 
 ---
@@ -64,7 +62,6 @@ Reshapes/scales inputs, runs the quantized model to produce outputs, and writes 
 **Options**
 
 * `-c, --circuit-path <path>` (required) — compiled circuit
-* `-q, --quantized-path <path>` (required) — quantized ONNX
 * `-i, --input-path <path>` (required) — input JSON
 * `-o, --output-path <path>` (required) — output JSON (written)
 * `-w, --witness-path <path>` (required) — witness file (written)
@@ -74,7 +71,6 @@ Reshapes/scales inputs, runs the quantized model to produce outputs, and writes 
 ```bash
 python -m python.frontend.cli witness \
   -c artifacts/lenet/circuit.txt \
-  -q artifacts/lenet/quantized.onnx \
   -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \
   -w artifacts/lenet/witness.bin
@@ -105,12 +101,11 @@ python -m python.frontend.cli prove \
 
 ### verify (alias: `ver`)
 
-Verify the proof (requires the quantized model to hydrate input shapes).
+Verify the proof.
 
 **Options**
 
 * `-c, --circuit-path <path>` (required) — compiled circuit
-* `-q, --quantized-path <path>` (required) — quantized ONNX
 * `-i, --input-path <path>` (required) — input JSON
 * `-o, --output-path <path>` (required) — expected outputs JSON
 * `-w, --witness-path <path>` (required) — witness file
@@ -121,7 +116,6 @@ Verify the proof (requires the quantized model to hydrate input shapes).
 ```bash
 python -m python.frontend.cli verify \
   -c artifacts/lenet/circuit.txt \
-  -q artifacts/lenet/quantized.onnx \
   -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \
   -w artifacts/lenet/witness.bin \
@@ -132,7 +126,7 @@ python -m python.frontend.cli verify \
 
 ## Short flags
 
-* `-m, -c, -q, -i, -o, -w, -p`
+* `-m, -c, -i, -o, -w, -p`
 
 ## Command aliases
 
@@ -147,6 +141,5 @@ python -m python.frontend.cli verify \
 
 * The default circuit is **GenericModelONNX**; you don’t pass a circuit class or name.
 * All paths are **mandatory**; no automatic discovery or inference.
-* Use a **`.onnx`** file for `--quantized-path`. If you see `ONNXRuntimeError … Protobuf parsing failed`, you likely pointed to a `.json` by mistake.
 * If the runner isn’t found, make sure you’re launching from the **repo root**.
 * The **compile** step will auto-build the runner if needed.
