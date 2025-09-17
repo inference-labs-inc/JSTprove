@@ -11,9 +11,7 @@ from typing import Any
 
 # third-party
 # local
-
 from python.core.circuits.errors import CircuitRunError
-from python.core.model_processing.onnx_custom_ops.onnx_helpers import get_input_shapes
 from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
 
 """JSTProve CLI."""
