@@ -86,8 +86,6 @@ def to_field_repr(value: int, modulus: int) -> int:
     Returns:
         int: Least field representation of the integer, ensuring a non-negative result.
     """
-    if value < 0:
-        return modulus + value
     return value % modulus
 
 

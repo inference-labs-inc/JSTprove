@@ -157,16 +157,21 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             }
         })?;
 
+        let kernel_shape: Vec<u32> = get_param(&layer.name, KERNEL_SHAPE, &params)?;
+        let spatial_rank = kernel_shape.len();
+
+        let default_pads: Vec<u32> = vec![0; 2 * spatial_rank];
+
         let conv = Self {
             name: layer.name.clone(),
             index,
             weights,
             bias,
             strides: get_param(&layer.name, STRIDES, &params)?,
-            kernel_shape: get_param(&layer.name, KERNEL_SHAPE, &params)?,
+            kernel_shape,
             group: vec![get_param_or_default(&layer.name, GROUP, &params, Some(&1))?],
             dilation: get_param(&layer.name, DILATION, &params)?,
-            pads: get_param(&layer.name, PADS, &params)?,
+            pads: get_param_or_default(&layer.name, PADS, &params, Some(&default_pads))?,
             input_shape: expected_shape.clone(),
             scaling: circuit_params.scale_exponent.into(),
             optimization_pattern,

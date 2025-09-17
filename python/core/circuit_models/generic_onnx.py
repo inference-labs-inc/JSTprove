@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
@@ -12,6 +13,12 @@ from python.core.circuits.errors import (
     CircuitRunError,
 )
 from python.core.circuits.zk_model_base import ZKModelBase
+
+if TYPE_CHECKING:
+    from python.core.model_processing.converters.onnx_converter import (
+        CircuitParamsDict,
+        ONNXLayerDict,
+    )
 from python.core.model_processing.converters.onnx_converter import (
     ONNXConverter,
     ONNXOpQuantizer,
@@ -85,7 +92,6 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
             raise CircuitFileError(
                 msg,
                 file_path=model_name,
-                details={"original_error": str(e)},
             ) from e
 
     def find_model(self: GenericModelONNX, model_name: str) -> str:
@@ -160,7 +166,6 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
             raise CircuitRunError(
                 msg,
                 operation="get_outputs",
-                details={"original_error": str(e)},
             ) from e
         else:
             return torch.as_tensor(np.array(raw_outputs)).flatten()
@@ -195,10 +200,22 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
                 msg,
                 operation="format_inputs",
                 data_type=type(inputs).__name__,
-                details={"original_error": str(e)},
             ) from e
         else:
             return x
+
+    def get_weights(
+        self: GenericModelONNX,
+    ) -> list[
+        tuple[
+            dict[str, list[ONNXLayerDict]],
+            CircuitParamsDict,
+        ],
+        dict[str, list[ONNXLayerDict]],
+    ]:
+        architecture, w_and_b, circuit_params = super().get_weights()
+        # Currently want to read these in separately
+        return [(architecture, circuit_params), w_and_b]
 
 
 if __name__ == "__main__":

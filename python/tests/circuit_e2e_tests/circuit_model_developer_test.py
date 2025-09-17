@@ -1151,6 +1151,8 @@ def test_witness_prove_verify_false_inputs_dev(
 
     print(excinfo.value)
     assert "Witness does not match provided inputs and outputs" in str(
-        excinfo.value.details,
+        excinfo.value,
     )
-    assert "Failed during RunType.GEN_VERIFY" in excinfo.value.message
+    assert "'Verify' failed" in str(
+        excinfo.value,
+    )

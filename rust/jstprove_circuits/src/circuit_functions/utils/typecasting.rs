@@ -11,6 +11,7 @@ pub trait AsIsize {
     ///
     /// # Examples
     /// ```
+    /// use crate::jstprove_circuits::circuit_functions::utils::typecasting::AsIsize;
     /// let x: usize = 42;
     /// let y = x.as_isize().unwrap();
     /// assert_eq!(y, 42isize);
@@ -38,6 +39,7 @@ pub trait AsUsize {
     ///
     /// # Examples
     /// ```
+    /// use crate::jstprove_circuits::circuit_functions::utils::typecasting::AsUsize;
     /// let x: i32 = 42;
     /// let y = x.as_usize().unwrap();
     /// assert_eq!(y, 42usize);
@@ -65,6 +67,7 @@ pub trait AsI32 {
     ///
     /// # Examples
     /// ```
+    /// use crate::jstprove_circuits::circuit_functions::utils::typecasting::AsI32;
     /// let x: usize = 42;
     /// let y = x.as_i32().unwrap();
     /// assert_eq!(y, 42i32);
@@ -146,6 +149,7 @@ pub trait UsizeAsU32 {
     ///
     /// # Examples
     /// ```
+    /// use crate::jstprove_circuits::circuit_functions::utils::typecasting::UsizeAsU32;
     /// let x: usize = 42;
     /// let y: u32 = x.as_u32().unwrap();
     /// assert_eq!(y, 42u32);

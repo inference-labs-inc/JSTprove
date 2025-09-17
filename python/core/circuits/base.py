@@ -302,11 +302,8 @@ class Circuit:
                 exec_config.run_type,
                 extra={"run_type": exec_config.run_type},
             )
-            msg = f"Failed during {exec_config.run_type} operation."
             raise CircuitRunError(
-                msg,
-                operation=str(exec_config.run_type),
-                details={"original_error": str(e)},
+                operation=exec_config.run_type,
             ) from e
 
     def load_and_compare_witness_to_io(
@@ -606,7 +603,7 @@ class Circuit:
                 msg,
                 operation="reshape",
                 data_type="tensor",
-                details={"shape": shape, "original_error": str(e)},
+                details={"shape": shape},
             ) from e
 
     def _to_json_safely(
@@ -629,7 +626,6 @@ class Circuit:
             raise CircuitFileError(
                 msg,
                 file_path=input_file,
-                details={"original_error": str(e)},
             ) from e
 
     def _read_from_json_safely(
@@ -651,7 +647,6 @@ class Circuit:
             raise CircuitFileError(
                 msg,
                 file_path=input_file,
-                details={"original_error": str(e)},
             ) from e
 
     def _gen_witness_preprocessing(  # noqa: PLR0913
@@ -733,10 +728,13 @@ class Circuit:
         if isinstance(weights, list):
             for i, w in enumerate(weights):
                 if i == 0:
-                    self._to_json_safely(w, weights_path, "weights")
+                    self._to_json_safely(w, Path(weights_path), "weights")
                 else:
                     val = i + 1
-                    file_path = weights_path[:-5] + f"{val}" + weights_path[-5:]
+                    file_path = (
+                        Path(weights_path).parent
+                        / f"{Path(weights_path).stem!s}{val}{Path(weights_path).suffix}"
+                    )
                     self._to_json_safely(w, file_path, "weights")
         elif isinstance(weights, (dict, tuple)):
             self._to_json_safely(weights, weights_path, "weights")
@@ -822,7 +820,7 @@ class Circuit:
                 msg,
                 operation="scale",
                 data_type="tensor",
-                details={"key": k, "original_error": str(e)},
+                details={"key": k},
             ) from e
         return out
 

@@ -274,10 +274,11 @@ def test_run_command_failure(mock_run: MagicMock) -> None:
         stderr="boom!",
     )
 
-    with pytest.raises(subprocess.CalledProcessError) as excinfo:
+    with pytest.raises(ProofBackendError) as excinfo:
         run_cargo_command("fakecmd", "type")
 
-    assert excinfo.value.returncode == 1
+    assert "Rust backend error" in str(excinfo.value)
+    assert "fakecmd type" in str(excinfo.value)
 
 
 # ---------- get_expander_file_paths ----------

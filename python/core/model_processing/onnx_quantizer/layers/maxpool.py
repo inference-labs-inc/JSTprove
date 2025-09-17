@@ -105,7 +105,8 @@ class MaxpoolQuantizer(BaseOpQuantizer):
         Raises:
             InvalidParamError: If shape requirement is not met.
         """
-        required_attrs = ["strides", "kernel_shape", "pads", "dilations"]
+        # May need: ["strides", "kernel_shape", "pads", "dilations"]
+        required_attrs = ["strides", "kernel_shape"]
         self.validate_required_attrs(node, required_attrs)
 
         # Check dimension of kernel
