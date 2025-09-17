@@ -156,6 +156,10 @@ class ExpanderWitnessLoader(WitnessLoader):
                 mapping to a list of expected output integers.
             modulus (int): Field modulus.
             scaling_function
+                (Callable[[list[int], int, int], list[int]] | None, optional):
+                    Optional scaling function to apply to inputs.
+                    Takes (inputs, scale_base, scale_exponent)
+                    and returns scaled inputs. Defaults to None.
 
         Returns:
             bool:
@@ -169,7 +173,7 @@ class ExpanderWitnessLoader(WitnessLoader):
         # Convert expectations into field form
         inputs_list = expected_inputs.get("input", [])
 
-        if scaling_function:
+        if callable(scaling_function):
             inputs_list = (
                 torch.tensor(scaling_function(inputs_list, scale_base, scale_exponent))
                 .flatten()
@@ -235,8 +239,28 @@ def compare_witness_to_io(  # noqa: PLR0913
     expected_outputs: dict,
     modulus: int,
     system: ZKProofSystems = ZKProofSystems.Expander,
-    scaling_function: Callable | None = None,
+    scaling_function: Callable[[list[int], int, int], list[int]] | None = None,
 ) -> bool:
+    """
+    Compare witness data to expected inputs and outputs for a given ZK proof system.
+
+    Args:
+        witnesses (dict): Witness data as returned by `load_witness`.
+        expected_inputs (dict):
+            Dictionary containing key "input" mapping to list of expected integers.
+        expected_outputs (dict):
+            Dictionary containing key "output" mapping to list of expected integers.
+        modulus (int): Field modulus.
+        system (ZKProofSystems, optional):
+            The ZK proof system. Defaults to ZKProofSystems.Expander.
+        scaling_function (Callable[[list[int], int, int], list[int]] | None, optional):
+            Optional scaling function to apply to inputs.
+            Takes (inputs, scale_base, scale_exponent) and returns scaled inputs.
+            Defaults to None.
+
+    Returns:
+        bool: True if the witness matches the expected I/O, False otherwise.
+    """
     loader = get_loader(system, "")  # path not needed for comparison
     return loader.compare_witness_to_io(
         witnesses,
