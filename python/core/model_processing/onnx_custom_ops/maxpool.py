@@ -29,7 +29,7 @@ def int64_maxpool(
     Performs a MaxPool operation on int64 input tensors.
 
     This function is registered as a custom ONNX operator via onnxruntime_extensions
-    and is used in the JSTProve quantized inference pipeline. It parses ONNX-style
+    and is used in the JSTprove quantized inference pipeline. It parses ONNX-style
     maxpool attributes and applies maxpool.
 
     Parameters

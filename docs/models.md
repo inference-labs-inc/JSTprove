@@ -1,6 +1,6 @@
 # Models
 
-This page explains what kinds of models JSTProve supports and how they're handled internally.
+This page explains what kinds of models JSTprove supports and how they're handled internally.
 
 ---
 

@@ -1,4 +1,4 @@
-# Contributing to JSTProve
+# Contributing to JSTprove
 
 Thank you for your interest in contributing! Please follow these steps to ensure your contributions are smooth and
 consistent with project standards.
@@ -10,8 +10,8 @@ consistent with project standards.
 1. **Clone the repository**:
 
 ```bash
-git clone https://github.com/inference-labs-inc/JSTProve.git
-cd JSTProve
+git clone https://github.com/inference-labs-inc/JSTprove.git
+cd JSTprove
 ```
 
 2. **Create a virtual environment** (recommended):

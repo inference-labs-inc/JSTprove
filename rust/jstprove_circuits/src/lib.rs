@@ -1,4 +1,4 @@
-//! Circuit construction utilities for `JSTProve`, a zero-knowledge proof system
+//! Circuit construction utilities for `JSTprove`, a zero-knowledge proof system
 //! supporting fixed-point quantization, neural network inference, and modular
 //! arithmetic over finite fields.
 //!
