@@ -1,13 +1,15 @@
 ```
-         _/    _/_/_/  _/_/_/_/_/  _/_/_/
-        _/  _/            _/      _/    _/  _/  _/_/    _/_/    _/      _/    _/_/
-       _/    _/_/        _/      _/_/_/    _/_/      _/    _/  _/      _/  _/_/_/_/
-_/    _/        _/      _/      _/        _/        _/    _/    _/  _/    _/
- _/_/    _/_/_/        _/      _/        _/          _/_/        _/        _/_/_/
+         _/    _/_/_/  _/_/_/_/_/
+        _/  _/            _/      _/_/_/    _/  _/_/    _/_/    _/      _/    _/_/
+       _/    _/_/        _/      _/    _/  _/_/      _/    _/  _/      _/  _/_/_/_/
+_/    _/        _/      _/      _/    _/  _/        _/    _/    _/  _/    _/
+ _/_/    _/_/_/        _/      _/_/_/    _/          _/_/        _/        _/_/_/
+                              _/
+                             _/
 ```
 ---
 
-# JSTProve
+# JSTprove
 
 Zero-knowledge proofs of ML inference on **ONNX** models — powered by [Polyhedra Network’s **Expander**](https://github.com/PolyhedraZK/Expander) (GKR/sum-check prover) and [**Expander Compiler Collection (ECC)**](https://github.com/PolyhedraZK/ExpanderCompilerCollection).
 
@@ -23,16 +25,16 @@ Zero-knowledge proofs of ML inference on **ONNX** models — powered by [Polyhed
 <details>
 <summary>Click to expand</summary>
 
-- [What is JSTProve?](#what-is-jstprove)
+- [What is JSTprove?](#what-is-jstprove)
   - [High-level architecture](#high-level-architecture)
   - [Design principles](#design-principles)
 - [Installation](#installation)
   - [0) Requirements](#0-requirements)
   - [1) System packages](#1-system-packages)
   - [2) Rust toolchain](#2-rust-toolchain)
-  - [3) Clone JSTProve & set up Python](#3-clone-jstprove--set-up-python)
-  - [4) Install & verify Expander (before building JSTProve)](#4-install--verify-expander-before-building-jstprove)
-  - [5) Build the JSTProve runner (optional; the CLI can build on demand)](#5-build-the-jstprove-runner-optional-the-cli-can-build-on-demand)
+  - [3) Clone JSTprove & set up Python](#3-clone-jstprove--set-up-python)
+  - [4) Install & verify Expander (before building JSTprove)](#4-install--verify-expander-before-building-jstprove)
+  - [5) Build the JSTprove runner (optional; the CLI can build on demand)](#5-build-the-jstprove-runner-optional-the-cli-can-build-on-demand)
   - [6) Try the CLI](#6-try-the-cli)
 - [Quickstart (LeNet demo)](#quickstart-lenet-demo)
 - [CLI reference](#cli-reference)
@@ -43,10 +45,10 @@ Zero-knowledge proofs of ML inference on **ONNX** models — powered by [Polyhed
 
 </details>
 
-## What is JSTProve?
+## What is JSTprove?
 
-**JSTProve** is a [zkML](https://docs.inferencelabs.com/zk-ml) toolkit/CLI that produces [**zero-knowledge proofs**](https://docs.inferencelabs.com/resources/glossary#zero-knowledge-proof) **of AI** [**inference**](https://docs.inferencelabs.com/resources/glossary#inference).
-You provide an **ONNX** model and inputs; JSTProve handles **quantization**, **circuit generation** (via ECC), **witness creation**, **proving** (via Expander), and **verification** — with explicit, user-controlled file paths.
+**JSTprove** is a [zkML](https://docs.inferencelabs.com/zk-ml) toolkit/CLI that produces [**zero-knowledge proofs**](https://docs.inferencelabs.com/resources/glossary#zero-knowledge-proof) **of AI** [**inference**](https://docs.inferencelabs.com/resources/glossary#inference).
+You provide an **ONNX** model and inputs; JSTprove handles **quantization**, **circuit generation** (via ECC), **witness creation**, **proving** (via Expander), and **verification** — with explicit, user-controlled file paths.
 
 ### High-level architecture
 
@@ -140,11 +142,11 @@ rustup toolchain install nightly
 
 ---
 
-### 3) Clone JSTProve & set up Python
+### 3) Clone JSTprove & set up Python
 
 ```bash
-git clone https://github.com/inference-labs-inc/JSTProve.git
-cd JSTProve
+git clone https://github.com/inference-labs-inc/JSTprove.git
+cd JSTprove
 
 python -m venv .venv
 # macOS/Linux:
@@ -156,9 +158,9 @@ pip install -r requirements.txt
 
 ---
 
-### 4) Install & verify **Expander** (before building JSTProve)
+### 4) Install & verify **Expander** (before building JSTprove)
 
-JSTProve relies on Polyhedra Network’s **Expander** (prover) and **Expander Compiler Collection (ECC)** crates.
+JSTprove relies on Polyhedra Network’s **Expander** (prover) and **Expander Compiler Collection (ECC)** crates.
 For a clean environment, install Expander and run its self-checks first.
 
 ```bash
@@ -179,16 +181,16 @@ cargo test --release
 
 > Refer to the Expander README for the authoritative verification command(s), which may change over time.
 
-*(You do **not** need to clone ECC separately unless you plan to override Cargo git sources; Cargo will fetch ECC automatically when building JSTProve.)*
+*(You do **not** need to clone ECC separately unless you plan to override Cargo git sources; Cargo will fetch ECC automatically when building JSTprove.)*
 
 ---
 
-### 5) Build the JSTProve runner (optional; the CLI can build on demand)
+### 5) Build the JSTprove runner (optional; the CLI can build on demand)
 
 ```bash
-# Make sure you're back in the JSTProve repo root (not in Expander).
+# Make sure you're back in the JSTprove repo root (not in Expander).
 # If you just followed Step 3, run:
-cd ../JSTProve
+cd ../JSTprove
 
 # Then build:
 cargo build --release
