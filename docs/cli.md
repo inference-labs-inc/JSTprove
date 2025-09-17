@@ -1,6 +1,6 @@
 # CLI Reference
 
-The JSTProve CLI runs four steps: **compile → witness → prove → verify**. It’s intentionally barebones: no circuit class flags, no path inference. You must pass correct paths.
+The JSTprove CLI runs four steps: **compile → witness → prove → verify**. It’s intentionally barebones: no circuit class flags, no path inference. You must pass correct paths.
 
 ---
 

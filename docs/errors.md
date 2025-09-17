@@ -34,7 +34,7 @@ These errors occur when converting data structures into array representations.
 ---
 
 ## 3. Pattern Errors (`PatternError`)
-These are **graph optimization errors** that occur when applying JSTProve's optimization rules to the computational graph.
+These are **graph optimization errors** that occur when applying JSTprove's optimization rules to the computational graph.
 
 | Error | Meaning |
 |-------|---------|
@@ -149,7 +149,7 @@ Errors raised during **model quantization** — typically when converting or pre
 
 | Error | Meaning |
 |-------|---------|
-| **QuantizationError** | Base class for all quantization errors. Always includes a generic JSTProve support message plus a specific description of the issue. |
+| **QuantizationError** | Base class for all quantization errors. Always includes a generic JSTprove support message plus a specific description of the issue. |
 | **InvalidParamError** | Raised when a node contains invalid or unsupported parameters during quantization. |
 | **UnsupportedOpError** | Raised when an unsupported ONNX operation is encountered during quantization. Suggests reviewing supported layers. |
 | **MissingHandlerError** | Raised when no registered handler exists for a particular operator type during quantization. |

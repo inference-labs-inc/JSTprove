@@ -13,7 +13,7 @@ def int64_relu(x: np.ndarray) -> np.ndarray:
     Performs a ReLU operation on int64 input tensors.
 
     This function is registered as a custom ONNX operator via onnxruntime_extensions
-    and is used in the JSTProve quantized inference pipeline.
+    and is used in the JSTprove quantized inference pipeline.
     It applies ReLU as is (there are no attributes to ReLU).
 
     Parameters

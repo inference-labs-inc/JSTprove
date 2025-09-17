@@ -17,18 +17,20 @@ from python.core.circuits.errors import CircuitRunError
 from python.core.model_processing.onnx_custom_ops.onnx_helpers import get_input_shapes
 from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
 
-"""JSTProve CLI."""
+"""JSTprove CLI."""
 
 # --- constants ---------------------------------------------------------------
 DEFAULT_CIRCUIT_MODULE = "python.core.circuit_models.generic_onnx"
 DEFAULT_CIRCUIT_CLASS = "GenericModelONNX"
 
 BANNER_TITLE = r"""
-         _/    _/_/_/  _/_/_/_/_/  _/_/_/
-        _/  _/            _/      _/    _/  _/  _/_/    _/_/    _/      _/    _/_/
-       _/    _/_/        _/      _/_/_/    _/_/      _/    _/  _/      _/  _/_/_/_/
-_/    _/        _/      _/      _/        _/        _/    _/    _/  _/    _/
- _/_/    _/_/_/        _/      _/        _/          _/_/        _/        _/_/_/
+         _/    _/_/_/  _/_/_/_/_/
+        _/  _/            _/      _/_/_/    _/  _/_/    _/_/    _/      _/    _/_/
+       _/    _/_/        _/      _/    _/  _/_/      _/    _/  _/      _/  _/_/_/_/
+_/    _/        _/      _/      _/    _/  _/        _/    _/    _/  _/    _/
+ _/_/    _/_/_/        _/      _/_/_/    _/          _/_/        _/        _/_/_/
+                              _/
+                             _/
 """
 
 
@@ -42,7 +44,7 @@ def print_header() -> None:
     print(  # noqa: T201
         BANNER_TITLE
         + "\n"
-        + "JSTProve — Verifiable ML by Inference Labs\n"
+        + "JSTprove — Verifiable ML by Inference Labs\n"
         + "Based on Polyhedra Network's Expander (GKR-based proving system)\n",
     )
 
@@ -296,7 +298,7 @@ def _run_witness(args: argparse.Namespace) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     """
-    Entry point for the JSTProve CLI.
+    Entry point for the JSTprove CLI.
 
     Flow:
       - Parse arguments (top-level options + subcommand).

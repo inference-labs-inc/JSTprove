@@ -39,7 +39,7 @@ def int64_gemm7(
     Performs a Gemm (alternatively: Linear layer) on int64 input tensors.
 
     This function is registered as a custom ONNX operator via onnxruntime_extensions
-    and is used in the JSTProve quantized inference pipeline. It parses ONNX-style
+    and is used in the JSTprove quantized inference pipeline. It parses ONNX-style
     gemm attributes, applies gemm
     and optionally rescales the result.
 
