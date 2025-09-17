@@ -23,14 +23,14 @@ from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
 DEFAULT_CIRCUIT_MODULE = "python.core.circuit_models.generic_onnx"
 DEFAULT_CIRCUIT_CLASS = "GenericModelONNX"
 
-BANNER_TITLE = r"""                                                                                   
-         _/    _/_/_/  _/_/_/_/_/                                                     
-        _/  _/            _/      _/_/_/    _/  _/_/    _/_/    _/      _/    _/_/    
-       _/    _/_/        _/      _/    _/  _/_/      _/    _/  _/      _/  _/_/_/_/   
-_/    _/        _/      _/      _/    _/  _/        _/    _/    _/  _/    _/          
- _/_/    _/_/_/        _/      _/_/_/    _/          _/_/        _/        _/_/_/     
-                              _/                                                      
-                             _/                                                       
+BANNER_TITLE = r"""
+         _/    _/_/_/  _/_/_/_/_/
+        _/  _/            _/      _/_/_/    _/  _/_/    _/_/    _/      _/    _/_/
+       _/    _/_/        _/      _/    _/  _/_/      _/    _/  _/      _/  _/_/_/_/
+_/    _/        _/      _/      _/    _/  _/        _/    _/    _/  _/    _/
+ _/_/    _/_/_/        _/      _/_/_/    _/          _/_/        _/        _/_/_/
+                              _/
+                             _/
 """
 
 
