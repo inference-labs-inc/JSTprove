@@ -1,21 +1,16 @@
 use clap::{Arg, Command};
 use expander_compiler::circuit::layered::witness::Witness;
 use expander_compiler::circuit::layered::{Circuit, NormalInputType};
-use io_reader::IOReader;
-// use expander_compiler::frontend::{extra::debug_eval, internal::DumpLoadTwoVariables, *};
-// use expander_compiler::utils::serde::Serde;
 use expander_compiler::frontend::{
     ChallengeField, CompileOptions, Config, Define, EmptyHintCaller, Variable, WitnessSolver,
     compile, extra::debug_eval, internal::DumpLoadTwoVariables,
 };
 use gkr_engine::{FieldEngine, GKREngine, MPIConfig};
+use io_reader::IOReader;
 use peakmem_alloc::{INSTRUMENTED_SYSTEM, PeakMemAlloc, PeakMemAllocTrait};
 use serdes::ExpSerde;
-// use serde_json::{from_reader, to_writer};
 use std::alloc::System;
 use std::path::{Path, PathBuf};
-// use std::io::{Read, Write};
-// use std::time::Instant;
 
 use crate::io::io_reader;
 use crate::runner::errors::{CliError, RunError};
@@ -70,16 +65,12 @@ where
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone + MaybeConfigure,
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    // let start = Instant::now();
 
     let mut circuit = CircuitType::default();
     configure_if_possible::<CircuitType>(&mut circuit);
 
     let compile_result = compile(&circuit, CompileOptions::default())
         .map_err(|e| RunError::Compile(format!("{e:?}")))?;
-    // let mem_mb = GLOBAL.get_peak_memory().saturating_div(1024 * 1024);
-    // println!("Peak Memory used Overall : {mem_mb:.2}");
-    // let duration = start.elapsed();
 
     let file = std::fs::File::create(circuit_path).map_err(|e| RunError::Io {
         source: e,
@@ -103,11 +94,6 @@ where
         .serialize_into(writer)
         .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
 
-    // println!(
-    //     "Time elapsed: {}.{} seconds",
-    //     duration.as_secs(),
-    //     duration.subsec_millis()
-    // );
     Ok(())
 }
 
@@ -172,7 +158,6 @@ where
     let assignment = io_reader.read_inputs(input_path, assignment)?;
     let assignment = io_reader.read_outputs(output_path, assignment)?;
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    // let start = Instant::now();
 
     let assignments = vec![assignment; 1];
     let witness = witness_solver
@@ -189,16 +174,6 @@ where
     // #### Until here #######
 
     println!("Witness Generated");
-
-    // println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
-    // let mem_mb = GLOBAL.get_peak_memory().saturating_div(1024 * 1024);
-    // println!("Peak Memory used Overall : {mem_mb:.2}");
-    // let duration = start.elapsed();
-    // println!(
-    //     "Time elapsed: {}.{} seconds",
-    //     duration.as_secs(),
-    //     duration.subsec_millis(),
-    // );
 
     let file = std::fs::File::create(witness_path).map_err(|e| RunError::Io {
         source: e,
@@ -328,7 +303,6 @@ where
         + Clone,
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    // let start = Instant::now();
 
     let file = std::fs::File::open(circuit_path).map_err(|e| RunError::Io {
         source: e,
@@ -371,14 +345,6 @@ where
         .map_err(|e| RunError::Serialize(format!("Error serializing proof to file {e:?}")))?;
 
     println!("Proved");
-    // let mem_mb = GLOBAL.get_peak_memory().saturating_div(1024 * 1024);
-    // println!("Peak Memory used Overall : {mem_mb:.2}");
-    // let duration = start.elapsed();
-    // println!(
-    //     "Time elapsed: {}.{} seconds",
-    //     duration.as_secs(),
-    //     duration.subsec_millis()
-    // );
     Ok(())
 }
 
@@ -413,9 +379,9 @@ where
 ///
 fn run_verify_io<C: Config, I, CircuitDefaultType>(
     circuit_path: &str,
-    io_reader: &mut I,
-    input_path: &str,
-    output_path: &str,
+    _io_reader: &mut I,
+    _input_path: &str,
+    _output_path: &str,
     witness_path: &str,
     proof_path: &str,
 ) -> Result<(), RunError>
@@ -457,26 +423,6 @@ where
         .input_vals
         .clone_from(&simd_input);
     expander_circuit.public_input.clone_from(&simd_public_input);
-    let assignment = CircuitDefaultType::default();
-
-    let assignment = io_reader.read_inputs(input_path, assignment)?;
-    let assignment = io_reader.read_outputs(output_path, assignment)?;
-
-    // let mut vars: Vec<<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField> = Vec::new();
-    let mut vars: Vec<_> = Vec::new();
-
-    let mut public_vars: Vec<_> = Vec::new();
-    assignment.dump_into(&mut vars, &mut public_vars);
-    for (i, _) in public_vars.iter().enumerate() {
-        let x = format!("{:?}", public_vars[i]);
-        let y = format!("{:?}", expander_circuit.public_input[i]);
-
-        if x != y {
-            return Err(RunError::Verify(
-                "inputs/outputs don't match the witness".into(),
-            ));
-        }
-    }
 
     let file = std::fs::File::open(proof_path).map_err(|e| RunError::Io {
         source: e,
@@ -494,14 +440,6 @@ where
     }
 
     println!("Verified");
-    // let mem_mb = GLOBAL.get_peak_memory().saturating_div(1024 * 1024);
-    // println!("Peak Memory used Overall : {mem_mb:.2}");
-    // let duration = start.elapsed();
-    // println!(
-    //     "Time elapsed: {}.{} seconds",
-    //     duration.as_secs(),
-    //     duration.subsec_millis()
-    // );
     Ok(())
 }
 
@@ -593,7 +531,6 @@ where
     let matches = get_args();
 
     // The first argument is the command we need to identify
-    // let command = &args[1];
     let command = get_arg(&matches, "type")?;
 
     match command.as_str() {
@@ -613,7 +550,6 @@ where
                 &witness_path,
                 &circuit_path,
             )?;
-            // debug_witness::<C, _, CircuitDefaultType, CircuitType>(file_reader, input_path, output_path, &witness_path, circuit_path);
         }
         "run_debug_witness" => {
             let input_path = get_arg(&matches, "input")?;
@@ -642,7 +578,6 @@ where
             let proof_path = get_arg(&matches, "proof")?;
             let circuit_path = get_arg(&matches, "circuit_path")?;
 
-            // run_verify::<BN254Config, Filereader, CircuitDefaultType>(&circuit_name);
             run_verify_io::<C, Filereader, CircuitDefaultType>(
                 &circuit_path,
                 file_reader,
