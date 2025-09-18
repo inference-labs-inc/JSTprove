@@ -200,10 +200,14 @@ cargo build --release
 
 ---
 
-### 6) Try the CLI
+### 6) Install and try the CLI
 
 ```bash
-python -m python.frontend.cli --help
+# Install as editable package with CLI command
+pip install -e .
+
+# Try the CLI
+jstprove --help
 ```
 
 > ⏳ Note: The first time you run this command it may take a little while due to Python/Rust imports and initialization. This is normal—subsequent runs will be faster.
@@ -227,7 +231,7 @@ Demo paths:
 1. **Compile** → circuit + **quantized ONNX**
 
 ```bash
-python -m python.frontend.cli compile \
+jstprove compile \
   -m python/models/models_onnx/lenet.onnx \
   -c artifacts/lenet/circuit.txt
 ```
@@ -235,7 +239,7 @@ python -m python.frontend.cli compile \
 2. **Witness** → reshape/scale inputs, run model, write witness + outputs
 
 ```bash
-python -m python.frontend.cli witness \
+jstprove witness \
   -c artifacts/lenet/circuit.txt \
   -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \
@@ -245,7 +249,7 @@ python -m python.frontend.cli witness \
 3. **Prove** → witness → proof
 
 ```bash
-python -m python.frontend.cli prove \
+jstprove prove \
   -c artifacts/lenet/circuit.txt \
   -w artifacts/lenet/witness.bin \
   -p artifacts/lenet/proof.bin
@@ -254,7 +258,7 @@ python -m python.frontend.cli prove \
 4. **Verify** → check the proof (needs quantized ONNX for input shapes)
 
 ```bash
-python -m python.frontend.cli verify \
+jstprove verify \
   -c artifacts/lenet/circuit.txt \
   -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \

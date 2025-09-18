@@ -7,8 +7,8 @@ The JSTprove CLI runs four steps: **compile → witness → prove → verify**. 
 ## Synopsis
 
 ```bash
-python -m python.frontend.cli [--no-banner] <command> [options]
-````
+jstprove [--no-banner] <command> [options]
+```
 
 * `--no-banner` — suppress the ASCII header.
 * Abbreviations are **disabled**; use the full subcommand or an alias.
@@ -18,10 +18,10 @@ python -m python.frontend.cli [--no-banner] <command> [options]
 ## Help
 
 ```bash
-python -m python.frontend.cli --help
-python -m python.frontend.cli <subcommand> --help
+jstprove --help
+jstprove <subcommand> --help
 # e.g.
-python -m python.frontend.cli witness --help
+jstprove witness --help
 ```
 
 ---
@@ -48,7 +48,7 @@ Generate a circuit file and a **quantized ONNX** model.
 **Example**
 
 ```bash
-python -m python.frontend.cli compile \
+jstprove compile \
   -m python/models/models_onnx/lenet.onnx \
   -c artifacts/lenet/circuit.txt
 ```
@@ -69,7 +69,7 @@ Reshapes/scales inputs, runs the quantized model to produce outputs, and writes 
 **Example**
 
 ```bash
-python -m python.frontend.cli witness \
+jstprove witness \
   -c artifacts/lenet/circuit.txt \
   -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \
@@ -91,7 +91,7 @@ Create a proof from the circuit + witness.
 **Example**
 
 ```bash
-python -m python.frontend.cli prove \
+jstprove prove \
   -c artifacts/lenet/circuit.txt \
   -w artifacts/lenet/witness.bin \
   -p artifacts/lenet/proof.bin
@@ -114,7 +114,7 @@ Verify the proof.
 **Example**
 
 ```bash
-python -m python.frontend.cli verify \
+jstprove verify \
   -c artifacts/lenet/circuit.txt \
   -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \
