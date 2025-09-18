@@ -15,7 +15,7 @@ use serdes::ExpSerde;
 use std::alloc::System;
 use std::path::{Path, PathBuf};
 // use std::io::{Read, Write};
-use std::time::Instant;
+// use std::time::Instant;
 
 use crate::io::io_reader;
 use crate::runner::errors::{CliError, RunError};
@@ -70,16 +70,16 @@ where
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone + MaybeConfigure,
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    let start = Instant::now();
+    // let start = Instant::now();
 
     let mut circuit = CircuitType::default();
     configure_if_possible::<CircuitType>(&mut circuit);
 
     let compile_result = compile(&circuit, CompileOptions::default())
         .map_err(|e| RunError::Compile(format!("{e:?}")))?;
-    let mem_mb = GLOBAL.get_peak_memory().saturating_div(1024 * 1024);
-    println!("Peak Memory used Overall : {mem_mb:.2}");
-    let duration = start.elapsed();
+    // let mem_mb = GLOBAL.get_peak_memory().saturating_div(1024 * 1024);
+    // println!("Peak Memory used Overall : {mem_mb:.2}");
+    // let duration = start.elapsed();
 
     let file = std::fs::File::create(circuit_path).map_err(|e| RunError::Io {
         source: e,
@@ -103,11 +103,11 @@ where
         .serialize_into(writer)
         .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
 
-    println!(
-        "Time elapsed: {}.{} seconds",
-        duration.as_secs(),
-        duration.subsec_millis()
-    );
+    // println!(
+    //     "Time elapsed: {}.{} seconds",
+    //     duration.as_secs(),
+    //     duration.subsec_millis()
+    // );
     Ok(())
 }
 
@@ -172,7 +172,7 @@ where
     let assignment = io_reader.read_inputs(input_path, assignment)?;
     let assignment = io_reader.read_outputs(output_path, assignment)?;
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    let start = Instant::now();
+    // let start = Instant::now();
 
     let assignments = vec![assignment; 1];
     let witness = witness_solver
@@ -191,14 +191,14 @@ where
     println!("Witness Generated");
 
     // println!("Size of proof: {} bytes", mem::size_of_val(&proof) + mem::size_of_val(&claimed_v));
-    let mem_mb = GLOBAL.get_peak_memory().saturating_div(1024 * 1024);
-    println!("Peak Memory used Overall : {mem_mb:.2}");
-    let duration = start.elapsed();
-    println!(
-        "Time elapsed: {}.{} seconds",
-        duration.as_secs(),
-        duration.subsec_millis(),
-    );
+    // let mem_mb = GLOBAL.get_peak_memory().saturating_div(1024 * 1024);
+    // println!("Peak Memory used Overall : {mem_mb:.2}");
+    // let duration = start.elapsed();
+    // println!(
+    //     "Time elapsed: {}.{} seconds",
+    //     duration.as_secs(),
+    //     duration.subsec_millis(),
+    // );
 
     let file = std::fs::File::create(witness_path).map_err(|e| RunError::Io {
         source: e,
@@ -328,7 +328,7 @@ where
         + Clone,
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    let start = Instant::now();
+    // let start = Instant::now();
 
     let file = std::fs::File::open(circuit_path).map_err(|e| RunError::Io {
         source: e,
@@ -371,14 +371,14 @@ where
         .map_err(|e| RunError::Serialize(format!("Error serializing proof to file {e:?}")))?;
 
     println!("Proved");
-    let mem_mb = GLOBAL.get_peak_memory().saturating_div(1024 * 1024);
-    println!("Peak Memory used Overall : {mem_mb:.2}");
-    let duration = start.elapsed();
-    println!(
-        "Time elapsed: {}.{} seconds",
-        duration.as_secs(),
-        duration.subsec_millis()
-    );
+    // let mem_mb = GLOBAL.get_peak_memory().saturating_div(1024 * 1024);
+    // println!("Peak Memory used Overall : {mem_mb:.2}");
+    // let duration = start.elapsed();
+    // println!(
+    //     "Time elapsed: {}.{} seconds",
+    //     duration.as_secs(),
+    //     duration.subsec_millis()
+    // );
     Ok(())
 }
 
@@ -426,7 +426,7 @@ where
         + Clone,
 {
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    let start = Instant::now();
+    // let start = Instant::now();
 
     // let mpi_config = MPIConfig::prover_new(None, None);
     let mpi_config = gkr_engine::MPIConfig::verifier_new(1);
@@ -494,14 +494,14 @@ where
     }
 
     println!("Verified");
-    let mem_mb = GLOBAL.get_peak_memory().saturating_div(1024 * 1024);
-    println!("Peak Memory used Overall : {mem_mb:.2}");
-    let duration = start.elapsed();
-    println!(
-        "Time elapsed: {}.{} seconds",
-        duration.as_secs(),
-        duration.subsec_millis()
-    );
+    // let mem_mb = GLOBAL.get_peak_memory().saturating_div(1024 * 1024);
+    // println!("Peak Memory used Overall : {mem_mb:.2}");
+    // let duration = start.elapsed();
+    // println!(
+    //     "Time elapsed: {}.{} seconds",
+    //     duration.as_secs(),
+    //     duration.subsec_millis()
+    // );
     Ok(())
 }
 
