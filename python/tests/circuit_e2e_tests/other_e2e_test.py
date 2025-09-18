@@ -89,9 +89,7 @@ def test_parallel_compile_and_witness_two_simple_models(  # noqa: PLR0915
 
     # Define paths for artifacts
     circuit1_path = Path(tmp_path) / "circuit1.txt"
-    quantized1_path = Path(tmp_path) / "quantized1.onnx"
     circuit2_path = Path(tmp_path) / "circuit2.txt"
-    quantized2_path = Path(tmp_path) / "quantized2.onnx"
 
     # Compile both models
     compile_cmd1 = [
@@ -103,8 +101,6 @@ def test_parallel_compile_and_witness_two_simple_models(  # noqa: PLR0915
         str(model1_path),
         "-c",
         str(circuit1_path),
-        "-q",
-        str(quantized1_path),
     ]
     compile_cmd2 = [
         sys.executable,
@@ -115,8 +111,6 @@ def test_parallel_compile_and_witness_two_simple_models(  # noqa: PLR0915
         str(model2_path),
         "-c",
         str(circuit2_path),
-        "-q",
-        str(quantized2_path),
     ]
 
     # Run compile commands
@@ -162,8 +156,6 @@ def test_parallel_compile_and_witness_two_simple_models(  # noqa: PLR0915
         "witness",
         "-c",
         str(circuit1_path),
-        "-q",
-        str(quantized1_path),
         "-i",
         str(input1_path),
         "-o",
@@ -178,8 +170,6 @@ def test_parallel_compile_and_witness_two_simple_models(  # noqa: PLR0915
         "witness",
         "-c",
         str(circuit2_path),
-        "-q",
-        str(quantized2_path),
         "-i",
         str(input2_path),
         "-o",

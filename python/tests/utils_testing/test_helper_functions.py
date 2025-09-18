@@ -158,7 +158,6 @@ def test_prepare_io_files_runs_func(
             self.get_inputs_from_file = lambda _file_name, _is_scaled=True: 3
             self.format_inputs = lambda x: {"input": x}
             self.format_outputs = lambda x: {"output": x}
-            self.load_quantized_model = MagicMock()
             self.get_weights = lambda: {"weights": [1, 2]}
             self.save_quantized_model = MagicMock()
             self.get_model_and_quantize = MagicMock()
@@ -172,6 +171,7 @@ def test_prepare_io_files_runs_func(
             return {"test": True}
 
     d = Dummy()
+    print(CircuitExecutionConfig(run_type=RunType.GEN_WITNESS, write_json=True))
     result = d.base_testing(
         CircuitExecutionConfig(run_type=RunType.GEN_WITNESS, write_json=True),
     )

@@ -130,6 +130,7 @@ def test_parse_proof_dispatch_logic(
     c._compile_preprocessing = MagicMock()
     c._gen_witness_preprocessing = MagicMock(return_value="i")
     c.adjust_inputs = MagicMock(return_value="i")
+    c.rename_inputs = MagicMock(return_value="i")
 
     c.load_and_compare_witness_to_io = MagicMock(return_value="True")
 

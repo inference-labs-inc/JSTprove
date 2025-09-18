@@ -229,8 +229,7 @@ Demo paths:
 ```bash
 python -m python.frontend.cli compile \
   -m python/models/models_onnx/lenet.onnx \
-  -c artifacts/lenet/circuit.txt \
-  -q artifacts/lenet/quantized.onnx
+  -c artifacts/lenet/circuit.txt
 ```
 
 2. **Witness** → reshape/scale inputs, run model, write witness + outputs
@@ -238,7 +237,6 @@ python -m python.frontend.cli compile \
 ```bash
 python -m python.frontend.cli witness \
   -c artifacts/lenet/circuit.txt \
-  -q artifacts/lenet/quantized.onnx \
   -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \
   -w artifacts/lenet/witness.bin
@@ -258,7 +256,6 @@ python -m python.frontend.cli prove \
 ```bash
 python -m python.frontend.cli verify \
   -c artifacts/lenet/circuit.txt \
-  -q artifacts/lenet/quantized.onnx \
   -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \
   -w artifacts/lenet/witness.bin \

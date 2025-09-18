@@ -261,7 +261,7 @@ class Circuit:
             elif exec_config.run_type == RunType.GEN_VERIFY:
                 witness_file = exec_config.witness_file
                 output_file = exec_config.output_file
-                processed_input_file = self.adjust_inputs(exec_config.input_file)
+                processed_input_file = self.rename_inputs(exec_config.input_file)
                 proof_system = exec_config.proof_system
                 if not self.load_and_compare_witness_to_io(
                     witness_path=witness_file,
@@ -345,6 +345,7 @@ class Circuit:
             expected_outputs,
             w["modulus"],
             proof_system,
+            self.scale_and_round,
         )
 
     def contains_float(self: Circuit, obj: float | dict | list) -> bool:
@@ -403,6 +404,8 @@ class Circuit:
     def scale_and_round(
         self: Circuit,
         value: list[int] | np.ndarray | torch.Tensor,
+        scale_base: int,
+        scale_exponent: int,
     ) -> list[int] | np.ndarray | torch.Tensor:
         """Scale and round numeric values to integers based on
         circuit scaling parameters.
@@ -415,8 +418,8 @@ class Circuit:
                 preserving the original structure.
         """
         scaling = BaseOpQuantizer.get_scaling(
-            scale_base=self.scale_base,
-            scale_exponent=self.scale_exponent,
+            scale_base=scale_base,
+            scale_exponent=scale_exponent,
         )
         if self.contains_float(value):
             return (
@@ -483,7 +486,11 @@ class Circuit:
         has_input_been_found = False
 
         for key, value in inputs.items():
-            value_adjusted = self.scale_and_round(value)
+            value_adjusted = self.scale_and_round(
+                value,
+                self.scale_base,
+                self.scale_exponent,
+            )
             if "input" in key:
                 if has_input_been_found:
                     msg = (
@@ -536,7 +543,11 @@ class Circuit:
         """
         new_inputs: dict[str, Any] = {}
         for key, value in inputs.items():
-            value_adjusted = self.scale_and_round(value)
+            value_adjusted = self.scale_and_round(
+                value,
+                self.scale_base,
+                self.scale_exponent,
+            )
             if key in input_variables:
                 shape_attr = f"{key}_shape"
                 value_adjusted = self._reshape_input_value(
@@ -812,6 +823,132 @@ class Circuit:
                 details={"key": k},
             ) from e
         return out
+
+    def scale_inputs_only(self: Circuit, input_file: str) -> str:
+        """
+        Load input values from a JSON file, scale them according to circuit parameters,
+        without reshaping, and save the scaled inputs to a new file.
+
+        Args:
+            input_file (str):
+                Path to the input JSON file containing the original input values.
+
+        Returns:
+            str: Path to the new file containing the scaled input values.
+
+        Raises:
+            CircuitFileError: If reading from or writing to JSON files fails.
+        """
+        inputs = self._read_from_json_safely(input_file)
+
+        new_inputs = {}
+        for key, value in inputs.items():
+            new_inputs[key] = self.scale_and_round(
+                value,
+                self.scale_base,
+                self.scale_exponent,
+            )
+
+        # Save scaled inputs
+        path = Path(input_file)
+        new_input_file = path.stem + "_scaled" + path.suffix
+        self._to_json_safely(new_inputs, new_input_file, "scaled input")
+        return new_input_file
+
+    def rename_inputs(self: Circuit, input_file: str) -> str:
+        """
+        Load input values from a JSON file, rename keys according to circuit logic
+        (similar to adjust_inputs but without scaling or reshaping),
+        and save the renamed inputs to a new file.
+
+        Args:
+            input_file (str):
+                Path to the input JSON file containing the original input values.
+
+        Returns:
+            str: Path to the new file containing the renamed input values.
+
+        Raises:
+            CircuitFileError: If reading from or writing to JSON files fails.
+            CircuitInputError: If input validation fails.
+        """
+        inputs = self._read_from_json_safely(input_file)
+
+        input_variables = getattr(self, "input_variables", ["input"])
+        if input_variables == ["input"]:
+            new_inputs = self._rename_single_input(inputs)
+        else:
+            new_inputs = self._rename_multiple_inputs(inputs, input_variables)
+
+        # Save renamed inputs
+        path = Path(input_file)
+        new_input_file = path.stem + "_renamed" + path.suffix
+        self._to_json_safely(new_inputs, new_input_file, "renamed input")
+        return new_input_file
+
+    def _rename_single_input(self: Circuit, inputs: dict) -> dict:
+        """
+        Rename inputs when there is a single 'input' variable,
+        handling special cases like multiple keys containing 'input'
+        or fallback from 'output' to 'input'. No scaling or reshaping.
+
+        Args:
+            inputs (dict): Dictionary of input values loaded from JSON.
+
+        Returns:
+            dict: Renamed inputs with appropriate key mappings.
+
+        Raises:
+            CircuitInputError:
+                If multiple keys containing 'input' are found.
+        """
+        new_inputs: dict[str, Any] = {}
+        has_input_been_found = False
+
+        for key, value in inputs.items():
+            if "input" in key:
+                if has_input_been_found:
+                    msg = (
+                        "Multiple inputs found containing 'input'. "
+                        "Only one allowed when input_variables = ['input']"
+                    )
+                    raise CircuitInputError(
+                        msg,
+                        parameter="input",
+                        expected="single input key",
+                        details={"input_keys": [k for k in inputs if "input" in k]},
+                    )
+                has_input_been_found = True
+                new_inputs["input"] = value
+            else:
+                new_inputs[key] = value
+
+        # Special case: fallback mapping output → input
+        if "input" not in new_inputs and "output" in new_inputs:
+            new_inputs["input"] = inputs["output"]
+            del inputs["output"]
+
+        return new_inputs
+
+    def _rename_multiple_inputs(
+        self: Circuit,
+        inputs: dict,
+    ) -> dict:
+        """
+        Rename inputs when there are multiple named input variables.
+        Keeps keys as is, since no reshaping is done.
+
+        Args:
+            inputs (dict): Dictionary of input values loaded from JSON.
+            input_variables (list[str]): List of input variable names.
+
+        Returns:
+            dict: Renamed inputs (keys unchanged for multiple inputs).
+        """
+        new_inputs: dict[str, Any] = {}
+        for key, value in inputs.items():
+            new_inputs[key] = value
+        return new_inputs
 
     def format_outputs(self: Circuit, output: list) -> dict:
         """Format raw model outputs into a standard dictionary format.

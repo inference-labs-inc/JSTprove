@@ -27,9 +27,6 @@ This page explains what kinds of models JSTprove supports and how they're handle
 - Internally, inputs and weights are scaled to integers, and tensors are reshaped to the expected shapes before witness generation.
 - The CLI's **witness** and **verify** stages take care of **rescale + reshape** via circuit helpers.
 
-**Important:** Always pass a **`.onnx`** file to `--quantized-path` (not `.json`).
-If you pass a `.json` by mistake you'll get an ONNX runtime parse error.
-
 ---
 
 ## Input / Output JSON

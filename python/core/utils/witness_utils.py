@@ -3,7 +3,9 @@ from __future__ import annotations
 import struct
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Callable
+
+import torch
 
 from python.core.utils.errors import ProofSystemNotImplementedError
 from python.core.utils.helper_functions import ZKProofSystems
@@ -129,12 +131,13 @@ class ExpanderWitnessLoader(WitnessLoader):
             "witnesses": witnesses,
         }
 
-    def compare_witness_to_io(
+    def compare_witness_to_io(  # noqa: PLR0913
         self: ExpanderWitnessLoader,
         witnesses: dict,
         expected_inputs: dict,
         expected_outputs: dict,
         modulus: int,
+        scaling_function: Callable[[list[int], int, int], list[int]] | None = None,
     ) -> bool:
         """
         Compare the public inputs of the first witness
@@ -152,6 +155,11 @@ class ExpanderWitnessLoader(WitnessLoader):
                 Dictionary containing key "output"
                 mapping to a list of expected output integers.
             modulus (int): Field modulus.
+            scaling_function
+                (Callable[[list[int], int, int], list[int]] | None, optional):
+                    Optional scaling function to apply to inputs.
+                    Takes (inputs, scale_base, scale_exponent)
+                    and returns scaled inputs. Defaults to None.
 
         Returns:
             bool:
@@ -159,14 +167,35 @@ class ExpanderWitnessLoader(WitnessLoader):
             False otherwise.
         """
 
+        scale_base = witnesses["witnesses"][0]["public_inputs"][-2]
+        scale_exponent = witnesses["witnesses"][0]["public_inputs"][-1]
+
         # Convert expectations into field form
         inputs_list = expected_inputs.get("input", [])
+
+        if callable(scaling_function):
+            inputs_list = (
+                torch.tensor(scaling_function(inputs_list, scale_base, scale_exponent))
+                .flatten()
+                .tolist()
+            )
+        else:
+            inputs_list = (
+                torch.round(
+                    torch.tensor(inputs_list) * (scale_base**scale_exponent),
+                )
+                .long()
+                .tolist()
+            )
         outputs_list = expected_outputs.get("output", [])
 
-        expected_inputs_mod = [to_field_repr(v, modulus) for v in inputs_list]
+        expected_inputs_mod = [
+            to_field_repr(v, modulus)
+            for v in torch.tensor(inputs_list).flatten().tolist()
+        ]
         expected_outputs_mod = [to_field_repr(v, modulus) for v in outputs_list]
 
-        n_inputs = len(expected_inputs_mod) + len(expected_outputs_mod)
+        n_inputs = len(expected_inputs_mod) + len(expected_outputs_mod) + 2
 
         witness = witnesses["witnesses"][0]["public_inputs"]
 
@@ -174,7 +203,7 @@ class ExpanderWitnessLoader(WitnessLoader):
             return False
 
         actual_inputs = witness[: len(expected_inputs_mod)]
-        actual_outputs = witness[len(expected_inputs_mod) :]
+        actual_outputs = witness[len(expected_inputs_mod) : -2]
 
         # Compare
         if (
@@ -204,19 +233,41 @@ def load_witness(path: str, system: ZKProofSystems = ZKProofSystems.Expander) ->
     return loader.load_witness()
 
 
-def compare_witness_to_io(
+def compare_witness_to_io(  # noqa: PLR0913
     witnesses: dict,
     expected_inputs: dict,
     expected_outputs: dict,
     modulus: int,
     system: ZKProofSystems = ZKProofSystems.Expander,
+    scaling_function: Callable[[list[int], int, int], list[int]] | None = None,
 ) -> bool:
+    """
+    Compare witness data to expected inputs and outputs for a given ZK proof system.
+
+    Args:
+        witnesses (dict): Witness data as returned by `load_witness`.
+        expected_inputs (dict):
+            Dictionary containing key "input" mapping to list of expected integers.
+        expected_outputs (dict):
+            Dictionary containing key "output" mapping to list of expected integers.
+        modulus (int): Field modulus.
+        system (ZKProofSystems, optional):
+            The ZK proof system. Defaults to ZKProofSystems.Expander.
+        scaling_function (Callable[[list[int], int, int], list[int]] | None, optional):
+            Optional scaling function to apply to inputs.
+            Takes (inputs, scale_base, scale_exponent) and returns scaled inputs.
+            Defaults to None.
+
+    Returns:
+        bool: True if the witness matches the expected I/O, False otherwise.
+    """
     loader = get_loader(system, "")  # path not needed for comparison
     return loader.compare_witness_to_io(
         witnesses,
         expected_inputs,
         expected_outputs,
         modulus,
+        scaling_function,
     )
 
 

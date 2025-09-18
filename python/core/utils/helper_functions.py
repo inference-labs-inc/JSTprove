@@ -269,16 +269,14 @@ def prepare_io_files(func: Callable) -> Callable:
         exec_config.weights_path = exec_config.weights_path or files["weights_path"]
         exec_config.output_file = exec_config.output_file or files["output_file"]
 
-        # Handle quantized model path
-        if not exec_config.quantized_path:
-            if exec_config.circuit_path:
-                name = Path(exec_config.circuit_path).stem
-                exec_config.quantized_path = (
-                    f"{quantized_model_folder}/{name}_quantized_model.onnx"
-                )
-            else:
-                exec_config.quantized_path = f"{quantized_model_folder}"
-                f"/quantized_model_{self.__class__.__name__}.onnx"
+        if exec_config.circuit_path:
+            circuit_dir = Path(exec_config.circuit_path).parent
+            name = Path(exec_config.circuit_path).stem
+            exec_config.quantized_path = str(
+                circuit_dir / f"{name}_quantized_model.onnx",
+            )
+        else:
+            exec_config.quantized_path = None
 
         # Store paths and data for use in the decorated function
         self._file_info = {
