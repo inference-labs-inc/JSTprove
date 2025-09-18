@@ -9,7 +9,25 @@ description = "Zero-knowledge proofs of ML inference on ONNX models"
 readme = "README.md"
 authors = [{name = "Inference Labs Inc"}]
 requires-python = ">=3.10,<3.13"
-dependencies = ["numpy", "onnx", "onnxruntime", "torch", "typing-extensions"]
+dependencies = [
+    "numpy==2.2.6",
+    "onnx==1.17.0",
+    "onnxruntime==1.21.0",
+    "onnxruntime_extensions==0.14.0",
+    "psutil==7.0.0",
+    "Requests==2.32.3",
+    "scikit_learn==1.6.1",
+    "toml==0.10.2",
+    "torch==2.6.0",
+    "transformers==4.52.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.5",
+    "pytest-html==4.1.1",
+    "pre-commit",
+]
 
 [project.scripts]
 jstprove = "python.frontend.cli:main"
