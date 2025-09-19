@@ -48,9 +48,6 @@ jobs:
           uv sync --dev
           uv pip install -e .
 
-      # Get latest version
-      - name: Update Pre-commit
-        run: uv run pre-commit autoupdate --repo https://github.com/pre-commit/pre-commit-hooks
 
       - name: Get changed files
         id: changed-files
