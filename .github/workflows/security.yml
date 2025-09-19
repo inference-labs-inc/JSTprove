@@ -64,11 +64,11 @@ jobs:
 
       - name: Install security tools
         run: |
-          uv pip install safety bandit
-          
+          uv pip install --system safety bandit
+
       - name: Run safety check
         run: safety check
-        
+
       - name: Run bandit
         run: bandit -r ./python -f json -o bandit-report.json
         
