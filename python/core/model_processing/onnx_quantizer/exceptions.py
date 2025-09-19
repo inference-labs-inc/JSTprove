@@ -90,6 +90,7 @@ class UnsupportedOpError(QuantizationError):
         if node_name:
             error_msg += f" in node '{node_name}'"
         error_msg += ". Please check out the documentation for supported layers."
+        self.unsupported_ops = op_type
         super().__init__(error_msg)
 
 

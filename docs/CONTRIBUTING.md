@@ -26,7 +26,7 @@ uv pip install -e .
 ## **2. Install Git hooks**:
 
 ```bash
-pre-commit install --hook-type pre-commit --hook-type pre-push
+uv run pre-commit install --hook-type pre-commit --hook-type pre-push
 ```
 
 This ensures that every commit automatically runs the pre-commit hooks locally, including:
@@ -41,7 +41,7 @@ This ensures that every commit automatically runs the pre-commit hooks locally, 
 You can check all files in the repository at any time:
 
 ```bash
-pre-commit run --all-files
+uv run pre-commit run --all-files
 ```
 
 This is useful before pushing changes to catch any formatting issues early.

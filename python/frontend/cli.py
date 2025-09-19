@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-# third-party
 # local
 from python.core.circuits.errors import CircuitRunError
 from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
@@ -261,7 +260,36 @@ def _run_witness(args: argparse.Namespace) -> None:
     )
 
 
-def main(argv: list[str] | None = None) -> int:
+def _run_model_check(args: argparse.Namespace) -> None:
+    # third-party
+    import onnx
+
+    from python.core.model_processing.onnx_quantizer.exceptions import (
+        InvalidParamError,
+        UnsupportedOpError,
+    )
+    from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import (
+        ONNXOpQuantizer,
+    )
+
+    _ensure_exists(args.model_path, "file")
+
+    model = onnx.load(args.model_path)
+    quantizer = ONNXOpQuantizer()
+    try:
+        quantizer.check_model(model)
+        print(f"Model {args.model_path} is supported.")  # noqa: T201
+    except UnsupportedOpError as e:
+        print(f"Model {args.model_path} is NOT supported")  # noqa: T201
+        print(f"Unsupported operations {e.unsupported_ops}")  # noqa: T201
+    except InvalidParamError as e:
+        print(f"Model {args.model_path} is NOT supported")  # noqa: T201
+        print(f"{e.message}")  # noqa: T201
+    except Exception:
+        print("Issue obtaining result of model_check")  # noqa: T201
+
+
+def main(argv: list[str] | None = None) -> int:  # noqa: C901
     """
     Entry point for the JSTprove CLI.
 
@@ -270,6 +298,7 @@ def main(argv: list[str] | None = None) -> int:
       - Optionally print the banner.
       - Dispatch to the selected subcommand:
           * compile:  model → circuit + quantized model
+          * model_check: check model support for quantization
           * witness:  inputs → outputs.json + witness.bin
           * prove:    witness → proof.bin
           * verify:   input/output/witness/proof → verification
@@ -312,6 +341,19 @@ def main(argv: list[str] | None = None) -> int:
         "--circuit-path",
         required=True,
         help="Output path for the compiled circuit (e.g., circuit.txt).",
+    )
+    # model_check
+    p_check = sub.add_parser(
+        "model_check",
+        aliases=["check"],
+        help="Check if the model is supported for quantization.",
+        allow_abbrev=False,
+    )
+    p_check.add_argument(
+        "-m",
+        "--model-path",
+        required=True,
+        help="Path to the ONNX model.",
     )
     # witness
     p_wit = sub.add_parser(
@@ -422,6 +464,10 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "verify":
             # Validate all inputs exist including quantized (only to hydrate shapes)
             _run_verify(args)
+
+        elif args.cmd == "model_check":
+            # Check if the model is supported
+            _run_model_check(args)
 
     # Preserve argparse/our own explicit exits
     except SystemExit:
