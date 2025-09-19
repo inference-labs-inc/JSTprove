@@ -39,12 +39,12 @@ jobs:
       - name: Run Unit Tests
         run: |
           mkdir -p report
-          pytest --unit --html=report/unit_tests.html
+          uv run pytest --unit --html=report/unit_tests.html
 
       - name: Run Integration Tests
         run: |
           mkdir -p report
-          pytest --integration --html=report/integration_tests.html
+          uv run pytest --integration --html=report/integration_tests.html
 
       - name: Upload Pytest HTML Report
         uses: actions/upload-artifact@v4
