@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "JSTprove"
+version = "0.1.0"
+description = "Zero-knowledge proofs of ML inference on ONNX models"
+readme = "README.md"
+authors = [{ name = "Inference Labs Inc" }]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy==2.2.6",
+    "onnx==1.17.0",
+    "onnxruntime==1.21.0",
+    "onnxruntime_extensions==0.14.0",
+    "psutil==7.0.0",
+    "Requests==2.32.3",
+    "scikit_learn==1.6.1",
+    "toml==0.10.2",
+    "torch==2.6.0",
+    "transformers==4.52.4",
+]
+
+[dependency-groups]
+test = [
+    "pytest==8.3.5",
+    "pytest-html==4.1.1",
+    "pre-commit==4.3.0"
+]
+
+[project.scripts]
+jstprove = "python.frontend.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["python*"]

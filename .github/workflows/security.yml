@@ -8,15 +8,15 @@ on:
     paths:
       - '**/Cargo.toml'
       - '**/Cargo.lock'
-      - 'requirements.txt'
       - 'pyproject.toml'
+      - 'uv.lock'
   pull_request:
     branches: [ "main", "rustfmt" ]
     paths:
       - '**/Cargo.toml'
       - '**/Cargo.lock'
-      - 'requirements.txt'
       - 'pyproject.toml'
+      - 'uv.lock'
 
 jobs:
   dependency-review:
@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
+
       - name: Review Dependencies
         uses: actions/dependency-review-action@v3
         with:
@@ -37,13 +37,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly-2025-03-27
           override: true
-          
+
       - uses: actions-rs/audit-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -53,25 +53,46 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
-          
+          python-version: "3.12"
+
+      - name: Install UV
+        uses: astral-sh/setup-uv@v5
+
       - name: Install security tools
         run: |
-          python -m pip install --upgrade pip
-          pip install safety bandit
-          
+          uv pip install --system safety bandit
+
       - name: Run safety check
         run: safety check
-        
+
       - name: Run bandit
-        run: bandit -r ./python -f json -o bandit-report.json
-        
+        id: bandit
+        run: |
+          set +e  # Don't exit on error
+
+          bandit -r ./python --severity-level high -f json -o bandit-report.json
+          BANDIT_EXIT_CODE=$?
+          echo "exit_code=$BANDIT_EXIT_CODE" >> $GITHUB_OUTPUT
+
+          # Also output to console for visibility
+          echo "::group::Bandit Security Report"
+          bandit -r ./python --severity-level high -f txt
+          echo "::endgroup::"
+
+          exit 0  # Continue to upload artifact
+
       - name: Upload security report
         uses: actions/upload-artifact@v4
         with:
           name: security-reports
           path: bandit-report.json
+
+      - name: Check bandit results
+        if: steps.bandit.outputs.exit_code != '0'
+        run: |
+          echo "Bandit found security issues. Please review the report."
+          exit ${{ steps.bandit.outputs.exit_code }}

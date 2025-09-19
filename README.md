@@ -80,19 +80,9 @@ ONNX model ─► Quantizer (Py) ─► Circuit via ECC (Rust) ─► Witness (R
 ### 0) Requirements
 
 - **Python**: 3.10–3.12 (⚠️ Not compatible with Python 3.13)
+- **UV**: Fast Python package manager ([install UV](https://docs.astral.sh/uv/getting-started/installation/))
 
-We recommend using [pyenv](https://github.com/pyenv/pyenv) or [conda](https://docs.conda.io/) to manage Python versions.
-
-<!--
-### Quick install (examples)
-
-**Using pyenv (Linux / macOS):**
-```bash
-# Install Python 3.12
-pyenv install 3.12.5
-pyenv local 3.12.5
-```
--->
+> Note: UV will automatically install and manage the correct Python version for you.
 
 ### 1) System packages
 
@@ -148,12 +138,8 @@ rustup toolchain install nightly
 git clone https://github.com/inference-labs-inc/JSTprove.git
 cd JSTprove
 
-python -m venv .venv
-# macOS/Linux:
-source .venv/bin/activate
-
-# Project dependencies
-pip install -r requirements.txt
+# Install dependencies with UV (automatically creates and manages virtual environment)
+uv sync
 ```
 
 ---
@@ -200,10 +186,24 @@ cargo build --release
 
 ---
 
-### 6) Try the CLI
+### 6) Install and try the CLI
 
+**Option A: Install in virtual environment (for development)**
 ```bash
-python -m python.frontend.cli --help
+# Install as editable package in venv
+uv pip install -e .
+
+# Try the CLI (with venv activated)
+jstprove --help
+```
+
+**Option B: Install globally (for regular use)**
+```bash
+# Install as global tool
+uv tool install .
+
+# Try the CLI (available globally)
+jstprove --help
 ```
 
 > ⏳ Note: The first time you run this command it may take a little while due to Python/Rust imports and initialization. This is normal—subsequent runs will be faster.
@@ -227,7 +227,7 @@ Demo paths:
 1. **Compile** → circuit + **quantized ONNX**
 
 ```bash
-python -m python.frontend.cli compile \
+jstprove compile \
   -m python/models/models_onnx/lenet.onnx \
   -c artifacts/lenet/circuit.txt
 ```
@@ -235,7 +235,7 @@ python -m python.frontend.cli compile \
 2. **Witness** → reshape/scale inputs, run model, write witness + outputs
 
 ```bash
-python -m python.frontend.cli witness \
+jstprove witness \
   -c artifacts/lenet/circuit.txt \
   -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \
@@ -245,7 +245,7 @@ python -m python.frontend.cli witness \
 3. **Prove** → witness → proof
 
 ```bash
-python -m python.frontend.cli prove \
+jstprove prove \
   -c artifacts/lenet/circuit.txt \
   -w artifacts/lenet/witness.bin \
   -p artifacts/lenet/proof.bin
@@ -254,7 +254,7 @@ python -m python.frontend.cli prove \
 4. **Verify** → check the proof (needs quantized ONNX for input shapes)
 
 ```bash
-python -m python.frontend.cli verify \
+jstprove verify \
   -c artifacts/lenet/circuit.txt \
   -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \

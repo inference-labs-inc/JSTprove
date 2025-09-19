@@ -44,6 +44,12 @@ Artifacts typically appear under `./target/release/`.
 
 ## Python tests
 
+Before running tests, make sure to install test dependencies:
+
+```bash
+uv sync --group test
+```
+
 * **Unit** CLI tests **mock** `base_testing` (fast; no heavy Rust).
 * Integration/E2E for heavy models live elsewhere; use `simple_circuit` or small ONNX models for smoke tests.
 
@@ -51,11 +57,11 @@ Examples:
 
 ```bash
 # run unit + integration markers from repo root
-pytest --unit --integration
+uv run pytest --unit --integration
 
 # run e2e tests.
 Place model to be run in python/models/models_onnx/<model_name>.onnx
-pytest --e2e --<model_name>
+uv run pytest --e2e --<model_name>
 ```
 
 ---

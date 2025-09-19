@@ -14,33 +14,16 @@ git clone https://github.com/inference-labs-inc/JSTprove.git
 cd JSTprove
 ```
 
-2. **Create a virtual environment** (recommended):
+2. **Install dependencies with UV**:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # macOS/Linux
-.venv\Scripts\activate     # Windows
-```
-
-3. **Install dependencies**:
-
-```bash
-pip install -r requirements.txt
+uv sync --dev
+uv pip install -e .
 ```
 
 ---
 
-## **2. Install pre-commit hooks**
-
-This repository uses `pre-commit` to enforce consistent formatting and trailing newlines at the end of files.
-
-1. **Install pre-commit**:
-
-```bash
-pip install pre-commit
-```
-
-2. **Install Git hooks**:
+## **2. Install Git hooks**:
 
 ```bash
 pre-commit install --hook-type pre-commit --hook-type pre-push
@@ -48,8 +31,8 @@ pre-commit install --hook-type pre-commit --hook-type pre-push
 
 This ensures that every commit automatically runs the pre-commit hooks locally, including:
 
-* Rust formatting (`cargo fmt`)
-* Trailing newline enforcement for `.rs` and `.py` files
+- Rust formatting (`cargo fmt`)
+- Trailing newline enforcement for `.rs` and `.py` files
 
 ---
 
@@ -86,16 +69,16 @@ stage the files again, and commit.
 
 ## **5. Pull requests**
 
-* Always make sure your branch is up-to-date with the main branch.
-* Ensure all pre-commit hooks pass locally before opening a PR.
-* Run the full test suite locally and update/add tests as needed to cover your changes.
-* Update documentation (README, code comments, API docs, etc.) if your changes affect usage or behavior.
-* The CI pipeline will also run formatting checks and tests. Any failures must be resolved before merging.
+- Always make sure your branch is up-to-date with the main branch.
+- Ensure all pre-commit hooks pass locally before opening a PR.
+- Run the full test suite locally and update/add tests as needed to cover your changes.
+- Update documentation (README, code comments, API docs, etc.) if your changes affect usage or behavior.
+- The CI pipeline will also run formatting checks and tests. Any failures must be resolved before merging.
 
 ---
 
 ## **6. Formatting & newline policy**
 
-* **Rust files**: All `.rs` files should be formatted using `cargo fmt`.
-* **Python files**: All `.py` files must have a trailing newline at EOF.
-* Pre-commit hooks enforce this automatically locally and in CI.
+- **Rust files**: All `.rs` files should be formatted using `cargo fmt`.
+- **Python files**: All `.py` files must have a trailing newline at EOF.
+- Pre-commit hooks enforce this automatically locally and in CI.
