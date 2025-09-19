@@ -43,10 +43,8 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       # Run formatters and linters
-      - name: Install dependencies and pre-commit
-        run: |
-          uv sync --dev
-          uv pip install -e .
+      - name: Install the project
+        run: uv sync --dev
 
 
       - name: Get changed files
@@ -104,10 +102,8 @@ jobs:
       - name: Install UV
         uses: astral-sh/setup-uv@v5
 
-      - name: Install Python dependencies with UV
-        run: |
-          uv sync --dev
-          uv pip install -e .
+      - name: Install the project
+        run: uv sync --dev
 
       - name: Install OMPI
         run: |

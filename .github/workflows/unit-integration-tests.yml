@@ -22,10 +22,8 @@ jobs:
       - name: Install UV
         uses: astral-sh/setup-uv@v5
 
-      - name: Install dependencies with UV
-        run: |
-          uv sync --dev
-          uv pip install -e .
+      - name: Install the project
+        run: uv sync --dev
 
       - name: Install OMPI
         run: |
