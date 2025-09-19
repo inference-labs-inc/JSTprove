@@ -188,11 +188,21 @@ cargo build --release
 
 ### 6) Install and try the CLI
 
+**Option A: Install in virtual environment (for development)**
 ```bash
-# Install as editable package with CLI command
+# Install as editable package in venv
 uv pip install -e .
 
-# Try the CLI
+# Try the CLI (with venv activated)
+jstprove --help
+```
+
+**Option B: Install globally (for regular use)**
+```bash
+# Install as global tool
+uv tool install .
+
+# Try the CLI (available globally)
 jstprove --help
 ```
 

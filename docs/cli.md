@@ -4,9 +4,14 @@ The JSTprove CLI runs four steps: **compile → witness → prove → verify**. 
 
 ## Installation
 
-Install with UV:
+**For development (editable install in venv):**
 ```bash
 uv sync && uv pip install -e .
+```
+
+**For regular use (global install):**
+```bash
+uv tool install .
 ```
 
 ---
