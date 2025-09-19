@@ -80,19 +80,9 @@ ONNX model ─► Quantizer (Py) ─► Circuit via ECC (Rust) ─► Witness (R
 ### 0) Requirements
 
 - **Python**: 3.10–3.12 (⚠️ Not compatible with Python 3.13)
+- **UV**: Fast Python package manager ([install UV](https://docs.astral.sh/uv/getting-started/installation/))
 
-We recommend using [pyenv](https://github.com/pyenv/pyenv) or [conda](https://docs.conda.io/) to manage Python versions.
-
-<!--
-### Quick install (examples)
-
-**Using pyenv (Linux / macOS):**
-```bash
-# Install Python 3.12
-pyenv install 3.12.5
-pyenv local 3.12.5
-```
--->
+> Note: UV will automatically install and manage the correct Python version for you.
 
 ### 1) System packages
 
@@ -148,12 +138,8 @@ rustup toolchain install nightly
 git clone https://github.com/inference-labs-inc/JSTprove.git
 cd JSTprove
 
-python -m venv .venv
-# macOS/Linux:
-source .venv/bin/activate
-
-# Project dependencies
-pip install -r requirements.txt
+# Install dependencies with UV (automatically creates and manages virtual environment)
+uv sync
 ```
 
 ---
@@ -204,7 +190,7 @@ cargo build --release
 
 ```bash
 # Install as editable package with CLI command
-pip install -e .
+uv pip install -e .
 
 # Try the CLI
 jstprove --help
