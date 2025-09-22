@@ -48,6 +48,21 @@ jstprove witness --help
 
 ## Commands
 
+### model_check
+
+Check if the ONNX model supplied fits the criteria for JSTprove's current supported layers and parameters
+
+**Options**
+
+* `-m, --model-path <path>` (required) — original ONNX model
+
+**Example**
+
+```bash
+jstprove model_check \
+  -m python/models/models_onnx/lenet.onnx
+```
+
 ### compile (alias: `comp`)
 
 Generate a circuit file and a **quantized ONNX** model.
