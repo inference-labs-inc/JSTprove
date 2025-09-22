@@ -84,6 +84,8 @@ ONNX model ─► Quantizer (Py) ─► Circuit via ECC (Rust) ─► Witness (R
 
 > Note: UV will automatically install and manage the correct Python version for you.
 
+> **Heads-up:** If you just installed `uv` and the command isn't found, **close and reopen your terminal** (or re-source your shell init file) so the `uv` shim is picked up on`PATH`.
+
 ### 1) System packages
 
 > Run commands from the **repo root** so the runner binary path (e.g., `./target/release/onnx_generic_circuit`) resolves.
@@ -142,15 +144,18 @@ cd JSTprove
 uv sync
 ```
 
+> If `uv` was just installed, you may need to **restart your terminal** before running `uv sync`.
+
 ---
 
 ### 4) Install & verify **Expander** (before building JSTprove)
 
 JSTprove relies on Polyhedra Network’s **Expander** (prover) and **Expander Compiler Collection (ECC)** crates.
 For a clean environment, install Expander and run its self-checks first.
+To keep paths simple (and to match our scripts), **clone Expander as a subfolder of this repo**:
 
 ```bash
-# In a sibling folder (or anywhere you keep dependencies)
+# From the JSTprove repo root
 git clone https://github.com/PolyhedraZK/Expander.git
 cd Expander
 
@@ -166,6 +171,8 @@ cargo test --release
 ```
 
 > Refer to the Expander README for the authoritative verification command(s), which may change over time.
+
+> **Why inside the repo?** Our example commands and helper scripts assume `./Expander` as the manifest path. Keeping Expander elsewhere can lead to `manifest path 'Expander/Cargo.toml' does not exist` errors unless you always pass absolute paths.
 
 *(You do **not** need to clone ECC separately unless you plan to override Cargo git sources; Cargo will fetch ECC automatically when building JSTprove.)*
 
