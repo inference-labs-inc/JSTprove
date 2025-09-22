@@ -280,6 +280,14 @@ def _run_model_check(args: argparse.Namespace) -> None:
         quantizer.check_model(model)
         print(f"Model {args.model_path} is supported.")  # noqa: T201
     except UnsupportedOpError as e:
+        msg = f"Model {args.model_path} is NOT supported: Unsupported operations {e.unsupported_ops}"
+        raise CLIError(msg) from e
+    except InvalidParamError as e:
+        msg = f"Model {args.model_path} is NOT supported: {e.message}"
+        raise CLIError(msg) from e
+    except Exception as e:
+        msg = f"Issue obtaining result of model_check: {str(e)}"
+        raise CLIError(msg) from e
         print(f"Model {args.model_path} is NOT supported")  # noqa: T201
         print(f"Unsupported operations {e.unsupported_ops}")  # noqa: T201
     except InvalidParamError as e:
