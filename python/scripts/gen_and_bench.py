@@ -7,7 +7,7 @@ Generate simple CNN ONNX models and benchmark JSTprove.
 Typical usages:
 
 Depth sweep (vary conv depth, fixed input size):
-    jstprove bench \
+    jst bench \
       --sweep depth \
       --depth-min 1 \
       --depth-max 16 \
@@ -16,7 +16,7 @@ Depth sweep (vary conv depth, fixed input size):
       --results benchmarking/depth_sweep.jsonl
 
 Breadth sweep (vary input resolution, fixed conv depth):
-    jstprove bench \
+    jst bench \
       --sweep breadth \
       --arch-depth 5 \
       --input-hw-list 28,56,84,112 \

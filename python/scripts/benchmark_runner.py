@@ -221,8 +221,8 @@ class PhaseIO:
 
 
 def _build_phase_cmd(phase: str, io: PhaseIO) -> list[str]:
-    """Construct the exact `jstprove` CLI command for a phase."""
-    base = ["jstprove", "--no-banner"]
+    """Construct the exact `jst` CLI command for a phase."""
+    base = ["jst", "--no-banner"]
     if phase == "compile":
         return [*base, "compile", "-m", str(io.model_path), "-c", str(io.circuit_path)]
     if phase == "witness":

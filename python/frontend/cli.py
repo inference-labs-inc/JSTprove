@@ -280,7 +280,7 @@ def _run_bench(args: argparse.Namespace) -> None:
     Run the existing generator+benchmark via: python -m python.scripts.gen_and_bench
 
     Behavior:
-      - If user ran `jstprove bench depth` or `jstprove bench breadth` with
+      - If user ran `jst bench depth` or `jst bench breadth` with
         no other options, we invoke gen_and_bench with your favorite defaults.
       - Otherwise we pass through whatever flags they provided.
     """
@@ -392,7 +392,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- argparse setup ------------------------------------------------------
     parser = argparse.ArgumentParser(
-        prog="jstprove",
+        prog="jst",
         description="ZKML CLI (compile, witness, prove, verify).",
         allow_abbrev=False,
     )
@@ -520,7 +520,7 @@ def main(argv: list[str] | None = None) -> int:
         "mode",
         choices=["depth", "breadth"],
         nargs="?",
-        help="Shorthand for --sweep when you just want defaults (e.g., 'jstprove bench depth').",
+        help="Shorthand for --sweep when you just want defaults (e.g., 'jst bench depth').",
     )
 
     p_bench.add_argument(
