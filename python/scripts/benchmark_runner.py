@@ -78,6 +78,8 @@ ECC_KEYS = {
     "numMul",
     "totalCost",
 }
+
+# Accept optional spaces and thousands separators in values
 KV_PAIR = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([0-9,]+)\b")
 
 # Spinner glyphs (ASCII by default; set JSTPROVE_UNICODE=1 to switch)
@@ -143,10 +145,7 @@ def _sum_child_rss_mb(parent_pid: int) -> float:
 
 
 def parse_ecc_stats(text: str) -> Dict[str, int]:
-    """
-    Extract ECC counters by scanning the entire blob for key=value pairs and
-    retaining only the known ECC keys. Robust to ANSI, CRs, extra spaces, and commas.
-    """
+    """Scan the whole blob for k=v pairs and keep only ECC keys."""
     clean = ANSI_RE.sub("", text).replace("\r", "\n")
     stats: Dict[str, int] = {}
     for k, v in KV_PAIR.findall(clean):
@@ -375,6 +374,12 @@ def run_cli(
                 print(hud[: tw - 1], end="", flush=True)  # noqa: T201
 
             if proc.poll() is not None:
+                # Drain any remaining buffered output after the process exits.
+                if proc.stdout:
+                    tail = proc.stdout.read()
+                    if tail:
+                        combined_lines.extend(tail.splitlines())
+
                 # final HUD line
                 elapsed = time.time() - start
                 hud = (
