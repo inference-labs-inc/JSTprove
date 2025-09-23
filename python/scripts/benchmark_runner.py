@@ -484,12 +484,6 @@ def _fmt_mean_sd(vals: list[float]) -> tuple[str, float | None, float | None]:
 def _summary_card(
     model_name: str, tmap: dict[str, list[float]], mmap: dict[str, list[float]]
 ) -> None:
-    """Render a compact summary card of time/memory across phases."""
-    phases = ("compile", "witness", "prove", "verify")
-    rows = []
-    t_def _summary_card(
-    model_name: str, tmap: dict[str, list[float]], mmap: dict[str, list[float]]
-) -> None:
     """
     Render a compact summary card with data-driven column widths so that
     multi-digit means (e.g., 46.741) align just as neatly as single-digit ones.
@@ -550,14 +544,30 @@ def _summary_card(
     # Layout: │ {phase:<pw} │ {time:<tw} │ {best:>bw} │ {tbar} │ {mem:<mw} │ {peak:>pk} │ {mbar} │
     fixed = (
         1  # left border
-        + 1 + phase_w + 1 + 1  # "│ " + phase + " │"
-        + 1 + time_w + 1 + 1   # " " + time + " │"
-        + 1 + best_w + 1 + 1   # " " + best + " │"
-        + 1 + 1                # " " + "│" before mem
-        + 1 + mem_w + 1 + 1    # " " + mem + " │"
-        + 1 + peak_w + 1 + 1   # " " + peak + " │"
-        + 1                    # space before mbar
-        + 1                    # right border (we’ll account for it at the end)
+        + 1
+        + phase_w
+        + 1
+        + 1  # "│ " + phase + " │"
+        + 1
+        + time_w
+        + 1
+        + 1  # " " + time + " │"
+        + 1
+        + best_w
+        + 1
+        + 1  # " " + best + " │"
+        + 1
+        + 1  # " " + "│" before mem
+        + 1
+        + mem_w
+        + 1
+        + 1  # " " + mem + " │"
+        + 1
+        + peak_w
+        + 1
+        + 1  # " " + peak + " │"
+        + 1  # space before mbar
+        + 1  # right border (we’ll account for it at the end)
     )
     # two bars + the final right border
     # available width = tw - (fixed + 2 bars + right border). solve for bar size.
@@ -594,15 +604,23 @@ def _summary_card(
         f"{V} {'t-bar':<{bar_w}} {V} {hdr_mem:<{mem_w}} {V} {hdr_peak:>{peak_w}} {V} {'m-bar':<{bar_w}} {V}"
     )
     # Draw a top border that exactly matches header width
-    top = TL + H * (len(header_line) - 2) + TR  # -2 accounts for replacing first/last char with corners
+    top = (
+        TL + H * (len(header_line) - 2) + TR
+    )  # -2 accounts for replacing first/last char with corners
     sep = (
         TJ
-        + H * (2 + phase_w) + MJ
-        + H * (2 + time_w) + MJ
-        + H * (2 + best_w) + MJ
-        + H * (2 + bar_w) + MJ
-        + H * (2 + mem_w) + MJ
-        + H * (2 + peak_w) + MJ
+        + H * (2 + phase_w)
+        + MJ
+        + H * (2 + time_w)
+        + MJ
+        + H * (2 + best_w)
+        + MJ
+        + H * (2 + bar_w)
+        + MJ
+        + H * (2 + mem_w)
+        + MJ
+        + H * (2 + peak_w)
+        + MJ
         + H * (2 + bar_w)
         + TR.replace(TR, MJ)  # match corner with a cross-joint
     )
