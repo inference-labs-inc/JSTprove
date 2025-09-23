@@ -205,7 +205,7 @@ cargo build --release
 uv pip install -e .
 
 # Try the CLI (with venv activated)
-jstprove --help
+jst --help
 ```
 
 **Option B: Install globally (for regular use)**
@@ -214,7 +214,7 @@ jstprove --help
 uv tool install .
 
 # Try the CLI (available globally)
-jstprove --help
+jst --help
 ```
 
 > ⏳ Note: The first time you run this command it may take a little while due to Python/Rust imports and initialization. This is normal—subsequent runs will be faster.
@@ -238,7 +238,7 @@ Demo paths:
 1. **Compile** → circuit + **quantized ONNX**
 
 ```bash
-jstprove compile \
+jst compile \
   -m python/models/models_onnx/lenet.onnx \
   -c artifacts/lenet/circuit.txt
 ```
@@ -246,7 +246,7 @@ jstprove compile \
 2. **Witness** → reshape/scale inputs, run model, write witness + outputs
 
 ```bash
-jstprove witness \
+jst witness \
   -c artifacts/lenet/circuit.txt \
   -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \
@@ -256,7 +256,7 @@ jstprove witness \
 3. **Prove** → witness → proof
 
 ```bash
-jstprove prove \
+jst prove \
   -c artifacts/lenet/circuit.txt \
   -w artifacts/lenet/witness.bin \
   -p artifacts/lenet/proof.bin
@@ -265,7 +265,7 @@ jstprove prove \
 4. **Verify** → check the proof (needs quantized ONNX for input shapes)
 
 ```bash
-jstprove verify \
+jst verify \
   -c artifacts/lenet/circuit.txt \
   -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \
