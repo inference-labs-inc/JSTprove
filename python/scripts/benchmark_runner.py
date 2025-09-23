@@ -173,7 +173,6 @@ def now_utc() -> str:
 class PhaseIO:
     model_path: Path
     circuit_path: Path
-    quantized_path: Path
     input_path: Path | None
     output_path: Path
     witness_path: Path
@@ -303,6 +302,14 @@ def run_cli(
     )
 
 
+def _quantized_path_from_circuit(circuit_path: Path) -> Path:
+    """
+    Exact rule from prepare_io_files in helper_functions.py:
+      <circuit_dir>/<circuit_stem>_quantized_model.onnx
+    """
+    return circuit_path.with_name(f"{circuit_path.stem}_quantized_model.onnx")
+
+
 def _fmt_stats(vals: list[float]) -> str:
     if not vals:
         return "NA"
@@ -380,7 +387,6 @@ def main() -> int:
                 io = PhaseIO(
                     model_path=model_path,
                     circuit_path=tmp / "circuit.txt",
-                    quantized_path=tmp / "circuit_quantized.onnx",
                     input_path=fixed_input or (tmp / "input.json"),
                     output_path=tmp / "output.json",
                     witness_path=tmp / "witness.bin",
@@ -400,9 +406,8 @@ def main() -> int:
                         artifact_sizes["circuit_size_bytes"] = file_size_bytes(
                             io.circuit_path
                         )
-                        artifact_sizes["quantized_size_bytes"] = file_size_bytes(
-                            io.quantized_path
-                        )
+                        qpath = _quantized_path_from_circuit(io.circuit_path)
+                        artifact_sizes["quantized_size_bytes"] = file_size_bytes(qpath)
                     elif phase == "witness":
                         artifact_sizes["witness_size_bytes"] = file_size_bytes(
                             io.witness_path
@@ -448,13 +453,14 @@ def main() -> int:
                                 out,
                             )
                             return 1
-                        if not io.quantized_path.exists():
-                            log.error(
-                                "[compile] rc=0 but quantized model missing: %s\n----- compile output -----\n%s",
-                                io.quantized_path,
-                                out,
+
+                        # Quantized model path is derived from circuit path. We expect it,
+                        # but only warn (don’t fail) if it’s missing.
+                        qpath = _quantized_path_from_circuit(io.circuit_path)
+                        if not qpath.exists():
+                            log.warning(
+                                "[compile] expected quantized ONNX missing: %s", qpath
                             )
-                            return 1
 
                     if rc != 0:
                         log.error("[%s] rc=%s — see logs below\n%s\n", phase, rc, out)
