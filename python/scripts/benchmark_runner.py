@@ -17,6 +17,10 @@ from pathlib import Path
 from statistics import mean, stdev
 from typing import Dict, Optional
 
+import time
+import shutil
+import psutil
+
 from python.core.utils.benchmarking_helpers import (
     end_memory_collection,
     start_memory_collection,
@@ -76,6 +80,61 @@ ECC_HINT_RE = re.compile(r"built\s+hint\s+normalized\s+ir\b.*", re.IGNORECASE)
 ECC_LAYERED_RE = re.compile(r"built\s+layered\s+circuit\b.*", re.IGNORECASE)
 
 KV_PAIR = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=([0-9]+)")
+
+_SPINNER = (
+    "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"  # braille spinner; fallback to '-\\|/' if your font lacks braille
+)
+
+
+def _term_width(default: int = 100) -> int:
+    try:
+        return shutil.get_terminal_size((default, 20)).columns
+    except Exception:
+        return default
+
+
+def _human_bytes(n: int | None) -> str:
+    if n is None:
+        return "NA"
+    units = ["B", "KB", "MB", "GB", "TB"]
+    x = float(n)
+    for u in units:
+        if x < 1024.0 or u == units[-1]:
+            return f"{x:.1f} {u}" if u != "B" else f"{int(x)} B"
+        x /= 1024.0
+
+
+def _fmt_int(n: int | None) -> str:
+    return f"{n:,}" if isinstance(n, int) else "NA"
+
+
+def _bar(value: int, vmax: int, width: int = 24, char: str = "█") -> str:
+    if vmax <= 0 or value <= 0:
+        return " " * width
+    fill = max(1, int(width * min(value, vmax) / vmax))
+    return char * fill + " " * (width - fill)
+
+
+def _marquee(t: float, width: int = 24, char: str = "█") -> str:
+    # a bouncing block to suggest progress when total unknown
+    w = max(8, min(width, 24))
+    pos = int((abs(((t * 0.8) % 2) - 1)) * (w - 8))
+    return " " * pos + char * 8 + " " * (w - 8 - pos)
+
+
+def _sum_child_rss_mb(parent_pid: int) -> float:
+    """Approx current total RSS of children (MB). Best-effort."""
+    try:
+        parent = psutil.Process(parent_pid)
+    except psutil.Error:
+        return 0.0
+    total = 0
+    for c in parent.children(recursive=True):
+        try:
+            total += c.memory_info().rss
+        except psutil.Error:
+            pass
+    return total / (1024.0 * 1024.0)
 
 
 def parse_ecc_stats(text: str) -> Dict[str, int]:
@@ -241,6 +300,169 @@ def run_cli(
     io: PhaseIO,
 ) -> tuple[int, str, float | None, float | None, list[str], float | None, float | None]:
     """
+    Run the CLI, stream output live (so the terminal isn't idle), and show a spinner
+    + elapsed + marquee + live peak-RSS. Returns:
+      (returncode, combined_output, time_s, mem_mb_primary, cmd_list, mem_mb_rust, mem_mb_psutil)
+    """
+    cmd = _build_phase_cmd(phase, io)
+
+    env = os.environ.copy()
+    env.setdefault("RUST_LOG", "info")
+    env.setdefault("RUST_BACKTRACE", "1")
+
+    # We still keep psutil-based peak tracking across *all* children for consistency
+    stop_ev, mon_thread, mon_results = start_memory_collection("")
+
+    start = time.time()
+    combined_lines: list[str] = []
+
+    # Use Popen to read output as it arrives
+    proc = subprocess.Popen(  # noqa: S603
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=env,
+        bufsize=1,
+    )
+
+    spinner = _SPINNER if os.environ.get("JSTPROVE_ASCII") is None else "-\\|/"
+    sp_i = 0
+    peak_live_mb = 0.0
+    tw = _term_width()
+    bar_w = max(18, min(28, tw - 50))
+
+    try:
+        while True:
+            line = proc.stdout.readline() if proc.stdout else ""
+            now = time.time()
+            elapsed = now - start
+
+            # Update live peak from direct sampling (fast)
+            live_mb = _sum_child_rss_mb(proc.pid)
+            if live_mb > peak_live_mb:
+                peak_live_mb = live_mb
+
+            # stream any output we just read
+            if line:
+                combined_lines.append(line.rstrip("\n"))
+                # Also echo ECC milestones immediately so it feels responsive
+                if (
+                    "built layered circuit" in line.lower()
+                    or "built hint normalized ir" in line.lower()
+                ):
+                    print(line, end="")  # noqa: T201
+            else:
+                # If no new line, still refresh the HUD while process runs
+                pass
+
+            # Draw HUD every ~100ms
+            if int((elapsed * 10)) != int(((elapsed - 0.09) * 10)) or not line:
+                spin = spinner[sp_i % len(spinner)]
+                sp_i += 1
+                if phase == "compile":
+                    hud_bar = _marquee(elapsed, width=bar_w)
+                else:
+                    hud_bar = _marquee(elapsed, width=bar_w)  # reuse for all phases
+
+                hud = f"\r[{spin}] {phase:<7} | {elapsed:6.1f}s | mem↑ {peak_live_mb:7.1f} MB | {hud_bar}"
+                print(hud[: tw - 1], end="", flush=True)  # noqa: T201
+
+            if proc.poll() is not None:
+                # one last HUD update on exit
+                elapsed = time.time() - start
+                hud = (
+                    f"\r[✔] {phase:<7} | {elapsed:6.1f}s | mem↑ {peak_live_mb:7.1f} MB | "
+                    + " " * bar_w
+                )
+                print(hud[: tw - 1])  # newline  # noqa: T201
+                break
+
+            time.sleep(0.09)
+
+    finally:
+        # Stop background peak monitor and capture its result (may differ slightly)
+        collected_mb: float | None = None
+        try:
+            mem = end_memory_collection(stop_ev, mon_thread, mon_results)  # type: ignore[arg-type]
+            if isinstance(mem, dict):
+                collected_mb = float(mem.get("total", 0.0))
+        except Exception:
+            collected_mb = None
+
+    combined = "\n".join(combined_lines)
+    # Primary metrics from runner prints (if any), else from our timers
+    time_s, mem_mb_rust = parse_metrics(combined)
+    if time_s is None:
+        time_s = elapsed
+    mem_mb_psutil = collected_mb if collected_mb is not None else peak_live_mb
+    mem_mb_primary = mem_mb_psutil if mem_mb_psutil is not None else mem_mb_rust
+
+    # ECC stats
+    ecc = parse_ecc_stats(combined)
+    if ecc:
+        kv = " ".join(f"{k}={v}" for k, v in sorted(ecc.items()))
+        combined += f"\n[ECC]\n{kv}\n"
+
+    return (
+        proc.returncode or 0,
+        combined,
+        time_s,
+        mem_mb_primary,
+        cmd,
+        mem_mb_rust,
+        mem_mb_psutil,
+    )
+
+
+def _print_compile_card(
+    ecc: dict, circuit_bytes: int | None, quant_bytes: int | None
+) -> None:
+    if not ecc:
+        return
+    keys = [
+        "numAdd",
+        "numMul",
+        "numCst",
+        "numVars",
+        "numInsns",
+        "numConstraints",
+        "totalCost",
+    ]
+    data = {k: int(ecc[k]) for k in keys if k in ecc}
+
+    if not data:
+        return
+    vmax = max(v for v in data.values())
+    w = max(24, min(40, _term_width() - 50))
+
+    print("")  # noqa: T201
+    print(
+        "┌────────────────────────── Compile Stats ──────────────────────────┐"
+    )  # noqa: T201
+    for k in keys:
+        if k in data:
+            bar = _bar(data[k], vmax, width=w)
+            print(f"│ {k:<14} {_fmt_int(data[k]):>12}  {bar} │")  # noqa: T201
+    print(
+        "├────────────────────────────────────────────────────────────────────┤"
+    )  # noqa: T201
+    print(
+        f"│ circuit.txt        {(_human_bytes(circuit_bytes) if circuit_bytes is not None else 'NA'):>12}                              │"
+    )  # noqa: T201
+    print(
+        f"│ quantized_model    {(_human_bytes(quant_bytes) if quant_bytes is not None else 'NA'):>12}                              │"
+    )  # noqa: T201
+    print(
+        "└────────────────────────────────────────────────────────────────────┘"
+    )  # noqa: T201
+
+
+def run_cli_old(
+    phase: str,
+    io: PhaseIO,
+) -> tuple[int, str, float | None, float | None, list[str], float | None, float | None]:
+    """
     Run your CLI exactly as you do by hand, capture stdout/stderr, and return:
     (returncode, combined_output, time_s, mem_mb_primary, cmd_list, mem_mb_rust, mem_mb_psutil).
     """
@@ -402,12 +624,30 @@ def main() -> int:
 
                     # Artifact sizes per phase
                     artifact_sizes: dict[str, Optional[int]] = {}
+                    # ECC key=value stats from CLI logs
+                    ecc_stats = parse_ecc_stats(out)
+
+                    # Artifact sizes per phase
+                    artifact_sizes: dict[str, Optional[int]] = {}
                     if phase == "compile":
-                        artifact_sizes["circuit_size_bytes"] = file_size_bytes(
-                            io.circuit_path
+                        circuit_size = file_size_bytes(io.circuit_path)
+                        # derive quantized path from circuit path name (helper_functions logic)
+                        quantized_path = io.circuit_path.with_name(
+                            f"{io.circuit_path.stem}_quantized_model.onnx"
                         )
-                        qpath = _quantized_path_from_circuit(io.circuit_path)
-                        artifact_sizes["quantized_size_bytes"] = file_size_bytes(qpath)
+                        quant_size = file_size_bytes(quantized_path)
+
+                        artifact_sizes["circuit_size_bytes"] = circuit_size
+                        artifact_sizes["quantized_size_bytes"] = quant_size
+
+                        # Pretty card
+                        _print_compile_card(ecc_stats, circuit_size, quant_size)
+                    # if phase == "compile":
+                    #     artifact_sizes["circuit_size_bytes"] = file_size_bytes(
+                    #         io.circuit_path
+                    #     )
+                    #     qpath = _quantized_path_from_circuit(io.circuit_path)
+                    #     artifact_sizes["quantized_size_bytes"] = file_size_bytes(qpath)
                     elif phase == "witness":
                         artifact_sizes["witness_size_bytes"] = file_size_bytes(
                             io.witness_path
