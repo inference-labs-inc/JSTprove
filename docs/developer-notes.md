@@ -12,7 +12,7 @@ Internal notes for contributors working on JSTprove (Python + Rust).
 
 .
 ├─ python/                    # CLI and pipeline
-│  └─ frontend/cli.py         # jstprove CLI entrypoint
+│  └─ frontend/cli.py         # JSTprove CLI entrypoint
 ├─ python/testing/            # unit/integration tests
 │  └─ core/tests/             # CLI tests, etc.
 └─ rust/

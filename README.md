@@ -1,15 +1,15 @@
 ```
-  888888  .d8888b. 88888888888                                         
-    "88b d88P  Y88b    888                                             
-     888 Y88b.         888                                             
-     888  "Y888b.      888  88888b.  888d888 .d88b.  888  888  .d88b.  
-     888     "Y88b.    888  888 "88b 888P"  d88""88b 888  888 d8P  Y8b 
-     888       "888    888  888  888 888    888  888 Y88  88P 88888888 
-     88P Y88b  d88P    888  888 d88P 888    Y88..88P  Y8bd8P  Y8b.     
-     888  "Y8888P"     888  88888P"  888     "Y88P"    Y88P    "Y8888  
-   .d88P                    888                                        
- .d88P"                     888                                        
-888P"                       888                                        
+  888888  .d8888b. 88888888888
+    "88b d88P  Y88b    888
+     888 Y88b.         888
+     888  "Y888b.      888  88888b.  888d888 .d88b.  888  888  .d88b.
+     888     "Y88b.    888  888 "88b 888P"  d88""88b 888  888 d8P  Y8b
+     888       "888    888  888  888 888    888  888 Y88  88P 88888888
+     88P Y88b  d88P    888  888 d88P 888    Y88..88P  Y8bd8P  Y8b.
+     888  "Y8888P"     888  88888P"  888     "Y88P"    Y88P    "Y8888
+   .d88P                    888
+ .d88P"                     888
+888P"                       888
 ```
 ---
 
@@ -205,7 +205,7 @@ cargo build --release
 uv pip install -e .
 
 # Try the CLI (with venv activated)
-jstprove --help
+jst --help
 ```
 
 **Option B: Install globally (for regular use)**
@@ -214,7 +214,7 @@ jstprove --help
 uv tool install .
 
 # Try the CLI (available globally)
-jstprove --help
+jst --help
 ```
 
 > ⏳ Note: The first time you run this command it may take a little while due to Python/Rust imports and initialization. This is normal—subsequent runs will be faster.
@@ -238,7 +238,7 @@ Demo paths:
 1. **Compile** → circuit + **quantized ONNX**
 
 ```bash
-jstprove compile \
+jst compile \
   -m python/models/models_onnx/lenet.onnx \
   -c artifacts/lenet/circuit.txt
 ```
@@ -246,7 +246,7 @@ jstprove compile \
 2. **Witness** → reshape/scale inputs, run model, write witness + outputs
 
 ```bash
-jstprove witness \
+jst witness \
   -c artifacts/lenet/circuit.txt \
   -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \
@@ -256,7 +256,7 @@ jstprove witness \
 3. **Prove** → witness → proof
 
 ```bash
-jstprove prove \
+jst prove \
   -c artifacts/lenet/circuit.txt \
   -w artifacts/lenet/witness.bin \
   -p artifacts/lenet/proof.bin
@@ -265,7 +265,7 @@ jstprove prove \
 4. **Verify** → check the proof (needs quantized ONNX for input shapes)
 
 ```bash
-jstprove verify \
+jst verify \
   -c artifacts/lenet/circuit.txt \
   -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \

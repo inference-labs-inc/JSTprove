@@ -19,7 +19,7 @@ uv tool install .
 ## Synopsis
 
 ```bash
-jstprove [--no-banner] <command> [options]
+jst [--no-banner] <command> [options]
 ```
 
 * `--no-banner` — suppress the ASCII header.
@@ -30,10 +30,10 @@ jstprove [--no-banner] <command> [options]
 ## Help
 
 ```bash
-jstprove --help
-jstprove <subcommand> --help
+jst --help
+jst <subcommand> --help
 # e.g.
-jstprove witness --help
+jst witness --help
 ```
 
 ---
@@ -60,7 +60,7 @@ Generate a circuit file and a **quantized ONNX** model.
 **Example**
 
 ```bash
-jstprove compile \
+jst compile \
   -m python/models/models_onnx/lenet.onnx \
   -c artifacts/lenet/circuit.txt
 ```
@@ -81,7 +81,7 @@ Reshapes/scales inputs, runs the quantized model to produce outputs, and writes 
 **Example**
 
 ```bash
-jstprove witness \
+jst witness \
   -c artifacts/lenet/circuit.txt \
   -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \
@@ -103,7 +103,7 @@ Create a proof from the circuit + witness.
 **Example**
 
 ```bash
-jstprove prove \
+jst prove \
   -c artifacts/lenet/circuit.txt \
   -w artifacts/lenet/witness.bin \
   -p artifacts/lenet/proof.bin
@@ -126,7 +126,7 @@ Verify the proof.
 **Example**
 
 ```bash
-jstprove verify \
+jst verify \
   -c artifacts/lenet/circuit.txt \
   -i python/models/inputs/lenet_input.json \
   -o artifacts/lenet/output.json \
