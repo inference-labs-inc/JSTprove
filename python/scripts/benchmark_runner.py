@@ -487,12 +487,34 @@ def _summary_card(
     """Render a compact summary card of time/memory across phases."""
     phases = ("compile", "witness", "prove", "verify")
     rows = []
+    t_def _summary_card(
+    model_name: str, tmap: dict[str, list[float]], mmap: dict[str, list[float]]
+) -> None:
+    """
+    Render a compact summary card with data-driven column widths so that
+    multi-digit means (e.g., 46.741) align just as neatly as single-digit ones.
+    Uses ASCII borders when JSTPROVE_ASCII=1.
+    """
+    phases = ("compile", "witness", "prove", "verify")
+
+    # 1) Build labels and stats first (so we know true content widths)
+    rows: list[tuple[str, str, str, str, str]] = []
     t_means: list[float] = []
     m_means: list[float] = []
 
+    def fmt_mean_sd(vals: list[float]) -> tuple[str, float | None]:
+        if not vals:
+            return "NA", None
+        if len(vals) == 1:
+            v = float(vals[0])
+            return f"{v:.3f}", v
+        mu = float(mean(vals))
+        sd = float(stdev(vals))
+        return f"{mu:.3f} ± {sd:.3f}", mu
+
     for ph in phases:
-        tlabel, tmean, _ = _fmt_mean_sd(tmap.get(ph, []))
-        mlabel, mmean, _ = _fmt_mean_sd(mmap.get(ph, []))
+        tlabel, tmean = fmt_mean_sd(tmap.get(ph, []))
+        mlabel, mmean = fmt_mean_sd(mmap.get(ph, []))
         tbest = f"{min(tmap[ph]):.3f}" if tmap.get(ph) else "NA"
         mpeak = f"{max(mmap[ph]):.3f}" if mmap.get(ph) else "NA"
         rows.append((ph, tlabel, tbest, mlabel, mpeak))
@@ -501,47 +523,121 @@ def _summary_card(
         if mmean is not None:
             m_means.append(mmean)
 
+    # When everything is NA, avoid div-by-zero in bar scaling
     tmax = max(t_means) if t_means else 1.0
     mmax = max(m_means) if m_means else 1.0
 
-    tw = _term_width()
-    bar_w = max(10, min(18, tw - 84))  # phase & labels take ~fixed width
+    # 2) Compute column widths from the actual content + headers
+    hdr_phase = "phase"
+    hdr_time = "time (s)"
+    hdr_best = "best"
+    hdr_mem = "mem (MB)"
+    hdr_peak = "peak"
 
+    phase_w = max(len(hdr_phase), *(len(ph) for ph, *_ in rows))
+    time_w = max(len(hdr_time), *(len(t) for _, t, *_ in rows))
+    best_w = max(len(hdr_best), *(len(b) for *_, b, _, _ in rows))
+    mem_w = max(len(hdr_mem), *(len(m) for *_, m, _ in rows))
+    peak_w = max(len(hdr_peak), *(len(p) for *_, p in rows))
+
+    # pick a reasonable bar width; shrink only if terminal is very narrow
+    # we’ll try to fit inside the terminal if possible, but we *don’t* rely on it.
+    min_bar = 10
+    max_bar = 24
+    # Estimate available width from the terminal; keep a comfortable default.
+    tw = _term_width(100)
+    # Fixed chars per row besides the two bars (separators, spaces, borders)
+    # Layout: │ {phase:<pw} │ {time:<tw} │ {best:>bw} │ {tbar} │ {mem:<mw} │ {peak:>pk} │ {mbar} │
+    fixed = (
+        1  # left border
+        + 1 + phase_w + 1 + 1  # "│ " + phase + " │"
+        + 1 + time_w + 1 + 1   # " " + time + " │"
+        + 1 + best_w + 1 + 1   # " " + best + " │"
+        + 1 + 1                # " " + "│" before mem
+        + 1 + mem_w + 1 + 1    # " " + mem + " │"
+        + 1 + peak_w + 1 + 1   # " " + peak + " │"
+        + 1                    # space before mbar
+        + 1                    # right border (we’ll account for it at the end)
+    )
+    # two bars + the final right border
+    # available width = tw - (fixed + 2 bars + right border). solve for bar size.
+    # we’ll clamp into [min_bar, max_bar].
+    avail_for_bars = max(0, tw - (fixed + 1))  # leave room for right border
+    per_bar = max(min_bar, min(max_bar, avail_for_bars // 2)) or min_bar
+    bar_w = per_bar
+
+    # Optionally switch to pure-ASCII table and bar characters
+    ascii_mode = os.environ.get("JSTPROVE_ASCII") == "1"
+    V = "|" if ascii_mode else "│"
+    H = "-" if ascii_mode else "─"
+    TL = "+" if ascii_mode else "┌"
+    TR = "+" if ascii_mode else "┐"
+    BL = "+" if ascii_mode else "└"
+    BR = "+" if ascii_mode else "┘"
+    TJ = "+" if ascii_mode else "├"
+    BJ = "+" if ascii_mode else "┴"
+    MJ = "+" if ascii_mode else "┼"
+    BAR_CHAR = "#" if ascii_mode else "█"
+
+    def bar(val: float, vmax: float) -> str:
+        # scale relative to max mean; clamp; ensure non-empty when val>0
+        if vmax <= 0 or val <= 0:
+            return " " * bar_w
+        filled = max(1, int(bar_w * min(val, vmax) / vmax))
+        return BAR_CHAR * filled + " " * (bar_w - filled)
+
+    # 3) Build the header/body lines using *exact* widths
     title = f" Summary for {model_name} "
-    pad = max(0, tw - len(title) - 4)
+    # Make a header content row to measure the total width
+    header_line = (
+        f"{V} {hdr_phase:<{phase_w}} {V} {hdr_time:<{time_w}} {V} {hdr_best:>{best_w}} "
+        f"{V} {'t-bar':<{bar_w}} {V} {hdr_mem:<{mem_w}} {V} {hdr_peak:>{peak_w}} {V} {'m-bar':<{bar_w}} {V}"
+    )
+    # Draw a top border that exactly matches header width
+    top = TL + H * (len(header_line) - 2) + TR  # -2 accounts for replacing first/last char with corners
+    sep = (
+        TJ
+        + H * (2 + phase_w) + MJ
+        + H * (2 + time_w) + MJ
+        + H * (2 + best_w) + MJ
+        + H * (2 + bar_w) + MJ
+        + H * (2 + mem_w) + MJ
+        + H * (2 + peak_w) + MJ
+        + H * (2 + bar_w)
+        + TR.replace(TR, MJ)  # match corner with a cross-joint
+    )
+    bottom = BL + H * (len(header_line) - 2) + BR
 
-    print("")  # noqa: T201
-    print("┌" + title + "─" * pad + "┐")  # noqa: T201
-    print(
-        "│ phase    │ time (s)                 │ best  │ "
-        f"{'t-bar':<{bar_w}} │ mem (MB)               │ peak  │ {'m-bar':<{bar_w}} │"
-    )  # noqa: T201
-    print(
-        "├──────────┼──────────────────────────┼───────┼"
-        + "─" * (bar_w + 2)
-        + "┼──────────────────────────┼───────┼"
-        + "─" * (bar_w + 2)
-        + "┤"
-    )  # noqa: T201
+    print()  # noqa: T201
+    print(top)  # noqa: T201
+    print(header_line)  # noqa: T201
+    print(sep)  # noqa: T201
 
+    # body
     for ph, tlabel, tbest, mlabel, mpeak in rows:
-        try:
-            tmean = float(tlabel.split("±")[0].strip())
-        except Exception:
-            tmean = 0.0
-        try:
-            mmean = float(mlabel.split("±")[0].strip())
-        except Exception:
-            mmean = 0.0
+        # pull means again for bar scaling; parse left side of "μ ± σ" if present
+        def _to_mean(s: str) -> float:
+            if s == "NA":
+                return 0.0
+            part = s.split("±")[0].strip()
+            try:
+                return float(part)
+            except Exception:
+                return 0.0
 
-        tbar = _bar(int(tmean * 1000), int(tmax * 1000), width=bar_w)
-        mbar = _bar(int(mmean * 1000), int(mmax * 1000), width=bar_w)
+        tmean = _to_mean(tlabel)
+        mmean = _to_mean(mlabel)
 
-        print(
-            f"│ {ph:<8} │ {tlabel:<26} │ {tbest:>5} │ {tbar} │ "
-            f"{mlabel:<24} │ {mpeak:>5} │ {mbar} │"
-        )  # noqa: T201
-    print("└" + "─" * (tw - 2) + "┘")  # noqa: T201
+        tbar = bar(tmean, tmax)
+        mbar = bar(mmean, mmax)
+
+        line = (
+            f"{V} {ph:<{phase_w}} {V} {tlabel:<{time_w}} {V} {tbest:>{best_w}} "
+            f"{V} {tbar} {V} {mlabel:<{mem_w}} {V} {mpeak:>{peak_w}} {V} {mbar} {V}"
+        )
+        print(line)  # noqa: T201
+
+    print(bottom)  # noqa: T201
 
 
 def _fmt_stats(vals: list[float]) -> str:
