@@ -57,7 +57,7 @@ MEM_PATTERNS = [
 ANSI_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 ECC_HINT_RE = re.compile(r"built\s+hint\s+normalized\s+ir\b.*", re.IGNORECASE)
 ECC_LAYERED_RE = re.compile(r"built\s+layered\s+circuit\b.*", re.IGNORECASE)
-KV_PAIR = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=([0-9]+)")
+KV_PAIR = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([0-9,]+)")
 
 # Spinner glyphs (ASCII by default; set JSTPROVE_UNICODE=1 to switch)
 _SPINNER_ASCII = "-\\|/"
@@ -123,20 +123,23 @@ def _sum_child_rss_mb(parent_pid: int) -> float:
 
 def parse_ecc_stats(text: str) -> Dict[str, int]:
     """
-    Extract ECC counters (`key=value`) from any line mentioning:
-      - "built layered circuit ..."
-      - "built hint normalized ir ..."
-    Returns a dict[str,int]. Non-integer values are ignored.
+    Extract ECC counters from any 'built ... circuit'/'built ... normalized ir' line(s).
+    Robust to ANSI, carriage returns, extra spaces, and thousands separators.
     """
-    clean = ANSI_RE.sub("", text)
+    # 1) strip ANSI + collapse carriage returns used by progress UIs
+    clean = ANSI_RE.sub("", text).replace("\r", "\n")
+
     stats: Dict[str, int] = {}
+    # 2) search both hint/normalized and layered circuit lines anywhere in the blob
     for pat in (ECC_HINT_RE, ECC_LAYERED_RE):
         for m in pat.finditer(clean):
             line = m.group(0)
+            # Collect k=v pairs from this line
             for k, v in KV_PAIR.findall(line):
                 try:
-                    stats[k] = int(v)
+                    stats[k] = int(v.replace(",", ""))  # allow 12,345
                 except ValueError:
+                    # ignore non-integers gracefully
                     pass
     return stats
 
@@ -272,23 +275,35 @@ def _build_phase_cmd(phase: str, io: PhaseIO) -> list[str]:
 def run_cli(
     phase: str,
     io: PhaseIO,
-) -> tuple[int, str, float | None, float | None, list[str], float | None, float | None]:
+) -> tuple[
+    int,
+    str,
+    float | None,
+    float | None,
+    list[str],
+    float | None,
+    float | None,
+    Dict[str, int],
+]:
     """
     Execute one CLI phase, streaming stdout live with a spinner/HUD and
     tracking peak RSS via psutil.
 
     Returns:
-        (returncode, combined_output, time_s, mem_mb_primary, cmd_list, mem_mb_rust, mem_mb_psutil)
+        (returncode, combined_output, time_s, mem_mb_primary, cmd_list,
+         mem_mb_rust, mem_mb_psutil, ecc_dict)
     """
     cmd = _build_phase_cmd(phase, io)
 
     env = os.environ.copy()
     env.setdefault("RUST_LOG", "info")
     env.setdefault("RUST_BACKTRACE", "1")
+    env.setdefault("PYTHONUNBUFFERED", "1")  # help with child buffering
 
     stop_ev, mon_thread, mon_results = start_memory_collection("")
     start = time.time()
     combined_lines: list[str] = []
+    ecc_live: Dict[str, int] = {}
 
     proc = subprocess.Popen(  # noqa: S603
         cmd,
@@ -321,11 +336,19 @@ def run_cli(
 
             if line:
                 combined_lines.append(line.rstrip("\n"))
-                # echo ECC milestone lines immediately
-                if ("built layered circuit" in line.lower()) or (
-                    "built hint normalized ir" in line.lower()
+                low = line.lower()
+
+                # echo ECC milestone lines immediately and harvest k=v on the fly
+                if ("built layered circuit" in low) or (
+                    "built hint normalized ir" in low
                 ):
                     print(line, end="")  # noqa: T201
+                    # merge stats from just this line to ecc_live
+                    for k, v in KV_PAIR.findall(ANSI_RE.sub("", line)):
+                        try:
+                            ecc_live[k] = int(v.replace(",", ""))
+                        except ValueError:
+                            pass
 
             # refresh HUD ~10Hz
             if int(elapsed * 10) != int((elapsed - 0.09) * 10) or not line:
@@ -364,10 +387,13 @@ def run_cli(
     mem_mb_psutil = collected_mb if collected_mb is not None else peak_live_mb
     mem_mb_primary = mem_mb_psutil if mem_mb_psutil is not None else mem_mb_rust
 
-    # Append compact ECC summary block (helps when eyeballing logs later)
-    ecc = parse_ecc_stats(combined)
-    if ecc:
-        kv = " ".join(f"{k}={v}" for k, v in sorted(ecc.items()))
+    # If we missed something live, parse once more from the combined blob
+    if not ecc_live:
+        ecc_live = parse_ecc_stats(combined)
+
+    # Also append a compact ECC block into the combined text for later eyeballing
+    if ecc_live:
+        kv = " ".join(f"{k}={v}" for k, v in sorted(ecc_live.items()))
         combined += f"\n[ECC]\n{kv}\n"
 
     return (
@@ -378,6 +404,7 @@ def run_cli(
         cmd,
         mem_mb_rust,
         mem_mb_psutil,
+        ecc_live,
     )
 
 
@@ -571,12 +598,10 @@ def main() -> int:
 
                 for phase in ("compile", "witness", "prove", "verify"):
                     ts = now_utc()
-                    rc, out, t, m, cmd, m_rust, m_psutil = run_cli(phase, io)
+                    rc, out, t, m, cmd, m_rust, m_psutil, ecc_live = run_cli(phase, io)
 
                     # ECC and artifact sizes are collected into the JSONL (not printed live)
-                    ecc_stats = parse_ecc_stats(out)
                     artifact_sizes: dict[str, Optional[int]] = {}
-
                     if phase == "compile":
                         circuit_size = file_size_bytes(io.circuit_path)
                         quantized_path = io.circuit_path.with_name(
@@ -607,7 +632,7 @@ def main() -> int:
                         "mem_mb": m,
                         "mem_mb_rust": m_rust,
                         "mem_mb_psutil": m_psutil,
-                        "ecc": ecc_stats,
+                        "ecc": (ecc_live if ecc_live else {}),
                         "cmd": cmd,
                         "tmpdir": str(tmp),
                         "param_count": param_count,
