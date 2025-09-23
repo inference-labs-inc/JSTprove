@@ -81,9 +81,10 @@ ECC_LAYERED_RE = re.compile(r"built\s+layered\s+circuit\b.*", re.IGNORECASE)
 
 KV_PAIR = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=([0-9]+)")
 
-_SPINNER = (
-    "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"  # braille spinner; fallback to '-\\|/' if your font lacks braille
-)
+# spinner: ASCII by default (fast, always visible).
+# Set JSTPROVE_UNICODE=1 to use the braille spinner.
+_SPINNER_ASCII = "-\\|/"
+_SPINNER_UNICODE = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
 def _term_width(default: int = 100) -> int:
@@ -326,7 +327,12 @@ def run_cli(
         bufsize=1,
     )
 
-    spinner = _SPINNER if os.environ.get("JSTPROVE_ASCII") is None else "-\\|/"
+    spinner = (
+        _SPINNER_UNICODE
+        if os.environ.get("JSTPROVE_UNICODE") == "1"
+        else _SPINNER_ASCII
+    )
+
     sp_i = 0
     peak_live_mb = 0.0
     tw = _term_width()
@@ -532,6 +538,78 @@ def _quantized_path_from_circuit(circuit_path: Path) -> Path:
     return circuit_path.with_name(f"{circuit_path.stem}_quantized_model.onnx")
 
 
+def _fmt_mean_sd(vals: list[float]) -> tuple[str, float | None, float | None]:
+    if not vals:
+        return "NA", None, None
+    if len(vals) == 1:
+        v = vals[0]
+        return f"{v:.3f}", v, None
+    mu, sd = mean(vals), stdev(vals)
+    return f"{mu:.3f} ± {sd:.3f}", mu, sd
+
+
+def _summary_card(
+    model_name: str, tmap: dict[str, list[float]], mmap: dict[str, list[float]]
+) -> None:
+    phases = ("compile", "witness", "prove", "verify")
+    rows = []
+    t_means = []
+    m_means = []
+    for ph in phases:
+        tlabel, tmean, _ = _fmt_mean_sd(tmap.get(ph, []))
+        mlabel, mmean, _ = _fmt_mean_sd(mmap.get(ph, []))
+        tbest = f"{min(tmap[ph]):.3f}" if tmap.get(ph) else "NA"
+        mpeak = f"{max(mmap[ph]):.3f}" if mmap.get(ph) else "NA"
+        rows.append((ph, tlabel, tbest, mlabel, mpeak))
+        if tmean is not None:
+            t_means.append(tmean)
+        if mmean is not None:
+            m_means.append(mmean)
+
+    # bars scaled to max mean across phases
+    tmax = max(t_means) if t_means else 1.0
+    mmax = max(m_means) if m_means else 1.0
+
+    tw = _term_width()
+    # columns: phase | time (mean±sd, best) [bar] | mem (mean±sd, peak) [bar]
+    bar_w = max(10, min(18, tw - 84))  # adapt to terminal width
+    title = f" Summary for {model_name} "
+    pad = max(0, tw - len(title) - 4)
+    print("")  # noqa: T201
+    print("┌" + title + "─" * pad + "┐")  # noqa: T201
+    print(
+        "│ phase    │ time (s)                 │ best  │ "  # noqa: T201
+        f"{'t-bar':<{bar_w}} │ mem (MB)               │ peak  │ {'m-bar':<{bar_w}} │"
+    )
+    print(
+        "├──────────┼──────────────────────────┼───────┼"
+        + "─" * (bar_w + 2)  # noqa: T201
+        + "┼──────────────────────────┼───────┼"
+        + "─" * (bar_w + 2)
+        + "┤"
+    )  # noqa: T201
+
+    for ph, tlabel, tbest, mlabel, mpeak in rows:
+        # parse means back out for bar len (cheap and robust)
+        try:
+            tmean = float(tlabel.split("±")[0].strip())
+        except Exception:
+            tmean = 0.0
+        try:
+            mmean = float(mlabel.split("±")[0].strip())
+        except Exception:
+            mmean = 0.0
+
+        tbar = _bar(int(tmean * 1000), int(tmax * 1000), width=bar_w)
+        mbar = _bar(int(mmean * 1000), int(mmax * 1000), width=bar_w)
+
+        print(
+            f"│ {ph:<8} │ {tlabel:<26} │ {tbest:>5} │ {tbar} │ "  # noqa: T201
+            f"{mlabel:<24} │ {mpeak:>5} │ {mbar} │"
+        )
+    print("└" + "─" * (tw - 2) + "┘")  # noqa: T201
+
+
 def _fmt_stats(vals: list[float]) -> str:
     if not vals:
         return "NA"
@@ -541,6 +619,20 @@ def _fmt_stats(vals: list[float]) -> str:
 
 
 def summarize(rows: list[dict], model_name: str) -> None:
+    phases = ("compile", "witness", "prove", "verify")
+    tmap: dict[str, list[float]] = {p: [] for p in phases}
+    mmap: dict[str, list[float]] = {p: [] for p in phases}
+    for r in rows:
+        if r.get("model") == model_name and r.get("return_code") == 0:
+            if r.get("time_s") is not None:
+                tmap[r["phase"]].append(float(r["time_s"]))
+            if r.get("mem_mb") is not None:
+                mmap[r["phase"]].append(float(r["mem_mb"]))
+
+    _summary_card(model_name, tmap, mmap)
+
+
+def summarize_old(rows: list[dict], model_name: str) -> None:
     phases = ("compile", "witness", "prove", "verify")
     tmap: dict[str, list[float]] = {p: [] for p in phases}
     mmap: dict[str, list[float]] = {p: [] for p in phases}
@@ -627,27 +719,16 @@ def main() -> int:
                     # ECC key=value stats from CLI logs
                     ecc_stats = parse_ecc_stats(out)
 
-                    # Artifact sizes per phase
+                    # Artifact sizes per phase (collect → JSONL, do NOT display now)
                     artifact_sizes: dict[str, Optional[int]] = {}
                     if phase == "compile":
                         circuit_size = file_size_bytes(io.circuit_path)
-                        # derive quantized path from circuit path name (helper_functions logic)
                         quantized_path = io.circuit_path.with_name(
                             f"{io.circuit_path.stem}_quantized_model.onnx"
                         )
                         quant_size = file_size_bytes(quantized_path)
-
                         artifact_sizes["circuit_size_bytes"] = circuit_size
                         artifact_sizes["quantized_size_bytes"] = quant_size
-
-                        # Pretty card
-                        _print_compile_card(ecc_stats, circuit_size, quant_size)
-                    # if phase == "compile":
-                    #     artifact_sizes["circuit_size_bytes"] = file_size_bytes(
-                    #         io.circuit_path
-                    #     )
-                    #     qpath = _quantized_path_from_circuit(io.circuit_path)
-                    #     artifact_sizes["quantized_size_bytes"] = file_size_bytes(qpath)
                     elif phase == "witness":
                         artifact_sizes["witness_size_bytes"] = file_size_bytes(
                             io.witness_path
@@ -674,11 +755,11 @@ def main() -> int:
                         "mem_mb": m,
                         "mem_mb_rust": m_rust,
                         "mem_mb_psutil": m_psutil,
-                        "ecc": ecc_stats,  # <-- NEW: ECC circuit counters
+                        "ecc": ecc_stats,  # ECC circuit counters
                         "cmd": cmd,
                         "tmpdir": str(tmp),
                         "param_count": param_count,
-                        **artifact_sizes,  # <-- NEW: file sizes, when applicable
+                        **artifact_sizes,  # file sizes, when applicable
                     }
                     rows.append(row)
                     with out_path.open("a", encoding="utf-8") as f:
