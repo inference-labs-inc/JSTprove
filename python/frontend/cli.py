@@ -526,9 +526,10 @@ def main(argv: list[str] | None = None) -> int:
     p_bench.add_argument(
         "--sweep",
         choices=["depth", "breadth"],
-        required=True,
-        help="depth: vary conv depth; breadth: vary input H=W.",
+        default=None,  # allow omission when using positional mode
+        help="depth: vary conv depth; breadth: vary input H=W. If omitted, the positional MODE is used.",
     )
+
     # depth sweep options
     p_bench.add_argument("--depth-min", type=int, help="(depth) minimum conv depth")
     p_bench.add_argument("--depth-max", type=int, help="(depth) maximum conv depth")
