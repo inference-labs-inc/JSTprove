@@ -8,6 +8,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any
+import subprocess
 
 # third-party
 # local
@@ -277,36 +278,90 @@ def _append_arg(cmd: list[str], flag: str, val: object | None) -> None:
 def _run_bench(args: argparse.Namespace) -> None:
     """
     Run the existing generator+benchmark via: python -m python.scripts.gen_and_bench
-    We pass through the common knobs; anything omitted just uses that module's defaults.
+
+    Behavior:
+      - If user ran `jstprove bench depth` or `jstprove bench breadth` with
+        no other options, we invoke gen_and_bench with your favorite defaults.
+      - Otherwise we pass through whatever flags they provided.
     """
-    cmd = [
-        sys.executable,
-        "-m",
-        "python.scripts.gen_and_bench",
-        "--sweep",
-        args.sweep,
+    sweep = args.sweep or args.mode
+    if not sweep:
+        raise CLIError("Please specify --sweep {depth|breadth} or a positional mode.")
+
+    # Detect "simple command" (no extra knobs besides optional tag/dirs)
+    provided_knobs = [
+        args.depth_min,
+        args.depth_max,
+        args.input_hw,
+        args.arch_depth,
+        args.input_hw_list,
+        args.iterations,
+        args.results,
+        args.pool_cap,
+        args.stop_at_hw,
+        args.conv_out_ch,
+        args.fc_hidden,
+        args.n_actions,
     ]
+    simple = (args.mode is not None) and all(v is None for v in provided_knobs)
 
-    # depth sweep knobs
-    _append_arg(cmd, "--depth-min", args.depth_min)
-    _append_arg(cmd, "--depth-max", args.depth_max)
-    _append_arg(cmd, "--input-hw", args.input_hw)
+    cmd = [sys.executable, "-m", "python.scripts.gen_and_bench", "--sweep", sweep]
 
-    # breadth sweep knobs
-    _append_arg(cmd, "--arch-depth", args.arch_depth)
-    _append_arg(cmd, "--input-hw-list", args.input_hw_list)
+    if simple:
+        if sweep == "depth":
+            # Your preferred defaults
+            cmd += [
+                "--depth-min",
+                "1",
+                "--depth-max",
+                "16",
+                "--iterations",
+                "3",
+                "--results",
+                "benchmarking/depth_sweep.jsonl",
+            ]
+        else:  # breadth
+            cmd += [
+                "--arch-depth",
+                "5",
+                "--input-hw-list",
+                "28,56,84,112",
+                "--iterations",
+                "3",
+                "--results",
+                "benchmarking/breadth_sweep.jsonl",
+                "--pool-cap",
+                "2",
+                "--conv-out-ch",
+                "16",
+                "--fc-hidden",
+                "256",
+            ]
+        # Allow optional overrides even in simple mode
+        _append_arg(cmd, "--onnx-dir", args.onnx_dir)
+        _append_arg(cmd, "--inputs-dir", args.inputs_dir)
+        _append_arg(cmd, "--tag", args.tag)
+    else:
+        # depth sweep knobs
+        _append_arg(cmd, "--depth-min", args.depth_min)
+        _append_arg(cmd, "--depth-max", args.depth_max)
+        _append_arg(cmd, "--input-hw", args.input_hw)
 
-    # shared knobs
-    _append_arg(cmd, "--iterations", args.iterations)
-    _append_arg(cmd, "--results", args.results)
-    _append_arg(cmd, "--onnx-dir", args.onnx_dir)
-    _append_arg(cmd, "--inputs-dir", args.inputs_dir)
-    _append_arg(cmd, "--pool-cap", args.pool_cap)
-    _append_arg(cmd, "--stop-at-hw", args.stop_at_hw)
-    _append_arg(cmd, "--conv-out-ch", args.conv_out_ch)
-    _append_arg(cmd, "--fc-hidden", args.fc_hidden)
-    _append_arg(cmd, "--n-actions", args.n_actions)
-    _append_arg(cmd, "--tag", args.tag)
+        # breadth sweep knobs
+        _append_arg(cmd, "--arch-depth", args.arch_depth)
+        _append_arg(cmd, "--input-hw-list", args.input_hw_list)
+
+        # shared knobs
+        _append_arg(cmd, "--iterations", args.iterations)
+        _append_arg(cmd, "--results", args.results)
+        _append_arg(cmd, "--onnx-dir", args.onnx_dir)
+        _append_arg(cmd, "--inputs-dir", args.inputs_dir)
+        _append_arg(cmd, "--pool-cap", args.pool_cap)
+        _append_arg(cmd, "--stop-at-hw", args.stop_at_hw)
+        _append_arg(cmd, "--conv-out-ch", args.conv_out_ch)
+        _append_arg(cmd, "--fc-hidden", args.fc_hidden)
+        _append_arg(cmd, "--n-actions", args.n_actions)
+        _append_arg(cmd, "--tag", args.tag)
 
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")
@@ -460,6 +515,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Generate ONNX models and benchmark JSTprove (depth/breadth sweeps).",
         allow_abbrev=False,
     )
+
+    p_bench.add_argument(
+        "mode",
+        choices=["depth", "breadth"],
+        nargs="?",
+        help="Shorthand for --sweep when you just want defaults (e.g., 'jstprove bench depth').",
+    )
+
     p_bench.add_argument(
         "--sweep",
         choices=["depth", "breadth"],
@@ -503,11 +566,6 @@ def main(argv: list[str] | None = None) -> int:
     p_bench.add_argument("--n-actions", type=int, help="Classifier outputs (classes)")
     p_bench.add_argument("--tag", help="Optional tag suffix for filenames")
 
-    bench_parser = subparsers.add_parser("bench", help="Run benchmarking sweeps")
-    bench_parser.add_argument(
-        "mode", choices=["depth", "breadth"], help="Which sweep to run"
-    )
-
     args = parser.parse_args(argv)
 
     # --- banner --------------------------------------------------------------
@@ -532,7 +590,8 @@ def main(argv: list[str] | None = None) -> int:
             # Validate all inputs exist including quantized (only to hydrate shapes)
             _run_verify(args)
 
-        elif args.command == "bench":
+        elif args.cmd == "bench":
+            _run_bench(args)
             from python.scripts import gen_and_bench
 
             if args.mode == "depth":
