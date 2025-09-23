@@ -57,7 +57,28 @@ MEM_PATTERNS = [
 ANSI_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 ECC_HINT_RE = re.compile(r"built\s+hint\s+normalized\s+ir\b.*", re.IGNORECASE)
 ECC_LAYERED_RE = re.compile(r"built\s+layered\s+circuit\b.*", re.IGNORECASE)
-KV_PAIR = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([0-9,]+)")
+ECC_LINE_PATTERNS = [
+    re.compile(r"built layered circuit\b.*", re.IGNORECASE),
+    re.compile(r"built hint normalized ir\b.*", re.IGNORECASE),
+]
+
+ECC_KEYS = {
+    "numInputs",
+    "numConstraints",
+    "numInsns",
+    "numVars",
+    "numTerms",
+    "numSegment",
+    "numLayer",
+    "numUsedInputs",
+    "numUsedVariables",
+    "numVariables",
+    "numAdd",
+    "numCst",
+    "numMul",
+    "totalCost",
+}
+KV_PAIR = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([0-9,]+)\b")
 
 # Spinner glyphs (ASCII by default; set JSTPROVE_UNICODE=1 to switch)
 _SPINNER_ASCII = "-\\|/"
@@ -123,24 +144,17 @@ def _sum_child_rss_mb(parent_pid: int) -> float:
 
 def parse_ecc_stats(text: str) -> Dict[str, int]:
     """
-    Extract ECC counters from any 'built ... circuit'/'built ... normalized ir' line(s).
-    Robust to ANSI, carriage returns, extra spaces, and thousands separators.
+    Extract ECC counters by scanning the entire blob for key=value pairs and
+    retaining only the known ECC keys. Robust to ANSI, CRs, extra spaces, and commas.
     """
-    # 1) strip ANSI + collapse carriage returns used by progress UIs
     clean = ANSI_RE.sub("", text).replace("\r", "\n")
-
     stats: Dict[str, int] = {}
-    # 2) search both hint/normalized and layered circuit lines anywhere in the blob
-    for pat in (ECC_HINT_RE, ECC_LAYERED_RE):
-        for m in pat.finditer(clean):
-            line = m.group(0)
-            # Collect k=v pairs from this line
-            for k, v in KV_PAIR.findall(line):
-                try:
-                    stats[k] = int(v.replace(",", ""))  # allow 12,345
-                except ValueError:
-                    # ignore non-integers gracefully
-                    pass
+    for k, v in KV_PAIR.findall(clean):
+        if k in ECC_KEYS:
+            try:
+                stats[k] = int(v.replace(",", ""))
+            except ValueError:
+                pass
     return stats
 
 
@@ -338,13 +352,15 @@ def run_cli(
                 combined_lines.append(line.rstrip("\n"))
                 low = line.lower()
 
-                # echo ECC milestone lines immediately and harvest k=v on the fly
+                # Echo milestone lines for user feedback (unchanged behavior)
                 if ("built layered circuit" in low) or (
                     "built hint normalized ir" in low
                 ):
                     print(line, end="")  # noqa: T201
-                    # merge stats from just this line to ecc_live
-                    for k, v in KV_PAIR.findall(ANSI_RE.sub("", line)):
+
+                # Harvest ECC counters live from any k=v pairs we see
+                for k, v in KV_PAIR.findall(ANSI_RE.sub("", line)):
+                    if k in ECC_KEYS:
                         try:
                             ecc_live[k] = int(v.replace(",", ""))
                         except ValueError:
