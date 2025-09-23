@@ -286,7 +286,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- argparse setup ------------------------------------------------------
     parser = argparse.ArgumentParser(
-        prog="jstprove",
+        prog="jst",
         description="ZKML CLI (compile, witness, prove, verify).",
         allow_abbrev=False,
     )

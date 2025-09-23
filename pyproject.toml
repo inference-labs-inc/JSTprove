@@ -30,7 +30,7 @@ test = [
 ]
 
 [project.scripts]
-jstprove = "python.frontend.cli:main"
+jst = "python.frontend.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
