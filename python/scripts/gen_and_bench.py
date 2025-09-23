@@ -427,5 +427,13 @@ def main() -> None:
                 print(f"[warn] benchmark rc={rc} for hw={hw}")
 
 
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(...)
+    # define arguments as you already do
+    args = parser.parse_args(argv)
+    ...
+    return 0
+
+
 if __name__ == "__main__":
     main()

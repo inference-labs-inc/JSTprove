@@ -178,6 +178,63 @@ def _run_compile(args: argparse.Namespace) -> None:
     )
 
 
+def _run_witness(args: argparse.Namespace) -> None:
+    _ensure_exists(args.circuit_path, "file")
+    _ensure_exists(args.input_path, "file")
+    _ensure_parent_dir(args.output_path)
+    _ensure_parent_dir(args.witness_path)
+
+    circuit = _build_default_circuit("cli")
+
+    # Witness: adjusts inputs (reshape/scale), computes outputs, writes witness
+    try:
+        circuit.base_testing(
+            CircuitExecutionConfig(
+                run_type=RunType.GEN_WITNESS,
+                circuit_path=args.circuit_path,
+                input_file=args.input_path,
+                output_file=args.output_path,
+                witness_file=args.witness_path,
+            ),
+        )
+    except CircuitRunError as e:
+        raise CLIError(e) from e
+    except Exception as e:
+        msg = f"Process execution failed with args '{args.cmd}': {e}"
+        raise CLIError(msg) from e
+    print(  # noqa: T201
+        f"[witness] wrote witness → {args.witness_path} and outputs "
+        f"→ {args.output_path}",
+    )
+
+
+def _run_prove(args: argparse.Namespace) -> None:
+    _ensure_exists(args.circuit_path, "file")
+    _ensure_exists(args.witness_path, "file")
+    _ensure_parent_dir(args.proof_path)
+
+    circuit = _build_default_circuit("cli")
+
+    # Prove: witness → proof
+    try:
+        circuit.base_testing(
+            CircuitExecutionConfig(
+                run_type=RunType.PROVE_WITNESS,
+                circuit_path=args.circuit_path,
+                witness_file=args.witness_path,
+                proof_file=args.proof_path,
+                ecc=False,
+            ),
+        )
+    except CircuitRunError as e:
+        raise CLIError(e) from e
+    except Exception as e:
+        msg = f"Process execution failed with args '{args.cmd}': {e}"
+        raise CLIError(msg) from e
+
+    print(f"[prove] wrote proof → {args.proof_path}")  # noqa: T201
+
+
 def _run_verify(args: argparse.Namespace) -> None:
     _ensure_exists(args.circuit_path, "file")
     _ensure_exists(args.input_path, "file")
@@ -208,61 +265,55 @@ def _run_verify(args: argparse.Namespace) -> None:
     print(f"[verify] verification complete for proof → {args.proof_path}")  # noqa: T201
 
 
-def _run_prove(args: argparse.Namespace) -> None:
-    _ensure_exists(args.circuit_path, "file")
-    _ensure_exists(args.witness_path, "file")
-    _ensure_parent_dir(args.proof_path)
-
-    circuit = _build_default_circuit("cli")
-
-    # Prove: witness → proof
-    try:
-        circuit.base_testing(
-            CircuitExecutionConfig(
-                run_type=RunType.PROVE_WITNESS,
-                circuit_path=args.circuit_path,
-                witness_file=args.witness_path,
-                proof_file=args.proof_path,
-                ecc=False,
-            ),
-        )
-    except CircuitRunError as e:
-        raise CLIError(e) from e
-    except Exception as e:
-        msg = f"Process execution failed with args '{args.cmd}': {e}"
-        raise CLIError(msg) from e
-
-    print(f"[prove] wrote proof → {args.proof_path}")  # noqa: T201
+def _append_arg(cmd: list[str], flag: str, val: object | None) -> None:
+    """Append '--flag val' only if val is not None/empty (for simple scalars/strings)."""
+    if val is None:
+        return
+    if isinstance(val, str) and not val.strip():
+        return
+    cmd += [flag, str(val)]
 
 
-def _run_witness(args: argparse.Namespace) -> None:
-    _ensure_exists(args.circuit_path, "file")
-    _ensure_exists(args.input_path, "file")
-    _ensure_parent_dir(args.output_path)
-    _ensure_parent_dir(args.witness_path)
+def _run_bench(args: argparse.Namespace) -> None:
+    """
+    Run the existing generator+benchmark via: python -m python.scripts.gen_and_bench
+    We pass through the common knobs; anything omitted just uses that module's defaults.
+    """
+    cmd = [
+        sys.executable,
+        "-m",
+        "python.scripts.gen_and_bench",
+        "--sweep",
+        args.sweep,
+    ]
 
-    circuit = _build_default_circuit("cli")
+    # depth sweep knobs
+    _append_arg(cmd, "--depth-min", args.depth_min)
+    _append_arg(cmd, "--depth-max", args.depth_max)
+    _append_arg(cmd, "--input-hw", args.input_hw)
 
-    # Witness: adjusts inputs (reshape/scale), computes outputs, writes witness
-    try:
-        circuit.base_testing(
-            CircuitExecutionConfig(
-                run_type=RunType.GEN_WITNESS,
-                circuit_path=args.circuit_path,
-                input_file=args.input_path,
-                output_file=args.output_path,
-                witness_file=args.witness_path,
-            ),
-        )
-    except CircuitRunError as e:
-        raise CLIError(e) from e
-    except Exception as e:
-        msg = f"Process execution failed with args '{args.cmd}': {e}"
-        raise CLIError(msg) from e
-    print(  # noqa: T201
-        f"[witness] wrote witness → {args.witness_path} and outputs "
-        f"→ {args.output_path}",
-    )
+    # breadth sweep knobs
+    _append_arg(cmd, "--arch-depth", args.arch_depth)
+    _append_arg(cmd, "--input-hw-list", args.input_hw_list)
+
+    # shared knobs
+    _append_arg(cmd, "--iterations", args.iterations)
+    _append_arg(cmd, "--results", args.results)
+    _append_arg(cmd, "--onnx-dir", args.onnx_dir)
+    _append_arg(cmd, "--inputs-dir", args.inputs_dir)
+    _append_arg(cmd, "--pool-cap", args.pool_cap)
+    _append_arg(cmd, "--stop-at-hw", args.stop_at_hw)
+    _append_arg(cmd, "--conv-out-ch", args.conv_out_ch)
+    _append_arg(cmd, "--fc-hidden", args.fc_hidden)
+    _append_arg(cmd, "--n-actions", args.n_actions)
+    _append_arg(cmd, "--tag", args.tag)
+
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+
+    proc = subprocess.run(cmd, text=True, env=env)  # noqa: S603
+    if proc.returncode != 0:
+        raise CLIError(f"Benchmark command failed with exit code {proc.returncode}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -403,6 +454,60 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_verify.add_argument("-p", "--proof-path", required=True, help="Path to proof.")
 
+    # bench (model generation + benchmarking)
+    p_bench = sub.add_parser(
+        "bench",
+        help="Generate ONNX models and benchmark JSTprove (depth/breadth sweeps).",
+        allow_abbrev=False,
+    )
+    p_bench.add_argument(
+        "--sweep",
+        choices=["depth", "breadth"],
+        required=True,
+        help="depth: vary conv depth; breadth: vary input H=W.",
+    )
+    # depth sweep options
+    p_bench.add_argument("--depth-min", type=int, help="(depth) minimum conv depth")
+    p_bench.add_argument("--depth-max", type=int, help="(depth) maximum conv depth")
+    p_bench.add_argument("--input-hw", type=int, help="(depth) input H=W (e.g., 56)")
+
+    # breadth sweep options
+    p_bench.add_argument(
+        "--arch-depth", type=int, help="(breadth) conv blocks at fixed topology"
+    )
+    p_bench.add_argument(
+        "--input-hw-list",
+        type=str,
+        help="(breadth) sizes like '28,56,84,112' or '32:160:32'",
+    )
+
+    # common knobs
+    p_bench.add_argument(
+        "--iterations", type=int, help="E2E loops per model (default 3 in examples)"
+    )
+    p_bench.add_argument(
+        "--results", help="Path to JSONL results (e.g., benchmarking/depth_sweep.jsonl)"
+    )
+    p_bench.add_argument(
+        "--onnx-dir", help="Override ONNX output dir (else chosen by sweep)"
+    )
+    p_bench.add_argument(
+        "--inputs-dir", help="Override inputs output dir (else chosen by sweep)"
+    )
+    p_bench.add_argument(
+        "--pool-cap", type=int, help="Max pool blocks at start (Lenet-like: 2)"
+    )
+    p_bench.add_argument("--stop-at-hw", type=int, help="Allow pooling while H >= this")
+    p_bench.add_argument("--conv-out-ch", type=int, help="Conv output channels")
+    p_bench.add_argument("--fc-hidden", type=int, help="Fully-connected hidden size")
+    p_bench.add_argument("--n-actions", type=int, help="Classifier outputs (classes)")
+    p_bench.add_argument("--tag", help="Optional tag suffix for filenames")
+
+    bench_parser = subparsers.add_parser("bench", help="Run benchmarking sweeps")
+    bench_parser.add_argument(
+        "mode", choices=["depth", "breadth"], help="Which sweep to run"
+    )
+
     args = parser.parse_args(argv)
 
     # --- banner --------------------------------------------------------------
@@ -426,6 +531,50 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "verify":
             # Validate all inputs exist including quantized (only to hydrate shapes)
             _run_verify(args)
+
+        elif args.command == "bench":
+            from python.scripts import gen_and_bench
+
+            if args.mode == "depth":
+                sys.exit(
+                    gen_and_bench.main(
+                        [
+                            "--sweep",
+                            "depth",
+                            "--depth-min",
+                            "1",
+                            "--depth-max",
+                            "16",
+                            "--iterations",
+                            "3",
+                            "--results",
+                            "benchmarking/depth_sweep.jsonl",
+                        ]
+                    )
+                )
+            elif args.mode == "breadth":
+                sys.exit(
+                    gen_and_bench.main(
+                        [
+                            "--sweep",
+                            "breadth",
+                            "--arch-depth",
+                            "5",
+                            "--input-hw-list",
+                            "28,56,84,112",
+                            "--iterations",
+                            "3",
+                            "--results",
+                            "benchmarking/breadth_sweep.jsonl",
+                            "--pool-cap",
+                            "2",
+                            "--conv-out-ch",
+                            "16",
+                            "--fc-hidden",
+                            "256",
+                        ]
+                    )
+                )
 
     # Preserve argparse/our own explicit exits
     except SystemExit:
