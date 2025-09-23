@@ -1,4 +1,40 @@
 # python\scripts\gen_and_bench.py
+
+"""
+gen_and_bench.py — generate simple CNN ONNX models and benchmark JSTprove.
+
+Usage examples (no hidden defaults baked into the commands):
+
+Depth sweep (vary conv depth, fixed input size):
+    python -m python.scripts.gen_and_bench \
+      --sweep depth \
+      --depth-min 1 \
+      --depth-max 16 \
+      --input-hw 56 \
+      --iterations 3 \
+      --results benchmarking/depth_sweep.jsonl
+
+Breadth sweep (vary input resolution, fixed conv depth):
+    python -m python.scripts.gen_and_bench \
+      --sweep breadth \
+      --arch-depth 5 \
+      --input-hw-list 28,56,84,112 \
+      --iterations 3 \
+      --results benchmarking/breadth_sweep.jsonl \
+      --pool-cap 2 --conv-out-ch 16 --fc-hidden 256
+
+Optional output overrides:
+    --onnx-dir /path/to/save/onnx \
+    --inputs-dir /path/to/save/inputs
+
+Notes:
+- If --onnx-dir / --inputs-dir are omitted, they default to:
+    depth   → python/models/models_onnx/depth   and python/models/inputs/depth
+    breadth → python/models/models_onnx/breadth and python/models/inputs/breadth
+- Each model is benchmarked by python.scripts.benchmark_runner and results
+  are appended to the JSONL file you pass via --results.
+"""
+
 # ruff: noqa: S603
 from __future__ import annotations
 
@@ -234,6 +270,31 @@ def _parse_int_list(s: str) -> List[int]:
     return [int(x) for x in s.split(",") if x.strip()]
 
 
+def _resolve_output_dirs(
+    sweep: str, onnx_dir_arg: str | None, inputs_dir_arg: str | None
+) -> tuple[Path, Path]:
+    """
+    Choose output directories based on sweep type unless explicitly overridden.
+    depth   → python/models/models_onnx/depth   ; python/models/inputs/depth
+    breadth → python/models/models_onnx/breadth ; python/models/inputs/breadth
+
+    If you *really* want the inverse mapping, flip the 'sub' assignment below.
+    """
+    if sweep not in ("depth", "breadth"):
+        sub = "depth"
+    else:
+        sub = sweep
+        # If you intended the *inverse* (depth→breadth / breadth→depth), do:
+        # sub = "breadth" if sweep == "depth" else "depth"
+
+    default_onnx = Path(f"python/models/models_onnx/{sub}")
+    default_inputs = Path(f"python/models/inputs/{sub}")
+
+    onnx_dir = Path(onnx_dir_arg) if onnx_dir_arg else default_onnx
+    inputs_dir = Path(inputs_dir_arg) if inputs_dir_arg else default_inputs
+    return onnx_dir, inputs_dir
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         description="Depth or breadth sweep for simple LeNet-like CNNs."
@@ -243,8 +304,8 @@ def main() -> None:
     ap.add_argument("--depth-max", type=int, default=12)
     ap.add_argument("--iterations", type=int, default=3)
     ap.add_argument("--results", default="depth_sweep.jsonl")
-    ap.add_argument("--onnx-dir", default="python/models/models_onnx/depth")
-    ap.add_argument("--inputs-dir", default="python_testing/models/inputs/depth")
+    ap.add_argument("--onnx-dir", default=None)
+    ap.add_argument("--inputs-dir", default=None)
     ap.add_argument("--n-actions", type=int, default=10)
 
     # NEW: sweep mode + breadth options (do not break old usage)
@@ -290,8 +351,7 @@ def main() -> None:
 
     args = ap.parse_args()
 
-    onnx_dir = Path(args.onnx_dir)
-    in_dir = Path(args.inputs_dir)
+    onnx_dir, in_dir = _resolve_output_dirs(args.sweep, args.onnx_dir, args.inputs_dir)
     results = Path(args.results)
 
     if args.sweep == "depth":
