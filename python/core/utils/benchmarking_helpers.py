@@ -1,16 +1,23 @@
-# python\core\utils\benchmarking_helpers.py
+# python/core/utils/benchmarking_helpers.py
 from __future__ import annotations
 
+"""
+Lightweight helpers to measure peak memory usage of child processes during
+benchmarks. Uses a background thread that periodically sums the RSS of all
+descendants of the current process (optionally filtered by a name keyword).
+"""
+
+# --- Standard library --------------------------------------------------------
 import threading
 import time
 
+# --- Third-party -------------------------------------------------------------
 import psutil
 
 
 def _safe_rss_kb(pid: int) -> int:
     """
-    Return the process RSS in KB using psutil.
-    If the process no longer exists or memory info is unavailable, return 0.
+    Return RSS for a PID in KB. On errors/missing process, return 0.
     """
     try:
         proc = psutil.Process(pid)
@@ -22,8 +29,8 @@ def _safe_rss_kb(pid: int) -> int:
 
 def _list_children(parent_pid: int) -> list[psutil.Process]:
     """
-    Safely list all descendant processes for a given parent PID.
-    Returns an empty list if the parent is gone or access is denied.
+    Return all descendant processes of a parent PID.
+    Empty list if the parent is gone or access is denied.
     """
     try:
         parent = psutil.Process(parent_pid)
@@ -34,8 +41,7 @@ def _list_children(parent_pid: int) -> list[psutil.Process]:
 
 def _safe_name_lower(proc: psutil.Process) -> str | None:
     """
-    Safely return lowercase process name, or None if not available.
-    (Avoids try/except inside the monitor loop to satisfy PERF203.)
+    Lowercased process name, or None if unavailable.
     """
     try:
         return proc.name().lower()
@@ -52,19 +58,20 @@ def monitor_subprocess_memory(
     poll_interval_s: float = 0.1,
 ) -> None:
     """
-    Monitor memory (peak sum of RSS) across child processes of `parent_pid`.
-    If `process_name_keyword` is non-empty, only children whose lowercase name
-    contains that keyword are included.
+    Track the peak sum of RSS across child processes of `parent_pid`.
 
-    Stores peaks (in KB) under:
-      - results['peak_subprocess_mem']   (RSS only)
-      - results['peak_subprocess_swap']  (always 0 in this implementation)
-      - results['peak_subprocess_total'] (mem + swap)
+    If `process_name_keyword` is non-empty, only include children whose
+    name contains that lowercase keyword.
+
+    Writes peaks (KB) into `results` under:
+      - 'peak_subprocess_mem'   (RSS)
+      - 'peak_subprocess_swap'  (0; swap not collected here)
+      - 'peak_subprocess_total' (mem + swap)
     """
     keyword = process_name_keyword.strip().lower()
     peak_rss_kb = 0
 
-    # Initialize result keys to be robust if caller inspects mid-flight
+    # Initialize keys so callers can inspect mid-run safely
     results["peak_subprocess_mem"] = 0
     results["peak_subprocess_swap"] = 0
     results["peak_subprocess_total"] = 0
@@ -90,15 +97,14 @@ def monitor_subprocess_memory(
         if rss_sum_kb > peak_rss_kb:
             peak_rss_kb = rss_sum_kb
             results["peak_subprocess_mem"] = peak_rss_kb
-            results["peak_subprocess_swap"] = 0  # Swap not collected here
-            results["peak_subprocess_total"] = peak_rss_kb  # mem + swap(0)
+            results["peak_subprocess_swap"] = 0
+            results["peak_subprocess_total"] = peak_rss_kb
 
         time.sleep(poll_interval_s)
 
-    # Final write (in case no updates happened inside the loop)
+    # Final write (covers the case where peak never changed inside the loop)
     results["peak_subprocess_mem"] = max(
-        results.get("peak_subprocess_mem", 0),
-        peak_rss_kb,
+        results.get("peak_subprocess_mem", 0), peak_rss_kb
     )
     results["peak_subprocess_swap"] = 0
     results["peak_subprocess_total"] = results["peak_subprocess_mem"]
@@ -108,8 +114,14 @@ def start_memory_collection(
     process_name: str,
 ) -> tuple[threading.Event, threading.Thread, dict[str, int]]:
     """
-    Start a background thread to monitor memory for child processes of the current PID.
-    Returns (stop_event, monitor_thread, monitor_results_dict).
+    Spawn and start a monitoring thread for the current process' children.
+
+    Args:
+        process_name: Optional substring to filter child process names (case-insensitive).
+                      Pass "" to include all children.
+
+    Returns:
+        (stop_event, monitor_thread, monitor_results_dict)
     """
     parent_pid = psutil.Process().pid
     monitor_results: dict[str, int] = {}
@@ -121,7 +133,7 @@ def start_memory_collection(
         daemon=True,
     )
     monitor_thread.start()
-    time.sleep(0.05)  # allow thread to start
+    time.sleep(0.05)  # allow thread to start and populate initial keys
     return stop_event, monitor_thread, monitor_results
 
 
@@ -131,9 +143,8 @@ def end_memory_collection(
     monitor_results: dict[str, int],
 ) -> dict[str, float]:
     """
-    Stop the memory monitor thread and return a summary dict in MB:
+    Stop the monitor thread and return a summary dict in MB:
       {'ram': <MB>, 'swap': <MB>, 'total': <MB>}
-    Falls back to zeros if results are missing.
     """
     stop_event.set()
     monitor_thread.join(timeout=5.0)
