@@ -71,7 +71,7 @@ def _max_pools_allowed(input_hw: int, stop_at_hw: int) -> int:
 def plan_for_depth(
     d: int,
     *,
-    input_hw: int = 28,
+    input_hw: int = 56,
     base_fc: int = 1,
     pool_cap: Optional[int] = None,
     stop_at_hw: Optional[int] = 7,
@@ -144,9 +144,9 @@ class CNNDemo(nn.Module):
         conv_kernel: int = 3,
         conv_stride: int = 1,
         conv_pad: int = 1,
-        fc_hidden: int = 256,
+        fc_hidden: int = 128,
         n_actions: int = 10,
-        input_shape: Tuple[int, int, int, int] = (1, 4, 28, 28),
+        input_shape: Tuple[int, int, int, int] = (1, 4, 56, 56),
     ) -> None:
         super().__init__()
         self.layers_plan = list(layers)
@@ -219,7 +219,7 @@ class CNNDemo(nn.Module):
 # -----------------------------------------------------------------------------
 
 
-def export_onnx(model: nn.Module, onnx_path: Path, input_shape=(1, 4, 28, 28)) -> None:
+def export_onnx(model: nn.Module, onnx_path: Path, input_shape=(1, 4, 56, 56)) -> None:
     """Export a Torch model to ONNX and ensure the directory exists."""
     onnx_path.parent.mkdir(parents=True, exist_ok=True)
     model.eval()
@@ -338,7 +338,7 @@ def main() -> None:
         help="(breadth) conv blocks used for all inputs",
     )
     ap.add_argument(
-        "--input-hw", type=int, default=28, help="(depth) input H=W when varying depth"
+        "--input-hw", type=int, default=56, help="(depth) input H=W when varying depth"
     )
     ap.add_argument(
         "--input-hw-list",
@@ -359,7 +359,7 @@ def main() -> None:
         help="allow pooling while H >= this (if pool-cap unset)",
     )
     ap.add_argument("--conv-out-ch", type=int, default=16)
-    ap.add_argument("--fc-hidden", type=int, default=256)
+    ap.add_argument("--fc-hidden", type=int, default=128)
     ap.add_argument(
         "--tag", type=str, default="", help="optional tag added to filenames"
     )
