@@ -56,7 +56,9 @@ class CircuitExecutionConfig:
     public_path: str | None = None
     verification_key: str | None = None
     circuit_name: str | None = None
-    weights_path: str | None = None
+    metadata_path: str | None = None
+    architecture_path: str | None = None
+    w_and_b_path: str | None = None
     output_file: str | None = None
     proof_system: ZKProofSystems = ZKProofSystems.Expander
     circuit_path: str | None = None
@@ -266,7 +268,11 @@ def prepare_io_files(func: Callable) -> Callable:
         exec_config.proof_file = exec_config.proof_file or files["proof_path"]
         exec_config.public_path = exec_config.public_path or files["public_path"]
         exec_config.circuit_name = exec_config.circuit_name or files["circuit_name"]
-        exec_config.weights_path = exec_config.weights_path or files["weights_path"]
+        exec_config.metadata_path = exec_config.metadata_path or files["metadata_path"]
+        exec_config.architecture_path = (
+            exec_config.architecture_path or files["architecture_path"]
+        )
+        exec_config.w_and_b_path = exec_config.w_and_b_path or files["w_and_b_path"]
         exec_config.output_file = exec_config.output_file or files["output_file"]
 
         if exec_config.circuit_path:
@@ -274,6 +280,15 @@ def prepare_io_files(func: Callable) -> Callable:
             name = Path(exec_config.circuit_path).stem
             exec_config.quantized_path = str(
                 circuit_dir / f"{name}_quantized_model.onnx",
+            )
+            exec_config.metadata_path = str(
+                circuit_dir / f"{name}_metadata.json",
+            )
+            exec_config.architecture_path = str(
+                circuit_dir / f"{name}_arch.json",
+            )
+            exec_config.w_and_b_path = str(
+                circuit_dir / f"{name}_wandb.json",
             )
         else:
             exec_config.quantized_path = None
@@ -285,10 +300,12 @@ def prepare_io_files(func: Callable) -> Callable:
             "proof_file": exec_config.proof_file,
             "public_path": exec_config.public_path,
             "circuit_name": exec_config.circuit_name,
-            "weights_path": exec_config.weights_path,
+            "metadata_path": exec_config.metadata_path,
+            "architecture_path": exec_config.architecture_path,
+            "w_and_b_path": exec_config.w_and_b_path,
             "output_file": exec_config.output_file,
             "inputs": exec_config.input_file,
-            "weights": exec_config.weights_path,
+            "weights": exec_config.w_and_b_path,  # Changed to w_and_b_path
             "outputs": exec_config.output_file,
             "output": exec_config.output_file,
             "proof_system": exec_config.proof_system or proof_system,
@@ -636,9 +653,12 @@ def run_expander_raw(  # noqa: PLR0913
         return result
 
 
-def compile_circuit(
+def compile_circuit(  # noqa: PLR0913
     circuit_name: str,
     circuit_path: str,
+    metadata_path: str,
+    architecture_path: str,
+    w_and_b_path: str,
     proof_system: ZKProofSystems = ZKProofSystems.Expander,
     *,
     dev_mode: bool = True,
@@ -670,6 +690,9 @@ def compile_circuit(
         args = {
             "n": circuit_name,
             "c": circuit_path,
+            "m": metadata_path,
+            "a": architecture_path,
+            "b": w_and_b_path,
         }
         # Run the command
         try:
@@ -699,6 +722,7 @@ def generate_witness(  # noqa: PLR0913
     witness_file: str,
     input_file: str,
     output_file: str,
+    metadata_path: str,
     proof_system: ZKProofSystems = ZKProofSystems.Expander,
     *,
     dev_mode: bool = False,
@@ -737,6 +761,7 @@ def generate_witness(  # noqa: PLR0913
             "i": input_file,
             "o": output_file,
             "w": witness_file,
+            "m": metadata_path,
         }
         # Run the command
         try:
@@ -762,6 +787,7 @@ def generate_proof(  # noqa: PLR0913
     circuit_path: str,
     witness_file: str,
     proof_file: str,
+    metadata_path: str,
     proof_system: ZKProofSystems = ZKProofSystems.Expander,
     *,
     dev_mode: bool = False,
@@ -803,6 +829,7 @@ def generate_proof(  # noqa: PLR0913
                 "c": circuit_path,
                 "w": witness_file,
                 "p": proof_file,
+                "m": metadata_path,
             }
 
             # Run the command
@@ -839,6 +866,7 @@ def generate_verification(  # noqa: PLR0913
     output_file: str,
     witness_file: str,
     proof_file: str,
+    metadata_path: str,
     proof_system: ZKProofSystems = ZKProofSystems.Expander,
     *,
     dev_mode: bool = False,
@@ -884,6 +912,7 @@ def generate_verification(  # noqa: PLR0913
                 "o": output_file,
                 "w": witness_file,
                 "p": proof_file,
+                "m": metadata_path,
             }
             # Run the command
             try:
@@ -960,14 +989,23 @@ def run_end_to_end(  # noqa: PLR0913
         ext = path.suffix
 
         witness_file = f"{base}_witness{ext}"
-        proof_file = f"{base}_proof{ext}"
-        compile_circuit(circuit_name, circuit_path, proof_system, dev_mode)
+        proof_file = f"{base}_proof.bin"
+        compile_circuit(
+            circuit_name,
+            circuit_path,
+            f"{base}_metadata.json",
+            f"{base}_architecture.json",
+            f"{base}_wandb.json",
+            proof_system,
+            dev_mode,
+        )
         generate_witness(
             circuit_name,
             circuit_path,
             witness_file,
             input_file,
             output_file,
+            f"{base}_metadata.json",
             proof_system,
             dev_mode,
         )
@@ -976,6 +1014,7 @@ def run_end_to_end(  # noqa: PLR0913
             circuit_path,
             witness_file,
             proof_file,
+            f"{base}_metadata.json",
             proof_system,
             dev_mode,
             ecc,
@@ -987,6 +1026,7 @@ def run_end_to_end(  # noqa: PLR0913
             output_file,
             witness_file,
             proof_file,
+            f"{base}_metadata.json",
             proof_system,
             dev_mode,
             ecc,
@@ -1025,7 +1065,11 @@ def get_files(
     paths = {
         "input_file": str(Path(folders["input"]) / f"{name}_input.json"),
         "public_path": str(Path(folders["proof"]) / f"{name}_public.json"),
-        "weights_path": str(Path(folders["weights"]) / f"{name}_weights.json"),
+        "metadata_path": str(Path(folders["weights"]) / f"{name}_metadata.json"),
+        "architecture_path": str(
+            Path(folders["weights"]) / f"{name}_architecture.json",
+        ),
+        "w_and_b_path": str(Path(folders["weights"]) / f"{name}_w_and_b.json"),
         "output_file": str(Path(folders["output"]) / f"{name}_output.json"),
     }
 

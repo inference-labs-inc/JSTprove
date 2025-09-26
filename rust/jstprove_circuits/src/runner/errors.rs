@@ -2,6 +2,8 @@ use std::io;
 
 use thiserror::Error;
 
+use crate::io::io_reader::onnx_context::OnnxContextError;
+
 #[derive(Error, Debug)]
 pub enum CliError {
     #[error("Missing required argument: {0}")]
@@ -49,4 +51,7 @@ pub enum RunError {
 
     #[error("Verifying proof failed: {0}")]
     Verify(String),
+
+    #[error("Error configuring circuit: {0}")]
+    ConfigureCircuit(#[from] OnnxContextError),
 }

@@ -8,12 +8,15 @@ import pytest
 sys.modules.pop("python.core.circuits.base", None)
 
 
-with patch(
-    "python.core.utils.helper_functions.compute_and_store_output",
-    lambda x: x,
-), patch(
-    "python.core.utils.helper_functions.prepare_io_files",
-    lambda f: f,
+with (
+    patch(
+        "python.core.utils.helper_functions.compute_and_store_output",
+        lambda x: x,
+    ),
+    patch(
+        "python.core.utils.helper_functions.prepare_io_files",
+        lambda f: f,
+    ),
 ):  # MUST BE BEFORE THE UUT GETS IMPORTED ANYWHERE!
     from python.core.circuits.base import (
         Circuit,
@@ -145,7 +148,9 @@ def test_parse_proof_dispatch_logic(
         circuit_path="path",
         proof_system=ZKProofSystems.Expander,
         output_file="out",
-        weights_path="weights",
+        metadata_path="metadata",
+        architecture_path="architecture",
+        w_and_b_path="w_and_b",
         quantized_path="q",
         run_type=RunType.COMPILE_CIRCUIT,
         dev_mode=False,
@@ -156,7 +161,9 @@ def test_parse_proof_dispatch_logic(
     c.parse_proof_run_type(config_compile)
     mock_compile.assert_called_once()
     c._compile_preprocessing.assert_called_once_with(
-        weights_path="weights",
+        metadata_path="metadata",
+        architecture_path="architecture",
+        w_and_b_path="w_and_b",
         quantized_path="q",
     )
     args, kwargs = mock_compile.call_args
@@ -179,7 +186,9 @@ def test_parse_proof_dispatch_logic(
         circuit_path="path",
         proof_system=ZKProofSystems.Expander,
         output_file="out",
-        weights_path="weights",
+        metadata_path="metadata",
+        architecture_path="architecture",
+        w_and_b_path="w_and_b",
         quantized_path="q",
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
@@ -213,7 +222,9 @@ def test_parse_proof_dispatch_logic(
         circuit_path="path",
         proof_system=ZKProofSystems.Expander,
         output_file="out",
-        weights_path="weights",
+        metadata_path="metadata",
+        architecture_path="architecture",
+        w_and_b_path="w_and_b",
         quantized_path="q",
         run_type=RunType.PROVE_WITNESS,
         dev_mode=False,
@@ -247,7 +258,9 @@ def test_parse_proof_dispatch_logic(
         circuit_path="path",
         proof_system=ZKProofSystems.Expander,
         output_file="out",
-        weights_path="weights",
+        metadata_path="metadata",
+        architecture_path="architecture",
+        w_and_b_path="w_and_b",
         quantized_path="q",
         run_type=RunType.GEN_VERIFY,
         dev_mode=False,
@@ -282,7 +295,9 @@ def test_parse_proof_dispatch_logic(
         circuit_path="path",
         proof_system=ZKProofSystems.Expander,
         output_file="out",
-        weights_path="weights",
+        metadata_path="metadata",
+        architecture_path="architecture",
+        w_and_b_path="w_and_b",
         quantized_path="q",
         run_type=RunType.END_TO_END,
         dev_mode=False,
@@ -422,12 +437,14 @@ def test_compile_preprocessing_weights_dict(mock_to_json: MagicMock) -> None:
     c.get_weights = MagicMock(return_value={"a": 1})
     c.save_quantized_model = MagicMock()
 
-    c._compile_preprocessing("weights.json", None)
+    c._compile_preprocessing("metadata.json", "architecture.json", "w_and_b.json", None)
 
     c.get_model_and_quantize.assert_called_once()
     c.get_weights.assert_called_once()
     c.save_quantized_model.assert_called_once_with("model.pth")
-    mock_to_json.assert_called_once_with({"a": 1}, "weights.json")
+    mock_to_json.assert_any_call({}, "metadata.json")
+    mock_to_json.assert_any_call({}, "architecture.json")
+    mock_to_json.assert_any_call({"a": 1}, "w_and_b.json")
 
 
 @pytest.mark.unit()
@@ -439,14 +456,16 @@ def test_compile_preprocessing_weights_list(mock_to_json: MagicMock) -> None:
     c.get_weights = MagicMock(return_value=[{"w1": 1}, {"w2": 2}, {"w3": 3}])
     c.save_quantized_model = MagicMock()
 
-    c._compile_preprocessing("weights.json", None)
+    c._compile_preprocessing("metadata.json", "architecture.json", "w_and_b.json", None)
 
     call_count = 3
 
-    assert mock_to_json.call_count == call_count
-    mock_to_json.assert_any_call({"w1": 1}, Path("weights.json"))
-    mock_to_json.assert_any_call({"w2": 2}, Path("weights2.json"))
-    mock_to_json.assert_any_call({"w3": 3}, Path("weights3.json"))
+    assert mock_to_json.call_count == call_count + 2  # +2 for metadata and architecture
+    mock_to_json.assert_any_call({}, "metadata.json")
+    mock_to_json.assert_any_call({}, "architecture.json")
+    mock_to_json.assert_any_call({"w1": 1}, Path("w_and_b.json"))
+    mock_to_json.assert_any_call({"w2": 2}, Path("w_and_b2.json"))
+    mock_to_json.assert_any_call({"w3": 3}, Path("w_and_b3.json"))
 
 
 @pytest.mark.unit()
@@ -457,8 +476,13 @@ def test_compile_preprocessing_raises_on_bad_weights() -> None:
     c.get_weights = MagicMock(return_value="bad_type")
     c.save_quantized_model = MagicMock()
 
-    with pytest.raises(CircuitConfigurationError, match="Unsupported weights type"):
-        c._compile_preprocessing("weights.json", None)
+    with pytest.raises(CircuitConfigurationError, match="Unsupported w_and_b type"):
+        c._compile_preprocessing(
+            "metadata.json",
+            "architecture.json",
+            "w_and_b.json",
+            None,
+        )
 
 
 # ---------- Test check attributes --------------
@@ -526,7 +550,9 @@ def test_base_testing_calls_parse_proof_run_type_correctly(
     c.name = "test"
 
     c._file_info = {}
-    c._file_info["weights"] = "weights/model_weights.json"
+    c._file_info["metadata_path"] = "metadata.json"
+    c._file_info["architecture_path"] = "architecture.json"
+    c._file_info["w_and_b_path"] = "w_and_b.json"
     c.base_testing(
         CircuitExecutionConfig(
             run_type=RunType.GEN_WITNESS,
@@ -555,7 +581,9 @@ def test_base_testing_calls_parse_proof_run_type_correctly(
         circuit_path="circuit_path.txt",
         proof_system=ZKProofSystems.Expander,
         output_file="o.json",
-        weights_path="weights/model_weights.json",
+        metadata_path="metadata.json",
+        architecture_path="architecture.json",
+        w_and_b_path="w_and_b.json",
         quantized_path="quantized_path.pt",
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
@@ -572,7 +600,11 @@ def test_base_testing_uses_default_circuit_path(mock_parse: MagicMock) -> None:
     class MyCircuit(Circuit):
         def __init__(self: "MyCircuit") -> None:
             super().__init__()
-            self._file_info = {"weights": "weights.json"}
+            self._file_info = {
+                "metadata_path": "metadata.json",
+                "architecture_path": "architecture.json",
+                "w_and_b_path": "w_and_b.json",
+            }
 
     c = MyCircuit()
     c.base_testing(CircuitExecutionConfig(circuit_name="test_model"))
@@ -582,7 +614,9 @@ def test_base_testing_uses_default_circuit_path(mock_parse: MagicMock) -> None:
 
     assert config.circuit_name == "test_model"
     assert config.circuit_path == "test_model.txt"
-    assert config.weights_path == "weights.json"
+    assert config.metadata_path == "metadata.json"
+    assert config.architecture_path == "architecture.json"
+    assert config.w_and_b_path == "w_and_b.json"
 
 
 @pytest.mark.unit()
@@ -591,7 +625,11 @@ def test_base_testing_returns_none(mock_parse: MagicMock) -> None:
     class MyCircuit(Circuit):
         def __init__(self: "MyCircuit") -> None:
             super().__init__()
-            self._file_info = {"weights": "some_weights.json"}
+            self._file_info = {
+                "metadata_path": "metadata.json",
+                "architecture_path": "architecture.json",
+                "w_and_b_path": "w_and_b.json",
+            }
 
     c = MyCircuit()
     result = c.base_testing(CircuitExecutionConfig(circuit_name="abc"))
@@ -628,7 +666,9 @@ def test_parse_proof_run_type_invalid_run_type(
         circuit_path="path.txt",
         proof_system=None,
         output_file="out.json",
-        weights_path="weights.json",
+        metadata_path="metadata.json",
+        architecture_path="architecture.json",
+        w_and_b_path="w_and_b.json",
         quantized_path="quantized_model.pt",
         run_type="NOT_A_REAL_RUN_TYPE",  # Invalid run type
         dev_mode=False,
@@ -668,7 +708,9 @@ def test_parse_proof_run_type_catches_internal_exception(
         circuit_path="path.txt",
         proof_system=None,
         output_file="out.json",
-        weights_path="weights.json",
+        metadata_path="metadata.json",
+        architecture_path="architecture.json",
+        w_and_b_path="w_and_b.json",
         quantized_path="quantized_path.pt",
         run_type=RunType.COMPILE_CIRCUIT,
         dev_mode=False,

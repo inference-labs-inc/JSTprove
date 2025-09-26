@@ -251,6 +251,7 @@ def _run_witness(args: argparse.Namespace) -> None:
                 input_file=args.input_path,
                 output_file=args.output_path,
                 witness_file=args.witness_path,
+                dev_mode=True,
             ),
         )
     except CircuitRunError as e:

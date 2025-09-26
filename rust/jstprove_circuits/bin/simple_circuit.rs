@@ -3,7 +3,7 @@ use expander_compiler::frontend::{
 };
 use jstprove_circuits::io::io_reader::{FileReader, IOReader};
 use jstprove_circuits::runner::errors::RunError;
-use jstprove_circuits::runner::main_runner::{ConfigurableCircuit, handle_args};
+use jstprove_circuits::runner::main_runner::{ConfigurableCircuit, get_args, handle_args};
 use serde::Deserialize;
 
 declare_circuit!(Circuit {
@@ -43,7 +43,9 @@ struct OutputData {
 }
 
 impl ConfigurableCircuit for Circuit<Variable> {
-    fn configure(&mut self) {}
+    fn configure(&mut self) -> Result<(), jstprove_circuits::runner::errors::RunError> {
+        Ok(())
+    }
 }
 
 impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
@@ -87,7 +89,10 @@ fn main() {
         path: "simple_circuit".to_owned(),
     };
 
-    if let Err(err) = handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(&mut file_reader)
+    let matches = get_args();
+
+    if let Err(err) =
+        handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(&matches, &mut file_reader)
     {
         eprintln!("Error: {err}");
         std::process::exit(1);

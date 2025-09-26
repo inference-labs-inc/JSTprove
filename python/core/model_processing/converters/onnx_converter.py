@@ -1071,8 +1071,6 @@ class ONNXConverter(ModelConverter):
             outputs.append(ONNXIO(output.name, elem_type, shape))
 
         architecture = {
-            "inputs": [asdict(i) for i in inputs],
-            "outputs": [asdict(o) for o in outputs],
             "architecture": [asdict(a) for a in architecture],
         }
         weights = {"w_and_b": [asdict(w_b) for w_b in w_and_b]}
@@ -1080,6 +1078,8 @@ class ONNXConverter(ModelConverter):
             "scale_base": getattr(self, "scale_base", 2),
             "scale_exponent": getattr(self, "scale_exponent", 18),
             "rescale_config": getattr(self, "rescale_config", {}),
+            "inputs": [asdict(i) for i in inputs],
+            "outputs": [asdict(o) for o in outputs],
         }
         return architecture, weights, circuit_params
 

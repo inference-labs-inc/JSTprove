@@ -206,16 +206,24 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
 
     def get_weights(
         self: GenericModelONNX,
-    ) -> list[
-        tuple[
-            dict[str, list[ONNXLayerDict]],
-            CircuitParamsDict,
-        ],
-        dict[str, list[ONNXLayerDict]],
-    ]:
-        architecture, w_and_b, circuit_params = super().get_weights()
+    ) -> dict[str, list[ONNXLayerDict]]:
+        _, w_and_b, _ = super().get_weights()
         # Currently want to read these in separately
-        return [(architecture, circuit_params), w_and_b]
+        return w_and_b
+
+    def get_architecture(
+        self: GenericModelONNX,
+    ) -> dict[str, list[ONNXLayerDict]]:
+        architecture, _, _ = super().get_weights()
+        # Currently want to read these in separately
+        return architecture
+
+    def get_metadata(
+        self: GenericModelONNX,
+    ) -> CircuitParamsDict:
+        _, _, circuit_params = super().get_weights()
+        # Currently want to read these in separately
+        return circuit_params
 
 
 if __name__ == "__main__":

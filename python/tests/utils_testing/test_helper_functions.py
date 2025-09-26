@@ -129,7 +129,9 @@ def test_compute_and_store_output_on_json_error(
         "public_path": "public.json",
         "verification_key": "vk.key",
         "circuit_name": "test_circuit",
-        "weights_path": "weights.json",
+        "metadata_path": "metadata.json",
+        "architecture_path": "architecture.json",
+        "w_and_b_path": "w_and_b.json",
         "output_file": "out.json",
     },
 )
@@ -177,7 +179,7 @@ def test_prepare_io_files_runs_func(
     )
     assert result == {"test": True}
     assert d._file_info["output_file"] == "out.json"
-    assert d._file_info["weights_path"] == "weights.json"
+    assert d._file_info["w_and_b_path"] == "w_and_b.json"
 
 
 # ---------- to_json ----------
@@ -295,11 +297,21 @@ def test_get_expander_file_paths() -> None:
 @pytest.mark.integration()
 @patch("python.core.utils.helper_functions.run_cargo_command")
 def test_compile_circuit_expander(mock_run: MagicMock) -> None:
-    compile_circuit("model", "path/to/circuit", ZKProofSystems.Expander)
+    compile_circuit(
+        "model",
+        "path/to/circuit",
+        "path/to/metadata.json",
+        "path/to/architecture.json",
+        "path/to/w_and_b.json",
+        ZKProofSystems.Expander,
+    )
     _, kwargs = mock_run.call_args
     assert kwargs["dev_mode"]
     assert kwargs["args"]["n"] == "model"
     assert kwargs["args"]["c"] == "path/to/circuit"
+    assert kwargs["args"]["m"] == "path/to/metadata.json"
+    assert kwargs["args"]["a"] == "path/to/architecture.json"
+    assert kwargs["args"]["b"] == "path/to/w_and_b.json"
     mock_run.assert_called_once()
 
 
@@ -309,6 +321,9 @@ def test_compile_circuit_expander_dev_mode_true(mock_run: MagicMock) -> None:
     compile_circuit(
         "model2",
         "path/to/circuit2",
+        "path/to/metadata2.json",
+        "path/to/architecture2.json",
+        "path/to/w_and_b2.json",
         ZKProofSystems.Expander,
         dev_mode=True,
     )
@@ -316,6 +331,9 @@ def test_compile_circuit_expander_dev_mode_true(mock_run: MagicMock) -> None:
     assert kwargs["dev_mode"]
     assert kwargs["args"]["n"] == "model2"
     assert kwargs["args"]["c"] == "path/to/circuit2"
+    assert kwargs["args"]["m"] == "path/to/metadata2.json"
+    assert kwargs["args"]["a"] == "path/to/architecture2.json"
+    assert kwargs["args"]["b"] == "path/to/w_and_b2.json"
     mock_run.assert_called_once()
 
 
@@ -332,6 +350,9 @@ def test_compile_circuit_expander_rust_error(
         compile_circuit(
             "model2",
             "path/to/circuit2",
+            "path/to/metadata2.json",
+            "path/to/architecture2.json",
+            "path/to/w_and_b2.json",
             ZKProofSystems.Expander,
             dev_mode=True,
         )
@@ -342,7 +363,7 @@ def test_compile_circuit_expander_rust_error(
 @pytest.mark.integration()
 def test_compile_circuit_unknown_raises() -> None:
     with pytest.raises(ProofSystemNotImplementedError):
-        compile_circuit("m", "p", "unsupported")
+        compile_circuit("m", "p", "meta.json", "arch.json", "w.json", "unsupported")
 
 
 # # ---------- generate_witness ----------
@@ -355,6 +376,7 @@ def test_generate_witness_expander(mock_run: MagicMock) -> None:
         "witness",
         "input",
         "output",
+        "metadata.json",
         ZKProofSystems.Expander,
     )
     _, kwargs = mock_run.call_args
@@ -364,6 +386,7 @@ def test_generate_witness_expander(mock_run: MagicMock) -> None:
     assert kwargs["args"]["w"] == "witness"
     assert kwargs["args"]["i"] == "input"
     assert kwargs["args"]["o"] == "output"
+    assert kwargs["args"]["m"] == "metadata.json"
     mock_run.assert_called_once()
 
 
@@ -376,6 +399,7 @@ def test_generate_witness_expander_dev_mode_true(mock_run: MagicMock) -> None:
         "witness",
         "input",
         "output",
+        "metadata.json",
         ZKProofSystems.Expander,
         dev_mode=True,
     )
@@ -386,6 +410,7 @@ def test_generate_witness_expander_dev_mode_true(mock_run: MagicMock) -> None:
     assert kwargs["args"]["w"] == "witness"
     assert kwargs["args"]["i"] == "input"
     assert kwargs["args"]["o"] == "output"
+    assert kwargs["args"]["m"] == "metadata.json"
     mock_run.assert_called_once()
 
 
@@ -405,6 +430,7 @@ def test_generate_witness_expander_rust_error(
             "witness",
             "input",
             "output",
+            "metadata.json",
             ZKProofSystems.Expander,
             dev_mode=True,
         )
@@ -414,7 +440,15 @@ def test_generate_witness_expander_rust_error(
 @pytest.mark.unit()
 def test_generate_witness_unknown_raises() -> None:
     with pytest.raises(ProofSystemNotImplementedError):
-        generate_witness("m", "p", "witness", "input", "output", "unsupported")
+        generate_witness(
+            "m",
+            "p",
+            "witness",
+            "input",
+            "output",
+            "metadata.json",
+            "unsupported",
+        )
 
 
 # ---------- generate_proof ----------
@@ -442,7 +476,15 @@ def test_generate_proof_expander_no_ecc(
 @pytest.mark.integration()
 @patch("python.core.utils.helper_functions.run_cargo_command")
 def test_generate_proof_expander_with_ecc(mock_run: MagicMock) -> None:
-    generate_proof("model", "c", "w", "p", ZKProofSystems.Expander, ecc=True)
+    generate_proof(
+        "model",
+        "c",
+        "w",
+        "p",
+        "metadata.json",
+        ZKProofSystems.Expander,
+        ecc=True,
+    )
     mock_run.assert_called_once()
     _, kwargs = mock_run.call_args
     assert kwargs["binary_name"] == "model"
@@ -452,6 +494,7 @@ def test_generate_proof_expander_with_ecc(mock_run: MagicMock) -> None:
     assert kwargs["args"]["c"] == "c"
     assert kwargs["args"]["w"] == "w"
     assert kwargs["args"]["p"] == "p"
+    assert kwargs["args"]["m"] == "metadata.json"
 
 
 @pytest.mark.integration()
@@ -462,6 +505,7 @@ def test_generate_proof_expander_with_ecc_dev_mode_true(mock_run: MagicMock) -> 
         "c",
         "w",
         "p",
+        "metadata.json",
         ZKProofSystems.Expander,
         ecc=True,
         dev_mode=True,
@@ -475,12 +519,13 @@ def test_generate_proof_expander_with_ecc_dev_mode_true(mock_run: MagicMock) -> 
     assert kwargs["args"]["c"] == "c"
     assert kwargs["args"]["w"] == "w"
     assert kwargs["args"]["p"] == "p"
+    assert kwargs["args"]["m"] == "metadata.json"
 
 
 @pytest.mark.unit()
 def test_generate_proof_unknown_raises() -> None:
     with pytest.raises(ProofSystemNotImplementedError):
-        generate_proof("m", "p", "w", "proof", "unsupported")
+        generate_proof("m", "p", "w", "proof", "metadata.json", "unsupported")
 
 
 @pytest.mark.unit()
@@ -498,6 +543,7 @@ def test_generate_proof_expander_rust_error(
             "path/to/circuit2",
             "w",
             "p",
+            "metadata.json",
             ZKProofSystems.Expander,
             dev_mode=True,
         )
@@ -543,6 +589,7 @@ def test_generate_verify_expander_with_ecc(mock_run: MagicMock) -> None:
         "o",
         "w",
         "p",
+        "metadata.json",
         ZKProofSystems.Expander,
         ecc=True,
     )
@@ -558,6 +605,7 @@ def test_generate_verify_expander_with_ecc(mock_run: MagicMock) -> None:
     assert kwargs["args"]["p"] == "p"
     assert kwargs["args"]["i"] == "i"
     assert kwargs["args"]["o"] == "o"
+    assert kwargs["args"]["m"] == "metadata.json"
     mock_run.assert_called_once()
 
 
@@ -571,6 +619,7 @@ def test_generate_verify_expander_with_ecc_dev_mode_true(mock_run: MagicMock) ->
         "o",
         "w",
         "p",
+        "metadata.json",
         ZKProofSystems.Expander,
         ecc=True,
         dev_mode=True,
@@ -585,13 +634,23 @@ def test_generate_verify_expander_with_ecc_dev_mode_true(mock_run: MagicMock) ->
     assert kwargs["args"]["p"] == "p"
     assert kwargs["args"]["i"] == "i"
     assert kwargs["args"]["o"] == "o"
+    assert kwargs["args"]["m"] == "metadata.json"
     mock_run.assert_called_once()
 
 
 @pytest.mark.unit()
 def test_generate_verify_unknown_raises() -> None:
     with pytest.raises(ProofSystemNotImplementedError):
-        generate_verification("model", "cp", "i", "o", "w", "p", "unsupported")
+        generate_verification(
+            "model",
+            "cp",
+            "i",
+            "o",
+            "w",
+            "p",
+            "metadata.json",
+            "unsupported",
+        )
 
 
 @pytest.mark.unit()
@@ -600,22 +659,46 @@ def test_proof_system_not_implemented_full_process() -> None:
         ProofSystemNotImplementedError,
         match="Proof system UnknownProofSystem not implemented",
     ):
-        generate_verification("model", "cp", "i", "o", "w", "p", "UnknownProofSystem")
+        generate_verification(
+            "model",
+            "cp",
+            "i",
+            "o",
+            "w",
+            "p",
+            "metadata.json",
+            "UnknownProofSystem",
+        )
     with pytest.raises(
         ProofSystemNotImplementedError,
         match="Proof system UnknownProofSystem not implemented",
     ):
-        generate_proof("m", "p", "w", "proof", "UnknownProofSystem")
+        generate_proof("m", "p", "w", "proof", "metadata.json", "UnknownProofSystem")
     with pytest.raises(
         ProofSystemNotImplementedError,
         match="Proof system UnknownProofSystem not implemented",
     ):
-        generate_witness("m", "p", "witness", "input", "output", "UnknownProofSystem")
+        generate_witness(
+            "m",
+            "p",
+            "witness",
+            "input",
+            "output",
+            "metadata.json",
+            "UnknownProofSystem",
+        )
     with pytest.raises(
         ProofSystemNotImplementedError,
         match="Proof system UnknownProofSystem not implemented",
     ):
-        compile_circuit("model", "path/to/circuit", "UnknownProofSystem")
+        compile_circuit(
+            "model",
+            "path/to/circuit",
+            "metadata.json",
+            "architecture.json",
+            "w_and_b.json",
+            "UnknownProofSystem",
+        )
 
 
 @pytest.mark.unit()
@@ -635,6 +718,7 @@ def test_generate_verify_expander_rust_error(
             "o",
             "w",
             "p",
+            "metadata.json",
             ZKProofSystems.Expander,
             dev_mode=True,
         )
@@ -654,10 +738,47 @@ def test_run_end_to_end_calls_all(
     mock_verify: MagicMock,
 ) -> None:
     run_end_to_end("m", "m_circuit.txt", "i.json", "o.json")
-    mock_compile.assert_called_once()
-    mock_witness.assert_called_once()
-    mock_proof.assert_called_once()
-    mock_verify.assert_called_once()
+    mock_compile.assert_called_once_with(
+        "m",
+        "m_circuit.txt",
+        "m_circuit_metadata.json",
+        "m_circuit_architecture.json",
+        "m_circuit_wandb.json",
+        ZKProofSystems.Expander,
+        False,  # noqa: FBT003
+    )
+    mock_witness.assert_called_once_with(
+        "m",
+        "m_circuit.txt",
+        "m_circuit_witness.txt",
+        "i.json",
+        "o.json",
+        "m_circuit_metadata.json",
+        ZKProofSystems.Expander,
+        False,  # noqa: FBT003
+    )
+    mock_proof.assert_called_once_with(
+        "m",
+        "m_circuit.txt",
+        "m_circuit_witness.txt",
+        "m_circuit_proof.bin",
+        "m_circuit_metadata.json",
+        ZKProofSystems.Expander,
+        False,  # noqa: FBT003
+        True,  # noqa: FBT003
+    )
+    mock_verify.assert_called_once_with(
+        "m",
+        "m_circuit.txt",
+        "i.json",
+        "o.json",
+        "m_circuit_witness.txt",
+        "m_circuit_proof.bin",
+        "m_circuit_metadata.json",
+        ZKProofSystems.Expander,
+        False,  # noqa: FBT003
+        True,  # noqa: FBT003
+    )
 
 
 @pytest.mark.unit()

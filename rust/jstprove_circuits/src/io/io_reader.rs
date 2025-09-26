@@ -118,3 +118,105 @@ where
 pub struct FileReader {
     pub path: String,
 }
+
+// #[cfg(feature = "onnx")]
+pub mod onnx_context {
+    use once_cell::sync::OnceCell;
+    use thiserror::Error;
+
+    use crate::circuit_functions::utils::onnx_model::{Architecture, CircuitParams, WANDB};
+
+    pub static ARCHITECTURE: OnceCell<Architecture> = OnceCell::new();
+    pub static CIRCUITPARAMS: OnceCell<CircuitParams> = OnceCell::new();
+    pub static W_AND_B: OnceCell<WANDB> = OnceCell::new();
+
+    #[derive(Debug, Error)]
+    pub enum OnnxContextError {
+        #[error("Architecture is already set")]
+        ArchitectureAlreadySet,
+        #[error("Circuit parameters are already set")]
+        CircuitParamsAlreadySet,
+        #[error("Weights & Biases (WANDB) is already set")]
+        WandbAlreadySet,
+        #[error("Architecture not set")]
+        ArchitectureNotSet,
+        #[error("Circuit parameters not set")]
+        CircuitParamsNotSet,
+        #[error("Weights & Biases (WANDB) not set")]
+        WandbNotSet,
+    }
+
+    pub struct OnnxContext;
+
+    impl OnnxContext {
+        /// Set the [`Architecture`] if not already initialized.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`OnnxContextError::ArchitectureAlreadySet`] if the architecture
+        /// has already been initialized.
+        pub fn set_architecture(meta: Architecture) -> Result<(), OnnxContextError> {
+            ARCHITECTURE
+                .set(meta)
+                .map_err(|_| OnnxContextError::ArchitectureAlreadySet)
+        }
+
+        /// Set the [`CircuitParams`] if not already initialized.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`OnnxContextError::CircuitParamsAlreadySet`] if the parameters
+        /// have already been initialized.
+        pub fn set_params(meta: CircuitParams) -> Result<(), OnnxContextError> {
+            CIRCUITPARAMS
+                .set(meta)
+                .map_err(|_| OnnxContextError::CircuitParamsAlreadySet)
+        }
+
+        /// Set the [`WANDB`] (weights and biases) if not already initialized.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`OnnxContextError::WandbAlreadySet`] if the WANDB instance
+        /// has already been initialized.
+        pub fn set_wandb(meta: WANDB) -> Result<(), OnnxContextError> {
+            W_AND_B
+                .set(meta)
+                .map_err(|_| OnnxContextError::WandbAlreadySet)
+        }
+
+        /// Get a reference to the [`Architecture`].
+        ///
+        /// # Errors
+        ///
+        /// Returns [`OnnxContextError::ArchitectureNotSet`] if the architecture
+        /// has not been initialized yet.
+        pub fn get_architecture() -> Result<&'static Architecture, OnnxContextError> {
+            ARCHITECTURE
+                .get()
+                .ok_or(OnnxContextError::ArchitectureNotSet)
+        }
+
+        /// Get a reference to the [`CircuitParams`].
+        ///
+        /// # Errors
+        ///
+        /// Returns [`OnnxContextError::CircuitParamsNotSet`] if the parameters
+        /// have not been initialized yet.
+        pub fn get_params() -> Result<&'static CircuitParams, OnnxContextError> {
+            CIRCUITPARAMS
+                .get()
+                .ok_or(OnnxContextError::CircuitParamsNotSet)
+        }
+
+        /// Get a reference to the [`WANDB`].
+        ///
+        /// # Errors
+        ///
+        /// Returns [`OnnxContextError::WandbNotSet`] if WANDB
+        /// has not been initialized yet.
+        pub fn get_wandb() -> Result<&'static WANDB, OnnxContextError> {
+            W_AND_B.get().ok_or(OnnxContextError::WandbNotSet)
+        }
+    }
+}

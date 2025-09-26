@@ -18,8 +18,6 @@ use crate::circuit_functions::utils::onnx_types::{ONNXIO, ONNXLayer};
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct Architecture {
-    pub inputs: Vec<ONNXIO>,
-    pub outputs: Vec<ONNXIO>,
     pub architecture: Vec<ONNXLayer>,
 }
 
@@ -33,6 +31,8 @@ pub struct CircuitParams {
     pub scale_base: u32,
     pub scale_exponent: u32,
     pub rescale_config: HashMap<String, bool>,
+    pub inputs: Vec<ONNXIO>,
+    pub outputs: Vec<ONNXIO>,
 }
 
 #[derive(Deserialize, Clone)]

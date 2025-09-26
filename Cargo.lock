@@ -1753,6 +1753,7 @@ dependencies = [
  "mersenne31",
  "mpi",
  "ndarray",
+ "once_cell",
  "peakmem-alloc",
  "rand",
  "rayon",

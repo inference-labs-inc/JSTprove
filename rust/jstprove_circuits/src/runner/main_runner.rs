@@ -505,11 +505,32 @@ where
     Ok(())
 }
 
-//This solution requires specialization. If specialization is broken on any given release, we can replace configure_if_possible, to take in a bool.
-// The bool can be passed from bin main into handle args and into the relevant functions that call configure_if_possible for a manual implementation.
-// For ease of use, I prefer the current solution, however if it proves to cause problems, we can replace it
+/// A trait for circuits that can configure their internal inputs/outputs
+/// before being used.
+///
+/// This is intended to abstract over circuits that may need to
+/// initialize variable shapes or parameters (e.g., based on an
+/// [`Architecture`] loaded at runtime).
+///
+/// # Errors
+///
+/// Implementations should return a [`RunError`] if configuration fails.
+/// Typical failure cases may include:
+/// - Mismatched dimensions between input/output definitions.
+/// - Missing or invalid runtime parameters.
+/// - Errors from underlying utility functions.
 pub trait ConfigurableCircuit {
-    fn configure(&mut self);
+    /// Configure the circuit inputs and outputs.
+    ///
+    /// Implementations should resize or re-initialize inputs and outputs
+    /// as needed (for example, flattening ONNX tensors into a flat vector
+    /// of variables).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`RunError`] if configuration fails due to invalid
+    /// architecture, parameter mismatch, or other issues.
+    fn configure(&mut self) -> Result<(), RunError>;
 }
 
 pub trait MaybeConfigure {
@@ -518,7 +539,7 @@ pub trait MaybeConfigure {
 
 impl<T: ConfigurableCircuit> MaybeConfigure for T {
     fn maybe_configure(&mut self) {
-        self.configure();
+        let _ = self.configure();
     }
 }
 
@@ -527,7 +548,22 @@ fn configure_if_possible<T: MaybeConfigure>(circuit: &mut T) {
     circuit.maybe_configure();
 }
 
-fn get_arg(matches: &clap::ArgMatches, name: &'static str) -> Result<String, CliError> {
+/// Retrieves the value of a CLI argument as a `String`.
+///
+/// # Arguments
+///
+/// * `matches` - Parsed [`clap::ArgMatches`] object, usually from [`clap::Command::get_matches`].
+/// * `name` - The name of the argument to look up (must match how it was defined in your CLI).
+///
+/// # Returns
+///
+/// * `Ok(String)` - The value of the argument, if present.
+///
+/// # Errors
+///
+/// Returns [`CliError::MissingArgument`] if the argument was not provided on the command line.
+///
+pub fn get_arg(matches: &clap::ArgMatches, name: &'static str) -> Result<String, CliError> {
     matches
         .get_one::<String>(name)
         .map(ToString::to_string)
@@ -578,6 +614,7 @@ pub fn handle_args<
     CircuitDefaultType,
     Filereader: IOReader<CircuitDefaultType, C>,
 >(
+    matches: &clap::ArgMatches,
     file_reader: &mut Filereader,
 ) -> Result<(), CliError>
 where
@@ -590,22 +627,22 @@ where
         + Define<C>
         + MaybeConfigure, //+ RunBehavior<C>,
 {
-    let matches = get_args();
+    // let matches = get_args();
 
     // The first argument is the command we need to identify
     // let command = &args[1];
-    let command = get_arg(&matches, "type")?;
+    let command = get_arg(matches, "type")?;
 
     match command.as_str() {
         "run_compile_circuit" => {
-            let circuit_path = get_arg(&matches, "circuit_path")?;
+            let circuit_path = get_arg(matches, "circuit_path")?;
             run_compile_and_serialize::<C, CircuitType>(&circuit_path)?;
         }
         "run_gen_witness" => {
-            let input_path = get_arg(&matches, "input")?;
-            let output_path = get_arg(&matches, "output")?;
-            let witness_path = get_arg(&matches, "witness")?;
-            let circuit_path = get_arg(&matches, "circuit_path")?;
+            let input_path = get_arg(matches, "input")?;
+            let output_path = get_arg(matches, "output")?;
+            let witness_path = get_arg(matches, "witness")?;
+            let circuit_path = get_arg(matches, "circuit_path")?;
             run_witness::<C, _, CircuitDefaultType>(
                 file_reader,
                 &input_path,
@@ -616,10 +653,10 @@ where
             // debug_witness::<C, _, CircuitDefaultType, CircuitType>(file_reader, input_path, output_path, &witness_path, circuit_path);
         }
         "run_debug_witness" => {
-            let input_path = get_arg(&matches, "input")?;
-            let output_path = get_arg(&matches, "output")?;
-            let witness_path = get_arg(&matches, "witness")?;
-            let circuit_path = get_arg(&matches, "circuit_path")?;
+            let input_path = get_arg(matches, "input")?;
+            let output_path = get_arg(matches, "output")?;
+            let witness_path = get_arg(matches, "witness")?;
+            let circuit_path = get_arg(matches, "circuit_path")?;
             debug_witness::<C, _, CircuitDefaultType, CircuitType>(
                 file_reader,
                 &input_path,
@@ -629,18 +666,18 @@ where
             )?;
         }
         "run_prove_witness" => {
-            let witness_path = get_arg(&matches, "witness")?;
-            let proof_path = get_arg(&matches, "proof")?;
-            let circuit_path = get_arg(&matches, "circuit_path")?;
+            let witness_path = get_arg(matches, "witness")?;
+            let proof_path = get_arg(matches, "proof")?;
+            let circuit_path = get_arg(matches, "circuit_path")?;
 
             run_prove_witness::<C, CircuitDefaultType>(&circuit_path, &witness_path, &proof_path)?;
         }
         "run_gen_verify" => {
-            let input_path = get_arg(&matches, "input")?;
-            let output_path = get_arg(&matches, "output")?;
-            let witness_path = get_arg(&matches, "witness")?;
-            let proof_path = get_arg(&matches, "proof")?;
-            let circuit_path = get_arg(&matches, "circuit_path")?;
+            let input_path = get_arg(matches, "input")?;
+            let output_path = get_arg(matches, "output")?;
+            let witness_path = get_arg(matches, "witness")?;
+            let proof_path = get_arg(matches, "proof")?;
+            let circuit_path = get_arg(matches, "circuit_path")?;
 
             // run_verify::<BN254Config, Filereader, CircuitDefaultType>(&circuit_name);
             run_verify_io::<C, Filereader, CircuitDefaultType>(
@@ -657,7 +694,8 @@ where
     Ok(())
 }
 
-fn get_args() -> clap::ArgMatches {
+#[must_use]
+pub fn get_args() -> clap::ArgMatches {
     let matches: clap::ArgMatches = Command::new("File Copier")
         .version("1.0")
         .about("Copies content from input file to output file")
@@ -709,6 +747,27 @@ fn get_args() -> clap::ArgMatches {
                 .required(false) // This argument is also required
                 .long("name") // Use a long flag (e.g., --name)
                 .short('n'), // Use a short flag (e.g., -n)
+        )
+        .arg(
+            Arg::new("meta")
+                .help("Path to the ONNX generic circuit params and metadata JSON")
+                .required(false)
+                .long("meta")
+                .short('m'),
+        )
+        .arg(
+            Arg::new("arch")
+                .help("Path to the ONNX generic circuit architecture JSON")
+                .required(false)
+                .long("arch")
+                .short('a'),
+        )
+        .arg(
+            Arg::new("wandb")
+                .help("Path to the ONNX generic circuit W&B JSON")
+                .required(false)
+                .long("wandb")
+                .short('b'),
         )
         .get_matches();
     matches
