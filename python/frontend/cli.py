@@ -307,8 +307,6 @@ def _run_bench(args: argparse.Namespace) -> None:
             "--iterations",
             iterations,
             "--output",
-            results,
-            "--summarize",
         ]
         env = os.environ.copy()
         env.setdefault("PYTHONUNBUFFERED", "1")
