@@ -37,6 +37,7 @@ target/
 
 # Dataset and binary files
 *.json
+*.jsonl
 *.txt
 *.bin
 *.csv
