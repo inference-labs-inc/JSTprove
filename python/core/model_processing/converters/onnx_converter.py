@@ -42,6 +42,11 @@ from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import (
     ONNXOpQuantizer,
 )
 
+try:
+    import tomllib  # Python 3.11+
+except ModuleNotFoundError:
+    import tomli as tomllib
+
 ONNXLayerDict = dict[
     str,
     Union[int, str, list[str], dict[str, list[int]], Optional[list], Optional[dict]],
@@ -1070,6 +1075,10 @@ class ONNXConverter(ModelConverter):
             elem_type = getattr(output, "elem_type", -1)
             outputs.append(ONNXIO(output.name, elem_type, shape))
 
+        # Load version from pyproject.toml
+        pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+        version = pyproject["project"]["version"]
+
         architecture = {
             "architecture": [asdict(a) for a in architecture],
         }
@@ -1080,6 +1089,7 @@ class ONNXConverter(ModelConverter):
             "rescale_config": getattr(self, "rescale_config", {}),
             "inputs": [asdict(i) for i in inputs],
             "outputs": [asdict(o) for o in outputs],
+            "version": version,
         }
         return architecture, weights, circuit_params
 
