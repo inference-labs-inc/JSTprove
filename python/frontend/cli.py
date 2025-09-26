@@ -277,18 +277,47 @@ def _append_arg(cmd: list[str], flag: str, val: object | None) -> None:
 
 def _run_bench(args: argparse.Namespace) -> None:
     """
-    Run the existing generator+benchmark via: python -m python.scripts.gen_and_bench
-
-    Behavior:
-      - If user ran `jst bench depth` or `jst bench breadth` with
-        no other options, we invoke gen_and_bench with your favorite defaults.
-      - Otherwise we pass through whatever flags they provided.
+    Run benchmarks:
+      - depth/breadth: call python.scripts.gen_and_bench (existing sweeps)
+      - lenet: run benchmark_runner on the repo's fixed LeNet model/input
     """
     sweep = args.sweep or args.mode
     if not sweep:
-        raise CLIError("Please specify --sweep {depth|breadth} or a positional mode.")
+        raise CLIError(
+            "Please specify --sweep {depth|breadth|lenet} or a positional mode."
+        )
 
-    # Detect "simple command" (no extra knobs besides optional tag/dirs)
+    # --- Fixed: LeNet quickstart model ---
+    if sweep == "lenet":
+        model = Path("python/models/models_onnx/lenet.onnx").resolve()
+        inp = Path("python/models/inputs/lenet_input.json").resolve()
+        # sensible defaults; allow overrides via --iterations/--results
+        iterations = str(args.iterations if args.iterations is not None else 5)
+        results = args.results or "benchmarking/lenet_fixed.jsonl"
+        Path(results).parent.mkdir(parents=True, exist_ok=True)
+
+        cmd = [
+            sys.executable,
+            "-m",
+            "python.scripts.benchmark_runner",
+            "--model",
+            str(model),
+            "--input",
+            str(inp),
+            "--iterations",
+            iterations,
+            "--output",
+            results,
+            "--summarize",
+        ]
+        env = os.environ.copy()
+        env.setdefault("PYTHONUNBUFFERED", "1")
+        rc = subprocess.run(cmd, text=True, env=env).returncode  # noqa: S603
+        if rc != 0:
+            raise CLIError(f"LeNet benchmark failed with exit code {rc}")
+        return  # done
+
+    # --- Depth/breadth ---
     provided_knobs = [
         args.depth_min,
         args.depth_max,
@@ -306,10 +335,8 @@ def _run_bench(args: argparse.Namespace) -> None:
     simple = (args.mode is not None) and all(v is None for v in provided_knobs)
 
     cmd = [sys.executable, "-m", "python.scripts.gen_and_bench", "--sweep", sweep]
-
     if simple:
         if sweep == "depth":
-            # Your preferred defaults
             cmd += [
                 "--depth-min",
                 "1",
@@ -337,21 +364,15 @@ def _run_bench(args: argparse.Namespace) -> None:
                 "--fc-hidden",
                 "256",
             ]
-        # Allow optional overrides even in simple mode
         _append_arg(cmd, "--onnx-dir", args.onnx_dir)
         _append_arg(cmd, "--inputs-dir", args.inputs_dir)
         _append_arg(cmd, "--tag", args.tag)
     else:
-        # depth sweep knobs
         _append_arg(cmd, "--depth-min", args.depth_min)
         _append_arg(cmd, "--depth-max", args.depth_max)
         _append_arg(cmd, "--input-hw", args.input_hw)
-
-        # breadth sweep knobs
         _append_arg(cmd, "--arch-depth", args.arch_depth)
         _append_arg(cmd, "--input-hw-list", args.input_hw_list)
-
-        # shared knobs
         _append_arg(cmd, "--iterations", args.iterations)
         _append_arg(cmd, "--results", args.results)
         _append_arg(cmd, "--onnx-dir", args.onnx_dir)
@@ -365,7 +386,6 @@ def _run_bench(args: argparse.Namespace) -> None:
 
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")
-
     proc = subprocess.run(cmd, text=True, env=env)  # noqa: S603
     if proc.returncode != 0:
         raise CLIError(f"Benchmark command failed with exit code {proc.returncode}")
@@ -518,14 +538,14 @@ def main(argv: list[str] | None = None) -> int:
 
     p_bench.add_argument(
         "mode",
-        choices=["depth", "breadth"],
+        choices=["depth", "breadth", "lenet"],
         nargs="?",
         help="Shorthand for --sweep when you just want defaults (e.g., 'jst bench depth').",
     )
 
     p_bench.add_argument(
         "--sweep",
-        choices=["depth", "breadth"],
+        choices=["depth", "breadth", "lenet"],
         default=None,  # allow omission when using positional mode
         help="depth: vary conv depth; breadth: vary input H=W. If omitted, the positional MODE is used.",
     )
@@ -594,47 +614,6 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "bench":
             _run_bench(args)
             from python.scripts import gen_and_bench
-
-            if args.mode == "depth":
-                sys.exit(
-                    gen_and_bench.main(
-                        [
-                            "--sweep",
-                            "depth",
-                            "--depth-min",
-                            "1",
-                            "--depth-max",
-                            "16",
-                            "--iterations",
-                            "3",
-                            "--results",
-                            "benchmarking/depth_sweep.jsonl",
-                        ]
-                    )
-                )
-            elif args.mode == "breadth":
-                sys.exit(
-                    gen_and_bench.main(
-                        [
-                            "--sweep",
-                            "breadth",
-                            "--arch-depth",
-                            "5",
-                            "--input-hw-list",
-                            "28,56,84,112",
-                            "--iterations",
-                            "3",
-                            "--results",
-                            "benchmarking/breadth_sweep.jsonl",
-                            "--pool-cap",
-                            "2",
-                            "--conv-out-ch",
-                            "16",
-                            "--fc-hidden",
-                            "256",
-                        ]
-                    )
-                )
 
     # Preserve argparse/our own explicit exits
     except SystemExit:
