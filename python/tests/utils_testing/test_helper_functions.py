@@ -219,8 +219,16 @@ def test_read_from_json_loads_json(mock_load: MagicMock, mock_path: MagicMock) -
 
 # ---------- run_cargo_command ----------
 @pytest.mark.unit()
+@patch("python.core.utils.helper_functions.Path")
 @patch("python.core.utils.helper_functions.subprocess.run")
-def test_run_cargo_command_normal(mock_run: MagicMock) -> None:
+def test_run_cargo_command_normal(
+    mock_run: MagicMock,
+    mock_path_class: MagicMock,
+) -> None:
+    mock_path_instance = MagicMock()
+    mock_path_instance.exists.return_value = True
+    mock_path_class.return_value = mock_path_instance
+
     mock_run.return_value = MagicMock(returncode=0, stdout="ok")
     code = run_cargo_command("zkbinary", "run", {"i": "input.json"}, dev_mode=False)
 
@@ -241,6 +249,27 @@ def test_run_cargo_command_dev_mode(mock_run: MagicMock) -> None:
 
     args = mock_run.call_args[0][0]
     assert args[:5] == ["cargo", "run", "--bin", "testbin", "--release"]
+    assert "compile" in args
+
+
+@pytest.mark.unit()
+@patch("python.core.utils.helper_functions.Path")
+@patch("python.core.utils.helper_functions.subprocess.run")
+def test_run_cargo_command_fallback_to_cargo_run(
+    mock_run: MagicMock,
+    mock_path_class: MagicMock,
+) -> None:
+    """Test that when binary doesn't exist
+    and dev_mode=False, it falls back to cargo run."""
+    mock_path_instance = MagicMock()
+    mock_path_instance.exists.return_value = False
+    mock_path_class.return_value = mock_path_instance
+
+    mock_run.return_value = MagicMock(returncode=0)
+    run_cargo_command("missingbin", "compile", dev_mode=False)
+
+    args = mock_run.call_args[0][0]
+    assert args[:5] == ["cargo", "run", "--bin", "missingbin", "--release"]
     assert "compile" in args
 
 
@@ -268,8 +297,13 @@ def test_run_cargo_command_raises_on_failure(mock_run: MagicMock) -> None:
 
 
 @pytest.mark.unit()
+@patch("python.core.utils.helper_functions.Path")
 @patch("python.core.utils.helper_functions.subprocess.run")
-def test_run_command_failure(mock_run: MagicMock) -> None:
+def test_run_command_failure(mock_run: MagicMock, mock_path_class: MagicMock) -> None:
+    mock_path_instance = MagicMock()
+    mock_path_instance.exists.return_value = True
+    mock_path_class.return_value = mock_path_instance
+
     mock_run.side_effect = subprocess.CalledProcessError(
         returncode=1,
         cmd=["fakecmd"],

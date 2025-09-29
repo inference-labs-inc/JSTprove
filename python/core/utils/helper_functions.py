@@ -343,11 +343,10 @@ def read_from_json(public_path: str) -> dict[str, Any]:
         return json.load(json_data)
 
 
-def run_cargo_command(  # noqa: PLR0913
+def run_cargo_command(
     binary_name: str,
     command_type: str,
     args: dict[str, str] | None = None,
-    circuit_path: str | None = None,
     *,
     dev_mode: bool = False,
     bench: bool = False,
@@ -372,7 +371,7 @@ def run_cargo_command(  # noqa: PLR0913
     Returns:
         subprocess.CompletedProcess[str]: Exit message from the subprocess.
     """
-    binary_path = _get_binary_path(circuit_path=circuit_path, binary_name=binary_name)
+    binary_path = f"./target/release/{binary_name}"
     cmd = _build_command(
         binary_path=binary_path,
         command_type=command_type,
@@ -406,19 +405,7 @@ def run_cargo_command(  # noqa: PLR0913
         msg = f"Rust backend error '{rust_error}'"
         raise ProofBackendError(msg, cmd) from e
     else:
-        _copy_binary_if_needed(
-            binary_name=binary_name,
-            binary_path=binary_path,
-            dev_mode=dev_mode,
-        )
         return result
-
-
-def _get_binary_path(circuit_path: str | None, binary_name: str) -> str:
-    """Determine the binary path based on circuit_path or default."""
-    if circuit_path:
-        return f"{Path(circuit_path).parent / Path(circuit_path).stem!s}_exc"
-    return f"./target/release/{binary_name}"
 
 
 def _build_command(
@@ -432,7 +419,9 @@ def _build_command(
     """Build the command list for subprocess."""
     cmd = (
         ["cargo", "run", "--bin", binary_name, "--release"]
-        if dev_mode
+        if dev_mode or not Path(binary_path).exists()
+        # dev_mode indicates that we want a recompile, this happens with compile
+        # or if there is no executable already created, then we create a new one
         else [binary_path]
     )
     cmd.append(command_type)
@@ -700,7 +689,6 @@ def compile_circuit(  # noqa: PLR0913
                 binary_name=binary_name,
                 command_type=RunType.COMPILE_CIRCUIT.value,
                 args=args,
-                circuit_path=circuit_path,
                 dev_mode=dev_mode,
                 bench=bench,
             )
@@ -769,7 +757,6 @@ def generate_witness(  # noqa: PLR0913
                 binary_name=binary_name,
                 command_type=RunType.GEN_WITNESS.value,
                 args=args,
-                circuit_path=circuit_path,
                 dev_mode=dev_mode,
                 bench=bench,
             )
@@ -838,7 +825,6 @@ def generate_proof(  # noqa: PLR0913
                     binary_name=binary_name,
                     command_type=RunType.PROVE_WITNESS.value,
                     args=args,
-                    circuit_path=circuit_path,
                     dev_mode=dev_mode,
                     bench=bench,
                 )
@@ -920,7 +906,6 @@ def generate_verification(  # noqa: PLR0913
                     binary_name=binary_name,
                     command_type=RunType.GEN_VERIFY.value,
                     args=args,
-                    circuit_path=circuit_path,
                     dev_mode=dev_mode,
                     bench=bench,
                 )
