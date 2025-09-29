@@ -36,15 +36,15 @@ from python.core.utils.benchmarking_helpers import (
     start_memory_collection,
 )
 
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Logging
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("benchmark_runner")
 
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Parsing helpers / patterns
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 TIME_PATTERNS = [
     re.compile(r"Rust time taken:\s*([0-9.]+)"),
     re.compile(r"Time elapsed:\s*([0-9.]+)\s*seconds"),
@@ -97,7 +97,6 @@ def _term_width(default: int = 100) -> int:
 
 # NOTE: currently unused; retained only because the (deprecated) compile card used it.
 def _human_bytes(n: int | None) -> str:
-    """Pretty-print bytes as B/KB/MB/GB/TB (unused in the current flow)."""
     if n is None:
         return "NA"
     units = ["B", "KB", "MB", "GB", "TB"]
@@ -110,12 +109,10 @@ def _human_bytes(n: int | None) -> str:
 
 # NOTE: currently unused; retained only because the (deprecated) compile card used it.
 def _fmt_int(n: int | None) -> str:
-    """Format an int with thousands separators (unused in the current flow)."""
     return f"{n:,}" if isinstance(n, int) else "NA"
 
 
 def _bar(value: int, vmax: int, width: int = 24, char: str = "█") -> str:
-    """Fixed-width bar proportional to value/vmax, using a solid block character."""
     if vmax <= 0 or value <= 0:
         return " " * width
     fill = max(1, int(width * min(value, vmax) / vmax))
@@ -123,14 +120,12 @@ def _bar(value: int, vmax: int, width: int = 24, char: str = "█") -> str:
 
 
 def _marquee(t: float, width: int = 24, char: str = "█") -> str:
-    """Bouncing 8-char block to suggest activity when total work is unknown."""
     w = max(8, min(width, 24))
     pos = int((abs(((t * 0.8) % 2) - 1)) * (w - 8))
     return " " * pos + char * 8 + " " * (w - 8 - pos)
 
 
 def _sum_child_rss_mb(parent_pid: int) -> float:
-    """Approximate current total RSS of all child processes, in MB."""
     try:
         parent = psutil.Process(parent_pid)
     except psutil.Error:
@@ -145,7 +140,6 @@ def _sum_child_rss_mb(parent_pid: int) -> float:
 
 
 def parse_ecc_stats(text: str) -> Dict[str, int]:
-    """Scan the whole blob for k=v pairs and keep only ECC keys."""
     clean = ANSI_RE.sub("", text).replace("\r", "\n")
     stats: Dict[str, int] = {}
     for k, v in KV_PAIR.findall(clean):
@@ -158,15 +152,10 @@ def parse_ecc_stats(text: str) -> Dict[str, int]:
 
 
 def strip_ansi(s: str) -> str:
-    """Remove ANSI color/escape sequences from a string."""
     return ANSI_RE.sub("", s)
 
 
 def count_onnx_parameters(model_path: Path) -> int:
-    """
-    Sum element counts of ONNX initializers (trainable weights).
-    Returns -1 if the `onnx` dependency is unavailable.
-    """
     try:
         import onnx  # type: ignore
     except Exception:
@@ -183,7 +172,6 @@ def count_onnx_parameters(model_path: Path) -> int:
 
 
 def file_size_bytes(path: str | Path) -> Optional[int]:
-    """Return file size in bytes (or None if the path does not exist)."""
     try:
         p = Path(path)
         return p.stat().st_size if p.exists() else None
@@ -192,7 +180,6 @@ def file_size_bytes(path: str | Path) -> Optional[int]:
 
 
 def parse_metrics(text: str) -> tuple[float | None, float | None]:
-    """Best-effort parse for time (seconds) and memory (MB) from CLI output."""
     time_s: float | None = None
     mem_mb: float | None = None
     for pat in TIME_PATTERNS:
@@ -215,7 +202,6 @@ def parse_metrics(text: str) -> tuple[float | None, float | None]:
 
 
 def now_utc() -> str:
-    """UTC timestamp in RFC3339 format without subseconds (e.g., '2025-01-01T00:00:00Z')."""
     return (
         datetime.now(timezone.utc)
         .replace(microsecond=0)
@@ -237,7 +223,6 @@ class PhaseIO:
 
 
 def _build_phase_cmd(phase: str, io: PhaseIO) -> list[str]:
-    """Construct the exact `jst` CLI command for a phase."""
     base = ["jst", "--no-banner"]
     if phase == "compile":
         return [*base, "compile", "-m", str(io.model_path), "-c", str(io.circuit_path)]
@@ -298,20 +283,12 @@ def run_cli(
     float | None,
     Dict[str, int],
 ]:
-    """
-    Execute one CLI phase, streaming stdout live with a spinner/HUD and
-    tracking peak RSS via psutil.
-
-    Returns:
-        (returncode, combined_output, time_s, mem_mb_primary, cmd_list,
-         mem_mb_rust, mem_mb_psutil, ecc_dict)
-    """
     cmd = _build_phase_cmd(phase, io)
 
     env = os.environ.copy()
     env.setdefault("RUST_LOG", "info")
     env.setdefault("RUST_BACKTRACE", "1")
-    env.setdefault("PYTHONUNBUFFERED", "1")  # help with child buffering
+    env.setdefault("PYTHONUNBUFFERED", "1")
 
     stop_ev, mon_thread, mon_results = start_memory_collection("")
     start = time.time()
@@ -342,7 +319,6 @@ def run_cli(
             line = proc.stdout.readline() if proc.stdout else ""
             elapsed = time.time() - start
 
-            # live peak memory
             live_mb = _sum_child_rss_mb(proc.pid)
             if live_mb > peak_live_mb:
                 peak_live_mb = live_mb
@@ -351,13 +327,11 @@ def run_cli(
                 combined_lines.append(line.rstrip("\n"))
                 low = line.lower()
 
-                # Echo milestone lines for user feedback (unchanged behavior)
                 if ("built layered circuit" in low) or (
                     "built hint normalized ir" in low
                 ):
                     print(line, end="")  # noqa: T201
 
-                # Harvest ECC counters live from any k=v pairs we see
                 for k, v in KV_PAIR.findall(ANSI_RE.sub("", line)):
                     if k in ECC_KEYS:
                         try:
@@ -365,7 +339,6 @@ def run_cli(
                         except ValueError:
                             pass
 
-            # refresh HUD ~10Hz
             if int(elapsed * 10) != int((elapsed - 0.09) * 10) or not line:
                 spin = spinner[sp_i % len(spinner)]
                 sp_i += 1
@@ -374,13 +347,11 @@ def run_cli(
                 print(hud[: tw - 1], end="", flush=True)  # noqa: T201
 
             if proc.poll() is not None:
-                # Drain any remaining buffered output after the process exits.
                 if proc.stdout:
                     tail = proc.stdout.read()
                     if tail:
                         combined_lines.extend(tail.splitlines())
 
-                # final HUD line
                 elapsed = time.time() - start
                 hud = (
                     f"\r[✔] {phase:<7} | {elapsed:6.1f}s | mem↑ {peak_live_mb:7.1f} MB | "
@@ -392,7 +363,6 @@ def run_cli(
             time.sleep(0.09)
 
     finally:
-        # collect psutil-based peak (may differ from live sampler)
         collected_mb: float | None = None
         try:
             mem = end_memory_collection(stop_ev, mon_thread, mon_results)  # type: ignore[arg-type]
@@ -408,11 +378,9 @@ def run_cli(
     mem_mb_psutil = collected_mb if collected_mb is not None else peak_live_mb
     mem_mb_primary = mem_mb_psutil if mem_mb_psutil is not None else mem_mb_rust
 
-    # If we missed something live, parse once more from the combined blob
     if not ecc_live:
         ecc_live = parse_ecc_stats(combined)
 
-    # Also append a compact ECC block into the combined text for later eyeballing
     if ecc_live:
         kv = " ".join(f"{k}={v}" for k, v in sorted(ecc_live.items()))
         combined += f"\n[ECC]\n{kv}\n"
@@ -429,11 +397,9 @@ def run_cli(
     )
 
 
-# NOTE: this card printer is currently unused (kept for reference).
 def _print_compile_card(
     ecc: dict, circuit_bytes: int | None, quant_bytes: int | None
 ) -> None:
-    """Pretty compile stats block (unused in the current flow)."""
     if not ecc:
         return
     keys = [
@@ -458,7 +424,6 @@ def _print_compile_card(
     for k in keys:
         if k in data:
             bar = _bar(data[k], vmax, width=w)
-            # _fmt_int/_human_bytes are intentionally still present but currently unused elsewhere.
             print(f"│ {k:<14} {data[k]:>12}  {bar} │")  # noqa: T201
     print(
         "└────────────────────────────────────────────────────────────────────┘"
@@ -466,12 +431,10 @@ def _print_compile_card(
 
 
 def _quantized_path_from_circuit(circuit_path: Path) -> Path:
-    """Derive quantized ONNX path from circuit: <dir>/<stem>_quantized_model.onnx"""
     return circuit_path.with_name(f"{circuit_path.stem}_quantized_model.onnx")
 
 
 def _fmt_mean_sd(vals: list[float]) -> tuple[str, float | None, float | None]:
-    """Format a list as 'μ ± σ' (or single value), returning the label and μ,σ."""
     if not vals:
         return "NA", None, None
     if len(vals) == 1:
@@ -484,14 +447,8 @@ def _fmt_mean_sd(vals: list[float]) -> tuple[str, float | None, float | None]:
 def _summary_card(
     model_name: str, tmap: dict[str, list[float]], mmap: dict[str, list[float]]
 ) -> None:
-    """
-    Render a compact summary card with data-driven column widths so that
-    multi-digit means (e.g., 46.741) align just as neatly as single-digit ones.
-    Uses ASCII borders when JSTPROVE_ASCII=1.
-    """
     phases = ("compile", "witness", "prove", "verify")
 
-    # 1) Build labels and stats first (so we know true content widths)
     rows: list[tuple[str, str, str, str, str]] = []
     t_means: list[float] = []
     m_means: list[float] = []
@@ -517,11 +474,9 @@ def _summary_card(
         if mmean is not None:
             m_means.append(mmean)
 
-    # When everything is NA, avoid div-by-zero in bar scaling
     tmax = max(t_means) if t_means else 1.0
     mmax = max(m_means) if m_means else 1.0
 
-    # 2) Compute column widths from the actual content + headers
     hdr_phase = "phase"
     hdr_time = "time (s)"
     hdr_best = "best"
@@ -534,49 +489,40 @@ def _summary_card(
     mem_w = max(len(hdr_mem), *(len(m) for *_, m, _ in rows))
     peak_w = max(len(hdr_peak), *(len(p) for *_, p in rows))
 
-    # pick a reasonable bar width; shrink only if terminal is very narrow
-    # we’ll try to fit inside the terminal if possible, but we *don’t* rely on it.
     min_bar = 10
     max_bar = 24
-    # Estimate available width from the terminal; keep a comfortable default.
     tw = _term_width(100)
-    # Fixed chars per row besides the two bars (separators, spaces, borders)
-    # Layout: │ {phase:<pw} │ {time:<tw} │ {best:>bw} │ {tbar} │ {mem:<mw} │ {peak:>pk} │ {mbar} │
     fixed = (
-        1  # left border
+        1
         + 1
         + phase_w
         + 1
-        + 1  # "│ " + phase + " │"
+        + 1
         + 1
         + time_w
         + 1
-        + 1  # " " + time + " │"
+        + 1
         + 1
         + best_w
         + 1
-        + 1  # " " + best + " │"
         + 1
-        + 1  # " " + "│" before mem
+        + 1
+        + 1
         + 1
         + mem_w
         + 1
-        + 1  # " " + mem + " │"
+        + 1
         + 1
         + peak_w
         + 1
-        + 1  # " " + peak + " │"
-        + 1  # space before mbar
-        + 1  # right border (we’ll account for it at the end)
+        + 1
+        + 1
+        + 1
     )
-    # two bars + the final right border
-    # available width = tw - (fixed + 2 bars + right border). solve for bar size.
-    # we’ll clamp into [min_bar, max_bar].
-    avail_for_bars = max(0, tw - (fixed + 1))  # leave room for right border
+    avail_for_bars = max(0, tw - (fixed + 1))
     per_bar = max(min_bar, min(max_bar, avail_for_bars // 2)) or min_bar
     bar_w = per_bar
 
-    # Optionally switch to pure-ASCII table and bar characters
     ascii_mode = os.environ.get("JSTPROVE_ASCII") == "1"
     V = "|" if ascii_mode else "│"
     H = "-" if ascii_mode else "─"
@@ -590,23 +536,16 @@ def _summary_card(
     BAR_CHAR = "#" if ascii_mode else "█"
 
     def bar(val: float, vmax: float) -> str:
-        # scale relative to max mean; clamp; ensure non-empty when val>0
         if vmax <= 0 or val <= 0:
             return " " * bar_w
         filled = max(1, int(bar_w * min(val, vmax) / vmax))
         return BAR_CHAR * filled + " " * (bar_w - filled)
 
-    # 3) Build the header/body lines using *exact* widths
-    title = f" Summary for {model_name} "
-    # Make a header content row to measure the total width
     header_line = (
         f"{V} {hdr_phase:<{phase_w}} {V} {hdr_time:<{time_w}} {V} {hdr_best:>{best_w}} "
         f"{V} {'t-bar':<{bar_w}} {V} {hdr_mem:<{mem_w}} {V} {hdr_peak:>{peak_w}} {V} {'m-bar':<{bar_w}} {V}"
     )
-    # Draw a top border that exactly matches header width
-    top = (
-        TL + H * (len(header_line) - 2) + TR
-    )  # -2 accounts for replacing first/last char with corners
+    top = TL + H * (len(header_line) - 2) + TR
     sep = (
         TJ
         + H * (2 + phase_w)
@@ -622,7 +561,7 @@ def _summary_card(
         + H * (2 + peak_w)
         + MJ
         + H * (2 + bar_w)
-        + TR.replace(TR, MJ)  # match corner with a cross-joint
+        + TR.replace(TR, MJ)
     )
     bottom = BL + H * (len(header_line) - 2) + BR
 
@@ -631,9 +570,8 @@ def _summary_card(
     print(header_line)  # noqa: T201
     print(sep)  # noqa: T201
 
-    # body
     for ph, tlabel, tbest, mlabel, mpeak in rows:
-        # pull means again for bar scaling; parse left side of "μ ± σ" if present
+
         def _to_mean(s: str) -> float:
             if s == "NA":
                 return 0.0
@@ -659,7 +597,6 @@ def _summary_card(
 
 
 def _fmt_stats(vals: list[float]) -> str:
-    """Legacy one-liner stats; kept for compatibility with older callers."""
     if not vals:
         return "NA"
     if len(vals) == 1:
@@ -668,10 +605,6 @@ def _fmt_stats(vals: list[float]) -> str:
 
 
 def summarize(rows: list[dict], model_name: str) -> None:
-    """
-    Build per-phase arrays from JSONL rows and print the summary card.
-    Only successful (return_code==0) rows for the given model are included.
-    """
     phases = ("compile", "witness", "prove", "verify")
     tmap: dict[str, list[float]] = {p: [] for p in phases}
     mmap: dict[str, list[float]] = {p: [] for p in phases}
@@ -685,7 +618,6 @@ def summarize(rows: list[dict], model_name: str) -> None:
 
 
 def main() -> int:
-    """CLI entrypoint for the benchmark runner."""
     ap = argparse.ArgumentParser(
         description="Benchmark JSTProve by calling the CLI directly."
     )
@@ -702,11 +634,6 @@ def main() -> int:
         "--output",
         default="results.jsonl",
         help="JSONL to append per-run rows (default: results.jsonl)",
-    )
-    ap.add_argument(
-        "--summarize",
-        action="store_true",
-        help="Print per-phase summary card at the end.",
     )
     args = ap.parse_args()
 
@@ -735,7 +662,6 @@ def main() -> int:
                     ts = now_utc()
                     rc, out, t, m, cmd, m_rust, m_psutil, ecc_live = run_cli(phase, io)
 
-                    # ECC and artifact sizes are collected into the JSONL (not printed live)
                     artifact_sizes: dict[str, Optional[int]] = {}
                     if phase == "compile":
                         circuit_size = file_size_bytes(io.circuit_path)
@@ -777,7 +703,6 @@ def main() -> int:
                     with out_path.open("a", encoding="utf-8") as f:
                         f.write(json.dumps(row) + "\n")
 
-                    # Guard: compile claimed success but circuit missing
                     if phase == "compile" and rc == 0:
                         if not io.circuit_path.exists():
                             log.error(
@@ -786,7 +711,6 @@ def main() -> int:
                                 out,
                             )
                             return 1
-                        # Quantized is expected; warn (don’t fail) if missing.
                         qpath = _quantized_path_from_circuit(io.circuit_path)
                         if not qpath.exists():
                             log.warning(
@@ -808,8 +732,8 @@ def main() -> int:
     else:
         log.info("")
         log.info("✔ Wrote %d rows to %s", len(rows), out_path)
-        if args.summarize:
-            summarize(rows, str(model_path))
+        # Always summarize at the end (flag removed from CLI)
+        summarize(rows, str(model_path))
         return 0
 
 
