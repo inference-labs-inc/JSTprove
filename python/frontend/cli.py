@@ -293,7 +293,12 @@ def _run_bench(args: argparse.Namespace) -> None:
         inp = Path("python/models/inputs/lenet_input.json").resolve()
         # sensible defaults; allow overrides via --iterations/--results
         iterations = str(args.iterations if args.iterations is not None else 5)
-        results = args.results or "benchmarking/lenet_fixed.jsonl"
+        # treat empty string as unset to avoid `--output` missing-arg errors
+        results = (
+            args.results
+            if (args.results and str(args.results).strip())
+            else "benchmarking/lenet_fixed.jsonl"
+        )
         Path(results).parent.mkdir(parents=True, exist_ok=True)
 
         cmd = [
@@ -308,6 +313,8 @@ def _run_bench(args: argparse.Namespace) -> None:
             iterations,
             "--output",
         ]
+        if os.environ.get("JSTPROVE_DEBUG") == "1":
+            print("[debug] bench lenet cmd:", " ".join(cmd))  # noqa: T201
         env = os.environ.copy()
         env.setdefault("PYTHONUNBUFFERED", "1")
         rc = subprocess.run(cmd, text=True, env=env).returncode  # noqa: S603
