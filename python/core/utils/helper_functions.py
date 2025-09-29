@@ -13,6 +13,11 @@ from pathlib import Path
 from time import time
 from typing import Any, Callable, TypeVar
 
+try:
+    import tomllib  # Python 3.11+
+except ModuleNotFoundError:
+    import tomli as tomllib
+
 from python.core.utils.benchmarking_helpers import (
     end_memory_collection,
     start_memory_collection,
@@ -371,6 +376,11 @@ def run_cargo_command(
     Returns:
         subprocess.CompletedProcess[str]: Exit message from the subprocess.
     """
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+    version = pyproject["project"]["version"]
+
+    binary_name = binary_name + f"_{version}".replace(".", "-")
+
     binary_path = f"./target/release/{binary_name}"
     cmd = _build_command(
         binary_path=binary_path,

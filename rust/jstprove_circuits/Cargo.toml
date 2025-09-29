@@ -50,5 +50,5 @@ name = "simple_circuit"
 path = "bin/simple_circuit.rs"
 
 [[bin]]
-name = "onnx_generic_circuit"
+name = "onnx_generic_circuit_0-1-0"
 path = "bin/generic_demo.rs"
