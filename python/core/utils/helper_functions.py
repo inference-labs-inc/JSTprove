@@ -376,10 +376,13 @@ def run_cargo_command(
     Returns:
         subprocess.CompletedProcess[str]: Exit message from the subprocess.
     """
-    pyproject = tomllib.loads(Path("pyproject.toml").read_text())
-    version = pyproject["project"]["version"]
-
-    binary_name = binary_name + f"_{version}".replace(".", "-")
+    try:
+        pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+        version = pyproject["project"]["version"]
+        binary_name = binary_name + f"_{version}".replace(".", "-")
+    except (FileNotFoundError, KeyError, tomllib.TOMLDecodeError):
+        # If pyproject.toml doesn't exist or can't be parsed, use binary_name as is
+        pass
 
     binary_path = f"./target/release/{binary_name}"
     cmd = _build_command(

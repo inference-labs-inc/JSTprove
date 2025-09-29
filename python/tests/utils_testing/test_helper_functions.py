@@ -243,12 +243,31 @@ def test_run_cargo_command_normal(
 
 @pytest.mark.unit()
 @patch("python.core.utils.helper_functions.subprocess.run")
-def test_run_cargo_command_dev_mode(mock_run: MagicMock) -> None:
+@patch("python.core.utils.helper_functions.Path.read_text")
+def test_run_cargo_command_dev_mode(
+    mock_read_text: MagicMock,
+    mock_run: MagicMock,
+) -> None:
+    # Mock pyproject.toml contents so version parsing succeeds
+    mock_read_text.return_value = """
+    [project]
+    version = "1.2.3"
+    """
+
+    # Mock subprocess.run success
     mock_run.return_value = MagicMock(returncode=0)
+
+    # Run the function under test
     run_cargo_command("testbin", "compile", dev_mode=True)
 
+    # Extract the actual cargo command used
     args = mock_run.call_args[0][0]
-    assert args[:5] == ["cargo", "run", "--bin", "testbin", "--release"]
+
+    # Build the expected binary name based on pyproject.toml version
+    expected_bin = "testbin_1-2-3"
+
+    # Assertions
+    assert args[:5] == ["cargo", "run", "--bin", expected_bin, "--release"]
     assert "compile" in args
 
 
