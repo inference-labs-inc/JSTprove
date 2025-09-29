@@ -627,10 +627,7 @@ where
         + Define<C>
         + MaybeConfigure, //+ RunBehavior<C>,
 {
-    // let matches = get_args();
-
     // The first argument is the command we need to identify
-    // let command = &args[1];
     let command = get_arg(matches, "type")?;
 
     match command.as_str() {

@@ -57,7 +57,7 @@ impl Circuit<Variable> {
         let w_and_b = OnnxContext::get_wandb()?;
 
         // Getting inputs
-        let mut out = get_inputs(&self.input_arr, OnnxContext::get_params()?.inputs.clone())?;
+        let mut out = get_inputs(&self.input_arr, params.inputs.clone())?;
 
         // let mut out = out2.remove("input").unwrap().clone();
         let layers = build_layers::<C, Builder>(params, architecture, w_and_b)?;
@@ -212,14 +212,8 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
     }
 }
 
-fn main() {
-    let mut file_reader = FileReader {
-        path: "demo_cnn".to_owned(),
-    };
-
-    let matches = get_args();
-
-    let meta_file_path = get_arg(&matches, "meta")
+fn set_onnx_context(matches: &clap::ArgMatches) {
+    let meta_file_path = get_arg(matches, "meta")
         .unwrap_or_else(|_| "python/models/weights/onnx_generic_circuit_weights.json".to_string());
 
     let meta_file = std::fs::read_to_string(&meta_file_path).expect("Failed to read metadata file");
@@ -229,8 +223,8 @@ fn main() {
         .map_err(|e| CircuitError::Other(e.to_string()))
         .unwrap();
 
-    if get_arg(&matches, "type").unwrap() == "run_compile_circuit" {
-        let arch_file_path = get_arg(&matches, "arch").unwrap_or_else(|_| {
+    if get_arg(matches, "type").unwrap() == "run_compile_circuit" {
+        let arch_file_path = get_arg(matches, "arch").unwrap_or_else(|_| {
             "python/models/weights/onnx_generic_circuit_weights.json".to_string()
         });
         let arch_file =
@@ -242,7 +236,7 @@ fn main() {
             .map_err(|e| CircuitError::Other(e.to_string()))
             .unwrap();
 
-        let wandb_file_path = get_arg(&matches, "wandb").unwrap_or_else(|_| {
+        let wandb_file_path = get_arg(matches, "wandb").unwrap_or_else(|_| {
             "python/models/weights/onnx_generic_circuit_weights2.json".to_string()
         });
         let wandb_file =
@@ -253,6 +247,16 @@ fn main() {
             .map_err(|e| CircuitError::Other(e.to_string()))
             .unwrap();
     }
+}
+
+fn main() {
+    let mut file_reader = FileReader {
+        path: "demo_cnn".to_owned(),
+    };
+
+    let matches = get_args();
+
+    set_onnx_context(&matches);
 
     if let Err(err) =
         handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(&matches, &mut file_reader)

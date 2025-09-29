@@ -498,9 +498,9 @@ def test_generate_proof_expander_no_ecc(
     mock_paths: MagicMock,
     mock_exec: MagicMock,
 ) -> None:
-    generate_proof("model", "cp", "w", "p", ZKProofSystems.Expander, ecc=False)
+    generate_proof("model", "c", "w", "p", ZKProofSystems.Expander, ecc=False)
     assert mock_exec.call_args[1]["mode"] == ExpanderMode.PROVE
-    assert mock_exec.call_args[1]["circuit_file"] == "cp"
+    assert mock_exec.call_args[1]["circuit_file"] == "c"
     assert mock_exec.call_args[1]["witness_file"] == "w"
     assert mock_exec.call_args[1]["proof_file"] == "p"
 
@@ -597,7 +597,7 @@ def test_generate_verify_expander_no_ecc(
 ) -> None:
     generate_verification(
         "model",
-        "cp",
+        "c",
         "i",
         "o",
         "w",
@@ -606,7 +606,7 @@ def test_generate_verify_expander_no_ecc(
         ecc=False,
     )
     assert mock_exec.call_args[1]["mode"] == ExpanderMode.VERIFY
-    assert mock_exec.call_args[1]["circuit_file"] == "cp"
+    assert mock_exec.call_args[1]["circuit_file"] == "c"
     assert mock_exec.call_args[1]["witness_file"] == "w"
     assert mock_exec.call_args[1]["proof_file"] == "p"
 
@@ -618,7 +618,7 @@ def test_generate_verify_expander_no_ecc(
 def test_generate_verify_expander_with_ecc(mock_run: MagicMock) -> None:
     generate_verification(
         "model",
-        "cp",
+        "c",
         "i",
         "o",
         "w",
@@ -634,7 +634,7 @@ def test_generate_verify_expander_with_ecc(mock_run: MagicMock) -> None:
     assert kwargs["command_type"] == "run_gen_verify"
     assert not kwargs["dev_mode"]
     assert kwargs["args"]["n"] == "model"
-    assert kwargs["args"]["c"] == "cp"
+    assert kwargs["args"]["c"] == "c"
     assert kwargs["args"]["w"] == "w"
     assert kwargs["args"]["p"] == "p"
     assert kwargs["args"]["i"] == "i"
@@ -648,7 +648,7 @@ def test_generate_verify_expander_with_ecc(mock_run: MagicMock) -> None:
 def test_generate_verify_expander_with_ecc_dev_mode_true(mock_run: MagicMock) -> None:
     generate_verification(
         "model",
-        "cp",
+        "c",
         "i",
         "o",
         "w",
@@ -663,7 +663,7 @@ def test_generate_verify_expander_with_ecc_dev_mode_true(mock_run: MagicMock) ->
     assert kwargs["command_type"] == "run_gen_verify"
     assert kwargs["dev_mode"]
     assert kwargs["args"]["n"] == "model"
-    assert kwargs["args"]["c"] == "cp"
+    assert kwargs["args"]["c"] == "c"
     assert kwargs["args"]["w"] == "w"
     assert kwargs["args"]["p"] == "p"
     assert kwargs["args"]["i"] == "i"
@@ -677,7 +677,7 @@ def test_generate_verify_unknown_raises() -> None:
     with pytest.raises(ProofSystemNotImplementedError):
         generate_verification(
             "model",
-            "cp",
+            "c",
             "i",
             "o",
             "w",
@@ -695,7 +695,7 @@ def test_proof_system_not_implemented_full_process() -> None:
     ):
         generate_verification(
             "model",
-            "cp",
+            "c",
             "i",
             "o",
             "w",
@@ -747,7 +747,7 @@ def test_generate_verify_expander_rust_error(
     with pytest.raises(Exception, match="TEST"):
         generate_verification(
             "model",
-            "cp",
+            "c",
             "i",
             "o",
             "w",
