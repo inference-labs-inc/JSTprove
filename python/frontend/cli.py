@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 import subprocess
 
-# third-party
 # local
 from python.core.circuits.errors import CircuitRunError
 from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
@@ -22,17 +21,17 @@ DEFAULT_CIRCUIT_MODULE = "python.core.circuit_models.generic_onnx"
 DEFAULT_CIRCUIT_CLASS = "GenericModelONNX"
 
 BANNER_TITLE = r"""
-  888888  .d8888b. 88888888888                                         
-    "88b d88P  Y88b    888                                             
-     888 Y88b.         888                                             
-     888  "Y888b.      888  88888b.  888d888 .d88b.  888  888  .d88b.  
-     888     "Y88b.    888  888 "88b 888P"  d88""88b 888  888 d8P  Y8b 
-     888       "888    888  888  888 888    888  888 Y88  88P 88888888 
-     88P Y88b  d88P    888  888 d88P 888    Y88..88P  Y8bd8P  Y8b.     
-     888  "Y8888P"     888  88888P"  888     "Y88P"    Y88P    "Y8888  
-   .d88P                    888                                        
- .d88P"                     888                                        
-888P"                       888                                        
+  888888  .d8888b. 88888888888
+    "88b d88P  Y88b    888
+     888 Y88b.         888
+     888  "Y888b.      888  88888b.  888d888 .d88b.  888  888  .d88b.
+     888     "Y88b.    888  888 "88b 888P"  d88""88b 888  888 d8P  Y8b
+     888       "888    888  888  888 888    888  888 Y88  88P 88888888
+     88P Y88b  d88P    888  888 d88P 888    Y88..88P  Y8bd8P  Y8b.
+     888  "Y8888P"     888  88888P"  888     "Y88P"    Y88P    "Y8888
+   .d88P                    888
+ .d88P"                     888
+888P"                       888
 """
 
 
@@ -398,7 +397,38 @@ def _run_bench(args: argparse.Namespace) -> None:
         raise CLIError(f"Benchmark command failed with exit code {proc.returncode}")
 
 
-def main(argv: list[str] | None = None) -> int:
+def _run_model_check(args: argparse.Namespace) -> None:
+    # third-party
+    import onnx
+
+    from python.core.model_processing.onnx_quantizer.exceptions import (
+        InvalidParamError,
+        UnsupportedOpError,
+    )
+    from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import (
+        ONNXOpQuantizer,
+    )
+
+    _ensure_exists(args.model_path, "file")
+
+    model = onnx.load(args.model_path)
+    quantizer = ONNXOpQuantizer()
+    try:
+        quantizer.check_model(model)
+        print(f"Model {args.model_path} is supported.")  # noqa: T201
+    except UnsupportedOpError as e:
+        msg = f"Model {args.model_path} is NOT supported: "
+        "Unsupported operations {e.unsupported_ops}"
+        raise CLIError(msg) from e
+    except InvalidParamError as e:
+        msg = f"Model {args.model_path} is NOT supported: {e.message}"
+        raise CLIError(msg) from e
+    except Exception as e:
+        msg = f"Issue obtaining result of model_check: {e!s}"
+        raise CLIError(msg) from e
+
+
+def main(argv: list[str] | None = None) -> int:  # noqa: C901
     """
     Entry point for the JSTprove CLI.
 
@@ -407,6 +437,7 @@ def main(argv: list[str] | None = None) -> int:
       - Optionally print the banner.
       - Dispatch to the selected subcommand:
           * compile:  model → circuit + quantized model
+          * model_check: check model support for quantization
           * witness:  inputs → outputs.json + witness.bin
           * prove:    witness → proof.bin
           * verify:   input/output/witness/proof → verification
@@ -449,6 +480,19 @@ def main(argv: list[str] | None = None) -> int:
         "--circuit-path",
         required=True,
         help="Output path for the compiled circuit (e.g., circuit.txt).",
+    )
+    # model_check
+    p_check = sub.add_parser(
+        "model_check",
+        aliases=["check"],
+        help="Check if the model is supported for quantization.",
+        allow_abbrev=False,
+    )
+    p_check.add_argument(
+        "-m",
+        "--model-path",
+        required=True,
+        help="Path to the ONNX model.",
     )
     # witness
     p_wit = sub.add_parser(
@@ -617,10 +661,12 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "verify":
             # Validate all inputs exist including quantized (only to hydrate shapes)
             _run_verify(args)
-
         elif args.cmd == "bench":
             _run_bench(args)
             from python.scripts import gen_and_bench
+        elif args.cmd == "model_check":
+            # Check if the model is supported
+            _run_model_check(args)
 
     # Preserve argparse/our own explicit exits
     except SystemExit:
