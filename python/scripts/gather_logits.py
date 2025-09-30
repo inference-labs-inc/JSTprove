@@ -51,6 +51,69 @@ except Exception as e:
     )
     raise
 
+
+class _ORTLoadError(Exception):
+    pass
+
+
+def _session(model_path: Path) -> ort.InferenceSession:
+    try:
+        sess_opts = ort.SessionOptions()
+        sess_opts.log_severity_level = 3
+        providers = ["CPUExecutionProvider"]
+        return ort.InferenceSession(
+            str(model_path), sess_options=sess_opts, providers=providers
+        )
+    except Exception as e:
+        raise _ORTLoadError(str(e))
+
+
+def _run_witness_get_logits(fp_model: Path, input_json: Path) -> np.ndarray:
+    """
+    Use the JST CLI to compile (if needed) and run witness; read output.json and return as float32.
+    """
+    with tempfile.TemporaryDirectory() as tmp_s:
+        tmp = Path(tmp_s)
+        circuit = tmp / "circuit.txt"
+
+        # compile
+        rc = subprocess.run(
+            ["jst", "--no-banner", "compile", "-m", str(fp_model), "-c", str(circuit)],
+            text=True,
+        ).returncode
+        if rc != 0:
+            raise SystemExit(f"[compile] failed rc={rc}")
+
+        out_json = tmp / "output.json"
+        wit_bin = tmp / "witness.bin"
+
+        # witness
+        rc = subprocess.run(
+            [
+                "jst",
+                "--no-banner",
+                "witness",
+                "-c",
+                str(circuit),
+                "-i",
+                str(input_json),
+                "-o",
+                str(out_json),
+                "-w",
+                str(wit_bin),
+            ],
+            text=True,
+        ).returncode
+        if rc != 0:
+            raise SystemExit(f"[witness] failed rc={rc}")
+
+        with out_json.open("r", encoding="utf-8") as f:
+            blob = json.load(f)
+        # blob["output"] is in the quantized/integer domain; for comparison we can float-cast
+        y = np.array(blob["output"], dtype=np.float32).ravel()
+        return y
+
+
 # ---------- IO helpers ----------
 
 
@@ -272,7 +335,16 @@ def main() -> int:
         use_q_path, prefer_q = _ensure_pre_softmax_as_output(q_model)
 
     fp_sess = _session(use_fp_path)
-    q_sess = _session(use_q_path)
+    try:
+        q_sess = _session(use_q_path)
+        use_witness_fallback = False
+    except _ORTLoadError as e:
+        # If ORT can't load the quantized graph (e.g., ai.onnx.contrib:* ops), use witness fallback
+        if "not a registered function/op" in str(e) or "domain" in str(e).lower():
+            q_sess = None
+            use_witness_fallback = True
+        else:
+            raise
 
     out_path = Path(args.out).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -286,7 +358,11 @@ def main() -> int:
             # ORT prefers float; quantized model ops will internally cast as needed
             x_fp32 = x.astype(np.float32, copy=False)
             logits_fp = _run_logits(fp_sess, x_fp32, prefer_fp)
-            logits_q = _run_logits(q_sess, x_fp32, prefer_q)
+            if not use_witness_fallback:
+                logits_q = _run_logits(q_sess, x_fp32, prefer_q)
+            else:
+                # run circuit path via witness and read output.json
+                logits_q = _run_witness_get_logits(fp_model, Path(ipath))
 
             # Prepare row
             amx_fp = int(np.argmax(logits_fp)) if logits_fp.size else None
