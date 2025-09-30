@@ -279,7 +279,7 @@ def _run_bench(args: argparse.Namespace) -> None:
     """
     Run benchmarks:
       - depth/breadth: call python.scripts.gen_and_bench (existing sweeps)
-      - lenet: run benchmark_runner on the repo's fixed LeNet model/input
+      - lenet: run benchmark_runner on a model (defaults to the repo's LeNet), optionally overridden via --model/--input
     """
     sweep = args.sweep or args.mode
     if not sweep:
@@ -287,17 +287,23 @@ def _run_bench(args: argparse.Namespace) -> None:
             "Please specify --sweep {depth|breadth|lenet} or a positional mode."
         )
 
-    # --- Fixed: LeNet quickstart model ---
+    # --- Model mode (lenet shortcut that can run any model) ---
     if sweep == "lenet":
-        model = Path("python/models/models_onnx/lenet.onnx").resolve()
-        inp = Path("python/models/inputs/lenet_input.json").resolve()
-        # sensible defaults; allow overrides via --iterations/--results
+        model = (
+            Path(args.model).resolve()
+            if args.model
+            else Path("python/models/models_onnx/lenet.onnx").resolve()
+        )
+        inp = (
+            Path(args.input).resolve()
+            if args.input
+            else Path("python/models/inputs/lenet_input.json").resolve()
+        )
         iterations = str(args.iterations if args.iterations is not None else 5)
-        # treat empty string as unset to avoid `--output` missing-arg errors
         results = (
-            args.results
+            args.results.strip()
             if (args.results and str(args.results).strip())
-            else "benchmarking/lenet.jsonl"
+            else "benchmarking/lenet_fixed.jsonl"
         )
         Path(results).parent.mkdir(parents=True, exist_ok=True)
 
@@ -307,24 +313,27 @@ def _run_bench(args: argparse.Namespace) -> None:
             "python.scripts.benchmark_runner",
             "--model",
             str(model),
-            "--input",
-            str(inp),
             "--iterations",
             iterations,
             "--output",
             results,
             "--summarize",
         ]
+        # only pass --input if the file exists (some models may not need it)
+        if inp and inp.exists():
+            cmd += ["--input", str(inp)]
+
         if os.environ.get("JSTPROVE_DEBUG") == "1":
-            print("[debug] bench lenet cmd:", " ".join(cmd))  # noqa: T201
+            print("[debug] bench cmd:", " ".join(cmd))  # noqa: T201
+
         env = os.environ.copy()
         env.setdefault("PYTHONUNBUFFERED", "1")
         rc = subprocess.run(cmd, text=True, env=env).returncode  # noqa: S603
         if rc != 0:
-            raise CLIError(f"LeNet benchmark failed with exit code {rc}")
+            raise CLIError(f"Benchmark failed with exit code {rc}")
         return  # done
 
-    # --- Depth/breadth ---
+    # --- Depth/breadth sweeps unchanged below ---
     provided_knobs = [
         args.depth_min,
         args.depth_max,
@@ -541,6 +550,15 @@ def main(argv: list[str] | None = None) -> int:
         "bench",
         help="Generate ONNX models and benchmark JSTprove (depth/breadth sweeps).",
         allow_abbrev=False,
+    )
+
+    p_bench.add_argument(
+        "--model",
+        help="Path to an ONNX model to benchmark (defaults to the built-in LeNet).",
+    )
+    p_bench.add_argument(
+        "--input",
+        help="Path to an input JSON for the model (defaults to the built-in LeNet sample).",
     )
 
     p_bench.add_argument(
