@@ -385,6 +385,26 @@ class Row:
         return json.dumps(self.__dict__)
 
 
+def _iter_inputs(
+    single: Optional[Path], glob_pat: Optional[str]
+) -> Iterable[Tuple[str, Path]]:
+    """
+    Yield (sample_id, path) pairs from either a single file or a glob.
+    - If --input is provided, use that.
+    - Else if --inputs-glob is provided, expand it (sorted).
+    """
+    if single:
+        yield (Path(single).name, Path(single))
+        return
+    if glob_pat:
+        for s in sorted(glob.glob(glob_pat)):
+            p = Path(s)
+            if p.is_file():
+                yield (p.name, p)
+        return
+    raise SystemExit("Must pass --input or --inputs-glob")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="Gather logits from FP vs quantized ONNX models into a JSONL."
