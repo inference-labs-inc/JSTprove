@@ -1,0 +1,75 @@
+name: Build and Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-rust-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Extract version from tag
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version_underscore=$(echo $VERSION | tr '.' '-')" >> $GITHUB_OUTPUT
+
+      - name: Update pyproject.toml version
+        run: |
+          sed -i 's/version = ".*"/version = "${{ steps.get_version.outputs.version }}"/' pyproject.toml
+
+      - name: Update Cargo.toml version
+        run: |
+          sed -i 's/version = ".*"/version = "${{ steps.get_version.outputs.version }}"/' rust/jstprove_circuits/Cargo.toml
+
+      - name: Update binary name in Cargo.toml
+        run: |
+          sed -i 's/name = "onnx_generic_circuit_.*"/name = "onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"/' rust/jstprove_circuits/Cargo.toml
+
+      - name: Update binary name in pyproject.toml
+        run: |
+          sed -i 's/onnx_generic_circuit_[0-9-]*/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}/' pyproject.toml
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libopenmpi-dev openmpi-bin pkg-config
+
+      - name: Build Rust binaries
+        run: cargo build --release --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
+
+      - name: Copy binaries to package
+        run: |
+          mkdir -p python/core/binaries
+          cp target/release/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }} python/core/binaries/
+          chmod +x python/core/binaries/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        run: uv python install 3.10
+
+      - name: Build wheel
+        run: uv build
+
+      - name: Create GitHub Release with binaries
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ steps.get_version.outputs.version }}
+          files: |
+            ./target/release/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
+
+      - name: Publish to PyPI
+        run: uv publish

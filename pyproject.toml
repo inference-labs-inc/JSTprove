@@ -18,6 +18,7 @@ dependencies = [
     "Requests==2.32.3",
     "scikit_learn==1.6.1",
     "toml==0.10.2",
+    "tomli==2.0.1; python_version < '3.11'",
     "torch==2.6.0",
     "transformers==4.52.4",
 ]
@@ -35,3 +36,6 @@ jst = "python.frontend.cli:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["python*"]
+
+[tool.setuptools.package-data]
+"python.core.binaries" = ["*"]
