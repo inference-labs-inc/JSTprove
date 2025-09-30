@@ -52,15 +52,196 @@ except Exception:
 # -----------------------------------------------------------------------------------------
 
 
-def _read_input_json(p: Path) -> np.ndarray:
-    """Read {"input":[...], "shape":[N,C,H,W]?} into an ndarray shaped as NCHW."""
+def _infer_nchw_from_session(
+    sess: "ort.InferenceSession",
+) -> Optional[Tuple[int, int, int, int]]:
+    """
+    Best-effort: read the first input’s shape from the model.
+    Dynamic dims become 1. Returns (N,C,H,W) or None if unknown.
+    """
+    try:
+        ishape = list(sess.get_inputs()[0].shape)
+    except Exception:
+        return None
+    if not ishape:
+        return None
+    dims = []
+    for d in ishape:
+        if d is None or (isinstance(d, str) and not str(d).isdigit()):
+            dims.append(1)  # assume batch=1 etc.
+        else:
+            dims.append(int(d))
+    # pad/trim to 4 dims if needed
+    if len(dims) < 4:
+        dims = [1] * (4 - len(dims)) + dims
+    return tuple(dims[-4:])  # NCHW
+
+
+def _read_input_json(
+    p: Path, expected_shape: Optional[Tuple[int, int, int, int]] = None
+) -> np.ndarray:
+    """
+    Accepts several formats:
+      - {"input": [...], "shape":[N,C,H,W]}
+      - {"inputs": {"input":[...]}} or {"inputs": [...]}
+      - {"data":[...]} / {"values":[...]} / raw list
+    If no shape is provided and the array is flat, tries to reshape to the model’s NCHW.
+    """
     with p.open("r", encoding="utf-8") as f:
         blob = json.load(f)
-    arr = np.array(blob["input"], dtype=np.float32)
-    shp = blob.get("shape")
+
+    def pick_array(obj):
+        if isinstance(obj, dict):
+            # common names first
+            for k in ("input_data", "input", "inputs", "data", "values"):
+                if k in obj:
+                    v = obj[k]
+                    # inputs might be dict or list
+                    if isinstance(v, dict):
+                        # prefer "input" key, else first item
+                        if "input" in v:
+                            return v["input"]
+                        if v:
+                            return next(iter(v.values()))
+                    return v
+            # fall back: if any value looks like a list/array, take first
+            for v in obj.values():
+                if isinstance(v, (list, tuple)):
+                    return v
+        return obj  # could already be a list
+
+    arr_like = pick_array(blob)
+    arr = np.array(arr_like, dtype=np.float32)
+
+    # If shape is explicitly given, use it.
+    shp = None
+    if isinstance(blob, dict):
+        shp = blob.get("shape") or blob.get("nchw") or blob.get("dims")
+
     if shp:
-        arr = arr.reshape(shp)
-    return arr
+        try:
+            arr = arr.reshape(tuple(int(x) for x in shp))
+        except Exception as e:
+            raise SystemExit(f"Could not reshape input to {shp}: {e}")
+        return arr
+
+    # If already NCHW or NHWC shaped, keep as-is.
+    if arr.ndim == 4:
+        return arr
+
+    # If flat, try the model’s expected NCHW.
+    if arr.ndim == 1 and expected_shape is not None:
+        n, c, h, w = expected_shape
+        need = int(n) * int(c) * int(h) * int(w)
+        if arr.size == need:
+            return arr.reshape((n, c, h, w))
+
+    # As a last resort, assume batch=1 and try to guess CHW
+    if arr.ndim == 3:
+        return arr[np.newaxis, ...]  # add batch
+
+    # If 2-D and we know the expected shape, try to reshape.
+    if arr.ndim == 2 and expected_shape is not None:
+        n, c, h, w = expected_shape
+        need = int(n) * int(c) * int(h) * int(w)
+        if arr.size == need:
+            return arr.reshape((n, c, h, w))
+
+    raise SystemExit(
+        f"Input JSON at {p} doesn’t contain a recognizable tensor. "
+        f"Top-level keys: {list(blob.keys()) if isinstance(blob, dict) else type(blob)}"
+    )
+
+
+def _read_witness_outputs(json_path: Path) -> np.ndarray:
+    """
+    Read outputs produced by the pipeline runner.
+    Prefer 'rescaled_output' (float logits); fall back to integer 'output'.
+    Returns np.float32 1-D array.
+    """
+    with json_path.open("r", encoding="utf-8") as f:
+        blob = json.load(f)
+
+    if "rescaled_output" in blob and isinstance(blob["rescaled_output"], list):
+        arr = np.array(blob["rescaled_output"], dtype=np.float32)
+    elif "output" in blob and isinstance(blob["output"], list):
+        # Raw quantized ints — cast to float so downstream math works.
+        arr = np.array(blob["output"], dtype=np.float32)
+    else:
+        raise SystemExit(
+            f"Output JSON missing both 'rescaled_output' and 'output': {json_path}"
+        )
+
+    return arr.ravel()
+
+
+def get_quantized_logits_via_runner(circuit_path, input_json, tmpdir):
+    out_json = tmpdir / "output.json"
+    wit = tmpdir / "witness.bin"
+    # run the pipeline just for witness (which computes outputs)
+    subprocess.run(
+        [
+            "jst",
+            "--no-banner",
+            "witness",
+            "-c",
+            str(circuit_path),
+            "-i",
+            str(input_json),
+            "-o",
+            str(out_json),
+            "-w",
+            str(wit),
+        ],
+        check=True,
+        text=True,
+    )
+    # Prefer rescaled logits if present
+    return _read_witness_outputs(out_json)
+
+
+def _run_witness_get_logits(fp_model: Path, input_json: Path) -> np.ndarray:
+    """
+    Use the JST CLI to compile (if needed) and run witness; read output.json
+    and return logits as float32, preferring 'rescaled_output'.
+    """
+    with tempfile.TemporaryDirectory() as tmp_s:
+        tmp = Path(tmp_s)
+        circuit = tmp / "circuit.txt"
+
+        # compile
+        rc = subprocess.run(
+            ["jst", "--no-banner", "compile", "-m", str(fp_model), "-c", str(circuit)],
+            text=True,
+        ).returncode
+        if rc != 0:
+            raise SystemExit(f"[compile] failed rc={rc}")
+
+        out_json = tmp / "output.json"
+        wit_bin = tmp / "witness.bin"
+
+        # witness
+        rc = subprocess.run(
+            [
+                "jst",
+                "--no-banner",
+                "witness",
+                "-c",
+                str(circuit),
+                "-i",
+                str(input_json),
+                "-o",
+                str(out_json),
+                "-w",
+                str(wit_bin),
+            ],
+            text=True,
+        ).returncode
+        if rc != 0:
+            raise SystemExit(f"[witness] failed rc={rc}")
+
+        # Prefer rescaled logits if present
+        return _read_witness_outputs(out_json)
 
 
 def _iter_inputs(
@@ -318,6 +499,7 @@ def main() -> int:
 
         # ORT session for FP model
         fp_sess = _ort_session(use_fp_path)
+        expected_nchw = _infer_nchw_from_session(fp_sess)
 
         # Try ORT for quantized; if it fails with unregistered op/domain issues, switch to runner
         use_runner_fallback = False
@@ -345,7 +527,7 @@ def main() -> int:
             for sid, ipath in _iter_inputs(
                 Path(args.input) if args.input else None, args.inputs_glob
             ):
-                x = _read_input_json(Path(ipath))
+                x = _read_input_json(Path(ipath), expected_shape=expected_nchw)
                 x_fp32 = x.astype(np.float32, copy=False)
 
                 # FP logits via ORT
