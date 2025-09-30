@@ -312,6 +312,8 @@ def _run_bench(args: argparse.Namespace) -> None:
             "--iterations",
             iterations,
             "--output",
+            results,
+            "--summarize",
         ]
         if os.environ.get("JSTPROVE_DEBUG") == "1":
             print("[debug] bench lenet cmd:", " ".join(cmd))  # noqa: T201
