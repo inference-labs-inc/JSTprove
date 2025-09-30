@@ -84,7 +84,7 @@ def _read_input_json(
     Accepts several formats:
       - {"input": [...], "shape":[N,C,H,W]}
       - {"inputs": {"input":[...]}} or {"inputs": [...]}
-      - {"data":[...]} / {"values":[...]} / raw list
+      - {"input_data":[...]}, {"data":[...]}, {"values":[...]} or raw list
     If no shape is provided and the array is flat, tries to reshape to the model’s NCHW.
     """
     with p.open("r", encoding="utf-8") as f:
@@ -92,19 +92,15 @@ def _read_input_json(
 
     def pick_array(obj):
         if isinstance(obj, dict):
-            # common names first
             for k in ("input_data", "input", "inputs", "data", "values"):
                 if k in obj:
                     v = obj[k]
-                    # inputs might be dict or list
                     if isinstance(v, dict):
-                        # prefer "input" key, else first item
                         if "input" in v:
                             return v["input"]
                         if v:
                             return next(iter(v.values()))
                     return v
-            # fall back: if any value looks like a list/array, take first
             for v in obj.values():
                 if isinstance(v, (list, tuple)):
                     return v
@@ -113,7 +109,6 @@ def _read_input_json(
     arr_like = pick_array(blob)
     arr = np.array(arr_like, dtype=np.float32)
 
-    # If shape is explicitly given, use it.
     shp = None
     if isinstance(blob, dict):
         shp = blob.get("shape") or blob.get("nchw") or blob.get("dims")
@@ -125,22 +120,18 @@ def _read_input_json(
             raise SystemExit(f"Could not reshape input to {shp}: {e}")
         return arr
 
-    # If already NCHW or NHWC shaped, keep as-is.
     if arr.ndim == 4:
         return arr
 
-    # If flat, try the model’s expected NCHW.
     if arr.ndim == 1 and expected_shape is not None:
         n, c, h, w = expected_shape
         need = int(n) * int(c) * int(h) * int(w)
         if arr.size == need:
             return arr.reshape((n, c, h, w))
 
-    # As a last resort, assume batch=1 and try to guess CHW
     if arr.ndim == 3:
         return arr[np.newaxis, ...]  # add batch
 
-    # If 2-D and we know the expected shape, try to reshape.
     if arr.ndim == 2 and expected_shape is not None:
         n, c, h, w = expected_shape
         need = int(n) * int(c) * int(h) * int(w)
@@ -165,7 +156,6 @@ def _read_witness_outputs(json_path: Path) -> np.ndarray:
     if "rescaled_output" in blob and isinstance(blob["rescaled_output"], list):
         arr = np.array(blob["rescaled_output"], dtype=np.float32)
     elif "output" in blob and isinstance(blob["output"], list):
-        # Raw quantized ints — cast to float so downstream math works.
         arr = np.array(blob["output"], dtype=np.float32)
     else:
         raise SystemExit(
@@ -175,10 +165,11 @@ def _read_witness_outputs(json_path: Path) -> np.ndarray:
     return arr.ravel()
 
 
-def get_quantized_logits_via_runner(circuit_path, input_json, tmpdir):
+def get_quantized_logits_via_runner(
+    circuit_path: Path, input_json: Path, tmpdir: Path
+) -> np.ndarray:
     out_json = tmpdir / "output.json"
     wit = tmpdir / "witness.bin"
-    # run the pipeline just for witness (which computes outputs)
     subprocess.run(
         [
             "jst",
@@ -196,67 +187,7 @@ def get_quantized_logits_via_runner(circuit_path, input_json, tmpdir):
         check=True,
         text=True,
     )
-    # Prefer rescaled logits if present
     return _read_witness_outputs(out_json)
-
-
-def _run_witness_get_logits(fp_model: Path, input_json: Path) -> np.ndarray:
-    """
-    Use the JST CLI to compile (if needed) and run witness; read output.json
-    and return logits as float32, preferring 'rescaled_output'.
-    """
-    with tempfile.TemporaryDirectory() as tmp_s:
-        tmp = Path(tmp_s)
-        circuit = tmp / "circuit.txt"
-
-        # compile
-        rc = subprocess.run(
-            ["jst", "--no-banner", "compile", "-m", str(fp_model), "-c", str(circuit)],
-            text=True,
-        ).returncode
-        if rc != 0:
-            raise SystemExit(f"[compile] failed rc={rc}")
-
-        out_json = tmp / "output.json"
-        wit_bin = tmp / "witness.bin"
-
-        # witness
-        rc = subprocess.run(
-            [
-                "jst",
-                "--no-banner",
-                "witness",
-                "-c",
-                str(circuit),
-                "-i",
-                str(input_json),
-                "-o",
-                str(out_json),
-                "-w",
-                str(wit_bin),
-            ],
-            text=True,
-        ).returncode
-        if rc != 0:
-            raise SystemExit(f"[witness] failed rc={rc}")
-
-        # Prefer rescaled logits if present
-        return _read_witness_outputs(out_json)
-
-
-def _iter_inputs(
-    single: Optional[Path], glob_pat: Optional[str]
-) -> Iterable[Tuple[str, Path]]:
-    if single:
-        yield (single.name, single)
-        return
-    if glob_pat:
-        for s in sorted(glob.glob(glob_pat)):
-            p = Path(s)
-            if p.is_file():
-                yield (p.name, p)
-        return
-    raise SystemExit("Must pass --input or --inputs-glob")
 
 
 # -----------------------------------------------------------------------------------------
@@ -294,7 +225,6 @@ def _expose_tensor_as_output(model: ModelProto, tensor_name: str) -> ModelProto:
     g = m2.graph
     if any(vi.name == tensor_name for vi in g.output):
         return m2
-    # Try to find existing ValueInfo; else create a minimal float tensor info
     vi = next((vi for vi in g.value_info if vi.name == tensor_name), None)
     if vi is None:
         vi = helper.ValueInfoProto()
@@ -345,6 +275,16 @@ def _run_logits_ort(
     return y.astype(np.float32, copy=False)
 
 
+def _looks_quant_int(y: np.ndarray) -> bool:
+    """
+    Heuristic: if dtype is not float OR magnitudes are huge, it's likely raw int logits.
+    """
+    y = np.asarray(y)
+    non_float = not np.issubdtype(y.dtype, np.floating)
+    huge_mag = np.isfinite(y).all() and (np.max(np.abs(y)) > 1e4)
+    return bool(non_float or huge_mag)
+
+
 # -----------------------------------------------------------------------------------------
 # Compile → circuit & quantized; witness fallback for quantized path
 # -----------------------------------------------------------------------------------------
@@ -369,7 +309,6 @@ def _compile_fp_once(fp_model: Path, workdir: Path) -> Tuple[Path, Path]:
         raise SystemExit(f"[compile] failed rc={rc}")
     q = _quantized_path_from_circuit(circuit)
     if not q.exists():
-        # Fallback scan
         cands = list(workdir.glob("*quantized*.onnx"))
         if not cands:
             raise SystemExit("Quantized ONNX not found after compile.")
@@ -382,7 +321,7 @@ def _witness_logits_once(
 ) -> np.ndarray:
     """
     Run 'jst witness' to compute outputs for the given input JSON with the compiled circuit.
-    Returns the output tensor as float32 (cast from whatever domain).
+    Returns float32 logits, preferring 'rescaled_output' if present.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     out_json = out_dir / "output.json"
@@ -405,9 +344,7 @@ def _witness_logits_once(
     ).returncode
     if rc != 0:
         raise SystemExit(f"[witness] failed rc={rc}")
-    with out_json.open("r", encoding="utf-8") as f:
-        blob = json.load(f)
-    return np.array(blob["output"], dtype=np.float32).ravel()
+    return _read_witness_outputs(out_json)
 
 
 # -----------------------------------------------------------------------------------------
@@ -477,14 +414,11 @@ def main() -> int:
     out_path = Path(args.out).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Work area that persists for the whole run so we can reuse compiled artifacts
     with tempfile.TemporaryDirectory() as tmp_s:
         tmp = Path(tmp_s)
 
-        # Compile once to get circuit + (default) quantized ONNX (for fallback and/or ORT)
+        # Compile once to get circuit + quantized ONNX
         circuit_path, q_from_compile = _compile_fp_once(fp_model, tmp)
-
-        # Choose quantized path (explicit arg wins)
         q_model = Path(args.quantized).resolve() if args.quantized else q_from_compile
 
         # Optionally expose pre-softmax for ORT models (no effect on witness fallback)
@@ -494,14 +428,12 @@ def main() -> int:
         prefer_q_out = None
         if args.force_pre_softmax:
             use_fp_path, prefer_fp_out = _ensure_pre_softmax_as_output(fp_model)
-            # Only try to rewrite quantized graph if we're going to use ORT on it
             use_q_path, prefer_q_out = _ensure_pre_softmax_as_output(q_model)
 
-        # ORT session for FP model
+        # Sessions
         fp_sess = _ort_session(use_fp_path)
         expected_nchw = _infer_nchw_from_session(fp_sess)
 
-        # Try ORT for quantized; if it fails with unregistered op/domain issues, switch to runner
         use_runner_fallback = False
         q_sess: Optional[ort.InferenceSession] = None
         try:
@@ -517,10 +449,10 @@ def main() -> int:
             else:
                 raise
         except Exception:
-            # Any other unexpected ORT initialization failure -> fallback
             use_runner_fallback = True
 
         warned_pre_softmax_once = False
+        warned_int_logits_once = False
 
         rows = 0
         with out_path.open("w", encoding="utf-8") as f:
@@ -533,17 +465,29 @@ def main() -> int:
                 # FP logits via ORT
                 logits_fp = _run_logits_ort(fp_sess, x_fp32, prefer_fp_out)
 
-                # Quantized logits: ORT if available else runner fallback (witness)
+                # Quantized logits
                 if not use_runner_fallback and q_sess is not None:
                     logits_q = _run_logits_ort(q_sess, x_fp32, prefer_q_out)
+                    # If ORT produced obvious quantized ints, redo via witness to get rescaled_output
+                    if _looks_quant_int(logits_q):
+                        if not warned_int_logits_once:
+                            print(
+                                "[info] Quantized ORT outputs look integer-scaled; "
+                                "recomputing via witness to use rescaled_output.",
+                                file=sys.stderr,
+                            )
+                            warned_int_logits_once = True
+                        run_dir = tmp / f"wit_{rows:06d}"
+                        logits_q = _witness_logits_once(
+                            circuit_path, Path(ipath), run_dir
+                        )
                 else:
                     if args.force_pre_softmax and not warned_pre_softmax_once:
                         print(
                             "[warn] --force-pre-softmax is ignored for runner fallback; using model outputs.",
                             file=sys.stderr,
-                        )  # noqa: T201
+                        )
                         warned_pre_softmax_once = True
-                    # Use circuit + witness to get outputs
                     run_dir = tmp / f"wit_{rows:06d}"
                     logits_q = _witness_logits_once(circuit_path, Path(ipath), run_dir)
 

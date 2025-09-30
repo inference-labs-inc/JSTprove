@@ -620,7 +620,6 @@ def main(argv: list[str] | None = None) -> int:
 
         elif args.cmd == "bench":
             _run_bench(args)
-            from python.scripts import gen_and_bench
 
     # Preserve argparse/our own explicit exits
     except SystemExit:
