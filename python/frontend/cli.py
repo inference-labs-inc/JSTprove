@@ -297,7 +297,7 @@ def _run_bench(args: argparse.Namespace) -> None:
         results = (
             args.results
             if (args.results and str(args.results).strip())
-            else "benchmarking/lenet_fixed.jsonl"
+            else "benchmarking/lenet.jsonl"
         )
         Path(results).parent.mkdir(parents=True, exist_ok=True)
 
