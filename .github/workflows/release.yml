@@ -64,12 +64,11 @@ jobs:
       - name: Build wheel
         run: uv build
 
-      - name: Create GitHub Release with binaries
+      - name: Create GitHub Release with wheel
         uses: softprops/action-gh-release@v2
         with:
           name: Release ${{ steps.get_version.outputs.version }}
-          files: |
-            ./target/release/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
+          files: ./dist/jstprove-${{ steps.get_version.outputs.version }}-py3-none-any.whl
 
       - name: Publish to PyPI
         run: uv publish
