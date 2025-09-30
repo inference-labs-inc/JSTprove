@@ -663,7 +663,6 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
             _run_verify(args)
         elif args.cmd == "bench":
             _run_bench(args)
-            from python.scripts import gen_and_bench
         elif args.cmd == "model_check":
             # Check if the model is supported
             _run_model_check(args)
