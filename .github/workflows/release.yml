@@ -28,7 +28,7 @@ jobs:
 
       - name: Update Cargo.toml version
         run: |
-          sed -i 's/version = ".*"/version = "${{ steps.get_version.outputs.version }}"/' rust/jstprove_circuits/Cargo.toml
+          sed -i '0,/^version = ".*"/{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/}' rust/jstprove_circuits/Cargo.toml
 
       - name: Update binary name in Cargo.toml
         run: |
