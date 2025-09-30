@@ -2,6 +2,8 @@
 # ruff: noqa: S603
 
 """
+Examples
+--------
 python -m python.scripts.gather_logits \
   --model python/models/models_onnx/lenet.onnx \
   --input python/models/inputs/lenet_input.json \
@@ -27,24 +29,17 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Optional, Tuple
+from typing import Dict, Iterable, Optional, Tuple
 
 import numpy as np
 
-# Optional deps: onnx, onnxruntime
+# ----- Optional deps: onnx, onnxruntime (required for FP path & ORT attempt on quant) -----
 try:
     import onnx
-    from onnx import (
-        helper,
-        numpy_helper,
-        TensorProto,
-        ModelProto,
-        GraphProto,
-        NodeProto,
-        ValueInfoProto,
-    )
+    from onnx import helper, TensorProto, ModelProto, NodeProto, GraphProto
     import onnxruntime as ort
-except Exception as e:
+    from onnxruntime.capi.onnxruntime_pybind11_state import Fail as ORTFail
+except Exception:
     print(
         "This script requires 'onnx' and 'onnxruntime'. Install them in your env.",
         file=sys.stderr,
@@ -52,69 +47,9 @@ except Exception as e:
     raise
 
 
-class _ORTLoadError(Exception):
-    pass
-
-
-def _session(model_path: Path) -> ort.InferenceSession:
-    try:
-        sess_opts = ort.SessionOptions()
-        sess_opts.log_severity_level = 3
-        providers = ["CPUExecutionProvider"]
-        return ort.InferenceSession(
-            str(model_path), sess_options=sess_opts, providers=providers
-        )
-    except Exception as e:
-        raise _ORTLoadError(str(e))
-
-
-def _run_witness_get_logits(fp_model: Path, input_json: Path) -> np.ndarray:
-    """
-    Use the JST CLI to compile (if needed) and run witness; read output.json and return as float32.
-    """
-    with tempfile.TemporaryDirectory() as tmp_s:
-        tmp = Path(tmp_s)
-        circuit = tmp / "circuit.txt"
-
-        # compile
-        rc = subprocess.run(
-            ["jst", "--no-banner", "compile", "-m", str(fp_model), "-c", str(circuit)],
-            text=True,
-        ).returncode
-        if rc != 0:
-            raise SystemExit(f"[compile] failed rc={rc}")
-
-        out_json = tmp / "output.json"
-        wit_bin = tmp / "witness.bin"
-
-        # witness
-        rc = subprocess.run(
-            [
-                "jst",
-                "--no-banner",
-                "witness",
-                "-c",
-                str(circuit),
-                "-i",
-                str(input_json),
-                "-o",
-                str(out_json),
-                "-w",
-                str(wit_bin),
-            ],
-            text=True,
-        ).returncode
-        if rc != 0:
-            raise SystemExit(f"[witness] failed rc={rc}")
-
-        with out_json.open("r", encoding="utf-8") as f:
-            blob = json.load(f)
-        # blob["output"] is in the quantized/integer domain; for comparison we can float-cast
-        y = np.array(blob["output"], dtype=np.float32).ravel()
-        return y
-
-
-# ---------- IO helpers ----------
+# -----------------------------------------------------------------------------------------
+# I/O helpers
+# -----------------------------------------------------------------------------------------
 
 
 def _read_input_json(p: Path) -> np.ndarray:
@@ -143,16 +78,21 @@ def _iter_inputs(
     raise SystemExit("Must pass --input or --inputs-glob")
 
 
-# ---------- ONNX graph surgery (expose pre-softmax) ----------
+# -----------------------------------------------------------------------------------------
+# ONNX graph surgery (expose pre-softmax logits when final op is Softmax)
+# -----------------------------------------------------------------------------------------
+
+
+def _producer_map(g: GraphProto) -> Dict[str, NodeProto]:
+    return {out: node for node in g.node for out in node.output}
 
 
 def _find_softmax_output_pair(g: GraphProto) -> Optional[Tuple[NodeProto, str]]:
-    """If the sole graph output is produced by a Softmax node, return (softmax_node, softmax_input_name)."""
+    """If the sole graph output is produced by Softmax(X), return (softmax_node, X_name)."""
     if len(g.output) != 1:
         return None
     out_name = g.output[0].name
-    # Build producer map: output name -> node
-    prod = {o: n for n in g.node for o in n.output}
+    prod = _producer_map(g)
     node = prod.get(out_name)
     if node is None or node.op_type != "Softmax":
         return None
@@ -161,107 +101,137 @@ def _find_softmax_output_pair(g: GraphProto) -> Optional[Tuple[NodeProto, str]]:
     return (node, node.input[0])
 
 
-def _expose_tensor_as_output(
-    model: ModelProto, tensor_name: str, output_name: Optional[str] = None
-) -> ModelProto:
+def _clone_model(m: ModelProto) -> ModelProto:
+    newm = ModelProto()
+    newm.CopyFrom(m)
+    return newm
+
+
+def _expose_tensor_as_output(model: ModelProto, tensor_name: str) -> ModelProto:
     """Return a new model with 'tensor_name' also exposed as a graph output (non-destructive)."""
-    model = ModelProto()
-    model.CopyFrom(model)
-    g = model.graph
-    # Avoid duplicate outputs
+    m2 = _clone_model(model)
+    g = m2.graph
     if any(vi.name == tensor_name for vi in g.output):
-        return model
-    # Try to discover type/shape from existing value_info/initializers
+        return m2
+    # Try to find existing ValueInfo; else create a minimal float tensor info
     vi = next((vi for vi in g.value_info if vi.name == tensor_name), None)
     if vi is None:
-        # Fallback: make a minimally-typed float tensor info
         vi = helper.ValueInfoProto()
         vi.name = tensor_name
         vi.type.tensor_type.elem_type = TensorProto.FLOAT
-    # Append as additional output
     g.output.extend([vi])
-    return model
+    return m2
 
 
 def _ensure_pre_softmax_as_output(model_path: Path) -> Tuple[Path, Optional[str]]:
     """
-    If the model's sole output is the result of a Softmax, write a temp model that
-    also exposes the pre-softmax tensor as an output. Returns (path_to_use, pre_softmax_output_name or None).
+    If the model's only output is Softmax(X), write a temp model that
+    also exposes X as an output. Returns (path_to_use, pre_softmax_output_name or None).
     """
     m = onnx.load(str(model_path))
     pair = _find_softmax_output_pair(m.graph)
     if not pair:
         return model_path, None
-    softmax_node, pre_name = pair
+    _, pre_name = pair
     tmp = model_path.with_suffix(".prelogits.onnx")
-    newm = _expose_tensor_as_output(m, pre_name)
-    onnx.save(newm, str(tmp))
+    onnx.save(_expose_tensor_as_output(m, pre_name), str(tmp))
     return tmp, pre_name
 
 
-# ---------- ORT inference ----------
+# -----------------------------------------------------------------------------------------
+# ORT helpers
+# -----------------------------------------------------------------------------------------
 
 
-def _session(model_path: Path) -> ort.InferenceSession:
-    sess_opts = ort.SessionOptions()
-    sess_opts.log_severity_level = 3
-    providers = ["CPUExecutionProvider"]
+def _ort_session(model_path: Path) -> ort.InferenceSession:
+    opts = ort.SessionOptions()
+    opts.log_severity_level = 3
     return ort.InferenceSession(
-        str(model_path), sess_options=sess_opts, providers=providers
+        str(model_path), sess_options=opts, providers=["CPUExecutionProvider"]
     )
 
 
-def _run_logits(
-    sess: ort.InferenceSession, x: np.ndarray, prefer_pre: Optional[str]
+def _run_logits_ort(
+    sess: ort.InferenceSession, x: np.ndarray, prefer_output: Optional[str]
 ) -> np.ndarray:
-    """
-    Run the session and pick logits:
-      - If 'prefer_pre' is provided and is among outputs, return that tensor.
-      - Else return the first output.
-      - Squeezes batch dimension when N==1.
-    """
     in_name = sess.get_inputs()[0].name
     outs = [o.name for o in sess.get_outputs()]
-    want = prefer_pre if (prefer_pre and prefer_pre in outs) else outs[0]
+    want = prefer_output if (prefer_output and prefer_output in outs) else outs[0]
     y = sess.run([want], {in_name: x})[0]
     y = np.asarray(y)
     if y.ndim >= 2 and y.shape[0] == 1:
-        y = y.reshape(y.shape[1:])  # drop batch
+        y = y.reshape(y.shape[1:])  # drop batch for N==1
     return y.astype(np.float32, copy=False)
 
 
-# ---------- Quantized path discovery ----------
+# -----------------------------------------------------------------------------------------
+# Compile → circuit & quantized; witness fallback for quantized path
+# -----------------------------------------------------------------------------------------
 
 
 def _quantized_path_from_circuit(circuit_path: Path) -> Path:
     return circuit_path.with_name(f"{circuit_path.stem}_quantized_model.onnx")
 
 
-def _get_or_make_quantized(fp_model: Path, explicit_q: Optional[Path]) -> Path:
-    if explicit_q:
-        return explicit_q
-    # Call jst compile → writes circuit + quantized next to the circuit
-    with tempfile.TemporaryDirectory() as tmp_s:
-        tmp = Path(tmp_s)
-        circuit = tmp / "circuit.txt"
-        cmd = ["jst", "--no-banner", "compile", "-m", str(fp_model), "-c", str(circuit)]
-        rc = subprocess.run(cmd, text=True).returncode
-        if rc != 0:
-            raise SystemExit(f"[compile] failed rc={rc}")
-        q = _quantized_path_from_circuit(circuit)
-        if not q.exists():
-            # Some versions might name it slightly differently; fall back to scan
-            cand = list(tmp.glob("*quantized*.onnx"))
-            if not cand:
-                raise SystemExit("Quantized ONNX not found after compile.")
-            q = cand[0]
-        # Copy to a stable sibling next to FP model
-        out = fp_model.with_name(fp_model.stem + "_quantized.onnx")
-        shutil.copy2(q, out)
-        return out
+def _compile_fp_once(fp_model: Path, workdir: Path) -> Tuple[Path, Path]:
+    """
+    Compile the FP ONNX once, returning (circuit_path, quantized_onnx_path).
+    Both are placed in 'workdir'.
+    """
+    workdir.mkdir(parents=True, exist_ok=True)
+    circuit = workdir / "circuit.txt"
+    rc = subprocess.run(
+        ["jst", "--no-banner", "compile", "-m", str(fp_model), "-c", str(circuit)],
+        text=True,
+    ).returncode
+    if rc != 0:
+        raise SystemExit(f"[compile] failed rc={rc}")
+    q = _quantized_path_from_circuit(circuit)
+    if not q.exists():
+        # Fallback scan
+        cands = list(workdir.glob("*quantized*.onnx"))
+        if not cands:
+            raise SystemExit("Quantized ONNX not found after compile.")
+        q = cands[0]
+    return circuit, q
 
 
-# ---------- Metrics ----------
+def _witness_logits_once(
+    circuit_path: Path, input_json: Path, out_dir: Path
+) -> np.ndarray:
+    """
+    Run 'jst witness' to compute outputs for the given input JSON with the compiled circuit.
+    Returns the output tensor as float32 (cast from whatever domain).
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_json = out_dir / "output.json"
+    wit_bin = out_dir / "witness.bin"
+    rc = subprocess.run(
+        [
+            "jst",
+            "--no-banner",
+            "witness",
+            "-c",
+            str(circuit_path),
+            "-i",
+            str(input_json),
+            "-o",
+            str(out_json),
+            "-w",
+            str(wit_bin),
+        ],
+        text=True,
+    ).returncode
+    if rc != 0:
+        raise SystemExit(f"[witness] failed rc={rc}")
+    with out_json.open("r", encoding="utf-8") as f:
+        blob = json.load(f)
+    return np.array(blob["output"], dtype=np.float32).ravel()
+
+
+# -----------------------------------------------------------------------------------------
+# Metrics
+# -----------------------------------------------------------------------------------------
 
 
 def _safe_cosine(a: np.ndarray, b: np.ndarray) -> float:
@@ -276,7 +246,9 @@ def _l2(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.linalg.norm(a - b))
 
 
-# ---------- Main ----------
+# -----------------------------------------------------------------------------------------
+# Main
+# -----------------------------------------------------------------------------------------
 
 
 @dataclass
@@ -302,7 +274,7 @@ def main() -> int:
     ap.add_argument("--model", required=True, help="FP ONNX path (e.g., lenet.onnx)")
     ap.add_argument(
         "--quantized",
-        help="Quantized ONNX path (if omitted, we'll run 'jst compile' to produce one).",
+        help="Quantized ONNX path; if omitted, we'll compile once to produce one.",
     )
     ap.add_argument("--input", help="Single input JSON to run.")
     ap.add_argument(
@@ -313,7 +285,7 @@ def main() -> int:
     ap.add_argument(
         "--force-pre-softmax",
         action="store_true",
-        help="Try to expose pre-softmax tensor and use it when present.",
+        help="Try to expose pre-softmax tensor and use it when present (ORT paths only).",
     )
     args = ap.parse_args()
 
@@ -321,66 +293,95 @@ def main() -> int:
     if not fp_model.exists():
         raise SystemExit(f"Missing model: {fp_model}")
 
-    q_model = _get_or_make_quantized(
-        fp_model, Path(args.quantized).resolve() if args.quantized else None
-    )
-
-    # Possibly expose pre-softmax on both graphs
-    prefer_fp = None
-    prefer_q = None
-    use_fp_path = fp_model
-    use_q_path = q_model
-    if args.force_pre_softmax:
-        use_fp_path, prefer_fp = _ensure_pre_softmax_as_output(fp_model)
-        use_q_path, prefer_q = _ensure_pre_softmax_as_output(q_model)
-
-    fp_sess = _session(use_fp_path)
-    try:
-        q_sess = _session(use_q_path)
-        use_witness_fallback = False
-    except _ORTLoadError as e:
-        # If ORT can't load the quantized graph (e.g., ai.onnx.contrib:* ops), use witness fallback
-        if "not a registered function/op" in str(e) or "domain" in str(e).lower():
-            q_sess = None
-            use_witness_fallback = True
-        else:
-            raise
-
     out_path = Path(args.out).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    rows = 0
-    with out_path.open("w", encoding="utf-8") as f:
-        for sid, ipath in _iter_inputs(
-            Path(args.input) if args.input else None, args.inputs_glob
-        ):
-            x = _read_input_json(Path(ipath))
-            # ORT prefers float; quantized model ops will internally cast as needed
-            x_fp32 = x.astype(np.float32, copy=False)
-            logits_fp = _run_logits(fp_sess, x_fp32, prefer_fp)
-            if not use_witness_fallback:
-                logits_q = _run_logits(q_sess, x_fp32, prefer_q)
+    # Work area that persists for the whole run so we can reuse compiled artifacts
+    with tempfile.TemporaryDirectory() as tmp_s:
+        tmp = Path(tmp_s)
+
+        # Compile once to get circuit + (default) quantized ONNX (for fallback and/or ORT)
+        circuit_path, q_from_compile = _compile_fp_once(fp_model, tmp)
+
+        # Choose quantized path (explicit arg wins)
+        q_model = Path(args.quantized).resolve() if args.quantized else q_from_compile
+
+        # Optionally expose pre-softmax for ORT models (no effect on witness fallback)
+        use_fp_path = fp_model
+        prefer_fp_out = None
+        use_q_path = q_model
+        prefer_q_out = None
+        if args.force_pre_softmax:
+            use_fp_path, prefer_fp_out = _ensure_pre_softmax_as_output(fp_model)
+            # Only try to rewrite quantized graph if we're going to use ORT on it
+            use_q_path, prefer_q_out = _ensure_pre_softmax_as_output(q_model)
+
+        # ORT session for FP model
+        fp_sess = _ort_session(use_fp_path)
+
+        # Try ORT for quantized; if it fails with unregistered op/domain issues, switch to runner
+        use_runner_fallback = False
+        q_sess: Optional[ort.InferenceSession] = None
+        try:
+            q_sess = _ort_session(use_q_path)
+        except ORTFail as e:
+            msg = str(e)
+            if (
+                ("not a registered function/op" in msg)
+                or ("is not a registered function" in msg)
+                or ("domain" in msg.lower())
+            ):
+                use_runner_fallback = True
             else:
-                # run circuit path via witness and read output.json
-                logits_q = _run_witness_get_logits(fp_model, Path(ipath))
+                raise
+        except Exception:
+            # Any other unexpected ORT initialization failure -> fallback
+            use_runner_fallback = True
 
-            # Prepare row
-            amx_fp = int(np.argmax(logits_fp)) if logits_fp.size else None
-            amx_q = int(np.argmax(logits_q)) if logits_q.size else None
+        warned_pre_softmax_once = False
 
-            row = Row(
-                sample=sid,
-                model_fp=str(fp_model),
-                model_q=str(q_model),
-                argmax_fp=amx_fp,
-                argmax_q=amx_q,
-                logits_fp=[float(v) for v in np.ravel(logits_fp)],
-                logits_q=[float(v) for v in np.ravel(logits_q)],
-                l2=_l2(logits_fp, logits_q),
-                cosine=_safe_cosine(logits_fp, logits_q),
-            )
-            f.write(row.to_json() + "\n")
-            rows += 1
+        rows = 0
+        with out_path.open("w", encoding="utf-8") as f:
+            for sid, ipath in _iter_inputs(
+                Path(args.input) if args.input else None, args.inputs_glob
+            ):
+                x = _read_input_json(Path(ipath))
+                x_fp32 = x.astype(np.float32, copy=False)
+
+                # FP logits via ORT
+                logits_fp = _run_logits_ort(fp_sess, x_fp32, prefer_fp_out)
+
+                # Quantized logits: ORT if available else runner fallback (witness)
+                if not use_runner_fallback and q_sess is not None:
+                    logits_q = _run_logits_ort(q_sess, x_fp32, prefer_q_out)
+                else:
+                    if args.force_pre_softmax and not warned_pre_softmax_once:
+                        print(
+                            "[warn] --force-pre-softmax is ignored for runner fallback; using model outputs.",
+                            file=sys.stderr,
+                        )  # noqa: T201
+                        warned_pre_softmax_once = True
+                    # Use circuit + witness to get outputs
+                    run_dir = tmp / f"wit_{rows:06d}"
+                    logits_q = _witness_logits_once(circuit_path, Path(ipath), run_dir)
+
+                # Row + metrics
+                amx_fp = int(np.argmax(logits_fp)) if logits_fp.size else None
+                amx_q = int(np.argmax(logits_q)) if logits_q.size else None
+
+                row = Row(
+                    sample=sid,
+                    model_fp=str(fp_model),
+                    model_q=str(q_model),
+                    argmax_fp=amx_fp,
+                    argmax_q=amx_q,
+                    logits_fp=[float(v) for v in np.ravel(logits_fp)],
+                    logits_q=[float(v) for v in np.ravel(logits_q)],
+                    l2=_l2(logits_fp, logits_q),
+                    cosine=_safe_cosine(logits_fp, logits_q),
+                )
+                f.write(row.to_json() + "\n")
+                rows += 1
 
     print(f"✔ Wrote {rows} rows to {out_path}")  # noqa: T201
     return 0
