@@ -213,8 +213,7 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
 }
 
 fn set_onnx_context(matches: &clap::ArgMatches) {
-    let meta_file_path = get_arg(matches, "meta")
-        .unwrap_or_else(|_| "python/models/weights/onnx_generic_circuit_weights.json".to_string());
+    let meta_file_path = get_arg(matches, "meta").unwrap();
 
     let meta_file = std::fs::read_to_string(&meta_file_path).expect("Failed to read metadata file");
     let params: CircuitParams = serde_json::from_str(&meta_file).expect("Invalid metadata JSON");
@@ -224,9 +223,7 @@ fn set_onnx_context(matches: &clap::ArgMatches) {
         .unwrap();
 
     if get_arg(matches, "type").unwrap() == "run_compile_circuit" {
-        let arch_file_path = get_arg(matches, "arch").unwrap_or_else(|_| {
-            "python/models/weights/onnx_generic_circuit_weights.json".to_string()
-        });
+        let arch_file_path = get_arg(matches, "arch").unwrap();
         let arch_file =
             std::fs::read_to_string(&arch_file_path).expect("Failed to read architecture file");
         let arch: Architecture =
@@ -236,9 +233,7 @@ fn set_onnx_context(matches: &clap::ArgMatches) {
             .map_err(|e| CircuitError::Other(e.to_string()))
             .unwrap();
 
-        let wandb_file_path = get_arg(matches, "wandb").unwrap_or_else(|_| {
-            "python/models/weights/onnx_generic_circuit_weights2.json".to_string()
-        });
+        let wandb_file_path = get_arg(matches, "wandb").unwrap();
         let wandb_file =
             std::fs::read_to_string(&wandb_file_path).expect("Failed to read W&B file");
         let wandb: WANDB = serde_json::from_str(&wandb_file).expect("Invalid W&B JSON");
