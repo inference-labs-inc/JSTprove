@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import logging
 from dataclasses import asdict, dataclass
+from importlib.metadata import version as get_version
 from pathlib import Path
 from typing import Optional, Union
 
@@ -1075,9 +1076,11 @@ class ONNXConverter(ModelConverter):
             elem_type = getattr(output, "elem_type", -1)
             outputs.append(ONNXIO(output.name, elem_type, shape))
 
-        # Load version from pyproject.toml
-        pyproject = tomllib.loads(Path("pyproject.toml").read_text())
-        version = pyproject["project"]["version"]
+        # Get version from package metadata
+        try:
+            version = get_version("jstprove")
+        except Exception:
+            version = "0.0.0"
 
         architecture = {
             "architecture": [asdict(a) for a in architecture],
