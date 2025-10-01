@@ -1,5 +1,5 @@
 # python/scripts/benchmark_runner.py
-# ruff: noqa: S603
+# ruff: noqa: S603, RUF003, RUF002, T201
 
 """
 Benchmark JSTProve by invoking the CLI phases (compile → witness → prove → verify),
@@ -21,11 +21,11 @@ import subprocess
 import sys
 import tempfile
 import time
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import mean, stdev
-from typing import Dict, Optional
 
 # --- Third-party -------------------------------------------------------------
 import psutil
@@ -98,14 +98,17 @@ def _term_width(default: int = 100) -> int:
 # NOTE: currently unused; retained only because the (deprecated) compile card used it.
 def _human_bytes(n: int | None) -> str:
     """Pretty-print bytes as B/KB/MB/GB/TB (unused in the current flow)."""
+    conversion_value = 1024.0
     if n is None:
         return "NA"
     units = ["B", "KB", "MB", "GB", "TB"]
     x = float(n)
     for u in units:
-        if x < 1024.0 or u == units[-1]:
+        if x < conversion_value or u == units[-1]:
             return f"{x:.1f} {u}" if u != "B" else f"{int(x)} B"
-        x /= 1024.0
+        x /= conversion_value
+    msg = "Unreachable code: failed to format byte size."
+    raise RuntimeError(msg)
 
 
 # NOTE: currently unused; retained only because the (deprecated) compile card used it.
@@ -137,23 +140,19 @@ def _sum_child_rss_mb(parent_pid: int) -> float:
         return 0.0
     total = 0
     for c in parent.children(recursive=True):
-        try:
+        with suppress(psutil.Error):
             total += c.memory_info().rss
-        except psutil.Error:
-            pass
     return total / (1024.0 * 1024.0)
 
 
-def parse_ecc_stats(text: str) -> Dict[str, int]:
+def parse_ecc_stats(text: str) -> dict[str, int]:
     """Scan the whole blob for k=v pairs and keep only ECC keys."""
     clean = ANSI_RE.sub("", text).replace("\r", "\n")
-    stats: Dict[str, int] = {}
+    stats: dict[str, int] = {}
     for k, v in KV_PAIR.findall(clean):
         if k in ECC_KEYS:
-            try:
+            with suppress(ValueError):
                 stats[k] = int(v.replace(",", ""))
-            except ValueError:
-                pass
     return stats
 
 
@@ -168,7 +167,7 @@ def count_onnx_parameters(model_path: Path) -> int:
     Returns -1 if the `onnx` dependency is unavailable.
     """
     try:
-        import onnx  # type: ignore
+        import onnx  # type: ignore[import]
     except Exception:
         return -1
 
@@ -182,7 +181,7 @@ def count_onnx_parameters(model_path: Path) -> int:
     return int(total)
 
 
-def file_size_bytes(path: str | Path) -> Optional[int]:
+def file_size_bytes(path: str | Path) -> int | None:
     """Return file size in bytes (or None if the path does not exist)."""
     try:
         p = Path(path)
@@ -215,7 +214,10 @@ def parse_metrics(text: str) -> tuple[float | None, float | None]:
 
 
 def now_utc() -> str:
-    """UTC timestamp in RFC3339 format without subseconds (e.g., '2025-01-01T00:00:00Z')."""
+    """
+    UTC timestamp in RFC3339 format without subseconds
+    (e.g., '2025-01-01T00:00:00Z').
+    """
     return (
         datetime.now(timezone.utc)
         .replace(microsecond=0)
@@ -282,10 +284,11 @@ def _build_phase_cmd(phase: str, io: PhaseIO) -> list[str]:
         if io.input_path:
             cmd += ["-i", str(io.input_path)]
         return cmd
-    raise ValueError(f"unknown phase: {phase}")
+    msg = f"unknown phase: {phase}"
+    raise ValueError(msg)
 
 
-def run_cli(
+def run_cli(  # noqa: PLR0915, PLR0912, C901
     phase: str,
     io: PhaseIO,
 ) -> tuple[
@@ -296,7 +299,7 @@ def run_cli(
     list[str],
     float | None,
     float | None,
-    Dict[str, int],
+    dict[str, int],
 ]:
     """
     Execute one CLI phase, streaming stdout live with a spinner/HUD and
@@ -316,9 +319,9 @@ def run_cli(
     stop_ev, mon_thread, mon_results = start_memory_collection("")
     start = time.time()
     combined_lines: list[str] = []
-    ecc_live: Dict[str, int] = {}
+    ecc_live: dict[str, int] = {}
 
-    proc = subprocess.Popen(  # noqa: S603
+    proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -355,23 +358,22 @@ def run_cli(
                 if ("built layered circuit" in low) or (
                     "built hint normalized ir" in low
                 ):
-                    print(line, end="")  # noqa: T201
+                    print(line, end="")
 
                 # Harvest ECC counters live from any k=v pairs we see
                 for k, v in KV_PAIR.findall(ANSI_RE.sub("", line)):
                     if k in ECC_KEYS:
-                        try:
+                        with suppress(ValueError):
                             ecc_live[k] = int(v.replace(",", ""))
-                        except ValueError:
-                            pass
 
             # refresh HUD ~10Hz
             if int(elapsed * 10) != int((elapsed - 0.09) * 10) or not line:
                 spin = spinner[sp_i % len(spinner)]
                 sp_i += 1
                 hud_bar = _marquee(elapsed, width=bar_w)
-                hud = f"\r[{spin}] {phase:<7} | {elapsed:6.1f}s | mem↑ {peak_live_mb:7.1f} MB | {hud_bar}"
-                print(hud[: tw - 1], end="", flush=True)  # noqa: T201
+                hud = f"\r[{spin}] {phase:<7} | {elapsed:6.1f}s | "
+                f"mem↑ {peak_live_mb:7.1f} MB | {hud_bar}"
+                print(hud[: tw - 1], end="", flush=True)
 
             if proc.poll() is not None:
                 # Drain any remaining buffered output after the process exits.
@@ -383,10 +385,10 @@ def run_cli(
                 # final HUD line
                 elapsed = time.time() - start
                 hud = (
-                    f"\r[✔] {phase:<7} | {elapsed:6.1f}s | mem↑ {peak_live_mb:7.1f} MB | "
-                    + " " * bar_w
+                    f"\r[✔] {phase:<7} | {elapsed:6.1f}s "
+                    "| mem↑ {peak_live_mb:7.1f} MB | " + " " * bar_w
                 )
-                print(hud[: tw - 1])  # noqa: T201
+                print(hud[: tw - 1])
                 break
 
             time.sleep(0.09)
@@ -431,9 +433,12 @@ def run_cli(
 
 # NOTE: this card printer is currently unused (kept for reference).
 def _print_compile_card(
-    ecc: dict, circuit_bytes: int | None, quant_bytes: int | None
+    ecc: dict,
+    circuit_bytes: int | None,
+    quant_bytes: int | None,
 ) -> None:
     """Pretty compile stats block (unused in the current flow)."""
+    _ = circuit_bytes, quant_bytes
     if not ecc:
         return
     keys = [
@@ -451,18 +456,19 @@ def _print_compile_card(
     vmax = max(data.values())
     w = max(24, min(40, _term_width() - 50))
 
-    print("")  # noqa: T201
+    print("")
     print(
-        "┌────────────────────────── Compile Stats ──────────────────────────┐"
-    )  # noqa: T201
+        "┌────────────────────────── Compile Stats ──────────────────────────┐",
+    )
     for k in keys:
         if k in data:
             bar = _bar(data[k], vmax, width=w)
-            # _fmt_int/_human_bytes are intentionally still present but currently unused elsewhere.
-            print(f"│ {k:<14} {data[k]:>12}  {bar} │")  # noqa: T201
+            # _fmt_int/_human_bytes are intentionally still present
+            # but currently unused elsewhere.
+            print(f"│ {k:<14} {data[k]:>12}  {bar} │")
     print(
-        "└────────────────────────────────────────────────────────────────────┘"
-    )  # noqa: T201
+        "└────────────────────────────────────────────────────────────────────┘",
+    )
 
 
 def _quantized_path_from_circuit(circuit_path: Path) -> Path:
@@ -481,14 +487,17 @@ def _fmt_mean_sd(vals: list[float]) -> tuple[str, float | None, float | None]:
     return f"{mu:.3f} ± {sd:.3f}", mu, sd
 
 
-def _summary_card(
-    model_name: str, tmap: dict[str, list[float]], mmap: dict[str, list[float]]
+def _summary_card(  # noqa: PLR0915, C901
+    model_name: str,
+    tmap: dict[str, list[float]],
+    mmap: dict[str, list[float]],
 ) -> None:
     """
     Render a compact summary card with data-driven column widths so that
     multi-digit means (e.g., 46.741) align just as neatly as single-digit ones.
     Uses ASCII borders when JSTPROVE_ASCII=1.
     """
+    _ = model_name
     phases = ("compile", "witness", "prove", "verify")
 
     # 1) Build labels and stats first (so we know true content widths)
@@ -541,7 +550,7 @@ def _summary_card(
     # Estimate available width from the terminal; keep a comfortable default.
     tw = _term_width(100)
     # Fixed chars per row besides the two bars (separators, spaces, borders)
-    # Layout: │ {phase:<pw} │ {time:<tw} │ {best:>bw} │ {tbar} │ {mem:<mw} │ {peak:>pk} │ {mbar} │
+    # Layout: │ {phase:<pw} │ {time:<tw} │ {best:>bw} │ {tbar} │ {mem:<mw} │ {peak:>pk} │ {mbar} │ # noqa: E501
     fixed = (
         1  # left border
         + 1
@@ -578,16 +587,16 @@ def _summary_card(
 
     # Optionally switch to pure-ASCII table and bar characters
     ascii_mode = os.environ.get("JSTPROVE_ASCII") == "1"
-    V = "|" if ascii_mode else "│"
-    H = "-" if ascii_mode else "─"
-    TL = "+" if ascii_mode else "┌"
-    TR = "+" if ascii_mode else "┐"
-    BL = "+" if ascii_mode else "└"
-    BR = "+" if ascii_mode else "┘"
-    TJ = "+" if ascii_mode else "├"
-    BJ = "+" if ascii_mode else "┴"
-    MJ = "+" if ascii_mode else "┼"
-    BAR_CHAR = "#" if ascii_mode else "█"
+    V = "|" if ascii_mode else "│"  # noqa: N806
+    H = "-" if ascii_mode else "─"  # noqa: N806
+    TL = "+" if ascii_mode else "┌"  # noqa: N806
+    TR = "+" if ascii_mode else "┐"  # noqa: N806
+    BL = "+" if ascii_mode else "└"  # noqa: N806
+    BR = "+" if ascii_mode else "┘"  # noqa: N806
+    TJ = "+" if ascii_mode else "├"  # noqa: N806
+    BJ = "+" if ascii_mode else "┴"  # noqa: N806,F841
+    MJ = "+" if ascii_mode else "┼"  # noqa: N806
+    BAR_CHAR = "#" if ascii_mode else "█"  # noqa: N806
 
     def bar(val: float, vmax: float) -> str:
         # scale relative to max mean; clamp; ensure non-empty when val>0
@@ -596,12 +605,11 @@ def _summary_card(
         filled = max(1, int(bar_w * min(val, vmax) / vmax))
         return BAR_CHAR * filled + " " * (bar_w - filled)
 
-    # 3) Build the header/body lines using *exact* widths
-    title = f" Summary for {model_name} "
     # Make a header content row to measure the total width
     header_line = (
         f"{V} {hdr_phase:<{phase_w}} {V} {hdr_time:<{time_w}} {V} {hdr_best:>{best_w}} "
-        f"{V} {'t-bar':<{bar_w}} {V} {hdr_mem:<{mem_w}} {V} {hdr_peak:>{peak_w}} {V} {'m-bar':<{bar_w}} {V}"
+        f"{V} {'t-bar':<{bar_w}} {V} {hdr_mem:<{mem_w}} {V}"
+        " {hdr_peak:>{peak_w}} {V} {'m-bar':<{bar_w}} {V}"
     )
     # Draw a top border that exactly matches header width
     top = (
@@ -626,10 +634,10 @@ def _summary_card(
     )
     bottom = BL + H * (len(header_line) - 2) + BR
 
-    print()  # noqa: T201
-    print(top)  # noqa: T201
-    print(header_line)  # noqa: T201
-    print(sep)  # noqa: T201
+    print()
+    print(top)
+    print(header_line)
+    print(sep)
 
     # body
     for ph, tlabel, tbest, mlabel, mpeak in rows:
@@ -653,9 +661,9 @@ def _summary_card(
             f"{V} {ph:<{phase_w}} {V} {tlabel:<{time_w}} {V} {tbest:>{best_w}} "
             f"{V} {tbar} {V} {mlabel:<{mem_w}} {V} {mpeak:>{peak_w}} {V} {mbar} {V}"
         )
-        print(line)  # noqa: T201
+        print(line)
 
-    print(bottom)  # noqa: T201
+    print(bottom)
 
 
 def _fmt_stats(vals: list[float]) -> str:
@@ -684,10 +692,10 @@ def summarize(rows: list[dict], model_name: str) -> None:
     _summary_card(model_name, tmap, mmap)
 
 
-def main() -> int:
+def main() -> int:  # noqa:PLR0915, C901
     """CLI entrypoint for the benchmark runner."""
     ap = argparse.ArgumentParser(
-        description="Benchmark JSTProve by calling the CLI directly."
+        description="Benchmark JSTProve by calling the CLI directly.",
     )
     ap.add_argument(
         "--model",
@@ -696,7 +704,10 @@ def main() -> int:
     )
     ap.add_argument("--input", required=False, help="Path to input JSON (optional).")
     ap.add_argument(
-        "--iterations", type=int, default=5, help="Number of E2E loops (default: 5)."
+        "--iterations",
+        type=int,
+        default=5,
+        help="Number of E2E loops (default: 5).",
     )
     ap.add_argument(
         "--output",
@@ -735,26 +746,27 @@ def main() -> int:
                     ts = now_utc()
                     rc, out, t, m, cmd, m_rust, m_psutil, ecc_live = run_cli(phase, io)
 
-                    # ECC and artifact sizes are collected into the JSONL (not printed live)
-                    artifact_sizes: dict[str, Optional[int]] = {}
+                    # ECC and artifact sizes are collected into the JSONL
+                    # (not printed live)
+                    artifact_sizes: dict[str, int | None] = {}
                     if phase == "compile":
                         circuit_size = file_size_bytes(io.circuit_path)
                         quantized_path = io.circuit_path.with_name(
-                            f"{io.circuit_path.stem}_quantized_model.onnx"
+                            f"{io.circuit_path.stem}_quantized_model.onnx",
                         )
                         quant_size = file_size_bytes(quantized_path)
                         artifact_sizes["circuit_size_bytes"] = circuit_size
                         artifact_sizes["quantized_size_bytes"] = quant_size
                     elif phase == "witness":
                         artifact_sizes["witness_size_bytes"] = file_size_bytes(
-                            io.witness_path
+                            io.witness_path,
                         )
                         artifact_sizes["output_size_bytes"] = file_size_bytes(
-                            io.output_path
+                            io.output_path,
                         )
                     elif phase in ("prove", "verify"):
                         artifact_sizes["proof_size_bytes"] = file_size_bytes(
-                            io.proof_path
+                            io.proof_path,
                         )
 
                     row = {
@@ -781,16 +793,18 @@ def main() -> int:
                     if phase == "compile" and rc == 0:
                         if not io.circuit_path.exists():
                             log.error(
-                                "[compile] rc=0 but circuit file missing: %s\n----- compile output -----\n%s",
+                                "[compile] rc=0 but circuit file missing: "
+                                "%s\n----- compile output -----\n%s",
                                 io.circuit_path,
                                 out,
                             )
                             return 1
-                        # Quantized is expected; warn (don’t fail) if missing.
+                        # Quantized is expected; warn (do not fail) if missing.
                         qpath = _quantized_path_from_circuit(io.circuit_path)
                         if not qpath.exists():
                             log.warning(
-                                "[compile] expected quantized ONNX missing: %s", qpath
+                                "[compile] expected quantized ONNX missing: %s",
+                                qpath,
                             )
 
                     if rc != 0:

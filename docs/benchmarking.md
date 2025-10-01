@@ -100,7 +100,7 @@ jst bench --sweep breadth \
 
 ## Interpreting results
 
-* **Compilation dominates both time and memory.** Expect the compile step to be by far the slowest and most memory-hungry phase.  
+* **Compilation dominates both time and memory.** Expect the compile step to be by far the slowest and most memory-hungry phase.
 * **ECC `totalCost` (compile):** Handy single-number proxy for circuit complexity; within a family, runtime/memory often scale ~linearly with it.
 * **Best vs mean:** For noisy hosts, run ≥3 iterations and look at both **best** and **mean ± stdev**.
 

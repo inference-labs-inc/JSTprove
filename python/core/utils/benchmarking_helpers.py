@@ -1,18 +1,18 @@
 # python/core/utils/benchmarking_helpers.py
 from __future__ import annotations
 
-"""
-Lightweight helpers to measure peak memory usage of child processes during
-benchmarks. Uses a background thread that periodically sums the RSS of all
-descendants of the current process (optionally filtered by a name keyword).
-"""
-
 # --- Standard library --------------------------------------------------------
 import threading
 import time
 
 # --- Third-party -------------------------------------------------------------
 import psutil
+
+"""
+Lightweight helpers to measure peak memory usage of child processes during
+benchmarks. Uses a background thread that periodically sums the RSS of all
+descendants of the current process (optionally filtered by a name keyword).
+"""
 
 
 def _safe_rss_kb(pid: int) -> int:
@@ -104,7 +104,8 @@ def monitor_subprocess_memory(
 
     # Final write (covers the case where peak never changed inside the loop)
     results["peak_subprocess_mem"] = max(
-        results.get("peak_subprocess_mem", 0), peak_rss_kb
+        results.get("peak_subprocess_mem", 0),
+        peak_rss_kb,
     )
     results["peak_subprocess_swap"] = 0
     results["peak_subprocess_total"] = results["peak_subprocess_mem"]
@@ -117,8 +118,9 @@ def start_memory_collection(
     Spawn and start a monitoring thread for the current process' children.
 
     Args:
-        process_name: Optional substring to filter child process names (case-insensitive).
-                      Pass "" to include all children.
+        process_name:
+            Optional substring to filter child process names (case-insensitive).
+            Pass "" to include all children.
 
     Returns:
         (stop_event, monitor_thread, monitor_results_dict)

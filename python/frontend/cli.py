@@ -5,10 +5,10 @@ from __future__ import annotations
 import argparse
 import importlib
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
-import subprocess
 
 # local
 from python.core.circuits.errors import CircuitRunError
@@ -266,7 +266,9 @@ def _run_verify(args: argparse.Namespace) -> None:
 
 
 def _append_arg(cmd: list[str], flag: str, val: object | None) -> None:
-    """Append '--flag val' only if val is not None/empty (for simple scalars/strings)."""
+    """
+    Append '--flag val' only if val is not None/empty (for simple scalars/strings).
+    """
     if val is None:
         return
     if isinstance(val, str) and not val.strip():
@@ -274,7 +276,7 @@ def _append_arg(cmd: list[str], flag: str, val: object | None) -> None:
     cmd += [flag, str(val)]
 
 
-def _run_bench(args: argparse.Namespace) -> None:
+def _run_bench(args: argparse.Namespace) -> None:  # noqa: PLR0915
     """
     Run benchmarks:
       - depth/breadth: call python.scripts.gen_and_bench (existing sweeps)
@@ -282,8 +284,9 @@ def _run_bench(args: argparse.Namespace) -> None:
     """
     sweep = args.sweep or args.mode
     if not sweep:
+        msg = "Please specify --sweep {depth|breadth|lenet} or a positional mode."
         raise CLIError(
-            "Please specify --sweep {depth|breadth|lenet} or a positional mode."
+            msg,
         )
 
     # --- Fixed: LeNet quickstart model ---
@@ -318,9 +321,15 @@ def _run_bench(args: argparse.Namespace) -> None:
             print("[debug] bench lenet cmd:", " ".join(cmd))  # noqa: T201
         env = os.environ.copy()
         env.setdefault("PYTHONUNBUFFERED", "1")
-        rc = subprocess.run(cmd, text=True, env=env).returncode  # noqa: S603
+        rc = subprocess.run(
+            cmd,  # noqa: S603
+            text=True,
+            env=env,
+            check=False,
+        ).returncode
         if rc != 0:
-            raise CLIError(f"LeNet benchmark failed with exit code {rc}")
+            msg = f"LeNet benchmark failed with exit code {rc}"
+            raise CLIError(msg)
         return  # done
 
     # --- Depth/breadth ---
@@ -392,9 +401,10 @@ def _run_bench(args: argparse.Namespace) -> None:
 
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")
-    proc = subprocess.run(cmd, text=True, env=env)  # noqa: S603
+    proc = subprocess.run(cmd, text=True, env=env, check=False)  # noqa: S603
     if proc.returncode != 0:
-        raise CLIError(f"Benchmark command failed with exit code {proc.returncode}")
+        msg = f"Benchmark command failed with exit code {proc.returncode}"
+        raise CLIError(msg)
 
 
 def _run_model_check(args: argparse.Namespace) -> None:
@@ -428,7 +438,7 @@ def _run_model_check(args: argparse.Namespace) -> None:
         raise CLIError(msg) from e
 
 
-def main(argv: list[str] | None = None) -> int:  # noqa: C901
+def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0915
     """
     Entry point for the JSTprove CLI.
 
@@ -591,14 +601,16 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
         "mode",
         choices=["depth", "breadth", "lenet"],
         nargs="?",
-        help="Shorthand for --sweep when you just want defaults (e.g., 'jst bench depth').",
+        help="Shorthand for --sweep when you just want defaults "
+        "(e.g., 'jst bench depth').",
     )
 
     p_bench.add_argument(
         "--sweep",
         choices=["depth", "breadth", "lenet"],
         default=None,  # allow omission when using positional mode
-        help="depth: vary conv depth; breadth: vary input H=W. If omitted, the positional MODE is used.",
+        help="depth: vary conv depth; breadth: vary input H=W. "
+        "If omitted, the positional MODE is used.",
     )
 
     # depth sweep options
@@ -608,7 +620,9 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
 
     # breadth sweep options
     p_bench.add_argument(
-        "--arch-depth", type=int, help="(breadth) conv blocks at fixed topology"
+        "--arch-depth",
+        type=int,
+        help="(breadth) conv blocks at fixed topology",
     )
     p_bench.add_argument(
         "--input-hw-list",
@@ -618,19 +632,26 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
 
     # common knobs
     p_bench.add_argument(
-        "--iterations", type=int, help="E2E loops per model (default 3 in examples)"
+        "--iterations",
+        type=int,
+        help="E2E loops per model (default 3 in examples)",
     )
     p_bench.add_argument(
-        "--results", help="Path to JSONL results (e.g., benchmarking/depth_sweep.jsonl)"
+        "--results",
+        help="Path to JSONL results (e.g., benchmarking/depth_sweep.jsonl)",
     )
     p_bench.add_argument(
-        "--onnx-dir", help="Override ONNX output dir (else chosen by sweep)"
+        "--onnx-dir",
+        help="Override ONNX output dir (else chosen by sweep)",
     )
     p_bench.add_argument(
-        "--inputs-dir", help="Override inputs output dir (else chosen by sweep)"
+        "--inputs-dir",
+        help="Override inputs output dir (else chosen by sweep)",
     )
     p_bench.add_argument(
-        "--pool-cap", type=int, help="Max pool blocks at start (Lenet-like: 2)"
+        "--pool-cap",
+        type=int,
+        help="Max pool blocks at start (Lenet-like: 2)",
     )
     p_bench.add_argument("--stop-at-hw", type=int, help="Allow pooling while H >= this")
     p_bench.add_argument("--conv-out-ch", type=int, help="Conv output channels")

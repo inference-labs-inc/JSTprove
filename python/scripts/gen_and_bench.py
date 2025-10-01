@@ -1,5 +1,5 @@
 # python/scripts/gen_and_bench.py
-# ruff: noqa: S603
+# ruff: noqa: S603, T201, RUF002
 
 """
 Generate simple CNN ONNX models and benchmark JSTprove.
@@ -40,13 +40,12 @@ import json
 import math
 import subprocess
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import Sequence
 
 # --- Third-party -------------------------------------------------------------
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
+import torch.nn.functional as F  # noqa: N812
+from torch import nn
 
 # -----------------------------------------------------------------------------
 # Planning helpers
@@ -58,13 +57,14 @@ def _max_pools_allowed(input_hw: int, stop_at_hw: int) -> int:
     Given an input size H=W=input_hw, return how many 2×2/stride-2 pools
     can be applied while keeping H >= stop_at_hw.
     """
+    two = 2
     if input_hw <= 0 or stop_at_hw <= 0:
         return 0
     pools = 0
     h = input_hw
-    while h >= 2 and (h // 2) >= stop_at_hw:
+    while h >= two and (h // two) >= stop_at_hw:
         pools += 1
-        h //= 2
+        h //= two
     return pools
 
 
@@ -73,8 +73,8 @@ def plan_for_depth(
     *,
     input_hw: int = 56,
     base_fc: int = 1,
-    pool_cap: Optional[int] = None,
-    stop_at_hw: Optional[int] = 7,
+    pool_cap: int | None = None,
+    stop_at_hw: int | None = 7,
 ) -> list[str]:
     """
     Build a symbolic plan for `d` conv blocks followed by FC layers.
@@ -135,8 +135,8 @@ class CNNDemo(nn.Module):
     Uses fixed conv hyperparameters and a configurable FC head.
     """
 
-    def __init__(
-        self,
+    def __init__(  # noqa: PLR0913
+        self: CNNDemo,
         layers: Sequence[str],
         *,
         in_ch: int = 4,
@@ -146,12 +146,12 @@ class CNNDemo(nn.Module):
         conv_pad: int = 1,
         fc_hidden: int = 128,
         n_actions: int = 10,
-        input_shape: Tuple[int, int, int, int] = (1, 4, 56, 56),
+        input_shape: tuple[int, int, int, int] = (1, 4, 56, 56),
     ) -> None:
         super().__init__()
         self.layers_plan = list(layers)
-
-        _, C, H, W = input_shape
+        _ = in_ch
+        _, C, H, W = input_shape  # noqa: N806
         cur_c, cur_h, cur_w = C, H, W
 
         self.convs = nn.ModuleList()
@@ -188,11 +188,12 @@ class CNNDemo(nn.Module):
                 self.fcs.append(nn.Linear(next_fc_in, out_features))
                 next_fc_in = out_features
             else:
-                raise ValueError(f"Unknown token: {tok}")
+                msg = f"Unknown token: {tok}"
+                raise ValueError(msg)
 
         self._ci = self._fi = self._pi = 0
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self: CNNDemo, x: torch.Tensor) -> torch.Tensor:
         """Execute the plan in order."""
         self._ci = self._fi = self._pi = 0
         for tok in self.layers_plan:
@@ -210,7 +211,8 @@ class CNNDemo(nn.Module):
                 x = self.fcs[self._fi](x)
                 self._fi += 1
             else:
-                raise ValueError(f"Unknown token: {tok}")
+                msg = f"Unknown token: {tok}"
+                raise ValueError(msg)
         return x
 
 
@@ -219,7 +221,11 @@ class CNNDemo(nn.Module):
 # -----------------------------------------------------------------------------
 
 
-def export_onnx(model: nn.Module, onnx_path: Path, input_shape=(1, 4, 56, 56)) -> None:
+def export_onnx(
+    model: nn.Module,
+    onnx_path: Path,
+    input_shape: tuple[int] = (1, 4, 56, 56),
+) -> None:
     """Export a Torch model to ONNX and ensure the directory exists."""
     onnx_path.parent.mkdir(parents=True, exist_ok=True)
     model.eval()
@@ -236,7 +242,7 @@ def export_onnx(model: nn.Module, onnx_path: Path, input_shape=(1, 4, 56, 56)) -
     )
 
 
-def write_input_json(json_path: Path, input_shape=(1, 4, 28, 28)) -> None:
+def write_input_json(json_path: Path, input_shape: tuple[int] = (1, 4, 28, 28)) -> None:
     """Write a zero-valued input tensor to JSON alongside its [N,C,H,W] shape."""
     json_path.parent.mkdir(parents=True, exist_ok=True)
     n, c, h, w = input_shape
@@ -246,7 +252,10 @@ def write_input_json(json_path: Path, input_shape=(1, 4, 28, 28)) -> None:
 
 
 def run_bench(
-    onnx_path: Path, input_json: Path, iterations: int, results_jsonl: Path
+    onnx_path: Path,
+    input_json: Path,
+    iterations: int,
+    results_jsonl: Path,
 ) -> int:
     """
     Invoke the benchmark runner module as a subprocess.
@@ -266,7 +275,7 @@ def run_bench(
         results_jsonl.as_posix(),
         "--summarize",
     ]
-    return subprocess.run(cmd, check=False, shell=False).returncode  # noqa: S603
+    return subprocess.run(cmd, check=False, shell=False).returncode
 
 
 # -----------------------------------------------------------------------------
@@ -274,27 +283,32 @@ def run_bench(
 # -----------------------------------------------------------------------------
 
 
-def _parse_int_list(s: str) -> List[int]:
+def _parse_int_list(s: str) -> list[int]:
     """
     Parse either a comma list "28,56,84" or a range "start:stop[:step]".
     The range is inclusive of stop. Non-positive values are filtered out.
     """
+    three = 3
     s = s.strip()
     if ":" in s:
         parts = [int(x) for x in s.split(":")]
         if len(parts) not in (2, 3):
-            raise ValueError("range syntax must be start:stop[:step]")
+            msg = "range syntax must be start:stop[:step]"
+            raise ValueError(msg)
         start, stop = parts[0], parts[1]
-        step = parts[2] if len(parts) == 3 else 1
+        step = parts[2] if len(parts) == three else 1
         if step == 0:
-            raise ValueError("step must be nonzero")
+            msg = "step must be nonzero"
+            raise ValueError(msg)
         out = list(range(start, stop + (1 if step > 0 else -1), step))
         return [x for x in out if x > 0]
     return [int(x) for x in s.split(",") if x.strip()]
 
 
 def _resolve_output_dirs(
-    sweep: str, onnx_dir_arg: str | None, inputs_dir_arg: str | None
+    sweep: str,
+    onnx_dir_arg: str | None,
+    inputs_dir_arg: str | None,
 ) -> tuple[Path, Path]:
     """
     Choose output directories from the sweep type unless explicitly overridden.
@@ -310,10 +324,10 @@ def _resolve_output_dirs(
     return onnx_dir, inputs_dir
 
 
-def main() -> None:
+def main() -> None:  # noqa: PLR0915
     """Argument parsing and sweep orchestration."""
     ap = argparse.ArgumentParser(
-        description="Depth or breadth sweep for simple LeNet-like CNNs."
+        description="Depth or breadth sweep for simple LeNet-like CNNs.",
     )
     # depth controls
     ap.add_argument("--depth-min", type=int, default=1)
@@ -329,7 +343,8 @@ def main() -> None:
         "--sweep",
         choices=["depth", "breadth"],
         default="depth",
-        help="depth: vary number of conv blocks; breadth: vary input size at fixed depth",
+        help="depth: vary number of conv blocks; "
+        "breadth: vary input size at fixed depth",
     )
     ap.add_argument(
         "--arch-depth",
@@ -338,13 +353,17 @@ def main() -> None:
         help="(breadth) conv blocks used for all inputs",
     )
     ap.add_argument(
-        "--input-hw", type=int, default=56, help="(depth) input H=W when varying depth"
+        "--input-hw",
+        type=int,
+        default=56,
+        help="(depth) input H=W when varying depth",
     )
     ap.add_argument(
         "--input-hw-list",
         type=str,
         default="28,56,84,112",
-        help="(breadth) comma list or start:stop[:step], e.g. '28,56,84' or '32:160:32'",
+        help="(breadth) comma list or start:stop[:step], e.g. "
+        "'28,56,84' or '32:160:32'",
     )
     ap.add_argument(
         "--pool-cap",
@@ -361,7 +380,10 @@ def main() -> None:
     ap.add_argument("--conv-out-ch", type=int, default=16)
     ap.add_argument("--fc-hidden", type=int, default=128)
     ap.add_argument(
-        "--tag", type=str, default="", help="optional tag added to filenames"
+        "--tag",
+        type=str,
+        default="",
+        help="optional tag added to filenames",
     )
 
     args = ap.parse_args()
@@ -379,7 +401,7 @@ def main() -> None:
                 pool_cap=args.pool_cap,
                 stop_at_hw=args.stop_at_hw,
             )
-            C, P, Fc, R = count_layers(plan)
+            C, P, Fc, R = count_layers(plan)  # noqa: N806
             uid = f"depth_d{d}_c{C}_p{P}_f{Fc}_r{R}"
             if args.tag:
                 uid = f"{uid}_{args.tag}"
@@ -414,7 +436,7 @@ def main() -> None:
                 pool_cap=args.pool_cap,
                 stop_at_hw=args.stop_at_hw,
             )
-            C, P, Fc, R = count_layers(plan)
+            C, P, Fc, R = count_layers(plan)  # noqa: N806
             uid = f"breadth_h{hw}_d{d}_c{C}_p{P}_f{Fc}_r{R}"
             if args.tag:
                 uid = f"{uid}_{args.tag}"
@@ -432,7 +454,8 @@ def main() -> None:
             export_onnx(model, onnx_path, input_shape=input_shape)
             write_input_json(input_json, input_shape=input_shape)
             print(
-                f"[gen] H=W={hw} :: d={d} | C={C}, P={P}, F={Fc}, R={R} -> {onnx_path.name}"
+                f"[gen] H=W={hw} :: d={d} | C={C}, P={P}, F={Fc}, R={R} "
+                f"-> {onnx_path.name}",
             )
 
             rc = run_bench(onnx_path, input_json, args.iterations, results)
