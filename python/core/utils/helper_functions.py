@@ -385,11 +385,12 @@ def run_cargo_command(
         # If pyproject.toml doesn't exist or can't be parsed, use binary_name as is
         pass
 
+    exe_suffix = ".exe" if os.name == "nt" else ""
     binary_path = None
     possible_paths = [
-        f"./target/release/{binary_name}",
-        Path(__file__).parent.parent / "binaries" / binary_name,
-        Path(sys.prefix) / "bin" / binary_name,
+        f"./target/release/{binary_name}{exe_suffix}",
+        Path(__file__).parent.parent / "binaries" / f"{binary_name}{exe_suffix}",
+        Path(sys.prefix) / "bin" / f"{binary_name}{exe_suffix}",
     ]
 
     for path in possible_paths:
@@ -398,7 +399,7 @@ def run_cargo_command(
             break
 
     if not binary_path:
-        binary_path = f"./target/release/{binary_name}"
+        binary_path = f"./target/release/{binary_name}{exe_suffix}"
     cmd = _build_command(
         binary_path=binary_path,
         command_type=command_type,
