@@ -10,7 +10,15 @@ jobs:
   build-wheels:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            arch: x86_64
+          - os: ubuntu-latest
+            arch: aarch64
+          - os: macos-latest
+            arch: x86_64
+          - os: macos-latest
+            arch: aarch64
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -32,24 +40,27 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "version_underscore=$(echo $VERSION | tr '.' '-')" >> $GITHUB_OUTPUT
 
-      - name: Update versions in config files
+      - name: Update pyproject.toml version
+        shell: bash
         run: |
-          python -c "
-          import re
-          with open('pyproject.toml', 'r') as f:
-              content = f.read()
-          content = re.sub(r'version = \"[^\"]*\"', 'version = \"${{ steps.get_version.outputs.version }}\"', content, count=1)
-          content = re.sub(r'onnx_generic_circuit_[0-9-]*', 'onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}', content)
-          with open('pyproject.toml', 'w') as f:
-              f.write(content)
-          with open('rust/jstprove_circuits/Cargo.toml', 'r') as f:
-              content = f.read()
-          content = re.sub(r'^version = \"[^\"]*\"', 'version = \"${{ steps.get_version.outputs.version }}\"', content, count=1, flags=re.MULTILINE)
-          content = re.sub(r'name = \"onnx_generic_circuit_[^\"]*\"', 'name = \"onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}\"', content)
-          with open('rust/jstprove_circuits/Cargo.toml', 'w') as f:
-              f.write(content)
-          "
-        shell: python
+          if [[ "${{ runner.os }}" == "macOS" ]]; then
+            sed -i '' 's/version = ".*"/version = "${{ steps.get_version.outputs.version }}"/' pyproject.toml
+            sed -i '' 's/onnx_generic_circuit_[0-9-]*/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}/' pyproject.toml
+          else
+            sed -i 's/version = ".*"/version = "${{ steps.get_version.outputs.version }}"/' pyproject.toml
+            sed -i 's/onnx_generic_circuit_[0-9-]*/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}/' pyproject.toml
+          fi
+
+      - name: Update Cargo.toml version
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "macOS" ]]; then
+            sed -i '' '0,/^version = ".*"/{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/}' rust/jstprove_circuits/Cargo.toml
+            sed -i '' 's/name = "onnx_generic_circuit_.*"/name = "onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"/' rust/jstprove_circuits/Cargo.toml
+          else
+            sed -i '0,/^version = ".*"/{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/}' rust/jstprove_circuits/Cargo.toml
+            sed -i 's/name = "onnx_generic_circuit_.*"/name = "onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"/' rust/jstprove_circuits/Cargo.toml
+          fi
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -82,29 +93,43 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install open-mpi
 
-      - name: Install system dependencies (Windows)
-        if: runner.os == 'Windows'
+      - name: Set Rust target
+        id: rust_target
+        shell: bash
         run: |
-          choco install msmpi -y
-          choco install msmpi-sdk -y
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            if [[ "${{ matrix.arch }}" == "aarch64" ]]; then
+              echo "target=aarch64-unknown-linux-gnu" >> $GITHUB_OUTPUT
+            else
+              echo "target=x86_64-unknown-linux-gnu" >> $GITHUB_OUTPUT
+            fi
+          else
+            if [[ "${{ matrix.arch }}" == "aarch64" ]]; then
+              echo "target=aarch64-apple-darwin" >> $GITHUB_OUTPUT
+            else
+              echo "target=x86_64-apple-darwin" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Install cross-compilation tools (Linux ARM)
+        if: runner.os == 'Linux' && matrix.arch == 'aarch64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          rustup target add aarch64-unknown-linux-gnu
+
+      - name: Install Rust target
+        run: rustup target add ${{ steps.rust_target.outputs.target }}
 
       - name: Build Rust binaries
-        run: cargo build --release --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
+        run: cargo build --release --target ${{ steps.rust_target.outputs.target }} --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
 
-      - name: Copy binaries to package (Unix)
-        if: runner.os != 'Windows'
+      - name: Copy binaries to package
         shell: bash
         run: |
           mkdir -p python/core/binaries
-          cp target/release/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }} python/core/binaries/
+          cp target/${{ steps.rust_target.outputs.target }}/release/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }} python/core/binaries/
           chmod +x python/core/binaries/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
-
-      - name: Copy binaries to package (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          mkdir -p python/core/binaries
-          cp target/release/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}.exe python/core/binaries/
 
       - name: Build wheel
         run: uv build
@@ -112,7 +137,7 @@ jobs:
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4
         with:
-          name: wheel-${{ matrix.os }}
+          name: wheel-${{ matrix.os }}-${{ matrix.arch }}
           path: ./dist/*.whl
 
   publish:
