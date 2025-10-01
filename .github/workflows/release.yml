@@ -55,7 +55,7 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ runner.os }}" == "macOS" ]]; then
-            sed -i '' '0,/^version = ".*"/{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/}' rust/jstprove_circuits/Cargo.toml
+            sed -i '' '1,/^version = /{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/;}' rust/jstprove_circuits/Cargo.toml
             sed -i '' 's/name = "onnx_generic_circuit_.*"/name = "onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"/' rust/jstprove_circuits/Cargo.toml
           else
             sed -i '0,/^version = ".*"/{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/}' rust/jstprove_circuits/Cargo.toml
