@@ -107,18 +107,16 @@ jobs:
       - name: Build wheel
         run: uv build
 
-      - name: Install wheel package
-        run: uv pip install --system wheel
-
       - name: Retag wheel with platform
         shell: bash
         run: |
+          uv tool install wheel
           if [[ "${{ runner.os }}" == "Linux" ]]; then
             PLAT="manylinux_2_17_x86_64.manylinux2014_x86_64"
           else
             PLAT="macosx_11_0_arm64"
           fi
-          wheel tags --platform-tag=$PLAT --remove dist/*.whl
+          uvx wheel tags --platform-tag=$PLAT --remove dist/*.whl
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4
