@@ -13,13 +13,14 @@ jobs:
         include:
           - os: ubuntu-latest
             arch: x86_64
+            target: x86_64-unknown-linux-gnu
           - os: ubuntu-latest
             arch: aarch64
+            target: aarch64-unknown-linux-gnu
             runner: ubuntu-24.04-arm64
           - os: macos-latest
-            arch: x86_64
-          - os: macos-latest
             arch: aarch64
+            target: aarch64-apple-darwin
     runs-on: ${{ matrix.runner || matrix.os }}
     permissions:
       contents: write
@@ -94,35 +95,17 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install open-mpi
 
-      - name: Set Rust target
-        id: rust_target
-        shell: bash
-        run: |
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            if [[ "${{ matrix.arch }}" == "aarch64" ]]; then
-              echo "target=aarch64-unknown-linux-gnu" >> $GITHUB_OUTPUT
-            else
-              echo "target=x86_64-unknown-linux-gnu" >> $GITHUB_OUTPUT
-            fi
-          else
-            if [[ "${{ matrix.arch }}" == "aarch64" ]]; then
-              echo "target=aarch64-apple-darwin" >> $GITHUB_OUTPUT
-            else
-              echo "target=x86_64-apple-darwin" >> $GITHUB_OUTPUT
-            fi
-          fi
-
       - name: Install Rust target
-        run: rustup target add ${{ steps.rust_target.outputs.target }}
+        run: rustup target add ${{ matrix.target }}
 
       - name: Build Rust binaries
-        run: cargo build --release --target ${{ steps.rust_target.outputs.target }} --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
+        run: cargo build --release --target ${{ matrix.target }} --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
 
       - name: Copy binaries to package
         shell: bash
         run: |
           mkdir -p python/core/binaries
-          cp target/${{ steps.rust_target.outputs.target }}/release/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }} python/core/binaries/
+          cp target/${{ matrix.target }}/release/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }} python/core/binaries/
           chmod +x python/core/binaries/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
 
       - name: Build wheel
