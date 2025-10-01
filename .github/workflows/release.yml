@@ -108,7 +108,7 @@ jobs:
         run: uv build
 
       - name: Install wheel package
-        run: uv pip install wheel
+        run: uv pip install --system wheel
 
       - name: Retag wheel with platform
         shell: bash
