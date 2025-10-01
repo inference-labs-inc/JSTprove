@@ -15,11 +15,12 @@ jobs:
             arch: x86_64
           - os: ubuntu-latest
             arch: aarch64
+            runner: ubuntu-24.04-arm64
           - os: macos-latest
             arch: x86_64
           - os: macos-latest
             arch: aarch64
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner || matrix.os }}
     permissions:
       contents: write
       id-token: write
@@ -87,7 +88,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libopenmpi-dev openmpi-bin pkg-config
+          sudo apt-get install -y libopenmpi-dev openmpi-bin pkg-config libssl-dev
 
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
@@ -110,13 +111,6 @@ jobs:
               echo "target=x86_64-apple-darwin" >> $GITHUB_OUTPUT
             fi
           fi
-
-      - name: Install cross-compilation tools (Linux ARM)
-        if: runner.os == 'Linux' && matrix.arch == 'aarch64'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-          rustup target add aarch64-unknown-linux-gnu
 
       - name: Install Rust target
         run: rustup target add ${{ steps.rust_target.outputs.target }}
