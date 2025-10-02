@@ -332,6 +332,7 @@ def to_json(inputs: dict[str, Any], path: str) -> None:
         inputs (dict[str, Any]): Data to be serialized.
         path (str): Path where the JSON file will be written.
     """
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
     with Path(path).open("w") as outfile:
         json.dump(inputs, outfile)
 
@@ -1068,11 +1069,6 @@ def get_files(
     Returns:
         dict[str, str]: A dictionary mapping descriptive keys to file paths.
     """
-    # Ensure all provided folders exist
-    for path in folders.values():
-        if path:
-            create_folder(path)
-
     # Common file paths
     paths = {
         "input_file": str(Path(folders["input"]) / f"{name}_input.json"),
@@ -1101,11 +1097,3 @@ def get_files(
     return paths
 
 
-def create_folder(directory: str) -> None:
-    """Create a directory if it doesn't exist.
-
-    Args:
-        directory (str): Path to the directory to create.
-    """
-    if not Path(directory).exists():
-        Path(directory).mkdir()

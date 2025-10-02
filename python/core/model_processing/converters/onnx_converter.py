@@ -141,6 +141,7 @@ class ONNXConverter(ModelConverter):
             larger models may require a different structure
         """
         try:
+            Path(file_path).parent.mkdir(parents=True, exist_ok=True)
             onnx.save(self.model, file_path)
         except Exception as e:
             raise ModelSaveError(
@@ -189,6 +190,7 @@ class ONNXConverter(ModelConverter):
             file_path (str): Destination path for the quantized model.
         """
         try:
+            Path(file_path).parent.mkdir(parents=True, exist_ok=True)
             onnx.save(self.quantized_model, file_path)
         except Exception as e:
             raise ModelSaveError(
