@@ -10,6 +10,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from enum import Enum
+from importlib.metadata import version as get_version
 from pathlib import Path
 from time import time
 from typing import Any, Callable, TypeVar
@@ -18,6 +19,8 @@ try:
     import tomllib  # Python 3.11+
 except ModuleNotFoundError:
     import tomli as tomllib
+
+from python.core import PACKAGE_NAME
 
 from python.core.utils.benchmarking_helpers import (
     end_memory_collection,
@@ -379,12 +382,15 @@ def run_cargo_command(
         subprocess.CompletedProcess[str]: Exit message from the subprocess.
     """
     try:
-        pyproject = tomllib.loads(Path("pyproject.toml").read_text())
-        version = pyproject["project"]["version"]
+        version = get_version(PACKAGE_NAME)
         binary_name = binary_name + f"_{version}".replace(".", "-")
-    except (FileNotFoundError, KeyError, tomllib.TOMLDecodeError):
-        # If pyproject.toml doesn't exist or can't be parsed, use binary_name as is
-        pass
+    except Exception:
+        try:
+            pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+            version = pyproject["project"]["version"]
+            binary_name = binary_name + f"_{version}".replace(".", "-")
+        except (FileNotFoundError, KeyError, tomllib.TOMLDecodeError):
+            pass
 
     binary_path = None
     possible_paths = [
@@ -1095,5 +1101,3 @@ def get_files(
         raise ProofSystemNotImplementedError(msg)
 
     return paths
-
-

@@ -18,6 +18,7 @@ from onnxruntime import InferenceSession, SessionOptions
 from onnxruntime_extensions import get_library_path
 
 import python.core.model_processing.onnx_custom_ops  # noqa: F401
+from python.core import PACKAGE_NAME
 from python.core.model_processing.converters.base import ModelConverter, ModelType
 from python.core.model_processing.errors import (
     InferenceError,
@@ -1080,7 +1081,7 @@ class ONNXConverter(ModelConverter):
 
         # Get version from package metadata
         try:
-            version = get_version("jstprove")
+            version = get_version(PACKAGE_NAME)
         except Exception:
             version = "0.0.0"
 
