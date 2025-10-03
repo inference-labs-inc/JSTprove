@@ -116,9 +116,7 @@ jobs:
 
           # Bundle MPI shared libraries
           if [[ "${{ runner.os }}" == "Linux" ]]; then
-            # Find and copy all MPI libraries
             find /usr/lib /usr/local/lib -name "libmpi*.so*" -exec cp -P {} python/core/lib/ \; 2>/dev/null || true
-            # Also copy Open MPI runtime libraries
             find /usr/lib /usr/local/lib -name "libopen-*.so*" -exec cp -P {} python/core/lib/ \; 2>/dev/null || true
           else
             cp /usr/local/opt/open-mpi/lib/libmpi*.dylib python/core/lib/ 2>/dev/null || true
@@ -129,15 +127,18 @@ jobs:
               [ -f "$dep_path" ] && cp "$dep_path" python/core/lib/ || true
             done
 
-            install_name_tool -change /usr/local/opt/open-mpi/lib/libmpi.40.dylib @loader_path/../lib/libmpi.40.dylib python/core/binaries/${BINARY_NAME} || true
+            for dep in $(otool -L python/core/binaries/${BINARY_NAME} | grep -E '(libmpi|libopen|libprrte)' | awk '{print $1}'); do
+              depname=$(basename "$dep")
+              install_name_tool -change "$dep" @loader_path/../lib/$depname python/core/binaries/${BINARY_NAME} || true
+            done
 
             for lib in python/core/lib/*.dylib; do
               [ -f "$lib" ] || continue
               libname=$(basename "$lib")
               install_name_tool -id @loader_path/$libname "$lib" || true
-              otool -L "$lib" | grep /usr/local | awk '{print $1}' | while read dep; do
+              for dep in $(otool -L "$lib" | grep -E '/usr/local|/opt/homebrew' | awk '{print $1}'); do
                 depname=$(basename "$dep")
-                install_name_tool -change "$dep" @loader_path/$depname "$lib" 2>/dev/null || true
+                install_name_tool -change "$dep" @loader_path/$depname "$lib" || true
               done
             done
           fi
