@@ -110,8 +110,9 @@ jobs:
           mkdir -p python/core/binaries
           mkdir -p python/core/lib
 
-          cp target/${{ matrix.target }}/release/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }} python/core/binaries/
-          chmod +x python/core/binaries/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
+          BINARY_NAME="onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"
+          cp target/${{ matrix.target }}/release/${BINARY_NAME} python/core/binaries/
+          chmod +x python/core/binaries/${BINARY_NAME}
 
           # Bundle MPI shared libraries
           if [[ "${{ runner.os }}" == "Linux" ]]; then
@@ -120,8 +121,25 @@ jobs:
             # Also copy Open MPI runtime libraries
             find /usr/lib /usr/local/lib -name "libopen-*.so*" -exec cp -P {} python/core/lib/ \; 2>/dev/null || true
           else
-            find /usr/local/opt/open-mpi/lib -name "libmpi*.dylib" -exec cp -P {} python/core/lib/ \; 2>/dev/null || true
-            find /usr/local/opt/open-mpi/lib -name "libopen-*.dylib" -exec cp -P {} python/core/lib/ \; 2>/dev/null || true
+            cp /usr/local/opt/open-mpi/lib/libmpi*.dylib python/core/lib/ 2>/dev/null || true
+            cp /usr/local/opt/open-mpi/lib/libopen-*.dylib python/core/lib/ 2>/dev/null || true
+            cp /usr/local/opt/open-mpi/lib/libprrte*.dylib python/core/lib/ 2>/dev/null || true
+
+            for dep_path in /usr/local/opt/{libevent,hwloc,pmix}/lib/*.dylib; do
+              [ -f "$dep_path" ] && cp "$dep_path" python/core/lib/ || true
+            done
+
+            install_name_tool -change /usr/local/opt/open-mpi/lib/libmpi.40.dylib @loader_path/../lib/libmpi.40.dylib python/core/binaries/${BINARY_NAME} || true
+
+            for lib in python/core/lib/*.dylib; do
+              [ -f "$lib" ] || continue
+              libname=$(basename "$lib")
+              install_name_tool -id @loader_path/$libname "$lib" || true
+              otool -L "$lib" | grep /usr/local | awk '{print $1}' | while read dep; do
+                depname=$(basename "$dep")
+                install_name_tool -change "$dep" @loader_path/$depname "$lib" 2>/dev/null || true
+              done
+            done
           fi
 
       - name: Build wheel
