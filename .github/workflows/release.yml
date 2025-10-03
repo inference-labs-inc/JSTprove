@@ -94,15 +94,23 @@ jobs:
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
 
-      - name: Build Rust binaries with RPATH
+      - name: Build Rust binaries
         shell: bash
         run: |
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            export RUSTFLAGS="-C link-args=-Wl,-rpath,\$ORIGIN/../lib"
-          else
-            export RUSTFLAGS="-C link-args=-Wl,-rpath,@loader_path/../lib"
-          fi
           cargo build --release --target ${{ matrix.target }} --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
+
+      - name: Set RPATH
+        shell: bash
+        run: |
+          BINARY_NAME="onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"
+          BINARY_PATH="target/${{ matrix.target }}/release/${BINARY_NAME}"
+
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            sudo apt-get install -y patchelf
+            patchelf --set-rpath '$ORIGIN/../lib:/usr/lib/x86_64-linux-gnu' "${BINARY_PATH}"
+          else
+            install_name_tool -add_rpath @loader_path/../lib "${BINARY_PATH}" 2>/dev/null || true
+          fi
 
       - name: Copy binaries and MPI libraries to package
         shell: bash
