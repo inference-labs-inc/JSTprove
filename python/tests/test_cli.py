@@ -273,7 +273,7 @@ def test_compile_dispatch(tmp_path: Path) -> None:
     config = call_args[0][0]
     assert config.run_type == RunType.COMPILE_CIRCUIT
     assert config.circuit_path == str(circuit)
-    assert config.dev_mode is True
+    assert config.dev_mode is False
 
 
 @pytest.mark.unit()
