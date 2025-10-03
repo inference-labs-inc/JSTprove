@@ -109,6 +109,8 @@ uv tool install JSTprove
 jst --help
 ```
 
+> Note: The package includes all necessary binaries (onnx_generic_circuit and expander-exec) for the full workflow.
+
 ### Installing from GitHub Release
 
 Download the appropriate wheel for your platform from the [latest release](https://github.com/Inference-Labs-Inc/jstprove/releases/latest):

@@ -103,6 +103,20 @@ jobs:
           cargo build --release --target ${{ matrix.target }} --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
           cargo build --release --manifest-path Expander/Cargo.toml --bin expander-exec
 
+      - name: Fix library paths for portability
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "macOS" ]]; then
+            install_name_tool -change /opt/homebrew/opt/open-mpi/lib/libmpi.40.dylib @rpath/libmpi.40.dylib Expander/target/release/expander-exec || true
+            install_name_tool -add_rpath /opt/homebrew/opt/open-mpi/lib Expander/target/release/expander-exec || true
+            install_name_tool -add_rpath /usr/local/opt/open-mpi/lib Expander/target/release/expander-exec || true
+            install_name_tool -add_rpath /opt/homebrew/lib Expander/target/release/expander-exec || true
+            install_name_tool -add_rpath /usr/local/lib Expander/target/release/expander-exec || true
+          else
+            sudo apt-get install -y patchelf
+            patchelf --set-rpath '/usr/lib/x86_64-linux-gnu:/usr/local/lib:/usr/lib' Expander/target/release/expander-exec || true
+          fi
+
       - name: Copy binaries to package
         shell: bash
         run: |
