@@ -44,7 +44,7 @@ Zero-knowledge proofs of ML inference on **ONNX** models — powered by [Polyhed
 - [CLI reference](#cli-reference)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
-- [Legal](#legal)
+- [Disclaimer](#disclaimer)
 - [Acknowledgments](#acknowledgments)
 
 </details>
@@ -296,14 +296,19 @@ See **[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)** for dev setup, pre-commit h
 
 ---
 
-## Legal
+## Disclaimer
 
-> **Placeholder (subject to change):**
->
-> * **License:** See `LICENSE` (TBD). Third-party components (e.g., Expander, ECC) are licensed under their respective terms.
-> * **No warranty:** Provided “as is” without warranties or conditions of any kind. Use at your own risk.
-> * **Security & export:** Cryptography may be subject to local laws. Conduct your own security review before production use.
-> * **Trademarks:** All product names, logos, and brands are property of their respective owners.
+**JSTProve** is **experimental and unaudited**. It is provided on an **open-source, “as-is” basis**, without any warranties or guarantees of fitness for a particular purpose.
+
+Use of JSTProve in **production environments is strongly discouraged**. The codebase may contain bugs, vulnerabilities, or incomplete features that could lead to unexpected results, failures, or security risks.
+
+By using, modifying, or distributing this software, you acknowledge that:
+
+ - It has not undergone a formal security review or audit.
+ - It may change substantially over time, including breaking changes.
+ - You assume full responsibility for any outcomes resulting from its use.
+
+JSTProve is made available in the spirit of **research, experimentation, and community collaboration**. Contributions are welcome, but please proceed with caution and do not rely on this software for systems where correctness, reliability, or security are critical.
 
 ---
 
