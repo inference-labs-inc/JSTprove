@@ -3,11 +3,12 @@
 > **Status:** This benchmarking flow is **experimental/untested** and may change or break.
 > Expect rough edges, missing counters, and occasional CLI/flag churn. Please open issues with logs if you hit problems.
 
-This page explains how to benchmark JSTprove across three tracks:
+This page explains how to benchmark JSTprove across four tracks:
 
 - **LeNet (fixed model)** — runs the same LeNet model/inputs used in the Quickstart.
 - **Depth sweep** — synthetic CNNs that vary the number of conv blocks at fixed input size.
 - **Breadth sweep** — synthetic CNNs at fixed depth with varying input height/width.
+- **Specific models** — benchmark individual ONNX models from the registry (similar to pytest model selection).
 
 Each run logs **one JSON object per phase per iteration** to a JSONL file so you can slice/plot later.
 
@@ -98,6 +99,30 @@ jst bench --sweep breadth \
   --pool-cap 2 --conv-out-ch 16 --fc-hidden 256
 ```
 
+### 4) Specific models (from registry or direct path)
+
+Benchmark individual ONNX models, either from the available registry or by specifying a direct file path, with inputs generated automatically.
+
+```bash
+# List available models
+jst bench --list-models
+
+# Benchmark specific models from registry
+jst bench --model lenet --iterations 3
+
+# Benchmark all ONNX models from registry
+jst bench --source onnx --iterations 3 --results benchmarking/all_onnx.jsonl
+
+# Benchmark a specific ONNX file directly
+jst bench --model-path /path/to/my_model.onnx --iterations 3
+```
+
+* `--model` specifies one or more model names from the registry (use multiple times).
+* `--model-path` specifies a direct path to an ONNX file (alternative to registry models).
+* `--source onnx` restricts registry models to ONNX sources only.
+* `--list-models` shows all available models in "source: name" format.
+* Inputs are generated on-the-fly using the same mechanism as pytest tests.
+
 ## Interpreting results
 
 * **Compilation dominates both time and memory.** Expect the compile step to be by far the slowest and most memory-hungry phase.
@@ -116,5 +141,6 @@ The CLI prints an ASCII table with per-phase `μ ± σ`, best time, and peak mem
 ## Known limitations
 
 * Single-input models only (CLI limitation).
+* For specific models, inputs are generated randomly on-the-fly; results may vary between runs.
 * Memory is sampled from child processes; extreme short-lived peaks can be missed.
 * ECC log parsing is brittle to format changes.
