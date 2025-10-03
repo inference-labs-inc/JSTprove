@@ -587,33 +587,45 @@ def run_expander_raw(  # noqa: PLR0913
     env["RUSTFLAGS"] = "-C target-cpu=native"
     time_measure = "/usr/bin/time"
 
-    # If we need a timeflag time_flag = "-l" if platform.system() == "Darwin" else "-v"
-
-    arg_1 = "mpiexec"
-    arg_2 = "-n"
-    arg_3 = "1"
-    command = "cargo"
-    command_2 = "run"
-    manifest_path = "Expander/Cargo.toml"
-    binary = "expander-exec"
-
-    args = [
-        time_measure,
-        # time_flag,
-        arg_1,
-        arg_2,
-        arg_3,
-        command,
-        command_2,
-        "--manifest-path",
-        manifest_path,
-        "--bin",
-        binary,
-        "--release",
-        "--",
-        "-p",
-        pcs_type,
+    expander_binary_path = None
+    possible_paths = [
+        "./Expander/target/release/expander-exec",
+        Path(__file__).parent.parent / "binaries" / "expander-exec",
+        Path(sys.prefix) / "bin" / "expander-exec",
     ]
+
+    for path in possible_paths:
+        if Path(path).exists():
+            expander_binary_path = str(path)
+            break
+
+    if expander_binary_path:
+        args = [
+            time_measure,
+            "mpiexec",
+            "-n",
+            "1",
+            expander_binary_path,
+            "-p",
+            pcs_type,
+        ]
+    else:
+        args = [
+            time_measure,
+            "mpiexec",
+            "-n",
+            "1",
+            "cargo",
+            "run",
+            "--manifest-path",
+            "Expander/Cargo.toml",
+            "--bin",
+            "expander-exec",
+            "--release",
+            "--",
+            "-p",
+            pcs_type,
+        ]
     if mode == ExpanderMode.PROVE:
         args.append(mode.value)
         proof_command = "-o"

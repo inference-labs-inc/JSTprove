@@ -94,8 +94,14 @@ jobs:
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
 
+      - name: Clone Expander
+        run: git clone https://github.com/PolyhedraZK/Expander.git
+
       - name: Build Rust binaries
-        run: cargo build --release --target ${{ matrix.target }} --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
+        shell: bash
+        run: |
+          cargo build --release --target ${{ matrix.target }} --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
+          cargo build --release --manifest-path Expander/Cargo.toml --bin expander-exec
 
       - name: Copy binaries to package
         shell: bash
@@ -103,7 +109,9 @@ jobs:
           mkdir -p python/core/binaries
           BINARY_NAME="onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"
           cp target/${{ matrix.target }}/release/${BINARY_NAME} python/core/binaries/
+          cp Expander/target/release/expander-exec python/core/binaries/
           chmod +x python/core/binaries/${BINARY_NAME}
+          chmod +x python/core/binaries/expander-exec
 
       - name: Build wheel
         run: uv build
