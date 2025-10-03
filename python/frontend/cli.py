@@ -158,12 +158,14 @@ def _run_compile(args: argparse.Namespace) -> None:
     circuit.onnx_path = args.model_path
     circuit.model_path = args.model_path
 
+    circuit_path = str(Path(args.circuit_path).absolute())
+
     # Compile: writes circuit + quantized model
     try:
         circuit.base_testing(
             CircuitExecutionConfig(
                 run_type=RunType.COMPILE_CIRCUIT,
-                circuit_path=args.circuit_path,
+                circuit_path=circuit_path,
                 dev_mode=False,
             ),
         )
@@ -173,7 +175,7 @@ def _run_compile(args: argparse.Namespace) -> None:
         msg = f"Process execution failed with args '{args.cmd}': {e}"
         raise CLIError(msg) from e
     print(  # noqa: T201
-        f"[compile] done → circuit={args.circuit_path},",
+        f"[compile] done → circuit={circuit_path},",
     )
 
 
