@@ -120,6 +120,9 @@ jobs:
             find /usr/lib /usr/local/lib -name "libopen-*.so*" -exec cp -P {} python/core/lib/ \; 2>/dev/null || true
           else
             MPI_LIB=$(brew --prefix open-mpi)/lib
+            echo "MPI_LIB: ${MPI_LIB}"
+            ls -la ${MPI_LIB}/*.dylib || echo "No dylibs found in ${MPI_LIB}"
+
             cp ${MPI_LIB}/libmpi*.dylib python/core/lib/
             cp ${MPI_LIB}/libopen-*.dylib python/core/lib/
             cp ${MPI_LIB}/libprrte*.dylib python/core/lib/
@@ -128,6 +131,9 @@ jobs:
               DEP_LIB=$(brew --prefix $dep)/lib
               cp ${DEP_LIB}/*.dylib python/core/lib/ 2>/dev/null || true
             done
+
+            echo "Contents of python/core/lib after copy:"
+            ls -la python/core/lib/
 
             for dep in $(otool -L python/core/binaries/${BINARY_NAME} | grep -E '(libmpi|libopen|libprrte)' | awk '{print $1}'); do
               depname=$(basename "$dep")
