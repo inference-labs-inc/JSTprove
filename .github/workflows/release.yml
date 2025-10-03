@@ -146,6 +146,11 @@ jobs:
       - name: Build wheel
         run: uv build
 
+      - name: Verify wheel contents
+        shell: bash
+        run: |
+          unzip -l dist/*.whl | grep -E '(binaries|lib)' || echo "No binaries/lib found in wheel"
+
       - name: Retag wheel with platform
         shell: bash
         run: |
