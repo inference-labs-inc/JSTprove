@@ -95,77 +95,18 @@ jobs:
         run: rustup target add ${{ matrix.target }}
 
       - name: Build Rust binaries
-        shell: bash
-        run: |
-          cargo build --release --target ${{ matrix.target }} --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
+        run: cargo build --release --target ${{ matrix.target }} --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
 
-      - name: Set RPATH
-        shell: bash
-        run: |
-          BINARY_NAME="onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"
-          BINARY_PATH="target/${{ matrix.target }}/release/${BINARY_NAME}"
-
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            sudo apt-get install -y patchelf
-            patchelf --set-rpath '$ORIGIN/../lib:/usr/lib/x86_64-linux-gnu' "${BINARY_PATH}"
-          else
-            install_name_tool -add_rpath @loader_path/../lib "${BINARY_PATH}" 2>/dev/null || true
-          fi
-
-      - name: Copy binaries and MPI libraries to package
+      - name: Copy binaries to package
         shell: bash
         run: |
           mkdir -p python/core/binaries
-          mkdir -p python/core/lib
-
           BINARY_NAME="onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"
           cp target/${{ matrix.target }}/release/${BINARY_NAME} python/core/binaries/
           chmod +x python/core/binaries/${BINARY_NAME}
 
-          # Bundle MPI shared libraries
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            find /usr/lib /usr/local/lib -name "libmpi*.so*" -exec cp -P {} python/core/lib/ \; 2>/dev/null || true
-            find /usr/lib /usr/local/lib -name "libopen-*.so*" -exec cp -P {} python/core/lib/ \; 2>/dev/null || true
-          else
-            MPI_LIB=$(brew --prefix open-mpi)/lib
-            echo "MPI_LIB: ${MPI_LIB}"
-            ls -la ${MPI_LIB}/*.dylib || echo "No dylibs found in ${MPI_LIB}"
-
-            cp ${MPI_LIB}/libmpi*.dylib python/core/lib/
-            cp ${MPI_LIB}/libopen-*.dylib python/core/lib/
-            cp ${MPI_LIB}/libprrte*.dylib python/core/lib/
-
-            for dep in libevent hwloc pmix; do
-              DEP_LIB=$(brew --prefix $dep)/lib
-              cp ${DEP_LIB}/*.dylib python/core/lib/ 2>/dev/null || true
-            done
-
-            echo "Contents of python/core/lib after copy:"
-            ls -la python/core/lib/
-
-            for dep in $(otool -L python/core/binaries/${BINARY_NAME} | grep -E '(libmpi|libopen|libprrte)' | awk '{print $1}'); do
-              depname=$(basename "$dep")
-              install_name_tool -change "$dep" @loader_path/../lib/$depname python/core/binaries/${BINARY_NAME} || true
-            done
-
-            for lib in python/core/lib/*.dylib; do
-              [ -f "$lib" ] || continue
-              libname=$(basename "$lib")
-              install_name_tool -id @loader_path/$libname "$lib" || true
-              for dep in $(otool -L "$lib" | grep -E '/usr/local|/opt/homebrew' | awk '{print $1}'); do
-                depname=$(basename "$dep")
-                install_name_tool -change "$dep" @loader_path/$depname "$lib" || true
-              done
-            done
-          fi
-
       - name: Build wheel
         run: uv build
-
-      - name: Verify wheel contents
-        shell: bash
-        run: |
-          unzip -l dist/*.whl | grep -E '(binaries|lib)' || echo "No binaries/lib found in wheel"
 
       - name: Retag wheel with platform
         shell: bash
@@ -177,15 +118,6 @@ jobs:
             PLAT="macosx_11_0_arm64"
           fi
           uvx wheel tags --platform-tag=$PLAT --remove dist/*.whl
-
-      - name: Remove system OpenMPI to test bundled MPI
-        shell: bash
-        run: |
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            sudo apt-get remove -y libopenmpi-dev openmpi-bin || true
-          else
-            brew uninstall open-mpi || true
-          fi
 
       - name: Test wheel installation and compile
         shell: bash

@@ -78,8 +78,54 @@ ONNX model ─► Quantizer (Py) ─► Circuit via ECC (Rust) ─► Witness (R
 
 ## Installation
 
+### Installing from PyPI (Recommended)
+
+#### Prerequisites
+- **UV**: Fast Python package manager ([install UV](https://docs.astral.sh/uv/getting-started/installation/))
+- **OpenMPI**: Required system dependency
+
+**macOS:**
+```bash
+brew install open-mpi
+```
+
+**Ubuntu/Debian:**
+```bash
+sudo apt-get update
+sudo apt-get install -y libopenmpi-dev openmpi-bin
+```
+
+**Other Linux:**
+- RHEL/CentOS/Fedora: `sudo dnf install openmpi openmpi-devel`
+- Arch: `sudo pacman -S openmpi`
+
+#### Install JSTprove
+```bash
+uv tool install JSTprove
+```
+
+#### Verify installation
+```bash
+jst --help
+```
+
+### Installing from GitHub Release
+
+Download the appropriate wheel for your platform from the [latest release](https://github.com/Inference-Labs-Inc/jstprove/releases/latest):
+- Linux: `JSTprove-*-manylinux_*.whl`
+- macOS (Apple Silicon): `JSTprove-*-macosx_11_0_arm64.whl`
+
+Then install:
+```bash
+uv tool install /path/to/JSTprove-*.whl
+```
+
+---
+
+## Development Installation
+
 <details>
-<summary>Click to expand</summary>
+<summary>Click to expand for development setup instructions</summary>
 
 ### 0) Requirements
 
