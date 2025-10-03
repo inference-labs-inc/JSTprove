@@ -94,15 +94,35 @@ jobs:
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
 
-      - name: Build Rust binaries
-        run: cargo build --release --target ${{ matrix.target }} --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
+      - name: Build Rust binaries with RPATH
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            export RUSTFLAGS="-C link-args=-Wl,-rpath,\$ORIGIN/../lib"
+          else
+            export RUSTFLAGS="-C link-args=-Wl,-rpath,@loader_path/../lib"
+          fi
+          cargo build --release --target ${{ matrix.target }} --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
 
-      - name: Copy binaries to package
+      - name: Copy binaries and MPI libraries to package
         shell: bash
         run: |
           mkdir -p python/core/binaries
+          mkdir -p python/core/lib
+
           cp target/${{ matrix.target }}/release/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }} python/core/binaries/
           chmod +x python/core/binaries/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
+
+          # Bundle MPI shared libraries
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            # Find and copy all MPI libraries
+            find /usr/lib /usr/local/lib -name "libmpi*.so*" -exec cp -P {} python/core/lib/ \; 2>/dev/null || true
+            # Also copy Open MPI runtime libraries
+            find /usr/lib /usr/local/lib -name "libopen-*.so*" -exec cp -P {} python/core/lib/ \; 2>/dev/null || true
+          else
+            find /usr/local/opt/open-mpi/lib -name "libmpi*.dylib" -exec cp -P {} python/core/lib/ \; 2>/dev/null || true
+            find /usr/local/opt/open-mpi/lib -name "libopen-*.dylib" -exec cp -P {} python/core/lib/ \; 2>/dev/null || true
+          fi
 
       - name: Build wheel
         run: uv build
@@ -117,6 +137,18 @@ jobs:
             PLAT="macosx_11_0_arm64"
           fi
           uvx wheel tags --platform-tag=$PLAT --remove dist/*.whl
+
+      - name: Test wheel installation and compile
+        shell: bash
+        run: |
+          WHEEL=$(ls dist/*.whl)
+          uv tool install "$WHEEL"
+          jst compile -m python/models/models_onnx/lenet.onnx -c test_circuit.txt
+          if [[ ! -f test_circuit.txt ]]; then
+            echo "Error: Circuit file was not created"
+            exit 1
+          fi
+          echo "Wheel test passed"
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4

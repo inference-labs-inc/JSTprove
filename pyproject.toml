@@ -39,3 +39,4 @@ include = ["python*"]
 
 [tool.setuptools.package-data]
 "python.core.binaries" = ["*"]
+"python.core.lib" = ["*.so*", "*.dylib"]
