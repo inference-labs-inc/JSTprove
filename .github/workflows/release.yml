@@ -138,6 +138,15 @@ jobs:
           fi
           uvx wheel tags --platform-tag=$PLAT --remove dist/*.whl
 
+      - name: Remove system OpenMPI to test bundled MPI
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            sudo apt-get remove -y libopenmpi-dev openmpi-bin || true
+          else
+            brew uninstall open-mpi || true
+          fi
+
       - name: Test wheel installation and compile
         shell: bash
         run: |

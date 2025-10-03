@@ -1091,7 +1091,7 @@ def get_files(
     if proof_system == ZKProofSystems.Expander:
         paths.update(
             {
-                "circuit_name": str(Path(folders["circuit"]) / name),
+                "circuit_name": name,
                 "witness_file": str(Path(folders["input"]) / f"{name}_witness.txt"),
                 "proof_path": str(Path(folders["proof"]) / f"{name}_proof.bin"),
             },
