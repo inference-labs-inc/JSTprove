@@ -119,12 +119,14 @@ jobs:
             find /usr/lib /usr/local/lib -name "libmpi*.so*" -exec cp -P {} python/core/lib/ \; 2>/dev/null || true
             find /usr/lib /usr/local/lib -name "libopen-*.so*" -exec cp -P {} python/core/lib/ \; 2>/dev/null || true
           else
-            cp /usr/local/opt/open-mpi/lib/libmpi*.dylib python/core/lib/ 2>/dev/null || true
-            cp /usr/local/opt/open-mpi/lib/libopen-*.dylib python/core/lib/ 2>/dev/null || true
-            cp /usr/local/opt/open-mpi/lib/libprrte*.dylib python/core/lib/ 2>/dev/null || true
+            MPI_LIB=$(brew --prefix open-mpi)/lib
+            cp ${MPI_LIB}/libmpi*.dylib python/core/lib/
+            cp ${MPI_LIB}/libopen-*.dylib python/core/lib/
+            cp ${MPI_LIB}/libprrte*.dylib python/core/lib/
 
-            for dep_path in /usr/local/opt/{libevent,hwloc,pmix}/lib/*.dylib; do
-              [ -f "$dep_path" ] && cp "$dep_path" python/core/lib/ || true
+            for dep in libevent hwloc pmix; do
+              DEP_LIB=$(brew --prefix $dep)/lib
+              cp ${DEP_LIB}/*.dylib python/core/lib/ 2>/dev/null || true
             done
 
             for dep in $(otool -L python/core/binaries/${BINARY_NAME} | grep -E '(libmpi|libopen|libprrte)' | awk '{print $1}'); do
