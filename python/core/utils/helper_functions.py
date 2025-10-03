@@ -294,7 +294,7 @@ def prepare_io_files(func: Callable) -> Callable:
                 circuit_dir / f"{name}_metadata.json",
             )
             exec_config.architecture_path = str(
-                circuit_dir / f"{name}_arch.json",
+                circuit_dir / f"{name}_architecture.json",
             )
             exec_config.w_and_b_path = str(
                 circuit_dir / f"{name}_wandb.json",
