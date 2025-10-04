@@ -109,7 +109,7 @@ uv tool install JSTprove
 jst --help
 ```
 
-> Note: The package includes all necessary binaries (onnx_generic_circuit and expander-exec) for the full workflow.
+> Note: The package includes all necessary binaries (jstprove_backend and expander-exec) for the full workflow.
 
 ### Installing from GitHub Release
 
@@ -140,7 +140,7 @@ uv tool install /path/to/JSTprove-*.whl
 
 ### 1) System packages
 
-> Run commands from the **repo root** so the runner binary path (e.g., `./target/release/onnx_generic_circuit`) resolves.
+> Run commands from the **repo root** so the runner binary path (e.g., `./target/release/jstprove_backend`) resolves.
 
 #### Ubuntu/Debian
 ```bash

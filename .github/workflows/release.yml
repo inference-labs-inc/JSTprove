@@ -43,10 +43,10 @@ jobs:
         run: |
           if [[ "${{ runner.os }}" == "macOS" ]]; then
             sed -i '' 's/version = ".*"/version = "${{ steps.get_version.outputs.version }}"/' pyproject.toml
-            sed -i '' 's/onnx_generic_circuit_[0-9-]*/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}/' pyproject.toml
+            sed -i '' 's/jstprove_backend_[0-9-]*/jstprove_backend_${{ steps.get_version.outputs.version_underscore }}/' pyproject.toml
           else
             sed -i 's/version = ".*"/version = "${{ steps.get_version.outputs.version }}"/' pyproject.toml
-            sed -i 's/onnx_generic_circuit_[0-9-]*/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}/' pyproject.toml
+            sed -i 's/jstprove_backend_[0-9-]*/jstprove_backend_${{ steps.get_version.outputs.version_underscore }}/' pyproject.toml
           fi
 
       - name: Update Cargo.toml version
@@ -54,10 +54,10 @@ jobs:
         run: |
           if [[ "${{ runner.os }}" == "macOS" ]]; then
             sed -i '' '1,/^version = /{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/;}' rust/jstprove_circuits/Cargo.toml
-            sed -i '' 's/name = "onnx_generic_circuit_.*"/name = "onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"/' rust/jstprove_circuits/Cargo.toml
+            sed -i '' 's/name = "jstprove_backend_.*"/name = "jstprove_backend_${{ steps.get_version.outputs.version_underscore }}"/' rust/jstprove_circuits/Cargo.toml
           else
             sed -i '0,/^version = ".*"/{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/}' rust/jstprove_circuits/Cargo.toml
-            sed -i 's/name = "onnx_generic_circuit_.*"/name = "onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"/' rust/jstprove_circuits/Cargo.toml
+            sed -i 's/name = "jstprove_backend_.*"/name = "jstprove_backend_${{ steps.get_version.outputs.version_underscore }}"/' rust/jstprove_circuits/Cargo.toml
           fi
 
       - name: Install Rust
@@ -100,7 +100,7 @@ jobs:
       - name: Build Rust binaries
         shell: bash
         run: |
-          cargo build --release --target ${{ matrix.target }} --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
+          cargo build --release --target ${{ matrix.target }} --bin jstprove_backend_${{ steps.get_version.outputs.version_underscore }}
           cargo build --release --manifest-path Expander/Cargo.toml --bin expander-exec
 
       - name: Fix library paths for portability
@@ -121,7 +121,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p python/core/binaries
-          BINARY_NAME="onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"
+          BINARY_NAME="jstprove_backend_${{ steps.get_version.outputs.version_underscore }}"
           cp target/${{ matrix.target }}/release/${BINARY_NAME} python/core/binaries/
           cp Expander/target/release/expander-exec python/core/binaries/
           chmod +x python/core/binaries/${BINARY_NAME}
@@ -146,7 +146,7 @@ jobs:
         run: |
           WHEEL=$(ls dist/*.whl)
           uv tool install "$WHEEL"
-          jst compile -m python/models/models_onnx/lenet.onnx -c test_circuit.txt
+          jst compile -m python/models/models_onnx/lenet.onnx -c test_circuit.txt 2>&1 | head -20
           if [[ ! -f test_circuit.txt ]]; then
             echo "Error: Circuit file was not created"
             exit 1

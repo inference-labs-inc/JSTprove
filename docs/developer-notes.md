@@ -24,7 +24,7 @@ Internal notes for contributors working on JSTprove (Python + Rust).
 
 ## Rust binaries
 
-- Main runner: `onnx_generic_circuit`
+- Main runner: `jstprove_backend`
 - Simple demo: `simple_circuit`
 
 You can build them manually if needed:
