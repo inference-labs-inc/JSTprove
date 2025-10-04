@@ -602,9 +602,6 @@ def run_expander_raw(  # noqa: PLR0913
     if expander_binary_path:
         args = [
             time_measure,
-            "mpiexec",
-            "-n",
-            "1",
             expander_binary_path,
             "-p",
             pcs_type,
