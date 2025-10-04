@@ -1,0 +1,113 @@
+from __future__ import annotations
+
+import argparse
+import importlib
+from pathlib import Path
+from typing import Any, ClassVar
+
+from python.core.circuits.errors import CircuitRunError
+from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
+from python.frontend.commands.base import BaseCommand
+
+DEFAULT_CIRCUIT_MODULE = "python.core.circuit_models.generic_onnx"
+DEFAULT_CIRCUIT_CLASS = "GenericModelONNX"
+
+
+class CompileCommand(BaseCommand):
+    """Compile an ONNX model to a circuit."""
+
+    name: ClassVar[str] = "compile"
+    aliases: ClassVar[list[str]] = ["comp"]
+    help: ClassVar[str] = "Compile a circuit (writes circuit + quantized model + weights)."
+
+    @classmethod
+    def configure_parser(cls, parser: argparse.ArgumentParser) -> None:
+        parser.add_argument(
+            "pos_model_path",
+            nargs="?",
+            metavar="model_path",
+            help="Path to the original ONNX model.",
+        )
+        parser.add_argument(
+            "pos_circuit_path",
+            nargs="?",
+            metavar="circuit_path",
+            help="Output path for the compiled circuit (e.g., circuit.txt).",
+        )
+        parser.add_argument(
+            "-m",
+            "--model-path",
+            help="Path to the original ONNX model.",
+        )
+        parser.add_argument(
+            "-c",
+            "--circuit-path",
+            help="Output path for the compiled circuit (e.g., circuit.txt).",
+        )
+
+    @classmethod
+    def run(cls, args: argparse.Namespace) -> None:
+        args.model_path = args.model_path or args.pos_model_path
+        args.circuit_path = args.circuit_path or args.pos_circuit_path
+
+        if not args.model_path or not args.circuit_path:
+            raise ValueError("compile requires model_path and circuit_path")
+
+        cls._ensure_file_exists(args.model_path)
+        cls._ensure_parent_dir(args.circuit_path)
+
+        model_name_hint = Path(args.model_path).stem
+        circuit = cls._build_circuit(model_name_hint)
+
+        circuit.model_file_name = args.model_path
+        circuit.onnx_path = args.model_path
+        circuit.model_path = args.model_path
+
+        try:
+            circuit.base_testing(
+                CircuitExecutionConfig(
+                    run_type=RunType.COMPILE_CIRCUIT,
+                    circuit_path=args.circuit_path,
+                    dev_mode=True,
+                ),
+            )
+        except CircuitRunError as e:
+            raise RuntimeError(e) from e
+
+        print(f"[compile] done → circuit={args.circuit_path},")
+
+    @staticmethod
+    def _ensure_file_exists(path: str) -> None:
+        p = Path(path)
+        if not p.is_file():
+            raise FileNotFoundError(f"Required file not found: {path}")
+        if not p.exists() or not p.stat().st_mode & 0o444:
+            raise PermissionError(f"Cannot read file: {path}")
+
+    @staticmethod
+    def _ensure_parent_dir(path: str) -> None:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _build_circuit(model_name_hint: str | None = None) -> Any:
+        mod = importlib.import_module(DEFAULT_CIRCUIT_MODULE)
+        try:
+            cls = getattr(mod, DEFAULT_CIRCUIT_CLASS)
+        except AttributeError as e:
+            msg = f"Default circuit class '{DEFAULT_CIRCUIT_CLASS}' not found in '{DEFAULT_CIRCUIT_MODULE}'"
+            raise RuntimeError(msg) from e
+
+        name = model_name_hint or "cli"
+
+        for attempt in (
+            lambda: cls(model_name=name),
+            lambda: cls(name=name),
+            lambda: cls(name),
+            lambda: cls(),
+        ):
+            try:
+                return attempt()
+            except TypeError:
+                continue
+
+        raise RuntimeError(f"Could not construct {cls.__name__} with/without name '{name}'")
