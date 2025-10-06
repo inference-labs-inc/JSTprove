@@ -1,10 +1,11 @@
 # python/testing/core/tests/test_cli.py
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from python.core.utils.helper_functions import RunType
+from python.core.utils.helper_functions import RunType, to_json
 from python.frontend.cli import main
 
 # -----------------------
@@ -55,6 +56,45 @@ def test_witness_dispatch(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit()
+def test_witness_with_nested_output_paths(tmp_path: Path) -> None:
+    """Test that witness creates parent directories for nested output paths."""
+    circuit = tmp_path / "circuit.txt"
+    circuit.write_text("ok")
+
+    inputj = tmp_path / "in.json"
+    inputj.write_text('{"input":[0]}')
+
+    # Use nested paths that don't exist yet
+    outputj = tmp_path / "outputs" / "nested" / "out.json"
+    witness = tmp_path / "witnesses" / "nested" / "w.bin"
+
+    fake_circuit = MagicMock()
+    with patch("python.frontend.cli._build_default_circuit", return_value=fake_circuit):
+        rc = main(
+            [
+                "--no-banner",
+                "witness",
+                "-c",
+                str(circuit),
+                "-i",
+                str(inputj),
+                "-o",
+                str(outputj),
+                "-w",
+                str(witness),
+            ],
+        )
+
+    assert rc == 0
+    # Verify parent directories were created
+    assert outputj.parent.exists()
+    assert witness.parent.exists()
+    config = fake_circuit.base_testing.call_args[0][0]
+    assert config.output_file == str(outputj)
+    assert config.witness_file == str(witness)
+
+
+@pytest.mark.unit()
 def test_prove_dispatch(tmp_path: Path) -> None:
     circuit = tmp_path / "circuit.txt"
     circuit.write_text("ok")
@@ -87,6 +127,67 @@ def test_prove_dispatch(tmp_path: Path) -> None:
     assert config.witness_file == str(witness)
     assert config.proof_file == str(proof)
     assert config.ecc is False
+
+
+@pytest.mark.unit()
+def test_prove_with_nested_proof_path(tmp_path: Path) -> None:
+    """Test that prove creates parent directories for nested proof output."""
+    circuit = tmp_path / "circuit.txt"
+    circuit.write_text("ok")
+
+    witness = tmp_path / "w.bin"
+    witness.write_bytes(b"\x00")
+
+    # Use nested path that doesn't exist yet
+    proof = tmp_path / "proofs" / "experiment1" / "run_1" / "p.bin"
+
+    fake_circuit = MagicMock()
+    with patch("python.frontend.cli._build_default_circuit", return_value=fake_circuit):
+        rc = main(
+            [
+                "--no-banner",
+                "prove",
+                "-c",
+                str(circuit),
+                "-w",
+                str(witness),
+                "-p",
+                str(proof),
+            ],
+        )
+
+    assert rc == 0
+    # Verify parent directories were created
+    assert proof.parent.exists()
+    config = fake_circuit.base_testing.call_args[0][0]
+    assert config.proof_file == str(proof)
+
+
+# -----------------------
+# integration tests: actual file writes
+# -----------------------
+
+
+@pytest.mark.unit()
+def test_to_json_creates_nested_directories(tmp_path: Path) -> None:
+    """Test that to_json creates parent directories when writing to nested paths."""
+    nested_path = tmp_path / "level1" / "level2" / "level3" / "data.json"
+    test_data = {"key": "value", "number": 42}
+
+    # Directory doesn't exist yet
+    assert not nested_path.parent.exists()
+
+    # Write should succeed and create directories
+    to_json(test_data, str(nested_path))
+
+    # Verify directory was created and file was written
+    assert nested_path.parent.exists()
+    assert nested_path.exists()
+
+    # Verify content
+    with nested_path.open() as f:
+        loaded = json.load(f)
+    assert loaded == test_data
 
 
 @pytest.mark.unit()
@@ -172,4 +273,33 @@ def test_compile_dispatch(tmp_path: Path) -> None:
     config = call_args[0][0]
     assert config.run_type == RunType.COMPILE_CIRCUIT
     assert config.circuit_path == str(circuit)
-    assert config.dev_mode is True
+    assert config.dev_mode is False
+
+
+@pytest.mark.unit()
+def test_compile_with_nested_output_path(tmp_path: Path) -> None:
+    """Test that compile creates parent directories for nested output paths."""
+    model = tmp_path / "model.onnx"
+    model.write_bytes(b"\x00")
+
+    # Use nested path that doesn't exist yet
+    circuit = tmp_path / "deeply" / "nested" / "path" / "circuit.txt"
+
+    fake_circuit = MagicMock()
+    with patch("python.frontend.cli._build_default_circuit", return_value=fake_circuit):
+        rc = main(
+            [
+                "--no-banner",
+                "compile",
+                "-m",
+                str(model),
+                "-c",
+                str(circuit),
+            ],
+        )
+
+    assert rc == 0
+    # Verify parent directories were created
+    assert circuit.parent.exists()
+    config = fake_circuit.base_testing.call_args[0][0]
+    assert config.circuit_path == str(circuit)

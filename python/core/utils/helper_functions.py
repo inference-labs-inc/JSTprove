@@ -7,8 +7,10 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from enum import Enum
+from importlib.metadata import version as get_version
 from pathlib import Path
 from time import time
 from typing import Any, Callable, TypeVar
@@ -17,6 +19,8 @@ try:
     import tomllib  # Python 3.11+
 except ModuleNotFoundError:
     import tomli as tomllib
+
+from python.core import PACKAGE_NAME
 
 from python.core.utils.benchmarking_helpers import (
     end_memory_collection,
@@ -331,6 +335,7 @@ def to_json(inputs: dict[str, Any], path: str) -> None:
         inputs (dict[str, Any]): Data to be serialized.
         path (str): Path where the JSON file will be written.
     """
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
     with Path(path).open("w") as outfile:
         json.dump(inputs, outfile)
 
@@ -377,14 +382,30 @@ def run_cargo_command(
         subprocess.CompletedProcess[str]: Exit message from the subprocess.
     """
     try:
-        pyproject = tomllib.loads(Path("pyproject.toml").read_text())
-        version = pyproject["project"]["version"]
+        version = get_version(PACKAGE_NAME)
         binary_name = binary_name + f"_{version}".replace(".", "-")
-    except (FileNotFoundError, KeyError, tomllib.TOMLDecodeError):
-        # If pyproject.toml doesn't exist or can't be parsed, use binary_name as is
-        pass
+    except Exception:
+        try:
+            pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+            version = pyproject["project"]["version"]
+            binary_name = binary_name + f"_{version}".replace(".", "-")
+        except (FileNotFoundError, KeyError, tomllib.TOMLDecodeError):
+            pass
 
-    binary_path = f"./target/release/{binary_name}"
+    binary_path = None
+    possible_paths = [
+        f"./target/release/{binary_name}",
+        Path(__file__).parent.parent / "binaries" / binary_name,
+        Path(sys.prefix) / "bin" / binary_name,
+    ]
+
+    for path in possible_paths:
+        if Path(path).exists():
+            binary_path = str(path)
+            break
+
+    if not binary_path:
+        binary_path = f"./target/release/{binary_name}"
     cmd = _build_command(
         binary_path=binary_path,
         command_type=command_type,
@@ -566,33 +587,42 @@ def run_expander_raw(  # noqa: PLR0913
     env["RUSTFLAGS"] = "-C target-cpu=native"
     time_measure = "/usr/bin/time"
 
-    # If we need a timeflag time_flag = "-l" if platform.system() == "Darwin" else "-v"
-
-    arg_1 = "mpiexec"
-    arg_2 = "-n"
-    arg_3 = "1"
-    command = "cargo"
-    command_2 = "run"
-    manifest_path = "Expander/Cargo.toml"
-    binary = "expander-exec"
-
-    args = [
-        time_measure,
-        # time_flag,
-        arg_1,
-        arg_2,
-        arg_3,
-        command,
-        command_2,
-        "--manifest-path",
-        manifest_path,
-        "--bin",
-        binary,
-        "--release",
-        "--",
-        "-p",
-        pcs_type,
+    expander_binary_path = None
+    possible_paths = [
+        "./Expander/target/release/expander-exec",
+        Path(__file__).parent.parent / "binaries" / "expander-exec",
+        Path(sys.prefix) / "bin" / "expander-exec",
     ]
+
+    for path in possible_paths:
+        if Path(path).exists():
+            expander_binary_path = str(path)
+            break
+
+    if expander_binary_path:
+        args = [
+            time_measure,
+            expander_binary_path,
+            "-p",
+            pcs_type,
+        ]
+    else:
+        args = [
+            time_measure,
+            "mpiexec",
+            "-n",
+            "1",
+            "cargo",
+            "run",
+            "--manifest-path",
+            "Expander/Cargo.toml",
+            "--bin",
+            "expander-exec",
+            "--release",
+            "--",
+            "-p",
+            pcs_type,
+        ]
     if mode == ExpanderMode.PROVE:
         args.append(mode.value)
         proof_command = "-o"
@@ -1054,11 +1084,6 @@ def get_files(
     Returns:
         dict[str, str]: A dictionary mapping descriptive keys to file paths.
     """
-    # Ensure all provided folders exist
-    for path in folders.values():
-        if path:
-            create_folder(path)
-
     # Common file paths
     paths = {
         "input_file": str(Path(folders["input"]) / f"{name}_input.json"),
@@ -1075,7 +1100,7 @@ def get_files(
     if proof_system == ZKProofSystems.Expander:
         paths.update(
             {
-                "circuit_name": str(Path(folders["circuit"]) / name),
+                "circuit_name": name,
                 "witness_file": str(Path(folders["input"]) / f"{name}_witness.txt"),
                 "proof_path": str(Path(folders["proof"]) / f"{name}_proof.bin"),
             },
@@ -1085,13 +1110,3 @@ def get_files(
         raise ProofSystemNotImplementedError(msg)
 
     return paths
-
-
-def create_folder(directory: str) -> None:
-    """Create a directory if it doesn't exist.
-
-    Args:
-        directory (str): Path to the directory to create.
-    """
-    if not Path(directory).exists():
-        Path(directory).mkdir()

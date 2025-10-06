@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import torch
 
+from python.core import RUST_BINARY_NAME
 from python.core.circuits.errors import (
     CircuitFileError,
     CircuitProcessingError,
@@ -75,7 +76,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         use_find_model: bool = False,
     ) -> None:
         try:
-            self.name = "onnx_generic_circuit"
+            self.name = RUST_BINARY_NAME
             self.op_quantizer = ONNXOpQuantizer()
             self.rescale_config = {}
             if use_find_model:
