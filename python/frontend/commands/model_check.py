@@ -35,13 +35,14 @@ class ModelCheckCommand(BaseCommand):
 
     @classmethod
     def run(cls: type[ModelCheckCommand], args: argparse.Namespace) -> None:
-        import onnx
+        # These are intentionally imported here to avoid expensive import load times when using the CLI
+        import onnx  # noqa: PLC0415
 
-        from python.core.model_processing.onnx_quantizer.exceptions import (
+        from python.core.model_processing.onnx_quantizer.exceptions import (  # noqa: PLC0415
             InvalidParamError,
             UnsupportedOpError,
         )
-        from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import (
+        from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import (  # noqa: PLC0415
             ONNXOpQuantizer,
         )
 
