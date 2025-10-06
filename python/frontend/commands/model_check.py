@@ -35,7 +35,8 @@ class ModelCheckCommand(BaseCommand):
 
     @classmethod
     def run(cls: type[ModelCheckCommand], args: argparse.Namespace) -> None:
-        # These are intentionally imported here to avoid expensive import load times when using the CLI
+        # These are intentionally imported here
+        # to avoid expensive import load times when using the CLI
         import onnx  # noqa: PLC0415
 
         from python.core.model_processing.onnx_quantizer.exceptions import (  # noqa: PLC0415
