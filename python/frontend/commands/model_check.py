@@ -6,15 +6,6 @@ from typing import TYPE_CHECKING, ClassVar
 if TYPE_CHECKING:
     import argparse
 
-import onnx
-
-from python.core.model_processing.onnx_quantizer.exceptions import (
-    InvalidParamError,
-    UnsupportedOpError,
-)
-from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import (
-    ONNXOpQuantizer,
-)
 from python.frontend.commands.base import BaseCommand
 
 
@@ -44,6 +35,16 @@ class ModelCheckCommand(BaseCommand):
 
     @classmethod
     def run(cls: type[ModelCheckCommand], args: argparse.Namespace) -> None:
+        import onnx
+
+        from python.core.model_processing.onnx_quantizer.exceptions import (
+            InvalidParamError,
+            UnsupportedOpError,
+        )
+        from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import (
+            ONNXOpQuantizer,
+        )
+
         args.model_path = args.model_path or args.pos_model_path
 
         if not args.model_path:
