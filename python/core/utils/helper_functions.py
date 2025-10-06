@@ -21,7 +21,6 @@ except ModuleNotFoundError:
     import tomli as tomllib
 
 from python.core import PACKAGE_NAME
-
 from python.core.utils.benchmarking_helpers import (
     end_memory_collection,
     start_memory_collection,
@@ -547,7 +546,7 @@ def get_expander_file_paths(circuit_name: str) -> dict[str, str]:
     }
 
 
-def run_expander_raw(  # noqa: PLR0913
+def run_expander_raw(  # noqa: PLR0913, PLR0912, C901
     mode: ExpanderMode,
     circuit_file: str,
     witness_file: str,

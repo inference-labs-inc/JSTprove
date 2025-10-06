@@ -47,7 +47,7 @@ from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import (
 try:
     import tomllib  # Python 3.11+
 except ModuleNotFoundError:
-    import tomli as tomllib
+    import tomli as tomllib  # noqa: F401
 
 ONNXLayerDict = dict[
     str,
