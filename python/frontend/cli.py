@@ -1,21 +1,23 @@
 # python/frontend/cli.py
+"""JSTprove CLI."""
+
 from __future__ import annotations
 
 import argparse
 import os
 import sys
-from typing import Type
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from python.frontend.commands import BaseCommand
 
 from python.frontend.commands import (
-    BaseCommand,
     CompileCommand,
     ModelCheckCommand,
     ProveCommand,
     VerifyCommand,
     WitnessCommand,
 )
-
-"""JSTprove CLI."""
 
 BANNER_TITLE = r"""
   888888  .d8888b. 88888888888
@@ -31,7 +33,7 @@ BANNER_TITLE = r"""
 888P"                       888
 """
 
-COMMANDS: list[Type[BaseCommand]] = [
+COMMANDS: list[type[BaseCommand]] = [
     CompileCommand,
     ModelCheckCommand,
     WitnessCommand,
@@ -42,14 +44,12 @@ COMMANDS: list[Type[BaseCommand]] = [
 
 def print_header() -> None:
     """Print the CLI banner (no side-effects at import time)."""
-    print(
+    print(  # noqa: T201
         BANNER_TITLE
         + "\n"
         + "JSTprove — Verifiable ML by Inference Labs\n"
         + "Based on Polyhedra Network's Expander (GKR-based proving system)\n",
     )
-
-
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -96,12 +96,12 @@ def main(argv: list[str] | None = None) -> int:
         command_cls = command_map[args.cmd]
         command_cls.run(args)
     except (ValueError, FileNotFoundError, PermissionError, RuntimeError) as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print(f"Error: {e}", file=sys.stderr)  # noqa: T201
         return 1
     except SystemExit:
         raise
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print(f"Error: {e}", file=sys.stderr)  # noqa: T201
         return 1
 
     return 0

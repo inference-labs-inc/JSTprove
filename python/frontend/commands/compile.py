@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-import argparse
 import importlib
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
+
+if TYPE_CHECKING:
+    import argparse
 
 from python.core.circuits.errors import CircuitRunError
 from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
@@ -18,10 +20,15 @@ class CompileCommand(BaseCommand):
 
     name: ClassVar[str] = "compile"
     aliases: ClassVar[list[str]] = ["comp"]
-    help: ClassVar[str] = "Compile a circuit (writes circuit + quantized model + weights)."
+    help: ClassVar[
+        str
+    ] = "Compile a circuit (writes circuit + quantized model + weights)."
 
     @classmethod
-    def configure_parser(cls, parser: argparse.ArgumentParser) -> None:
+    def configure_parser(
+        cls: type[CompileCommand],
+        parser: argparse.ArgumentParser,
+    ) -> None:
         parser.add_argument(
             "pos_model_path",
             nargs="?",
@@ -46,12 +53,13 @@ class CompileCommand(BaseCommand):
         )
 
     @classmethod
-    def run(cls, args: argparse.Namespace) -> None:
+    def run(cls: type[CompileCommand], args: argparse.Namespace) -> None:
         args.model_path = args.model_path or args.pos_model_path
         args.circuit_path = args.circuit_path or args.pos_circuit_path
 
         if not args.model_path or not args.circuit_path:
-            raise ValueError("compile requires model_path and circuit_path")
+            msg = "compile requires model_path and circuit_path"
+            raise ValueError(msg)
 
         cls._ensure_file_exists(args.model_path)
         cls._ensure_parent_dir(args.circuit_path)
@@ -74,27 +82,32 @@ class CompileCommand(BaseCommand):
         except CircuitRunError as e:
             raise RuntimeError(e) from e
 
-        print(f"[compile] done → circuit={args.circuit_path},")
+        print(f"[compile] done → circuit={args.circuit_path},")  # noqa: T201
 
     @staticmethod
     def _ensure_file_exists(path: str) -> None:
         p = Path(path)
         if not p.is_file():
-            raise FileNotFoundError(f"Required file not found: {path}")
+            msg = f"Required file not found: {path}"
+            raise FileNotFoundError(msg)
         if not p.exists() or not p.stat().st_mode & 0o444:
-            raise PermissionError(f"Cannot read file: {path}")
+            msg = f"Cannot read file: {path}"
+            raise PermissionError(msg)
 
     @staticmethod
     def _ensure_parent_dir(path: str) -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
-    def _build_circuit(model_name_hint: str | None = None) -> Any:
+    def _build_circuit(model_name_hint: str | None = None) -> Any:  # noqa: ANN401
         mod = importlib.import_module(DEFAULT_CIRCUIT_MODULE)
         try:
             cls = getattr(mod, DEFAULT_CIRCUIT_CLASS)
         except AttributeError as e:
-            msg = f"Default circuit class '{DEFAULT_CIRCUIT_CLASS}' not found in '{DEFAULT_CIRCUIT_MODULE}'"
+            msg = (
+                f"Default circuit class '{DEFAULT_CIRCUIT_CLASS}' "
+                f"not found in '{DEFAULT_CIRCUIT_MODULE}'"
+            )
             raise RuntimeError(msg) from e
 
         name = model_name_hint or "cli"
@@ -107,7 +120,8 @@ class CompileCommand(BaseCommand):
         ):
             try:
                 return attempt()
-            except TypeError:
+            except TypeError:  # noqa: PERF203
                 continue
 
-        raise RuntimeError(f"Could not construct {cls.__name__} with/without name '{name}'")
+        msg = f"Could not construct {cls.__name__} with/without name '{name}'"
+        raise RuntimeError(msg)

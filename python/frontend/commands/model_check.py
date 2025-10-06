@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
+
+if TYPE_CHECKING:
+    import argparse
 
 import onnx
 
@@ -24,7 +26,10 @@ class ModelCheckCommand(BaseCommand):
     help: ClassVar[str] = "Check if the model is supported for quantization."
 
     @classmethod
-    def configure_parser(cls, parser: argparse.ArgumentParser) -> None:
+    def configure_parser(
+        cls: type[ModelCheckCommand],
+        parser: argparse.ArgumentParser,
+    ) -> None:
         parser.add_argument(
             "pos_model_path",
             nargs="?",
@@ -38,11 +43,12 @@ class ModelCheckCommand(BaseCommand):
         )
 
     @classmethod
-    def run(cls, args: argparse.Namespace) -> None:
+    def run(cls: type[ModelCheckCommand], args: argparse.Namespace) -> None:
         args.model_path = args.model_path or args.pos_model_path
 
         if not args.model_path:
-            raise ValueError("model_check requires model_path")
+            msg = "model_check requires model_path"
+            raise ValueError(msg)
 
         cls._ensure_file_exists(args.model_path)
 
@@ -50,16 +56,23 @@ class ModelCheckCommand(BaseCommand):
         quantizer = ONNXOpQuantizer()
         try:
             quantizer.check_model(model)
-            print(f"Model {args.model_path} is supported.")
+            print(f"Model {args.model_path} is supported.")  # noqa: T201
         except UnsupportedOpError as e:
-            raise RuntimeError(f"Model {args.model_path} is NOT supported: Unsupported operations {e.unsupported_ops}") from e
+            msg = (
+                f"Model {args.model_path} is NOT supported: "
+                f"Unsupported operations {e.unsupported_ops}"
+            )
+            raise RuntimeError(msg) from e
         except InvalidParamError as e:
-            raise RuntimeError(f"Model {args.model_path} is NOT supported: {e.message}") from e
+            msg = f"Model {args.model_path} is NOT supported: {e.message}"
+            raise RuntimeError(msg) from e
 
     @staticmethod
     def _ensure_file_exists(path: str) -> None:
         p = Path(path)
         if not p.is_file():
-            raise FileNotFoundError(f"Required file not found: {path}")
+            msg = f"Required file not found: {path}"
+            raise FileNotFoundError(msg)
         if not p.exists() or not p.stat().st_mode & 0o444:
-            raise PermissionError(f"Cannot read file: {path}")
+            msg = f"Cannot read file: {path}"
+            raise PermissionError(msg)

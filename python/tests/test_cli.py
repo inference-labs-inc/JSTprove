@@ -12,7 +12,7 @@ from python.frontend.cli import main
 # -----------------------
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_witness_dispatch(tmp_path: Path) -> None:
     # minimal files so _ensure_exists passes
     circuit = tmp_path / "circuit.txt"
@@ -28,7 +28,10 @@ def test_witness_dispatch(tmp_path: Path) -> None:
     witness = tmp_path / "w.bin"  # doesn't need to pre-exist
 
     fake_circuit = MagicMock()
-    with patch("python.frontend.commands.witness.WitnessCommand._build_circuit", return_value=fake_circuit):
+    with patch(
+        "python.frontend.commands.witness.WitnessCommand._build_circuit",
+        return_value=fake_circuit,
+    ):
         rc = main(
             [
                 "--no-banner",
@@ -54,7 +57,7 @@ def test_witness_dispatch(tmp_path: Path) -> None:
     assert config.witness_file == str(witness)
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_witness_dispatch_positional(tmp_path: Path) -> None:
     circuit = tmp_path / "circuit.txt"
     circuit.write_text("ok")
@@ -69,7 +72,10 @@ def test_witness_dispatch_positional(tmp_path: Path) -> None:
     witness = tmp_path / "w.bin"
 
     fake_circuit = MagicMock()
-    with patch("python.frontend.commands.witness.WitnessCommand._build_circuit", return_value=fake_circuit):
+    with patch(
+        "python.frontend.commands.witness.WitnessCommand._build_circuit",
+        return_value=fake_circuit,
+    ):
         rc = main(
             [
                 "--no-banner",
@@ -91,7 +97,7 @@ def test_witness_dispatch_positional(tmp_path: Path) -> None:
     assert config.witness_file == str(witness)
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_prove_dispatch(tmp_path: Path) -> None:
     circuit = tmp_path / "circuit.txt"
     circuit.write_text("ok")
@@ -102,7 +108,10 @@ def test_prove_dispatch(tmp_path: Path) -> None:
     proof = tmp_path / "p.bin"  # doesn't need to pre-exist
 
     fake_circuit = MagicMock()
-    with patch("python.frontend.commands.prove.ProveCommand._build_circuit", return_value=fake_circuit):
+    with patch(
+        "python.frontend.commands.prove.ProveCommand._build_circuit",
+        return_value=fake_circuit,
+    ):
         rc = main(
             [
                 "--no-banner",
@@ -126,7 +135,7 @@ def test_prove_dispatch(tmp_path: Path) -> None:
     assert config.ecc is False
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_prove_dispatch_positional(tmp_path: Path) -> None:
     circuit = tmp_path / "circuit.txt"
     circuit.write_text("ok")
@@ -137,7 +146,10 @@ def test_prove_dispatch_positional(tmp_path: Path) -> None:
     proof = tmp_path / "p.bin"
 
     fake_circuit = MagicMock()
-    with patch("python.frontend.commands.prove.ProveCommand._build_circuit", return_value=fake_circuit):
+    with patch(
+        "python.frontend.commands.prove.ProveCommand._build_circuit",
+        return_value=fake_circuit,
+    ):
         rc = main(
             [
                 "--no-banner",
@@ -158,7 +170,7 @@ def test_prove_dispatch_positional(tmp_path: Path) -> None:
     assert config.ecc is False
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_verify_dispatch(tmp_path: Path) -> None:
     circuit = tmp_path / "circuit.txt"
     circuit.write_text("ok")
@@ -180,7 +192,10 @@ def test_verify_dispatch(tmp_path: Path) -> None:
 
     fake_circuit = MagicMock()
 
-    with patch("python.frontend.commands.verify.VerifyCommand._build_circuit", return_value=fake_circuit):
+    with patch(
+        "python.frontend.commands.verify.VerifyCommand._build_circuit",
+        return_value=fake_circuit,
+    ):
         rc = main(
             [
                 "--no-banner",
@@ -210,7 +225,7 @@ def test_verify_dispatch(tmp_path: Path) -> None:
     assert config.ecc is False
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_verify_dispatch_positional(tmp_path: Path) -> None:
     circuit = tmp_path / "circuit.txt"
     circuit.write_text("ok")
@@ -232,7 +247,10 @@ def test_verify_dispatch_positional(tmp_path: Path) -> None:
 
     fake_circuit = MagicMock()
 
-    with patch("python.frontend.commands.verify.VerifyCommand._build_circuit", return_value=fake_circuit):
+    with patch(
+        "python.frontend.commands.verify.VerifyCommand._build_circuit",
+        return_value=fake_circuit,
+    ):
         rc = main(
             [
                 "--no-banner",
@@ -257,7 +275,7 @@ def test_verify_dispatch_positional(tmp_path: Path) -> None:
     assert config.ecc is False
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_compile_dispatch(tmp_path: Path) -> None:
     # minimal files so _ensure_exists passes
     model = tmp_path / "model.onnx"
@@ -266,7 +284,10 @@ def test_compile_dispatch(tmp_path: Path) -> None:
     circuit = tmp_path / "circuit.txt"  # doesn't need to pre-exist
 
     fake_circuit = MagicMock()
-    with patch("python.frontend.commands.compile.CompileCommand._build_circuit", return_value=fake_circuit):
+    with patch(
+        "python.frontend.commands.compile.CompileCommand._build_circuit",
+        return_value=fake_circuit,
+    ):
         rc = main(
             [
                 "--no-banner",
@@ -290,7 +311,7 @@ def test_compile_dispatch(tmp_path: Path) -> None:
     assert config.dev_mode is True
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_compile_dispatch_positional(tmp_path: Path) -> None:
     model = tmp_path / "model.onnx"
     model.write_bytes(b"\x00")
@@ -298,7 +319,10 @@ def test_compile_dispatch_positional(tmp_path: Path) -> None:
     circuit = tmp_path / "circuit.txt"
 
     fake_circuit = MagicMock()
-    with patch("python.frontend.commands.compile.CompileCommand._build_circuit", return_value=fake_circuit):
+    with patch(
+        "python.frontend.commands.compile.CompileCommand._build_circuit",
+        return_value=fake_circuit,
+    ):
         rc = main(
             [
                 "--no-banner",

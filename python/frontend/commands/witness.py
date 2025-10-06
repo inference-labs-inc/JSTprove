@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-import argparse
 import importlib
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
+
+if TYPE_CHECKING:
+    import argparse
 
 from python.core.circuits.errors import CircuitRunError
 from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
@@ -21,7 +23,10 @@ class WitnessCommand(BaseCommand):
     help: ClassVar[str] = "Generate witness using a compiled circuit."
 
     @classmethod
-    def configure_parser(cls, parser: argparse.ArgumentParser) -> None:
+    def configure_parser(
+        cls: type[WitnessCommand],
+        parser: argparse.ArgumentParser,
+    ) -> None:
         parser.add_argument(
             "pos_circuit_path",
             nargs="?",
@@ -64,14 +69,20 @@ class WitnessCommand(BaseCommand):
         )
 
     @classmethod
-    def run(cls, args: argparse.Namespace) -> None:
+    def run(cls: type[WitnessCommand], args: argparse.Namespace) -> None:
         args.circuit_path = args.circuit_path or args.pos_circuit_path
         args.input_path = args.input_path or args.pos_input_path
         args.output_path = args.output_path or args.pos_output_path
         args.witness_path = args.witness_path or args.pos_witness_path
 
-        if not all([args.circuit_path, args.input_path, args.output_path, args.witness_path]):
-            raise ValueError("witness requires circuit_path, input_path, output_path, and witness_path")
+        if not all(
+            [args.circuit_path, args.input_path, args.output_path, args.witness_path],
+        ):
+            msg = (
+                "witness requires circuit_path, input_path, output_path, "
+                "and witness_path"
+            )
+            raise ValueError(msg)
 
         cls._ensure_file_exists(args.circuit_path)
         cls._ensure_file_exists(args.input_path)
@@ -93,27 +104,35 @@ class WitnessCommand(BaseCommand):
         except CircuitRunError as e:
             raise RuntimeError(e) from e
 
-        print(f"[witness] wrote witness → {args.witness_path} and outputs → {args.output_path}")
+        print(  # noqa: T201
+            f"[witness] wrote witness → {args.witness_path} "
+            f"and outputs → {args.output_path}",
+        )
 
     @staticmethod
     def _ensure_file_exists(path: str) -> None:
         p = Path(path)
         if not p.is_file():
-            raise FileNotFoundError(f"Required file not found: {path}")
+            msg = f"Required file not found: {path}"
+            raise FileNotFoundError(msg)
         if not p.exists() or not p.stat().st_mode & 0o444:
-            raise PermissionError(f"Cannot read file: {path}")
+            msg = f"Cannot read file: {path}"
+            raise PermissionError(msg)
 
     @staticmethod
     def _ensure_parent_dir(path: str) -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
-    def _build_circuit(model_name_hint: str | None = None) -> Any:
+    def _build_circuit(model_name_hint: str | None = None) -> Any:  # noqa: ANN401
         mod = importlib.import_module(DEFAULT_CIRCUIT_MODULE)
         try:
             cls = getattr(mod, DEFAULT_CIRCUIT_CLASS)
         except AttributeError as e:
-            msg = f"Default circuit class '{DEFAULT_CIRCUIT_CLASS}' not found in '{DEFAULT_CIRCUIT_MODULE}'"
+            msg = (
+                f"Default circuit class '{DEFAULT_CIRCUIT_CLASS}' "
+                f"not found in '{DEFAULT_CIRCUIT_MODULE}'"
+            )
             raise RuntimeError(msg) from e
 
         name = model_name_hint or "cli"
@@ -126,7 +145,8 @@ class WitnessCommand(BaseCommand):
         ):
             try:
                 return attempt()
-            except TypeError:
+            except TypeError:  # noqa: PERF203
                 continue
 
-        raise RuntimeError(f"Could not construct {cls.__name__} with/without name '{name}'")
+        msg = f"Could not construct {cls.__name__} with/without name '{name}'"
+        raise RuntimeError(msg)

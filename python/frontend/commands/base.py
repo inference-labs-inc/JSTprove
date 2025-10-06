@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-import argparse
 from abc import ABC, abstractmethod
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
+
+if TYPE_CHECKING:
+    import argparse
 
 
 class BaseCommand(ABC):
@@ -14,10 +16,13 @@ class BaseCommand(ABC):
 
     @classmethod
     @abstractmethod
-    def configure_parser(cls, parser: argparse.ArgumentParser) -> None:
+    def configure_parser(
+        cls: type[BaseCommand],
+        parser: argparse.ArgumentParser,
+    ) -> None:
         """Configure the argument parser for this command."""
 
     @classmethod
     @abstractmethod
-    def run(cls, args: argparse.Namespace) -> None:
+    def run(cls: type[BaseCommand], args: argparse.Namespace) -> None:
         """Execute the command."""
