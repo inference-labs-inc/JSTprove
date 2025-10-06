@@ -20,9 +20,9 @@ class CompileCommand(BaseCommand):
 
     name: ClassVar[str] = "compile"
     aliases: ClassVar[list[str]] = ["comp"]
-    help: ClassVar[
-        str
-    ] = "Compile a circuit (writes circuit + quantized model + weights)."
+    help: ClassVar[str] = (
+        "Compile a circuit (writes circuit + quantized model + weights)."
+    )
 
     @classmethod
     def configure_parser(
