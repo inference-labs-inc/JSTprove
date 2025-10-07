@@ -210,8 +210,8 @@ class ExpanderWitnessLoader(WitnessLoader):
 
         # Compare
         return (
-            actual_inputs != expected_inputs_mod
-            or actual_outputs != expected_outputs_mod
+            actual_inputs == expected_inputs_mod
+            and actual_outputs == expected_outputs_mod
         )
 
 
