@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import logging
 from dataclasses import asdict, dataclass
+from importlib.metadata import version as get_version
 from pathlib import Path
 from typing import Optional, Union
 
@@ -17,6 +18,7 @@ from onnxruntime import InferenceSession, SessionOptions
 from onnxruntime_extensions import get_library_path
 
 import python.core.model_processing.onnx_custom_ops  # noqa: F401
+from python.core import PACKAGE_NAME
 from python.core.model_processing.converters.base import ModelConverter, ModelType
 from python.core.model_processing.errors import (
     InferenceError,
@@ -41,6 +43,11 @@ from python.core.model_processing.onnx_quantizer.layers.base import (
 from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import (
     ONNXOpQuantizer,
 )
+
+try:
+    import tomllib  # Python 3.11+
+except ModuleNotFoundError:
+    import tomli as tomllib  # noqa: F401
 
 ONNXLayerDict = dict[
     str,
@@ -135,6 +142,7 @@ class ONNXConverter(ModelConverter):
             larger models may require a different structure
         """
         try:
+            Path(file_path).parent.mkdir(parents=True, exist_ok=True)
             onnx.save(self.model, file_path)
         except Exception as e:
             raise ModelSaveError(
@@ -183,6 +191,7 @@ class ONNXConverter(ModelConverter):
             file_path (str): Destination path for the quantized model.
         """
         try:
+            Path(file_path).parent.mkdir(parents=True, exist_ok=True)
             onnx.save(self.quantized_model, file_path)
         except Exception as e:
             raise ModelSaveError(
@@ -1070,9 +1079,13 @@ class ONNXConverter(ModelConverter):
             elem_type = getattr(output, "elem_type", -1)
             outputs.append(ONNXIO(output.name, elem_type, shape))
 
+        # Get version from package metadata
+        try:
+            version = get_version(PACKAGE_NAME)
+        except Exception:
+            version = "0.0.0"
+
         architecture = {
-            "inputs": [asdict(i) for i in inputs],
-            "outputs": [asdict(o) for o in outputs],
             "architecture": [asdict(a) for a in architecture],
         }
         weights = {"w_and_b": [asdict(w_b) for w_b in w_and_b]}
@@ -1080,6 +1093,9 @@ class ONNXConverter(ModelConverter):
             "scale_base": getattr(self, "scale_base", 2),
             "scale_exponent": getattr(self, "scale_exponent", 18),
             "rescale_config": getattr(self, "rescale_config", {}),
+            "inputs": [asdict(i) for i in inputs],
+            "outputs": [asdict(o) for o in outputs],
+            "version": version,
         }
         return architecture, weights, circuit_params
 

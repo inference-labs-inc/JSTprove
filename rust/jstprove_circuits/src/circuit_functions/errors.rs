@@ -2,6 +2,7 @@ use crate::circuit_functions::{
     layers::LayerError,
     utils::{ArrayConversionError, BuildError, PatternError, RescaleError, UtilsError},
 };
+use crate::io::io_reader::onnx_context::OnnxContextError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -29,6 +30,9 @@ pub enum CircuitError {
 
     #[error("Error building layers: {0}")]
     BuildError(#[from] BuildError),
+
+    #[error("ONNX context error: {0}")]
+    OnnxContext(#[from] OnnxContextError),
 
     #[error("Other circuit error: {0}")]
     Other(String),

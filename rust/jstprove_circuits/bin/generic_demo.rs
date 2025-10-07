@@ -7,8 +7,6 @@ use jstprove_circuits::circuit_functions::utils::ArrayConversionError;
 use jstprove_circuits::circuit_functions::utils::build_layers::build_layers;
 use jstprove_circuits::runner::errors::RunError;
 /// External crate imports
-use std::sync::LazyLock;
-
 use ndarray::{ArrayD, Ix1, IxDyn};
 
 /// `ExpanderCompilerCollection` imports
@@ -24,30 +22,10 @@ use jstprove_circuits::circuit_functions::utils::shaping::get_inputs;
 
 use jstprove_circuits::circuit_functions::utils::tensor_ops::get_nd_circuit_inputs;
 use jstprove_circuits::io::io_reader::{FileReader, IOReader};
-use jstprove_circuits::runner::main_runner::{ConfigurableCircuit, handle_args};
+use jstprove_circuits::runner::main_runner::{ConfigurableCircuit, get_arg, get_args, handle_args};
 
-type WeightsData = (Architecture, CircuitParams);
-
-// // This reads the weights json into a string
-const MATRIX_WEIGHTS_FILE: &str =
-    include_str!("../../../python/models/weights/onnx_generic_circuit_weights.json");
-
-//lazy static macro, forces this to be done at compile time (and allows for a constant of this weights variable)
-// Weights will be read in
-// Lazily parse the weights JSON file on first access
-static WEIGHTS_INPUT: LazyLock<WeightsData> = LazyLock::new(|| {
-    serde_json::from_str(MATRIX_WEIGHTS_FILE).expect("JSON was not well-formatted")
-});
-static WEIGHTS_INPUT2: LazyLock<WANDB> = LazyLock::new(|| {
-    let path = std::path::Path::new("python/models/weights/onnx_generic_circuit_weights2.json");
-    let json_str =
-        std::fs::read_to_string(path).expect("Failed to read weights JSON file at runtime");
-    serde_json::from_str(&json_str).expect("JSON was not well-formatted")
-});
-// Extract components from WEIGHTS_INPUT lazily
-static ARCHITECTURE: LazyLock<Architecture> = LazyLock::new(|| WEIGHTS_INPUT.0.clone());
-static W_AND_B: LazyLock<WANDB> = LazyLock::new(|| WEIGHTS_INPUT2.clone());
-static CIRCUITPARAMS: LazyLock<CircuitParams> = LazyLock::new(|| WEIGHTS_INPUT.1.clone());
+/// Your new context module
+use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
 
 declare_circuit!(Circuit {
     input_arr: [PublicVariable],
@@ -74,18 +52,22 @@ impl Circuit<Variable> {
         &self,
         api: &mut Builder,
     ) -> Result<(), CircuitError> {
+        let params = OnnxContext::get_params()?;
+        let architecture = OnnxContext::get_architecture()?;
+        let w_and_b = OnnxContext::get_wandb()?;
+
         // Getting inputs
-        let mut out = get_inputs(&self.input_arr, ARCHITECTURE.inputs.clone())?;
+        let mut out = get_inputs(&self.input_arr, params.inputs.clone())?;
 
         // let mut out = out2.remove("input").unwrap().clone();
-        let layers = build_layers::<C, Builder>(&CIRCUITPARAMS, &ARCHITECTURE, &W_AND_B)?;
+        let layers = build_layers::<C, Builder>(params, architecture, w_and_b)?;
 
-        if ARCHITECTURE.architecture.is_empty() {
+        if architecture.architecture.is_empty() {
             return Err(CircuitError::EmptyArchitecture);
         }
 
         for (i, layer) in layers.iter().enumerate() {
-            eprintln!("Applying Layer {:?}", &ARCHITECTURE.architecture[i].name);
+            eprintln!("Applying Layer {:?}", &architecture.architecture[i].name);
             let result = layer.apply(api, out.clone())?;
             result.0.into_iter().for_each(|key| {
                 // out.insert(key, Arc::clone(&value)); Depending on memory constraints here
@@ -95,7 +77,7 @@ impl Circuit<Variable> {
 
         eprint!("Flatten output");
         let flatten_shape: Vec<usize> = vec![
-            ARCHITECTURE
+            params
                 .outputs
                 .iter()
                 .map(|obj| obj.shape.iter().product::<usize>())
@@ -103,7 +85,7 @@ impl Circuit<Variable> {
         ];
 
         // TODO only support single output
-        let output_name = ARCHITECTURE
+        let output_name = params
             .outputs
             .first()
             .ok_or_else(|| CircuitError::Other("No outputs defined in ARCHITECTURE".to_string()))?
@@ -130,18 +112,19 @@ impl Circuit<Variable> {
         api.assert_is_equal(self.dummy[0], 1);
         api.assert_is_equal(self.dummy[1], 1);
 
-        api.assert_is_equal(self.scale_base[0], CIRCUITPARAMS.scale_base);
-        api.assert_is_equal(self.scale_exponent[0], CIRCUITPARAMS.scale_exponent);
+        api.assert_is_equal(self.scale_base[0], params.scale_base);
+        api.assert_is_equal(self.scale_exponent[0], params.scale_exponent);
 
         Ok(())
     }
 }
 
 impl ConfigurableCircuit for Circuit<Variable> {
-    fn configure(&mut self) {
+    fn configure(&mut self) -> Result<(), RunError> {
         // Change input and outputs as needed
+        let params = OnnxContext::get_params()?;
         // Outputs
-        let output_dims: usize = ARCHITECTURE
+        let output_dims: usize = params
             .outputs
             .iter()
             .map(|obj| obj.shape.iter().product::<usize>())
@@ -149,12 +132,13 @@ impl ConfigurableCircuit for Circuit<Variable> {
         self.outputs = vec![Variable::default(); output_dims];
 
         // Inputs
-        let input_dims: usize = ARCHITECTURE
+        let input_dims: usize = params
             .inputs
             .iter()
             .map(|obj| obj.shape.iter().product::<usize>())
             .product();
         self.input_arr = vec![Variable::default(); input_dims];
+        Ok(())
     }
 }
 
@@ -167,8 +151,10 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
         let data: InputData =
             <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<InputData>(file_path)?;
 
+        let params = OnnxContext::get_params()?;
+
         // compute the total number of inputs
-        let input_dims: &[usize] = &[ARCHITECTURE
+        let input_dims: &[usize] = &[params
             .inputs
             .iter()
             .map(|obj| obj.shape.iter().product::<usize>())
@@ -177,8 +163,8 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
         assignment.dummy[0] = CircuitField::<C>::from(1);
         assignment.dummy[1] = CircuitField::<C>::from(1);
 
-        assignment.scale_base[0] = CircuitField::<C>::from(CIRCUITPARAMS.scale_base);
-        assignment.scale_exponent[0] = CircuitField::<C>::from(CIRCUITPARAMS.scale_exponent);
+        assignment.scale_base[0] = CircuitField::<C>::from(params.scale_base);
+        assignment.scale_exponent[0] = CircuitField::<C>::from(params.scale_exponent);
 
         // 1) get back an ArrayD<CircuitField<C>>
         let arr: ArrayD<CircuitField<C>> = get_nd_circuit_inputs::<C>(&data.input, input_dims)
@@ -202,7 +188,8 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
         let data: OutputData =
             <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<OutputData>(file_path)?;
 
-        let output_dims: &[usize] = &[ARCHITECTURE
+        let params = OnnxContext::get_params()?;
+        let output_dims: &[usize] = &[params
             .outputs
             .iter()
             .map(|obj| obj.shape.iter().product::<usize>())
@@ -225,12 +212,49 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
     }
 }
 
+fn set_onnx_context(matches: &clap::ArgMatches) {
+    let meta_file_path = get_arg(matches, "meta").unwrap();
+
+    let meta_file = std::fs::read_to_string(&meta_file_path).expect("Failed to read metadata file");
+    let params: CircuitParams = serde_json::from_str(&meta_file).expect("Invalid metadata JSON");
+
+    OnnxContext::set_params(params)
+        .map_err(|e| CircuitError::Other(e.to_string()))
+        .unwrap();
+
+    if get_arg(matches, "type").unwrap() == "run_compile_circuit" {
+        let arch_file_path = get_arg(matches, "arch").unwrap();
+        let arch_file =
+            std::fs::read_to_string(&arch_file_path).expect("Failed to read architecture file");
+        let arch: Architecture =
+            serde_json::from_str(&arch_file).expect("Invalid architecture JSON");
+
+        OnnxContext::set_architecture(arch)
+            .map_err(|e| CircuitError::Other(e.to_string()))
+            .unwrap();
+
+        let wandb_file_path = get_arg(matches, "wandb").unwrap();
+        let wandb_file =
+            std::fs::read_to_string(&wandb_file_path).expect("Failed to read W&B file");
+        let wandb: WANDB = serde_json::from_str(&wandb_file).expect("Invalid W&B JSON");
+
+        OnnxContext::set_wandb(wandb)
+            .map_err(|e| CircuitError::Other(e.to_string()))
+            .unwrap();
+    }
+}
+
 fn main() {
     let mut file_reader = FileReader {
         path: "demo_cnn".to_owned(),
     };
 
-    if let Err(err) = handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(&mut file_reader)
+    let matches = get_args();
+
+    set_onnx_context(&matches);
+
+    if let Err(err) =
+        handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(&matches, &mut file_reader)
     {
         eprintln!("Error: {err}");
         std::process::exit(1);
