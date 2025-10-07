@@ -8,6 +8,7 @@ if TYPE_CHECKING:
 
 from python.core.circuits.errors import CircuitRunError
 from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
+from python.frontend.commands.args import CIRCUIT_PATH, MODEL_PATH
 from python.frontend.commands.base import BaseCommand
 
 
@@ -25,33 +26,16 @@ class CompileCommand(BaseCommand):
         cls: type[CompileCommand],
         parser: argparse.ArgumentParser,
     ) -> None:
-        parser.add_argument(
-            "pos_model_path",
-            nargs="?",
-            metavar="model_path",
-            help="Path to the original ONNX model.",
-        )
-        parser.add_argument(
-            "pos_circuit_path",
-            nargs="?",
-            metavar="circuit_path",
-            help="Output path for the compiled circuit (e.g., circuit.txt).",
-        )
-        parser.add_argument(
-            "-m",
-            "--model-path",
-            help="Path to the original ONNX model.",
-        )
-        parser.add_argument(
-            "-c",
-            "--circuit-path",
-            help="Output path for the compiled circuit (e.g., circuit.txt).",
+        MODEL_PATH.add_to_parser(parser)
+        CIRCUIT_PATH.add_to_parser(
+            parser,
+            "Output path for the compiled circuit (e.g., circuit.txt).",
         )
 
     @classmethod
-    @BaseCommand.validate_required("model_path", "circuit_path")
-    @BaseCommand.validate_paths("model_path")
-    @BaseCommand.validate_parent_paths("circuit_path")
+    @BaseCommand.validate_required(MODEL_PATH, CIRCUIT_PATH)
+    @BaseCommand.validate_paths(MODEL_PATH)
+    @BaseCommand.validate_parent_paths(CIRCUIT_PATH)
     def run(cls: type[CompileCommand], args: argparse.Namespace) -> None:
         model_name_hint = Path(args.model_path).stem
         circuit = cls._build_circuit(model_name_hint)

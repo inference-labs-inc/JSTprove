@@ -10,8 +10,11 @@ from typing import TYPE_CHECKING, Any, ClassVar
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-DEFAULT_CIRCUIT_MODULE = "python.core.circuit_models.generic_onnx"
-DEFAULT_CIRCUIT_CLASS = "GenericModelONNX"
+    from python.frontend.commands.args import ArgSpec
+from python.frontend.commands.constants import (
+    DEFAULT_CIRCUIT_CLASS,
+    DEFAULT_CIRCUIT_MODULE,
+)
 
 
 class HiddenPositionalHelpFormatter(argparse.HelpFormatter):
@@ -64,18 +67,18 @@ class BaseCommand(ABC):
         """Execute the command."""
 
     @staticmethod
-    def validate_required(*required: str) -> Callable:
+    def validate_required(*required: ArgSpec) -> Callable:
         def decorator(func: Callable) -> Callable:
             @functools.wraps(func)
             def wrapper(cls: type[BaseCommand], args: argparse.Namespace) -> None:
-                for arg in required:
-                    flag_val = getattr(args, arg, None)
-                    pos_val = getattr(args, f"pos_{arg}", None)
+                for arg_spec in required:
+                    flag_val = getattr(args, arg_spec.name, None)
+                    pos_val = getattr(args, arg_spec.positional, None)
                     merged = flag_val if flag_val is not None else pos_val
                     if not merged:
-                        msg = f"Missing required argument: {arg}"
+                        msg = f"Missing required argument: {arg_spec.name}"
                         raise ValueError(msg)
-                    setattr(args, arg, merged)
+                    setattr(args, arg_spec.name, merged)
                 return func(cls, args)
 
             return wrapper
@@ -83,12 +86,12 @@ class BaseCommand(ABC):
         return decorator
 
     @staticmethod
-    def validate_paths(*paths: str) -> Callable:
+    def validate_paths(*paths: ArgSpec) -> Callable:
         def decorator(func: Callable) -> Callable:
             @functools.wraps(func)
             def wrapper(cls: type[BaseCommand], args: argparse.Namespace) -> None:
-                for path_arg in paths:
-                    cls._ensure_file_exists(getattr(args, path_arg))
+                for arg_spec in paths:
+                    cls._ensure_file_exists(getattr(args, arg_spec.name))
                 return func(cls, args)
 
             return wrapper
@@ -96,12 +99,12 @@ class BaseCommand(ABC):
         return decorator
 
     @staticmethod
-    def validate_parent_paths(*paths: str) -> Callable:
+    def validate_parent_paths(*paths: ArgSpec) -> Callable:
         def decorator(func: Callable) -> Callable:
             @functools.wraps(func)
             def wrapper(cls: type[BaseCommand], args: argparse.Namespace) -> None:
-                for path_arg in paths:
-                    cls._ensure_parent_dir(getattr(args, path_arg))
+                for arg_spec in paths:
+                    cls._ensure_parent_dir(getattr(args, arg_spec.name))
                 return func(cls, args)
 
             return wrapper

@@ -7,6 +7,7 @@ if TYPE_CHECKING:
 
 from python.core.circuits.errors import CircuitRunError
 from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
+from python.frontend.commands.args import CIRCUIT_PATH, PROOF_PATH, WITNESS_PATH
 from python.frontend.commands.base import BaseCommand
 
 
@@ -22,44 +23,14 @@ class ProveCommand(BaseCommand):
         cls: type[ProveCommand],
         parser: argparse.ArgumentParser,
     ) -> None:
-        parser.add_argument(
-            "pos_circuit_path",
-            nargs="?",
-            metavar="circuit_path",
-            help="Path to the compiled circuit.",
-        )
-        parser.add_argument(
-            "pos_witness_path",
-            nargs="?",
-            metavar="witness_path",
-            help="Path to an existing witness.",
-        )
-        parser.add_argument(
-            "pos_proof_path",
-            nargs="?",
-            metavar="proof_path",
-            help="Path to write proof.",
-        )
-        parser.add_argument(
-            "-c",
-            "--circuit-path",
-            help="Path to the compiled circuit.",
-        )
-        parser.add_argument(
-            "-w",
-            "--witness-path",
-            help="Path to an existing witness.",
-        )
-        parser.add_argument(
-            "-p",
-            "--proof-path",
-            help="Path to write proof.",
-        )
+        CIRCUIT_PATH.add_to_parser(parser)
+        WITNESS_PATH.add_to_parser(parser, "Path to an existing witness.")
+        PROOF_PATH.add_to_parser(parser)
 
     @classmethod
-    @BaseCommand.validate_required("circuit_path", "witness_path", "proof_path")
-    @BaseCommand.validate_paths("circuit_path", "witness_path")
-    @BaseCommand.validate_parent_paths("proof_path")
+    @BaseCommand.validate_required(CIRCUIT_PATH, WITNESS_PATH, PROOF_PATH)
+    @BaseCommand.validate_paths(CIRCUIT_PATH, WITNESS_PATH)
+    @BaseCommand.validate_parent_paths(PROOF_PATH)
     def run(cls: type[ProveCommand], args: argparse.Namespace) -> None:
         circuit = cls._build_circuit("cli")
 

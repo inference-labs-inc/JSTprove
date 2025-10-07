@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, ClassVar
 if TYPE_CHECKING:
     import argparse
 
+from python.frontend.commands.args import MODEL_PATH
 from python.frontend.commands.base import BaseCommand
 
 
@@ -20,21 +21,11 @@ class ModelCheckCommand(BaseCommand):
         cls: type[ModelCheckCommand],
         parser: argparse.ArgumentParser,
     ) -> None:
-        parser.add_argument(
-            "pos_model_path",
-            nargs="?",
-            metavar="model_path",
-            help="Path to the ONNX model.",
-        )
-        parser.add_argument(
-            "-m",
-            "--model-path",
-            help="Path to the ONNX model.",
-        )
+        MODEL_PATH.add_to_parser(parser)
 
     @classmethod
-    @BaseCommand.validate_required("model_path")
-    @BaseCommand.validate_paths("model_path")
+    @BaseCommand.validate_required(MODEL_PATH)
+    @BaseCommand.validate_paths(MODEL_PATH)
     def run(cls: type[ModelCheckCommand], args: argparse.Namespace) -> None:
         import onnx  # noqa: PLC0415
 

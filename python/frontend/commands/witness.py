@@ -7,6 +7,12 @@ if TYPE_CHECKING:
 
 from python.core.circuits.errors import CircuitRunError
 from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
+from python.frontend.commands.args import (
+    CIRCUIT_PATH,
+    INPUT_PATH,
+    OUTPUT_PATH,
+    WITNESS_PATH,
+)
 from python.frontend.commands.base import BaseCommand
 
 
@@ -22,56 +28,20 @@ class WitnessCommand(BaseCommand):
         cls: type[WitnessCommand],
         parser: argparse.ArgumentParser,
     ) -> None:
-        parser.add_argument(
-            "pos_circuit_path",
-            nargs="?",
-            metavar="circuit_path",
-            help="Path to the compiled circuit.",
-        )
-        parser.add_argument(
-            "pos_input_path",
-            nargs="?",
-            metavar="input_path",
-            help="Path to input JSON.",
-        )
-        parser.add_argument(
-            "pos_output_path",
-            nargs="?",
-            metavar="output_path",
-            help="Path to write model outputs JSON.",
-        )
-        parser.add_argument(
-            "pos_witness_path",
-            nargs="?",
-            metavar="witness_path",
-            help="Path to write witness.",
-        )
-        parser.add_argument(
-            "-c",
-            "--circuit-path",
-            help="Path to the compiled circuit.",
-        )
-        parser.add_argument("-i", "--input-path", help="Path to input JSON.")
-        parser.add_argument(
-            "-o",
-            "--output-path",
-            help="Path to write model outputs JSON.",
-        )
-        parser.add_argument(
-            "-w",
-            "--witness-path",
-            help="Path to write witness.",
-        )
+        CIRCUIT_PATH.add_to_parser(parser)
+        INPUT_PATH.add_to_parser(parser)
+        OUTPUT_PATH.add_to_parser(parser)
+        WITNESS_PATH.add_to_parser(parser)
 
     @classmethod
     @BaseCommand.validate_required(
-        "circuit_path",
-        "input_path",
-        "output_path",
-        "witness_path",
+        CIRCUIT_PATH,
+        INPUT_PATH,
+        OUTPUT_PATH,
+        WITNESS_PATH,
     )
-    @BaseCommand.validate_paths("circuit_path", "input_path")
-    @BaseCommand.validate_parent_paths("output_path", "witness_path")
+    @BaseCommand.validate_paths(CIRCUIT_PATH, INPUT_PATH)
+    @BaseCommand.validate_parent_paths(OUTPUT_PATH, WITNESS_PATH)
     def run(cls: type[WitnessCommand], args: argparse.Namespace) -> None:
         circuit = cls._build_circuit("cli")
 
