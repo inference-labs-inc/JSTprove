@@ -386,7 +386,7 @@ def run_cli(  # noqa: PLR0915, PLR0912, C901
                 elapsed = time.time() - start
                 hud = (
                     f"\r[✔] {phase:<7} | {elapsed:6.1f}s "
-                    "| mem↑ {peak_live_mb:7.1f} MB | " + " " * bar_w
+                    f"| mem↑ {peak_live_mb:7.1f} MB | " + " " * bar_w
                 )
                 print(hud[: tw - 1])
                 break
@@ -608,8 +608,8 @@ def _summary_card(  # noqa: PLR0915, C901
     # Make a header content row to measure the total width
     header_line = (
         f"{V} {hdr_phase:<{phase_w}} {V} {hdr_time:<{time_w}} {V} {hdr_best:>{best_w}} "
-        f"{V} {'t-bar':<{bar_w}} {V} {hdr_mem:<{mem_w}} {V}"
-        " {hdr_peak:>{peak_w}} {V} {'m-bar':<{bar_w}} {V}"
+        f"{V} {'t-bar':<{bar_w}} {V} {hdr_mem:<{mem_w}} "
+        f"{V} {hdr_peak:>{peak_w}} {V} {'m-bar':<{bar_w}} {V}"
     )
     # Draw a top border that exactly matches header width
     top = (
