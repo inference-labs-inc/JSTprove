@@ -8,7 +8,7 @@ from python.core.utils.witness_utils import compare_witness_to_io, load_witness
 
 if TYPE_CHECKING:
     import numpy as np
-import torch
+    import torch
 
 from python.core.circuits.errors import (
     CircuitConfigurationError,
@@ -18,7 +18,6 @@ from python.core.circuits.errors import (
     CircuitRunError,
     WitnessMatchError,
 )
-from python.core.model_processing.onnx_quantizer.layers.base import BaseOpQuantizer
 from python.core.utils.helper_functions import (
     CircuitExecutionConfig,
     RunType,
@@ -417,6 +416,12 @@ class Circuit:
             list[int] | np.ndarray | torch.Tensor: The scaled and rounded values,
                 preserving the original structure.
         """
+        import torch  # noqa: PLC0415
+
+        from python.core.model_processing.onnx_quantizer.layers.base import (  # noqa: PLC0415
+            BaseOpQuantizer,
+        )
+
         scaling = BaseOpQuantizer.get_scaling(
             scale_base=scale_base,
             scale_exponent=scale_exponent,
@@ -592,6 +597,8 @@ class Circuit:
                 details={"input_key": input_key},
             )
 
+        import torch  # noqa: PLC0415
+
         shape = getattr(self, shape_attr)
         shape = self.adjust_shape(shape)
 
@@ -649,7 +656,7 @@ class Circuit:
                 file_path=input_file,
             ) from e
 
-    def _gen_witness_preprocessing(  # noqa: PLR0913
+    def _gen_witness_preprocessing(
         self: Circuit,
         input_file: str,
         output_file: str,
@@ -805,6 +812,12 @@ class Circuit:
         if is_scaled:
             return self._read_from_json_safely(input_file)
 
+        import torch  # noqa: PLC0415
+
+        from python.core.model_processing.onnx_quantizer.layers.base import (  # noqa: PLC0415
+            BaseOpQuantizer,
+        )
+
         out = {}
         read = self._read_from_json_safely(input_file)
 
@@ -878,7 +891,7 @@ class Circuit:
         if input_variables == ["input"]:
             new_inputs = self._rename_single_input(inputs)
         else:
-            new_inputs = self._rename_multiple_inputs(inputs, input_variables)
+            new_inputs = dict(inputs.items())
 
         # Save renamed inputs
         path = Path(input_file)
@@ -928,26 +941,6 @@ class Circuit:
             new_inputs["input"] = inputs["output"]
             del inputs["output"]
 
-        return new_inputs
-
-    def _rename_multiple_inputs(
-        self: Circuit,
-        inputs: dict,
-    ) -> dict:
-        """
-        Rename inputs when there are multiple named input variables.
-        Keeps keys as is, since no reshaping is done.
-
-        Args:
-            inputs (dict): Dictionary of input values loaded from JSON.
-            input_variables (list[str]): List of input variable names.
-
-        Returns:
-            dict: Renamed inputs (keys unchanged for multiple inputs).
-        """
-        new_inputs: dict[str, Any] = {}
-        for key, value in inputs.items():
-            new_inputs[key] = value
         return new_inputs
 
     def format_outputs(self: Circuit, output: list) -> dict:
