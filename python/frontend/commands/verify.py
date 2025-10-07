@@ -75,34 +75,21 @@ class VerifyCommand(BaseCommand):
         parser.add_argument("-p", "--proof-path", help="Path to proof.")
 
     @classmethod
+    @BaseCommand.validate_required(
+        "circuit_path",
+        "input_path",
+        "output_path",
+        "witness_path",
+        "proof_path",
+    )
+    @BaseCommand.validate_paths(
+        "circuit_path",
+        "input_path",
+        "output_path",
+        "witness_path",
+        "proof_path",
+    )
     def run(cls: type[VerifyCommand], args: argparse.Namespace) -> None:
-        args.circuit_path = args.circuit_path or args.pos_circuit_path
-        args.input_path = args.input_path or args.pos_input_path
-        args.output_path = args.output_path or args.pos_output_path
-        args.witness_path = args.witness_path or args.pos_witness_path
-        args.proof_path = args.proof_path or args.pos_proof_path
-
-        if not all(
-            [
-                args.circuit_path,
-                args.input_path,
-                args.output_path,
-                args.witness_path,
-                args.proof_path,
-            ],
-        ):
-            msg = (
-                "verify requires circuit_path, input_path, output_path, "
-                "witness_path, and proof_path"
-            )
-            raise ValueError(msg)
-
-        cls._ensure_file_exists(args.circuit_path)
-        cls._ensure_file_exists(args.input_path)
-        cls._ensure_file_exists(args.output_path)
-        cls._ensure_file_exists(args.witness_path)
-        cls._ensure_file_exists(args.proof_path)
-
         circuit = cls._build_circuit("cli")
 
         try:

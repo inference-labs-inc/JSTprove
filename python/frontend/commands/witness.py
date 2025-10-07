@@ -64,26 +64,15 @@ class WitnessCommand(BaseCommand):
         )
 
     @classmethod
+    @BaseCommand.validate_required(
+        "circuit_path",
+        "input_path",
+        "output_path",
+        "witness_path",
+    )
+    @BaseCommand.validate_paths("circuit_path", "input_path")
+    @BaseCommand.validate_parent_paths("output_path", "witness_path")
     def run(cls: type[WitnessCommand], args: argparse.Namespace) -> None:
-        args.circuit_path = args.circuit_path or args.pos_circuit_path
-        args.input_path = args.input_path or args.pos_input_path
-        args.output_path = args.output_path or args.pos_output_path
-        args.witness_path = args.witness_path or args.pos_witness_path
-
-        if not all(
-            [args.circuit_path, args.input_path, args.output_path, args.witness_path],
-        ):
-            msg = (
-                "witness requires circuit_path, input_path, output_path, "
-                "and witness_path"
-            )
-            raise ValueError(msg)
-
-        cls._ensure_file_exists(args.circuit_path)
-        cls._ensure_file_exists(args.input_path)
-        cls._ensure_parent_dir(args.output_path)
-        cls._ensure_parent_dir(args.witness_path)
-
         circuit = cls._build_circuit("cli")
 
         try:

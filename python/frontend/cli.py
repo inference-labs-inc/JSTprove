@@ -18,6 +18,7 @@ from python.frontend.commands import (
     VerifyCommand,
     WitnessCommand,
 )
+from python.frontend.commands.base import HiddenPositionalHelpFormatter
 
 BANNER_TITLE = r"""
   888888  .d8888b. 88888888888
@@ -34,8 +35,8 @@ BANNER_TITLE = r"""
 """
 
 COMMANDS: list[type[BaseCommand]] = [
-    CompileCommand,
     ModelCheckCommand,
+    CompileCommand,
     WitnessCommand,
     ProveCommand,
     VerifyCommand,
@@ -81,6 +82,7 @@ def main(argv: list[str] | None = None) -> int:
             aliases=command_cls.aliases,
             help=command_cls.help,
             allow_abbrev=False,
+            formatter_class=HiddenPositionalHelpFormatter,
         )
         command_cls.configure_parser(cmd_parser)
         command_map[command_cls.name] = command_cls

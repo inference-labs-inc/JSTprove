@@ -33,9 +33,9 @@ class ModelCheckCommand(BaseCommand):
         )
 
     @classmethod
+    @BaseCommand.validate_required("model_path")
+    @BaseCommand.validate_paths("model_path")
     def run(cls: type[ModelCheckCommand], args: argparse.Namespace) -> None:
-        # These are intentionally imported here
-        # to avoid expensive import load times when using the CLI
         import onnx  # noqa: PLC0415
 
         from python.core.model_processing.onnx_quantizer.exceptions import (  # noqa: PLC0415
@@ -45,14 +45,6 @@ class ModelCheckCommand(BaseCommand):
         from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import (  # noqa: PLC0415
             ONNXOpQuantizer,
         )
-
-        args.model_path = args.model_path or args.pos_model_path
-
-        if not args.model_path:
-            msg = "model_check requires model_path"
-            raise ValueError(msg)
-
-        cls._ensure_file_exists(args.model_path)
 
         model = onnx.load(args.model_path)
         quantizer = ONNXOpQuantizer()

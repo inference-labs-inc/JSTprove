@@ -57,19 +57,10 @@ class ProveCommand(BaseCommand):
         )
 
     @classmethod
+    @BaseCommand.validate_required("circuit_path", "witness_path", "proof_path")
+    @BaseCommand.validate_paths("circuit_path", "witness_path")
+    @BaseCommand.validate_parent_paths("proof_path")
     def run(cls: type[ProveCommand], args: argparse.Namespace) -> None:
-        args.circuit_path = args.circuit_path or args.pos_circuit_path
-        args.witness_path = args.witness_path or args.pos_witness_path
-        args.proof_path = args.proof_path or args.pos_proof_path
-
-        if not all([args.circuit_path, args.witness_path, args.proof_path]):
-            msg = "prove requires circuit_path, witness_path, and proof_path"
-            raise ValueError(msg)
-
-        cls._ensure_file_exists(args.circuit_path)
-        cls._ensure_file_exists(args.witness_path)
-        cls._ensure_parent_dir(args.proof_path)
-
         circuit = cls._build_circuit("cli")
 
         try:

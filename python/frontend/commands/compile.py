@@ -49,17 +49,10 @@ class CompileCommand(BaseCommand):
         )
 
     @classmethod
+    @BaseCommand.validate_required("model_path", "circuit_path")
+    @BaseCommand.validate_paths("model_path")
+    @BaseCommand.validate_parent_paths("circuit_path")
     def run(cls: type[CompileCommand], args: argparse.Namespace) -> None:
-        args.model_path = args.model_path or args.pos_model_path
-        args.circuit_path = args.circuit_path or args.pos_circuit_path
-
-        if not args.model_path or not args.circuit_path:
-            msg = "compile requires model_path and circuit_path"
-            raise ValueError(msg)
-
-        cls._ensure_file_exists(args.model_path)
-        cls._ensure_parent_dir(args.circuit_path)
-
         model_name_hint = Path(args.model_path).stem
         circuit = cls._build_circuit(model_name_hint)
 
