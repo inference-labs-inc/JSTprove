@@ -34,6 +34,7 @@ report
 # Rust Binaries
 target/
 !rust/jstprove_circuits/bin
+python/core/binaries/
 
 # Dataset and binary files
 *.json
