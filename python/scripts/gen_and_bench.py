@@ -333,7 +333,7 @@ def main() -> None:  # noqa: PLR0915
     ap.add_argument("--depth-min", type=int, default=1)
     ap.add_argument("--depth-max", type=int, default=12)
     ap.add_argument("--iterations", type=int, default=3)
-    ap.add_argument("--results", default="depth_sweep.jsonl")
+    ap.add_argument("--results", default=None)
     ap.add_argument("--onnx-dir", default=None)
     ap.add_argument("--inputs-dir", default=None)
     ap.add_argument("--n-actions", type=int, default=10)
@@ -388,8 +388,19 @@ def main() -> None:  # noqa: PLR0915
 
     args = ap.parse_args()
 
+    # Ensure output dirs and a robust default results path
     onnx_dir, in_dir = _resolve_output_dirs(args.sweep, args.onnx_dir, args.inputs_dir)
-    results = Path(args.results)
+
+    # Dynamic default for results (also handles empty string)
+    if args.results is None or not str(args.results).strip():
+        # default results path based on sweep type
+        results = Path("benchmarking") / f"{args.sweep}_sweep.jsonl"
+    else:
+        results = Path(args.results)
+
+    results.parent.mkdir(parents=True, exist_ok=True)
+
+    onnx_dir, in_dir = _resolve_output_dirs(args.sweep, args.onnx_dir, args.inputs_dir)
 
     if args.sweep == "depth":
         input_shape = (1, 4, args.input_hw, args.input_hw)

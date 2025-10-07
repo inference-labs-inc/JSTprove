@@ -12,7 +12,7 @@ from typing import Any
 
 # local
 from python.core.circuits.errors import CircuitRunError
-from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
+from python.core.utils.helper_functions import CircuitExecutionConfig, RunType, to_json
 
 """JSTprove CLI."""
 
@@ -276,41 +276,55 @@ def _append_arg(cmd: list[str], flag: str, val: object | None) -> None:
     cmd += [flag, str(val)]
 
 
-def _run_bench(args: argparse.Namespace) -> None:  # noqa: PLR0915
-    """
-    Run benchmarks:
-      - depth/breadth: call python.scripts.gen_and_bench (existing sweeps)
-      - lenet: run benchmark_runner on the repo's fixed LeNet model/input
-    """
-    sweep = args.sweep or args.mode
-    if not sweep:
-        msg = "Please specify --sweep {depth|breadth|lenet} or a positional mode."
-        raise CLIError(
-            msg,
-        )
+def _run_bench_single_model(
+    args: argparse.Namespace,
+    model_path: str,
+    name: str,
+) -> None:
+    """Run benchmark on a single model path."""
+    import tempfile
 
-    # --- Fixed: LeNet quickstart model ---
-    if sweep == "lenet":
-        model = Path("python/models/models_onnx/lenet.onnx").resolve()
-        inp = Path("python/models/inputs/lenet_input.json").resolve()
-        # sensible defaults; allow overrides via --iterations/--results
+    # Generate input on the fly, similar to tests
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        input_file = tmp_path / "input.json"
+
+        # Create instance for the model
+        instance = _build_default_circuit()
+        instance.model_file_name = model_path
+
+        # Load the model to set input_shape
+        try:
+            instance.load_model(model_path)
+        except Exception as e:
+            msg = f"Failed to load model {model_path}: {e}"
+            raise CLIError(msg) from e
+
+        # Generate random inputs and format them
+        try:
+            inputs = instance.get_inputs()  # generates random inputs
+            formatted_inputs = instance.format_inputs(inputs)
+            to_json(formatted_inputs, str(input_file))
+        except Exception as e:
+            msg = f"Failed to generate input for {name}: {e}"
+            raise CLIError(msg) from e
+
+        # Now run benchmark with the generated input
         iterations = str(args.iterations if args.iterations is not None else 5)
-        # treat empty string as unset to avoid `--output` missing-arg errors
         results = (
             args.results
             if (args.results and str(args.results).strip())
-            else "benchmarking/lenet.jsonl"
+            else f"benchmarking/{name}.jsonl"
         )
         Path(results).parent.mkdir(parents=True, exist_ok=True)
-
         cmd = [
             sys.executable,
             "-m",
             "python.scripts.benchmark_runner",
             "--model",
-            str(model),
+            model_path,
             "--input",
-            str(inp),
+            str(input_file),
             "--iterations",
             iterations,
             "--output",
@@ -318,7 +332,7 @@ def _run_bench(args: argparse.Namespace) -> None:  # noqa: PLR0915
             "--summarize",
         ]
         if os.environ.get("JSTPROVE_DEBUG") == "1":
-            print("[debug] bench lenet cmd:", " ".join(cmd))  # noqa: T201
+            print(f"[debug] bench {name} cmd:", " ".join(cmd))  # noqa: T201
         env = os.environ.copy()
         env.setdefault("PYTHONUNBUFFERED", "1")
         rc = subprocess.run(
@@ -328,9 +342,67 @@ def _run_bench(args: argparse.Namespace) -> None:  # noqa: PLR0915
             check=False,
         ).returncode
         if rc != 0:
-            msg = f"LeNet benchmark failed with exit code {rc}"
+            msg = f"Benchmark for {name} failed with exit code {rc}"
             raise CLIError(msg)
-        return  # done
+
+
+def _run_bench_on_models(args: argparse.Namespace) -> None:
+    """Run benchmarks on selected models from the registry."""
+
+    from python.core.utils.model_registry import get_models_to_test
+
+    selected_models = args.model
+    source_filter = args.source
+    models = get_models_to_test(selected_models, source_filter)
+    # Filter to ONNX models only, as bench uses benchmark_runner
+    models = [m for m in models if m.source == "onnx"]
+    if not models:
+        msg = "No ONNX models selected for benchmarking."
+        raise CLIError(msg)
+
+    # Run benchmarks for each selected model
+    for model_entry in models:
+        # Instantiate to get the path
+        instance = model_entry.loader()
+        model_path = instance.model_file_name
+        name = model_entry.name
+        _run_bench_single_model(args, model_path, name)
+
+
+def _run_bench(args: argparse.Namespace) -> None:
+    """
+    Run benchmarks:
+      - depth/breadth: call python.scripts.gen_and_bench (existing sweeps)
+      - lenet: run benchmark_runner on the repo's fixed LeNet model/input
+      - specific models: run benchmark_runner on selected models from registry
+    """
+    from python.core.utils.model_registry import list_available_models
+
+    # Handle --list-models
+    if args.list_models:
+        available_models = list_available_models()
+        print("\nAvailable Circuit Models:")  # noqa: T201
+        for model in available_models:
+            print(f"- {model}")  # noqa: T201
+        return
+
+    # Handle direct model path
+    if args.model_path:
+        _ensure_exists(args.model_path, "file")
+        name = Path(args.model_path).stem
+        _run_bench_single_model(args, args.model_path, name)
+        return
+
+    # Check for model selection
+    if args.model or args.source:
+        _run_bench_on_models(args)
+        return
+
+    sweep = args.sweep or args.mode
+    if not sweep:
+        msg = "Please specify --sweep {depth|breadth|lenet}, a positional mode, "
+        "or --model/--source for specific models."
+        raise CLIError(msg)
 
     # --- Depth/breadth ---
     provided_knobs = [
@@ -593,7 +665,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0915
     # bench (model generation + benchmarking)
     p_bench = sub.add_parser(
         "bench",
-        help="Generate ONNX models and benchmark JSTprove (depth/breadth sweeps).",
+        help="Generate ONNX models and benchmark JSTprove "
+        "(depth/breadth sweeps or specific models).",
         allow_abbrev=False,
     )
 
@@ -658,6 +731,31 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0915
     p_bench.add_argument("--fc-hidden", type=int, help="Fully-connected hidden size")
     p_bench.add_argument("--n-actions", type=int, help="Classifier outputs (classes)")
     p_bench.add_argument("--tag", help="Optional tag suffix for filenames")
+
+    # Model selection options (similar to pytest)
+    p_bench.add_argument(
+        "--model",
+        action="append",
+        default=None,
+        help="Model name(s) from registry to benchmark. "
+        "Use multiple times to test more than one.",
+    )
+    p_bench.add_argument(
+        "--model-path",
+        help="Direct path to ONNX model file to benchmark (alt. to --model).",
+    )
+    p_bench.add_argument(
+        "--source",
+        choices=["class", "onnx"],
+        default=None,
+        help="Restrict registry models to a specific source: class or onnx.",
+    )
+    p_bench.add_argument(
+        "--list-models",
+        action="store_true",
+        default=False,
+        help="List all available circuit models.",
+    )
 
     args = parser.parse_args(argv)
 
