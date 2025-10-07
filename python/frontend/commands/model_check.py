@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
@@ -69,13 +68,3 @@ class ModelCheckCommand(BaseCommand):
         except InvalidParamError as e:
             msg = f"Model {args.model_path} is NOT supported: {e.message}"
             raise RuntimeError(msg) from e
-
-    @staticmethod
-    def _ensure_file_exists(path: str) -> None:
-        p = Path(path)
-        if not p.is_file():
-            msg = f"Required file not found: {path}"
-            raise FileNotFoundError(msg)
-        if not p.exists() or not p.stat().st_mode & 0o444:
-            msg = f"Cannot read file: {path}"
-            raise PermissionError(msg)

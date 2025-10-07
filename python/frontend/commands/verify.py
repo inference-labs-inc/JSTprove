@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import importlib
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     import argparse
@@ -10,9 +8,6 @@ if TYPE_CHECKING:
 from python.core.circuits.errors import CircuitRunError
 from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
 from python.frontend.commands.base import BaseCommand
-
-DEFAULT_CIRCUIT_MODULE = "python.core.circuit_models.generic_onnx"
-DEFAULT_CIRCUIT_CLASS = "GenericModelONNX"
 
 
 class VerifyCommand(BaseCommand):
@@ -128,45 +123,3 @@ class VerifyCommand(BaseCommand):
         print(  # noqa: T201
             f"[verify] verification complete for proof → {args.proof_path}",
         )
-
-    @staticmethod
-    def _ensure_file_exists(path: str) -> None:
-        p = Path(path)
-        if not p.is_file():
-            msg = f"Required file not found: {path}"
-            raise FileNotFoundError(msg)
-        if not p.exists() or not p.stat().st_mode & 0o444:
-            msg = f"Cannot read file: {path}"
-            raise PermissionError(msg)
-
-    @staticmethod
-    def _ensure_parent_dir(path: str) -> None:
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-
-    @staticmethod
-    def _build_circuit(model_name_hint: str | None = None) -> Any:  # noqa: ANN401
-        mod = importlib.import_module(DEFAULT_CIRCUIT_MODULE)
-        try:
-            cls = getattr(mod, DEFAULT_CIRCUIT_CLASS)
-        except AttributeError as e:
-            msg = (
-                f"Default circuit class '{DEFAULT_CIRCUIT_CLASS}' "
-                f"not found in '{DEFAULT_CIRCUIT_MODULE}'"
-            )
-            raise RuntimeError(msg) from e
-
-        name = model_name_hint or "cli"
-
-        for attempt in (
-            lambda: cls(model_name=name),
-            lambda: cls(name=name),
-            lambda: cls(name),
-            lambda: cls(),
-        ):
-            try:
-                return attempt()
-            except TypeError:  # noqa: PERF203
-                continue
-
-        msg = f"Could not construct {cls.__name__} with/without name '{name}'"
-        raise RuntimeError(msg)
