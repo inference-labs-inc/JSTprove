@@ -702,7 +702,7 @@ def main() -> int:  # noqa:PLR0915, C901
     ap.add_argument(
         "--model",
         required=True,
-        help="Path to ONNX model (e.g., python/models/models_onnx/lenet.onnx)",
+        help="ONNX model name (e.g., 'lenet', where path to model is python/models/models_onnx/lenet.onnx)",
     )
     ap.add_argument("--input", required=False, help="Path to input JSON (optional).")
     ap.add_argument(
