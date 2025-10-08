@@ -163,8 +163,8 @@ class BenchCommand(BaseCommand):
 
         sweep = args.sweep or args.mode
         if not sweep:
-            msg = "Please specify --sweep {depth|breadth|lenet}, a positional mode, "
-            "or --model/--source for specific models."
+            msg = "Please specify --sweep {depth|breadth|lenet} "
+            "or --model/--source/--model_path for specific models."
             raise ValueError(msg)
 
         # --- Depth/breadth ---
