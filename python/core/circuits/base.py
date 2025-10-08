@@ -8,7 +8,7 @@ from python.core.utils.witness_utils import compare_witness_to_io, load_witness
 
 if TYPE_CHECKING:
     import numpy as np
-import torch
+    import torch
 
 from python.core.circuits.errors import (
     CircuitConfigurationError,
@@ -18,7 +18,6 @@ from python.core.circuits.errors import (
     CircuitRunError,
     WitnessMatchError,
 )
-from python.core.model_processing.onnx_quantizer.layers.base import BaseOpQuantizer
 from python.core.utils.helper_functions import (
     CircuitExecutionConfig,
     RunType,
@@ -166,7 +165,9 @@ class Circuit:
                 msg,
                 details={"decorator": "prepare_io_files"},
             )
-        exec_config.weights_path = self._file_info.get("weights")
+        exec_config.metadata_path = self._file_info.get("metadata_path")
+        exec_config.architecture_path = self._file_info.get("architecture_path")
+        exec_config.w_and_b_path = self._file_info.get("w_and_b_path")
 
         # Run the appropriate proof operation based on run_type
         self.parse_proof_run_type(exec_config)
@@ -198,7 +199,9 @@ class Circuit:
         try:
             if exec_config.run_type == RunType.END_TO_END:
                 self._compile_preprocessing(
-                    weights_path=exec_config.weights_path,
+                    metadata_path=exec_config.metadata_path,
+                    architecture_path=exec_config.architecture_path,
+                    w_and_b_path=exec_config.w_and_b_path,
                     quantized_path=exec_config.quantized_path,
                 )
                 processed_input_file = self._gen_witness_preprocessing(
@@ -219,12 +222,17 @@ class Circuit:
                 )
             elif exec_config.run_type == RunType.COMPILE_CIRCUIT:
                 self._compile_preprocessing(
-                    weights_path=exec_config.weights_path,
+                    metadata_path=exec_config.metadata_path,
+                    architecture_path=exec_config.architecture_path,
+                    w_and_b_path=exec_config.w_and_b_path,
                     quantized_path=exec_config.quantized_path,
                 )
                 compile_circuit(
                     circuit_name=exec_config.circuit_name,
                     circuit_path=exec_config.circuit_path,
+                    metadata_path=exec_config.metadata_path,
+                    architecture_path=exec_config.architecture_path,
+                    w_and_b_path=exec_config.w_and_b_path,
                     proof_system=exec_config.proof_system,
                     dev_mode=exec_config.dev_mode,
                     bench=exec_config.bench,
@@ -243,6 +251,7 @@ class Circuit:
                     witness_file=exec_config.witness_file,
                     input_file=processed_input_file,
                     output_file=exec_config.output_file,
+                    metadata_path=exec_config.metadata_path,
                     proof_system=exec_config.proof_system,
                     dev_mode=exec_config.dev_mode,
                     bench=exec_config.bench,
@@ -253,6 +262,7 @@ class Circuit:
                     circuit_path=exec_config.circuit_path,
                     witness_file=exec_config.witness_file,
                     proof_file=exec_config.proof_file,
+                    metadata_path=exec_config.metadata_path,
                     proof_system=exec_config.proof_system,
                     dev_mode=exec_config.dev_mode,
                     ecc=exec_config.ecc,
@@ -277,6 +287,7 @@ class Circuit:
                     output_file=output_file,
                     witness_file=witness_file,
                     proof_file=exec_config.proof_file,
+                    metadata_path=exec_config.metadata_path,
                     proof_system=proof_system,
                     dev_mode=exec_config.dev_mode,
                     ecc=exec_config.ecc,
@@ -417,6 +428,12 @@ class Circuit:
             list[int] | np.ndarray | torch.Tensor: The scaled and rounded values,
                 preserving the original structure.
         """
+        import torch  # noqa: PLC0415
+
+        from python.core.model_processing.onnx_quantizer.layers.base import (  # noqa: PLC0415
+            BaseOpQuantizer,
+        )
+
         scaling = BaseOpQuantizer.get_scaling(
             scale_base=scale_base,
             scale_exponent=scale_exponent,
@@ -592,6 +609,8 @@ class Circuit:
                 details={"input_key": input_key},
             )
 
+        import torch  # noqa: PLC0415
+
         shape = getattr(self, shape_attr)
         shape = self.adjust_shape(shape)
 
@@ -649,7 +668,7 @@ class Circuit:
                 file_path=input_file,
             ) from e
 
-    def _gen_witness_preprocessing(  # noqa: PLR0913
+    def _gen_witness_preprocessing(
         self: Circuit,
         input_file: str,
         output_file: str,
@@ -699,13 +718,17 @@ class Circuit:
 
     def _compile_preprocessing(
         self: Circuit,
-        weights_path: str,
+        metadata_path: str,
+        architecture_path: str,
+        w_and_b_path: str,
         quantized_path: str,
     ) -> None:
         """Prepare model weights and quantized files for circuit compilation.
 
         Args:
-            weights_path (str): Path to save model weights in JSON format.
+            metadata_path (str): Path to save model metadata in JSON format.
+            architecture_path (str): Path to save model architecture in JSON format.
+            w_and_b_path (str): Path to save model weights and biases in JSON format.
             quantized_path (str): Path to save the quantized model.
 
         Raises:
@@ -714,36 +737,40 @@ class Circuit:
         func_model_and_quantize = getattr(self, "get_model_and_quantize", None)
         if callable(func_model_and_quantize):
             func_model_and_quantize()
-        if hasattr(self, "flatten"):
-            weights = self.get_weights(flatten=True)
-        else:
-            weights = self.get_weights()
+
+        metadata = self.get_metadata()
+        architecture = self.get_architecture()
+        w_and_b = self.get_w_and_b()
 
         if quantized_path:
             self.save_quantized_model(quantized_path)
-
         else:
             self.save_quantized_model(self._file_info.get("quantized_model_path"))
 
-        if isinstance(weights, list):
-            for i, w in enumerate(weights):
+        if metadata:
+            self._to_json_safely(metadata, metadata_path, "metadata")
+        if architecture:
+            self._to_json_safely(architecture, architecture_path, "architecture")
+
+        if isinstance(w_and_b, list):
+            for i, w in enumerate(w_and_b):
                 if i == 0:
-                    self._to_json_safely(w, Path(weights_path), "weights")
+                    self._to_json_safely(w, Path(w_and_b_path), "w_and_b")
                 else:
                     val = i + 1
                     file_path = (
-                        Path(weights_path).parent
-                        / f"{Path(weights_path).stem!s}{val}{Path(weights_path).suffix}"
+                        Path(w_and_b_path).parent
+                        / f"{Path(w_and_b_path).stem!s}{val}{Path(w_and_b_path).suffix}"
                     )
-                    self._to_json_safely(w, file_path, "weights")
-        elif isinstance(weights, (dict, tuple)):
-            self._to_json_safely(weights, weights_path, "weights")
+                    self._to_json_safely(w, file_path, "w_and_b")
+        elif isinstance(w_and_b, (dict, tuple)):
+            self._to_json_safely(w_and_b, w_and_b_path, "w_and_b")
         else:
-            msg = f"Unsupported weights type: {type(weights)}."
+            msg = f"Unsupported w_and_b type: {type(w_and_b)}."
             " Expected list, dict, or tuple."
             raise CircuitConfigurationError(
                 msg,
-                details={"weights_type": str(type(weights))},
+                details={"w_and_b_type": str(type(w_and_b))},
             )
 
     def save_model(self: Circuit, file_path: str) -> None:
@@ -786,6 +813,30 @@ class Circuit:
         """
         return {}
 
+    def get_metadata(self: Circuit) -> dict:
+        """Retrieve model metadata. Should be overridden in subclasses
+
+        Returns:
+            dict: Model metadata.
+        """
+        return {}
+
+    def get_architecture(self: Circuit) -> dict:
+        """Retrieve model architecture. Should be overridden in subclasses
+
+        Returns:
+            dict: Model architecture.
+        """
+        return {}
+
+    def get_w_and_b(self: Circuit) -> dict:
+        """Retrieve model weights and biases. Should be overridden in subclasses
+
+        Returns:
+            dict: Model weights and biases.
+        """
+        return self.get_weights()
+
     def get_inputs_from_file(
         self: Circuit,
         input_file: str,
@@ -804,6 +855,12 @@ class Circuit:
         """
         if is_scaled:
             return self._read_from_json_safely(input_file)
+
+        import torch  # noqa: PLC0415
+
+        from python.core.model_processing.onnx_quantizer.layers.base import (  # noqa: PLC0415
+            BaseOpQuantizer,
+        )
 
         out = {}
         read = self._read_from_json_safely(input_file)
@@ -878,7 +935,7 @@ class Circuit:
         if input_variables == ["input"]:
             new_inputs = self._rename_single_input(inputs)
         else:
-            new_inputs = self._rename_multiple_inputs(inputs, input_variables)
+            new_inputs = dict(inputs.items())
 
         # Save renamed inputs
         path = Path(input_file)
@@ -928,26 +985,6 @@ class Circuit:
             new_inputs["input"] = inputs["output"]
             del inputs["output"]
 
-        return new_inputs
-
-    def _rename_multiple_inputs(
-        self: Circuit,
-        inputs: dict,
-    ) -> dict:
-        """
-        Rename inputs when there are multiple named input variables.
-        Keeps keys as is, since no reshaping is done.
-
-        Args:
-            inputs (dict): Dictionary of input values loaded from JSON.
-            input_variables (list[str]): List of input variable names.
-
-        Returns:
-            dict: Renamed inputs (keys unchanged for multiple inputs).
-        """
-        new_inputs: dict[str, Any] = {}
-        for key, value in inputs.items():
-            new_inputs[key] = value
         return new_inputs
 
     def format_outputs(self: Circuit, output: list) -> dict:
