@@ -746,3 +746,276 @@ def test_flag_empty_string_uses_positional(tmp_path: Path) -> None:
         )
 
     assert rc == 1
+
+
+# -----------------------
+# bench command tests
+# -----------------------
+
+
+@pytest.mark.unit
+def test_bench_list_models() -> None:
+    with patch(
+        "python.core.utils.model_registry.list_available_models",
+        return_value=["onnx: model1", "class: model2"],
+    ):
+        rc = main(["--no-banner", "bench", "list", "--list-models"])
+
+    assert rc == 0
+
+
+@pytest.mark.unit
+def test_bench_with_model_path(tmp_path: Path) -> None:
+    model = tmp_path / "model.onnx"
+    model.write_bytes(b"\x00")
+
+    with (
+        patch(
+            "python.frontend.commands.bench.model.ModelCommand._generate_model_input",
+        ),
+        patch("python.frontend.commands.bench.model.run_subprocess"),
+    ):
+        rc = main(["--no-banner", "bench", "model", "--model-path", str(model)])
+
+    assert rc == 0
+
+
+@pytest.mark.unit
+def test_bench_with_model_flag() -> None:
+    fake_model_entry = MagicMock()
+    fake_instance = MagicMock()
+    fake_instance.model_file_name = "test_model.onnx"
+    fake_model_entry.loader.return_value = fake_instance
+    fake_model_entry.name = "test_model"
+
+    with (
+        patch(
+            "python.core.utils.model_registry.get_models_to_test",
+            return_value=[fake_model_entry],
+        ),
+        patch(
+            "python.frontend.commands.bench.model.ModelCommand._generate_model_input",
+        ),
+        patch("python.frontend.commands.bench.model.run_subprocess"),
+    ):
+        rc = main(["--no-banner", "bench", "model", "--model", "test_model"])
+
+    assert rc == 0
+
+
+@pytest.mark.unit
+def test_bench_with_source_filter() -> None:
+    fake_model_entry = MagicMock()
+    fake_instance = MagicMock()
+    fake_instance.model_file_name = "test_model.onnx"
+    fake_model_entry.loader.return_value = fake_instance
+    fake_model_entry.name = "test_model"
+
+    with (
+        patch(
+            "python.core.utils.model_registry.get_models_to_test",
+            return_value=[fake_model_entry],
+        ) as mock_get,
+        patch(
+            "python.frontend.commands.bench.model.ModelCommand._generate_model_input",
+        ),
+        patch("python.frontend.commands.bench.model.run_subprocess"),
+    ):
+        rc = main(["--no-banner", "bench", "model", "--source", "onnx"])
+
+    assert rc == 0
+    mock_get.assert_called_once_with(None, "onnx")
+
+
+@pytest.mark.unit
+def test_bench_depth_sweep_simple() -> None:
+    with patch("python.frontend.commands.bench.sweep.run_subprocess") as mock_run:
+        rc = main(["--no-banner", "bench", "sweep", "depth"])
+
+    assert rc == 0
+    cmd = mock_run.call_args[0][0]
+    assert "python.scripts.gen_and_bench" in cmd[2]
+    assert "--sweep" in cmd
+    assert "depth" in cmd
+    assert "--depth-min" in cmd
+    assert "1" in cmd
+    assert "--depth-max" in cmd
+    assert "16" in cmd
+
+
+@pytest.mark.unit
+def test_bench_breadth_sweep_simple() -> None:
+    with patch("python.frontend.commands.bench.sweep.run_subprocess") as mock_run:
+        rc = main(["--no-banner", "bench", "sweep", "breadth"])
+
+    assert rc == 0
+    cmd = mock_run.call_args[0][0]
+    assert "python.scripts.gen_and_bench" in cmd[2]
+    assert "--sweep" in cmd
+    assert "breadth" in cmd
+    assert "--arch-depth" in cmd
+    assert "5" in cmd
+
+
+@pytest.mark.unit
+def test_bench_sweep_with_custom_args() -> None:
+    with patch("python.frontend.commands.bench.sweep.run_subprocess") as mock_run:
+        rc = main(
+            [
+                "--no-banner",
+                "bench",
+                "sweep",
+                "depth",
+                "--depth-min",
+                "5",
+                "--depth-max",
+                "10",
+            ],
+        )
+
+    assert rc == 0
+    cmd = mock_run.call_args[0][0]
+    assert "--depth-min" in cmd
+    idx_min = cmd.index("--depth-min")
+    assert cmd[idx_min + 1] == "5"
+    assert "--depth-max" in cmd
+    idx_max = cmd.index("--depth-max")
+    assert cmd[idx_max + 1] == "10"
+
+
+@pytest.mark.unit
+def test_bench_sweep_with_optional_args() -> None:
+    with patch("python.frontend.commands.bench.sweep.run_subprocess") as mock_run:
+        rc = main(
+            [
+                "--no-banner",
+                "bench",
+                "sweep",
+                "depth",
+                "--tag",
+                "test_tag",
+                "--onnx-dir",
+                "custom_onnx",
+            ],
+        )
+
+    assert rc == 0
+    cmd = mock_run.call_args[0][0]
+    assert "--tag" in cmd
+    assert "test_tag" in cmd
+    assert "--onnx-dir" in cmd
+    assert "custom_onnx" in cmd
+
+
+@pytest.mark.unit
+def test_bench_missing_required_args() -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--no-banner", "bench"])
+    # argparse exits with code 2 for usage errors
+    assert exc_info.value.code == 2  # noqa: PLR2004
+
+
+@pytest.mark.unit
+def test_bench_nonexistent_model_path() -> None:
+    rc = main(["--no-banner", "bench", "model", "-m", "nonexistent.onnx"])
+    assert rc == 1
+
+
+@pytest.mark.unit
+def test_bench_no_models_found() -> None:
+    with patch(
+        "python.core.utils.model_registry.get_models_to_test",
+        return_value=[],
+    ):
+        rc = main(["--no-banner", "bench", "model", "--model", "nonexistent_model"])
+
+    assert rc == 1
+
+
+@pytest.mark.unit
+def test_bench_subprocess_failure(tmp_path: Path) -> None:
+    model = tmp_path / "model.onnx"
+    model.write_bytes(b"\x00")
+
+    fake_circuit = MagicMock()
+    fake_circuit.get_inputs.return_value = {"input": [0]}
+    fake_circuit.format_inputs.return_value = {"input": [0]}
+
+    with (
+        patch(
+            "python.frontend.commands.bench.model.ModelCommand._build_circuit",
+            return_value=fake_circuit,
+        ),
+        patch(
+            "python.frontend.commands.bench.model.run_subprocess",
+            side_effect=RuntimeError("Subprocess failed"),
+        ),
+    ):
+        rc = main(["--no-banner", "bench", "model", "-m", str(model)])
+
+    assert rc == 1
+
+
+@pytest.mark.unit
+def test_bench_model_load_failure(tmp_path: Path) -> None:
+    model = tmp_path / "model.onnx"
+    model.write_bytes(b"\x00")
+
+    fake_circuit = MagicMock()
+    fake_circuit.load_model.side_effect = RuntimeError("Failed to load model")
+
+    with patch(
+        "python.frontend.commands.bench.model.ModelCommand._build_circuit",
+        return_value=fake_circuit,
+    ):
+        rc = main(["--no-banner", "bench", "model", "-m", str(model)])
+
+    assert rc == 1
+
+
+@pytest.mark.unit
+def test_bench_input_generation_failure(tmp_path: Path) -> None:
+    model = tmp_path / "model.onnx"
+    model.write_bytes(b"\x00")
+
+    fake_circuit = MagicMock()
+    fake_circuit.load_model.return_value = None
+    fake_circuit.get_inputs.side_effect = RuntimeError("Failed to generate input")
+
+    with patch(
+        "python.frontend.commands.bench.model.ModelCommand._build_circuit",
+        return_value=fake_circuit,
+    ):
+        rc = main(["--no-banner", "bench", "model", "-m", str(model)])
+
+    assert rc == 1
+
+
+@pytest.mark.unit
+def test_bench_with_iterations(tmp_path: Path) -> None:
+    model = tmp_path / "model.onnx"
+    model.write_bytes(b"\x00")
+
+    with (
+        patch(
+            "python.frontend.commands.bench.model.ModelCommand._generate_model_input",
+        ),
+        patch("python.frontend.commands.bench.model.run_subprocess") as mock_run,
+    ):
+        rc = main(
+            [
+                "--no-banner",
+                "bench",
+                "model",
+                "--model-path",
+                str(model),
+                "--iterations",
+                "10",
+            ],
+        )
+
+    assert rc == 0
+    cmd = mock_run.call_args[0][0]
+    assert "--iterations" in cmd
+    idx = cmd.index("--iterations")
+    assert cmd[idx + 1] == "10"
