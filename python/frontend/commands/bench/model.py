@@ -14,14 +14,10 @@ from python.core.utils.helper_functions import (
     run_subprocess,
     to_json,
 )
-from python.core.utils.model_registry import (
-    MODEL_SOURCE_CLASS,
-    MODEL_SOURCE_ONNX,
-)
 from python.frontend.commands.args import ArgSpec
 from python.frontend.commands.base import BaseCommand
 
-SOURCE_CHOICES: tuple[str, ...] = (MODEL_SOURCE_CLASS, MODEL_SOURCE_ONNX)
+SOURCE_CHOICES: tuple[str, ...] = ("class", "onnx")
 
 BENCH_MODEL_PATH = ArgSpec(
     name="model_path",
@@ -101,7 +97,7 @@ class ModelCommand(BaseCommand):
     def _run_bench_on_models(cls: type[ModelCommand], args: argparse.Namespace) -> None:
         from python.core.utils.model_registry import get_models_to_test  # noqa: PLC0415
 
-        models = get_models_to_test(args.model, args.source or MODEL_SOURCE_ONNX)
+        models = get_models_to_test(args.model, args.source or SOURCE_CHOICES[1])
         if not models:
             msg = "No models selected for benchmarking."
             raise ValueError(msg)
