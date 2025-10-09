@@ -141,6 +141,10 @@ class BaseCommand(ABC):
             raise PermissionError(msg)
 
     @staticmethod
+    def _ensure_parent_dir(path: str) -> None:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
     def append_arg(cmd: list[str], flag: str, val: object | None) -> None:
         if val is None:
             return

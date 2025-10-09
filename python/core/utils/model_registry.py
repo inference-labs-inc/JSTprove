@@ -164,7 +164,3 @@ def get_models_to_test(
         models = [m for m in models if m.source == source_filter]
 
     return models
-
-
-MODEL_SOURCE_ONNX: str = "onnx"
-MODEL_SOURCE_CLASS: str = "class"

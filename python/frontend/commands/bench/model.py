@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, ClassVar
 if TYPE_CHECKING:
     import argparse
 
+from python.core.utils.constants import MODEL_SOURCE_CLASS, MODEL_SOURCE_ONNX
 from python.core.utils.helper_functions import (
     ensure_parent_dir,
     run_subprocess,
@@ -17,7 +18,7 @@ from python.core.utils.helper_functions import (
 from python.frontend.commands.args import ArgSpec
 from python.frontend.commands.base import BaseCommand
 
-SOURCE_CHOICES: tuple[str, ...] = ("class", "onnx")
+SOURCE_CHOICES: tuple[str, ...] = (MODEL_SOURCE_CLASS, MODEL_SOURCE_ONNX)
 
 BENCH_MODEL_PATH = ArgSpec(
     name="model_path",
