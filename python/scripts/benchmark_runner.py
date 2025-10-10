@@ -167,7 +167,7 @@ def count_onnx_parameters(model_path: Path) -> int:
     Returns -1 if the `onnx` dependency is unavailable.
     """
     try:
-        import onnx  # type: ignore[import]
+        import onnx  # noqa: PLC0415 # type: ignore[import]
     except Exception:
         return -1
 
@@ -347,8 +347,7 @@ def run_cli(  # noqa: PLR0915, PLR0912, C901
 
             # live peak memory
             live_mb = _sum_child_rss_mb(proc.pid)
-            if live_mb > peak_live_mb:
-                peak_live_mb = live_mb
+            peak_live_mb = max(peak_live_mb, live_mb)
 
             if line:
                 combined_lines.append(line.rstrip("\n"))
@@ -458,7 +457,7 @@ def _print_compile_card(
     vmax = max(data.values())
     w = max(24, min(40, _term_width() - 50))
 
-    print("")
+    print()
     print(
         "┌────────────────────────── Compile Stats ──────────────────────────┐",
     )
@@ -694,7 +693,7 @@ def summarize(rows: list[dict], model_name: str) -> None:
     _summary_card(model_name, tmap, mmap)
 
 
-def main() -> int:  # noqa:PLR0915, C901
+def main() -> int:  # noqa: PLR0915, C901, PLR0912
     """CLI entrypoint for the benchmark runner."""
     ap = argparse.ArgumentParser(
         description="Benchmark JSTProve by calling the CLI directly.",
@@ -702,7 +701,8 @@ def main() -> int:  # noqa:PLR0915, C901
     ap.add_argument(
         "--model",
         required=True,
-        help="ONNX model name (e.g., 'lenet', where path to model is python/models/models_onnx/lenet.onnx)",
+        help="ONNX model name (e.g., 'lenet', where path to model is "
+        "python/models/models_onnx/lenet.onnx)",
     )
     ap.add_argument("--input", required=False, help="Path to input JSON (optional).")
     ap.add_argument(

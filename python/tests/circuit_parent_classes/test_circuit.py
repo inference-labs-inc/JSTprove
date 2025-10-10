@@ -513,7 +513,7 @@ def test_compile_preprocessing_saves_all_files(mock_to_json: MagicMock) -> None:
     mock_to_json.assert_any_call({"weights": [1, 2, 3]}, "w_and_b.json")
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.circuits.base.to_json")
 def test_compile_preprocessing_weights_dict(mock_to_json: MagicMock) -> None:
     c = Circuit()
