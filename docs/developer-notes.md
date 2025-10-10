@@ -36,6 +36,8 @@ cargo build --release
 cargo build --release --manifest-path rust/jstprove_circuits/Cargo.toml
 ````
 
+These must be built manually if you are making changes to the rust side of the codebase, without the entire codebase package updating.
+
 Artifacts typically appear under `./target/release/`.
 
 > The CLI **compile** step will (re)build the runner automatically when needed.

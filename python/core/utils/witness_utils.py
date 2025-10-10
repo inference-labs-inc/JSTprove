@@ -3,9 +3,10 @@ from __future__ import annotations
 import struct
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import BinaryIO, Callable
+from typing import TYPE_CHECKING, BinaryIO
 
-import torch
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from python.core.utils.errors import ProofSystemNotImplementedError
 from python.core.utils.helper_functions import ZKProofSystems
@@ -131,7 +132,7 @@ class ExpanderWitnessLoader(WitnessLoader):
             "witnesses": witnesses,
         }
 
-    def compare_witness_to_io(  # noqa: PLR0913
+    def compare_witness_to_io(
         self: ExpanderWitnessLoader,
         witnesses: dict,
         expected_inputs: dict,
@@ -166,6 +167,8 @@ class ExpanderWitnessLoader(WitnessLoader):
             True if the witness public inputs match the expected inputs and outputs,
             False otherwise.
         """
+
+        import torch  # noqa: PLC0415
 
         scale_base = witnesses["witnesses"][0]["public_inputs"][-2]
         scale_exponent = witnesses["witnesses"][0]["public_inputs"][-1]
@@ -206,13 +209,10 @@ class ExpanderWitnessLoader(WitnessLoader):
         actual_outputs = witness[len(expected_inputs_mod) : -2]
 
         # Compare
-        if (
-            actual_inputs != expected_inputs_mod
-            or actual_outputs != expected_outputs_mod
-        ):
-            return False
-
-        return True
+        return (
+            actual_inputs == expected_inputs_mod
+            and actual_outputs == expected_outputs_mod
+        )
 
 
 # -------------------------

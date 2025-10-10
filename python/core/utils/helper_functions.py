@@ -7,12 +7,21 @@ import os
 import re
 import shutil
 import subprocess
+import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
+from importlib.metadata import version as get_version
 from pathlib import Path
 from time import time
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
+try:
+    import tomllib  # Python 3.11+
+except ModuleNotFoundError:
+    import tomli as tomllib
+
+from python.core import PACKAGE_NAME
 from python.core.utils.benchmarking_helpers import (
     end_memory_collection,
     start_memory_collection,
@@ -56,7 +65,9 @@ class CircuitExecutionConfig:
     public_path: str | None = None
     verification_key: str | None = None
     circuit_name: str | None = None
-    weights_path: str | None = None
+    metadata_path: str | None = None
+    architecture_path: str | None = None
+    w_and_b_path: str | None = None
     output_file: str | None = None
     proof_system: ZKProofSystems = ZKProofSystems.Expander
     circuit_path: str | None = None
@@ -266,7 +277,11 @@ def prepare_io_files(func: Callable) -> Callable:
         exec_config.proof_file = exec_config.proof_file or files["proof_path"]
         exec_config.public_path = exec_config.public_path or files["public_path"]
         exec_config.circuit_name = exec_config.circuit_name or files["circuit_name"]
-        exec_config.weights_path = exec_config.weights_path or files["weights_path"]
+        exec_config.metadata_path = exec_config.metadata_path or files["metadata_path"]
+        exec_config.architecture_path = (
+            exec_config.architecture_path or files["architecture_path"]
+        )
+        exec_config.w_and_b_path = exec_config.w_and_b_path or files["w_and_b_path"]
         exec_config.output_file = exec_config.output_file or files["output_file"]
 
         if exec_config.circuit_path:
@@ -274,6 +289,15 @@ def prepare_io_files(func: Callable) -> Callable:
             name = Path(exec_config.circuit_path).stem
             exec_config.quantized_path = str(
                 circuit_dir / f"{name}_quantized_model.onnx",
+            )
+            exec_config.metadata_path = str(
+                circuit_dir / f"{name}_metadata.json",
+            )
+            exec_config.architecture_path = str(
+                circuit_dir / f"{name}_architecture.json",
+            )
+            exec_config.w_and_b_path = str(
+                circuit_dir / f"{name}_wandb.json",
             )
         else:
             exec_config.quantized_path = None
@@ -285,10 +309,12 @@ def prepare_io_files(func: Callable) -> Callable:
             "proof_file": exec_config.proof_file,
             "public_path": exec_config.public_path,
             "circuit_name": exec_config.circuit_name,
-            "weights_path": exec_config.weights_path,
+            "metadata_path": exec_config.metadata_path,
+            "architecture_path": exec_config.architecture_path,
+            "w_and_b_path": exec_config.w_and_b_path,
             "output_file": exec_config.output_file,
             "inputs": exec_config.input_file,
-            "weights": exec_config.weights_path,
+            "weights": exec_config.w_and_b_path,  # Changed to w_and_b_path
             "outputs": exec_config.output_file,
             "output": exec_config.output_file,
             "proof_system": exec_config.proof_system or proof_system,
@@ -302,6 +328,32 @@ def prepare_io_files(func: Callable) -> Callable:
     return wrapper
 
 
+def ensure_parent_dir(path: str) -> None:
+    """Create parent directories for a given path if they don't exist.
+
+    Args:
+        path (str): Path for which to create parent directories.
+    """
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+
+
+def run_subprocess(cmd: list[str]) -> None:
+    """Run a subprocess command and raise RuntimeError if it fails.
+
+    Args:
+        cmd (list[str]): The command to execute.
+
+    Raises:
+        RuntimeError: If the command exits with a non-zero return code.
+    """
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    proc = subprocess.run(cmd, text=True, env=env, check=False)  # noqa: S603
+    if proc.returncode != 0:
+        msg = f"Command failed with exit code {proc.returncode}"
+        raise RuntimeError(msg)
+
+
 def to_json(inputs: dict[str, Any], path: str) -> None:
     """Write data to a JSON file.
 
@@ -309,6 +361,7 @@ def to_json(inputs: dict[str, Any], path: str) -> None:
         inputs (dict[str, Any]): Data to be serialized.
         path (str): Path where the JSON file will be written.
     """
+    ensure_parent_dir(path)
     with Path(path).open("w") as outfile:
         json.dump(inputs, outfile)
 
@@ -326,11 +379,10 @@ def read_from_json(public_path: str) -> dict[str, Any]:
         return json.load(json_data)
 
 
-def run_cargo_command(  # noqa: PLR0913
+def run_cargo_command(
     binary_name: str,
     command_type: str,
     args: dict[str, str] | None = None,
-    circuit_path: str | None = None,
     *,
     dev_mode: bool = False,
     bench: bool = False,
@@ -355,7 +407,31 @@ def run_cargo_command(  # noqa: PLR0913
     Returns:
         subprocess.CompletedProcess[str]: Exit message from the subprocess.
     """
-    binary_path = _get_binary_path(circuit_path=circuit_path, binary_name=binary_name)
+    try:
+        version = get_version(PACKAGE_NAME)
+        binary_name = binary_name + f"_{version}".replace(".", "-")
+    except Exception:
+        try:
+            pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+            version = pyproject["project"]["version"]
+            binary_name = binary_name + f"_{version}".replace(".", "-")
+        except (FileNotFoundError, KeyError, tomllib.TOMLDecodeError):
+            pass
+
+    binary_path = None
+    possible_paths = [
+        f"./target/release/{binary_name}",
+        Path(__file__).parent.parent / "binaries" / binary_name,
+        Path(sys.prefix) / "bin" / binary_name,
+    ]
+
+    for path in possible_paths:
+        if Path(path).exists():
+            binary_path = str(path)
+            break
+
+    if not binary_path:
+        binary_path = f"./target/release/{binary_name}"
     cmd = _build_command(
         binary_path=binary_path,
         command_type=command_type,
@@ -389,19 +465,7 @@ def run_cargo_command(  # noqa: PLR0913
         msg = f"Rust backend error '{rust_error}'"
         raise ProofBackendError(msg, cmd) from e
     else:
-        _copy_binary_if_needed(
-            binary_name=binary_name,
-            binary_path=binary_path,
-            dev_mode=dev_mode,
-        )
         return result
-
-
-def _get_binary_path(circuit_path: str | None, binary_name: str) -> str:
-    """Determine the binary path based on circuit_path or default."""
-    if circuit_path:
-        return f"{Path(circuit_path).parent / Path(circuit_path).stem!s}_exc"
-    return f"./target/release/{binary_name}"
 
 
 def _build_command(
@@ -415,7 +479,9 @@ def _build_command(
     """Build the command list for subprocess."""
     cmd = (
         ["cargo", "run", "--bin", binary_name, "--release"]
-        if dev_mode
+        if dev_mode or not Path(binary_path).exists()
+        # dev_mode indicates that we want a recompile, this happens with compile
+        # or if there is no executable already created, then we create a new one
         else [binary_path]
     )
     cmd.append(command_type)
@@ -440,8 +506,8 @@ def _run_subprocess_with_bench(
             binary_name,
         )
     start_time = time()
-    result = subprocess.run(
-        cmd,  # noqa: S603
+    result = subprocess.run(  # noqa: S603
+        cmd,
         check=True,
         capture_output=True,
         text=True,
@@ -507,7 +573,7 @@ def get_expander_file_paths(circuit_name: str) -> dict[str, str]:
     }
 
 
-def run_expander_raw(  # noqa: PLR0913
+def run_expander_raw(  # noqa: PLR0913, PLR0912, C901
     mode: ExpanderMode,
     circuit_file: str,
     witness_file: str,
@@ -547,33 +613,42 @@ def run_expander_raw(  # noqa: PLR0913
     env["RUSTFLAGS"] = "-C target-cpu=native"
     time_measure = "/usr/bin/time"
 
-    # If we need a timeflag time_flag = "-l" if platform.system() == "Darwin" else "-v"
-
-    arg_1 = "mpiexec"
-    arg_2 = "-n"
-    arg_3 = "1"
-    command = "cargo"
-    command_2 = "run"
-    manifest_path = "Expander/Cargo.toml"
-    binary = "expander-exec"
-
-    args = [
-        time_measure,
-        # time_flag,
-        arg_1,
-        arg_2,
-        arg_3,
-        command,
-        command_2,
-        "--manifest-path",
-        manifest_path,
-        "--bin",
-        binary,
-        "--release",
-        "--",
-        "-p",
-        pcs_type,
+    expander_binary_path = None
+    possible_paths = [
+        "./Expander/target/release/expander-exec",
+        Path(__file__).parent.parent / "binaries" / "expander-exec",
+        Path(sys.prefix) / "bin" / "expander-exec",
     ]
+
+    for path in possible_paths:
+        if Path(path).exists():
+            expander_binary_path = str(path)
+            break
+
+    if expander_binary_path:
+        args = [
+            time_measure,
+            expander_binary_path,
+            "-p",
+            pcs_type,
+        ]
+    else:
+        args = [
+            time_measure,
+            "mpiexec",
+            "-n",
+            "1",
+            "cargo",
+            "run",
+            "--manifest-path",
+            "Expander/Cargo.toml",
+            "--bin",
+            "expander-exec",
+            "--release",
+            "--",
+            "-p",
+            pcs_type,
+        ]
     if mode == ExpanderMode.PROVE:
         args.append(mode.value)
         proof_command = "-o"
@@ -591,8 +666,8 @@ def run_expander_raw(  # noqa: PLR0913
                 "expander-exec",
             )
         start_time = time()
-        result = subprocess.run(
-            args,  # noqa: S603
+        result = subprocess.run(  # noqa: S603
+            args,
             env=env,
             capture_output=True,
             text=True,
@@ -636,9 +711,12 @@ def run_expander_raw(  # noqa: PLR0913
         return result
 
 
-def compile_circuit(
+def compile_circuit(  # noqa: PLR0913
     circuit_name: str,
     circuit_path: str,
+    metadata_path: str,
+    architecture_path: str,
+    w_and_b_path: str,
     proof_system: ZKProofSystems = ZKProofSystems.Expander,
     *,
     dev_mode: bool = True,
@@ -670,6 +748,9 @@ def compile_circuit(
         args = {
             "n": circuit_name,
             "c": circuit_path,
+            "m": metadata_path,
+            "a": architecture_path,
+            "b": w_and_b_path,
         }
         # Run the command
         try:
@@ -677,7 +758,6 @@ def compile_circuit(
                 binary_name=binary_name,
                 command_type=RunType.COMPILE_CIRCUIT.value,
                 args=args,
-                circuit_path=circuit_path,
                 dev_mode=dev_mode,
                 bench=bench,
             )
@@ -699,6 +779,7 @@ def generate_witness(  # noqa: PLR0913
     witness_file: str,
     input_file: str,
     output_file: str,
+    metadata_path: str,
     proof_system: ZKProofSystems = ZKProofSystems.Expander,
     *,
     dev_mode: bool = False,
@@ -737,6 +818,7 @@ def generate_witness(  # noqa: PLR0913
             "i": input_file,
             "o": output_file,
             "w": witness_file,
+            "m": metadata_path,
         }
         # Run the command
         try:
@@ -744,7 +826,6 @@ def generate_witness(  # noqa: PLR0913
                 binary_name=binary_name,
                 command_type=RunType.GEN_WITNESS.value,
                 args=args,
-                circuit_path=circuit_path,
                 dev_mode=dev_mode,
                 bench=bench,
             )
@@ -762,6 +843,7 @@ def generate_proof(  # noqa: PLR0913
     circuit_path: str,
     witness_file: str,
     proof_file: str,
+    metadata_path: str,
     proof_system: ZKProofSystems = ZKProofSystems.Expander,
     *,
     dev_mode: bool = False,
@@ -803,6 +885,7 @@ def generate_proof(  # noqa: PLR0913
                 "c": circuit_path,
                 "w": witness_file,
                 "p": proof_file,
+                "m": metadata_path,
             }
 
             # Run the command
@@ -811,7 +894,6 @@ def generate_proof(  # noqa: PLR0913
                     binary_name=binary_name,
                     command_type=RunType.PROVE_WITNESS.value,
                     args=args,
-                    circuit_path=circuit_path,
                     dev_mode=dev_mode,
                     bench=bench,
                 )
@@ -839,6 +921,7 @@ def generate_verification(  # noqa: PLR0913
     output_file: str,
     witness_file: str,
     proof_file: str,
+    metadata_path: str,
     proof_system: ZKProofSystems = ZKProofSystems.Expander,
     *,
     dev_mode: bool = False,
@@ -884,6 +967,7 @@ def generate_verification(  # noqa: PLR0913
                 "o": output_file,
                 "w": witness_file,
                 "p": proof_file,
+                "m": metadata_path,
             }
             # Run the command
             try:
@@ -891,7 +975,6 @@ def generate_verification(  # noqa: PLR0913
                     binary_name=binary_name,
                     command_type=RunType.GEN_VERIFY.value,
                     args=args,
-                    circuit_path=circuit_path,
                     dev_mode=dev_mode,
                     bench=bench,
                 )
@@ -960,14 +1043,23 @@ def run_end_to_end(  # noqa: PLR0913
         ext = path.suffix
 
         witness_file = f"{base}_witness{ext}"
-        proof_file = f"{base}_proof{ext}"
-        compile_circuit(circuit_name, circuit_path, proof_system, dev_mode)
+        proof_file = f"{base}_proof.bin"
+        compile_circuit(
+            circuit_name,
+            circuit_path,
+            f"{base}_metadata.json",
+            f"{base}_architecture.json",
+            f"{base}_wandb.json",
+            proof_system,
+            dev_mode,
+        )
         generate_witness(
             circuit_name,
             circuit_path,
             witness_file,
             input_file,
             output_file,
+            f"{base}_metadata.json",
             proof_system,
             dev_mode,
         )
@@ -976,6 +1068,7 @@ def run_end_to_end(  # noqa: PLR0913
             circuit_path,
             witness_file,
             proof_file,
+            f"{base}_metadata.json",
             proof_system,
             dev_mode,
             ecc,
@@ -987,6 +1080,7 @@ def run_end_to_end(  # noqa: PLR0913
             output_file,
             witness_file,
             proof_file,
+            f"{base}_metadata.json",
             proof_system,
             dev_mode,
             ecc,
@@ -1016,16 +1110,15 @@ def get_files(
     Returns:
         dict[str, str]: A dictionary mapping descriptive keys to file paths.
     """
-    # Ensure all provided folders exist
-    for path in folders.values():
-        if path:
-            create_folder(path)
-
     # Common file paths
     paths = {
         "input_file": str(Path(folders["input"]) / f"{name}_input.json"),
         "public_path": str(Path(folders["proof"]) / f"{name}_public.json"),
-        "weights_path": str(Path(folders["weights"]) / f"{name}_weights.json"),
+        "metadata_path": str(Path(folders["weights"]) / f"{name}_metadata.json"),
+        "architecture_path": str(
+            Path(folders["weights"]) / f"{name}_architecture.json",
+        ),
+        "w_and_b_path": str(Path(folders["weights"]) / f"{name}_w_and_b.json"),
         "output_file": str(Path(folders["output"]) / f"{name}_output.json"),
     }
 
@@ -1033,7 +1126,7 @@ def get_files(
     if proof_system == ZKProofSystems.Expander:
         paths.update(
             {
-                "circuit_name": str(Path(folders["circuit"]) / name),
+                "circuit_name": name,
                 "witness_file": str(Path(folders["input"]) / f"{name}_witness.txt"),
                 "proof_path": str(Path(folders["proof"]) / f"{name}_proof.bin"),
             },
@@ -1043,13 +1136,3 @@ def get_files(
         raise ProofSystemNotImplementedError(msg)
 
     return paths
-
-
-def create_folder(directory: str) -> None:
-    """Create a directory if it doesn't exist.
-
-    Args:
-        directory (str): Path to the directory to create.
-    """
-    if not Path(directory).exists():
-        Path(directory).mkdir()

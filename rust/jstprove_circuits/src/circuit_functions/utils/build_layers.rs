@@ -41,7 +41,7 @@ pub struct BuildLayerContext {
 /// - Propagates any error from the pattern matcher used for optimizations.
 pub fn build_layers<C: Config, Builder: RootAPI<C>>(
     circuit_params: &CircuitParams,
-    arcitecture: &Architecture,
+    architecture: &Architecture,
     w_and_b: &WANDB,
 ) -> Result<Vec<Box<dyn LayerOp<C, Builder>>>, BuildError> {
     const N_BITS: usize = 32;
@@ -63,11 +63,11 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
 
     let mut skip_next_layer: HashMap<String, bool> = HashMap::new();
 
-    let inputs = &arcitecture.inputs;
+    let inputs = &circuit_params.inputs;
 
     // TODO havent figured out how but this can maybe go in build layers?
     let shapes_map: HashMap<String, Vec<usize>> =
-        collect_all_shapes(&arcitecture.architecture, inputs);
+        collect_all_shapes(&architecture.architecture, inputs);
 
     let layer_context = BuildLayerContext {
         w_and_b_map: w_and_b_map.clone(),
@@ -78,9 +78,9 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
     };
 
     let matcher = PatternMatcher::new();
-    let opt_patterns_by_layername = matcher.run(&arcitecture.architecture)?;
+    let opt_patterns_by_layername = matcher.run(&architecture.architecture)?;
 
-    for (i, original_layer) in arcitecture.architecture.iter().enumerate() {
+    for (i, original_layer) in architecture.architecture.iter().enumerate() {
         /*
            Track layer combo optimizations
         */

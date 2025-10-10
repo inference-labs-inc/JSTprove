@@ -2,36 +2,23 @@ name: Security Audit
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # Run daily at midnight
+    - cron: "0 0 * * *" # Run daily at midnight
   push:
-    branches: [ "main", "rustfmt" ]
+    branches: ["main", "rustfmt"]
     paths:
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
-      - 'pyproject.toml'
-      - 'uv.lock'
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - "pyproject.toml"
+      - "uv.lock"
   pull_request:
-    branches: [ "main", "rustfmt" ]
+    branches: ["main", "rustfmt"]
     paths:
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
-      - 'pyproject.toml'
-      - 'uv.lock'
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - "pyproject.toml"
+      - "uv.lock"
 
 jobs:
-  dependency-review:
-    name: Dependency Review
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Review Dependencies
-        uses: actions/dependency-review-action@v3
-        with:
-          fail-on-severity: high
-
   rust-audit:
     name: Rust Security Audit
     runs-on: ubuntu-latest
