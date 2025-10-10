@@ -328,6 +328,32 @@ def prepare_io_files(func: Callable) -> Callable:
     return wrapper
 
 
+def ensure_parent_dir(path: str) -> None:
+    """Create parent directories for a given path if they don't exist.
+
+    Args:
+        path (str): Path for which to create parent directories.
+    """
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+
+
+def run_subprocess(cmd: list[str]) -> None:
+    """Run a subprocess command and raise RuntimeError if it fails.
+
+    Args:
+        cmd (list[str]): The command to execute.
+
+    Raises:
+        RuntimeError: If the command exits with a non-zero return code.
+    """
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    proc = subprocess.run(cmd, text=True, env=env, check=False)  # noqa: S603
+    if proc.returncode != 0:
+        msg = f"Command failed with exit code {proc.returncode}"
+        raise RuntimeError(msg)
+
+
 def to_json(inputs: dict[str, Any], path: str) -> None:
     """Write data to a JSON file.
 
@@ -335,7 +361,7 @@ def to_json(inputs: dict[str, Any], path: str) -> None:
         inputs (dict[str, Any]): Data to be serialized.
         path (str): Path where the JSON file will be written.
     """
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    ensure_parent_dir(path)
     with Path(path).open("w") as outfile:
         json.dump(inputs, outfile)
 

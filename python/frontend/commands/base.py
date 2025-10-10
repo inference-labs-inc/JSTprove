@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from python.frontend.commands.args import ArgSpec
+
 from python.frontend.commands.constants import (
     DEFAULT_CIRCUIT_CLASS,
     DEFAULT_CIRCUIT_MODULE,
@@ -112,6 +113,24 @@ class BaseCommand(ABC):
         return decorator
 
     @staticmethod
+    def validate_optional_paths(*paths: ArgSpec) -> Callable:
+        def decorator(func: Callable) -> Callable:
+            @functools.wraps(func)
+            def wrapper(cls: type[BaseCommand], args: argparse.Namespace) -> None:
+                for arg_spec in paths:
+                    flag_val = getattr(args, arg_spec.name, None)
+                    pos_val = getattr(args, arg_spec.positional, None)
+                    merged = flag_val if flag_val is not None else pos_val
+                    if merged is not None:
+                        cls._ensure_file_exists(merged)
+                    setattr(args, arg_spec.name, merged)
+                return func(cls, args)
+
+            return wrapper
+
+        return decorator
+
+    @staticmethod
     def _ensure_file_exists(path: str) -> None:
         p = Path(path)
         if not p.is_file():
@@ -124,6 +143,32 @@ class BaseCommand(ABC):
     @staticmethod
     def _ensure_parent_dir(path: str) -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def append_arg(cmd: list[str], flag: str, val: object | None) -> None:
+        if val is None:
+            return
+        if isinstance(val, str) and not val.strip():
+            return
+        cmd.extend([flag, str(val)])
+
+    @staticmethod
+    def append_args_from_specs(
+        cmd: list[str],
+        specs: tuple[tuple[ArgSpec, str], ...],
+    ) -> None:
+        for spec, value in specs:
+            cmd.extend([spec.flag, value])
+
+    @staticmethod
+    def append_args_from_namespace(
+        cmd: list[str],
+        args: argparse.Namespace,
+        specs: tuple[ArgSpec, ...],
+    ) -> None:
+        for spec in specs:
+            value = getattr(args, spec.name, None)
+            BaseCommand.append_arg(cmd, spec.flag, value)
 
     @staticmethod
     def _build_circuit(model_name_hint: str | None = None) -> Any:  # noqa: ANN401

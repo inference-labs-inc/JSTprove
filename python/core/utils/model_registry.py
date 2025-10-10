@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import importlib
-import os
 import pkgutil
 from collections import namedtuple
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import types
+    from collections.abc import Callable
 
 
 from python.core import circuit_models, circuits
@@ -41,13 +41,13 @@ def scan_model_files(
     """
     _ = extension
     entries = []
-    for file_or_foldername in os.listdir(directory):
+    for item in Path(directory).iterdir():
+        file_or_foldername = item.name
         if prefix == "onnx" and (
-            Path.is_file(Path(directory) / file_or_foldername)
-            and file_or_foldername[-5:] == ".onnx"
+            item.is_file() and file_or_foldername.endswith(".onnx")
         ):
-            name = file_or_foldername[0 : len(file_or_foldername) - 5]
-            path = str(Path(directory) / file_or_foldername)
+            name = file_or_foldername[:-5]
+            path = str(item)
             entries.append(
                 ModelEntry(
                     name=f"{name}",

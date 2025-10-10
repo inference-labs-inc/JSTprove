@@ -71,10 +71,10 @@ After all iterations, a **summary card** is printed automatically.
 
 ```bash
 # simple defaults
-jst bench depth
+jst bench sweep depth
 
 # customized
-jst bench --sweep depth \
+jst bench sweep depth \
   --depth-min 1 --depth-max 16 \
   --input-hw 56 \
   --iterations 3 \
@@ -88,10 +88,10 @@ jst bench --sweep depth \
 
 ```bash
 # simple defaults
-jst bench breadth
+jst bench sweep breadth
 
 # customized
-jst bench --sweep breadth \
+jst bench sweep breadth \
   --arch-depth 5 \
   --input-hw-list 28,56,84,112 \
   --iterations 3 \
@@ -105,16 +105,16 @@ Benchmark individual ONNX models, either from the available registry or by speci
 
 ```bash
 # List available models
-jst bench --list-models
+jst bench list
 
 # Benchmark specific models from registry
-jst bench --model lenet --iterations 3
+jst bench model --model lenet --iterations 3
 
 # Benchmark all ONNX models from registry
-jst bench --source onnx --iterations 3 --results benchmarking/all_onnx.jsonl
+jst bench model  --source onnx --iterations 3 --results benchmarking/all_onnx.jsonl
 
 # Benchmark a specific ONNX file directly
-jst bench --model-path /path/to/my_model.onnx --iterations 3
+jst bench model --model-path /path/to/my_model.onnx --iterations 3
 ```
 
 * `--model` specifies one or more model names from the registry (use multiple times).

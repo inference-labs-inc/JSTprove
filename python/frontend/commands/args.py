@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import argparse
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -16,8 +17,10 @@ class ArgSpec:
 
     name: str
     flag: str
-    short: str
     help_text: str
+    short: str = ""
+    arg_type: type | None = None
+    extra_kwargs: dict[str, Any] = field(default_factory=dict)
 
     @property
     def positional(self) -> str:
@@ -31,17 +34,27 @@ class ArgSpec:
     ) -> None:
         """Add both positional and flag arguments to the parser."""
         help_text = help_override or self.help_text
-        parser.add_argument(
-            self.positional,
-            nargs="?",
-            metavar=self.name,
-            help=help_text,
-        )
-        parser.add_argument(
-            self.short,
-            self.flag,
-            help=help_text,
-        )
+        kwargs = {"help": help_text, **self.extra_kwargs}
+        if self.arg_type is not None:
+            kwargs["type"] = self.arg_type
+
+        if self.short:
+            parser.add_argument(
+                self.positional,
+                nargs="?",
+                metavar=self.name,
+                **kwargs,
+            )
+            parser.add_argument(
+                self.short,
+                self.flag,
+                **kwargs,
+            )
+        else:
+            parser.add_argument(
+                self.flag,
+                **kwargs,
+            )
 
 
 MODEL_PATH = ArgSpec(
