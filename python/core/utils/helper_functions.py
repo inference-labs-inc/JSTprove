@@ -8,12 +8,13 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from importlib.metadata import version as get_version
 from pathlib import Path
 from time import time
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 try:
     import tomllib  # Python 3.11+
@@ -327,6 +328,32 @@ def prepare_io_files(func: Callable) -> Callable:
     return wrapper
 
 
+def ensure_parent_dir(path: str) -> None:
+    """Create parent directories for a given path if they don't exist.
+
+    Args:
+        path (str): Path for which to create parent directories.
+    """
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+
+
+def run_subprocess(cmd: list[str]) -> None:
+    """Run a subprocess command and raise RuntimeError if it fails.
+
+    Args:
+        cmd (list[str]): The command to execute.
+
+    Raises:
+        RuntimeError: If the command exits with a non-zero return code.
+    """
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    proc = subprocess.run(cmd, text=True, env=env, check=False)  # noqa: S603
+    if proc.returncode != 0:
+        msg = f"Command failed with exit code {proc.returncode}"
+        raise RuntimeError(msg)
+
+
 def to_json(inputs: dict[str, Any], path: str) -> None:
     """Write data to a JSON file.
 
@@ -334,7 +361,7 @@ def to_json(inputs: dict[str, Any], path: str) -> None:
         inputs (dict[str, Any]): Data to be serialized.
         path (str): Path where the JSON file will be written.
     """
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    ensure_parent_dir(path)
     with Path(path).open("w") as outfile:
         json.dump(inputs, outfile)
 
@@ -479,8 +506,8 @@ def _run_subprocess_with_bench(
             binary_name,
         )
     start_time = time()
-    result = subprocess.run(
-        cmd,  # noqa: S603
+    result = subprocess.run(  # noqa: S603
+        cmd,
         check=True,
         capture_output=True,
         text=True,
@@ -639,8 +666,8 @@ def run_expander_raw(  # noqa: PLR0913, PLR0912, C901
                 "expander-exec",
             )
         start_time = time()
-        result = subprocess.run(
-            args,  # noqa: S603
+        result = subprocess.run(  # noqa: S603
+            args,
             env=env,
             capture_output=True,
             text=True,

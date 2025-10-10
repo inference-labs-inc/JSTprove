@@ -28,7 +28,7 @@ from python.core.utils.helper_functions import (
 
 
 # ---------- compute_and_store_output ----------
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.utils.helper_functions.Path.mkdir")
 @patch("python.core.utils.helper_functions.Path.exists", return_value=False)
 @patch("python.core.utils.helper_functions.json.dump")
@@ -58,7 +58,7 @@ def test_compute_and_store_output_saves(
     assert result == {"out": 123}
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.utils.helper_functions.Path")
 @patch("python.core.utils.helper_functions.json.load", return_value={"out": 456})
 def test_compute_and_store_output_loads_from_cache(
@@ -89,7 +89,7 @@ def test_compute_and_store_output_loads_from_cache(
     assert output == {"out": 456}
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.utils.helper_functions.os.path.exists", return_value=True)
 @patch("python.core.utils.helper_functions.open", new_callable=mock_open)
 @patch(
@@ -118,7 +118,7 @@ def test_compute_and_store_output_on_json_error(
 
 
 # ---------- prepare_io_files ----------
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch(
     "python.core.utils.helper_functions.get_files",
     return_value={
@@ -182,7 +182,7 @@ def test_prepare_io_files_runs_func(
 
 
 # ---------- to_json ----------
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.utils.helper_functions.Path")
 @patch("python.core.utils.helper_functions.json.dump")
 def test_to_json_saves_json(mock_dump: MagicMock, mock_path: MagicMock) -> None:
@@ -202,7 +202,7 @@ def test_to_json_saves_json(mock_dump: MagicMock, mock_path: MagicMock) -> None:
 
 
 # ---------- read_from_json ----------
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.utils.helper_functions.Path")
 @patch("python.core.utils.helper_functions.json.load", return_value={"x": 42})
 def test_read_from_json_loads_json(mock_load: MagicMock, mock_path: MagicMock) -> None:
@@ -217,7 +217,7 @@ def test_read_from_json_loads_json(mock_load: MagicMock, mock_path: MagicMock) -
 
 
 # ---------- run_cargo_command ----------
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.utils.helper_functions.Path")
 @patch("python.core.utils.helper_functions.subprocess.run")
 def test_run_cargo_command_normal(
@@ -240,7 +240,7 @@ def test_run_cargo_command_normal(
     assert code.returncode == 0
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.utils.helper_functions.subprocess.run")
 @patch("python.core.utils.helper_functions.Path.read_text")
 def test_run_cargo_command_dev_mode(
@@ -271,7 +271,7 @@ def test_run_cargo_command_dev_mode(
     assert "compile" in args
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.utils.helper_functions.Path")
 @patch("python.core.utils.helper_functions.subprocess.run")
 def test_run_cargo_command_fallback_to_cargo_run(
@@ -294,7 +294,7 @@ def test_run_cargo_command_fallback_to_cargo_run(
     assert "compile" in args
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.utils.helper_functions.subprocess.run")
 def test_run_cargo_command_bool_args(mock_run: MagicMock) -> None:
     mock_run.return_value = MagicMock(returncode=0)
@@ -307,7 +307,7 @@ def test_run_cargo_command_bool_args(mock_run: MagicMock) -> None:
     assert "-json" in args  # Even though False, it's added
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch(
     "python.core.utils.helper_functions.subprocess.run",
     side_effect=Exception("subprocess failed"),
@@ -317,7 +317,7 @@ def test_run_cargo_command_raises_on_failure(mock_run: MagicMock) -> None:
         run_cargo_command("failbin", "fail_cmd", {"x": 1})
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.utils.helper_functions.Path")
 @patch("python.core.utils.helper_functions.subprocess.run")
 def test_run_command_failure(mock_run: MagicMock, mock_path_class: MagicMock) -> None:
@@ -340,7 +340,7 @@ def test_run_command_failure(mock_run: MagicMock, mock_path_class: MagicMock) ->
 
 
 # ---------- get_expander_file_paths ----------
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_get_expander_file_paths() -> None:
     name = "model"
     paths = get_expander_file_paths(name)
@@ -350,7 +350,7 @@ def test_get_expander_file_paths() -> None:
 
 
 # ---------- compile_circuit ----------
-@pytest.mark.integration()
+@pytest.mark.integration
 @patch("python.core.utils.helper_functions.run_cargo_command")
 def test_compile_circuit_expander(mock_run: MagicMock) -> None:
     compile_circuit(
@@ -371,7 +371,7 @@ def test_compile_circuit_expander(mock_run: MagicMock) -> None:
     mock_run.assert_called_once()
 
 
-@pytest.mark.integration()
+@pytest.mark.integration
 @patch("python.core.utils.helper_functions.run_cargo_command")
 def test_compile_circuit_expander_dev_mode_true(mock_run: MagicMock) -> None:
     compile_circuit(
@@ -393,7 +393,7 @@ def test_compile_circuit_expander_dev_mode_true(mock_run: MagicMock) -> None:
     mock_run.assert_called_once()
 
 
-@pytest.mark.integration()
+@pytest.mark.integration
 @patch(
     "python.core.utils.helper_functions.run_cargo_command",
     side_effect=ProofBackendError("TEST"),
@@ -416,14 +416,14 @@ def test_compile_circuit_expander_rust_error(
     assert "Using binary: model2" in caplog.text
 
 
-@pytest.mark.integration()
+@pytest.mark.integration
 def test_compile_circuit_unknown_raises() -> None:
     with pytest.raises(ProofSystemNotImplementedError):
         compile_circuit("m", "p", "meta.json", "arch.json", "w.json", "unsupported")
 
 
 # # ---------- generate_witness ----------
-@pytest.mark.integration()
+@pytest.mark.integration
 @patch("python.core.utils.helper_functions.run_cargo_command")
 def test_generate_witness_expander(mock_run: MagicMock) -> None:
     generate_witness(
@@ -446,7 +446,7 @@ def test_generate_witness_expander(mock_run: MagicMock) -> None:
     mock_run.assert_called_once()
 
 
-@pytest.mark.integration()
+@pytest.mark.integration
 @patch("python.core.utils.helper_functions.run_cargo_command")
 def test_generate_witness_expander_dev_mode_true(mock_run: MagicMock) -> None:
     generate_witness(
@@ -470,7 +470,7 @@ def test_generate_witness_expander_dev_mode_true(mock_run: MagicMock) -> None:
     mock_run.assert_called_once()
 
 
-@pytest.mark.integration()
+@pytest.mark.integration
 @patch(
     "python.core.utils.helper_functions.run_cargo_command",
     side_effect=ProofBackendError("TEST"),
@@ -493,7 +493,7 @@ def test_generate_witness_expander_rust_error(
     assert "Warning: Witness generation failed: TEST" in caplog.text
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_generate_witness_unknown_raises() -> None:
     with pytest.raises(ProofSystemNotImplementedError):
         generate_witness(
@@ -510,7 +510,7 @@ def test_generate_witness_unknown_raises() -> None:
 # ---------- generate_proof ----------
 
 
-@pytest.mark.integration()
+@pytest.mark.integration
 @patch("python.core.utils.helper_functions.run_expander_raw")
 @patch(
     "python.core.utils.helper_functions.get_expander_file_paths",
@@ -529,7 +529,7 @@ def test_generate_proof_expander_no_ecc(
     assert mock_exec.call_count == 1
 
 
-@pytest.mark.integration()
+@pytest.mark.integration
 @patch("python.core.utils.helper_functions.run_cargo_command")
 def test_generate_proof_expander_with_ecc(mock_run: MagicMock) -> None:
     generate_proof(
@@ -553,7 +553,7 @@ def test_generate_proof_expander_with_ecc(mock_run: MagicMock) -> None:
     assert kwargs["args"]["m"] == "metadata.json"
 
 
-@pytest.mark.integration()
+@pytest.mark.integration
 @patch("python.core.utils.helper_functions.run_cargo_command")
 def test_generate_proof_expander_with_ecc_dev_mode_true(mock_run: MagicMock) -> None:
     generate_proof(
@@ -578,13 +578,13 @@ def test_generate_proof_expander_with_ecc_dev_mode_true(mock_run: MagicMock) -> 
     assert kwargs["args"]["m"] == "metadata.json"
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_generate_proof_unknown_raises() -> None:
     with pytest.raises(ProofSystemNotImplementedError):
         generate_proof("m", "p", "w", "proof", "metadata.json", "unsupported")
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch(
     "python.core.utils.helper_functions.run_cargo_command",
     side_effect=ProofBackendError("TEST"),
@@ -607,7 +607,7 @@ def test_generate_proof_expander_rust_error(
 
 
 # # ---------- generate_verification ----------
-@pytest.mark.integration()
+@pytest.mark.integration
 @patch("python.core.utils.helper_functions.run_expander_raw")
 @patch(
     "python.core.utils.helper_functions.get_expander_file_paths",
@@ -635,7 +635,7 @@ def test_generate_verify_expander_no_ecc(
     assert mock_exec.call_count == 1
 
 
-@pytest.mark.integration()
+@pytest.mark.integration
 @patch("python.core.utils.helper_functions.run_cargo_command")
 def test_generate_verify_expander_with_ecc(mock_run: MagicMock) -> None:
     generate_verification(
@@ -665,7 +665,7 @@ def test_generate_verify_expander_with_ecc(mock_run: MagicMock) -> None:
     mock_run.assert_called_once()
 
 
-@pytest.mark.integration()
+@pytest.mark.integration
 @patch("python.core.utils.helper_functions.run_cargo_command")
 def test_generate_verify_expander_with_ecc_dev_mode_true(mock_run: MagicMock) -> None:
     generate_verification(
@@ -694,7 +694,7 @@ def test_generate_verify_expander_with_ecc_dev_mode_true(mock_run: MagicMock) ->
     mock_run.assert_called_once()
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_generate_verify_unknown_raises() -> None:
     with pytest.raises(ProofSystemNotImplementedError):
         generate_verification(
@@ -709,7 +709,7 @@ def test_generate_verify_unknown_raises() -> None:
         )
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_proof_system_not_implemented_full_process() -> None:
     with pytest.raises(
         ProofSystemNotImplementedError,
@@ -757,7 +757,7 @@ def test_proof_system_not_implemented_full_process() -> None:
         )
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch(
     "python.core.utils.helper_functions.run_cargo_command",
     side_effect=ProofBackendError("TEST"),
@@ -782,7 +782,7 @@ def test_generate_verify_expander_rust_error(
 
 
 # # ---------- run_end_to_end ----------
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.utils.helper_functions.generate_verification")
 @patch("python.core.utils.helper_functions.generate_proof")
 @patch("python.core.utils.helper_functions.generate_witness")
@@ -837,7 +837,7 @@ def test_run_end_to_end_calls_all(
     )
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.utils.helper_functions.generate_verification")
 @patch("python.core.utils.helper_functions.generate_proof")
 @patch("python.core.utils.helper_functions.generate_witness")
@@ -856,7 +856,7 @@ def test_unknown_proof_system_errors_end_to_end(
 
 
 # # ---------- get_files ----------
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_get_files() -> None:
     folders = {
         "input": "inputs",
@@ -871,7 +871,7 @@ def test_get_files() -> None:
     assert paths["input_file"].endswith("model_input.json")
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_get_files_non_proof_system() -> None:
 
     folders = {

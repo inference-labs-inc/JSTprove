@@ -192,7 +192,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
                 scale_base=self.scale_base,
                 scale_exponent=self.scale_exponent,
             )
-            for key in x:
+            for key in x:  # noqa: PLC0206
                 x[key] = torch.as_tensor(x[key]).flatten().tolist()
                 x[key] = (torch.as_tensor(x[key]) * scaling).long().tolist()
         except Exception as e:

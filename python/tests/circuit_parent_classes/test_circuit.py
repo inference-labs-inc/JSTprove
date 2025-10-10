@@ -1,6 +1,6 @@
 import sys
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -34,7 +34,7 @@ with (
 
 
 # ---------- Test __init__ ----------
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_circuit_init_defaults() -> None:
     c = Circuit()
     assert c.input_folder == "inputs"
@@ -48,7 +48,7 @@ def test_circuit_init_defaults() -> None:
     assert c.required_keys is None
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_circuit_execution_config_with_new_paths() -> None:
     config = CircuitExecutionConfig(
         circuit_name="test_circuit",
@@ -63,7 +63,7 @@ def test_circuit_execution_config_with_new_paths() -> None:
 
 
 # ---------- Test parse_inputs ----------
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_parse_inputs_missing_required_keys() -> None:
     c = Circuit()
     c.required_keys = ["x", "y"]
@@ -71,7 +71,7 @@ def test_parse_inputs_missing_required_keys() -> None:
         c.parse_inputs(y=5)
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_parse_inputs_type_check() -> None:
     c = Circuit()
     c.required_keys = ["x"]
@@ -82,7 +82,7 @@ def test_parse_inputs_type_check() -> None:
         c.parse_inputs(x="not-an-int")
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_parse_inputs_success_int() -> None:
     c = Circuit()
     c.required_keys = ["x", "y"]
@@ -95,7 +95,7 @@ def test_parse_inputs_success_int() -> None:
     assert c.y == y
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_parse_inputs_success_list() -> None:
     c = Circuit()
     c.required_keys = ["arr"]
@@ -103,7 +103,7 @@ def test_parse_inputs_success_list() -> None:
     assert c.arr == [1, 2, 3]
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_parse_inputs_required_keys_none() -> None:
     c = Circuit()
     with pytest.raises(CircuitConfigurationError):
@@ -111,14 +111,14 @@ def test_parse_inputs_required_keys_none() -> None:
 
 
 # ---------- Test Not Implemented --------------
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_get_inputs_not_implemented() -> None:
     c = Circuit()
     with pytest.raises(NotImplementedError, match="get_inputs must be implemented"):
         c.get_inputs()
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_get_outputs_not_implemented() -> None:
     c = Circuit()
     with pytest.raises(NotImplementedError, match="get_outputs must be implemented"):
@@ -128,7 +128,7 @@ def test_get_outputs_not_implemented() -> None:
 # ---------- Test parse_proof_run_type ----------
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.circuits.base.compile_circuit")
 @patch("python.core.circuits.base.generate_witness")
 @patch("python.core.circuits.base.generate_proof")
@@ -180,7 +180,7 @@ def test_parse_proof_dispatch_logic(
         w_and_b_path="w_and_b",
         quantized_path="q",
     )
-    args, kwargs = mock_compile.call_args
+    _, kwargs = mock_compile.call_args
     assert kwargs == {
         "circuit_name": "circuit",
         "circuit_path": "path",
@@ -216,7 +216,7 @@ def test_parse_proof_dispatch_logic(
     c.parse_proof_run_type(config_witness)
     mock_witness.assert_called_once()
     c._gen_witness_preprocessing.assert_called()
-    args, kwargs = mock_witness.call_args
+    _, kwargs = mock_witness.call_args
     assert kwargs == {
         "circuit_name": "circuit",
         "circuit_path": "path",
@@ -252,7 +252,7 @@ def test_parse_proof_dispatch_logic(
     )
     c.parse_proof_run_type(config_prove)
     mock_proof.assert_called_once()
-    args, kwargs = mock_proof.call_args
+    _, kwargs = mock_proof.call_args
 
     assert kwargs == {
         "circuit_name": "circuit",
@@ -289,7 +289,7 @@ def test_parse_proof_dispatch_logic(
     )
     c.parse_proof_run_type(config_verify)
     mock_verify.assert_called_once()
-    args, kwargs = mock_verify.call_args
+    _, kwargs = mock_verify.call_args
     assert kwargs == {
         "circuit_name": "circuit",
         "circuit_path": "path",
@@ -335,32 +335,32 @@ def test_parse_proof_dispatch_logic(
 
 
 # ---------- Test new methods for metadata, architecture, w_and_b ----------
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_get_metadata_default() -> None:
     c = Circuit()
     assert c.get_metadata() == {}
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_get_architecture_default() -> None:
     c = Circuit()
     assert c.get_architecture() == {}
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_get_w_and_b_default() -> None:
     c = Circuit()
     assert c.get_w_and_b() == {}
 
 
 # ---------- Optional: test get_weights ----------
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_get_weights_default() -> None:
     c = Circuit()
     assert c.get_weights() == {}
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_get_inputs_from_file() -> None:
     c = Circuit()
     c.scale_base = 2
@@ -376,7 +376,7 @@ def test_get_inputs_from_file() -> None:
         assert y == {"input": [4, 8, 12, 16]}
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_get_inputs_from_file_multiple_inputs() -> None:
     c = Circuit()
     c.scale_base = 2
@@ -392,7 +392,7 @@ def test_get_inputs_from_file_multiple_inputs() -> None:
         assert y == {"input": [4, 8, 12, 16], "nonce": 100}
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_get_inputs_from_file_dne() -> None:
     c = Circuit()
     c.scale_base = 2
@@ -401,7 +401,7 @@ def test_get_inputs_from_file_dne() -> None:
         c.get_inputs_from_file("this_file_should_not_exist_12345.json", is_scaled=True)
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_format_outputs() -> None:
     c = Circuit()
     out = c.format_outputs([10, 15, 20])
@@ -409,7 +409,7 @@ def test_format_outputs() -> None:
 
 
 # ---------- _gen_witness_preprocessing ----------
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.circuits.base.to_json")
 def test_gen_witness_preprocessing_write_json_true(mock_to_json: MagicMock) -> None:
     c = Circuit()
@@ -435,7 +435,7 @@ def test_gen_witness_preprocessing_write_json_true(mock_to_json: MagicMock) -> N
     mock_to_json.assert_any_call({"output": 2}, "out.json")
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.circuits.base.to_json")
 def test_gen_witness_preprocessing_write_json_false(mock_to_json: MagicMock) -> None:
     c = Circuit()
@@ -467,7 +467,7 @@ def test_gen_witness_preprocessing_write_json_false(mock_to_json: MagicMock) -> 
 
 
 # ---------- _compile_preprocessing ----------
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.circuits.base.to_json")
 def test_compile_preprocessing_saves_all_files(mock_to_json: MagicMock) -> None:
     c = Circuit()
@@ -490,7 +490,30 @@ def test_compile_preprocessing_saves_all_files(mock_to_json: MagicMock) -> None:
     mock_to_json.assert_any_call({"weights": [1, 2, 3]}, "w_and_b.json")
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
+@patch("python.core.circuits.base.to_json")
+def test_compile_preprocessing_saves_all_files(mock_to_json: MagicMock) -> None:
+    c = Circuit()
+    c._file_info = {"quantized_model_path": "model.pth"}
+    c.get_model_and_quantize = MagicMock()
+    c.get_metadata = MagicMock(return_value={"version": "1.0"})
+    c.get_architecture = MagicMock(return_value={"layers": ["conv", "relu"]})
+    c.get_w_and_b = MagicMock(return_value={"weights": [1, 2, 3]})
+    c.save_quantized_model = MagicMock()
+
+    c._compile_preprocessing("metadata.json", "architecture.json", "w_and_b.json", None)
+
+    c.get_model_and_quantize.assert_called_once()
+    c.get_metadata.assert_called_once()
+    c.get_architecture.assert_called_once()
+    c.get_w_and_b.assert_called_once()
+    c.save_quantized_model.assert_called_once_with("model.pth")
+    mock_to_json.assert_any_call({"version": "1.0"}, "metadata.json")
+    mock_to_json.assert_any_call({"layers": ["conv", "relu"]}, "architecture.json")
+    mock_to_json.assert_any_call({"weights": [1, 2, 3]}, "w_and_b.json")
+
+
+@pytest.mark.unit
 @patch("python.core.circuits.base.to_json")
 def test_compile_preprocessing_weights_dict(mock_to_json: MagicMock) -> None:
     c = Circuit()
@@ -511,7 +534,7 @@ def test_compile_preprocessing_weights_dict(mock_to_json: MagicMock) -> None:
     mock_to_json.assert_any_call({"a": 1}, "w_and_b.json")
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.circuits.base.to_json")
 def test_compile_preprocessing_weights_list(
     mock_to_json: MagicMock,
@@ -536,7 +559,7 @@ def test_compile_preprocessing_weights_list(
     mock_to_json.assert_any_call({"w3": 3}, Path("w_and_b3.json"))
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.circuits.base.to_json")
 def test_compile_preprocessing_weights_list_single_call(
     mock_to_json: MagicMock,
@@ -559,7 +582,7 @@ def test_compile_preprocessing_weights_list_single_call(
     mock_to_json.assert_any_call({"w3": 3}, Path("w_and_b3.json"))
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_compile_preprocessing_raises_on_bad_weights() -> None:
     c = Circuit()
     c._file_info = {"quantized_model_path": "model.pth"}
@@ -579,7 +602,7 @@ def test_compile_preprocessing_raises_on_bad_weights() -> None:
 
 
 # ---------- Test check attributes --------------
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_check_attributes_true() -> None:
     c = Circuit()
     c.required_keys = ["input"]
@@ -589,7 +612,7 @@ def test_check_attributes_true() -> None:
     c.check_attributes()
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_check_attributes_no_scaling() -> None:
     c = Circuit()
     c.required_keys = ["input"]
@@ -603,7 +626,7 @@ def test_check_attributes_no_scaling() -> None:
     assert "scale_exponent" in msg
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_check_attributes_no_scalebase() -> None:
     c = Circuit()
     c.required_keys = ["input"]
@@ -618,7 +641,7 @@ def test_check_attributes_no_scalebase() -> None:
     assert "scale_base" in msg
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_check_attributes_no_name() -> None:
     c = Circuit()
     c.required_keys = ["input"]
@@ -634,7 +657,7 @@ def test_check_attributes_no_name() -> None:
 
 
 # ---------- base_testing ------------
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch.object(Circuit, "parse_proof_run_type")
 def test_base_testing_calls_parse_proof_run_type_correctly(
     mock_parse: MagicMock,
@@ -687,10 +710,10 @@ def test_base_testing_calls_parse_proof_run_type_correctly(
     mock_parse.assert_called_once_with(expected_config)
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_prepare_io_files_sets_new_file_paths() -> None:
     """Test that prepare_io_files decorator sets the new file paths correctly."""
-    from python.core.utils.helper_functions import prepare_io_files
+    from python.core.utils.helper_functions import prepare_io_files  # noqa: PLC0415
 
     class TestCircuit(Circuit):
         def __init__(self: Circuit) -> None:
@@ -728,7 +751,7 @@ def test_prepare_io_files_sets_new_file_paths() -> None:
         assert config.w_and_b_path == "w_and_b.json"
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch.object(Circuit, "parse_proof_run_type")
 def test_base_testing_uses_default_circuit_path(mock_parse: MagicMock) -> None:
     class MyCircuit(Circuit):
@@ -753,7 +776,7 @@ def test_base_testing_uses_default_circuit_path(mock_parse: MagicMock) -> None:
     assert config.w_and_b_path == "w_and_b.json"
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch.object(Circuit, "parse_proof_run_type")
 def test_base_testing_returns_none(mock_parse: MagicMock) -> None:
     class MyCircuit(Circuit):
@@ -771,7 +794,7 @@ def test_base_testing_returns_none(mock_parse: MagicMock) -> None:
     mock_parse.assert_called_once()
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch.object(Circuit, "parse_proof_run_type")
 def test_base_testing_weights_exists(mock_parse: MagicMock) -> None:
     _ = mock_parse
@@ -785,7 +808,7 @@ def test_base_testing_weights_exists(mock_parse: MagicMock) -> None:
         c.base_testing(CircuitExecutionConfig(circuit_name="abc"))
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_parse_proof_run_type_invalid_run_type(
     caplog: Generator[pytest.LogCaptureFixture, None, None],
 ) -> None:
@@ -819,7 +842,7 @@ def test_parse_proof_run_type_invalid_run_type(
     assert "Operation NOT_A_REAL_RUN_TYPE failed" in caplog.text
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch(
     "python.core.circuits.base.compile_circuit",
     side_effect=Exception("Boom goes the dynamite!"),
@@ -864,7 +887,7 @@ def test_parse_proof_run_type_catches_internal_exception(
     assert mock_compile_preprocessing.called
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_save_and_load_model_not_implemented() -> None:
     c = Circuit()
     assert hasattr(c, "save_model")
@@ -874,7 +897,7 @@ def test_save_and_load_model_not_implemented() -> None:
 
 
 # ---------- New error handling tests ----------
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_adjust_inputs_file_error() -> None:
     c = Circuit()
     c.input_variables = ["input"]
@@ -891,7 +914,7 @@ def test_adjust_inputs_file_error() -> None:
             c.adjust_inputs("nonexistent.json")
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_adjust_inputs_processing_error() -> None:
     c = Circuit()
     c.input_variables = ["input"]
@@ -914,7 +937,7 @@ def test_adjust_inputs_processing_error() -> None:
                 c.adjust_inputs("dummy.json")
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_get_inputs_from_file_file_error() -> None:
     c = Circuit()
     with patch.object(
@@ -927,7 +950,7 @@ def test_get_inputs_from_file_file_error() -> None:
             c.get_inputs_from_file("protected.json")
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_get_inputs_from_file_processing_error() -> None:
     c = Circuit()
     c.scale_base = 2

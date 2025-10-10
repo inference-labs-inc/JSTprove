@@ -5,7 +5,6 @@ import logging
 from dataclasses import asdict, dataclass
 from importlib.metadata import version as get_version
 from pathlib import Path
-from typing import Optional, Union
 
 import numpy as np
 import onnx
@@ -51,12 +50,12 @@ except ModuleNotFoundError:
 
 ONNXLayerDict = dict[
     str,
-    Union[int, str, list[str], dict[str, list[int]], Optional[list], Optional[dict]],
+    int | str | list[str] | dict[str, list[int]] | list | None | dict,
 ]
 
-ONNXIODict = dict[str, Union[str, int, list[int]]]
+ONNXIODict = dict[str, str | int | list[int]]
 
-CircuitParamsDict = dict[str, Union[int, dict[str, bool]]]
+CircuitParamsDict = dict[str, int | dict[str, bool]]
 
 
 @dataclass
