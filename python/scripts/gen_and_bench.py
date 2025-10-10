@@ -40,7 +40,11 @@ import json
 import math
 import subprocess
 from pathlib import Path
-from typing import Sequence
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
 
 # --- Third-party -------------------------------------------------------------
 import torch
