@@ -1,6 +1,7 @@
 import numpy as np
 
 from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
+from python.tests.onnx_quantizer_tests import TEST_RNG_SEED
 from python.tests.onnx_quantizer_tests.layers.base import (
     TestSpec,
     error_test,
@@ -20,7 +21,7 @@ class ConvConfigProvider(BaseLayerConfigProvider):
         return "Conv"
 
     def get_config(self) -> LayerTestConfig:
-        rng = np.random.default_rng()
+        rng = np.random.default_rng(TEST_RNG_SEED)
         return LayerTestConfig(
             op_type="Conv",
             valid_inputs=["input", "conv_weight", "conv_bias"],
@@ -31,14 +32,14 @@ class ConvConfigProvider(BaseLayerConfigProvider):
                 "pads": [1, 1, 1, 1],
             },
             required_initializers={
-                "conv_weight": rng.random((32, 16, 3, 3)),
-                "conv_bias": rng.random(32),
+                "conv_weight": rng.normal(0, 1, (32, 16, 3, 3)),
+                "conv_bias": rng.normal(0, 1, 32),
             },
         )
 
     def get_test_specs(self) -> list[TestSpec]:
         """Return all test specifications for Conv layers"""
-        rng = np.random.default_rng()
+        rng = np.random.default_rng(TEST_RNG_SEED)
         return [
             # Valid variations
             valid_test("basic")
@@ -48,7 +49,7 @@ class ConvConfigProvider(BaseLayerConfigProvider):
             valid_test("different_padding")
             .description("Convolution with different padding")
             .override_attrs(pads=[2, 2, 2, 2], kernel_shape=[5, 5])
-            .override_initializer("conv_weight", rng.random((32, 16, 5, 5)))
+            .override_initializer("conv_weight", rng.normal(0, 1, (32, 16, 5, 5)))
             .tags("padding", "5x5_kernel")
             .build(),
             # Error cases
@@ -56,7 +57,7 @@ class ConvConfigProvider(BaseLayerConfigProvider):
             .description("2D convolution without bias")
             .override_inputs("input", "conv_weight")
             .override_attrs(strides=[2, 2], kernel_shape=[5, 5])
-            .override_initializer("conv_weight", rng.random((64, 16, 5, 5)))
+            .override_initializer("conv_weight", rng.normal(0, 1, (64, 16, 5, 5)))
             .expects_error(
                 InvalidParamError,
                 "Expected at least 3 inputs (input, weights, bias), got 2",
@@ -73,7 +74,7 @@ class ConvConfigProvider(BaseLayerConfigProvider):
             )
             .override_initializer(
                 "conv_weight",
-                rng.random((32, 16, 3, 3, 3)),
+                rng.normal(0, 1, (32, 16, 3, 3, 3)),
             )
             .expects_error(
                 InvalidParamError,
@@ -101,7 +102,7 @@ class ConvConfigProvider(BaseLayerConfigProvider):
             .override_attrs(kernel_shape=[3, 3, 3])
             .override_initializer(
                 "conv_weight",
-                rng.random((32, 16, 3, 3, 3)),
+                rng.normal(0, 1, (32, 16, 3, 3, 3)),
             )
             .expects_error(InvalidParamError, "kernel_shape")
             .tags("invalid_attr_length")

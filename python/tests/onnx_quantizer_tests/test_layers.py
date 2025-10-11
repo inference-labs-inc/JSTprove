@@ -8,7 +8,10 @@ import numpy as np
 import onnx
 import pytest
 from onnx import NodeProto, TensorProto, helper, numpy_helper
+from onnxruntime import InferenceSession, SessionOptions
+from onnxruntime_extensions import get_library_path
 
+from python.core.model_processing.converters.onnx_converter import ONNXConverter
 from python.core.model_processing.onnx_quantizer.exceptions import (
     InvalidParamError,
     UnsupportedOpError,
@@ -18,10 +21,12 @@ from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import (
 )
 
 # Import your classes (adjust imports as needed)
+from python.tests.onnx_quantizer_tests import TEST_RNG_SEED
 from python.tests.onnx_quantizer_tests.layers.base import SpecType, TestSpec
 from python.tests.onnx_quantizer_tests.layers.factory import (
     TestLayerFactory,
 )
+from python.tests.onnx_quantizer_tests.testing_helper_functions import get_input_shapes
 
 
 class LayerTestConfig:
@@ -650,6 +655,141 @@ class TestONNXOpQuantizer:
                 assert e in str(exc.value)
         else:
             assert test_spec.error_match in str(exc.value)
+
+    # ===== END-TO-END ACCURACY TESTS =====
+
+    def skip_by_layer_name(
+        self,
+        layer_name: str,
+        test_spec: TestSpec,
+        skip_layer: str,
+    ) -> None:
+        # Skip Constant nodes as they don't depend on scaled inputs
+        if layer_name == skip_layer:
+            pytest.skip(
+                f"Skipping accuracy test for {layer_name}."
+                f"{test_spec.name} as constants are scaled differently",
+            )
+
+    @pytest.mark.integration
+    @pytest.mark.parametrize(
+        "test_case_data",
+        TestLayerFactory.get_test_cases_by_type(SpecType.VALID),
+        ids=_generate_test_id.__func__,
+    )
+    def test_end_to_end_quantization_accuracy(
+        self: TestONNXOpQuantizer,
+        test_case_data: tuple[str, LayerTestConfig, TestSpec],
+    ) -> None:
+        """Test end-to-end quantization accuracy for each valid test case.
+
+        Builds a model from the layer config, runs inference on the original model,
+        quantizes the model, runs inference on the quantized model, and ensures
+        the outputs are close.
+        """
+        cosine_similarity = 0.995
+        rng = np.random.default_rng(TEST_RNG_SEED)
+
+        layer_name, config, test_spec = test_case_data
+        self.skip_by_layer_name(layer_name, test_spec, skip_layer="Constant")
+
+        # Skip if validation failed or test is skipped
+        self._check_validation_dependency(test_case_data)
+        if test_spec.skip_reason:
+            pytest.skip(f"{layer_name}_{test_spec.name}: {test_spec.skip_reason}")
+
+        # Create original model
+        original_model = config.create_test_model(test_spec)
+
+        input_shapes = get_input_shapes(original_model)
+
+        # Skip if no inputs (e.g., Constant nodes)
+        if not input_shapes:
+            pytest.skip(
+                f"No inputs for {layer_name}.{test_spec.name}, skipping accuracy test",
+            )
+
+        # Create dummy inputs for all graph inputs
+
+        dummy_inputs = {}
+        for name, shape in input_shapes.items():
+            dummy_inputs[name] = rng.normal(0, 1, shape).astype(np.float32)
+
+        # Run inference on original model
+        opts = SessionOptions()
+        opts.register_custom_ops_library(get_library_path())
+        original_session = InferenceSession(
+            original_model.SerializeToString(),
+            opts,
+            providers=["CPUExecutionProvider"],
+        )
+        output_name = original_session.get_outputs()[0].name
+        original_output = original_session.run([output_name], dummy_inputs)[0]
+
+        # Quantize the model
+
+        converter = ONNXConverter()
+        scale_base, scale_exponent = (
+            2,
+            10,
+        )  # Smaller scale to reduce quantization errors
+        quantized_model = converter.quantize_model(
+            original_model,
+            scale_base=scale_base,
+            scale_exponent=scale_exponent,
+            rescale_config=None,  # Use default rescale
+        )
+
+        # Run inference on quantized model
+        quantized_session = InferenceSession(
+            quantized_model.SerializeToString(),
+            opts,
+            providers=["CPUExecutionProvider"],
+        )
+        quantized_input_names = [inp.name for inp in quantized_session.get_inputs()]
+        quantized_output_name = quantized_session.get_outputs()[0].name
+
+        # For quantized model, scale the inputs
+        scaled_inputs = {}
+        for name in quantized_input_names:
+            if name in dummy_inputs:
+                scaled_inputs[name] = (
+                    dummy_inputs[name] * (scale_base**scale_exponent)
+                ).astype(np.float64)
+            else:
+                # If quantized model has different inputs, skip or handle
+                pytest.skip(
+                    f"Quantized model input mismatch for {layer_name}.{test_spec.name}",
+                )
+
+        quantized_output = quantized_session.run(
+            [quantized_output_name],
+            scaled_inputs,
+        )[0]
+        quantized_output = quantized_output / (scale_base ** (scale_exponent * 2))
+
+        ratio = np.mean(quantized_output / (original_output + 1e-12))
+        print(f"Mean output ratio (quantized/original): {ratio:.4f}")
+
+        tol = max(1e-3, 0.1 * np.abs(original_output).max())
+
+        # Compare outputs (quantized output should be close to original if rescale=True)
+        # Allow some tolerance due to quantization
+        np.testing.assert_allclose(
+            original_output,
+            quantized_output,
+            rtol=1,  # Relative tolerance
+            atol=tol,  # Absolute tolerance
+            err_msg=f"Quantization accuracy failed for {layer_name}.{test_spec.name}",
+        )
+
+        cos_sim = np.dot(original_output.flatten(), quantized_output.flatten()) / (
+            np.linalg.norm(original_output.flatten())
+            * np.linalg.norm(quantized_output.flatten())
+            + 1e-12
+        )
+        print(f"Cosine similarity: {cos_sim:.6f}")
+        assert cos_sim > cosine_similarity, f"Low cosine similarity ({cos_sim:.6f})"
 
 
 class TestScalability:

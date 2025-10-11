@@ -94,7 +94,11 @@ class LayerTestConfig:
         initializers = {}
         combined_inits = {**self.required_initializers, **initializer_overrides}
         for name, data in combined_inits.items():
-            tensor = numpy_helper.from_array(data.astype(np.float32), name=name)
+            # Special handling for shape tensors in Reshape, etc.
+            if name == "shape":
+                tensor = numpy_helper.from_array(data.astype(np.int64), name=name)
+            else:
+                tensor = numpy_helper.from_array(data.astype(np.float32), name=name)
             initializers[name] = tensor
         return initializers
 

@@ -9,6 +9,7 @@ from python.core.model_processing.onnx_quantizer.layers.base import ScaleConfig
 from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import (
     ONNXOpQuantizer,
 )
+from python.tests.onnx_quantizer_tests import TEST_RNG_SEED
 
 
 @pytest.fixture
@@ -17,7 +18,7 @@ def dummy_graph() -> onnx.GraphProto:
 
 
 def mock_initializer_map(input_names: list[int]) -> dict[str, onnx.NodeProto]:
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(TEST_RNG_SEED)
     return {
         name: onnx.helper.make_tensor(
             name=name,
