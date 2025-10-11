@@ -123,7 +123,7 @@ def test_rescale_layer_modifies_node_output(
         scale_exponent=2,
         graph=dummy_graph,
     )
-    total_scale = 100
+    total_scale = 100.0
     count_nodes = 2
 
     assert len(result_nodes) == count_nodes
@@ -132,10 +132,25 @@ def test_rescale_layer_modifies_node_output(
     assert result_nodes[1].output[0] == "Y"
 
     # Check if scale tensor added
-    assert quantizer.new_initializers
+    assert len(quantizer.new_initializers) == 1
     scale_tensor = quantizer.new_initializers[0]
     assert scale_tensor.name.endswith("_scale")
+    assert scale_tensor.data_type == onnx.TensorProto.INT64
     assert onnx.numpy_helper.to_array(scale_tensor)[0] == total_scale
+
+    # Validate that result_nodes are valid ONNX nodes
+    for node in result_nodes:
+        assert isinstance(node, onnx.NodeProto)
+        assert node.name
+        assert node.op_type
+        assert node.input
+        assert node.output
+
+    # Check Div node inputs: should divide Y_raw by scale
+    div_node = result_nodes[1]
+    assert len(div_node.input) == count_nodes
+    assert div_node.input[0] == "Y_raw"
+    assert div_node.input[1] == scale_tensor.name
 
 
 @pytest.mark.unit
@@ -146,10 +161,12 @@ def test_add_nodes_w_and_b_creates_mul_and_cast(
 ) -> None:
     _ = dummy_graph
     quantizer = DummyQuantizer()
+    exp = 2
+    base = 10
     nodes, new_inputs = quantizer.add_nodes_w_and_b(
         dummy_node,
-        scale_exponent=2,
-        scale_base=10,
+        scale_exponent=exp,
+        scale_base=base,
         initializer_map=initializer_map,
     )
     four = 4
@@ -162,6 +179,30 @@ def test_add_nodes_w_and_b_creates_mul_and_cast(
     assert nodes[3].op_type == "Cast"
     assert new_inputs == ["X", "W_scaled_cast", "B_scaled_cast"]
     assert len(quantizer.new_initializers) == two
+
+    weight_scaled = base**exp
+    bias_scaled = base ** (exp * 2)
+
+    # Enhanced assertions: check node inputs/outputs and tensor details
+    # Mul for W: input W and W_scale, output W_scaled
+    assert nodes[0].input == ["W", "W_scale"]
+    assert nodes[0].output == ["W_scaled"]
+    # Cast for W: input W_scaled, output W_scaled_cast
+    assert nodes[1].input == ["W_scaled"]
+    assert nodes[1].output == ["W_scaled_cast"]
+    # Similarly for B
+    assert nodes[2].input == ["B", "B_scale"]
+    assert nodes[2].output == ["B_scaled"]
+    assert nodes[3].input == ["B_scaled"]
+    assert nodes[3].output == ["B_scaled_cast"]
+
+    # Check scale tensors
+    w_scale = quantizer.new_initializers[0]
+    b_scale = quantizer.new_initializers[1]
+    assert w_scale.name == "W_scale"
+    assert b_scale.name == "B_scale"
+    assert onnx.numpy_helper.to_array(w_scale)[0] == weight_scaled  # 10**2
+    assert onnx.numpy_helper.to_array(b_scale)[0] == bias_scaled
 
 
 @pytest.mark.unit

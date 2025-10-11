@@ -43,7 +43,7 @@ def get_required_input_names(op_type: str) -> list[str]:
 
 @pytest.mark.integration
 @pytest.mark.parametrize("op_type", list(ONNXOpQuantizer().handlers.keys()))
-def test_registered_quantizer_quantize(
+def test_registered_quantizer_quantize(  # noqa: PLR0912, C901
     op_type: str,
     dummy_graph: onnx.GraphProto,
 ) -> None:
@@ -66,3 +66,89 @@ def test_registered_quantizer_quantize(
         initializer_map=dummy_initializer_map,
     )
     assert result is not None
+
+    # Enhanced assertions: validate result type and structure
+    if isinstance(result, list):
+        assert len(result) > 0, f"Quantize returned empty list for {op_type}"
+        for node_result in result:
+            assert isinstance(
+                node_result,
+                onnx.NodeProto,
+            ), f"Invalid node type for {op_type}"
+            assert node_result.op_type, f"Missing op_type for {op_type}"
+            assert node_result.output, f"Missing outputs for {op_type}"
+            # Basic ONNX node validation with custom opset
+            try:
+                # Create a minimal model with custom opset for validation
+                temp_graph = onnx.GraphProto()
+                temp_graph.name = "temp_graph"
+                # Add dummy inputs/outputs to satisfy graph requirements
+                for inp in node_result.input:
+                    if not any(vi.name == inp for vi in temp_graph.input):
+                        temp_graph.input.append(
+                            onnx.helper.make_tensor_value_info(
+                                inp,
+                                onnx.TensorProto.FLOAT,
+                                [1],
+                            ),
+                        )
+                for out in node_result.output:
+                    if not any(vi.name == out for vi in temp_graph.output):
+                        temp_graph.output.append(
+                            onnx.helper.make_tensor_value_info(
+                                out,
+                                onnx.TensorProto.FLOAT,
+                                [1],
+                            ),
+                        )
+                temp_graph.node.append(node_result)
+                temp_model = onnx.helper.make_model(temp_graph)
+                custom_domain = onnx.helper.make_operatorsetid(
+                    domain="ai.onnx.contrib",
+                    version=1,
+                )
+                temp_model.opset_import.append(custom_domain)
+                onnx.checker.check_model(temp_model)
+            except onnx.checker.ValidationError as e:
+                pytest.fail(f"ONNX node validation failed for {op_type}: {e}")
+    else:
+        assert isinstance(
+            result,
+            onnx.NodeProto,
+        ), f"Quantize returned invalid type for {op_type}"
+        assert result.op_type, f"Missing op_type for {op_type}"
+        assert result.input, f"Missing inputs for {op_type}"
+        assert result.output, f"Missing outputs for {op_type}"
+        try:
+            # Create a minimal model with custom opset for validation
+            temp_graph = onnx.GraphProto()
+            temp_graph.name = "temp_graph"
+            # Add dummy inputs/outputs to satisfy graph requirements
+            for inp in result.input:
+                if not any(vi.name == inp for vi in temp_graph.input):
+                    temp_graph.input.append(
+                        onnx.helper.make_tensor_value_info(
+                            inp,
+                            onnx.TensorProto.FLOAT,
+                            [1],
+                        ),
+                    )
+            for out in result.output:
+                if not any(vi.name == out for vi in temp_graph.output):
+                    temp_graph.output.append(
+                        onnx.helper.make_tensor_value_info(
+                            out,
+                            onnx.TensorProto.FLOAT,
+                            [1],
+                        ),
+                    )
+            temp_graph.node.append(result)
+            temp_model = onnx.helper.make_model(temp_graph)
+            custom_domain = onnx.helper.make_operatorsetid(
+                domain="ai.onnx.contrib",
+                version=1,
+            )
+            temp_model.opset_import.append(custom_domain)
+            onnx.checker.check_model(temp_model)
+        except onnx.checker.ValidationError as e:
+            pytest.fail(f"ONNX node validation failed for {op_type}: {e}")

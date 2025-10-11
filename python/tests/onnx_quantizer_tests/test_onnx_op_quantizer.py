@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+import onnx
 import pytest
 from onnx import GraphProto, ModelProto, NodeProto, TensorProto, helper
 
@@ -10,6 +11,9 @@ from python.core.model_processing.onnx_quantizer.exceptions import (
     QuantizationError,
     UnsupportedOpError,
 )
+
+if TYPE_CHECKING:
+    from python.core.model_processing.onnx_quantizer.layers.base import ScaleConfig
 
 # Optional: mock layers if needed
 from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import (
@@ -27,15 +31,12 @@ class MockHandler:
         self: MockHandler,
         node: NodeProto,
         graph: GraphProto,
-        scale: int,
-        scale_base: int,
+        scale_config: ScaleConfig,
         initializer_map: dict[str, TensorProto],
-        *,
-        rescale: bool,
-    ) -> str:
-        _ = rescale, graph, scale, scale_base, initializer_map
+    ) -> list[NodeProto]:
+        _ = graph, scale_config, initializer_map
         self.called_quantize = True
-        return f"quantized:{node.op_type}"
+        return [node]  # Return the original node as a list for simplicity
 
     def check_supported(
         self: MockHandler,
@@ -129,6 +130,10 @@ def test_get_initializer_map_returns_correct_dict() -> None:
     assert "W" in init_map
     # Test initializer map lines up
     assert init_map["W"] == tensor
+    # Enhanced: check tensor properties
+    assert init_map["W"].data_type == TensorProto.FLOAT
+    assert init_map["W"].dims == [1]
+    assert onnx.numpy_helper.to_array(init_map["W"])[0] == 1.0
 
 
 @pytest.mark.unit
@@ -183,6 +188,7 @@ def test_check_layer_with_bad_handler(invalid_node: NodeProto) -> None:
 def test_get_initializer_map_extracts_all() -> None:
     one_f = 1.0
     two_f = 2.0
+    count_init = 2
     tensor1 = helper.make_tensor("a", TensorProto.FLOAT, [1], [one_f])
     tensor2 = helper.make_tensor("b", TensorProto.FLOAT, [1], [two_f])
     graph = helper.make_graph([], "g", [], [], initializer=[tensor1, tensor2])
@@ -192,6 +198,18 @@ def test_get_initializer_map_extracts_all() -> None:
     init_map = quantizer.get_initializer_map(model)
     assert init_map["a"].float_data[0] == one_f
     assert init_map["b"].float_data[0] == two_f
+
+    # Enhanced: check all properties
+    assert len(init_map) == count_init
+    assert init_map["a"].name == "a"
+    assert init_map["a"].data_type == TensorProto.FLOAT
+    assert init_map["a"].dims == [1]
+    assert init_map["b"].name == "b"
+    assert init_map["b"].data_type == TensorProto.FLOAT
+    assert init_map["b"].dims == [1]
+    # Using numpy_helper for consistency
+    assert onnx.numpy_helper.to_array(init_map["a"])[0] == one_f
+    assert onnx.numpy_helper.to_array(init_map["b"])[0] == two_f
 
 
 @pytest.mark.unit
