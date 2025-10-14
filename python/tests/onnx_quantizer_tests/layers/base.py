@@ -23,7 +23,7 @@ class SpecType(Enum):
 
 
 @dataclass
-class TestSpec:
+class LayerTestSpec:
     """Individual test specification that can be applied to a LayerTestConfig"""
 
     name: str
@@ -102,7 +102,7 @@ class LayerTestConfig:
             initializers[name] = tensor
         return initializers
 
-    def create_test_model(self, test_spec: TestSpec) -> onnx.ModelProto:
+    def create_test_model(self, test_spec: LayerTestSpec) -> onnx.ModelProto:
         """Create a complete model for a specific test case"""
         # Apply overrides from test spec
         inputs = test_spec.input_overrides or self.valid_inputs
@@ -150,7 +150,7 @@ class TestSpecBuilder:
     """Builder for creating test specifications"""
 
     def __init__(self, name: str, spec_type: SpecType) -> None:
-        self._spec = TestSpec(name=name, spec_type=spec_type)
+        self._spec = LayerTestSpec(name=name, spec_type=spec_type)
 
     def description(self, desc: str) -> TestSpecBuilder:
         self._spec.description = desc
@@ -192,7 +192,7 @@ class TestSpecBuilder:
         self._spec.skip_reason = reason
         return self
 
-    def build(self) -> TestSpec:
+    def build(self) -> LayerTestSpec:
         # Validate before building
         if self._spec.spec_type == SpecType.ERROR and not self._spec.expected_error:
             msg = f"Error test {self._spec.name} must"
@@ -226,17 +226,17 @@ class BaseLayerConfigProvider(ABC):
     def layer_name(self) -> str:
         """Return the layer name/op_type"""
 
-    def get_test_specs(self) -> list[TestSpec]:
+    def get_test_specs(self) -> list[LayerTestSpec]:
         """Return test specifications for this layer (override for custom tests)"""
         return []
 
-    def get_valid_test_specs(self) -> list[TestSpec]:
+    def get_valid_test_specs(self) -> list[LayerTestSpec]:
         """Get only valid test specifications"""
         return [
             spec for spec in self.get_test_specs() if spec.test_type == SpecType.VALID
         ]
 
-    def get_error_test_specs(self) -> list[TestSpec]:
+    def get_error_test_specs(self) -> list[LayerTestSpec]:
         """Get only error test specifications"""
         return [
             spec for spec in self.get_test_specs() if spec.test_type == SpecType.ERROR

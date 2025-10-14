@@ -3,7 +3,7 @@ import numpy as np
 from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
 from python.tests.onnx_quantizer_tests import TEST_RNG_SEED
 from python.tests.onnx_quantizer_tests.layers.base import (
-    TestSpec,
+    LayerTestSpec,
     error_test,
     valid_test,
 )
@@ -37,7 +37,7 @@ class ConvConfigProvider(BaseLayerConfigProvider):
             },
         )
 
-    def get_test_specs(self) -> list[TestSpec]:
+    def get_test_specs(self) -> list[LayerTestSpec]:
         """Return all test specifications for Conv layers"""
         rng = np.random.default_rng(TEST_RNG_SEED)
         return [

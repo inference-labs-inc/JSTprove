@@ -5,7 +5,7 @@ import inspect
 import typing
 from pathlib import Path
 
-from .base import BaseLayerConfigProvider, LayerTestConfig, SpecType, TestSpec
+from .base import BaseLayerConfigProvider, LayerTestConfig, LayerTestSpec, SpecType
 
 
 class TestLayerFactory:
@@ -79,7 +79,7 @@ class TestLayerFactory:
 
     # NEW enhanced methods for test specifications
     @classmethod
-    def get_all_test_cases(cls) -> list[tuple[str, LayerTestConfig, TestSpec]]:
+    def get_all_test_cases(cls) -> list[tuple[str, LayerTestConfig, LayerTestSpec]]:
         """Get all test cases as (layer_name, config, test_spec) tuples"""
         cls._discover_providers()
         test_cases = []
@@ -91,7 +91,7 @@ class TestLayerFactory:
             # If no test specs defined, create a basic valid test
             if not test_specs:
 
-                test_specs = [TestSpec("basic", SpecType.VALID, "Basic test")]
+                test_specs = [LayerTestSpec("basic", SpecType.VALID, "Basic test")]
 
             test_cases.extend((layer_name, config, spec) for spec in test_specs)
 
@@ -101,7 +101,7 @@ class TestLayerFactory:
     def get_test_cases_by_type(
         cls,
         test_type: SpecType,
-    ) -> list[tuple[str, LayerTestConfig, TestSpec]]:
+    ) -> list[tuple[str, LayerTestConfig, LayerTestSpec]]:
         """Get test cases of a specific type"""
         return [
             (layer, config, spec)
@@ -113,7 +113,7 @@ class TestLayerFactory:
     def get_test_cases_by_layer(
         cls,
         layer_name: str,
-    ) -> list[tuple[str, LayerTestConfig, TestSpec]]:
+    ) -> list[tuple[str, LayerTestConfig, LayerTestSpec]]:
         """Get test cases for a specific layer"""
         return [
             (layer, config, spec)
@@ -125,7 +125,7 @@ class TestLayerFactory:
     def get_test_cases_by_tag(
         cls,
         tag: str,
-    ) -> list[tuple[str, LayerTestConfig, TestSpec]]:
+    ) -> list[tuple[str, LayerTestConfig, LayerTestSpec]]:
         """Get test cases with a specific tag"""
         print(
             [
