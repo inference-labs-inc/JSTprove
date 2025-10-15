@@ -304,11 +304,11 @@ impl MaxAssertionContext {
 /// - `api`: Your circuit builder.
 /// - `context`: A `MaxAssertionContext` holding shift-related parameters.
 /// - `values`: A nonempty slice of `Variable`s, each encoding an integer in `[-S, T − S]`.
-pub fn assert_is_max<C: Config, Builder: RootAPI<C>>(
+pub fn constrained_max<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     context: &MaxAssertionContext, // S = 2^s = context.offset
     values: &[Variable],
-) -> Result<(), CircuitError> {
+) -> Result<Variable, CircuitError> {
     // 0) Require nonempty input
     if values.is_empty() {
         return Err(LayerError::Other {
@@ -365,7 +365,7 @@ pub fn assert_is_max<C: Config, Builder: RootAPI<C>>(
 
     // 5) Final check: ∏ Δ_i = 0 ⇔ ∃ x_i such that Δ_i = 0 ⇔ x_i = M
     api.assert_is_zero(prod);
-    Ok(())
+    Ok(max_raw)
 }
 
 /// Normalizes and validates pooling parameters for a 2D max pooling layer.
@@ -679,8 +679,7 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
                     }
 
                     if !values.is_empty() {
-                        let max = unconstrained_max(api, &values)?;
-                        assert_is_max(api, &context, &values)?;
+                        let max = constrained_max(api, &context, &values)?;
                         y[[n, c, ph, pw]] = max;
                     }
                 }
