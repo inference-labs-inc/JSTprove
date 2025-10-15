@@ -6,7 +6,7 @@ import pytest
 from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import (
     ONNXOpQuantizer,
 )
-from python.tests.onnx_quantizer_tests.layers.base import LayerTestConfig
+from python.tests.onnx_quantizer_tests.layers.base import LayerTestConfig, SpecType
 from python.tests.onnx_quantizer_tests.layers.factory import TestLayerFactory
 
 
@@ -67,3 +67,46 @@ class TestScalability:
                 dict,
             ), "Quantization test config is not supported yet for {}"
             " and must be implemented"
+
+    @pytest.mark.unit
+    def test_every_layer_has_basic_and_e2e(self: TestScalability) -> None:
+        """Each registered layer must have at least one basic/valid test
+        and one e2e test."""
+        missing_basic = []
+        missing_e2e = []
+
+        # iterate over registered layers
+        for layer_name in TestLayerFactory.get_available_layers():
+            cases = TestLayerFactory.get_test_cases_by_layer(layer_name)
+            specs = [spec for _, _config, spec in cases]
+
+            # Consider a test "basic" if:
+            #  - it has tag 'basic' or 'valid', OR
+            #  - its spec_type is SpecType.VALID (if you use SpecType)
+            has_basic = any(
+                (
+                    "basic" in getattr(s, "tags", set())
+                    or "valid" in getattr(s, "tags", set())
+                    or getattr(s, "spec_type", None) == SpecType.VALID
+                )
+                for s in specs
+            )
+
+            # Consider a test "e2e" if:
+            #  - it has tag 'e2e', OR
+            #  - its spec_type is SpecType.E2E (if you use that enum)
+            has_e2e = any(
+                (
+                    "e2e" in getattr(s, "tags", set())
+                    or getattr(s, "spec_type", None) == SpecType.E2E
+                )
+                for s in specs
+            )
+
+            if not has_basic:
+                missing_basic.append(layer_name)
+            if not has_e2e:
+                missing_e2e.append(layer_name)
+
+        assert not missing_basic, f"Layers missing a basic/valid test: {missing_basic}"
+        assert not missing_e2e, f"Layers missing an e2e test: {missing_e2e}"

@@ -4,6 +4,7 @@ from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamE
 from python.tests.onnx_quantizer_tests import TEST_RNG_SEED
 from python.tests.onnx_quantizer_tests.layers.base import (
     LayerTestSpec,
+    e2e_test,
     error_test,
     valid_test,
 )
@@ -51,6 +52,15 @@ class ConvConfigProvider(BaseLayerConfigProvider):
             .override_attrs(pads=[2, 2, 2, 2], kernel_shape=[5, 5])
             .override_initializer("conv_weight", rng.normal(0, 1, (32, 16, 5, 5)))
             .tags("padding", "5x5_kernel")
+            .build(),
+            # E2E test
+            e2e_test("e2e_basic")
+            .description("End-to-end test for basic 2D convolution")
+            .override_input_shapes(input=[1, 3, 4, 4])
+            .override_output_shapes(conv_output=[1, 8, 4, 4])
+            .override_initializer("conv_weight", rng.normal(0, 1, (8, 3, 3, 3)))
+            .override_initializer("conv_bias", rng.normal(0, 1, 8))
+            .tags("e2e", "basic", "2d")
             .build(),
             # Error cases
             error_test("no_bias")

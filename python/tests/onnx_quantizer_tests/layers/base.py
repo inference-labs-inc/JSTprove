@@ -20,6 +20,7 @@ class SpecType(Enum):
     VALID = "valid"
     ERROR = "error"
     EDGE_CASE = "edge_case"
+    E2E = "e2e"
 
 
 @dataclass
@@ -34,6 +35,8 @@ class LayerTestSpec:
     attr_overrides: dict[str, Any] = field(default_factory=dict)
     initializer_overrides: dict[str, np.ndarray] = field(default_factory=dict)
     input_overrides: list[str] = field(default_factory=list)
+    input_shape_overrides: dict[str, list[int]] = field(default_factory=dict)
+    output_shape_overrides: dict[str, list[int]] = field(default_factory=dict)
 
     # Error test specific
     expected_error: type | None = None
@@ -118,15 +121,19 @@ class LayerTestConfig:
 
         initializers = self.create_initializers(**test_spec.initializer_overrides)
 
+        # Apply shape overrides from test spec
+        input_shapes = {**self.input_shapes, **test_spec.input_shape_overrides}
+        output_shapes = {**self.output_shapes, **test_spec.output_shape_overrides}
+
         # Create input/output tensor info
         graph_inputs = [
             helper.make_tensor_value_info(name, TensorProto.FLOAT, shape)
-            for name, shape in self.input_shapes.items()
+            for name, shape in input_shapes.items()
         ]
 
         graph_outputs = [
             helper.make_tensor_value_info(name, TensorProto.FLOAT, shape)
-            for name, shape in self.output_shapes.items()
+            for name, shape in output_shapes.items()
         ]
 
         graph = helper.make_graph(
@@ -172,6 +179,14 @@ class TestSpecBuilder:
         self._spec.input_overrides = list(inputs)
         return self
 
+    def override_input_shapes(self, **shapes: dict[str, list[int]]) -> TestSpecBuilder:
+        self._spec.input_shape_overrides.update(shapes)
+        return self
+
+    def override_output_shapes(self, **shapes: dict[str, list[int]]) -> TestSpecBuilder:
+        self._spec.output_shape_overrides.update(shapes)
+        return self
+
     def expects_error(
         self,
         error_type: type,
@@ -212,6 +227,10 @@ def error_test(name: str) -> TestSpecBuilder:
 
 def edge_case_test(name: str) -> TestSpecBuilder:
     return TestSpecBuilder(name, SpecType.EDGE_CASE)
+
+
+def e2e_test(name: str) -> TestSpecBuilder:
+    return TestSpecBuilder(name, SpecType.E2E)
 
 
 class BaseLayerConfigProvider(ABC):
