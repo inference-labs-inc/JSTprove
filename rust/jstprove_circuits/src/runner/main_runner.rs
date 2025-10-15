@@ -178,6 +178,7 @@ where
     let witness = witness_solver
         .solve_witnesses(&assignments)
         .map_err(|e| RunError::Witness(format!("{e:?}")))?;
+
     // #### Sanity check, can be removed in prod ####
     let output = layered_circuit.run(&witness);
     // unwrap
@@ -281,12 +282,16 @@ where
     let assignments = vec![assignment.clone(); 1];
 
     let mut circuit = CircuitType::default();
-    configure_if_possible::<CircuitType>(&mut circuit);
+    // circuit.configure_from_layered(&layered_circuit)?;
+    circuit.maybe_configure();
+
+    // configure_if_possible::<CircuitType>(&mut circuit);
     debug_eval(&circuit, &assignment, EmptyHintCaller);
 
     let witness = witness_solver
         .solve_witnesses(&assignments)
         .map_err(|e| RunError::Witness(format!("{e:?}")))?;
+
     let output = layered_circuit.run(&witness);
     for x in &output {
         if !(*x) {
@@ -647,7 +652,6 @@ where
                 &witness_path,
                 &circuit_path,
             )?;
-            // debug_witness::<C, _, CircuitDefaultType, CircuitType>(file_reader, input_path, output_path, &witness_path, circuit_path);
         }
         "run_debug_witness" => {
             let input_path = get_arg(matches, "input")?;

@@ -104,8 +104,8 @@ impl Circuit<Variable> {
             .ok_or_else(|| CircuitError::Other("Output array not contiguous".into()))?;
 
         for (j, _) in self.outputs.iter().enumerate() {
-            api.display("out1", self.outputs[j]);
-            api.display("out2", output[j]);
+            api.display("output     ", self.outputs[j]);
+            api.display("circuit_out", output[j]);
             api.assert_is_equal(self.outputs[j], output[j]);
         }
 
@@ -222,7 +222,9 @@ fn set_onnx_context(matches: &clap::ArgMatches) {
         .map_err(|e| CircuitError::Other(e.to_string()))
         .unwrap();
 
-    if get_arg(matches, "type").unwrap() == "run_compile_circuit" {
+    let arg_type = get_arg(matches, "type").unwrap();
+
+    if arg_type == "run_compile_circuit" || arg_type == "run_debug_witness" {
         let arch_file_path = get_arg(matches, "arch").unwrap();
         let arch_file =
             std::fs::read_to_string(&arch_file_path).expect("Failed to read architecture file");
