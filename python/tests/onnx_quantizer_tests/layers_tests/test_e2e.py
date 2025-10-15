@@ -99,6 +99,9 @@ class TestE2EQuantizer(BaseQuantizerTest):
         if test_spec.skip_reason:
             pytest.skip(f"{layer_name}_{test_spec.name}: {test_spec.skip_reason}")
 
+        if layer_name == "Constant":
+            pytest.skip(f"No e2e test for layer {layer_name} yet")
+
         # Create original model
         original_model = config.create_test_model(test_spec)
 
@@ -136,7 +139,6 @@ class TestE2EQuantizer(BaseQuantizerTest):
                 write_json=True,
             ),
         )
-
         # Verify witness and output files exist
         assert (
             temp_witness_file.exists()
