@@ -17,6 +17,7 @@ from .custom_helpers import parse_attr
         "strides": PyCustomOpDef.dt_string,
         "pads": PyCustomOpDef.dt_string,
         "kernel_shape": PyCustomOpDef.dt_string,
+        "dilations": PyCustomOpDef.dt_string,
     },
 )
 def int64_maxpool(
@@ -24,6 +25,7 @@ def int64_maxpool(
     strides: str | None = None,
     pads: str | None = None,
     kernel_shape: str | None = None,
+    dilations: str | None = None,
 ) -> np.ndarray:
     """
     Performs a MaxPool operation on int64 input tensors.
@@ -38,6 +40,8 @@ def int64_maxpool(
     kernel_shape : Kernel shape (default: `[2, 2]`).
     pads : Padding values (default: `[0, 0, 0, 0]`).
     strides : Stride values (default: `[1, 1]`).
+    dilations : dilation values (default: `[1, 1]`).
+
 
     Returns
     -------
@@ -59,6 +63,7 @@ def int64_maxpool(
         strides = parse_attr(strides, [1, 1])
         pads = parse_attr(pads, [0, 0])
         kernel_size = parse_attr(kernel_shape, [2, 2])
+        dilations = parse_attr(dilations, [1, 1])
 
         x = torch.from_numpy(x)
         result = f.max_pool2d(
@@ -66,6 +71,7 @@ def int64_maxpool(
             kernel_size=kernel_size,
             stride=strides,
             padding=pads[:2],
+            dilation=dilations,
         )
         return result.numpy().astype(np.int64)
     except Exception as e:
