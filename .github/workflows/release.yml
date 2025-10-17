@@ -147,7 +147,7 @@ jobs:
           WHEEL=$(ls dist/*.whl)
           uv tool install "$WHEEL"
           jst compile -m python/models/models_onnx/lenet.onnx -c ./test_circuit.txt
-          if [[ ! -f test_circuit.txt ]]; then
+          if [[ ! -f ./test_circuit.txt ]]; then
             echo "Error: Circuit file was not created"
             exit 1
           fi
