@@ -95,6 +95,7 @@ class MaxpoolQuantizer(BaseOpQuantizer):
         _ = initializer_map
         self.check_all_params_exist(node)
         self.check_params_size(node)
+        self.check_pool_pads(node)
 
     def check_all_params_exist(self: MaxpoolQuantizer, node: onnx.NodeProto) -> None:
         """Checks all parameters that are needed, do exist
@@ -138,3 +139,33 @@ class MaxpoolQuantizer(BaseOpQuantizer):
                 node.op_type,
                 f"Currently only maxpool2d is supported. Found {len(kernel_shape)}D",
             )
+
+    def check_pool_pads(self: MaxpoolQuantizer, node: onnx.NodeProto) -> None:
+        kernel_shape = get_attribute_ints(node, "kernel_shape", default="N/A")
+        pads = get_attribute_ints(node, "pads", default=None)
+        if pads is None:
+            return
+        num_dims = len(kernel_shape)
+        if len(pads) != num_dims * 2:
+            raise InvalidParamError(
+                node.name,
+                node.op_type,
+                f"Expected {num_dims * 2} pads, got {len(pads)}",
+            )
+
+        for dim in range(num_dims):
+            pad_before = pads[dim]
+            pad_after = pads[dim + num_dims]
+            kernel = kernel_shape[dim]
+            if pad_before >= kernel:
+                raise InvalidParamError(
+                    node.name,
+                    node.op_type,
+                    f"pads[{dim}]={pad_before} >= kernel[{dim}]={kernel}",
+                )
+            if pad_after >= kernel:
+                raise InvalidParamError(
+                    node.name,
+                    node.op_type,
+                    f"pads[{dim + num_dims}]={pad_after} >= kernel[{dim}]={kernel}",
+                )
