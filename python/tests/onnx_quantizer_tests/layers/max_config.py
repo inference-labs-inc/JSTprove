@@ -24,37 +24,36 @@ class MaxConfigProvider(BaseLayerConfigProvider):
         return "Max"
 
     def get_config(self) -> LayerTestConfig:
-        # Base config: two inputs x, b; we’ll turn x into an initializer in the tests
-        # so both inputs are known int64 tensors (no dtype mismatch, shapes checkable).
-        init_b = numpy_helper.from_array(
-            np.ones((1, 3, 4, 4), dtype=np.int64), name="b"
-        )
-        return LayerTestConfig(
-            op_type="Max",
-            valid_inputs=["x", "b"],
-            valid_attributes={},  # Max has no attributes
-            required_initializers={"b": init_b},
-        )
-
-    def get_test_specs(self) -> list:
-        # Common int64 initializer for x with the "correct" shape.
-        x_ok = numpy_helper.from_array(
+        # Make BOTH inputs static int64 initializers in the base config.
+        # This avoids dtype conflicts and lets the checker compare shapes.
+        x_init = numpy_helper.from_array(
             np.arange(1 * 3 * 4 * 4, dtype=np.int64).reshape(1, 3, 4, 4),
             name="x",
         )
+        b_init = numpy_helper.from_array(
+            np.ones((1, 3, 4, 4), dtype=np.int64),
+            name="b",
+        )
 
+        return LayerTestConfig(
+            op_type="Max",
+            valid_inputs=[],  # no dynamic inputs; both are initializers
+            valid_attributes={},  # Max has no attributes
+            required_initializers={"x": x_init, "b": b_init},
+        )
+
+    def get_test_specs(self) -> list:
         return [
             # --- VALID ---
-            valid_test("basic").description(
+            valid_test("basic")
+            .description(
                 "Elementwise Max(x, b) with identical shapes (no broadcasting)."
             )
-            # Make *both* inputs initializers so shapes are known and dtypes match.
-            .override_initializer("x", x_ok)
+            .override_output_shapes(max_output=[1, 3, 4, 4])
             .tags("basic", "max", "elementwise")
             .build(),
             e2e_test("e2e_basic")
             .description("End-to-end test for Max with equal-shaped int64 inputs.")
-            .override_initializer("x", x_ok)
             .override_output_shapes(max_output=[1, 3, 4, 4])
             .tags("e2e", "max", "elementwise")
             .build(),
@@ -63,7 +62,6 @@ class MaxConfigProvider(BaseLayerConfigProvider):
             .description(
                 "Initializer 'b' has a different shape; checker should reject (no broadcasting)."
             )
-            .override_initializer("x", x_ok)
             .override_initializer(
                 "b",
                 numpy_helper.from_array(
