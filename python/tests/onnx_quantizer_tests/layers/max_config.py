@@ -49,15 +49,14 @@ class MaxConfigProvider(BaseLayerConfigProvider):
             .tags("e2e", "max", "elementwise")
             .build(),
             # --- ERROR: no broadcasting allowed ---
-            error_test("mismatched_initializer_shape")
-            .description(
-                "Initializer 'b' has a different shape; checker should reject."
+            # --- ERROR: no broadcasting allowed ---
+            error_test("mismatched_initializer_shape").description(
+                "Both inputs are initializers with different shapes; checker should reject."
             )
-            .override_input_shapes(x=[1, 3, 4, 4])
-            .override_initializer(
-                "b",
-                np.ones((1, 3, 5, 4), dtype=np.float32),  # NumPy array here too
-            )
+            # Make x an initializer too (shape matches the VALID case)
+            .override_initializer("x", np.ones((1, 3, 4, 4), dtype=np.float32))
+            # And make b a different shape so the checker sees a mismatch
+            .override_initializer("b", np.ones((1, 3, 5, 4), dtype=np.float32))
             .expects_error(InvalidParamError, "Broadcasting is not supported for Max")
             .tags("error", "shape", "no-broadcast")
             .build(),
