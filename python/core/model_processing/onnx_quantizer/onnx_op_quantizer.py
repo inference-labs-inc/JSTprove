@@ -18,6 +18,7 @@ from python.core.model_processing.onnx_quantizer.layers.constant import (
 )
 from python.core.model_processing.onnx_quantizer.layers.conv import ConvQuantizer
 from python.core.model_processing.onnx_quantizer.layers.gemm import GemmQuantizer
+from python.core.model_processing.onnx_quantizer.layers.max import MaxQuantizer
 from python.core.model_processing.onnx_quantizer.layers.maxpool import MaxpoolQuantizer
 from python.core.model_processing.onnx_quantizer.layers.relu import ReluQuantizer
 
@@ -71,6 +72,7 @@ class ONNXOpQuantizer:
         self.register("Constant", ConstantQuantizer())
         self.register("MaxPool", MaxpoolQuantizer())
         self.register("Flatten", PassthroughQuantizer())
+        self.register("Max", MaxQuantizer())
 
     def register(
         self: ONNXOpQuantizer,
