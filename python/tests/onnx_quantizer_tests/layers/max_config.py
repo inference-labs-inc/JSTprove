@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import numpy as np
-from onnx import numpy_helper
 
 from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
 from python.tests.onnx_quantizer_tests.layers.base import (
@@ -24,13 +23,13 @@ class MaxConfigProvider(BaseLayerConfigProvider):
         return "Max"
 
     def get_config(self) -> LayerTestConfig:
-        # One dynamic tensor input "x" and one initializer "b" so the checker can read shapes.
-        init = numpy_helper.from_array(np.ones((1, 3, 4, 4), dtype=np.int64), name="b")
+        # Provide a NumPy array (NOT a TensorProto). The test harness will cast/build tensors.
+        init = np.ones((1, 3, 4, 4), dtype=np.float32)
         return LayerTestConfig(
             op_type="Max",
             valid_inputs=["x", "b"],
             valid_attributes={},  # Max has no attrs
-            required_initializers={"b": init},
+            required_initializers={"b": init},  # NumPy array here
         )
 
     def get_test_specs(self) -> list:
@@ -57,9 +56,7 @@ class MaxConfigProvider(BaseLayerConfigProvider):
             .override_input_shapes(x=[1, 3, 4, 4])
             .override_initializer(
                 "b",
-                numpy_helper.from_array(
-                    np.ones((1, 3, 5, 4), dtype=np.int64), name="b"
-                ),
+                np.ones((1, 3, 5, 4), dtype=np.float32),  # NumPy array here too
             )
             .expects_error(InvalidParamError, "Broadcasting is not supported for Max")
             .tags("error", "shape", "no-broadcast")
