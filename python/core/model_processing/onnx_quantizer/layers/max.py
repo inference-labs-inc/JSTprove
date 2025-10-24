@@ -1,9 +1,11 @@
+# python/core/model_processing/onnx_quantizer/layers/max.py
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Tuple, List
 
+import numpy as np
 import onnx
-from onnx import TensorProto, helper
+from onnx import TensorProto, helper, numpy_helper
 
 from python.core.model_processing.onnx_quantizer.exceptions import (
     HandlerImplementationError,
@@ -15,7 +17,7 @@ from python.core.model_processing.onnx_quantizer.layers.base import (
 )
 
 
-def _tensor_shape(t: onnx.TensorProto) -> Tuple[int, ...]:
+def _tensor_shape(t: TensorProto) -> Tuple[int, ...]:
     """Return the static dims of an initializer as a Python tuple."""
     return tuple(int(d) for d in t.dims)
 
@@ -24,10 +26,11 @@ class MaxQuantizer(BaseOpQuantizer):
     """
     Quantizer for ONNX Max (elementwise) op.
 
-    v1 policy:
-      - Cast all inputs to INT64 so ORT sees a uniform dtype.
-      - No broadcasting: if ≥2 initializer-backed inputs are visible, shapes must match.
-      - ONNX Max has no attributes; any present attribute is an error.
+    Policy:
+      - Scale *all* inputs by S = base^exponent, then Cast to INT64, then run Max.
+      - No broadcasting (yet): if we can see >1 initializer-backed inputs, their shapes must match.
+      - Allow ≥1 inputs (variadic). If only one input is provided, it's a passthrough after scale+cast.
+      - ONNX Max has no attributes.
     """
 
     def __init__(self, *_args, **_kwargs) -> None:
@@ -40,42 +43,64 @@ class MaxQuantizer(BaseOpQuantizer):
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
-    ) -> list[onnx.NodeProto]:
-        _ = graph, scale_config, initializer_map
+    ) -> List[onnx.NodeProto]:
+        """
+        For each input:
+          input --Mul(S)--> scaled --Cast(INT64)--> casted_input
+        Then build a new Max over the casted inputs.
+
+        We do not walk graph.node (keeps tests' graph-mocks happy).
+        """
+        _ = graph, initializer_map  # not needed here; avoid iterating graph.node
         if not isinstance(node, onnx.NodeProto):
             raise HandlerImplementationError(
                 op_type="Max", message="quantize() expected an ONNX NodeProto"
             )
 
-        # ORT requires all Max inputs to share the same dtype.
-        # Simplest robust policy: cast every input to INT64 unconditionally.
-        inputs = list(node.input)
-        if not inputs:
-            return [node]
+        # Make a per-node scale initializer S = base^exponent (float64 so Mul matches float inputs)
+        S = self.get_scaling(scale_config.base, scale_config.exponent)
+        scale_name = f"{node.name}_scale_const"
+        scale_tensor = numpy_helper.from_array(
+            np.array([S], dtype=np.float64), name=scale_name
+        )
+        self.new_initializers.append(scale_tensor)
 
-        cast_nodes: list[onnx.NodeProto] = []
-        new_inputs: list[str] = []
+        new_nodes: List[onnx.NodeProto] = []
+        casted_inputs: List[str] = []
 
-        for i, name in enumerate(inputs):
-            cast_out = f"{name}__i64"
-            cast_nodes.append(
-                helper.make_node(
-                    "Cast",
-                    inputs=[name],
-                    outputs=[cast_out],
-                    name=f"{node.name or 'Max'}_cast_{i}",
-                    to=TensorProto.INT64,
-                )
+        # Rewire each input: Mul(input, S) -> Cast(INT64)
+        for idx, inp in enumerate(node.input):
+            mul_out = f"{node.name}_in{idx}_scaled"
+            cast_out = f"{mul_out}_i64"
+
+            mul_node = helper.make_node(
+                "Mul",
+                inputs=[inp, scale_name],
+                outputs=[mul_out],
+                name=f"{node.name}_scale_in{idx}",
             )
-            new_inputs.append(cast_out)
+            cast_node = helper.make_node(
+                "Cast",
+                inputs=[mul_out],
+                outputs=[cast_out],
+                to=onnx.TensorProto.INT64,
+                name=f"{node.name}_cast_in{idx}",
+            )
 
-        new_max = helper.make_node(
+            new_nodes.append(mul_node)
+            new_nodes.append(cast_node)
+            casted_inputs.append(cast_out)
+
+        # Final Max over the int64, equally-scaled inputs
+        max_node = helper.make_node(
             "Max",
-            inputs=new_inputs,
-            outputs=list(node.output),
+            inputs=casted_inputs,
+            outputs=list(node.output),  # preserve original output names
             name=node.name,
         )
-        return [*cast_nodes, new_max]
+        new_nodes.append(max_node)
+
+        return new_nodes
 
     # -------------------- Model checker --------------------
     def check_supported(
@@ -84,7 +109,7 @@ class MaxQuantizer(BaseOpQuantizer):
         initializer_map: dict[str, onnx.TensorProto] | None = None,
     ) -> None:
         """
-        Enforce constraints we support now:
+        Constraints we support now:
           - at least one input (variadic >= 1)
           - no attributes at all for Max
           - no broadcasting: if ≥2 initializer-backed inputs are visible, shapes must match
@@ -105,7 +130,7 @@ class MaxQuantizer(BaseOpQuantizer):
             )
 
         if not initializer_map:
-            return
+            return  # nothing more we can check statically
 
         shapes: list[Tuple[int, ...]] = []
         for name in node.input:
