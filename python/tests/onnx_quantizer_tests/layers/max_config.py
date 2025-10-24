@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import numpy as np
-from onnx import numpy_helper
 
 from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
 from python.tests.onnx_quantizer_tests.layers.base import (
@@ -24,17 +23,18 @@ class MaxConfigProvider(BaseLayerConfigProvider):
         return "Max"
 
     def get_config(self) -> LayerTestConfig:
-        init = numpy_helper.from_array(np.ones((1, 3, 4, 4), dtype=np.int64), name="b")
+        # NOTE: required_initializers expects numpy arrays (the factory will wrap them)
+        init_b = np.ones((1, 3, 4, 4), dtype=np.int64)
         return LayerTestConfig(
             op_type="Max",
-            valid_inputs=["x", "b"],
-            valid_attributes={},
-            required_initializers={"b": init},
+            valid_inputs=["x", "b"],  # x: dynamic, b: initializer
+            valid_attributes={},  # Max has no attributes
+            required_initializers={"b": init_b},
         )
 
     def get_test_specs(self) -> list:
         return [
-            # --- VALID TESTS ---
+            # --- VALID ---
             valid_test("basic")
             .description(
                 "Elementwise Max(x, b) with identical shapes (no broadcasting)."
@@ -48,18 +48,13 @@ class MaxConfigProvider(BaseLayerConfigProvider):
             .override_output_shapes(max_output=[1, 3, 4, 4])
             .tags("e2e", "max", "elementwise")
             .build(),
-            # --- ERROR TESTS ---
+            # --- ERRORS ---
             error_test("mismatched_initializer_shape")
             .description(
-                "Initializer 'b' has a different shape: checker should reject (no broadcasting)."
+                "Initializer 'b' has a different shape: no broadcasting allowed."
             )
             .override_input_shapes(x=[1, 3, 4, 4])
-            .override_initializer(
-                "b",
-                numpy_helper.from_array(
-                    np.ones((1, 3, 5, 4), dtype=np.int64), name="b"
-                ),
-            )
+            .override_initializer("b", np.ones((1, 3, 5, 4), dtype=np.int64))
             .expects_error(InvalidParamError, "Broadcasting is not supported for Max")
             .tags("error", "shape", "no-broadcast")
             .build(),
@@ -73,12 +68,7 @@ class MaxConfigProvider(BaseLayerConfigProvider):
             error_test("initializer_wrong_dtype")
             .description("Initializer 'b' is float32; checker should insist on INT64.")
             .override_input_shapes(x=[1, 3, 4, 4])
-            .override_initializer(
-                "b",
-                numpy_helper.from_array(
-                    np.ones((1, 3, 4, 4), dtype=np.float32), name="b"
-                ),
-            )
+            .override_initializer("b", np.ones((1, 3, 4, 4), dtype=np.float32))
             .expects_error(InvalidParamError, "expects INT64 initializers")
             .tags("error", "dtype")
             .build(),

@@ -1,6 +1,8 @@
 # python/core/model_processing/onnx_quantizer/layers/max.py
 from __future__ import annotations
+
 from typing import Tuple
+
 import onnx
 from onnx import TensorProto
 
@@ -18,25 +20,21 @@ def _tensor_shape(t: TensorProto) -> Tuple[int, ...]:
     return tuple(int(d) for d in t.dims)
 
 
-def _has_any_attributes(node: onnx.NodeProto) -> bool:
-    return bool(getattr(node, "attribute", None))
-
-
-def _elem_type_is_int64(t: TensorProto) -> bool:
-    return getattr(t, "data_type", None) == onnx.TensorProto.INT64
-
-
 class MaxQuantizer(BaseOpQuantizer):
     """
-    Elementwise Max (variadic). v1 policy:
-      • passthrough quantization (no rewrite)
-      • no broadcasting yet → all inputs must match shape
-      • expect INT64 fixed-point domain for known initializers
+    Quantizer for ONNX Max (elementwise) op.
+
+    v1 policy:
+      - Passthrough quantization (ONNX Max supports INT64).
+      - No broadcasting yet: all inputs must share the same shape.
+      - If an input is provided as an initializer, it must be INT64.
+      - No attributes are supported for Max.
     """
 
     def __init__(self, *_args, **_kwargs) -> None:
         super().__init__()
 
+    # Quantization: passthrough
     def quantize(
         self,
         node: onnx.NodeProto,
@@ -51,49 +49,57 @@ class MaxQuantizer(BaseOpQuantizer):
             )
         return [node]
 
+    # Model checker
     def check_supported(
         self,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto] | None = None,
     ) -> None:
-        # 1) ONNX Max is variadic but requires >= 2 inputs
+        # 1) Arity
         if len(node.input) < 2:
             raise InvalidParamError(
                 node_name=node.name,
                 op_type=node.op_type,
-                message="Max requires ≥ 2 inputs",
+                message="Max requires >= 2 inputs",
             )
 
-        # 2) Max has no attributes; reject any we see so users get a clear error
-        if _has_any_attributes(node):
-            names = [a.name for a in node.attribute]
+        # 2) Attributes (Max has none)
+        if node.attribute and len(node.attribute) > 0:
+            # List the unexpected attributes to aid debugging
+            names = ", ".join(a.name for a in node.attribute)
             raise InvalidParamError(
                 node_name=node.name,
                 op_type=node.op_type,
-                message=f"Unexpected attributes for Max (none supported): {names}",
+                message=f"Unexpected attributes for Max: {names}",
             )
 
         if not initializer_map:
-            return  # nothing else we can check statically
+            return  # nothing else we can validate statically
 
-        # 3) If any inputs are initializers, enforce:
-        #    • identical shapes (no broadcasting yet)
-        #    • (optional) INT64 element type
-        shapes = []
-        bad_dtypes = []
+        # 3) Collect shapes & dtypes for any initializer-backed inputs
+        init_shapes: list[Tuple[int, ...]] = []
         for name in node.input:
             t = initializer_map.get(name)
             if t is None:
                 continue
+            # dtype must be INT64 (fixed-point domain)
+            if t.data_type != onnx.TensorProto.INT64:
+                raise InvalidParamError(
+                    node_name=node.name,
+                    op_type=node.op_type,
+                    message=(
+                        f"Max expects INT64 initializers; got {onnx.TensorProto.DataType.Name(t.data_type)} "
+                        f"for input '{name}'"
+                    ),
+                )
             if t.dims:
-                shapes.append(_tensor_shape(t))
-            if not _elem_type_is_int64(t):
-                bad_dtypes.append(name)
+                init_shapes.append(_tensor_shape(t))
 
-        if len(shapes) > 1:
-            first = shapes[0]
-            if any(s != first for s in shapes[1:]):
-                pretty = ", ".join(str(s) for s in shapes)
+        # 4) All known initializer shapes must match (no broadcasting yet)
+        if len(init_shapes) > 1:
+            first = init_shapes[0]
+            if any(s != first for s in init_shapes[1:]):
+                pretty = ", ".join(str(s) for s in init_shapes)
                 raise InvalidParamError(
                     node_name=node.name,
                     op_type=node.op_type,
@@ -102,13 +108,3 @@ class MaxQuantizer(BaseOpQuantizer):
                         f"All inputs must have identical shapes; got {pretty}"
                     ),
                 )
-
-        if bad_dtypes:
-            raise InvalidParamError(
-                node_name=node.name,
-                op_type=node.op_type,
-                message=(
-                    "Max expects INT64 initializers in the fixed-point domain; "
-                    f"non-INT64 inputs found for: {bad_dtypes}"
-                ),
-            )
