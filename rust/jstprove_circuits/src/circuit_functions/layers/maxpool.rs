@@ -42,11 +42,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         api: &mut Builder,
         input: HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
-        let input_name = get_input_name(&self.inputs, 0, LayerKind::Gemm, INPUT)?;
+        let input_name = get_input_name(&self.inputs, 0, LayerKind::MaxPool, INPUT)?;
         let layer_input = input
             .get(&input_name.clone())
             .ok_or_else(|| LayerError::MissingInput {
-                layer: LayerKind::Gemm,
+                layer: LayerKind::MaxPool,
                 name: input_name.clone(),
             })?
             .clone();
@@ -186,7 +186,7 @@ pub fn unconstrained_max<C: Config, Builder: RootAPI<C>>(
 // STRUCT: MaxAssertionContext
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Context for applying `assert_is_max` with a fixed shift exponent `s`,
+/// Context for applying `constrained_max` with a fixed shift exponent `s`,
 /// to avoid recomputing constants in repeated calls (e.g., in max pooling).
 pub struct MaxAssertionContext {
     /// The exponent `s` such that `S = 2^s`.
@@ -239,7 +239,7 @@ impl MaxAssertionContext {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FUNCTION: assert_is_max
+// FUNCTION: constrained_max
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Asserts that a given slice of `Variable`s contains a maximum value `M`,
@@ -313,7 +313,7 @@ pub fn constrained_max<C: Config, Builder: RootAPI<C>>(
     if values.is_empty() {
         return Err(LayerError::Other {
             layer: LayerKind::MaxPool,
-            msg: "assert_is_max: input slice must be nonempty".to_string(),
+            msg: "constrained_max: input slice must be nonempty".to_string(),
         }
         .into());
     }
@@ -514,7 +514,20 @@ pub fn setup_maxpooling_2d(
     for i in 0..input_spatial_shape.len() {
         let total_padding = new_pads[i][0] + new_pads[i][1];
         let kernel_extent = (kernel_shape[i] - 1) * dilation[i] + 1;
-        let numerator = input_spatial_shape[i] + total_padding - kernel_extent;
+        let numerator = if input_spatial_shape[i] + total_padding >= kernel_extent {
+            input_spatial_shape[i] + total_padding - kernel_extent
+        } else {
+            return Err(LayerError::InvalidParameterValue {
+                layer: LayerKind::MaxPool,
+                layer_name: "MaxPoolLayer".to_string(),
+                param_name: KERNEL_SHAPE.to_string(),
+                value: format!(
+                    "kernel extent ({kernel_extent}) larger than input+padding ({} + {})",
+                    input_spatial_shape[i], total_padding
+                ),
+            }
+            .into());
+        };
 
         if ceil_mode {
             // Use integer ceiling division
@@ -576,7 +589,7 @@ pub fn reshape_4d(flat: &[Variable], dims: [usize; 4]) -> Result<ArrayD<Variable
 /// # Errors
 /// - [`LayerError::InvalidShape`] if `x` has fewer than 3 dimensions or is incompatible with the kernel shape.
 /// - [`UtilsError::ValueConversionError`] if any indices cannot be converted from `usize` to `isize`.
-/// - [`CircuitError`] if `unconstrained_max` or `assert_is_max` fails within the circuit.
+/// - [`CircuitError`] if `unconstrained_max` or `constrained_max` fails within the circuit.
 pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     x: &ArrayD<Variable>,
