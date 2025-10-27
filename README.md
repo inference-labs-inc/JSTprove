@@ -15,13 +15,20 @@
 
 # JSTprove
 
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-blue?style=flat-square&logo=github)](https://github.com/inference-labs-inc/JSTprove)
+[![Telegram](https://img.shields.io/badge/Telegram-Join%20Channel-0088cc?style=flat-square&logo=telegram)](https://t.me/inference_labs)
+[![Twitter](https://img.shields.io/badge/Twitter-Follow%20Us-1DA1F2?style=flat-square&logo=twitter)](https://x.com/inference_labs)
+[![Website](https://img.shields.io/badge/Website-Visit%20Us-ff7139?style=flat-square&logo=firefox-browser)](https://inferencelabs.com)
+[![White paper](https://img.shields.io/badge/Whitepaper-Read-lightgrey?style=flat-square&logo=read-the-docs)](https://doi.org/10.48550/arXiv.2510.21024)
+
 Zero-knowledge proofs of ML inference on **ONNX** models — powered by [Polyhedra Network’s **Expander**](https://github.com/PolyhedraZK/Expander) (GKR/sum-check prover) and [**Expander Compiler Collection (ECC)**](https://github.com/PolyhedraZK/ExpanderCompilerCollection).
 
 * 🎯 **You bring ONNX** → we quantize, compile to a circuit, generate a witness, prove, and verify — via a simple CLI.
 * ✅ Supported ops (current): **Conv2D**, **GEMM/MatMul (FC)**, **ReLU**, **MaxPool2D**.
 * 🧰 CLI details: see **[docs/cli.md](docs/cli.md)**
 
-👉 Just want to see it in action? Jump to [Quickstart (LeNet demo)](#quickstart-lenet-demo).
+👉 Just want to see it in action? Jump to [Quickstart (LeNet demo)](#quickstart-lenet-demo).<br>
+👉 Curious about how it works under the hood? Check out the [white paper](https://doi.org/10.48550/arXiv.2510.21024).
 
 ---
 
