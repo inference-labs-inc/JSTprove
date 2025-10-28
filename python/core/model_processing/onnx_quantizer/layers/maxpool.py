@@ -1,20 +1,28 @@
 from __future__ import annotations
 
-import onnx
-from onnx import helper
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import onnx
 
 from python.core.model_processing.onnx_custom_ops.onnx_helpers import (
-    extract_attributes,
     get_attribute_ints,
 )
 from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
 from python.core.model_processing.onnx_quantizer.layers.base import (
     BaseOpQuantizer,
+    QuantizerBase,
     ScaleConfig,
 )
 
 
-class MaxpoolQuantizer(BaseOpQuantizer):
+class QuantizeMaxpool(QuantizerBase):
+    OP_TYPE = "Int64MaxPool"
+    USE_WB = False
+    USE_SCALING = False
+
+
+class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
     """
     Quantizer for ONNX MaxPool layers.
 
@@ -32,48 +40,19 @@ class MaxpoolQuantizer(BaseOpQuantizer):
         _ = new_initializer
 
     def quantize(
-        self: BaseOpQuantizer,
+        self: MaxpoolQuantizer,
         node: onnx.NodeProto,
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
     ) -> list[onnx.NodeProto]:
-        """
-        Quantize a node by converting the node to Int64 version
-
-        Args:
-            node (onnx.NodeProto): The node to quantize.
-            rescale (bool): Whether rescaling is enabled
-                (Doesnt have an affect on this op type)
-            graph (onnx.GraphProto): The ONNX graph.
-            scale_exponent (int): Scale exponent.
-            scale_base (int): The base of scaling.
-            initializer_map (dict[str, onnx.TensorProto]):
-                Map of initializer names to tensor data.
-
-        Returns:
-            List[onnx.NodeProto]: A list of ONNX nodes
-                (quantized MaxPool and any auxiliary nodes).
-        """
-        _ = initializer_map, graph
-
-        attrs = extract_attributes(node)
-        attrs["rescale"] = int(scale_config.rescale)
-
-        attr_str = {
-            k: ",".join(map(str, v)) if isinstance(v, list) else str(v)
-            for k, v in attrs.items()
-        }
-        return [
-            helper.make_node(
-                "Int64MaxPool",
-                inputs=node.input,
-                outputs=node.output,
-                name=node.name,
-                domain="ai.onnx.contrib",
-                **attr_str,
-            ),
-        ]
+        return QuantizeMaxpool.quantize(
+            self,
+            node,
+            graph,
+            scale_config,
+            initializer_map,
+        )
 
     def check_supported(
         self: MaxpoolQuantizer,

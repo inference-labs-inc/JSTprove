@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import ClassVar
 
 import numpy as np
 import onnx
 from onnx import helper, numpy_helper
 
 from python.core.model_processing.onnx_custom_ops.onnx_helpers import (
+    extract_attributes,
     replace_input_references,
 )
 from python.core.model_processing.onnx_quantizer.exceptions import (
@@ -361,6 +363,65 @@ class BaseOpQuantizer:
             name=rounded_output_name,
         )
         return output_name, mul_node, cast_to_int64
+
+
+class QuantizerBase:
+    OP_TYPE = None
+    DOMAIN = "ai.onnx.contrib"
+    DEFAULT_ATTRS: ClassVar = {}
+    USE_WB = False
+    USE_SCALING = False
+
+    def quantize(
+        self,
+        node: onnx.NodeProto,
+        graph: onnx.GraphProto,
+        scale_config: ScaleConfig,
+        initializer_map: dict[str, onnx.TensorProto],
+    ) -> list[onnx.NodeProto]:
+        """Generic quantization template for most Int64 ops."""
+        _ = graph
+        nodes = []
+
+        # (1) Quantize weights/bias if applicable
+        if self.USE_WB:
+            nodes, new_inputs = self.add_nodes_w_and_b(
+                node=node,
+                scale_exponent=scale_config.exponent,
+                scale_base=scale_config.base,
+                initializer_map=initializer_map,
+            )
+            node.input[:] = new_inputs
+
+        # (2) Collect & merge attributes
+        attrs = extract_attributes(node)
+        for k, v in self.DEFAULT_ATTRS.items():
+            attrs.setdefault(k, v)
+        attrs["rescale"] = int(scale_config.rescale)
+
+        # (3) Add scaling constant if needed
+        if self.USE_SCALING:
+            scale_value = self.get_scaling(scale_config.base, scale_config.exponent)
+            scale_name = f"{node.name}_int_scaler"
+            scale_tensor = numpy_helper.from_array(
+                np.array([scale_value], dtype=np.int64),
+                name=scale_name,
+            )
+            self.new_initializers.append(scale_tensor)
+            node.input.append(scale_name)
+
+        # (4) Create quantized node
+        quantized_node = onnx.helper.make_node(
+            self.OP_TYPE,
+            inputs=node.input,
+            outputs=node.output,
+            name=node.name,
+            domain=self.DOMAIN,
+            **attrs,
+        )
+
+        nodes.append(quantized_node)
+        return nodes
 
 
 class PassthroughQuantizer(BaseOpQuantizer):
