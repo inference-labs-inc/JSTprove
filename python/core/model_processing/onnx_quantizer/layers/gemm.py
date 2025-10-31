@@ -18,6 +18,7 @@ class QuantizeGemm(QuantizerBase):
     USE_WB = True
     USE_SCALING = True
     DEFAULT_ATTRS: ClassVar = {"transA": 0, "transB": 0}
+    SCALE_PLAN: ClassVar = {1: 1, 2: 2}
 
 
 class GemmQuantizer(BaseOpQuantizer, QuantizeGemm):

@@ -18,6 +18,7 @@ class QuantizeConv(QuantizerBase):
     USE_WB = True
     USE_SCALING = True
     DEFAULT_ATTRS: ClassVar = {"group": 1, "auto_pad": "NOTSET"}
+    SCALE_PLAN: ClassVar = {1: 1, 2: 2}  # weight = 1x scale, bias = 2x scale
 
 
 class ConvQuantizer(BaseOpQuantizer, QuantizeConv):
