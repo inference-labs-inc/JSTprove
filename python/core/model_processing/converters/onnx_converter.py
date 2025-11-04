@@ -1125,38 +1125,61 @@ class ONNXConverter(ModelConverter):
         """Run the currently loaded (quantized) model via ONNX Runtime.
 
         Args:
-            inputs (Any): Input array/tensor matching the models first input.
+            inputs: Single tensor/array or a dict of named inputs.
 
         Returns:
-            Any: The output of the onnxruntime inference.
+            list[np.ndarray]: List of output arrays from ONNX Runtime inference.
         """
-        try:
-            input_name = self.ort_sess.get_inputs()[0].name
-            output_name = self.ort_sess.get_outputs()[0].name
 
-            # TODO @jsgold-1: This may cause some rounding errors at some point but works for now. # noqa: FIX002, E501, TD003
-            inputs = torch.as_tensor(inputs)
-            if inputs.dtype in (
-                torch.int8,
-                torch.int16,
-                torch.int32,
-                torch.int64,
-                torch.uint8,
-            ):
-                inputs = inputs.double()
-                inputs = inputs / BaseOpQuantizer.get_scaling(
-                    scale_base=self.scale_base,
-                    scale_exponent=self.scale_exponent,
-                )
-            if self.ort_sess.get_inputs()[0].type == "tensor(double)":
-                return self.ort_sess.run(
-                    [output_name],
-                    {input_name: np.asarray(inputs).astype(np.float64)},
-                )
-            return self.ort_sess.run(
-                [output_name],
-                {input_name: np.asarray(inputs)},
-            )
+        def _raise_type_error(inputs: np.ndarray | torch.Tensor) -> None:
+            msg = "Expected np.ndarray, torch.Tensor,"
+            f" or dict for inputs, got {type(inputs)}"
+            raise TypeError(msg)
+
+        def _raise_value_error(msg: str) -> None:
+            raise ValueError(msg)
+
+        try:
+            input_defs = self.ort_sess.get_inputs()
+            output_defs = self.ort_sess.get_outputs()
+            output_names = [out.name for out in output_defs]
+
+            # Normalize inputs into a dict
+            if isinstance(inputs, (np.ndarray, torch.Tensor)):
+                # Single input case
+                input_name = input_defs[0].name
+                inputs = {input_name: inputs}
+            elif not isinstance(inputs, dict):
+                _raise_type_error(inputs)
+
+            processed_inputs = {}
+            for input_def in input_defs:
+                name = input_def.name
+                if name not in inputs:
+                    _raise_value_error(
+                        f"Missing required input '{name}' in provided inputs",
+                    )
+
+                value = torch.as_tensor(inputs[name])
+
+                if value.dtype in (
+                    torch.int8,
+                    torch.int16,
+                    torch.int32,
+                    torch.int64,
+                    torch.uint8,
+                ):
+                    value = value.double()
+                    value = value / BaseOpQuantizer.get_scaling(
+                        scale_base=self.scale_base,
+                        scale_exponent=self.scale_exponent,
+                    )
+                if input_def.type == "tensor(double)":
+                    processed_inputs[name] = np.asarray(value).astype(np.float64)
+                else:
+                    processed_inputs[name] = np.asarray(value)
+            return self.ort_sess.run(output_names, processed_inputs)
+
         except (RuntimeError, ValueError, TypeError, Exception) as e:
             raise InferenceError(
                 model_path=getattr(self, "quantized_model_path", None),

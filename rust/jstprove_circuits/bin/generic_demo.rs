@@ -128,7 +128,7 @@ impl ConfigurableCircuit for Circuit<Variable> {
             .outputs
             .iter()
             .map(|obj| obj.shape.iter().product::<usize>())
-            .product();
+            .sum();
         self.outputs = vec![Variable::default(); output_dims];
 
         // Inputs
@@ -136,7 +136,8 @@ impl ConfigurableCircuit for Circuit<Variable> {
             .inputs
             .iter()
             .map(|obj| obj.shape.iter().product::<usize>())
-            .product();
+            .sum();
+        eprintln!("input_dims {:?}", params.inputs);
         self.input_arr = vec![Variable::default(); input_dims];
         Ok(())
     }
@@ -158,7 +159,7 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
             .inputs
             .iter()
             .map(|obj| obj.shape.iter().product::<usize>())
-            .product()];
+            .sum()];
 
         assignment.dummy[0] = CircuitField::<C>::from(1);
         assignment.dummy[1] = CircuitField::<C>::from(1);
@@ -193,7 +194,7 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
             .outputs
             .iter()
             .map(|obj| obj.shape.iter().product::<usize>())
-            .product()];
+            .sum()];
 
         let arr: ArrayD<CircuitField<C>> = get_nd_circuit_inputs::<C>(&data.output, output_dims)
             .map_err(|e| RunError::Json(format!("Invalid output shape: {e}")))?;
