@@ -127,11 +127,16 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
             )
         return models_onnx_path
 
-    def adjust_inputs(self: GenericModelONNX, input_file: str) -> str:
+    def adjust_inputs(
+        self: GenericModelONNX,
+        inputs: dict[str, np.ndarray],
+        input_file: str,
+    ) -> str:
         """Preprocess and flatten model inputs for the circuit.
 
         Args:
-            input_file (str): Input data file or array compatible with the model.
+            inputs (str): inputs, read from json file
+            input_file (str): path to input_file
 
         Returns:
             str: Adjusted input file after reshaping and scaling.
@@ -140,7 +145,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
             input_shape = self.input_shape.copy()
             shape = self.adjust_shape(input_shape)
             self.input_shape = [math.prod(shape)]
-            x = super().adjust_inputs(input_file)
+            x = super().adjust_inputs(inputs, input_file)
             self.input_shape = input_shape.copy()
         except Exception as e:
             msg = f"Failed to adjust inputs for GenericModelONNX: {e}"

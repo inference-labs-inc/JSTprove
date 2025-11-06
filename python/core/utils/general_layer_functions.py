@@ -84,6 +84,11 @@ class GeneralLayerFunctions:
 
         tensor = tensor.long()
 
+        self.reshape_inputs(tensor)
+
+        return tensor
+
+    def reshape_inputs(self: GeneralLayerFunctions, tensor: torch.Tensor) -> None:
         if hasattr(self, "input_shape"):
             shape = self.input_shape
             if hasattr(self, "adjust_shape") and callable(
@@ -94,7 +99,6 @@ class GeneralLayerFunctions:
                 tensor = tensor.reshape(shape)
             except RuntimeError as e:
                 raise ShapeMismatchError(shape, list(tensor.shape)) from e
-        return tensor
 
     def get_inputs(
         self: GeneralLayerFunctions,
