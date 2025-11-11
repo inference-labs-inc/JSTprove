@@ -192,3 +192,70 @@ fn convert_val_to_field_element<C: Config>(
         CircuitField::<C>::from_u256(U256::from(val.unsigned_abs()))
     }
 }
+
+fn determine_broadcast_shape(a: &[usize], b: &[usize]) -> Result<Vec<usize>, CircuitError> {
+    let rank = a.len().max(b.len());
+    let mut result = vec![0; rank];
+
+    for i in 0..rank {
+        let a_dim = *a.get(a.len() - 1 - i).unwrap_or(&1);
+        let b_dim = *b.get(b.len() - 1 - i).unwrap_or(&1);
+
+        if a_dim == b_dim || a_dim == 1 || b_dim == 1 {
+            result[rank - 1 - i] = usize::max(a_dim, b_dim);
+        } else {
+            return Err(CircuitError::Other(format!(
+                "Cannot broadcast dimension {a_dim} and {b_dim}",
+            )));
+        }
+    }
+
+    Ok(result)
+}
+
+/// Broadcast two arrays using ONNX/NumPy multidirectional broadcasting.
+///
+/// # Errors
+///
+/// Returns a `CircuitError` if broadcasting is not possible.
+/// This happens when the two shapes cannot be matched using multidirectional
+/// broadcasting rules (i.e. neither dimension is equal or 1).
+pub fn broadcast_two_arrays(
+    a: &ArrayD<Variable>,
+    b: &ArrayD<Variable>,
+) -> Result<(ArrayD<Variable>, ArrayD<Variable>), CircuitError> {
+    let a_shape = a.shape();
+    let b_shape = b.shape();
+
+    // Determine output shape using numpy-like broadcasting rules
+    let output_shape = determine_broadcast_shape(a_shape, b_shape)?;
+
+    // Try broadcasting both arrays
+    let a_bc = broadcast_array(a, &output_shape)?;
+    let b_bc = broadcast_array(b, &output_shape)?;
+
+    Ok((a_bc, b_bc))
+}
+
+/// Broadcast a single array into a specified broadcast shape.
+///
+/// # Errors
+///
+/// Returns a `CircuitError` if broadcasting fails.
+/// This occurs when the array cannot expand to the target shape
+/// following multidirectional broadcasting rules.
+pub fn broadcast_array(
+    a: &ArrayD<Variable>,
+    broadcast_shape: &Vec<usize>,
+) -> Result<ArrayD<Variable>, CircuitError> {
+    let a_shape = a.shape();
+    let out = a
+        .broadcast(broadcast_shape.clone())
+        .ok_or_else(|| {
+            CircuitError::Other(format!(
+                "Cannot broadcast A {a_shape:?} to {broadcast_shape:?}",
+            ))
+        })?
+        .to_owned();
+    Ok(out)
+}

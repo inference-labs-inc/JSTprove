@@ -8,7 +8,9 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::layers::math::matrix_addition;
 use crate::circuit_functions::utils::onnx_model::get_optional_w_or_b;
-use crate::circuit_functions::utils::tensor_ops::load_array_constants_or_get_inputs;
+use crate::circuit_functions::utils::tensor_ops::{
+    broadcast_two_arrays, load_array_constants_or_get_inputs,
+};
 use crate::circuit_functions::{
     CircuitError,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
@@ -60,8 +62,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AddLayer {
             LayerKind::Add,
         )?;
 
+        let (a_bc, b_bc) = broadcast_two_arrays(&a_input, &b_input)?;
+
         // Matrix multiplication and bias addition
-        let result = matrix_addition(api, &a_input, b_input, LayerKind::Add)?;
+        let result = matrix_addition(api, &a_bc, b_bc, LayerKind::Add)?;
         Ok((self.outputs.clone(), result))
     }
     fn build(
