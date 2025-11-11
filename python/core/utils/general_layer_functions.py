@@ -84,6 +84,11 @@ class GeneralLayerFunctions:
 
         tensor = tensor.long()
 
+        self.reshape_inputs(tensor)
+
+        return tensor
+
+    def reshape_inputs(self: GeneralLayerFunctions, tensor: torch.Tensor) -> None:
         if hasattr(self, "input_shape"):
             shape = self.input_shape
             if hasattr(self, "adjust_shape") and callable(
@@ -94,7 +99,6 @@ class GeneralLayerFunctions:
                 tensor = tensor.reshape(shape)
             except RuntimeError as e:
                 raise ShapeMismatchError(shape, list(tensor.shape)) from e
-        return tensor
 
     def get_inputs(
         self: GeneralLayerFunctions,
@@ -154,21 +158,19 @@ class GeneralLayerFunctions:
                 # If unknown dim in batch spot, assume batch size of 1
                 first_key = next(iter(keys))
                 input_shape = self.input_shape[first_key]
-                input_shape[0] = 1 if input_shape[0] < 1 else input_shape[0]
+                input_shape[0] = max(input_shape[0], 1)
                 return self.get_rand_inputs(input_shape)
             inputs = {}
             for key in keys:
                 # If unknown dim in batch spot, assume batch size of 1
-                input_shape = self.input_shape[keys[key]]
-                if not isinstance(input_shape, list) and not isinstance(
-                    input_shape,
-                    tuple,
-                ):
+                input_shape = self.input_shape[key]
+                if not isinstance(input_shape, (list, tuple)):
                     msg = f"Invalid input shape for key '{key}': {input_shape}"
                     raise CircuitUtilsError(msg)
-                input_shape[0] = 1 if input_shape[0] < 1 else input_shape[0]
+                input_shape[0] = max(input_shape[0], 1)
                 inputs[key] = self.get_rand_inputs(input_shape)
             return inputs
+
         if not (hasattr(self, "scale_base") and hasattr(self, "scale_exponent")):
             attr_name = "scale_base/scale_exponent"
             context = "needed for scaling random inputs"

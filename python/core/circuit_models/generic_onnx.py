@@ -127,11 +127,16 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
             )
         return models_onnx_path
 
-    def adjust_inputs(self: GenericModelONNX, input_file: str) -> str:
+    def adjust_inputs(
+        self: GenericModelONNX,
+        inputs: dict[str, np.ndarray],
+        input_file: str,
+    ) -> str:
         """Preprocess and flatten model inputs for the circuit.
 
         Args:
-            input_file (str): Input data file or array compatible with the model.
+            inputs (str): inputs, read from json file
+            input_file (str): path to input_file
 
         Returns:
             str: Adjusted input file after reshaping and scaling.
@@ -140,7 +145,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
             input_shape = self.input_shape.copy()
             shape = self.adjust_shape(input_shape)
             self.input_shape = [math.prod(shape)]
-            x = super().adjust_inputs(input_file)
+            x = super().adjust_inputs(inputs, input_file)
             self.input_shape = input_shape.copy()
         except Exception as e:
             msg = f"Failed to adjust inputs for GenericModelONNX: {e}"
@@ -169,7 +174,9 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
                 operation="get_outputs",
             ) from e
         else:
-            return torch.as_tensor(np.array(raw_outputs)).flatten()
+            flat_outputs = [o.flatten() for o in raw_outputs]
+            combined = np.concatenate(flat_outputs, axis=0)
+            return torch.as_tensor(combined)
 
     def format_inputs(
         self: GenericModelONNX,
@@ -186,15 +193,39 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         Returns:
             Dict[str, List[int]]: Dictionary mapping `input` to scaled integer values.
         """
+
+        def _raise_type_error(inputs: np.ndarray | list[int] | torch.Tensor) -> None:
+            msg = "Expected np.ndarray, torch.Tensor, "
+            f"list, or dict for inputs, got {type(inputs)}"
+            raise TypeError(msg)
+
         try:
-            x = {"input": inputs}
+            if isinstance(inputs, (np.ndarray, torch.Tensor, list)):
+                inputs = {"input": inputs}
+            elif not isinstance(inputs, dict):
+                _raise_type_error(inputs)
             scaling = BaseOpQuantizer.get_scaling(
                 scale_base=self.scale_base,
                 scale_exponent=self.scale_exponent,
             )
-            for key in x:  # noqa: PLC0206
-                x[key] = torch.as_tensor(x[key]).flatten().tolist()
-                x[key] = (torch.as_tensor(x[key]) * scaling).long().tolist()
+
+            input_shapes: dict[str, tuple[int, ...]] = {}
+            flattened_tensors: list[torch.Tensor] = []
+
+            # Flatten, scale, and collect each input
+            for name, value in inputs.items():
+                tensor = torch.as_tensor(value)
+                input_shapes[name] = tuple(tensor.shape)
+
+                scaled = (tensor * scaling).long().flatten()
+                flattened_tensors.append(scaled)
+
+            # Concatenate all inputs into one long tensor
+            concatenated = torch.cat(flattened_tensors, dim=0)
+            flattened_list = concatenated.tolist()
+
+            # Wrap it into a dict under "input" key to read into rust
+            formatted_inputs = {"input": flattened_list}
         except Exception as e:
             msg = f"Failed to format inputs for GenericModelONNX: {e}"
             raise CircuitProcessingError(
@@ -203,7 +234,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
                 data_type=type(inputs).__name__,
             ) from e
         else:
-            return x
+            return formatted_inputs
 
     def get_weights(
         self: GenericModelONNX,

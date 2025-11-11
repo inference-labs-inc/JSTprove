@@ -148,6 +148,7 @@ def test_parse_proof_dispatch_logic(
     c._gen_witness_preprocessing = MagicMock(return_value="i")
     c.adjust_inputs = MagicMock(return_value="i")
     c.rename_inputs = MagicMock(return_value="i")
+    c.prepare_inputs_for_verification = MagicMock(return_value="i")
 
     c.load_and_compare_witness_to_io = MagicMock(return_value="True")
 
@@ -436,34 +437,53 @@ def test_gen_witness_preprocessing_write_json_true(mock_to_json: MagicMock) -> N
 
 
 @pytest.mark.unit
-@patch("python.core.circuits.base.to_json")
-def test_gen_witness_preprocessing_write_json_false(mock_to_json: MagicMock) -> None:
+def test_gen_witness_preprocessing_write_json_false(tmp_path: Path) -> None:
     c = Circuit()
     c._file_info = {"quantized_model_path": "quant.pt"}
+
+    # Mock all method calls used by _gen_witness_preprocessing
     c.load_quantized_model = MagicMock()
-    c.get_inputs_from_file = MagicMock(return_value="mock_inputs")
-    c.reshape_inputs = MagicMock(return_value="in.json")
-    c.rescale_inputs = MagicMock(return_value="in.json")
-    c.rename_inputs = MagicMock(return_value="in.json")
-    c.rescale_and_reshape_inputs = MagicMock(return_value="in.json")
-    c.adjust_inputs = MagicMock(return_value="in.json")
+    c._read_from_json_safely = MagicMock(return_value={"mock": "inputs"})
+    c.scale_inputs_only = MagicMock(return_value={"scaled": "inputs"})
+    c.reshape_inputs_for_inference = MagicMock(return_value={"inference": "inputs"})
+    c.reshape_inputs_for_circuit = MagicMock(return_value={"input": [1, 2, 3]})
+    c._to_json_safely = MagicMock()
+    c.get_outputs = MagicMock(return_value={"raw_output": 123})
+    c.format_outputs = MagicMock(return_value={"formatted_output": 999})
 
-    c.get_outputs = MagicMock(return_value="mock_outputs")
-    c.format_outputs = MagicMock(return_value={"output": 99})
+    input_path = tmp_path / "in.json"
+    output_path = tmp_path / "out.json"
 
-    c._gen_witness_preprocessing(
-        "in.json",
-        "out.json",
+    result = c._gen_witness_preprocessing(
+        str(input_path),
+        str(output_path),
         None,
         write_json=False,
         is_scaled=False,
     )
 
+    # --- Assertions ---
     c.load_quantized_model.assert_called_once_with("quant.pt")
-    c.get_inputs_from_file.assert_called_once_with("in.json", is_scaled=False)
-    c.get_outputs.assert_called_once_with("mock_inputs")
-    c.format_outputs.assert_called_once_with("mock_outputs")
-    mock_to_json.assert_called_once_with({"output": 99}, "out.json")
+    c._read_from_json_safely.assert_called_once_with(str(input_path))
+    c.scale_inputs_only.assert_called_once_with({"mock": "inputs"})
+    c.reshape_inputs_for_inference.assert_called_once_with({"scaled": "inputs"})
+    c.reshape_inputs_for_circuit.assert_called_once_with({"scaled": "inputs"})
+
+    # Verify safe JSON writes
+    new_input_file = str(input_path.with_name("in_adjusted.json"))
+    c._to_json_safely.assert_any_call({"input": [1, 2, 3]}, new_input_file, "input")
+    c._to_json_safely.assert_any_call(
+        {"formatted_output": 999},
+        str(output_path),
+        "output",
+    )
+
+    # Verify output generation
+    c.get_outputs.assert_called_once_with({"inference": "inputs"})
+    c.format_outputs.assert_called_once_with({"raw_output": 123})
+
+    # Function should return the adjusted input file path
+    assert result == new_input_file
 
 
 # ---------- _compile_preprocessing ----------
@@ -896,24 +916,6 @@ def test_save_and_load_model_not_implemented() -> None:
     assert hasattr(c, "load_quantized_model")
 
 
-# ---------- New error handling tests ----------
-@pytest.mark.unit
-def test_adjust_inputs_file_error() -> None:
-    c = Circuit()
-    c.input_variables = ["input"]
-    c.input_shape = [2, 2]
-    c.scale_base = 2
-    c.scale_exponent = 1
-
-    with patch(
-        "python.core.circuits.base.read_from_json",
-        side_effect=FileNotFoundError("File not found"),
-    ):
-        _ = c
-        with pytest.raises(CircuitFileError, match="Failed to read input file"):
-            c.adjust_inputs("nonexistent.json")
-
-
 @pytest.mark.unit
 def test_adjust_inputs_processing_error() -> None:
     c = Circuit()
@@ -934,7 +936,7 @@ def test_adjust_inputs_processing_error() -> None:
                 CircuitProcessingError,
                 match="Failed to reshape input data",
             ):
-                c.adjust_inputs("dummy.json")
+                c.adjust_inputs({"input": [1, 2, 3, 4]}, "dummy.json")
 
 
 @pytest.mark.unit
