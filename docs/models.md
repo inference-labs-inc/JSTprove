@@ -34,7 +34,7 @@ This page explains what kinds of models JSTprove supports and how they're handle
 - **Input JSON** should contain your model inputs as numeric arrays.
   - If values are floats, they'll be **scaled and rounded** automatically during witness/verify.
   - If your key is named exactly `"input"` (single-input models), it will be reshaped to the model's input shape.
-- Multi-input models are **not supported** yet; the CLI expects a single key `"input"`.
+- Multi-input models are now supported. Make sure to match the name of the inputs to the model, to the inputs that the model expects to receive.
 
 **Single-input example (flattened vector):**
 ```json
