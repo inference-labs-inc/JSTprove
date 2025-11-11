@@ -10,6 +10,7 @@ use serde_json::Value;
 use crate::circuit_functions::layers::LayerError;
 use crate::circuit_functions::layers::LayerKind;
 use crate::circuit_functions::utils::UtilsError;
+use crate::circuit_functions::utils::build_layers::BuildLayerContext;
 use crate::circuit_functions::utils::constants::VALUE;
 use crate::circuit_functions::utils::json_array::FromJsonNumber;
 /// Internal crate imports
@@ -100,6 +101,17 @@ pub fn get_w_or_b<
         None => Err(UtilsError::MissingTensor {
             tensor: weights_input.clone(),
         }),
+    }
+}
+
+#[must_use]
+pub fn get_optional_w_or_b(
+    layer_context: &BuildLayerContext,
+    input: &std::string::String,
+) -> Option<ArrayD<i64>> {
+    match get_w_or_b(&layer_context.w_and_b_map, input) {
+        Ok(arr) => Some(arr.into_dyn()),
+        Err(_) => None, // no initializer present
     }
 }
 

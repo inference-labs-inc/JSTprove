@@ -7,6 +7,8 @@ use ndarray::ArrayD;
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::layers::math::matrix_addition;
+use crate::circuit_functions::utils::onnx_model::get_optional_w_or_b;
+use crate::circuit_functions::utils::tensor_ops::load_array_constants_or_get_inputs;
 use crate::circuit_functions::{
     CircuitError,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
@@ -27,6 +29,8 @@ pub struct AddLayer {
     input_shape: Vec<usize>,
     inputs: Vec<String>,
     outputs: Vec<String>,
+    initializer_a: Option<ArrayD<i64>>,
+    initializer_b: Option<ArrayD<i64>>,
 }
 
 // -------- Implementation --------
@@ -40,30 +44,24 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AddLayer {
         let a_name = get_input_name(&self.inputs, 0, LayerKind::Add, INPUT)?;
         let b_name = get_input_name(&self.inputs, 1, LayerKind::Add, INPUT)?;
 
-        let a_input = input
-            .get(&a_name.clone())
-            .ok_or_else(|| LayerError::MissingInput {
-                layer: LayerKind::Add,
-                name: a_name.clone(),
-            })?;
+        let a_input = load_array_constants_or_get_inputs(
+            api,
+            &input,
+            a_name,
+            &self.initializer_a,
+            LayerKind::Add,
+        )?;
 
-        let b_input = input
-            .get(&b_name.clone())
-            .ok_or_else(|| LayerError::MissingInput {
-                layer: LayerKind::Add,
-                name: b_name.clone(),
-            })?
-            .clone();
-
-        // let mut weights_array = load_array_constants(api, &self.weights)
-        //     .into_dimensionality::<Ix2>()
-        //     .map_err(|_| LayerError::InvalidShape {
-        //         layer: LayerKind::Add,
-        //         msg: format!("Expected 2D weights array for layer {}", self.name),
-        //     })?;
+        let b_input = load_array_constants_or_get_inputs(
+            api,
+            &input,
+            b_name,
+            &self.initializer_b,
+            LayerKind::Add,
+        )?;
 
         // Matrix multiplication and bias addition
-        let result = matrix_addition(api, a_input, b_input, LayerKind::Add)?;
+        let result = matrix_addition(api, &a_input, b_input, LayerKind::Add)?;
         Ok((self.outputs.clone(), result))
     }
     fn build(
@@ -79,6 +77,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AddLayer {
                 layer: LayerKind::Add,
                 msg: format!("extract_params_and_expected_shape failed: {e}"),
             })?;
+
+        let initializer_a = get_optional_w_or_b(layer_context, &layer.inputs[0]);
+        let initializer_b = get_optional_w_or_b(layer_context, &layer.inputs[1]);
+
         let add = Self {
             name: layer.name.clone(),
             // weights: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[1])?,
@@ -86,6 +88,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AddLayer {
             input_shape: expected_shape.clone(),
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
+            initializer_a,
+            initializer_b,
         };
         Ok(Box::new(add))
     }

@@ -455,7 +455,8 @@ class QuantizerBase:
         attrs = extract_attributes(node)
         for k, v in self.DEFAULT_ATTRS.items():
             attrs.setdefault(k, v)
-        attrs["rescale"] = int(scale_config.rescale)
+        if self.USE_SCALING:
+            attrs["rescale"] = int(scale_config.rescale)
 
         # (3) Add scaling constant if needed
         if self.USE_SCALING:

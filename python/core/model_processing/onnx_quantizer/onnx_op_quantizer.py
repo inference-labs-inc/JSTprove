@@ -12,6 +12,7 @@ from python.core.model_processing.onnx_quantizer.exceptions import (
     MissingHandlerError,
     UnsupportedOpError,
 )
+from python.core.model_processing.onnx_quantizer.layers.add import AddQuantizer
 from python.core.model_processing.onnx_quantizer.layers.base import (
     PassthroughQuantizer,
     ScaleConfig,
@@ -67,7 +68,7 @@ class ONNXOpQuantizer:
         self.new_initializers = []
 
         # Register handlers
-        self.register("Add", PassthroughQuantizer())
+        self.register("Add", AddQuantizer(self.new_initializers))
         self.register("Conv", ConvQuantizer(self.new_initializers))
         self.register("Relu", ReluQuantizer())
         self.register("Reshape", PassthroughQuantizer())

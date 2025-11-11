@@ -24,7 +24,6 @@ from python.tests.onnx_quantizer_tests.layers.factory import TestLayerFactory
 from python.tests.onnx_quantizer_tests.layers_tests.base_test import (
     BaseQuantizerTest,
 )
-from python.tests.onnx_quantizer_tests.testing_helper_functions import get_input_shapes
 
 
 class TestIntegration(BaseQuantizerTest):
@@ -97,7 +96,7 @@ class TestIntegration(BaseQuantizerTest):
         the outputs are close.
         """
         cosine_similarity = 0.995
-        rng = np.random.default_rng(TEST_RNG_SEED)
+        rng = np.random.default_rng(TEST_RNG_SEED + 1)
 
         layer_name, config, test_spec = test_case_data
         self.skip_by_layer_name(layer_name, test_spec, skip_layer="Constant")
@@ -109,8 +108,15 @@ class TestIntegration(BaseQuantizerTest):
 
         # Create original model
         original_model = config.create_test_model(test_spec)
+        opts = SessionOptions()
+        opts.register_custom_ops_library(get_library_path())
+        original_session = InferenceSession(
+            original_model.SerializeToString(),
+            opts,
+            providers=["CPUExecutionProvider"],
+        )
 
-        input_shapes = get_input_shapes(original_model)
+        input_shapes = {i.name: tuple(i.shape) for i in original_session.get_inputs()}
 
         # Skip if no inputs (e.g., Constant nodes)
         if not input_shapes:
@@ -125,13 +131,6 @@ class TestIntegration(BaseQuantizerTest):
             dummy_inputs[name] = rng.normal(0, 1, shape).astype(np.float32)
 
         # Run inference on original model
-        opts = SessionOptions()
-        opts.register_custom_ops_library(get_library_path())
-        original_session = InferenceSession(
-            original_model.SerializeToString(),
-            opts,
-            providers=["CPUExecutionProvider"],
-        )
         output_name = original_session.get_outputs()[0].name
         original_output = original_session.run([output_name], dummy_inputs)[0]
 
@@ -162,9 +161,7 @@ class TestIntegration(BaseQuantizerTest):
         scaled_inputs = {}
         for name in quantized_input_names:
             if name in dummy_inputs:
-                scaled_inputs[name] = (
-                    dummy_inputs[name] * (scale_base**scale_exponent)
-                ).astype(np.float64)
+                scaled_inputs[name] = (dummy_inputs[name]).astype(np.float64)
             else:
                 # If quantized model has different inputs, skip or handle
                 pytest.skip(
@@ -175,7 +172,7 @@ class TestIntegration(BaseQuantizerTest):
             [quantized_output_name],
             scaled_inputs,
         )[0]
-        quantized_output = quantized_output / (scale_base ** (scale_exponent * 2))
+        quantized_output = quantized_output / (scale_base ** (scale_exponent))
 
         ratio = np.mean(quantized_output / (original_output + 1e-12))
         print(f"Mean output ratio (quantized/original): {ratio:.4f}")

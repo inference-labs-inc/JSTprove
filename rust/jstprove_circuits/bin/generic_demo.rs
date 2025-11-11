@@ -7,7 +7,7 @@ use jstprove_circuits::circuit_functions::utils::ArrayConversionError;
 use jstprove_circuits::circuit_functions::utils::build_layers::build_layers;
 use jstprove_circuits::runner::errors::RunError;
 /// External crate imports
-use ndarray::{ArrayD, Ix1, IxDyn};
+use ndarray::{Array1, ArrayD, ArrayView1, Axis, Ix1, IxDyn, concatenate};
 
 /// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{
@@ -59,7 +59,6 @@ impl Circuit<Variable> {
         // Getting inputs
         let mut out = get_inputs(&self.input_arr, params.inputs.clone())?;
 
-        // let mut out = out2.remove("input").unwrap().clone();
         let layers = build_layers::<C, Builder>(params, architecture, w_and_b)?;
 
         if architecture.architecture.is_empty() {
@@ -75,38 +74,55 @@ impl Circuit<Variable> {
             });
         }
 
-        eprint!("Flatten output");
         let flatten_shape: Vec<usize> = vec![
             params
                 .outputs
                 .iter()
                 .map(|obj| obj.shape.iter().product::<usize>())
-                .product(),
+                .sum(),
         ];
+        eprintln!("Flatten shape {flatten_shape:?}");
 
-        // TODO only support single output
-        let output_name = params
-            .outputs
-            .first()
-            .ok_or_else(|| CircuitError::Other("No outputs defined in ARCHITECTURE".to_string()))?
-            .name
-            .clone();
+        let mut flat_outputs: Vec<Array1<Variable>> = Vec::new();
 
-        let output = out
-            .get(&output_name)
-            .ok_or_else(|| CircuitError::Other("Missing output in map".into()))?
-            .clone()
+        for output_info in &params.outputs {
+            let output_name = &output_info.name;
+
+            let output = out
+                .get(output_name)
+                .ok_or_else(|| {
+                    CircuitError::Other(format!("Missing output '{output_name}' in map"))
+                })?
+                .clone();
+
+            // Ensure the output is contiguous and flatten it
+            let output_slice = output.as_slice().ok_or_else(|| {
+                CircuitError::Other(format!("Output '{output_name}' array not contiguous"))
+            })?;
+
+            flat_outputs.push(Array1::from(output_slice.to_vec()));
+        }
+
+        // Concatenate all flattened outputs into one tensor
+        let combined_output = concatenate(
+            Axis(0),
+            &flat_outputs
+                .iter()
+                .map(ndarray::ArrayBase::view)
+                .collect::<Vec<ArrayView1<Variable>>>(),
+        )
+        .map_err(|e| CircuitError::Other(format!("Concatenation error: {e}")))?;
+
+        // Optionally reshape it to the desired final flatten_shape
+        let combined_output = combined_output
             .into_shape_with_order(IxDyn(&flatten_shape))
             .map_err(ArrayConversionError::ShapeError)?;
 
-        let output = output
-            .as_slice()
-            .ok_or_else(|| CircuitError::Other("Output array not contiguous".into()))?;
-
+        eprintln!("Check outputs");
         for (j, _) in self.outputs.iter().enumerate() {
             api.display("out1", self.outputs[j]);
-            api.display("out2", output[j]);
-            api.assert_is_equal(self.outputs[j], output[j]);
+            api.display("out2", combined_output[j]);
+            api.assert_is_equal(self.outputs[j], combined_output[j]);
         }
 
         api.assert_is_equal(self.dummy[0], 1);

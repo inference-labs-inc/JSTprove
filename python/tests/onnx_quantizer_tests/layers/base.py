@@ -107,9 +107,42 @@ class LayerTestConfig:
 
     def create_test_model(self, test_spec: LayerTestSpec) -> onnx.ModelProto:
         """Create a complete model for a specific test case"""
-        # Apply overrides from test spec
+
+        # Determine node-level inputs.
+        # If dev overrides inputs explicitly,
+        # respect that; otherwise use original valid_inputs.
         inputs = test_spec.input_overrides or self.valid_inputs
+
+        # Prepare attributes
         attrs = {**self.valid_attributes, **test_spec.attr_overrides}
+
+        # Create initializers (may introduce overrides)
+        initializers = self.create_initializers(**test_spec.initializer_overrides)
+
+        # Apply shape overrides
+        input_shapes = {**self.input_shapes, **test_spec.input_shape_overrides}
+        output_shapes = {**self.output_shapes, **test_spec.output_shape_overrides}
+
+        # ----------------------------------------
+        # REMOVE graph inputs that are also initializers
+        # ----------------------------------------
+        initializer_names = set(initializers.keys())
+
+        # Also remove shapes for initializer inputs
+        for init_name in initializer_names:
+            input_shapes.pop(init_name, None)
+
+        # Create ONNX input value infos ONLY from filtered inputs
+        graph_inputs = [
+            helper.make_tensor_value_info(name, TensorProto.FLOAT, shape)
+            for name, shape in input_shapes.items()
+        ]
+
+        # Outputs stay unchanged
+        graph_outputs = [
+            helper.make_tensor_value_info(name, TensorProto.FLOAT, shape)
+            for name, shape in output_shapes.items()
+        ]
 
         node = helper.make_node(
             self.op_type,
@@ -119,23 +152,7 @@ class LayerTestConfig:
             **attrs,
         )
 
-        initializers = self.create_initializers(**test_spec.initializer_overrides)
-
-        # Apply shape overrides from test spec
-        input_shapes = {**self.input_shapes, **test_spec.input_shape_overrides}
-        output_shapes = {**self.output_shapes, **test_spec.output_shape_overrides}
-
-        # Create input/output tensor info
-        graph_inputs = [
-            helper.make_tensor_value_info(name, TensorProto.FLOAT, shape)
-            for name, shape in input_shapes.items()
-        ]
-
-        graph_outputs = [
-            helper.make_tensor_value_info(name, TensorProto.FLOAT, shape)
-            for name, shape in output_shapes.items()
-        ]
-
+        # Build the graph
         graph = helper.make_graph(
             nodes=[node],
             name=f"{self.op_type.lower()}_test_graph_{test_spec.name}",
@@ -144,9 +161,8 @@ class LayerTestConfig:
             initializer=list(initializers.values()),
         )
 
+        # Remove omitted attributes if specified
         attrs = {**self.valid_attributes, **test_spec.attr_overrides}
-
-        # Remove omitted attributes
         for key in getattr(test_spec, "omit_attrs", []):
             attrs.pop(key, None)
 

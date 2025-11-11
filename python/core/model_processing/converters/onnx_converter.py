@@ -508,9 +508,9 @@ class ONNXConverter(ModelConverter):
                 opts,
                 providers=["CPUExecutionProvider"],
             )
-        except (OSError, onnx.ONNXException, RuntimeError, Exception) as e:
+        except (OSError, RuntimeError, Exception) as e:
             raise InferenceError(
-                model_path,
+                model_path=model_path,
                 model_type=self.model_type,
                 reason=str(e),
             ) from e

@@ -1,5 +1,5 @@
 /// Standard library imports
-use std::ops::Neg;
+use std::{collections::HashMap, hash::BuildHasher, ops::Neg};
 
 /// External crate imports
 use ethnum::U256;
@@ -10,7 +10,11 @@ use serde_json::Value;
 use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
 use gkr_engine::{FieldEngine, GKREngine};
 
-use crate::circuit_functions::utils::{ArrayConversionError, UtilsError};
+use crate::circuit_functions::{
+    CircuitError,
+    layers::{LayerError, LayerKind},
+    utils::{ArrayConversionError, UtilsError},
+};
 
 /// Load in circuit constant given i64, negative values are represented by p-x and positive values are x
 pub fn load_circuit_constant<C: Config, Builder: RootAPI<C>>(
@@ -37,6 +41,43 @@ pub fn load_array_constants<C: Config, Builder: RootAPI<C>>(
             *out_elem = load_circuit_constant(api, val);
         });
     result
+}
+
+/// Load constants or retrieve inputs based on whether an initializer exists.
+/// If the initializers exist, than use that, otherwise look for inputs in graph.
+///
+/// # Arguments
+///
+/// * `api` - The builder used to construct circuit constants and variables.
+/// * `input` - A mapping from input names to input tensors.
+/// * `input_name` - The name of the expected input tensor.
+/// * `initializer` - Optional initializer tensor. If present, constants are loaded and returned.
+/// * `layer_kind` - The type of layer requesting the tensor.
+///
+/// # Returns
+/// Returns the loaded array or the input array associated with `input_name`.
+///
+/// # Errors
+/// Returns a `CircuitError` if the requested input tensor does not exist in `input`.
+pub fn load_array_constants_or_get_inputs<C: Config, Builder: RootAPI<C>, S: BuildHasher>(
+    api: &mut Builder,
+    input: &HashMap<String, ArrayD<Variable>, S>,
+    input_name: &String,
+    initializer: &Option<ArrayD<i64>>,
+    layer_kind: LayerKind,
+) -> Result<ArrayD<Variable>, CircuitError> {
+    let a_input: ArrayD<Variable> = if let Some(init) = initializer {
+        load_array_constants(api, init)
+    } else {
+        input
+            .get(input_name)
+            .ok_or_else(|| LayerError::MissingInput {
+                layer: layer_kind,
+                name: input_name.clone(),
+            })?
+            .clone()
+    };
+    Ok(a_input)
 }
 
 fn flatten_recursive(value: &Value, out: &mut Vec<i64>) -> Result<(), UtilsError> {

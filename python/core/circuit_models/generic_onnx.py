@@ -174,7 +174,9 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
                 operation="get_outputs",
             ) from e
         else:
-            return torch.as_tensor(np.array(raw_outputs)).flatten()
+            flat_outputs = [o.flatten() for o in raw_outputs]
+            combined = np.concatenate(flat_outputs, axis=0)
+            return torch.as_tensor(combined)
 
     def format_inputs(
         self: GenericModelONNX,
