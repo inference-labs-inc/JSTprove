@@ -40,6 +40,8 @@ def int64_maxpool(
     kernel_shape : Kernel shape (default: `[2, 2]`).
     pads : Padding values (default: `[0, 0, 0, 0]`).
     strides : Stride values (default: `[1, 1]`).
+    dilations : dilation values (default: `[1, 1]`).
+
 
     Returns
     -------
@@ -61,7 +63,7 @@ def int64_maxpool(
         strides = parse_attr(strides, [1, 1])
         pads = parse_attr(pads, [0, 0])
         kernel_size = parse_attr(kernel_shape, [2, 2])
-        dilations = parse_attr(dilations, [2, 2])
+        dilations = parse_attr(dilations, [1, 1])
 
         x = torch.from_numpy(x)
         result = f.max_pool2d(
