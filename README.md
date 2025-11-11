@@ -15,13 +15,20 @@
 
 # JSTprove
 
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-blue?style=flat-square&logo=github)](https://github.com/inference-labs-inc/JSTprove)
+[![Telegram](https://img.shields.io/badge/Telegram-Join%20Channel-0088cc?style=flat-square&logo=telegram)](https://t.me/inference_labs)
+[![Twitter](https://img.shields.io/badge/Twitter-Follow%20Us-1DA1F2?style=flat-square&logo=twitter)](https://x.com/inference_labs)
+[![Website](https://img.shields.io/badge/Website-Visit%20Us-ff7139?style=flat-square&logo=firefox-browser)](https://inferencelabs.com)
+[![White paper](https://img.shields.io/badge/Whitepaper-Read-lightgrey?style=flat-square&logo=read-the-docs)](https://doi.org/10.48550/arXiv.2510.21024)
+
 Zero-knowledge proofs of ML inference on **ONNX** models — powered by [Polyhedra Network’s **Expander**](https://github.com/PolyhedraZK/Expander) (GKR/sum-check prover) and [**Expander Compiler Collection (ECC)**](https://github.com/PolyhedraZK/ExpanderCompilerCollection).
 
 * 🎯 **You bring ONNX** → we quantize, compile to a circuit, generate a witness, prove, and verify — via a simple CLI.
 * ✅ Supported ops (current): **Conv2D**, **GEMM/MatMul (FC)**, **ReLU**, **MaxPool2D**.
 * 🧰 CLI details: see **[docs/cli.md](docs/cli.md)**
 
-👉 Just want to see it in action? Jump to [Quickstart (LeNet demo)](#quickstart-lenet-demo).
+👉 Just want to see it in action? Jump to [Quickstart (LeNet demo)](#quickstart-lenet-demo).<br>
+👉 Curious about how it works under the hood? Check out the [white paper](https://doi.org/10.48550/arXiv.2510.21024).
 
 ---
 
@@ -44,7 +51,7 @@ Zero-knowledge proofs of ML inference on **ONNX** models — powered by [Polyhed
 - [CLI reference](#cli-reference)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
-- [Legal](#legal)
+- [Disclaimer](#disclaimer)
 - [Acknowledgments](#acknowledgments)
 
 </details>
@@ -344,14 +351,19 @@ See **[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)** for dev setup, pre-commit h
 
 ---
 
-## Legal
+## Disclaimer
 
-> **Placeholder (subject to change):**
->
-> * **License:** See `LICENSE` (TBD). Third-party components (e.g., Expander, ECC) are licensed under their respective terms.
-> * **No warranty:** Provided “as is” without warranties or conditions of any kind. Use at your own risk.
-> * **Security & export:** Cryptography may be subject to local laws. Conduct your own security review before production use.
-> * **Trademarks:** All product names, logos, and brands are property of their respective owners.
+**JSTProve** is **experimental and unaudited**. It is provided on an **open-source, “as-is” basis**, without any warranties or guarantees of fitness for a particular purpose.
+
+Use of JSTProve in **production environments is strongly discouraged**. The codebase may contain bugs, vulnerabilities, or incomplete features that could lead to unexpected results, failures, or security risks.
+
+By using, modifying, or distributing this software, you acknowledge that:
+
+ - It has not undergone a formal security review or audit.
+ - It may change substantially over time, including breaking changes.
+ - You assume full responsibility for any outcomes resulting from its use.
+
+JSTProve is made available in the spirit of **research, experimentation, and community collaboration**. Contributions are welcome, but please proceed with caution and do not rely on this software for systems where correctness, reliability, or security are critical.
 
 ---
 

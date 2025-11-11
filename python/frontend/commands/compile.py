@@ -49,7 +49,7 @@ class CompileCommand(BaseCommand):
                 CircuitExecutionConfig(
                     run_type=RunType.COMPILE_CIRCUIT,
                     circuit_path=args.circuit_path,
-                    dev_mode=True,
+                    dev_mode=False,
                 ),
             )
         except CircuitRunError as e:
