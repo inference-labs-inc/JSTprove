@@ -1150,7 +1150,7 @@ class ONNXConverter(ModelConverter):
 
     def get_outputs(
         self: ONNXConverter,
-        inputs: np.ndarray | torch.Tensor,
+        inputs: np.ndarray | torch.Tensor | dict[str, np.ndarray | torch.Tensor],
     ) -> list[np.ndarray]:
         """Run the currently loaded (quantized) model via ONNX Runtime.
 

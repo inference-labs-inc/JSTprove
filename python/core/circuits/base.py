@@ -341,7 +341,7 @@ class Circuit:
         # Send back to file
         # object through the process instead
         path = Path(exec_config.input_file)
-        processed_input_file = path.parent / (path.stem + "_veri" + path.suffix)
+        processed_input_file = str(path.parent / (path.stem + "_veri" + path.suffix))
         self._to_json_safely(processed_inputs, processed_input_file, "renamed input")
 
         return processed_input_file
@@ -804,7 +804,7 @@ class Circuit:
         # --- Regular reshape ---
         try:
             return asarray(inputs).reshape(shape)
-        except RuntimeError as e:
+        except (RuntimeError, ValueError) as e:
             raise ShapeMismatchError(shape, list(asarray(inputs).shape)) from e
 
     def _reshape_dict_inputs(
@@ -817,7 +817,7 @@ class Circuit:
             tensor = asarray(value)
             try:
                 inputs[key] = tensor.reshape(shape[key])
-            except RuntimeError as e:
+            except (RuntimeError, ValueError) as e:
                 raise ShapeMismatchError(shape, list(tensor.shape)) from e
         return inputs
 
@@ -847,7 +847,7 @@ class Circuit:
 
             try:
                 out[key] = chunk.reshape(target)
-            except RuntimeError as e:
+            except (RuntimeError, ValueError) as e:
                 raise ShapeMismatchError(target, chunk.shape) from e
 
         return out
