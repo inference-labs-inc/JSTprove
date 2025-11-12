@@ -1175,7 +1175,7 @@ class ONNXConverter(ModelConverter):
 
         def _raise_no_scale_configs() -> None:
             raise CircuitConfigurationError(
-                missing_attributes="scale_base or scale_exponent",
+                missing_attributes=["scale_base", "scale_exponent"],
             )
 
         scale_base = getattr(self, "scale_base", None)

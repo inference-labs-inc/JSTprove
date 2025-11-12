@@ -33,8 +33,6 @@ class AddQuantizer(BaseOpQuantizer, QuantizeAdd):
         new_initializers: list[onnx.TensorProto] | None = None,
     ) -> None:
         super().__init__()
-        self.new_initializers: list[onnx.TensorProto] = []
-
         # Only replace if caller provided something
         if new_initializers is not None:
             self.new_initializers = new_initializers

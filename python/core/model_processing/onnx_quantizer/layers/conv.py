@@ -32,9 +32,12 @@ class ConvQuantizer(BaseOpQuantizer, QuantizeConv):
 
     def __init__(
         self: ConvQuantizer,
-        new_initializers: list[onnx.TensorProto],
+        new_initializers: list[onnx.TensorProto] | None = None,
     ) -> None:
-        self.new_initializers = new_initializers
+        super().__init__()
+        # Only replace if caller provided something
+        if new_initializers is not None:
+            self.new_initializers = new_initializers
 
     def quantize(
         self: ConvQuantizer,
