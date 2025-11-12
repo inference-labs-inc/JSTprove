@@ -23,15 +23,14 @@ class MinConfigProvider(BaseLayerConfigProvider):
         return "Min"
 
     def get_config(self) -> LayerTestConfig:
-        # Elementwise, 2 inputs → 1 output, no attributes
         return LayerTestConfig(
             op_type="Min",
-            valid_inputs=["X", "Y"],
-            valid_attributes={},
-            required_initializers={},
+            valid_inputs=["A", "B"],
+            valid_attributes={},  # Min has no layer-specific attributes
+            required_initializers={},  # default: both A and B are dynamic inputs
             input_shapes={
-                "X": [1, 3, 4, 4],
-                "Y": [1, 3, 4, 4],
+                "A": [1, 3, 4, 4],
+                "B": [1, 3, 4, 4],
             },
             output_shapes={
                 "min_output": [1, 3, 4, 4],
@@ -41,36 +40,46 @@ class MinConfigProvider(BaseLayerConfigProvider):
     def get_test_specs(self) -> list:
         rng = np.random.default_rng(TEST_RNG_SEED)
         return [
-            # Basic: same-shaped tensors
+            # --- VALID TESTS ---
             valid_test("basic")
-            .description("Elementwise Min(X, Y) with identical shapes")
-            .override_input_shapes(X=[1, 3, 4, 4], Y=[1, 3, 4, 4])
+            .description("Basic elementwise Min of two same-shaped tensors")
+            .override_input_shapes(A=[1, 3, 4, 4], B=[1, 3, 4, 4])
             .tags("basic", "elementwise", "min")
             .build(),
-            # Broadcasting allowed (mirror Add/Max)
             valid_test("broadcast_min")
-            .description("Min with NumPy-style broadcasting along spatial dims")
-            .override_input_shapes(X=[1, 3, 4, 4], Y=[1, 3, 1, 1])
+            .description("Min with Numpy-style broadcasting along spatial dimensions")
+            .override_input_shapes(A=[1, 3, 4, 4], B=[1, 3, 1, 1])
             .tags("broadcast", "elementwise", "min", "onnx14")
             .build(),
-            # One input can be initializer
             valid_test("initializer_min")
-            .description("Min where Y is an initializer")
-            .override_input_shapes(X=[1, 3, 4, 4])
-            .override_initializer("Y", rng.normal(0, 1, (1, 3, 4, 4)))
+            .description("Min where B is an initializer instead of an input")
+            .override_input_shapes(A=[1, 3, 4, 4])
+            .override_initializer("B", rng.normal(0, 1, (1, 3, 4, 4)))
             .tags("initializer", "elementwise", "min", "onnxruntime")
             .build(),
-            # End-to-end run
             e2e_test("e2e_min")
             .description("End-to-end Min test with random inputs")
-            .override_input_shapes(X=[1, 3, 4, 4], Y=[1, 3, 4, 4])
+            .override_input_shapes(A=[1, 3, 4, 4], B=[1, 3, 4, 4])
             .override_output_shapes(min_output=[1, 3, 4, 4])
             .tags("e2e", "min", "2d")
             .build(),
-            # Edge example (optional)
+            e2e_test("e2e_initializer_min")
+            .description("End-to-end Min where B is an initializer")
+            .override_input_shapes(A=[1, 3, 4, 4])
+            .override_initializer("B", rng.normal(0, 1, (1, 3, 4, 4)))
+            .override_output_shapes(min_output=[1, 3, 4, 4])
+            .tags("e2e", "initializer", "elementwise", "min", "onnxruntime")
+            .build(),
+            # --- EDGE / STRESS ---
             edge_case_test("empty_tensor")
-            .description("Min with empty tensor inputs")
-            .override_input_shapes(X=[0], Y=[0])
+            .description("Min with empty tensor input (zero elements)")
+            .override_input_shapes(A=[0], B=[0])
             .tags("edge", "empty", "min")
+            .build(),
+            valid_test("large_tensor")
+            .description("Large tensor min performance/stress test")
+            .override_input_shapes(A=[1, 64, 256, 256], B=[1, 64, 256, 256])
+            .tags("large", "performance", "min")
+            .skip("Performance test, skipped by default")
             .build(),
         ]
