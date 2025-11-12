@@ -91,8 +91,7 @@ class Circuit:
             ValueError: If any parameter value is not an integer or list of integers.
         """
         if self.required_keys is None:
-            msg = "self.required_keys must"
-            " be specified in the circuit definition."
+            msg = "self.required_keys must be specified in the circuit definition."
             raise CircuitConfigurationError(
                 msg,
             )
@@ -436,8 +435,10 @@ class Circuit:
             adjusted_shapes = {}
             for key, subshape in shape.items():
                 if not isinstance(subshape, (list, tuple)):
-                    msg = f"Expected shape list for key '{key}', "
-                    f"got {type(subshape).__name__}"
+                    msg = (
+                        f"Expected shape list for key '{key}', "
+                        f"got {type(subshape).__name__}"
+                    )
                     raise CircuitInputError(msg)
                 adjusted_shapes[key] = [s if s > 0 else 1 for s in subshape]
 
@@ -634,8 +635,10 @@ class Circuit:
             CircuitProcessingError: If the reshaping operation fails.
         """
         if not hasattr(self, shape_attr):
-            msg = f"Required shape attribute '{shape_attr}'"
-            f" must be defined to reshape input '{input_key}'."
+            msg = (
+                f"Required shape attribute '{shape_attr}'"
+                f" must be defined to reshape input '{input_key}'."
+            )
             raise CircuitConfigurationError(
                 msg,
                 missing_attributes=[shape_attr],
@@ -804,7 +807,7 @@ class Circuit:
         # --- Regular reshape ---
         try:
             return asarray(inputs).reshape(shape)
-        except (RuntimeError, ValueError) as e:
+        except Exception as e:
             raise ShapeMismatchError(shape, list(asarray(inputs).shape)) from e
 
     def _reshape_dict_inputs(
@@ -817,7 +820,7 @@ class Circuit:
             tensor = asarray(value)
             try:
                 inputs[key] = tensor.reshape(shape[key])
-            except (RuntimeError, ValueError) as e:
+            except Exception as e:
                 raise ShapeMismatchError(shape, list(tensor.shape)) from e
         return inputs
 
@@ -847,7 +850,7 @@ class Circuit:
 
             try:
                 out[key] = chunk.reshape(target)
-            except (RuntimeError, ValueError) as e:
+            except Exception as e:
                 raise ShapeMismatchError(target, chunk.shape) from e
 
         return out
@@ -956,8 +959,10 @@ class Circuit:
         elif isinstance(w_and_b, (dict, tuple)):
             self._to_json_safely(w_and_b, w_and_b_path, "w_and_b")
         else:
-            msg = f"Unsupported w_and_b type: {type(w_and_b)}."
-            " Expected list, dict, or tuple."
+            msg = (
+                f"Unsupported w_and_b type: {type(w_and_b)}."
+                " Expected list, dict, or tuple."
+            )
             raise CircuitConfigurationError(
                 msg,
                 details={"w_and_b_type": str(type(w_and_b))},

@@ -195,8 +195,11 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         """
 
         def _raise_type_error(inputs: np.ndarray | list[int] | torch.Tensor) -> None:
-            msg = "Expected np.ndarray, torch.Tensor, "
-            f"list, or dict for inputs, got {type(inputs)}"
+            msg = (
+                "Expected np.ndarray, torch.Tensor, "
+                f"list, or dict for inputs, got {type(inputs)}"
+            )
+
             raise TypeError(msg)
 
         try:

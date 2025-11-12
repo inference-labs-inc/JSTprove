@@ -29,7 +29,7 @@ class ReluQuantizer(BaseOpQuantizer, QuantizeRelu):
 
     def __init__(
         self: ReluQuantizer,
-        new_initializer: dict[str, TensorProto] | None = None,
+        new_initializer: list[TensorProto] | None = None,
     ) -> None:
         super().__init__()
         _ = new_initializer

@@ -32,7 +32,7 @@ class GemmQuantizer(BaseOpQuantizer, QuantizeGemm):
 
     def __init__(
         self: GemmQuantizer,
-        new_initializers: dict[str, onnx.TensorProto],
+        new_initializers: list[onnx.TensorProto],
     ) -> None:
         self.new_initializers = new_initializers
 

@@ -226,8 +226,10 @@ class TestSpecBuilder:
     def build(self) -> LayerTestSpec:
         # Validate before building
         if self._spec.spec_type == SpecType.ERROR and not self._spec.expected_error:
-            msg = f"Error test {self._spec.name} must"
-            " specify expected_error using .expects_error()"
+            msg = (
+                f"Error test {self._spec.name} must",
+                " specify expected_error using .expects_error()",
+            )
             raise ValueError(msg)
         return self._spec
 

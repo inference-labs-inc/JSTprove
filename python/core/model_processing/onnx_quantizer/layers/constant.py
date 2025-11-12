@@ -38,7 +38,7 @@ class ConstantQuantizer(BaseOpQuantizer):
 
     def __init__(
         self: ConstantQuantizer,
-        new_initializer: dict[str, onnx.TensorProto] | None = None,
+        new_initializer: list[onnx.TensorProto] | None = None,
     ) -> None:
         super().__init__()
         _ = new_initializer

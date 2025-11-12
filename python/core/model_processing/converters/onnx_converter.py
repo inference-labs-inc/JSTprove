@@ -882,8 +882,10 @@ class ONNXConverter(ModelConverter):
             OSError,
             Exception,
         ) as e:
-            msg = "Quantization failed for model"
-            f" '{getattr(self, 'model_file_name', 'unknown')}': {e!s}"
+            msg = (
+                "Quantization failed for model"
+                f" '{getattr(self, 'model_file_name', 'unknown')}': {e!s}"
+            )
             raise ModelConversionError(
                 msg,
                 model_type=self.model_type,
@@ -1162,8 +1164,10 @@ class ONNXConverter(ModelConverter):
         """
 
         def _raise_type_error(inputs: np.ndarray | torch.Tensor) -> None:
-            msg = "Expected np.ndarray, torch.Tensor, or dict "
-            f"for inputs, got {type(inputs)}"
+            msg = (
+                "Expected np.ndarray, torch.Tensor, or dict "
+                f"for inputs, got {type(inputs)}"
+            )
             raise TypeError(msg)
 
         def _raise_value_error(msg: str) -> None:
