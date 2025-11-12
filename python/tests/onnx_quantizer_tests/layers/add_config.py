@@ -28,7 +28,7 @@ class AddConfigProvider(BaseLayerConfigProvider):
             input_shapes={
                 "A": [1, 3, 4, 4],
                 "B": [1, 3, 4, 4],
-            },  # Match weight input dimension K=128
+            },
             output_shapes={
                 "add_output": [1, 3, 4, 4],
             },

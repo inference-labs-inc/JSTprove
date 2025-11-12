@@ -104,14 +104,30 @@ pub fn get_w_or_b<
     }
 }
 
-#[must_use]
+/// Attempts to retrieve an optional weight or bias tensor from the layer context.
+///
+/// # Arguments
+///
+/// * `layer_context` - The context containing weight and bias initializers.
+/// * `input` - The name of the weight or bias tensor to retrieve.
+///
+/// # Returns
+///
+/// * `Ok(Some(ArrayD<i64>))` if the tensor exists and is successfully retrieved.
+/// * `Ok(None)` if the tensor is genuinely missing (optional).
+///
+/// # Errors
+///
+/// Returns `Err(UtilsError)` if the initializer is not missing, but some other error occurs in obtaining it.
+/// e.g., invalid tensor shape, type mismatch, or other parsing/conversion errors.
 pub fn get_optional_w_or_b(
     layer_context: &BuildLayerContext,
     input: &std::string::String,
-) -> Option<ArrayD<i64>> {
+) -> Result<Option<ArrayD<i64>>, UtilsError> {
     match get_w_or_b(&layer_context.w_and_b_map, input) {
-        Ok(arr) => Some(arr.into_dyn()),
-        Err(_) => None, // no initializer present
+        Ok(arr) => Ok(Some(arr.into_dyn())),
+        Err(UtilsError::MissingTensor { .. }) => Ok(None), // initializer genuinely missing
+        Err(e) => Err(e),                                  // propogates other error
     }
 }
 

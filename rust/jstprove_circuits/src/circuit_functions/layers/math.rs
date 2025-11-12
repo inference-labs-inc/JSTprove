@@ -30,13 +30,31 @@ pub fn dot<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     vector_a: &ArrayD<&Variable>,
     vector_b: &ArrayD<&Variable>,
-) -> Variable {
+    layer_type: LayerKind,
+) -> Result<Variable, LayerError> {
+    if vector_a.shape() != vector_b.shape() {
+        return Err(LayerError::InvalidShape {
+            layer: layer_type,
+            msg: format!(
+                "Dot product requires two vectors of the same length. Got {:?}, {:?}",
+                vector_a.shape(),
+                vector_b.shape()
+            ),
+        });
+    }
+    if vector_a.ndim() != 1 {
+        return Err(LayerError::InvalidShape {
+            layer: layer_type,
+            msg: format!("Dot product requires 1D vectors. Got {}", vector_a.ndim()),
+        });
+    }
+
     let mut row_col_product: Variable = api.constant(0);
     for k in 0..vector_a.len() {
         let element_product = api.mul(vector_a[k], vector_b[k]);
         row_col_product = api.add(row_col_product, element_product);
     }
-    row_col_product
+    Ok(row_col_product)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

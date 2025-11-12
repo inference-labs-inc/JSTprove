@@ -82,8 +82,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AddLayer {
                 msg: format!("extract_params_and_expected_shape failed: {e}"),
             })?;
 
-        let initializer_a = get_optional_w_or_b(layer_context, &layer.inputs[0]);
-        let initializer_b = get_optional_w_or_b(layer_context, &layer.inputs[1]);
+        let initializer_a = get_optional_w_or_b(layer_context, &layer.inputs[0])?;
+        let initializer_b = get_optional_w_or_b(layer_context, &layer.inputs[1])?;
 
         let add = Self {
             name: layer.name.clone(),

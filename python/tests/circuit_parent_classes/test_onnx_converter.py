@@ -114,6 +114,8 @@ def test_load_quantized_model(
 def test_get_outputs_with_mocked_session(converter: ONNXConverter) -> None:
     dummy_input = np.array([[1.0]])  # ✅ Use np.ndarray, not list
     dummy_output = [[2.0]]
+    converter.scale_base = 2
+    converter.scale_exponent = 10
 
     mock_sess = MagicMock()
 
@@ -190,6 +192,8 @@ def test_save_and_load_real_model() -> None:
 def test_real_inference_from_onnx() -> None:
     converter = ONNXConverter()
     converter.model = create_dummy_model()
+    converter.scale_base = 2
+    converter.scale_exponent = 10
 
     # Save and load into onnxruntime
     with tempfile.NamedTemporaryFile(suffix=".onnx") as tmp:

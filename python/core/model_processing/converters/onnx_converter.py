@@ -5,6 +5,10 @@ import logging
 from dataclasses import asdict, dataclass
 from importlib.metadata import version as get_version
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from onnxruntime import NodeArg
 
 import numpy as np
 import onnx
@@ -18,6 +22,7 @@ from onnxruntime_extensions import get_library_path
 
 import python.core.model_processing.onnx_custom_ops  # noqa: F401
 from python.core import PACKAGE_NAME
+from python.core.circuits.errors import CircuitConfigurationError
 from python.core.model_processing.converters.base import ModelConverter, ModelType
 from python.core.model_processing.errors import (
     InferenceError,
@@ -1118,6 +1123,52 @@ class ONNXConverter(ModelConverter):
             rescale_config=getattr(self, "rescale_config", {}),
         )
 
+    def _process_input(
+        self,
+        value: np.ndarray | torch.Tensor,
+        input_def: NodeArg,
+    ) -> np.ndarray:
+        value = torch.as_tensor(value)
+        if value.dtype in (
+            torch.int8,
+            torch.int16,
+            torch.int32,
+            torch.int64,
+            torch.uint8,
+        ):
+            value = value.double() / BaseOpQuantizer.get_scaling(
+                scale_base=self.scale_base,
+                scale_exponent=self.scale_exponent,
+            )
+        if input_def.type == "tensor(double)":
+            return np.asarray(value).astype(np.float64)
+        return np.asarray(value)
+
+    def _process_single_input_for_get_outputs(
+        self: ONNXConverter,
+        value: np.ndarray | torch.Tensor,
+        input_def: NodeArg,
+    ) -> np.ndarray:
+        """Process a single input tensor according to dtype and scale settings."""
+        value = torch.as_tensor(value)
+
+        if value.dtype in (
+            torch.int8,
+            torch.int16,
+            torch.int32,
+            torch.int64,
+            torch.uint8,
+        ):
+            value = value.double()
+            value = value / BaseOpQuantizer.get_scaling(
+                scale_base=self.scale_base,
+                scale_exponent=self.scale_exponent,
+            )
+
+        if input_def.type == "tensor(double)":
+            return np.asarray(value).astype(np.float64)
+        return np.asarray(value)
+
     def get_outputs(
         self: ONNXConverter,
         inputs: np.ndarray | torch.Tensor,
@@ -1132,26 +1183,37 @@ class ONNXConverter(ModelConverter):
         """
 
         def _raise_type_error(inputs: np.ndarray | torch.Tensor) -> None:
-            msg = "Expected np.ndarray, torch.Tensor,"
-            f" or dict for inputs, got {type(inputs)}"
+            msg = "Expected np.ndarray, torch.Tensor, or dict "
+            f"for inputs, got {type(inputs)}"
             raise TypeError(msg)
 
         def _raise_value_error(msg: str) -> None:
             raise ValueError(msg)
+
+        def _raise_no_scale_configs() -> None:
+            raise CircuitConfigurationError(
+                missing_attributes="scale_base or scale_exponent",
+            )
+
+        scale_base = getattr(self, "scale_base", None)
+        scale_exponent = getattr(self, "scale_exponent", None)
 
         try:
             input_defs = self.ort_sess.get_inputs()
             output_defs = self.ort_sess.get_outputs()
             output_names = [out.name for out in output_defs]
 
+            if scale_base is None or scale_exponent is None:
+                _raise_no_scale_configs()
+
             # Normalize inputs into a dict
             if isinstance(inputs, (np.ndarray, torch.Tensor)):
-                # Single input case
                 input_name = input_defs[0].name
                 inputs = {input_name: inputs}
             elif not isinstance(inputs, dict):
                 _raise_type_error(inputs)
 
+            # Process inputs
             processed_inputs = {}
             for input_def in input_defs:
                 name = input_def.name
@@ -1159,25 +1221,11 @@ class ONNXConverter(ModelConverter):
                     _raise_value_error(
                         f"Missing required input '{name}' in provided inputs",
                     )
+                processed_inputs[name] = self._process_single_input_for_get_outputs(
+                    inputs[name],
+                    input_def,
+                )
 
-                value = torch.as_tensor(inputs[name])
-
-                if value.dtype in (
-                    torch.int8,
-                    torch.int16,
-                    torch.int32,
-                    torch.int64,
-                    torch.uint8,
-                ):
-                    value = value.double()
-                    value = value / BaseOpQuantizer.get_scaling(
-                        scale_base=self.scale_base,
-                        scale_exponent=self.scale_exponent,
-                    )
-                if input_def.type == "tensor(double)":
-                    processed_inputs[name] = np.asarray(value).astype(np.float64)
-                else:
-                    processed_inputs[name] = np.asarray(value)
             return self.ort_sess.run(output_names, processed_inputs)
 
         except (RuntimeError, ValueError, TypeError, Exception) as e:

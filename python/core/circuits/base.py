@@ -341,7 +341,7 @@ class Circuit:
         # Send back to file
         # object through the process instead
         path = Path(exec_config.input_file)
-        processed_input_file = path.stem + "_veri" + path.suffix
+        processed_input_file = path.parent / (path.stem + "_veri" + path.suffix)
         self._to_json_safely(processed_inputs, processed_input_file, "renamed input")
 
         return processed_input_file
