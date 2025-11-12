@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import onnx
 
-from python.core.model_processing.onnx_quantizer.base import (
+from python.core.model_processing.onnx_quantizer.layers.base import (
     BaseOpQuantizer,
     QuantizerBase,
     ScaleConfig,
