@@ -90,17 +90,17 @@ pub fn matrix_addition<C: Config, Builder: RootAPI<C>>(
     layer_type: LayerKind,
 ) -> Result<ArrayD<Variable>, LayerError> {
     let shape_a = matrix_a.shape().to_vec();
+    let shape_b = matrix_b.shape().to_vec();
 
     // Attempt to reshape if shape differs but total elements match
-    if matrix_b.shape() != shape_a {
+    if shape_b != shape_a {
         if matrix_b.len() == matrix_a.len() {
             matrix_b = matrix_b
-                .clone()
                 .into_shape_with_order(IxDyn(&shape_a))
                 .map_err(|_| LayerError::ShapeMismatch {
                     layer: layer_type.clone(),
                     expected: shape_a.clone(),
-                    got: matrix_b.shape().to_vec(),
+                    got: shape_b,
                     var_name: "matrix_b".to_string(),
                 })?;
         } else {

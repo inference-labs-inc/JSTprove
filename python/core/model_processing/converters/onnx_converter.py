@@ -1123,27 +1123,6 @@ class ONNXConverter(ModelConverter):
             rescale_config=getattr(self, "rescale_config", {}),
         )
 
-    def _process_input(
-        self,
-        value: np.ndarray | torch.Tensor,
-        input_def: NodeArg,
-    ) -> np.ndarray:
-        value = torch.as_tensor(value)
-        if value.dtype in (
-            torch.int8,
-            torch.int16,
-            torch.int32,
-            torch.int64,
-            torch.uint8,
-        ):
-            value = value.double() / BaseOpQuantizer.get_scaling(
-                scale_base=self.scale_base,
-                scale_exponent=self.scale_exponent,
-            )
-        if input_def.type == "tensor(double)":
-            return np.asarray(value).astype(np.float64)
-        return np.asarray(value)
-
     def _process_single_input_for_get_outputs(
         self: ONNXConverter,
         value: np.ndarray | torch.Tensor,

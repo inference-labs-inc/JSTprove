@@ -565,7 +565,7 @@ class Circuit:
                 )
                 new_inputs["input"] = value_adjusted
             else:
-                new_inputs[key] = value_adjusted
+                new_inputs[key] = value
 
         # Special case: fallback mapping output → input
         if "input" not in new_inputs and "output" in new_inputs:
