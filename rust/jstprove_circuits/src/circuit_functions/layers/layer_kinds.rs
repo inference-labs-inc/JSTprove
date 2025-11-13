@@ -10,6 +10,7 @@ use crate::circuit_functions::layers::constant::ConstantLayer;
 use crate::circuit_functions::layers::conv::ConvLayer;
 use crate::circuit_functions::layers::flatten::FlattenLayer;
 use crate::circuit_functions::layers::gemm::GemmLayer;
+use crate::circuit_functions::layers::maxpool::MaxLayer;
 use crate::circuit_functions::layers::maxpool::MaxPoolLayer;
 use crate::circuit_functions::layers::relu::ReluLayer;
 use crate::circuit_functions::layers::reshape::ReshapeLayer;
