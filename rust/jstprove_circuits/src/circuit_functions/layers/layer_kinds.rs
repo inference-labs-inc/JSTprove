@@ -12,6 +12,7 @@ use crate::circuit_functions::layers::flatten::FlattenLayer;
 use crate::circuit_functions::layers::gemm::GemmLayer;
 use crate::circuit_functions::layers::max::MaxLayer;
 use crate::circuit_functions::layers::maxpool::MaxPoolLayer;
+use crate::circuit_functions::layers::min::MinLayer;
 use crate::circuit_functions::layers::relu::ReluLayer;
 use crate::circuit_functions::layers::reshape::ReshapeLayer;
 
@@ -132,6 +133,7 @@ define_layers! {
     Gemm     => { name: "Gemm",     builder: GemmLayer::build },
     MaxPool  => { name: "MaxPool",  builder: MaxPoolLayer::build },
     Max => { name: "Max", builder: MaxLayer::build },
+    Min => { name: "Min", builder: MinLayer::build },
     ReLU     => { name: "ReLU",     builder: ReluLayer::build, aliases: ["Relu"] },
     Reshape  => { name: "Reshape",  builder: ReshapeLayer::build },
 }

@@ -9,6 +9,7 @@ pub mod layer_ops;
 mod math;
 pub mod max;
 pub mod maxpool;
+pub mod min;
 pub mod relu;
 pub mod reshape;
 

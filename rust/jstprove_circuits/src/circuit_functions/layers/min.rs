@@ -1,5 +1,5 @@
-//! Elementwise Max layer over int64 fixed-point tensors, reusing the MaxPool
-//! max-selection gadget to assert that outputs are true maxima.
+//! Elementwise Min layer over int64 fixed-point tensors, reusing the MaxPool
+//! max/min-selection gadget to assert that outputs are true minima.
 
 use std::collections::HashMap;
 
@@ -10,7 +10,7 @@ use ndarray::ArrayD;
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 /// Internal helpers shared with other layers
-use crate::circuit_functions::layers::maxpool::{MaxAssertionContext, constrained_max};
+use crate::circuit_functions::layers::maxpool::{MaxAssertionContext, constrained_min};
 use crate::circuit_functions::utils::onnx_model::get_optional_w_or_b;
 use crate::circuit_functions::utils::tensor_ops::{
     broadcast_two_arrays, load_array_constants_or_get_inputs,
@@ -30,7 +30,7 @@ use crate::circuit_functions::{
 
 #[allow(dead_code)]
 #[derive(Debug)]
-pub struct MaxLayer {
+pub struct MinLayer {
     name: String,
     optimization_pattern: PatternRegistry,
     input_shape: Vec<usize>,
@@ -38,21 +38,21 @@ pub struct MaxLayer {
     outputs: Vec<String>,
     initializer_a: Option<ArrayD<i64>>,
     initializer_b: Option<ArrayD<i64>>,
-    /// s such that range for signed fixed-point values is roughly [-2^s, 2^s - 1]
+    /// s such that the signed fixed-point range is roughly [-2^s, 2^s - 1]
     shift_exponent: usize,
 }
 
 // -------- Implementation --------
 
-impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxLayer {
+impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MinLayer {
     fn apply(
         &self,
         api: &mut Builder,
         input: HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         // 1. Resolve input names (mirrors AddLayer)
-        let a_name = get_input_name(&self.inputs, 0, LayerKind::Max, INPUT)?;
-        let b_name = get_input_name(&self.inputs, 1, LayerKind::Max, INPUT)?;
+        let a_name = get_input_name(&self.inputs, 0, LayerKind::Min, INPUT)?;
+        let b_name = get_input_name(&self.inputs, 1, LayerKind::Min, INPUT)?;
 
         // 2. Load either constants (initializers) or runtime inputs
         let a_input = load_array_constants_or_get_inputs(
@@ -60,7 +60,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxLayer {
             &input,
             a_name,
             &self.initializer_a,
-            LayerKind::Max,
+            LayerKind::Min,
         )?;
 
         let b_input = load_array_constants_or_get_inputs(
@@ -68,32 +68,32 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxLayer {
             &input,
             b_name,
             &self.initializer_b,
-            LayerKind::Max,
+            LayerKind::Min,
         )?;
 
         // 3. Broadcast inputs to a common shape (same helper as AddLayer)
         let (a_bc, b_bc) = broadcast_two_arrays(&a_input, &b_input)?;
 
-        // 4. Prepare max-assertion context (same fixed-point assumptions as MaxPool)
-        let max_ctx =
+        // 4. Prepare shift context (same fixed-point assumptions as MaxPool)
+        let shift_ctx =
             MaxAssertionContext::new(api, self.shift_exponent).map_err(|e| LayerError::Other {
-                layer: LayerKind::Max,
-                msg: format!("MaxAssertionContext::new failed: {e}"),
+                layer: LayerKind::Min,
+                msg: format!("MinLayer: MaxAssertionContext::new failed: {e}"),
             })?;
 
-        // 5. Elementwise max: for each position, z = max(a, b)
+        // 5. Elementwise min: for each position, z = min(a, b)
         //
-        // We reuse `constrained_max` from `maxpool.rs` with a 2-element slice [a, b],
+        // We reuse `constrained_min` from `maxpool.rs` with a 2-element slice [a, b],
         // which:
         //   - shifts both by 2^s,
-        //   - uses `unconstrained_max` to pick the max of shifted values,
+        //   - uses `unconstrained_min` to pick the min of the shifted values,
         //   - shifts back and asserts correctness via range checks and a product = 0 constraint.
         //
         // At this point, `a_bc` and `b_bc` have identical shapes.
         let shape = a_bc.shape().to_vec();
         if a_bc.len() != b_bc.len() {
             return Err(LayerError::InvalidShape {
-                layer: LayerKind::Max,
+                layer: LayerKind::Min,
                 msg: format!(
                     "broadcast_two_arrays returned arrays of different sizes: {:?} vs {:?}",
                     a_bc.shape(),
@@ -106,15 +106,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxLayer {
         let mut out_storage = Vec::with_capacity(a_bc.len());
 
         for (a_val, b_val) in a_bc.iter().zip(b_bc.iter()) {
-            // Constrained pairwise max using existing gadget
-            let max_var = constrained_max(api, &max_ctx, &[*a_val, *b_val])?;
-            out_storage.push(max_var);
+            // Constrained pairwise min using existing gadget
+            let min_var = constrained_min(api, &shift_ctx, &[*a_val, *b_val])?;
+            out_storage.push(min_var);
         }
 
         let result = ArrayD::from_shape_vec(shape.clone(), out_storage).map_err(|_| {
             LayerError::InvalidShape {
-                layer: LayerKind::Max,
-                msg: format!("MaxLayer: cannot reshape result into shape {shape:?}"),
+                layer: LayerKind::Min,
+                msg: format!("MinLayer: cannot reshape result into shape {shape:?}"),
             }
         })?;
 
@@ -132,7 +132,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxLayer {
         // The same helper used by AddLayer to infer expected shapes
         let (_params, expected_shape) = extract_params_and_expected_shape(layer_context, layer)
             .map_err(|e| LayerError::Other {
-                layer: LayerKind::Max,
+                layer: LayerKind::Min,
                 msg: format!("extract_params_and_expected_shape failed: {e}"),
             })?;
 
@@ -146,11 +146,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxLayer {
                 .n_bits
                 .checked_sub(1)
                 .ok_or_else(|| LayerError::Other {
-                    layer: LayerKind::Max,
-                    msg: format!("layer_context.n_bits too small to derive shift_exponent"),
+                    layer: LayerKind::Min,
+                    msg: "layer_context.n_bits too small to derive shift_exponent".to_string(),
                 })?;
 
-        let max_layer = Self {
+        let min_layer = Self {
             name: layer.name.clone(),
             optimization_pattern,
             input_shape: expected_shape.clone(),
@@ -161,6 +161,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxLayer {
             shift_exponent,
         };
 
-        Ok(Box::new(max_layer))
+        Ok(Box::new(min_layer))
     }
 }

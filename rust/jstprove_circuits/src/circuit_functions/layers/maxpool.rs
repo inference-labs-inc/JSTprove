@@ -704,3 +704,191 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
 
     Ok(y.into_dyn())
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: unconstrained_min
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Returns the minimum value in a nonempty slice of field elements (interpreted as integers in `[0, p−1]`),
+/// using only unconstrained witness operations and explicit selection logic.
+///
+/// Internally, this function performs pairwise comparisons using `unconstrained_greater` and `unconstrained_lesser_eq`,
+/// and selects the minimum via weighted sums:
+/// `current_min ← v·(current_min > v) + current_min·(current_min ≤ v)`
+///
+/// # Errors
+/// - If `values` is empty.
+///
+/// # Arguments
+/// - `api`: A mutable reference to the circuit builder implementing `RootAPI<C>`.
+/// - `values`: A slice of `Variable`s, each assumed to lie in the range `[0, p−1]`.
+///
+/// # Returns
+/// A `Variable` encoding `min_i values[i]`, the minimum value in the slice.
+///
+/// # Example
+/// ```ignore
+/// // For values = [7, 2, 9, 5], returns 2.
+/// ```
+pub fn unconstrained_min<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    values: &[Variable],
+) -> Result<Variable, CircuitError> {
+    if values.is_empty() {
+        return Err(LayerError::Other {
+            layer: LayerKind::Min,
+            msg: "unconstrained_min: input slice must be nonempty".to_string(),
+        }
+        .into());
+    }
+
+    // Initialize with the first element
+    let mut current_min = values[0];
+    for &v in &values[1..] {
+        // Compute indicators: is_lesser = 1 if current_min > v, else 0
+        let is_lesser = api.unconstrained_greater(current_min, v);
+        let is_not_lesser = api.unconstrained_lesser_eq(current_min, v);
+
+        // Select either v or current_min based on indicator bits
+        let take_v = api.unconstrained_mul(v, is_lesser);
+        let keep_old = api.unconstrained_mul(current_min, is_not_lesser);
+
+        // Update current_min
+        current_min = api.unconstrained_add(take_v, keep_old);
+        // api.display("value      ", v);
+        // api.display("current_min", current_min);
+    }
+    // api.display("chosen min", current_min);
+
+    Ok(current_min)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: constrained_min
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Asserts that a given slice of `Variable`s contains a minimum value `M`,
+/// by verifying that some `x_i` satisfies `M = min_i x_i`, using a combination of
+/// unconstrained helper functions and explicit constraint assertions,
+/// along with an offset-shifting technique to reduce comparisons to the
+/// nonnegative range `[0, 2^(s + 1) − 1]`.
+///
+/// # Idea
+/// Each `x_i` is a field element (i.e., a `Variable` representing the least nonnegative residue mod `p`)
+/// that is **assumed** to encode a signed integer in the interval `[-S, T − S] = [−2^s, 2^s − 1]`,
+/// where `S = 2^s` and `T = 2·S - 1 = 2^(s + 1) − 1]`.
+///
+/// Since all circuit operations take place in `𝔽_p` and each `x_i` is already reduced modulo `p`,
+/// we shift each value by `S` on-circuit to ensure that the quantity `x_i + S` lands in `[0, T]`.
+/// Under the assumption that `x_i ∈ [−S, T − S]`, this shift does **not** wrap around modulo `p`,
+/// so `x_i + S` in `𝔽_p` reflects the true integer sum.
+///
+/// We then compute:
+/// ```text
+///     M^♯ = min_i (x_i + S)
+///     M   = M^♯ − S mod p
+/// ```
+/// to recover the **least nonnegative residue** of the minimum value, `M`.
+///
+/// To verify that `M` is indeed the minimum:
+/// - For each `x_i`, we compute `Δ_i = x_i - M`, and use bit decomposition to enforce
+///   `Δ_i ∈ [0, T]`, using `s + 1` bits.
+/// - Then we constrain the product `∏_i Δ_i` to be zero. This ensures that at least one
+///   `Δ_i = 0`, i.e., that some `x_i = M`.
+///
+/// # Example
+/// Suppose the input slice encodes the signed integers `[-2, 0, 3]`, and `s = 2`, so `S = 4`, `T = 7`.
+///
+/// - Shift:
+///   `x_0 = -2` ⇒ `x_0 + S = 2`
+///   `x_1 =  0` ⇒ `x_1 + S = 4`
+///   `x_2 =  3` ⇒ `x_2 + S = 7`
+///
+/// - Compute:
+///   `M^♯ = min{x_i + S} = 2`
+///   `M   = M^♯ − S = -2`
+///
+/// - Verify:
+///   For each `x_i`, compute `Δ_i = x_i - M ∈ [0, 7]`
+///   The values are: `Δ = [0, 2, 5]`
+///   Since one `Δ_i = 0`, we conclude that some `x_i = M`.
+///
+/// # Assumptions
+/// - All values `x_i` are `Variable`s in `𝔽_p` that **encode signed integers** in `[-S, T − S]`.
+/// - The prime `p` satisfies `p > T = 2^(s + 1) − 1`, so no wraparound occurs in `x_i + S`.
+///
+/// # Errors
+/// - If `values` is empty.
+/// - If computing `2^s` or `s + 1` overflows a `u32`.
+///
+/// # Type Parameters
+/// - `C`: The circuit field configuration.
+/// - `Builder`: A builder implementing `RootAPI<C>`.
+///
+/// # Arguments
+/// - `api`: Your circuit builder.
+/// - `context`: A `MaxAssertionContext` holding shift-related parameters.
+/// - `values`: A nonempty slice of `Variable`s, each encoding an integer in `[-S, T − S]`.
+pub fn constrained_min<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    context: &MaxAssertionContext, // S = 2^s = context.offset
+    values: &[Variable],
+) -> Result<Variable, CircuitError> {
+    // 0) Require nonempty input
+    if values.is_empty() {
+        return Err(LayerError::Other {
+            layer: LayerKind::Min,
+            msg: "constrained_min: input slice must be nonempty".to_string(),
+        }
+        .into());
+    }
+
+    // 1) Form offset-shifted values: x_i^♯ = x_i + S
+    let mut values_offset = Vec::with_capacity(values.len());
+    for &x in values {
+        values_offset.push(api.add(x, context.offset));
+    }
+
+    // 2) Compute min_i (x_i^♯), which equals M^♯ = M + S
+    let min_offset = unconstrained_min(api, &values_offset)?;
+
+    // 3) Recover M = M^♯ − S
+    let min_raw = api.sub(min_offset, context.offset);
+
+    // 4) For each x_i, range-check Δ_i = x_i - M ∈ [0, T] using s + 1 bits
+    let n_bits =
+        context
+            .shift_exponent
+            .checked_add(1)
+            .ok_or_else(|| LayerError::InvalidParameterValue {
+                layer: LayerKind::Min,
+                layer_name: "MaxAssertionContext".to_string(),
+                param_name: "shift_exponent".to_string(),
+                value: context.shift_exponent.to_string(),
+            })?;
+    let mut prod = api.constant(1);
+
+    for &x in values {
+        let delta = api.sub(x, min_raw);
+
+        // Δ ∈ [0, T] ⇔ ∃ bitstring of length s + 1 summing to Δ
+        let bits = unconstrained_to_bits(api, delta, n_bits).map_err(|e| LayerError::Other {
+            layer: LayerKind::Min,
+            msg: format!("unconstrained_to_bits failed: {e}"),
+        })?;
+        // TO DO: elaborate/make more explicit, e.g. "Range check enforcing Δ >= 0"
+        let recon =
+            assert_is_bitstring_and_reconstruct(api, &bits).map_err(|e| LayerError::Other {
+                layer: LayerKind::Min,
+                msg: format!("assert_is_bitstring_and_reconstruct failed: {e}"),
+            })?;
+        api.assert_is_equal(delta, recon);
+
+        // Multiply all Δ_i together
+        prod = api.mul(prod, delta);
+    }
+
+    // 5) Final check: ∏ Δ_i = 0 ⇔ ∃ x_i such that Δ_i = 0 ⇔ x_i = M
+    api.assert_is_zero(prod);
+    Ok(min_raw)
+}
