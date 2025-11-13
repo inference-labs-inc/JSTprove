@@ -7,10 +7,7 @@ use ndarray::{Array4, ArrayD, Ix4};
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 /// Internal crate imports
-use super::super::utils::core_math::{
-    MaxMinAssertionContext, assert_is_bitstring_and_reconstruct, constrained_max,
-    unconstrained_to_bits,
-};
+use super::super::utils::core_math::{MaxMinAssertionContext, constrained_max};
 use crate::circuit_functions::{
     CircuitError,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
