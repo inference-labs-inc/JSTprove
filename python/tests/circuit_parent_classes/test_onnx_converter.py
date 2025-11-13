@@ -1,9 +1,11 @@
 # test_converter.py
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import onnx
 import onnxruntime as ort
 import pytest
@@ -13,7 +15,7 @@ from onnx import TensorProto, helper
 from python.core.model_processing.converters.onnx_converter import ONNXConverter
 
 
-@pytest.fixture()
+@pytest.fixture
 def temp_model_path(
     tmp_path: Generator[Path, None, None],
 ) -> Generator[Path, Any, None]:
@@ -26,7 +28,7 @@ def temp_model_path(
         model_path.unlink()
 
 
-@pytest.fixture()
+@pytest.fixture
 def temp_quant_model_path(
     tmp_path: Generator[Path, None, None],
 ) -> Generator[Path, Any, None]:
@@ -39,7 +41,7 @@ def temp_quant_model_path(
         model_path.unlink()
 
 
-@pytest.fixture()
+@pytest.fixture
 def converter() -> ONNXConverter:
     conv = ONNXConverter()
     conv.model = MagicMock(name="model")
@@ -47,7 +49,7 @@ def converter() -> ONNXConverter:
     return conv
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.model_processing.converters.onnx_converter.onnx.save")
 def test_save_model(mock_save: MagicMock, converter: ONNXConverter) -> None:
     path = "model.onnx"
@@ -55,7 +57,7 @@ def test_save_model(mock_save: MagicMock, converter: ONNXConverter) -> None:
     mock_save.assert_called_once_with(converter.model, path)
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.model_processing.converters.onnx_converter.onnx.load")
 def test_load_model(mock_load: MagicMock, converter: ONNXConverter) -> None:
     fake_model = MagicMock(name="onnx_model")
@@ -68,7 +70,7 @@ def test_load_model(mock_load: MagicMock, converter: ONNXConverter) -> None:
     assert converter.model == fake_model
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.model_processing.converters.onnx_converter.onnx.save")
 def test_save_quantized_model(mock_save: MagicMock, converter: ONNXConverter) -> None:
     path = "quantized_model.onnx"
@@ -76,7 +78,7 @@ def test_save_quantized_model(mock_save: MagicMock, converter: ONNXConverter) ->
     mock_save.assert_called_once_with(converter.quantized_model, path)
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 @patch("python.core.model_processing.converters.onnx_converter.Path.exists")
 @patch("python.core.model_processing.converters.onnx_converter.SessionOptions")
 @patch("python.core.model_processing.converters.onnx_converter.InferenceSession")
@@ -108,10 +110,12 @@ def test_load_quantized_model(
     assert converter.quantized_model == fake_model
 
 
-@pytest.mark.unit()
+@pytest.mark.unit
 def test_get_outputs_with_mocked_session(converter: ONNXConverter) -> None:
-    dummy_input = [[1.0]]
+    dummy_input = np.array([[1.0]])  # ✅ Use np.ndarray, not list
     dummy_output = [[2.0]]
+    converter.scale_base = 2
+    converter.scale_exponent = 10
 
     mock_sess = MagicMock()
 
@@ -132,7 +136,10 @@ def test_get_outputs_with_mocked_session(converter: ONNXConverter) -> None:
 
     result = converter.get_outputs(dummy_input)
 
-    mock_sess.run.assert_called_once_with(["output"], {"input": dummy_input})
+    # ✅ Expect NumPy array to be passed into ort_sess.run()
+    expected_call_inputs = {"input": np.asarray(dummy_input)}
+    mock_sess.run.assert_called_once_with(["output"], expected_call_inputs)
+
     assert result == dummy_output
 
 
@@ -148,7 +155,7 @@ def create_dummy_model() -> onnx.ModelProto:
     return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
 
 
-@pytest.mark.integration()
+@pytest.mark.integration
 def test_save_and_load_real_model() -> None:
     converter = ONNXConverter()
     model = create_dummy_model()
@@ -181,10 +188,12 @@ def test_save_and_load_real_model() -> None:
         assert converter.model.graph.node[0].op_type == "Identity"
 
 
-@pytest.mark.integration()
+@pytest.mark.integration
 def test_real_inference_from_onnx() -> None:
     converter = ONNXConverter()
     converter.model = create_dummy_model()
+    converter.scale_base = 2
+    converter.scale_exponent = 10
 
     # Save and load into onnxruntime
     with tempfile.NamedTemporaryFile(suffix=".onnx") as tmp:
