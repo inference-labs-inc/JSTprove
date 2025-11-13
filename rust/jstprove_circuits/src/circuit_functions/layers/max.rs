@@ -10,7 +10,7 @@ use ndarray::ArrayD;
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 /// Internal helpers shared with other layers
-use crate::circuit_functions::layers::maxpool::{MaxAssertionContext, constrained_max};
+use crate::circuit_functions::utils::core_math::{MaxMinAssertionContext, constrained_max};
 use crate::circuit_functions::utils::onnx_model::get_optional_w_or_b;
 use crate::circuit_functions::utils::tensor_ops::{
     broadcast_two_arrays, load_array_constants_or_get_inputs,
@@ -75,11 +75,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxLayer {
         let (a_bc, b_bc) = broadcast_two_arrays(&a_input, &b_input)?;
 
         // 4. Prepare max-assertion context (same fixed-point assumptions as MaxPool)
-        let max_ctx =
-            MaxAssertionContext::new(api, self.shift_exponent).map_err(|e| LayerError::Other {
+        let shift_ctx = MaxMinAssertionContext::new(api, self.shift_exponent).map_err(|e| {
+            LayerError::Other {
                 layer: LayerKind::Max,
-                msg: format!("MaxAssertionContext::new failed: {e}"),
-            })?;
+                msg: format!("MaxMinAssertionContext::new failed: {e}"),
+            }
+        })?;
 
         // 5. Elementwise max: for each position, z = max(a, b)
         //
@@ -107,7 +108,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxLayer {
 
         for (a_val, b_val) in a_bc.iter().zip(b_bc.iter()) {
             // Constrained pairwise max using existing gadget
-            let max_var = constrained_max(api, &max_ctx, &[*a_val, *b_val])?;
+            let max_var = constrained_max(api, &shift_ctx, &[*a_val, *b_val])?;
             out_storage.push(max_var);
         }
 
