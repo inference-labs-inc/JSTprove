@@ -341,11 +341,9 @@ def test_multi_input_multi_output_model_e2e(tmp_path: Path) -> None:
     with Path.open(output_path) as f:
         outputs = json.load(f)
 
-    print(outputs)
     output_raw = (
         (torch.as_tensor(x) * 2**18).long() + (torch.as_tensor(w) * 2**18).long()
     ).flatten()
-    print(output_raw)
 
     second_outputs = output_raw.clone().reshape([1, 1, 4, 4])
 
@@ -358,7 +356,6 @@ def test_multi_input_multi_output_model_e2e(tmp_path: Path) -> None:
     ).flatten()
 
     output_raw = torch.cat((output_raw, outputs_2))
-    print(output_raw)
 
     assert torch.allclose(
         torch.as_tensor(outputs["output"]),

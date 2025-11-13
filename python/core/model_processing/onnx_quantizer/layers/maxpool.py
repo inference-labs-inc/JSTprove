@@ -33,7 +33,7 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
 
     def __init__(
         self: MaxpoolQuantizer,
-        new_initializer: dict[str, onnx.TensorProto] | None = None,
+        new_initializer: list[onnx.TensorProto] | None = None,
     ) -> None:
         super().__init__()
         self.accepted_kernel_shapes = [2]

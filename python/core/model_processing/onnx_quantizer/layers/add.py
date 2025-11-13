@@ -22,18 +22,20 @@ class QuantizeAdd(QuantizerBase):
 
 class AddQuantizer(BaseOpQuantizer, QuantizeAdd):
     """
-    Quantizer for ONNX Gemm layers.
+    Quantizer for ONNX Add layers.
 
-    - Replaces standard Gemm with Int64Gemm from the `ai.onnx.contrib`
-        domain and makes relevant additional changes to the graph.
-    - Validates that all required Gemm parameters are present.
+    - Uses standard ONNX Add layer in standard domain, and
+      makes relevant additional changes to the graph.
     """
 
     def __init__(
         self: AddQuantizer,
-        new_initializers: dict[str, onnx.TensorProto] | None = None,
+        new_initializers: list[onnx.TensorProto] | None = None,
     ) -> None:
-        self.new_initializers = new_initializers
+        super().__init__()
+        # Only replace if caller provided something
+        if new_initializers is not None:
+            self.new_initializers = new_initializers
 
     def quantize(
         self: AddQuantizer,

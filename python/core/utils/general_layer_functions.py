@@ -83,10 +83,7 @@ class GeneralLayerFunctions:
             tensor = torch.mul(tensor, self.scale_base**self.scale_exponent)
 
         tensor = tensor.long()
-
-        self.reshape_inputs(tensor)
-
-        return tensor
+        return self.reshape_inputs(tensor)
 
     def reshape_inputs(self: GeneralLayerFunctions, tensor: torch.Tensor) -> None:
         if hasattr(self, "input_shape"):
@@ -99,6 +96,8 @@ class GeneralLayerFunctions:
                 tensor = tensor.reshape(shape)
             except RuntimeError as e:
                 raise ShapeMismatchError(shape, list(tensor.shape)) from e
+
+        return tensor
 
     def get_inputs(
         self: GeneralLayerFunctions,
@@ -197,8 +196,10 @@ class GeneralLayerFunctions:
             torch.Tensor: A tensor of random values in [-1, 1).
         """
         if not isinstance(input_shape, (list, tuple)):
-            msg = f"Invalid input_shape type: {type(input_shape)}."
-            " Expected list or tuple of ints."
+            msg = (
+                f"Invalid input_shape type: {type(input_shape)}."
+                " Expected list or tuple of ints."
+            )
             raise CircuitUtilsError(msg)
         if not all(isinstance(x, int) and x > 0 for x in input_shape):
             raise ShapeMismatchError(
@@ -242,9 +243,11 @@ class GeneralLayerFunctions:
             try:
                 rescaled = torch.div(outputs, self.scale_base**self.scale_exponent)
             except Exception as e:
-                msg = "Failed to rescale outputs using scale_base="
-                f"{getattr(self, 'scale_base', None)} "
-                f"and scale_exponent={getattr(self, 'scale_exponent', None)}: {e}"
+                msg = (
+                    "Failed to rescale outputs using scale_base="
+                    f"{getattr(self, 'scale_base', None)} "
+                    f"and scale_exponent={getattr(self, 'scale_exponent', None)}: {e}"
+                )
                 raise CircuitUtilsError(msg) from e
             return {
                 "output": outputs.long().tolist(),
