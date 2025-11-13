@@ -130,6 +130,7 @@ define_layers! {
     Flatten  => { name: "Flatten",  builder: FlattenLayer::build },
     Gemm     => { name: "Gemm",     builder: GemmLayer::build },
     MaxPool  => { name: "MaxPool",  builder: MaxPoolLayer::build },
+    Max => { name: "Max", builder: MaxLayer::build },
     ReLU     => { name: "ReLU",     builder: ReluLayer::build, aliases: ["Relu"] },
     Reshape  => { name: "Reshape",  builder: ReshapeLayer::build },
 }
