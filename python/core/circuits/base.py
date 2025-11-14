@@ -408,23 +408,26 @@ class Circuit:
 
     def adjust_shape(
         self: Circuit,
-        shape: list[int] | dict[str, int],
-    ) -> list[int]:
+        shape: list[int] | dict[str, list[int]],
+    ) -> list[int] | dict[str, list[int]]:
         """
         Normalize a shape representation into a valid list or dict of positive integers.
 
         Args:
-            shape (list[int] | dict[str, int]):
-                The shape, which can be a list of ints or a dict
-                containing one or more shape lists.
+            shape (list[int] | dict[str, list[int]]):
+                The shape, which can be:
+                a. a list of ints, or
+                b. a dict mapping strings to lists of ints.
+                Each non-positive integer is replaced by 1.
 
         Raises:
             CircuitInputError:
                 If a dict contains invalid shape definitions.
 
         Returns:
-            list[int]:
+            list[int] | dict[str, list[int]]:
                 The adjusted shape(s) where all non-positive values are replaced with 1.
+                For a multi-key dict, returns a dict with normalized lists of ints.
         """
         if isinstance(shape, dict):
             # Handle dict-based shapes
@@ -865,7 +868,7 @@ class Circuit:
             try:
                 out[key] = chunk.reshape(target)
             except Exception as e:
-                raise ShapeMismatchError(target, chunk.shape) from e
+                raise ShapeMismatchError(target, list(chunk.shape)) from e
 
         return out
 
@@ -1092,8 +1095,7 @@ class Circuit:
 
     def scale_inputs_only(self: Circuit, inputs: dict) -> dict:
         """
-        Load input values from a JSON file, scale them according to circuit parameters,
-        without reshaping, and save the scaled inputs to a new file.
+        Scale input values according to circuit parameters without reshaping.
 
         Args:
             inputs (dict): Dictionary of input values to scale.
