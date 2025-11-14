@@ -139,6 +139,7 @@ pub fn assert_is_bitstring_and_reconstruct<C: Config, Builder: RootAPI<C>>(
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: range_check_pow2_unsigned
 // ─────────────────────────────────────────────────────────────────────────────
+
 /// Range-checks that `value` lies in the interval `[0, 2^{n_bits} − 1]`.
 ///
 /// Internally:
@@ -580,4 +581,99 @@ pub fn constrained_min<C: Config, Builder: RootAPI<C>>(
     // 5) Final check: ∏ Δ_i = 0 ⇔ ∃ x_i such that Δ_i = 0 ⇔ x_i = M
     api.assert_is_zero(prod);
     Ok(min_raw)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: unconstrained_clip
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Computes `clip(x; min, max)` at the witness level using only unconstrained
+/// operations and the existing `unconstrained_max` / `unconstrained_min` gadgets.
+///
+/// Semantics (elementwise, assuming `min <= max` in the intended integer semantics):
+/// - If both `lower` and `upper` are present:
+///       y = min(max(x, lower), upper)
+/// - If only `lower` is present:
+///       y = max(x, lower)
+/// - If only `upper` is present:
+///       y = min(x, upper)
+/// - If neither is present:
+///       y = x
+///
+/// All variables are field elements (least nonnegative residues), interpreted
+/// as signed integers in a fixed range consistent with the surrounding circuit.
+pub fn unconstrained_clip<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    x: Variable,
+    lower: Option<Variable>,
+    upper: Option<Variable>,
+) -> Result<Variable, CircuitError> {
+    // Start from x and apply lower / upper bounds as needed.
+    let mut cur = x;
+
+    if let Some(a) = lower {
+        // cur <- max(cur, a)
+        cur = unconstrained_max(api, &[cur, a])?;
+    }
+
+    if let Some(b) = upper {
+        // cur <- min(cur, b)
+        cur = unconstrained_min(api, &[cur, b])?;
+    }
+
+    Ok(cur)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: constrained_clip
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Enforces `c = clip(x; min, max)` using the existing `constrained_max` and
+/// `constrained_min` gadgets under a shared [`MaxMinAssertionContext`].
+///
+/// Assumptions:
+/// - `x`, `min`, and `max` (if present) all encode signed integers in the range
+///   `[-S, T - S] = [-2^s, 2^s - 1]`, where `S = 2^s` is given by
+///   `context.shift_exponent`.
+/// - The field modulus `p` satisfies `p > 2^(s + 1) - 1` to avoid wraparound.
+///
+/// Semantics match ONNX `Clip`:
+/// - If both `lower` and `upper` are present:
+///       c = min(max(x, lower), upper)
+/// - If only `lower` is present:
+///       c = max(x, lower)
+/// - If only `upper` is present:
+///       c = min(x, upper)
+/// - If neither is present:
+///       c = x
+///
+/// Each `constrained_max` / `constrained_min` call:
+/// - Checks the signed range via bit-decomposition and reconstruction.
+/// - Enforces that the result equals one of the inputs.
+/// - Uses a product-of-differences check to guarantee at least one exact match.
+pub fn constrained_clip<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    context: &MaxMinAssertionContext,
+    x: Variable,
+    lower: Option<Variable>,
+    upper: Option<Variable>,
+) -> Result<Variable, CircuitError> {
+    // Degenerate case: no bounds → identity
+    if lower.is_none() && upper.is_none() {
+        return Ok(x);
+    }
+
+    // Apply lower bound via constrained_max when present
+    let mut cur = if let Some(a) = lower {
+        constrained_max(api, context, &[x, a])?
+    } else {
+        x
+    };
+
+    // Apply upper bound via constrained_min when present
+    if let Some(b) = upper {
+        cur = constrained_min(api, context, &[cur, b])?;
+    }
+
+    Ok(cur)
 }

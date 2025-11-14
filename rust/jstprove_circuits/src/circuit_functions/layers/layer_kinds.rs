@@ -6,6 +6,7 @@ use crate::circuit_functions::utils::onnx_model::CircuitParams;
 use crate::circuit_functions::utils::onnx_types::ONNXLayer;
 use crate::circuit_functions::{CircuitError, layers::add::AddLayer};
 
+use crate::circuit_functions::layers::clip::ClipLayer;
 use crate::circuit_functions::layers::constant::ConstantLayer;
 use crate::circuit_functions::layers::conv::ConvLayer;
 use crate::circuit_functions::layers::flatten::FlattenLayer;
@@ -127,6 +128,7 @@ When defining new layers, make sure to activate them by placing the new layer in
 
 define_layers! {
     Add  => { name: "Add",  builder: AddLayer::build },
+    Clip     => { name: "Clip",     builder: ClipLayer::build },
     Constant => { name: "Constant", builder: ConstantLayer::build },
     Conv     => { name: "Conv",     builder: ConvLayer::build },
     Flatten  => { name: "Flatten",  builder: FlattenLayer::build },
