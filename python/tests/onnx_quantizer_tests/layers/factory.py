@@ -135,9 +135,8 @@ class TestLayerFactory:
             for layer, config, spec in cls.get_all_test_cases()
             if tag in spec.tags
         ]
-        logger.info("Found tests %s", result)
-        print(result)
+        logger.debug("Found tests %s", result)
         if not result:
             msg = f"No test cases found for tag: {tag}"
             raise ValueError(msg)
-        return
+        return result

@@ -409,7 +409,7 @@ class Circuit:
     def adjust_shape(
         self: Circuit,
         shape: list[int] | dict[str, int],
-    ) -> list[int] | dict[str, list[int]]:
+    ) -> list[int]:
         """
         Normalize a shape representation into a valid list or dict of positive integers.
 
@@ -423,7 +423,7 @@ class Circuit:
                 If a dict contains invalid shape definitions.
 
         Returns:
-            list[int] | dict[str, list[int]]:
+            list[int]:
                 The adjusted shape(s) where all non-positive values are replaced with 1.
         """
         if isinstance(shape, dict):
@@ -598,8 +598,8 @@ class Circuit:
         """
         new_inputs: dict[str, Any] = {}
         for key, value in inputs.items():
+            value_adjusted = value
             if key in input_variables:
-                value_adjusted = value
                 shape_attr = f"{key}_shape"
                 value_adjusted = self._reshape_input_value(
                     value_adjusted,
@@ -813,9 +813,15 @@ class Circuit:
     def _reshape_dict_inputs(
         self: Circuit,
         inputs: dict[str],
-        shape: list[int] | dict[str, list[int]],
+        shape: dict[str, list[int]],
     ) -> dict[str]:
         """Reshape each item in an input dict based on shape dict."""
+        if not isinstance(shape, dict):
+            msg = (
+                "_reshape_dict_inputs requires dict "
+                f"shape, got {type(shape).__name__}"
+            )
+            raise CircuitInputError(msg, parameter="shape", expected="dict")
         for key, value in inputs.items():
             tensor = asarray(value)
             try:
@@ -827,7 +833,7 @@ class Circuit:
     def _split_flat_input(
         self: Circuit,
         inputs: dict[str],
-        shape: dict[str, list[int]] | dict,
+        shape: dict[str, list[int]],
     ) -> dict:
         """Split a flat input according to a dict of shapes."""
         flat = asarray(inputs).ravel()
@@ -843,7 +849,15 @@ class Circuit:
                     f"Insufficient elements for key '{key}': "
                     f"needed {numel}, available {flat.size - offset}"
                 )
-                raise ShapeMismatchError(msg)
+                raise CircuitProcessingError(
+                    message=msg,
+                    operation="_split_flat_input",
+                    details={
+                        "key": key,
+                        "needed": numel,
+                        "available": flat.size - offset,
+                    },
+                )
 
             chunk = flat[offset : offset + numel]
             offset += numel
@@ -1076,17 +1090,16 @@ class Circuit:
             ) from e
         return out
 
-    def scale_inputs_only(self: Circuit, inputs: dict) -> str:
+    def scale_inputs_only(self: Circuit, inputs: dict) -> dict:
         """
         Load input values from a JSON file, scale them according to circuit parameters,
         without reshaping, and save the scaled inputs to a new file.
 
         Args:
-            inputs (dict):
-                Path to the input JSON file containing the original input values.
+            inputs (dict): Dictionary of input values to scale.
 
         Returns:
-            str: Path to the new file containing the scaled input values.
+            dict: Dictionary of scaled input values.
 
         Raises:
             CircuitFileError: If reading from or writing to JSON files fails.
@@ -1111,11 +1124,10 @@ class Circuit:
         and save the renamed inputs to a new file.
 
         Args:
-            inputs (dict[str, np.ndarray]):
-                original input values.
+            inputs (dict[str, np.ndarray]): Original input values.
 
         Returns:
-            str: Path to the new file containing the renamed input values.
+            dict[str, np.ndarray]: Dictionary of renamed input values.
 
         Raises:
             CircuitFileError: If reading from or writing to JSON files fails.

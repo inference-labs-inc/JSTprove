@@ -40,7 +40,6 @@ class TestScalability:
 
         # Verify all expected layers are present
         unsupported = ONNXOpQuantizer().handlers.keys() - set(configs.keys())
-        print(unsupported)
         assert unsupported == set(), (
             f"The following layers are not being configured for testing: {unsupported}."
             " Please add configuration in tests/onnx_quantizer_tests/layers/"
@@ -49,7 +48,7 @@ class TestScalability:
         # Verify each config has required components
         for layer_type, config in configs.items():
             err_msg = (
-                "Quantization test config is not supported yet for {}"
+                f"Quantization test config is not supported yet for {layer_type}"
                 " and must be implemented"
             )
             assert config.op_type == layer_type, err_msg
