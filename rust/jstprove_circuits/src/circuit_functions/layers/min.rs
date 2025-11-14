@@ -1,4 +1,4 @@
-//! Elementwise Min layer over int64 fixed-point tensors, reusing the MaxPool
+//! Elementwise Min layer over int64 fixed-point tensors, using the
 //! max/min-selection gadget to assert that outputs are true minima.
 
 use std::collections::HashMap;
@@ -74,7 +74,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MinLayer {
         // 3. Broadcast inputs to a common shape (same helper as AddLayer)
         let (a_bc, b_bc) = broadcast_two_arrays(&a_input, &b_input)?;
 
-        // 4. Prepare shift context (same fixed-point assumptions as MaxPool)
+        // 4. Prepare shift context
         let shift_ctx = MaxMinAssertionContext::new(api, self.shift_exponent).map_err(|e| {
             LayerError::Other {
                 layer: LayerKind::Min,
@@ -84,8 +84,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MinLayer {
 
         // 5. Elementwise min: for each position, z = min(a, b)
         //
-        // We reuse `constrained_min` from `maxpool.rs` with a 2-element slice [a, b],
-        // which:
+        // We use `constrained_min` with a 2-element slice [a, b], which:
         //   - shifts both by 2^s,
         //   - uses `unconstrained_min` to pick the min of the shifted values,
         //   - shifts back and asserts correctness via range checks and a product = 0 constraint.
