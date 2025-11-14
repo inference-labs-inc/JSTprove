@@ -72,6 +72,7 @@ class ONNXOpQuantizer:
 
         # Register handlers
         self.register("Add", AddQuantizer(self.new_initializers))
+        self.register("Clip", ClipQuantizer(self.new_initializers))
         self.register("Conv", ConvQuantizer(self.new_initializers))
         self.register("Relu", ReluQuantizer())
         self.register("Reshape", PassthroughQuantizer())
