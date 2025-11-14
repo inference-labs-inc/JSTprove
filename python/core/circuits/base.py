@@ -444,7 +444,7 @@ class Circuit:
 
             return adjusted_shapes
 
-        # ✅ Handle list-based shape input (the missing return case)
+        # Handle list-based shape input (the missing return case)
         if not isinstance(shape, (list, tuple)):
             msg = f"Expected list or dict for 'shape', got {type(shape).__name__}"
             raise CircuitInputError(msg)

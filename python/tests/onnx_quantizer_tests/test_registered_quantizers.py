@@ -17,7 +17,7 @@ def dummy_graph() -> onnx.GraphProto:
     return onnx.GraphProto()
 
 
-def mock_initializer_map(input_names: list[int]) -> dict[str, onnx.NodeProto]:
+def mock_initializer_map(input_names: list[str]) -> dict[str, onnx.NodeProto]:
     rng = np.random.default_rng(TEST_RNG_SEED)
     return {
         name: onnx.helper.make_tensor(

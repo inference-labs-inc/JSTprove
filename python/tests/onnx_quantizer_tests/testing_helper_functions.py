@@ -7,7 +7,7 @@ def get_input_shapes(model: ModelProto) -> dict:
     for inp in model.graph.input:
         shape = []
         for dim in inp.type.tensor_type.shape.dim:
-            if dim.dim_value:
+            if dim.HasField("dim_value"):
                 shape.append(int(dim.dim_value))
             elif dim.dim_param:
                 shape.append(1)  # Default for dynamic dims

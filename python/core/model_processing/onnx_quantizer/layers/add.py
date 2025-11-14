@@ -17,7 +17,7 @@ class QuantizeAdd(QuantizerBase):
     DOMAIN = ""
     USE_WB = True
     USE_SCALING = False
-    SCALE_PLAN: ClassVar = {1: 1}
+    SCALE_PLAN: ClassVar = {0: 1, 1: 1}
 
 
 class AddQuantizer(BaseOpQuantizer, QuantizeAdd):
