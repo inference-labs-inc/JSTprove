@@ -157,7 +157,7 @@ pub fn range_check_pow2_unsigned<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     value: Variable,
     n_bits: usize,
-) -> Result<Vec<Variable>, UtilsError> {
+) -> Result<Vec<Variable>, CircuitError> {
     // 1) Bit-decompose value into n_bits bits
     let bits = unconstrained_to_bits(api, value, n_bits)?;
 
