@@ -45,7 +45,7 @@ use crate::circuit_functions::utils::{
 };
 
 // Internal modules
-use super::core_math::{assert_is_bitstring_and_reconstruct, unconstrained_to_bits};
+use super::core_math::range_check_pow2_unsigned;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STRUCT: RescalingContext
@@ -201,21 +201,15 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
 
     // Step 4: Range-check r ∈ [0, α − 1] using κ bits
     let rem_bits =
-        unconstrained_to_bits(api, remainder, context.scaling_exponent).map_err(|_| {
+        range_check_pow2_unsigned(api, remainder, context.scaling_exponent).map_err(|_| {
+            // We collapse decomposition/reconstruction errors into a single
+            // RescaleError variant here; if you really want to distinguish them,
+            // we can extend the gadget's error type later.
             RescaleError::BitDecompositionError {
                 var_name: "remainder".to_string(),
                 n_bits: context.scaling_exponent,
             }
         })?;
-
-    let rem_recon = assert_is_bitstring_and_reconstruct(api, &rem_bits).map_err(|_| {
-        RescaleError::BitReconstructionError {
-            var_name: "remainder".to_string(),
-            n_bits: context.scaling_exponent,
-        }
-    })?;
-
-    api.assert_is_equal(remainder, rem_recon);
 
     // Step 5: Range-check q^♯ ∈ [0, 2^(s + 1) − 1] using s + 1 bits
     let n_bits_q =
@@ -227,21 +221,12 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
                 type_name: "usize",
             })?;
 
-    let q_bits = unconstrained_to_bits(api, shifted_q, n_bits_q).map_err(|_| {
+    let q_bits = range_check_pow2_unsigned(api, shifted_q, n_bits_q).map_err(|_| {
         RescaleError::BitDecompositionError {
             var_name: "quotient".to_string(),
-            n_bits: context.scaling_exponent,
+            n_bits: n_bits_q,
         }
     })?;
-
-    let q_recon = assert_is_bitstring_and_reconstruct(api, &q_bits).map_err(|_| {
-        RescaleError::BitReconstructionError {
-            var_name: "quotient".to_string(),
-            n_bits: context.scaling_exponent,
-        }
-    })?;
-
-    api.assert_is_equal(shifted_q, q_recon);
 
     // Step 6: Recover quotient q = q^♯ − S
     // let quotient = api.sub(shifted_q, context.shift); // q = q^♯ − S

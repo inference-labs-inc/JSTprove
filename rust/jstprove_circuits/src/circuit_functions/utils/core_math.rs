@@ -137,6 +137,39 @@ pub fn assert_is_bitstring_and_reconstruct<C: Config, Builder: RootAPI<C>>(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: range_check_pow2_unsigned
+// ─────────────────────────────────────────────────────────────────────────────
+/// Range-checks that `value` lies in the interval `[0, 2^{n_bits} − 1]`.
+///
+/// Internally:
+///   1. Computes an unconstrained bit-decomposition of length `n_bits`.
+///   2. Enforces that each bit is 0/1 and reconstructs their sum.
+///   3. Asserts `value == reconstructed_value`.
+///
+/// Returns the bit-decomposition so that callers can reuse the bits
+/// (e.g., for sign extraction), but most callers can ignore it.
+///
+/// This is deliberately a *generic* gadget:
+/// later we can swap out the internal implementation (e.g. lookup-based
+/// range checks) while keeping this signature unchanged.
+pub fn range_check_pow2_unsigned<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    value: Variable,
+    n_bits: usize,
+) -> Result<Vec<Variable>, UtilsError> {
+    // 1) Bit-decompose value into n_bits bits
+    let bits = unconstrained_to_bits(api, value, n_bits)?;
+
+    // 2) Enforce bits are {0,1} and reconstruct
+    let recon = assert_is_bitstring_and_reconstruct(api, &bits)?;
+
+    // 3) Enforce equality value == recon
+    api.assert_is_equal(value, recon);
+
+    Ok(bits)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CONTEXT: MaxMinAssertionContext
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -410,21 +443,11 @@ pub fn constrained_max<C: Config, Builder: RootAPI<C>>(
         let delta = api.sub(max_raw, x);
 
         // Δ ∈ [0, T] ⇔ ∃ bitstring of length s + 1 summing to Δ
-        let bits =
-            crate::circuit_functions::utils::core_math::unconstrained_to_bits(api, delta, n_bits)
-                .map_err(|e| LayerError::Other {
+        let _delta_bits =
+            range_check_pow2_unsigned(api, delta, n_bits).map_err(|e| LayerError::Other {
                 layer: LayerKind::Max,
-                msg: format!("unconstrained_to_bits failed: {e}"),
+                msg: format!("range_check_pow2_unsigned failed: {e}"),
             })?;
-        let recon =
-            crate::circuit_functions::utils::core_math::assert_is_bitstring_and_reconstruct(
-                api, &bits,
-            )
-            .map_err(|e| LayerError::Other {
-                layer: LayerKind::Max,
-                msg: format!("assert_is_bitstring_and_reconstruct failed: {e}"),
-            })?;
-        api.assert_is_equal(delta, recon);
 
         // Multiply all Δ_i together
         prod = api.mul(prod, delta);
@@ -544,21 +567,11 @@ pub fn constrained_min<C: Config, Builder: RootAPI<C>>(
         let delta = api.sub(x, min_raw);
 
         // Δ ∈ [0, T] ⇔ ∃ bitstring of length s + 1 summing to Δ
-        let bits =
-            crate::circuit_functions::utils::core_math::unconstrained_to_bits(api, delta, n_bits)
-                .map_err(|e| LayerError::Other {
+        let _delta_bits =
+            range_check_pow2_unsigned(api, delta, n_bits).map_err(|e| LayerError::Other {
                 layer: LayerKind::Min,
-                msg: format!("unconstrained_to_bits failed: {e}"),
+                msg: format!("range_check_pow2_unsigned failed: {e}"),
             })?;
-        let recon =
-            crate::circuit_functions::utils::core_math::assert_is_bitstring_and_reconstruct(
-                api, &bits,
-            )
-            .map_err(|e| LayerError::Other {
-                layer: LayerKind::Min,
-                msg: format!("assert_is_bitstring_and_reconstruct failed: {e}"),
-            })?;
-        api.assert_is_equal(delta, recon);
 
         // Multiply all Δ_i together
         prod = api.mul(prod, delta);
