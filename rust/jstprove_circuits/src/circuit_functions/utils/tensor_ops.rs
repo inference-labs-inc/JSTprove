@@ -1,5 +1,5 @@
 /// Standard library imports
-use std::ops::Neg;
+use std::{collections::HashMap, hash::BuildHasher, ops::Neg};
 
 /// External crate imports
 use ethnum::U256;
@@ -10,7 +10,11 @@ use serde_json::Value;
 use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
 use gkr_engine::{FieldEngine, GKREngine};
 
-use crate::circuit_functions::utils::{ArrayConversionError, UtilsError};
+use crate::circuit_functions::{
+    CircuitError,
+    layers::{LayerError, LayerKind},
+    utils::{ArrayConversionError, UtilsError},
+};
 
 /// Load in circuit constant given i64, negative values are represented by p-x and positive values are x
 pub fn load_circuit_constant<C: Config, Builder: RootAPI<C>>(
@@ -37,6 +41,43 @@ pub fn load_array_constants<C: Config, Builder: RootAPI<C>>(
             *out_elem = load_circuit_constant(api, val);
         });
     result
+}
+
+/// Load constants or retrieve inputs based on whether an initializer exists.
+/// If the initializers exist, than use that, otherwise look for inputs in graph.
+///
+/// # Arguments
+///
+/// * `api` - The builder used to construct circuit constants and variables.
+/// * `input` - A mapping from input names to input tensors.
+/// * `input_name` - The name of the expected input tensor.
+/// * `initializer` - Optional initializer tensor. If present, constants are loaded and returned.
+/// * `layer_kind` - The type of layer requesting the tensor.
+///
+/// # Returns
+/// Returns the loaded array or the input array associated with `input_name`.
+///
+/// # Errors
+/// Returns a `CircuitError` if the requested input tensor does not exist in `input`.
+pub fn load_array_constants_or_get_inputs<C: Config, Builder: RootAPI<C>, S: BuildHasher>(
+    api: &mut Builder,
+    input: &HashMap<String, ArrayD<Variable>, S>,
+    input_name: &String,
+    initializer: &Option<ArrayD<i64>>,
+    layer_kind: LayerKind,
+) -> Result<ArrayD<Variable>, CircuitError> {
+    let a_input: ArrayD<Variable> = if let Some(init) = initializer {
+        load_array_constants(api, init)
+    } else {
+        input
+            .get(input_name)
+            .ok_or_else(|| LayerError::MissingInput {
+                layer: layer_kind,
+                name: input_name.clone(),
+            })?
+            .clone()
+    };
+    Ok(a_input)
 }
 
 fn flatten_recursive(value: &Value, out: &mut Vec<i64>) -> Result<(), UtilsError> {
@@ -150,4 +191,71 @@ fn convert_val_to_field_element<C: Config>(
     } else {
         CircuitField::<C>::from_u256(U256::from(val.unsigned_abs()))
     }
+}
+
+fn determine_broadcast_shape(a: &[usize], b: &[usize]) -> Result<Vec<usize>, CircuitError> {
+    let rank = a.len().max(b.len());
+    let mut result = vec![0; rank];
+
+    for i in 0..rank {
+        let a_dim = *a.get(a.len() - 1 - i).unwrap_or(&1);
+        let b_dim = *b.get(b.len() - 1 - i).unwrap_or(&1);
+
+        if a_dim == b_dim || a_dim == 1 || b_dim == 1 {
+            result[rank - 1 - i] = usize::max(a_dim, b_dim);
+        } else {
+            return Err(CircuitError::Other(format!(
+                "Cannot broadcast dimension {a_dim} and {b_dim}",
+            )));
+        }
+    }
+
+    Ok(result)
+}
+
+/// Broadcast two arrays using ONNX/NumPy multidirectional broadcasting.
+///
+/// # Errors
+///
+/// Returns a `CircuitError` if broadcasting is not possible.
+/// This happens when the two shapes cannot be matched using multidirectional
+/// broadcasting rules (i.e. neither dimension is equal or 1).
+pub fn broadcast_two_arrays(
+    a: &ArrayD<Variable>,
+    b: &ArrayD<Variable>,
+) -> Result<(ArrayD<Variable>, ArrayD<Variable>), CircuitError> {
+    let a_shape = a.shape();
+    let b_shape = b.shape();
+
+    // Determine output shape using numpy-like broadcasting rules
+    let output_shape = determine_broadcast_shape(a_shape, b_shape)?;
+
+    // Try broadcasting both arrays
+    let a_bc = broadcast_array(a, &output_shape)?;
+    let b_bc = broadcast_array(b, &output_shape)?;
+
+    Ok((a_bc, b_bc))
+}
+
+/// Broadcast a single array into a specified broadcast shape.
+///
+/// # Errors
+///
+/// Returns a `CircuitError` if broadcasting fails.
+/// This occurs when the array cannot expand to the target shape
+/// following multidirectional broadcasting rules.
+pub fn broadcast_array(
+    a: &ArrayD<Variable>,
+    broadcast_shape: &Vec<usize>,
+) -> Result<ArrayD<Variable>, CircuitError> {
+    let a_shape = a.shape();
+    let out = a
+        .broadcast(broadcast_shape.clone())
+        .ok_or_else(|| {
+            CircuitError::Other(format!(
+                "Cannot broadcast A {a_shape:?} to {broadcast_shape:?}",
+            ))
+        })?
+        .to_owned();
+    Ok(out)
 }

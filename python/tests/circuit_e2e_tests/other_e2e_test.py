@@ -1,13 +1,15 @@
+# ruff: noqa: S603
 import json
 import subprocess
 import sys
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
 
 import numpy as np
 import onnx
 import pytest
-from onnx import helper, numpy_helper
+import torch
+from onnx import TensorProto, helper, numpy_helper
 
 
 def create_simple_gemm_onnx_model(
@@ -19,14 +21,14 @@ def create_simple_gemm_onnx_model(
     # Define input
     input_tensor = helper.make_tensor_value_info(
         "input",
-        onnx.TensorProto.FLOAT,
+        TensorProto.FLOAT,
         [1, input_size],
     )
 
     # Define output
     output_tensor = helper.make_tensor_value_info(
         "output",
-        onnx.TensorProto.FLOAT,
+        TensorProto.FLOAT,
         [1, output_size],
     )
 
@@ -67,7 +69,7 @@ def create_simple_gemm_onnx_model(
     onnx.save(model, str(model_path))
 
 
-@pytest.mark.e2e()
+@pytest.mark.e2e
 def test_parallel_compile_and_witness_two_simple_models(  # noqa: PLR0915
     tmp_path: str,
     capsys: Generator[pytest.CaptureFixture[str], None, None],
@@ -115,7 +117,7 @@ def test_parallel_compile_and_witness_two_simple_models(  # noqa: PLR0915
 
     # Run compile commands
     result1 = subprocess.run(
-        compile_cmd1,  # noqa: S603
+        compile_cmd1,
         capture_output=True,
         text=True,
         check=False,
@@ -123,7 +125,7 @@ def test_parallel_compile_and_witness_two_simple_models(  # noqa: PLR0915
     assert result1.returncode == 0, f"Compile failed for model1: {result1.stderr}"
 
     result2 = subprocess.run(
-        compile_cmd2,  # noqa: S603
+        compile_cmd2,
         capture_output=True,
         text=True,
         check=False,
@@ -179,8 +181,8 @@ def test_parallel_compile_and_witness_two_simple_models(  # noqa: PLR0915
     ]
 
     # Start both processes
-    proc1 = subprocess.Popen(witness_cmd1)  # noqa: S603
-    proc2 = subprocess.Popen(witness_cmd2)  # noqa: S603
+    proc1 = subprocess.Popen(witness_cmd1)
+    proc2 = subprocess.Popen(witness_cmd2)
 
     # Wait for both to complete
     proc1.wait()
@@ -215,3 +217,194 @@ def test_parallel_compile_and_witness_two_simple_models(  # noqa: PLR0915
         len(output2["output"]) == model2_output_size
     ), f"Output2 should have {model2_output_size} elements,"
     f" got {len(output2['output'])}"
+
+
+def create_multi_input_multi_output_model(model_path: Path) -> None:
+    """Create a simple ONNX model with two inputs and two outputs."""
+    # Define inputs
+    x = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 1, 4, 4])
+    w = helper.make_tensor_value_info("W", TensorProto.FLOAT, [1, 1, 4, 4])
+
+    # Define outputs
+    y1 = helper.make_tensor_value_info("sum", TensorProto.FLOAT, [1, 1, 4, 4])
+    y2 = helper.make_tensor_value_info("pooled", TensorProto.FLOAT, [1, 1, 2, 2])
+
+    # Node 1: Add
+    add_node = helper.make_node("Add", inputs=["X", "W"], outputs=["sum"])
+
+    # Node 2: MaxPool
+    pool_node = helper.make_node(
+        "MaxPool",
+        inputs=["sum"],
+        outputs=["pooled"],
+        kernel_shape=[2, 2],
+        strides=[2, 2],
+        dilations=[1, 1],
+        pads=[0, 0, 0, 0],
+        ceil_mode=0,
+    )
+
+    # Build the graph
+    graph_def = helper.make_graph(
+        [add_node, pool_node],
+        "TwoOutputGraph",
+        [x, w],
+        [y1, y2],
+    )
+
+    model_def = helper.make_model(graph_def, producer_name="pytest-multi-output-model")
+    onnx.save(model_def, model_path)
+
+
+@pytest.mark.e2e
+def test_multi_input_multi_output_model_e2e(tmp_path: Path) -> None:
+    """
+    E2E test: compile, witness, and verify outputs
+    for a multi-input/multi-output ONNX model.
+    """
+    model_path = tmp_path / "multi_output_no_identity.onnx"
+    circuit_path = tmp_path / "circuit.txt"
+    input_path = tmp_path / "input.json"
+    output_path = tmp_path / "output.json"
+    witness_path = tmp_path / "witness.bin"
+    proof_path = tmp_path / "proof.bin"
+
+    # --- Step 1: Generate model ---
+    create_multi_input_multi_output_model(model_path)
+
+    # --- Step 2: Compile model ---
+    compile_cmd = [
+        sys.executable,
+        "-m",
+        "python.frontend.cli",
+        "compile",
+        "-m",
+        str(model_path),
+        "-c",
+        str(circuit_path),
+    ]
+    result = subprocess.run(compile_cmd, capture_output=True, text=True, check=False)
+    assert (
+        result.returncode == 0
+    ), f"Compile failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+
+    # --- Step 3: Create input JSON ---
+    # Simple constant tensors (shape [1,1,4,4])
+    x = [
+        [
+            [
+                [1.0, 2.0, 3.0, 4.0],
+                [5.0, 6.0, 7.0, 8.0],
+                [9.0, 10.0, 11.0, 12.0],
+                [13.0, 14.0, 15.0, 16.0],
+            ],
+        ],
+    ]
+    w = [
+        [
+            [
+                [0.1, 0.2, 0.3, 0.4],
+                [0.5, 0.6, 0.7, 0.8],
+                [0.9, 1.0, 1.1, 1.2],
+                [1.3, 1.4, 1.5, 1.6],
+            ],
+        ],
+    ]
+
+    with Path.open(input_path, "w") as f:
+        json.dump({"X": x, "W": w}, f)
+
+    # --- Step 4: Run witness ---
+    witness_cmd = [
+        sys.executable,
+        "-m",
+        "python.frontend.cli",
+        "witness",
+        "-c",
+        str(circuit_path),
+        "-i",
+        str(input_path),
+        "-o",
+        str(output_path),
+        "-w",
+        str(witness_path),
+    ]
+    result = subprocess.run(witness_cmd, capture_output=True, text=True, check=False)
+    assert (
+        result.returncode == 0
+    ), f"Witness failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+
+    # --- Step 5: Validate output files ---
+    assert output_path.exists(), "Output file not generated"
+    assert witness_path.exists(), "Witness file not generated"
+
+    with Path.open(output_path) as f:
+        outputs = json.load(f)
+
+    output_raw = (
+        (torch.as_tensor(x) * 2**18).long() + (torch.as_tensor(w) * 2**18).long()
+    ).flatten()
+
+    second_outputs = output_raw.clone().reshape([1, 1, 4, 4])
+
+    outputs_2 = torch.max_pool2d(
+        second_outputs,
+        kernel_size=2,
+        stride=2,
+        dilation=1,
+        padding=0,
+    ).flatten()
+
+    output_raw = torch.cat((output_raw, outputs_2))
+
+    assert torch.allclose(
+        torch.as_tensor(outputs["output"]),
+        output_raw,
+        rtol=1e-3,
+        atol=1e-5,
+    ), "Outputs do not match"
+
+    # --- Step 5: Prove ---
+    prove_cmd = [
+        sys.executable,
+        "-m",
+        "python.frontend.cli",
+        "prove",
+        "-c",
+        str(circuit_path),
+        "-w",
+        str(witness_path),
+        "-p",
+        str(proof_path),
+    ]
+    result = subprocess.run(prove_cmd, check=False, capture_output=True, text=True)
+    assert (
+        result.returncode == 0
+    ), f"Prove failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+
+    # --- Step 6: Verify ---
+    verify_cmd = [
+        sys.executable,
+        "-m",
+        "python.frontend.cli",
+        "verify",
+        "-c",
+        str(circuit_path),
+        "-i",
+        str(input_path),
+        "-o",
+        str(output_path),
+        "-w",
+        str(witness_path),
+        "-p",
+        str(proof_path),
+    ]
+    result = subprocess.run(verify_cmd, check=False, capture_output=True, text=True)
+    assert (
+        result.returncode == 0
+    ), f"Verify failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+
+    # --- Step 7: Validate output ---
+    assert output_path.exists(), "Output JSON not generated"
+    assert witness_path.exists(), "Witness not generated"
+    assert proof_path.exists(), "Proof not generated"

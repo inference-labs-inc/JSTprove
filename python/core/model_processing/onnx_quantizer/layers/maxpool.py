@@ -1,20 +1,28 @@
 from __future__ import annotations
 
-import onnx
-from onnx import helper
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import onnx
 
 from python.core.model_processing.onnx_custom_ops.onnx_helpers import (
-    extract_attributes,
     get_attribute_ints,
 )
 from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
 from python.core.model_processing.onnx_quantizer.layers.base import (
     BaseOpQuantizer,
+    QuantizerBase,
     ScaleConfig,
 )
 
 
-class MaxpoolQuantizer(BaseOpQuantizer):
+class QuantizeMaxpool(QuantizerBase):
+    OP_TYPE = "Int64MaxPool"
+    USE_WB = False
+    USE_SCALING = False
+
+
+class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
     """
     Quantizer for ONNX MaxPool layers.
 
@@ -25,55 +33,26 @@ class MaxpoolQuantizer(BaseOpQuantizer):
 
     def __init__(
         self: MaxpoolQuantizer,
-        new_initializer: dict[str, onnx.TensorProto] | None = None,
+        new_initializer: list[onnx.TensorProto] | None = None,
     ) -> None:
         super().__init__()
         self.accepted_kernel_shapes = [2]
         _ = new_initializer
 
     def quantize(
-        self: BaseOpQuantizer,
+        self: MaxpoolQuantizer,
         node: onnx.NodeProto,
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
     ) -> list[onnx.NodeProto]:
-        """
-        Quantize a node by converting the node to Int64 version
-
-        Args:
-            node (onnx.NodeProto): The node to quantize.
-            rescale (bool): Whether rescaling is enabled
-                (Doesnt have an affect on this op type)
-            graph (onnx.GraphProto): The ONNX graph.
-            scale_exponent (int): Scale exponent.
-            scale_base (int): The base of scaling.
-            initializer_map (dict[str, onnx.TensorProto]):
-                Map of initializer names to tensor data.
-
-        Returns:
-            List[onnx.NodeProto]: A list of ONNX nodes
-                (quantized MaxPool and any auxiliary nodes).
-        """
-        _ = initializer_map, graph
-
-        attrs = extract_attributes(node)
-        attrs["rescale"] = int(scale_config.rescale)
-
-        attr_str = {
-            k: ",".join(map(str, v)) if isinstance(v, list) else str(v)
-            for k, v in attrs.items()
-        }
-        return [
-            helper.make_node(
-                "Int64MaxPool",
-                inputs=node.input,
-                outputs=node.output,
-                name=node.name,
-                domain="ai.onnx.contrib",
-                **attr_str,
-            ),
-        ]
+        return QuantizeMaxpool.quantize(
+            self,
+            node,
+            graph,
+            scale_config,
+            initializer_map,
+        )
 
     def check_supported(
         self: MaxpoolQuantizer,
@@ -95,6 +74,7 @@ class MaxpoolQuantizer(BaseOpQuantizer):
         _ = initializer_map
         self.check_all_params_exist(node)
         self.check_params_size(node)
+        self.check_pool_pads(node)
 
     def check_all_params_exist(self: MaxpoolQuantizer, node: onnx.NodeProto) -> None:
         """Checks all parameters that are needed, do exist
@@ -131,10 +111,40 @@ class MaxpoolQuantizer(BaseOpQuantizer):
             InvalidParamError: If shape requirement is not met.
         """
 
-        kernel_shape = get_attribute_ints(node, "kernel_shape", default="N/A")
+        kernel_shape = get_attribute_ints(node, "kernel_shape", default=[])
         if len(kernel_shape) not in self.accepted_kernel_shapes:
             raise InvalidParamError(
                 node.name,
                 node.op_type,
                 f"Currently only maxpool2d is supported. Found {len(kernel_shape)}D",
             )
+
+    def check_pool_pads(self: MaxpoolQuantizer, node: onnx.NodeProto) -> None:
+        kernel_shape = get_attribute_ints(node, "kernel_shape", default=[])
+        pads = get_attribute_ints(node, "pads", default=None)
+        if pads is None:
+            return
+        num_dims = len(kernel_shape)
+        if len(pads) != num_dims * 2:
+            raise InvalidParamError(
+                node.name,
+                node.op_type,
+                f"Expected {num_dims * 2} pads, got {len(pads)}",
+            )
+
+        for dim in range(num_dims):
+            pad_before = pads[dim]
+            pad_after = pads[dim + num_dims]
+            kernel = kernel_shape[dim]
+            if pad_before >= kernel:
+                raise InvalidParamError(
+                    node.name,
+                    node.op_type,
+                    f"pads[{dim}]={pad_before} >= kernel[{dim}]={kernel}",
+                )
+            if pad_after >= kernel:
+                raise InvalidParamError(
+                    node.name,
+                    node.op_type,
+                    f"pads[{dim + num_dims}]={pad_after} >= kernel[{dim}]={kernel}",
+                )

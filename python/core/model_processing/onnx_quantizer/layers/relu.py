@@ -1,14 +1,24 @@
 from __future__ import annotations
 
-import onnx
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from onnx import GraphProto, NodeProto, TensorProto
 
 from python.core.model_processing.onnx_quantizer.layers.base import (
     BaseOpQuantizer,
+    QuantizerBase,
     ScaleConfig,
 )
 
 
-class ReluQuantizer(BaseOpQuantizer):
+class QuantizeRelu(QuantizerBase):
+    OP_TYPE = "Int64Relu"
+    USE_WB = False
+    USE_SCALING = False
+
+
+class ReluQuantizer(BaseOpQuantizer, QuantizeRelu):
     """
     Quantizer for ONNX ReLU layers.
 
@@ -19,49 +29,24 @@ class ReluQuantizer(BaseOpQuantizer):
 
     def __init__(
         self: ReluQuantizer,
-        new_initializer: dict[str, onnx.TensorProto] | None = None,
+        new_initializer: list[TensorProto] | None = None,
     ) -> None:
         super().__init__()
         _ = new_initializer
 
     def quantize(
         self: ReluQuantizer,
-        node: onnx.NodeProto,
-        graph: onnx.GraphProto,
+        node: NodeProto,
+        graph: GraphProto,
         scale_config: ScaleConfig,
-        initializer_map: dict[str, onnx.TensorProto],
-    ) -> list[onnx.NodeProto]:
-        """
-        Quantize a node by converting the node to Int64 version
-
-        Args:
-            node (onnx.NodeProto): The node to quantize.
-            rescale (bool): Whether rescaling is enabled
-                (Doesnt have an affect on this op type)
-            graph (onnx.GraphProto): The ONNX graph.
-            scale_exponent (int): Scale exponent.
-            scale_base (int): The base of scaling.
-            initializer_map (dict[str, onnx.TensorProto]):
-                Map of initializer names to tensor data.
-
-        Returns:
-            List[onnx.NodeProto]: The quantized ONNX node.
-        """
-        _ = graph, scale_config, initializer_map
-        return [
-            onnx.helper.make_node(
-                "Int64Relu",
-                inputs=node.input,
-                outputs=node.output,  # preserve original output name
-                name=node.name,
-                domain="ai.onnx.contrib",
-            ),
-        ]
+        initializer_map: dict[str, TensorProto],
+    ) -> list[NodeProto]:
+        return QuantizeRelu.quantize(self, node, graph, scale_config, initializer_map)
 
     def check_supported(
         self: ReluQuantizer,
-        node: onnx.NodeProto,
-        initializer_map: dict[str, onnx.TensorProto] | None = None,
+        node: NodeProto,
+        initializer_map: dict[str, TensorProto] | None = None,
     ) -> None:
         """
         Perform high-level validation to ensure that this node

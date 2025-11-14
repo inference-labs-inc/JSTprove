@@ -119,7 +119,7 @@ jobs:
       - name: Run E2E Tests
         run: |
           mkdir -p report
-          uv run pytest --e2e --model net_model --source onnx --html=report/e2e_tests.html
+          uv run pytest --e2e --model lenet --source onnx --html=report/e2e_tests.html
 
       - name: Upload test report
         uses: actions/upload-artifact@v4

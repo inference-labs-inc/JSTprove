@@ -78,7 +78,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
             &out_shape,
             &pool_params,
         )?;
-
         Ok((self.outputs.clone(), output))
     }
 
@@ -177,7 +176,10 @@ pub fn unconstrained_max<C: Config, Builder: RootAPI<C>>(
 
         // Update current_max
         current_max = api.unconstrained_add(take_v, keep_old);
+        // api.display("value      ", v);
+        // api.display("current_max", current_max);
     }
+    // api.display("chosen max", current_max);
 
     Ok(current_max)
 }

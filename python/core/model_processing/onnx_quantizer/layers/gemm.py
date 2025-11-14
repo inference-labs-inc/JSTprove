@@ -1,18 +1,27 @@
 from __future__ import annotations
 
-import numpy as np
-import onnx
-from onnx import numpy_helper
+from typing import TYPE_CHECKING, ClassVar
 
-from python.core.model_processing.onnx_custom_ops.onnx_helpers import extract_attributes
+if TYPE_CHECKING:
+    import onnx
+
 from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
 from python.core.model_processing.onnx_quantizer.layers.base import (
     BaseOpQuantizer,
+    QuantizerBase,
     ScaleConfig,
 )
 
 
-class GemmQuantizer(BaseOpQuantizer):
+class QuantizeGemm(QuantizerBase):
+    OP_TYPE = "Int64Gemm"
+    USE_WB = True
+    USE_SCALING = True
+    DEFAULT_ATTRS: ClassVar = {"transA": 0, "transB": 0}
+    SCALE_PLAN: ClassVar = {1: 1, 2: 2}
+
+
+class GemmQuantizer(BaseOpQuantizer, QuantizeGemm):
     """
     Quantizer for ONNX Gemm layers.
 
@@ -23,9 +32,12 @@ class GemmQuantizer(BaseOpQuantizer):
 
     def __init__(
         self: GemmQuantizer,
-        new_initializers: dict[str, onnx.TensorProto],
+        new_initializers: list[onnx.TensorProto] | None = None,
     ) -> None:
-        self.new_initializers = new_initializers
+        super().__init__()
+        # Only replace if caller provided something
+        if new_initializers is not None:
+            self.new_initializers = new_initializers
 
     def quantize(
         self: GemmQuantizer,
@@ -34,65 +46,7 @@ class GemmQuantizer(BaseOpQuantizer):
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
     ) -> list[onnx.NodeProto]:
-        """
-        Quantize a Gemm node by:
-        1. Quantizing its weights and bias.
-        2. Adding a scale constant.
-        3. Replacing it with an Int64Gemm node.
-
-        Args:
-            node (onnx.NodeProto): The node to quantize.
-            rescale (bool): Whether rescaling is enabled
-            graph (onnx.GraphProto): The ONNX graph.
-            scale_exponent (int): Scale exponent.
-            scale_base (int): The base of scaling.
-            initializer_map (dict[str, onnx.TensorProto]):
-                Map of initializer names to tensor data.
-
-        Returns:
-            List[onnx.NodeProto]: A list of ONNX nodes
-                (quantized and any auxiliary nodes).
-        """
-        _ = graph
-        nodes = []
-        output_name = f"{node.name}_int"
-
-        nodes, new_inputs = self.add_nodes_w_and_b(
-            node=node,
-            scale_exponent=scale_config.exponent,
-            scale_base=scale_config.base,
-            initializer_map=initializer_map,
-        )
-        node.input[:] = new_inputs
-
-        attrs = extract_attributes(node)
-        attrs.setdefault("transA", 0)
-        attrs.setdefault("transB", 0)
-        attrs["rescale"] = int(scale_config.rescale)
-
-        scale_value = self.get_scaling(
-            scale_config.base,
-            scale_config.exponent,
-        )
-
-        # === Create scale constant ===
-        scale_const_name = f"{output_name}_scaler"
-        scale_tensor = numpy_helper.from_array(
-            np.array([scale_value], dtype=np.int64),
-            name=scale_const_name,
-        )
-        self.new_initializers.append(scale_tensor)
-        node.input.append(scale_const_name)
-        int64_gemm = onnx.helper.make_node(
-            "Int64Gemm",
-            inputs=node.input,
-            outputs=node.output,  # preserve original output name
-            name=output_name,
-            domain="ai.onnx.contrib",
-            **attrs,
-        )
-        nodes.append(int64_gemm)
-        return nodes
+        return QuantizeGemm.quantize(self, node, graph, scale_config, initializer_map)
 
     def check_supported(
         self: GemmQuantizer,

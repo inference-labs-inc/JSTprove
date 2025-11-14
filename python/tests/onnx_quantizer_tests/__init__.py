@@ -1,0 +1,1 @@
+TEST_RNG_SEED = 2

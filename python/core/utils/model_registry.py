@@ -147,7 +147,8 @@ def get_models_to_test(
 
     Args:
         selected_models (list[str], optional):
-            A list of model names to include. Defaults to None.
+            A list of model names to include. If None, returns empty list.
+            If provided but no matches found, returns empty list. Defaults to None.
         source_filter (str, optional):
             Restrict models to a specific source (e.g., "onnx", "class").
             Defaults to None.
@@ -155,10 +156,12 @@ def get_models_to_test(
     Returns:
         list[ModelEntry]: A filtered list of model entries.
     """
+    if selected_models is None:
+        return []
+
     models = MODELS_TO_TEST
 
-    if selected_models is not None:
-        models = [m for m in models if m.name in selected_models]
+    models = [m for m in models if m.name in selected_models]
 
     if source_filter is not None:
         models = [m for m in models if m.source == source_filter]

@@ -75,5 +75,5 @@ def int64_maxpool(
         )
         return result.numpy().astype(np.int64)
     except Exception as e:
-        msg = f"Int64Gemm failed: {e}"
+        msg = f"Int64MaxPool failed: {e}"
         raise RuntimeError(msg) from e
