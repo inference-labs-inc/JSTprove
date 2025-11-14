@@ -200,7 +200,7 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
     api.assert_is_equal(shifted_dividend, rhs);
 
     // Step 4: Range-check r ∈ [0, α − 1] using κ bits
-    let rem_bits =
+    let _rem_bits =
         range_check_pow2_unsigned(api, remainder, context.scaling_exponent).map_err(|_| {
             // We collapse decomposition/reconstruction errors into a single
             // RescaleError variant here; if you really want to distinguish them,
