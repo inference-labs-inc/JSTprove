@@ -46,32 +46,31 @@ class ClipConfigProvider(BaseLayerConfigProvider):
 
         return [
             # --- VALID TESTS ---
-            valid_test("basic_scalar_bounds")
-            .description("Clip with scalar min/max dynamic inputs.")
-            .override_input_shapes(A=[1, 3, 4, 4], min=[], max=[])
-            .tags("basic", "elementwise", "clip")
-            .build(),
+            # Scalar bounds supplied as *inputs* (min/max are separate scalar inputs).
             valid_test("broadcast_bounds")
             .description(
-                "Clip with scalar bounds; broadcasting is via scalars over all elements "
-                "(keeps parity with Max/Min 'broadcast' tests, but obeys ORT's scalar constraint)."
+                "Clip with scalar bounds supplied as inputs; scalars broadcast over A."
             )
             .override_input_shapes(A=[1, 3, 2, 4], min=[], max=[])
             .override_output_shapes(clip_output=[1, 3, 2, 4])
             .tags("broadcast", "elementwise", "clip", "onnxruntime")
             .build(),
+            # Scalar bounds supplied as *initializers* (min/max are 0-D tensors).
             valid_test("initializer_bounds")
             .description(
                 "Clip where min/max are scalar initializers instead of dynamic inputs."
             )
-            .override_input_shapes(A=[1, 3, 4, 4])
+            .override_input_shapes(A=[1, 3, 4, 4])  # only A is a real input
             # Scalar numpy values → ONNX initializers with shape ()
             .override_initializer(
-                "min", np.array(rng.uniform(-1.0, 0.0), dtype=np.float64)
+                "min",
+                np.array(rng.uniform(-1.0, 0.0), dtype=np.float64),
             )
             .override_initializer(
-                "max", np.array(rng.uniform(0.0, 2.0), dtype=np.float64)
+                "max",
+                np.array(rng.uniform(0.0, 2.0), dtype=np.float64),
             )
+            .override_output_shapes(clip_output=[1, 3, 4, 4])
             .tags("initializer", "elementwise", "clip", "onnxruntime")
             .build(),
             # --- E2E TESTS ---
