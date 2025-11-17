@@ -7,7 +7,7 @@ use ndarray::{Array4, ArrayD, Ix4};
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 /// Internal crate imports
-use super::super::utils::core_math::{MaxMinAssertionContext, constrained_max};
+use super::super::utils::core_math::{ShiftRangeContext, constrained_max};
 use crate::circuit_functions::{
     CircuitError,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
@@ -417,7 +417,7 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
             msg: "Expected 4D input for maxpooling".to_string(),
         })?;
 
-    let context = MaxMinAssertionContext::new(api, shift_exponent)?;
+    let context = ShiftRangeContext::new(api, shift_exponent)?;
 
     for n in 0..batch {
         for c in 0..channels {

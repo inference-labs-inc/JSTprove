@@ -21,7 +21,7 @@ use ndarray::ArrayD;
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 /// Internal helpers and utilities
-use crate::circuit_functions::utils::core_math::{MaxMinAssertionContext, constrained_clip};
+use crate::circuit_functions::utils::core_math::{ShiftRangeContext, constrained_clip};
 use crate::circuit_functions::utils::onnx_model::get_optional_w_or_b;
 use crate::circuit_functions::utils::tensor_ops::{
     broadcast_two_arrays, load_array_constants_or_get_inputs,
@@ -174,12 +174,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
         let total_len = x_bc.len();
 
         // 4. Prepare Max/Min assertion context (same signed-range assumptions as Max/Min/MaxPool).
-        let ctx = MaxMinAssertionContext::new(api, self.shift_exponent).map_err(|e| {
-            LayerError::Other {
+        let ctx =
+            ShiftRangeContext::new(api, self.shift_exponent).map_err(|e| LayerError::Other {
                 layer: LayerKind::Clip,
-                msg: format!("MaxMinAssertionContext::new failed: {e}"),
-            }
-        })?;
+                msg: format!("ShiftRangeContext::new failed: {e}"),
+            })?;
 
         // 5. Elementwise clip using constrained_clip
         let mut out_storage = Vec::with_capacity(total_len);

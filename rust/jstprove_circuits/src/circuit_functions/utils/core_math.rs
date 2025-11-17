@@ -171,7 +171,7 @@ pub fn range_check_pow2_unsigned<C: Config, Builder: RootAPI<C>>(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CONTEXT: MaxMinAssertionContext
+// CONTEXT: ShiftRangeContext
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Context for applying `constrained_max` / `constrained_min` with a fixed
@@ -181,7 +181,7 @@ pub fn range_check_pow2_unsigned<C: Config, Builder: RootAPI<C>>(
 ///   - MaxPool (windowed max over tensors),
 ///   - MaxLayer (elementwise max),
 ///   - MinLayer (elementwise min).
-pub struct MaxMinAssertionContext {
+pub struct ShiftRangeContext {
     /// The exponent `s` such that `S = 2^s`.
     pub shift_exponent: usize,
 
@@ -189,7 +189,7 @@ pub struct MaxMinAssertionContext {
     pub offset: Variable,
 }
 
-impl MaxMinAssertionContext {
+impl ShiftRangeContext {
     /// Creates a new context for asserting maximums/minimums, given a
     /// `shift_exponent = s`.
     ///
@@ -213,7 +213,7 @@ impl MaxMinAssertionContext {
             )
             .ok_or_else(|| LayerError::InvalidParameterValue {
                 layer: LayerKind::MaxPool,
-                layer_name: "MaxMinAssertionContext".to_string(),
+                layer_name: "ShiftRangeContext".to_string(),
                 param_name: "shift_exponent".to_string(),
                 value: shift_exponent.to_string(),
             })?;
@@ -399,11 +399,11 @@ pub fn unconstrained_min<C: Config, Builder: RootAPI<C>>(
 ///
 /// # Arguments
 /// - `api`: Your circuit builder.
-/// - `context`: A `MaxMinAssertionContext` holding shift-related parameters.
+/// - `context`: A `ShiftRangeContext` holding shift-related parameters.
 /// - `values`: A nonempty slice of `Variable`s, each encoding an integer in `[-S, T − S]`.
 pub fn constrained_max<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    context: &MaxMinAssertionContext, // S = 2^s = context.offset
+    context: &ShiftRangeContext, // S = 2^s = context.offset
     values: &[Variable],
 ) -> Result<Variable, CircuitError> {
     // 0) Require nonempty input
@@ -434,7 +434,7 @@ pub fn constrained_max<C: Config, Builder: RootAPI<C>>(
             .checked_add(1)
             .ok_or_else(|| LayerError::InvalidParameterValue {
                 layer: LayerKind::Max,
-                layer_name: "MaxMinAssertionContext".to_string(),
+                layer_name: "ShiftRangeContext".to_string(),
                 param_name: "shift_exponent".to_string(),
                 value: context.shift_exponent.to_string(),
             })?;
@@ -523,11 +523,11 @@ pub fn constrained_max<C: Config, Builder: RootAPI<C>>(
 ///
 /// # Arguments
 /// - `api`: Your circuit builder.
-/// - `context`: A `MaxMinAssertionContext` holding shift-related parameters.
+/// - `context`: A `ShiftRangeContext` holding shift-related parameters.
 /// - `values`: A nonempty slice of `Variable`s, each encoding an integer in `[-S, T − S]`.
 pub fn constrained_min<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    context: &MaxMinAssertionContext, // S = 2^s = context.offset
+    context: &ShiftRangeContext, // S = 2^s = context.offset
     values: &[Variable],
 ) -> Result<Variable, CircuitError> {
     // 0) Require nonempty input
@@ -558,7 +558,7 @@ pub fn constrained_min<C: Config, Builder: RootAPI<C>>(
             .checked_add(1)
             .ok_or_else(|| LayerError::InvalidParameterValue {
                 layer: LayerKind::Min,
-                layer_name: "MaxMinAssertionContext".to_string(),
+                layer_name: "ShiftRangeContext".to_string(),
                 param_name: "shift_exponent".to_string(),
                 value: context.shift_exponent.to_string(),
             })?;
@@ -629,7 +629,7 @@ pub fn unconstrained_clip<C: Config, Builder: RootAPI<C>>(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Enforces `c = clip(x; min, max)` using the existing `constrained_max` and
-/// `constrained_min` gadgets under a shared [`MaxMinAssertionContext`].
+/// `constrained_min` gadgets under a shared [`ShiftRangeContext`].
 ///
 /// Assumptions:
 /// - `x`, `min`, and `max` (if present) all encode signed integers in the range
@@ -653,7 +653,7 @@ pub fn unconstrained_clip<C: Config, Builder: RootAPI<C>>(
 /// - Uses a product-of-differences check to guarantee at least one exact match.
 pub fn constrained_clip<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    context: &MaxMinAssertionContext,
+    context: &ShiftRangeContext,
     x: Variable,
     lower: Option<Variable>,
     upper: Option<Variable>,
