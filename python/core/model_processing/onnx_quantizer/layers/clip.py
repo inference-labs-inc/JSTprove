@@ -1,6 +1,6 @@
-# python/core/model_processing/onnx_quantizer/layers/clip.py
 from __future__ import annotations
-from typing import TYPE_CHECKING
+
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     import onnx
@@ -13,20 +13,55 @@ from python.core.model_processing.onnx_quantizer.layers.base import (
 
 
 class QuantizeClip(QuantizerBase):
+    """
+    Quantization traits for ONNX Clip.
+
+    Semantics:
+    - X is already scaled/cast to INT64 at the graph boundary by the converter.
+    - Clip is elementwise + broadcasting.
+    - The bound inputs (min, max) should live in the *same* fixed-point scale
+      as X so that Clip(α·x; α·a, α·b) matches the original Clip(x; a, b).
+
+    Implementation:
+    - Treat inputs 1 and 2 (min, max) like "WB-style" slots: we let the
+      QuantizerBase machinery rescale / cast those inputs using the same
+      global scale factor.
+    - No extra internal scaling input is added (USE_SCALING = False).
+    """
+
     OP_TYPE = "Clip"
     DOMAIN = ""  # standard ONNX domain
-    USE_WB = False  # no W/B slots here
-    USE_SCALING = False  # no internal scaling plan
+
+    # We DO want WB-style handling so that min/max initializers get quantized:
+    USE_WB = True
+
+    # Clip does not introduce its own scale input; it just runs in the
+    # existing fixed-point scale.
+    USE_SCALING = False
+
+    # Scale-plan for WB-style slots:
+    #   - Input index 1: min
+    #   - Input index 2: max
+    # Each should be scaled once by the global α (same as activations).
+    SCALE_PLAN: ClassVar = {1: 1, 2: 1}
 
 
 class ClipQuantizer(BaseOpQuantizer, QuantizeClip):
-    """Passthrough quantizer for ONNX Clip."""
+    """
+    Quantizer for ONNX Clip.
+
+    - Keeps the node op_type as "Clip".
+    - Ensures that any bound inputs (min, max), whether they are dynamic
+      inputs or initializers, are converted to the same INT64 fixed-point
+      representation as A.
+    """
 
     def __init__(
         self,
         new_initializers: dict[str, "onnx.TensorProto"] | None = None,
     ) -> None:
-        # Same pattern as Max/Min/Add: just store the shared list/dict ref
+        # Match Max/Min/Add: we simply share the new_initializers dict
+        # with the converter so any constants we add are collected.
         self.new_initializers = new_initializers
 
     def quantize(
@@ -36,7 +71,10 @@ class ClipQuantizer(BaseOpQuantizer, QuantizeClip):
         scale_config: ScaleConfig,
         initializer_map: dict[str, "onnx.TensorProto"],
     ) -> list["onnx.NodeProto"]:
-        # Delegate to the shared QuantizerBase logic (passthrough)
+        # Delegate to the shared QuantizerBase logic, which will:
+        # - keep X as-is (already scaled/cast by the converter),
+        # - rescale / cast min/max according to SCALE_PLAN,
+        # - update initializers as needed.
         return QuantizeClip.quantize(self, node, graph, scale_config, initializer_map)
 
     def check_supported(
@@ -44,6 +82,12 @@ class ClipQuantizer(BaseOpQuantizer, QuantizeClip):
         node: "onnx.NodeProto",
         initializer_map: dict[str, "onnx.TensorProto"] | None = None,
     ) -> None:
-        # For now, accept any Clip node and defer detailed semantics to ORT
+        """
+        Minimal support check for Clip:
+
+        - Clip is variadic elementwise with optional min/max as inputs or attrs.
+        - We accept both forms; if attrs are present, ORT enforces semantics.
+        - Broadcasting is ONNX-standard; we don't restrict further here.
+        """
         _ = node, initializer_map
         return
