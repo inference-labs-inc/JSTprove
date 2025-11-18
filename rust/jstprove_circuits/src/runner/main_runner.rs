@@ -5,8 +5,8 @@ use io_reader::IOReader;
 // use expander_compiler::frontend::{extra::debug_eval, internal::DumpLoadTwoVariables, *};
 // use expander_compiler::utils::serde::Serde;
 use expander_compiler::frontend::{
-    ChallengeField, CompileOptions, Config, Define, EmptyHintCaller, Variable, WitnessSolver,
-    compile, extra::debug_eval, internal::DumpLoadTwoVariables,
+    ChallengeField, CircuitField, CompileOptions, Config, Define, Variable, WitnessSolver, compile,
+    extra::debug_eval, internal::DumpLoadTwoVariables,
 };
 use gkr_engine::{FieldEngine, GKREngine, MPIConfig};
 use peakmem_alloc::{INSTRUMENTED_SYSTEM, PeakMemAlloc, PeakMemAllocTrait};
@@ -20,6 +20,8 @@ use std::path::{Path, PathBuf};
 use crate::io::io_reader;
 use crate::runner::errors::{CliError, RunError};
 use expander_binary::executor;
+
+use crate::hints::build_logup_hint_registry;
 
 // use crate::io::io_reader;
 
@@ -282,7 +284,12 @@ where
 
     let mut circuit = CircuitType::default();
     configure_if_possible::<CircuitType>(&mut circuit);
-    debug_eval(&circuit, &assignment, EmptyHintCaller);
+
+    // Build a LogUp-aware hint registry for this circuit field
+    let logup_hints = build_logup_hint_registry::<CircuitField<C>>();
+
+    // Run debug evaluation using the LogUp hint registry instead of EmptyHintCaller
+    debug_eval(&circuit, &assignment, logup_hints);
 
     let witness = witness_solver
         .solve_witnesses(&assignments)
