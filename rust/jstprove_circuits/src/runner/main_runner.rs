@@ -177,8 +177,11 @@ where
     // let start = Instant::now();
 
     let assignments = vec![assignment; 1];
+    // Build the LogUp hint registry for this circuit field type
+    let logup_hints = build_logup_hint_registry::<CircuitField<C>>();
+
     let witness = witness_solver
-        .solve_witnesses(&assignments)
+        .solve_witnesses_with_hints(&assignments, &logup_hints)
         .map_err(|e| RunError::Witness(format!("{e:?}")))?;
     // #### Sanity check, can be removed in prod ####
     let output = layered_circuit.run(&witness);
@@ -285,15 +288,17 @@ where
     let mut circuit = CircuitType::default();
     configure_if_possible::<CircuitType>(&mut circuit);
 
-    // Build a LogUp-aware hint registry for this circuit field
+    // Build LogUp registry once
     let logup_hints = build_logup_hint_registry::<CircuitField<C>>();
 
-    // Run debug evaluation using the LogUp hint registry instead of EmptyHintCaller
-    debug_eval(&circuit, &assignment, logup_hints);
+    // Use it for the frontend debug evaluation
+    debug_eval(&circuit, &assignment, logup_hints.clone());
 
+    // And for the witness solver
     let witness = witness_solver
-        .solve_witnesses(&assignments)
+        .solve_witnesses_with_hints(&assignments, &logup_hints)
         .map_err(|e| RunError::Witness(format!("{e:?}")))?;
+
     let output = layered_circuit.run(&witness);
     for x in &output {
         if !(*x) {
