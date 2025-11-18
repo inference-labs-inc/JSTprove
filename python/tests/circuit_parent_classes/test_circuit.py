@@ -1,9 +1,13 @@
+import re
 import sys
 from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
+
+from python.core.utils.errors import ShapeMismatchError
 
 sys.modules.pop("python.core.circuits.base", None)
 
@@ -30,6 +34,7 @@ with (
         CircuitInputError,
         CircuitProcessingError,
         CircuitRunError,
+        WitnessMatchError,
     )
 
 
@@ -969,3 +974,519 @@ def test_get_inputs_from_file_processing_error() -> None:
             match="Failed to scale input data",
         ):
             c.get_inputs_from_file("dummy.json", is_scaled=False)
+
+
+# ---------- Test _raise_unknown_run_type ----------
+@pytest.mark.unit
+def test_raise_unknown_run_type() -> None:
+    c = Circuit()
+
+    with pytest.raises(CircuitRunError, match="Unsupported run type: INVALID_TYPE"):
+        c._raise_unknown_run_type("INVALID_TYPE")
+
+
+# ---------- Test contains_float ----------
+@pytest.mark.unit
+def test_contains_float_with_float() -> None:
+    c = Circuit()
+    assert c.contains_float(3.14) is True
+    assert c.contains_float(2.0) is True
+    assert c.contains_float(1.5) is True
+
+
+@pytest.mark.unit
+def test_contains_float_with_int() -> None:
+    c = Circuit()
+    assert c.contains_float(1) is False
+    assert c.contains_float(0) is False
+    assert c.contains_float(-5) is False
+
+
+@pytest.mark.unit
+def test_contains_float_with_list() -> None:
+    c = Circuit()
+    assert c.contains_float([1, 2, 3]) is False
+    assert c.contains_float([1.0, 2, 3]) is True
+    assert c.contains_float([1, 2.5, 3]) is True
+    assert c.contains_float([]) is False
+
+
+@pytest.mark.unit
+def test_contains_float_with_dict() -> None:
+    c = Circuit()
+    assert c.contains_float({"a": 1, "b": 2}) is False
+    assert c.contains_float({"a": 1.0, "b": 2}) is True
+    assert c.contains_float({"a": 1, "b": 2.5}) is True
+    assert c.contains_float({}) is False
+
+
+@pytest.mark.unit
+def test_contains_float_nested_structures() -> None:
+    c = Circuit()
+    nested_with_float = {"a": [1, 2.0, 3], "b": {"c": 4.5}}
+    nested_without_float = {"a": [1, 2, 3], "b": {"c": 4}}
+
+    assert c.contains_float(nested_with_float) is True
+    assert c.contains_float(nested_without_float) is False
+
+
+# ---------- Test adjust_shape ----------
+@pytest.mark.unit
+def test_adjust_shape_list() -> None:
+    c = Circuit()
+    assert c.adjust_shape([1, 2, 3]) == [1, 2, 3]
+    assert c.adjust_shape([0, -1, 5]) == [1, 1, 5]
+    assert c.adjust_shape([-5, 0, 3]) == [1, 1, 3]
+
+
+@pytest.mark.unit
+def test_adjust_shape_dict_single_value() -> None:
+    c = Circuit()
+    result = c.adjust_shape({"key": [2, 3, 4]})
+    assert result == [2, 3, 4]
+    assert result == [2, 3, 4]
+
+
+@pytest.mark.unit
+def test_adjust_shape_dict_multiple_values() -> None:
+    c = Circuit()
+    input_dict = {"input": [2, 3, 4], "weight": [1, -1, 5], "bias": [0, 0, 3]}
+    expected = {"input": [2, 3, 4], "weight": [1, 1, 5], "bias": [1, 1, 3]}
+    assert c.adjust_shape(input_dict) == expected
+
+
+@pytest.mark.unit
+def test_adjust_shape_invalid_type() -> None:
+    c = Circuit()
+    with pytest.raises(CircuitInputError, match="Expected list or dict for 'shape'"):
+        c.adjust_shape("invalid")
+
+
+@pytest.mark.unit
+def test_adjust_shape_dict_invalid_value() -> None:
+    c = Circuit()
+    with pytest.raises(
+        CircuitInputError,
+        match="Expected shape list for input, got str",
+    ):
+        c.adjust_shape({"bad": "not_a_list"})
+
+
+# ---------- Test scale_and_round ----------
+@pytest.mark.unit
+def test_scale_and_round_with_floats() -> None:
+    c = Circuit()
+    c.scale_base = 2
+    c.scale_exponent = 2
+
+    with patch(
+        "python.core.model_processing.onnx_quantizer.layers.base.BaseOpQuantizer.get_scaling",
+        return_value=4.0,
+    ):
+        result = c.scale_and_round([1.5, 2.5], 2, 2)
+        assert result == [6, 10]  # rounded(1.5 * 4) = 6, rounded(2.5 * 4) = 10
+
+
+@pytest.mark.unit
+def test_scale_and_round_with_ints() -> None:
+    c = Circuit()
+    c.scale_base = 2
+    c.scale_exponent = 2
+
+    with patch(
+        "python.core.model_processing.onnx_quantizer.layers.base.BaseOpQuantizer.get_scaling",
+        return_value=4.0,
+    ):
+        result = c.scale_and_round([1, 2, 3], 2, 2)
+        assert result == [1, 2, 3]  # No change for integers
+
+
+@pytest.mark.unit
+def test_scale_and_round_with_tensors() -> None:
+    c = Circuit()
+    c.scale_base = 2
+    c.scale_exponent = 2
+
+    with patch(
+        "python.core.model_processing.onnx_quantizer.layers.base.BaseOpQuantizer.get_scaling",
+        return_value=4.0,
+    ):
+
+        tensor_input = [1.5, 2.5]
+        result = c.scale_and_round(tensor_input, 2, 2)
+        assert result == [6, 10]
+
+
+# ---------- Test _to_json_safely and _read_from_json_safely ----------
+@pytest.mark.unit
+@patch("python.core.circuits.base.to_json")
+def test_to_json_safely_success(mock_to_json: MagicMock) -> None:
+    c = Circuit()
+    c._to_json_safely({"key": "value"}, "file.json", "test var")
+    mock_to_json.assert_called_once_with({"key": "value"}, "file.json")
+
+
+@pytest.mark.unit
+@patch("python.core.circuits.base.to_json", side_effect=Exception("Write failed"))
+def test_to_json_safely_failure(mock_to_json: MagicMock) -> None:
+    c = Circuit()
+    with pytest.raises(
+        CircuitFileError,
+        match=re.escape("Failed to write test var file: file.json"),
+    ):
+        c._to_json_safely({"key": "value"}, "file.json", "test var")
+
+
+@pytest.mark.unit
+@patch("python.core.circuits.base.read_from_json", return_value={"key": "value"})
+def test_read_from_json_safely_success(mock_read: MagicMock) -> None:
+    c = Circuit()
+    result = c._read_from_json_safely("file.json")
+    mock_read.assert_called_once_with("file.json")
+    assert result == {"key": "value"}
+
+
+@pytest.mark.unit
+@patch("python.core.circuits.base.read_from_json", side_effect=Exception("Read failed"))
+def test_read_from_json_safely_failure(mock_read: MagicMock) -> None:
+    c = Circuit()
+    with pytest.raises(
+        CircuitFileError,
+        match=re.escape("Failed to read input file: file.json"),
+    ):
+        c._read_from_json_safely("file.json")
+
+
+# ---------- Test _adjust_single_input ----------
+@pytest.mark.unit
+def test_adjust_single_input_success() -> None:
+    c = Circuit()
+    c.input_shape = [2, 2]
+    c.scale_base = 2
+    c.scale_exponent = 1
+    five = 5
+
+    inputs = {"input": [1, 2, 3, 4], "extra": 5}
+    result = c._adjust_single_input(inputs)
+
+    assert "input" in result
+    assert "extra" in result
+    assert result["extra"] == five
+
+
+# ---------- Test _adjust_multiple_inputs ----------
+@pytest.mark.unit
+def test_adjust_multiple_inputs_success() -> None:
+    c = Circuit()
+    c.x_shape = [2]
+    c.y_shape = [2]
+    c.scale_base = 2
+    c.scale_exponent = 1
+    five = 5
+
+    inputs = {"x": [1, 2], "y": [3, 4], "z": 5}
+    input_variables = ["x", "y"]
+    result = c._adjust_multiple_inputs(inputs, input_variables)
+
+    assert "x" in result
+    assert "y" in result
+    assert "z" in result
+    assert result["z"] == five
+
+
+# ---------- Test _reshape_input_value ----------
+@pytest.mark.unit
+def test_reshape_input_value_success() -> None:
+    c = Circuit()
+    c.input_shape = [2, 2]
+
+    result = c._reshape_input_value([1, 2, 3, 4], "input_shape", "input")
+    assert result == [[1, 2], [3, 4]]
+
+
+@pytest.mark.unit
+def test_reshape_input_value_missing_shape_attr() -> None:
+    c = Circuit()
+
+    with pytest.raises(
+        CircuitConfigurationError,
+        match="Required shape attribute 'missing_shape'",
+    ):
+        c._reshape_input_value([1, 2, 3, 4], "missing_shape", "input")
+
+
+@pytest.mark.unit
+def test_reshape_input_value_invalid_shape() -> None:
+    c = Circuit()
+    c.input_shape = [2, 3]  # 6 elements needed
+
+    with pytest.raises(CircuitProcessingError, match="Failed to reshape input data"):
+        c._reshape_input_value([1, 2, 3, 4], "input_shape", "input")
+
+
+# ---------- Test scale_inputs_only ----------
+@pytest.mark.unit
+def test_scale_inputs_only_success() -> None:
+    c = Circuit()
+    c.scale_base = 2
+    c.scale_exponent = 1
+
+    inputs = {"x": [1, 2], "y": [3, 4]}
+    with patch.object(
+        c,
+        "scale_and_round",
+        side_effect=lambda v, _sb, _se: [v[0] * 2, v[1] * 2],
+    ):
+        result = c.scale_inputs_only(inputs)
+        assert result == {"x": [2, 4], "y": [6, 8]}
+
+
+# ---------- Test rename_inputs ----------
+@pytest.mark.unit
+def test_rename_inputs_single_input() -> None:
+    c = Circuit()
+    c.input_variables = ["input"]
+
+    inputs = {"input_data": [1, 2, 3], "extra": 4}
+    result = c.rename_inputs(inputs)
+
+    assert result == {"input": [1, 2, 3], "extra": 4}
+
+
+@pytest.mark.unit
+def test_rename_inputs_multiple_inputs() -> None:
+    c = Circuit()
+    c.input_variables = ["x", "y"]
+
+    inputs = {"x": [1, 2], "y": [3, 4], "z": 5}
+    result = c.rename_inputs(inputs)
+
+    assert result == inputs  # Should remain unchanged
+
+
+# ---------- Test _rename_single_input ----------
+@pytest.mark.unit
+def test_rename_single_input_success() -> None:
+    c = Circuit()
+    inputs = {"input_vec": [1, 2, 3], "extra": 4}
+    result = c._rename_single_input(inputs)
+
+    assert result == {"input": [1, 2, 3], "extra": 4}
+
+
+@pytest.mark.unit
+def test_rename_single_input_multiple_keys_error() -> None:
+    c = Circuit()
+    inputs = {"input1": [1, 2], "input2": [3, 4]}
+
+    with pytest.raises(
+        CircuitInputError,
+        match="Multiple inputs found containing 'input'",
+    ):
+        c._rename_single_input(inputs)
+
+
+# ---------- Test reshape_inputs_for_inference ----------
+@pytest.mark.unit
+def test_reshape_inputs_for_inference_single_input() -> None:
+    c = Circuit()
+    c.input_shape = [2, 2]
+
+    inputs = {"data": [1, 2, 3, 4]}
+    result = c.reshape_inputs_for_inference(inputs)
+
+    expected = np.array([[1, 2], [3, 4]])
+    np.testing.assert_array_equal(result, expected)
+
+
+@pytest.mark.unit
+def test_reshape_inputs_for_inference_dict_shapes() -> None:
+
+    c = Circuit()
+    c.input_shape = {"x": [2], "y": [2]}
+
+    inputs = {"x": [1, 2], "y": [3, 4]}
+    result = c.reshape_inputs_for_inference(inputs)
+
+    _ = {"x": np.array([1, 2]), "y": np.array([3, 4])}
+    assert list(result.keys()) == ["x", "y"]
+
+
+@pytest.mark.unit
+def test_reshape_inputs_for_inference_missing_shape() -> None:
+    c = Circuit()
+    inputs = {"data": [1, 2, 3, 4]}
+
+    with pytest.raises(CircuitConfigurationError, match="input_shape"):
+        c.reshape_inputs_for_inference(inputs)
+
+
+@pytest.mark.unit
+def test_reshape_inputs_for_inference_shape_mismatch() -> None:
+    c = Circuit()
+    c.input_shape = [2, 3]  # Needs 6 elements
+
+    inputs = {"data": [1, 2, 3, 4]}  # Only 4 elements
+
+    with pytest.raises(ShapeMismatchError):
+        c.reshape_inputs_for_inference(inputs)
+
+
+# ---------- Test _reshape_dict_inputs ----------
+@pytest.mark.unit
+def test_reshape_dict_inputs_success() -> None:
+    c = Circuit()
+    shape_dict = {"x": [2], "y": [2, 1]}
+
+    inputs = {"x": [1, 2], "y": [3, 4]}
+    result = c._reshape_dict_inputs(inputs, shape_dict)
+
+    np.testing.assert_array_equal(result["x"], np.array([1, 2]))
+    np.testing.assert_array_equal(result["y"], np.array([[3], [4]]))
+
+
+@pytest.mark.unit
+def test_reshape_dict_inputs_non_dict_shape() -> None:
+    c = Circuit()
+    shape_list = [2, 2]
+
+    with pytest.raises(
+        CircuitInputError,
+        match="_reshape_dict_inputs requires dict shape",
+    ):
+        c._reshape_dict_inputs({"x": [1, 2]}, shape_list)
+
+
+@pytest.mark.unit
+def test_reshape_dict_inputs_shape_mismatch() -> None:
+    c = Circuit()
+    shape_dict = {"x": [2, 2]}  # Needs 4 elements
+
+    inputs = {"x": [1, 2]}  # Only 2 elements
+
+    with pytest.raises(ShapeMismatchError):
+        c._reshape_dict_inputs(inputs, shape_dict)
+
+
+# ---------- Test reshape_inputs_for_circuit ----------
+@pytest.mark.unit
+def test_reshape_inputs_for_circuit_success() -> None:
+    c = Circuit()
+    inputs = {"x": [1, 2], "y": [3, 4]}
+
+    result = c.reshape_inputs_for_circuit(inputs)
+
+    assert result == {"input": [1, 2, 3, 4]}
+
+
+@pytest.mark.unit
+def test_reshape_inputs_for_circuit_with_input_shapes() -> None:
+    c = Circuit()
+    c.input_shapes = {"y": [2], "x": [2]}  # Ordered differently
+
+    inputs = {"x": [1, 2], "y": [3, 4]}
+
+    result = c.reshape_inputs_for_circuit(inputs)
+
+    assert result == {"input": [3, 4, 1, 2]}  # Respects order from input_shapes
+
+
+@pytest.mark.unit
+def test_reshape_inputs_for_circuit_invalid_type() -> None:
+    c = Circuit()
+
+    with pytest.raises(CircuitConfigurationError, match="Expected a dict, got list"):
+        c.reshape_inputs_for_circuit([1, 2, 3, 4])
+
+
+@pytest.mark.unit
+def test_reshape_inputs_for_circuit_missing_key() -> None:
+    c = Circuit()
+    c.input_shapes = {"x": [2], "y": [2]}
+
+    inputs = {"x": [1, 2]}  # Missing "y"
+
+    with pytest.raises(CircuitProcessingError, match="Missing expected input key 'y'"):
+        c.reshape_inputs_for_circuit(inputs)
+
+
+@pytest.mark.unit
+def test_reshape_inputs_for_circuit_unsupported_type() -> None:
+    c = Circuit()
+
+    inputs = {"x": "invalid_type"}
+
+    with pytest.raises(
+        CircuitProcessingError,
+        match="Unsupported input type for key 'x'",
+    ):
+        c.reshape_inputs_for_circuit(inputs)
+
+
+# ---------- Test load_and_compare_witness_to_io ----------
+@pytest.mark.unit
+@patch("python.core.circuits.base.load_witness")
+@patch("python.core.circuits.base.compare_witness_to_io")
+def test_load_and_compare_witness_to_io_success(
+    mock_compare: MagicMock,
+    mock_load: MagicMock,
+) -> None:
+    c = Circuit()
+    c._read_from_json_safely = MagicMock
+    mock_load.return_value = {"modulus": 10, "public_inputs": [1, 2, 3]}
+    mock_compare.return_value = True
+
+    _ = c.load_and_compare_witness_to_io(
+        "witness.bin",
+        "inputs.json",
+        "outputs.json",
+        ZKProofSystems.Expander,
+    )
+
+    mock_load.assert_called_once_with("witness.bin", ZKProofSystems.Expander)
+    mock_compare.assert_called_once()
+
+
+@pytest.mark.unit
+@patch("python.core.circuits.base.load_witness")
+def test_load_and_compare_witness_to_io_missing_modulus(mock_load: MagicMock) -> None:
+    c = Circuit()
+    c._read_from_json_safely = MagicMock
+    mock_load.return_value = {"public_inputs": [1, 2, 3]}  # No modulus
+
+    with pytest.raises(
+        WitnessMatchError,
+        match=r"Witness not correctly formed\. Missing modulus\.",
+    ):
+        c.load_and_compare_witness_to_io(
+            "witness.bin",
+            "inputs.json",
+            "outputs.json",
+            ZKProofSystems.Expander,
+        )
+
+
+# ---------- Test prepare_inputs_for_verification ----------
+@pytest.mark.unit
+def test_prepare_inputs_for_verification_success(tmp_path: Path) -> None:
+    c = Circuit()
+    c._read_from_json_safely = MagicMock(return_value={"input": [1, 2, 3, 4]})
+    c.reshape_inputs_for_circuit = MagicMock(return_value={"input": [1, 2, 3, 4]})
+    c._to_json_safely = MagicMock()
+
+    input_file = tmp_path / "input.json"
+    exec_config = MagicMock()
+    exec_config.input_file = str(input_file)
+
+    result = c.prepare_inputs_for_verification(exec_config)
+
+    expected_file = str(tmp_path / "input_veri.json")
+    assert result == expected_file
+
+    c._read_from_json_safely.assert_called_once_with(str(input_file))
+    c.reshape_inputs_for_circuit.assert_called_once_with({"input": [1, 2, 3, 4]})
+    c._to_json_safely.assert_called_once_with(
+        {"input": [1, 2, 3, 4]},
+        expected_file,
+        "renamed input",
+    )

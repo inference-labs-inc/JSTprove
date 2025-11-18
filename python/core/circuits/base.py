@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from numpy import asarray, ndarray, prod
+from numpy import asarray, ndarray
 
 from python.core.utils.errors import ShapeMismatchError
 from python.core.utils.witness_utils import compare_witness_to_io, load_witness
@@ -338,7 +338,6 @@ class Circuit:
         # reshape inputs for circuit reading (or for verification check in this case)
         processed_inputs = self.reshape_inputs_for_circuit(inputs)
         # Send back to file
-        # object through the process instead
         path = Path(exec_config.input_file)
         processed_input_file = str(path.parent / (path.stem + "_veri" + path.suffix))
         self._to_json_safely(processed_inputs, processed_input_file, "renamed input")
@@ -433,6 +432,9 @@ class Circuit:
             # Handle dict-based shapes
             if len(shape.values()) == 1:
                 shape = next(iter(shape.values()))
+                if not isinstance(shape, (list, tuple)):
+                    msg = f"Expected shape list for input, got {type(shape).__name__}"
+                    raise CircuitInputError(msg)
                 return [s if s > 0 else 1 for s in shape]
 
             adjusted_shapes = {}
@@ -789,7 +791,7 @@ class Circuit:
         """
 
         if not hasattr(self, "input_shape"):
-            raise CircuitConfigurationError(missing_attributes="input_shape")
+            raise CircuitConfigurationError(missing_attributes=["input_shape"])
 
         shape = self.input_shape
         if hasattr(self, "adjust_shape") and callable(self.adjust_shape):
@@ -802,10 +804,6 @@ class Circuit:
                 inputs = asarray(inputs[only_key])
             else:
                 return self._reshape_dict_inputs(inputs, shape)
-
-        # --- Case: shape is a dict but inputs is flat ---
-        if isinstance(shape, dict):
-            return self._split_flat_input(inputs, shape)
 
         # --- Regular reshape ---
         try:
@@ -830,47 +828,8 @@ class Circuit:
             try:
                 inputs[key] = tensor.reshape(shape[key])
             except Exception as e:
-                raise ShapeMismatchError(shape, list(tensor.shape)) from e
+                raise ShapeMismatchError(shape[key], list(tensor.shape)) from e
         return inputs
-
-    def _split_flat_input(
-        self: Circuit,
-        inputs: dict[str],
-        shape: dict[str, list[int]],
-    ) -> dict:
-        """Split a flat input according to a dict of shapes."""
-        flat = asarray(inputs).ravel()
-        out = {}
-        offset = 0
-
-        for key, target_shape in shape.items():
-            target = list(target_shape)
-            numel = prod(target)
-
-            if offset + numel > flat.size:
-                msg = (
-                    f"Insufficient elements for key '{key}': "
-                    f"needed {numel}, available {flat.size - offset}"
-                )
-                raise CircuitProcessingError(
-                    message=msg,
-                    operation="_split_flat_input",
-                    details={
-                        "key": key,
-                        "needed": numel,
-                        "available": flat.size - offset,
-                    },
-                )
-
-            chunk = flat[offset : offset + numel]
-            offset += numel
-
-            try:
-                out[key] = chunk.reshape(target)
-            except Exception as e:
-                raise ShapeMismatchError(target, list(chunk.shape)) from e
-
-        return out
 
     def reshape_inputs_for_circuit(
         self: Circuit,
