@@ -284,7 +284,6 @@ where
     let assignment = CircuitDefaultType::default();
     let assignment = io_reader.read_inputs(input_path, assignment)?;
     let assignment = io_reader.read_outputs(output_path, assignment)?;
-    let assignments = vec![assignment.clone(); 1];
 
     let mut circuit = CircuitType::default();
     configure_if_possible::<CircuitType>(&mut circuit);
