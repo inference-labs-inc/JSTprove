@@ -7,7 +7,6 @@ edition = "2024"
 ark-std.workspace = true
 rand.workspace = true
 chrono.workspace = true
-circuit-std-rs.workspace = true
 clap.workspace = true
 ethnum.workspace = true
 halo2curves.workspace = true
@@ -36,7 +35,6 @@ thiserror.workspace = true
 strum.workspace = true
 strum_macros.workspace = true
 once_cell.workspace = true
-
 
 [dev-dependencies]
 rayon = "1.9"
