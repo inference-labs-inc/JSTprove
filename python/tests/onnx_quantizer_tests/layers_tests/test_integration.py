@@ -177,15 +177,13 @@ class TestIntegration(BaseQuantizerTest):
         ratio = np.mean(quantized_output / (original_output + 1e-12))
         print(f"Mean output ratio (quantized/original): {ratio:.4f}")
 
-        tol = max(1e-3, 0.1 * np.abs(original_output).max())
-
         # Compare outputs (quantized output should be close to original if rescale=True)
         # Allow some tolerance due to quantization
         np.testing.assert_allclose(
             original_output,
             quantized_output,
-            rtol=1,  # Relative tolerance
-            atol=tol,  # Absolute tolerance
+            rtol=0.05,  # Relative tolerance
+            atol=0.05,  # Absolute tolerance
             err_msg=f"Quantization accuracy failed for {layer_name}.{test_spec.name}",
         )
 
