@@ -63,8 +63,10 @@ class TestIntegration(BaseQuantizerTest):
                 scale_base=scale_base,
                 initializer_map=initializer_map,
             )
-            assert result is not None, f"Quantization failed for {node.op_type}"
-            f" in combination {layer_combination}"
+            assert result is not None, (
+                f"Quantization failed for {node.op_type}"
+                f" in combination {layer_combination}"
+            )
 
     def skip_by_layer_name(
         self,
