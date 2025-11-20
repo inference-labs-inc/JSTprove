@@ -5,6 +5,10 @@ import logging
 from dataclasses import asdict, dataclass
 from importlib.metadata import version as get_version
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from onnxruntime import NodeArg
 
 import numpy as np
 import onnx
@@ -18,6 +22,7 @@ from onnxruntime_extensions import get_library_path
 
 import python.core.model_processing.onnx_custom_ops  # noqa: F401
 from python.core import PACKAGE_NAME
+from python.core.circuits.errors import CircuitConfigurationError
 from python.core.model_processing.converters.base import ModelConverter, ModelType
 from python.core.model_processing.errors import (
     InferenceError,
@@ -508,9 +513,9 @@ class ONNXConverter(ModelConverter):
                 opts,
                 providers=["CPUExecutionProvider"],
             )
-        except (OSError, onnx.ONNXException, RuntimeError, Exception) as e:
+        except (OSError, RuntimeError, Exception) as e:
             raise InferenceError(
-                model_path,
+                model_path=model_path,
                 model_type=self.model_type,
                 reason=str(e),
             ) from e
@@ -877,8 +882,10 @@ class ONNXConverter(ModelConverter):
             OSError,
             Exception,
         ) as e:
-            msg = "Quantization failed for model"
-            f" '{getattr(self, 'model_file_name', 'unknown')}': {e!s}"
+            msg = (
+                "Quantization failed for model"
+                f" '{getattr(self, 'model_file_name', 'unknown')}': {e!s}"
+            )
             raise ModelConversionError(
                 msg,
                 model_type=self.model_type,
@@ -1118,45 +1125,92 @@ class ONNXConverter(ModelConverter):
             rescale_config=getattr(self, "rescale_config", {}),
         )
 
+    def _process_single_input_for_get_outputs(
+        self: ONNXConverter,
+        value: np.ndarray | torch.Tensor,
+        input_def: NodeArg,
+    ) -> np.ndarray:
+        """Process a single input tensor according to dtype and scale settings."""
+        value = torch.as_tensor(value)
+
+        if value.dtype in (
+            torch.int8,
+            torch.int16,
+            torch.int32,
+            torch.int64,
+            torch.uint8,
+        ):
+            value = value.double()
+            value = value / BaseOpQuantizer.get_scaling(
+                scale_base=self.scale_base,
+                scale_exponent=self.scale_exponent,
+            )
+
+        if input_def.type == "tensor(double)":
+            return np.asarray(value).astype(np.float64)
+        return np.asarray(value)
+
     def get_outputs(
         self: ONNXConverter,
-        inputs: np.ndarray | torch.Tensor,
+        inputs: np.ndarray | torch.Tensor | dict[str, np.ndarray | torch.Tensor],
     ) -> list[np.ndarray]:
         """Run the currently loaded (quantized) model via ONNX Runtime.
 
         Args:
-            inputs (Any): Input array/tensor matching the models first input.
+            inputs: Single tensor/array or a dict of named inputs.
 
         Returns:
-            Any: The output of the onnxruntime inference.
+            list[np.ndarray]: List of output arrays from ONNX Runtime inference.
         """
-        try:
-            input_name = self.ort_sess.get_inputs()[0].name
-            output_name = self.ort_sess.get_outputs()[0].name
 
-            # TODO @jsgold-1: This may cause some rounding errors at some point but works for now. # noqa: FIX002, E501, TD003
-            inputs = torch.as_tensor(inputs)
-            if inputs.dtype in (
-                torch.int8,
-                torch.int16,
-                torch.int32,
-                torch.int64,
-                torch.uint8,
-            ):
-                inputs = inputs.double()
-                inputs = inputs / BaseOpQuantizer.get_scaling(
-                    scale_base=self.scale_base,
-                    scale_exponent=self.scale_exponent,
-                )
-            if self.ort_sess.get_inputs()[0].type == "tensor(double)":
-                return self.ort_sess.run(
-                    [output_name],
-                    {input_name: np.asarray(inputs).astype(np.float64)},
-                )
-            return self.ort_sess.run(
-                [output_name],
-                {input_name: np.asarray(inputs)},
+        def _raise_type_error(inputs: np.ndarray | torch.Tensor) -> None:
+            msg = (
+                "Expected np.ndarray, torch.Tensor, or dict "
+                f"for inputs, got {type(inputs)}"
             )
+            raise TypeError(msg)
+
+        def _raise_value_error(msg: str) -> None:
+            raise ValueError(msg)
+
+        def _raise_no_scale_configs() -> None:
+            raise CircuitConfigurationError(
+                missing_attributes=["scale_base", "scale_exponent"],
+            )
+
+        scale_base = getattr(self, "scale_base", None)
+        scale_exponent = getattr(self, "scale_exponent", None)
+
+        try:
+            input_defs = self.ort_sess.get_inputs()
+            output_defs = self.ort_sess.get_outputs()
+            output_names = [out.name for out in output_defs]
+
+            if scale_base is None or scale_exponent is None:
+                _raise_no_scale_configs()
+
+            # Normalize inputs into a dict
+            if isinstance(inputs, (np.ndarray, torch.Tensor)):
+                input_name = input_defs[0].name
+                inputs = {input_name: inputs}
+            elif not isinstance(inputs, dict):
+                _raise_type_error(inputs)
+
+            # Process inputs
+            processed_inputs = {}
+            for input_def in input_defs:
+                name = input_def.name
+                if name not in inputs:
+                    _raise_value_error(
+                        f"Missing required input '{name}' in provided inputs",
+                    )
+                processed_inputs[name] = self._process_single_input_for_get_outputs(
+                    inputs[name],
+                    input_def,
+                )
+
+            return self.ort_sess.run(output_names, processed_inputs)
+
         except (RuntimeError, ValueError, TypeError, Exception) as e:
             raise InferenceError(
                 model_path=getattr(self, "quantized_model_path", None),

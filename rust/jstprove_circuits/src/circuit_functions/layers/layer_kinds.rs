@@ -1,10 +1,10 @@
-use crate::circuit_functions::CircuitError;
 use crate::circuit_functions::layers::LayerError;
 use crate::circuit_functions::layers::layer_ops::LayerOp;
 use crate::circuit_functions::utils::build_layers::BuildLayerContext;
 use crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry;
 use crate::circuit_functions::utils::onnx_model::CircuitParams;
 use crate::circuit_functions::utils::onnx_types::ONNXLayer;
+use crate::circuit_functions::{CircuitError, layers::add::AddLayer};
 
 use crate::circuit_functions::layers::constant::ConstantLayer;
 use crate::circuit_functions::layers::conv::ConvLayer;
@@ -124,6 +124,7 @@ When defining new layers, make sure to activate them by placing the new layer in
 */
 
 define_layers! {
+    Add  => { name: "Add",  builder: AddLayer::build },
     Constant => { name: "Constant", builder: ConstantLayer::build },
     Conv     => { name: "Conv",     builder: ConvLayer::build },
     Flatten  => { name: "Flatten",  builder: FlattenLayer::build },

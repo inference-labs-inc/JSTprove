@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import ClassVar
 
 import numpy as np
 import onnx
 from onnx import helper, numpy_helper
 
 from python.core.model_processing.onnx_custom_ops.onnx_helpers import (
+    extract_attributes,
     replace_input_references,
 )
 from python.core.model_processing.onnx_quantizer.exceptions import (
@@ -188,7 +190,7 @@ class BaseOpQuantizer:
         """
         self.validate_node_has_output(node)
 
-        original_output = node.output.get(0)
+        original_output = node.output[0]
         quantized_output = original_output + "_raw"
         node.output[0] = quantized_output
 
@@ -294,6 +296,61 @@ class BaseOpQuantizer:
         # === Mutate the original node ===
         return nodes, new_inputs
 
+    def add_scaled_initializer_inputs(
+        self: BaseOpQuantizer,
+        node: onnx.NodeProto,
+        initializer_map: dict[str, onnx.TensorProto],
+        scale_base: int,
+        scale_exponent: int,
+        scale_plan: dict[int, int],
+    ) -> tuple[list[onnx.NodeProto], list[str]]:
+        """
+        Scale and cast specific initializer inputs
+        of a node according to a scaling plan.
+
+        Handles optional inputs gracefully (e.g. missing bias).
+        """
+        new_nodes: list[onnx.NodeProto] = []
+        new_inputs = list(node.input)
+
+        for input_idx, scale_mult in scale_plan.items():
+            # Skip if node doesn't have that many inputs (e.g. missing bias)
+            if input_idx >= len(node.input):
+                # Just ignore — optional input not provided
+                continue
+
+            input_name = node.input[input_idx]
+            if not input_name:
+                # Empty input name → optional input not present
+                continue
+
+            if input_name not in initializer_map:
+                # Optional inputs may be missing from initializers (e.g., dynamic bias)
+                continue
+
+            tensor = initializer_map[input_name]
+            if not tensor.name:
+                raise HandlerImplementationError(
+                    op_type=node.op_type,
+                    message=f"Initializer tensor for '{input_name}' on node "
+                    f"'{node.name}' is missing a name.",
+                )
+
+            # Scale according to plan (e.g., scale_exponent * 2 for bias)
+            quant_name, mul_node, cast_node = self.insert_scale_node(
+                tensor=tensor,
+                scale_base=scale_base,
+                scale_exponent=(scale_exponent * scale_mult),
+            )
+
+            # Update node input to point to scaled version
+            new_inputs[input_idx] = quant_name
+
+            # Record new scaling/cast nodes
+            new_nodes.extend([mul_node, cast_node])
+
+        return new_nodes, new_inputs
+
     def insert_scale_node(
         self: BaseOpQuantizer,
         tensor: onnx.TensorProto,
@@ -358,6 +415,69 @@ class BaseOpQuantizer:
             name=rounded_output_name,
         )
         return output_name, mul_node, cast_to_int64
+
+
+class QuantizerBase:
+    OP_TYPE = None
+    DOMAIN = "ai.onnx.contrib"
+    DEFAULT_ATTRS: ClassVar = {}
+    USE_WB = False
+    USE_SCALING = False
+
+    def quantize(
+        self,
+        node: onnx.NodeProto,
+        graph: onnx.GraphProto,
+        scale_config: ScaleConfig,
+        initializer_map: dict[str, onnx.TensorProto],
+    ) -> list[onnx.NodeProto]:
+        """Generic quantization template for most Int64 ops."""
+        _ = graph
+        nodes = []
+
+        # (1) Quantize weights/bias if applicable
+        if self.USE_WB:
+            # Each subclass defines its scaling plan for which inputs get scaled and how
+            scale_plan = getattr(self, "SCALE_PLAN", {1: 1, 2: 2})  # default for W & B
+            nodes, new_inputs = self.add_scaled_initializer_inputs(
+                node=node,
+                initializer_map=initializer_map,
+                scale_base=scale_config.base,
+                scale_exponent=scale_config.exponent,
+                scale_plan=scale_plan,
+            )
+            node.input[:] = new_inputs
+
+        # (2) Collect & merge attributes
+        attrs = extract_attributes(node)
+        for k, v in self.DEFAULT_ATTRS.items():
+            attrs.setdefault(k, v)
+        if self.USE_SCALING:
+            attrs["rescale"] = int(scale_config.rescale)
+
+        # (3) Add scaling constant if needed
+        if self.USE_SCALING:
+            scale_value = self.get_scaling(scale_config.base, scale_config.exponent)
+            scale_name = f"{node.name}_int_scaler"
+            scale_tensor = numpy_helper.from_array(
+                np.array([scale_value], dtype=np.int64),
+                name=scale_name,
+            )
+            self.new_initializers.append(scale_tensor)
+            node.input.append(scale_name)
+
+        # (4) Create quantized node
+        quantized_node = onnx.helper.make_node(
+            self.OP_TYPE,
+            inputs=node.input,
+            outputs=node.output,
+            name=node.name,
+            domain=self.DOMAIN,
+            **attrs,
+        )
+
+        nodes.append(quantized_node)
+        return nodes
 
 
 class PassthroughQuantizer(BaseOpQuantizer):
