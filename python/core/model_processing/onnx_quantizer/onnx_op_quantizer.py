@@ -23,6 +23,7 @@ from python.core.model_processing.onnx_quantizer.layers.constant import (
 from python.core.model_processing.onnx_quantizer.layers.conv import ConvQuantizer
 from python.core.model_processing.onnx_quantizer.layers.gemm import GemmQuantizer
 from python.core.model_processing.onnx_quantizer.layers.maxpool import MaxpoolQuantizer
+from python.core.model_processing.onnx_quantizer.layers.mul import MulQuantizer
 from python.core.model_processing.onnx_quantizer.layers.relu import ReluQuantizer
 
 
@@ -69,6 +70,7 @@ class ONNXOpQuantizer:
 
         # Register handlers
         self.register("Add", AddQuantizer(self.new_initializers))
+        self.register("Mul", MulQuantizer(self.new_initializers))
         self.register("Conv", ConvQuantizer(self.new_initializers))
         self.register("Relu", ReluQuantizer())
         self.register("Reshape", PassthroughQuantizer())
