@@ -140,7 +140,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
                     min_bc_opt = Some(min_new2);
                 }
             }
-
+        }
 
         // At this point, x_bc has the final shape. Any existing min/max must
         // have shapes compatible with x_bc.
@@ -195,9 +195,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
             (Some(min_bc), None) => {
                 for (x_val, min_val) in x_bc.iter().zip(min_bc.iter()) {
                     let clipped = constrained_clip(api, &ctx, *x_val, Some(*min_val), None)?;
+                    out_storage.push(clipped);
                 }
-
             }
+
             (None, Some(max_bc)) => {
                 for (x_val, max_val) in x_bc.iter().zip(max_bc.iter()) {
                     let clipped = constrained_clip(api, &ctx, *x_val, None, Some(*max_val))?;
