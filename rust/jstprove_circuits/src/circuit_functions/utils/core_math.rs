@@ -150,6 +150,11 @@ pub fn assert_is_bitstring_and_reconstruct<C: Config, Builder: RootAPI<C>>(
 /// Returns the bit-decomposition so that callers can reuse the bits
 /// (e.g., for sign extraction), but most callers can ignore it.
 ///
+/// # Errors
+///
+/// Returns a `CircuitError` if bit-decomposition or reconstruction constraints
+/// cannot be added to the circuit (e.g., unsupported `n_bits` or API failure).
+///
 /// This is deliberately a *generic* gadget:
 /// later we can swap out the internal implementation (e.g. lookup-based
 /// range checks) while keeping this signature unchanged.
@@ -178,9 +183,9 @@ pub fn range_check_pow2_unsigned<C: Config, Builder: RootAPI<C>>(
 /// shift exponent `s`, to avoid recomputing constants in repeated calls.
 ///
 /// This is shared across:
-///   - MaxPool (windowed max over tensors),
-///   - MaxLayer (elementwise max),
-///   - MinLayer (elementwise min).
+///   - `MaxPool` (windowed max over tensors),
+///   - `MaxLayer` (elementwise max),
+///   - `MinLayer` (elementwise min).
 pub struct ShiftRangeContext {
     /// The exponent `s` such that `S = 2^s`.
     pub shift_exponent: usize,
@@ -592,16 +597,21 @@ pub fn constrained_min<C: Config, Builder: RootAPI<C>>(
 ///
 /// Semantics (elementwise, assuming `min <= max` in the intended integer semantics):
 /// - If both `lower` and `upper` are present:
-///       y = min(max(x, lower), upper)
+///   y = min(max(x, lower), upper)
 /// - If only `lower` is present:
-///       y = max(x, lower)
+///   y = max(x, lower)
 /// - If only `upper` is present:
-///       y = min(x, upper)
+///   y = min(x, upper)
 /// - If neither is present:
-///       y = x
+///   y = x
 ///
 /// All variables are field elements (least nonnegative residues), interpreted
 /// as signed integers in a fixed range consistent with the surrounding circuit.
+///
+/// # Errors
+///
+/// Returns a `CircuitError` if the underlying API calls needed to implement
+/// the clip (comparisons, selections) fail.
 pub fn unconstrained_clip<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     x: Variable,
@@ -651,6 +661,11 @@ pub fn unconstrained_clip<C: Config, Builder: RootAPI<C>>(
 /// - Checks the signed range via bit-decomposition and reconstruction.
 /// - Enforces that the result equals one of the inputs.
 /// - Uses a product-of-differences check to guarantee at least one exact match.
+///
+/// # Errors
+///
+/// Returns a `CircuitError` if range checks or selection constraints
+/// cannot be added to the circuit.
 pub fn constrained_clip<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     context: &ShiftRangeContext,

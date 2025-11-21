@@ -75,12 +75,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxLayer {
         let (a_bc, b_bc) = broadcast_two_arrays(&a_input, &b_input)?;
 
         // 4. Prepare shift context
-        let shift_ctx = ShiftRangeContext::new(api, self.shift_exponent).map_err(|e| {
-            LayerError::Other {
+        let shift_ctx =
+            ShiftRangeContext::new(api, self.shift_exponent).map_err(|e| LayerError::Other {
                 layer: LayerKind::Max,
                 msg: format!("ShiftRangeContext::new failed: {e}"),
-            }
-        })?;
+            })?;
 
         // 5. Elementwise max: for each position, z = max(a, b)
         //
@@ -147,7 +146,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxLayer {
                 .checked_sub(1)
                 .ok_or_else(|| LayerError::Other {
                     layer: LayerKind::Max,
-                    msg: format!("layer_context.n_bits too small to derive shift_exponent"),
+                    msg: "layer_context.n_bits too small to derive shift_exponent".to_string(),
                 })?;
 
         let max_layer = Self {

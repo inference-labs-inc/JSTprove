@@ -1,4 +1,3 @@
-# python/tests/onnx_quantizer_tests/layers/clip_config.py
 from __future__ import annotations
 
 import numpy as np
@@ -59,7 +58,8 @@ class ClipConfigProvider(BaseLayerConfigProvider):
             valid_test("broadcast_bounds")
             .description(
                 "Clip with scalar bounds broadcast over all elements of A "
-                "(mirrors Max/Min broadcast tests but respects ORT's scalar bound rules)."
+                "(mirrors Max/Min broadcast tests but respects ORT's scalar bound "
+                "rules)."
             )
             .override_input_shapes(A=[1, 3, 2, 4], min=[1], max=[1])
             .override_output_shapes(clip_output=[1, 3, 2, 4])
@@ -87,7 +87,11 @@ class ClipConfigProvider(BaseLayerConfigProvider):
                 "End-to-end Clip with small random tensor and scalar bounds."
             )
             # All three are treated as runtime inputs here; min/max are scalar-shaped [1].
-            .override_input_shapes(A=[1, 3, 4, 4], min=[1], max=[1])
+            .override_input_shapes(
+                A=[1, 3, 4, 4],
+                min=[1],
+                max=[1],
+            )
             .override_output_shapes(clip_output=[1, 3, 4, 4])
             .tags("e2e", "clip")
             .build(),

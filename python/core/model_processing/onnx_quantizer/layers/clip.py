@@ -20,7 +20,7 @@ class QuantizeClip(QuantizerBase):
     - X is already scaled/cast to INT64 at the graph boundary by the converter.
     - Clip is elementwise + broadcasting.
     - The bound inputs (min, max) should live in the *same* fixed-point scale
-      as X so that Clip(α·x; α·a, α·b) matches the original Clip(x; a, b).
+      as X so that Clip(alpha*x; alpha*a, alpha*b) matches the original Clip(x; a, b).
 
     Implementation:
     - Treat inputs 1 and 2 (min, max) like "WB-style" slots: we let the
@@ -42,7 +42,7 @@ class QuantizeClip(QuantizerBase):
     # Scale-plan for WB-style slots:
     #   - Input index 1: min
     #   - Input index 2: max
-    # Each should be scaled once by the global α (same as activations).
+    # Each should be scaled once by the global alpha (same as activations).
     SCALE_PLAN: ClassVar = {1: 1, 2: 1}
 
 
@@ -58,7 +58,7 @@ class ClipQuantizer(BaseOpQuantizer, QuantizeClip):
 
     def __init__(
         self,
-        new_initializers: dict[str, "onnx.TensorProto"] | None = None,
+        new_initializers: dict[str, onnx.TensorProto] | None = None,
     ) -> None:
         # Match Max/Min/Add: we simply share the new_initializers dict
         # with the converter so any constants we add are collected.
@@ -66,11 +66,11 @@ class ClipQuantizer(BaseOpQuantizer, QuantizeClip):
 
     def quantize(
         self,
-        node: "onnx.NodeProto",
-        graph: "onnx.GraphProto",
+        node: onnx.NodeProto,
+        graph: onnx.GraphProto,
         scale_config: ScaleConfig,
-        initializer_map: dict[str, "onnx.TensorProto"],
-    ) -> list["onnx.NodeProto"]:
+        initializer_map: dict[str, onnx.TensorProto],
+    ) -> list[onnx.NodeProto]:
         # Delegate to the shared QuantizerBase logic, which will:
         # - keep X as-is (already scaled/cast by the converter),
         # - rescale / cast min/max according to SCALE_PLAN,
@@ -79,8 +79,8 @@ class ClipQuantizer(BaseOpQuantizer, QuantizeClip):
 
     def check_supported(
         self,
-        node: "onnx.NodeProto",
-        initializer_map: dict[str, "onnx.TensorProto"] | None = None,
+        node: onnx.NodeProto,
+        initializer_map: dict[str, onnx.TensorProto] | None = None,
     ) -> None:
         """
         Minimal support check for Clip:
@@ -90,4 +90,3 @@ class ClipQuantizer(BaseOpQuantizer, QuantizeClip):
         - Broadcasting is ONNX-standard; we don't restrict further here.
         """
         _ = node, initializer_map
-        return

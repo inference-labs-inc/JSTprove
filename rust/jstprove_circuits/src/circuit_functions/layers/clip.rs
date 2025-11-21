@@ -60,6 +60,7 @@ pub struct ClipLayer {
 // -------- Implementation --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
+    #[allow(clippy::too_many_lines)]
     fn apply(
         &self,
         api: &mut Builder,
@@ -132,14 +133,14 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
 
             // If min also exists, ensure it matches the final shape by broadcasting.
             if let Some(min_bc) = min_bc_opt.take() {
-                if min_bc.shape() != x_bc.shape() {
+                if min_bc.shape() == x_bc.shape() {
+                    min_bc_opt = Some(min_bc);
+                } else {
                     let (_dummy, min_new2) = broadcast_two_arrays(&x_bc, &min_bc)?;
                     min_bc_opt = Some(min_new2);
-                } else {
-                    min_bc_opt = Some(min_bc);
                 }
             }
-        }
+
 
         // At this point, x_bc has the final shape. Any existing min/max must
         // have shapes compatible with x_bc.
@@ -194,8 +195,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
             (Some(min_bc), None) => {
                 for (x_val, min_val) in x_bc.iter().zip(min_bc.iter()) {
                     let clipped = constrained_clip(api, &ctx, *x_val, Some(*min_val), None)?;
-                    out_storage.push(clipped);
                 }
+
             }
             (None, Some(max_bc)) => {
                 for (x_val, max_val) in x_bc.iter().zip(max_bc.iter()) {

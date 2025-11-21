@@ -50,4 +50,4 @@ class MinQuantizer(BaseOpQuantizer, QuantizeMin):
     ) -> None:
         # Min has no attributes; elementwise, variadic ≥ 1 input per ONNX spec.
         # We mirror Add/Max broadcasting behavior; no extra checks here.
-        return
+        _ = node, initializer_map
