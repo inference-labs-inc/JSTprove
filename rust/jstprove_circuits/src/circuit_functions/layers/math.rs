@@ -103,7 +103,7 @@ pub fn matrix_addition<C: Config, Builder: RootAPI<C>>(
 // FUNCTION: matrix_hadamard_product
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Adds two `ArrayD<Variable>` tensors elementwise using circuit constraints.
+/// Multiplies two `ArrayD<Variable>` tensors elementwise using circuit constraints.
 ///
 /// If the shapes differ but the total number of elements matches, this function
 /// attempts to reshape `matrix_b` to match `matrix_a`. This is useful for adding
