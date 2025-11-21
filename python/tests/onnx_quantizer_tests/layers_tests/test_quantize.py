@@ -29,6 +29,44 @@ class TestQuantize(BaseQuantizerTest):
 
     __test__ = True
 
+    def setup_quantize_test(
+        self,
+        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec],
+        quantizer: ONNXOpQuantizer,
+        scale_exponent: int = 2,
+        scale_base: int = 10,
+        *,
+        rescale: bool = True,
+    ) -> tuple[onnx.NodeProto, tuple[str, LayerTestConfig, LayerTestSpec, NodeProto]]:
+        """Common setup for quantization tests"""
+        layer_name, config, test_spec = test_case_data
+
+        self._check_validation_dependency(test_case_data)
+
+        if test_spec.skip_reason:
+            pytest.skip(f"{layer_name}_{test_spec.name}: {test_spec.skip_reason}")
+
+        model = config.create_test_model(test_spec)
+        node = model.graph.node[0]
+        initializer_map = {init.name: init for init in model.graph.initializer}
+
+        mock_graph = Mock()
+        if node.op_type == "Constant":
+            mock_data_node = Mock()
+            mock_data_node.input = [node.output[0]]
+            mock_graph.node = [mock_data_node]
+
+        result = quantizer.quantize(
+            node=node,
+            rescale=rescale,
+            graph=mock_graph,
+            scale_exponent=scale_exponent,
+            scale_base=scale_base,
+            initializer_map=initializer_map,
+        )
+
+        return result, (layer_name, config, test_spec, node)
+
     @pytest.mark.unit
     @pytest.mark.parametrize(
         "test_case_data",
@@ -41,35 +79,16 @@ class TestQuantize(BaseQuantizerTest):
         test_case_data: tuple[str, LayerTestConfig, LayerTestSpec],
     ) -> None:
         """Test quantization for each individual valid test case"""
-        layer_name, config, test_spec = test_case_data
-
-        # Skips if layer is not a valid onnx layer
-        self._check_validation_dependency(test_case_data)
-
-        if test_spec.skip_reason:
-            pytest.skip(f"{layer_name}_{test_spec.name}: {test_spec.skip_reason}")
-
-        # Create model from layer specs
-        model = config.create_test_model(test_spec)
-        node = model.graph.node[0]
-        initializer_map = {init.name: init for init in model.graph.initializer}
-
-        mock_graph = Mock()
-        if node.op_type == "Constant":
-            mock_data_node = Mock()
-            mock_data_node.input = [node.output[0]]
-            mock_graph.node = [mock_data_node]
 
         scale_exponent, scale_base = 2, 10
         rescale = True
 
-        result = quantizer.quantize(
-            node=node,
+        result, (layer_name, _config, test_spec, _node) = self.setup_quantize_test(
+            test_case_data,
+            quantizer,
+            scale_exponent,
+            scale_base,
             rescale=rescale,
-            graph=mock_graph,
-            scale_exponent=scale_exponent,
-            scale_base=scale_base,
-            initializer_map=initializer_map,
         )
 
         # Test that the output of the quantizer quantize is in fact a node
@@ -104,34 +123,15 @@ class TestQuantize(BaseQuantizerTest):
         test_case_data: tuple[str, LayerTestConfig, LayerTestSpec],
     ) -> None:
         """Test quantization for each individual valid test case"""
-        layer_name, config, test_spec = test_case_data
-
-        # Skips if layer is not a valid onnx layer
-        self._check_validation_dependency(test_case_data)
-
-        if test_spec.skip_reason:
-            pytest.skip(f"{layer_name}_{test_spec.name}: {test_spec.skip_reason}")
-
-        # Create model from layer specs
-        model = config.create_test_model(test_spec)
-        node = model.graph.node[0]
-        initializer_map = {init.name: init for init in model.graph.initializer}
-
-        mock_graph = Mock()
-        if node.op_type == "Constant":
-            mock_data_node = Mock()
-            mock_data_node.input = [node.output[0]]
-            mock_graph.node = [mock_data_node]
 
         scale_exponent, scale_base = 2, 10
         rescale = True
-        result = quantizer.quantize(
-            node=node,
+        result, (_layer_name, config, _test_spec, node) = self.setup_quantize_test(
+            test_case_data,
+            quantizer,
+            scale_exponent,
+            scale_base,
             rescale=rescale,
-            graph=mock_graph,
-            scale_exponent=scale_exponent,
-            scale_base=scale_base,
-            initializer_map=initializer_map,
         )
         is_node_present = False
 
@@ -190,35 +190,16 @@ class TestQuantize(BaseQuantizerTest):
         scale_params: tuple[int, int],
     ) -> None:
         """Test quantization for each individual valid test case"""
-        layer_name, config, test_spec = test_case_data
-
-        # Skips if layer is not a valid onnx layer
-        self._check_validation_dependency(test_case_data)
-
-        if test_spec.skip_reason:
-            pytest.skip(f"{layer_name}_{test_spec.name}: {test_spec.skip_reason}")
-
-        # Create model from layer specs
-        model = config.create_test_model(test_spec)
-        node = model.graph.node[0]
-        initializer_map = {init.name: init for init in model.graph.initializer}
-
-        mock_graph = Mock()
-        if node.op_type == "Constant":
-            mock_data_node = Mock()
-            mock_data_node.input = [node.output[0]]
-            mock_graph.node = [mock_data_node]
 
         # Test for both scale parameters
         scale_exponent, scale_base = scale_params
         rescale = True
-        result = quantizer.quantize(
-            node=node,
+        result, (_layer_name, _config, _test_spec, _node) = self.setup_quantize_test(
+            test_case_data,
+            quantizer,
+            scale_exponent,
+            scale_base,
             rescale=rescale,
-            graph=mock_graph,
-            scale_exponent=scale_exponent,
-            scale_base=scale_base,
-            initializer_map=initializer_map,
         )
 
         # Should return valid result regardless of scale values
@@ -241,35 +222,16 @@ class TestQuantize(BaseQuantizerTest):
         rescale: bool,
     ) -> None:
         """Test quantization for each individual valid test case"""
-        layer_name, config, test_spec = test_case_data
-
-        # Skips if layer is not a valid onnx layer
-        self._check_validation_dependency(test_case_data)
-
-        if test_spec.skip_reason:
-            pytest.skip(f"{layer_name}_{test_spec.name}: {test_spec.skip_reason}")
-
-        # Create model from layer specs
-        model = config.create_test_model(test_spec)
-        node = model.graph.node[0]
-        initializer_map = {init.name: init for init in model.graph.initializer}
-
-        mock_graph = Mock()
-        if node.op_type == "Constant":
-            mock_data_node = Mock()
-            mock_data_node.input = [node.output[0]]
-            mock_graph.node = [mock_data_node]
 
         scale_exponent, scale_base = 2, 10
 
         # Test that quantizing works with both rescaling values
-        result = quantizer.quantize(
-            node=node,
+        result, (_layer_name, _config, _test_spec, _node) = self.setup_quantize_test(
+            test_case_data,
+            quantizer,
+            scale_exponent,
+            scale_base,
             rescale=rescale,
-            graph=mock_graph,
-            scale_exponent=scale_exponent,
-            scale_base=scale_base,
-            initializer_map=initializer_map,
         )
         assert result is not None, f"Quantize failed with rescale={rescale}"
 

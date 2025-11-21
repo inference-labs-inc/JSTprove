@@ -89,7 +89,7 @@ error_test("conv3d_unsupported")
 
 ## Builder Lifecycle
 
-1. **Start with a test type**: Use `valid_test`, `error_test`, or `edge_case_test`.
+1. **Start with a test type**: Use `valid_test`, `error_test`, `e2e_test` or `edge_case_test`.
 2. **Configure the spec** using builder methods like `.description()`, `.override_attrs()`, `.expects_error()`, etc.
 3. **Finalize** the test using `.build()` to generate a `TestSpec`.
 
@@ -106,7 +106,11 @@ Constructs a new builder for a test case.
 ### Parameters:
 
 * `name` – Name of the test case.
+<<<<<<< HEAD
 * `spec_type` – Type of the test (VALID, ERROR, or EDGE\_CASE).
+=======
+* `spec_type` – Type of the test (VALID, ERROR, E2E, or EDGE\_CASE).
+>>>>>>> main
 
 ---
 
@@ -167,6 +171,10 @@ edge_case_test(name: str) -> TestSpecBuilder
 * `valid_test` – For regular expected-to-pass tests.
 * `error_test` – For tests where an error is the expected outcome.
 * `edge_case_test` – For edge cases (e.g., minimal input, boundary behavior).
+<<<<<<< HEAD
+=======
+* `e2e_test` - For tests designed to test the end-2-end process of the layer provided, including
+>>>>>>> main
 
 ---
 

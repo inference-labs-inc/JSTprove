@@ -115,6 +115,10 @@ class LayerTestConfig:
 
         # Prepare attributes
         attrs = {**self.valid_attributes, **test_spec.attr_overrides}
+        # Remove omitted attributes if specified
+        attrs = {**self.valid_attributes, **test_spec.attr_overrides}
+        for key in getattr(test_spec, "omit_attrs", []):
+            attrs.pop(key, None)
 
         # Create initializers (may introduce overrides)
         initializers = self.create_initializers(**test_spec.initializer_overrides)
@@ -160,11 +164,6 @@ class LayerTestConfig:
             outputs=graph_outputs,
             initializer=list(initializers.values()),
         )
-
-        # Remove omitted attributes if specified
-        attrs = {**self.valid_attributes, **test_spec.attr_overrides}
-        for key in getattr(test_spec, "omit_attrs", []):
-            attrs.pop(key, None)
 
         return helper.make_model(graph)
 
@@ -227,8 +226,8 @@ class TestSpecBuilder:
         # Validate before building
         if self._spec.spec_type == SpecType.ERROR and not self._spec.expected_error:
             msg = (
-                f"Error test {self._spec.name} must",
-                " specify expected_error using .expects_error()",
+                f"Error test {self._spec.name} must"
+                " specify expected_error using .expects_error()"
             )
             raise ValueError(msg)
         return self._spec
@@ -270,11 +269,11 @@ class BaseLayerConfigProvider(ABC):
     def get_valid_test_specs(self) -> list[LayerTestSpec]:
         """Get only valid test specifications"""
         return [
-            spec for spec in self.get_test_specs() if spec.test_type == SpecType.VALID
+            spec for spec in self.get_test_specs() if spec.spec_type == SpecType.VALID
         ]
 
     def get_error_test_specs(self) -> list[LayerTestSpec]:
         """Get only error test specifications"""
         return [
-            spec for spec in self.get_test_specs() if spec.test_type == SpecType.ERROR
+            spec for spec in self.get_test_specs() if spec.spec_type == SpecType.ERROR
         ]

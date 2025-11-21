@@ -112,7 +112,7 @@ def test_load_quantized_model(
 
 @pytest.mark.unit
 def test_get_outputs_with_mocked_session(converter: ONNXConverter) -> None:
-    dummy_input = np.array([[1.0]])  # ✅ Use np.ndarray, not list
+    dummy_input = np.array([[1.0]])  # Use np.ndarray, not list
     dummy_output = [[2.0]]
     converter.scale_base = 2
     converter.scale_exponent = 10
@@ -136,7 +136,7 @@ def test_get_outputs_with_mocked_session(converter: ONNXConverter) -> None:
 
     result = converter.get_outputs(dummy_input)
 
-    # ✅ Expect NumPy array to be passed into ort_sess.run()
+    # Expect NumPy array to be passed into ort_sess.run()
     expected_call_inputs = {"input": np.asarray(dummy_input)}
     mock_sess.run.assert_called_once_with(["output"], expected_call_inputs)
 

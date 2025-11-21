@@ -338,7 +338,6 @@ class Circuit:
         # reshape inputs for circuit reading (or for verification check in this case)
         processed_inputs = self.reshape_inputs_for_circuit(inputs)
         # Send back to file
-        # object through the process instead
         path = Path(exec_config.input_file)
         processed_input_file = str(path.parent / (path.stem + "_veri" + path.suffix))
         self._to_json_safely(processed_inputs, processed_input_file, "renamed input")
@@ -408,15 +407,17 @@ class Circuit:
 
     def adjust_shape(
         self: Circuit,
-        shape: list[int] | dict[str, int],
+        shape: list[int] | dict[str, list[int]],
     ) -> list[int] | dict[str, list[int]]:
         """
         Normalize a shape representation into a valid list or dict of positive integers.
 
         Args:
-            shape (list[int] | dict[str, int]):
-                The shape, which can be a list of ints or a dict
-                containing one or more shape lists.
+            shape (list[int] | dict[str, list[int]]):
+                The shape, which can be:
+                a. a list of ints, or
+                b. a dict mapping strings to lists of ints.
+                Each non-positive integer is replaced by 1.
 
         Raises:
             CircuitInputError:
@@ -425,11 +426,15 @@ class Circuit:
         Returns:
             list[int] | dict[str, list[int]]:
                 The adjusted shape(s) where all non-positive values are replaced with 1.
+                For a multi-key dict, returns a dict with normalized lists of ints.
         """
         if isinstance(shape, dict):
             # Handle dict-based shapes
             if len(shape.values()) == 1:
                 shape = next(iter(shape.values()))
+                if not isinstance(shape, (list, tuple)):
+                    msg = f"Expected shape list for input, got {type(shape).__name__}"
+                    raise CircuitInputError(msg)
                 return [s if s > 0 else 1 for s in shape]
 
             adjusted_shapes = {}
@@ -444,7 +449,7 @@ class Circuit:
 
             return adjusted_shapes
 
-        # ✅ Handle list-based shape input (the missing return case)
+        # Handle list-based shape input (the missing return case)
         if not isinstance(shape, (list, tuple)):
             msg = f"Expected list or dict for 'shape', got {type(shape).__name__}"
             raise CircuitInputError(msg)
@@ -598,6 +603,7 @@ class Circuit:
         """
         new_inputs: dict[str, Any] = {}
         for key, value in inputs.items():
+            value_adjusted = value
             if key in input_variables:
                 value_adjusted = value
                 shape_attr = f"{key}_shape"
@@ -786,7 +792,7 @@ class Circuit:
         """
 
         if not hasattr(self, "input_shape"):
-            raise CircuitConfigurationError(missing_attributes="input_shape")
+            raise CircuitConfigurationError(missing_attributes=["input_shape"])
 
         shape = self.input_shape
         if hasattr(self, "adjust_shape") and callable(self.adjust_shape):
@@ -800,10 +806,6 @@ class Circuit:
             else:
                 return self._reshape_dict_inputs(inputs, shape)
 
-        # --- Case: shape is a dict but inputs is flat ---
-        if isinstance(shape, dict):
-            return self._split_flat_input(inputs, shape)
-
         # --- Regular reshape ---
         try:
             return asarray(inputs).reshape(shape)
@@ -813,47 +815,22 @@ class Circuit:
     def _reshape_dict_inputs(
         self: Circuit,
         inputs: dict[str],
-        shape: list[int] | dict[str, list[int]],
+        shape: dict[str, list[int]],
     ) -> dict[str]:
         """Reshape each item in an input dict based on shape dict."""
+        if not isinstance(shape, dict):
+            msg = (
+                "_reshape_dict_inputs requires dict "
+                f"shape, got {type(shape).__name__}"
+            )
+            raise CircuitInputError(msg, parameter="shape", expected="dict")
         for key, value in inputs.items():
             tensor = asarray(value)
             try:
                 inputs[key] = tensor.reshape(shape[key])
             except Exception as e:
-                raise ShapeMismatchError(shape, list(tensor.shape)) from e
+                raise ShapeMismatchError(shape[key], list(tensor.shape)) from e
         return inputs
-
-    def _split_flat_input(
-        self: Circuit,
-        inputs: dict[str],
-        shape: dict[str, list[int]] | dict,
-    ) -> dict:
-        """Split a flat input according to a dict of shapes."""
-        flat = asarray(inputs).ravel()
-        out = {}
-        offset = 0
-
-        for key, target_shape in shape.items():
-            target = list(target_shape)
-            numel = prod(target)
-
-            if offset + numel > flat.size:
-                msg = (
-                    f"Insufficient elements for key '{key}': "
-                    f"needed {numel}, available {flat.size - offset}"
-                )
-                raise ShapeMismatchError(msg)
-
-            chunk = flat[offset : offset + numel]
-            offset += numel
-
-            try:
-                out[key] = chunk.reshape(target)
-            except Exception as e:
-                raise ShapeMismatchError(target, chunk.shape) from e
-
-        return out
 
     def reshape_inputs_for_circuit(
         self: Circuit,
@@ -1076,17 +1053,15 @@ class Circuit:
             ) from e
         return out
 
-    def scale_inputs_only(self: Circuit, inputs: dict) -> str:
+    def scale_inputs_only(self: Circuit, inputs: dict) -> dict:
         """
-        Load input values from a JSON file, scale them according to circuit parameters,
-        without reshaping, and save the scaled inputs to a new file.
+        Scale input values according to circuit parameters without reshaping.
 
         Args:
-            inputs (dict):
-                Path to the input JSON file containing the original input values.
+            inputs (dict): Dictionary of input values to scale.
 
         Returns:
-            str: Path to the new file containing the scaled input values.
+            dict: Dictionary of scaled input values.
 
         Raises:
             CircuitFileError: If reading from or writing to JSON files fails.
@@ -1111,11 +1086,10 @@ class Circuit:
         and save the renamed inputs to a new file.
 
         Args:
-            inputs (dict[str, np.ndarray]):
-                original input values.
+            inputs (dict[str, np.ndarray]): Original input values.
 
         Returns:
-            str: Path to the new file containing the renamed input values.
+            dict[str, np.ndarray]: Dictionary of renamed input values.
 
         Raises:
             CircuitFileError: If reading from or writing to JSON files fails.

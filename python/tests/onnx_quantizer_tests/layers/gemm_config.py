@@ -55,6 +55,21 @@ class GemmConfigProvider(BaseLayerConfigProvider):
             )  # Transposed shape
             .tags("transpose", "transB")
             .build(),
+            valid_test("transposed_input")
+            .description("Gemm with transposed input (transA=1)")
+            .override_attrs(transA=1)
+            .override_input_shapes(input=[128, 1])  # Aᵀ shape → (K, M)
+            .override_output_shapes(gemm_output=[1, 256])
+            .tags("transpose", "transA")
+            .build(),
+            valid_test("double_transpose")
+            .description("Gemm with transA=1 and transB=1")
+            .override_attrs(transA=1, transB=1)
+            .override_input_shapes(input=[128, 1])
+            .override_initializer("gemm_weight", rng.normal(0, 1, (256, 128)))
+            .override_output_shapes(gemm_output=[1, 256])
+            .tags("transpose", "transA", "transB")
+            .build(),
             e2e_test("e2e_basic")
             .description("End-to-end test for basic Gemm layer")
             .override_attrs(alpha=1.0, beta=1.0, transA=0, transB=0)
@@ -63,6 +78,35 @@ class GemmConfigProvider(BaseLayerConfigProvider):
             .override_initializer("gemm_weight", rng.normal(0, 1, (4, 8)))
             .override_initializer("gemm_bias", rng.normal(0, 1, (1, 8)))
             .tags("e2e", "basic")
+            .build(),
+            e2e_test("e2e_transA_small")
+            .description("Small end-to-end Gemm test with transposed input (transA=1)")
+            .override_attrs(transA=1, transB=0, alpha=1.0, beta=1.0)
+            .override_input_shapes(input=[4, 1])  # A^T shape → (K, M)
+            .override_output_shapes(gemm_output=[1, 6])
+            .override_initializer("gemm_weight", rng.normal(0, 1, (4, 6)))
+            .override_initializer("gemm_bias", rng.normal(0, 1, (1, 6)))
+            .tags("e2e", "transpose", "transA", "small")
+            .build(),
+            e2e_test("e2e_transB_small")
+            .description(
+                "Small end-to-end Gemm test with transposed weights (transB=1)",
+            )
+            .override_attrs(transA=0, transB=1, alpha=1.0, beta=1.0)
+            .override_input_shapes(input=[1, 4])  # A shape
+            .override_output_shapes(gemm_output=[1, 6])
+            .override_initializer("gemm_weight", rng.normal(0, 1, (6, 4)))  # B^T shape
+            .override_initializer("gemm_bias", rng.normal(0, 1, (1, 6)))
+            .tags("e2e", "transpose", "transB", "small")
+            .build(),
+            e2e_test("e2e_transA_transB_small")
+            .description("Small end-to-end Gemm test with both matrices transposed")
+            .override_attrs(transA=1, transB=1, alpha=1.0, beta=1.0)
+            .override_input_shapes(input=[4, 1])  # A^T shape
+            .override_output_shapes(gemm_output=[1, 6])
+            .override_initializer("gemm_weight", rng.normal(0, 1, (6, 4)))  # B^T shape
+            .override_initializer("gemm_bias", rng.normal(0, 1, (1, 6)))
+            .tags("e2e", "transpose", "transA", "transB", "small")
             .build(),
             # --- ERROR TESTS ---
             # Add check on weights matrix in check_supported
@@ -90,6 +134,18 @@ class GemmConfigProvider(BaseLayerConfigProvider):
                 "alpha value of 0.5 not supported [Attribute: alpha] [Expected: 1.0]",
             )
             .tags("scaling", "alpha_beta")
+            .build(),
+            error_test("invalid_transA_value")
+            .description("transA must be 0 or 1")
+            .override_attrs(transA=2)
+            .expects_error(InvalidParamError, "transA value of 2 not supported")
+            .tags("transpose", "invalid_attr")
+            .build(),
+            error_test("invalid_transB_value")
+            .description("transB must be 0 or 1")
+            .override_attrs(transB=-1)
+            .expects_error(InvalidParamError, "transB value of -1 not supported")
+            .tags("transpose", "invalid_attr")
             .build(),
             # --- EDGE CASE / SKIPPED TESTS ---
             valid_test("large_matrix")

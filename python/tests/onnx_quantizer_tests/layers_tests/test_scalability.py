@@ -40,33 +40,30 @@ class TestScalability:
 
         # Verify all expected layers are present
         unsupported = ONNXOpQuantizer().handlers.keys() - set(configs.keys())
-        print(unsupported)
-        assert (
-            unsupported == set()
-        ), f"The following layers are not being configured for testing: {unsupported}."
-        " Please add configuration in tests/onnx_quantizer_tests/layers/"
+        assert unsupported == set(), (
+            f"The following layers are not being configured for testing: {unsupported}."
+            " Please add configuration in tests/onnx_quantizer_tests/layers/"
+        )
 
         # Verify each config has required components
         for layer_type, config in configs.items():
-            assert (
-                config.op_type == layer_type
-            ), "Quantization test config is not supported yet for {}"
-            " and must be implemented"
+            err_msg = (
+                f"Quantization test config is not supported yet for {layer_type}"
+                " and must be implemented"
+            )
+            assert config.op_type == layer_type, err_msg
             assert isinstance(
                 config.valid_inputs,
                 list,
-            ), "Quantization test config is not supported yet for {}"
-            " and must be implemented"
+            ), err_msg
             assert isinstance(
                 config.valid_attributes,
                 dict,
-            ), "Quantization test config is not supported yet for {}"
-            " and must be implemented"
+            ), err_msg
             assert isinstance(
                 config.required_initializers,
                 dict,
-            ), "Quantization test config is not supported yet for {}"
-            " and must be implemented"
+            ), err_msg
 
     @pytest.mark.unit
     def test_every_layer_has_basic_and_e2e(self: TestScalability) -> None:

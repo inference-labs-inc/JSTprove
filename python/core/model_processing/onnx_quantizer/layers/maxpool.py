@@ -111,7 +111,7 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
             InvalidParamError: If shape requirement is not met.
         """
 
-        kernel_shape = get_attribute_ints(node, "kernel_shape", default="N/A")
+        kernel_shape = get_attribute_ints(node, "kernel_shape", default=[])
         if len(kernel_shape) not in self.accepted_kernel_shapes:
             raise InvalidParamError(
                 node.name,
@@ -120,7 +120,7 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
             )
 
     def check_pool_pads(self: MaxpoolQuantizer, node: onnx.NodeProto) -> None:
-        kernel_shape = get_attribute_ints(node, "kernel_shape", default="N/A")
+        kernel_shape = get_attribute_ints(node, "kernel_shape", default=[])
         pads = get_attribute_ints(node, "pads", default=None)
         if pads is None:
             return

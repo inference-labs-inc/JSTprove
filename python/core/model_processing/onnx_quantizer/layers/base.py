@@ -190,10 +190,7 @@ class BaseOpQuantizer:
         """
         self.validate_node_has_output(node)
 
-        try:
-            original_output = node.output.get(0)
-        except AttributeError:
-            original_output = node.output[0]
+        original_output = node.output[0]
         quantized_output = original_output + "_raw"
         node.output[0] = quantized_output
 

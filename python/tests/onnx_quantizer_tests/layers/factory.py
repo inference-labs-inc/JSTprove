@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import logging
 import typing
 from pathlib import Path
 
 from .base import BaseLayerConfigProvider, LayerTestConfig, LayerTestSpec, SpecType
+
+logger = logging.getLogger(__name__)
 
 
 class TestLayerFactory:
@@ -26,7 +29,7 @@ class TestLayerFactory:
             for f in Path(current_dir).iterdir()
             if f.is_file() and f.name.endswith("_config.py") and f.name != "__init__.py"
         ]
-        print(config_files)
+        logger.debug("Discovered config files: %s", config_files)
 
         for module_name in config_files:
             try:
@@ -43,7 +46,7 @@ class TestLayerFactory:
 
             except ImportError as e:  # noqa: PERF203
                 msg = f"Warning: Could not import {module_name}: {e}"
-                print(msg)
+                logger.warning(msg)
 
         cls._initialized = True
 
@@ -52,7 +55,7 @@ class TestLayerFactory:
     def get_layer_configs(cls) -> dict[str, LayerTestConfig]:
         """Get test configurations for all supported layers"""
         cls._discover_providers()
-        print(cls._providers.items())
+        logger.debug("Retrieved layer configs: %s", list(cls._providers.keys()))
         return {
             name: provider.get_config() for name, provider in cls._providers.items()
         }
@@ -127,22 +130,13 @@ class TestLayerFactory:
         tag: str,
     ) -> list[tuple[str, LayerTestConfig, LayerTestSpec]]:
         """Get test cases with a specific tag"""
-        print(
-            [
-                (layer, config, spec)
-                for layer, config, spec in cls.get_all_test_cases()
-                if tag in spec.tags
-            ],
-        )
-        if [
-            (layer, config, spec)
-            for layer, config, spec in cls.get_all_test_cases()
-            if tag in spec.tags
-        ] != []:
-            msg = f"No test cases found for tag: {tag}"
-            raise ValueError(msg)
-        return [
+        result = [
             (layer, config, spec)
             for layer, config, spec in cls.get_all_test_cases()
             if tag in spec.tags
         ]
+        logger.debug("Found tests %s", result)
+        if not result:
+            msg = f"No test cases found for tag: {tag}"
+            raise ValueError(msg)
+        return result
