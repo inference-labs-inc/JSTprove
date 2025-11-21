@@ -11,6 +11,7 @@ pub mod maxpool;
 pub mod mul;
 pub mod relu;
 pub mod reshape;
+pub mod sub;
 
 pub use errors::LayerError;
 pub use layer_kinds::LayerKind;

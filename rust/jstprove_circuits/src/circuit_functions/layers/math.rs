@@ -103,10 +103,10 @@ pub fn matrix_addition<C: Config, Builder: RootAPI<C>>(
 // FUNCTION: matrix_hadamard_product
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Adds two `ArrayD<Variable>` tensors elementwise using circuit constraints.
+/// Multiplies two `ArrayD<Variable>` tensors elementwise using circuit constraints.
 ///
 /// If the shapes differ but the total number of elements matches, this function
-/// attempts to reshape `matrix_b` to match `matrix_a`. This is useful for adding
+/// attempts to reshape `matrix_b` to match `matrix_a`. This is useful for multiplying
 /// broadcasted constants (e.g., bias terms) with higher-dimensional arrays.
 ///
 /// # Arguments
@@ -137,6 +137,48 @@ pub fn matrix_hadamard_product<C: Config, Builder: RootAPI<C>>(
         matrix_b,
         layer_type,
         expander_compiler::frontend::BasicAPI::mul,
+        "matrix_hadamard_product",
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: matrix_subtraction
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Subtract two `ArrayD<Variable>` tensors elementwise using circuit constraints.
+///
+/// If the shapes differ but the total number of elements matches, this function
+/// attempts to reshape `matrix_b` to match `matrix_a`. This is useful for subtracting
+/// broadcasted constants (e.g., bias terms) with higher-dimensional arrays.
+///
+/// # Arguments
+/// - `api`: The circuit builder.
+/// - `matrix_a`: First input tensor.
+/// - `matrix_b`: Second input tensor, possibly with a different shape.
+///
+/// # Returns
+/// An `ArrayD<Variable>` of the same shape as `matrix_a`, representing the elementwise product.
+///
+/// # Errors
+/// - If the total number of elements in `matrix_a` and `matrix_b` do not match.
+/// - If reshaping `matrix_b` to `matrix_a`'s shape fails.
+///
+/// # Example
+/// ```ignore
+/// let result = matrix_hadamard_product(api, input_tensor, weight_tensor);
+/// ```
+pub fn matrix_subtraction<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    matrix_a: &ArrayD<Variable>,
+    matrix_b: ArrayD<Variable>,
+    layer_type: LayerKind,
+) -> Result<ArrayD<Variable>, LayerError> {
+    elementwise_op(
+        api,
+        matrix_a,
+        matrix_b,
+        layer_type,
+        expander_compiler::frontend::BasicAPI::sub,
         "matrix_hadamard_product",
     )
 }

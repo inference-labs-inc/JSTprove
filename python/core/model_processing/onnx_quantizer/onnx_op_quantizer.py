@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from python.core.model_processing.onnx_quantizer.layers.sub import SubQuantizer
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -70,6 +72,8 @@ class ONNXOpQuantizer:
 
         # Register handlers
         self.register("Add", AddQuantizer(self.new_initializers))
+        self.register("Sub", SubQuantizer(self.new_initializers))
+
         self.register("Mul", MulQuantizer(self.new_initializers))
         self.register("Conv", ConvQuantizer(self.new_initializers))
         self.register("Relu", ReluQuantizer())
