@@ -117,7 +117,7 @@ def ensure_dev_mode_compile_for_e2e(
     request: pytest.FixtureRequest,
 ) -> None:
     """
-    Ensure that rust code is recompiled is performed before e2e tests.
+    Ensure that rust code is recompiled before e2e tests are performed.
     """
     # Only run this for e2e tests
     if not request.config.getoption("--e2e"):
@@ -131,7 +131,7 @@ def ensure_dev_mode_compile_for_e2e(
 
     result = subprocess.run(
         ["cargo", "build", "--release"],  # noqa: S607
-        check=False,
+        check=True,
         capture_output=True,
         text=True,
     )
