@@ -8,6 +8,7 @@ mod layer_kinds;
 pub mod layer_ops;
 mod math;
 pub mod maxpool;
+pub mod mul;
 pub mod relu;
 pub mod reshape;
 
