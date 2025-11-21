@@ -49,11 +49,10 @@ def validate_quantized_node(node_result: onnx.NodeProto, op_type: str) -> None:
     assert node_result.output, f"Missing outputs for {op_type}"
 
     try:
-        # Create a minimal model with custom opset for validation
+        # Create a minimal graph with dummy IOs to satisfy ONNX requirements
         temp_graph = onnx.GraphProto()
         temp_graph.name = "temp_graph"
 
-        # Add dummy inputs/outputs to satisfy graph requirements
         for inp in node_result.input:
             if not any(vi.name == inp for vi in temp_graph.input):
                 temp_graph.input.append(
@@ -63,6 +62,7 @@ def validate_quantized_node(node_result: onnx.NodeProto, op_type: str) -> None:
                         [1],
                     ),
                 )
+
         for out in node_result.output:
             if not any(vi.name == out for vi in temp_graph.output):
                 temp_graph.output.append(
@@ -74,14 +74,15 @@ def validate_quantized_node(node_result: onnx.NodeProto, op_type: str) -> None:
                 )
 
         temp_graph.node.append(node_result)
-        temp_model = onnx.helper.make_model(temp_graph)
-        # Add contrib opset, required for Int64* custom ops
-        contrib = onnx.helper.make_opsetid("ai.onnx.contrib", 1)
 
-        # Default opset (explicit is better)
-        default = onnx.helper.make_opsetid("", 22)
-
-        temp_model.opset_import.extend([default, contrib])
+        # Explicit opset imports for default and contrib domains
+        temp_model = onnx.helper.make_model(
+            temp_graph,
+            opset_imports=[
+                onnx.helper.make_opsetid("", 22),
+                onnx.helper.make_opsetid("ai.onnx.contrib", 1),
+            ],
+        )
 
         onnx.checker.check_model(temp_model)
     except onnx.checker.ValidationError as e:
@@ -120,10 +121,10 @@ def test_registered_quantizer_quantize(
         for node_result in result:
             validate_quantized_node(node_result, op_type)
     else:
-        required_inputs = get_required_input_names(op_type)
-        if required_inputs:
-            # Only assert inputs exist if the op really requires inputs
-            assert result.input, (
-                f"Missing inputs for {op_type}; " f"required_inputs={required_inputs}"
-            )
+        if inputs:
+            # Only assert if this op actually requires inputs
+            assert (
+                result.input
+            ), f"Missing inputs for {op_type}; required_inputs={inputs}"
+
         validate_quantized_node(result, op_type)
