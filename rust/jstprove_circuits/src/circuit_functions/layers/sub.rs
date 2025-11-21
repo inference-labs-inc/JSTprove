@@ -87,7 +87,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SubLayer {
 
         let sub = Self {
             name: layer.name.clone(),
-            // weights: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[1])?,
             optimization_pattern,
             input_shape: expected_shape.clone(),
             inputs: layer.inputs.clone(),
