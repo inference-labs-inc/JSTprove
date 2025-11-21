@@ -75,11 +75,6 @@ def validate_quantized_node(node_result: onnx.NodeProto, op_type: str) -> None:
 
         temp_graph.node.append(node_result)
         temp_model = onnx.helper.make_model(temp_graph)
-        custom_domain = onnx.helper.make_operatorsetid(
-            domain="ai.onnx.contrib",
-            version=1,
-        )
-        temp_model.opset_import.append(custom_domain)
         onnx.checker.check_model(temp_model)
     except onnx.checker.ValidationError as e:
         pytest.fail(f"ONNX node validation failed for {op_type}: {e}")
@@ -117,5 +112,10 @@ def test_registered_quantizer_quantize(
         for node_result in result:
             validate_quantized_node(node_result, op_type)
     else:
-        assert result.input, f"Missing inputs for {op_type}"
+        required_inputs = get_required_input_names(op_type)
+        if required_inputs:
+            # Only assert inputs exist if the op really requires inputs
+            assert result.input, (
+                f"Missing inputs for {op_type}; " f"required_inputs={required_inputs}"
+            )
         validate_quantized_node(result, op_type)

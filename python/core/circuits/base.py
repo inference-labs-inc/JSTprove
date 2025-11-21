@@ -605,7 +605,6 @@ class Circuit:
         for key, value in inputs.items():
             value_adjusted = value
             if key in input_variables:
-                value_adjusted = value
                 shape_attr = f"{key}_shape"
                 value_adjusted = self._reshape_input_value(
                     value_adjusted,
@@ -802,11 +801,29 @@ class Circuit:
         if isinstance(inputs, dict):
             if len(inputs) == 1:
                 only_key = next(iter(inputs))
-                inputs = asarray(inputs[only_key])
+                value = np.asarray(inputs[only_key])
+
+                # If shape is a dict, extract the shape for this key
+                if isinstance(shape, dict):
+                    key_shape = shape.get(only_key, None)
+                    if key_shape is None:
+                        raise CircuitConfigurationError(
+                            missing_attributes=[f"input_shape[{only_key!r}]"]
+                        )
+                    shape = key_shape
+
+                # From here on, treat it as a regular reshape
+                inputs = value
             else:
                 return self._reshape_dict_inputs(inputs, shape)
 
         # --- Regular reshape ---
+        if not isinstance(shape, (list, tuple)):
+            msg = (
+                f"Expected list or tuple shape for reshape, got {type(shape).__name__}"
+            )
+            raise CircuitInputError(msg)
+
         try:
             return asarray(inputs).reshape(shape)
         except Exception as e:

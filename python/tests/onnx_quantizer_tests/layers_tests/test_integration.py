@@ -159,21 +159,22 @@ class TestIntegration(BaseQuantizerTest):
         quantized_input_names = [inp.name for inp in quantized_session.get_inputs()]
         quantized_output_name = quantized_session.get_outputs()[0].name
 
-        # For quantized model, scale the inputs
-        scaled_inputs = {}
+        # For the quantized model, cast inputs to float64 for ORT
+        quantized_inputs = {}
         for name in quantized_input_names:
             if name in dummy_inputs:
-                scaled_inputs[name] = (dummy_inputs[name]).astype(np.float64)
+                quantized_inputs[name] = dummy_inputs[name].astype(np.float64)
             else:
-                # If quantized model has different inputs, skip or handle
+                # If quantized model has different inputs, skip this case
                 pytest.skip(
                     f"Quantized model input mismatch for {layer_name}.{test_spec.name}",
                 )
 
         quantized_output = quantized_session.run(
             [quantized_output_name],
-            scaled_inputs,
+            quantized_inputs,
         )[0]
+
         quantized_output = quantized_output / (scale_base ** (scale_exponent))
 
         ratio = np.mean(quantized_output / (original_output + 1e-12))

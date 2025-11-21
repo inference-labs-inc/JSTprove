@@ -106,11 +106,7 @@ Constructs a new builder for a test case.
 ### Parameters:
 
 * `name` – Name of the test case.
-<<<<<<< HEAD
-* `spec_type` – Type of the test (VALID, ERROR, or EDGE\_CASE).
-=======
 * `spec_type` – Type of the test (VALID, ERROR, E2E, or EDGE\_CASE).
->>>>>>> main
 
 ---
 
