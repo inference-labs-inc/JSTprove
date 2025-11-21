@@ -4,13 +4,13 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from numpy import asarray, ndarray, prod
+import numpy as np
+from numpy import asarray, ndarray
 
 from python.core.utils.errors import ShapeMismatchError
 from python.core.utils.witness_utils import compare_witness_to_io, load_witness
 
 if TYPE_CHECKING:
-    import numpy as np
     import torch
 
 from python.core.circuits.errors import (

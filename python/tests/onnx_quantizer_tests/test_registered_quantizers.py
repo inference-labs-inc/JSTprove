@@ -75,6 +75,14 @@ def validate_quantized_node(node_result: onnx.NodeProto, op_type: str) -> None:
 
         temp_graph.node.append(node_result)
         temp_model = onnx.helper.make_model(temp_graph)
+        # Add contrib opset, required for Int64* custom ops
+        contrib = onnx.helper.make_opsetid("ai.onnx.contrib", 1)
+
+        # Default opset (explicit is better)
+        default = onnx.helper.make_opsetid("", 22)
+
+        temp_model.opset_import.extend([default, contrib])
+
         onnx.checker.check_model(temp_model)
     except onnx.checker.ValidationError as e:
         pytest.fail(f"ONNX node validation failed for {op_type}: {e}")
