@@ -165,7 +165,7 @@ pub fn matrix_hadamard_product<C: Config, Builder: RootAPI<C>>(
 ///
 /// # Example
 /// ```ignore
-/// let result = matrix_hadamard_product(api, input_tensor, weight_tensor);
+/// let result = matrix_subtraction(api, input_tensor, weight_tensor);
 /// ```
 pub fn matrix_subtraction<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
@@ -179,7 +179,7 @@ pub fn matrix_subtraction<C: Config, Builder: RootAPI<C>>(
         matrix_b,
         layer_type,
         expander_compiler::frontend::BasicAPI::sub,
-        "matrix_hadamard_product",
+        "matrix_subtraction",
     )
 }
 
