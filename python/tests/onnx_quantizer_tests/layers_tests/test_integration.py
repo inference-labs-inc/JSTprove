@@ -63,8 +63,10 @@ class TestIntegration(BaseQuantizerTest):
                 scale_base=scale_base,
                 initializer_map=initializer_map,
             )
-            assert result is not None, f"Quantization failed for {node.op_type}"
-            f" in combination {layer_combination}"
+            assert result is not None, (
+                f"Quantization failed for {node.op_type}"
+                f" in combination {layer_combination}"
+            )
 
     def skip_by_layer_name(
         self,
@@ -182,8 +184,8 @@ class TestIntegration(BaseQuantizerTest):
         np.testing.assert_allclose(
             original_output,
             quantized_output,
-            rtol=0.05,
-            atol=0.05,
+            rtol=0.05,  # Relative tolerance
+            atol=0.05,  # Absolute tolerance
             err_msg=f"Quantization accuracy failed for {layer_name}.{test_spec.name}",
         )
 
