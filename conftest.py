@@ -69,12 +69,9 @@ def pytest_collection_modifyitems(config: Config, items: list[Item]) -> None:
         has_e2e = "e2e" in item.keywords
 
         if (
-            run_unit
-            and has_unit
-            or run_integration
-            and has_integration
-            or run_e2e
-            and has_e2e
+            (run_unit and has_unit)
+            or (run_integration and has_integration)
+            or (run_e2e and has_e2e)
         ):
             selected.append(item)
         else:
@@ -113,3 +110,34 @@ def pytest_configure(config: Config) -> None:
         pytest.exit(
             "Exiting after listing available models.",
         )  # This prevents tests from running
+
+
+@pytest.fixture(scope="session", autouse=True)
+def ensure_dev_mode_compile_for_e2e(
+    request: pytest.FixtureRequest,
+) -> None:
+    """
+    Ensure that rust code is recompiled before e2e tests are performed.
+    """
+    # Only run this for e2e tests
+    if not request.config.getoption("--e2e"):
+        return
+
+    # Skip if there are no e2e tests being run
+    if not any("e2e" in item.keywords for item in request.session.items):
+        return
+
+    import subprocess  # noqa: PLC0415
+
+    result = subprocess.run(
+        ["cargo", "build", "--release"],  # noqa: S607
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    print("stdout:", result.stdout)  # noqa: T201
+    print("stderr:", result.stderr)  # noqa: T201
+
+    # On initial tests this approach works. If this breaks, we can run
+    # compilation of a basic circuit with dev_mode = True
