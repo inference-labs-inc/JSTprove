@@ -5,8 +5,8 @@ use io_reader::IOReader;
 // use expander_compiler::frontend::{extra::debug_eval, internal::DumpLoadTwoVariables, *};
 // use expander_compiler::utils::serde::Serde;
 use expander_compiler::frontend::{
-    ChallengeField, CompileOptions, Config, Define, EmptyHintCaller, Variable, WitnessSolver,
-    compile, extra::debug_eval, internal::DumpLoadTwoVariables,
+    ChallengeField, CompileOptions, Config, Define, Variable, WitnessSolver, compile,
+    extra::debug_eval, internal::DumpLoadTwoVariables,
 };
 use gkr_engine::{FieldEngine, GKREngine, MPIConfig};
 use peakmem_alloc::{INSTRUMENTED_SYSTEM, PeakMemAlloc, PeakMemAllocTrait};
