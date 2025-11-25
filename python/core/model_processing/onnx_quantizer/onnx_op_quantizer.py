@@ -203,3 +203,30 @@ class ONNXOpQuantizer:
             dict[str, onnx.TensorProto]: Map from initializer name to tensors in graph.
         """
         return {init.name: init for init in model.graph.initializer}
+
+    def apply_pre_analysis_transforms(
+        self: ONNXOpQuantizer,
+        model: onnx.ModelProto,
+        scale_exponent: int,
+        scale_base: int,
+    ) -> onnx.ModelProto:
+        """
+        Give each registered handler a chance to rewrite the model before analysis.
+        """
+        graph = model.graph
+        initializer_map = self.get_initializer_map(model)
+
+        # We allow handlers to modify graph in-place.
+        # (Nodes may be replaced, removed, or new nodes added.)
+        for node in list(graph.node):
+            handler = self.handlers.get(node.op_type)
+            if handler and hasattr(handler, "pre_analysis_transform"):
+                handler.pre_analysis_transform(
+                    node,
+                    graph,
+                    initializer_map,
+                    scale_exponent=scale_exponent,
+                    scale_base=scale_base,
+                )
+
+        return model
