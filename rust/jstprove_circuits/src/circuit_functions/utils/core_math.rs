@@ -683,40 +683,108 @@ pub fn constrained_clip<C: Config, Builder: RootAPI<C>>(
 // LOGUP-RELATED CODE BELOW
 // ─────────────────────────────────────────────────────────────────────────────
 
-pub fn logup_range_check_pow2_unsigned<C: Config, Builder: RootAPI<C>>(
-    api: &mut Builder,
+/// Default chunk size (number of bits per LogUp digit).
+/// Each chunk/digit is in [0, 2^DEFAULT_LOGUP_CHUNK_BITS - 1].
+pub const DEFAULT_LOGUP_CHUNK_BITS: usize = 4;
+
+/// Context for reusing a single LogUp range-proof table across many checks.
+///
+/// - `chunk_bits` determines the table size: table has 2^{chunk_bits} rows.
+/// - `table` holds the LogUpRangeProofTable with keys 0..2^{chunk_bits}-1.
+///
+/// Typical usage inside a circuit's `define`:
+///
+/// ```ignore
+/// let mut ctx = LogupRangeCheckContext::new_default();
+/// ctx.init::<C, B>(api);
+/// // many calls:
+/// ctx.range_check::<C, B>(api, value1, n_bits1)?;
+/// ctx.range_check::<C, B>(api, value2, n_bits2)?;
+/// // ...
+/// ctx.finalize::<C, B>(api);
+/// ```
+pub struct LogupRangeCheckContext {
+    pub chunk_bits: usize,
+    pub table: LogUpRangeProofTable,
+}
+
+impl LogupRangeCheckContext {
+    /// Create a new context with an explicit chunk size (number of bits per digit).
+    pub fn new(chunk_bits: usize) -> Self {
+        // You can tighten these bounds later if needed.
+        assert!(
+            chunk_bits > 0 && chunk_bits <= 128,
+            "LogupRangeCheckContext: chunk_bits must be in 1..=128"
+        );
+
+        Self {
+            chunk_bits,
+            table: LogUpRangeProofTable::new(chunk_bits),
+        }
+    }
+
+    /// Create a context using the default chunk size (currently 4 bits).
+    pub fn new_default() -> Self {
+        Self::new(DEFAULT_LOGUP_CHUNK_BITS)
+    }
+
+    /// Initialize the table with all valid keys [0, 2^{chunk_bits} - 1].
+    pub fn init<C: Config, B: RootAPI<C>>(&mut self, api: &mut B) {
+        self.table.initial::<C, B>(api);
+    }
+
+    /// Add a range-check constraint for `value ∈ [0, 2^{n_bits} - 1]`,
+    /// using this context's chunk size.
+    ///
+    /// This *does not* call `final_check`; it only adds queries to the table.
+    pub fn range_check<C: Config, B: RootAPI<C>>(
+        &mut self,
+        api: &mut B,
+        value: Variable,
+        n_bits: usize,
+    ) -> Result<(), CircuitError> {
+        if n_bits == 0 {
+            return Err(CircuitError::Other(
+                "logup_range_check_pow2_unsigned: n_bits must be > 0".into(),
+            ));
+        }
+
+        if n_bits > 128 {
+            return Err(CircuitError::Other(
+                "logup_range_check_pow2_unsigned: n_bits > 128 not supported yet".into(),
+            ));
+        }
+
+        // Delegate to the Expander LogUp implementation.
+        // This adds the appropriate digits as queries to the shared table.
+        self.table.rangeproof::<C, B>(api, value, n_bits);
+
+        Ok(())
+    }
+
+    /// Run the final LogUp consistency check once for all queries added so far.
+    pub fn finalize<C: Config, B: RootAPI<C>>(&mut self, api: &mut B) {
+        self.table.final_check::<C, B>(api);
+    }
+}
+
+/// One-shot helper that uses a fresh LogUp table for a single range-check.
+///
+/// Internally:
+/// - builds a `LogupRangeCheckContext` with the default chunk size (4 bits),
+/// - initializes the table,
+/// - adds one range-check for `value` with `n_bits`,
+/// - runs `finalize` to enforce the LogUp consistency.
+pub fn logup_range_check_pow2_unsigned<C: Config, B: RootAPI<C>>(
+    api: &mut B,
     value: Variable,
     n_bits: usize,
 ) -> Result<(), CircuitError> {
-    if n_bits == 0 {
-        return Err(CircuitError::Other(
-            "logup_range_check_pow2_unsigned: n_bits must be > 0".into(),
-        ));
-    }
+    let mut ctx = LogupRangeCheckContext::new_default();
 
-    // The LogUp rangeproof implementation itself panics if n > 128.
-    // We surface that as a CircuitError here instead of letting it panic.
-    if n_bits > 128 {
-        return Err(CircuitError::Other(
-            "logup_range_check_pow2_unsigned: n_bits > 128 not supported yet".into(),
-        ));
-    }
-
-    // For now we use a fresh table per call:
-    // - table keys: 0..2^{n_bits} - 1
-    // - single query: `value`
-    //
-    // This ensures `value ∈ [0, 2^{n_bits} - 1]` via LogUp, with no bit decomposition.
-    let mut table = LogUpRangeProofTable::new(4);
-
-    // Populate the table with all valid keys
-    table.initial::<C, Builder>(api);
-
-    // Prove that `value` is in range using `n_bits`
-    table.rangeproof::<C, Builder>(api, value, n_bits);
-
-    // Constrain all queries against the table using LogUp
-    table.final_check::<C, Builder>(api);
+    ctx.init::<C, B>(api);
+    ctx.range_check::<C, B>(api, value, n_bits)?;
+    ctx.finalize::<C, B>(api);
 
     Ok(())
 }
