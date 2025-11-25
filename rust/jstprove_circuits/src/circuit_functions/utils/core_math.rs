@@ -676,7 +676,7 @@ pub fn constrained_clip<C: Config, Builder: RootAPI<C>>(
 
     // Apply upper bound via constrained_min when present
     if let Some(b) = upper {
-        cur = constrained_min(api, range_ctx, logup_ctx, &[cur, b])?;
+        cur = constrained_min(api, range_ctx, &[cur, b])?;
     }
 
     Ok(cur)

@@ -21,7 +21,10 @@ use ndarray::ArrayD;
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 /// Internal helpers and utilities
-use crate::circuit_functions::utils::core_math::{ShiftRangeContext, constrained_clip};
+use crate::circuit_functions::utils::core_math::{
+    LogupRangeCheckContext, ShiftRangeContext, constrained_clip,
+};
+
 use crate::circuit_functions::utils::onnx_model::get_optional_w_or_b;
 use crate::circuit_functions::utils::tensor_ops::{
     broadcast_two_arrays, load_array_constants_or_get_inputs,
@@ -181,7 +184,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
                 msg: format!("ShiftRangeContext::new failed: {e}"),
             })?;
 
-        // LogUp shared context for this entire Clip layer
+        // Shared LogUp context for all range checks in this Clip layer
         let mut logup_ctx = LogupRangeCheckContext::new_default();
         logup_ctx.init::<C, Builder>(api);
 
@@ -190,15 +193,16 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
 
         match (min_bc_opt.as_ref(), max_bc_opt.as_ref()) {
             (None, None) => {
-                // We already early-returned in this case, but keep for completeness.
+                // This case should have early-returned, but keep for completeness.
                 for &x_val in x_bc.iter() {
-                    constrained_clip(api, &range_ctx, &mut logup_ctx, x_val, None, None)?;
+                    let clipped =
+                        constrained_clip(api, &range_ctx, &mut logup_ctx, x_val, None, None)?;
                     out_storage.push(clipped);
                 }
             }
             (Some(min_bc), None) => {
                 for (x_val, min_val) in x_bc.iter().zip(min_bc.iter()) {
-                    constrained_clip(
+                    let clipped = constrained_clip(
                         api,
                         &range_ctx,
                         &mut logup_ctx,
@@ -209,10 +213,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
                     out_storage.push(clipped);
                 }
             }
-
             (None, Some(max_bc)) => {
                 for (x_val, max_val) in x_bc.iter().zip(max_bc.iter()) {
-                    constrained_clip(
+                    let clipped = constrained_clip(
                         api,
                         &range_ctx,
                         &mut logup_ctx,
@@ -226,7 +229,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
             (Some(min_bc), Some(max_bc)) => {
                 for ((x_val, min_val), max_val) in x_bc.iter().zip(min_bc.iter()).zip(max_bc.iter())
                 {
-                    constrained_clip(
+                    let clipped = constrained_clip(
                         api,
                         &range_ctx,
                         &mut logup_ctx,
