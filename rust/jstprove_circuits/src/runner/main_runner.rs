@@ -21,6 +21,8 @@ use crate::io::io_reader;
 use crate::runner::errors::{CliError, RunError};
 use expander_binary::executor;
 
+use crate::hints::build_logup_hint_registry;
+
 // use crate::io::io_reader;
 
 #[global_allocator]
@@ -174,10 +176,14 @@ where
     GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
     // let start = Instant::now();
 
-    let assignments = vec![assignment; 1];
+    // Build the LogUp hint registry for this circuit field
+    let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
+
+    // Use the *scalar* witness solver API with hints
     let witness = witness_solver
-        .solve_witnesses(&assignments)
+        .solve_witness_with_hints(&assignment, &hint_registry)
         .map_err(|e| RunError::Witness(format!("{e:?}")))?;
+
     // #### Sanity check, can be removed in prod ####
     let output = layered_circuit.run(&witness);
     // unwrap
@@ -278,15 +284,23 @@ where
     let assignment = CircuitDefaultType::default();
     let assignment = io_reader.read_inputs(input_path, assignment)?;
     let assignment = io_reader.read_outputs(output_path, assignment)?;
-    let assignments = vec![assignment.clone(); 1];
 
     let mut circuit = CircuitType::default();
     configure_if_possible::<CircuitType>(&mut circuit);
-    debug_eval(&circuit, &assignment, EmptyHintCaller);
+
+    // Build LogUp registry once
+    let logup_hints = build_logup_hint_registry::<CircuitField<C>>();
+
+    // Use it for the frontend debug evaluation
+    debug_eval(&circuit, &assignment, logup_hints.clone());
+
+    // And for the witness solver
+    let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
 
     let witness = witness_solver
-        .solve_witnesses(&assignments)
+        .solve_witness_with_hints(&assignment, &hint_registry)
         .map_err(|e| RunError::Witness(format!("{e:?}")))?;
+
     let output = layered_circuit.run(&witness);
     for x in &output {
         if !(*x) {
