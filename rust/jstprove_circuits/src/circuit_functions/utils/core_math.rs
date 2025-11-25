@@ -8,6 +8,8 @@ use crate::circuit_functions::{
     utils::UtilsError,
 };
 
+use circuit_std_rs::logup::LogUpRangeProofTable;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: unconstrained_to_bits
 // ─────────────────────────────────────────────────────────────────────────────
@@ -150,11 +152,6 @@ pub fn assert_is_bitstring_and_reconstruct<C: Config, Builder: RootAPI<C>>(
 /// Returns the bit-decomposition so that callers can reuse the bits
 /// (e.g., for sign extraction), but most callers can ignore it.
 ///
-/// # Errors
-///
-/// Returns a `CircuitError` if bit-decomposition or reconstruction constraints
-/// cannot be added to the circuit (e.g., unsupported `n_bits` or API failure).
-///
 /// This is deliberately a *generic* gadget:
 /// later we can swap out the internal implementation (e.g. lookup-based
 /// range checks) while keeping this signature unchanged.
@@ -183,9 +180,9 @@ pub fn range_check_pow2_unsigned<C: Config, Builder: RootAPI<C>>(
 /// shift exponent `s`, to avoid recomputing constants in repeated calls.
 ///
 /// This is shared across:
-///   - `MaxPool` (windowed max over tensors),
-///   - `MaxLayer` (elementwise max),
-///   - `MinLayer` (elementwise min).
+///   - MaxPool (windowed max over tensors),
+///   - MaxLayer (elementwise max),
+///   - MinLayer (elementwise min).
 pub struct ShiftRangeContext {
     /// The exponent `s` such that `S = 2^s`.
     pub shift_exponent: usize,
@@ -448,12 +445,11 @@ pub fn constrained_max<C: Config, Builder: RootAPI<C>>(
     for &x in values {
         let delta = api.sub(max_raw, x);
 
-        // Δ ∈ [0, T] ⇔ ∃ bitstring of length s + 1 summing to Δ
-        let _delta_bits =
-            range_check_pow2_unsigned(api, delta, n_bits).map_err(|e| LayerError::Other {
-                layer: LayerKind::Max,
-                msg: format!("range_check_pow2_unsigned failed: {e}"),
-            })?;
+        // Δ ∈ [0, T] = [0, 2^{s + 1} - 1] via LogUp-based range proof
+        logup_range_check_pow2_unsigned(api, delta, n_bits).map_err(|e| LayerError::Other {
+            layer: LayerKind::Max,
+            msg: format!("logup_range_check_pow2_unsigned failed: {e}"),
+        })?;
 
         // Multiply all Δ_i together
         prod = api.mul(prod, delta);
@@ -597,21 +593,16 @@ pub fn constrained_min<C: Config, Builder: RootAPI<C>>(
 ///
 /// Semantics (elementwise, assuming `min <= max` in the intended integer semantics):
 /// - If both `lower` and `upper` are present:
-///   y = min(max(x, lower), upper)
+///       y = min(max(x, lower), upper)
 /// - If only `lower` is present:
-///   y = max(x, lower)
+///       y = max(x, lower)
 /// - If only `upper` is present:
-///   y = min(x, upper)
+///       y = min(x, upper)
 /// - If neither is present:
-///   y = x
+///       y = x
 ///
 /// All variables are field elements (least nonnegative residues), interpreted
 /// as signed integers in a fixed range consistent with the surrounding circuit.
-///
-/// # Errors
-///
-/// Returns a `CircuitError` if the underlying API calls needed to implement
-/// the clip (comparisons, selections) fail.
 pub fn unconstrained_clip<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     x: Variable,
@@ -661,11 +652,6 @@ pub fn unconstrained_clip<C: Config, Builder: RootAPI<C>>(
 /// - Checks the signed range via bit-decomposition and reconstruction.
 /// - Enforces that the result equals one of the inputs.
 /// - Uses a product-of-differences check to guarantee at least one exact match.
-///
-/// # Errors
-///
-/// Returns a `CircuitError` if range checks or selection constraints
-/// cannot be added to the circuit.
 pub fn constrained_clip<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     context: &ShiftRangeContext,
@@ -691,4 +677,46 @@ pub fn constrained_clip<C: Config, Builder: RootAPI<C>>(
     }
 
     Ok(cur)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOGUP-RELATED CODE BELOW
+// ─────────────────────────────────────────────────────────────────────────────
+
+pub fn logup_range_check_pow2_unsigned<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    value: Variable,
+    n_bits: usize,
+) -> Result<(), CircuitError> {
+    if n_bits == 0 {
+        return Err(CircuitError::Other(
+            "logup_range_check_pow2_unsigned: n_bits must be > 0".into(),
+        ));
+    }
+
+    // The LogUp rangeproof implementation itself panics if n > 128.
+    // We surface that as a CircuitError here instead of letting it panic.
+    if n_bits > 128 {
+        return Err(CircuitError::Other(
+            "logup_range_check_pow2_unsigned: n_bits > 128 not supported yet".into(),
+        ));
+    }
+
+    // For now we use a fresh table per call:
+    // - table keys: 0..2^{n_bits} - 1
+    // - single query: `value`
+    //
+    // This ensures `value ∈ [0, 2^{n_bits} - 1]` via LogUp, with no bit decomposition.
+    let mut table = LogUpRangeProofTable::new(4);
+
+    // Populate the table with all valid keys
+    table.initial::<C, Builder>(api);
+
+    // Prove that `value` is in range using `n_bits`
+    table.rangeproof::<C, Builder>(api, value, n_bits);
+
+    // Constrain all queries against the table using LogUp
+    table.final_check::<C, Builder>(api);
+
+    Ok(())
 }
