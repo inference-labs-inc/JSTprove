@@ -81,6 +81,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxLayer {
                 msg: format!("ShiftRangeContext::new failed: {e}"),
             })?;
 
+        // Shared LogUp range-check context for this Max layer
+        let mut logup_ctx = LogupRangeCheckContext::new_default();
+        logup_ctx.init::<C, Builder>(api);
+
         // 5. Elementwise max: for each position, z = max(a, b)
         //
         // We use `constrained_max` with a 2-element slice [a, b], which:
@@ -106,9 +110,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxLayer {
 
         for (a_val, b_val) in a_bc.iter().zip(b_bc.iter()) {
             // Constrained pairwise max using existing gadget
-            let max_var = constrained_max(api, &shift_ctx, &[*a_val, *b_val])?;
+            let max_var = constrained_max(api, &shift_ctx, &mut logup_ctx, &[*a_val, *b_val])?;
             out_storage.push(max_var);
         }
+
+        // Finalize LogUp constraints for this layer
+        logup_ctx.finalize::<C, Builder>(api);
 
         let result = ArrayD::from_shape_vec(shape.clone(), out_storage).map_err(|_| {
             LayerError::InvalidShape {

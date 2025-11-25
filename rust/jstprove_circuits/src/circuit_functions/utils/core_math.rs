@@ -405,7 +405,8 @@ pub fn unconstrained_min<C: Config, Builder: RootAPI<C>>(
 /// - `values`: A nonempty slice of `Variable`s, each encoding an integer in `[-S, T − S]`.
 pub fn constrained_max<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    context: &ShiftRangeContext, // S = 2^s = context.offset
+    shift_ctx: &ShiftRangeContext, // S = 2^s = shift_ctx.offset
+    logup_ctx: &mut LogupRangeCheckContext, // reused LogUp table
     values: &[Variable],
 ) -> Result<Variable, CircuitError> {
     // 0) Require nonempty input
@@ -420,36 +421,37 @@ pub fn constrained_max<C: Config, Builder: RootAPI<C>>(
     // 1) Form offset-shifted values: x_i^♯ = x_i + S
     let mut values_offset = Vec::with_capacity(values.len());
     for &x in values {
-        values_offset.push(api.add(x, context.offset));
+        values_offset.push(api.add(x, shift_ctx.offset));
     }
 
     // 2) Compute max_i (x_i^♯), which equals M^♯ = M + S
     let max_offset = unconstrained_max(api, &values_offset)?;
 
     // 3) Recover M = M^♯ − S
-    let max_raw = api.sub(max_offset, context.offset);
+    let max_raw = api.sub(max_offset, shift_ctx.offset);
 
     // 4) For each x_i, range-check Δ_i = M − x_i ∈ [0, T] using s + 1 bits
-    let n_bits =
-        context
-            .shift_exponent
-            .checked_add(1)
-            .ok_or_else(|| LayerError::InvalidParameterValue {
-                layer: LayerKind::Max,
-                layer_name: "ShiftRangeContext".to_string(),
-                param_name: "shift_exponent".to_string(),
-                value: context.shift_exponent.to_string(),
-            })?;
+    let n_bits = shift_ctx.shift_exponent.checked_add(1).ok_or_else(|| {
+        LayerError::InvalidParameterValue {
+            layer: LayerKind::Max,
+            layer_name: "ShiftRangeContext".to_string(),
+            param_name: "shift_exponent".to_string(),
+            value: shift_ctx.shift_exponent.to_string(),
+        }
+    })?;
+
     let mut prod = api.constant(1);
 
     for &x in values {
         let delta = api.sub(max_raw, x);
 
-        // Δ ∈ [0, T] = [0, 2^{s + 1} - 1] via LogUp-based range proof
-        logup_range_check_pow2_unsigned(api, delta, n_bits).map_err(|e| LayerError::Other {
-            layer: LayerKind::Max,
-            msg: format!("logup_range_check_pow2_unsigned failed: {e}"),
-        })?;
+        // Δ ∈ [0, T] = [0, 2^{s + 1} - 1] via *shared* LogUp-based range proof
+        logup_ctx
+            .range_check::<C, Builder>(api, delta, n_bits)
+            .map_err(|e| LayerError::Other {
+                layer: LayerKind::Max,
+                msg: format!("logup_range_check_pow2_unsigned (LogUp) failed: {e}"),
+            })?;
 
         // Multiply all Δ_i together
         prod = api.mul(prod, delta);
@@ -654,7 +656,8 @@ pub fn unconstrained_clip<C: Config, Builder: RootAPI<C>>(
 /// - Uses a product-of-differences check to guarantee at least one exact match.
 pub fn constrained_clip<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    context: &ShiftRangeContext,
+    range_ctx: &ShiftRangeContext,
+    logup_ctx: &mut LogupRangeCheckContext,
     x: Variable,
     lower: Option<Variable>,
     upper: Option<Variable>,
@@ -666,14 +669,14 @@ pub fn constrained_clip<C: Config, Builder: RootAPI<C>>(
 
     // Apply lower bound via constrained_max when present
     let mut cur = if let Some(a) = lower {
-        constrained_max(api, context, &[x, a])?
+        constrained_max(api, range_ctx, logup_ctx, &[x, a])?
     } else {
         x
     };
 
     // Apply upper bound via constrained_min when present
     if let Some(b) = upper {
-        cur = constrained_min(api, context, &[cur, b])?;
+        cur = constrained_min(api, range_ctx, logup_ctx, &[cur, b])?;
     }
 
     Ok(cur)

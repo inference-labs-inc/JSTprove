@@ -419,6 +419,9 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
 
     let context = ShiftRangeContext::new(api, shift_exponent)?;
 
+    let mut logup_ctx = LogupRangeCheckContext::new_default();
+    logup_ctx.init::<C, Builder>(api);
+
     for n in 0..batch {
         for c in 0..channels {
             for ph in 0..pooled_height {
@@ -450,13 +453,14 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
                     }
 
                     if !values.is_empty() {
-                        let max = constrained_max(api, &context, &values)?;
+                        let max = constrained_max(api, &context, &mut logup_ctx, &values)?;
                         y[[n, c, ph, pw]] = max;
                     }
                 }
             }
         }
     }
-
+    // Commit LogUp constraints once
+    logup_ctx.finalize::<C, Builder>(api);
     Ok(y.into_dyn())
 }
