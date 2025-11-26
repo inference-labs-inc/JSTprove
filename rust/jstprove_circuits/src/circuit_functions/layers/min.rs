@@ -91,8 +91,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MinLayer {
         //
         // We use `constrained_min` with a 2-element slice [a, b], which:
         //   - shifts both by 2^s,
-        //   - uses `unconstrained_min` to pick the min of shifted values,
-        //   - shifts back and asserts correctness via LogUp-based range checks and a product = 0 constraint.
+        //   - uses `unconstrained_min` to pick the min of the shifted values,
+        //   - shifts back and asserts correctness via LogUp-based range checks
+        //     and a product = 0 constraint.
+        //
+        // At this point, `a_bc` and `b_bc` have identical shapes.
         let shape = a_bc.shape().to_vec();
         if a_bc.len() != b_bc.len() {
             return Err(LayerError::InvalidShape {
@@ -123,6 +126,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MinLayer {
                 msg: format!("MinLayer: cannot reshape result into shape {shape:?}"),
             }
         })?;
+
+        Ok((self.outputs.clone(), result))
     }
 
     fn build(
