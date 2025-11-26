@@ -50,9 +50,7 @@ use crate::circuit_functions::utils::{
 };
 
 // Internal modules: LogUp-based range-check helper + max gadget
-use super::core_math::{
-    LogupRangeCheckContext, ShiftRangeContext, constrained_max, logup_range_check_pow2_unsigned,
-};
+use super::core_math::{LogupRangeCheckContext, ShiftRangeContext, constrained_max};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STRUCT: RescalingContext
@@ -174,6 +172,7 @@ impl RescalingContext {
 pub fn rescale<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     context: &RescalingContext,
+    logup_ctx: &mut LogupRangeCheckContext,
     dividend: Variable,
     apply_relu: bool,
 ) -> Result<Variable, RescaleError> {
@@ -190,9 +189,9 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
     let rhs = api.add(rhs_first_term, remainder);
     api.assert_is_equal(shifted_dividend, rhs);
 
-    // Step 4: LogUp range-check r ∈ [0, α − 1] using κ bits,
-    // using a one-shot LogUp table per check.
-    logup_range_check_pow2_unsigned::<C, Builder>(api, remainder, context.scaling_exponent)
+    // Step 4: LogUp range-check r ∈ [0, α − 1] using κ bits
+    logup_ctx
+        .range_check::<C, Builder>(api, remainder, context.scaling_exponent)
         .map_err(|e| RescaleError::BitDecompositionError {
             var_name: format!("remainder (LogUp): {e}"),
             n_bits: context.scaling_exponent,
@@ -208,12 +207,12 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
                 type_name: "usize",
             })?;
 
-    logup_range_check_pow2_unsigned::<C, Builder>(api, shifted_q, n_bits_q).map_err(|e| {
-        RescaleError::BitDecompositionError {
+    logup_ctx
+        .range_check::<C, Builder>(api, shifted_q, n_bits_q)
+        .map_err(|e| RescaleError::BitDecompositionError {
             var_name: format!("quotient (LogUp): {e}"),
             n_bits: n_bits_q,
-        }
-    })?;
+        })?;
 
     // Step 6: Recover quotient q = q^♯ − S
     let quotient = api.sub(shifted_q, context.shift); // q = q^♯ − S
@@ -222,26 +221,18 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
     if apply_relu {
         // Build shift context for the max gadget (same `s` as in RescalingContext)
         let shift_ctx = ShiftRangeContext::new(api, context.shift_exponent).map_err(|e| {
-            // Reuse BitDecompositionError as a generic "gadget failed" bucket
             RescaleError::BitDecompositionError {
                 var_name: format!("ShiftRangeContext::new in ReLU: {e}"),
                 n_bits: context.shift_exponent + 1,
             }
         })?;
 
-        // Fresh LogUp context *local to this ReLU* call
-        let mut logup_ctx = LogupRangeCheckContext::new_default();
-        logup_ctx.init::<C, Builder>(api);
-
         let zero = api.constant(0);
-        let relu_q =
-            constrained_max::<C, Builder>(api, &shift_ctx, &mut logup_ctx, &[quotient, zero])
-                .map_err(|e| RescaleError::BitDecompositionError {
-                    var_name: format!("ReLU via constrained_max failed: {e}"),
-                    n_bits: context.shift_exponent + 1,
-                })?;
-
-        logup_ctx.finalize::<C, Builder>(api);
+        let relu_q = constrained_max::<C, Builder>(api, &shift_ctx, logup_ctx, &[quotient, zero])
+            .map_err(|e| RescaleError::BitDecompositionError {
+            var_name: format!("ReLU via constrained_max failed: {e}"),
+            n_bits: context.shift_exponent + 1,
+        })?;
 
         Ok(relu_q)
     } else {
@@ -286,12 +277,19 @@ pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
 ) -> Result<ArrayD<Variable>, UtilsError> {
     let context = RescalingContext::new(api, scaling_exponent, shift_exponent)?;
 
+    // Shared LogUp table for all range checks in this rescale pass
+    let mut logup_ctx = LogupRangeCheckContext::new_default();
+    logup_ctx.init::<C, Builder>(api);
+
     // Convert to Vec, map with error handling, then back to ArrayD
     let shape = array.shape().to_vec();
     let results: Result<Vec<Variable>, RescaleError> = array
         .into_iter()
-        .map(|x| rescale::<C, Builder>(api, &context, x, apply_relu))
+        .map(|x| rescale::<C, Builder>(api, &context, &mut logup_ctx, x, apply_relu))
         .collect();
+
+    // Single final LogUp consistency check for all queries
+    logup_ctx.finalize::<C, Builder>(api);
 
     let rescaled_data = results?;
     Ok(ArrayD::from_shape_vec(shape, rescaled_data).map_err(ArrayConversionError::ShapeError)?)
