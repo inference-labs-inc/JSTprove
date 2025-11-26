@@ -113,6 +113,7 @@ pub fn matrix_addition<C: Config, Builder: RootAPI<C>>(
 /// - `api`: The circuit builder.
 /// - `matrix_a`: First input tensor.
 /// - `matrix_b`: Second input tensor, possibly with a different shape.
+/// - `layer_type`: Identifier for error reporting.
 ///
 /// # Returns
 /// An `ArrayD<Variable>` of the same shape as `matrix_a`, representing the elementwise product.
@@ -155,9 +156,10 @@ pub fn matrix_hadamard_product<C: Config, Builder: RootAPI<C>>(
 /// - `api`: The circuit builder.
 /// - `matrix_a`: First input tensor.
 /// - `matrix_b`: Second input tensor, possibly with a different shape.
+/// - `layer_type`: Identifier for error reporting.
 ///
 /// # Returns
-/// An `ArrayD<Variable>` of the same shape as `matrix_a`, representing the elementwise product.
+/// An `ArrayD<Variable>` of the same shape as `matrix_a`, representing the elementwise difference.
 ///
 /// # Errors
 /// - If the total number of elements in `matrix_a` and `matrix_b` do not match.

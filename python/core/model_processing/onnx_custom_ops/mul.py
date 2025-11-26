@@ -32,9 +32,14 @@ def int64_mul(
 
     Parameters
     ----------
-    X : Input tensor with dtype int64.
-    Y : Input tensor with dtype int64.
+    a : np.ndarray
+        First input tensor with dtype int64.
+    b : np.ndarray
+        Second input tensor with dtype int64.
     scaling_factor : Scaling factor for rescaling the output.
+        Optional scalar tensor for rescaling when rescale=1.
+    rescale : int, optional
+        Whether to apply rescaling (0=no, 1=yes).
 
     Returns
     -------

@@ -69,16 +69,16 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MulLayer {
 
         let (a_bc, b_bc) = broadcast_two_arrays(&a_input, &b_input)?;
 
-        // Matrix multiplication and bias Mulition
+        // Matrix hadammard product with optional rescaling
         let result = matrix_hadamard_product(api, &a_bc, b_bc, LayerKind::Mul)?;
         if self.is_rescale {
             let k = usize::try_from(self.scaling).map_err(|_| LayerError::Other {
-                layer: LayerKind::Gemm,
+                layer: LayerKind::Mul,
                 msg: "Cannot convert scaling to usize".to_string(),
             })?;
             let s = self.v_plus_one.checked_sub(1).ok_or_else(|| {
                 LayerError::InvalidParameterValue {
-                    layer: LayerKind::Gemm,
+                    layer: LayerKind::Mul,
                     layer_name: self.name.clone(),
                     param_name: "v_plus_one".to_string(),
                     value: self.v_plus_one.to_string(),
@@ -86,7 +86,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MulLayer {
             })?;
             let out_array =
                 rescale_array(api, result, k, s, is_relu).map_err(|e| LayerError::Other {
-                    layer: LayerKind::Gemm,
+                    layer: LayerKind::Mul,
                     msg: format!("Rescale failed: {e}"),
                 })?;
             return Ok((self.outputs.clone(), out_array));
