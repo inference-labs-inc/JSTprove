@@ -17,6 +17,9 @@ from python.core.model_processing.onnx_quantizer.layers.base import (
     PassthroughQuantizer,
     ScaleConfig,
 )
+from python.core.model_processing.onnx_quantizer.layers.batchnorm import (
+    BatchnormQuantizer,
+)
 from python.core.model_processing.onnx_quantizer.layers.constant import (
     ConstantQuantizer,
 )
@@ -76,6 +79,7 @@ class ONNXOpQuantizer:
         self.register("Constant", ConstantQuantizer())
         self.register("MaxPool", MaxpoolQuantizer())
         self.register("Flatten", PassthroughQuantizer())
+        self.register("BatchNormalization", BatchnormQuantizer())
 
     def register(
         self: ONNXOpQuantizer,
