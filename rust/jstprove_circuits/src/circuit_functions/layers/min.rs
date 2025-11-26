@@ -76,7 +76,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MinLayer {
         // 3. Broadcast inputs to a common shape (same helper as AddLayer)
         let (a_bc, b_bc) = broadcast_two_arrays(&a_input, &b_input)?;
 
-         // 4. Prepare shift context
+        // 4. Prepare shift context
         let shift_ctx =
             ShiftRangeContext::new(api, self.shift_exponent).map_err(|e| LayerError::Other {
                 layer: LayerKind::Min,
@@ -123,7 +123,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MinLayer {
                 msg: format!("MinLayer: cannot reshape result into shape {shape:?}"),
             }
         })?;
-
+    }
 
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
