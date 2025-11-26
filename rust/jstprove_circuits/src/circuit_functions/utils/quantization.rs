@@ -25,14 +25,19 @@
 //! c + α·S = α·q^♯ + r,    with    0 ≤ r < α
 //! ```
 //!
-//! Then recovers `q = q^♯ − S`, and optionally applies `ReLU` by zeroing out negative values
-//! based on the most significant bit of `q^♯`.
+//! Then recovers `q = q^♯ − S`, and optionally applies `ReLU` as
 //!
-//! The core logic is implemented in [`rescale`] and its batched variants
-//! [`rescale_2d_vector`] and [`rescale_4d_vector`], using a shared [`RescalingContext`]
-//! to precompute constants and optimize performance.
+//! ```text
+//! ReLU(q) = max(q, 0)
+//! ```
+//!
+//! using the existing `constrained_max` gadget, which itself uses LogUp-based
+//! range proofs instead of ad-hoc MSB extraction.
+//!
+//! The core logic is implemented in [`rescale`] and its batched variant
+//! [`rescale_array`], using a shared [`RescalingContext`] plus a
+//! [`LogupRangeCheckContext`] to precompute constants and optimize performance.
 
-// External crates
 use ethnum::U256;
 use ndarray::ArrayD;
 
@@ -44,8 +49,8 @@ use crate::circuit_functions::utils::{
     errors::{ArrayConversionError, RescaleError},
 };
 
-// Internal modules
-use super::core_math::range_check_pow2_unsigned;
+// Internal math helpers (LogUp + max gadget)
+use super::core_math::{LogupRangeCheckContext, ShiftRangeContext, constrained_max};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STRUCT: RescalingContext
@@ -140,12 +145,13 @@ impl RescalingContext {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Computes `q = floor((c + α·S)/α) − S`, optionally applying `ReLU`, using a
-/// precomputed [`RescalingContext`] for efficiency and clarity.
+/// precomputed [`RescalingContext`] for efficiency and clarity, plus a shared
+/// [`LogupRangeCheckContext`] for range proofs.
 ///
-/// All intermediate values are computed using **unconstrained operations** (i.e.,
-/// witness-only helper functions such as division, modulo, and bit decomposition),
-/// and **correctness is enforced explicitly** via constraint assertions such as
-/// `assert_is_equal`, `assert_is_zero`, and bitstring range checks.
+/// All range checks are implemented via LogUp (no direct bit-decomp gadgets here),
+/// and `ReLU` is implemented as `max(q, 0)` via the existing `constrained_max`
+/// gadget, which itself uses LogUp-based range-checking and a product-of-differences
+/// condition to ensure the selected maximum is one of the inputs.
 ///
 /// # Notation
 /// - Let `κ = context.scaling_exponent`, and define `α = 2^κ`.
@@ -159,38 +165,22 @@ impl RescalingContext {
 /// 1. Form `shifted_dividend = α·S + c` using precomputed constants from `context`.
 /// 2. Unconstrained division: `shifted_dividend = α·q^♯ + r`.
 /// 3. Enforce this equality with a constraint.
-/// 4. Range-check `r ∈ [0, α − 1]`.
-/// 5. Range-check `q^♯ ∈ [0, T] = [0, 2^(s + 1) − 1]`.
+/// 4. LogUp range-check `r ∈ [0, α − 1]` using `κ` bits.
+/// 5. LogUp range-check `q^♯ ∈ [0, T] = [0, 2^(s + 1) − 1]`.
 /// 6. Recover `q = q^♯ − S`.
-/// 7. If `apply_relu`, output `max(q, 0)` using MSB of `q^♯`.
-///
-/// # Efficiency Note
-/// The use of a [`RescalingContext`] avoids recomputing and re-lifting
-/// the constants `α`, `S`, and `α·S` on each call, which improves performance
-/// in matrix-wide applications or other scenarios involving repeated rescaling.
-///
-///
-/// # Errors
-/// - Returns [`RescaleError::BitDecompositionError`] if bit decomposition fails for the remainder or quotient.
-/// - Returns [`RescaleError::BitReconstructionError`] if the reconstructed bitstring does not match the original value.
-/// - Returns other [`RescaleError`] variants if quotient/remainder assertions fail.
-///
-/// # Arguments
-/// - `api`: The circuit builder implementing `RootAPI<C>`.
-/// - `context`: A [`RescalingContext`] holding both native and circuit-lifted values
-///   for `α`, `S`, and `α·S`.
-/// - `dividend` (`c`): The field element to rescale, assumed in `[-α·S, α·(T − S)]`.
-/// - `apply_relu`: If `true`, returns `max(q, 0)` instead of `q`.
+/// 7. If `apply_relu`, output `max(q, 0)` via `constrained_max`.
 pub fn rescale<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     context: &RescalingContext,
+    logup_ctx: &mut LogupRangeCheckContext,
     dividend: Variable,
     apply_relu: bool,
 ) -> Result<Variable, RescaleError> {
     // Step 1: compute shifted_dividend = α·S + c
     let shifted_dividend = api.add(context.scaled_shift, dividend);
 
-    // Step 2: Compute unchecked witness values q^♯, r via unconstrained Euclidean division: α·S + c = α·q^♯ + r
+    // Step 2: Compute unchecked witness values q^♯, r via unconstrained Euclidean division:
+    //         α·S + c = α·q^♯ + r
     let shifted_q = api.unconstrained_int_div(shifted_dividend, context.scaling_factor_); // q^♯
     let remainder = api.unconstrained_mod(shifted_dividend, context.scaling_factor_); // r
 
@@ -199,19 +189,15 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
     let rhs = api.add(rhs_first_term, remainder);
     api.assert_is_equal(shifted_dividend, rhs);
 
-    // Step 4: Range-check r ∈ [0, α − 1] using κ bits
-    let _rem_bits =
-        range_check_pow2_unsigned(api, remainder, context.scaling_exponent).map_err(|_| {
-            // We collapse decomposition/reconstruction errors into a single
-            // RescaleError variant here; if you really want to distinguish them,
-            // we can extend the gadget's error type later.
-            RescaleError::BitDecompositionError {
-                var_name: "remainder".to_string(),
-                n_bits: context.scaling_exponent,
-            }
+    // Step 4: LogUp range-check r ∈ [0, α − 1] using κ bits
+    logup_ctx
+        .range_check::<C, Builder>(api, remainder, context.scaling_exponent)
+        .map_err(|e| RescaleError::BitDecompositionError {
+            var_name: format!("remainder (LogUp): {e}"),
+            n_bits: context.scaling_exponent,
         })?;
 
-    // Step 5: Range-check q^♯ ∈ [0, 2^(s + 1) − 1] using s + 1 bits
+    // Step 5: LogUp range-check q^♯ ∈ [0, 2^(s + 1) − 1] using s + 1 bits
     let n_bits_q =
         context
             .shift_exponent
@@ -221,25 +207,40 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
                 type_name: "usize",
             })?;
 
-    let q_bits = range_check_pow2_unsigned(api, shifted_q, n_bits_q).map_err(|_| {
-        RescaleError::BitDecompositionError {
-            var_name: "quotient".to_string(),
+    logup_ctx
+        .range_check::<C, Builder>(api, shifted_q, n_bits_q)
+        .map_err(|e| RescaleError::BitDecompositionError {
+            var_name: format!("quotient (LogUp): {e}"),
             n_bits: n_bits_q,
-        }
-    })?;
+        })?;
 
     // Step 6: Recover quotient q = q^♯ − S
-    // let quotient = api.sub(shifted_q, context.shift); // q = q^♯ − S
-    let quotient = api.sub(
-        shifted_q,
-        CircuitField::<C>::from_u256(U256::from(u128::from(context.shift_))),
-    ); // q = q^♯ − S
+    let quotient = api.sub(shifted_q, context.shift); // q = q^♯ − S
 
-    // Step 7: If ReLU is applied, zero out negatives using MSB of q^♯
+    // Step 7: If ReLU is applied, enforce ReLU(q) = max(q, 0) via constrained_max
     if apply_relu {
-        // q ≥ 0 ⇔ q^♯ ≥ S ⇔ MSB (bit d_s) is 1, where q^♯ ≤ 2^(s + 1) - 1
-        let sign_bit = q_bits[context.shift_exponent]; // the (s + 1)-st bit d_s
-        Ok(api.mul(quotient, sign_bit))
+        // Build shift context for the max gadget (same `s` as in RescalingContext)
+        let shift_ctx = ShiftRangeContext::new(api, context.shift_exponent).map_err(|e| {
+            // You may want a dedicated variant; this reuses BitDecompositionError
+            RescaleError::BitDecompositionError {
+                var_name: format!("ShiftRangeContext::new in ReLU: {e}"),
+                n_bits: context.shift_exponent + 1,
+            }
+        })?;
+
+        let zero = api.constant(0);
+
+        let relu_q = constrained_max::<C, Builder>(api, &shift_ctx, logup_ctx, &[quotient, zero])
+            .map_err(|e| {
+            // If you like, add a dedicated RescaleError variant, e.g.,
+            // RescaleError::ConstrainedMaxError { msg: String }
+            RescaleError::BitDecompositionError {
+                var_name: format!("ReLU via constrained_max failed: {e}"),
+                n_bits: context.shift_exponent + 1,
+            }
+        })?;
+
+        Ok(relu_q)
     } else {
         Ok(quotient)
     }
@@ -251,9 +252,12 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
 
 /// Applies `rescale` elementwise to an `ArrayD<Variable>`, using provided scaling and shift exponents.
 ///
-/// Internally constructs a [`RescalingContext`] with the given exponents:
-/// - `scaling_exponent` κ such that α = 2^κ
-/// - `shift_exponent` s such that S = 2^s
+/// Internally constructs:
+/// - a [`RescalingContext`] with the given exponents:
+///   - `scaling_exponent` κ such that α = 2^κ
+///   - `shift_exponent` s such that S = 2^s
+/// - a shared [`LogupRangeCheckContext`] used for **all** range checks (remainder and quotient
+///   range proofs, plus any `constrained_max` calls for ReLU).
 ///
 /// # Arguments
 /// - `api`: Mutable reference to the circuit builder.
@@ -266,7 +270,7 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
 /// An `ArrayD<Variable>` of the same shape with all values rescaled.
 ///
 /// # Errors
-/// - Returns [`RescaleError`] if rescaling fails for any element (e.g. invalid bit decomposition).
+/// - Returns [`UtilsError::from(RescaleError)`] if rescaling fails for any element.
 /// - Returns [`ArrayConversionError::ShapeError`] if the reshaped array cannot be reconstructed
 ///   from the rescaled data.
 /// - Propagates any errors from [`RescalingContext::new`], such as overflow in the exponent shifts.
@@ -279,13 +283,25 @@ pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
 ) -> Result<ArrayD<Variable>, UtilsError> {
     let context = RescalingContext::new(api, scaling_exponent, shift_exponent)?;
 
+    // Shared LogUp context for all range checks in this array
+    let mut logup_ctx = LogupRangeCheckContext::new_default();
+    logup_ctx.init::<C, Builder>(api);
+
     // Convert to Vec, map with error handling, then back to ArrayD
     let shape = array.shape().to_vec();
     let results: Result<Vec<Variable>, RescaleError> = array
         .into_iter()
-        .map(|x| rescale(api, &context, x, apply_relu))
+        .map(|x| rescale::<C, Builder>(api, &context, &mut logup_ctx, x, apply_relu))
         .collect();
 
-    let rescaled_data = results?;
-    Ok(ArrayD::from_shape_vec(shape, rescaled_data).map_err(ArrayConversionError::ShapeError)?) //
+    let rescaled_data = match results {
+        Ok(v) => {
+            // Finalize LogUp proofs only if all rescalings succeeded
+            logup_ctx.finalize::<C, Builder>(api);
+            v
+        }
+        Err(e) => return Err(e.into()),
+    };
+
+    Ok(ArrayD::from_shape_vec(shape, rescaled_data).map_err(ArrayConversionError::ShapeError)?)
 }
