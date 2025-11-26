@@ -64,7 +64,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SubLayer {
 
         let (a_bc, b_bc) = broadcast_two_arrays(&a_input, &b_input)?;
 
-        // Matrix multiplication and bias subtraction
+        // Matrix subtraction
         let result = matrix_subtraction(api, &a_bc, b_bc, LayerKind::Sub)?;
         Ok((self.outputs.clone(), result))
     }
