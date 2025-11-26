@@ -10,7 +10,9 @@ use ndarray::ArrayD;
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 /// Internal helpers shared with other layers
-use crate::circuit_functions::utils::core_math::{ShiftRangeContext, constrained_min};
+use crate::circuit_functions::utils::core_math::{
+    LogupRangeCheckContext, ShiftRangeContext, constrained_min,
+};
 use crate::circuit_functions::utils::onnx_model::get_optional_w_or_b;
 use crate::circuit_functions::utils::tensor_ops::{
     broadcast_two_arrays, load_array_constants_or_get_inputs,
@@ -74,21 +76,23 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MinLayer {
         // 3. Broadcast inputs to a common shape (same helper as AddLayer)
         let (a_bc, b_bc) = broadcast_two_arrays(&a_input, &b_input)?;
 
-        // 4. Prepare shift context
+         // 4. Prepare shift context
         let shift_ctx =
             ShiftRangeContext::new(api, self.shift_exponent).map_err(|e| LayerError::Other {
                 layer: LayerKind::Min,
                 msg: format!("MinLayer: ShiftRangeContext::new failed: {e}"),
             })?;
 
+        // Shared LogUp range-check context for this Min layer
+        let mut logup_ctx = LogupRangeCheckContext::new_default();
+        logup_ctx.init::<C, Builder>(api);
+
         // 5. Elementwise min: for each position, z = min(a, b)
         //
         // We use `constrained_min` with a 2-element slice [a, b], which:
         //   - shifts both by 2^s,
-        //   - uses `unconstrained_min` to pick the min of the shifted values,
-        //   - shifts back and asserts correctness via range checks and a product = 0 constraint.
-        //
-        // At this point, `a_bc` and `b_bc` have identical shapes.
+        //   - uses `unconstrained_min` to pick the min of shifted values,
+        //   - shifts back and asserts correctness via LogUp-based range checks and a product = 0 constraint.
         let shape = a_bc.shape().to_vec();
         if a_bc.len() != b_bc.len() {
             return Err(LayerError::InvalidShape {
@@ -105,10 +109,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MinLayer {
         let mut out_storage = Vec::with_capacity(a_bc.len());
 
         for (a_val, b_val) in a_bc.iter().zip(b_bc.iter()) {
-            // Constrained pairwise min using existing gadget
-            let min_var = constrained_min(api, &shift_ctx, &[*a_val, *b_val])?;
+            // Constrained pairwise min using existing gadget + shared LogUp context
+            let min_var = constrained_min(api, &shift_ctx, &mut logup_ctx, &[*a_val, *b_val])?;
             out_storage.push(min_var);
         }
+
+        // Finalize LogUp constraints for this layer
+        logup_ctx.finalize::<C, Builder>(api);
 
         let result = ArrayD::from_shape_vec(shape.clone(), out_storage).map_err(|_| {
             LayerError::InvalidShape {
@@ -117,8 +124,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MinLayer {
             }
         })?;
 
-        Ok((self.outputs.clone(), result))
-    }
 
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,

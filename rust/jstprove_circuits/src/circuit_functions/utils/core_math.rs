@@ -530,7 +530,8 @@ pub fn constrained_max<C: Config, Builder: RootAPI<C>>(
 /// - `values`: A nonempty slice of `Variable`s, each encoding an integer in `[-S, T − S]`.
 pub fn constrained_min<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    context: &ShiftRangeContext, // S = 2^s = context.offset
+    context: &ShiftRangeContext,            // S = 2^s = context.offset
+    logup_ctx: &mut LogupRangeCheckContext, // reused LogUp table
     values: &[Variable],
 ) -> Result<Variable, CircuitError> {
     // 0) Require nonempty input
@@ -565,16 +566,18 @@ pub fn constrained_min<C: Config, Builder: RootAPI<C>>(
                 param_name: "shift_exponent".to_string(),
                 value: context.shift_exponent.to_string(),
             })?;
+
     let mut prod = api.constant(1);
 
     for &x in values {
         let delta = api.sub(x, min_raw);
 
-        // Δ ∈ [0, T] ⇔ ∃ bitstring of length s + 1 summing to Δ
-        let _delta_bits =
-            range_check_pow2_unsigned(api, delta, n_bits).map_err(|e| LayerError::Other {
+        // Δ ∈ [0, T] = [0, 2^{s + 1} - 1] via *shared* LogUp-based range proof
+        logup_ctx
+            .range_check::<C, Builder>(api, delta, n_bits)
+            .map_err(|e| LayerError::Other {
                 layer: LayerKind::Min,
-                msg: format!("range_check_pow2_unsigned failed: {e}"),
+                msg: format!("logup_range_check_pow2_unsigned (LogUp) failed: {e}"),
             })?;
 
         // Multiply all Δ_i together
@@ -676,7 +679,7 @@ pub fn constrained_clip<C: Config, Builder: RootAPI<C>>(
 
     // Apply upper bound via constrained_min when present
     if let Some(b) = upper {
-        cur = constrained_min(api, range_ctx, &[cur, b])?;
+        cur = constrained_min(api, range_ctx, logup_ctx, &[cur, b])?;
     }
 
     Ok(cur)
