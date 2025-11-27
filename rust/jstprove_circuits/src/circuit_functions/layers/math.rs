@@ -86,13 +86,147 @@ pub fn dot<C: Config, Builder: RootAPI<C>>(
 pub fn matrix_addition<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: &ArrayD<Variable>,
-    mut matrix_b: ArrayD<Variable>,
+    matrix_b: ArrayD<Variable>,
     layer_type: LayerKind,
 ) -> Result<ArrayD<Variable>, LayerError> {
+    elementwise_op(
+        api,
+        matrix_a,
+        matrix_b,
+        layer_type,
+        expander_compiler::frontend::BasicAPI::add,
+        "matrix_addition",
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: matrix_hadamard_product
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Multiplies two `ArrayD<Variable>` tensors elementwise using circuit constraints.
+///
+/// If the shapes differ but the total number of elements matches, this function
+/// attempts to reshape `matrix_b` to match `matrix_a`. This is useful for multiplying
+/// broadcasted constants (e.g., bias terms) with higher-dimensional arrays.
+///
+/// # Arguments
+/// - `api`: The circuit builder.
+/// - `matrix_a`: First input tensor.
+/// - `matrix_b`: Second input tensor, possibly with a different shape.
+/// - `layer_type`: Identifier for error reporting.
+///
+/// # Returns
+/// An `ArrayD<Variable>` of the same shape as `matrix_a`, representing the elementwise product.
+///
+/// # Errors
+/// - If the total number of elements in `matrix_a` and `matrix_b` do not match.
+/// - If reshaping `matrix_b` to `matrix_a`'s shape fails.
+///
+/// # Example
+/// ```ignore
+/// let result = matrix_hadamard_product(api, input_tensor, weight_tensor);
+/// ```
+pub fn matrix_hadamard_product<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    matrix_a: &ArrayD<Variable>,
+    matrix_b: ArrayD<Variable>,
+    layer_type: LayerKind,
+) -> Result<ArrayD<Variable>, LayerError> {
+    elementwise_op(
+        api,
+        matrix_a,
+        matrix_b,
+        layer_type,
+        expander_compiler::frontend::BasicAPI::mul,
+        "matrix_hadamard_product",
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNCTION: matrix_subtraction
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Subtract two `ArrayD<Variable>` tensors elementwise using circuit constraints.
+///
+/// If the shapes differ but the total number of elements matches, this function
+/// attempts to reshape `matrix_b` to match `matrix_a`. This is useful for subtracting
+/// broadcasted constants (e.g., bias terms) with higher-dimensional arrays.
+///
+/// # Arguments
+/// - `api`: The circuit builder.
+/// - `matrix_a`: First input tensor.
+/// - `matrix_b`: Second input tensor, possibly with a different shape.
+/// - `layer_type`: Identifier for error reporting.
+///
+/// # Returns
+/// An `ArrayD<Variable>` of the same shape as `matrix_a`, representing the elementwise difference.
+///
+/// # Errors
+/// - If the total number of elements in `matrix_a` and `matrix_b` do not match.
+/// - If reshaping `matrix_b` to `matrix_a`'s shape fails.
+///
+/// # Example
+/// ```ignore
+/// let result = matrix_subtraction(api, input_tensor, weight_tensor);
+/// ```
+pub fn matrix_subtraction<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    matrix_a: &ArrayD<Variable>,
+    matrix_b: ArrayD<Variable>,
+    layer_type: LayerKind,
+) -> Result<ArrayD<Variable>, LayerError> {
+    elementwise_op(
+        api,
+        matrix_a,
+        matrix_b,
+        layer_type,
+        expander_compiler::frontend::BasicAPI::sub,
+        "matrix_subtraction",
+    )
+}
+
+/// Internal helper used by elementwise tensor operations.
+///
+/// Validates shape compatibility between `matrix_a` and `matrix_b`, performs
+/// reshaping if necessary, then applies the provided binary elementwise
+/// operation (`add`, `mul`, etc.) through the circuit builder.
+///
+/// # Shape Rules
+/// - If shapes are identical, no reshape occurs.
+/// - If shapes differ but the total number of elements matches,
+///   `matrix_b` is reshaped to match `matrix_a`.
+/// - Otherwise, a `LayerError::ShapeMismatch` is returned.
+///
+/// # Arguments
+/// - `api`: Constraint builder.
+/// - `matrix_a`: Leftmost matrix operand whose shape defines the output shape.
+/// - `matrix_b`: Rightmost matrix operand, possibly being reshaped.
+/// - `layer_type`: Identifier for error reporting.
+/// - `op`: A closure of type `Fn(&mut Builder, Variable, Variable) -> Variable`
+///   representing the elementwise operation.
+/// - `op_name`: A string used only for debugging and error context.
+///
+/// # Returns
+/// A reshaped `ArrayD<Variable>` containing the elementwise application of `op`.
+///
+/// # Errors
+/// - `LayerError::ShapeMismatch` if reshape is not possible.
+/// - `LayerError::InvalidShape` if assembling the output array fails.
+fn elementwise_op<C: Config, Builder: RootAPI<C>, F>(
+    api: &mut Builder,
+    matrix_a: &ArrayD<Variable>,
+    mut matrix_b: ArrayD<Variable>,
+    layer_type: LayerKind,
+    op: F,
+    op_name: &'static str,
+) -> Result<ArrayD<Variable>, LayerError>
+where
+    F: Fn(&mut Builder, Variable, Variable) -> Variable,
+{
     let shape_a = matrix_a.shape().to_vec();
     let shape_b = matrix_b.shape().to_vec();
 
-    // Attempt to reshape if shape differs but total elements match
+    // ---- Shape match / reshape logic (shared) ----
     if shape_b != shape_a {
         if matrix_b.len() == matrix_a.len() {
             matrix_b = matrix_b
@@ -106,22 +240,23 @@ pub fn matrix_addition<C: Config, Builder: RootAPI<C>>(
         } else {
             return Err(LayerError::ShapeMismatch {
                 layer: layer_type.clone(),
-                expected: shape_a,
-                got: matrix_b.shape().to_vec(),
+                expected: shape_a.clone(),
+                got: shape_b,
                 var_name: "matrix_b".to_string(),
             });
         }
     }
 
+    // ---- Elementwise operation ----
     let result = matrix_a
         .iter()
         .zip(matrix_b.iter())
-        .map(|(&a, &b)| api.add(a, b))
+        .map(|(&a, &b)| op(api, a, b))
         .collect::<Vec<_>>();
 
     ArrayD::from_shape_vec(IxDyn(&shape_a), result).map_err(|_| LayerError::InvalidShape {
         layer: layer_type,
-        msg: "Failed to build result array after matrix_addition".to_string(),
+        msg: format!("Failed to build result array after {op_name}"),
     })
 }
 
