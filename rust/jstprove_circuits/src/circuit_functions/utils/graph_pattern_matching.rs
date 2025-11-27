@@ -222,6 +222,7 @@ pub enum PatternRegistry {
     None,
     ConvRelu,
     GemmRelu,
+    BatchnormRelu,
 }
 
 impl PatternRegistry {
@@ -239,6 +240,10 @@ impl PatternRegistry {
             PatternRegistry::GemmRelu => GraphPattern {
                 name: "Gemm+Relu",
                 ops: &["Gemm", "Relu"],
+            },
+            PatternRegistry::BatchnormRelu => GraphPattern {
+                name: "Batchnorm+Relu",
+                ops: &["Batchnorm", "Relu"],
             },
         }
     }

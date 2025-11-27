@@ -1,4 +1,5 @@
 pub mod add;
+pub mod batchnorm;
 pub mod constant;
 pub mod conv;
 mod errors;

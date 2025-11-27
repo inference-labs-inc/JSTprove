@@ -291,7 +291,7 @@ class ONNXConverter(ModelConverter):
             )
         except InvalidModelError:
             raise
-        except (ValueError, TypeError, RuntimeError, OSError, onnx.ONNXException) as e:
+        except (ValueError, TypeError, RuntimeError, OSError) as e:
             raise LayerAnalysisError(model_type=self.model_type, reason=str(e)) from e
         except Exception as e:
             raise LayerAnalysisError(model_type=self.model_type, reason=str(e)) from e
@@ -558,6 +558,7 @@ class ONNXConverter(ModelConverter):
         output_shapes = {
             out_name: output_name_to_shape.get(out_name, []) for out_name in outputs
         }
+
         return ONNXLayer(
             id=layer_id,
             name=name,

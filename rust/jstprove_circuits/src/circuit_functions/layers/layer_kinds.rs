@@ -1,4 +1,5 @@
 use crate::circuit_functions::layers::LayerError;
+use crate::circuit_functions::layers::batchnorm::BatchnormLayer;
 use crate::circuit_functions::layers::layer_ops::LayerOp;
 use crate::circuit_functions::utils::build_layers::BuildLayerContext;
 use crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry;
@@ -124,7 +125,8 @@ When defining new layers, make sure to activate them by placing the new layer in
 */
 
 define_layers! {
-    Add  => { name: "Add",  builder: AddLayer::build },
+    Add      => { name: "Add",  builder: AddLayer::build },
+    Batchnorm=> { name: "Batchnorm",  builder: BatchnormLayer::build },
     Constant => { name: "Constant", builder: ConstantLayer::build },
     Conv     => { name: "Conv",     builder: ConvLayer::build },
     Flatten  => { name: "Flatten",  builder: FlattenLayer::build },
