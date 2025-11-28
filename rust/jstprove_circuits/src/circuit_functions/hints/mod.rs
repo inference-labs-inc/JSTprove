@@ -4,7 +4,8 @@ use circuit_std_rs::logup::{query_count_by_key_hint, query_count_hint, rangeproo
 use expander_compiler::field::Field as CompilerField;
 use expander_compiler::hints::registry::HintRegistry;
 
-// Re-export helpers so callers can use `crate::circuit_functions::hints::unconstrained_max`
+// Submodule that holds unconstrained max/min/clip helpers
+pub mod max_min_clip;
 pub use max_min_clip::unconstrained_max;
 
 /// Build a HintRegistry with all LogUp-related hints registered.

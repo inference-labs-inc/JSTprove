@@ -1,10 +1,6 @@
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
-use crate::circuit_functions::{
-    CircuitError,
-    layers::{LayerError, LayerKind},
-    utils::UtilsError,
-};
+use crate::circuit_functions::CircuitError;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: unconstrained_max
@@ -36,11 +32,10 @@ pub fn unconstrained_max<C: Config, Builder: RootAPI<C>>(
     values: &[Variable],
 ) -> Result<Variable, CircuitError> {
     if values.is_empty() {
-        return Err(LayerError::Other {
-            layer: LayerKind::Max,
-            msg: "unconstrained_max: input slice must be nonempty".to_string(),
-        }
-        .into());
+        // This is a precondition failure, not an ONNX-layer semantic error.
+        return Err(CircuitError::Other(
+            "unconstrained_max: input slice must be nonempty".to_string(),
+        ));
     }
 
     // Initialize with the first element
