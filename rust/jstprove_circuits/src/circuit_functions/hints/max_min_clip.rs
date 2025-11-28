@@ -86,11 +86,10 @@ pub fn unconstrained_min<C: Config, Builder: RootAPI<C>>(
     values: &[Variable],
 ) -> Result<Variable, CircuitError> {
     if values.is_empty() {
-        return Err(LayerError::Other {
-            layer: LayerKind::Min,
-            msg: "unconstrained_min: input slice must be nonempty".to_string(),
-        }
-        .into());
+        // This is a precondition failure, not an ONNX-layer semantic error.
+        return Err(CircuitError::Other(
+            "unconstrained_max: input slice must be nonempty".to_string(),
+        ));
     }
 
     // Initialize with the first element
