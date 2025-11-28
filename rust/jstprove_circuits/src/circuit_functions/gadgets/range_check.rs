@@ -1,3 +1,8 @@
+use expander_compiler::frontend::{Config, RootAPI, Variable};
+
+use crate::circuit_functions::CircuitError;
+use crate::circuit_functions::utils::UtilsError;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: constrained_reconstruct_from_bits
 // ─────────────────────────────────────────────────────────────────────────────
