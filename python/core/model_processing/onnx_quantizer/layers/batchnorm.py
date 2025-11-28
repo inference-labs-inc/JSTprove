@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
+from python.core.circuits.errors import CircuitConfigurationError
+
 if TYPE_CHECKING:
     import onnx
 
@@ -51,6 +53,7 @@ class BatchnormQuantizer(BaseOpQuantizer, QuantizeBatchnorm):
         """
         Compute the 'mul' and 'add' tensors for BatchNorm folding.
         """
+        self._validate_inputs(node=node)
         # ONNX BatchNorm inputs: [X, scale, bias, mean, var]
         scale_factor = scale_base**scale_exponent
         scale = numpy_helper.to_array(initializer_map[node.input[1]]).astype(np.float32)
@@ -198,8 +201,24 @@ class BatchnormQuantizer(BaseOpQuantizer, QuantizeBatchnorm):
         must be initializers to the circuit and not inputs from earlier in the graph.
         """
 
+        if initializer_map is None:
+            msg = "initializer_map is required for BatchNorm support check"
+            raise CircuitConfigurationError(node.name, node.op_type, msg)
+
+        self._validate_inputs(node=node)
+
         # First, check to make sure that each of the batchnorm inputs are initializers
         initializer_inputs = node.input[1:]
         if not all(i in initializer_map for i in initializer_inputs):
             msg = "Unsupported BatchNorm with normalization inputs not in initializers"
             raise InvalidParamError(node.name, node.op_type, msg)
+
+    def _validate_inputs(self, node: onnx.NodeProto) -> None:
+        """Validate BatchNorm has required inputs in initializer_map."""
+        num_inputs = 5
+        if len(node.input) < num_inputs:
+            raise InvalidParamError(
+                node.name,
+                node.op_type,
+                f"BatchNorm requires 5 inputs, got {len(node.input)}",
+            )

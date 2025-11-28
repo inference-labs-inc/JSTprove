@@ -243,8 +243,8 @@ impl PatternRegistry {
                 ops: &["Gemm", "Relu"],
             },
             PatternRegistry::BatchnormRelu => GraphPattern {
-                name: "Batchnorm+Relu",
-                ops: &["Batchnorm", "Relu"],
+                name: "BatchNormalization+Relu",
+                ops: &["BatchNormalization", "Relu"],
             },
             PatternRegistry::MulRelu => GraphPattern {
                 name: "Mul+Relu",

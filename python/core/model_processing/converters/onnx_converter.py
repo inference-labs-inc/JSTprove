@@ -607,6 +607,7 @@ class ONNXConverter(ModelConverter):
             np_data = onnx.numpy_helper.to_array(node, constant_dtype)
         except (ValueError, TypeError, onnx.ONNXException, Exception) as e:
             raise SerializationError(
+                model_type=self.model_type,
                 tensor_name=node.name,
                 reason=f"Failed to convert tensor: {e!s}",
             ) from e
@@ -1066,6 +1067,7 @@ class ONNXConverter(ModelConverter):
             except Exception as e:
                 raise SerializationError(
                     tensor_name=getattr(w, "name", None),
+                    model_type=self.model_type,
                     reason=f"cannot convert to ndarray: {e}",
                 ) from e
 

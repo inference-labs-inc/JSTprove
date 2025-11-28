@@ -51,10 +51,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Batchnorm, INPUT)?;
 
         let layer_input = input
-            .get(&input_name.clone())
+            .get(input_name)
             .ok_or_else(|| LayerError::MissingInput {
                 layer: LayerKind::Batchnorm,
-                name: input_name.clone(),
+                name: input_name.to_string(),
             })?
             .clone();
 
@@ -105,8 +105,14 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
         let batchnorm = Self {
             name: layer.name.clone(),
             index,
-            weights: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[1])?,
-            bias: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[2])?,
+            weights: get_w_or_b(
+                &layer_context.w_and_b_map,
+                get_input_name(&layer.inputs, 1, LayerKind::Batchnorm, "weights")?,
+            )?,
+            bias: get_w_or_b(
+                &layer_context.w_and_b_map,
+                get_input_name(&layer.inputs, 2, LayerKind::Batchnorm, "bias")?,
+            )?,
             is_rescale,
             v_plus_one: layer_context.n_bits,
             two_v: layer_context.two_v,

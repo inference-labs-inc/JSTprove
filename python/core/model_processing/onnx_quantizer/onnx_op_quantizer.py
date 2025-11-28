@@ -236,5 +236,7 @@ class ONNXOpQuantizer:
                     scale_exponent=scale_exponent,
                     scale_base=scale_base,
                 )
+            # Refresh map if transforms may add initializers
+            initializer_map = self.get_initializer_map(model)
 
         return model

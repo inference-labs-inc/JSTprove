@@ -45,7 +45,7 @@ def int64_batchnorm(
     numpy.ndarray (int64)
     """
     try:
-        # Broadcasting shapes must match batchnorm layout: NCHW or NHWC
+        # Broadcasting shapes must match batchnorm layout: NCHW
         # Typically mul/add have shape [C]
         dims_x = len(x.shape)
         dim_ones = (1,) * (dims_x - 2)
@@ -54,7 +54,8 @@ def int64_batchnorm(
 
         y = x * mul + add
 
-        y = rescaling(scaling_factor, rescale, y)
+        if rescale is not None:
+            y = rescaling(scaling_factor, rescale, y)
 
         return y.astype(np.int64)
 

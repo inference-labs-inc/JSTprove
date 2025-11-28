@@ -529,7 +529,7 @@ class QuantizerBase:
                 continue  # optional input missing
 
             tensor = initializer_map[name]
-            arr = numpy_helper.to_array(tensor).astype(np.float32)
+            arr = numpy_helper.to_array(tensor).astype(np.float64)
 
             scale = scale_base ** (scale_exponent * scale_mult)
             new_arr = arr * scale
