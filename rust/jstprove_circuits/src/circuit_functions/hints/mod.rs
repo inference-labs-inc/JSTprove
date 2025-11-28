@@ -4,7 +4,7 @@ use expander_compiler::hints::registry::HintRegistry;
 
 // Submodule that holds unconstrained max/min/clip helpers
 pub mod max_min_clip;
-pub use max_min_clip::unconstrained_max;
+pub use max_min_clip::{unconstrained_clip, unconstrained_max, unconstrained_min};
 
 /// Build a HintRegistry with all LogUp-related hints registered.
 pub fn build_logup_hint_registry<F: CompilerField>() -> HintRegistry<F> {
