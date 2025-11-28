@@ -21,7 +21,7 @@ use crate::io::io_reader;
 use crate::runner::errors::{CliError, RunError};
 use expander_binary::executor;
 
-use crate::hints::build_logup_hint_registry;
+use crate::circuit_functions::hints::build_logup_hint_registry;
 
 // use crate::io::io_reader;
 
