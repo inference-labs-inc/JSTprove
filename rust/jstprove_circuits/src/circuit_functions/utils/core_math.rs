@@ -1,5 +1,5 @@
 /// `ExpanderCompilerCollection` imports
-use expander_compiler::frontend::{Config, FieldArith, RootAPI, Variable};
+use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::{
     CircuitError,
