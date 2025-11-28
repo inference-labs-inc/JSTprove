@@ -13,10 +13,12 @@ use crate::circuit_functions::{
     utils::{
         ArrayConversionError, RescaleError,
         constants::INPUT,
-        core_math::{assert_is_bitstring_and_reconstruct, unconstrained_to_bits},
         onnx_model::{extract_params_and_expected_shape, get_input_name},
     },
 };
+
+use crate::circuit_functions::gadgets::constrained_reconstruct_from_bits;
+use crate::circuit_functions::hints::unconstrained_to_bits;
 
 // -------- Struct --------
 #[allow(dead_code)]
@@ -180,7 +182,7 @@ impl ReluContext {
 /// # Errors
 /// - [`CircuitError`] if bit decomposition or equality constraints fail.
 /// - Propagates any error from `unconstrained_to_bits` or
-///   `assert_is_bitstring_and_reconstruct`.
+///   `constrained_reconstruct_from_bits`.
 ///
 // TODO can make use of memorized calls instead, by flattening the array and expanding?
 pub fn relu<C: Config, Builder: RootAPI<C>>(
@@ -192,7 +194,7 @@ pub fn relu<C: Config, Builder: RootAPI<C>>(
     let n_bits = context.shift_exponent + 1;
 
     let bits = unconstrained_to_bits(api, shifted_x, n_bits)?;
-    let reconstructed = assert_is_bitstring_and_reconstruct(api, &bits)?;
+    let reconstructed = constrained_reconstruct_from_bits(api, &bits)?;
     api.assert_is_equal(shifted_x, reconstructed);
 
     let sign_bit = bits[context.shift_exponent];
