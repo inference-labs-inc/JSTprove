@@ -1,5 +1,11 @@
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
+use crate::circuit_functions::{
+    CircuitError,
+    layers::{LayerError, LayerKind},
+    utils::UtilsError,
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: unconstrained_max
 // ─────────────────────────────────────────────────────────────────────────────
