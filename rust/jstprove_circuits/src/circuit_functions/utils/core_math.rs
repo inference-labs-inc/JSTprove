@@ -10,7 +10,9 @@ use crate::circuit_functions::{
 
 use circuit_std_rs::logup::LogUpRangeProofTable;
 
-pub use crate::circuit_functions::hints::unconstrained_max;
+pub use crate::circuit_functions::hints::{
+    unconstrained_clip, unconstrained_max, unconstrained_min,
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: unconstrained_to_bits
