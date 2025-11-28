@@ -83,7 +83,7 @@ class ONNXOpQuantizer:
         self.register("Constant", ConstantQuantizer())
         self.register("MaxPool", MaxpoolQuantizer())
         self.register("Flatten", PassthroughQuantizer())
-        self.register("BatchNormalization", BatchnormQuantizer())
+        self.register("BatchNormalization", BatchnormQuantizer(self.new_initializers))
 
     def register(
         self: ONNXOpQuantizer,

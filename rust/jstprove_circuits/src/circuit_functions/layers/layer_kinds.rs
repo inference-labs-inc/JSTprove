@@ -128,7 +128,7 @@ When defining new layers, make sure to activate them by placing the new layer in
 
 define_layers! {
     Add      => { name: "Add",  builder: AddLayer::build },
-    Batchnorm=> { name: "Batchnorm",  builder: BatchnormLayer::build },
+    Batchnorm=> { name: "BatchNormalization",  builder: BatchnormLayer::build },
     Sub      => { name: "Sub",  builder: SubLayer::build },
     Mul      => { name: "Mul",  builder: MulLayer::build },
     Constant => { name: "Constant", builder: ConstantLayer::build },
