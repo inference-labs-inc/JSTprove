@@ -1,11 +1,9 @@
-use ethnum::U256;
 /// `ExpanderCompilerCollection` imports
-use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
+use expander_compiler::frontend::{Config, FieldArith, RootAPI, Variable};
 
 use crate::circuit_functions::{
     CircuitError,
     layers::{LayerError, LayerKind},
-    utils::UtilsError,
 };
 
 use circuit_std_rs::logup::LogUpRangeProofTable;

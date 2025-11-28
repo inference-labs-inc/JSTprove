@@ -3,6 +3,9 @@ use ethnum::U256;
 /// Expander / circuit frontend
 use expander_compiler::frontend::{CircuitField, Config, RootAPI, Variable};
 
+// Trait that provides the MODULUS associated constant for CircuitField
+use expander_compiler::field::Field as FieldTrait;
+
 use crate::circuit_functions::{CircuitError, utils::UtilsError};
 
 // ─────────────────────────────────────────────────────────────────────────────
