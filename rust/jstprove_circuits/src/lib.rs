@@ -24,6 +24,5 @@
 #![feature(min_specialization)]
 
 pub mod circuit_functions;
-pub mod hints;
 pub mod io;
 pub mod runner;
