@@ -18,7 +18,7 @@ use crate::circuit_functions::{
 };
 
 use crate::circuit_functions::gadgets::LogupRangeCheckContext;
-use crate::circuit_functions::utils::core_math::{ShiftRangeContext, constrained_max};
+use crate::circuit_functions::gadgets::{ShiftRangeContext, constrained_max};
 
 // -------- Struct --------
 #[allow(dead_code)]
@@ -44,7 +44,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let input_name = get_input_name(&self.inputs, 0, LayerKind::ReLU, INPUT)?;
         let layer_input = input
-            .get(&input_name)
+            .get(input_name.as_str())
             .ok_or_else(|| LayerError::MissingInput {
                 layer: LayerKind::ReLU,
                 name: input_name.clone(),
