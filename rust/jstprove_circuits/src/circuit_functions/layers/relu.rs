@@ -17,8 +17,7 @@ use crate::circuit_functions::{
     },
 };
 
-use crate::circuit_functions::gadgets::constrained_reconstruct_from_bits;
-use crate::circuit_functions::hints::unconstrained_to_bits;
+use crate::circuit_functions::hints::{unconstrained_clip, unconstrained_max, unconstrained_min};
 
 // -------- Struct --------
 #[allow(dead_code)]
