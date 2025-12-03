@@ -6,7 +6,7 @@ use crate::circuit_functions::{
     layers::{LayerError, LayerKind},
 };
 
-use crate::circuit_functions::hints::{unconstrained_clip, unconstrained_max, unconstrained_min};
+use crate::circuit_functions::hints::{unconstrained_max, unconstrained_min};
 
 use crate::circuit_functions::gadgets::LogupRangeCheckContext;
 
