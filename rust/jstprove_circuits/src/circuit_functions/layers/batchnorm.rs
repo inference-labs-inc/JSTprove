@@ -31,8 +31,6 @@ pub struct BatchnormLayer {
     bias: ArrayD<i64>,
     is_rescale: bool,
     v_plus_one: usize,
-    two_v: u32,
-    alpha_two_v: u64,
     optimization_pattern: PatternRegistry,
     scaling: u64,
     inputs: Vec<String>,
@@ -115,8 +113,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
             )?,
             is_rescale,
             v_plus_one: layer_context.n_bits,
-            two_v: layer_context.two_v,
-            alpha_two_v: layer_context.alpha_two_v,
             optimization_pattern,
             scaling: circuit_params.scale_exponent.into(), // TODO: Becomes scaling_in?
             inputs: layer.inputs.clone(),
