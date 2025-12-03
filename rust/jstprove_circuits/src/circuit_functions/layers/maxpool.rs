@@ -7,9 +7,10 @@ use ndarray::{Array4, ArrayD, Ix4};
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 /// Internal crate imports
-use crate::circuit_functions::utils::core_math::{
-    LogupRangeCheckContext, ShiftRangeContext, constrained_max,
-};
+/// Internal crate imports
+use crate::circuit_functions::gadgets::LogupRangeCheckContext;
+use crate::circuit_functions::utils::core_math::{ShiftRangeContext, constrained_max};
+
 use crate::circuit_functions::{
     CircuitError,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},

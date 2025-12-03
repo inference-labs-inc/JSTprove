@@ -6,13 +6,7 @@ use crate::circuit_functions::{
     layers::{LayerError, LayerKind},
 };
 
-use circuit_std_rs::logup::LogUpRangeProofTable;
-
-pub use crate::circuit_functions::hints::{
-    unconstrained_clip, unconstrained_max, unconstrained_min, unconstrained_to_bits,
-};
-
-use crate::circuit_functions::gadgets::constrained_reconstruct_from_bits;
+use crate::circuit_functions::gadgets::LogupRangeCheckContext;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONTEXT: ShiftRangeContext

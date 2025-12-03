@@ -21,9 +21,8 @@ use ndarray::ArrayD;
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 /// Internal helpers and utilities
-use crate::circuit_functions::utils::core_math::{
-    LogupRangeCheckContext, ShiftRangeContext, constrained_clip,
-};
+use crate::circuit_functions::gadgets::LogupRangeCheckContext;
+use crate::circuit_functions::utils::core_math::{ShiftRangeContext, constrained_clip};
 
 use crate::circuit_functions::utils::onnx_model::get_optional_w_or_b;
 use crate::circuit_functions::utils::tensor_ops::{

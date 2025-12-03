@@ -10,9 +10,9 @@ use ndarray::ArrayD;
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 /// Internal helpers shared with other layers
-use crate::circuit_functions::utils::core_math::{
-    LogupRangeCheckContext, ShiftRangeContext, constrained_min,
-};
+use crate::circuit_functions::gadgets::LogupRangeCheckContext;
+use crate::circuit_functions::utils::core_math::{ShiftRangeContext, constrained_min};
+
 use crate::circuit_functions::utils::onnx_model::get_optional_w_or_b;
 use crate::circuit_functions::utils::tensor_ops::{
     broadcast_two_arrays, load_array_constants_or_get_inputs,
