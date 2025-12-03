@@ -9,7 +9,7 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 /// Internal crate imports
 /// Internal crate imports
 use crate::circuit_functions::gadgets::LogupRangeCheckContext;
-use crate::circuit_functions::utils::core_math::{ShiftRangeContext, constrained_max};
+use crate::circuit_functions::gadgets::{ShiftRangeContext, constrained_max};
 
 use crate::circuit_functions::{
     CircuitError,

@@ -50,8 +50,9 @@ use crate::circuit_functions::utils::{
 };
 
 // Internal modules: LogUp-based range-check helper + max gadget
-use super::core_math::{ShiftRangeContext, constrained_max};
-use crate::circuit_functions::gadgets::LogupRangeCheckContext;
+use crate::circuit_functions::gadgets::{
+    LogupRangeCheckContext, ShiftRangeContext, constrained_max,
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STRUCT: RescalingContext
