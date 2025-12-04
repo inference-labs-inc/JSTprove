@@ -9,30 +9,65 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 /// Internal crate imports
 use crate::circuit_functions::CircuitError;
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // FUNCTION: unconstrained_max
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
-/// Returns the maximum value in a nonempty slice of field elements (interpreted as integers in `[0, p−1]`),
-/// using only unconstrained witness operations and explicit selection logic.
+/// Computes `max(values)` using *only unconstrained witness operations*
+/// (`unconstrained_greater`, `unconstrained_lesser_eq`, and
+/// `unconstrained_mul`). No constraints are added to the circuit.
 ///
-/// Internally, this function performs pairwise comparisons using `unconstrained_greater` and `unconstrained_lesser_eq`,
-/// and selects the maximum via weighted sums:
-/// `current_max ← v·(v > current_max) + current_max·(v ≤ current_max)`
+/// This is a helper for constructing witnesses in max-selection gadgets.
+/// It is **not** sound on its own; all correctness of the selection must be
+/// enforced later by a constrained gadget such as `constrained_max`.
+///
+/// # Overview
+///
+/// Given an input slice `[x_0, x_1, ..., x_{n-1}]`, the function iteratively
+/// updates:
+///
+/// ```text
+/// current_max = x_0
+/// For each v in values[1..]:
+///     if v > current_max: current_max = v
+/// ```
+///
+/// Since we cannot branch in a circuit, this is implemented with witness-side
+/// selectors:
+///
+/// ```text
+/// is_greater     = (v > current_max)
+/// is_not_greater = (v <= current_max)
+/// current_max = v * is_greater + current_max * is_not_greater
+/// ```
+///
+/// These selectors are witness values (not constrained to be boolean), so this
+/// routine performs no correctness checks. The constrained layer is responsible
+/// for verifying the max-selection proof.
+///
+/// # Assumptions
+///
+/// - All inputs represent nonnegative integers in `[0, p-1]` under least
+///   nonnegative residue interpretation.
+/// - The caller will later enforce correctness in a constrained gadget.
 ///
 /// # Errors
-/// - If `values` is empty.
+///
+/// - Returns `CircuitError::Other` if `values` is empty.
 ///
 /// # Arguments
-/// - `api`: A mutable reference to the circuit builder implementing `RootAPI<C>`.
-/// - `values`: A slice of `Variable`s, each assumed to lie in the range `[0, p−1]`.
+///
+/// - `api`: circuit builder supporting unconstrained operations.
+/// - `values`: nonempty slice of `Variable`s.
 ///
 /// # Returns
-/// A `Variable` encoding `max_i values[i]`, the maximum value in the slice.
+///
+/// The unconstrained witness representing the maximum.
 ///
 /// # Example
+///
 /// ```ignore
-/// // For values = [7, 2, 9, 5], returns 9.
+/// values = [7, 2, 9, 5]  --> returns 9
 /// ```
 pub fn unconstrained_max<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
@@ -63,30 +98,59 @@ pub fn unconstrained_max<C: Config, Builder: RootAPI<C>>(
     Ok(current_max)
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // FUNCTION: unconstrained_min
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
-/// Returns the minimum value in a nonempty slice of field elements (interpreted as integers in `[0, p−1]`),
-/// using only unconstrained witness operations and explicit selection logic.
+/// Computes `min(values)` using only *unconstrained witness operations*
+/// (`unconstrained_lesser`, `unconstrained_greater_eq`, and
+/// `unconstrained_mul`). No constraints are added.
 ///
-/// Internally, this function performs pairwise comparisons using `unconstrained_greater` and `unconstrained_lesser_eq`,
-/// and selects the minimum via weighted sums:
-/// `current_min ← v·(current_min > v) + current_min·(current_min ≤ v)`
+/// This function mirrors `unconstrained_max`, but selects the minimum.
+///
+/// # Overview
+///
+/// For `[x_0, x_1, ..., x_{n-1}]`, we update:
+///
+/// ```text
+/// current_min = x_0
+/// For each v in values[1..]:
+///     if v < current_min: current_min = v
+/// ```
+///
+/// Selector form:
+///
+/// ```text
+/// is_lesser     = (v < current_min)
+/// is_not_lesser = (v >= current_min)
+/// current_min = v * is_lesser + current_min * is_not_lesser
+/// ```
+///
+/// As with `unconstrained_max`, this performs **no correctness enforcement**.
+/// Constrained checking (e.g. via `constrained_min`) must be applied later.
+///
+/// # Assumptions
+///
+/// - Inputs represent integers in `[0, p-1]`.
+/// - Caller will enforce correctness using a constrained gadget.
 ///
 /// # Errors
-/// - If `values` is empty.
+///
+/// - Returns `CircuitError::Other` if `values` is empty.
 ///
 /// # Arguments
-/// - `api`: A mutable reference to the circuit builder implementing `RootAPI<C>`.
-/// - `values`: A slice of `Variable`s, each assumed to lie in the range `[0, p−1]`.
+///
+/// - `api`: circuit builder.
+/// - `values`: nonempty slice of field elements.
 ///
 /// # Returns
-/// A `Variable` encoding `min_i values[i]`, the minimum value in the slice.
+///
+/// An unconstrained witness representing the minimum.
 ///
 /// # Example
+///
 /// ```ignore
-/// // For values = [7, 2, 9, 5], returns 2.
+/// values = [7, 2, 9, 5]  --> returns 2
 /// ```
 pub fn unconstrained_min<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
@@ -117,25 +181,58 @@ pub fn unconstrained_min<C: Config, Builder: RootAPI<C>>(
     Ok(current_min)
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // FUNCTION: unconstrained_clip
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
-/// Computes `clip(x; min, max)` at the witness level using only unconstrained
-/// operations and the existing `unconstrained_max` / `unconstrained_min` gadgets.
+/// Computes the witness value for `clip(x; lower, upper)` using only
+/// *unconstrained* operations.  
 ///
-/// Semantics (elementwise, assuming `min <= max` in the intended integer semantics):
-/// - If both `lower` and `upper` are present:
-///       y = min(max(x, lower), upper)
-/// - If only `lower` is present:
-///       y = max(x, lower)
-/// - If only `upper` is present:
-///       y = min(x, upper)
-/// - If neither is present:
-///       y = x
+/// This function is intended to generate witnesses for `constrained_clip`,
+/// `constrained_max`, and `constrained_min`. It enforces **no constraints**
+/// on the output.
 ///
-/// All variables are field elements (least nonnegative residues), interpreted
-/// as signed integers in a fixed range consistent with the surrounding circuit.
+/// # Semantics
+///
+/// ```text
+/// if lower and upper exist:
+///     y = min(max(x, lower), upper)
+/// else if only lower exists:
+///     y = max(x, lower)
+/// else if only upper exists:
+///     y = min(x, upper)
+/// else:
+///     y = x
+/// ```
+///
+/// # Important Notes
+///
+/// - This routine does NOT verify that `lower <= upper`.
+/// - It does NOT enforce booleanity of selection signals.
+/// - All correctness must be enforced later by the constrained Clip layer.
+///
+/// # Assumptions
+///
+/// - `x`, `lower`, and `upper` represent integers in a compatible signed range.
+/// - The surrounding circuit will use constrained gadgets to verify Clip logic.
+///
+/// # Arguments
+///
+/// - `api`: circuit builder with unconstrained operators.
+/// - `x`: the input value to be clipped.
+/// - `lower`: optional lower bound.
+/// - `upper`: optional upper bound.
+///
+/// # Returns
+///
+/// The unconstrained witness for the clipped value.
+///
+/// # Example
+///
+/// ```ignore
+/// x = 7, lower = 2, upper = 5 --> returns 5
+/// x = 1, lower = 2            --> returns 2
+/// ```
 pub fn unconstrained_clip<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     x: Variable,

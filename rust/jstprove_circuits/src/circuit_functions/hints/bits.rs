@@ -15,42 +15,62 @@ use expander_compiler::field::FieldArith;
 /// Internal crate imports
 use crate::circuit_functions::{CircuitError, utils::UtilsError};
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // FUNCTION: unconstrained_to_bits
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
-/// Extracts the least significant `n_bits` of a field element as a bitstring, in little-endian order.
+/// Extracts the `n_bits` least significant bits of a field element, using
+/// *unconstrained* bit operations, and returns them in **little-endian order**.
+///
+/// This is a lightweight helper used only when no constraints are required on
+/// the bit pattern. It is *not* a sound range-check: higher bits of the value are
+/// simply discarded.
 ///
 /// # Overview
-/// Uses the Expander Compiler Collection’s unconstrained bitwise operations to extract
-/// the `n_bits` least significant bits of a `Variable`. The bits are returned in little-endian order:
-/// `bits[0]` is the least significant bit, `bits[n_bits - 1]` is the most significant of the truncated bits.
 ///
-/// This function does **not** check that the input fits within `n_bits`; any higher-order bits are discarded.
+/// Given an input field element `x`, the function repeatedly:
 ///
-/// # Type Parameters
-/// - `C`: Circuit configuration implementing `Config`.
-/// - `Builder`: Prover API implementing `RootAPI<C>`.
+/// 1. Computes `bit_0 = x AND 1` using `unconstrained_bit_and`.
+/// 2. Appends `bit_0` to the output list.
+/// 3. Updates `x = x >> 1` using `unconstrained_shift_r`.
+///
+/// After `n_bits` iterations, the result is:
+///
+///     bits[0] = least significant bit of input
+///     bits[1] = next bit
+///     ...
+///     bits[n_bits - 1] = most significant of the extracted bits
+///
+/// This helper mirrors a CPU right-shift loop, but none of the bits are enforced
+/// to be boolean and no reconstruction constraint is added. If soundness is
+/// required, callers must pair this with `constrained_reconstruct_from_bits`
+/// (or with LogUp-based range checks).
 ///
 /// # Arguments
-/// - `api`: Mutable reference to the circuit builder.
-/// - `input`: A `Variable` representing the integer or field element to be bit-decomposed.
-/// - `n_bits`: Number of least significant bits to extract.
+///
+/// - `api`: the circuit builder, providing unconstrained bitwise operations.
+/// - `input`: value from which the `n_bits` LSBs will be extracted.
+/// - `n_bits`: number of least significant bits to extract.
 ///
 /// # Returns
-/// A vector of `n_bits` `Variable`s representing the bit decomposition of `input`,
-/// in little-endian order.
+///
+/// A `Vec<Variable>` of length `n_bits`, storing the least significant bits of
+/// `input` in little-endian order.
 ///
 /// # Errors
-/// - [`CircuitError::Other`] if `n_bits == 0`.
-/// - [`UtilsError::ValueTooLarge`] if `n_bits` cannot fit into a `u32`.
-/// - [`CircuitError::Other`] if `2^n_bits >= MODULUS/2`, where `MODULUS` is the circuit field modulus.
+///
+/// - Returns `CircuitError::Other` if `n_bits == 0`.
+/// - Returns `UtilsError::ValueTooLarge` if `n_bits` does not fit in `u32`.
+/// - Returns `CircuitError::Other` if `2^n_bits >= MODULUS/2`.  
+///   (This guards against extracting more bits than make sense for the field.)
 ///
 /// # Example
-/// ```ignore
-/// // For input = 43 and n_bits = 4:
-/// // Returns [1, 1, 0, 1], since 43 = 0b101011, and the 4 LSBs are 1011.
-/// ```
+///
+/// For `input = 43` (binary `101011`) and `n_bits = 4`, the function returns:
+///
+///     [1, 1, 0, 1]
+///
+/// corresponding to the 4 least significant bits `1011` in little-endian form.
 pub fn unconstrained_to_bits<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input: Variable,
