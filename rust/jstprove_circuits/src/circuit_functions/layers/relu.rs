@@ -17,8 +17,9 @@ use crate::circuit_functions::{
     },
 };
 
-use crate::circuit_functions::gadgets::LogupRangeCheckContext;
-use crate::circuit_functions::gadgets::{ShiftRangeContext, constrained_max};
+use crate::circuit_functions::gadgets::{
+    LogupRangeCheckContext, ShiftRangeContext, constrained_max,
+};
 
 // -------- Struct --------
 #[allow(dead_code)]

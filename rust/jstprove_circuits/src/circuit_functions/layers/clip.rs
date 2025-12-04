@@ -1,16 +1,16 @@
 //! Elementwise Clip layer over int64 fixed-point tensors, implemented as
-//! composition of Max/Min gadgets:
+//! a composition of Max/Min gadgets:
 //!
 //!   clip(x; a, b) = min(max(x, a), b)
 //!
 //! with support for optional lower (`a`) and upper (`b`) bounds, matching
 //! ONNX Clip semantics.
-//
-//  Inputs:
-//    - X (required): data tensor
-//    - min (optional): lower bound (scalar or tensor)
-//    - max (optional): upper bound (scalar or tensor)
-//  All inputs are broadcast to a common shape using the same helper as AddLayer.
+//!
+//! Inputs:
+//!   - X (required): data tensor
+//!   - min (optional): lower bound (scalar or tensor)
+//!   - max (optional): upper bound (scalar or tensor)
+//! All inputs are broadcast to a common shape using the same helper as AddLayer.
 
 use std::collections::HashMap;
 
@@ -20,23 +20,20 @@ use ndarray::ArrayD;
 /// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
-/// Internal helpers and utilities
-use crate::circuit_functions::gadgets::LogupRangeCheckContext;
-use crate::circuit_functions::gadgets::{ShiftRangeContext, constrained_clip};
-
-use crate::circuit_functions::utils::onnx_model::get_optional_w_or_b;
-use crate::circuit_functions::utils::tensor_ops::{
-    broadcast_two_arrays, load_array_constants_or_get_inputs,
-};
-
+/// Internal crate imports
 use crate::circuit_functions::{
     CircuitError,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
         graph_pattern_matching::PatternRegistry,
-        onnx_model::{extract_params_and_expected_shape, get_input_name},
+        onnx_model::{extract_params_and_expected_shape, get_input_name, get_optional_w_or_b},
+        tensor_ops::{broadcast_two_arrays, load_array_constants_or_get_inputs},
     },
+};
+
+use crate::circuit_functions::gadgets::{
+    LogupRangeCheckContext, ShiftRangeContext, constrained_clip,
 };
 
 // -------- Struct --------

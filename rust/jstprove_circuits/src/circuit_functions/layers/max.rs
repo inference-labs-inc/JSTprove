@@ -1,5 +1,8 @@
-//! Elementwise Max layer over int64 fixed-point tensors, using the
-//! max-selection gadget to assert that outputs are true maxima.
+//! Elementwise Max layer over int64 fixed-point tensors.
+//!
+//! This layer wraps the `constrained_max` gadget to:
+//! - enforce that each output is the maximum of the broadcasted inputs, and
+//! - reuse LogUp-based range checks across all comparisons.
 
 use std::collections::HashMap;
 
@@ -9,23 +12,20 @@ use ndarray::ArrayD;
 /// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
-/// Internal helpers shared with other layers
-use crate::circuit_functions::gadgets::LogupRangeCheckContext;
-use crate::circuit_functions::gadgets::{ShiftRangeContext, constrained_max};
-
-use crate::circuit_functions::utils::onnx_model::get_optional_w_or_b;
-use crate::circuit_functions::utils::tensor_ops::{
-    broadcast_two_arrays, load_array_constants_or_get_inputs,
-};
-
+/// Internal crate imports
 use crate::circuit_functions::{
     CircuitError,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
         graph_pattern_matching::PatternRegistry,
-        onnx_model::{extract_params_and_expected_shape, get_input_name},
+        onnx_model::{extract_params_and_expected_shape, get_input_name, get_optional_w_or_b},
+        tensor_ops::{broadcast_two_arrays, load_array_constants_or_get_inputs},
     },
+};
+
+use crate::circuit_functions::gadgets::{
+    LogupRangeCheckContext, ShiftRangeContext, constrained_max,
 };
 
 // -------- Struct --------

@@ -1,3 +1,10 @@
+//! 2D MaxPool layer over int64 fixed-point tensors.
+//!
+//! This layer:
+//! - applies sliding-window max pooling over the input tensor, and
+//! - uses the `constrained_max` gadget with LogUp-based range checks
+//!   to enforce that each pooled output is the maximum over its window.
+
 use std::collections::HashMap;
 
 /// External crate imports
@@ -7,10 +14,6 @@ use ndarray::{Array4, ArrayD, Ix4};
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 /// Internal crate imports
-/// Internal crate imports
-use crate::circuit_functions::gadgets::LogupRangeCheckContext;
-use crate::circuit_functions::gadgets::{ShiftRangeContext, constrained_max};
-
 use crate::circuit_functions::{
     CircuitError,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
@@ -22,6 +25,11 @@ use crate::circuit_functions::{
         typecasting::AsIsize,
     },
 };
+
+use crate::circuit_functions::gadgets::{
+    LogupRangeCheckContext, ShiftRangeContext, constrained_max,
+};
+
 // -------- Struct --------
 #[allow(dead_code)]
 #[derive(Debug)]
