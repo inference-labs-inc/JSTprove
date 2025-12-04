@@ -65,18 +65,18 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
+        input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let is_relu = matches!(self.optimization_pattern, PatternRegistry::ConvRelu);
 
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Conv, INPUT)?;
-        let layer_input = input
-            .get(&input_name.clone())
-            .ok_or_else(|| LayerError::MissingInput {
-                layer: LayerKind::Conv,
-                name: input_name.clone(),
-            })?
-            .clone();
+        let layer_input =
+            input
+                .get(&input_name.clone())
+                .ok_or_else(|| LayerError::MissingInput {
+                    layer: LayerKind::Conv,
+                    name: input_name.clone(),
+                })?;
 
         // Convert weights
         let weights = load_array_constants(api, &self.weights);
@@ -103,7 +103,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         // Convolution
         let out = conv_4d_run(
             api,
-            &layer_input,
+            layer_input,
             &weights,
             &bias,
             &Conv2DParams {

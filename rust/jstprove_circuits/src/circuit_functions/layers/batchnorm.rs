@@ -42,7 +42,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
+        input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         // TODO can add bias check as an optional step.
         let is_relu = matches!(self.optimization_pattern, PatternRegistry::BatchnormRelu);
@@ -53,17 +53,16 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
             .ok_or_else(|| LayerError::MissingInput {
                 layer: LayerKind::Batchnorm,
                 name: input_name.to_string(),
-            })?
-            .clone();
+            })?;
 
         let mul_raw = load_array_constants(api, &self.weights);
         let add_raw = load_array_constants(api, &self.bias);
 
-        let mul_input = reshape_channel_vector_for_broadcast(&mul_raw, &layer_input)?;
-        let add_input = reshape_channel_vector_for_broadcast(&add_raw, &layer_input)?;
+        let mul_input = reshape_channel_vector_for_broadcast(&mul_raw, layer_input)?;
+        let add_input = reshape_channel_vector_for_broadcast(&add_raw, layer_input)?;
 
         // Matrix hadammard product with optional rescaling
-        let (a_mul_bc, b_mul_bc) = broadcast_two_arrays(&layer_input, &mul_input)?;
+        let (a_mul_bc, b_mul_bc) = broadcast_two_arrays(layer_input, &mul_input)?;
         let mul_out = matrix_hadamard_product(api, &a_mul_bc, b_mul_bc, LayerKind::Batchnorm)?;
 
         // Matrix addition with optional rescaling

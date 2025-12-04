@@ -35,18 +35,18 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
+        input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let input_name = get_input_name(&self.inputs, 0, LayerKind::ReLU, INPUT)?;
-        let layer_input = input
-            .get(&input_name.clone())
-            .ok_or_else(|| LayerError::MissingInput {
-                layer: LayerKind::ReLU,
-                name: input_name.clone(),
-            })?
-            .clone();
+        let layer_input =
+            input
+                .get(&input_name.clone())
+                .ok_or_else(|| LayerError::MissingInput {
+                    layer: LayerKind::ReLU,
+                    name: input_name.clone(),
+                })?;
         let out = layer_input;
-        let out = relu_array(api, &out, self.n_bits - 1)?;
+        let out = relu_array(api, out, self.n_bits - 1)?;
 
         Ok((self.outputs.clone(), out))
     }

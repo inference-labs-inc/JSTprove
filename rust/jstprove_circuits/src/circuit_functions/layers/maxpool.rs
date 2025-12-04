@@ -40,16 +40,16 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
+        input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let input_name = get_input_name(&self.inputs, 0, LayerKind::MaxPool, INPUT)?;
-        let layer_input = input
-            .get(&input_name.clone())
-            .ok_or_else(|| LayerError::MissingInput {
-                layer: LayerKind::MaxPool,
-                name: input_name.clone(),
-            })?
-            .clone();
+        let layer_input =
+            input
+                .get(&input_name.clone())
+                .ok_or_else(|| LayerError::MissingInput {
+                    layer: LayerKind::MaxPool,
+                    name: input_name.clone(),
+                })?;
 
         let shape = layer_input.shape();
         if shape.len() != 4 {
@@ -72,7 +72,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
 
         let output = maxpooling_2d::<C, Builder>(
             api,
-            &layer_input,
+            layer_input,
             &self.input_shape,
             self.shift_exponent,
             &out_shape,

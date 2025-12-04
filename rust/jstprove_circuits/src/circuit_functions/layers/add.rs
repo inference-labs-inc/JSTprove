@@ -41,14 +41,14 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AddLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
+        input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let a_name = get_input_name(&self.inputs, 0, LayerKind::Add, INPUT)?;
         let b_name = get_input_name(&self.inputs, 1, LayerKind::Add, INPUT)?;
 
         let a_input = load_array_constants_or_get_inputs(
             api,
-            &input,
+            input,
             a_name,
             &self.initializer_a,
             LayerKind::Add,
@@ -56,7 +56,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AddLayer {
 
         let b_input = load_array_constants_or_get_inputs(
             api,
-            &input,
+            input,
             b_name,
             &self.initializer_b,
             LayerKind::Add,

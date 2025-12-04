@@ -1,6 +1,8 @@
 #[allow(unused_imports)]
 /// Standard library imports
 use core::panic;
+use std::fs::File;
+use std::io::BufReader;
 
 use jstprove_circuits::circuit_functions::CircuitError;
 use jstprove_circuits::circuit_functions::utils::ArrayConversionError;
@@ -67,7 +69,7 @@ impl Circuit<Variable> {
 
         for (i, layer) in layers.iter().enumerate() {
             eprintln!("Applying Layer {:?}", &architecture.architecture[i].name);
-            let result = layer.apply(api, out.clone())?;
+            let result = layer.apply(api, &out)?;
             result.0.into_iter().for_each(|key| {
                 // out.insert(key, Arc::clone(&value)); Depending on memory constraints here
                 out.insert(key, result.1.clone());
@@ -231,9 +233,9 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
 
 fn set_onnx_context(matches: &clap::ArgMatches) {
     let meta_file_path = get_arg(matches, "meta").unwrap();
-
-    let meta_file = std::fs::read_to_string(&meta_file_path).expect("Failed to read metadata file");
-    let params: CircuitParams = serde_json::from_str(&meta_file).expect("Invalid metadata JSON");
+    let meta_file = File::open(&meta_file_path).expect("Failed to open metadata file");
+    let reader = BufReader::new(meta_file);
+    let params: CircuitParams = serde_json::from_reader(reader).expect("Invalid metadata JSON");
 
     OnnxContext::set_params(params)
         .map_err(|e| CircuitError::Other(e.to_string()))
@@ -241,19 +243,18 @@ fn set_onnx_context(matches: &clap::ArgMatches) {
 
     if get_arg(matches, "type").unwrap() == "run_compile_circuit" {
         let arch_file_path = get_arg(matches, "arch").unwrap();
-        let arch_file =
-            std::fs::read_to_string(&arch_file_path).expect("Failed to read architecture file");
+        let arch_file = File::open(&arch_file_path).expect("Failed to open architecture file");
         let arch: Architecture =
-            serde_json::from_str(&arch_file).expect("Invalid architecture JSON");
+            serde_json::from_reader(BufReader::new(arch_file)).expect("Invalid architecture JSON");
 
         OnnxContext::set_architecture(arch)
             .map_err(|e| CircuitError::Other(e.to_string()))
             .unwrap();
 
         let wandb_file_path = get_arg(matches, "wandb").unwrap();
-        let wandb_file =
-            std::fs::read_to_string(&wandb_file_path).expect("Failed to read W&B file");
-        let wandb: WANDB = serde_json::from_str(&wandb_file).expect("Invalid W&B JSON");
+        let wandb_file = File::open(&wandb_file_path).expect("Failed to open W&B file");
+        let wandb: WANDB =
+            serde_json::from_reader(BufReader::new(wandb_file)).expect("Invalid W&B JSON");
 
         OnnxContext::set_wandb(wandb)
             .map_err(|e| CircuitError::Other(e.to_string()))

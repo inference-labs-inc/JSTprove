@@ -27,10 +27,11 @@ pub trait LayerOp<C: Config, Builder: RootAPI<C>> {
     ///   Or typically if a layer is missing.
     ///   Additionally, any error propogated from underlying computation.
     ///
+    ///
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
+        input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError>;
     /// Instantiated by each layer op.
     /// Builds a circuit layer from an ONNX definition.
