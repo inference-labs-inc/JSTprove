@@ -1,5 +1,12 @@
+//! Unconstrained max/min/clip helpers.
+//!
+//! These are NOT used for soundness — they only compute witnesses.
+//! Constrained counterparts live in `gadgets/max_min_clip.rs`.
+
+/// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
+/// Internal crate imports
 use crate::circuit_functions::CircuitError;
 
 // ─────────────────────────────────────────────────────────────────────────────

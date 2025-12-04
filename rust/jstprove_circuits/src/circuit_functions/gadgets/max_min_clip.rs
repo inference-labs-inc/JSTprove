@@ -1,11 +1,25 @@
+//! Constrained max/min/clip gadgets for int64 fixed-point arithmetic.
+//!
+//! These gadgets:
+//! - enforce correctness of max/min selection via LogUp range checks,
+//! - use unconstrained comparison hints internally,
+//! - are used by Max, Min, Clip, MaxPool, and quantization layers.
+
+/// Standard library imports
+use std::cmp;
+
+/// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
+/// Internal crate imports
 use crate::circuit_functions::{
     CircuitError,
     layers::{LayerError, LayerKind},
 };
 
 use crate::circuit_functions::gadgets::LogupRangeCheckContext;
+
+// Unconstrained arithmetic helpers from hints/
 use crate::circuit_functions::hints::{unconstrained_max, unconstrained_min};
 
 // ─────────────────────────────────────────────────────────────────────────────

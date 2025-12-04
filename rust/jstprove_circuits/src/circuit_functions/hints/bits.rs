@@ -1,11 +1,18 @@
+//! Unconstrained bit-manipulation helpers.
+//!
+//! These helpers are *not* soundness-critical — they are witnesses only.
+//! Used only for legacy or experimental bit-decomposition flows.
+
+/// External crate imports
 use ethnum::U256;
 
-/// Expander / circuit frontend
+/// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{CircuitField, Config, RootAPI, Variable};
 
-// Trait that provides MODULUS for CircuitField
+// Trait giving CircuitField::MODULUS
 use expander_compiler::field::FieldArith;
 
+/// Internal crate imports
 use crate::circuit_functions::{CircuitError, utils::UtilsError};
 
 // ─────────────────────────────────────────────────────────────────────────────

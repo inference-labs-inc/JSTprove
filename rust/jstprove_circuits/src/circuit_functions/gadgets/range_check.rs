@@ -1,9 +1,20 @@
+//! Range-check gadgets for fixed-point arithmetic:
+//! - generic bit-decomposition-based range check,
+//! - LogUp-based range check with sharable context,
+//! - helper gadget for reconstructing integers from boolean bitstrings.
+
+/// External crate imports
 use circuit_std_rs::logup::LogUpRangeProofTable;
+
+/// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
+/// Internal crate imports
 use crate::circuit_functions::CircuitError;
-use crate::circuit_functions::hints::unconstrained_to_bits;
 use crate::circuit_functions::utils::UtilsError;
+
+// Unconstrained bit-decomp helper
+use crate::circuit_functions::hints::unconstrained_to_bits;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FUNCTION: constrained_reconstruct_from_bits
