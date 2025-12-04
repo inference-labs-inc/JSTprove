@@ -5,9 +5,6 @@
 //! - use unconstrained comparison hints internally,
 //! - are used by Max, Min, Clip, MaxPool, and quantization layers.
 
-/// Standard library imports
-use std::cmp;
-
 /// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
@@ -22,36 +19,48 @@ use crate::circuit_functions::gadgets::LogupRangeCheckContext;
 // Unconstrained arithmetic helpers from hints/
 use crate::circuit_functions::hints::{unconstrained_max, unconstrained_min};
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // CONTEXT: ShiftRangeContext
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
 /// Context for applying `constrained_max` / `constrained_min` with a fixed
-/// shift exponent `s`, to avoid recomputing constants in repeated calls.
+/// shift exponent `s`, so we do not recompute constants on every call.
 ///
-/// This is shared across:
+/// This context is shared across:
 ///   - MaxPool (windowed max over tensors),
 ///   - MaxLayer (elementwise max),
 ///   - MinLayer (elementwise min).
+///
+/// Intuitively:
+/// - We treat each value x as a signed integer in the range [-2^s, 2^s - 1].
+/// - We define an offset S = 2^s and lift it into the circuit as a constant.
+/// - Max/min gadgets work with the shifted values x + S, which are in
+///   [0, 2^(s+1) - 1], and then subtract S again at the end.
+///
+/// This struct packages the shared parameters (s and S) so that layers and
+/// gadgets can agree on a consistent signed range.
 pub struct ShiftRangeContext {
-    /// The exponent `s` such that `S = 2^s`.
+    /// The exponent s such that S = 2^s.
     pub shift_exponent: usize,
 
-    /// The offset `S = 2^s`, lifted as a constant into the circuit.
+    /// The offset S = 2^s, lifted as a constant into the circuit.
     pub offset: Variable,
 }
 
 impl ShiftRangeContext {
-    /// Creates a new context for asserting maximums/minimums, given a
+    /// Creates a new context for max/min assertion gadgets, given a
     /// `shift_exponent = s`.
     ///
+    /// Internally computes S = 2^s as a `u32`, lifts it as a circuit
+    /// constant, and stores both `s` and `S`.
+    ///
     /// # Arguments
-    /// - `api`: Mutable reference to a builder for creating constants.
-    /// - `shift_exponent`: Exponent `s` used to compute `2^s`.
+    /// - `api`: mutable reference to the circuit builder.
+    /// - `shift_exponent`: exponent s used to compute S = 2^s.
     ///
     /// # Errors
-    /// - [`LayerError::Other`] if `shift_exponent` is too large to fit in a `u32`.
-    /// - [`LayerError::InvalidParameterValue`] if the computed offset overflows `u32`.
+    /// - `LayerError::Other` if `shift_exponent` is too large to fit in `u32`.
+    /// - `LayerError::InvalidParameterValue` if computing `2^s` overflows `u32`.
     pub fn new<C: Config, Builder: RootAPI<C>>(
         api: &mut Builder,
         shift_exponent: usize,
@@ -77,72 +86,82 @@ impl ShiftRangeContext {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // FUNCTION: constrained_max
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
-/// Asserts that a given slice of `Variable`s contains a maximum value `M`,
-/// by verifying that some `x_i` satisfies `M = max_i x_i`, using a combination of
-/// unconstrained helper functions and explicit constraint assertions,
-/// along with an offset-shifting technique to reduce comparisons to the
-/// nonnegative range `[0, 2^(s + 1) − 1]`.
+/// Enforces that a slice of variables has a maximum value `M`, and that the
+/// returned variable equals that maximum.
 ///
-/// # Idea
-/// Each `x_i` is a field element (i.e., a `Variable` representing the least nonnegative residue mod `p`)
-/// that is **assumed** to encode a signed integer in the interval `[-S, T − S] = [−2^s, 2^s − 1]`,
-/// where `S = 2^s` and `T = 2·S - 1 = 2^(s + 1) − 1]`.
+/// # High-level idea
 ///
-/// Since all circuit operations take place in `𝔽_p` and each `x_i` is already reduced modulo `p`,
-/// we shift each value by `S` on-circuit to ensure that the quantity `x_i + S` lands in `[0, T]`.
-/// Under the assumption that `x_i ∈ [−S, T − S]`, this shift does **not** wrap around modulo `p`,
-/// so `x_i + S` in `𝔽_p` reflects the true integer sum.
+/// Each input `x_i` is a field element (a `Variable` in F_p) that we *interpret*
+/// as encoding a signed integer in the range:
 ///
-/// We then compute:
-/// ```text
-///     M^♯ = max_i (x_i + S)
-///     M   = M^♯ − S mod p
-/// ```
-/// to recover the **least nonnegative residue** of the maximum value, `M`.
+///     x_i in [-S, 2^s - 1]
 ///
-/// To verify that `M` is indeed the maximum:
-/// - For each `x_i`, we compute `Δ_i = M − x_i`, and use bit decomposition to enforce
-///   `Δ_i ∈ [0, T]`, using `s + 1` bits.
-/// - Then we constrain the product `∏_i Δ_i` to be zero. This ensures that at least one
-///   `Δ_i = 0`, i.e., that some `x_i = M`.
+/// where S = 2^s is provided by `shift_ctx.offset`.
 ///
-/// # Example
-/// Suppose the input slice encodes the signed integers `[-2, 0, 3]`, and `s = 2`, so `S = 4`, `T = 7`.
+/// To stay inside a nonnegative interval, we shift each value:
 ///
-/// - Shift:
-///   `x_0 = -2` ⇒ `x_0 + S = 2`
-///   `x_1 =  0` ⇒ `x_1 + S = 4`
-///   `x_2 =  3` ⇒ `x_2 + S = 7`
+///     x_i_sh = x_i + S
 ///
-/// - Compute:
-///   `M^♯ = max{x_i + S} = 7`
-///   `M   = M^♯ − S = 3`
+/// Under the assumption that the field modulus p satisfies:
 ///
-/// - Verify:
-///   For each `x_i`, compute `Δ_i = M − x_i ∈ [0, 7]`
-///   The values are: `Δ = [5, 3, 0]`
-///   Since one `Δ_i = 0`, we conclude that some `x_i = M`.
+///     p > 2^(s+1) - 1
+///
+/// this shift does not wrap modulo p, and the values lie in:
+///
+///     x_i_sh in [0, 2^(s+1) - 1].
+///
+/// We then:
+///
+/// 1. Compute:
+///        max_sh = max_i (x_i_sh)
+///    using an *unconstrained* helper (`unconstrained_max`).
+///
+/// 2. Recover the candidate maximum in the original signed range:
+///        M = max_sh - S.
+///
+/// 3. For each i, define:
+///        delta_i = M - x_i.
+///
+///    We enforce that each `delta_i` lies in:
+///        [0, 2^(s+1) - 1]
+///    by calling the shared `logup_ctx.range_check` with `n_bits = s + 1`.
+///
+/// 4. Compute the product:
+///        prod = product_{i} delta_i
+///    and assert `prod == 0`.
+///
+///    Since every `delta_i` is constrained to be in the nonnegative range,
+///    the only way the product can be zero is if at least one `delta_i` is
+///    actually zero. That in turn implies `x_i == M` for some i, so M really
+///    is one of the inputs.
 ///
 /// # Assumptions
-/// - All values `x_i` are `Variable`s in `𝔽_p` that **encode signed integers** in `[-S, T − S]`.
-/// - The prime `p` satisfies `p > T = 2^(s + 1) − 1`, so no wraparound occurs in `x_i + S`.
-///
-/// # Errors
-/// - If `values` is empty.
-/// - If computing `2^s` or `s + 1` overflows a `u32`.
-///
-/// # Type Parameters
-/// - `C`: The circuit field configuration.
-/// - `Builder`: A builder implementing `RootAPI<C>`.
+/// - All inputs encode signed integers in [-S, 2^s - 1].
+/// - The field modulus p is greater than 2^(s+1) - 1 so that x_i + S does not
+///   wrap modulo p.
+/// - A shared `LogupRangeCheckContext` is available and initialized in the
+///   surrounding circuit (the caller is responsible for calling `finalize`).
 ///
 /// # Arguments
-/// - `api`: Your circuit builder.
-/// - `context`: A `ShiftRangeContext` holding shift-related parameters.
-/// - `values`: A nonempty slice of `Variable`s, each encoding an integer in `[-S, T − S]`.
+/// - `api`: circuit builder.
+/// - `shift_ctx`: precomputed shift parameters (s and S = 2^s).
+/// - `logup_ctx`: shared LogUp range-check context used to prove each delta_i
+///   is in [0, 2^(s+1) - 1].
+/// - `values`: nonempty slice of variables to be maximized.
+///
+/// # Errors
+/// - Returns `LayerError::Other` (wrapped as `CircuitError`) if `values` is
+///   empty.
+/// - Returns `LayerError::InvalidParameterValue` if `shift_exponent + 1`
+///   overflows `usize` when computing the bit-length for the range check.
+/// - Propagates any internal circuit errors (e.g., from LogUp calls).
+///
+/// # Returns
+/// - A `Variable` equal to the least nonnegative residue of the maximum value.
 pub fn constrained_max<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     shift_ctx: &ShiftRangeContext, // S = 2^s = shift_ctx.offset
@@ -202,72 +221,67 @@ pub fn constrained_max<C: Config, Builder: RootAPI<C>>(
     Ok(max_raw)
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // FUNCTION: constrained_min
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
-/// Asserts that a given slice of `Variable`s contains a minimum value `M`,
-/// by verifying that some `x_i` satisfies `M = min_i x_i`, using a combination of
-/// unconstrained helper functions and explicit constraint assertions,
-/// along with an offset-shifting technique to reduce comparisons to the
-/// nonnegative range `[0, 2^(s + 1) − 1]`.
+/// Enforces that a slice of variables has a minimum value `M`, and that the
+/// returned variable equals that minimum.
 ///
-/// # Idea
-/// Each `x_i` is a field element (i.e., a `Variable` representing the least nonnegative residue mod `p`)
-/// that is **assumed** to encode a signed integer in the interval `[-S, T − S] = [−2^s, 2^s − 1]`,
-/// where `S = 2^s` and `T = 2·S - 1 = 2^(s + 1) − 1]`.
+/// # High-level idea
 ///
-/// Since all circuit operations take place in `𝔽_p` and each `x_i` is already reduced modulo `p`,
-/// we shift each value by `S` on-circuit to ensure that the quantity `x_i + S` lands in `[0, T]`.
-/// Under the assumption that `x_i ∈ [−S, T − S]`, this shift does **not** wrap around modulo `p`,
-/// so `x_i + S` in `𝔽_p` reflects the true integer sum.
+/// This is the min-analogue of `constrained_max`, using the same offset-shift
+/// strategy. Again, we interpret each `x_i` as encoding a signed integer in:
 ///
-/// We then compute:
-/// ```text
-///     M^♯ = min_i (x_i + S)
-///     M   = M^♯ − S mod p
-/// ```
-/// to recover the **least nonnegative residue** of the minimum value, `M`.
+///     x_i in [-S, 2^s - 1]
 ///
-/// To verify that `M` is indeed the minimum:
-/// - For each `x_i`, we compute `Δ_i = x_i - M`, and use bit decomposition to enforce
-///   `Δ_i ∈ [0, T]`, using `s + 1` bits.
-/// - Then we constrain the product `∏_i Δ_i` to be zero. This ensures that at least one
-///   `Δ_i = 0`, i.e., that some `x_i = M`.
+/// with S = 2^s given by `context.offset`. We shift to nonnegative space:
 ///
-/// # Example
-/// Suppose the input slice encodes the signed integers `[-2, 0, 3]`, and `s = 2`, so `S = 4`, `T = 7`.
+///     x_i_sh = x_i + S in [0, 2^(s+1) - 1]
 ///
-/// - Shift:
-///   `x_0 = -2` ⇒ `x_0 + S = 2`
-///   `x_1 =  0` ⇒ `x_1 + S = 4`
-///   `x_2 =  3` ⇒ `x_2 + S = 7`
+/// assuming p > 2^(s+1) - 1.
 ///
-/// - Compute:
-///   `M^♯ = min{x_i + S} = 2`
-///   `M   = M^♯ − S = -2`
+/// We then:
 ///
-/// - Verify:
-///   For each `x_i`, compute `Δ_i = x_i - M ∈ [0, 7]`
-///   The values are: `Δ = [0, 2, 5]`
-///   Since one `Δ_i = 0`, we conclude that some `x_i = M`.
+/// 1. Compute:
+///        min_sh = min_i (x_i_sh)
+///    using the unconstrained helper `unconstrained_min`.
+///
+/// 2. Recover the candidate minimum in the original signed range:
+///        M = min_sh - S.
+///
+/// 3. For each i, define:
+///        delta_i = x_i - M.
+///
+///    We enforce that each `delta_i` lies in [0, 2^(s+1) - 1] using
+///    the shared `logup_ctx.range_check` with `n_bits = s + 1`.
+///
+/// 4. Compute:
+///        prod = product_{i} delta_i
+///    and assert `prod == 0`. As before, with each delta_i constrained to the
+///    nonnegative range, the only way the product can be zero is if some
+///    delta_i is exactly zero, so some `x_i == M`.
 ///
 /// # Assumptions
-/// - All values `x_i` are `Variable`s in `𝔽_p` that **encode signed integers** in `[-S, T − S]`.
-/// - The prime `p` satisfies `p > T = 2^(s + 1) − 1`, so no wraparound occurs in `x_i + S`.
-///
-/// # Errors
-/// - If `values` is empty.
-/// - If computing `2^s` or `s + 1` overflows a `u32`.
-///
-/// # Type Parameters
-/// - `C`: The circuit field configuration.
-/// - `Builder`: A builder implementing `RootAPI<C>`.
+/// - Same as `constrained_max`: values encode signed integers in [-S, 2^s - 1]
+///   and the field modulus p is large enough to avoid wraparound.
+/// - `logup_ctx` is initialized and later finalized by the caller.
 ///
 /// # Arguments
-/// - `api`: Your circuit builder.
-/// - `context`: A `ShiftRangeContext` holding shift-related parameters.
-/// - `values`: A nonempty slice of `Variable`s, each encoding an integer in `[-S, T − S]`.
+/// - `api`: circuit builder.
+/// - `context`: shift parameters (s and S = 2^s).
+/// - `logup_ctx`: shared LogUp range-check context.
+/// - `values`: nonempty slice of variables.
+///
+/// # Errors
+/// - Returns `LayerError::Other` (wrapped as `CircuitError`) if `values` is
+///   empty.
+/// - Returns `LayerError::InvalidParameterValue` if `shift_exponent + 1`
+///   overflows when computing the bit-length.
+/// - Propagates LogUp-related and other circuit errors.
+///
+/// # Returns
+/// - A `Variable` equal to the least nonnegative residue of the minimum value.
 pub fn constrained_min<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     context: &ShiftRangeContext,            // S = 2^s = context.offset
@@ -329,33 +343,58 @@ pub fn constrained_min<C: Config, Builder: RootAPI<C>>(
     Ok(min_raw)
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // FUNCTION: constrained_clip
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
-/// Enforces `c = clip(x; min, max)` using the existing `constrained_max` and
-/// `constrained_min` gadgets under a shared [`ShiftRangeContext`].
+/// Enforces `c = clip(x; lower, upper)` using `constrained_max` and
+/// `constrained_min` under a shared `ShiftRangeContext`.
 ///
-/// Assumptions:
-/// - `x`, `min`, and `max` (if present) all encode signed integers in the range
-///   `[-S, T - S] = [-2^s, 2^s - 1]`, where `S = 2^s` is given by
-///   `context.shift_exponent`.
-/// - The field modulus `p` satisfies `p > 2^(s + 1) - 1` to avoid wraparound.
+/// # Semantics
 ///
-/// Semantics match ONNX `Clip`:
+/// This matches the ONNX Clip operator for scalar or tensor bounds:
+///
 /// - If both `lower` and `upper` are present:
-///       c = min(max(x, lower), upper)
+///       c = min( max(x, lower), upper )
 /// - If only `lower` is present:
-///       c = max(x, lower)
+///       c = max( x, lower )
 /// - If only `upper` is present:
-///       c = min(x, upper)
+///       c = min( x, upper )
 /// - If neither is present:
 ///       c = x
 ///
-/// Each `constrained_max` / `constrained_min` call:
-/// - Checks the signed range via bit-decomposition and reconstruction.
-/// - Enforces that the result equals one of the inputs.
-/// - Uses a product-of-differences check to guarantee at least one exact match.
+/// # How it works
+///
+/// Each of `x`, `lower`, and `upper` (if present) is treated as encoding a
+/// signed integer in the same range:
+///
+///     [-S, 2^s - 1],  with  S = 2^s  from `range_ctx`.
+///
+/// The underlying `constrained_max` / `constrained_min` gadgets:
+///
+/// - Use the shared `ShiftRangeContext` to shift into [0, 2^(s+1) - 1].
+/// - Use LogUp-based range checks (via `logup_ctx`) to constrain differences.
+/// - Enforce that the result is one of the inputs (via product-of-differences).
+///
+/// By composing these gadgets, `constrained_clip` inherits the same guarantees:
+/// the returned value is in the allowed range and equals either the original
+/// `x` or one of the bounds.
+///
+/// # Arguments
+/// - `api`: circuit builder.
+/// - `range_ctx`: shift parameters (s, S = 2^s) shared with max/min gadgets.
+/// - `logup_ctx`: shared LogUp context used inside max/min.
+/// - `x`: value to be clipped.
+/// - `lower`: optional lower bound.
+/// - `upper`: optional upper bound.
+///
+/// # Errors
+/// - Propagates errors from `constrained_max` and `constrained_min`.
+/// - Propagates LogUp-related and other circuit errors.
+///
+/// # Returns
+/// - A `Variable` equal to `clip(x; lower, upper)` in the signed range
+///   convention defined by `range_ctx`.
 pub fn constrained_clip<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     range_ctx: &ShiftRangeContext,
