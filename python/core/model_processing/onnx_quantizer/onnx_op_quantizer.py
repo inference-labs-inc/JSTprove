@@ -84,7 +84,6 @@ class ONNXOpQuantizer:
         self.register("Relu", ReluQuantizer())
         self.register("Reshape", PassthroughQuantizer())
         self.register("Gemm", GemmQuantizer(self.new_initializers))
-        self.register("Cast", PassthroughQuantizer())
         self.register("Constant", ConstantQuantizer())
         self.register("MaxPool", MaxpoolQuantizer())
         self.register("Flatten", PassthroughQuantizer())
