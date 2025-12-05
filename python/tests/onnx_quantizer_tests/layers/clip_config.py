@@ -59,7 +59,7 @@ class ClipConfigProvider(BaseLayerConfigProvider):
             .description(
                 "Clip with scalar bounds broadcast over all elements of A "
                 "(mirrors Max/Min broadcast tests but respects ORT's scalar bound "
-                "rules)."
+                "rules).",
             )
             .override_input_shapes(A=[1, 3, 2, 4], min=[1], max=[1])
             .override_output_shapes(clip_output=[1, 3, 2, 4])
@@ -69,24 +69,27 @@ class ClipConfigProvider(BaseLayerConfigProvider):
             # Clip_initializer_bounds
             valid_test("initializer_bounds")
             .description(
-                "Clip where min/max are scalar initializers instead of inputs."
+                "Clip where min/max are scalar initializers instead of inputs.",
             )
             .override_input_shapes(A=[1, 3, 4, 4])  # only A is a true input
             # Scalar numpy values → ONNX initializers with shape ()
             .override_initializer(
-                "min", np.array(rng.uniform(-1.0, 0.0), dtype=np.float64)
+                "min",
+                np.array(rng.uniform(-1.0, 0.0), dtype=np.float64),
             )
             .override_initializer(
-                "max", np.array(rng.uniform(0.0, 2.0), dtype=np.float64)
+                "max",
+                np.array(rng.uniform(0.0, 2.0), dtype=np.float64),
             )
             .override_output_shapes(clip_output=[1, 3, 4, 4])
             .tags("initializer", "elementwise", "clip", "onnxruntime")
             .build(),
             # --- E2E TESTS ---
             e2e_test("e2e_small").description(
-                "End-to-end Clip with small random tensor and scalar bounds."
+                "End-to-end Clip with small random tensor and scalar bounds.",
             )
-            # All three are treated as runtime inputs here; min/max are scalar-shaped [1].
+            # All three are treated as runtime inputs here;
+            # min/max are scalar-shaped [1].
             .override_input_shapes(
                 A=[1, 3, 4, 4],
                 min=[1],

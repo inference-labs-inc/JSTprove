@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Generator
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
 
 import pytest
 import torch
@@ -35,7 +39,7 @@ OUTPUTTWICE = 2
 OUTPUTTHREETIMES = 3
 
 
-@pytest.mark.e2e()
+@pytest.mark.e2e
 def test_circuit_compiles(model_fixture: dict[str, Any]) -> None:
     # Here you could just check that circuit file exists
     circuit_compile_results[model_fixture["model"]] = False
@@ -43,7 +47,7 @@ def test_circuit_compiles(model_fixture: dict[str, Any]) -> None:
     circuit_compile_results[model_fixture["model"]] = True
 
 
-@pytest.mark.e2e()
+@pytest.mark.e2e
 def test_witness_dev(
     model_fixture: dict[str, Any],
     capsys: Generator[pytest.CaptureFixture[str], None, None],
@@ -89,7 +93,7 @@ def test_witness_dev(
     witness_generated_results[model_fixture["model"]] = True
 
 
-@pytest.mark.e2e()
+@pytest.mark.e2e
 def test_witness_wrong_outputs_dev(
     model_fixture: dict[str, Any],
     capsys: Generator[pytest.CaptureFixture[str], None, None],
@@ -145,7 +149,7 @@ def test_witness_wrong_outputs_dev(
         ), f"Expected '{output}' in stdout, but it was not found."
 
 
-@pytest.mark.e2e()
+@pytest.mark.e2e
 def test_witness_prove_verify_true_inputs_dev(
     model_fixture: dict[str, Any],
     capsys: Generator[pytest.CaptureFixture[str], None, None],
@@ -239,7 +243,7 @@ def test_witness_prove_verify_true_inputs_dev(
     ), "Expected 'Verified' in stdout three times, but it was not found."
 
 
-@pytest.mark.e2e()
+@pytest.mark.e2e
 def test_witness_prove_verify_true_inputs_dev_expander_call(
     model_fixture: dict[str, Any],
     capsys: Generator[pytest.CaptureFixture[str], None, None],
@@ -339,7 +343,7 @@ def test_witness_prove_verify_true_inputs_dev_expander_call(
     assert stdout.count("proving") == 1, "Expected 'proving' but it was not found."
 
 
-@pytest.mark.e2e()
+@pytest.mark.e2e
 def test_witness_read_after_write_json(
     model_fixture: dict[str, Any],
     capsys: Generator[pytest.CaptureFixture[str], None, None],
@@ -421,7 +425,7 @@ def test_witness_read_after_write_json(
     ), "Input JSON read is not identical to what was written"
 
 
-@pytest.mark.e2e()
+@pytest.mark.e2e
 def test_witness_fresh_compile_dev(
     model_fixture: dict[str, Any],
     capsys: Generator[pytest.CaptureFixture[str], None, None],
@@ -467,7 +471,7 @@ def test_witness_fresh_compile_dev(
 
 
 # Use once fixed input shape read in rust
-@pytest.mark.e2e()
+@pytest.mark.e2e
 def test_witness_incorrect_input_shape(
     model_fixture: dict[str, Any],
     capsys: Generator[pytest.CaptureFixture[str], None, None],
@@ -555,7 +559,7 @@ def test_witness_incorrect_input_shape(
         ), f"Did not expect '{output}' in stdout, but it was found."
 
 
-@pytest.mark.e2e()
+@pytest.mark.e2e
 def test_witness_unscaled(
     model_fixture: dict[str, Any],
     capsys: Generator[pytest.CaptureFixture[str], None, None],
@@ -666,7 +670,7 @@ def test_witness_unscaled(
     )
 
 
-@pytest.mark.e2e()
+@pytest.mark.e2e
 def test_witness_unscaled_and_incorrect_shape_input(
     model_fixture: dict[str, Any],
     capsys: Generator[pytest.CaptureFixture[str], None, None],
@@ -790,7 +794,7 @@ def test_witness_unscaled_and_incorrect_shape_input(
     )
 
 
-@pytest.mark.e2e()
+@pytest.mark.e2e
 def test_witness_unscaled_and_incorrect_and_bad_named_input(  # noqa: PLR0915
     model_fixture: dict[str, Any],
     capsys: Generator[pytest.CaptureFixture[str], None, None],
@@ -937,7 +941,7 @@ def test_witness_unscaled_and_incorrect_and_bad_named_input(  # noqa: PLR0915
     )
 
 
-@pytest.mark.e2e()
+@pytest.mark.e2e
 def test_witness_wrong_name(
     model_fixture: dict[str, Any],
     capsys: Generator[pytest.CaptureFixture[str], None, None],
@@ -1063,7 +1067,7 @@ def add_to_first_scalar(data: list, delta: float = 0.1) -> bool:
     return False
 
 
-@pytest.mark.e2e()
+@pytest.mark.e2e
 def test_witness_prove_verify_false_inputs_dev(
     model_fixture: dict[str, Any],
     capsys: Generator[pytest.CaptureFixture[str], None, None],

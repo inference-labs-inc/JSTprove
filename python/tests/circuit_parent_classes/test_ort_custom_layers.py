@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import onnx
 import pytest
@@ -5,27 +7,26 @@ import torch
 from onnx import TensorProto, helper, shape_inference
 
 from python.core.model_processing.converters.onnx_converter import ONNXConverter
-from python.core.model_processing.onnx_custom_ops.onnx_helpers import extract_shape_dict
 
 
 @pytest.fixture
-def tiny_conv_model_path(tmp_path):
+def tiny_conv_model_path(tmp_path: Path) -> Path:
     # Create input and output tensor info
     input_tensor = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 1, 4, 4])
     output_tensor = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 1, 2, 2])
 
     # Kernel weights (3x3 ones)
-    W_init = helper.make_tensor(
+    w_init = helper.make_tensor(
         name="W",
         data_type=TensorProto.FLOAT,
         dims=[1, 1, 3, 3],
         vals=np.ones((1 * 1 * 3 * 3), dtype=np.float32).tolist(),
     )
-    Z_init = helper.make_tensor(
+    z_init = helper.make_tensor(
         name="Z",
         data_type=TensorProto.FLOAT,
         dims=[1],
-        vals=np.ones(( 1), dtype=np.float32).tolist(),
+        vals=np.ones((1), dtype=np.float32).tolist(),
     )
 
     # Conv node with no padding, stride 1
@@ -36,7 +37,7 @@ def tiny_conv_model_path(tmp_path):
         kernel_shape=[3, 3],
         pads=[0, 0, 0, 0],
         strides=[1, 1],
-        dilations = [1,1],
+        dilations=[1, 1],
     )
 
     # Build graph and model
@@ -45,7 +46,7 @@ def tiny_conv_model_path(tmp_path):
         name="TinyConvGraph",
         inputs=[input_tensor],
         outputs=[output_tensor],
-        initializer=[W_init, Z_init],
+        initializer=[w_init, z_init],
     )
 
     model = helper.make_model(graph, producer_name="tiny-conv-example")
@@ -54,53 +55,43 @@ def tiny_conv_model_path(tmp_path):
     model_path = tmp_path / "tiny_conv.onnx"
     onnx.save(model, str(model_path))
 
-    return str(model_path)
+    return model_path
+
 
 @pytest.mark.integration
-def test_tiny_conv(tiny_conv_model_path):
+def test_tiny_conv(tiny_conv_model_path: Path) -> None:
     path = tiny_conv_model_path
 
     converter = ONNXConverter()
 
-    X_input = np.arange(16, dtype=np.float32).reshape(1, 1, 4, 4)
-    id_count = 0
+    # Load and validate original model
     model = onnx.load(path)
-    # Fix, can remove this next line
     onnx.checker.check_model(model)
 
-    # Check the model and print Y"s shape information
-    onnx.checker.check_model(model)
-    print(f"Before shape inference, the shape info of Y is:\n{model.graph.value_info}")
-
-    # Apply shape inference on the model
+    # Apply shape inference and validate
     inferred_model = shape_inference.infer_shapes(model)
-
-    # Check the model and print Y"s shape information
     onnx.checker.check_model(inferred_model)
-    # print(f"After shape inference, the shape info of Y is:\n{inferred_model.graph.value_info}")
 
-
-    domain_to_version = {opset.domain: opset.version for opset in model.opset_import}
-
-    inferred_model = shape_inference.infer_shapes(model)
-    output_name_to_shape = extract_shape_dict(inferred_model)
-    id_count = 0
-
+    # Quantize and add custom domain
     new_model = converter.quantize_model(model, 2, 21)
     custom_domain = onnx.helper.make_operatorsetid(domain="ai.onnx.contrib", version=1)
     new_model.opset_import.append(custom_domain)
     onnx.checker.check_model(new_model)
 
-    with open("model.onnx", "wb") as f:
+    # Save quantized model
+    out_path = Path("model.onnx")
+    with out_path.open("wb") as f:
         f.write(new_model.SerializeToString())
 
-    model = onnx.load("model.onnx")
-    onnx.checker.check_model(model)  # This throws a descriptive error
+    # Reload quantized model to ensure it is valid
+    model_quant = onnx.load("model.onnx")
+    onnx.checker.check_model(model_quant)
 
+    # Prepare inputs and compare outputs
     inputs = np.arange(16, dtype=np.float32).reshape(1, 1, 4, 4)
     outputs_true = converter.run_model_onnx_runtime(path, inputs)
-
     outputs_quant = converter.run_model_onnx_runtime("model.onnx", inputs)
+
     true = torch.tensor(np.array(outputs_true), dtype=torch.float32)
     quant = torch.tensor(np.array(outputs_quant), dtype=torch.float32) / (2**21)
 

@@ -807,7 +807,7 @@ class Circuit:
                     key_shape = shape.get(only_key, None)
                     if key_shape is None:
                         raise CircuitConfigurationError(
-                            missing_attributes=[f"input_shape[{only_key!r}]"]
+                            missing_attributes=[f"input_shape[{only_key!r}]"],
                         )
                     shape = key_shape
 

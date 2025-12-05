@@ -17,16 +17,16 @@ from python.core.model_processing.onnx_quantizer.layers.base import (
     PassthroughQuantizer,
     ScaleConfig,
 )
+from python.core.model_processing.onnx_quantizer.layers.clip import ClipQuantizer
 from python.core.model_processing.onnx_quantizer.layers.constant import (
     ConstantQuantizer,
 )
 from python.core.model_processing.onnx_quantizer.layers.conv import ConvQuantizer
 from python.core.model_processing.onnx_quantizer.layers.gemm import GemmQuantizer
 from python.core.model_processing.onnx_quantizer.layers.max import MaxQuantizer
-from python.core.model_processing.onnx_quantizer.layers.min import MinQuantizer
 from python.core.model_processing.onnx_quantizer.layers.maxpool import MaxpoolQuantizer
+from python.core.model_processing.onnx_quantizer.layers.min import MinQuantizer
 from python.core.model_processing.onnx_quantizer.layers.relu import ReluQuantizer
-from python.core.model_processing.onnx_quantizer.layers.clip import ClipQuantizer
 
 
 class ONNXOpQuantizer:

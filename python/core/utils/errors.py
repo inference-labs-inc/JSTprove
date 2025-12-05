@@ -30,7 +30,7 @@ class FileCacheError(CircuitExecutionError):
 class ProofBackendError(CircuitExecutionError):
     """Raised when a Cargo command fails."""
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self: ProofBackendError,
         message: str,
         command: list[str] | None = None,

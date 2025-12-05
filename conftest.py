@@ -69,12 +69,9 @@ def pytest_collection_modifyitems(config: Config, items: list[Item]) -> None:
         has_e2e = "e2e" in item.keywords
 
         if (
-            run_unit
-            and has_unit
-            or run_integration
-            and has_integration
-            or run_e2e
-            and has_e2e
+            (run_unit and has_unit)
+            or (run_integration and has_integration)
+            or (run_e2e and has_e2e)
         ):
             selected.append(item)
         else:

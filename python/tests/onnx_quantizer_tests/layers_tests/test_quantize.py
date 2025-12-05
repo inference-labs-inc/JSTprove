@@ -38,7 +38,8 @@ class TestQuantize(BaseQuantizerTest):
         *,
         rescale: bool = True,
     ) -> tuple[
-        list[onnx.NodeProto], tuple[str, LayerTestConfig, LayerTestSpec, NodeProto]
+        list[onnx.NodeProto],
+        tuple[str, LayerTestConfig, LayerTestSpec, NodeProto],
     ]:
         """Common setup for quantization tests"""
         layer_name, config, test_spec = test_case_data
