@@ -74,6 +74,7 @@ class MaxConfigProvider(BaseLayerConfigProvider):
             edge_case_test("empty_tensor")
             .description("Max with empty tensor input (zero elements)")
             .override_input_shapes(A=[0], B=[0])
+            .override_output_shapes(max_output=[0])
             .tags("edge", "empty", "max")
             .build(),
             valid_test("large_tensor")
