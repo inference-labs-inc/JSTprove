@@ -54,7 +54,9 @@ class MaxConfigProvider(BaseLayerConfigProvider):
             valid_test("initializer_max")
             .description("Max where B is an initializer instead of an input")
             .override_input_shapes(A=[1, 3, 4, 4])
-            .override_initializer("B", rng.normal(0, 1, (1, 3, 4, 4)))
+            .override_initializer(
+                "B", rng.normal(0, 1, (1, 3, 4, 4)).astype(np.float32)
+            )
             .tags("initializer", "elementwise", "max", "onnxruntime")
             .build(),
             e2e_test("e2e_max")
