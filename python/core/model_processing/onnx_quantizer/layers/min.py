@@ -28,9 +28,11 @@ class MinQuantizer(BaseOpQuantizer, QuantizeMin):
 
     def __init__(
         self: MinQuantizer,
-        new_initializers: dict[str, onnx.TensorProto] | None = None,
+        new_initializers: list[onnx.TensorProto] | None = None,
     ) -> None:
-        self.new_initializers = new_initializers
+        super().__init__()
+        if new_initializers is not None:
+            self.new_initializers = new_initializers
 
     def quantize(
         self: MinQuantizer,
@@ -38,7 +40,7 @@ class MinQuantizer(BaseOpQuantizer, QuantizeMin):
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
-    ) -> list[onnx.NodeProto] | onnx.NodeProto:
+    ) -> list[onnx.NodeProto]:
         # Delegate to QuantizerBase's generic passthrough implementation.
         return QuantizeMin.quantize(self, node, graph, scale_config, initializer_map)
 

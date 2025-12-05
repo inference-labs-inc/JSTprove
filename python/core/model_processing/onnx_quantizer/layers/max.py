@@ -1,4 +1,3 @@
-# python/core/model_processing/onnx_quantizer/layers/max.py
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
@@ -24,9 +23,12 @@ class QuantizeMax(QuantizerBase):
 class MaxQuantizer(BaseOpQuantizer, QuantizeMax):
     def __init__(
         self,
-        new_initializers: dict[str, onnx.TensorProto] | None = None,
+        new_initializers: list[onnx.TensorProto] | None = None,
     ) -> None:
-        self.new_initializers = new_initializers
+        super().__init__()
+        if new_initializers is not None:
+            # Share the caller-provided buffer instead of the default list.
+            self.new_initializers = new_initializers
 
     def quantize(
         self,
