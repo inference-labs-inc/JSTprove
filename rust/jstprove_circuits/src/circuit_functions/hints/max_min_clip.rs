@@ -159,7 +159,7 @@ pub fn unconstrained_min<C: Config, Builder: RootAPI<C>>(
     if values.is_empty() {
         // This is a precondition failure, not an ONNX-layer semantic error.
         return Err(CircuitError::Other(
-            "unconstrained_max: input slice must be nonempty".to_string(),
+            "unconstrained_min: input slice must be nonempty".to_string(),
         ));
     }
 
