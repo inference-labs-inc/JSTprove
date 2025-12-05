@@ -11,12 +11,13 @@ This page explains what kinds of models JSTprove supports and how they're handle
 - **Activation:** **ReLU**
 - **Pooling:** **MaxPool2D**
 - **Shaping / graph ops:** **Flatten**, **Reshape**, **Constant**
+- **Normalization:** **BatchNorm**
 
 ---
 
 ## ONNX expectations
 
-- Export models with ops limited to **Conv2D**, **GEMM/MatMul**, **MaxPool2D**, **ReLU**, **Add**, **Sub**, **Mul**.
+- Export models with ops limited to **Conv2D**, **GEMM/MatMul**, **MaxPool2D**, **ReLU**, **Add**, **Sub**, **Mul**, **BatchNorm**.
 
 ---
 

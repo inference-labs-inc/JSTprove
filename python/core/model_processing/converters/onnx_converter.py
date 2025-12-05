@@ -247,6 +247,7 @@ class ONNXConverter(ModelConverter):
 
     def analyze_layers(
         self: ONNXConverter,
+        model: onnx.ModelProto,
         output_name_to_shape: dict[str, list[int]] | None = None,
     ) -> tuple[list[ONNXLayer], list[ONNXLayer]]:
         """Analyze the onnx model graph into
@@ -268,29 +269,29 @@ class ONNXConverter(ModelConverter):
             id_count = 0
             # Apply shape inference on the model
             if not output_name_to_shape:
-                inferred_model = shape_inference.infer_shapes(self.model)
+                inferred_model = shape_inference.infer_shapes(model)
                 self._onnx_check_model_safely(inferred_model)
 
                 output_name_to_shape = extract_shape_dict(inferred_model)
             domain_to_version = {
-                opset.domain: opset.version for opset in self.model.opset_import
+                opset.domain: opset.version for opset in model.opset_import
             }
 
             id_count = 0
             architecture = self.get_model_architecture(
-                self.model,
+                model,
                 output_name_to_shape,
                 domain_to_version,
             )
             w_and_b = self.get_model_w_and_b(
-                self.model,
+                model,
                 output_name_to_shape,
                 id_count,
                 domain_to_version,
             )
         except InvalidModelError:
             raise
-        except (ValueError, TypeError, RuntimeError, OSError, onnx.ONNXException) as e:
+        except (ValueError, TypeError, RuntimeError, OSError) as e:
             raise LayerAnalysisError(model_type=self.model_type, reason=str(e)) from e
         except Exception as e:
             raise LayerAnalysisError(model_type=self.model_type, reason=str(e)) from e
@@ -557,6 +558,7 @@ class ONNXConverter(ModelConverter):
         output_shapes = {
             out_name: output_name_to_shape.get(out_name, []) for out_name in outputs
         }
+
         return ONNXLayer(
             id=layer_id,
             name=name,
@@ -605,6 +607,7 @@ class ONNXConverter(ModelConverter):
             np_data = onnx.numpy_helper.to_array(node, constant_dtype)
         except (ValueError, TypeError, onnx.ONNXException, Exception) as e:
             raise SerializationError(
+                model_type=self.model_type,
                 tensor_name=node.name,
                 reason=f"Failed to convert tensor: {e!s}",
             ) from e
@@ -1040,38 +1043,36 @@ class ONNXConverter(ModelConverter):
                   ``rescale_config``.
         """
         inferred_model = shape_inference.infer_shapes(self.model)
-
-        scaling = BaseOpQuantizer.get_scaling(
-            scale_base=getattr(self, "scale_base", 2),
-            scale_exponent=(getattr(self, "scale_exponent", 18)),
-        )
+        scale_base = getattr(self, "scale_base", 2)
+        scale_exponent = getattr(self, "scale_exponent", 18)
 
         # Check the model and print Y"s shape information
         self._onnx_check_model_safely(inferred_model)
         output_name_to_shape = extract_shape_dict(inferred_model)
-        (architecture, w_and_b) = self.analyze_layers(output_name_to_shape)
-        for w in w_and_b:
+        scaled_and_transformed_model = self.op_quantizer.apply_pre_analysis_transforms(
+            inferred_model,
+            scale_exponent=scale_exponent,
+            scale_base=scale_base,
+        )
+        # Get layers in correct format
+        (architecture, w_and_b) = self.analyze_layers(
+            scaled_and_transformed_model,
+            output_name_to_shape,
+        )
+
+        def _convert_tensor_to_int_list(w: ONNXLayer) -> list:
             try:
-                w_and_b_array = np.asarray(w.tensor)
-            except (ValueError, TypeError, Exception) as e:
+                arr = np.asarray(w.tensor).astype(np.int64)
+                return arr.tolist()
+            except Exception as e:
                 raise SerializationError(
                     tensor_name=getattr(w, "name", None),
+                    model_type=self.model_type,
                     reason=f"cannot convert to ndarray: {e}",
                 ) from e
 
-            try:
-                # TODO @jsgold-1: We need a better way to distinguish bias tensors from weight tensors # noqa: FIX002, TD003,E501
-                if "bias" in w.name:
-                    w_and_b_scaled = w_and_b_array * scaling * scaling
-                else:
-                    w_and_b_scaled = w_and_b_array * scaling
-                w_and_b_out = w_and_b_scaled.astype(np.int64).tolist()
-                w.tensor = w_and_b_out
-            except (ValueError, TypeError, OverflowError, Exception) as e:
-                raise SerializationError(
-                    tensor_name=getattr(w, "name", None),
-                    reason=str(e),
-                ) from e
+        for w in w_and_b:
+            w.tensor = _convert_tensor_to_int_list(w)
 
         inputs = []
         outputs = []
