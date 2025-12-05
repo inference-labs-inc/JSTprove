@@ -90,7 +90,7 @@ def test_tiny_conv(tiny_conv_model_path: Path, tmp_path: Path) -> None:
     # Prepare inputs and compare outputs
     inputs = np.arange(16, dtype=np.float32).reshape(1, 1, 4, 4)
     outputs_true = converter.run_model_onnx_runtime(path, inputs)
-    outputs_quant = converter.run_model_onnx_runtime("model.onnx", inputs)
+    outputs_quant = converter.run_model_onnx_runtime(out_path, inputs)
 
     true = torch.tensor(np.array(outputs_true), dtype=torch.float32)
     quant = torch.tensor(np.array(outputs_quant), dtype=torch.float32) / (2**21)
