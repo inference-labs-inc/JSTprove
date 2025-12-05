@@ -150,7 +150,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MinLayer {
             .inputs
             .get(0)
             .ok_or_else(|| LayerError::MissingInput {
-                layer: LayerKind::Max,
+                layer: LayerKind::Min,
                 name: "input A".to_string(),
             })?;
         let input_b_name = layer
