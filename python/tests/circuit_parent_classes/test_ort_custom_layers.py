@@ -59,7 +59,7 @@ def tiny_conv_model_path(tmp_path: Path) -> Path:
 
 
 @pytest.mark.integration
-def test_tiny_conv(tiny_conv_model_path: Path) -> None:
+def test_tiny_conv(tiny_conv_model_path: Path, tmp_path: Path) -> None:
     path = tiny_conv_model_path
 
     converter = ONNXConverter()
@@ -84,7 +84,7 @@ def test_tiny_conv(tiny_conv_model_path: Path) -> None:
         f.write(new_model.SerializeToString())
 
     # Reload quantized model to ensure it is valid
-    model_quant = onnx.load("model.onnx")
+    model_quant = onnx.load(str(out_path))
     onnx.checker.check_model(model_quant)
 
     # Prepare inputs and compare outputs
