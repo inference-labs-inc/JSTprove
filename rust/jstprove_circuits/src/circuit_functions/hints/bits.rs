@@ -87,7 +87,9 @@ pub fn unconstrained_to_bits<C: Config, Builder: RootAPI<C>>(
         })?,
     ) >= (CircuitField::<C>::MODULUS / 2)
     {
-        return Err(CircuitError::Other("n_bits must be ".into()));
+        return Err(CircuitError::Other(
+            "unconstrained_to_bits: n_bits too large (require 2^n_bits < MODULUS/2)".into(),
+        ));
     }
 
     let mut least_significant_bits = Vec::with_capacity(n_bits);
