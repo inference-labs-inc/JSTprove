@@ -186,7 +186,7 @@ pub fn unconstrained_min<C: Config, Builder: RootAPI<C>>(
 // -----------------------------------------------------------------------------
 
 /// Computes the witness value for `clip(x; lower, upper)` using only
-/// *unconstrained* operations.  
+/// *unconstrained* operations.
 ///
 /// This function is intended to generate witnesses for `constrained_clip`,
 /// `constrained_max`, and `constrained_min`. It enforces **no constraints**

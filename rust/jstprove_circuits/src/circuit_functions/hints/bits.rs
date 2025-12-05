@@ -61,7 +61,7 @@ use crate::circuit_functions::{CircuitError, utils::UtilsError};
 ///
 /// - Returns `CircuitError::Other` if `n_bits == 0`.
 /// - Returns `UtilsError::ValueTooLarge` if `n_bits` does not fit in `u32`.
-/// - Returns `CircuitError::Other` if `2^n_bits >= MODULUS/2`.  
+/// - Returns `CircuitError::Other` if `2^n_bits >= MODULUS/2`.
 ///   (This guards against extracting more bits than make sense for the field.)
 ///
 /// # Example
