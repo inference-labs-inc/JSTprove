@@ -79,7 +79,7 @@ def test_tiny_conv(tiny_conv_model_path: Path) -> None:
     onnx.checker.check_model(new_model)
 
     # Save quantized model
-    out_path = Path("model.onnx")
+    out_path = tmp_path / "model_quant.onnx"
     with out_path.open("wb") as f:
         f.write(new_model.SerializeToString())
 
