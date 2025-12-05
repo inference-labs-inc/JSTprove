@@ -167,10 +167,7 @@ edge_case_test(name: str) -> TestSpecBuilder
 * `valid_test` – For regular expected-to-pass tests.
 * `error_test` – For tests where an error is the expected outcome.
 * `edge_case_test` – For edge cases (e.g., minimal input, boundary behavior).
-<<<<<<< HEAD
-=======
 * `e2e_test` - For tests designed to test the end-2-end process of the layer provided, including
->>>>>>> main
 
 ---
 

@@ -144,6 +144,8 @@ class TestQuantize(BaseQuantizerTest):
             node: NodeProto,
             result_node: NodeProto,
         ) -> bool:
+            if node.op_type == "BatchNormalization":
+                pytest.skip(f"{node.op_type} alters the node structure by design")
             if node.op_type in result_node.op_type:
                 # Assert there are no less attributes in the new node
                 assert len(node.attribute) <= len(result_node.attribute)

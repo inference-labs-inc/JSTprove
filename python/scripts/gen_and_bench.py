@@ -247,12 +247,12 @@ def export_onnx(
 
 
 def write_input_json(json_path: Path, input_shape: tuple[int] = (1, 4, 28, 28)) -> None:
-    """Write a zero-valued input tensor to JSON alongside its [N,C,H,W] shape."""
+    """Write a zero-valued input tensor to JSON without shape information."""
     json_path.parent.mkdir(parents=True, exist_ok=True)
     n, c, h, w = input_shape
     arr = [0.0] * (n * c * h * w)
     with json_path.open("w", encoding="utf-8") as f:
-        json.dump({"input": arr, "shape": [n, c, h, w]}, f)
+        json.dump({"input": arr}, f)
 
 
 def run_bench(

@@ -17,6 +17,9 @@ from python.core.model_processing.onnx_quantizer.layers.base import (
     PassthroughQuantizer,
     ScaleConfig,
 )
+from python.core.model_processing.onnx_quantizer.layers.batchnorm import (
+    BatchnormQuantizer,
+)
 from python.core.model_processing.onnx_quantizer.layers.clip import ClipQuantizer
 from python.core.model_processing.onnx_quantizer.layers.constant import (
     ConstantQuantizer,
@@ -26,7 +29,9 @@ from python.core.model_processing.onnx_quantizer.layers.gemm import GemmQuantize
 from python.core.model_processing.onnx_quantizer.layers.max import MaxQuantizer
 from python.core.model_processing.onnx_quantizer.layers.maxpool import MaxpoolQuantizer
 from python.core.model_processing.onnx_quantizer.layers.min import MinQuantizer
+from python.core.model_processing.onnx_quantizer.layers.mul import MulQuantizer
 from python.core.model_processing.onnx_quantizer.layers.relu import ReluQuantizer
+from python.core.model_processing.onnx_quantizer.layers.sub import SubQuantizer
 
 
 class ONNXOpQuantizer:
@@ -73,15 +78,19 @@ class ONNXOpQuantizer:
         # Register handlers
         self.register("Add", AddQuantizer(self.new_initializers))
         self.register("Clip", ClipQuantizer(self.new_initializers))
+        self.register("Sub", SubQuantizer(self.new_initializers))
+        self.register("Mul", MulQuantizer(self.new_initializers))
         self.register("Conv", ConvQuantizer(self.new_initializers))
         self.register("Relu", ReluQuantizer())
         self.register("Reshape", PassthroughQuantizer())
         self.register("Gemm", GemmQuantizer(self.new_initializers))
+        self.register("Cast", PassthroughQuantizer())
         self.register("Constant", ConstantQuantizer())
         self.register("MaxPool", MaxpoolQuantizer())
         self.register("Flatten", PassthroughQuantizer())
         self.register("Max", MaxQuantizer(self.new_initializers))
         self.register("Min", MinQuantizer(self.new_initializers))
+        self.register("BatchNormalization", BatchnormQuantizer(self.new_initializers))
 
     def register(
         self: ONNXOpQuantizer,
@@ -209,3 +218,32 @@ class ONNXOpQuantizer:
             dict[str, onnx.TensorProto]: Map from initializer name to tensors in graph.
         """
         return {init.name: init for init in model.graph.initializer}
+
+    def apply_pre_analysis_transforms(
+        self: ONNXOpQuantizer,
+        model: onnx.ModelProto,
+        scale_exponent: int,
+        scale_base: int,
+    ) -> onnx.ModelProto:
+        """
+        Give each registered handler a chance to rewrite the model before analysis.
+        """
+        graph = model.graph
+        initializer_map = self.get_initializer_map(model)
+
+        # We allow handlers to modify graph in-place.
+        # (Nodes may be replaced, removed, or new nodes added.)
+        for node in list(graph.node):
+            handler = self.handlers.get(node.op_type)
+            if handler and hasattr(handler, "pre_analysis_transform"):
+                handler.pre_analysis_transform(
+                    node,
+                    graph,
+                    initializer_map,
+                    scale_exponent=scale_exponent,
+                    scale_base=scale_base,
+                )
+            # Refresh map if transforms may add initializers
+            initializer_map = self.get_initializer_map(model)
+
+        return model

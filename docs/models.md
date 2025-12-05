@@ -6,17 +6,18 @@ This page explains what kinds of models JSTprove supports and how they're handle
 
 ## Supported operators (current)
 
-- **Linear:** Fully Connected / **GEMM**, **MatMul**, **Add**
+- **Linear:** Fully Connected / **GEMM**, **MatMul**, **Add**, **Sub**, **Mul**
 - **Convolution:** **Conv2D**
 - **Activation:** **ReLU**
 - **Pooling:** **MaxPool2D**
 - **Shaping / graph ops:** **Flatten**, **Reshape**, **Constant**
+- **Normalization:** **BatchNorm**
 
 ---
 
 ## ONNX expectations
 
-- Export models with ops limited to **Conv2D**, **GEMM/MatMul**, **MaxPool2D**, **ReLU**, **Add**.
+- Export models with ops limited to **Conv2D**, **GEMM/MatMul**, **MaxPool2D**, **ReLU**, **Add**, **Sub**, **Mul**, **BatchNorm**.
 
 ---
 

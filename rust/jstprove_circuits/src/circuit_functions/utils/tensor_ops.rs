@@ -259,3 +259,48 @@ pub fn broadcast_array(
         .to_owned();
     Ok(out)
 }
+
+/// Reshape a 1D channel vector (mul/add) so it can broadcast
+/// with an input tensor of shape [N, C, ...].
+///
+/// # Errors
+///
+/// Returns `CircuitError` if:
+/// - `vec` is not 1-dimensional.
+/// - The channel dimension of `vec` does not match `target`'s second dimension.
+/// - Reshaping `vec` into shape `[C, 1, 1, ...]` fails.
+pub fn reshape_channel_vector_for_broadcast(
+    vec: &ArrayD<Variable>,
+    target: &ArrayD<Variable>,
+) -> Result<ArrayD<Variable>, CircuitError> {
+    let target_shape = target.shape();
+    let dims_x = target_shape.len();
+
+    if vec.ndim() != 1 {
+        return Err(CircuitError::Other(format!(
+            "Expected 1D mul/add vector; got {:?}",
+            vec.shape()
+        )));
+    }
+
+    let channels = vec.len();
+
+    if target_shape.len() < 2 || target_shape[1] != channels {
+        return Err(CircuitError::Other(format!(
+            "Channel mismatch: vector has {}, but input has {}",
+            channels, target_shape[1]
+        )));
+    }
+
+    // Build shape: [C, 1, 1, ...]
+    let mut shape = Vec::with_capacity(dims_x);
+    shape.push(channels);
+    shape.extend(std::iter::repeat_n(1, dims_x - 2));
+
+    // First reshape (adds new axes!)
+    let reshaped = vec
+        .to_shape(ndarray::IxDyn(&shape))
+        .map_err(|_| CircuitError::Other(format!("Cannot reshape vector to {shape:?}")))?;
+
+    Ok(reshaped.to_owned())
+}

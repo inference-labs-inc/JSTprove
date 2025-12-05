@@ -1,5 +1,8 @@
 use crate::circuit_functions::layers::LayerError;
+use crate::circuit_functions::layers::batchnorm::BatchnormLayer;
 use crate::circuit_functions::layers::layer_ops::LayerOp;
+use crate::circuit_functions::layers::mul::MulLayer;
+use crate::circuit_functions::layers::sub::SubLayer;
 use crate::circuit_functions::utils::build_layers::BuildLayerContext;
 use crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry;
 use crate::circuit_functions::utils::onnx_model::CircuitParams;
@@ -127,15 +130,18 @@ When defining new layers, make sure to activate them by placing the new layer in
 */
 
 define_layers! {
-    Add  => { name: "Add",  builder: AddLayer::build },
-    Clip     => { name: "Clip",     builder: ClipLayer::build },
-    Constant => { name: "Constant", builder: ConstantLayer::build },
-    Conv     => { name: "Conv",     builder: ConvLayer::build },
-    Flatten  => { name: "Flatten",  builder: FlattenLayer::build },
-    Gemm     => { name: "Gemm",     builder: GemmLayer::build },
-    MaxPool  => { name: "MaxPool",  builder: MaxPoolLayer::build },
-    Max => { name: "Max", builder: MaxLayer::build },
-    Min => { name: "Min", builder: MinLayer::build },
-    ReLU     => { name: "ReLU",     builder: ReluLayer::build, aliases: ["Relu"] },
-    Reshape  => { name: "Reshape",  builder: ReshapeLayer::build },
+    Add       => { name: "Add", builder: AddLayer::build },
+    Clip      => { name: "Clip", builder: ClipLayer::build },
+    Batchnorm => { name: "BatchNormalization", builder: BatchnormLayer::build },
+    Sub       => { name: "Sub", builder: SubLayer::build },
+    Mul       => { name: "Mul", builder: MulLayer::build },
+    Constant  => { name: "Constant", builder: ConstantLayer::build },
+    Conv      => { name: "Conv", builder: ConvLayer::build },
+    Flatten   => { name: "Flatten", builder: FlattenLayer::build },
+    Gemm      => { name: "Gemm", builder: GemmLayer::build },
+    MaxPool   => { name: "MaxPool", builder: MaxPoolLayer::build },
+    Max       => { name: "Max", builder: MaxLayer::build },
+    Min       => { name: "Min", builder: MinLayer::build },
+    ReLU      => { name: "ReLU", builder: ReluLayer::build, aliases: ["Relu"] },
+    Reshape   => { name: "Reshape", builder: ReshapeLayer::build },
 }

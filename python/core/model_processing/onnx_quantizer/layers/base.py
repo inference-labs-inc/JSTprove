@@ -513,6 +513,73 @@ class QuantizerBase:
         nodes.append(quantized_node)
         return nodes
 
+    def pre_analysis_transform(
+        self: QuantizerBase,
+        node: onnx.NodeProto,
+        graph: onnx.GraphProto,
+        initializer_map: dict[str, onnx.TensorProto],
+        scale_base: int,
+        scale_exponent: int,
+    ) -> None:
+        """
+        pre_analysis_transform aims to transform the given layer along the
+        same lines as it would be transformed for the quantized model, but
+        for the weights and biases file instead, to be sent to the backend
+
+        Default pre-analysis behavior:
+
+        - If the subclass uses weights/bias (`USE_WB=True`), apply the SAME
+        scaling rules as quantization, but directly mutate the initializers.
+
+        - Subclasses can override this to implement more complex rewrites
+        (e.g., BatchNorm → Mul/Add).
+
+        Args:
+            node (onnx.NodeProto): Node to transform.
+            graph (onnx.GraphProto): Rest of the Onnx graph for initializers.
+            initializer_map (dict[str, onnx.TensorProto]): The initializer map.
+
+            scale_base (int): Scaling base.
+            scale_exponent (int): Scaling exponent.
+
+        NOTE
+         - The resulting model will not make accurate prediction and should be
+         used solely for analysis and keeping track of w_and_b
+        """
+        # If subclass does not want auto-scaling, do nothing
+        if not getattr(self, "USE_WB", False):
+            return
+
+        # Each quantizer defines which inputs to scale (Weight:1x, Bias:2x etc.)
+        scale_plan = getattr(self, "SCALE_PLAN", {})
+
+        # Perform the same scaling as quantization, but directly modify initializers
+        for input_idx, scale_mult in scale_plan.items():
+            if input_idx >= len(node.input):
+                continue
+
+            name = node.input[input_idx]
+            if name not in initializer_map:
+                continue  # optional input missing
+
+            tensor = initializer_map[name]
+            arr = numpy_helper.to_array(tensor).astype(np.float64)
+
+            scale = scale_base ** (scale_exponent * scale_mult)
+            new_arr = arr * scale
+
+            # Replace initializer directly
+            new_tensor = numpy_helper.from_array(new_arr, name=tensor.name)
+
+            # Modify graph initializer in place
+            for j in range(len(graph.initializer)):
+                if graph.initializer[j].name == tensor.name:
+                    del graph.initializer[j]
+                    break
+            graph.initializer.append(new_tensor)
+
+            initializer_map[tensor.name] = new_tensor
+
 
 class PassthroughQuantizer(BaseOpQuantizer):
     """

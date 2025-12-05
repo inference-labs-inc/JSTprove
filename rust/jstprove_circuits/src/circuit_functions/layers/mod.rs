@@ -1,4 +1,5 @@
 pub mod add;
+pub mod batchnorm;
 pub mod clip;
 pub mod constant;
 pub mod conv;
@@ -11,8 +12,10 @@ mod math;
 pub mod max;
 pub mod maxpool;
 pub mod min;
+pub mod mul;
 pub mod relu;
 pub mod reshape;
+pub mod sub;
 
 pub use errors::LayerError;
 pub use layer_kinds::LayerKind;
