@@ -1,9 +1,9 @@
 //! Constrained max/min/clip gadgets for int64 fixed-point arithmetic.
 //!
 //! These gadgets:
-//! - enforce correctness of max/min selection via LogUp range checks,
+//! - enforce correctness of max/min selection via `LogUp` range checks,
 //! - use unconstrained comparison hints internally,
-//! - are used by Max, Min, Clip, MaxPool, and quantization layers.
+//! - are used by `Max`, `Min`, `Clip`, `MaxPool`, and quantization layers.
 
 /// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{Config, RootAPI, Variable};
@@ -27,9 +27,9 @@ use crate::circuit_functions::hints::{unconstrained_max, unconstrained_min};
 /// shift exponent `s`, so we do not recompute constants on every call.
 ///
 /// This context is shared across:
-///   - MaxPool (windowed max over tensors),
-///   - MaxLayer (elementwise max),
-///   - MinLayer (elementwise min).
+///   - `MaxPool` (windowed max over tensors),
+///   - `MaxLayer` (elementwise max),
+///   - `MinLayer` (elementwise min).
 ///
 /// Intuitively:
 /// - We treat each value x as a signed integer in the range [-2^s, 2^s - 1].
@@ -95,7 +95,7 @@ impl ShiftRangeContext {
 ///
 /// # High-level idea
 ///
-/// Each input `x_i` is a field element (a `Variable` in F_p) that we *interpret*
+/// Each input `x_i` is a field element (a `Variable` in `F_p`) that we *interpret*
 /// as encoding a signed integer in the range:
 ///
 ///     x_i in [-S, 2^s - 1]
@@ -117,14 +117,14 @@ impl ShiftRangeContext {
 /// We then:
 ///
 /// 1. Compute:
-///        max_sh = max_i (x_i_sh)
+///   max_sh = max_i (x_i_sh)
 ///    using an *unconstrained* helper (`unconstrained_max`).
 ///
 /// 2. Recover the candidate maximum in the original signed range:
-///        M = max_sh - S.
+///   M = max_sh - S.
 ///
 /// 3. For each i, define:
-///        delta_i = M - x_i.
+///   delta_i = M - x_i.
 ///
 ///    We enforce that each `delta_i` lies in:
 ///        [0, 2^(s+1) - 1]
@@ -177,19 +177,19 @@ pub fn constrained_max<C: Config, Builder: RootAPI<C>>(
         .into());
     }
 
-    // 1) Form offset-shifted values: x_i^♯ = x_i + S
+    // 1) Form offset-shifted values: x_i_sh = x_i + S
     let mut values_offset = Vec::with_capacity(values.len());
     for &x in values {
         values_offset.push(api.add(x, shift_ctx.offset));
     }
 
-    // 2) Compute max_i (x_i^♯), which equals M^♯ = M + S
+    // 2) Compute max_i (x_i_sh), which equals M_sh = M + S
     let max_offset = unconstrained_max(api, &values_offset)?;
 
-    // 3) Recover M = M^♯ − S
+    // 3) Recover M = M_sh − S
     let max_raw = api.sub(max_offset, shift_ctx.offset);
 
-    // 4) For each x_i, range-check Δ_i = M − x_i ∈ [0, T] using s + 1 bits
+    // 4) For each x_i, range-check delta_i = M − x_i in [0, T] using s + 1 bits
     let n_bits = shift_ctx.shift_exponent.checked_add(1).ok_or_else(|| {
         LayerError::InvalidParameterValue {
             layer: LayerKind::Max,
@@ -204,7 +204,7 @@ pub fn constrained_max<C: Config, Builder: RootAPI<C>>(
     for &x in values {
         let delta = api.sub(max_raw, x);
 
-        // Δ ∈ [0, T] = [0, 2^{s + 1} - 1] via *shared* LogUp-based range proof
+        // delta in [0, T] = [0, 2^{s + 1} - 1] via *shared* LogUp-based range proof
         logup_ctx
             .range_check::<C, Builder>(api, delta, n_bits)
             .map_err(|e| LayerError::Other {
@@ -212,11 +212,11 @@ pub fn constrained_max<C: Config, Builder: RootAPI<C>>(
                 msg: format!("logup_range_check_pow2_unsigned (LogUp) failed: {e}"),
             })?;
 
-        // Multiply all Δ_i together
+        // Multiply all delta_i together
         prod = api.mul(prod, delta);
     }
 
-    // 5) Final check: ∏ Δ_i = 0 ⇔ ∃ x_i such that Δ_i = 0 ⇔ x_i = M
+    // 5) Final check: prod delta_i = 0 iff exists x_i such that delta_i = 0 iff x_i = M
     api.assert_is_zero(prod);
     Ok(max_raw)
 }
@@ -297,19 +297,19 @@ pub fn constrained_min<C: Config, Builder: RootAPI<C>>(
         .into());
     }
 
-    // 1) Form offset-shifted values: x_i^♯ = x_i + S
+    // 1) Form offset-shifted values: x_i_sh = x_i + S
     let mut values_offset = Vec::with_capacity(values.len());
     for &x in values {
         values_offset.push(api.add(x, context.offset));
     }
 
-    // 2) Compute min_i (x_i^♯), which equals M^♯ = M + S
+    // 2) Compute min_i (x_i_sh), which equals M_sh = M + S
     let min_offset = unconstrained_min(api, &values_offset)?;
 
-    // 3) Recover M = M^♯ − S
+    // 3) Recover M = M_sh − S
     let min_raw = api.sub(min_offset, context.offset);
 
-    // 4) For each x_i, range-check Δ_i = x_i − M ∈ [0, T] using s + 1 bits
+    // 4) For each x_i, range-check delta_i = x_i − M in [0, T] using s + 1 bits
     let n_bits =
         context
             .shift_exponent
@@ -326,7 +326,7 @@ pub fn constrained_min<C: Config, Builder: RootAPI<C>>(
     for &x in values {
         let delta = api.sub(x, min_raw);
 
-        // Δ ∈ [0, T] = [0, 2^{s + 1} - 1] via *shared* LogUp-based range proof
+        // delta in [0, T] = [0, 2^{s + 1} - 1] via *shared* LogUp-based range proof
         logup_ctx
             .range_check::<C, Builder>(api, delta, n_bits)
             .map_err(|e| LayerError::Other {
@@ -334,11 +334,11 @@ pub fn constrained_min<C: Config, Builder: RootAPI<C>>(
                 msg: format!("logup_range_check_pow2_unsigned (LogUp) failed: {e}"),
             })?;
 
-        // Multiply all Δ_i together
+        // Multiply all delta_i together
         prod = api.mul(prod, delta);
     }
 
-    // 5) Final check: ∏ Δ_i = 0 ⇔ ∃ x_i such that Δ_i = 0 ⇔ x_i = M
+    // 5) Final check: prod delta_i = 0 iff exists x_i such that delta_i = 0 iff x_i = M
     api.assert_is_zero(prod);
     Ok(min_raw)
 }
