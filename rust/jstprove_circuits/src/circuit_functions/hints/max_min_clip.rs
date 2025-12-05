@@ -216,6 +216,11 @@ pub fn unconstrained_min<C: Config, Builder: RootAPI<C>>(
 /// - `x`, `lower`, and `upper` represent integers in a compatible signed range.
 /// - The surrounding circuit will use constrained gadgets to verify Clip logic.
 ///
+/// # Errors
+///
+/// - Propagates any `CircuitError` returned by `unconstrained_max` or
+///   `unconstrained_min`.
+///
 /// # Arguments
 ///
 /// - `api`: circuit builder with unconstrained operators.

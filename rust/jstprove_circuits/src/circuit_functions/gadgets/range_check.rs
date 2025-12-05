@@ -180,14 +180,16 @@ pub struct LogupRangeCheckContext {
 }
 
 impl LogupRangeCheckContext {
-    /// Create a context with user-specified chunk_bits.
+    /// Create a context with user-specified `chunk_bits`.
     ///
-    /// chunk_bits determines the table size (2^{chunk_bits}) and the number of
-    /// digits used to encode a value. Must satisfy 1 <= chunk_bits <= 128.
+    /// `chunk_bits` determines the table size (`2^{chunk_bits}`) and the number
+    /// of digits used to encode a value. Must satisfy `1 <= chunk_bits <= 128`.
     ///
-    /// Panics if chunk_bits is out of range.
+    /// # Panics
+    ///
+    /// Panics if `chunk_bits` is 0 or greater than 128.
+    #[must_use]
     pub fn new(chunk_bits: usize) -> Self {
-        // You can tighten these bounds later if needed.
         assert!(
             chunk_bits > 0 && chunk_bits <= 128,
             "LogupRangeCheckContext: chunk_bits must be in 1..=128"
@@ -199,9 +201,10 @@ impl LogupRangeCheckContext {
         }
     }
 
-    /// Create a context using DEFAULT_LOGUP_CHUNK_BITS.
+    /// Create a context using `DEFAULT_LOGUP_CHUNK_BITS`.
     ///
-    /// This is recommended unless you need to adjust LogUp performance trade-offs.
+    /// This is recommended unless you need to adjust `LogUp` performance trade-offs.
+    #[must_use]
     pub fn new_default() -> Self {
         Self::new(DEFAULT_LOGUP_CHUNK_BITS)
     }
@@ -213,16 +216,20 @@ impl LogupRangeCheckContext {
         self.table.initial::<C, B>(api);
     }
 
-    /// Add a LogUp-based range check: enforce value in [0, 2^{n_bits} - 1].
+    /// Add a `LogUp`-based range check: enforce `value` in
+    /// the interval `[0, 2^{n_bits} - 1]`.
     ///
-    /// This splits value into base-2^{chunk_bits} digits and registers them as
-    /// queries in the shared LogUp table.
+    /// This method:
+    /// - splits `value` into base-`2^{chunk_bits}` digits,
+    /// - adds those digits as queries into the shared `LogUp` table.
     ///
-    /// This does not finalize the consistency proof; call finalize afterward.
+    /// It does **not** call `finalize`; you must call [`finalize`] once after
+    /// all calls to `range_check` to enforce the global consistency constraint.
     ///
-    /// Errors:
-    /// - CircuitError if n_bits == 0.
-    /// - CircuitError if n_bits > 128 (current safety bound).
+    /// # Errors
+    ///
+    /// - Returns `CircuitError` if `n_bits == 0`.
+    /// - Returns `CircuitError` if `n_bits > 128` (current safety bound).
     pub fn range_check<C: Config, B: RootAPI<C>>(
         &mut self,
         api: &mut B,
@@ -259,19 +266,18 @@ impl LogupRangeCheckContext {
 // FUNCTION: logup_range_check_pow2_unsigned
 // -----------------------------------------------------------------------------
 
-/// One-shot helper for performing a LogUp-based range check.
+/// One-shot helper that uses a fresh `LogUp` table for a single range-check.
 ///
-/// This wraps LogupRangeCheckContext as follows:
-///   1. Create a context with DEFAULT_LOGUP_CHUNK_BITS.
-///   2. ctx.init(api)
-///   3. ctx.range_check(api, value, n_bits)
-///   4. ctx.finalize(api)
+/// Internally:
+/// - builds a `LogupRangeCheckContext` with the default chunk size,
+/// - initializes the table,
+/// - adds one range-check for `value` with `n_bits`,
+/// - runs `finalize` to enforce the `LogUp` consistency.
 ///
-/// Useful when you need a single range check. For many checks, create a
-/// LogupRangeCheckContext manually and reuse it.
+/// # Errors
 ///
-/// Errors:
-/// - Propagates errors from range_check.
+/// - Propagates any `CircuitError` returned by
+///   [`LogupRangeCheckContext::range_check`].
 pub fn logup_range_check_pow2_unsigned<C: Config, B: RootAPI<C>>(
     api: &mut B,
     value: Variable,
