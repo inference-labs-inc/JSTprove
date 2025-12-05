@@ -54,7 +54,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: &HashMap<String, ArrayD<Variable>>,
+        input: &HashMap<String, std::sync::Arc<ArrayD<Variable>>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let is_relu = matches!(self.optimization_pattern, PatternRegistry::GemmRelu);
 
@@ -67,14 +67,18 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             })?
             .clone();
 
-        let mut input_array =
-            layer_input
-                .into_dimensionality::<Ix2>()
-                .map_err(|_| LayerError::InvalidShape {
-                    layer: LayerKind::Gemm,
-                    msg: format!("Expected 2D input for layer {}", self.name),
-                })?;
+        let mut input_array = layer_input
+            .as_ref()
+            .clone()
+            .into_dimensionality::<Ix2>()
+            .map_err(|_| LayerError::InvalidShape {
+                layer: LayerKind::Gemm,
+                msg: format!("Expected 2D input for layer {}", self.name),
+            })?;
+
         let mut weights_array = load_array_constants(api, &self.weights)
+            .as_ref()
+            .to_owned()
             .into_dimensionality::<Ix2>()
             .map_err(|_| LayerError::InvalidShape {
                 layer: LayerKind::Gemm,
@@ -88,6 +92,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             &LayerKind::Gemm,
             &self.name,
         )?;
+
         weights_array = check_and_apply_transpose_array(
             weights_array,
             self.transb,
@@ -109,7 +114,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             weights_array.into_dyn(),
             LayerKind::Gemm,
         )?;
-        result = matrix_addition(api, &result, bias_array, LayerKind::Gemm)?;
+        result = matrix_addition(api, &result, bias_array.as_ref().clone(), LayerKind::Gemm)?;
 
         let mut out_array = result.into_dyn(); // back to ArrayD<Variable>
         if self.is_rescale {

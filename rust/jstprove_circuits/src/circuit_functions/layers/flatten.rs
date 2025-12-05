@@ -30,21 +30,21 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
     fn apply(
         &self,
         _api: &mut Builder,
-        input: &HashMap<String, ArrayD<Variable>>,
+        input: &HashMap<String, std::sync::Arc<ArrayD<Variable>>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let reshape_axis = self.axis;
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Flatten, INPUT)?;
-        let layer_input =
-            input
-                .get(&input_name.clone())
-                .ok_or_else(|| LayerError::MissingInput {
-                    layer: LayerKind::Flatten,
-                    name: input_name.clone(),
-                })?;
+        let layer_input = input
+            .get(&input_name.clone())
+            .ok_or_else(|| LayerError::MissingInput {
+                layer: LayerKind::Flatten,
+                name: input_name.clone(),
+            })?
+            .clone();
 
-        let out = onnx_flatten(layer_input.clone(), reshape_axis)?;
+        let out = onnx_flatten(layer_input, reshape_axis)?;
 
-        Ok((self.outputs.clone(), out.clone()))
+        Ok((self.outputs.clone(), out.as_ref().clone()))
     }
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,

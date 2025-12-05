@@ -1,6 +1,7 @@
 #[allow(unused_imports)]
 /// Standard library imports
 use core::panic;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 
@@ -59,21 +60,29 @@ impl Circuit<Variable> {
         let w_and_b = OnnxContext::get_wandb()?;
 
         // Getting inputs
-        let mut out = get_inputs(&self.input_arr, params.inputs.clone())?;
+        let mut out: HashMap<String, std::sync::Arc<ArrayD<Variable>>> =
+            get_inputs(&self.input_arr, params.inputs.clone())?
+                .into_iter()
+                .map(|(k, v)| (k, std::sync::Arc::new(v)))
+                .collect();
 
         let layers = build_layers::<C, Builder>(params, architecture, w_and_b)?;
 
         if architecture.architecture.is_empty() {
             return Err(CircuitError::EmptyArchitecture);
         }
+        eprintln!(
+            "The size of the layers parameter is {}",
+            size_of_val(&*layers)
+        );
 
         for (i, layer) in layers.iter().enumerate() {
             eprintln!("Applying Layer {:?}", &architecture.architecture[i].name);
             let result = layer.apply(api, &out)?;
-            result.0.into_iter().for_each(|key| {
-                // out.insert(key, Arc::clone(&value)); Depending on memory constraints here
-                out.insert(key, result.1.clone());
-            });
+            let shared = std::sync::Arc::new(result.1);
+            for key in result.0 {
+                out.insert(key, std::sync::Arc::clone(&shared));
+            }
         }
 
         let flatten_shape: Vec<usize> = vec![

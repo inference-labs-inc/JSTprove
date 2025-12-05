@@ -29,7 +29,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
     fn apply(
         &self,
         _api: &mut Builder,
-        input: &HashMap<String, ArrayD<Variable>>,
+        input: &HashMap<String, std::sync::Arc<ArrayD<Variable>>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let reshape_shape = self.shape.clone();
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Conv, INPUT)?;
@@ -44,6 +44,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
         let inferred_shape = infer_reshape_shape(layer_input.len(), &reshape_shape)?;
 
         let out = layer_input
+            .as_ref()
+            .to_owned()
             .into_shape_with_order(IxDyn(&inferred_shape))
             .map_err(|_| LayerError::InvalidShape {
                 layer: LayerKind::Reshape,

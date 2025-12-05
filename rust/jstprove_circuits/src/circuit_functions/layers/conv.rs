@@ -5,7 +5,7 @@ use std::{
 };
 
 /// External crate imports
-use ndarray::{ArrayD, s};
+use ndarray::{ArrayBase, ArrayD, Data, Dimension, s};
 
 /// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{Config, RootAPI, Variable};
@@ -65,7 +65,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: &HashMap<String, ArrayD<Variable>>,
+        input: &HashMap<String, std::sync::Arc<ArrayD<Variable>>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let is_relu = matches!(self.optimization_pattern, PatternRegistry::ConvRelu);
 
@@ -79,9 +79,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
                 })?;
 
         // Convert weights
+        eprintln!("Loading weights for {}", self.name);
         let weights = load_array_constants(api, &self.weights);
 
+        eprintln!("Loading biases for {}", self.name);
         let bias = self.bias.mapv(|x| load_circuit_constant(api, x));
+        eprintln!("Loading scaling for {}", self.name);
+
         // Scaling
         let scale_factor = 1u64.checked_shl(self.scaling.as_u32()?).ok_or_else(|| {
             LayerError::InvalidParameterValue {
@@ -99,6 +103,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             .iter()
             .map(|&x| x.as_u32())
             .collect::<Result<Vec<u32>, UtilsError>>()?;
+        eprintln!("Running convolution for {}", self.name);
 
         // Convolution
         let out = conv_4d_run(
@@ -182,6 +187,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
         };
+        eprintln!("The size of the Conv Layer is {}", size_of_val(&conv));
         Ok(Box::new(conv))
     }
 }
@@ -363,7 +369,12 @@ fn get_u(input: &[u32], idx: usize, what: &str) -> Result<usize, CircuitError> {
     })
 }
 
-fn have_matching_shapes(x: &ArrayD<Variable>, y: &ArrayD<Variable>) -> bool {
+fn have_matching_shapes<S1, S2, D>(x: &ArrayBase<S1, D>, y: &ArrayBase<S2, D>) -> bool
+where
+    S1: Data<Elem = Variable>,
+    S2: Data<Elem = Variable>,
+    D: Dimension,
+{
     x.shape() == y.shape()
 }
 
@@ -478,14 +489,20 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
         h_out as usize,
         w_out as usize,
     );
+    eprintln!(
+        "Running Conv s_n {s_n}, nw {}, s_c {s_c}",
+        weights.shape()[0]
+    );
 
     for n in 0..s_n {
+        eprintln!("N value {n}");
         for nw in 0..weights.shape()[0] {
+            eprintln!("NW value {nw}");
+
             for c in 0..s_c {
-                let w = weights
-                    .slice(s![nw..=nw, c..=c, .., ..])
-                    .into_dyn()
-                    .to_owned();
+                eprintln!("C value {c}");
+
+                let w = weights.slice(s![nw..=nw, c..=c, .., ..]);
 
                 for io in (bh..eh as i32).step_by(stride_h as usize) {
                     let hr = ((io - bh) / stride_h.as_i32()?).as_usize()?;
@@ -507,10 +524,12 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
 
                         let n_usize = n;
 
-                        let img = input_arr
-                            .slice(s![n_usize..=n_usize, c..=c, i_height1..i_height2, iw1..iw2])
-                            .into_dyn()
-                            .to_owned();
+                        let img = input_arr.slice(s![
+                            n_usize..=n_usize,
+                            c..=c,
+                            i_height1..i_height2,
+                            iw1..iw2
+                        ]);
 
                         if have_matching_shapes(&img, &w) {
                             // TODO check if bias is empty
@@ -523,12 +542,10 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
 
                             let j_width1 = i32_to_usize(max(-ow - j, 0))?;
                             let j_width2 = i32_to_usize(min(kw, kw + s_w - (j + ow + kw as i32)))?;
-                            let w_ = w
-                                .slice(s![0..1, 0..1, j_height1..j_height2, j_width1..j_width2])
-                                .into_dyn()
-                                .to_owned();
+                            let w_ =
+                                w.slice(s![0..1, 0..1, j_height1..j_height2, j_width1..j_width2]);
 
-                            if !have_matching_shapes(&w_.clone(), &img) {
+                            if !have_matching_shapes(&w_, &img) {
                                 return Err(LayerError::InvalidShape {
                                     layer: LayerKind::Conv,
                                     msg: format!(
@@ -548,35 +565,50 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
                     }
                 }
             }
+            eprintln!("The size of the res Layer is {}", size_of_val(&res));
         }
     }
     Ok(res)
 }
 
 /// Flatten vector and perform dot product
-fn flatten_and_perform_dot<C: Config, Builder: RootAPI<C>>(
+fn flatten_and_perform_dot<C, Builder, S1, S2, D1, D2>(
     api: &mut Builder,
-    img: &ArrayD<Variable>,
-    w_: &ArrayD<Variable>,
-) -> Result<Variable, CircuitError> {
-    let flattened_img: ArrayD<&Variable> =
-        ArrayD::from_shape_vec(ndarray::IxDyn(&[img.len()]), img.iter().collect()).map_err(
-            |e| LayerError::InvalidShape {
-                layer: LayerKind::Conv,
-                msg: format!("Failed to flatten img: {e}"),
-            },
-        )?;
-    let flattened_w_: ArrayD<&Variable> =
-        ArrayD::from_shape_vec(ndarray::IxDyn(&[w_.len()]), w_.iter().collect()).map_err(|e| {
-            LayerError::InvalidShape {
-                layer: LayerKind::Conv,
-                msg: format!("Failed to flatten weights: {e}"),
-            }
-        })?;
+    img: &ArrayBase<S1, D1>,
+    w_: &ArrayBase<S2, D2>,
+) -> Result<Variable, CircuitError>
+where
+    C: Config,
+    Builder: RootAPI<C>,
+    S1: Data<Elem = Variable>,
+    S2: Data<Elem = Variable>,
+    D1: Dimension,
+    D2: Dimension,
+{
+    if img.len() != w_.len() {
+        return Err(LayerError::InvalidShape {
+            layer: LayerKind::Conv,
+            msg: format!(
+                "Dot product length mismatch: img={} weights={}",
+                img.len(),
+                w_.len()
+            ),
+        }
+        .into());
+    }
 
-    let mut sum = api.constant(0);
-    for (a, b) in flattened_img.iter().zip(flattened_w_.iter()) {
-        let prod = api.mul(*a, *b);
+    let mut it_img = img.iter();
+    let mut it_w = w_.iter();
+
+    // initialize accumulator
+    let first = match (it_img.next(), it_w.next()) {
+        (Some(a), Some(b)) => api.mul(a, b),
+        _ => return Ok(api.constant(0)),
+    };
+
+    let mut sum = first;
+    for (a, b) in it_img.zip(it_w) {
+        let prod = api.mul(a, b);
         sum = api.add(sum, prod);
     }
     Ok(sum)
@@ -620,8 +652,11 @@ pub fn conv_4d_run<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
     )?;
 
     let out = conv_shape_4(api, input_arr, &conv_params, weights, bias)?;
+    eprintln!("Finished convolution");
 
     if quantization_params.quantized {
+        eprintln!("Begin quantization");
+
         let scaling_exponent =
             usize::try_from(quantization_params.scaling).map_err(|_| LayerError::Other {
                 layer: LayerKind::Conv,
@@ -643,6 +678,7 @@ pub fn conv_4d_run<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
             shift_exponent,
             quantization_params.is_relu,
         )?;
+        eprintln!("Finished quantization");
         Ok(rescaled)
     } else {
         Ok(out)

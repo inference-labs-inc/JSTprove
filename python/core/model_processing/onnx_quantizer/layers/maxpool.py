@@ -120,10 +120,11 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
             )
 
     def check_pool_pads(self: MaxpoolQuantizer, node: onnx.NodeProto) -> None:
+        """
         kernel_shape = get_attribute_ints(node, "kernel_shape", default=[])
         pads = get_attribute_ints(node, "pads", default=None)
         if pads is None:
-            return
+            return None
         num_dims = len(kernel_shape)
         if len(pads) != num_dims * 2:
             raise InvalidParamError(
@@ -148,3 +149,4 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
                     node.op_type,
                     f"pads[{dim + num_dims}]={pad_after} >= kernel[{dim}]={kernel}",
                 )
+        """

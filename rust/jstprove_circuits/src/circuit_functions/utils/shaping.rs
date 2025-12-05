@@ -45,7 +45,10 @@ use crate::circuit_functions::{
 /// let flat_all = onnx_flatten(arr, 0)?;
 /// assert_eq!(flat_all.shape(), &[1, 24]);
 /// ```
-pub fn onnx_flatten<T>(array: ArrayD<T>, axis: usize) -> Result<ArrayD<T>, ArrayConversionError> {
+pub fn onnx_flatten<T: Clone>(
+    array: std::sync::Arc<ArrayD<T>>,
+    axis: usize,
+) -> Result<std::sync::Arc<ArrayD<T>>, ArrayConversionError> {
     let rank = array.ndim();
     if axis > rank {
         return Err(ArrayConversionError::InvalidAxis { axis, rank });
@@ -55,9 +58,18 @@ pub fn onnx_flatten<T>(array: ArrayD<T>, axis: usize) -> Result<ArrayD<T>, Array
     let dim0 = shape[..axis].iter().product::<usize>();
     let dim1 = shape[axis..].iter().product::<usize>();
 
-    // Uses #[from] on UtilsError::ShapeError
-    let out = array.into_shape_with_order(IxDyn(&[dim0, dim1]))?;
-    Ok(out)
+    let arr_owned = match std::sync::Arc::try_unwrap(array) {
+        Ok(inner) => inner,
+        Err(shared) => shared.as_ref().clone(), // Clone only when required
+    };
+
+    let (vec_data, _offset) = arr_owned.into_raw_vec_and_offset();
+
+    // Rebuild a new ArrayD with 2D flattened shape
+    let reshaped = ArrayD::from_shape_vec(IxDyn(&[dim0, dim1]), vec_data)
+        .map_err(ArrayConversionError::ShapeError)?;
+
+    Ok(std::sync::Arc::new(reshaped))
 }
 
 /// Splits a flat vector into named, shaped tensors based on ONNX input metadata.

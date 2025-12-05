@@ -33,14 +33,14 @@ pub fn load_circuit_constant<C: Config, Builder: RootAPI<C>>(
 pub fn load_array_constants<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input: &ArrayD<i64>,
-) -> ArrayD<Variable> {
+) -> std::sync::Arc<ArrayD<Variable>> {
     let mut result = ArrayD::default(input.dim());
     Zip::from(&mut result)
         .and(input)
         .for_each(|out_elem, &val| {
             *out_elem = load_circuit_constant(api, val);
         });
-    result
+    result.into()
 }
 
 /// Load constants or retrieve inputs based on whether an initializer exists.
@@ -61,12 +61,12 @@ pub fn load_array_constants<C: Config, Builder: RootAPI<C>>(
 /// Returns a `CircuitError` if the requested input tensor does not exist in `input`.
 pub fn load_array_constants_or_get_inputs<C: Config, Builder: RootAPI<C>, S: BuildHasher>(
     api: &mut Builder,
-    input: &HashMap<String, ArrayD<Variable>, S>,
+    input: &HashMap<String, std::sync::Arc<ArrayD<Variable>>, S>,
     input_name: &String,
     initializer: &Option<ArrayD<i64>>,
     layer_kind: LayerKind,
-) -> Result<ArrayD<Variable>, CircuitError> {
-    let a_input: ArrayD<Variable> = if let Some(init) = initializer {
+) -> Result<std::sync::Arc<ArrayD<Variable>>, CircuitError> {
+    let a_input: std::sync::Arc<ArrayD<Variable>> = if let Some(init) = initializer {
         load_array_constants(api, init)
     } else {
         input

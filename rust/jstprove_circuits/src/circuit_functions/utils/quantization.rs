@@ -184,7 +184,7 @@ impl RescalingContext {
 pub fn rescale<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     context: &RescalingContext,
-    dividend: Variable,
+    dividend: &Variable,
     apply_relu: bool,
 ) -> Result<Variable, RescaleError> {
     // Step 1: compute shifted_dividend = α·S + c
@@ -298,7 +298,7 @@ pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
     let shape = array.shape().to_vec();
     let results: Result<Vec<Variable>, RescaleError> = array
         .into_iter()
-        .map(|x| rescale(api, &context, x, apply_relu))
+        .map(|x| rescale(api, &context, &x, apply_relu))
         .collect();
 
     let rescaled_data = results?;
