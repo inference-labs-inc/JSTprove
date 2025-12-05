@@ -145,8 +145,23 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxLayer {
             })?;
 
         // Optional initializers for A and B (same pattern as AddLayer)
-        let initializer_a = get_optional_w_or_b(layer_context, &layer.inputs[0])?;
-        let initializer_b = get_optional_w_or_b(layer_context, &layer.inputs[1])?;
+        let input_a_name = layer
+            .inputs
+            .get(0)
+            .ok_or_else(|| LayerError::MissingInput {
+                layer: LayerKind::Max,
+                name: "input A".to_string(),
+            })?;
+        let input_b_name = layer
+            .inputs
+            .get(1)
+            .ok_or_else(|| LayerError::MissingInput {
+                layer: LayerKind::Max,
+                name: "input B".to_string(),
+            })?;
+
+        let initializer_a = get_optional_w_or_b(layer_context, input_a_name)?;
+        let initializer_b = get_optional_w_or_b(layer_context, input_b_name)?;
 
         // Match MaxPool’s choice: use n_bits - 1 as the shift exponent
         let shift_exponent =
