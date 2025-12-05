@@ -190,7 +190,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
         match (min_bc_opt.as_ref(), max_bc_opt.as_ref()) {
             (None, None) => {
                 // This case should have early-returned, but keep for completeness.
-                for &x_val in x_bc {
+                for &x_val in &x_bc {
                     let clipped =
                         constrained_clip(api, &range_ctx, &mut logup_ctx, x_val, None, None)?;
                     out_storage.push(clipped);
