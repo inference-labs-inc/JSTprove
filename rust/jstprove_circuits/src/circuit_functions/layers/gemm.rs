@@ -201,8 +201,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             )?
         };
 
-        let core_dyn = core.into_dyn();
-
         // Constrained Freivalds check: A * B == C_core
         let input_dyn = input_array.clone().into_dyn();
         let weights_dyn = weights_array.clone().into_dyn();
