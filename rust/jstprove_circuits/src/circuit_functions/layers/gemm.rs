@@ -9,8 +9,8 @@
 //!   3) Addition of the bias tensor.
 //!   4) Optional fixed-point rescaling, applied when the quantization pipeline
 //!      indicates that the GEMM output must be shifted to match downstream scale.
-//!   5) Freivalds verification of the matrix product to provide soundness with
-//!      asymptotically fewer multiplication constraints than a full deterministic check.
+//!   5) Freivalds verification of the core matrix product A * B = C, using the
+//!      raw GEMM product (before bias and rescale) as the reference C.
 //!
 //! The layer interfaces with:
 //!
@@ -19,12 +19,13 @@
 //!   * Expander's `RootAPI` for constraint construction,
 //!   * JSTprove's optimization patterns (e.g., folding GEMM+ReLU).
 //!
-//! This file contains *only the circuit logic* for GEMM execution. Shape checks,
+//! This file contains only the circuit logic for GEMM execution. Shape checks,
 //! quantizer logic, kernel attributes, and graph-level optimizations occur
 //! earlier in the pipeline. Runtime correctness is enforced in-circuit via
 //! Expander constraints and a single Freivalds repetition for probabilistic
 //! verification of the matrix product.
 
+// Standard library imports
 use std::collections::HashMap;
 
 /// External crate imports
@@ -136,17 +137,25 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         check_alpha_beta(self.beta, BETA, LayerKind::Gemm, &self.name)?;
 
         // Convert to dynamic ndarrays for math helpers.
-        let input_dyn = input_array.clone().into_dyn();
-        let weights_dyn = weights_array.clone().into_dyn();
+        let input_dyn = input_array.into_dyn();
+        let weights_dyn = weights_array.into_dyn();
 
-        // Matrix multiplication and bias addition (baseline constraints).
-        let mut result =
+        // Core matrix multiplication A * B (raw GEMM product, before bias and rescale).
+        let core_product =
             matrix_multiplication(api, input_dyn.clone(), weights_dyn.clone(), LayerKind::Gemm)?;
-        result = matrix_addition(api, &result, bias_array, LayerKind::Gemm)?;
 
         // Freivalds verification of the core matrix product:
-        // verifies input_array * weights_array == raw GEMM result (before bias and rescale).
-        freivalds_verify_once(api, &input_dyn, &weights_dyn, &result, LayerKind::Gemm)?;
+        // verifies input_dyn * weights_dyn == core_product (before bias and rescale).
+        freivalds_verify_once(
+            api,
+            &input_dyn,
+            &weights_dyn,
+            &core_product,
+            LayerKind::Gemm,
+        )?;
+
+        // Bias addition on top of the verified core product.
+        let mut result = matrix_addition(api, &core_product, bias_array, LayerKind::Gemm)?;
 
         // Optional rescaling (quantized fixed-point).
         let mut out_array = result.into_dyn();
