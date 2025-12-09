@@ -285,6 +285,26 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
 /// - Returns [`ArrayConversionError::ShapeError`] if the reshaped array cannot be reconstructed
 ///   from the rescaled data.
 /// - Propagates any errors from [`RescalingContext::new`], such as overflow in the exponent shifts.
+// pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
+//     api: &mut Builder,
+//     array: ArrayD<Variable>,
+//     scaling_exponent: usize,
+//     shift_exponent: usize,
+//     apply_relu: bool,
+// ) -> Result<ArrayD<Variable>, UtilsError> {
+//     let context = RescalingContext::new(api, scaling_exponent, shift_exponent)?;
+
+//     // Convert to Vec, map with error handling, then back to ArrayD
+//     let shape = array.shape().to_vec();
+//     let results: Result<Vec<Variable>, RescaleError> = array
+//         .into_iter()
+//         .map(|x| rescale(api, &context, &x, apply_relu))
+//         .collect();
+
+//     let rescaled_data = results?;
+//     Ok(ArrayD::from_shape_vec(shape, rescaled_data).map_err(ArrayConversionError::ShapeError)?) //
+// }
+
 pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     array: ArrayD<Variable>,
@@ -292,15 +312,21 @@ pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
     shift_exponent: usize,
     apply_relu: bool,
 ) -> Result<ArrayD<Variable>, UtilsError> {
-    let context = RescalingContext::new(api, scaling_exponent, shift_exponent)?;
+    rescale_array_in_place(api, array, scaling_exponent, shift_exponent, apply_relu)
+}
 
-    // Convert to Vec, map with error handling, then back to ArrayD
-    let shape = array.shape().to_vec();
-    let results: Result<Vec<Variable>, RescaleError> = array
-        .into_iter()
-        .map(|x| rescale(api, &context, &x, apply_relu))
-        .collect();
+pub fn rescale_array_in_place<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    mut array: ArrayD<Variable>,
+    scaling_exponent: usize,
+    shift_exponent: usize,
+    apply_relu: bool,
+) -> Result<ArrayD<Variable>, UtilsError> {
+    let ctx = RescalingContext::new(api, scaling_exponent, shift_exponent)?;
 
-    let rescaled_data = results?;
-    Ok(ArrayD::from_shape_vec(shape, rescaled_data).map_err(ArrayConversionError::ShapeError)?) //
+    for val in &mut array {
+        *val = rescale(api, &ctx, val, apply_relu)?;
+    }
+
+    Ok(array)
 }

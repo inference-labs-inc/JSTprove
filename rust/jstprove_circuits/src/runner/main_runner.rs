@@ -80,6 +80,7 @@ where
     // let mem_mb = GLOBAL.get_peak_memory().saturating_div(1024 * 1024);
     // println!("Peak Memory used Overall : {mem_mb:.2}");
     // let duration = start.elapsed();
+    eprintln!("Compilation Completed");
 
     let file = std::fs::File::create(circuit_path).map_err(|e| RunError::Io {
         source: e,
@@ -91,6 +92,7 @@ where
         .layered_circuit
         .serialize_into(writer)
         .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
+    eprintln!("Circuit serialized");
 
     let witness_path = get_witness_solver_path(circuit_path);
     let file = std::fs::File::create(&witness_path).map_err(|e| RunError::Io {
@@ -102,12 +104,8 @@ where
         .witness_solver
         .serialize_into(writer)
         .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
+    eprintln!("Witness solver serialized");
 
-    // println!(
-    //     "Time elapsed: {}.{} seconds",
-    //     duration.as_secs(),
-    //     duration.subsec_millis()
-    // );
     Ok(())
 }
 

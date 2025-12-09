@@ -1,3 +1,4 @@
+use core::arch;
 #[allow(unused_imports)]
 /// Standard library imports
 use core::panic;
@@ -6,8 +7,11 @@ use std::fs::File;
 use std::io::BufReader;
 
 use jstprove_circuits::circuit_functions::CircuitError;
-use jstprove_circuits::circuit_functions::utils::ArrayConversionError;
 use jstprove_circuits::circuit_functions::utils::build_layers::build_layers;
+use jstprove_circuits::circuit_functions::utils::graph_pattern_matching::{
+    PatternMatcher, PatternRegistry, optimization_skip_layers,
+};
+use jstprove_circuits::circuit_functions::utils::{ArrayConversionError, build_layers};
 use jstprove_circuits::runner::errors::RunError;
 /// External crate imports
 use ndarray::{Array1, ArrayD, ArrayView1, Axis, Ix1, IxDyn, concatenate};
@@ -66,23 +70,69 @@ impl Circuit<Variable> {
                 .map(|(k, v)| (k, std::sync::Arc::new(v)))
                 .collect();
 
-        let layers = build_layers::<C, Builder>(params, architecture, w_and_b)?;
-
         if architecture.architecture.is_empty() {
             return Err(CircuitError::EmptyArchitecture);
         }
-        eprintln!(
-            "The size of the layers parameter is {}",
-            size_of_val(&*layers)
-        );
 
-        for (i, layer) in layers.iter().enumerate() {
-            eprintln!("Applying Layer {:?}", &architecture.architecture[i].name);
-            let result = layer.apply(api, &out)?;
+        // Build context once for all layers
+        let layer_context =
+            build_layers::create_layer_context_with_shapes(&params, &architecture, &w_and_b)?;
+
+        // Pre-compute pattern matching once
+        let matcher = PatternMatcher::new();
+        let opt_patterns_by_layername = matcher.run(&architecture.architecture)?;
+
+        let mut skip_next_layer: HashMap<String, bool> = HashMap::new();
+
+        // Process each layer individually: build → apply → drop
+        for (i, original_layer) in architecture.architecture.iter().enumerate() {
+            let mut layer = original_layer.clone();
+
+            // Skip if marked by previous optimization
+            if *skip_next_layer.get(&layer.name).unwrap_or(&false) {
+                continue;
+            }
+
+            eprintln!("Processing Layer {:?}", &layer.name);
+
+            // Handle pattern optimization
+            let outputs = layer.outputs.clone();
+            let optimization_pattern_match = opt_patterns_by_layername.get(&layer.name);
+            let (optimization_pattern, outputs, layers_to_skip) = match optimization_skip_layers(
+                optimization_pattern_match,
+                &outputs,
+            )
+            .unwrap_or(None)
+            {
+                Some(opt) => opt,
+                None => (PatternRegistry::None, outputs.clone(), vec![]),
+            };
+
+            // Mark layers to skip
+            for item in layers_to_skip {
+                skip_next_layer.insert(item.to_string(), true);
+            }
+            layer.outputs = outputs;
+
+            // Build single layer
+            let built_layer = build_layers::build_single_layer::<C, Builder>(
+                &layer,
+                &params,
+                optimization_pattern,
+                i,
+                &layer_context,
+            )?;
+
+            // Apply layer immediately
+            let result = built_layer.apply(api, &out)?;
+
+            // Update outputs map
             let shared = std::sync::Arc::new(result.1);
             for key in result.0 {
                 out.insert(key, std::sync::Arc::clone(&shared));
             }
+
+            // Layer is automatically dropped here, freeing memory
         }
 
         let flatten_shape: Vec<usize> = vec![
@@ -106,7 +156,6 @@ impl Circuit<Variable> {
                 })?
                 .clone();
 
-            // Ensure the output is contiguous and flatten it
             let output_slice = output.as_slice().ok_or_else(|| {
                 CircuitError::Other(format!("Output '{output_name}' array not contiguous"))
             })?;
@@ -114,7 +163,6 @@ impl Circuit<Variable> {
             flat_outputs.push(Array1::from(output_slice.to_vec()));
         }
 
-        // Concatenate all flattened outputs into one tensor
         let combined_output = concatenate(
             Axis(0),
             &flat_outputs
@@ -124,23 +172,25 @@ impl Circuit<Variable> {
         )
         .map_err(|e| CircuitError::Other(format!("Concatenation error: {e}")))?;
 
-        // Optionally reshape it to the desired final flatten_shape
         let combined_output = combined_output
             .into_shape_with_order(IxDyn(&flatten_shape))
             .map_err(ArrayConversionError::ShapeError)?;
 
         eprintln!("Check outputs");
         for (j, _) in self.outputs.iter().enumerate() {
-            api.display("out1", self.outputs[j]);
-            api.display("out2", combined_output[j]);
+            // api.display("out1", self.outputs[j]);
+            // api.display("out2", combined_output[j]);
             api.assert_is_equal(self.outputs[j], combined_output[j]);
         }
+        eprintln!("Check outputs done");
 
         api.assert_is_equal(self.dummy[0], 1);
         api.assert_is_equal(self.dummy[1], 1);
 
         api.assert_is_equal(self.scale_base[0], params.scale_base);
         api.assert_is_equal(self.scale_exponent[0], params.scale_exponent);
+        eprintln!("Confirm params");
+
 
         Ok(())
     }
