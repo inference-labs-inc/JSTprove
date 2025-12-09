@@ -9,23 +9,20 @@
 //!   3) Addition of the bias tensor.
 //!   4) Optional fixed-point rescaling, applied when the quantization pipeline
 //!      indicates that the GEMM output must be shifted to match downstream scale.
-//!   5) Freivalds verification of the core matrix product A * B = C, using the
-//!      raw GEMM product (before bias and rescale) as the reference C.
 //!
 //! The layer interfaces with:
 //!
 //!   * the quantized ONNX representation produced on the Python side,
 //!   * utility modules for tensor loading, shaping, and quantized arithmetic,
 //!   * Expander's `RootAPI` for constraint construction,
-//!   * JSTprove's optimization patterns (e.g., folding GEMM+ReLU).
+//!   * JSTprove's optimization patterns (for example, folding GEMM+ReLU).
 //!
 //! This file contains only the circuit logic for GEMM execution. Shape checks,
 //! quantizer logic, kernel attributes, and graph-level optimizations occur
 //! earlier in the pipeline. Runtime correctness is enforced in-circuit via
-//! Expander constraints and a single Freivalds repetition for probabilistic
-//! verification of the matrix product.
+//! Expander constraints on the matrix multiplication, bias addition, and
+//! optional rescaling.
 
-// Standard library imports
 use std::collections::HashMap;
 
 /// External crate imports
@@ -40,7 +37,7 @@ use crate::circuit_functions::{
     layers::{
         LayerError, LayerKind,
         layer_ops::LayerOp,
-        math::{freivalds_verify_once, matrix_addition, matrix_multiplication},
+        math::{matrix_addition, matrix_multiplication},
     },
     utils::{
         constants::{ALPHA, BETA, INPUT, TRANS_A, TRANS_B},
@@ -136,26 +133,14 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         check_alpha_beta(self.alpha, ALPHA, LayerKind::Gemm, &self.name)?;
         check_alpha_beta(self.beta, BETA, LayerKind::Gemm, &self.name)?;
 
-        // Convert to dynamic ndarrays for math helpers.
-        let input_dyn = input_array.into_dyn();
-        let weights_dyn = weights_array.into_dyn();
-
-        // Core matrix multiplication A * B (raw GEMM product, before bias and rescale).
-        let core_product =
-            matrix_multiplication(api, input_dyn.clone(), weights_dyn.clone(), LayerKind::Gemm)?;
-
-        // Freivalds verification of the core matrix product:
-        // verifies input_dyn * weights_dyn == core_product (before bias and rescale).
-        freivalds_verify_once(
+        // Matrix multiplication and bias addition (deterministic constraints).
+        let mut result = matrix_multiplication(
             api,
-            &input_dyn,
-            &weights_dyn,
-            &core_product,
+            input_array.into_dyn(),
+            weights_array.into_dyn(),
             LayerKind::Gemm,
         )?;
-
-        // Bias addition on top of the verified core product.
-        let mut result = matrix_addition(api, &core_product, bias_array, LayerKind::Gemm)?;
+        result = matrix_addition(api, &result, bias_array, LayerKind::Gemm)?;
 
         // Optional rescaling (quantized fixed-point).
         let mut out_array = result.into_dyn();
@@ -172,6 +157,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
                     value: self.source_scale_exponent.to_string(),
                 }
             })?;
+
             out_array =
                 rescale_array(api, out_array, k, s, is_relu).map_err(|e| LayerError::Other {
                     layer: LayerKind::Gemm,
