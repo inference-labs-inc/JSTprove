@@ -79,6 +79,7 @@ pub struct GemmLayer {
     transb: usize,
     inputs: Vec<String>,
     outputs: Vec<String>,
+    freivalds_reps: usize,
 }
 
 // -----------------------------------------------------------------------------
@@ -152,12 +153,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             .into());
         }
 
-        let use_freivalds = should_use_freivalds(ell, m, n);
+        // Decide whether to use Freivalds, now with a configurable repetition count.
+        let use_freivalds = should_use_freivalds(ell, m, n, self.freivalds_reps);
 
         if use_freivalds {
             println!(
-                "Using Freivalds for GEMM '{}' with dims ell={}, m={}, n={}",
-                self.name, ell, m, n
+                "Using Freivalds (reps = {}) for GEMM '{}' with dims ell={}, m={}, n={}",
+                self.freivalds_reps, self.name, ell, m, n
             );
         }
 
@@ -178,7 +180,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
                 LayerKind::Gemm,
             )?;
 
-            // Constrained Freivalds check: A * B == C_core
+            // Constrained Freivalds check: A * B == C_core with self.freivalds_reps repetitions.
             let input_dyn_for_check = input_array.clone().into_dyn();
             let weights_dyn_for_check = weights_array.clone().into_dyn();
             freivalds_verify_matrix_product(
@@ -187,7 +189,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
                 &weights_dyn_for_check,
                 &core_dyn,
                 LayerKind::Gemm,
-                1,
+                self.freivalds_reps,
             )?;
 
             core_dyn
@@ -259,6 +261,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             transb: get_param_or_default(&layer.name, TRANS_B, &params, Some(&0))?,
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
+            freivalds_reps: circuit_params.freivalds_reps,
         };
         Ok(Box::new(gemm))
     }
@@ -288,11 +291,47 @@ fn check_alpha_beta(
 // -----------------------------------------------------------------------------
 // FUNCTION: should_use_freivalds
 // -----------------------------------------------------------------------------
+//
+// Decide whether using Freivalds' algorithm (with a given number of
+// repetitions) is cheaper than performing a fully constrained matrix
+// multiplication inside the circuit.
+//
+// COST MODEL (treating add and mul as equal unit operations):
+//
+//   Full constrained matmul for A (ell x m) and B (m x n):
+//       cost_full = 2 * ell * m * n - ell * n
+//
+//   One Freivalds repetition:
+//       S = ell*m + ell*n + m*n
+//       D = 2*S - (m + 2*ell)
+//
+//   With `reps` repetitions:
+//       cost_f = reps * D
+//
+// Decision rule:
+//       use Freivalds  <=>  cost_f < cost_full
+//
+// All internal arithmetic is promoted to u128 to reduce overflow risk.
+fn should_use_freivalds(ell: usize, m: usize, n: usize, reps: usize) -> bool {
+    let ell_u = ell as u128;
+    let m_u = m as u128;
+    let n_u = n as u128;
+    let reps_u = reps as u128;
 
-fn should_use_freivalds(ell: usize, m: usize, n: usize) -> bool {
-    // Use Freivalds when the asymptotic cost ell*m + ell*n + m*n is
-    // strictly smaller than the full ell*m*n cost of a constrained matmul.
-    let lhs = ell * m + ell * n + m * n;
-    let rhs = ell * m * n;
-    lhs < rhs
+    // Full deterministic matmul cost
+    let cost_full = 2 * ell_u * m_u * n_u - ell_u * n_u;
+
+    // Freivalds cost terms
+    let s = ell_u * m_u + ell_u * n_u + m_u * n_u;
+    let d = 2 * s - (m_u + 2 * ell_u);
+
+    // If D is zero, Freivalds does not do useful arithmetic work
+    if d == 0 {
+        return false;
+    }
+
+    // Total Freivalds cost for `reps` repetitions
+    let cost_f = reps_u * d;
+
+    cost_f < cost_full
 }
