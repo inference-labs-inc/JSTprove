@@ -5,32 +5,32 @@
 //! ExpanderCompilerCollection. The layer performs:
 //!
 //!   1) Optional transposition of inputs according to ONNX attributes `transA` and `transB`.
-//!   2) Unconstrained integer matrix multiplication of the input and weight tensors
-//!      to construct a witness for the core product A * B.
-//!   3) Probabilistic verification of A * B = C via Freivalds' algorithm,
-//!      using constrained arithmetic.
-//!   4) Addition of the bias tensor (constrained).
-//!   5) Optional fixed-point rescaling, applied when the quantization pipeline
+//!   2) Integer matrix multiplication of the input and weight tensors.
+//!   3) Addition of the bias tensor.
+//!   4) Optional fixed-point rescaling, applied when the quantization pipeline
 //!      indicates that the GEMM output must be shifted to match downstream scale.
+//!   5) Optional Freivalds verification of the matrix product, used when it is
+//!      asymptotically cheaper than a fully constrained matmul.
 //!
 //! The layer interfaces with:
 //!
 //!   * the quantized ONNX representation produced on the Python side,
 //!   * utility modules for tensor loading, shaping, and quantized arithmetic,
-//!   * Expander's `RootAPI` for constraint construction,
+//!   * Expander's `RootAPI` and `UnconstrainedAPI` for constraint construction,
 //!   * JSTprove's optimization patterns (for example, folding GEMM+ReLU).
 //!
 //! This file contains only the circuit logic for GEMM execution. Shape checks,
 //! quantizer logic, kernel attributes, and graph-level optimizations occur
 //! earlier in the pipeline. Runtime correctness is enforced in-circuit via
-//! Expander constraints on the Freivalds check, the bias addition, and the
-//! optional rescaling.
+//! Expander constraints on either a deterministic matrix multiplication or
+//! a Freivalds-style probabilistic check over an unconstrained matmul.
 
 use std::collections::HashMap;
 
 /// External crate imports
-use ndarray::{ArrayD, Ix2};
+use ndarray::{Array2, ArrayD, Ix2};
 
+use expander_compiler::frontend::extra::UnconstrainedAPI;
 /// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
@@ -40,7 +40,7 @@ use crate::circuit_functions::{
     layers::{
         LayerError, LayerKind,
         layer_ops::LayerOp,
-        math::{freivalds_verify_once, matrix_addition, unconstrained_matrix_multiplication},
+        math::{freivalds_verify_matrix_product, matrix_addition, matrix_multiplication},
     },
     utils::{
         constants::{ALPHA, BETA, INPUT, TRANS_A, TRANS_B},
@@ -136,35 +136,77 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         check_alpha_beta(self.alpha, ALPHA, LayerKind::Gemm, &self.name)?;
         check_alpha_beta(self.beta, BETA, LayerKind::Gemm, &self.name)?;
 
-        // Convert to dynamic ndarrays for math helpers.
-        let input_dyn = input_array.clone().into_dyn();
-        let weights_dyn = weights_array.clone().into_dyn();
+        // Decide whether to use Freivalds or a fully constrained matmul.
+        let (ell, m) = input_array.dim();
+        let (m2, n) = weights_array.dim();
+        if m != m2 {
+            return Err(LayerError::ShapeMismatch {
+                layer: LayerKind::Gemm,
+                expected: vec![m],
+                got: vec![m2],
+                var_name: "GEMM: A.cols != B.rows".to_string(),
+            }
+            .into());
+        }
 
-        // 1) Compute the core product C_hat = A * B using unconstrained arithmetic.
-        //    This builds the witness for the GEMM product without introducing
-        //    O(m * n * k) multiplication constraints.
-        let core_product = unconstrained_matrix_multiplication(
-            api,
-            input_dyn.clone(),
-            weights_dyn.clone(),
-            LayerKind::Gemm,
-        )?;
+        let use_freivalds = should_use_freivalds(ell, m, n);
 
-        // 2) Freivalds verification of A * B = C_hat.
-        //    This uses constrained arithmetic and random challenges to enforce
-        //    the matrix product relation with high probability.
-        freivalds_verify_once(
-            api,
-            &input_dyn,
-            &weights_dyn,
-            &core_product,
-            LayerKind::Gemm,
-        )?;
+        #[cfg(feature = "freivalds_debug")]
+        if use_freivalds {
+            println!(
+                "Using Freivalds for GEMM '{}' with dims ell={}, m={}, n={}",
+                self.name, ell, m, n
+            );
+        }
 
-        // 3) Bias addition (constrained).
-        let mut result = matrix_addition(api, &core_product, bias_array, LayerKind::Gemm)?;
+        // Compute the core matrix product C_core = A * B.
+        // If Freivalds is enabled and beneficial, we compute C_core using
+        // unconstrained operations and then verify A * B == C_core using
+        // Freivalds. Otherwise, we fall back to a fully constrained matmul.
+        let core_product: ArrayD<Variable> = if use_freivalds {
+            // Unconstrained matmul: C_core = A * B (Array2<Variable>)
+            let mut core = Array2::default((ell, n));
 
-        // 4) Optional rescaling (quantized fixed-point).
+            for i in 0..ell {
+                for j in 0..n {
+                    let mut acc = api.constant(0);
+                    for k in 0..m {
+                        let mul = api.unconstrained_mul(input_array[(i, k)], weights_array[(k, j)]);
+                        acc = api.unconstrained_add(acc, mul);
+                    }
+                    core[(i, j)] = acc;
+                }
+            }
+
+            let core_dyn = core.into_dyn();
+
+            // Constrained Freivalds check: A * B == C_core
+            let input_dyn = input_array.clone().into_dyn();
+            let weights_dyn = weights_array.clone().into_dyn();
+            freivalds_verify_matrix_product(
+                api,
+                &input_dyn,
+                &weights_dyn,
+                &core_dyn,
+                LayerKind::Gemm,
+                1,
+            )?;
+
+            core_dyn
+        } else {
+            // Fully constrained matmul, as before.
+            matrix_multiplication(
+                api,
+                input_array.into_dyn(),
+                weights_array.into_dyn(),
+                LayerKind::Gemm,
+            )?
+        };
+
+        // Add bias (constrained) on top of the core product.
+        let result = matrix_addition(api, &core_product, bias_array, LayerKind::Gemm)?;
+
+        // Optional rescaling (quantized fixed-point).
         let mut out_array = result.into_dyn();
         if self.is_rescale {
             let k = usize::try_from(self.scaling).map_err(|_| LayerError::Other {
@@ -243,4 +285,25 @@ fn check_alpha_beta(
         });
     }
     Ok(())
+}
+
+// -----------------------------------------------------------------------------
+// FUNCTION: should_use_freivalds
+// -----------------------------------------------------------------------------
+
+/// Decide whether Freivalds is cheaper than a fully constrained matmul
+/// for dimensions:
+///   A: (ell, m), B: (m, n), C: (ell, n)
+///
+/// We use the heuristic:
+///
+///   ell*m + ell*n + m*n < ell*m*n
+///
+/// where the left-hand side is the Freivalds cost (up to constants)
+/// and the right-hand side is the deterministic matmul cost.
+fn should_use_freivalds(ell: usize, m: usize, n: usize) -> bool {
+    // For realistic ONNX shapes these products fit comfortably in usize.
+    let lhs = ell * m + ell * n + m * n;
+    let rhs = ell * m * n;
+    lhs < rhs
 }

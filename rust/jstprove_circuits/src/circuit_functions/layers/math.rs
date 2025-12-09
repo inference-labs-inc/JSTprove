@@ -386,44 +386,36 @@ pub fn unconstrained_matrix_multiplication<C: Config, Builder: RootAPI<C>>(
 // -----------------------------------------------------------------------------
 // FUNCTION: freivalds_verify_matrix_product
 // -----------------------------------------------------------------------------
-//
-// Verifies a matrix product A * B = C using Freivalds' algorithm, with a
-// configurable number of repetitions.
-//
-// Matrices are over the circuit field, represented as ArrayD<Variable>.
-// Expected shapes:
-//   - matrix_a: shape (ell, m)
-//   - matrix_b: shape (m, n)
-//   - matrix_c: shape (ell, n)
-//
-// Each repetition does the following:
-//   1) sample a random vector x in F^n via api.get_random_value()
-//   2) compute v = B * x, length m
-//   3) compute w = C * x, length ell
-//   4) compute u = A * v, length ell
-//   5) enforce u[i] == w[i] for all i in {0, ..., ell - 1}
-//
-// Soundness (informal):
-//   - If A * B is not equal to C, then for a single repetition the chance
-//     that u equals w is at most 1 / |F|.
-//   - For num_repetitions independent repetitions, the soundness error is
-//     at most (1 / |F|) ^ num_repetitions.
-//
-// The matrix vector products themselves are defined by mul/add constraints.
-// This function only adds the equality checks between u and w.
-//
-// Arguments:
-//   - api: circuit builder
-//   - matrix_a: matrix A
-//   - matrix_b: matrix B
-//   - matrix_c: claimed product C
-//   - layer_type: identifier for error reporting
-//   - num_repetitions: number of Freivalds rounds to perform (must be >= 1)
-//
-// Returns:
-//   - Ok(()) if the check is wired correctly
-//   - Err(LayerError) on shape mismatch or invalid parameters
-// -----------------------------------------------------------------------------
+
+/// Verifies a matrix product A * B = C using Freivalds' algorithm,
+/// with a configurable number of repetitions.
+///
+/// Matrices are over the circuit field, represented as ArrayD<Variable>.
+/// Expected shapes:
+///   - A: (ell, m)
+///   - B: (m, n)
+///   - C: (ell, n)
+///
+/// Each repetition:
+///   1) samples random x in F^n via api.get_random_value()
+///   2) computes v = B x  (length m)
+///   3) computes w = C x  (length ell)
+///   4) computes u = A v  (length ell)
+///   5) enforces u[i] == w[i] for all i
+///
+/// Soundness:
+///   - For a single repetition, if A * B != C, the probability that
+///     u == w still holds is <= 1 / |F|.
+///   - For num_repetitions independent repetitions, the soundness
+///     error is <= (1 / |F|) ^ num_repetitions.
+///
+/// Note:
+///   This function only adds constraints for u == w. The
+///   matrix-vector products themselves are constrained through the
+///   usual mul/add operations when v, w, u are computed.
+///
+/// Returns:
+///   Ok(()) on success; LayerError on shape mismatch or invalid dims.
 pub fn freivalds_verify_matrix_product<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: &ArrayD<Variable>,
@@ -460,7 +452,7 @@ pub fn freivalds_verify_matrix_product<C: Config, Builder: RootAPI<C>>(
                 msg: "Freivalds: matrix_c must be 2D".to_string(),
             })?;
 
-    // A: (ell, m), B: (m, n), C: (ell, n)
+    // Dimensions: A is (ell, m), B is (m, n), C is (ell, n)
     let (ell, m) = a.dim();
     let (m2, n) = b.dim();
     let (ell2, n2) = c.dim();
@@ -484,8 +476,8 @@ pub fn freivalds_verify_matrix_product<C: Config, Builder: RootAPI<C>>(
     }
 
     if num_repetitions == 0 {
-        // Degenerate case: nothing to check; treat as error to avoid
-        // silently disabling the Freivalds verification.
+        // Degenerate case: nothing to prove; treat as error to avoid
+        // accidentally disabling the check.
         return Err(LayerError::InvalidShape {
             layer: layer_type,
             msg: "Freivalds: num_repetitions must be >= 1".to_string(),
@@ -500,7 +492,7 @@ pub fn freivalds_verify_matrix_product<C: Config, Builder: RootAPI<C>>(
             x.push(r);
         }
 
-        // 2) v = B * x, length m
+        // 2) v = B x, length m
         let mut v: Vec<Variable> = Vec::with_capacity(m);
         for i in 0..m {
             let mut acc = api.constant(0);
@@ -511,7 +503,7 @@ pub fn freivalds_verify_matrix_product<C: Config, Builder: RootAPI<C>>(
             v.push(acc);
         }
 
-        // 3) w = C * x, length ell
+        // 3) w = C x, length ell
         let mut w: Vec<Variable> = Vec::with_capacity(ell);
         for i in 0..ell {
             let mut acc = api.constant(0);
@@ -522,7 +514,7 @@ pub fn freivalds_verify_matrix_product<C: Config, Builder: RootAPI<C>>(
             w.push(acc);
         }
 
-        // 4) u = A * v, length ell
+        // 4) u = A v, length ell
         let mut u: Vec<Variable> = Vec::with_capacity(ell);
         for i in 0..ell {
             let mut acc = api.constant(0);
@@ -540,32 +532,4 @@ pub fn freivalds_verify_matrix_product<C: Config, Builder: RootAPI<C>>(
     }
 
     Ok(())
-}
-
-// -----------------------------------------------------------------------------
-// FUNCTION: freivalds_verify_once
-// -----------------------------------------------------------------------------
-//
-// Convenience wrapper for a single round of Freivalds verification of
-// A * B = C.
-//
-// Arguments:
-//   - api: circuit builder
-//   - matrix_a: matrix A
-//   - matrix_b: matrix B
-//   - matrix_c: claimed product C
-//   - layer_type: identifier for error reporting
-//
-// Returns:
-//   - Ok(()) if the check is wired correctly
-//   - Err(LayerError) on shape mismatch or invalid parameters
-// -----------------------------------------------------------------------------
-pub fn freivalds_verify_once<C: Config, Builder: RootAPI<C>>(
-    api: &mut Builder,
-    matrix_a: &ArrayD<Variable>,
-    matrix_b: &ArrayD<Variable>,
-    matrix_c: &ArrayD<Variable>,
-    layer_type: LayerKind,
-) -> Result<(), LayerError> {
-    freivalds_verify_matrix_product(api, matrix_a, matrix_b, matrix_c, layer_type, 1)
 }
