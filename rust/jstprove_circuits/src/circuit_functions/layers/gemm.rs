@@ -1,3 +1,30 @@
+//! GEMM (General Matrix Multiplication) layer implementation for JSTprove.
+//!
+//! This module defines the `GemmLayer` struct and its `LayerOp` implementation,
+//! providing the circuit-level execution of an ONNX Gemm node using
+//! ExpanderCompilerCollection. The layer performs:
+//!
+//!   1) Optional transposition of inputs according to ONNX attributes `transA` and `transB`.
+//!   2) Integer matrix multiplication of the input and weight tensors.
+//!   3) Addition of the bias tensor.
+//!   4) Optional fixed-point rescaling, applied when the quantization pipeline
+//!      indicates that the GEMM output must be shifted to match downstream scale.
+//!   5) Freivalds verification of the matrix product to provide soundness with
+//!      asymptotically fewer multiplication constraints than a full deterministic check.
+//!
+//! The layer interfaces with:
+//!
+//!   * the quantized ONNX representation produced on the Python side,
+//!   * utility modules for tensor loading, shaping, and quantized arithmetic,
+//!   * Expander's `RootAPI` for constraint construction,
+//!   * JSTprove's optimization patterns (e.g., folding GEMM+ReLU).
+//!
+//! This file contains *only the circuit logic* for GEMM execution. Shape checks,
+//! quantizer logic, kernel attributes, and graph-level optimizations occur
+//! earlier in the pipeline. Runtime correctness is enforced in-circuit via
+//! Expander constraints and a single Freivalds repetition for probabilistic
+//! verification of the matrix product.
+
 use std::collections::HashMap;
 
 /// External crate imports
@@ -6,12 +33,13 @@ use ndarray::{ArrayD, Ix2};
 /// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
+/// Internal crate imports
 use crate::circuit_functions::{
     CircuitError,
     layers::{
         LayerError, LayerKind,
         layer_ops::LayerOp,
-        math::{matrix_addition, matrix_multiplication},
+        math::{freivalds_verify_once, matrix_addition, matrix_multiplication},
     },
     utils::{
         constants::{ALPHA, BETA, INPUT, TRANS_A, TRANS_B},
@@ -25,7 +53,10 @@ use crate::circuit_functions::{
     },
 };
 
-// -------- Struct --------
+// -----------------------------------------------------------------------------
+// STRUCT: GemmLayer
+// -----------------------------------------------------------------------------
+
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct GemmLayer {
@@ -34,9 +65,7 @@ pub struct GemmLayer {
     weights: ArrayD<i64>,
     bias: ArrayD<i64>,
     is_rescale: bool,
-    v_plus_one: usize,
-    two_v: u32,
-    alpha_two_v: u64,
+    source_scale_exponent: usize,
     optimization_pattern: PatternRegistry,
     scaling: u64,
     input_shape: Vec<usize>,
@@ -48,7 +77,9 @@ pub struct GemmLayer {
     outputs: Vec<String>,
 }
 
-// -------- Implementation --------
+// -----------------------------------------------------------------------------
+// IMPL: LayerOp for GemmLayer
+// -----------------------------------------------------------------------------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
     fn apply(
@@ -67,6 +98,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             })?
             .clone();
 
+        // Load and shape input and weights as 2D matrices.
         let mut input_array =
             layer_input
                 .into_dimensionality::<Ix2>()
@@ -81,6 +113,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
                 msg: format!("Expected 2D weights array for layer {}", self.name),
             })?;
 
+        // Apply transposes according to ONNX attributes.
         input_array = check_and_apply_transpose_array(
             input_array,
             self.transa,
@@ -98,31 +131,36 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
 
         let bias_array = load_array_constants(api, &self.bias);
 
-        // Sanity check alpha and beta
+        // Sanity check alpha and beta.
         check_alpha_beta(self.alpha, ALPHA, LayerKind::Gemm, &self.name)?;
         check_alpha_beta(self.beta, BETA, LayerKind::Gemm, &self.name)?;
 
-        // Matrix multiplication and bias addition
-        let mut result = matrix_multiplication(
-            api,
-            input_array.into_dyn(),
-            weights_array.into_dyn(),
-            LayerKind::Gemm,
-        )?;
+        // Convert to dynamic ndarrays for math helpers.
+        let input_dyn = input_array.clone().into_dyn();
+        let weights_dyn = weights_array.clone().into_dyn();
+
+        // Matrix multiplication and bias addition (baseline constraints).
+        let mut result =
+            matrix_multiplication(api, input_dyn.clone(), weights_dyn.clone(), LayerKind::Gemm)?;
         result = matrix_addition(api, &result, bias_array, LayerKind::Gemm)?;
 
-        let mut out_array = result.into_dyn(); // back to ArrayD<Variable>
+        // Freivalds verification of the core matrix product:
+        // verifies input_array * weights_array == raw GEMM result (before bias and rescale).
+        freivalds_verify_once(api, &input_dyn, &weights_dyn, &result, LayerKind::Gemm)?;
+
+        // Optional rescaling (quantized fixed-point).
+        let mut out_array = result.into_dyn();
         if self.is_rescale {
             let k = usize::try_from(self.scaling).map_err(|_| LayerError::Other {
                 layer: LayerKind::Gemm,
                 msg: "Cannot convert scaling to usize".to_string(),
             })?;
-            let s = self.v_plus_one.checked_sub(1).ok_or_else(|| {
+            let s = self.source_scale_exponent.checked_sub(1).ok_or_else(|| {
                 LayerError::InvalidParameterValue {
                     layer: LayerKind::Gemm,
                     layer_name: self.name.clone(),
-                    param_name: "v_plus_one".to_string(),
-                    value: self.v_plus_one.to_string(),
+                    param_name: "source_scale_exponent".to_string(),
+                    value: self.source_scale_exponent.to_string(),
                 }
             })?;
             out_array =
@@ -134,6 +172,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
 
         Ok((self.outputs.clone(), out_array))
     }
+
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
@@ -153,11 +192,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             weights: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[1])?,
             bias: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[2])?,
             is_rescale,
-            v_plus_one: layer_context.n_bits,
-            two_v: layer_context.two_v,
-            alpha_two_v: layer_context.alpha_two_v,
+            source_scale_exponent: layer_context.n_bits,
             optimization_pattern,
-            scaling: circuit_params.scale_exponent.into(), // TODO: Becomes scaling_in?
+            scaling: circuit_params.scale_exponent.into(),
             input_shape: expected_shape.clone(),
             alpha: get_param_or_default(&layer.name, ALPHA, &params, Some(&1.0))?,
             beta: get_param_or_default(&layer.name, BETA, &params, Some(&1.0))?,
@@ -169,6 +206,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         Ok(Box::new(gemm))
     }
 }
+
+// -----------------------------------------------------------------------------
+// FUNCTION: check_alpha_beta
+// -----------------------------------------------------------------------------
 
 fn check_alpha_beta(
     val: f32,
