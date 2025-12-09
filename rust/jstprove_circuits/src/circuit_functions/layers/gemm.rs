@@ -40,7 +40,10 @@ use crate::circuit_functions::{
     layers::{
         LayerError, LayerKind,
         layer_ops::LayerOp,
-        math::{freivalds_verify_matrix_product, matrix_addition, matrix_multiplication},
+        math::{
+            freivalds_verify_matrix_product, matrix_addition, matrix_multiplication,
+            unconstrained_matrix_multiplication,
+        },
     },
     utils::{
         constants::{ALPHA, BETA, INPUT, TRANS_A, TRANS_B},
@@ -164,21 +167,16 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         // unconstrained operations and then verify A * B == C_core using
         // Freivalds. Otherwise, we fall back to a fully constrained matmul.
         let core_product: ArrayD<Variable> = if use_freivalds {
-            // Unconstrained matmul: C_core = A * B (Array2<Variable>)
-            let mut core = Array2::default((ell, n));
+            // Unconstrained matmul: C_core = A * B
+            let input_dyn_for_unconstrained = input_array.clone().into_dyn();
+            let weights_dyn_for_unconstrained = weights_array.clone().into_dyn();
 
-            for i in 0..ell {
-                for j in 0..n {
-                    let mut acc = api.constant(0);
-                    for k in 0..m {
-                        let mul = api.unconstrained_mul(input_array[(i, k)], weights_array[(k, j)]);
-                        acc = api.unconstrained_add(acc, mul);
-                    }
-                    core[(i, j)] = acc;
-                }
-            }
-
-            let core_dyn = core.into_dyn();
+            let core_dyn = unconstrained_matrix_multiplication(
+                api,
+                &input_dyn_for_unconstrained,
+                &weights_dyn_for_unconstrained,
+                LayerKind::Gemm,
+            )?;
 
             // Constrained Freivalds check: A * B == C_core
             let input_dyn = input_array.clone().into_dyn();
@@ -202,6 +200,20 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
                 LayerKind::Gemm,
             )?
         };
+
+        let core_dyn = core.into_dyn();
+
+        // Constrained Freivalds check: A * B == C_core
+        let input_dyn = input_array.clone().into_dyn();
+        let weights_dyn = weights_array.clone().into_dyn();
+        freivalds_verify_matrix_product(
+            api,
+            &input_dyn,
+            &weights_dyn,
+            &core_dyn,
+            LayerKind::Gemm,
+            1,
+        )?;
 
         // Add bias (constrained) on top of the core product.
         let result = matrix_addition(api, &core_product, bias_array, LayerKind::Gemm)?;
