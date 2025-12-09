@@ -5,9 +5,12 @@
 //! ExpanderCompilerCollection. The layer performs:
 //!
 //!   1) Optional transposition of inputs according to ONNX attributes `transA` and `transB`.
-//!   2) Integer matrix multiplication of the input and weight tensors.
-//!   3) Addition of the bias tensor.
-//!   4) Optional fixed-point rescaling, applied when the quantization pipeline
+//!   2) Unconstrained integer matrix multiplication of the input and weight tensors
+//!      to construct a witness for the core product A * B.
+//!   3) Probabilistic verification of A * B = C via Freivalds' algorithm,
+//!      using constrained arithmetic.
+//!   4) Addition of the bias tensor (constrained).
+//!   5) Optional fixed-point rescaling, applied when the quantization pipeline
 //!      indicates that the GEMM output must be shifted to match downstream scale.
 //!
 //! The layer interfaces with:
@@ -20,7 +23,7 @@
 //! This file contains only the circuit logic for GEMM execution. Shape checks,
 //! quantizer logic, kernel attributes, and graph-level optimizations occur
 //! earlier in the pipeline. Runtime correctness is enforced in-circuit via
-//! Expander constraints on the matrix multiplication, bias addition, and
+//! Expander constraints on the Freivalds check, the bias addition, and the
 //! optional rescaling.
 
 use std::collections::HashMap;
@@ -37,7 +40,7 @@ use crate::circuit_functions::{
     layers::{
         LayerError, LayerKind,
         layer_ops::LayerOp,
-        math::{matrix_addition, matrix_multiplication},
+        math::{freivalds_verify_once, matrix_addition, unconstrained_matrix_multiplication},
     },
     utils::{
         constants::{ALPHA, BETA, INPUT, TRANS_A, TRANS_B},
@@ -133,16 +136,35 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         check_alpha_beta(self.alpha, ALPHA, LayerKind::Gemm, &self.name)?;
         check_alpha_beta(self.beta, BETA, LayerKind::Gemm, &self.name)?;
 
-        // Matrix multiplication and bias addition (deterministic constraints).
-        let mut result = matrix_multiplication(
+        // Convert to dynamic ndarrays for math helpers.
+        let input_dyn = input_array.clone().into_dyn();
+        let weights_dyn = weights_array.clone().into_dyn();
+
+        // 1) Compute the core product C_hat = A * B using unconstrained arithmetic.
+        //    This builds the witness for the GEMM product without introducing
+        //    O(m * n * k) multiplication constraints.
+        let core_product = unconstrained_matrix_multiplication(
             api,
-            input_array.into_dyn(),
-            weights_array.into_dyn(),
+            input_dyn.clone(),
+            weights_dyn.clone(),
             LayerKind::Gemm,
         )?;
-        result = matrix_addition(api, &result, bias_array, LayerKind::Gemm)?;
 
-        // Optional rescaling (quantized fixed-point).
+        // 2) Freivalds verification of A * B = C_hat.
+        //    This uses constrained arithmetic and random challenges to enforce
+        //    the matrix product relation with high probability.
+        freivalds_verify_once(
+            api,
+            &input_dyn,
+            &weights_dyn,
+            &core_product,
+            LayerKind::Gemm,
+        )?;
+
+        // 3) Bias addition (constrained).
+        let mut result = matrix_addition(api, &core_product, bias_array, LayerKind::Gemm)?;
+
+        // 4) Optional rescaling (quantized fixed-point).
         let mut out_array = result.into_dyn();
         if self.is_rescale {
             let k = usize::try_from(self.scaling).map_err(|_| LayerError::Other {

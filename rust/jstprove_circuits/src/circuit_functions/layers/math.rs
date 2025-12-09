@@ -16,6 +16,7 @@
 use ndarray::{Array2, ArrayD, Ix2, IxDyn};
 
 /// `ExpanderCompilerCollection` imports
+use expander_compiler::frontend::extra::UnconstrainedAPI;
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 /// Internal crate imports
@@ -313,6 +314,67 @@ pub fn matrix_multiplication<C: Config, Builder: RootAPI<C>>(
             for k in 0..dim_n {
                 let mul = api.mul(a[(i, k)], b[(k, j)]);
                 acc = api.add(acc, mul);
+            }
+            result[(i, j)] = acc;
+        }
+    }
+
+    Ok(result.into_dyn())
+}
+
+// ............................................................................
+// FUNCTION: unconstrained_matrix_multiplication
+// ............................................................................
+
+/// Performs 2D matrix multiplication using the UnconstrainedAPI.
+///
+/// This computes the standard matrix product of `matrix_a` (shape m x n)
+/// and `matrix_b` (shape n x p), resulting in a tensor of shape m x p.
+///
+/// Important:
+///   - This uses `unconstrained_mul` and `unconstrained_add`, so it does
+///     not add constraints for the multiplication and summation.
+///   - It is suitable for computing a witness for C = A * B, which must
+///     then be tied back to A and B via a separate constrained check
+///     (for example, Freivalds).
+pub fn unconstrained_matrix_multiplication<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    matrix_a: ArrayD<Variable>,
+    matrix_b: ArrayD<Variable>,
+    layer_type: LayerKind,
+) -> Result<ArrayD<Variable>, LayerError> {
+    let a = matrix_a
+        .into_dimensionality::<Ix2>()
+        .map_err(|_| LayerError::InvalidShape {
+            layer: layer_type.clone(),
+            msg: "matrix_a must be 2D".to_string(),
+        })?;
+    let b = matrix_b
+        .into_dimensionality::<Ix2>()
+        .map_err(|_| LayerError::InvalidShape {
+            layer: layer_type.clone(),
+            msg: "matrix_b must be 2D".to_string(),
+        })?;
+
+    let (dim_m, dim_n) = a.dim();
+    let (dim_n2, dim_p) = b.dim();
+    if dim_n != dim_n2 {
+        return Err(LayerError::ShapeMismatch {
+            layer: layer_type,
+            expected: vec![dim_n],
+            got: vec![dim_n2],
+            var_name: "a_dim[1] != b_dim[0]".to_string(),
+        });
+    }
+
+    let mut result = Array2::default((dim_m, dim_p));
+
+    for i in 0..dim_m {
+        for j in 0..dim_p {
+            let mut acc = api.unconstrained_identity(0);
+            for k in 0..dim_n {
+                let mul = api.unconstrained_mul(a[(i, k)], b[(k, j)]);
+                acc = api.unconstrained_add(acc, mul);
             }
             result[(i, j)] = acc;
         }
