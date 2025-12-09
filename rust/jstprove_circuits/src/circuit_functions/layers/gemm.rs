@@ -154,7 +154,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
 
         let use_freivalds = should_use_freivalds(ell, m, n);
 
-        #[cfg(feature = "freivalds_debug")]
         if use_freivalds {
             println!(
                 "Using Freivalds for GEMM '{}' with dims ell={}, m={}, n={}",

@@ -16,7 +16,6 @@
 use ndarray::{Array2, ArrayD, Ix2, IxDyn};
 
 /// `ExpanderCompilerCollection` imports
-use expander_compiler::frontend::extra::UnconstrainedAPI;
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 /// Internal crate imports
