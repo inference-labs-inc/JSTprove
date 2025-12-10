@@ -82,15 +82,11 @@ pub fn unconstrained_to_bits<C: Config, Builder: RootAPI<C>>(
 
     // Prevent `U256::pow` overflow/wrap for absurdly large exponents.
     // In practice our fields are ~254–255 bits, so this is a very loose cap.
-    const MAX_BITS_FOR_U256_EXP: usize = 256;
-    if n_bits > MAX_BITS_FOR_U256_EXP {
-        return Err(CircuitError::Other(
-            format!(
-                "unconstrained_to_bits: n_bits too large (max {})",
-                MAX_BITS_FOR_U256_EXP
-            )
-            .into(),
-        ));
+    let max_bits_for_u256_exp: usize = 256;
+    if n_bits > max_bits_for_u256_exp {
+        return Err(CircuitError::Other(format!(
+            "unconstrained_to_bits: n_bits too large (max {max_bits_for_u256_exp})"
+        )));
     }
 
     let base: U256 = U256::from(2u32);
