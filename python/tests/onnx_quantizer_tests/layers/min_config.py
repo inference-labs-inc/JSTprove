@@ -1,4 +1,3 @@
-# python/tests/onnx_quantizer_tests/layers/min_config.py
 from __future__ import annotations
 
 import numpy as np
@@ -57,11 +56,20 @@ class MinConfigProvider(BaseLayerConfigProvider):
             .override_initializer("B", rng.normal(0, 1, (1, 3, 4, 4)))
             .tags("initializer", "elementwise", "min", "onnxruntime")
             .build(),
+            # --- E2E TESTS ---
             e2e_test("e2e_min")
             .description("End-to-end Min test with random inputs")
             .override_input_shapes(A=[1, 3, 4, 4], B=[1, 3, 4, 4])
             .override_output_shapes(min_output=[1, 3, 4, 4])
             .tags("e2e", "min", "2d")
+            .build(),
+            e2e_test("e2e_broadcast_min")
+            .description(
+                "End-to-end Min with Numpy-style broadcasting along spatial dimensions",
+            )
+            .override_input_shapes(A=[1, 3, 4, 4], B=[1, 3, 1, 1])
+            .override_output_shapes(min_output=[1, 3, 4, 4])
+            .tags("e2e", "broadcast", "elementwise", "min", "onnx14")
             .build(),
             e2e_test("e2e_initializer_min")
             .description("End-to-end Min where B is an initializer")
@@ -74,6 +82,7 @@ class MinConfigProvider(BaseLayerConfigProvider):
             edge_case_test("empty_tensor")
             .description("Min with empty tensor input (zero elements)")
             .override_input_shapes(A=[0], B=[0])
+            .override_output_shapes(min_output=[0])
             .tags("edge", "empty", "min")
             .build(),
             valid_test("large_tensor")
