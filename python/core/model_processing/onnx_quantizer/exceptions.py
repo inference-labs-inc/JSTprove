@@ -31,7 +31,7 @@ class InvalidParamError(QuantizationError):
     quantization the quantization process.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self: QuantizationError,
         node_name: str,
         op_type: str,
@@ -151,7 +151,7 @@ class InvalidConfigError(QuantizationError):
     def __init__(
         self: QuantizationError,
         key: str,
-        value: str | float | bool | None,
+        value: str | float | bool | None,  # noqa: FBT001
         expected: str | None = None,
     ) -> None:
         """Initialize InvalidConfigError with context about the bad config.

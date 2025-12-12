@@ -1,4 +1,3 @@
-# python/core/utils/exceptions.py
 from __future__ import annotations
 
 from python.core.utils.helper_functions import RunType
@@ -68,7 +67,7 @@ class CircuitInputError(CircuitError):
         actual (any): Actual value encountered (optional).
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self: CircuitInputError,
         message: str | None = None,
         parameter: str | None = None,

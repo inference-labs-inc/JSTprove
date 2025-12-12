@@ -1,5 +1,6 @@
 pub mod add;
 pub mod batchnorm;
+pub mod clip;
 pub mod constant;
 pub mod conv;
 mod errors;
@@ -8,7 +9,9 @@ pub mod gemm;
 mod layer_kinds;
 pub mod layer_ops;
 mod math;
+pub mod max;
 pub mod maxpool;
+pub mod min;
 pub mod mul;
 pub mod relu;
 pub mod reshape;

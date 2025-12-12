@@ -3,7 +3,7 @@
 
 ## Related Issue
 <!-- Link to related GitHub issue (e.g. "Fixes #123", "Addresses #456") -->
-- 
+-
 
 ## Type of Change
 <!-- Delete options that don't apply -->
@@ -24,7 +24,7 @@
 
 ## Deployment Notes
 <!-- Special considerations for deployment (migrations, config changes, etc.) -->
-- 
+-
 
 ## Additional Comments
 <!-- Any other important context for reviewers -->

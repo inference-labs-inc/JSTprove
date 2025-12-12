@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import numpy as np
@@ -16,10 +16,10 @@ class ModelType(Enum):
 
 ONNXLayerDict = dict[
     str,
-    Union[int, str, list[str], dict[str, list[int]], Optional[list], Optional[dict]],
+    int | str | list[str] | dict[str, list[int]] | list | None | dict,
 ]
 
-CircuitParamsDict = dict[str, Union[int, dict[str, bool]]]
+CircuitParamsDict = dict[str, int | dict[str, bool]]
 
 
 class ModelConverter(ABC):

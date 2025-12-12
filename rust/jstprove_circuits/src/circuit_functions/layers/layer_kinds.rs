@@ -9,11 +9,14 @@ use crate::circuit_functions::utils::onnx_model::CircuitParams;
 use crate::circuit_functions::utils::onnx_types::ONNXLayer;
 use crate::circuit_functions::{CircuitError, layers::add::AddLayer};
 
+use crate::circuit_functions::layers::clip::ClipLayer;
 use crate::circuit_functions::layers::constant::ConstantLayer;
 use crate::circuit_functions::layers::conv::ConvLayer;
 use crate::circuit_functions::layers::flatten::FlattenLayer;
 use crate::circuit_functions::layers::gemm::GemmLayer;
+use crate::circuit_functions::layers::max::MaxLayer;
 use crate::circuit_functions::layers::maxpool::MaxPoolLayer;
+use crate::circuit_functions::layers::min::MinLayer;
 use crate::circuit_functions::layers::relu::ReluLayer;
 use crate::circuit_functions::layers::reshape::ReshapeLayer;
 
@@ -127,15 +130,18 @@ When defining new layers, make sure to activate them by placing the new layer in
 */
 
 define_layers! {
-    Add      => { name: "Add",  builder: AddLayer::build },
-    Batchnorm=> { name: "BatchNormalization",  builder: BatchnormLayer::build },
-    Sub      => { name: "Sub",  builder: SubLayer::build },
-    Mul      => { name: "Mul",  builder: MulLayer::build },
-    Constant => { name: "Constant", builder: ConstantLayer::build },
-    Conv     => { name: "Conv",     builder: ConvLayer::build },
-    Flatten  => { name: "Flatten",  builder: FlattenLayer::build },
-    Gemm     => { name: "Gemm",     builder: GemmLayer::build },
-    MaxPool  => { name: "MaxPool",  builder: MaxPoolLayer::build },
-    ReLU     => { name: "ReLU",     builder: ReluLayer::build, aliases: ["Relu"] },
-    Reshape  => { name: "Reshape",  builder: ReshapeLayer::build },
+    Add       => { name: "Add", builder: AddLayer::build },
+    Clip      => { name: "Clip", builder: ClipLayer::build },
+    Batchnorm => { name: "BatchNormalization", builder: BatchnormLayer::build },
+    Sub       => { name: "Sub", builder: SubLayer::build },
+    Mul       => { name: "Mul", builder: MulLayer::build },
+    Constant  => { name: "Constant", builder: ConstantLayer::build },
+    Conv      => { name: "Conv", builder: ConvLayer::build },
+    Flatten   => { name: "Flatten", builder: FlattenLayer::build },
+    Gemm      => { name: "Gemm", builder: GemmLayer::build },
+    MaxPool   => { name: "MaxPool", builder: MaxPoolLayer::build },
+    Max       => { name: "Max", builder: MaxLayer::build },
+    Min       => { name: "Min", builder: MinLayer::build },
+    ReLU      => { name: "ReLU", builder: ReluLayer::build, aliases: ["Relu"] },
+    Reshape   => { name: "Reshape", builder: ReshapeLayer::build },
 }

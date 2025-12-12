@@ -113,9 +113,7 @@ class LayerTestConfig:
         # respect that; otherwise use original valid_inputs.
         inputs = test_spec.input_overrides or self.valid_inputs
 
-        # Prepare attributes
-        attrs = {**self.valid_attributes, **test_spec.attr_overrides}
-        # Remove omitted attributes if specified
+        # Prepare attributes and remove omitted attributes if specified
         attrs = {**self.valid_attributes, **test_spec.attr_overrides}
         for key in getattr(test_spec, "omit_attrs", []):
             attrs.pop(key, None)
