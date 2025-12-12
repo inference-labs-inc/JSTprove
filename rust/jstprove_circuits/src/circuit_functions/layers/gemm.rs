@@ -1,30 +1,40 @@
-//! GEMM (General Matrix Multiplication) layer implementation for JSTprove.
+//! GEMM (ONNX `Gemm`) layer implementation for JSTprove.
 //!
-//! This module defines the `GemmLayer` struct and its `LayerOp` implementation,
-//! providing the circuit-level execution of an ONNX Gemm node using
-//! ExpanderCompilerCollection. The layer performs:
+//! This module defines `GemmLayer` and its `LayerOp` implementation, providing a
+//! circuit-level execution of an ONNX `Gemm` node using ExpanderCompilerCollection.
 //!
-//!   1) Optional transposition of inputs according to ONNX attributes `transA` and `transB`.
-//!   2) Integer matrix multiplication of the input and weight tensors.
-//!   3) Addition of the bias tensor.
-//!   4) Optional fixed-point rescaling, applied when the quantization pipeline
-//!      indicates that the GEMM output must be shifted to match downstream scale.
-//!   5) Optional Freivalds verification of the matrix product, which can
-//!      probabilistically enforce `A * B == C` using asymptotically fewer
-//!      multiplication constraints when the dimensions are favorable.
+//! ## ONNX semantics (conceptual)
+//! ONNX defines GEMM as
 //!
-//! The layer interfaces with:
+//!     Y = alpha * A * B + beta * C
 //!
-//!   * the quantized ONNX representation produced on the Python side,
-//!   * utility modules for tensor loading, shaping, and quantized arithmetic,
-//!   * Expander's `RootAPI` for constraint construction,
-//!   * JSTprove's optimization patterns (for example, folding GEMM+ReLU).
+//! with optional transpose flags `transA`, `transB` applied to `A`, `B` prior to
+//! multiplication, and with `C` typically used as a bias term (potentially
+//! broadcastable).
 //!
-//! This file contains only the circuit logic for GEMM execution. Shape checks,
-//! quantizer logic, kernel attributes, and graph-level optimizations occur
-//! earlier in the pipeline. Runtime correctness is enforced in-circuit via
-//! Expander constraints on the matrix multiplication, bias addition, optional
-//! rescaling, and (when enabled) a Freivalds check on the core matrix product.
+//! ## JSTprove semantics (this implementation)
+//! This implementation assumes the quantization pipeline has produced integer-valued
+//! tensors encoded as field elements, and it currently enforces the common restricted
+//! case `alpha = beta = 1` (validated at build/apply time).
+//!
+//! The layer performs:
+//! 1) Optional transposition of `A` and/or `B` according to ONNX attributes `transA` and `transB`.
+//! 2) Computation of the core product `C_core = A * B`.
+//! 3) Constrained addition of the bias/`C` term.
+//! 4) Optional fixed-point rescaling when required by the quantization configuration.
+//! 5) Optional Freivalds verification of the core matrix product, which can
+//!    probabilistically enforce `A * B == C_core` using fewer multiplication
+//!    constraints than a fully-constrained matmul when dimensions are favorable.
+//!
+//! ## Pipeline boundaries
+//! This file contains only circuit logic for GEMM execution. Shape checks, quantizer
+//! logic, ONNX attribute parsing, and graph-level optimizations occur earlier in the
+//! pipeline. Correctness is enforced in-circuit via Expander constraints on:
+//! - bias addition and optional rescaling, and
+//! - either a fully constrained matmul, or a Freivalds check linking `C_core` to `A` and `B`.
+//!
+//! Note: Freivalds is probabilistic; soundness depends on the field size and the
+//! number of repetitions (`freivalds_reps`).
 
 use std::collections::HashMap;
 

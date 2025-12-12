@@ -1,16 +1,20 @@
-//! Matrix and vector arithmetic helpers for circuit layers.
+//! Linear algebra gadgets used by circuit layers.
 //!
-//! This module provides:
-//!   - dot: 1D dot product
-//!   - matrix_addition: elementwise addition with reshape support
-//!   - matrix_hadamard_product: elementwise multiplication
-//!   - matrix_subtraction: elementwise subtraction
-//!   - matrix_multiplication: 2D matrix product
-//!   - freivalds_verify_matrix_product: Freivalds-style verification of A * B = C
-//!   - freivalds_verify_once: convenience wrapper for a single Freivalds round
+//! This module provides reusable tensor / matrix / vector operations over
+//! `expander_compiler::frontend::Variable` values.
 //!
-//! All helpers operate over ExpanderCompilerCollection variables and define
-//! circuit constraints via RootAPI. Functions return LayerError on invalid shapes.
+//! Two kinds of functionality appear here:
+//! - **Constrained gadgets** (using `api.mul`, `api.add`, `api.assert_is_equal`, ...),
+//!   which generate constraints.
+//! - **Unconstrained gadgets** (using `api.unconstrained_*`), which compute witness
+//!   values without adding constraints and therefore must be linked to the circuit
+//!   by a separate constrained check.
+//!
+//! In particular, this module includes a Freivalds-based verifier for matrix products,
+//! allowing probabilistic checking of `A * B = C` with substantially fewer constraints
+//! than fully constraining the matrix multiplication in many regimes.
+//!
+//! For convenience these functions report failures via `LayerError` / `LayerKind`.
 
 /// External crate imports
 use ndarray::{Array2, ArrayD, Ix2, IxDyn};
@@ -325,17 +329,18 @@ pub fn matrix_multiplication<C: Config, Builder: RootAPI<C>>(
 // FUNCTION: unconstrained_matrix_multiplication
 // ............................................................................
 
-/// Performs 2D matrix multiplication using the UnconstrainedAPI.
+/// Computes a 2D matrix product using **unconstrained** arithmetic.
 ///
-/// This computes the standard matrix product of `matrix_a` (shape m x n)
-/// and `matrix_b` (shape n x p), resulting in a tensor of shape m x p.
+/// Given `A` of shape `(m, n)` and `B` of shape `(n, p)`, returns `C = A * B`
+/// with shape `(m, p)`.
 ///
-/// Important:
-///   - This uses `unconstrained_mul` and `unconstrained_add`, so it does
-///     not add constraints for the multiplication and summation.
-///   - It is suitable for computing a witness for C = A * B, which must
-///     then be tied back to A and B via a separate constrained check
-///     (for example, Freivalds).
+/// Security / correctness note:
+/// This uses `unconstrained_mul` / `unconstrained_add` and therefore **adds no
+/// constraints** relating `C` to `A` and `B`. The returned `C` is only a witness
+/// suggestion. It must be linked back to `A` and `B` via a constrained relation,
+/// e.g. `freivalds_verify_matrix_product`, or by fully constraining the matmul.
+///
+/// Returns `LayerError` on shape mismatch or if inputs are not 2D.
 pub fn unconstrained_matrix_multiplication<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: ArrayD<Variable>,
@@ -386,35 +391,43 @@ pub fn unconstrained_matrix_multiplication<C: Config, Builder: RootAPI<C>>(
 // FUNCTION: freivalds_verify_matrix_product
 // -----------------------------------------------------------------------------
 
-/// Verifies a matrix product A * B = C using Freivalds' algorithm,
-/// with a configurable number of repetitions.
+/// Probabilistically verifies a matrix product `A * B = C` using Freivalds' algorithm.
 ///
-/// Matrices are over the circuit field, represented as ArrayD<Variable>.
+/// All matrices are over the circuit field `F`, represented as `Variable`s.
 /// Expected shapes:
-///   - A: (ell, m)
-///   - B: (m, n)
-///   - C: (ell, n)
+/// - `A`: `(ell, m)`
+/// - `B`: `(m, n)`
+/// - `C`: `(ell, n)`
 ///
-/// Each repetition:
-///   1) samples random x in F^n via api.get_random_value()
-///   2) computes v = B x  (length m)
-///   3) computes w = C x  (length ell)
-///   4) computes u = A v  (length ell)
-///   5) enforces u[i] == w[i] for all i
+/// For each repetition:
+/// 1) Sample a challenge vector `x ∈ F^n`.
+/// 2) Compute `v = Bx ∈ F^m`.
+/// 3) Compute `w = Cx ∈ F^ell`.
+/// 4) Compute `u = Av ∈ F^ell`.
+/// 5) Constrain `u == w` entrywise.
 ///
-/// Soundness:
-///   - For a single repetition, if A * B != C, the probability that
-///     u == w still holds is <= 1 / |F|.
-///   - For num_repetitions independent repetitions, the soundness
-///     error is <= (1 / |F|) ^ num_repetitions.
+/// ## Soundness (standard Freivalds guarantee)
+/// If `A * B != C` and `x` is sampled uniformly at random from `F^n`, then for a
+/// single repetition:
 ///
-/// Note:
-///   This function only adds constraints for u == w. The
-///   matrix-vector products themselves are constrained through the
-///   usual mul/add operations when v, w, u are computed.
+///     Pr[u = w] ≤ 1 / |F|.
 ///
-/// Returns:
-///   Ok(()) on success; LayerError on shape mismatch or invalid dims.
+/// With `k = num_repetitions` independent repetitions, the soundness error is at most
+///
+///     (1 / |F|)^k.
+///
+/// **Important:** This guarantee relies on how `x` is generated. The challenges must be
+/// prover-unbiased (i.e., not chosen adversarially after seeing `A, B, C`) and should be
+/// independent across repetitions.
+///
+/// ## Constraint costs
+/// This function constrains only the matrix-vector products and the final equality checks.
+/// In typical usage, `C` is computed cheaply (e.g., via unconstrained arithmetic) and then
+/// linked back to `A` and `B` via this verifier, avoiding the cost of fully constraining
+/// the `ell × m × n` matmul.
+///
+/// Returns `LayerError` on invalid dimensions or shape mismatch, and rejects
+/// `num_repetitions == 0` to avoid accidentally disabling verification.
 pub fn freivalds_verify_matrix_product<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: &ArrayD<Variable>,
