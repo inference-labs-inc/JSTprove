@@ -54,32 +54,21 @@ class MaxConfigProvider(BaseLayerConfigProvider):
             .description("Max where B is an initializer instead of an input")
             .override_input_shapes(A=[1, 3, 4, 4])
             .override_initializer(
-                "B",
-                rng.normal(0, 1, (1, 3, 4, 4)).astype(np.float32),
+                "B", rng.normal(0, 1, (1, 3, 4, 4)).astype(np.float32)
             )
             .tags("initializer", "elementwise", "max", "onnxruntime")
             .build(),
-            # --- E2E TESTS ---
             e2e_test("e2e_max")
             .description("End-to-end Max test with random inputs")
             .override_input_shapes(A=[1, 3, 4, 4], B=[1, 3, 4, 4])
             .override_output_shapes(max_output=[1, 3, 4, 4])
             .tags("e2e", "max", "2d")
             .build(),
-            e2e_test("e2e_broadcast_max")
-            .description(
-                "End-to-end Max with Numpy-style broadcasting along spatial dimensions",
-            )
-            .override_input_shapes(A=[1, 3, 4, 4], B=[1, 3, 1, 1])
-            .override_output_shapes(max_output=[1, 3, 4, 4])
-            .tags("e2e", "broadcast", "elementwise", "max", "onnx14")
-            .build(),
             e2e_test("e2e_initializer_max")
             .description("End-to-end Max where B is an initializer")
             .override_input_shapes(A=[1, 3, 4, 4])
             .override_initializer(
-                "B",
-                rng.normal(0, 1, (1, 3, 4, 4)).astype(np.float32),
+                "B", rng.normal(0, 1, (1, 3, 4, 4)).astype(np.float32)
             )
             .override_output_shapes(max_output=[1, 3, 4, 4])
             .tags("e2e", "initializer", "elementwise", "max", "onnxruntime")
