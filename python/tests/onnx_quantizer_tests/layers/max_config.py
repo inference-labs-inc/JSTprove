@@ -54,7 +54,8 @@ class MaxConfigProvider(BaseLayerConfigProvider):
             .description("Max where B is an initializer instead of an input")
             .override_input_shapes(A=[1, 3, 4, 4])
             .override_initializer(
-                "B", rng.normal(0, 1, (1, 3, 4, 4)).astype(np.float32)
+                "B",
+                rng.normal(0, 1, (1, 3, 4, 4)).astype(np.float32),
             )
             .tags("initializer", "elementwise", "max", "onnxruntime")
             .build(),
@@ -68,7 +69,8 @@ class MaxConfigProvider(BaseLayerConfigProvider):
             .description("End-to-end Max where B is an initializer")
             .override_input_shapes(A=[1, 3, 4, 4])
             .override_initializer(
-                "B", rng.normal(0, 1, (1, 3, 4, 4)).astype(np.float32)
+                "B",
+                rng.normal(0, 1, (1, 3, 4, 4)).astype(np.float32),
             )
             .override_output_shapes(max_output=[1, 3, 4, 4])
             .tags("e2e", "initializer", "elementwise", "max", "onnxruntime")

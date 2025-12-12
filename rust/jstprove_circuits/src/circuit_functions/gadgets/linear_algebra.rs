@@ -42,7 +42,8 @@ use crate::circuit_functions::layers::{LayerError, LayerKind};
 //   - Err(LayerError) if shapes are incompatible or not 1D
 //
 // The implementation is a simple sum over k of (a[k] * b[k]).
-// -----------------------------------------------------------------------------
+/// # Errors
+/// Returns `LayerError::InvalidShape` if the inputs are not 1D vectors or their lengths differ.
 #[allow(dead_code)]
 pub fn dot<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
@@ -95,7 +96,10 @@ pub fn dot<C: Config, Builder: RootAPI<C>>(
 // Returns:
 //   - Ok(ArrayD<Variable>) with the same shape as matrix_a
 //   - Err(LayerError) if reshape is impossible or shapes are incompatible
-// -----------------------------------------------------------------------------
+/// # Errors
+/// Returns `LayerError::ShapeMismatch` if the tensors are not the same shape and cannot be reshaped
+/// (by total element count) to match. Returns `LayerError::InvalidShape` if the output array
+/// cannot be constructed.
 pub fn matrix_addition<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: &ArrayD<Variable>,
@@ -132,7 +136,10 @@ pub fn matrix_addition<C: Config, Builder: RootAPI<C>>(
 // Returns:
 //   - Ok(ArrayD<Variable>) with the same shape as matrix_a
 //   - Err(LayerError) if reshape is impossible or shapes are incompatible
-// -----------------------------------------------------------------------------
+/// # Errors
+/// Returns `LayerError::ShapeMismatch` if the tensors are not the same shape and cannot be reshaped
+/// (by total element count) to match. Returns `LayerError::InvalidShape` if the output array
+/// cannot be constructed.
 pub fn matrix_hadamard_product<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: &ArrayD<Variable>,
@@ -169,7 +176,10 @@ pub fn matrix_hadamard_product<C: Config, Builder: RootAPI<C>>(
 // Returns:
 //   - Ok(ArrayD<Variable>) with the same shape as matrix_a
 //   - Err(LayerError) if reshape is impossible or shapes are incompatible
-// -----------------------------------------------------------------------------
+/// # Errors
+/// Returns `LayerError::ShapeMismatch` if the tensors are not the same shape and cannot be reshaped
+/// (by total element count) to match. Returns `LayerError::InvalidShape` if the output array
+/// cannot be constructed.
 pub fn matrix_subtraction<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: &ArrayD<Variable>,
@@ -278,7 +288,9 @@ where
 //   - Ok(ArrayD<Variable>) representing the product
 //   - Err(LayerError::InvalidShape) if either input is not 2D
 //   - Err(LayerError::ShapeMismatch) if inner dimensions do not match
-// -----------------------------------------------------------------------------
+/// # Errors
+/// Returns `LayerError::InvalidShape` if either input is not 2D.
+/// Returns `LayerError::ShapeMismatch` if A.cols != B.rows.
 pub fn matrix_multiplication<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: ArrayD<Variable>,
@@ -341,6 +353,9 @@ pub fn matrix_multiplication<C: Config, Builder: RootAPI<C>>(
 /// e.g. `freivalds_verify_matrix_product`, or by fully constraining the matmul.
 ///
 /// Returns `LayerError` on shape mismatch or if inputs are not 2D.
+/// # Errors
+/// Returns `LayerError` if the input shapes are incompatible or cannot be interpreted
+/// as the required dimensionality for the operation.
 pub fn unconstrained_matrix_multiplication<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: ArrayD<Variable>,
@@ -428,6 +443,9 @@ pub fn unconstrained_matrix_multiplication<C: Config, Builder: RootAPI<C>>(
 ///
 /// Returns `LayerError` on invalid dimensions or shape mismatch, and rejects
 /// `num_repetitions == 0` to avoid accidentally disabling verification.
+/// # Errors
+/// Returns `LayerError::InvalidShape` if any matrix is not 2D or if `num_repetitions == 0`.
+/// Returns `LayerError::ShapeMismatch` if the dimensions do not satisfy A:(ell,m), B:(m,n), C:(ell,n).
 pub fn freivalds_verify_matrix_product<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: &ArrayD<Variable>,
@@ -437,7 +455,7 @@ pub fn freivalds_verify_matrix_product<C: Config, Builder: RootAPI<C>>(
     num_repetitions: usize,
 ) -> Result<(), LayerError> {
     // Convert to 2D matrices (Ix2) and check dimensions.
-    let a: Array2<Variable> =
+    let mat_a: Array2<Variable> =
         matrix_a
             .clone()
             .into_dimensionality::<Ix2>()
@@ -446,7 +464,7 @@ pub fn freivalds_verify_matrix_product<C: Config, Builder: RootAPI<C>>(
                 msg: "Freivalds: matrix_a must be 2D".to_string(),
             })?;
 
-    let b: Array2<Variable> =
+    let mat_b: Array2<Variable> =
         matrix_b
             .clone()
             .into_dimensionality::<Ix2>()
@@ -455,7 +473,7 @@ pub fn freivalds_verify_matrix_product<C: Config, Builder: RootAPI<C>>(
                 msg: "Freivalds: matrix_b must be 2D".to_string(),
             })?;
 
-    let c: Array2<Variable> =
+    let mat_c: Array2<Variable> =
         matrix_c
             .clone()
             .into_dimensionality::<Ix2>()
@@ -465,31 +483,29 @@ pub fn freivalds_verify_matrix_product<C: Config, Builder: RootAPI<C>>(
             })?;
 
     // Dimensions: A is (ell, m), B is (m, n), C is (ell, n)
-    let (ell, m) = a.dim();
-    let (m2, n) = b.dim();
-    let (ell2, n2) = c.dim();
+    let (num_rows_a, num_cols_a) = mat_a.dim();
+    let (num_rows_b, num_cols_b) = mat_b.dim();
+    let (num_rows_c, num_cols_c) = mat_c.dim();
 
-    if m != m2 {
+    if num_cols_a != num_rows_b {
         return Err(LayerError::ShapeMismatch {
             layer: layer_type.clone(),
-            expected: vec![m],
-            got: vec![m2],
+            expected: vec![num_cols_a],
+            got: vec![num_rows_b],
             var_name: "Freivalds: A.cols != B.rows".to_string(),
         });
     }
 
-    if ell != ell2 || n != n2 {
+    if num_rows_a != num_rows_c || num_cols_b != num_cols_c {
         return Err(LayerError::ShapeMismatch {
             layer: layer_type.clone(),
-            expected: vec![ell, n],
-            got: vec![ell2, n2],
+            expected: vec![num_rows_a, num_cols_b],
+            got: vec![num_rows_c, num_cols_c],
             var_name: "Freivalds: C shape mismatch".to_string(),
         });
     }
 
     if num_repetitions == 0 {
-        // Degenerate case: nothing to prove; treat as error to avoid
-        // accidentally disabling the check.
         return Err(LayerError::InvalidShape {
             layer: layer_type,
             msg: "Freivalds: num_repetitions must be >= 1".to_string(),
@@ -497,49 +513,49 @@ pub fn freivalds_verify_matrix_product<C: Config, Builder: RootAPI<C>>(
     }
 
     for _rep in 0..num_repetitions {
-        // 1) Sample random x in F^n
-        let mut x: Vec<Variable> = Vec::with_capacity(n);
-        for _j in 0..n {
-            let r = api.get_random_value();
-            x.push(r);
+        // 1) Sample random vector in F^n
+        let mut rand_vec: Vec<Variable> = Vec::with_capacity(num_cols_b);
+        for _idx in 0..num_cols_b {
+            let rand_entry = api.get_random_value();
+            rand_vec.push(rand_entry);
         }
 
-        // 2) v = B x, length m
-        let mut v: Vec<Variable> = Vec::with_capacity(m);
-        for i in 0..m {
+        // 2) b_times_rand = B * rand_vec, length m
+        let mut b_times_rand: Vec<Variable> = Vec::with_capacity(num_rows_b);
+        for row_b in 0..num_rows_b {
             let mut acc = api.constant(0);
-            for j in 0..n {
-                let mul = api.mul(b[(i, j)], x[j]);
+            for col_b in 0..num_cols_b {
+                let mul = api.mul(mat_b[(row_b, col_b)], rand_vec[col_b]);
                 acc = api.add(acc, mul);
             }
-            v.push(acc);
+            b_times_rand.push(acc);
         }
 
-        // 3) w = C x, length ell
-        let mut w: Vec<Variable> = Vec::with_capacity(ell);
-        for i in 0..ell {
+        // 3) c_times_rand = C * rand_vec, length ell
+        let mut c_times_rand: Vec<Variable> = Vec::with_capacity(num_rows_c);
+        for row_c in 0..num_rows_c {
             let mut acc = api.constant(0);
-            for j in 0..n {
-                let mul = api.mul(c[(i, j)], x[j]);
+            for col_c in 0..num_cols_c {
+                let mul = api.mul(mat_c[(row_c, col_c)], rand_vec[col_c]);
                 acc = api.add(acc, mul);
             }
-            w.push(acc);
+            c_times_rand.push(acc);
         }
 
-        // 4) u = A v, length ell
-        let mut u: Vec<Variable> = Vec::with_capacity(ell);
-        for i in 0..ell {
+        // 4) a_times_b_times_rand = A * (B * rand_vec), length ell
+        let mut a_times_b_times_rand: Vec<Variable> = Vec::with_capacity(num_rows_a);
+        for row_a in 0..num_rows_a {
             let mut acc = api.constant(0);
-            for k in 0..m {
-                let mul = api.mul(a[(i, k)], v[k]);
+            for col_a in 0..num_cols_a {
+                let mul = api.mul(mat_a[(row_a, col_a)], b_times_rand[col_a]);
                 acc = api.add(acc, mul);
             }
-            u.push(acc);
+            a_times_b_times_rand.push(acc);
         }
 
-        // 5) Enforce u == w entrywise
-        for i in 0..ell {
-            api.assert_is_equal(u[i], w[i]);
+        // 5) Enforce equality entrywise
+        for row in 0..num_rows_a {
+            api.assert_is_equal(a_times_b_times_rand[row], c_times_rand[row]);
         }
     }
 

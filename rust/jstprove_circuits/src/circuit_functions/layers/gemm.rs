@@ -160,55 +160,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             .into());
         }
 
-        // Decide whether to use Freivalds, now with a configurable repetition count.
-        let use_freivalds = should_use_freivalds(ell, m, n, self.freivalds_reps);
-
-        if use_freivalds {
-            println!(
-                "Using Freivalds (reps = {}) for GEMM '{}' with dims ell={}, m={}, n={}",
-                self.freivalds_reps, self.name, ell, m, n
-            );
-        }
-
-        // Compute the core matrix product C_core = A * B.
-        //
-        // If Freivalds is enabled and beneficial, we compute C_core using
-        // unconstrained operations and then verify A * B == C_core using
-        // Freivalds. Otherwise, we fall back to a fully constrained matmul.
-        let core_product: ArrayD<Variable> = if use_freivalds {
-            // Unconstrained matmul: C_core = A * B
-            let input_dyn_for_unconstrained = input_array.clone().into_dyn();
-            let weights_dyn_for_unconstrained = weights_array.clone().into_dyn();
-
-            let core_dyn = unconstrained_matrix_multiplication(
-                api,
-                input_dyn_for_unconstrained,
-                weights_dyn_for_unconstrained,
-                LayerKind::Gemm,
-            )?;
-
-            // Constrained Freivalds check: A * B == C_core with self.freivalds_reps repetitions.
-            let input_dyn_for_check = input_array.clone().into_dyn();
-            let weights_dyn_for_check = weights_array.clone().into_dyn();
-            freivalds_verify_matrix_product(
-                api,
-                &input_dyn_for_check,
-                &weights_dyn_for_check,
-                &core_dyn,
-                LayerKind::Gemm,
-                self.freivalds_reps,
-            )?;
-
-            core_dyn
-        } else {
-            // Fully constrained matmul, as before.
-            matrix_multiplication(
-                api,
-                input_array.into_dyn(),
-                weights_array.into_dyn(),
-                LayerKind::Gemm,
-            )?
-        };
+        let core_product = compute_core_product(
+            api,
+            &input_array,
+            &weights_array,
+            LayerKind::Gemm,
+            self.freivalds_reps,
+        )?;
 
         // Add bias (constrained) on top of the core product.
         let result = matrix_addition(api, &core_product, bias_array, LayerKind::Gemm)?;
@@ -271,6 +229,85 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             freivalds_reps: circuit_params.freivalds_reps,
         };
         Ok(Box::new(gemm))
+    }
+}
+
+// -----------------------------------------------------------------------------
+// FUNCTION: compute_core_product
+// -----------------------------------------------------------------------------
+
+/// Computes the core matrix product C = A * B for GEMM, optionally using
+/// Freivalds' algorithm to reduce constraint cost.
+///
+/// If Freivalds is enabled and cheaper under the internal cost model, this
+/// function:
+///   1) computes C using unconstrained operations, and
+///   2) enforces correctness via a constrained Freivalds check.
+///
+/// Otherwise, it falls back to a fully constrained matrix multiplication.
+///
+/// Arguments:
+///   - api: circuit builder
+///   - matrix_a: left matrix A (2D)
+///   - matrix_b: right matrix B (2D)
+///   - layer_type: layer identifier for error reporting
+///   - freivalds_reps: number of Freivalds repetitions
+///
+/// Returns:
+///   - Ok(ArrayD<Variable>) representing C = A * B
+///
+/// # Errors
+/// Returns a LayerError if:
+///   - inputs are not 2D,
+///   - inner dimensions do not match,
+///   - freivalds_reps is zero when Freivalds is selected.
+fn compute_core_product<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    input_array: &ndarray::Array2<Variable>,
+    weights_array: &ndarray::Array2<Variable>,
+    layer_kind: LayerKind,
+    freivalds_reps: usize,
+) -> Result<ArrayD<Variable>, CircuitError> {
+    let (ell, m) = input_array.dim();
+    let (m2, n) = weights_array.dim();
+    if m != m2 {
+        return Err(LayerError::ShapeMismatch {
+            layer: layer_kind,
+            expected: vec![m],
+            got: vec![m2],
+            var_name: "GEMM: A.cols != B.rows".to_string(),
+        }
+        .into());
+    }
+
+    let use_freivalds = should_use_freivalds(ell, m, n, freivalds_reps);
+
+    if use_freivalds {
+        let core_dyn = unconstrained_matrix_multiplication(
+            api,
+            input_array.clone().into_dyn(),
+            weights_array.clone().into_dyn(),
+            layer_kind,
+        )?;
+
+        freivalds_verify_matrix_product(
+            api,
+            &input_array.clone().into_dyn(),
+            &weights_array.clone().into_dyn(),
+            &core_dyn,
+            layer_kind,
+            freivalds_reps,
+        )?;
+
+        Ok(core_dyn)
+    } else {
+        matrix_multiplication(
+            api,
+            input_array.clone().into_dyn(),
+            weights_array.clone().into_dyn(),
+            layer_kind,
+        )
+        .map_err(Into::into)
     }
 }
 
