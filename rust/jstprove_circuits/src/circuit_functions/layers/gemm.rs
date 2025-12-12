@@ -147,19 +147,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         check_alpha_beta(self.alpha, ALPHA, LayerKind::Gemm, &self.name)?;
         check_alpha_beta(self.beta, BETA, LayerKind::Gemm, &self.name)?;
 
-        // Decide whether to use Freivalds or a fully constrained matmul.
-        let (ell, m) = input_array.dim();
-        let (m2, n) = weights_array.dim();
-        if m != m2 {
-            return Err(LayerError::ShapeMismatch {
-                layer: LayerKind::Gemm,
-                expected: vec![m],
-                got: vec![m2],
-                var_name: "GEMM: A.cols != B.rows".to_string(),
-            }
-            .into());
-        }
-
         let core_product = compute_core_product(
             api,
             &input_array,
@@ -287,7 +274,7 @@ fn compute_core_product<C: Config, Builder: RootAPI<C>>(
             api,
             input_array.clone().into_dyn(),
             weights_array.clone().into_dyn(),
-            layer_kind,
+            layer_kind.clone(),
         )?;
 
         freivalds_verify_matrix_product(
