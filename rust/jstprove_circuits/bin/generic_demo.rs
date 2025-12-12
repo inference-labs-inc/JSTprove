@@ -32,7 +32,7 @@ use jstprove_circuits::io::io_reader::{FileReader, IOReader};
 use jstprove_circuits::runner::main_runner::{ConfigurableCircuit, get_arg, get_args, handle_args};
 
 /// Your new context module
-use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
+use jstprove_circuits::io::io_reader::onnx_context::{OnnxContext, OnnxContextError};
 
 declare_circuit!(Circuit {
     input_arr: [PublicVariable],
@@ -63,6 +63,9 @@ impl Circuit<Variable> {
         let architecture = OnnxContext::get_architecture()?;
         let w_and_b = OnnxContext::get_wandb()?;
 
+        // let w_and_b: &WANDB = w_and_b_guard
+        //     .as_ref()
+        //     .ok_or(OnnxContextError::WandbNotSet)?;
         // Getting inputs
         let mut out: HashMap<String, std::sync::Arc<ArrayD<Variable>>> =
             get_inputs(&self.input_arr, params.inputs.clone())?
@@ -134,6 +137,8 @@ impl Circuit<Variable> {
 
             // Layer is automatically dropped here, freeing memory
         }
+        // drop(w_and_b);
+        OnnxContext::clear();
 
         let flatten_shape: Vec<usize> = vec![
             params
@@ -190,7 +195,6 @@ impl Circuit<Variable> {
         api.assert_is_equal(self.scale_base[0], params.scale_base);
         api.assert_is_equal(self.scale_exponent[0], params.scale_exponent);
         eprintln!("Confirm params");
-
 
         Ok(())
     }

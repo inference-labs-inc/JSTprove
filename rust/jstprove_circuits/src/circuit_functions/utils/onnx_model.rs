@@ -27,6 +27,13 @@ pub struct WANDB {
     pub w_and_b: Vec<ONNXLayer>,
 }
 
+impl Default for WANDB {
+    fn default() -> Self {
+        WANDB {
+            w_and_b: Vec::new(),
+        }
+    }
+}
 #[derive(Deserialize, Clone, Debug)]
 pub struct CircuitParams {
     pub scale_base: u32,

@@ -121,14 +121,18 @@ pub struct FileReader {
 
 // #[cfg(feature = "onnx")]
 pub mod onnx_context {
+
+    use std::sync::{Arc, RwLock};
+
+    use arc_swap::ArcSwap;
     use once_cell::sync::OnceCell;
     use thiserror::Error;
 
     use crate::circuit_functions::utils::onnx_model::{Architecture, CircuitParams, WANDB};
 
-    pub static ARCHITECTURE: OnceCell<Architecture> = OnceCell::new();
-    pub static CIRCUITPARAMS: OnceCell<CircuitParams> = OnceCell::new();
-    pub static W_AND_B: OnceCell<WANDB> = OnceCell::new();
+    pub static ARCHITECTURE: RwLock<Option<Architecture>> = RwLock::new(None);
+    pub static CIRCUITPARAMS: RwLock<Option<CircuitParams>> = RwLock::new(None);
+    pub static W_AND_B: RwLock<Option<WANDB>> = RwLock::new(None);
 
     #[derive(Debug, Error)]
     pub enum OnnxContextError {
@@ -149,74 +153,66 @@ pub mod onnx_context {
     pub struct OnnxContext;
 
     impl OnnxContext {
-        /// Set the [`Architecture`] if not already initialized.
-        ///
-        /// # Errors
-        ///
-        /// Returns [`OnnxContextError::ArchitectureAlreadySet`] if the architecture
-        /// has already been initialized.
         pub fn set_architecture(meta: Architecture) -> Result<(), OnnxContextError> {
-            ARCHITECTURE
-                .set(meta)
-                .map_err(|_| OnnxContextError::ArchitectureAlreadySet)
+            let mut lock = ARCHITECTURE.write().unwrap();
+            if lock.is_some() {
+                return Err(OnnxContextError::ArchitectureAlreadySet);
+            }
+            *lock = Some(meta);
+            Ok(())
         }
 
-        /// Set the [`CircuitParams`] if not already initialized.
-        ///
-        /// # Errors
-        ///
-        /// Returns [`OnnxContextError::CircuitParamsAlreadySet`] if the parameters
-        /// have already been initialized.
         pub fn set_params(meta: CircuitParams) -> Result<(), OnnxContextError> {
-            CIRCUITPARAMS
-                .set(meta)
-                .map_err(|_| OnnxContextError::CircuitParamsAlreadySet)
+            let mut lock = CIRCUITPARAMS.write().unwrap();
+            if lock.is_some() {
+                return Err(OnnxContextError::CircuitParamsAlreadySet);
+            }
+            *lock = Some(meta);
+            Ok(())
         }
 
-        /// Set the [`WANDB`] (weights and biases) if not already initialized.
-        ///
-        /// # Errors
-        ///
-        /// Returns [`OnnxContextError::WandbAlreadySet`] if the WANDB instance
-        /// has already been initialized.
         pub fn set_wandb(meta: WANDB) -> Result<(), OnnxContextError> {
-            W_AND_B
-                .set(meta)
-                .map_err(|_| OnnxContextError::WandbAlreadySet)
+            let mut lock = W_AND_B.write().unwrap();
+            if lock.is_some() {
+                return Err(OnnxContextError::WandbAlreadySet);
+            }
+            *lock = Some(meta);
+            Ok(())
         }
 
-        /// Get a reference to the [`Architecture`].
-        ///
-        /// # Errors
-        ///
-        /// Returns [`OnnxContextError::ArchitectureNotSet`] if the architecture
-        /// has not been initialized yet.
-        pub fn get_architecture() -> Result<&'static Architecture, OnnxContextError> {
+        // For get methods, you need to clone the data
+        pub fn get_architecture() -> Result<Architecture, OnnxContextError> {
             ARCHITECTURE
-                .get()
+                .read()
+                .unwrap()
+                .as_ref()
+                .cloned()
                 .ok_or(OnnxContextError::ArchitectureNotSet)
         }
 
-        /// Get a reference to the [`CircuitParams`].
-        ///
-        /// # Errors
-        ///
-        /// Returns [`OnnxContextError::CircuitParamsNotSet`] if the parameters
-        /// have not been initialized yet.
-        pub fn get_params() -> Result<&'static CircuitParams, OnnxContextError> {
+        pub fn get_params() -> Result<CircuitParams, OnnxContextError> {
             CIRCUITPARAMS
-                .get()
+                .read()
+                .unwrap()
+                .as_ref()
+                .cloned()
                 .ok_or(OnnxContextError::CircuitParamsNotSet)
         }
 
-        /// Get a reference to the [`WANDB`].
-        ///
-        /// # Errors
-        ///
-        /// Returns [`OnnxContextError::WandbNotSet`] if WANDB
-        /// has not been initialized yet.
-        pub fn get_wandb() -> Result<&'static WANDB, OnnxContextError> {
-            W_AND_B.get().ok_or(OnnxContextError::WandbNotSet)
+        pub fn get_wandb() -> Result<WANDB, OnnxContextError> {
+            W_AND_B
+                .read()
+                .unwrap()
+                .as_ref()
+                .cloned()
+                .ok_or(OnnxContextError::WandbNotSet)
+        }
+
+        /// Clear all stored data to free memory
+        pub fn clear() {
+            *ARCHITECTURE.write().unwrap() = None;
+            *CIRCUITPARAMS.write().unwrap() = None;
+            *W_AND_B.write().unwrap() = None;
         }
     }
 }
