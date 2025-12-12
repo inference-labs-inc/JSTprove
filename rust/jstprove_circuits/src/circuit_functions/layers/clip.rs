@@ -63,7 +63,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
+        input: &HashMap<String, std::sync::Arc<ArrayD<Variable>>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         // 1. Resolve required input X
         let x_name = get_input_name(&self.inputs, 0, LayerKind::Clip, INPUT)?;
@@ -105,7 +105,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
 
         // Fast path: if both bounds are missing, Clip is the identity.
         if min_input.is_none() && max_input.is_none() {
-            return Ok((self.outputs.clone(), x_input));
+            return Ok((self.outputs.clone(), (*x_input).clone()));
         }
 
         // 3. Broadcast X, min, and max to a common shape using pairwise helpers.
@@ -120,15 +120,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
         // Broadcast X and min first, if min exists
         if let Some(min_bc) = min_bc_opt.take() {
             let (x_new, min_new) = broadcast_two_arrays(&x_bc, &min_bc)?;
-            x_bc = x_new;
-            min_bc_opt = Some(min_new);
+            x_bc = x_new.into();
+            min_bc_opt = Some(min_new.into());
         }
 
         // Broadcast X (now possibly expanded) and max, if max exists
         if let Some(max_bc) = max_bc_opt.take() {
             let (x_new, max_new) = broadcast_two_arrays(&x_bc, &max_bc)?;
-            x_bc = x_new;
-            max_bc_opt = Some(max_new);
+            x_bc = x_new.into();
+            max_bc_opt = Some(max_new.into());
 
             // If min also exists, ensure it matches the final shape by broadcasting.
             if let Some(min_bc) = min_bc_opt.take() {
@@ -136,7 +136,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
                     min_bc_opt = Some(min_bc);
                 } else {
                     let (_dummy, min_new2) = broadcast_two_arrays(&x_bc, &min_bc)?;
-                    min_bc_opt = Some(min_new2);
+                    min_bc_opt = Some(min_new2.into());
                 }
             }
         }
@@ -190,7 +190,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
         match (min_bc_opt.as_ref(), max_bc_opt.as_ref()) {
             (None, None) => {
                 // This case should have early-returned, but keep for completeness.
-                for &x_val in &x_bc {
+                for &x_val in &*x_bc {
                     let clipped =
                         constrained_clip(api, &range_ctx, &mut logup_ctx, x_val, None, None)?;
                     out_storage.push(clipped);
