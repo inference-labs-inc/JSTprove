@@ -11,11 +11,14 @@ use crate::circuit_functions::{
     CircuitError,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
-        ArrayConversionError, RescaleError,
+        ArrayConversionError,
         constants::INPUT,
-        core_math::{assert_is_bitstring_and_reconstruct, unconstrained_to_bits},
         onnx_model::{extract_params_and_expected_shape, get_input_name},
     },
+};
+
+use crate::circuit_functions::gadgets::{
+    LogupRangeCheckContext, ShiftRangeContext, constrained_max,
 };
 
 // -------- Struct --------
@@ -27,8 +30,11 @@ pub struct ReluLayer {
     input_shape: Vec<usize>,
     inputs: Vec<String>,
     outputs: Vec<String>,
+    /// Total bit-width of the signed fixed-point representation.
+    /// We assume signed range [-2^(n_bits-1), 2^(n_bits-1) - 1].
     n_bits: usize,
 }
+
 // -------- Implementations --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
@@ -39,14 +45,20 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let input_name = get_input_name(&self.inputs, 0, LayerKind::ReLU, INPUT)?;
         let layer_input = input
-            .get(&input_name.clone())
+            .get(input_name.as_str())
             .ok_or_else(|| LayerError::MissingInput {
                 layer: LayerKind::ReLU,
                 name: input_name.clone(),
             })?
             .clone();
-        let out = layer_input;
-        let out = relu_array(api, &out, self.n_bits - 1)?;
+
+        // Values live in a symmetric signed range with s = n_bits - 1.
+        let shift_exponent = self
+            .n_bits
+            .checked_sub(1)
+            .ok_or_else(|| CircuitError::Other("ReLU: n_bits must be at least 1".to_string()))?;
+
+        let out = relu_array::<C, Builder>(api, &layer_input, shift_exponent)?;
 
         Ok((self.outputs.clone(), out))
     }
@@ -64,6 +76,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
                 layer: LayerKind::ReLU,
                 msg: format!("extract_params_and_expected_shape failed: {e}"),
             })?;
+
         let relu = Self {
             name: layer.name.clone(),
             index,
@@ -72,131 +85,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
             outputs: layer.outputs.clone(),
             n_bits: layer_context.n_bits,
         };
+
         Ok(Box::new(relu))
     }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STRUCT: ReluContext
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Context for asserting a `ReLU` operation on signed integers represented in least residue form.
-///
-/// # Details
-/// - We assume each input `x` satisfies:
-///   `x = c mod p`, where `c ∈ [-2^s, 2^s - 1]`
-///
-/// - We shift `x` by `2^s` (a nonnegative constant) to obtain `x' = x + 2^s ∈ [0, 2^{s+1})`
-///
-/// - We bit-decompose `x'` to `s+1` bits and recover the sign bit `d_s`.
-///   If `c < 0`, `d_s = 0`; if `c ≥ 0`, `d_s = 1`.
-///
-/// - The output is then `d_s * x`, which zeroes out `x` when negative.
-pub struct ReluContext {
-    pub shift_exponent: usize, // s
-    pub shift: Variable,       // 2^s, lifted into the circuit
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// IMPL: ReluContext
-// ─────────────────────────────────────────────────────────────────────────────
-
-impl ReluContext {
-    /// Constructs a `ReluContext` with the given `shift_exponent` (s).
-    ///
-    /// Precomputes `shift = 2^s` as a constant lifted into the circuit.
-    ///
-    /// # Arguments
-    /// - `api`: Mutable reference to the circuit builder.
-    /// - `shift_exponent`: The bit exponent `s` defining the signed range.
-    ///
-    /// # Returns
-    /// A `ReluContext` holding the shift constant and exponent.
-    ///
-    /// # Errors
-    /// - [`RescaleError::ShiftExponentTooLargeError`] if `shift_exponent`
-    ///   cannot fit in a `u32` or causes a shift overflow.
-    ///
-    pub fn new<C: Config, Builder: RootAPI<C>>(
-        api: &mut Builder,
-        shift_exponent: usize,
-    ) -> Result<Self, RescaleError> {
-        let shift_const = 1u32
-            .checked_shl(u32::try_from(shift_exponent).map_err(|_| {
-                RescaleError::ShiftExponentTooLargeError {
-                    exp: shift_exponent,
-                    type_name: "u32",
-                }
-            })?)
-            .ok_or(RescaleError::ShiftExponentTooLargeError {
-                exp: shift_exponent,
-                type_name: "u32",
-            })?;
-        let shift = api.constant(shift_const);
-        Ok(Self {
-            shift_exponent,
-            shift,
-        })
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FUNCTION: relu
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Applies the `ReLU` function to a signed input represented as a field element.
-///
-/// # Overview
-/// The input `x` is assumed to be the least nonnegative residue of a signed integer `c`,
-/// where `c` is considered *valid* if it lies in the symmetric range:
-///
-/// ```text
-///     c ∈ [-S, T - S] = [-2^s, 2^s - 1]
-/// ```
-///
-/// To extract the sign of `c` in a nonnegative domain, we shift by `S = 2^s`:
-///
-/// ```text
-///     x' = c + 2^s
-/// ```
-///
-/// If `c` is valid, then `x' ∈ [0, T] = [0, 2^{s + 1} - 1]`.
-/// The function then proceeds as follows:
-///
-/// 1. Extract the `s + 1` least significant bits of `x'`
-/// 2. Assert that each bit is boolean (0 or 1)
-/// 3. Reconstruct `x'` from its bit decomposition and assert equality
-/// 4. Extract the `(s + 1)`-st bit `d_s`, which indicates whether `c ≥ 0`
-/// 5. Return `d_s * x`, which equals `ReLU(c)` when `c` is valid
-///
-/// # Arguments
-/// - `api`: Mutable reference to the circuit builder.
-/// - `x`: A field element representing the least nonnegative residue of a signed integer `c`.
-/// - `context`: Precomputed shift constant `S = 2^s` and the exponent `s`.
-///
-/// # Returns
-/// - A `Variable` representing the `ReLU` output: `ReLU(c) = max(0, c)` if `c` is valid.
-///
-/// # Errors
-/// - [`CircuitError`] if bit decomposition or equality constraints fail.
-/// - Propagates any error from `unconstrained_to_bits` or
-///   `assert_is_bitstring_and_reconstruct`.
-///
-// TODO can make use of memorized calls instead, by flattening the array and expanding?
-pub fn relu<C: Config, Builder: RootAPI<C>>(
-    api: &mut Builder,
-    x: &Variable,
-    context: &ReluContext,
-) -> Result<Variable, CircuitError> {
-    let shifted_x = api.add(context.shift, *x);
-    let n_bits = context.shift_exponent + 1;
-
-    let bits = unconstrained_to_bits(api, shifted_x, n_bits)?;
-    let reconstructed = assert_is_bitstring_and_reconstruct(api, &bits)?;
-    api.assert_is_equal(shifted_x, reconstructed);
-
-    let sign_bit = bits[context.shift_exponent];
-    Ok(api.mul(*x, sign_bit))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -205,7 +96,13 @@ pub fn relu<C: Config, Builder: RootAPI<C>>(
 
 /// Applies `ReLU` elementwise to an `ArrayD<Variable>` of signed values.
 ///
-/// Assumes values are least nonnegative residues of signed integers.
+/// Semantics are the same as in `rescale`: we implement
+///
+/// ```text
+/// ReLU(x) = max(x, 0)
+/// ```
+///
+/// using the `constrained_max` gadget plus a shared `LogupRangeCheckContext`.
 ///
 /// # Arguments
 /// - `api`: Mutable reference to the circuit builder api.
@@ -216,7 +113,7 @@ pub fn relu<C: Config, Builder: RootAPI<C>>(
 /// A new `ArrayD<Variable>` where each element is replaced by its `ReLU` output.
 ///
 /// # Errors
-/// - [`CircuitError`] if `ReLU` construction fails for any element.
+/// - [`CircuitError`] if the internal gadgets fail.
 /// - [`ArrayConversionError::ShapeError`] if the result cannot be reshaped
 ///   back into the input array’s dimensions.
 pub fn relu_array<C: Config, Builder: RootAPI<C>>(
@@ -224,8 +121,26 @@ pub fn relu_array<C: Config, Builder: RootAPI<C>>(
     array: &ArrayD<Variable>,
     shift_exponent: usize,
 ) -> Result<ArrayD<Variable>, CircuitError> {
-    let context = ReluContext::new(api, shift_exponent)?;
-    let flat_results: Result<Vec<_>, _> = array.iter().map(|x| relu(api, x, &context)).collect();
+    // Shared shift context S = 2^s.
+    let shift_ctx = ShiftRangeContext::new::<C, Builder>(api, shift_exponent)?;
+
+    // Shared LogUp range-check context for all elements in this layer.
+    let mut logup_ctx = LogupRangeCheckContext::new_default();
+    logup_ctx.init::<C, Builder>(api);
+
+    let zero = api.constant(0);
+
+    let flat_results: Result<Vec<_>, CircuitError> = array
+        .iter()
+        .map(|x| {
+            // ReLU(x) = max(x, 0)
+            constrained_max::<C, Builder>(api, &shift_ctx, &mut logup_ctx, &[*x, zero])
+        })
+        .collect();
+
+    // Single final LogUp consistency check for the whole layer.
+    logup_ctx.finalize::<C, Builder>(api);
+
     let out = ArrayD::from_shape_vec(array.raw_dim(), flat_results?)
         .map_err(ArrayConversionError::ShapeError)?;
     Ok(out)

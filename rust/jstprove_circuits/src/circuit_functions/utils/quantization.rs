@@ -2,37 +2,42 @@
 //!
 //! This module provides functionality for rescaling the product of two fixed-point
 //! approximations, where each operand has been independently scaled and rounded.
-//! That is, we assume integers `a ≈ α·x` and `b ≈ α·y`, where `α = 2^κ` is the fixed-point
+//! We assume integers `a ≈ alpha * x` and `b ≈ alpha * y`, where `alpha = 2^kappa` is the fixed-point
 //! scaling factor, and `a`, `b` are scaled versions of real numbers `x`, `y`.
 //!
-//! The product `c' = a·b` approximates `α²·x·y`. Since the circuit operates only on field
-//! elements (nonnegative integers modulo `p`, the field modulus), we must simulate signed
-//! integer arithmetic using representative values in the range `[0, p - 1]`.
+//! The product `c' = a * b` approximates `alpha^2 * x * y`. Since the circuit operates
+//! only on field elements (nonnegative integers modulo `p`, the field modulus), we
+//! simulate signed integer arithmetic using representatives in `[0, p - 1]`.
 //!
-//! To correctly recover a fixed-point approximation of `x·y` at scale `α`, we compute:
-//!
-//! ```text
-//! q = floor((c + α·S)/α) − S
-//! ```
-//!
-//! where `c` is the least nonnegative residue of the signed integer `c'`,
-//! and `S = 2^s` is a centering constant that ensures intermediate values
-//! remain within the field during division and remainder operations.
-//!
-//! The computation enforces that:
+//! To recover a fixed-point approximation of `x * y` at scale `alpha`, we compute
 //!
 //! ```text
-//! c + α·S = α·q^♯ + r,    with    0 ≤ r < α
+//! q = floor((c + alpha * S) / alpha) - S
 //! ```
 //!
-//! Then recovers `q = q^♯ − S`, and optionally applies `ReLU` by zeroing out negative values
-//! based on the most significant bit of `q^♯`.
+//! where `c` is the least nonnegative residue of the signed integer `c'` and
+//! `S = 2^s` is a centering constant that keeps intermediate values inside the
+//! field during division and remainder operations.
 //!
-//! The core logic is implemented in [`rescale`] and its batched variants
-//! [`rescale_2d_vector`] and [`rescale_4d_vector`], using a shared [`RescalingContext`]
-//! to precompute constants and optimize performance.
+//! The computation enforces
+//!
+//! ```text
+//! c + alpha * S = alpha * q_shifted + r,    with    0 <= r < alpha
+//! ```
+//!
+//! then recovers `q = q_shifted - S`, and optionally applies `ReLU` as
+//!
+//! ```text
+//! ReLU(q) = max(q, 0)
+//! ```
+//!
+//! using the existing `constrained_max` gadget, which itself relies on `LogUp`-based
+//! range proofs instead of ad hoc most-significant-bit extraction.
+//!
+//! The core logic is implemented in [`rescale`] and its batched variant
+//! [`rescale_array`], using a shared [`RescalingContext`] plus a
+//! [`LogupRangeCheckContext`] to precompute constants and optimize performance.
 
-// External crates
 use ethnum::U256;
 use ndarray::ArrayD;
 
@@ -44,49 +49,70 @@ use crate::circuit_functions::utils::{
     errors::{ArrayConversionError, RescaleError},
 };
 
-// Internal modules
-use super::core_math::{assert_is_bitstring_and_reconstruct, unconstrained_to_bits};
+// Internal modules: LogUp-based range-check helper + max gadget
+use crate::circuit_functions::gadgets::{
+    LogupRangeCheckContext, ShiftRangeContext, constrained_max,
+};
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // STRUCT: RescalingContext
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
-/// Holds integer and circuit-level constants for rescaling by `α = 2^κ` and shifting by `S = 2^s`.
+/// Holds integer and circuit-level constants for rescaling by `alpha = 2^kappa`
+/// and shifting by `S = 2^s`.
+///
+/// This context packages both native integers and circuit `Variable`s:
+///
+/// - `scaling_exponent` (`kappa`): exponent such that `alpha = 2^kappa`.
+/// - `shift_exponent` (`s`): exponent such that `S = 2^s`.
+/// - `scaling_factor_`: native `u32` equal to `alpha`.
+/// - `shift_`: native `u32` equal to `S`.
+/// - `scaled_shift_`: native `U256` equal to `alpha * S = 2^(kappa + s)`.
+/// - `scaling_factor`, `shift`, `scaled_shift`: the same quantities lifted
+///   into the circuit as `Variable`s.
+///
+/// These values are reused throughout rescaling to avoid recomputing constants
+/// and to keep constraints consistent.
 pub struct RescalingContext {
-    pub scaling_exponent: usize, // κ: exponent such that α = 2^κ
+    pub scaling_exponent: usize, // kappa: exponent such that alpha = 2^kappa
     pub shift_exponent: usize,   // s: exponent such that S = 2^s
 
-    pub scaling_factor_: u32, // α = 2^κ, as a native u32
+    pub scaling_factor_: u32, // alpha = 2^kappa, as a native u32
     pub shift_: u32,          // S = 2^s, as a native u32
-    pub scaled_shift_: U256,  // α·S = 2^{κ + s}, as a U256 for overflow safety
+    pub scaled_shift_: U256,  // alpha*S = 2^{kappa + s}, as a U256 for overflow safety
 
-    pub scaling_factor: Variable, // α = 2^κ, lifted to the circuit as a Variable
+    pub scaling_factor: Variable, // alpha = 2^kappa, lifted to the circuit as a Variable
     pub shift: Variable,          // S = 2^s, lifted to the circuit as a Variable
-    pub scaled_shift: Variable,   // α·S = 2^{κ + s}, lifted to the circuit as a Variable
+    pub scaled_shift: Variable,   // alpha*S = 2^{kappa + s}, lifted to the circuit as a Variable
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // IMPL: RescalingContext
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
 impl RescalingContext {
-    /// Constructs a [`RescalingContext`] from the given scaling and shift exponents.
+    /// Construct a [`RescalingContext`] from the given scaling and shift exponents.
     ///
-    /// Precomputes:
+    /// This method precomputes:
+    ///
     /// - Native powers of two:
-    ///   - `scaling_factor_ = 2^κ` (`u32`)
-    ///   - `shift_ = 2^s` (`u32`)
-    ///   - `scaled_shift_ = 2^{κ + s}` (`U256`, to avoid overflow)
-    ///
+    ///   - `scaling_factor_ = 2^kappa` as `u32`.
+    ///   - `shift_ = 2^s` as `u32`.
+    ///   - `scaled_shift_ = 2^(kappa + s)` as `U256` (to avoid overflow).
     /// - Circuit-lifted versions of these values:
-    ///   - `scaling_factor`, `shift`, and `scaled_shift` (as `Variable`)
+    ///   - `scaling_factor`, `shift`, `scaled_shift` as `Variable`s.
     ///
-    /// These are reused throughout rescaling to avoid redundant lifting and ensure consistent constraints.
+    /// These constants are reused by [`rescale`] to keep the arithmetic and
+    /// range checks consistent.
     ///
     /// # Errors
-    /// - Returns [`RescaleError::ShiftExponentTooLargeError`] if either exponent does not fit in `u32`.
-    /// - Returns [`RescaleError::ScalingExponentTooLargeError`] if shifting `1u32 << κ` overflows.
-    /// - Returns [`RescaleError::ShiftExponentTooLargeError`] if shifting `1u32 << s` overflows.
+    ///
+    /// - Returns [`RescaleError::ShiftExponentTooLargeError`] if either exponent
+    ///   does not fit in `u32`.
+    /// - Returns [`RescaleError::ScalingExponentTooLargeError`] if computing
+    ///   `1u32 << scaling_exponent` overflows.
+    /// - Returns [`RescaleError::ShiftExponentTooLargeError`] if computing
+    ///   `1u32 << shift_exponent` overflows.
     pub fn new<C: Config, Builder: RootAPI<C>>(
         api: &mut Builder,
         scaling_exponent: usize,
@@ -116,108 +142,104 @@ impl RescalingContext {
                 type_name: "u32",
             },
         )?;
-        let scaled_shift_ = U256::from(scaling_factor_) * U256::from(shift_); // α·S = 2^{κ + s}
+        let scaled_shift_ = U256::from(scaling_factor_) * U256::from(shift_); // alpha*S = 2^{kappa + s}
 
-        let scaling_factor = api.constant(scaling_factor_); // α as Variable
+        let scaling_factor = api.constant(scaling_factor_); // alpha as Variable
         let shift = api.constant(shift_); // S as Variable
-        let scaled_shift = api.constant(CircuitField::<C>::from_u256(scaled_shift_)); // α·S as Variable
+        let scaled_shift = api.constant(CircuitField::<C>::from_u256(scaled_shift_)); // alpha*S as Variable
 
         Ok(Self {
-            scaling_exponent, // κ
+            scaling_exponent, // kappa
             shift_exponent,   // s
-            scaling_factor_,  // α = 2^κ
+            scaling_factor_,  // alpha = 2^kappa
             shift_,           // S = 2^s
-            scaled_shift_,    // α·S = 2^{κ + s}
-            scaling_factor,   // α as Variable
+            scaled_shift_,    // alpha*S = 2^{kappa + s}
+            scaling_factor,   // alpha as Variable
             shift,            // S as Variable
-            scaled_shift,     // α·S as Variable
+            scaled_shift,     // alpha*S as Variable
         })
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // FUNCTION: rescale
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
-/// Computes `q = floor((c + α·S)/α) − S`, optionally applying `ReLU`, using a
-/// precomputed [`RescalingContext`] for efficiency and clarity.
+/// Compute `q = floor((c + alpha * S) / alpha) - S`, optionally followed by `ReLU`,
+/// using a precomputed [`RescalingContext`] and a shared
+/// [`LogupRangeCheckContext`].
 ///
-/// All intermediate values are computed using **unconstrained operations** (i.e.,
-/// witness-only helper functions such as division, modulo, and bit decomposition),
-/// and **correctness is enforced explicitly** via constraint assertions such as
-/// `assert_is_equal`, `assert_is_zero`, and bitstring range checks.
+/// All range checks are implemented via `LogUp` (no direct bit-decomposition
+/// gadget here), and `ReLU` is implemented as `max(q, 0)` via the existing
+/// `constrained_max` gadget, which itself uses `LogUp`-based range checks and
+/// a product-of-differences argument to prove correctness.
 ///
 /// # Notation
-/// - Let `κ = context.scaling_exponent`, and define `α = 2^κ`.
-/// - Let `s = context.shift_exponent`, and define `S = 2^s`.
-/// - Define `T = 2·S − 1 = 2^(s + 1) − 1`.
+///
+/// - `kappa = context.scaling_exponent` and `alpha = 2^kappa`.
+/// - `s = context.shift_exponent` and `S = 2^s`.
+/// - `T = 2 * S - 1 = 2^(s + 1) - 1`.
 /// - `c` is the input `dividend`.
+/// - `q_shifted` is the intermediate quotient `q + S`.
 /// - `r` is the remainder.
-/// - `q^♯` is the offset quotient: `q^♯ = q + S`.
 ///
-/// # Process
-/// 1. Form `shifted_dividend = α·S + c` using precomputed constants from `context`.
-/// 2. Unconstrained division: `shifted_dividend = α·q^♯ + r`.
-/// 3. Enforce this equality with a constraint.
-/// 4. Range-check `r ∈ [0, α − 1]`.
-/// 5. Range-check `q^♯ ∈ [0, T] = [0, 2^(s + 1) − 1]`.
-/// 6. Recover `q = q^♯ − S`.
-/// 7. If `apply_relu`, output `max(q, 0)` using MSB of `q^♯`.
+/// # Process (high level)
 ///
-/// # Efficiency Note
-/// The use of a [`RescalingContext`] avoids recomputing and re-lifting
-/// the constants `α`, `S`, and `α·S` on each call, which improves performance
-/// in matrix-wide applications or other scenarios involving repeated rescaling.
-///
-///
-/// # Errors
-/// - Returns [`RescaleError::BitDecompositionError`] if bit decomposition fails for the remainder or quotient.
-/// - Returns [`RescaleError::BitReconstructionError`] if the reconstructed bitstring does not match the original value.
-/// - Returns other [`RescaleError`] variants if quotient/remainder assertions fail.
+/// 1. Form `shifted_dividend = alpha * S + c` using constants from `context`.
+/// 2. Use unconstrained division to compute witnesses `q_shifted` and `r`:
+///    `shifted_dividend = alpha * q_shifted + r`.
+/// 3. Enforce this equality as a circuit constraint.
+/// 4. Use `LogUp` to range-check `r` in `[0, alpha - 1]` using `kappa` bits.
+/// 5. Use `LogUp` to range-check `q_shifted` in `[0, T] = [0, 2^(s + 1) - 1]`.
+/// 6. Recover `q = q_shifted - S`.
+/// 7. If `apply_relu` is `true`, compute `max(q, 0)` using `constrained_max`.
 ///
 /// # Arguments
-/// - `api`: The circuit builder implementing `RootAPI<C>`.
-/// - `context`: A [`RescalingContext`] holding both native and circuit-lifted values
-///   for `α`, `S`, and `α·S`.
-/// - `dividend` (`c`): The field element to rescale, assumed in `[-α·S, α·(T − S)]`.
-/// - `apply_relu`: If `true`, returns `max(q, 0)` instead of `q`.
+///
+/// - `api`: mutable reference to the circuit builder.
+/// - `context`: precomputed [`RescalingContext`] carrying `alpha`, `S`, and `alpha * S`.
+/// - `logup_ctx`: shared [`LogupRangeCheckContext`] reused for all range checks.
+/// - `dividend`: the input `Variable` representing `c`.
+/// - `apply_relu`: if `true`, applies `ReLU` after rescaling.
+///
+/// # Errors
+///
+/// - Returns [`RescaleError`] if exponent handling or internal range checks fail,
+///   for example:
+///   - `RescaleError::ShiftExponentTooLargeError` or
+///     `RescaleError::ScalingExponentTooLargeError` when deriving bit-widths.
+///   - `RescaleError::BitDecompositionError` when `LogUp` range checks fail,
+///     or when `ShiftRangeContext::new` or `constrained_max` fail inside the
+///     `ReLU` branch.
 pub fn rescale<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     context: &RescalingContext,
+    logup_ctx: &mut LogupRangeCheckContext,
     dividend: Variable,
     apply_relu: bool,
 ) -> Result<Variable, RescaleError> {
-    // Step 1: compute shifted_dividend = α·S + c
+    // Step 1: compute shifted_dividend = alpha*S + c
     let shifted_dividend = api.add(context.scaled_shift, dividend);
 
-    // Step 2: Compute unchecked witness values q^♯, r via unconstrained Euclidean division: α·S + c = α·q^♯ + r
-    let shifted_q = api.unconstrained_int_div(shifted_dividend, context.scaling_factor_); // q^♯
+    // Step 2: Compute unchecked witness values q_shifted, r via unconstrained Euclidean division:
+    //         alpha*S + c = alpha*q_shifted + r
+    let shifted_q = api.unconstrained_int_div(shifted_dividend, context.scaling_factor_); // q_shifted
     let remainder = api.unconstrained_mod(shifted_dividend, context.scaling_factor_); // r
 
-    // Step 3: Enforce α·S + c = α·q^♯ + r
+    // Step 3: Enforce alpha*S + c = alpha*q_shifted + r
     let rhs_first_term = api.mul(context.scaling_factor, shifted_q);
     let rhs = api.add(rhs_first_term, remainder);
     api.assert_is_equal(shifted_dividend, rhs);
 
-    // Step 4: Range-check r ∈ [0, α − 1] using κ bits
-    let rem_bits =
-        unconstrained_to_bits(api, remainder, context.scaling_exponent).map_err(|_| {
-            RescaleError::BitDecompositionError {
-                var_name: "remainder".to_string(),
-                n_bits: context.scaling_exponent,
-            }
+    // Step 4: LogUp range-check r in [0, alpha − 1] using kappa bits
+    logup_ctx
+        .range_check::<C, Builder>(api, remainder, context.scaling_exponent)
+        .map_err(|e| RescaleError::BitDecompositionError {
+            var_name: format!("remainder (LogUp): {e}"),
+            n_bits: context.scaling_exponent,
         })?;
 
-    let rem_recon = assert_is_bitstring_and_reconstruct(api, &rem_bits).map_err(|_| {
-        RescaleError::BitReconstructionError {
-            var_name: "remainder".to_string(),
-            n_bits: context.scaling_exponent,
-        }
-    })?;
-
-    api.assert_is_equal(remainder, rem_recon);
-
-    // Step 5: Range-check q^♯ ∈ [0, 2^(s + 1) − 1] using s + 1 bits
+    // Step 5: LogUp range-check q_shifted in [0, 2^(s + 1) − 1] using s + 1 bits
     let n_bits_q =
         context
             .shift_exponent
@@ -227,64 +249,78 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
                 type_name: "usize",
             })?;
 
-    let q_bits = unconstrained_to_bits(api, shifted_q, n_bits_q).map_err(|_| {
-        RescaleError::BitDecompositionError {
-            var_name: "quotient".to_string(),
-            n_bits: context.scaling_exponent,
-        }
-    })?;
+    logup_ctx
+        .range_check::<C, Builder>(api, shifted_q, n_bits_q)
+        .map_err(|e| RescaleError::BitDecompositionError {
+            var_name: format!("quotient (LogUp): {e}"),
+            n_bits: n_bits_q,
+        })?;
 
-    let q_recon = assert_is_bitstring_and_reconstruct(api, &q_bits).map_err(|_| {
-        RescaleError::BitReconstructionError {
-            var_name: "quotient".to_string(),
-            n_bits: context.scaling_exponent,
-        }
-    })?;
+    // Step 6: Recover quotient q = q_shifted − S
+    let quotient = api.sub(shifted_q, context.shift); // q = q_shifted − S
 
-    api.assert_is_equal(shifted_q, q_recon);
-
-    // Step 6: Recover quotient q = q^♯ − S
-    // let quotient = api.sub(shifted_q, context.shift); // q = q^♯ − S
-    let quotient = api.sub(
-        shifted_q,
-        CircuitField::<C>::from_u256(U256::from(u128::from(context.shift_))),
-    ); // q = q^♯ − S
-
-    // Step 7: If ReLU is applied, zero out negatives using MSB of q^♯
+    // Step 7: If ReLU is applied, enforce ReLU(q) = max(q, 0) via constrained_max
     if apply_relu {
-        // q ≥ 0 ⇔ q^♯ ≥ S ⇔ MSB (bit d_s) is 1, where q^♯ ≤ 2^(s + 1) - 1
-        let sign_bit = q_bits[context.shift_exponent]; // the (s + 1)-st bit d_s
-        Ok(api.mul(quotient, sign_bit))
+        // Build shift context for the max gadget (same `s` as in RescalingContext)
+        let shift_ctx = ShiftRangeContext::new(api, context.shift_exponent).map_err(|e| {
+            RescaleError::BitDecompositionError {
+                var_name: format!("ShiftRangeContext::new in ReLU: {e}"),
+                n_bits: context.shift_exponent + 1,
+            }
+        })?;
+
+        let zero = api.constant(0);
+        let relu_q = constrained_max::<C, Builder>(api, &shift_ctx, logup_ctx, &[quotient, zero])
+            .map_err(|e| RescaleError::BitDecompositionError {
+            var_name: format!("ReLU via constrained_max failed: {e}"),
+            n_bits: context.shift_exponent + 1,
+        })?;
+
+        Ok(relu_q)
     } else {
         Ok(quotient)
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // FUNCTION: rescale_array
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
-/// Applies `rescale` elementwise to an `ArrayD<Variable>`, using provided scaling and shift exponents.
+/// Apply [`rescale`] elementwise to an `ArrayD<Variable>`, using the provided
+/// scaling and shift exponents.
 ///
-/// Internally constructs a [`RescalingContext`] with the given exponents:
-/// - `scaling_exponent` κ such that α = 2^κ
-/// - `shift_exponent` s such that S = 2^s
+/// Internally, this function:
+///
+/// - Constructs a [`RescalingContext`] with:
+///   - `scaling_exponent` `kappa` such that `alpha = 2^kappa`.
+///   - `shift_exponent` `s` such that `S = 2^s`.
+/// - Constructs a shared [`LogupRangeCheckContext`] used for **all** range checks
+///   (both remainder and quotient range proofs, plus any `constrained_max` calls
+///   used to implement `ReLU`).
+/// - Flattens the input array, applies [`rescale`] to each element, and rebuilds
+///   an `ArrayD<Variable>` of the same shape.
 ///
 /// # Arguments
-/// - `api`: Mutable reference to the circuit builder.
-/// - `array`: A tensor (of any shape) of `Variable`s to rescale.
-/// - `scaling_exponent`: κ for scaling by 2^κ.
-/// - `shift_exponent`: s for shifting by 2^s.
-/// - `apply_relu`: Whether to apply `ReLU` after rescaling.
+///
+/// - `api`: mutable reference to the circuit builder.
+/// - `array`: tensor (any shape) of `Variable`s to be rescaled.
+/// - `scaling_exponent`: `kappa` such that `alpha = 2^kappa`.
+/// - `shift_exponent`: `s` such that `S = 2^s`.
+/// - `apply_relu`: if `true`, applies `ReLU` after rescaling each element.
 ///
 /// # Returns
-/// An `ArrayD<Variable>` of the same shape with all values rescaled.
+///
+/// An `ArrayD<Variable>` of the same shape as `array`, with all entries
+/// rescaled (and optionally passed through `ReLU`).
 ///
 /// # Errors
-/// - Returns [`RescaleError`] if rescaling fails for any element (e.g. invalid bit decomposition).
-/// - Returns [`ArrayConversionError::ShapeError`] if the reshaped array cannot be reconstructed
-///   from the rescaled data.
-/// - Propagates any errors from [`RescalingContext::new`], such as overflow in the exponent shifts.
+///
+/// - Returns [`UtilsError`] converted from [`RescaleError`] if rescaling fails
+///   for any element.
+/// - Returns [`ArrayConversionError::ShapeError`] if reconstructing the array
+///   from the flattened data fails.
+/// - Propagates any errors from [`RescalingContext::new`] (for example, when
+///   exponent shifts overflow).
 pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     array: ArrayD<Variable>,
@@ -294,13 +330,20 @@ pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
 ) -> Result<ArrayD<Variable>, UtilsError> {
     let context = RescalingContext::new(api, scaling_exponent, shift_exponent)?;
 
+    // Shared LogUp table for all range checks in this rescale pass
+    let mut logup_ctx = LogupRangeCheckContext::new_default();
+    logup_ctx.init::<C, Builder>(api);
+
     // Convert to Vec, map with error handling, then back to ArrayD
     let shape = array.shape().to_vec();
     let results: Result<Vec<Variable>, RescaleError> = array
         .into_iter()
-        .map(|x| rescale(api, &context, x, apply_relu))
+        .map(|x| rescale::<C, Builder>(api, &context, &mut logup_ctx, x, apply_relu))
         .collect();
 
+    // Single final LogUp consistency check for all queries
+    logup_ctx.finalize::<C, Builder>(api);
+
     let rescaled_data = results?;
-    Ok(ArrayD::from_shape_vec(shape, rescaled_data).map_err(ArrayConversionError::ShapeError)?) //
+    Ok(ArrayD::from_shape_vec(shape, rescaled_data).map_err(ArrayConversionError::ShapeError)?)
 }

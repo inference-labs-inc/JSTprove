@@ -37,7 +37,10 @@ class TestQuantize(BaseQuantizerTest):
         scale_base: int = 10,
         *,
         rescale: bool = True,
-    ) -> tuple[onnx.NodeProto, tuple[str, LayerTestConfig, LayerTestSpec, NodeProto]]:
+    ) -> tuple[
+        list[onnx.NodeProto],
+        tuple[str, LayerTestConfig, LayerTestSpec, NodeProto],
+    ]:
         """Common setup for quantization tests"""
         layer_name, config, test_spec = test_case_data
 
@@ -65,6 +68,8 @@ class TestQuantize(BaseQuantizerTest):
             initializer_map=initializer_map,
         )
 
+        if not isinstance(result, list):
+            result = [result]
         return result, (layer_name, config, test_spec, node)
 
     @pytest.mark.unit

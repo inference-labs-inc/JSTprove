@@ -4,13 +4,12 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from numpy import asarray, ndarray
+import numpy as np
 
 from python.core.utils.errors import ShapeMismatchError
 from python.core.utils.witness_utils import compare_witness_to_io, load_witness
 
 if TYPE_CHECKING:
-    import numpy as np
     import torch
 
 from python.core.circuits.errors import (
@@ -775,18 +774,18 @@ class Circuit:
     def reshape_inputs_for_inference(
         self: Circuit,
         inputs: dict[str],
-    ) -> ndarray | dict[str, ndarray]:
+    ) -> np.ndarray | dict[str, np.ndarray]:
         """
         Reshape input tensors to match the model's expected input shape.
 
         Parameters
         ----------
-        inputs : dict[str] or ndarray
+        inputs : dict[str] or np.ndarray
             Input tensors or a dictionary of tensors.
 
         Returns
         -------
-        ndarray or dict[str, ndarray]
+        np.ndarray or dict[str, np.ndarray]
             Reshaped input(s) ready for inference.
         """
 
@@ -801,15 +800,33 @@ class Circuit:
         if isinstance(inputs, dict):
             if len(inputs) == 1:
                 only_key = next(iter(inputs))
-                inputs = asarray(inputs[only_key])
+                value = np.asarray(inputs[only_key])
+
+                # If shape is a dict, extract the shape for this key
+                if isinstance(shape, dict):
+                    key_shape = shape.get(only_key, None)
+                    if key_shape is None:
+                        raise CircuitConfigurationError(
+                            missing_attributes=[f"input_shape[{only_key!r}]"],
+                        )
+                    shape = key_shape
+
+                # From here on, treat it as a regular reshape
+                inputs = value
             else:
                 return self._reshape_dict_inputs(inputs, shape)
 
         # --- Regular reshape ---
+        if not isinstance(shape, (list, tuple)):
+            msg = (
+                f"Expected list or tuple shape for reshape, got {type(shape).__name__}"
+            )
+            raise CircuitInputError(msg)
+
         try:
-            return asarray(inputs).reshape(shape)
+            return np.asarray(inputs).reshape(shape)
         except Exception as e:
-            raise ShapeMismatchError(shape, list(asarray(inputs).shape)) from e
+            raise ShapeMismatchError(shape, list(np.asarray(inputs).shape)) from e
 
     def _reshape_dict_inputs(
         self: Circuit,
@@ -824,7 +841,7 @@ class Circuit:
             )
             raise CircuitInputError(msg, parameter="shape", expected="dict")
         for key, value in inputs.items():
-            tensor = asarray(value)
+            tensor = np.asarray(value)
             try:
                 inputs[key] = tensor.reshape(shape[key])
             except Exception as e:
@@ -867,16 +884,16 @@ class Circuit:
             value = inputs[key]
 
             # --- handle unsupported input types BEFORE entering try ---
-            if not isinstance(value, (ndarray, list, tuple)):
+            if not isinstance(value, (np.ndarray, list, tuple)):
                 msg = f"Unsupported input type for key '{key}': {type(value).__name__}"
                 raise CircuitProcessingError(message=msg)
 
             try:
                 # Convert to tensor, flatten, and back to list
-                if isinstance(value, ndarray):
+                if isinstance(value, np.ndarray):
                     flattened = value.flatten().tolist()
                 else:
-                    flattened = asarray(value).flatten().tolist()
+                    flattened = np.asarray(value).flatten().tolist()
             except Exception as e:
                 msg = f"Failed to flatten input '{key}' (type {type(value).__name__})"
                 raise CircuitProcessingError(message=msg) from e

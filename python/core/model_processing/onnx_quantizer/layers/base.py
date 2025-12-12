@@ -418,6 +418,40 @@ class BaseOpQuantizer:
 
 
 class QuantizerBase:
+    """
+    Shared mixin implementing the generic INT64 quantization pipeline.
+
+    IMPORTANT:
+        QuantizerBase is *not* a standalone quantizer. It must always be
+        combined with BaseOpQuantizer via multiple inheritance:
+
+            class FooQuantizer(BaseOpQuantizer, QuantizeFoo):
+                ...
+
+        BaseOpQuantizer supplies required methods and attributes that
+        QuantizerBase relies on:
+            - add_scaled_initializer_inputs
+            - insert_scale_node
+            - get_scaling
+            - new_initializers  (initializer buffer shared with converter)
+
+        If a subclass inherits QuantizerBase without BaseOpQuantizer,
+        QuantizerBase.quantize() will raise attribute errors at runtime.
+
+    This mixin centralizes:
+        - attribute extraction/merging
+        - optional initializer scaling (USE_WB + SCALE_PLAN)
+        - optional rescaling of outputs (USE_SCALING)
+        - creation of the final quantized NodeProto
+
+    The Quantize<Op> mixins should define:
+        - OP_TYPE
+        - DOMAIN
+        - USE_WB (bool)
+        - USE_SCALING (bool)
+        - SCALE_PLAN (dict[int,int]) if initializer scaling is enabled
+    """
+
     OP_TYPE = None
     DOMAIN = "ai.onnx.contrib"
     DEFAULT_ATTRS: ClassVar = {}

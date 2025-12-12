@@ -2,7 +2,6 @@
 
 pub mod build_layers;
 pub mod constants;
-pub mod core_math; // Bit-level and finite field math
 mod errors;
 pub mod graph_pattern_matching;
 pub mod json_array; // JSON-to-array conversions and trait lifting
