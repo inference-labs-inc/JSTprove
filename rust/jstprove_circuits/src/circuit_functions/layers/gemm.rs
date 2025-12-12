@@ -37,14 +37,11 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 /// Internal crate imports
 use crate::circuit_functions::{
     CircuitError,
-    layers::{
-        LayerError, LayerKind,
-        layer_ops::LayerOp,
-        math::{
-            freivalds_verify_matrix_product, matrix_addition, matrix_multiplication,
-            unconstrained_matrix_multiplication,
-        },
+    gadgets::linear_algebra::{
+        freivalds_verify_matrix_product, matrix_addition, matrix_multiplication,
+        unconstrained_matrix_multiplication,
     },
+    layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::{ALPHA, BETA, INPUT, TRANS_A, TRANS_B},
         graph_pattern_matching::PatternRegistry,

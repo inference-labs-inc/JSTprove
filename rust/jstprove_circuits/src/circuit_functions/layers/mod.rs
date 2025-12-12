@@ -8,7 +8,6 @@ pub mod flatten;
 pub mod gemm;
 mod layer_kinds;
 pub mod layer_ops;
-mod math;
 pub mod max;
 pub mod maxpool;
 pub mod min;
