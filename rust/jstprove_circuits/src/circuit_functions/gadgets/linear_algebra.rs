@@ -390,7 +390,7 @@ pub fn unconstrained_matrix_multiplication<C: Config, Builder: RootAPI<C>>(
 
     for i in 0..dim_m {
         for j in 0..dim_p {
-            let mut acc = api.unconstrained_identity(0);
+            let mut acc = api.constant(0);
             for k in 0..dim_n {
                 let mul = api.unconstrained_mul(a[(i, k)], b[(k, j)]);
                 acc = api.unconstrained_add(acc, mul);

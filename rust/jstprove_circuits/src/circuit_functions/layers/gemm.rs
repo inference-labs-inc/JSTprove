@@ -197,6 +197,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
                 layer: LayerKind::Gemm,
                 msg: format!("extract_params_and_expected_shape failed: {e}"),
             })?;
+        let freivalds_reps = circuit_params.freivalds_reps;
+        if freivalds_reps == 0 {
+            return Err(LayerError::InvalidParameterValue {
+                layer: LayerKind::Gemm,
+                layer_name: layer.name.clone(),
+                param_name: "freivalds_reps".to_string(),
+                value: freivalds_reps.to_string(),
+            }
+            .into());
+        }
+
         let gemm = Self {
             name: layer.name.clone(),
             index,
@@ -213,7 +224,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             transb: get_param_or_default(&layer.name, TRANS_B, &params, Some(&0))?,
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
-            freivalds_reps: circuit_params.freivalds_reps,
+            freivalds_reps,
         };
         Ok(Box::new(gemm))
     }
@@ -344,25 +355,42 @@ fn check_alpha_beta(
 //
 // All internal arithmetic is promoted to u128 to reduce overflow risk.
 fn should_use_freivalds(ell: usize, m: usize, n: usize, reps: usize) -> bool {
+    // reps == 0 must never allow Freivalds, otherwise core_product can be left unconstrained.
+    if reps == 0 {
+        return false;
+    }
+
     let ell_u = ell as u128;
     let m_u = m as u128;
     let n_u = n as u128;
     let reps_u = reps as u128;
 
-    // Full deterministic matmul cost
-    let cost_full = 2 * ell_u * m_u * n_u - ell_u * n_u;
+    // Full deterministic matmul cost:
+    // cost_full = 2*ell*m*n - ell*n
+    let cost_full = (2u128)
+        .saturating_mul(ell_u)
+        .saturating_mul(m_u)
+        .saturating_mul(n_u)
+        .saturating_sub(ell_u.saturating_mul(n_u));
 
-    // Freivalds cost terms
-    let s = ell_u * m_u + ell_u * n_u + m_u * n_u;
-    let d = 2 * s - (m_u + 2 * ell_u);
+    // Freivalds per-repetition "work" estimate:
+    // s = ell*m + ell*n + m*n
+    // d = 2*s - (m + 2*ell)
+    let s = ell_u
+        .saturating_mul(m_u)
+        .saturating_add(ell_u.saturating_mul(n_u))
+        .saturating_add(m_u.saturating_mul(n_u));
 
-    // If D is zero, Freivalds does not do useful arithmetic work
+    let d = (2u128)
+        .saturating_mul(s)
+        .saturating_sub(m_u.saturating_add((2u128).saturating_mul(ell_u)));
+
     if d == 0 {
         return false;
     }
 
-    // Total Freivalds cost for `reps` repetitions
-    let cost_f = reps_u * d;
+    // Total Freivalds cost
+    let cost_f = reps_u.saturating_mul(d);
 
     cost_f < cost_full
 }
