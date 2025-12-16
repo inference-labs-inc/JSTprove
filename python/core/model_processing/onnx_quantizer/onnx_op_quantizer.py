@@ -31,6 +31,7 @@ from python.core.model_processing.onnx_quantizer.layers.maxpool import MaxpoolQu
 from python.core.model_processing.onnx_quantizer.layers.min import MinQuantizer
 from python.core.model_processing.onnx_quantizer.layers.mul import MulQuantizer
 from python.core.model_processing.onnx_quantizer.layers.relu import ReluQuantizer
+from python.core.model_processing.onnx_quantizer.layers.squeeze import SqueezeQuantizer
 from python.core.model_processing.onnx_quantizer.layers.sub import SubQuantizer
 
 
@@ -90,6 +91,7 @@ class ONNXOpQuantizer:
         self.register("Max", MaxQuantizer(self.new_initializers))
         self.register("Min", MinQuantizer(self.new_initializers))
         self.register("BatchNormalization", BatchnormQuantizer(self.new_initializers))
+        self.register("Squeeze", SqueezeQuantizer(self.new_initializers))
 
     def register(
         self: ONNXOpQuantizer,
