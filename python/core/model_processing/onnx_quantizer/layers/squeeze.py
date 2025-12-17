@@ -136,6 +136,16 @@ class SqueezeQuantizer(BaseOpQuantizer, QuantizeSqueeze):
         if axes is None and len(node.input) == self._N_INPUTS_WITH_AXES:
             axes = self._get_axes_from_initializer_input(node, initializer_map)
 
+        # Basic local validation: no duplicates.
+        if len(set(axes)) != len(axes):
+            raise InvalidParamError(
+                node_name=node.name,
+                op_type=node.op_type,
+                message=f"axes must not contain duplicates: {axes}",
+                attr_key="axes",
+                expected="axes list with unique entries",
+            )
+
         # If axes omitted entirely: ONNX removes all dims of size 1.
         # We can't validate that here without shape info.
         if axes is None:
