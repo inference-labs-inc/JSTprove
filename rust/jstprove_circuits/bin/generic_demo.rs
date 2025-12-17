@@ -113,6 +113,9 @@ impl Circuit<Variable> {
         )
         .map_err(|e| CircuitError::Other(format!("Concatenation error: {e}")))?;
 
+        // Ensure the combined output is contiguous
+        eprintln!("Expected output shape {:?}", combined_output.shape());
+
         // Optionally reshape it to the desired final flatten_shape
         let combined_output = combined_output
             .into_shape_with_order(IxDyn(&flatten_shape))

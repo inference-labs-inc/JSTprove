@@ -3,9 +3,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from typing import ClassVar
+
     import onnx
 
 from python.core.model_processing.onnx_custom_ops.onnx_helpers import (
+    extract_attributes,
     get_attribute_ints,
 )
 from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
@@ -20,6 +23,12 @@ class QuantizeMaxpool(QuantizerBase):
     OP_TYPE = "Int64MaxPool"
     USE_WB = False
     USE_SCALING = False
+
+    DEFAULT_ATTRS: ClassVar = {
+        "dilations": "1",
+        "pads": "0",
+        "strides": "1",
+    }
 
 
 class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
@@ -72,6 +81,35 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
             InvalidParamError: If any requirement is not met.
         """
         _ = initializer_map
+        attributes = extract_attributes(node)
+        ceil_mode = attributes.get("ceil_mode", None)
+        auto_pad = attributes.get("auto_pad", None)
+        storage_order = attributes.get("storage_order", None)
+
+        if ceil_mode != 0 and ceil_mode is not None:
+            raise InvalidParamError(
+                node.name,
+                node.op_type,
+                "ceil_mode must be 0",
+                "ceil_mode",
+                "0",
+            )
+        if auto_pad != "NOTSET" and auto_pad is not None:
+            raise InvalidParamError(
+                node.name,
+                node.op_type,
+                "auto_pad must be NOTSET",
+                "auto_pad",
+                "0",
+            )
+        if storage_order != 0 and storage_order is not None:
+            raise InvalidParamError(
+                node.name,
+                node.op_type,
+                "storage_order must be 0",
+                "storage_order",
+                "0",
+            )
         self.check_all_params_exist(node)
         self.check_params_size(node)
         self.check_pool_pads(node)
