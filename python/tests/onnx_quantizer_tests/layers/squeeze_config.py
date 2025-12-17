@@ -20,16 +20,16 @@ class SqueezeConfigProvider(BaseLayerConfigProvider):
         return "Squeeze"
 
     def get_config(self) -> LayerTestConfig:
-        # NOTE: We use attribute-based axes for now.
-        # Testing axes-as-initializer requires extending create_initializers()
-        # to allow int64 initializers for name="axes".
+        # Test opset-newer form: Squeeze(data, axes) where axes is an int64 initializer.
         return LayerTestConfig(
             op_type="Squeeze",
-            valid_inputs=["A"],  # axes may be omitted or provided as attribute
-            valid_attributes={},  # overridden per-test as needed
+            valid_inputs=["A", "axes"],
+            valid_attributes={},  # no attribute-based axes
             required_initializers={},
             input_shapes={
                 "A": [1, 3, 1, 5],
+                # "axes" will be removed from graph inputs automatically when it is an initializer.
+                "axes": [2],
             },
             output_shapes={
                 "squeeze_output": [3, 5],
@@ -43,37 +43,36 @@ class SqueezeConfigProvider(BaseLayerConfigProvider):
             # --- VALID TESTS ---
             valid_test("axes_omitted")
             .description("Squeeze with no axes input: removes all dims of size 1")
+            .override_inputs("A")  # only data input
             .override_input_shapes(A=[1, 3, 1, 5])
             .override_output_shapes(squeeze_output=[3, 5])
             .tags("basic", "squeeze", "axes_omitted")
             .build(),
             valid_test("axes_init_basic")
-            .description(
-                "Squeeze with axes initializer [0, 2] on shape [1,3,1,5] -> [3,5]"
-            )
+            .description("Squeeze with axes initializer [0,2] on [1,3,1,5] -> [3,5]")
             .override_inputs("A", "axes")
             .override_initializer("axes", np.array([0, 2], dtype=np.int64))
             .override_input_shapes(A=[1, 3, 1, 5])
             .override_output_shapes(squeeze_output=[3, 5])
-            .tags("basic", "squeeze", "axes_init")
+            .tags("basic", "squeeze", "axes_initializer")
             .build(),
             valid_test("axes_init_singleton_middle")
-            .description("Squeeze with axes initializer [1] on shape [2,1,4] -> [2,4]")
+            .description("Squeeze with axes initializer [1] on [2,1,4] -> [2,4]")
             .override_inputs("A", "axes")
             .override_initializer("axes", np.array([1], dtype=np.int64))
             .override_input_shapes(A=[2, 1, 4])
             .override_output_shapes(squeeze_output=[2, 4])
-            .tags("squeeze", "axes_init")
+            .tags("squeeze", "axes_initializer")
             .build(),
             valid_test("axes_init_negative")
-            .description("Squeeze with negative axis [-2] on shape [2,1,4] -> [2,4]")
+            .description("Squeeze with axes initializer [-2] on [2,1,4] -> [2,4]")
             .override_inputs("A", "axes")
             .override_initializer("axes", np.array([-2], dtype=np.int64))
             .override_input_shapes(A=[2, 1, 4])
             .override_output_shapes(squeeze_output=[2, 4])
-            .tags("squeeze", "axes_init", "negative_axis")
+            .tags("squeeze", "axes_initializer", "negative_axis")
             .build(),
-            # --- ERROR TESTS (quantizer-level validation) ---
+            # --- ERROR TESTS ---
             error_test("duplicate_axes_init")
             .description("Duplicate axes in initializer should be rejected")
             .override_inputs("A", "axes")
@@ -81,27 +80,24 @@ class SqueezeConfigProvider(BaseLayerConfigProvider):
             .override_input_shapes(A=[2, 1, 4])
             .override_output_shapes(squeeze_output=[2, 4])
             .expects_error(InvalidParamError, match="axes must not contain duplicates")
-            .tags("error", "squeeze", "axes_init")
+            .tags("error", "squeeze", "axes_initializer")
             .build(),
             error_test("dynamic_axes_input_not_supported")
             .description(
-                "Squeeze with 2 inputs where axes is not an initializer should be rejected"
+                "Squeeze with runtime axes (2 inputs but axes is NOT an initializer) should be rejected"
             )
-            .override_inputs("A", "axes")  # axes as runtime input (unsupported)
-            .override_input_shapes(
-                A=[1, 3, 1, 5],
-                axes=[2],
-            )  # axes becomes a graph input
+            .override_inputs("A", "axes")  # axes provided as graph input (unsupported)
+            .override_input_shapes(A=[1, 3, 1, 5], axes=[2])
             .override_output_shapes(squeeze_output=[3, 5])
             .expects_error(
-                InvalidParamError,
-                match="Dynamic axes input is not supported",
+                InvalidParamError, match="Dynamic axes input is not supported"
             )
             .tags("error", "squeeze", "axes_input")
             .build(),
             # --- E2E TESTS ---
             e2e_test("e2e_axes_omitted")
             .description("End-to-end Squeeze test (axes omitted)")
+            .override_inputs("A")
             .override_input_shapes(A=[1, 3, 1, 5])
             .override_output_shapes(squeeze_output=[3, 5])
             .tags("e2e", "squeeze")
@@ -112,6 +108,6 @@ class SqueezeConfigProvider(BaseLayerConfigProvider):
             .override_initializer("axes", np.array([0, 2], dtype=np.int64))
             .override_input_shapes(A=[1, 3, 1, 5])
             .override_output_shapes(squeeze_output=[3, 5])
-            .tags("e2e", "squeeze", "axes_init")
+            .tags("e2e", "squeeze", "axes_initializer")
             .build(),
         ]

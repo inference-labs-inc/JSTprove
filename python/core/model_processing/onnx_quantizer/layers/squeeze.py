@@ -87,7 +87,7 @@ class SqueezeQuantizer(BaseOpQuantizer, QuantizeSqueeze):
                 node_name=node.name,
                 op_type=node.op_type,
                 message=(
-                    "Dynamic axes input is not supported for Squeeze "
+                    f"Dynamic axes input is not supported for Squeeze "
                     f"(expected axes '{axes_name}' to be an initializer)."
                 ),
             )
@@ -125,29 +125,22 @@ class SqueezeQuantizer(BaseOpQuantizer, QuantizeSqueeze):
         self.validate_node_has_output(node)
         initializer_map = initializer_map or {}
 
-        if len(node.input) not in (self._N_INPUTS_NO_AXES, self._N_INPUTS_WITH_AXES):
+        n_inputs = len(node.input)
+        if n_inputs not in (self._N_INPUTS_NO_AXES, self._N_INPUTS_WITH_AXES):
             raise InvalidParamError(
                 node_name=node.name,
                 op_type=node.op_type,
-                message=f"Squeeze expects 1 or 2 inputs, got {len(node.input)}.",
+                message=f"Squeeze expects 1 or 2 inputs, got {n_inputs}.",
             )
 
         axes = self._get_axes_from_attribute(node)
-        if axes is None and len(node.input) == self._N_INPUTS_WITH_AXES:
+
+        # If axes is provided as a second input, it must be a constant initializer.
+        if axes is None and n_inputs == self._N_INPUTS_WITH_AXES:
             axes = self._get_axes_from_initializer_input(node, initializer_map)
 
-        # Basic local validation: no duplicates.
-        if len(set(axes)) != len(axes):
-            raise InvalidParamError(
-                node_name=node.name,
-                op_type=node.op_type,
-                message=f"axes must not contain duplicates: {axes}",
-                attr_key="axes",
-                expected="axes list with unique entries",
-            )
-
-        # If axes omitted entirely: ONNX removes all dims of size 1.
-        # We can't validate that here without shape info.
+        # If axes is omitted entirely, ONNX semantics are "remove all dims of size 1".
+        # We can't validate legality here without rank/shape, so accept and defer to Rust.
         if axes is None:
             return
 
