@@ -9,7 +9,6 @@ use crate::circuit_functions::{
     utils::{
         constants::INPUT,
         onnx_model::{extract_params_and_expected_shape, get_input_name, get_param},
-        shaping, // (optional; not used here, but keep if your module expects it)
     },
 };
 
@@ -74,7 +73,7 @@ impl SqueezeLayer {
 
         // axes omitted => remove all dims of size 1
         if axes.is_none() {
-            let mut shape: Vec<usize> = input_shape.iter().copied().filter(|&d| d != 1).collect();
+            let shape: Vec<usize> = input_shape.iter().copied().filter(|&d| d != 1).collect();
             // ONNX allows 0-D output if everything is squeezed
             // ndarray supports IxDyn(&[])
             return Ok(shape);
@@ -155,10 +154,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SqueezeLayer {
         // axes may be missing (axes omitted semantics)
         // When present, parse_attributes on Python side should serialize it as a list.
         // `get_param` will error if missing, so we only call it if the key exists.
-        let axes: Option<Vec<i64>> = if params.contains_key(AXES) {
-            Some(get_param(&layer.name, AXES, &params)?)
-        } else {
-            None
+        let axes: Option<Vec<i64>> = match params.get(AXES) {
+            Some(_) => Some(get_param(&layer.name, AXES, &params)?),
+            None => None,
         };
 
         let squeeze = Self {
