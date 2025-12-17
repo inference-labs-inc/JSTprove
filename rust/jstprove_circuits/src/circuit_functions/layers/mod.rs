@@ -14,6 +14,7 @@ pub mod min;
 pub mod mul;
 pub mod relu;
 pub mod reshape;
+pub mod squeeze;
 pub mod sub;
 
 pub use errors::LayerError;
