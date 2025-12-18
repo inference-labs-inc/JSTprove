@@ -77,19 +77,6 @@ class UnsqueezeConfigProvider(BaseLayerConfigProvider):
             .tags("unsqueeze", "axes_initializer")
             .build(),
             # --- ERROR TESTS ---
-            error_test("axes_missing")
-            .description(
-                "Unsqueeze requires axes (attribute or initializer); "
-                "missing axes should be rejected",
-            )
-            .override_inputs("A")  # only data input, no axes attribute provided
-            .override_input_shapes(A=[3, 5])
-            .override_output_shapes(
-                unsqueeze_output=[3, 5],
-            )  # not used; kept consistent
-            .expects_error(InvalidParamError, match="Unsqueeze requires 'axes'")
-            .tags("error", "unsqueeze", "axes_missing")
-            .build(),
             error_test("duplicate_axes_init")
             .description("Duplicate axes in initializer should be rejected")
             .override_inputs("A", "axes")

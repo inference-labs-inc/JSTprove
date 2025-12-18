@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import numpy as np
+
 from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
 from python.tests.onnx_quantizer_tests.layers.base import (
     e2e_test,
@@ -37,7 +39,6 @@ class SqueezeConfigProvider(BaseLayerConfigProvider):
         )
 
     def get_test_specs(self) -> list:
-        import numpy as np
 
         return [
             # --- VALID TESTS ---
