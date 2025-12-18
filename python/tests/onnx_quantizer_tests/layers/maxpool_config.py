@@ -65,6 +65,36 @@ class MaxPoolConfigProvider(BaseLayerConfigProvider):
             .tags("dilations", "non_default", "pool")
             .override_output_shapes(maxpool_output=[1, 3, 1, 1])
             .build(),
+            valid_test("missing_optional_attrs")
+            .description(
+                "MaxPool without pads/strides/dilations should use default values",
+            )
+            .override_attrs(
+                pads=None,
+                strides=None,
+                dilations=None,
+            )
+            .tags("defaults", "optional_attrs", "pool")
+            .build(),
+            valid_test("non_default_pads")
+            .description("MaxPool with explicit non-default dilations")
+            .override_attrs(pads=[1, 1, 1, 1])
+            .override_output_shapes(maxpool_output=[1, 3, 3, 3])
+            .tags("pads", "non_default", "pool")
+            .build(),
+            valid_test("non_default_strides")
+            .description("MaxPool with explicit non-default strides [3, 3]")
+            .override_attrs(strides=[3, 3])
+            .override_output_shapes(maxpool_output=[1, 3, 1, 1])
+            .tags("strides", "non_default", "pool")
+            .build(),
+            valid_test("rectangular_strides")
+            .description("MaxPool with non-square strides [2, 1]")
+            .override_attrs(strides=[2, 1])
+            .override_output_shapes(maxpool_output=[1, 3, 2, 3])
+            .tags("strides", "non_square", "pool")
+            .build(),
+            # --- E2E TESTS ---
             e2e_test("e2e_basic")
             .description("End-to-end test for 2D MaxPool")
             .override_input_shapes(input=[1, 3, 4, 4])
@@ -81,6 +111,39 @@ class MaxPoolConfigProvider(BaseLayerConfigProvider):
             .override_attrs(dilations=[2, 2])
             .override_output_shapes(maxpool_output=[1, 3, 1, 1])
             .tags("dilations", "non_default", "pool")
+            .build(),
+            e2e_test("e2e_defaults_applied")
+            .description("E2E MaxPool with default pads/strides/dilations applied")
+            .override_attrs(
+                pads=None,
+                strides=None,
+                dilations=None,
+            )
+            .override_input_shapes(input=[1, 1, 4, 4])
+            .override_output_shapes(maxpool_output=[1, 1, 3, 3])
+            .tags("e2e", "defaults", "pool")
+            .build(),
+            e2e_test("non_default_pads")
+            .description("MaxPool with explicit non-default dilations")
+            .override_attrs(pads=[1, 1, 1, 1])
+            .override_output_shapes(maxpool_output=[1, 3, 3, 3])
+            .tags("pads", "non_default", "pool")
+            .build(),
+            e2e_test("non_default_strides")
+            .description("E2E MaxPool with explicit non-default strides")
+            .override_attrs(strides=[3, 3])
+            .override_input_shapes(input=[1, 3, 4, 4])
+            .override_output_shapes(maxpool_output=[1, 3, 1, 1])
+            .tags("e2e", "strides", "non_default", "pool")
+            .build(),
+            e2e_test("missing_strides_attr_defaults_applied")
+            .description(
+                "E2E MaxPool without strides attribute should default to [1, 1]",
+            )
+            .override_attrs(strides=None)
+            .override_input_shapes(input=[1, 1, 4, 4])
+            .override_output_shapes(maxpool_output=[1, 1, 3, 3])
+            .tags("e2e", "defaults", "strides", "pool")
             .build(),
             # # --- ERROR TESTS ---
             error_test("asymmetric_padding")
@@ -114,28 +177,6 @@ class MaxPoolConfigProvider(BaseLayerConfigProvider):
             .tags("invalid", "storage_order", "pool")
             .build(),
             # This can be removed if we start to support explicit None strides
-            error_test("explicit_none_strides")
-            .description(
-                "strides=None should fail; defaults only when attribute is omitted",
-            )
-            .override_attrs(strides=None)
-            .expects_error(
-                InvalidParamError,
-                "strides",
-            )
-            .tags("invalid", "explicit_none", "strides", "pool")
-            .build(),
-            error_test("explicit_none_pads")
-            .description(
-                "Explicit pads=None should fail; pads must be omitted or valid",
-            )
-            .override_attrs(pads=None)
-            .expects_error(
-                InvalidParamError,
-                "pads",
-            )
-            .tags("invalid", "explicit_none", "pads", "pool")
-            .build(),
             # --- EDGE CASE / SKIPPED TEST ---
             valid_test("large_input")
             .description("Large MaxPool input (performance/stress test)")

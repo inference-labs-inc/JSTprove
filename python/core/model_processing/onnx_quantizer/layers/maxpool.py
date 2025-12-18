@@ -123,8 +123,8 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
         Raises:
             InvalidParamError: If shape requirement is not met.
         """
-        # May need: ["strides", "kernel_shape", "pads", "dilations"]
-        required_attrs = ["strides", "kernel_shape"]
+        required_attrs = ["kernel_shape"]
+
         self.validate_required_attrs(node, required_attrs)
 
         # Check dimension of kernel
@@ -159,10 +159,28 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
 
     def check_pool_pads(self: MaxpoolQuantizer, node: onnx.NodeProto) -> None:
         kernel_shape = get_attribute_ints(node, "kernel_shape", default=[])
-        pads = get_attribute_ints(node, "pads", default=None)
+        pads_raw = get_attribute_ints(
+            node,
+            "pads",
+            default=self.DEFAULT_ATTRS.get("pads", None),
+        )
+        pads = self.adjust_pads(node, pads_raw)
+
         if pads is None:
             return
         num_dims = len(kernel_shape)
+
+        if len(pads) == 1:
+            pads = pads * 2 * num_dims
+        elif len(pads) == num_dims:
+            # If only beginning pads given, repeat for end pads
+            pads = pads + pads
+        elif len(pads) != num_dims * 2:
+            raise InvalidParamError(
+                node.name,
+                node.op_type,
+                f"Expected {num_dims * 2} pads, got {len(pads)}",
+            )
         if len(pads) != num_dims * 2:
             raise InvalidParamError(
                 node.name,
@@ -186,3 +204,53 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
                     node.op_type,
                     f"pads[{dim + num_dims}]={pad_after} >= kernel[{dim}]={kernel}",
                 )
+
+    def adjust_pads(
+        self: MaxpoolQuantizer,
+        node: onnx.NodeProto,
+        pads_raw: str | int | list[int] | None,
+    ) -> list[int]:
+        if pads_raw is None:
+            pads: list[int] = []
+        elif isinstance(pads_raw, str):
+            # single string, could be "0" or "1 2"
+            pads = [int(x) for x in pads_raw.split()]
+        elif isinstance(pads_raw, int):
+            # single integer
+            pads = [pads_raw]
+        elif isinstance(pads_raw, (list, tuple)):
+            # already a list of numbers (may be strings)
+            pads = [int(x) for x in pads_raw]
+        else:
+            raise InvalidParamError(
+                node.name,
+                node.op_type,
+                f"Cannot parse pads: {pads_raw}",
+            )
+
+        return pads
+
+    def pre_analysis_transform(
+        self: MaxpoolQuantizer,
+        node: onnx.NodeProto,
+        graph: onnx.GraphProto,
+        initializer_map: dict[str, onnx.TensorProto],
+        scale_base: int,
+        scale_exponent: int,
+    ) -> None:
+        original_attrs = self.DEFAULT_ATTRS
+        # May want to incorporate spatial rank into these?
+        self.DEFAULT_ATTRS = {
+            "dilations": [1, 1],
+            "pads": [0, 0, 0, 0],
+            "strides": [1, 1],
+        }
+        x = super().pre_analysis_transform(
+            node,
+            graph,
+            initializer_map,
+            scale_base,
+            scale_exponent,
+        )
+        self.DEFAULT_ATTRS = original_attrs
+        return x
