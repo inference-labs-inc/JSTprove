@@ -25,9 +25,9 @@ class QuantizeMaxpool(QuantizerBase):
     USE_SCALING = False
 
     DEFAULT_ATTRS: ClassVar = {
-        "dilations": "1",
-        "pads": "0",
-        "strides": "1",
+        "dilations": [1],
+        "pads": [0],
+        "strides": [1],
     }
 
 
@@ -229,28 +229,3 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
             )
 
         return pads
-
-    def pre_analysis_transform(
-        self: MaxpoolQuantizer,
-        node: onnx.NodeProto,
-        graph: onnx.GraphProto,
-        initializer_map: dict[str, onnx.TensorProto],
-        scale_base: int,
-        scale_exponent: int,
-    ) -> None:
-        original_attrs = self.DEFAULT_ATTRS
-        # May want to incorporate spatial rank into these?
-        self.DEFAULT_ATTRS = {
-            "dilations": [1, 1],
-            "pads": [0, 0, 0, 0],
-            "strides": [1, 1],
-        }
-        x = super().pre_analysis_transform(
-            node,
-            graph,
-            initializer_map,
-            scale_base,
-            scale_exponent,
-        )
-        self.DEFAULT_ATTRS = original_attrs
-        return x

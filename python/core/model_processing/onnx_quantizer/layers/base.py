@@ -488,6 +488,8 @@ class QuantizerBase:
         if self.USE_SCALING:
             attrs["rescale"] = int(scale_config.rescale)
 
+        attrs = self._serialize_quantized_attrs(attrs)
+
         # (3) Add scaling constant if needed
         if self.USE_SCALING:
             scale_value = self.get_scaling(scale_config.base, scale_config.exponent)
@@ -603,6 +605,23 @@ class QuantizerBase:
                 ) from e
 
             node.attribute.append(attr)
+
+    def _serialize_quantized_attrs(self, attrs: dict) -> dict:
+        """
+        Convert logical attribute values into the serialized form expected
+        by quantized custom ops.
+
+        Lists are converted to comma-separated strings.
+        """
+        serialized = {}
+
+        for name, value in attrs.items():
+            if isinstance(value, list):
+                serialized[name] = ", ".join(str(v) for v in value)
+            else:
+                serialized[name] = value
+
+        return serialized
 
 
 class PassthroughQuantizer(BaseOpQuantizer):

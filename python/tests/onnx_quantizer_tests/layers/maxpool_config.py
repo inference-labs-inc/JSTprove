@@ -77,7 +77,7 @@ class MaxPoolConfigProvider(BaseLayerConfigProvider):
             .tags("defaults", "optional_attrs", "pool")
             .build(),
             valid_test("non_default_pads")
-            .description("MaxPool with explicit non-default dilations")
+            .description("MaxPool with explicit non-default pads")
             .override_attrs(pads=[1, 1, 1, 1])
             .override_output_shapes(maxpool_output=[1, 3, 3, 3])
             .tags("pads", "non_default", "pool")
@@ -124,7 +124,7 @@ class MaxPoolConfigProvider(BaseLayerConfigProvider):
             .tags("e2e", "defaults", "pool")
             .build(),
             e2e_test("non_default_pads")
-            .description("MaxPool with explicit non-default dilations")
+            .description("MaxPool with explicit non-default pads")
             .override_attrs(pads=[1, 1, 1, 1])
             .override_output_shapes(maxpool_output=[1, 3, 3, 3])
             .tags("pads", "non_default", "pool")
