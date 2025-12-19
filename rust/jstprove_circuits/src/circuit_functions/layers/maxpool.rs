@@ -109,11 +109,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         // Default values according to ONNX spec
         let default_dilation: Vec<usize> = vec![1; spatial_rank];
         let default_pads: Vec<usize> = vec![0; 2 * spatial_rank]; // begin + end for each dim
+        let default_strides: Vec<usize> = vec![1; spatial_rank];
 
         let maxpool = Self {
             name: layer.name.clone(),
             kernel_shape,
-            strides: get_param(&layer.name, STRIDES, &params)?,
+            strides: get_param_or_default(&layer.name, STRIDES, &params, Some(&default_strides))?,
             dilation: get_param_or_default(
                 &layer.name,
                 DILATION,
