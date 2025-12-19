@@ -85,13 +85,14 @@ class SqueezeConfigProvider(BaseLayerConfigProvider):
             .build(),
             error_test("dynamic_axes_input_not_supported")
             .description(
-                "Squeeze with runtime axes (2 inputs but axes is NOT an initializer) should be rejected"
+                "Squeeze with runtime axes (2 inputs but axes is NOT an initializer) should be rejected",
             )
             .override_inputs("A", "axes")  # axes provided as graph input (unsupported)
             .override_input_shapes(A=[1, 3, 1, 5], axes=[2])
             .override_output_shapes(squeeze_output=[3, 5])
             .expects_error(
-                InvalidParamError, match="Dynamic axes input is not supported"
+                InvalidParamError,
+                match="Dynamic axes input is not supported",
             )
             .tags("error", "squeeze", "axes_input")
             .build(),
