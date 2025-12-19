@@ -100,7 +100,7 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
                 node.op_type,
                 "auto_pad must be NOTSET",
                 "auto_pad",
-                "0",
+                "NOTSET",
             )
         if storage_order != 0 and storage_order is not None:
             raise InvalidParamError(
@@ -176,12 +176,6 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
             # If only beginning pads given, repeat for end pads
             pads = pads + pads
         elif len(pads) != num_dims * 2:
-            raise InvalidParamError(
-                node.name,
-                node.op_type,
-                f"Expected {num_dims * 2} pads, got {len(pads)}",
-            )
-        if len(pads) != num_dims * 2:
             raise InvalidParamError(
                 node.name,
                 node.op_type,
