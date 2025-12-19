@@ -30,19 +30,33 @@ impl UnsqueezeLayer {
         let mut seen: HashSet<usize> = HashSet::new();
 
         for &a in &self.axes {
-            let ax_i64 = if a < 0 { a + rank_out as i64 } else { a };
+            let rank_i64 =
+                i64::try_from(rank_out).map_err(|_| LayerError::InvalidParameterValue {
+                    layer: LayerKind::Unsqueeze,
+                    layer_name: self.name.clone(),
+                    param_name: AXES.into(),
+                    value: format!("rank {rank_out} cannot be represented as i64"),
+                })?;
 
-            if ax_i64 < 0 || ax_i64 >= rank_out as i64 {
+            let ax_i64 = if a < 0 { a + rank_i64 } else { a };
+
+            if ax_i64 < 0 || ax_i64 >= rank_i64 {
                 return Err(LayerError::InvalidParameterValue {
                     layer: LayerKind::Unsqueeze,
                     layer_name: self.name.clone(),
                     param_name: AXES.into(),
-                    value: format!("axis {a} out of range for output-rank {rank_out}"),
+                    value: format!("axis {a} out of range for rank {rank_out}"),
                 }
                 .into());
             }
 
-            let ax = ax_i64 as usize;
+            let ax = usize::try_from(ax_i64).map_err(|_| LayerError::InvalidParameterValue {
+                layer: LayerKind::Unsqueeze,
+                layer_name: self.name.clone(),
+                param_name: AXES.into(),
+                value: format!("axis {a} is not a valid usize index after normalization"),
+            })?;
+
             if !seen.insert(ax) {
                 return Err(LayerError::InvalidParameterValue {
                     layer: LayerKind::Unsqueeze,
@@ -116,11 +130,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for UnsqueezeLayer {
             })?
             .clone();
 
-        let in_shape: Vec<usize> = layer_input.shape().iter().copied().collect();
+        let in_shape: Vec<usize> = layer_input.shape().to_vec();
         let out_shape = self.unsqueezed_shape(&in_shape)?;
 
         // Reshape without changing element order.
-        let flat: Vec<Variable> = layer_input.iter().cloned().collect();
+        let flat: Vec<Variable> = layer_input.iter().copied().collect();
 
         let out = ArrayD::from_shape_vec(IxDyn(&out_shape), flat).map_err(|e| {
             LayerError::InvalidShape {
