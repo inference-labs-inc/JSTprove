@@ -483,11 +483,12 @@ class QuantizerBase:
             node.input[:] = new_inputs
 
         # (2) Collect & merge attributes
+        self.apply_default_attrs(node)
         attrs = extract_attributes(node)
-        for k, v in self.DEFAULT_ATTRS.items():
-            attrs.setdefault(k, v)
         if self.USE_SCALING:
             attrs["rescale"] = int(scale_config.rescale)
+
+        attrs = self._serialize_quantized_attrs(attrs)
 
         # (3) Add scaling constant if needed
         if self.USE_SCALING:
@@ -546,6 +547,7 @@ class QuantizerBase:
          - The resulting model will not make accurate prediction and should be
          used solely for analysis and keeping track of w_and_b
         """
+        self.apply_default_attrs(node)
         # If subclass does not want auto-scaling, do nothing
         if not getattr(self, "USE_WB", False):
             return
@@ -579,6 +581,47 @@ class QuantizerBase:
             graph.initializer.append(new_tensor)
 
             initializer_map[tensor.name] = new_tensor
+
+    def apply_default_attrs(self, node: onnx.NodeProto) -> None:
+        """
+        Ensure DEFAULT_ATTRS are explicitly present on the node.
+        Does not overwrite existing attributes.
+        """
+        if not getattr(self, "DEFAULT_ATTRS", None):
+            return
+
+        existing = {attr.name for attr in node.attribute}
+
+        for name, value in self.DEFAULT_ATTRS.items():
+            if name in existing:
+                continue
+
+            try:
+                attr = onnx.helper.make_attribute(name, value)
+            except Exception as e:
+                raise HandlerImplementationError(
+                    op_type=node.op_type,
+                    message=f"Failed to create default attribute '{name}': {e}",
+                ) from e
+
+            node.attribute.append(attr)
+
+    def _serialize_quantized_attrs(self, attrs: dict) -> dict:
+        """
+        Convert logical attribute values into the serialized form expected
+        by quantized custom ops.
+
+        Lists are converted to comma-separated strings.
+        """
+        serialized = {}
+
+        for name, value in attrs.items():
+            if isinstance(value, list):
+                serialized[name] = ", ".join(str(v) for v in value)
+            else:
+                serialized[name] = value
+
+        return serialized
 
 
 class PassthroughQuantizer(BaseOpQuantizer):
