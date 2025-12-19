@@ -34,6 +34,14 @@ pub struct CircuitParams {
     pub rescale_config: HashMap<String, bool>,
     pub inputs: Vec<ONNXIO>,
     pub outputs: Vec<ONNXIO>,
+    // Number of Freivalds repetitions to use for GEMM layers.
+    // Defaults to 1 when absent in the JSON.
+    #[serde(default = "default_freivalds_reps")]
+    pub freivalds_reps: usize,
+}
+
+fn default_freivalds_reps() -> usize {
+    1
 }
 
 #[derive(Deserialize, Clone)]
