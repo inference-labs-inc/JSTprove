@@ -90,8 +90,8 @@ class UnsqueezeQuantizer(BaseOpQuantizer, QuantizeUnsqueeze):
                 node_name=node.name,
                 op_type=node.op_type,
                 message=(
-                    f"Unsqueeze expects either 1 input (axes as attribute) "
-                    f"or 2 inputs (axes as initializer), got {n_inputs}."
+                    f"Dynamic axes input is not supported for Unsqueeze "
+                    f"(expected axes '{axes_name}' to be an initializer)."
                 ),
             )
 
