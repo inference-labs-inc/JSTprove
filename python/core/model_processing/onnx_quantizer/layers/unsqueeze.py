@@ -90,8 +90,8 @@ class UnsqueezeQuantizer(BaseOpQuantizer, QuantizeUnsqueeze):
                 node_name=node.name,
                 op_type=node.op_type,
                 message=(
-                    "Unsqueeze expects either 1 input (axes as attribute) "
-                    "or 2 inputs (axes as initializer), got {n_inputs}."
+                    f"Unsqueeze expects either 1 input (axes as attribute) "
+                    f"or 2 inputs (axes as initializer), got {n_inputs}."
                 ),
             )
 
