@@ -14,7 +14,9 @@ pub mod min;
 pub mod mul;
 pub mod relu;
 pub mod reshape;
+pub mod squeeze;
 pub mod sub;
+pub mod unsqueeze;
 
 pub use errors::LayerError;
 pub use layer_kinds::LayerKind;

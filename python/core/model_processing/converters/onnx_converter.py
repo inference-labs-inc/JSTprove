@@ -62,6 +62,8 @@ ONNXIODict = dict[str, str | int | list[int]]
 
 CircuitParamsDict = dict[str, int | dict[str, bool]]
 
+_N_UNSQUEEZE_INPUTS: int = 2
+
 
 @dataclass
 class ONNXLayer:
@@ -553,6 +555,45 @@ class ONNXConverter(ModelConverter):
             domain_to_version.get(node.domain, "unknown") if domain_to_version else -1
         )
         params = parse_attributes(node.attribute)
+        # --- Special-case: opset-new Unsqueeze has axes as an input (initializer),
+        # not an attribute. Rust expects params["axes"].
+        if op_type == "Unsqueeze" and (not params or "axes" not in params):
+            # In opset>=13, Unsqueeze schema is: Unsqueeze(data, axes)
+            if len(inputs) != _N_UNSQUEEZE_INPUTS:
+                msg = (
+                    f"Unsqueeze '{name}' is missing axes input. "
+                    f"Expected 2 inputs (data, axes), got {len(inputs)}: {list(inputs)}"
+                )
+                raise LayerAnalysisError(model_type=self.model_type, reason=msg)
+
+            # axes must be a constant initializer
+            # (we do not support runtime/dynamic axes)
+            axes_name = inputs[1]
+
+            # Build an initializer map from *this model* so we can read axes.
+            initializer_map = {init.name: init for init in self.model.graph.initializer}
+            if axes_name not in initializer_map:
+                msg = (
+                    f"Unsqueeze '{name}' has dynamic axes input '{axes_name}'. "
+                    "Only constant initializer axes are supported."
+                )
+                raise LayerAnalysisError(model_type=self.model_type, reason=msg)
+
+            axes_arr = numpy_helper.to_array(initializer_map[axes_name])
+
+            if not np.issubdtype(axes_arr.dtype, np.integer):
+                msg = (
+                    f"Unsqueeze '{name}' axes initializer must be integer, "
+                    f"got dtype {axes_arr.dtype}."
+                )
+                raise LayerAnalysisError(model_type=self.model_type, reason=msg)
+
+            if axes_arr.ndim == 0:
+                params = params or {}
+                params["axes"] = [int(axes_arr)]
+            else:
+                params = params or {}
+                params["axes"] = [int(x) for x in axes_arr.reshape(-1).tolist()]
 
         # Extract output shapes
         output_shapes = {
