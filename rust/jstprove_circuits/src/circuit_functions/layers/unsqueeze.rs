@@ -109,7 +109,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for UnsqueezeLayer {
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Unsqueeze, INPUT)?;
         let layer_input = input
-            .get(&input_name.clone())
+            .get(input_name)
             .ok_or_else(|| LayerError::MissingInput {
                 layer: LayerKind::Unsqueeze,
                 name: input_name.clone(),
