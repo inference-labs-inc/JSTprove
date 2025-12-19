@@ -129,11 +129,21 @@ class UnsqueezeQuantizer(BaseOpQuantizer, QuantizeUnsqueeze):
         initializer_map = initializer_map or {}
 
         n_inputs = len(node.input)
+        if n_inputs not in (self._N_INPUTS_NO_AXES, self._N_INPUTS_WITH_AXES):
+            raise InvalidParamError(
+                node_name=node.name,
+                op_type=node.op_type,
+                message=(
+                    "Unsqueeze expects either 1 input (axes as attribute) or 2 inputs "
+                    f"(axes as initializer), got {n_inputs}."
+                ),
+            )
+
         axes = self._get_axes_from_attribute(node)
 
         # ONNX Unsqueeze has two schema styles:
-        #  - newer: Unsqueeze(data, axes)  -> 2 inputs, no attribute required
-        #  - older: Unsqueeze(data) with axes attribute -> 1 input, attribute required
+        #  - newer: Unsqueeze(data, axes) -> 2 inputs, axes is initializer input
+        #  - older: Unsqueeze(data) with axes attribute -> 1 input
         if n_inputs == self._N_INPUTS_NO_AXES:
             if axes is None:
                 raise InvalidParamError(
@@ -141,23 +151,23 @@ class UnsqueezeQuantizer(BaseOpQuantizer, QuantizeUnsqueeze):
                     op_type=node.op_type,
                     message=(
                         "Unsqueeze with 1 input is only supported when 'axes' is "
-                        " provided as an attribute (older opsets)."
+                        "provided as an attribute (older opsets)."
                     ),
                     attr_key="axes",
                     expected="axes attribute",
                 )
-        elif n_inputs == self._N_INPUTS_WITH_AXES:
-            # If axes is provided as a second input, it must be a constant initializer.
-            if axes is None:
-                axes = self._get_axes_from_initializer_input(node, initializer_map)
-        else:
+        elif axes is None:
+            axes = self._get_axes_from_initializer_input(node, initializer_map)
+
+        if axes is None:
             raise InvalidParamError(
                 node_name=node.name,
                 op_type=node.op_type,
-                message=f"Unsqueeze expects 1 or 2 inputs, got {n_inputs}.",
+                message="Unsqueeze requires 'axes' to be provided.",
+                attr_key="axes",
+                expected="axes attribute or initializer input",
             )
 
-        # At this point, axes must be known.
         if len(set(axes)) != len(axes):
             raise InvalidParamError(
                 node_name=node.name,
