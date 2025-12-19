@@ -30,7 +30,8 @@ class SqueezeConfigProvider(BaseLayerConfigProvider):
             required_initializers={},
             input_shapes={
                 "A": [1, 3, 1, 5],
-                # "axes" will be removed from graph inputs automatically when it is an initializer.
+                # "axes" is removed from graph inputs automatically
+                # when it is an initializer.
                 "axes": [2],
             },
             output_shapes={
@@ -85,7 +86,8 @@ class SqueezeConfigProvider(BaseLayerConfigProvider):
             .build(),
             error_test("dynamic_axes_input_not_supported")
             .description(
-                "Squeeze with runtime axes (2 inputs but axes is NOT an initializer) should be rejected",
+                "Squeeze with runtime axes (2 inputs but axes is NOT an initializer) "
+                "should be rejected",
             )
             .override_inputs("A", "axes")  # axes provided as graph input (unsupported)
             .override_input_shapes(A=[1, 3, 1, 5], axes=[2])

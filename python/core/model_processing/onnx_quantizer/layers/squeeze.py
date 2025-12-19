@@ -140,7 +140,8 @@ class SqueezeQuantizer(BaseOpQuantizer, QuantizeSqueeze):
             axes = self._get_axes_from_initializer_input(node, initializer_map)
 
         # If axes is omitted entirely, ONNX semantics are "remove all dims of size 1".
-        # We can't validate legality here without rank/shape, so accept and defer to Rust.
+        # We can't validate legality here without rank/shape; defer to Rust.
+
         if axes is None:
             return
 
