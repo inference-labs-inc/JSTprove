@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
 from onnx import numpy_helper
-from onnx import helper
 
 from python.core.model_processing.onnx_quantizer.exceptions import (
     InvalidParamError,
@@ -62,36 +61,7 @@ class UnsqueezeQuantizer(BaseOpQuantizer, QuantizeUnsqueeze):
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
     ) -> list[onnx.NodeProto]:
-        """
-        Quantize Unsqueeze by normalizing schema variants.
-
-        If Unsqueeze is provided in the newer schema form Unsqueeze(data, axes) where
-        `axes` is a constant initializer, we promote `axes` to an attribute and
-        rewrite the node to the older schema form Unsqueeze(data) with an `axes`
-        attribute. This ensures the Rust backend receives `axes` via the params map.
-        """
-        # Validate and ensure axes is supported (attribute or initializer).
-        self.check_supported(node, initializer_map=initializer_map)
-
-        # Prefer attribute if present.
-        axes = self._get_axes_from_attribute(node)
-
-        # Newer schema: Unsqueeze(data, axes) where axes is an initializer input.
-        if axes is None and len(node.input) == self._N_INPUTS_WITH_AXES:
-            axes = self._get_axes_from_initializer_input(node, initializer_map)
-
-            # Remove any pre-existing axes attribute (defensive).
-            kept_attrs = [a for a in node.attribute if a.name != "axes"]
-            del node.attribute[:]
-            node.attribute.extend(kept_attrs)
-
-            # Promote axes to attribute so it is serialized into params.
-            node.attribute.append(helper.make_attribute("axes", axes))
-
-            # Rewrite to 1-input form so the backend doesn't treat axes as runtime input.
-            node.input[:] = [node.input[0]]
-
-        # Continue with standard bookkeeping.
+        # Pure passthrough; QuantizerBase handles standard bookkeeping.
         return QuantizeUnsqueeze.quantize(
             self,
             node,
