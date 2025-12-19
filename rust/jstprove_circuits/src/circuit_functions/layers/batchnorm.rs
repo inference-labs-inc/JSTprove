@@ -3,13 +3,13 @@ use std::collections::HashMap;
 /// External crate imports
 use ndarray::ArrayD;
 
-use crate::circuit_functions::layers::math::matrix_hadamard_product;
+use crate::circuit_functions::gadgets::linear_algebra::{matrix_addition, matrix_hadamard_product};
 use crate::circuit_functions::utils::tensor_ops::{
     broadcast_two_arrays, reshape_channel_vector_for_broadcast,
 };
 use crate::circuit_functions::{
     CircuitError,
-    layers::{LayerError, LayerKind, layer_ops::LayerOp, math::matrix_addition},
+    layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
         graph_pattern_matching::PatternRegistry,

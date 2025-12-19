@@ -6,7 +6,7 @@ use ndarray::ArrayD;
 /// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
-use crate::circuit_functions::layers::math::matrix_hadamard_product;
+use crate::circuit_functions::gadgets::linear_algebra::matrix_hadamard_product;
 use crate::circuit_functions::utils::onnx_model::get_optional_w_or_b;
 use crate::circuit_functions::utils::quantization::rescale_array;
 use crate::circuit_functions::utils::tensor_ops::{
