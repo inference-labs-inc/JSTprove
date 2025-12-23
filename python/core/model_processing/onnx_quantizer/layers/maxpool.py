@@ -45,7 +45,9 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
+        opset_version: int | None = None,
     ) -> list[onnx.NodeProto]:
+        _ = opset_version
         return QuantizeMaxpool.quantize(
             self,
             node,

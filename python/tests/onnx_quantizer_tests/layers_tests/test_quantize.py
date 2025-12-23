@@ -31,7 +31,7 @@ class TestQuantize(BaseQuantizerTest):
 
     def setup_quantize_test(
         self,
-        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec],
+        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec, int | None],
         quantizer: ONNXOpQuantizer,
         scale_exponent: int = 2,
         scale_base: int = 10,
@@ -42,14 +42,14 @@ class TestQuantize(BaseQuantizerTest):
         tuple[str, LayerTestConfig, LayerTestSpec, NodeProto],
     ]:
         """Common setup for quantization tests"""
-        layer_name, config, test_spec = test_case_data
+        layer_name, config, test_spec, opset_version = test_case_data
 
         self._check_validation_dependency(test_case_data)
 
         if test_spec.skip_reason:
             pytest.skip(f"{layer_name}_{test_spec.name}: {test_spec.skip_reason}")
 
-        model = config.create_test_model(test_spec)
+        model = config.create_test_model(test_spec, opset_version=opset_version)
         node = model.graph.node[0]
         initializer_map = {init.name: init for init in model.graph.initializer}
 
@@ -81,7 +81,7 @@ class TestQuantize(BaseQuantizerTest):
     def test_quantize_individual_valid_cases(
         self: TestQuantize,
         quantizer: ONNXOpQuantizer,
-        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec],
+        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec, int | None],
     ) -> None:
         """Test quantization for each individual valid test case"""
 
@@ -125,7 +125,7 @@ class TestQuantize(BaseQuantizerTest):
     def test_quantize_preserves_node_names(
         self: TestQuantize,
         quantizer: ONNXOpQuantizer,
-        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec],
+        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec, int | None],
     ) -> None:
         """Test quantization for each individual valid test case"""
 
@@ -193,7 +193,7 @@ class TestQuantize(BaseQuantizerTest):
     def test_quantize_with_different_scales(
         self: TestQuantize,
         quantizer: ONNXOpQuantizer,
-        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec],
+        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec, int | None],
         scale_params: tuple[int, int],
     ) -> None:
         """Test quantization for each individual valid test case"""
@@ -224,7 +224,7 @@ class TestQuantize(BaseQuantizerTest):
     def test_quantize_with_different_rescales(
         self: TestQuantize,
         quantizer: ONNXOpQuantizer,
-        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec],
+        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec, int | None],
         *,
         rescale: bool,
     ) -> None:

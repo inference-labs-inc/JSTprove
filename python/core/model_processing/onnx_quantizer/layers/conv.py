@@ -30,6 +30,9 @@ class ConvQuantizer(BaseOpQuantizer, QuantizeConv):
     - Validates that all required Conv parameters are present.
     """
 
+    SUPPORTED_OPSETS: ClassVar = list(range(1, 23))
+    OPSET_IMPLEMENTATIONS = dict.fromkeys(range(1, 23), "Int64Conv")
+
     def __init__(
         self: ConvQuantizer,
         new_initializers: list[onnx.TensorProto] | None = None,
@@ -45,7 +48,10 @@ class ConvQuantizer(BaseOpQuantizer, QuantizeConv):
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
+        opset_version: int | None = None,
     ) -> list[onnx.NodeProto]:
+        if opset_version:
+            self.OP_TYPE = self.OPSET_IMPLEMENTATIONS[opset_version]
         return QuantizeConv.quantize(self, node, graph, scale_config, initializer_map)
 
     def check_supported(

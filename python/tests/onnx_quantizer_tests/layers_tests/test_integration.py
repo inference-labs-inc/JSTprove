@@ -50,6 +50,7 @@ class TestIntegration(BaseQuantizerTest):
         # Step 1: Create and validate model
         model = self.create_model_with_layers(layer_combination, layer_configs)
         quantizer.check_model(model)  # Should not raise
+        opset_version = model.opset_import[0].version
 
         # Step 2: Quantize each layer
         initializer_map = quantizer.get_initializer_map(model)
@@ -62,6 +63,7 @@ class TestIntegration(BaseQuantizerTest):
                 scale_exponent=scale_exponent,
                 scale_base=scale_base,
                 initializer_map=initializer_map,
+                opset_version=opset_version,
             )
             assert result is not None, (
                 f"Quantization failed for {node.op_type}"
@@ -89,7 +91,7 @@ class TestIntegration(BaseQuantizerTest):
     )
     def test_end_to_end_quantization_accuracy(
         self: TestIntegration,
-        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec],
+        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec, int | None],
     ) -> None:
         """Test end-to-end quantization accuracy for each valid test case.
 
@@ -100,7 +102,7 @@ class TestIntegration(BaseQuantizerTest):
         cosine_similarity = 0.995
         rng = np.random.default_rng(TEST_RNG_SEED + 1)
 
-        layer_name, config, test_spec = test_case_data
+        layer_name, config, test_spec, opset_version = test_case_data
         self.skip_by_layer_name(layer_name, test_spec, skip_layer="Constant")
 
         # Skip if validation failed or test is skipped
@@ -109,7 +111,10 @@ class TestIntegration(BaseQuantizerTest):
             pytest.skip(f"{layer_name}_{test_spec.name}: {test_spec.skip_reason}")
 
         # Create original model
-        original_model = config.create_test_model(test_spec)
+        original_model = config.create_test_model(
+            test_spec,
+            opset_version=opset_version,
+        )
         opts = SessionOptions()
         opts.register_custom_ops_library(get_library_path())
         original_session = InferenceSession(

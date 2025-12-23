@@ -75,7 +75,7 @@ class TestScalability:
         # iterate over registered layers
         for layer_name in TestLayerFactory.get_available_layers():
             cases = TestLayerFactory.get_test_cases_by_layer(layer_name)
-            specs = [spec for _, _config, spec in cases]
+            specs = [spec for _, _config, spec, opset_number in cases]
 
             # Consider a test "basic" if:
             #  - it has tag 'basic' or 'valid', OR

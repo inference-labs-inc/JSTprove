@@ -29,15 +29,15 @@ class TestValidation(BaseQuantizerTest):
     )
     def test_factory_models_pass_onnx_validation(
         self: TestValidation,
-        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec],
+        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec, int | None],
     ) -> None:
-        layer_name, config, test_spec = test_case_data
+        layer_name, config, test_spec, opset_version = test_case_data
         test_case_id = f"{layer_name}_{test_spec.name}"
 
         if test_spec.skip_reason:
             pytest.skip(f"{test_case_id}: {test_spec.skip_reason}")
 
-        model = config.create_test_model(test_spec)
+        model = config.create_test_model(test_spec, opset_version=opset_version)
         try:
             onnx.checker.check_model(model)
         except onnx.checker.ValidationError as e:

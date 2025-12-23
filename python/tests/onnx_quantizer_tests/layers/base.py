@@ -51,6 +51,8 @@ class LayerTestSpec:
 
     # Omit attributes
     omit_attrs: list[str] = field(default_factory=list)
+    onnx_opset_versions: list[int] = field(default_factory=list)
+    onnx_opset_version: int | None = field(default=None)
 
     # Remove __post_init__ validation - we'll validate in the builder instead
 
@@ -105,7 +107,11 @@ class LayerTestConfig:
             initializers[name] = tensor
         return initializers
 
-    def create_test_model(self, test_spec: LayerTestSpec) -> onnx.ModelProto:
+    def create_test_model(
+        self,
+        test_spec: LayerTestSpec,
+        opset_version: int | None = None,
+    ) -> onnx.ModelProto:
         """Create a complete model for a specific test case"""
 
         # Determine node-level inputs.
@@ -162,8 +168,11 @@ class LayerTestConfig:
             outputs=graph_outputs,
             initializer=list(initializers.values()),
         )
+        model = helper.make_model(graph)
+        if opset_version is not None:
+            model.opset_import[0].version = opset_version
 
-        return helper.make_model(graph)
+        return model
 
 
 class TestSpecBuilder:

@@ -36,8 +36,10 @@ class MaxQuantizer(BaseOpQuantizer, QuantizeMax):
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
+        opset_version: int | None = None,
     ) -> list[onnx.NodeProto]:
         # Delegate to the shared QuantizerBase logic
+        _ = opset_version
         return QuantizeMax.quantize(self, node, graph, scale_config, initializer_map)
 
     def check_supported(

@@ -70,11 +70,13 @@ class ClipQuantizer(BaseOpQuantizer, QuantizeClip):
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
+        opset_version: int | None = None,
     ) -> list[onnx.NodeProto]:
         # Delegate to the shared QuantizerBase logic, which will:
         # - keep X as-is (already scaled/cast by the converter),
         # - rescale / cast min/max according to SCALE_PLAN,
         # - update initializers as needed.
+        _ = opset_version
         return QuantizeClip.quantize(self, node, graph, scale_config, initializer_map)
 
     def check_supported(

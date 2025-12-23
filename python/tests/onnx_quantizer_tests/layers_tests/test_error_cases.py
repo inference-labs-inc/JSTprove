@@ -33,10 +33,10 @@ class TestErrorCases(BaseQuantizerTest):
     def test_check_model_individual_error_cases(
         self: TestErrorCases,
         quantizer: ONNXOpQuantizer,
-        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec],
+        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec, int | None],
     ) -> None:
         """Test each individual error test case"""
-        layer_name, config, test_spec = test_case_data
+        layer_name, config, test_spec, opset_version = test_case_data
 
         # Skips if layer is not a valid onnx layer
         self._check_validation_dependency(test_case_data)
@@ -45,7 +45,7 @@ class TestErrorCases(BaseQuantizerTest):
             pytest.skip(f"{layer_name}_{test_spec.name}: {test_spec.skip_reason}")
 
         # Create model from layer specs
-        model = config.create_test_model(test_spec)
+        model = config.create_test_model(test_spec, opset_version=opset_version)
 
         # Ensures that expected test is in fact raised
         with pytest.raises(test_spec.expected_error) as exc:

@@ -112,8 +112,9 @@ class BatchnormQuantizer(BaseOpQuantizer, QuantizeBatchnorm):
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
+        opset_version: int | None = None,
     ) -> list[onnx.NodeProto]:
-        _ = graph
+        _ = graph, opset_version
 
         nodes: list[onnx.NodeProto] = []
 

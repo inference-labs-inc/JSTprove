@@ -35,22 +35,28 @@ class BaseQuantizerTest:
 
     @staticmethod
     def _generate_test_id(
-        test_case_tuple: tuple[str, LayerTestConfig, LayerTestSpec],
+        test_case_tuple: tuple[str, LayerTestConfig, LayerTestSpec, int | None],
     ) -> str:
         try:
-            layer_name, _, test_spec = test_case_tuple
+            layer_name, _, test_spec, opset_version = test_case_tuple
         except Exception:
             return str(test_case_tuple)
         else:
+            if opset_version is not None:
+                return f"{layer_name}_{test_spec.name}_opset{opset_version}"
             return f"{layer_name}_{test_spec.name}"
 
     @classmethod
     def _check_validation_dependency(
         cls: BaseQuantizerTest,
-        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec],
+        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec, int | None],
     ) -> None:
-        layer_name, _, test_spec = test_case_data
-        test_case_id = f"{layer_name}_{test_spec.name}"
+        layer_name, _, test_spec, opset_version = test_case_data
+        if opset_version is not None:
+            test_case_id = f"{layer_name}_{test_spec.name}_opset{opset_version}"
+        else:
+            test_case_id = f"{layer_name}_{test_spec.name}"
+
         if test_case_id in cls._validation_failed_cases:
             pytest.skip(f"Skipping because ONNX validation failed for {test_case_id}")
 

@@ -40,8 +40,10 @@ class MinQuantizer(BaseOpQuantizer, QuantizeMin):
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
+        opset_version: int | None = None,
     ) -> list[onnx.NodeProto]:
         # Delegate to QuantizerBase's generic passthrough implementation.
+        _ = opset_version
         return QuantizeMin.quantize(self, node, graph, scale_config, initializer_map)
 
     def check_supported(

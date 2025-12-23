@@ -40,7 +40,9 @@ class ReluQuantizer(BaseOpQuantizer, QuantizeRelu):
         graph: GraphProto,
         scale_config: ScaleConfig,
         initializer_map: dict[str, TensorProto],
+        opset_version: int | None = None,
     ) -> list[NodeProto]:
+        _ = opset_version
         return QuantizeRelu.quantize(self, node, graph, scale_config, initializer_map)
 
     def check_supported(
