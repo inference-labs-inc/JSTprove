@@ -140,9 +140,11 @@ class LayerTestConfig:
         inputs = test_spec.input_overrides or self.valid_inputs
 
         # Prepare attributes and remove omitted attributes if specified
-        attrs = {**self.valid_attributes, **test_spec.attr_overrides}
+        raw_attrs = {**self.valid_attributes, **test_spec.attr_overrides}
         for key in getattr(test_spec, "omit_attrs", []):
-            attrs.pop(key, None)
+            raw_attrs.pop(key, None)
+
+        attrs = self._resolve_attrs(raw_attrs, opset_version)
 
         # Create initializers (may introduce overrides)
         initializers = self.create_initializers(**test_spec.initializer_overrides)
@@ -193,6 +195,24 @@ class LayerTestConfig:
             model.opset_import[0].version = opset_version
 
         return model
+
+    def _resolve_attrs(
+        self,
+        attrs: dict[str, Any],
+        opset_version: int | None,
+    ) -> dict[str, Any]:
+        resolved = {}
+
+        for name, val in attrs.items():
+            if isinstance(val, OpsetConditionalAttr):
+                if opset_version is None:
+                    continue  # safest default
+                if val.is_supported(opset_version):
+                    resolved[name] = val.value
+            else:
+                resolved[name] = val
+
+        return resolved
 
 
 class TestSpecBuilder:
