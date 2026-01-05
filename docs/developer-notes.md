@@ -63,7 +63,13 @@ uv run pytest --unit --integration
 
 # run e2e tests.
 Place model to be run in python/models/models_onnx/<model_name>.onnx
-uv run pytest --e2e --<model_name>
+uv run pytest --e2e --model <model_name>
+
+#run tests on layer specific tests on specified opset version number (Can be used with --unit, --integration, --e2e)
+uv run pytest --onnx-opset-versions=<opset_version_numbers, comma separated>
+
+#run tests on layer specific tests on all opset versions (Can be used with --unit, --integration, --e2e)
+uv run pytest --all-opset-versions
 ```
 
 ---
