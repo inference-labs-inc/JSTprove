@@ -86,7 +86,10 @@ class ONNXOpQuantizer:
         self.register("Gemm", GemmQuantizer(self.new_initializers))
         self.register("Constant", ConstantQuantizer())
         self.register("MaxPool", MaxpoolQuantizer())
-        self.register("Flatten", PassthroughQuantizer())
+        self.register(
+            "Flatten",
+            PassthroughQuantizer(supported_opsets=list(range(9, 25))),
+        )  # default flatten does not support int64 inputs, would need a custom operator
         self.register("Max", MaxQuantizer(self.new_initializers))
         self.register("Min", MinQuantizer(self.new_initializers))
         self.register("BatchNormalization", BatchnormQuantizer(self.new_initializers))
@@ -213,7 +216,7 @@ class ONNXOpQuantizer:
         if hasattr(handler, "check_supported_op") and callable(
             handler.check_supported_op,
         ):
-            handler.check_supported_op(opset_version)
+            handler.check_supported_op(opset_version, node.op_type)
 
     def get_initializer_map(
         self: ONNXOpQuantizer,

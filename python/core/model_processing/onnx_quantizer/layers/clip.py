@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from typing import ClassVar
+
     import onnx
 
 from python.core.model_processing.onnx_quantizer.layers.base import (
@@ -55,6 +57,8 @@ class ClipQuantizer(BaseOpQuantizer, QuantizeClip):
       inputs or initializers, are converted to the same INT64 fixed-point
       representation as A.
     """
+
+    SUPPORTED_OPS: ClassVar = list(range(12, 24))
 
     def __init__(
         self,

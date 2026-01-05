@@ -38,6 +38,7 @@ class ClipConfigProvider(BaseLayerConfigProvider):
             output_shapes={
                 "clip_output": [1, 3, 4, 4],
             },
+            min_opset=12,
         )
 
     def get_test_specs(self) -> list:

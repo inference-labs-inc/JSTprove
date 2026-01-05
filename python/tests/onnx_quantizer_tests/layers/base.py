@@ -86,6 +86,8 @@ class LayerTestConfig:
         required_initializers: dict[str, np.ndarray],
         input_shapes: dict[str, list[int]] | None = None,
         output_shapes: dict[str, list[int]] | None = None,
+        min_opset: int | None = None,
+        max_opset: int | None = None,
     ) -> None:
         self.op_type = op_type
         self.valid_inputs = valid_inputs
@@ -93,6 +95,8 @@ class LayerTestConfig:
         self.required_initializers = required_initializers
         self.input_shapes = input_shapes or {"input": [1, 16, 224, 224]}
         self.output_shapes = output_shapes or {f"{op_type.lower()}_output": [1, 10]}
+        self.min_opset = min_opset
+        self.max_opset = max_opset
 
     def create_node(
         self: LayerTestConfig,
@@ -131,6 +135,22 @@ class LayerTestConfig:
         opset_version: int | None = None,
     ) -> onnx.ModelProto:
         """Create a complete model for a specific test case"""
+        test_spec.min_supported_opset = (
+            self.min_opset
+            if (
+                not test_spec.min_supported_opset
+                # or self.min_opset > test_spec.min_supported_opset
+            )
+            else test_spec.min_supported_opset
+        )
+        test_spec.max_supported_opset = (
+            self.max_opset
+            if (
+                not test_spec.max_supported_opset
+                # or self.max_opset < test_spec.max_supported_opset
+            )
+            else test_spec.min_supported_opset
+        )
         if opset_version is not None and not test_spec.supports_opset(opset_version):
             pytest.skip(f"{test_spec.name} does not support opset {opset_version}")
 
@@ -191,8 +211,10 @@ class LayerTestConfig:
             initializer=list(initializers.values()),
         )
         model = helper.make_model(graph)
+
         if opset_version is not None:
-            model.opset_import[0].version = opset_version
+            model.opset_import.clear()
+            model.opset_import.extend([helper.make_opsetid("", opset_version)])
 
         return model
 
@@ -269,6 +291,14 @@ class TestSpecBuilder:
         self._spec.skip_reason = reason
         return self
 
+    def min_opset(self, version: int) -> TestSpecBuilder:
+        self._spec.min_supported_opset = version
+        return self
+
+    def max_opset(self, version: int) -> TestSpecBuilder:
+        self._spec.max_supported_opset = version
+        return self
+
     def build(self) -> LayerTestSpec:
         # Validate before building
         if self._spec.spec_type == SpecType.ERROR and not self._spec.expected_error:
@@ -278,14 +308,6 @@ class TestSpecBuilder:
             )
             raise ValueError(msg)
         return self._spec
-
-    def min_opset(self, version: int) -> TestSpecBuilder:
-        self._spec.min_supported_opset = version
-        return self
-
-    def max_opset(self, version: int) -> TestSpecBuilder:
-        self._spec.max_supported_opset = version
-        return self
 
 
 # Convenience functions

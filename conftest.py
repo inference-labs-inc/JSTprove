@@ -149,7 +149,7 @@ def pytest_configure(config: Config) -> None:
 
     all_onnx_versions = config.getoption("all_opset_versions")
     if all_onnx_versions:
-        set_onnx_opset_versions(list(range(7, 23)))
+        set_onnx_opset_versions(list(range(7, 24)))
 
 
 @pytest.fixture(scope="session", autouse=True)

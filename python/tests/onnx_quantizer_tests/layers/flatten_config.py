@@ -21,6 +21,7 @@ class FlattenConfigProvider(BaseLayerConfigProvider):
             valid_inputs=["input"],
             valid_attributes={"axis": 1},
             required_initializers={},
+            min_opset=9,
         )
 
     def get_test_specs(self) -> list:

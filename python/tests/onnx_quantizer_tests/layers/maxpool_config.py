@@ -28,6 +28,7 @@ class MaxPoolConfigProvider(BaseLayerConfigProvider):
                 "pads": [0, 0, 0, 0],
             },
             required_initializers={},
+            min_opset=10,
         )
 
     def get_test_specs(self) -> list:

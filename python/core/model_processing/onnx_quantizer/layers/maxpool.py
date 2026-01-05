@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from typing import ClassVar
+
     import onnx
 
 from python.core.model_processing.onnx_custom_ops.onnx_helpers import (
@@ -30,6 +32,8 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
         domain and makes relevant additional changes to the graph.
     - Validates that all required MaxPool parameters are present.
     """
+
+    SUPPORTED_OPS: ClassVar = list(range(10, 24))
 
     def __init__(
         self: MaxpoolQuantizer,

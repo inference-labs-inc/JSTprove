@@ -166,6 +166,7 @@ class BaseOpQuantizer:
     def check_supported_op(
         self: BaseOpQuantizer,
         opset_version: int,
+        op_name: str,
     ) -> None:
         if (
             hasattr(self, "SUPPORTED_OPSETS")
@@ -173,10 +174,10 @@ class BaseOpQuantizer:
         ):
             raise InvalidParamError(
                 node_name="",
-                op_type=self.__class__.__name__,
+                op_type=op_name,
                 message=(
                     f"Unsupported opset version {opset_version} "
-                    f"for {self.__class__.__name__}. "
+                    f"for {op_name}. "
                     f"Supported versions are {self.SUPPORTED_OPSETS}."
                 ),
             )
@@ -609,8 +610,11 @@ class PassthroughQuantizer(BaseOpQuantizer):
     def __init__(
         self: BaseOpQuantizer,
         new_initializer: dict[str, onnx.TensorProto] | None = None,
+        supported_opsets: list[int] | None = None,
     ) -> None:
         _ = new_initializer
+        if supported_opsets is not None:
+            self.SUPPORTED_OPSETS = supported_opsets
         super().__init__()
 
     def quantize(
