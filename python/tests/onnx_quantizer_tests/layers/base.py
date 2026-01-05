@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+import pytest
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -55,6 +57,22 @@ class LayerTestSpec:
     onnx_opset_version: int | None = field(default=None)
 
     # Remove __post_init__ validation - we'll validate in the builder instead
+
+    min_supported_opset: int | None = None
+    max_supported_opset: int | None = None
+
+    def supports_opset(self, opset_version: int) -> bool:
+        """Return True if this test supports the given ONNX opset version"""
+        return not (
+            (
+                self.min_supported_opset is not None
+                and opset_version < self.min_supported_opset
+            )
+            or (
+                self.max_supported_opset is not None
+                and opset_version > self.max_supported_opset
+            )
+        )
 
 
 class LayerTestConfig:
@@ -113,6 +131,8 @@ class LayerTestConfig:
         opset_version: int | None = None,
     ) -> onnx.ModelProto:
         """Create a complete model for a specific test case"""
+        if opset_version is not None and not test_spec.supports_opset(opset_version):
+            pytest.skip(f"{test_spec.name} does not support opset {opset_version}")
 
         # Determine node-level inputs.
         # If dev overrides inputs explicitly,
@@ -239,6 +259,14 @@ class TestSpecBuilder:
             raise ValueError(msg)
         return self._spec
 
+    def min_opset(self, version: int) -> TestSpecBuilder:
+        self._spec.min_supported_opset = version
+        return self
+
+    def max_opset(self, version: int) -> TestSpecBuilder:
+        self._spec.max_supported_opset = version
+        return self
+
 
 # Convenience functions
 def valid_test(name: str) -> TestSpecBuilder:
@@ -284,3 +312,16 @@ class BaseLayerConfigProvider(ABC):
         return [
             spec for spec in self.get_test_specs() if spec.spec_type == SpecType.ERROR
         ]
+
+
+@dataclass(frozen=True)
+class OpsetConditionalAttr:
+    value: Any
+    min_opset: int | None = None
+    max_opset: int | None = None
+
+    def is_supported(self, opset: int) -> bool:
+        return not (
+            (self.min_opset is not None and opset < self.min_opset)
+            or (self.max_opset is not None and opset > self.max_opset)
+        )

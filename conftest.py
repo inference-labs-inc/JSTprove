@@ -59,6 +59,12 @@ def pytest_addoption(parser: Parser) -> None:
             "for each version (e.g., --onnx-opset-versions 14,15,16,19)"
         ),
     )
+    parser.addoption(
+        "--all-opset-versions",
+        action="store_true",
+        default=False,
+        help=("All opset versions 7-23 will be tested when this is specified"),
+    )
 
 
 def pytest_collection_modifyitems(config: Config, items: list[Item]) -> None:
@@ -140,6 +146,10 @@ def pytest_configure(config: Config) -> None:
     else:
         set_onnx_opset_versions(None)
         config.onnx_opset_versions = None
+
+    all_onnx_versions = config.getoption("all_opset_versions")
+    if all_onnx_versions:
+        set_onnx_opset_versions(list(range(7, 23)))
 
 
 @pytest.fixture(scope="session", autouse=True)

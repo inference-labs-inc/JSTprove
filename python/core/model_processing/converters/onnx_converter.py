@@ -243,6 +243,7 @@ class ONNXConverter(ModelConverter):
             raise InvalidModelError(
                 model_path=getattr(self, "model_file_name", None),
                 reason=f"Model validation failed: {e!s}",
+                model_type=self.model_type,
             ) from e
 
     def analyze_layers(

@@ -30,8 +30,8 @@ class ConvQuantizer(BaseOpQuantizer, QuantizeConv):
     - Validates that all required Conv parameters are present.
     """
 
-    SUPPORTED_OPSETS: ClassVar = list(range(1, 23))
-    OPSET_IMPLEMENTATIONS = dict.fromkeys(range(1, 23), "Int64Conv")
+    SUPPORTED_OPSETS: ClassVar = list(range(7, 23))
+    OPSET_IMPLEMENTATIONS = dict.fromkeys(range(7, 23), "Int64Conv")
 
     def __init__(
         self: ConvQuantizer,
