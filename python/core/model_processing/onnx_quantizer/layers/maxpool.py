@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     import onnx
 
 from python.core.model_processing.onnx_custom_ops.onnx_helpers import (
+    extract_attributes,
     get_attribute_ints,
 )
 from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
@@ -22,6 +23,12 @@ class QuantizeMaxpool(QuantizerBase):
     OP_TYPE = "Int64MaxPool"
     USE_WB = False
     USE_SCALING = False
+
+    DEFAULT_ATTRS: ClassVar = {
+        "dilations": [1],
+        "pads": [0],
+        "strides": [1],
+    }
 
 
 class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
@@ -78,6 +85,35 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
             InvalidParamError: If any requirement is not met.
         """
         _ = initializer_map
+        attributes = extract_attributes(node)
+        ceil_mode = attributes.get("ceil_mode", None)
+        auto_pad = attributes.get("auto_pad", None)
+        storage_order = attributes.get("storage_order", None)
+
+        if ceil_mode != 0 and ceil_mode is not None:
+            raise InvalidParamError(
+                node.name,
+                node.op_type,
+                "ceil_mode must be 0",
+                "ceil_mode",
+                "0",
+            )
+        if auto_pad != "NOTSET" and auto_pad is not None:
+            raise InvalidParamError(
+                node.name,
+                node.op_type,
+                "auto_pad must be NOTSET",
+                "auto_pad",
+                "NOTSET",
+            )
+        if storage_order != 0 and storage_order is not None:
+            raise InvalidParamError(
+                node.name,
+                node.op_type,
+                "storage_order must be 0",
+                "storage_order",
+                "0",
+            )
         self.check_all_params_exist(node)
         self.check_params_size(node)
         self.check_pool_pads(node)
@@ -91,8 +127,8 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
         Raises:
             InvalidParamError: If shape requirement is not met.
         """
-        # May need: ["strides", "kernel_shape", "pads", "dilations"]
-        required_attrs = ["strides", "kernel_shape"]
+        required_attrs = ["kernel_shape"]
+
         self.validate_required_attrs(node, required_attrs)
 
         # Check dimension of kernel
@@ -127,11 +163,23 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
 
     def check_pool_pads(self: MaxpoolQuantizer, node: onnx.NodeProto) -> None:
         kernel_shape = get_attribute_ints(node, "kernel_shape", default=[])
-        pads = get_attribute_ints(node, "pads", default=None)
+        pads_raw = get_attribute_ints(
+            node,
+            "pads",
+            default=self.DEFAULT_ATTRS.get("pads", None),
+        )
+        pads = self.adjust_pads(node, pads_raw)
+
         if pads is None:
             return
         num_dims = len(kernel_shape)
-        if len(pads) != num_dims * 2:
+
+        if len(pads) == 1:
+            pads = pads * 2 * num_dims
+        elif len(pads) == num_dims:
+            # If only beginning pads given, repeat for end pads
+            pads = pads + pads
+        elif len(pads) != num_dims * 2:
             raise InvalidParamError(
                 node.name,
                 node.op_type,
@@ -154,3 +202,28 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
                     node.op_type,
                     f"pads[{dim + num_dims}]={pad_after} >= kernel[{dim}]={kernel}",
                 )
+
+    def adjust_pads(
+        self: MaxpoolQuantizer,
+        node: onnx.NodeProto,
+        pads_raw: str | int | list[int] | None,
+    ) -> list[int]:
+        if pads_raw is None:
+            pads: list[int] = []
+        elif isinstance(pads_raw, str):
+            # single string, could be "0" or "1 2"
+            pads = [int(x) for x in pads_raw.split()]
+        elif isinstance(pads_raw, int):
+            # single integer
+            pads = [pads_raw]
+        elif isinstance(pads_raw, (list, tuple)):
+            # already a list of numbers (may be strings)
+            pads = [int(x) for x in pads_raw]
+        else:
+            raise InvalidParamError(
+                node.name,
+                node.op_type,
+                f"Cannot parse pads: {pads_raw}",
+            )
+
+        return pads
