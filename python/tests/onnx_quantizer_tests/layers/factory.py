@@ -120,15 +120,21 @@ class TestLayerFactory:
             # (if versions are set and spec is marked)
             for spec in test_specs:
                 # Expand only if spec is marked for version testing
-                if spec.onnx_opset_versions or (
-                    versions
-                    and spec.spec_type in (SpecType.VALID, SpecType.E2E, SpecType.ERROR)
+
+                has_opset_constraints = (
+                    spec.onnx_opset_versions
+                    or spec.min_supported_opset is not None
+                    or spec.max_supported_opset is not None
+                )
+
+                if versions and (
+                    spec.spec_type in (SpecType.VALID, SpecType.E2E, SpecType.ERROR)
                 ):
-                    # Use spec's explicit versions if set, otherwise use global versions
-                    expand_versions = spec.onnx_opset_versions or versions
-                    expanded = cls._expand_spec_with_versions(spec, expand_versions)
+                    expanded = cls._expand_spec_with_versions(spec, versions)
+                elif has_opset_constraints:
+                    # Do NOT create a default-opset variant
+                    expanded = []
                 else:
-                    # No expansion for this spec
                     expanded = [(spec, None)]
 
                 for variant_spec, opset_version in expanded:
