@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import numpy as np
 
+from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
 from python.tests.onnx_quantizer_tests import TEST_RNG_SEED
 from python.tests.onnx_quantizer_tests.layers.base import (
     e2e_test,
     edge_case_test,
+    error_test,
     valid_test,
 )
 from python.tests.onnx_quantizer_tests.layers.factory import (
@@ -91,5 +93,12 @@ class MinConfigProvider(BaseLayerConfigProvider):
             .override_input_shapes(A=[1, 64, 256, 256], B=[1, 64, 256, 256])
             .tags("large", "performance", "min")
             .skip("Performance test, skipped by default")
+            .build(),
+            # --- Error TEST ---
+            error_test("invalid_opset")
+            .description("Opset 11 and below should fail")
+            .expects_error(InvalidParamError, "Unsupported opset")
+            .min_opset(7)
+            .max_opset(11)
             .build(),
         ]

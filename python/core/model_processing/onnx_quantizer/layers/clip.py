@@ -58,7 +58,7 @@ class ClipQuantizer(BaseOpQuantizer, QuantizeClip):
       representation as A.
     """
 
-    SUPPORTED_OPS: ClassVar = list(range(12, 24))
+    SUPPORTED_OPSETS: ClassVar = list(range(12, 24))
 
     def __init__(
         self,

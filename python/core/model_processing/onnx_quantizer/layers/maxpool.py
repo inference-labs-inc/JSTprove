@@ -33,7 +33,7 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
     - Validates that all required MaxPool parameters are present.
     """
 
-    SUPPORTED_OPS: ClassVar = list(range(10, 24))
+    SUPPORTED_OPSETS: ClassVar = list(range(10, 24))
 
     def __init__(
         self: MaxpoolQuantizer,

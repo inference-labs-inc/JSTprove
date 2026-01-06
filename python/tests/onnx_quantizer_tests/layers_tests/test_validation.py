@@ -10,6 +10,7 @@ if TYPE_CHECKING:
         LayerTestConfig,
         LayerTestSpec,
     )
+from python.tests.onnx_quantizer_tests.layers.base import SpecType
 from python.tests.onnx_quantizer_tests.layers.factory import TestLayerFactory
 from python.tests.onnx_quantizer_tests.layers_tests.base_test import (
     BaseQuantizerTest,
@@ -33,6 +34,11 @@ class TestValidation(BaseQuantizerTest):
     ) -> None:
         layer_name, config, test_spec, opset_version = test_case_data
         test_case_id = f"{layer_name}_{test_spec.name}"
+
+        if test_spec.spec_type == SpecType.ERROR:
+            pytest.skip(
+                f"{test_case_id}: error tests do not need to be ONNX-valid by design",
+            )
 
         if test_spec.skip_reason:
             pytest.skip(f"{test_case_id}: {test_spec.skip_reason}")

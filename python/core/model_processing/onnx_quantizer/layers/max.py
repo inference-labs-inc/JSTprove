@@ -21,6 +21,10 @@ class QuantizeMax(QuantizerBase):
 
 
 class MaxQuantizer(BaseOpQuantizer, QuantizeMax):
+    SUPPORTED_OPSETS: ClassVar = list(range(12, 23))
+    # By default, Max quantizer does not support int64 prior
+    # to opset 12. Must add a custom op
+
     def __init__(
         self,
         new_initializers: list[onnx.TensorProto] | None = None,

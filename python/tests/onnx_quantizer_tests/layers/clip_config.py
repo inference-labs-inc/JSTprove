@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import numpy as np
 
+from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
 from python.tests.onnx_quantizer_tests import TEST_RNG_SEED
 from python.tests.onnx_quantizer_tests.layers.base import (
     e2e_test,
     edge_case_test,
+    error_test,
     valid_test,
 )
 from python.tests.onnx_quantizer_tests.layers.factory import (
@@ -124,5 +126,12 @@ class ClipConfigProvider(BaseLayerConfigProvider):
             .override_input_shapes(A=[0], min=[1], max=[1])
             .override_output_shapes(clip_output=[0])
             .tags("edge", "empty", "clip")
+            .build(),
+            # --- ERROR TESTS ---
+            error_test("invalid_opset")
+            .description("Opset 11 and below should fail")
+            .expects_error(InvalidParamError, "Unsupported opset")
+            .min_opset(7)
+            .max_opset(11)
             .build(),
         ]

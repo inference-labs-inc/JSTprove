@@ -137,19 +137,13 @@ class LayerTestConfig:
         """Create a complete model for a specific test case"""
         test_spec.min_supported_opset = (
             self.min_opset
-            if (
-                not test_spec.min_supported_opset
-                # or self.min_opset > test_spec.min_supported_opset
-            )
+            if (not test_spec.min_supported_opset)
             else test_spec.min_supported_opset
         )
         test_spec.max_supported_opset = (
             self.max_opset
-            if (
-                not test_spec.max_supported_opset
-                # or self.max_opset < test_spec.max_supported_opset
-            )
-            else test_spec.min_supported_opset
+            if (not test_spec.max_supported_opset)
+            else test_spec.max_supported_opset
         )
         if opset_version is not None and not test_spec.supports_opset(opset_version):
             pytest.skip(f"{test_spec.name} does not support opset {opset_version}")

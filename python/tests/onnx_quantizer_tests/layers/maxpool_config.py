@@ -72,6 +72,12 @@ class MaxPoolConfigProvider(BaseLayerConfigProvider):
             .expects_error(InvalidParamError, "Currently only MaxPool2D is supported")
             .tags("invalid_attr_length", "kernel_shape")
             .build(),
+            error_test("invalid_opset")
+            .description("Opset 9 and below should fail")
+            .expects_error(InvalidParamError, "Unsupported opset")
+            .min_opset(7)
+            .max_opset(9)
+            .build(),
             # --- EDGE CASE / SKIPPED TEST ---
             valid_test("large_input")
             .description("Large MaxPool input (performance/stress test)")

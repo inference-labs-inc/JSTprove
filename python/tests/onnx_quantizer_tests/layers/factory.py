@@ -121,7 +121,8 @@ class TestLayerFactory:
             for spec in test_specs:
                 # Expand only if spec is marked for version testing
                 if spec.onnx_opset_versions or (
-                    versions and spec.spec_type in (SpecType.VALID, SpecType.E2E)
+                    versions
+                    and spec.spec_type in (SpecType.VALID, SpecType.E2E, SpecType.ERROR)
                 ):
                     # Use spec's explicit versions if set, otherwise use global versions
                     expand_versions = spec.onnx_opset_versions or versions
