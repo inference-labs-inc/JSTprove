@@ -26,6 +26,10 @@ class MinQuantizer(BaseOpQuantizer, QuantizeMin):
     We rely on the converter to quantize graph inputs; no extra scaling here.
     """
 
+    SUPPORTED_OPSETS: ClassVar = list(range(12, 23))
+    # By default, Min quantizer does not support int64 prior
+    # to opset 12. Must add a custom op
+
     def __init__(
         self: MinQuantizer,
         new_initializers: list[onnx.TensorProto] | None = None,
@@ -40,8 +44,11 @@ class MinQuantizer(BaseOpQuantizer, QuantizeMin):
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
+        opset_version: int | None = None,
     ) -> list[onnx.NodeProto]:
         # Delegate to QuantizerBase's generic passthrough implementation.
+        _ = opset_version  # Min passthrough doesn't require version-specific behavior
+
         return QuantizeMin.quantize(self, node, graph, scale_config, initializer_map)
 
     def check_supported(

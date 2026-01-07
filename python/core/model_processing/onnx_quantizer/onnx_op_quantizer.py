@@ -86,7 +86,10 @@ class ONNXOpQuantizer:
         self.register("Gemm", GemmQuantizer(self.new_initializers))
         self.register("Constant", ConstantQuantizer())
         self.register("MaxPool", MaxpoolQuantizer())
-        self.register("Flatten", PassthroughQuantizer())
+        self.register(
+            "Flatten",
+            PassthroughQuantizer(supported_opsets=list(range(9, 25))),
+        )  # default flatten does not support int64 inputs, would need a custom operator
         self.register("Max", MaxQuantizer(self.new_initializers))
         self.register("Min", MinQuantizer(self.new_initializers))
         self.register("BatchNormalization", BatchnormQuantizer(self.new_initializers))
@@ -126,6 +129,7 @@ class ONNXOpQuantizer:
         initializer_map: dict[str, onnx.TensorProto],
         *,
         rescale: bool = True,
+        opset_version: int | None = None,
     ) -> onnx.NodeProto | list[onnx.NodeProto]:
         """Quantize an ONNX node using its registered handler.
 
@@ -151,6 +155,7 @@ class ONNXOpQuantizer:
                 graph=graph,
                 scale_config=ScaleConfig(scale_exponent, scale_base, rescale),
                 initializer_map=initializer_map,
+                opset_version=opset_version,
             )
             if isinstance(result, onnx.NodeProto):
                 return [result]
@@ -174,15 +179,17 @@ class ONNXOpQuantizer:
 
         if unsupported:
             raise UnsupportedOpError(unsupported)
+        opset_version = model.opset_import[0].version if model.opset_import else None
 
         # Call check_layer on each node (e.g., for param validation)
         for node in model.graph.node:
-            self.check_layer(node, initializer_map)
+            self.check_layer(node, initializer_map, opset_version)
 
     def check_layer(
         self: ONNXOpQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto],
+        opset_version: int | None = None,
     ) -> None:
         """
         Check an individual node using its handler.
@@ -193,6 +200,8 @@ class ONNXOpQuantizer:
             node (onnx.NodeProto): The node to check.
             initializer_map (dict[str, onnx.TensorProto]): Mapping of initializer names
                 to tensor typically used in weights and biases.
+            opset_version (int, optional): The opset version of the model.
+                Defaults to None.
 
         Raises:
             MissingHandlerError: If no handler is registered for the given node.
@@ -203,6 +212,11 @@ class ONNXOpQuantizer:
 
         if hasattr(handler, "check_supported") and callable(handler.check_supported):
             handler.check_supported(node, initializer_map)
+
+        if hasattr(handler, "check_supported_op") and callable(
+            handler.check_supported_op,
+        ):
+            handler.check_supported_op(opset_version, node.op_type, node.name)
 
     def get_initializer_map(
         self: ONNXOpQuantizer,

@@ -243,6 +243,7 @@ class ONNXConverter(ModelConverter):
             raise InvalidModelError(
                 model_path=getattr(self, "model_file_name", None),
                 reason=f"Model validation failed: {e!s}",
+                model_type=self.model_type,
             ) from e
 
     def analyze_layers(
@@ -878,7 +879,6 @@ class ONNXConverter(ModelConverter):
         except (QuantizationError, ModelConversionError):
             raise
         except (
-            onnx.ONNXException,
             ValueError,
             TypeError,
             RuntimeError,
@@ -921,6 +921,10 @@ class ONNXConverter(ModelConverter):
                 A quantized node or list of nodes replacing the initial node.
         """
         try:
+            opset_version = model.opset_import[0].version
+        except Exception:
+            opset_version = None
+        try:
             return self.op_quantizer.quantize(
                 node=node,
                 rescale=scale_config.rescale,
@@ -928,6 +932,7 @@ class ONNXConverter(ModelConverter):
                 scale_exponent=scale_config.exponent,
                 scale_base=scale_config.base,
                 initializer_map=initializer_map,
+                opset_version=opset_version,
             )
         except QuantizationError:
             raise

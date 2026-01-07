@@ -42,7 +42,9 @@ class ConvConfigProvider(BaseLayerConfigProvider):
             required_initializers={
                 "conv_weight": np.random.randn(32, 16, 3, 3),
                 "conv_bias": np.random.randn(32)
-            }
+            },
+            min_opset = 12,
+            max_opset = 18
         )
 ```
 
@@ -80,6 +82,7 @@ error_test("conv3d_unsupported")
         pads=[1, 1, 1, 1, 1, 1]
     )
     .override_initializer("conv_weight", np.random.randn(32, 16, 3, 3, 3))
+    .min_opset(13)
     .expects_error(InvalidParamError, "3D Conv is not currently supported")
     .tags("3d", "unsupported")
     .build()
@@ -139,6 +142,18 @@ Tests will fail if called on a non-error spec.
 ### `.tags(*tags: str)`
 
 Adds tags to help categorize or filter tests (e.g., "2d", "edge", "unsupported"). For specific or custom tests.
+
+### `.skip(reason: str)`
+
+Marks the test to be skipped with a given reason (e.g., "not yet supported").
+
+### `.min_opset(opset: int)`
+
+Sets the minimum opset version required for the test.
+
+### `.max_opset(opset: int)`
+
+Sets the maximum opset version required for the test.
 
 ### `.skip(reason: str)`
 

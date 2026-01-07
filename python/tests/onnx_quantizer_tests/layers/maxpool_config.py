@@ -28,6 +28,7 @@ class MaxPoolConfigProvider(BaseLayerConfigProvider):
                 "pads": [0, 0, 0, 0],
             },
             required_initializers={},
+            min_opset=10,
             input_shapes={"input": [1, 3, 4, 4]},
             output_shapes={"maxpool_output": [1, 3, 2, 2]},
         )
@@ -157,6 +158,12 @@ class MaxPoolConfigProvider(BaseLayerConfigProvider):
             .override_attrs(kernel_shape=[2, 2, 2])
             .expects_error(InvalidParamError, "Currently only MaxPool2D is supported")
             .tags("invalid_attr_length", "kernel_shape")
+            .build(),
+            error_test("invalid_opset")
+            .description("Opset 9 and below should fail")
+            .expects_error(InvalidParamError, "Unsupported opset")
+            .min_opset(7)
+            .max_opset(9)
             .build(),
             error_test("auto_pad_not_supported")
             .description("MaxPool with auto_pad should be rejected")
