@@ -216,7 +216,7 @@ class ONNXOpQuantizer:
         if hasattr(handler, "check_supported_op") and callable(
             handler.check_supported_op,
         ):
-            handler.check_supported_op(opset_version, node.op_type)
+            handler.check_supported_op(opset_version, node.op_type, node.name)
 
     def get_initializer_map(
         self: ONNXOpQuantizer,

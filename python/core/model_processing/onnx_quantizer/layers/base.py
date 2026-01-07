@@ -167,13 +167,16 @@ class BaseOpQuantizer:
         self: BaseOpQuantizer,
         opset_version: int,
         op_name: str,
+        node_name: str,
     ) -> None:
+        if opset_version is None:
+            return
         if (
             hasattr(self, "SUPPORTED_OPSETS")
             and opset_version not in self.SUPPORTED_OPSETS
         ):
             raise InvalidParamError(
-                node_name=None,
+                node_name=node_name,
                 op_type=op_name,
                 message=(
                     f"Unsupported opset version {opset_version} "
