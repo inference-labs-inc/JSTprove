@@ -179,7 +179,7 @@ class ONNXOpQuantizer:
 
         if unsupported:
             raise UnsupportedOpError(unsupported)
-        opset_version = model.opset_import[0].version
+        opset_version = model.opset_import[0].version if model.opset_import else None
 
         # Call check_layer on each node (e.g., for param validation)
         for node in model.graph.node:

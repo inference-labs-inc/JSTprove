@@ -66,6 +66,7 @@ class TestQuantize(BaseQuantizerTest):
             scale_exponent=scale_exponent,
             scale_base=scale_base,
             initializer_map=initializer_map,
+            opset_version=opset_version,
         )
 
         if not isinstance(result, list):

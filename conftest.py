@@ -63,7 +63,7 @@ def pytest_addoption(parser: Parser) -> None:
         "--all-opset-versions",
         action="store_true",
         default=False,
-        help=("All opset versions 7-23 will be tested when this is specified"),
+        help=("All opset versions 7-22 will be tested when this is specified"),
     )
 
 

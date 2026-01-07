@@ -47,7 +47,8 @@ class MinQuantizer(BaseOpQuantizer, QuantizeMin):
         opset_version: int | None = None,
     ) -> list[onnx.NodeProto]:
         # Delegate to QuantizerBase's generic passthrough implementation.
-        _ = opset_version
+        _ = opset_version  # Min passthrough doesn't require version-specific behavior
+
         return QuantizeMin.quantize(self, node, graph, scale_config, initializer_map)
 
     def check_supported(

@@ -50,7 +50,7 @@ class ConvQuantizer(BaseOpQuantizer, QuantizeConv):
         initializer_map: dict[str, onnx.TensorProto],
         opset_version: int | None = None,
     ) -> list[onnx.NodeProto]:
-        if opset_version:
+        if opset_version is not None:
             self.OP_TYPE = self.OPSET_IMPLEMENTATIONS[opset_version]
         return QuantizeConv.quantize(self, node, graph, scale_config, initializer_map)
 

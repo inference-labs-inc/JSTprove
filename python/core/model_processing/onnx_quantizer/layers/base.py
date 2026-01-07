@@ -173,7 +173,7 @@ class BaseOpQuantizer:
             and opset_version not in self.SUPPORTED_OPSETS
         ):
             raise InvalidParamError(
-                node_name="",
+                node_name=None,
                 op_type=op_name,
                 message=(
                     f"Unsupported opset version {opset_version} "

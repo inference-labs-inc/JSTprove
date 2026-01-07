@@ -135,18 +135,14 @@ class LayerTestConfig:
         opset_version: int | None = None,
     ) -> onnx.ModelProto:
         """Create a complete model for a specific test case"""
-        test_spec.min_supported_opset = (
-            self.min_opset
-            if (not test_spec.min_supported_opset)
-            else test_spec.min_supported_opset
-        )
-        test_spec.max_supported_opset = (
-            self.max_opset
-            if (not test_spec.max_supported_opset)
-            else test_spec.max_supported_opset
-        )
-        if opset_version is not None and not test_spec.supports_opset(opset_version):
-            pytest.skip(f"{test_spec.name} does not support opset {opset_version}")
+        effective_min = test_spec.min_supported_opset or self.min_opset
+        effective_max = test_spec.max_supported_opset or self.max_opset
+
+        if opset_version is not None:
+            min_violation = effective_min is not None and opset_version < effective_min
+            max_violation = effective_max is not None and opset_version > effective_max
+            if min_violation or max_violation:
+                pytest.skip(f"{test_spec.name} does not support opset {opset_version}")
 
         # Determine node-level inputs.
         # If dev overrides inputs explicitly,
