@@ -58,15 +58,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SplitLayer {
 
         for &len in &splits {
             let end = start + len;
-            let slice_info: Vec<_> = (0..ndim)
-                .map(|d| {
-                    if d == axis {
-                        ndarray::Slice::from(start as isize..end as isize)
-                    } else {
-                        ndarray::Slice::from(..)
-                    }
-                })
-                .collect();
 
             let sliced = layer_input
                 .slice_each_axis(|ax| {

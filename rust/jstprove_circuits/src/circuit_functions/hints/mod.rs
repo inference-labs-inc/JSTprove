@@ -9,6 +9,9 @@ pub use max_min_clip::{unconstrained_clip, unconstrained_max, unconstrained_min}
 pub mod sigmoid;
 pub use sigmoid::sigmoid_bucket_hint;
 
+pub mod softmax;
+pub use softmax::{exp_bucket_hint, softmax_div_hint};
+
 use circuit_std_rs::logup::{query_count_by_key_hint, query_count_hint, rangeproof_hint};
 use expander_compiler::field::Field as CompilerField;
 use expander_compiler::hints::registry::HintRegistry;
@@ -20,6 +23,8 @@ pub fn build_logup_hint_registry<F: CompilerField>() -> HintRegistry<F> {
     registry.register("myhint.querycountbykeyhint", query_count_by_key_hint::<F>);
     registry.register("myhint.rangeproofhint", rangeproof_hint::<F>);
     registry.register("myhint.sigmoid_bucket", sigmoid_bucket_hint::<F>);
+    registry.register("myhint.exp_bucket", exp_bucket_hint::<F>);
+    registry.register("myhint.softmax_div", softmax_div_hint::<F>);
 
     registry
 }
