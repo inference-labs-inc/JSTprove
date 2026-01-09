@@ -22,7 +22,6 @@ pub struct DivLayer {
     outputs: Vec<String>,
     initializer_a: Option<ArrayD<i64>>,
     initializer_b: Option<ArrayD<i64>>,
-    n_bits: usize,
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
@@ -60,24 +59,34 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
         let divisor_var = api.constant(divisor_val);
         let shape = a_input.shape().to_vec();
 
-        let results: Result<Vec<Variable>, CircuitError> = a_input
-            .iter()
-            .map(|dividend| {
-                let quotient = api.unconstrained_int_div(*dividend, divisor_val);
-                let remainder = api.unconstrained_mod(*dividend, divisor_val);
+        let results: Result<Vec<Variable>, CircuitError> = if divisor_val == 1 {
+            a_input.iter().cloned().map(Ok).collect()
+        } else {
+            let divisor_minus_one = api.constant(divisor_val - 1);
+            let remainder_bound_bits = (32 - (divisor_val - 1).leading_zeros()) as usize;
 
-                let prod = api.mul(divisor_var, quotient);
-                let reconstructed = api.add(prod, remainder);
-                api.assert_is_equal(*dividend, reconstructed);
+            a_input
+                .iter()
+                .map(|dividend| {
+                    let quotient = api.unconstrained_int_div(*dividend, divisor_val);
+                    let remainder = api.unconstrained_mod(*dividend, divisor_val);
 
-                let remainder_bits = self.n_bits.saturating_sub(1);
-                if remainder_bits > 0 {
-                    let _ = logup_ctx.range_check::<C, Builder>(api, remainder, remainder_bits);
-                }
+                    let prod = api.mul(divisor_var, quotient);
+                    let reconstructed = api.add(prod, remainder);
+                    api.assert_is_equal(*dividend, reconstructed);
 
-                Ok(quotient)
-            })
-            .collect();
+                    let diff = api.sub(divisor_minus_one, remainder);
+                    logup_ctx
+                        .range_check::<C, Builder>(api, diff, remainder_bound_bits)
+                        .map_err(|e| LayerError::Other {
+                            layer: LayerKind::Div,
+                            msg: format!("remainder bound check failed: {e}"),
+                        })?;
+
+                    Ok(quotient)
+                })
+                .collect()
+        };
 
         logup_ctx.finalize::<C, Builder>(api);
 
@@ -113,7 +122,176 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
             outputs: layer.outputs.clone(),
             initializer_a,
             initializer_b,
-            n_bits: layer_context.n_bits,
         }))
+    }
+}
+
+#[cfg(test)]
+mod soundness_tests {
+    use crate::circuit_functions::gadgets::LogupRangeCheckContext;
+    use crate::circuit_functions::hints::build_logup_hint_registry;
+    use expander_compiler::frontend::*;
+
+    const DIVISOR: u32 = 3;
+
+    declare_circuit!(DivBy3Circuit {
+        dividend: Variable,
+        expected_quotient: PublicVariable
+    });
+
+    impl Define<BN254Config> for DivBy3Circuit<Variable> {
+        fn define<Builder: RootAPI<BN254Config>>(&self, api: &mut Builder) {
+            let divisor_val = DIVISOR;
+
+            let mut logup_ctx = LogupRangeCheckContext::new_default();
+            logup_ctx.init::<BN254Config, Builder>(api);
+
+            let divisor_var = api.constant(divisor_val);
+            let divisor_minus_one = api.constant(divisor_val - 1);
+            let remainder_bound_bits = (32 - (divisor_val - 1).leading_zeros()) as usize;
+
+            let q = api.unconstrained_int_div(self.dividend, divisor_val);
+            let r = api.unconstrained_mod(self.dividend, divisor_val);
+
+            let prod = api.mul(divisor_var, q);
+            let reconstructed = api.add(prod, r);
+            api.assert_is_equal(self.dividend, reconstructed);
+
+            let diff = api.sub(divisor_minus_one, r);
+            logup_ctx
+                .range_check::<BN254Config, Builder>(api, diff, remainder_bound_bits)
+                .expect("range check failed");
+
+            logup_ctx.finalize::<BN254Config, Builder>(api);
+            api.assert_is_equal(q, self.expected_quotient);
+        }
+    }
+
+    type F = CircuitField<BN254Config>;
+
+    #[test]
+    fn test_div_valid_10_by_3() {
+        let mut hint_registry = build_logup_hint_registry::<F>();
+
+        let compile_result: CompileResult<BN254Config> =
+            compile(&DivBy3Circuit::default(), CompileOptions::default())
+                .expect("Compilation failed");
+
+        let assignment = DivBy3Circuit::<F> {
+            dividend: F::from(10u32),
+            expected_quotient: F::from(3u32),
+        };
+
+        let witness = compile_result
+            .witness_solver
+            .solve_witness_with_hints(&assignment, &mut hint_registry)
+            .expect("Witness solving failed");
+
+        let output = compile_result.layered_circuit.run(&witness);
+        assert!(output.iter().all(|&x| x), "10 / 3 = 3 should pass");
+    }
+
+    #[test]
+    fn test_div_wrong_quotient_rejected() {
+        let mut hint_registry = build_logup_hint_registry::<F>();
+
+        let compile_result: CompileResult<BN254Config> =
+            compile(&DivBy3Circuit::default(), CompileOptions::default())
+                .expect("Compilation failed");
+
+        let assignment = DivBy3Circuit::<F> {
+            dividend: F::from(10u32),
+            expected_quotient: F::from(2u32),
+        };
+
+        let witness = compile_result
+            .witness_solver
+            .solve_witness_with_hints(&assignment, &mut hint_registry)
+            .expect("Witness solving failed");
+
+        let output = compile_result.layered_circuit.run(&witness);
+        assert!(
+            !output.iter().all(|&x| x),
+            "Claiming 10 / 3 = 2 should be rejected"
+        );
+    }
+
+    const DIVISOR_7: u32 = 7;
+
+    declare_circuit!(DivBy7Circuit {
+        dividend: Variable,
+        expected_quotient: PublicVariable
+    });
+
+    impl Define<BN254Config> for DivBy7Circuit<Variable> {
+        fn define<Builder: RootAPI<BN254Config>>(&self, api: &mut Builder) {
+            let divisor_val = DIVISOR_7;
+
+            let mut logup_ctx = LogupRangeCheckContext::new_default();
+            logup_ctx.init::<BN254Config, Builder>(api);
+
+            let divisor_var = api.constant(divisor_val);
+            let divisor_minus_one = api.constant(divisor_val - 1);
+            let remainder_bound_bits = (32 - (divisor_val - 1).leading_zeros()) as usize;
+
+            let q = api.unconstrained_int_div(self.dividend, divisor_val);
+            let r = api.unconstrained_mod(self.dividend, divisor_val);
+
+            let prod = api.mul(divisor_var, q);
+            let reconstructed = api.add(prod, r);
+            api.assert_is_equal(self.dividend, reconstructed);
+
+            let diff = api.sub(divisor_minus_one, r);
+            logup_ctx
+                .range_check::<BN254Config, Builder>(api, diff, remainder_bound_bits)
+                .expect("range check failed");
+
+            logup_ctx.finalize::<BN254Config, Builder>(api);
+            api.assert_is_equal(q, self.expected_quotient);
+        }
+    }
+
+    #[test]
+    fn test_div_valid_100_by_7() {
+        let mut hint_registry = build_logup_hint_registry::<F>();
+
+        let compile_result: CompileResult<BN254Config> =
+            compile(&DivBy7Circuit::default(), CompileOptions::default())
+                .expect("Compilation failed");
+
+        let assignment = DivBy7Circuit::<F> {
+            dividend: F::from(100u32),
+            expected_quotient: F::from(14u32),
+        };
+
+        let witness = compile_result
+            .witness_solver
+            .solve_witness_with_hints(&assignment, &mut hint_registry)
+            .expect("Witness solving failed");
+
+        let output = compile_result.layered_circuit.run(&witness);
+        assert!(output.iter().all(|&x| x), "100 / 7 = 14 should pass");
+    }
+
+    #[test]
+    fn test_div_exact_division_21_by_7() {
+        let mut hint_registry = build_logup_hint_registry::<F>();
+
+        let compile_result: CompileResult<BN254Config> =
+            compile(&DivBy7Circuit::default(), CompileOptions::default())
+                .expect("Compilation failed");
+
+        let assignment = DivBy7Circuit::<F> {
+            dividend: F::from(21u32),
+            expected_quotient: F::from(3u32),
+        };
+
+        let witness = compile_result
+            .witness_solver
+            .solve_witness_with_hints(&assignment, &mut hint_registry)
+            .expect("Witness solving failed");
+
+        let output = compile_result.layered_circuit.run(&witness);
+        assert!(output.iter().all(|&x| x), "21 / 7 = 3 should pass");
     }
 }
