@@ -123,7 +123,7 @@ fn build_sigmoid_table<C: Config, Builder: RootAPI<C>>(
     (keys, values)
 }
 
-fn constrained_sigmoid<C: Config, Builder: RootAPI<C>>(
+pub fn constrained_sigmoid<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     shift_ctx: &ShiftRangeContext,
     range_ctx: &mut LogupRangeCheckContext,
@@ -132,7 +132,9 @@ fn constrained_sigmoid<C: Config, Builder: RootAPI<C>>(
     scale: u64,
     scale_exponent: usize,
 ) -> Result<Variable, CircuitError> {
-    let lower = api.constant((-(8i64 * scale as i64)) as u32);
+    let lower_abs = api.constant((8 * scale) as u32);
+    let zero = api.constant(0);
+    let lower = api.sub(zero, lower_abs);
     let upper = api.constant((8 * scale - 1) as u32);
 
     let x_clamped = constrained_clip(api, shift_ctx, range_ctx, x, Some(lower), Some(upper))?;
@@ -172,4 +174,195 @@ fn constrained_sigmoid<C: Config, Builder: RootAPI<C>>(
     table.query(idx, vec![out]);
 
     Ok(out)
+}
+
+pub use build_sigmoid_table_pub as build_sigmoid_table_for_test;
+
+pub fn build_sigmoid_table_pub<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    scale: u64,
+) -> (Vec<Variable>, Vec<Vec<Variable>>) {
+    build_sigmoid_table::<C, Builder>(api, scale)
+}
+
+#[cfg(test)]
+mod soundness_tests {
+    use super::*;
+    use crate::circuit_functions::hints::build_logup_hint_registry;
+    use arith::Field;
+    use expander_compiler::frontend::*;
+
+    const TEST_SCALE_EXPONENT: usize = 8;
+    const TEST_N_BITS: usize = 16;
+
+    declare_circuit!(SigmoidTestCircuit {
+        input_x: Variable,
+        expected_output: PublicVariable
+    });
+
+    impl Define<BN254Config> for SigmoidTestCircuit<Variable> {
+        fn define<Builder: RootAPI<BN254Config>>(&self, api: &mut Builder) {
+            let scale = 1u64 << TEST_SCALE_EXPONENT;
+            let shift_exponent = TEST_N_BITS.saturating_sub(1);
+
+            let shift_ctx = ShiftRangeContext::new::<BN254Config, Builder>(api, shift_exponent)
+                .expect("ShiftRangeContext creation failed");
+            let mut range_ctx = LogupRangeCheckContext::new_default();
+            range_ctx.init::<BN254Config, Builder>(api);
+
+            let mut logup_table = LogUpSingleKeyTable::new(SIGMOID_TABLE_BITS);
+            let (table_keys, table_values) = build_sigmoid_table::<BN254Config, Builder>(api, scale);
+            logup_table.new_table(table_keys, table_values);
+
+            let result = constrained_sigmoid::<BN254Config, Builder>(
+                api,
+                &shift_ctx,
+                &mut range_ctx,
+                &mut logup_table,
+                self.input_x,
+                scale,
+                TEST_SCALE_EXPONENT,
+            )
+            .expect("constrained_sigmoid failed");
+
+            range_ctx.finalize::<BN254Config, Builder>(api);
+            logup_table.final_check::<BN254Config, Builder>(api);
+
+            api.assert_is_equal(result, self.expected_output);
+        }
+    }
+
+    fn compute_expected_sigmoid(x_val: i64, scale: u64) -> u32 {
+        let x_clamped = x_val.clamp(-(8 * scale as i64), 8 * scale as i64 - 1);
+        let x_shifted = (x_clamped + 8 * scale as i64) as u64;
+        let bucket_width = scale >> 4;
+        let idx = if bucket_width == 0 {
+            0
+        } else {
+            (x_shifted / bucket_width).min(255) as u32
+        };
+        let x_unscaled = (idx as f64 / 16.0) - 8.0;
+        let sigmoid_val = 1.0 / (1.0 + (-x_unscaled).exp());
+        (sigmoid_val * scale as f64).round() as u32
+    }
+
+    type F = CircuitField<BN254Config>;
+
+    #[test]
+    fn test_sigmoid_valid_witness_zero_input() {
+        let scale = 1u64 << TEST_SCALE_EXPONENT;
+        let mut hint_registry = build_logup_hint_registry::<F>();
+
+        let compile_result: CompileResult<BN254Config> =
+            compile(&SigmoidTestCircuit::default(), CompileOptions::default())
+                .expect("Compilation failed");
+
+        let x_val: i64 = 0;
+        let expected_out = compute_expected_sigmoid(x_val, scale);
+
+        let assignment = SigmoidTestCircuit::<F> {
+            input_x: F::from(x_val as u32),
+            expected_output: F::from(expected_out),
+        };
+
+        let witness = compile_result
+            .witness_solver
+            .solve_witness_with_hints(&assignment, &mut hint_registry)
+            .expect("Witness solving failed");
+
+        let output = compile_result.layered_circuit.run(&witness);
+        assert!(
+            output.iter().all(|&x| x),
+            "Valid witness for x=0 should pass all constraints"
+        );
+    }
+
+    #[test]
+    fn test_sigmoid_valid_witness_negative_input() {
+        let scale = 1u64 << TEST_SCALE_EXPONENT;
+        let mut hint_registry = build_logup_hint_registry::<F>();
+
+        let compile_result: CompileResult<BN254Config> =
+            compile(&SigmoidTestCircuit::default(), CompileOptions::default())
+                .expect("Compilation failed");
+
+        let x_val: i64 = -(4 * scale as i64);
+        let x_field = F::ZERO - F::from((4 * scale) as u32);
+        let expected_out = compute_expected_sigmoid(x_val, scale);
+
+        let assignment = SigmoidTestCircuit::<F> {
+            input_x: x_field,
+            expected_output: F::from(expected_out),
+        };
+
+        let witness = compile_result
+            .witness_solver
+            .solve_witness_with_hints(&assignment, &mut hint_registry)
+            .expect("Witness solving failed");
+
+        let output = compile_result.layered_circuit.run(&witness);
+        assert!(
+            output.iter().all(|&x| x),
+            "Valid witness for negative x should pass all constraints"
+        );
+    }
+
+    #[test]
+    fn test_sigmoid_valid_witness_positive_input() {
+        let scale = 1u64 << TEST_SCALE_EXPONENT;
+        let mut hint_registry = build_logup_hint_registry::<F>();
+
+        let compile_result: CompileResult<BN254Config> =
+            compile(&SigmoidTestCircuit::default(), CompileOptions::default())
+                .expect("Compilation failed");
+
+        let x_val: i64 = 4 * scale as i64;
+        let expected_out = compute_expected_sigmoid(x_val, scale);
+
+        let assignment = SigmoidTestCircuit::<F> {
+            input_x: F::from(x_val as u32),
+            expected_output: F::from(expected_out),
+        };
+
+        let witness = compile_result
+            .witness_solver
+            .solve_witness_with_hints(&assignment, &mut hint_registry)
+            .expect("Witness solving failed");
+
+        let output = compile_result.layered_circuit.run(&witness);
+        assert!(
+            output.iter().all(|&x| x),
+            "Valid witness for positive x should pass all constraints"
+        );
+    }
+
+    #[test]
+    fn test_sigmoid_rejects_wrong_output() {
+        let scale = 1u64 << TEST_SCALE_EXPONENT;
+        let mut hint_registry = build_logup_hint_registry::<F>();
+
+        let compile_result: CompileResult<BN254Config> =
+            compile(&SigmoidTestCircuit::default(), CompileOptions::default())
+                .expect("Compilation failed");
+
+        let x_val: i64 = 0;
+        let correct_out = compute_expected_sigmoid(x_val, scale);
+        let wrong_out = correct_out + 100;
+
+        let assignment = SigmoidTestCircuit::<F> {
+            input_x: F::from(x_val as u32),
+            expected_output: F::from(wrong_out),
+        };
+
+        let witness = compile_result
+            .witness_solver
+            .solve_witness_with_hints(&assignment, &mut hint_registry)
+            .expect("Witness solving failed");
+
+        let output = compile_result.layered_circuit.run(&witness);
+        assert!(
+            output.iter().any(|&x| !x),
+            "Wrong expected_output should fail constraint check"
+        );
+    }
 }
