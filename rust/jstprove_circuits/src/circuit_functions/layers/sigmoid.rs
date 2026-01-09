@@ -6,6 +6,7 @@ use ndarray::ArrayD;
 
 use crate::circuit_functions::{
     CircuitError,
+    gadgets::{LogupRangeCheckContext, ShiftRangeContext, constrained_clip},
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
@@ -42,21 +43,32 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SigmoidLayer {
 
         let scale = 1u64 << self.scale_exponent;
 
+        let shift_exponent = self.n_bits.saturating_sub(1);
+        let shift_ctx = ShiftRangeContext::new::<C, Builder>(api, shift_exponent)?;
+        let mut range_ctx = LogupRangeCheckContext::new_default();
+        range_ctx.init::<C, Builder>(api);
+
         let mut logup_table = LogUpSingleKeyTable::new(SIGMOID_TABLE_BITS);
-        let (table_keys, table_values) =
-            build_sigmoid_table::<C, Builder>(api, scale, self.scale_exponent);
+        let (table_keys, table_values) = build_sigmoid_table::<C, Builder>(api, scale);
         logup_table.new_table(table_keys, table_values);
 
         let shape = layer_input.shape().to_vec();
         let mut results: Vec<Variable> = Vec::with_capacity(layer_input.len());
 
         for &x in layer_input.iter() {
-            let (idx, out) =
-                sigmoid_lookup_hint::<C, Builder>(api, x, scale, self.scale_exponent)?;
-            logup_table.query(idx, vec![out]);
+            let out = constrained_sigmoid::<C, Builder>(
+                api,
+                &shift_ctx,
+                &mut range_ctx,
+                &mut logup_table,
+                x,
+                scale,
+                self.scale_exponent,
+            )?;
             results.push(out);
         }
 
+        range_ctx.finalize::<C, Builder>(api);
         logup_table.final_check::<C, Builder>(api);
 
         let out = ArrayD::from_shape_vec(shape, results).map_err(|e| LayerError::Other {
@@ -95,13 +107,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SigmoidLayer {
 fn build_sigmoid_table<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     scale: u64,
-    _scale_exponent: usize,
 ) -> (Vec<Variable>, Vec<Vec<Variable>>) {
     let mut keys = Vec::with_capacity(SIGMOID_TABLE_SIZE);
     let mut values = Vec::with_capacity(SIGMOID_TABLE_SIZE);
 
     for i in 0..SIGMOID_TABLE_SIZE {
-        let x_unscaled = (i as f64 / (SIGMOID_TABLE_SIZE as f64 / 16.0)) - 8.0;
+        let x_unscaled = (i as f64 / 16.0) - 8.0;
         let sigmoid_val = 1.0 / (1.0 + (-x_unscaled).exp());
         let sigmoid_scaled = (sigmoid_val * scale as f64).round() as u32;
 
@@ -112,17 +123,53 @@ fn build_sigmoid_table<C: Config, Builder: RootAPI<C>>(
     (keys, values)
 }
 
-fn sigmoid_lookup_hint<C: Config, Builder: RootAPI<C>>(
+fn constrained_sigmoid<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
+    shift_ctx: &ShiftRangeContext,
+    range_ctx: &mut LogupRangeCheckContext,
+    table: &mut LogUpSingleKeyTable,
     x: Variable,
     scale: u64,
     scale_exponent: usize,
-) -> Result<(Variable, Variable), CircuitError> {
-    let hint_inputs = vec![
-        x,
-        api.constant(scale as u32),
-        api.constant(scale_exponent as u32),
-    ];
-    let hint_outputs = api.new_hint("myhint.sigmoidhint", &hint_inputs, 2);
-    Ok((hint_outputs[0], hint_outputs[1]))
+) -> Result<Variable, CircuitError> {
+    let lower = api.constant((-(8i64 * scale as i64)) as u32);
+    let upper = api.constant((8 * scale - 1) as u32);
+
+    let x_clamped = constrained_clip(api, shift_ctx, range_ctx, x, Some(lower), Some(upper))?;
+
+    let offset = api.constant((8 * scale) as u32);
+    let x_shifted = api.add(x_clamped, offset);
+
+    let hint_inputs = vec![x_shifted, api.constant(scale_exponent as u32)];
+    let hint_out = api.new_hint("myhint.sigmoid_bucket", &hint_inputs, 2);
+    let idx = hint_out[0];
+    let out = hint_out[1];
+
+    let bucket_width = scale >> 4;
+    let bucket_width_var = api.constant(bucket_width as u32);
+    let l_bound = api.mul(idx, bucket_width_var);
+    let r_bound = api.add(l_bound, bucket_width_var);
+
+    let delta_low = api.sub(x_shifted, l_bound);
+    let one = api.constant(1);
+    let r_minus_x = api.sub(r_bound, x_shifted);
+    let delta_high = api.sub(r_minus_x, one);
+
+    let bucket_bits = scale_exponent.saturating_sub(4).max(1);
+    range_ctx
+        .range_check::<C, Builder>(api, delta_low, bucket_bits)
+        .map_err(|e| LayerError::Other {
+            layer: LayerKind::Sigmoid,
+            msg: format!("range_check delta_low failed: {e}"),
+        })?;
+    range_ctx
+        .range_check::<C, Builder>(api, delta_high, bucket_bits)
+        .map_err(|e| LayerError::Other {
+            layer: LayerKind::Sigmoid,
+            msg: format!("range_check delta_high failed: {e}"),
+        })?;
+
+    table.query(idx, vec![out]);
+
+    Ok(out)
 }

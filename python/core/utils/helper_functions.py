@@ -615,6 +615,7 @@ def run_expander_raw(  # noqa: PLR0913, PLR0912, C901
 
     expander_binary_path = None
     possible_paths = [
+        Path.home() / ".cargo" / "bin" / "expander-exec",
         "./Expander/target/release/expander-exec",
         Path(__file__).parent.parent / "binaries" / "expander-exec",
         Path(sys.prefix) / "bin" / "expander-exec",

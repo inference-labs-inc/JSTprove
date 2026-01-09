@@ -7,7 +7,7 @@ pub mod max_min_clip;
 pub use max_min_clip::{unconstrained_clip, unconstrained_max, unconstrained_min};
 
 pub mod sigmoid;
-pub use sigmoid::sigmoid_hint;
+pub use sigmoid::sigmoid_bucket_hint;
 
 use circuit_std_rs::logup::{query_count_by_key_hint, query_count_hint, rangeproof_hint};
 use expander_compiler::field::Field as CompilerField;
@@ -19,7 +19,7 @@ pub fn build_logup_hint_registry<F: CompilerField>() -> HintRegistry<F> {
     registry.register("myhint.querycounthint", query_count_hint::<F>);
     registry.register("myhint.querycountbykeyhint", query_count_by_key_hint::<F>);
     registry.register("myhint.rangeproofhint", rangeproof_hint::<F>);
-    registry.register("myhint.sigmoidhint", sigmoid_hint::<F>);
+    registry.register("myhint.sigmoid_bucket", sigmoid_bucket_hint::<F>);
 
     registry
 }
