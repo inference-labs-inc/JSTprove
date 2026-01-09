@@ -149,13 +149,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             }
         })?;
 
-        let b_name = get_input_name(&layer.inputs, 2, LayerKind::Conv, BIAS)?;
-        let bias = get_w_or_b(&layer_context.w_and_b_map, b_name).map_err(|_| {
-            LayerError::MissingParameter {
-                layer: LayerKind::Conv,
-                param: format!("bias (B), requested={b_name}"),
-            }
-        })?;
+        let bias = if layer.inputs.len() > 2 {
+            let b_name = get_input_name(&layer.inputs, 2, LayerKind::Conv, BIAS)?;
+            get_w_or_b(&layer_context.w_and_b_map, b_name).unwrap_or_else(|_| ArrayD::default(vec![]))
+        } else {
+            ArrayD::default(vec![])
+        };
 
         let kernel_shape: Vec<u32> = get_param(&layer.name, KERNEL_SHAPE, &params)?;
         let spatial_rank = kernel_shape.len();

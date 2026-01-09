@@ -1,10 +1,13 @@
 pub mod add;
 pub mod batchnorm;
 pub mod clip;
+pub mod concat;
 pub mod constant;
 pub mod conv;
+pub mod div;
 mod errors;
 pub mod flatten;
+pub mod gather;
 pub mod gemm;
 mod layer_kinds;
 pub mod layer_ops;
@@ -14,7 +17,14 @@ pub mod min;
 pub mod mul;
 pub mod relu;
 pub mod reshape;
+pub mod resize;
+pub mod shape;
+pub mod sigmoid;
+pub mod slice;
+pub mod softmax;
+pub mod split;
 pub mod sub;
+pub mod transpose;
 
 pub use errors::LayerError;
 pub use layer_kinds::LayerKind;

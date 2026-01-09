@@ -72,15 +72,6 @@ class ConvQuantizer(BaseOpQuantizer, QuantizeConv):
                 node.op_type,
                 f"Expected at least 2 inputs (input, weights), got {len(node.input)}",
             )
-        num_inputs = 3
-
-        if len(node.input) < num_inputs:
-            raise InvalidParamError(
-                node.name,
-                node.op_type,
-                "Expected at least 3 inputs (input, weights, bias),"
-                f" got {len(node.input)}",
-            )
 
         self.check_supported_shape(node, initializer_map)
         self.check_all_params_exist(node)

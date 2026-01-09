@@ -1,8 +1,18 @@
 use crate::circuit_functions::layers::LayerError;
 use crate::circuit_functions::layers::batchnorm::BatchnormLayer;
+use crate::circuit_functions::layers::concat::ConcatLayer;
+use crate::circuit_functions::layers::div::DivLayer;
+use crate::circuit_functions::layers::gather::GatherLayer;
 use crate::circuit_functions::layers::layer_ops::LayerOp;
 use crate::circuit_functions::layers::mul::MulLayer;
+use crate::circuit_functions::layers::resize::ResizeLayer;
+use crate::circuit_functions::layers::shape::ShapeLayer;
+use crate::circuit_functions::layers::sigmoid::SigmoidLayer;
+use crate::circuit_functions::layers::slice::SliceLayer;
+use crate::circuit_functions::layers::softmax::SoftmaxLayer;
+use crate::circuit_functions::layers::split::SplitLayer;
 use crate::circuit_functions::layers::sub::SubLayer;
+use crate::circuit_functions::layers::transpose::TransposeLayer;
 use crate::circuit_functions::utils::build_layers::BuildLayerContext;
 use crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry;
 use crate::circuit_functions::utils::onnx_model::CircuitParams;
@@ -133,15 +143,25 @@ define_layers! {
     Add       => { name: "Add", builder: AddLayer::build },
     Clip      => { name: "Clip", builder: ClipLayer::build },
     Batchnorm => { name: "BatchNormalization", builder: BatchnormLayer::build },
+    Concat    => { name: "Concat", builder: ConcatLayer::build },
     Sub       => { name: "Sub", builder: SubLayer::build },
     Mul       => { name: "Mul", builder: MulLayer::build },
+    Div       => { name: "Div", builder: DivLayer::build },
     Constant  => { name: "Constant", builder: ConstantLayer::build },
     Conv      => { name: "Conv", builder: ConvLayer::build },
     Flatten   => { name: "Flatten", builder: FlattenLayer::build },
+    Gather    => { name: "Gather", builder: GatherLayer::build },
     Gemm      => { name: "Gemm", builder: GemmLayer::build },
     MaxPool   => { name: "MaxPool", builder: MaxPoolLayer::build },
     Max       => { name: "Max", builder: MaxLayer::build },
     Min       => { name: "Min", builder: MinLayer::build },
     ReLU      => { name: "ReLU", builder: ReluLayer::build, aliases: ["Relu"] },
     Reshape   => { name: "Reshape", builder: ReshapeLayer::build },
+    Resize    => { name: "Resize", builder: ResizeLayer::build },
+    Shape     => { name: "Shape", builder: ShapeLayer::build },
+    Sigmoid   => { name: "Sigmoid", builder: SigmoidLayer::build },
+    Slice     => { name: "Slice", builder: SliceLayer::build },
+    Softmax   => { name: "Softmax", builder: SoftmaxLayer::build },
+    Split     => { name: "Split", builder: SplitLayer::build },
+    Transpose => { name: "Transpose", builder: TransposeLayer::build },
 }

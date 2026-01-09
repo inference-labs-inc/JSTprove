@@ -198,11 +198,8 @@ pub fn extract_params_and_expected_shape(
     let expected_shape = layer_context
         .shapes_map
         .get(key)
-        .ok_or_else(|| LayerError::InvalidShape {
-            layer: kind.clone(),
-            msg: format!("Missing shape for input '{key}'"),
-        })?
-        .clone();
+        .cloned()
+        .unwrap_or_default();
 
     Ok((params, expected_shape))
 }

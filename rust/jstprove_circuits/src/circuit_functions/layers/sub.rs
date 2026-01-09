@@ -88,7 +88,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SubLayer {
         let sub = Self {
             name: layer.name.clone(),
             optimization_pattern,
-            input_shape: expected_shape.clone(),
+            input_shape: expected_shape,
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
             initializer_a,

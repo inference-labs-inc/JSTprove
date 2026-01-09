@@ -90,6 +90,16 @@ class ONNXOpQuantizer:
         self.register("Max", MaxQuantizer(self.new_initializers))
         self.register("Min", MinQuantizer(self.new_initializers))
         self.register("BatchNormalization", BatchnormQuantizer(self.new_initializers))
+        self.register("Transpose", PassthroughQuantizer())
+        self.register("Concat", PassthroughQuantizer())
+        self.register("Split", PassthroughQuantizer())
+        self.register("Slice", PassthroughQuantizer())
+        self.register("Gather", PassthroughQuantizer())
+        self.register("Shape", PassthroughQuantizer())
+        self.register("Div", PassthroughQuantizer())
+        self.register("Sigmoid", PassthroughQuantizer())
+        self.register("Resize", PassthroughQuantizer())
+        self.register("Softmax", PassthroughQuantizer())
 
     def register(
         self: ONNXOpQuantizer,

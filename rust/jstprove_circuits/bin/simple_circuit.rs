@@ -82,6 +82,14 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
     fn get_path(&self) -> &str {
         &self.path
     }
+
+    fn from_raw_values(
+        &mut self,
+        _inputs: &[i64],
+        _outputs: &[i64],
+    ) -> Result<Circuit<CircuitField<C>>, RunError> {
+        Err(RunError::Witness("Daemon mode not supported for simple_circuit".into()))
+    }
 }
 
 fn main() {

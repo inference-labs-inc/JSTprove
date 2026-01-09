@@ -2,8 +2,6 @@ use clap::{Arg, Command};
 use expander_compiler::circuit::layered::witness::Witness;
 use expander_compiler::circuit::layered::{Circuit, NormalInputType};
 use io_reader::IOReader;
-// use expander_compiler::frontend::{extra::debug_eval, internal::DumpLoadTwoVariables, *};
-// use expander_compiler::utils::serde::Serde;
 use expander_compiler::frontend::{
     ChallengeField, CircuitField, CompileOptions, Config, Define, Variable, WitnessSolver, compile,
     extra::debug_eval, internal::DumpLoadTwoVariables,
@@ -11,10 +9,9 @@ use expander_compiler::frontend::{
 use gkr_engine::{FieldEngine, GKREngine, MPIConfig};
 use peakmem_alloc::{INSTRUMENTED_SYSTEM, PeakMemAlloc, PeakMemAllocTrait};
 use serdes::ExpSerde;
-// use serde_json::{from_reader, to_writer};
 use std::alloc::System;
 use std::path::{Path, PathBuf};
-// use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Write};
 // use std::time::Instant;
 
 use crate::io::io_reader;
@@ -215,6 +212,113 @@ where
         .serialize_into(writer)
         .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
     // layered_circuit.evaluate();
+    Ok(())
+}
+
+/// Runs a witness generation daemon that keeps the circuit loaded and processes tiles via stdin.
+///
+/// Protocol (line-based JSON for simplicity, msgpack can be added later):
+/// - Input: JSON line with {"input": [...], "output": [...]}
+/// - Output: JSON line with {"status": "ok", "witness_size": N} or {"status": "error", "msg": "..."}
+///
+/// The daemon exits when stdin is closed or on receiving an empty line.
+pub fn run_witness_daemon<C: Config, I, CircuitDefaultType>(
+    io_reader: &mut I,
+    circuit_path: &str,
+    witness_dir: &str,
+) -> Result<(), RunError>
+where
+    I: IOReader<CircuitDefaultType, C>,
+    CircuitDefaultType: Default
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
+        + Clone,
+{
+    let witness_file = get_witness_solver_path(circuit_path);
+    let file = std::fs::File::open(&witness_file).map_err(|e| RunError::Io {
+        source: e,
+        path: witness_file.display().to_string(),
+    })?;
+    let reader = std::io::BufReader::new(file);
+    let witness_solver = WitnessSolver::<C>::deserialize_from(reader)
+        .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+
+    let file = std::fs::File::open(circuit_path).map_err(|e| RunError::Io {
+        source: e,
+        path: circuit_path.into(),
+    })?;
+    let reader = std::io::BufReader::new(file);
+    let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader)
+        .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+
+    let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
+
+    eprintln!("DAEMON_READY");
+    std::io::stderr().flush().ok();
+
+    let stdin = std::io::stdin();
+    let mut stdout = std::io::stdout();
+    let mut stdin_lock = stdin.lock();
+    let mut line_reader = BufReader::new(&mut stdin_lock);
+
+    let mut tile_idx: u64 = 0;
+    let mut line_buf = String::new();
+
+    loop {
+        line_buf.clear();
+        match line_reader.read_line(&mut line_buf) {
+            Ok(0) => break,
+            Err(_) => break,
+            Ok(_) => {}
+        }
+
+        let line = line_buf.trim();
+        if line.is_empty() || line == "EXIT" {
+            break;
+        }
+
+        let result: Result<(), String> = (|| {
+            #[derive(serde::Deserialize)]
+            struct TileData {
+                input: Vec<i64>,
+                output: Vec<i64>,
+            }
+
+            let data: TileData = serde_json::from_str(line)
+                .map_err(|e| format!("JSON parse error: {e}"))?;
+
+            let inputs = data.input;
+            let outputs = data.output;
+
+            let assignment = io_reader.from_raw_values(&inputs, &outputs)
+                .map_err(|e| format!("Assignment error: {e:?}"))?;
+
+            let witness = witness_solver
+                .solve_witness_with_hints(&assignment, &hint_registry)
+                .map_err(|e| format!("Witness solve error: {e:?}"))?;
+
+            if !witness_dir.is_empty() {
+                let witness_path = format!("{}/witness_{}.bin", witness_dir, tile_idx);
+                let file = std::fs::File::create(&witness_path)
+                    .map_err(|e| format!("File create error: {e}"))?;
+                let writer = std::io::BufWriter::new(file);
+                witness.serialize_into(writer)
+                    .map_err(|e| format!("Serialize error: {e:?}"))?;
+            }
+
+            Ok(())
+        })();
+
+        let response = match result {
+            Ok(()) => format!("{{\"status\":\"ok\",\"tile\":{}}}", tile_idx),
+            Err(msg) => format!("{{\"status\":\"error\",\"tile\":{},\"msg\":\"{}\"}}", tile_idx, msg.replace('"', "\\\"")),
+        };
+
+        writeln!(stdout, "{}", response).ok();
+        stdout.flush().ok();
+        tile_idx += 1;
+    }
+
+    eprintln!("DAEMON_EXIT tiles_processed={}", tile_idx);
     Ok(())
 }
 
@@ -698,6 +802,15 @@ where
                 &output_path,
                 &witness_path,
                 &proof_path,
+            )?;
+        }
+        "run_witness_daemon" => {
+            let circuit_path = get_arg(matches, "circuit_path")?;
+            let witness_dir = get_arg(matches, "witness").unwrap_or_else(|_| "/tmp/witnesses".to_string());
+            run_witness_daemon::<C, _, CircuitDefaultType>(
+                file_reader,
+                &circuit_path,
+                &witness_dir,
             )?;
         }
         _ => return Err(CliError::UnknownCommand(command.to_string())),

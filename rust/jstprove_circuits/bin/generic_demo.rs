@@ -1,7 +1,9 @@
 #[allow(unused_imports)]
 /// Standard library imports
 use core::panic;
+use std::ops::Neg;
 
+use arith::Field;
 use jstprove_circuits::circuit_functions::CircuitError;
 use jstprove_circuits::circuit_functions::utils::ArrayConversionError;
 use jstprove_circuits::circuit_functions::utils::build_layers::build_layers;
@@ -226,6 +228,45 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
 
     fn get_path(&self) -> &str {
         &self.path
+    }
+
+    fn from_raw_values(
+        &mut self,
+        inputs: &[i64],
+        outputs: &[i64],
+    ) -> Result<Circuit<CircuitField<C>>, RunError> {
+        let params = OnnxContext::get_params()?;
+
+        let mut assignment = Circuit::<CircuitField<C>>::default();
+
+        assignment.dummy[0] = CircuitField::<C>::from(1);
+        assignment.dummy[1] = CircuitField::<C>::from(1);
+        assignment.scale_base[0] = CircuitField::<C>::from(params.scale_base);
+        assignment.scale_exponent[0] = CircuitField::<C>::from(params.scale_exponent);
+
+        assignment.input_arr = inputs
+            .iter()
+            .map(|&v| {
+                if v >= 0 {
+                    CircuitField::<C>::from_u256(ethnum::U256::from(v as u64))
+                } else {
+                    CircuitField::<C>::from_u256(ethnum::U256::from((-v) as u64)).neg()
+                }
+            })
+            .collect();
+
+        assignment.outputs = outputs
+            .iter()
+            .map(|&v| {
+                if v >= 0 {
+                    CircuitField::<C>::from_u256(ethnum::U256::from(v as u64))
+                } else {
+                    CircuitField::<C>::from_u256(ethnum::U256::from((-v) as u64)).neg()
+                }
+            })
+            .collect();
+
+        Ok(assignment)
     }
 }
 

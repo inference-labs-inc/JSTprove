@@ -113,6 +113,22 @@ where
         assignment: CircuitType,
     ) -> Result<CircuitType, RunError>;
     fn get_path(&self) -> &str;
+
+    /// Creates a circuit assignment from raw input/output values (for daemon mode).
+    ///
+    /// # Arguments
+    ///
+    /// - `inputs` – Raw input values as i64
+    /// - `outputs` – Raw output values as i64
+    ///
+    /// # Returns
+    ///
+    /// A circuit assignment populated with the given values.
+    fn from_raw_values(
+        &mut self,
+        inputs: &[i64],
+        outputs: &[i64],
+    ) -> Result<CircuitType, RunError>;
 }
 /// To implement `IOReader` in each binary to read in inputs and outputs of the circuit as is needed on an individual circuit basis
 pub struct FileReader {
