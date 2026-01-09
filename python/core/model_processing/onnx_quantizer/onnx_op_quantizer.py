@@ -20,6 +20,9 @@ from python.core.model_processing.onnx_quantizer.layers.base import (
 from python.core.model_processing.onnx_quantizer.layers.batchnorm import (
     BatchnormQuantizer,
 )
+from python.core.model_processing.onnx_quantizer.layers.sigmoid import (
+    SigmoidQuantizer,
+)
 from python.core.model_processing.onnx_quantizer.layers.clip import ClipQuantizer
 from python.core.model_processing.onnx_quantizer.layers.constant import (
     ConstantQuantizer,
@@ -97,7 +100,7 @@ class ONNXOpQuantizer:
         self.register("Gather", PassthroughQuantizer())
         self.register("Shape", PassthroughQuantizer())
         self.register("Div", PassthroughQuantizer())
-        self.register("Sigmoid", PassthroughQuantizer())
+        self.register("Sigmoid", SigmoidQuantizer(self.new_initializers))
         self.register("Resize", PassthroughQuantizer())
         self.register("Softmax", PassthroughQuantizer())
 
