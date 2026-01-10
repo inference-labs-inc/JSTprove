@@ -3,6 +3,7 @@ use crate::circuit_functions::layers::batchnorm::BatchnormLayer;
 use crate::circuit_functions::layers::layer_ops::LayerOp;
 use crate::circuit_functions::layers::mul::MulLayer;
 use crate::circuit_functions::layers::sub::SubLayer;
+use crate::circuit_functions::layers::transpose::TransposeLayer;
 use crate::circuit_functions::utils::build_layers::BuildLayerContext;
 use crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry;
 use crate::circuit_functions::utils::onnx_model::CircuitParams;
@@ -144,4 +145,5 @@ define_layers! {
     Min       => { name: "Min", builder: MinLayer::build },
     ReLU      => { name: "ReLU", builder: ReluLayer::build, aliases: ["Relu"] },
     Reshape   => { name: "Reshape", builder: ReshapeLayer::build },
+    Transpose => { name: "Transpose", builder: TransposeLayer::build },
 }

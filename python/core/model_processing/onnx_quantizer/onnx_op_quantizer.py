@@ -90,6 +90,7 @@ class ONNXOpQuantizer:
         self.register("Max", MaxQuantizer(self.new_initializers))
         self.register("Min", MinQuantizer(self.new_initializers))
         self.register("BatchNormalization", BatchnormQuantizer(self.new_initializers))
+        self.register("Transpose", PassthroughQuantizer())
 
     def register(
         self: ONNXOpQuantizer,
