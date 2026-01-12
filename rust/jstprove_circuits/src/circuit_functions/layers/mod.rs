@@ -3,6 +3,7 @@ pub mod batchnorm;
 pub mod clip;
 pub mod constant;
 pub mod conv;
+pub mod div;
 mod errors;
 pub mod flatten;
 pub mod gemm;
