@@ -79,7 +79,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
         let base_shift_var = api.constant(CircuitField::<C>::from_u256(U256::from(base_shift)));
         let one = api.constant(1u32);
 
-        let result: Vec<Variable> = a_input
+        let result: Result<Vec<Variable>, CircuitError> = a_input
             .iter()
             .zip(&broadcasted_divisors)
             .map(|(&dividend, &divisor_val)| {
@@ -103,7 +103,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
                 let divisor_bits = (32 - divisor_u32.leading_zeros()) as usize;
                 logup_ctx
                     .range_check::<C, Builder>(api, remainder_bound, divisor_bits)
-                    .expect("Range check failed: remainder >= divisor");
+                    .map_err(|e| LayerError::Other {
+                        layer: LayerKind::Div,
+                        msg: format!("Range check failed for remainder bound: {e}"),
+                    })?;
 
                 let quotient_floor = api.sub(shifted_quotient, base_shift_var);
 
@@ -123,14 +126,21 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
 
                 logup_ctx
                     .range_check::<C, Builder>(api, neg_check, SHIFT_BITS + 4)
-                    .expect("Range check failed for negative diff");
+                    .map_err(|e| LayerError::Other {
+                        layer: LayerKind::Div,
+                        msg: format!("Range check failed for negative comparison: {e}"),
+                    })?;
                 logup_ctx
                     .range_check::<C, Builder>(api, pos_check, SHIFT_BITS + 4)
-                    .expect("Range check failed for positive diff");
+                    .map_err(|e| LayerError::Other {
+                        layer: LayerKind::Div,
+                        msg: format!("Range check failed for positive comparison: {e}"),
+                    })?;
 
-                quotient_trunc
+                Ok(quotient_trunc)
             })
             .collect();
+        let result = result?;
 
         logup_ctx.finalize::<C, Builder>(api);
 
@@ -152,8 +162,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let initializer_a = get_optional_w_or_b(layer_context, &layer.inputs[0])?;
-        let initializer_b = get_optional_w_or_b(layer_context, &layer.inputs[1])?;
+        let dividend_name = get_input_name(&layer.inputs, 0, LayerKind::Div, INPUT)?;
+        let divisor_name = get_input_name(&layer.inputs, 1, LayerKind::Div, INPUT)?;
+        let initializer_a = get_optional_w_or_b(layer_context, dividend_name)?;
+        let initializer_b = get_optional_w_or_b(layer_context, divisor_name)?;
 
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),
