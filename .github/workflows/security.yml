@@ -28,7 +28,7 @@ jobs:
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2025-03-27
+          toolchain: nightly-2025-07-15
           override: true
 
       - uses: actions-rs/audit-check@v1
