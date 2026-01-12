@@ -47,6 +47,7 @@ def validate_quantized_node(node_result: onnx.NodeProto, op_type: str) -> None:
     assert isinstance(node_result, onnx.NodeProto), f"Invalid node type for {op_type}"
     assert node_result.op_type, f"Missing op_type for {op_type}"
     assert node_result.output, f"Missing outputs for {op_type}"
+    print(node_result)
 
     try:
         # Create a minimal graph with dummy IOs to satisfy ONNX requirements

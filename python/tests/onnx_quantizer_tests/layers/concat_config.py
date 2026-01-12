@@ -1,7 +1,5 @@
 from python.tests.onnx_quantizer_tests.layers.base import (
     LayerTestSpec,
-    e2e_test,
-    error_test,
     valid_test,
 )
 from python.tests.onnx_quantizer_tests.layers.factory import (

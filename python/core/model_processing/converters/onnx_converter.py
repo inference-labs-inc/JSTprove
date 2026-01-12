@@ -878,7 +878,6 @@ class ONNXConverter(ModelConverter):
         except (QuantizationError, ModelConversionError):
             raise
         except (
-            onnx.ONNXException,
             ValueError,
             TypeError,
             RuntimeError,
