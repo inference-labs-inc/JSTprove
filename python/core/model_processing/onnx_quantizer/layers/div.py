@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from onnx import TensorProto, helper, numpy_helper
+from onnx import helper, numpy_helper
 
 if TYPE_CHECKING:
     import onnx

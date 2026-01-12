@@ -50,13 +50,19 @@ class DivConfigProvider(BaseLayerConfigProvider):
             valid_test("initializer_div")
             .description("Div by tensor constant initializer")
             .override_input_shapes(A=[1, 3, 4, 4])
-            .override_initializer("B", rng.integers(1, 10, (1, 3, 4, 4)).astype(np.float32))
+            .override_initializer(
+                "B",
+                rng.integers(1, 10, (1, 3, 4, 4)).astype(np.float32),
+            )
             .tags("initializer", "elementwise", "div")
             .build(),
             valid_test("broadcast_div")
             .description("Div with broadcasting (constant divisor)")
             .override_input_shapes(A=[1, 3, 4, 4])
-            .override_initializer("B", rng.integers(1, 10, (1, 3, 1, 1)).astype(np.float32))
+            .override_initializer(
+                "B",
+                rng.integers(1, 10, (1, 3, 1, 1)).astype(np.float32),
+            )
             .tags("broadcast", "elementwise", "div")
             .build(),
             edge_case_test("div_by_one")
@@ -80,13 +86,19 @@ class DivConfigProvider(BaseLayerConfigProvider):
             e2e_test("e2e_initializer_div")
             .description("E2E div by tensor constant initializer")
             .override_input_shapes(A=[1, 3, 4, 4])
-            .override_initializer("B", rng.integers(1, 10, (1, 3, 4, 4)).astype(np.float32))
+            .override_initializer(
+                "B",
+                rng.integers(1, 10, (1, 3, 4, 4)).astype(np.float32),
+            )
             .tags("initializer", "elementwise", "div", "e2e")
             .build(),
             e2e_test("e2e_broadcast_div")
             .description("E2E div with broadcasting (constant divisor)")
             .override_input_shapes(A=[1, 3, 4, 4])
-            .override_initializer("B", rng.integers(1, 10, (1, 3, 1, 1)).astype(np.float32))
+            .override_initializer(
+                "B",
+                rng.integers(1, 10, (1, 3, 1, 1)).astype(np.float32),
+            )
             .tags("broadcast", "elementwise", "div", "e2e")
             .build(),
         ]

@@ -11,26 +11,17 @@ use crate::circuit_functions::utils::tensor_ops::load_array_constants_or_get_inp
 use crate::circuit_functions::{
     CircuitError,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
-    utils::{
-        constants::INPUT,
-        graph_pattern_matching::PatternRegistry,
-        onnx_model::{extract_params_and_expected_shape, get_input_name},
-    },
+    utils::{constants::INPUT, onnx_model::get_input_name},
 };
 
 const SHIFT_BITS: usize = 20;
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct DivLayer {
-    name: String,
-    optimization_pattern: PatternRegistry,
-    input_shape: Vec<usize>,
     inputs: Vec<String>,
     outputs: Vec<String>,
     initializer_a: Option<ArrayD<i64>>,
     initializer_b: Option<ArrayD<i64>>,
-    n_bits: usize,
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
@@ -49,11 +40,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
             LayerKind::Div,
         )?;
 
-        let divisor_constants = self.initializer_b.as_ref().ok_or_else(|| LayerError::Other {
-            layer: LayerKind::Div,
-            msg: "Div requires constant divisor (initializer_b). Dynamic divisors not supported."
-                .to_string(),
-        })?;
+        let divisor_constants = self
+            .initializer_b
+            .as_ref()
+            .ok_or_else(|| LayerError::Other {
+                layer: LayerKind::Div,
+                msg:
+                    "Div requires constant divisor (initializer_b). Dynamic divisors not supported."
+                        .to_string(),
+            })?;
 
         let a_shape = a_input.shape().to_vec();
 
@@ -70,23 +65,27 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
         let mut logup_ctx = LogupRangeCheckContext::new_default();
         logup_ctx.init::<C, Builder>(api);
 
-        for &d in broadcasted_divisors.iter() {
-            if d <= 0 {
+        for &d in &broadcasted_divisors {
+            if d <= 0 || d > i64::from(u32::MAX) {
                 return Err(LayerError::Other {
                     layer: LayerKind::Div,
-                    msg: format!("Divisor must be positive, got {d}"),
+                    msg: format!("Divisor must be in range [1, 2^32), got {d}"),
                 }
                 .into());
             }
         }
 
+        let base_shift: u64 = 1u64 << SHIFT_BITS;
+        let base_shift_var = api.constant(CircuitField::<C>::from_u256(U256::from(base_shift)));
+        let one = api.constant(1u32);
+
         let result: Vec<Variable> = a_input
             .iter()
-            .zip(broadcasted_divisors.iter())
+            .zip(&broadcasted_divisors)
             .map(|(&dividend, &divisor_val)| {
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                 let divisor_u32 = divisor_val as u32;
 
-                let base_shift: u64 = 1u64 << SHIFT_BITS;
                 let shift = base_shift * u64::from(divisor_u32);
                 let shift_var = api.constant(CircuitField::<C>::from_u256(U256::from(shift)));
                 let shifted_dividend = api.add(dividend, shift_var);
@@ -106,12 +105,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
                     .range_check::<C, Builder>(api, remainder_bound, divisor_bits)
                     .expect("Range check failed: remainder >= divisor");
 
-                let base_shift_var =
-                    api.constant(CircuitField::<C>::from_u256(U256::from(base_shift)));
                 let quotient_floor = api.sub(shifted_quotient, base_shift_var);
 
                 let is_neg = api.unconstrained_lesser(shifted_dividend, shift_var);
-                let one = api.constant(1u32);
                 let is_rem_zero = api.is_zero(remainder);
                 let has_rem = api.sub(one, is_rem_zero);
                 let correction = api.mul(is_neg, has_rem);
@@ -138,11 +134,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
 
         logup_ctx.finalize::<C, Builder>(api);
 
-        let output =
-            ArrayD::from_shape_vec(IxDyn(&a_shape), result).map_err(|_| LayerError::InvalidShape {
+        let output = ArrayD::from_shape_vec(IxDyn(&a_shape), result).map_err(|_| {
+            LayerError::InvalidShape {
                 layer: LayerKind::Div,
                 msg: "Failed to build result array".to_string(),
-            })?;
+            }
+        })?;
 
         Ok((self.outputs.clone(), output))
     }
@@ -150,30 +147,19 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
-        optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
+        _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
         _is_rescale: bool,
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let (_params, expected_shape) = extract_params_and_expected_shape(layer_context, layer)
-            .map_err(|e| LayerError::Other {
-                layer: LayerKind::Div,
-                msg: format!("extract_params_and_expected_shape failed: {e}"),
-            })?;
-
         let initializer_a = get_optional_w_or_b(layer_context, &layer.inputs[0])?;
         let initializer_b = get_optional_w_or_b(layer_context, &layer.inputs[1])?;
 
-        let div = Self {
-            name: layer.name.clone(),
-            optimization_pattern,
-            input_shape: expected_shape.clone(),
+        Ok(Box::new(Self {
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
             initializer_a,
             initializer_b,
-            n_bits: layer_context.n_bits,
-        };
-        Ok(Box::new(div))
+        }))
     }
 }
