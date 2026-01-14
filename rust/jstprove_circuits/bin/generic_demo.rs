@@ -239,7 +239,9 @@ fn set_onnx_context(matches: &clap::ArgMatches) {
         .map_err(|e| CircuitError::Other(e.to_string()))
         .unwrap();
 
-    if get_arg(matches, "type").unwrap() == "run_compile_circuit" {
+    if get_arg(matches, "type").unwrap() == "run_compile_circuit"
+        || get_arg(matches, "type").unwrap() == "run_debug_witness"
+    {
         let arch_file_path = get_arg(matches, "arch").unwrap();
         let arch_file =
             std::fs::read_to_string(&arch_file_path).expect("Failed to read architecture file");

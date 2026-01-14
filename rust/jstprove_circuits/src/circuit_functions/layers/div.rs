@@ -14,7 +14,7 @@ use crate::circuit_functions::{
     utils::{constants::INPUT, onnx_model::get_input_name},
 };
 
-const SHIFT_BITS: usize = 20;
+// const SHIFT_BITS: usize = 20;
 
 #[derive(Debug)]
 pub struct DivLayer {
@@ -22,6 +22,8 @@ pub struct DivLayer {
     outputs: Vec<String>,
     initializer_a: Option<ArrayD<i64>>,
     initializer_b: Option<ArrayD<i64>>,
+    scale_exponent: u32,
+    _scale_base: u32,
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
@@ -74,70 +76,115 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
                 .into());
             }
         }
+        // let rescale_context = crate::circuit_functions::utils::quantization::RescalingContext::new(
+        //     api,
+        //     self.scale_exponent.try_into().unwrap(),
+        //     self.scale_base.try_into().unwrap(),
+        // )?;
 
-        let base_shift: u64 = 1u64 << SHIFT_BITS;
-        let base_shift_var = api.constant(CircuitField::<C>::from_u256(U256::from(base_shift)));
-        let one = api.constant(1u32);
+        // let base_shift: u64 = 1u64 << SHIFT_BITS;
+        // let base_shift_var = api.constant(CircuitField::<C>::from_u256(U256::from(base_shift)));
+        // let one = api.constant(1u32);
+
+        // let result: Result<Vec<Variable>, CircuitError> = a_input
+        //     .iter()
+        //     .zip(&broadcasted_divisors)
+        //     .map(|(&dividend, &divisor_val)| {
+        //         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        //         let divisor_u32 = divisor_val as u32;
+
+        //         let shift = base_shift * u64::from(divisor_u32);
+        //         let shift_var = api.constant(CircuitField::<C>::from_u256(U256::from(shift)));
+        //         let shifted_dividend = api.add(dividend, shift_var);
+
+        //         let shifted_quotient = api.unconstrained_int_div(shifted_dividend, divisor_u32);
+        //         let remainder = api.unconstrained_mod(shifted_dividend, divisor_u32);
+
+        //         let divisor_var = api.constant(divisor_u32);
+        //         let product = api.mul(divisor_var, shifted_quotient);
+        //         let reconstructed = api.add(product, remainder);
+        //         api.assert_is_equal(shifted_dividend, reconstructed);
+
+        //         let divisor_minus_one = api.constant(divisor_u32 - 1);
+        //         let remainder_bound = api.sub(divisor_minus_one, remainder);
+        //         let divisor_bits = (32 - divisor_u32.leading_zeros()) as usize;
+        //         logup_ctx
+        //             .range_check::<C, Builder>(api, remainder_bound, divisor_bits)
+        //             .map_err(|e| LayerError::Other {
+        //                 layer: LayerKind::Div,
+        //                 msg: format!("Range check failed for remainder bound: {e}"),
+        //             })?;
+
+        //         let quotient_floor = api.sub(shifted_quotient, base_shift_var);
+
+        //         let is_neg = api.unconstrained_lesser(shifted_dividend, shift_var);
+        //         let is_rem_zero = api.is_zero(remainder);
+        //         let has_rem = api.sub(one, is_rem_zero);
+        //         let correction = api.mul(is_neg, has_rem);
+
+        //         let quotient_trunc = api.add(quotient_floor, correction);
+
+        //         let neg_diff = api.sub(shift_var, shifted_dividend);
+        //         let pos_diff = api.sub(shifted_dividend, shift_var);
+
+        //         let neg_check = api.mul(neg_diff, is_neg);
+        //         let is_not_neg = api.sub(one, is_neg);
+        //         let pos_check = api.mul(pos_diff, is_not_neg);
+
+        //         logup_ctx
+        //             .range_check::<C, Builder>(api, neg_check, SHIFT_BITS + 4)
+        //             .map_err(|e| LayerError::Other {
+        //                 layer: LayerKind::Div,
+        //                 msg: format!("Range check failed for negative comparison: {e}"),
+        //             })?;
+        //         logup_ctx
+        //             .range_check::<C, Builder>(api, pos_check, SHIFT_BITS + 4)
+        //             .map_err(|e| LayerError::Other {
+        //                 layer: LayerKind::Div,
+        //                 msg: format!("Range check failed for positive comparison: {e}"),
+        //             })?;
+
+        //         Ok(quotient_trunc)
+        //     })
+        //     .collect();
 
         let result: Result<Vec<Variable>, CircuitError> = a_input
             .iter()
             .zip(&broadcasted_divisors)
             .map(|(&dividend, &divisor_val)| {
-                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                let divisor_u32 = divisor_val as u32;
+                let div_u32 = u32::try_from(divisor_val)
+                    .map_err(|_| CircuitError::Other("divisor is negative or too large".into()))?;
+                let div = api.constant(div_u32);
+                api.display("div", div);
 
-                let shift = base_shift * u64::from(divisor_u32);
-                let shift_var = api.constant(CircuitField::<C>::from_u256(U256::from(shift)));
-                let shifted_dividend = api.add(dividend, shift_var);
+                let divisor_bits = (32 - div_u32.leading_zeros()) as usize;
 
-                let shifted_quotient = api.unconstrained_int_div(shifted_dividend, divisor_u32);
-                let remainder = api.unconstrained_mod(shifted_dividend, divisor_u32);
+                let shift = 1u32.checked_shl(self.scale_exponent).ok_or(
+                    crate::circuit_functions::utils::RescaleError::ShiftExponentTooLargeError {
+                        exp: self.scale_exponent as usize,
+                        type_name: "u32",
+                    },
+                )?;
+                let shift_ = api.constant(shift);
+                let shift = u64::from(shift) * u64::from(div_u32);
+                let scaled_shift = api.constant(CircuitField::<C>::from_u256(U256::from(shift)));
+                api.display("scaled_shift", scaled_shift);
+                api.display("shift", shift_);
 
-                let divisor_var = api.constant(divisor_u32);
-                let product = api.mul(divisor_var, shifted_quotient);
-                let reconstructed = api.add(product, remainder);
-                api.assert_is_equal(shifted_dividend, reconstructed);
+                let out = crate::circuit_functions::utils::quantization::div_pos_integer_constant(
+                    api,
+                    &mut logup_ctx,
+                    dividend,
+                    div,
+                    scaled_shift,
+                    divisor_bits,
+                    self.scale_exponent as usize,
+                    shift_,
+                )
+                .unwrap();
+                api.display("out", out);
 
-                let divisor_minus_one = api.constant(divisor_u32 - 1);
-                let remainder_bound = api.sub(divisor_minus_one, remainder);
-                let divisor_bits = (32 - divisor_u32.leading_zeros()) as usize;
-                logup_ctx
-                    .range_check::<C, Builder>(api, remainder_bound, divisor_bits)
-                    .map_err(|e| LayerError::Other {
-                        layer: LayerKind::Div,
-                        msg: format!("Range check failed for remainder bound: {e}"),
-                    })?;
-
-                let quotient_floor = api.sub(shifted_quotient, base_shift_var);
-
-                let is_neg = api.unconstrained_lesser(shifted_dividend, shift_var);
-                let is_rem_zero = api.is_zero(remainder);
-                let has_rem = api.sub(one, is_rem_zero);
-                let correction = api.mul(is_neg, has_rem);
-
-                let quotient_trunc = api.add(quotient_floor, correction);
-
-                let neg_diff = api.sub(shift_var, shifted_dividend);
-                let pos_diff = api.sub(shifted_dividend, shift_var);
-
-                let neg_check = api.mul(neg_diff, is_neg);
-                let is_not_neg = api.sub(one, is_neg);
-                let pos_check = api.mul(pos_diff, is_not_neg);
-
-                logup_ctx
-                    .range_check::<C, Builder>(api, neg_check, SHIFT_BITS + 4)
-                    .map_err(|e| LayerError::Other {
-                        layer: LayerKind::Div,
-                        msg: format!("Range check failed for negative comparison: {e}"),
-                    })?;
-                logup_ctx
-                    .range_check::<C, Builder>(api, pos_check, SHIFT_BITS + 4)
-                    .map_err(|e| LayerError::Other {
-                        layer: LayerKind::Div,
-                        msg: format!("Range check failed for positive comparison: {e}"),
-                    })?;
-
-                Ok(quotient_trunc)
+                Ok(out)
             })
             .collect();
         let result = result?;
@@ -156,7 +203,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
 
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
-        _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
+        circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
         _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
         _is_rescale: bool,
         _index: usize,
@@ -172,6 +219,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
             outputs: layer.outputs.clone(),
             initializer_a,
             initializer_b,
+            _scale_base: circuit_params.scale_base,
+            scale_exponent: circuit_params.scale_exponent,
         }))
     }
 }

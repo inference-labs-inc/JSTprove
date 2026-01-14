@@ -43,6 +43,7 @@ class RunType(Enum):
     GEN_WITNESS = "run_gen_witness"
     PROVE_WITNESS = "run_prove_witness"
     GEN_VERIFY = "run_gen_verify"
+    DEBUG_WITNESS = "run_debug_witness"
 
 
 class ZKProofSystems(Enum):
@@ -825,6 +826,75 @@ def generate_witness(  # noqa: PLR0913
             return run_cargo_command(
                 binary_name=binary_name,
                 command_type=RunType.GEN_WITNESS.value,
+                args=args,
+                dev_mode=dev_mode,
+                bench=bench,
+            )
+        except ProofBackendError as e:
+            warning = f"Warning: Witness generation failed: {e}"
+            logger.warning(warning)
+            raise
+    else:
+        msg = f"Proof system {proof_system} not implemented"
+        raise ProofSystemNotImplementedError(msg)
+
+
+def debug_witness(  # noqa: PLR0913
+    circuit_name: str,
+    circuit_path: str,
+    witness_file: str,
+    input_file: str,
+    output_file: str,
+    metadata_path: str,
+    architecture_path: str,
+    w_and_b_path: str,
+    proof_system: ZKProofSystems = ZKProofSystems.Expander,
+    *,
+    dev_mode: bool = False,
+    bench: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    """Generate a witness file for a circuit.
+
+    Args:
+        circuit_name (str): Name of the circuit.
+        circuit_path (str): Path to the circuit definition.
+        witness_file (str): Path to the output witness file.
+        input_file (str): Path to the input JSON file with private inputs.
+        output_file (str): Path to the output JSON file with computed outputs.
+        proof_system (ZKProofSystems, optional): Proof system to use.
+            Defaults to ZKProofSystems.Expander.
+        dev_mode (bool, optional):
+            If True, recompiles the rust binary (run in development mode).
+            Defaults to False.
+        bench (bool, optional):
+            If True, enable benchmarking. Defaults to False.
+
+    Raises:
+        NotImplementedError: If proof system is not supported.
+
+    Returns:
+        subprocess.CompletedProcess[str]: Exit message from the subprocess.
+    """
+    if proof_system == ZKProofSystems.Expander:
+        # Extract the binary name from the circuit path
+        binary_name = Path(circuit_name).name
+
+        # Prepare arguments
+        args = {
+            "n": circuit_name,
+            "c": circuit_path,
+            "i": input_file,
+            "o": output_file,
+            "w": witness_file,
+            "m": metadata_path,
+            "a": architecture_path,
+            "b": w_and_b_path,
+        }
+        # Run the command
+        try:
+            return run_cargo_command(
+                binary_name=binary_name,
+                command_type=RunType.DEBUG_WITNESS.value,
                 args=args,
                 dev_mode=dev_mode,
                 bench=bench,

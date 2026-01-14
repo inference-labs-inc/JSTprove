@@ -1,6 +1,5 @@
 import numpy as np
 
-from python.tests.onnx_quantizer_tests import TEST_RNG_SEED
 from python.tests.onnx_quantizer_tests.layers.base import (
     BaseLayerConfigProvider,
     LayerTestConfig,
@@ -39,7 +38,7 @@ class DivConfigProvider(BaseLayerConfigProvider):
         )
 
     def get_test_specs(self) -> list[LayerTestSpec]:
-        rng = np.random.default_rng(TEST_RNG_SEED)
+        rng = np.random.default_rng(1)
         return [
             valid_test("scalar_div")
             .description("Div tensor by scalar constant")
@@ -78,6 +77,13 @@ class DivConfigProvider(BaseLayerConfigProvider):
             .tags("edge", "large_divisor", "div")
             .build(),
             e2e_test("e2e_scalar_div")
+            .description("E2E div tensor by scalar constant")
+            .override_input_shapes(A=[1])
+            .override_output_shapes(div_output=[1])
+            .override_initializer("B", np.array([2.0], dtype=np.float32))
+            .tags("scalar", "elementwise", "div", "e2e")
+            .build(),
+            e2e_test("e2e_scalar_div_matrix")
             .description("E2E div tensor by scalar constant")
             .override_input_shapes(A=[1, 3, 4, 4])
             .override_initializer("B", np.array([2.0], dtype=np.float32))
