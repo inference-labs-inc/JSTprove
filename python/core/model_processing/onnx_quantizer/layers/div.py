@@ -8,10 +8,15 @@ from onnx import helper, numpy_helper
 if TYPE_CHECKING:
     import onnx
 
+from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
 from python.core.model_processing.onnx_quantizer.layers.base import (
     BaseOpQuantizer,
     ScaleConfig,
 )
+
+
+def is_integer_valued(arr: np.ndarray) -> bool:
+    return np.all(np.equal(arr, np.floor(arr)))
 
 
 class DivQuantizer(BaseOpQuantizer):
@@ -38,6 +43,8 @@ class DivQuantizer(BaseOpQuantizer):
         initializer_map: dict[str, onnx.TensorProto],
     ) -> list[onnx.NodeProto]:
         _ = graph, scale_config
+        attrs = {}
+        attrs["mode"] = "constant_pos_int"
         nodes = []
         new_inputs = list(node.input)
 
@@ -50,12 +57,24 @@ class DivQuantizer(BaseOpQuantizer):
                 self.new_initializers.append(cast_tensor)
                 new_inputs[idx] = cast_name
 
+        scale_value = self.get_scaling(scale_config.base, scale_config.exponent)
+        scale_name = f"{node.name}_int_scaler"
+        scale_tensor = numpy_helper.from_array(
+            np.array([scale_value], dtype=np.int64),
+            name=scale_name,
+        )
+        self.new_initializers.append(scale_tensor)
+        new_inputs.append(scale_name)
+
         quantized_node = helper.make_node(
-            "Div",
+            "Int64Div",
             inputs=new_inputs,
             outputs=node.output,
             name=node.name,
+            domain="ai.onnx.contrib",
+            **attrs,
         )
+
         nodes.append(quantized_node)
         return nodes
 
@@ -64,4 +83,36 @@ class DivQuantizer(BaseOpQuantizer):
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto] | None = None,
     ) -> None:
-        pass
+        # 1. Check that the divisor is a circuit constant
+        # 2. Check that the divisor is an integer
+        # 3. Check that the divisor is positive
+        # 4. Check that the divisor is not zero
+        if initializer_map is None:
+            msg = "The divisor must be an initializer"
+            raise InvalidParamError(node.name, node.op_type, msg)
+        num_inputs = 2
+
+        if len(node.input) != num_inputs:
+            msg = "Div must have exactly {num_inputs} inputs"
+            raise InvalidParamError(node.name, node.op_type, msg)
+
+        # 1. Check that the divisor is a circuit constant
+        if node.input[1] not in initializer_map:
+            msg = "The divisor must be a circuit constant"
+            raise InvalidParamError(node.name, node.op_type, msg)
+
+        # 2. Check that the divisor is an integer
+        divisors = numpy_helper.to_array(initializer_map[node.input[1]]).astype(
+            np.float64,
+        )
+        if not is_integer_valued(divisors):
+            msg = "The divisors must be integers"
+            raise InvalidParamError(node.name, node.op_type, msg)
+        # 3. Check that the divisor is positive
+        if not np.all(divisors > 0):
+            msg = "The divisors must be positive"
+            raise InvalidParamError(node.name, node.op_type, msg)
+        # 4. Check that the divisor is not zero
+        if not np.all(divisors != 0):
+            msg = "The divisors must not be zero"
+            raise InvalidParamError(node.name, node.op_type, msg)

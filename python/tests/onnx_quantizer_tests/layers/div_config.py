@@ -1,11 +1,13 @@
 import numpy as np
 
+from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
 from python.tests.onnx_quantizer_tests.layers.base import (
     BaseLayerConfigProvider,
     LayerTestConfig,
     LayerTestSpec,
     e2e_test,
     edge_case_test,
+    error_test,
     valid_test,
 )
 
@@ -39,6 +41,17 @@ class DivConfigProvider(BaseLayerConfigProvider):
 
     def get_test_specs(self) -> list[LayerTestSpec]:
         rng = np.random.default_rng(1)
+        """
+        error_test("divisor_not_initializer")
+                    .description("Divisor must be provided as an initializer")
+                    .override_inputs("A", "B")  # B is not backed by initializer
+                    .expects_error(
+                        InvalidParamError,
+                        "The divisor must be a circuit constant",
+                    )
+                    .tags("error", "initializer", "div")
+                    .build(),
+        """
         return [
             valid_test("scalar_div")
             .description("Div tensor by scalar constant")
@@ -106,5 +119,69 @@ class DivConfigProvider(BaseLayerConfigProvider):
                 rng.integers(1, 10, (1, 3, 1, 1)).astype(np.float32),
             )
             .tags("broadcast", "elementwise", "div", "e2e")
+            .build(),
+            # ---- Error Tests ----
+            error_test("non_integer_scalar_divisor")
+            .description("Divisor must be integer-valued (scalar float)")
+            .override_initializer("B", np.array([2.5], dtype=np.float32))
+            .expects_error(
+                InvalidParamError,
+                "The divisors must be integers",
+            )
+            .tags("error", "non_integer", "scalar", "div")
+            .build(),
+            error_test("non_integer_tensor_divisor")
+            .description("Divisor tensor contains non-integer values")
+            .override_initializer(
+                "B",
+                np.array([[1.0, 2.0], [3.5, 4.0]], dtype=np.float32),
+            )
+            .expects_error(
+                InvalidParamError,
+                "The divisors must be integers",
+            )
+            .tags("error", "non_integer", "tensor", "div")
+            .build(),
+            error_test("zero_divisor_scalar")
+            .description("Division by zero is not allowed")
+            .override_initializer("B", np.array([0.0], dtype=np.float32))
+            .expects_error(
+                InvalidParamError,
+                "The divisors must be positive",
+            )
+            .tags("error", "zero", "scalar", "div")
+            .build(),
+            error_test("zero_in_tensor_divisor")
+            .description("Tensor divisor contains zero")
+            .override_initializer(
+                "B",
+                np.array([[1.0, 0.0], [2.0, 3.0]], dtype=np.float32),
+            )
+            .expects_error(
+                InvalidParamError,
+                "The divisors must be positive",
+            )
+            .tags("error", "zero", "tensor", "div")
+            .build(),
+            error_test("negative_scalar_divisor")
+            .description("Divisor must be positive")
+            .override_initializer("B", np.array([-2.0], dtype=np.float32))
+            .expects_error(
+                InvalidParamError,
+                "The divisors must be positive",
+            )
+            .tags("error", "negative", "scalar", "div")
+            .build(),
+            error_test("negative_tensor_divisor")
+            .description("Tensor divisor contains negative values")
+            .override_initializer(
+                "B",
+                np.array([[1.0, -2.0], [3.0, 4.0]], dtype=np.float32),
+            )
+            .expects_error(
+                InvalidParamError,
+                "The divisors must be positive",
+            )
+            .tags("error", "negative", "tensor", "div")
             .build(),
         ]
