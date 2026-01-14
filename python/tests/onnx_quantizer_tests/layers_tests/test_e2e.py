@@ -196,8 +196,10 @@ class TestE2EQuantizer(BaseQuantizerTest):
         stdout = captured.out
         stderr = captured.err
 
-        assert stderr == "", "Errors occurred during e2e test for "
-        f"{layer_name}.{test_spec.name}: {stderr}"
+        assert stderr == "", (
+            "Errors occurred during e2e test for "
+            f"{layer_name}.{test_spec.name}: {stderr}"
+        )
 
         # Check for expected success messages (similar to circuit e2e tests)
         assert (

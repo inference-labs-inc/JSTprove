@@ -15,8 +15,6 @@ use crate::circuit_functions::{
     utils::{constants::INPUT, onnx_model::get_input_name},
 };
 
-// const SHIFT_BITS: usize = 20;
-
 #[derive(Debug)]
 pub struct DivLayer {
     inputs: Vec<String>,

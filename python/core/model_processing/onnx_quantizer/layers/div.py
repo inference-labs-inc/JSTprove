@@ -42,9 +42,9 @@ class DivQuantizer(BaseOpQuantizer):
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
     ) -> list[onnx.NodeProto]:
-        _ = graph, scale_config
+        _ = graph
         attrs = {}
-        attrs["mode"] = "default"
+        attrs["mode"] = "default_error"
         if self.check_divisor_circuit_constant(node, initializer_map):
             divisors = numpy_helper.to_array(initializer_map[node.input[1]]).astype(
                 np.float64,

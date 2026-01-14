@@ -41,17 +41,6 @@ class DivConfigProvider(BaseLayerConfigProvider):
 
     def get_test_specs(self) -> list[LayerTestSpec]:
         rng = np.random.default_rng(1)
-        """
-        error_test("divisor_not_initializer")
-                    .description("Divisor must be provided as an initializer")
-                    .override_inputs("A", "B")  # B is not backed by initializer
-                    .expects_error(
-                        InvalidParamError,
-                        "The divisor must be a circuit constant",
-                    )
-                    .tags("error", "initializer", "div")
-                    .build(),
-        """
         return [
             valid_test("scalar_div")
             .description("Div tensor by scalar constant")
@@ -97,7 +86,7 @@ class DivConfigProvider(BaseLayerConfigProvider):
             .tags("scalar", "elementwise", "div", "e2e")
             .build(),
             e2e_test("e2e_scalar_div_matrix")
-            .description("E2E div tensor by scalar constant")
+            .description("E2E div tensor by scalar constant matrix")
             .override_input_shapes(A=[1, 3, 4, 4])
             .override_initializer("B", np.array([2.0], dtype=np.float32))
             .tags("scalar", "elementwise", "div", "e2e")
@@ -183,5 +172,15 @@ class DivConfigProvider(BaseLayerConfigProvider):
                 "The divisors must be positive",
             )
             .tags("error", "negative", "tensor", "div")
+            .build(),
+            error_test("divisor_not_initializer")
+            .description("Divisor must be provided as an initializer")
+            .override_inputs("A", "C")  # B is not backed by initializer
+            .override_input_shapes(A=(2, 2), C=(2, 2))
+            .expects_error(
+                InvalidParamError,
+                "The divisor must be a circuit constant",
+            )
+            .tags("error", "initializer", "div")
             .build(),
         ]

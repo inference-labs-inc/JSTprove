@@ -853,7 +853,7 @@ def debug_witness(  # noqa: PLR0913
     dev_mode: bool = False,
     bench: bool = False,
 ) -> subprocess.CompletedProcess[str]:
-    """Generate a witness file for a circuit.
+    """Debug a witness file for a circuit.
 
     Args:
         circuit_name (str): Name of the circuit.
@@ -868,6 +868,8 @@ def debug_witness(  # noqa: PLR0913
             Defaults to False.
         bench (bool, optional):
             If True, enable benchmarking. Defaults to False.
+        architecture_path (str): Path to the architecture file.
+        w_and_b_path (str): Path to the weights and biases file.
 
     Raises:
         NotImplementedError: If proof system is not supported.
