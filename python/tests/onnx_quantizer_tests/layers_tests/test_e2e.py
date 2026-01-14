@@ -140,7 +140,7 @@ class TestE2EQuantizer(BaseQuantizerTest):
                     write_json=True,
                 ),
             )
-        except:  # noqa: E722
+        except Exception:
             model.base_testing(
                 CircuitExecutionConfig(
                     run_type=RunType.DEBUG_WITNESS,

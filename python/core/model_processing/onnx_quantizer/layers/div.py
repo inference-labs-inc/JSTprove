@@ -110,7 +110,7 @@ class DivQuantizer(BaseOpQuantizer):
         num_inputs = 2
 
         if not self.check_divisor_num_inputs(node, num_inputs):
-            msg = "Div must have exactly {num_inputs} inputs"
+            msg = f"Div must have exactly {num_inputs} inputs"
             raise InvalidParamError(node.name, node.op_type, msg)
 
         # 1. Check that the divisor is a circuit constant

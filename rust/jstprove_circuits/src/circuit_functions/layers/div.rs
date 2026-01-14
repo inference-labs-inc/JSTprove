@@ -110,8 +110,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
                     divisor_bits,
                     self.scale_exponent as usize,
                     shift_,
-                )
-                .unwrap();
+                )?;
                 api.display("out", out);
 
                 Ok(out)

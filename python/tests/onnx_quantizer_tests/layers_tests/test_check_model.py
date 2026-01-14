@@ -119,8 +119,8 @@ class TestCheckModel(BaseQuantizerTest):
         layer_configs: dict[str, LayerTestConfig],
         layer_combination: list[str],
     ) -> None:
-        scale_base, scale_exponent = 2, 18
         """Test that models with multiple supported layers pass validation"""
+        scale_base, scale_exponent = 2, 18
         model = self.create_model_with_layers(layer_combination, layer_configs)
         # Should not raise any exception
         quantizer.check_model(

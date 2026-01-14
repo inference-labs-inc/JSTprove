@@ -17,7 +17,7 @@ def int64_div(
     a: np.ndarray,
     b: np.ndarray,
     _scaling_factor: np.ndarray | None = None,
-    mode: np.ndarray | None = None,
+    mode: str | None = None,
 ) -> np.ndarray:
     """
     Performs a Div (elementwise) operation on int64 input tensors.
@@ -34,6 +34,9 @@ def int64_div(
         Second input tensor with dtype int64.
     scaling_factor : Scaling factor for rescaling the output.
         Optional scalar tensor for rescaling when rescale=1.
+        Kept for future use, currently does not do anything.
+    mode : str, optional
+        Mode of operation. Currently only "constant_pos_int" is supported.
 
     Returns
     -------
