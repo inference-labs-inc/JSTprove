@@ -2,6 +2,7 @@
 //!
 //! Re-exports all constraint-enforcing gadgets used by layers.
 
+pub mod euclidean_algebra;
 pub mod linear_algebra;
 pub mod max_min_clip;
 pub mod range_check;

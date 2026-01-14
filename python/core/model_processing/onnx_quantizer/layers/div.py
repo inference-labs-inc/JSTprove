@@ -82,11 +82,14 @@ class DivQuantizer(BaseOpQuantizer):
         self: DivQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto] | None = None,
+        scale_base: int | None = 2,
+        scale_exponent: int | None = 18,
     ) -> None:
         # 1. Check that the divisor is a circuit constant
         # 2. Check that the divisor is an integer
         # 3. Check that the divisor is positive
         # 4. Check that the divisor is not zero
+        # 5. Check that the divisor is sufficiently small
         if initializer_map is None:
             msg = "The divisor must be an initializer"
             raise InvalidParamError(node.name, node.op_type, msg)
@@ -115,4 +118,8 @@ class DivQuantizer(BaseOpQuantizer):
         # 4. Check that the divisor is not zero
         if not np.all(divisors != 0):
             msg = "The divisors must not be zero"
+            raise InvalidParamError(node.name, node.op_type, msg)
+
+        if not np.all(divisors <= scale_base ** (scale_exponent // 2)):
+            msg = "The divisors must be sufficiently small"
             raise InvalidParamError(node.name, node.op_type, msg)

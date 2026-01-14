@@ -43,6 +43,7 @@ class TestCheckModel(BaseQuantizerTest):
     ) -> None:
         """Test each individual valid test case"""
         layer_name, config, test_spec = test_case_data
+        scale_exponent, scale_base = 18, 2
 
         # Skips if layer is not a valid onnx layer
         self._check_validation_dependency(test_case_data)
@@ -54,7 +55,11 @@ class TestCheckModel(BaseQuantizerTest):
         model = config.create_test_model(test_spec)
 
         try:
-            quantizer.check_model(model)
+            quantizer.check_model(
+                model,
+                scale_base=scale_base,
+                scale_exponent=scale_exponent,
+            )
         except (InvalidParamError, UnsupportedOpError) as e:
             pytest.fail(f"Model check failed for {layer_name}.{test_spec.name}: {e}")
         except Exception as e:
@@ -88,9 +93,14 @@ class TestCheckModel(BaseQuantizerTest):
         )
 
         model = helper.make_model(graph)
+        scale_exponent, scale_base = 18, 2
 
         with pytest.raises(UnsupportedOpError):
-            quantizer.check_model(model)
+            quantizer.check_model(
+                model,
+                scale_base=scale_base,
+                scale_exponent=scale_exponent,
+            )
 
     @pytest.mark.unit
     @pytest.mark.parametrize(
@@ -109,7 +119,12 @@ class TestCheckModel(BaseQuantizerTest):
         layer_configs: dict[str, LayerTestConfig],
         layer_combination: list[str],
     ) -> None:
+        scale_base, scale_exponent = 2, 18
         """Test that models with multiple supported layers pass validation"""
         model = self.create_model_with_layers(layer_combination, layer_configs)
         # Should not raise any exception
-        quantizer.check_model(model)
+        quantizer.check_model(
+            model,
+            scale_base=scale_base,
+            scale_exponent=scale_exponent,
+        )

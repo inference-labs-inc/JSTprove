@@ -47,6 +47,8 @@ class ReluQuantizer(BaseOpQuantizer, QuantizeRelu):
         self: ReluQuantizer,
         node: NodeProto,
         initializer_map: dict[str, TensorProto] | None = None,
+        scale_base: int | None = 2,
+        scale_exponent: int | None = 18,
     ) -> None:
         """
         Perform high-level validation to ensure that this node
@@ -57,5 +59,4 @@ class ReluQuantizer(BaseOpQuantizer, QuantizeRelu):
             initializer_map (dict[str, onnx.TensorProto]):
                 Initializer map (name of weight or bias and tensor)
         """
-        _ = node
-        _ = initializer_map
+        _ = node, initializer_map, scale_base, scale_exponent
