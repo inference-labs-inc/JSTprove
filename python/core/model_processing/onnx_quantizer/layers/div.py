@@ -79,6 +79,9 @@ class DivQuantizer(BaseOpQuantizer):
         )
         self.new_initializers.append(scale_tensor)
         new_inputs.append(scale_name)
+        if attrs["mode"] == "default_error":
+            msg = "The div node is unsupported"
+            raise InvalidParamError(node.name, node.op_type, msg)
 
         quantized_node = helper.make_node(
             "Int64Div",

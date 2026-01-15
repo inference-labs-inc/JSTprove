@@ -902,7 +902,7 @@ def debug_witness(  # noqa: PLR0913
                 bench=bench,
             )
         except ProofBackendError as e:
-            warning = f"Warning: Witness generation failed: {e}"
+            warning = f"Warning: Debug witness failed: {e}"
             logger.warning(warning)
             raise
     else:

@@ -152,6 +152,7 @@ class TestE2EQuantizer(BaseQuantizerTest):
                     write_json=True,
                 ),
             )
+            raise
         # Verify witness and output files exist
         assert (
             temp_witness_file.exists()
