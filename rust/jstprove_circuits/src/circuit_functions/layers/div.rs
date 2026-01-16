@@ -5,7 +5,7 @@ use ndarray::{ArrayD, IxDyn};
 use ethnum::U256;
 use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
 
-use crate::circuit_functions::gadgets::euclidean_algebra::div_pos_integer_constant;
+use crate::circuit_functions::gadgets::euclidean_algebra::div_pos_integer_pow2_constant;
 use crate::circuit_functions::gadgets::range_check::LogupRangeCheckContext;
 use crate::circuit_functions::utils::onnx_model::get_optional_w_or_b;
 use crate::circuit_functions::utils::tensor_ops::load_array_constants_or_get_inputs;
@@ -101,6 +101,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
         let context =
             crate::circuit_functions::utils::quantization::RescalingContext::new(api, k, s)?;
 
+        let mut div_cache: HashMap<u32, Variable> = HashMap::new();
+        let mut shift_cache: HashMap<u32, Variable> = HashMap::new();
+        let mut scaled_shift_cache: HashMap<u64, Variable> = HashMap::new();
+
         let result: Result<Vec<Variable>, CircuitError> = a_input
             .iter()
             .zip(&broadcasted_divisors)
@@ -110,14 +114,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
                 }
                 let div_u32 = u32::try_from(divisor_val)
                     .map_err(|_| CircuitError::Other("divisor is negative or too large".into()))?;
-                let div = api.constant(div_u32);
+                let div = *div_cache
+                    .entry(div_u32)
+                    .or_insert_with(|| api.constant(div_u32));
 
-                api.display("div", div);
-
-                // let divisor_bits = (32 - div_u32.leading_zeros()) as usize;
                 let remainder_bits = div_u32.trailing_zeros() as usize;
 
-                let shift_amount = u32::try_from(context.scaling_exponent).map_err(|_| {
+                let shift_amount = u32::try_from(context.shift_exponent).map_err(|_| {
                     crate::circuit_functions::utils::RescaleError::ShiftExponentTooLargeError {
                         exp: context.scaling_exponent,
                         type_name: "u32",
@@ -130,40 +133,24 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
                         type_name: "u32",
                     },
                 )?;
-                // let shift = context.shift;
-                // let shift_ = context.shift_;
-                let shift = api.constant(shift_);
+                let shift = *shift_cache
+                    .entry(shift_)
+                    .or_insert_with(|| api.constant(shift_));
                 let scaled_shift_ = u64::from(shift_) * u64::from(div_u32);
-                let scaled_shift =
-                    api.constant(CircuitField::<C>::from_u256(U256::from(scaled_shift_)));
+                let scaled_shift = *scaled_shift_cache.entry(scaled_shift_).or_insert_with(|| {
+                    api.constant(CircuitField::<C>::from_u256(U256::from(scaled_shift_)))
+                });
 
-                api.display("scaled_shift", scaled_shift);
-                api.display("shift", shift_);
-
-                let out = div_pos_integer_constant(
+                let out = div_pos_integer_pow2_constant(
                     api,
                     &mut logup_ctx,
                     dividend,
                     div,
                     scaled_shift,
                     remainder_bits,
-                    context.scaling_exponent,
+                    context.shift_exponent,
                     shift,
                 )?;
-                eprintln!("{div_u32}");
-                // let divisor_bits = (32 - div_u32.leading_zeros()) as usize;
-                // let out = div_pos_integer_constant(
-                //     api,
-                //     &mut logup_ctx,
-                //     dividend,
-                //     div,
-                //     context.scaled_shift,
-                //     // context.scaling_exponent,
-                //     divisor_bits,
-                //     context.shift_exponent,
-                //     context.shift,
-                // )?;
-                api.display("out", out);
 
                 Ok(out)
             })

@@ -4,18 +4,18 @@ use crate::circuit_functions::{gadgets::LogupRangeCheckContext, utils::RescaleEr
 
 #[allow(clippy::missing_errors_doc)]
 #[allow(clippy::too_many_arguments)]
-pub fn div_pos_integer_constant<C: Config, Builder: RootAPI<C>>(
+pub fn div_pos_integer_pow2_constant<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     logup_ctx: &mut LogupRangeCheckContext,
     dividend: Variable,
     divisor: Variable,
-    scaled_shift: Variable,
-    scaling_exponent: usize,
+    divisor_by_shift: Variable,
+    divisor_exponent: usize,
     shift_exponent: usize,
     shift: Variable,
 ) -> Result<Variable, RescaleError> {
     // Step 1: compute shifted_dividend = alpha*S + c
-    let shifted_dividend = api.add(scaled_shift, dividend);
+    let shifted_dividend = api.add(divisor_by_shift, dividend);
 
     // Step 2: Compute unchecked witness values q_shifted, r via unconstrained Euclidean division:
     //         alpha*S + c = alpha*q_shifted + r
@@ -29,10 +29,10 @@ pub fn div_pos_integer_constant<C: Config, Builder: RootAPI<C>>(
 
     // Step 4: LogUp range-check r in [0, alpha − 1] using kappa bits
     logup_ctx
-        .range_check::<C, Builder>(api, remainder, scaling_exponent)
+        .range_check::<C, Builder>(api, remainder, divisor_exponent)
         .map_err(|e| RescaleError::BitDecompositionError {
             var_name: format!("remainder (LogUp): {e}"),
-            n_bits: scaling_exponent,
+            n_bits: divisor_exponent,
         })?;
 
     // Step 5: LogUp range-check q_shifted in [0, 2^(s + 1) − 1] using s + 1 bits

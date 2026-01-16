@@ -45,7 +45,7 @@ use ndarray::ArrayD;
 use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
 
 use crate::circuit_functions::{
-    gadgets::euclidean_algebra::div_pos_integer_constant,
+    gadgets::euclidean_algebra::div_pos_integer_pow2_constant,
     utils::{
         UtilsError,
         errors::{ArrayConversionError, RescaleError},
@@ -221,7 +221,7 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
     dividend: Variable,
     apply_relu: bool,
 ) -> Result<Variable, RescaleError> {
-    let quotient = div_pos_integer_constant(
+    let quotient = div_pos_integer_pow2_constant(
         api,
         logup_ctx,
         dividend,
