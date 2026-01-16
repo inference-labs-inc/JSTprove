@@ -74,6 +74,14 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
                 }
                 .into());
             }
+            // Power-of-two check
+            if (d & (d - 1)) != 0 {
+                return Err(LayerError::Other {
+                    layer: LayerKind::Div,
+                    msg: format!("Divisor must be a power of 2, got {d}"),
+                }
+                .into());
+            }
         }
 
         let result: Result<Vec<Variable>, CircuitError> = a_input

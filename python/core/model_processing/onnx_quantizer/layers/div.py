@@ -57,8 +57,10 @@ class DivQuantizer(BaseOpQuantizer):
                     scale_config.base,
                     scale_config.exponent,
                 )
+                and self.check_divisor_power_of_two(divisors)
             ):
                 attrs["mode"] = "constant_pos_int"
+
         nodes = []
         new_inputs = list(node.input)
 
@@ -107,6 +109,7 @@ class DivQuantizer(BaseOpQuantizer):
         # 3. Check that the divisor is positive
         # 4. Check that the divisor is not zero
         # 5. Check that the divisor is sufficiently small
+        # 6. Check that the divisor is a power of 2
         if initializer_map is None:
             msg = "The divisor must be an initializer"
             raise InvalidParamError(node.name, node.op_type, msg)
@@ -142,6 +145,10 @@ class DivQuantizer(BaseOpQuantizer):
             msg = "The divisors must be sufficiently small"
             raise InvalidParamError(node.name, node.op_type, msg)
 
+        if not self.check_divisor_power_of_two(divisors):
+            msg = "The divisors must be powers of 2"
+            raise InvalidParamError(node.name, node.op_type, msg)
+
     def check_divisor_integer(self: DivQuantizer, divisors: np.ndarray) -> bool:
         return is_integer_valued(divisors)
 
@@ -172,3 +179,6 @@ class DivQuantizer(BaseOpQuantizer):
         num_inputs: int,
     ) -> bool:
         return len(node.input) == num_inputs
+
+    def check_divisor_power_of_two(self: DivQuantizer, divisors: np.ndarray) -> bool:
+        return np.all(np.log2(divisors) % 1 == 0)

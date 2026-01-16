@@ -1,3 +1,5 @@
+from collections.abc import Generator
+
 import numpy as np
 
 from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
@@ -11,6 +13,18 @@ from python.tests.onnx_quantizer_tests.layers.base import (
     error_test,
     valid_test,
 )
+
+
+def random_power_of_two(
+    rng: Generator,
+    shape: tuple[int] | list[int] | np.ndarray,
+    max_exp: int = 4,
+) -> np.ndarray:
+    """
+    Generates random powers of two: 2^0 .. 2^max_exp
+    """
+    exponents = rng.integers(0, max_exp + 1, size=shape)
+    return (2**exponents).astype(np.float32)
 
 
 class DivConfigProvider(BaseLayerConfigProvider):
@@ -50,20 +64,20 @@ class DivConfigProvider(BaseLayerConfigProvider):
             .tags("scalar", "elementwise", "div")
             .build(),
             valid_test("initializer_div")
-            .description("Div by tensor constant initializer")
+            .description("Div by tensor constant initializer (power of two)")
             .override_input_shapes(A=[1, 3, 4, 4])
             .override_initializer(
                 "B",
-                rng.integers(1, 10, (1, 3, 4, 4)).astype(np.float32),
+                random_power_of_two(rng, (1, 3, 4, 4)),
             )
             .tags("initializer", "elementwise", "div")
             .build(),
             valid_test("broadcast_div")
-            .description("Div with broadcasting (constant divisor)")
+            .description("Div with broadcasting (power-of-two divisor)")
             .override_input_shapes(A=[1, 3, 4, 4])
             .override_initializer(
                 "B",
-                rng.integers(1, 10, (1, 3, 1, 1)).astype(np.float32),
+                random_power_of_two(rng, (1, 3, 1, 1)),
             )
             .tags("broadcast", "elementwise", "div")
             .build(),
@@ -74,9 +88,9 @@ class DivConfigProvider(BaseLayerConfigProvider):
             .tags("edge", "identity", "div")
             .build(),
             edge_case_test("large_divisor")
-            .description("Division by large constant")
+            .description("Division by large power-of-two constant")
             .override_input_shapes(A=[1, 3, 4, 4])
-            .override_initializer("B", np.array([1000.0], dtype=np.float32))
+            .override_initializer("B", np.array([1024.0], dtype=np.float32))
             .tags("edge", "large_divisor", "div")
             .build(),
             e2e_test("e2e_scalar_div")
@@ -97,7 +111,7 @@ class DivConfigProvider(BaseLayerConfigProvider):
             .override_input_shapes(A=[1, 3, 4, 4])
             .override_initializer(
                 "B",
-                rng.integers(1, 10, (1, 3, 4, 4)).astype(np.float32),
+                random_power_of_two(rng, (1, 3, 4, 4)),
             )
             .tags("initializer", "elementwise", "div", "e2e")
             .build(),
@@ -106,7 +120,7 @@ class DivConfigProvider(BaseLayerConfigProvider):
             .override_input_shapes(A=[1, 3, 4, 4])
             .override_initializer(
                 "B",
-                rng.integers(1, 10, (1, 3, 1, 1)).astype(np.float32),
+                random_power_of_two(rng, (1, 3, 1, 1)),
             )
             .tags("broadcast", "elementwise", "div", "e2e")
             .build(),
@@ -183,5 +197,26 @@ class DivConfigProvider(BaseLayerConfigProvider):
                 "The divisor must be a circuit constant",
             )
             .tags("error", "initializer", "div")
+            .build(),
+            error_test("non_power_of_two_scalar")
+            .description("Divisor must be a power of two (scalar)")
+            .override_initializer("B", np.array([3.0], dtype=np.float32))
+            .expects_error(
+                InvalidParamError,
+                "The divisors must be powers of 2",
+            )
+            .tags("error", "non_power_of_two", "scalar", "div")
+            .build(),
+            error_test("non_power_of_two_tensor")
+            .description("Tensor divisor contains non-power-of-two values")
+            .override_initializer(
+                "B",
+                np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32),
+            )
+            .expects_error(
+                InvalidParamError,
+                "The divisors must be powers of 2",
+            )
+            .tags("error", "non_power_of_two", "tensor", "div")
             .build(),
         ]
