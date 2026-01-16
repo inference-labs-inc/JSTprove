@@ -17,15 +17,17 @@ use crate::circuit_functions::{
 
 #[derive(Debug)]
 pub struct DivLayer {
+    name: String,
     inputs: Vec<String>,
     outputs: Vec<String>,
     initializer_a: Option<ArrayD<i64>>,
     initializer_b: Option<ArrayD<i64>>,
-    scale_exponent: u32,
-    _scale_base: u32,
+    scaling: u64,
+    v_plus_one: usize,
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
+    #[allow(clippy::too_many_lines)]
     fn apply(
         &self,
         api: &mut Builder,
@@ -83,27 +85,58 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
                 .into());
             }
         }
+        let k = usize::try_from(self.scaling).map_err(|_| LayerError::Other {
+            layer: LayerKind::Div,
+            msg: "Cannot convert scaling to usize".to_string(),
+        })?;
+        let s =
+            self.v_plus_one
+                .checked_sub(1)
+                .ok_or_else(|| LayerError::InvalidParameterValue {
+                    layer: LayerKind::Div,
+                    layer_name: self.name.clone(),
+                    param_name: "v_plus_one".to_string(),
+                    value: self.v_plus_one.to_string(),
+                })?;
+        let context =
+            crate::circuit_functions::utils::quantization::RescalingContext::new(api, k, s)?;
 
         let result: Result<Vec<Variable>, CircuitError> = a_input
             .iter()
             .zip(&broadcasted_divisors)
             .map(|(&dividend, &divisor_val)| {
+                if divisor_val == 1 {
+                    return Ok(dividend);
+                }
                 let div_u32 = u32::try_from(divisor_val)
                     .map_err(|_| CircuitError::Other("divisor is negative or too large".into()))?;
                 let div = api.constant(div_u32);
+
                 api.display("div", div);
 
-                let divisor_bits = (32 - div_u32.leading_zeros()) as usize;
+                // let divisor_bits = (32 - div_u32.leading_zeros()) as usize;
+                let remainder_bits = div_u32.trailing_zeros() as usize;
 
-                let shift = 1u32.checked_shl(self.scale_exponent).ok_or(
+                let shift_amount = u32::try_from(context.scaling_exponent).map_err(|_| {
                     crate::circuit_functions::utils::RescaleError::ShiftExponentTooLargeError {
-                        exp: self.scale_exponent as usize,
+                        exp: context.scaling_exponent,
+                        type_name: "u32",
+                    }
+                })?;
+
+                let shift_ = 1u32.checked_shl(shift_amount).ok_or(
+                    crate::circuit_functions::utils::RescaleError::ShiftExponentTooLargeError {
+                        exp: context.scaling_exponent,
                         type_name: "u32",
                     },
                 )?;
-                let shift_ = api.constant(shift);
-                let shift = u64::from(shift) * u64::from(div_u32);
-                let scaled_shift = api.constant(CircuitField::<C>::from_u256(U256::from(shift)));
+                // let shift = context.shift;
+                // let shift_ = context.shift_;
+                let shift = api.constant(shift_);
+                let scaled_shift_ = u64::from(shift_) * u64::from(div_u32);
+                let scaled_shift =
+                    api.constant(CircuitField::<C>::from_u256(U256::from(scaled_shift_)));
+
                 api.display("scaled_shift", scaled_shift);
                 api.display("shift", shift_);
 
@@ -113,10 +146,23 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
                     dividend,
                     div,
                     scaled_shift,
-                    divisor_bits,
-                    self.scale_exponent as usize,
-                    shift_,
+                    remainder_bits,
+                    context.scaling_exponent,
+                    shift,
                 )?;
+                eprintln!("{div_u32}");
+                // let divisor_bits = (32 - div_u32.leading_zeros()) as usize;
+                // let out = div_pos_integer_constant(
+                //     api,
+                //     &mut logup_ctx,
+                //     dividend,
+                //     div,
+                //     context.scaled_shift,
+                //     // context.scaling_exponent,
+                //     divisor_bits,
+                //     context.shift_exponent,
+                //     context.shift,
+                // )?;
                 api.display("out", out);
 
                 Ok(out)
@@ -150,12 +196,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
         let initializer_b = get_optional_w_or_b(layer_context, divisor_name)?;
 
         Ok(Box::new(Self {
+            name: layer.name.clone(),
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
             initializer_a,
             initializer_b,
-            _scale_base: circuit_params.scale_base,
-            scale_exponent: circuit_params.scale_exponent,
+            v_plus_one: layer_context.n_bits,
+            scaling: circuit_params.scale_exponent.into(),
         }))
     }
 }
