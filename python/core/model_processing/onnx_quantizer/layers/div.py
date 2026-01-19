@@ -59,7 +59,7 @@ class DivQuantizer(BaseOpQuantizer):
                 )
                 and self.check_divisor_power_of_two(divisors)
             ):
-                attrs["mode"] = "constant_pos_int"
+                attrs["mode"] = "constant_pos_int_pow_two"
 
         if attrs["mode"] == "default_error":
             msg = "The div node is unsupported"

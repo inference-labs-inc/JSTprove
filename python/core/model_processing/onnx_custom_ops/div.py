@@ -55,7 +55,7 @@ def int64_div(
     https://onnx.ai/onnx/operators/onnx__Div.html
     """
     try:
-        if mode == "constant_pos_int":
+        if mode == "constant_pos_int_pow_two":
             result = a // b
             return result.astype(np.int64)
         msg = f"Unsupported mode: {mode}"

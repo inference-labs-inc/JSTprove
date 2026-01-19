@@ -7,7 +7,9 @@ use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Var
 
 use crate::circuit_functions::gadgets::euclidean_algebra::div_pos_integer_pow2_constant;
 use crate::circuit_functions::gadgets::range_check::LogupRangeCheckContext;
+use crate::circuit_functions::utils::RescaleError;
 use crate::circuit_functions::utils::onnx_model::get_optional_w_or_b;
+use crate::circuit_functions::utils::quantization::RescalingContext;
 use crate::circuit_functions::utils::tensor_ops::load_array_constants_or_get_inputs;
 use crate::circuit_functions::{
     CircuitError,
@@ -27,7 +29,6 @@ pub struct DivLayer {
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
-    #[allow(clippy::too_many_lines)]
     fn apply(
         &self,
         api: &mut Builder,
@@ -48,9 +49,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
             .as_ref()
             .ok_or_else(|| LayerError::Other {
                 layer: LayerKind::Div,
-                msg:
-                    "Div requires constant divisor (initializer_b). Dynamic divisors not supported."
-                        .to_string(),
+                msg: "Div requires constant divisor. Dynamic divisors not supported.".to_string(),
             })?;
 
         let a_shape = a_input.shape().to_vec();
@@ -68,23 +67,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
         let mut logup_ctx = LogupRangeCheckContext::new_default();
         logup_ctx.init::<C, Builder>(api);
 
-        for &d in &broadcasted_divisors {
-            if d <= 0 || d > i64::from(u32::MAX) {
-                return Err(LayerError::Other {
-                    layer: LayerKind::Div,
-                    msg: format!("Divisor must be in range [1, 2^32), got {d}"),
-                }
-                .into());
-            }
-            // Power-of-two check
-            if (d & (d - 1)) != 0 {
-                return Err(LayerError::Other {
-                    layer: LayerKind::Div,
-                    msg: format!("Divisor must be a power of 2, got {d}"),
-                }
-                .into());
-            }
-        }
+        validate_divisors(&broadcasted_divisors)?;
         let k = usize::try_from(self.scaling).map_err(|_| LayerError::Other {
             layer: LayerKind::Div,
             msg: "Cannot convert scaling to usize".to_string(),
@@ -98,8 +81,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
                     param_name: "v_plus_one".to_string(),
                     value: self.v_plus_one.to_string(),
                 })?;
-        let context =
-            crate::circuit_functions::utils::quantization::RescalingContext::new(api, k, s)?;
+        let context = RescalingContext::new(api, k, s)?;
 
         let mut div_cache: HashMap<u32, Variable> = HashMap::new();
         let mut shift_cache: HashMap<u32, Variable> = HashMap::new();
@@ -112,8 +94,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
                 if divisor_val == 1 {
                     return Ok(dividend);
                 }
+
                 let div_u32 = u32::try_from(divisor_val)
                     .map_err(|_| CircuitError::Other("divisor is negative or too large".into()))?;
+
                 let div = *div_cache
                     .entry(div_u32)
                     .or_insert_with(|| api.constant(div_u32));
@@ -121,21 +105,23 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
                 let remainder_bits = div_u32.trailing_zeros() as usize;
 
                 let shift_amount = u32::try_from(context.shift_exponent).map_err(|_| {
-                    crate::circuit_functions::utils::RescaleError::ShiftExponentTooLargeError {
+                    RescaleError::ShiftExponentTooLargeError {
                         exp: context.scaling_exponent,
                         type_name: "u32",
                     }
                 })?;
 
                 let shift_ = 1u32.checked_shl(shift_amount).ok_or(
-                    crate::circuit_functions::utils::RescaleError::ShiftExponentTooLargeError {
-                        exp: context.scaling_exponent,
+                    RescaleError::ShiftExponentTooLargeError {
+                        exp: shift_amount as usize,
                         type_name: "u32",
                     },
                 )?;
+
                 let shift = *shift_cache
                     .entry(shift_)
                     .or_insert_with(|| api.constant(shift_));
+
                 let scaled_shift_ = u64::from(shift_) * u64::from(div_u32);
                 let scaled_shift = *scaled_shift_cache.entry(scaled_shift_).or_insert_with(|| {
                     api.constant(CircuitField::<C>::from_u256(U256::from(scaled_shift_)))
@@ -151,7 +137,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
                     context.shift_exponent,
                     shift,
                 )?;
-
                 Ok(out)
             })
             .collect();
@@ -192,4 +177,25 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
             scaling: circuit_params.scale_exponent.into(),
         }))
     }
+}
+
+fn validate_divisors(divisors: &ArrayD<i64>) -> Result<(), CircuitError> {
+    for &d in divisors {
+        if d <= 0 || d > i64::from(u32::MAX) {
+            return Err(LayerError::Other {
+                layer: LayerKind::Div,
+                msg: format!("Divisor must be in range [1, 2^32), got {d}"),
+            }
+            .into());
+        }
+
+        if (d & (d - 1)) != 0 {
+            return Err(LayerError::Other {
+                layer: LayerKind::Div,
+                msg: format!("Divisor must be a power of 2, got {d}"),
+            }
+            .into());
+        }
+    }
+    Ok(())
 }

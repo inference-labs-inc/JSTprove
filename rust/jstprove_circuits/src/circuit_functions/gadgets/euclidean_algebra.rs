@@ -2,7 +2,50 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::{gadgets::LogupRangeCheckContext, utils::RescaleError};
 
-#[allow(clippy::missing_errors_doc)]
+/// Performs division of a positive integer variable by a **power-of-two constant**
+/// inside the circuit, with range-checked quotient and remainder.
+///
+///
+/// The division is implemented by introducing *unconstrained witnesses* for the
+/// intermediate quotient and remainder, and then enforcing correctness via
+/// algebraic constraints and LogUp range checks.
+///
+/// # Parameters
+///
+/// - `api`: Circuit builder API used to create variables and constraints.
+/// - `logup_ctx`: LogUp context used to range-check the quotient and remainder.
+/// - `dividend`: The dividend variable `c`.
+/// - `divisor`: The divisor variable `alpha`, which **must be a power of two**.
+/// - `divisor_by_shift`: The precomputed constant `alpha·S`.
+/// - `divisor_exponent`: Exponent such that `alpha = 2^{divisor_exponent}`.
+/// - `shift_exponent`: Exponent such that `S = 2^{shift_exponent}`.
+/// - `shift`: The variable representing `S`.
+///
+/// # Returns
+///
+/// Returns the quotient variable `q` corresponding to division of `dividend`
+/// by `divisor`, adjusted by the rescaling shift.
+///
+/// # Errors
+///
+/// Returns [`RescaleError`] if:
+///
+/// - The LogUp range check for the remainder fails.
+/// - The LogUp range check for the quotient fails.
+/// - `shift_exponent + 1` overflows `usize`.
+///
+/// # Preconditions
+///
+/// - `divisor` **must** represent a positive power of two.
+/// - `divisor_by_shift` **must equal** `divisor * shift`.
+/// - `logup_ctx` must be initialized before calling this function.
+/// - All inputs must be non-negative and fit within the expected bit widths.
+///
+/// # Notes
+///
+/// This function does **not** itself verify that `divisor` is a power of two or
+/// that `divisor_by_shift = divisor * shift`; these are assumed to be enforced
+/// by the caller.
 #[allow(clippy::too_many_arguments)]
 pub fn div_pos_integer_pow2_constant<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
