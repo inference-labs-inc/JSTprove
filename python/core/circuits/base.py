@@ -26,6 +26,7 @@ from python.core.utils.helper_functions import (
     ZKProofSystems,
     compile_circuit,
     compute_and_store_output,
+    debug_witness,
     generate_proof,
     generate_verification,
     generate_witness,
@@ -256,6 +257,27 @@ class Circuit:
                     proof_system=exec_config.proof_system,
                     dev_mode=exec_config.dev_mode,
                     bench=exec_config.bench,
+                )
+            elif exec_config.run_type == RunType.DEBUG_WITNESS:
+                processed_input_file = self._gen_witness_preprocessing(
+                    input_file=exec_config.input_file,
+                    output_file=exec_config.output_file,
+                    quantized_path=exec_config.quantized_path,
+                    write_json=exec_config.write_json,
+                    is_scaled=is_scaled,
+                )
+                debug_witness(
+                    circuit_name=exec_config.circuit_name,
+                    circuit_path=exec_config.circuit_path,
+                    witness_file=exec_config.witness_file,
+                    input_file=processed_input_file,
+                    output_file=exec_config.output_file,
+                    metadata_path=exec_config.metadata_path,
+                    proof_system=exec_config.proof_system,
+                    dev_mode=exec_config.dev_mode,
+                    bench=exec_config.bench,
+                    architecture_path=exec_config.architecture_path,
+                    w_and_b_path=exec_config.w_and_b_path,
                 )
             elif exec_config.run_type == RunType.PROVE_WITNESS:
                 generate_proof(

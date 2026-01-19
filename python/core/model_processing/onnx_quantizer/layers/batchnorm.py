@@ -194,13 +194,15 @@ class BatchnormQuantizer(BaseOpQuantizer, QuantizeBatchnorm):
         self: BatchnormQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto] | None = None,
+        scale_base: int | None = 2,
+        scale_exponent: int | None = 18,
     ) -> None:
         """
         For our current implementation, all batchnorm inputs
         (scale, variance, mean, etc.)
         must be initializers to the circuit and not inputs from earlier in the graph.
         """
-
+        _ = scale_exponent, scale_base
         if initializer_map is None:
             msg = "initializer_map is required for BatchNorm support check"
             raise CircuitConfigurationError(node.name, node.op_type, msg)
