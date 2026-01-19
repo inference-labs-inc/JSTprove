@@ -77,7 +77,8 @@ class DivQuantizer(BaseOpQuantizer):
                 new_inputs[idx] = cast_name
 
         scale_value = self.get_scaling(scale_config.base, scale_config.exponent)
-        scale_name = f"{node.name}_int_scaler"
+        scale_name_src = node.name or (node.output[0] if node.output else "div")
+        scale_name = f"{scale_name_src}_int_scaler"
         scale_tensor = numpy_helper.from_array(
             np.array([scale_value], dtype=np.int64),
             name=scale_name,
@@ -110,6 +111,10 @@ class DivQuantizer(BaseOpQuantizer):
         # 4. Check that the divisor is not zero
         # 5. Check that the divisor is sufficiently small
         # 6. Check that the divisor is a power of 2
+        if scale_base is None or scale_exponent is None:
+            msg = "scale_base and scale_exponent must not be None"
+            raise InvalidParamError(node.name, node.op_type, msg)
+
         if initializer_map is None:
             msg = "The divisor must be an initializer"
             raise InvalidParamError(node.name, node.op_type, msg)

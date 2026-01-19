@@ -106,7 +106,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
 
                 let shift_amount = u32::try_from(context.shift_exponent).map_err(|_| {
                     RescaleError::ShiftExponentTooLargeError {
-                        exp: context.scaling_exponent,
+                        exp: context.shift_exponent,
                         type_name: "u32",
                     }
                 })?;

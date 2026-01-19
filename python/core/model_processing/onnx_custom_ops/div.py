@@ -32,7 +32,7 @@ def int64_div(
         First input tensor with dtype int64.
     b : np.ndarray
         Second input tensor with dtype int64.
-    scaling_factor : Scaling factor for rescaling the output.
+    _scaling_factor : Scaling factor for rescaling the output.
         Optional scalar tensor for rescaling when rescale=1.
         Kept for future use, currently does not do anything.
     mode : str, optional
