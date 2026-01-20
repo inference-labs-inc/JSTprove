@@ -645,7 +645,6 @@ class PassthroughQuantizer(BaseOpQuantizer):
         initializer_map: dict[str, onnx.TensorProto],
     ) -> list[onnx.NodeProto]:
         _ = graph, scale_config, initializer_map
-        print(node)
         if not isinstance(node, onnx.NodeProto):
             raise HandlerImplementationError(
                 op_type="PassthroughQuantizer",
