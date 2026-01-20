@@ -1,6 +1,7 @@
 pub mod add;
 pub mod batchnorm;
 pub mod clip;
+pub mod concat;
 pub mod constant;
 pub mod conv;
 mod errors;

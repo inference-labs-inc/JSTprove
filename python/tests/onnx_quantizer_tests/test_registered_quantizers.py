@@ -30,6 +30,13 @@ def mock_initializer_map(input_names: list[str]) -> dict[str, onnx.TensorProto]:
     }
 
 
+def get_required_attributes(op_type: str) -> dict:
+    if op_type == "Concat":
+        return {"axis": 0}
+    # add more ops here as needed
+    return {}
+
+
 def get_required_input_names(op_type: str) -> list[str]:
     try:
         schema = onnx.defs.get_schema(op_type)
@@ -101,11 +108,13 @@ def test_registered_quantizer_quantize(
 
     inputs = get_required_input_names(op_type)
     dummy_initializer_map = mock_initializer_map(inputs)
+    attrs = get_required_attributes(op_type)
 
     dummy_node = helper.make_node(
         op_type=op_type,
         inputs=inputs,
         outputs=["dummy_output"],
+        **attrs,
     )
 
     result = handler.quantize(

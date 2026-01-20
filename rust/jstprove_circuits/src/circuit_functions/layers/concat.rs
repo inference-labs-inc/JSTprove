@@ -6,12 +6,12 @@ use ndarray::{ArrayD, Axis};
 use crate::circuit_functions::{
     CircuitError,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
-    utils::onnx_model::extract_params_and_expected_shape,
+    utils::{onnx_model::extract_params_and_expected_shape, typecasting::AsIsize},
 };
 
 #[derive(Debug)]
 pub struct ConcatLayer {
-    name: String,
+    _name: String,
     axis: isize,
     inputs: Vec<String>,
     outputs: Vec<String>,
@@ -40,13 +40,32 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConcatLayer {
 
         let first = &arrays[0];
         let ndim = first.ndim();
-        let axis = if self.axis < 0 {
-            (ndim as isize + self.axis) as usize
+        let ndim_isize = ndim.as_isize().map_err(|e| LayerError::Other {
+            layer: LayerKind::Concat,
+            msg: e.to_string(),
+        })?;
+
+        let resolved_axis = if self.axis < 0 {
+            ndim_isize
+                .checked_add(self.axis)
+                .ok_or_else(|| LayerError::Other {
+                    layer: LayerKind::Concat,
+                    msg: "axis underflow when resolving negative axis".to_string(),
+                })?
         } else {
-            self.axis as usize
+            self.axis
         };
 
-        let views: Vec<_> = arrays.iter().map(|a| a.view()).collect();
+        let axis = usize::try_from(resolved_axis).map_err(|_| LayerError::Other {
+            layer: LayerKind::Concat,
+            msg: format!("invalid concat axis: {resolved_axis}"),
+        })?;
+        // let axis = if self.axis < 0 {
+        //     (ndim as isize + self.axis) as usize
+        // } else {
+        //     self.axis as usize
+        // };
+        let views: Vec<_> = arrays.iter().map(ndarray::ArrayBase::view).collect();
         let out = ndarray::concatenate(Axis(axis), &views).map_err(|e| LayerError::Other {
             layer: LayerKind::Concat,
             msg: format!("Concatenation failed: {e}"),
@@ -72,12 +91,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConcatLayer {
 
         let axis: isize = params
             .get("axis")
-            .and_then(|v| v.as_i64())
-            .map(|v| v as isize)
+            .and_then(serde_json::Value::as_i64)
+            .and_then(|v| isize::try_from(v).ok())
             .unwrap_or(0);
 
         Ok(Box::new(Self {
-            name: layer.name.clone(),
+            _name: layer.name.clone(),
             axis,
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),

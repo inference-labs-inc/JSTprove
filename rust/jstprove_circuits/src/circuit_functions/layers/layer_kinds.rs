@@ -1,5 +1,6 @@
 use crate::circuit_functions::layers::LayerError;
 use crate::circuit_functions::layers::batchnorm::BatchnormLayer;
+use crate::circuit_functions::layers::concat::ConcatLayer;
 use crate::circuit_functions::layers::layer_ops::LayerOp;
 use crate::circuit_functions::layers::mul::MulLayer;
 use crate::circuit_functions::layers::sub::SubLayer;
@@ -133,6 +134,7 @@ When defining new layers, make sure to activate them by placing the new layer in
 define_layers! {
     Add       => { name: "Add", builder: AddLayer::build },
     Clip      => { name: "Clip", builder: ClipLayer::build },
+    Concat => { name: "Concat", builder: ConcatLayer::build },
     Batchnorm => { name: "BatchNormalization", builder: BatchnormLayer::build },
     Sub       => { name: "Sub", builder: SubLayer::build },
     Mul       => { name: "Mul", builder: MulLayer::build },
@@ -146,4 +148,5 @@ define_layers! {
     ReLU      => { name: "ReLU", builder: ReluLayer::build, aliases: ["Relu"] },
     Reshape   => { name: "Reshape", builder: ReshapeLayer::build },
     Transpose => { name: "Transpose", builder: TransposeLayer::build },
+
 }

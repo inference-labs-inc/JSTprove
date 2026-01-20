@@ -2,10 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from python.core.model_processing.onnx_quantizer.layers.transpose import (
-    TransposeQuantizer,
-)
-
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -94,7 +90,6 @@ class ONNXOpQuantizer:
         self.register("Max", MaxQuantizer(self.new_initializers))
         self.register("Min", MinQuantizer(self.new_initializers))
         self.register("BatchNormalization", BatchnormQuantizer(self.new_initializers))
-        # self.register("Transpose", TransposeQuantizer())
         self.register("Transpose", PassthroughQuantizer())
         self.register("Concat", PassthroughQuantizer())
 
