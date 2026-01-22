@@ -114,7 +114,11 @@ jobs:
             openmpi-bin
 
       - name: Clone ECC
-        run: git clone https://github.com/PolyhedraZK/Expander.git
+        run: |
+          git clone https://github.com/PolyhedraZK/Expander.git
+          cd Expander
+          git checkout af1b7473bc858d250e481d6bb7db98a1ee6b7fc5
+          cd ..
 
       - name: Run E2E Tests
         run: |
