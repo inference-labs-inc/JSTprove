@@ -71,80 +71,6 @@ ConverterPreTransform = Callable[
 ]
 
 
-def _extract_unsqueeze_axes_into_params(
-    *,
-    name: str,
-    inputs: list[str] | tuple[str, ...],
-    params: dict | None,
-    model_graph_initializers: list,
-    model_graph_nodes: list[NodeProto],
-    model_type: ModelType,
-) -> dict:
-    # In opset>=13, Unsqueeze schema is: Unsqueeze(data, axes)
-    if len(inputs) != _N_UNSQUEEZE_INPUTS:
-        msg = (
-            f"Unsqueeze '{name}' is missing axes input. "
-            f"Expected 2 inputs (data, axes), got {len(inputs)}: {list(inputs)}"
-        )
-        raise LayerAnalysisError(model_type=model_type, reason=msg)
-
-    axes_name = inputs[1]
-
-    initializer_map = {init.name: init for init in model_graph_initializers}
-
-    axes_arr: np.ndarray | None = None
-
-    # Case 1: axes provided as an initializer
-    if axes_name in initializer_map:
-        axes_arr = numpy_helper.to_array(initializer_map[axes_name])
-    else:
-        # Case 2: axes provided as a Constant node output
-        constant_node: NodeProto | None = None
-        for n in model_graph_nodes:
-            if n.op_type != "Constant":
-                continue
-            if len(n.output) == 0:
-                continue
-            if n.output[0] == axes_name:
-                constant_node = n
-                break
-
-        if constant_node is not None:
-            value_attr = None
-            for attr in constant_node.attribute:
-                if attr.name == "value":
-                    value_attr = attr
-                    break
-
-            if value_attr is None or value_attr.t is None:
-                msg = (
-                    f"Unsqueeze '{name}' Constant axes node '{axes_name}' is missing "
-                    "a tensor 'value' attribute."
-                )
-                raise LayerAnalysisError(model_type=model_type, reason=msg)
-
-            axes_arr = numpy_helper.to_array(value_attr.t)
-
-    if axes_arr is None:
-        msg = (
-            f"Unsqueeze '{name}' has dynamic axes input '{axes_name}'. "
-            "Only constant initializer axes or Constant-node axes are supported."
-        )
-        raise LayerAnalysisError(model_type=model_type, reason=msg)
-
-    if not np.issubdtype(axes_arr.dtype, np.integer):
-        msg = f"Unsqueeze '{name}' axes must be integer, got dtype {axes_arr.dtype}."
-        raise LayerAnalysisError(model_type=model_type, reason=msg)
-
-    out_params = params or {}
-    if axes_arr.ndim == 0:
-        out_params["axes"] = [int(axes_arr)]
-    else:
-        out_params["axes"] = [int(x) for x in axes_arr.reshape(-1).tolist()]
-
-    return out_params
-
-
 def _pre_transform_unsqueeze(
     node: NodeProto,
     params: dict | None,
@@ -159,10 +85,108 @@ def _pre_transform_unsqueeze(
         name=node.name,
         inputs=node.input,
         params=params,
-        model_graph_initializers=model.graph.initializer,
-        model_graph_nodes=list(model.graph.node),
+        model=model,
         model_type=model_type,
     )
+
+
+def _extract_unsqueeze_axes_into_params(
+    *,
+    name: str,
+    inputs: list[str] | tuple[str, ...],
+    params: dict | None,
+    model: onnx.ModelProto,
+    model_type: ModelType,
+) -> dict:
+    if len(inputs) != _N_UNSQUEEZE_INPUTS:
+        msg = (
+            f"Unsqueeze '{name}' is missing axes input. "
+            f"Expected 2 inputs (data, axes), got {len(inputs)}: {list(inputs)}"
+        )
+        raise LayerAnalysisError(model_type=model_type, reason=msg)
+
+    axes_name = inputs[1]
+
+    axes_arr = _resolve_unsqueeze_axes_array(
+        name=name,
+        axes_name=axes_name,
+        model=model,
+        model_type=model_type,
+    )
+
+    _validate_unsqueeze_axes_are_integer(
+        name=name,
+        axes_arr=axes_arr,
+        model_type=model_type,
+    )
+
+    out_params = params or {}
+    out_params["axes"] = _axes_array_to_int_list(axes_arr)
+    return out_params
+
+
+def _resolve_unsqueeze_axes_array(
+    *,
+    name: str,
+    axes_name: str,
+    model: onnx.ModelProto,
+    model_type: ModelType,
+) -> np.ndarray:
+    initializer_map = {init.name: init for init in model.graph.initializer}
+    if axes_name in initializer_map:
+        return numpy_helper.to_array(initializer_map[axes_name])
+
+    const_tensor = _find_constant_tensor_by_output_name(
+        model=model,
+        output_name=axes_name,
+    )
+
+    if const_tensor is not None:
+        return numpy_helper.to_array(const_tensor)
+
+    msg = (
+        f"Unsqueeze '{name}' has dynamic axes input '{axes_name}'. "
+        "Only constant initializer axes or Constant-node axes are supported."
+    )
+    raise LayerAnalysisError(model_type=model_type, reason=msg)
+
+
+def _find_constant_tensor_by_output_name(
+    *,
+    model: onnx.ModelProto,
+    output_name: str,
+) -> TensorProto | None:
+    for n in model.graph.node:
+        if n.op_type != "Constant" or not n.output:
+            continue
+        if n.output[0] != output_name:
+            continue
+
+        for attr in n.attribute:
+            if attr.name == "value" and attr.t is not None:
+                return attr.t
+
+        # Constant node exists but doesn't have the expected tensor attribute.
+        return None
+
+    return None
+
+
+def _validate_unsqueeze_axes_are_integer(
+    *,
+    name: str,
+    axes_arr: np.ndarray,
+    model_type: ModelType,
+) -> None:
+    if not np.issubdtype(axes_arr.dtype, np.integer):
+        msg = f"Unsqueeze '{name}' axes must be integer, got dtype {axes_arr.dtype}."
+        raise LayerAnalysisError(model_type=model_type, reason=msg)
+
+
+def _axes_array_to_int_list(axes_arr: np.ndarray) -> list[int]:
+    if axes_arr.ndim == 0:
+        return [int(axes_arr)]
+    return [int(x) for x in axes_arr.reshape(-1).tolist()]
 
 
 CONVERTER_PRE_ANALYSIS_TRANSFORMS: dict[str, ConverterPreTransform] = {
@@ -544,6 +568,7 @@ class ONNXConverter(ModelConverter):
                 output_name_to_shape,
                 current_id,
                 domain_to_version,
+                model=model,
             )
             self.logger.debug(
                 "Layer",
@@ -634,6 +659,8 @@ class ONNXConverter(ModelConverter):
         output_name_to_shape: dict[str, list[int]],
         id_count: int = -1,
         domain_to_version: dict[str, int] | None = None,
+        *,
+        model: onnx.ModelProto | None = None,
     ) -> ONNXLayer:
         """Convert a non-constant ONNX node into a structured ONNXLayer.
 
@@ -661,9 +688,11 @@ class ONNXConverter(ModelConverter):
         )
         params = parse_attributes(node.attribute)
 
+        active_model = model or self.model
+
         transform = CONVERTER_PRE_ANALYSIS_TRANSFORMS.get(op_type)
         if transform is not None:
-            params = transform(node, params, self.model, self.model_type)
+            params = transform(node, params, active_model, self.model_type)
 
         # Extract output shapes
         output_shapes = {
