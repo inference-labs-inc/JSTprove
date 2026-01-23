@@ -77,6 +77,7 @@ def _extract_unsqueeze_axes_into_params(
     inputs: list[str] | tuple[str, ...],
     params: dict | None,
     model_graph_initializers: list,
+    model_graph_nodes: list[NodeProto],
     model_type: ModelType,
 ) -> dict:
     # In opset>=13, Unsqueeze schema is: Unsqueeze(data, axes)
@@ -90,20 +91,49 @@ def _extract_unsqueeze_axes_into_params(
     axes_name = inputs[1]
 
     initializer_map = {init.name: init for init in model_graph_initializers}
-    if axes_name not in initializer_map:
+
+    axes_arr: np.ndarray | None = None
+
+    # Case 1: axes provided as an initializer
+    if axes_name in initializer_map:
+        axes_arr = numpy_helper.to_array(initializer_map[axes_name])
+    else:
+        # Case 2: axes provided as a Constant node output
+        constant_node: NodeProto | None = None
+        for n in model_graph_nodes:
+            if n.op_type != "Constant":
+                continue
+            if len(n.output) == 0:
+                continue
+            if n.output[0] == axes_name:
+                constant_node = n
+                break
+
+        if constant_node is not None:
+            value_attr = None
+            for attr in constant_node.attribute:
+                if attr.name == "value":
+                    value_attr = attr
+                    break
+
+            if value_attr is None or value_attr.t is None:
+                msg = (
+                    f"Unsqueeze '{name}' Constant axes node '{axes_name}' is missing "
+                    "a tensor 'value' attribute."
+                )
+                raise LayerAnalysisError(model_type=model_type, reason=msg)
+
+            axes_arr = numpy_helper.to_array(value_attr.t)
+
+    if axes_arr is None:
         msg = (
             f"Unsqueeze '{name}' has dynamic axes input '{axes_name}'. "
-            "Only constant initializer axes are supported."
+            "Only constant initializer axes or Constant-node axes are supported."
         )
         raise LayerAnalysisError(model_type=model_type, reason=msg)
 
-    axes_arr = numpy_helper.to_array(initializer_map[axes_name])
-
     if not np.issubdtype(axes_arr.dtype, np.integer):
-        msg = (
-            f"Unsqueeze '{name}' axes initializer must be integer, "
-            f"got dtype {axes_arr.dtype}."
-        )
+        msg = f"Unsqueeze '{name}' axes must be integer, got dtype {axes_arr.dtype}."
         raise LayerAnalysisError(model_type=model_type, reason=msg)
 
     out_params = params or {}
@@ -130,6 +160,7 @@ def _pre_transform_unsqueeze(
         inputs=node.input,
         params=params,
         model_graph_initializers=model.graph.initializer,
+        model_graph_nodes=list(model.graph.node),
         model_type=model_type,
     )
 
