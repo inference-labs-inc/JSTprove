@@ -7,12 +7,10 @@ use crate::circuit_functions::{
     CircuitError,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
-        constants::INPUT,
+        constants::{AXES, INPUT},
         onnx_model::{extract_params_and_expected_shape, get_input_name, get_param},
     },
 };
-
-const AXES: &str = "axes";
 
 #[allow(dead_code)]
 #[derive(Debug)]

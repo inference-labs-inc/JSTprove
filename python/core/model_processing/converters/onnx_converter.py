@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import logging
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from importlib.metadata import version as get_version
 from pathlib import Path
@@ -63,6 +64,79 @@ ONNXIODict = dict[str, str | int | list[int]]
 CircuitParamsDict = dict[str, int | dict[str, bool]]
 
 _N_UNSQUEEZE_INPUTS: int = 2
+
+ConverterPreTransform = Callable[
+    [NodeProto, dict | None, "onnx.ModelProto", ModelType],
+    dict | None,
+]
+
+
+def _extract_unsqueeze_axes_into_params(
+    *,
+    name: str,
+    inputs: list[str] | tuple[str, ...],
+    params: dict | None,
+    model_graph_initializers: list,
+    model_type: ModelType,
+) -> dict:
+    # In opset>=13, Unsqueeze schema is: Unsqueeze(data, axes)
+    if len(inputs) != _N_UNSQUEEZE_INPUTS:
+        msg = (
+            f"Unsqueeze '{name}' is missing axes input. "
+            f"Expected 2 inputs (data, axes), got {len(inputs)}: {list(inputs)}"
+        )
+        raise LayerAnalysisError(model_type=model_type, reason=msg)
+
+    axes_name = inputs[1]
+
+    initializer_map = {init.name: init for init in model_graph_initializers}
+    if axes_name not in initializer_map:
+        msg = (
+            f"Unsqueeze '{name}' has dynamic axes input '{axes_name}'. "
+            "Only constant initializer axes are supported."
+        )
+        raise LayerAnalysisError(model_type=model_type, reason=msg)
+
+    axes_arr = numpy_helper.to_array(initializer_map[axes_name])
+
+    if not np.issubdtype(axes_arr.dtype, np.integer):
+        msg = (
+            f"Unsqueeze '{name}' axes initializer must be integer, "
+            f"got dtype {axes_arr.dtype}."
+        )
+        raise LayerAnalysisError(model_type=model_type, reason=msg)
+
+    out_params = params or {}
+    if axes_arr.ndim == 0:
+        out_params["axes"] = [int(axes_arr)]
+    else:
+        out_params["axes"] = [int(x) for x in axes_arr.reshape(-1).tolist()]
+
+    return out_params
+
+
+def _pre_transform_unsqueeze(
+    node: NodeProto,
+    params: dict | None,
+    model: onnx.ModelProto,
+    model_type: ModelType,
+) -> dict | None:
+    if node.op_type != "Unsqueeze":
+        return params
+    if params and "axes" in params:
+        return params
+    return _extract_unsqueeze_axes_into_params(
+        name=node.name,
+        inputs=node.input,
+        params=params,
+        model_graph_initializers=model.graph.initializer,
+        model_type=model_type,
+    )
+
+
+CONVERTER_PRE_ANALYSIS_TRANSFORMS: dict[str, ConverterPreTransform] = {
+    "Unsqueeze": _pre_transform_unsqueeze,
+}
 
 
 @dataclass
@@ -555,45 +629,10 @@ class ONNXConverter(ModelConverter):
             domain_to_version.get(node.domain, "unknown") if domain_to_version else -1
         )
         params = parse_attributes(node.attribute)
-        # --- Special-case: opset-new Unsqueeze has axes as an input (initializer),
-        # not an attribute. Rust expects params["axes"].
-        if op_type == "Unsqueeze" and (not params or "axes" not in params):
-            # In opset>=13, Unsqueeze schema is: Unsqueeze(data, axes)
-            if len(inputs) != _N_UNSQUEEZE_INPUTS:
-                msg = (
-                    f"Unsqueeze '{name}' is missing axes input. "
-                    f"Expected 2 inputs (data, axes), got {len(inputs)}: {list(inputs)}"
-                )
-                raise LayerAnalysisError(model_type=self.model_type, reason=msg)
 
-            # axes must be a constant initializer
-            # (we do not support runtime/dynamic axes)
-            axes_name = inputs[1]
-
-            # Build an initializer map from *this model* so we can read axes.
-            initializer_map = {init.name: init for init in self.model.graph.initializer}
-            if axes_name not in initializer_map:
-                msg = (
-                    f"Unsqueeze '{name}' has dynamic axes input '{axes_name}'. "
-                    "Only constant initializer axes are supported."
-                )
-                raise LayerAnalysisError(model_type=self.model_type, reason=msg)
-
-            axes_arr = numpy_helper.to_array(initializer_map[axes_name])
-
-            if not np.issubdtype(axes_arr.dtype, np.integer):
-                msg = (
-                    f"Unsqueeze '{name}' axes initializer must be integer, "
-                    f"got dtype {axes_arr.dtype}."
-                )
-                raise LayerAnalysisError(model_type=self.model_type, reason=msg)
-
-            if axes_arr.ndim == 0:
-                params = params or {}
-                params["axes"] = [int(axes_arr)]
-            else:
-                params = params or {}
-                params["axes"] = [int(x) for x in axes_arr.reshape(-1).tolist()]
+        transform = CONVERTER_PRE_ANALYSIS_TRANSFORMS.get(op_type)
+        if transform is not None:
+            params = transform(node, params, self.model, self.model_type)
 
         # Extract output shapes
         output_shapes = {
@@ -1063,7 +1102,9 @@ class ONNXConverter(ModelConverter):
         ]
         self.input_shape = get_input_shapes(onnx_model)
 
-    def get_weights(self: ONNXConverter) -> tuple[
+    def get_weights(
+        self: ONNXConverter,
+    ) -> tuple[
         dict[str, list[ONNXLayerDict]],
         dict[str, list[ONNXLayerDict]],
         CircuitParamsDict,
@@ -1096,7 +1137,7 @@ class ONNXConverter(ModelConverter):
             scale_base=scale_base,
         )
         # Get layers in correct format
-        (architecture, w_and_b) = self.analyze_layers(
+        architecture, w_and_b = self.analyze_layers(
             scaled_and_transformed_model,
             output_name_to_shape,
         )
