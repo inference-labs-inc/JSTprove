@@ -15,6 +15,7 @@ pub mod min;
 pub mod mul;
 pub mod relu;
 pub mod reshape;
+pub mod split;
 pub mod sub;
 pub mod transpose;
 

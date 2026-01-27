@@ -30,7 +30,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
         &self,
         _api: &mut Builder,
         input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
+    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError> {
         let reshape_shape = self.shape.clone();
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Conv, INPUT)?;
         let layer_input = input
@@ -50,7 +50,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
                 msg: format!("Cannot reshape into {inferred_shape:?}"),
             })?;
 
-        Ok((self.outputs.clone(), out.clone()))
+        Ok(vec![(self.outputs.clone(), out)])
     }
 
     fn build(

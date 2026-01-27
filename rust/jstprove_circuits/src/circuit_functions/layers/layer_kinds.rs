@@ -3,6 +3,7 @@ use crate::circuit_functions::layers::batchnorm::BatchnormLayer;
 use crate::circuit_functions::layers::concat::ConcatLayer;
 use crate::circuit_functions::layers::layer_ops::LayerOp;
 use crate::circuit_functions::layers::mul::MulLayer;
+use crate::circuit_functions::layers::split::SplitLayer;
 use crate::circuit_functions::layers::sub::SubLayer;
 use crate::circuit_functions::layers::transpose::TransposeLayer;
 use crate::circuit_functions::utils::build_layers::BuildLayerContext;
@@ -147,6 +148,7 @@ define_layers! {
     Min       => { name: "Min", builder: MinLayer::build },
     ReLU      => { name: "ReLU", builder: ReluLayer::build, aliases: ["Relu"] },
     Reshape   => { name: "Reshape", builder: ReshapeLayer::build },
+    Split     => { name: "Split", builder: SplitLayer::build },
     Transpose => { name: "Transpose", builder: TransposeLayer::build },
 
 }

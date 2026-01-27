@@ -25,7 +25,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TransposeLayer {
         &self,
         _api: &mut Builder,
         input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
+    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError> {
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Transpose, INPUT)?;
         let layer_input = input
             .get(input_name.as_str())
@@ -44,7 +44,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TransposeLayer {
                 .to_owned()
         };
 
-        Ok((self.outputs.clone(), out))
+        Ok(vec![(self.outputs.clone(), out)])
     }
 
     fn build(

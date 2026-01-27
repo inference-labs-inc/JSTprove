@@ -42,7 +42,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SubLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
+    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError> {
         let a_name = get_input_name(&self.inputs, 0, LayerKind::Sub, INPUT)?;
         let b_name = get_input_name(&self.inputs, 1, LayerKind::Sub, INPUT)?;
 
@@ -66,7 +66,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SubLayer {
 
         // Matrix subtraction
         let result = matrix_subtraction(api, &a_bc, b_bc, LayerKind::Sub)?;
-        Ok((self.outputs.clone(), result))
+        Ok(vec![(self.outputs.clone(), result)])
     }
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,

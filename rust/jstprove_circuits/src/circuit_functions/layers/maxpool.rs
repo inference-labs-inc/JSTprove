@@ -52,7 +52,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
+    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError> {
         let input_name = get_input_name(&self.inputs, 0, LayerKind::MaxPool, INPUT)?;
         let layer_input = input
             .get(&input_name.clone())
@@ -89,7 +89,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
             &out_shape,
             &pool_params,
         )?;
-        Ok((self.outputs.clone(), output))
+        Ok(vec![(self.outputs.clone(), output)])
     }
 
     fn build(

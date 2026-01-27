@@ -22,7 +22,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConcatLayer {
         &self,
         _api: &mut Builder,
         input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
+    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError> {
         let mut arrays: Vec<ArrayD<Variable>> = Vec::new();
 
         for input_name in &self.inputs {
@@ -71,7 +71,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConcatLayer {
             msg: format!("Concatenation failed: {e}"),
         })?;
 
-        Ok((self.outputs.clone(), out))
+        Ok(vec![(self.outputs.clone(), out)])
     }
 
     fn build(

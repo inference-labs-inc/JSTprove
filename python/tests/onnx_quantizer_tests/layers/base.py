@@ -145,11 +145,12 @@ class LayerTestConfig:
             helper.make_tensor_value_info(name, TensorProto.FLOAT, shape)
             for name, shape in output_shapes.items()
         ]
+        node_outputs = list(output_shapes.keys())
 
         node = helper.make_node(
             self.op_type,
             inputs=inputs,
-            outputs=[f"{self.op_type.lower()}_output"],
+            outputs=node_outputs,
             name=f"test_{self.op_type.lower()}_{test_spec.name}",
             **attrs,
         )

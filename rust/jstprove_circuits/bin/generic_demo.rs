@@ -68,10 +68,17 @@ impl Circuit<Variable> {
         for (i, layer) in layers.iter().enumerate() {
             eprintln!("Applying Layer {:?}", &architecture.architecture[i].name);
             let result = layer.apply(api, out.clone())?;
-            result.0.into_iter().for_each(|key| {
-                // out.insert(key, Arc::clone(&value)); Depending on memory constraints here
-                out.insert(key, result.1.clone());
-            });
+            // let outputs = layer.apply(api, out.clone())?;
+
+            for (names, tensor) in result {
+                for name in names {
+                    out.insert(name, tensor.clone());
+                }
+            }
+            // result.0.into_iter().for_each(|key| {
+            //     // out.insert(key, Arc::clone(&value)); Depending on memory constraints here
+            //     out.insert(key, result.1.clone());
+            // });
         }
 
         let flatten_shape: Vec<usize> = vec![
@@ -112,6 +119,7 @@ impl Circuit<Variable> {
                 .collect::<Vec<ArrayView1<Variable>>>(),
         )
         .map_err(|e| CircuitError::Other(format!("Concatenation error: {e}")))?;
+        eprintln!("output shape {:?}", combined_output.shape());
 
         // Optionally reshape it to the desired final flatten_shape
         let combined_output = combined_output

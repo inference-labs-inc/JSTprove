@@ -31,7 +31,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
         &self,
         _api: &mut Builder,
         input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
+    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError> {
         let reshape_axis = self.axis;
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Flatten, INPUT)?;
         let layer_input = input
@@ -44,7 +44,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
 
         let out = onnx_flatten(layer_input.clone(), reshape_axis)?;
 
-        Ok((self.outputs.clone(), out.clone()))
+        Ok(vec![(self.outputs.clone(), out)])
     }
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,

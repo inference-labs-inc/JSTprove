@@ -31,7 +31,7 @@ pub trait LayerOp<C: Config, Builder: RootAPI<C>> {
         &self,
         api: &mut Builder,
         input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError>;
+    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError>;
     /// Instantiated by each layer op.
     /// Builds a circuit layer from an ONNX definition.
     ///

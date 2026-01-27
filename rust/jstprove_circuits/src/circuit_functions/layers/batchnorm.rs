@@ -43,7 +43,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
         &self,
         api: &mut Builder,
         input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
+    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError> {
         // TODO can add bias check as an optional step.
         let is_relu = matches!(self.optimization_pattern, PatternRegistry::BatchnormRelu);
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Batchnorm, INPUT)?;
@@ -88,9 +88,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
                     layer: LayerKind::Batchnorm,
                     msg: format!("Rescale failed: {e}"),
                 })?;
-            return Ok((self.outputs.clone(), out_array));
+            return Ok(vec![(self.outputs.clone(), out_array)]);
         }
-        Ok((self.outputs.clone(), result))
+        Ok(vec![(self.outputs.clone(), result)])
     }
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,

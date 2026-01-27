@@ -92,6 +92,7 @@ class ONNXOpQuantizer:
         self.register("BatchNormalization", BatchnormQuantizer(self.new_initializers))
         self.register("Transpose", PassthroughQuantizer())
         self.register("Concat", PassthroughQuantizer())
+        self.register("Split", PassthroughQuantizer())
 
     def register(
         self: ONNXOpQuantizer,
