@@ -8,6 +8,9 @@ use crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry;
 use crate::circuit_functions::utils::onnx_model::CircuitParams;
 use crate::circuit_functions::utils::onnx_types::ONNXLayer;
 
+pub type LayerOutput = (Vec<String>, ArrayD<Variable>);
+pub type LayerResult = Result<Vec<LayerOutput>, CircuitError>;
+
 pub trait LayerOp<C: Config, Builder: RootAPI<C>> {
     /// Instantiated by each layer op.
     /// Applies the operation relevant operation for that layer
@@ -31,7 +34,7 @@ pub trait LayerOp<C: Config, Builder: RootAPI<C>> {
         &self,
         api: &mut Builder,
         input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError>;
+    ) -> Result<Vec<LayerOutput>, CircuitError>;
     /// Instantiated by each layer op.
     /// Builds a circuit layer from an ONNX definition.
     ///

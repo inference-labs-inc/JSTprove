@@ -5,7 +5,10 @@ use ndarray::{ArrayD, IxDyn};
 
 use crate::circuit_functions::{
     CircuitError,
-    layers::{LayerError, LayerKind, layer_ops::LayerOp},
+    layers::{
+        LayerError, LayerKind,
+        layer_ops::{LayerOp, LayerResult},
+    },
     utils::{
         constants::{INPUT, INPUT_SHAPE},
         onnx_model::{extract_params_and_expected_shape, get_input_name, get_param_or_default},
@@ -26,11 +29,7 @@ pub struct ReshapeLayer {
 // -------- Implementations --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
-    fn apply(
-        &self,
-        _api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError> {
+    fn apply(&self, _api: &mut Builder, input: HashMap<String, ArrayD<Variable>>) -> LayerResult {
         let reshape_shape = self.shape.clone();
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Conv, INPUT)?;
         let layer_input = input

@@ -12,7 +12,7 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::{
     CircuitError,
-    layers::{LayerError, LayerKind},
+    layers::{LayerError, LayerKind, layer_ops::LayerResult},
     utils::{
         UtilsError,
         constants::{BIAS, DILATION, GROUP, INPUT, KERNEL_SHAPE, PADS, STRIDES, WEIGHTS},
@@ -62,11 +62,7 @@ pub struct ConvLayer {
 // -------- Implementations --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
-    fn apply(
-        &self,
-        api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError> {
+    fn apply(&self, api: &mut Builder, input: HashMap<String, ArrayD<Variable>>) -> LayerResult {
         let is_relu = matches!(self.optimization_pattern, PatternRegistry::ConvRelu);
 
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Conv, INPUT)?;

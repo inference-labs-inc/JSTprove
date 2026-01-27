@@ -5,7 +5,10 @@ use ndarray::{ArrayD, Axis};
 
 use crate::circuit_functions::{
     CircuitError,
-    layers::{LayerError, LayerKind, layer_ops::LayerOp},
+    layers::{
+        LayerError, LayerKind,
+        layer_ops::{LayerOp, LayerResult},
+    },
     utils::{onnx_model::extract_params_and_expected_shape, typecasting::AsIsize},
 };
 
@@ -18,11 +21,7 @@ pub struct ConcatLayer {
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConcatLayer {
-    fn apply(
-        &self,
-        _api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError> {
+    fn apply(&self, _api: &mut Builder, input: HashMap<String, ArrayD<Variable>>) -> LayerResult {
         let mut arrays: Vec<ArrayD<Variable>> = Vec::new();
 
         for input_name in &self.inputs {

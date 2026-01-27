@@ -6,7 +6,10 @@ use serde_json::Value;
 
 use crate::circuit_functions::{
     CircuitError,
-    layers::{LayerError, LayerKind, layer_ops::LayerOp},
+    layers::{
+        LayerError, LayerKind,
+        layer_ops::{LayerOp, LayerResult},
+    },
     utils::{constants::VALUE, onnx_model::get_param},
 };
 
@@ -24,11 +27,7 @@ pub struct ConstantLayer {
 // TODO remove constants from python side. Incorporate into the layer that uses it instead
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConstantLayer {
     // Passthrough
-    fn apply(
-        &self,
-        api: &mut Builder,
-        _input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError> {
+    fn apply(&self, api: &mut Builder, _input: HashMap<String, ArrayD<Variable>>) -> LayerResult {
         let arr = ArrayD::from_shape_vec(IxDyn(&[1]), vec![api.constant(0)]).map_err(|e| {
             LayerError::InvalidShape {
                 layer: LayerKind::Constant,

@@ -51,7 +51,10 @@ use crate::circuit_functions::{
         freivalds_verify_matrix_product, matrix_addition, matrix_multiplication,
         unconstrained_matrix_multiplication,
     },
-    layers::{LayerError, LayerKind, layer_ops::LayerOp},
+    layers::{
+        LayerError, LayerKind,
+        layer_ops::{LayerOp, LayerResult},
+    },
     utils::{
         constants::{ALPHA, BETA, INPUT, TRANS_A, TRANS_B},
         graph_pattern_matching::PatternRegistry,
@@ -94,11 +97,7 @@ pub struct GemmLayer {
 // -----------------------------------------------------------------------------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
-    fn apply(
-        &self,
-        api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError> {
+    fn apply(&self, api: &mut Builder, input: HashMap<String, ArrayD<Variable>>) -> LayerResult {
         let is_relu = matches!(self.optimization_pattern, PatternRegistry::GemmRelu);
 
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Gemm, INPUT)?;

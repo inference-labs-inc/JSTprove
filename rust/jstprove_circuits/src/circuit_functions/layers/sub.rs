@@ -7,6 +7,7 @@ use ndarray::ArrayD;
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::gadgets::linear_algebra::matrix_subtraction;
+use crate::circuit_functions::layers::layer_ops::LayerResult;
 use crate::circuit_functions::utils::onnx_model::get_optional_w_or_b;
 use crate::circuit_functions::utils::tensor_ops::{
     broadcast_two_arrays, load_array_constants_or_get_inputs,
@@ -38,11 +39,7 @@ pub struct SubLayer {
 // -------- Implementation --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SubLayer {
-    fn apply(
-        &self,
-        api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError> {
+    fn apply(&self, api: &mut Builder, input: HashMap<String, ArrayD<Variable>>) -> LayerResult {
         let a_name = get_input_name(&self.inputs, 0, LayerKind::Sub, INPUT)?;
         let b_name = get_input_name(&self.inputs, 1, LayerKind::Sub, INPUT)?;
 

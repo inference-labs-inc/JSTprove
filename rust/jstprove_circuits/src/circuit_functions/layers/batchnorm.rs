@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use ndarray::ArrayD;
 
 use crate::circuit_functions::gadgets::linear_algebra::{matrix_addition, matrix_hadamard_product};
+use crate::circuit_functions::layers::layer_ops::LayerResult;
 use crate::circuit_functions::utils::tensor_ops::{
     broadcast_two_arrays, reshape_channel_vector_for_broadcast,
 };
@@ -39,11 +40,7 @@ pub struct BatchnormLayer {
 
 // -------- Implementation --------
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
-    fn apply(
-        &self,
-        api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError> {
+    fn apply(&self, api: &mut Builder, input: HashMap<String, ArrayD<Variable>>) -> LayerResult {
         // TODO can add bias check as an optional step.
         let is_relu = matches!(self.optimization_pattern, PatternRegistry::BatchnormRelu);
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Batchnorm, INPUT)?;

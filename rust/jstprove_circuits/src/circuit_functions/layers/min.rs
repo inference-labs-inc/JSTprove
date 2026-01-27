@@ -15,7 +15,10 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 /// Internal crate imports
 use crate::circuit_functions::{
     CircuitError,
-    layers::{LayerError, LayerKind, layer_ops::LayerOp},
+    layers::{
+        LayerError, LayerKind,
+        layer_ops::{LayerOp, LayerResult},
+    },
     utils::{
         constants::INPUT,
         graph_pattern_matching::PatternRegistry,
@@ -47,11 +50,7 @@ pub struct MinLayer {
 // -------- Implementation --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MinLayer {
-    fn apply(
-        &self,
-        api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError> {
+    fn apply(&self, api: &mut Builder, input: HashMap<String, ArrayD<Variable>>) -> LayerResult {
         // 1. Resolve input names (mirrors AddLayer)
         let a_name = get_input_name(&self.inputs, 0, LayerKind::Min, INPUT)?;
         let b_name = get_input_name(&self.inputs, 1, LayerKind::Min, INPUT)?;

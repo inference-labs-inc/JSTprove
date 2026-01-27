@@ -47,6 +47,24 @@ pub trait AsUsize {
     fn as_usize(&self) -> Result<usize, UtilsError>;
 }
 
+impl AsUsize for i64 {
+    fn as_usize(&self) -> Result<usize, UtilsError> {
+        usize::try_from(*self).map_err(|_| UtilsError::ValueConversionError {
+            initial_var_type: "i64".to_string(),
+            converted_var_type: "usize".to_string(),
+        })
+    }
+}
+
+impl AsIsize for i64 {
+    fn as_isize(&self) -> Result<isize, UtilsError> {
+        isize::try_from(*self).map_err(|_| UtilsError::ValueConversionError {
+            initial_var_type: "i64".to_string(),
+            converted_var_type: "isize".to_string(),
+        })
+    }
+}
+
 impl AsUsize for i32 {
     fn as_usize(&self) -> Result<usize, UtilsError> {
         usize::try_from(*self).map_err(|_| UtilsError::ValueConversionError {
@@ -162,6 +180,26 @@ impl UsizeAsU32 for usize {
         u32::try_from(*self).map_err(|_| UtilsError::ValueConversionError {
             initial_var_type: "usize".to_string(),
             converted_var_type: "u32".to_string(),
+        })
+    }
+}
+pub trait IsizeAsUsize {
+    /// Converts an `isize` value to `usize`.
+    ///
+    /// # Returns
+    /// - `Ok(usize)` if the conversion succeeds.
+    ///
+    /// # Errors
+    /// - [`UtilsError::ValueConversionError`] if the value is negative or
+    ///   does not fit into a `usize` on the current platform.
+    fn as_usize(&self) -> Result<usize, UtilsError>;
+}
+
+impl IsizeAsUsize for isize {
+    fn as_usize(&self) -> Result<usize, UtilsError> {
+        usize::try_from(*self).map_err(|_| UtilsError::ValueConversionError {
+            initial_var_type: "isize".to_string(),
+            converted_var_type: "usize".to_string(),
         })
     }
 }

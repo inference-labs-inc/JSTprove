@@ -23,7 +23,10 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 /// Internal crate imports
 use crate::circuit_functions::{
     CircuitError,
-    layers::{LayerError, LayerKind, layer_ops::LayerOp},
+    layers::{
+        LayerError, LayerKind,
+        layer_ops::{LayerOp, LayerResult},
+    },
     utils::{
         constants::INPUT,
         graph_pattern_matching::PatternRegistry,
@@ -60,11 +63,7 @@ pub struct ClipLayer {
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
     #[allow(clippy::too_many_lines)]
-    fn apply(
-        &self,
-        api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError> {
+    fn apply(&self, api: &mut Builder, input: HashMap<String, ArrayD<Variable>>) -> LayerResult {
         // 1. Resolve required input X
         let x_name = get_input_name(&self.inputs, 0, LayerKind::Clip, INPUT)?;
         let x_input = load_array_constants_or_get_inputs(

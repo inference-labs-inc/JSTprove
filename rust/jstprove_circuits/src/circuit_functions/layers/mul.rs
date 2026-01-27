@@ -7,6 +7,7 @@ use ndarray::ArrayD;
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::gadgets::linear_algebra::matrix_hadamard_product;
+use crate::circuit_functions::layers::layer_ops::LayerResult;
 use crate::circuit_functions::utils::onnx_model::get_optional_w_or_b;
 use crate::circuit_functions::utils::quantization::rescale_array;
 use crate::circuit_functions::utils::tensor_ops::{
@@ -42,11 +43,7 @@ pub struct MulLayer {
 // -------- Implementation --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MulLayer {
-    fn apply(
-        &self,
-        api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError> {
+    fn apply(&self, api: &mut Builder, input: HashMap<String, ArrayD<Variable>>) -> LayerResult {
         let is_relu = matches!(self.optimization_pattern, PatternRegistry::MulRelu);
         let a_name = get_input_name(&self.inputs, 0, LayerKind::Mul, INPUT)?;
         let b_name = get_input_name(&self.inputs, 1, LayerKind::Mul, INPUT)?;

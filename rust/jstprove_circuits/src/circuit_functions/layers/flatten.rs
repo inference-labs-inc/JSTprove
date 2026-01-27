@@ -5,7 +5,10 @@ use ndarray::ArrayD;
 
 use crate::circuit_functions::{
     CircuitError,
-    layers::{LayerError, LayerKind, layer_ops::LayerOp},
+    layers::{
+        LayerError, LayerKind,
+        layer_ops::{LayerOp, LayerResult},
+    },
     utils::{
         constants::{AXIS, INPUT},
         onnx_model::{extract_params_and_expected_shape, get_input_name, get_param_or_default},
@@ -27,11 +30,7 @@ pub struct FlattenLayer {
 // -------- Implementations --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
-    fn apply(
-        &self,
-        _api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError> {
+    fn apply(&self, _api: &mut Builder, input: HashMap<String, ArrayD<Variable>>) -> LayerResult {
         let reshape_axis = self.axis;
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Flatten, INPUT)?;
         let layer_input = input

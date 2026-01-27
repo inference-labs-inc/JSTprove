@@ -9,7 +9,10 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 /// Internal crate imports
 use crate::circuit_functions::{
     CircuitError,
-    layers::{LayerError, LayerKind, layer_ops::LayerOp},
+    layers::{
+        LayerError, LayerKind,
+        layer_ops::{LayerOp, LayerResult},
+    },
     utils::{
         ArrayConversionError,
         constants::INPUT,
@@ -38,11 +41,7 @@ pub struct ReluLayer {
 // -------- Implementations --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
-    fn apply(
-        &self,
-        api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
-    ) -> Result<Vec<(Vec<String>, ArrayD<Variable>)>, CircuitError> {
+    fn apply(&self, api: &mut Builder, input: HashMap<String, ArrayD<Variable>>) -> LayerResult {
         let input_name = get_input_name(&self.inputs, 0, LayerKind::ReLU, INPUT)?;
         let layer_input = input
             .get(input_name.as_str())
