@@ -113,7 +113,7 @@ jobs:
             clang \
             openmpi-bin
 
-      - name: Clone ECC
+      - name: Clone Expander
         run: |
           git clone https://github.com/PolyhedraZK/Expander.git
           cd Expander
