@@ -541,7 +541,7 @@ where
     for x in &output {
         if !(*x) {
             return Err(RunError::Witness(
-                "Witness generation failed sanity check".into(),
+                "Outputs generated do not match outputs supplied".into(),
             ));
         }
     }
