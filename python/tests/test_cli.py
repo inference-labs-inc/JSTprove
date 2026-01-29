@@ -1193,8 +1193,14 @@ def test_batch_missing_manifest(tmp_path: Path) -> None:
     assert rc == 1
 
 
+ARGPARSE_ERROR_EXIT_CODE = 2
+
+
 @pytest.mark.unit
-def test_batch_invalid_parallel_zero(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+def test_batch_invalid_parallel_zero(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+) -> None:
     circuit = tmp_path / "circuit.txt"
     circuit.write_text("ok")
 
@@ -1216,13 +1222,16 @@ def test_batch_invalid_parallel_zero(tmp_path: Path, capsys: pytest.CaptureFixtu
             ],
         )
 
-    assert exc_info.value.code == 2
+    assert exc_info.value.code == ARGPARSE_ERROR_EXIT_CODE
     captured = capsys.readouterr()
     assert "positive" in captured.err.lower()
 
 
 @pytest.mark.unit
-def test_batch_invalid_parallel_negative(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+def test_batch_invalid_parallel_negative(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+) -> None:
     circuit = tmp_path / "circuit.txt"
     circuit.write_text("ok")
 
@@ -1244,6 +1253,6 @@ def test_batch_invalid_parallel_negative(tmp_path: Path, capsys: pytest.CaptureF
             ],
         )
 
-    assert exc_info.value.code == 2
+    assert exc_info.value.code == ARGPARSE_ERROR_EXIT_CODE
     captured = capsys.readouterr()
     assert "positive" in captured.err.lower()

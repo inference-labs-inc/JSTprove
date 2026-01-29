@@ -1,12 +1,12 @@
 use clap::{Arg, Command};
 use expander_compiler::circuit::layered::witness::Witness;
 use expander_compiler::circuit::layered::{Circuit, NormalInputType};
-use io_reader::IOReader;
 use expander_compiler::frontend::{
     ChallengeField, CircuitField, CompileOptions, Config, Define, Variable, WitnessSolver, compile,
     extra::debug_eval, internal::DumpLoadTwoVariables,
 };
 use gkr_engine::{FieldEngine, GKREngine, MPIConfig};
+use io_reader::IOReader;
 use peakmem_alloc::{INSTRUMENTED_SYSTEM, PeakMemAlloc, PeakMemAllocTrait};
 use rayon::prelude::*;
 use serde::Deserialize;
@@ -164,7 +164,7 @@ where
         &witness_solver,
         &layered_circuit,
         &hint_registry,
-        assignment,
+        &assignment,
         witness_path,
     )?;
 
@@ -490,14 +490,18 @@ where
         .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
 
     let (simd_input, simd_public_input) = witness.to_simd();
-    expander_circuit.layers[0].input_vals.clone_from(&simd_input);
+    expander_circuit.layers[0]
+        .input_vals
+        .clone_from(&simd_input);
     expander_circuit.public_input.clone_from(&simd_public_input);
 
     for (i, _) in public_vars.iter().enumerate() {
         let x = format!("{:?}", public_vars[i]);
         let y = format!("{:?}", expander_circuit.public_input[i]);
         if x != y {
-            return Err(RunError::Verify("inputs/outputs don't match the witness".into()));
+            return Err(RunError::Verify(
+                "inputs/outputs don't match the witness".into(),
+            ));
         }
     }
 
@@ -525,7 +529,7 @@ fn witness_core<C: Config, CircuitDefaultType>(
     witness_solver: &WitnessSolver<C>,
     layered_circuit: &Circuit<C, NormalInputType>,
     hint_registry: &expander_compiler::frontend::HintRegistry<CircuitField<C>>,
-    assignment: CircuitDefaultType,
+    assignment: &CircuitDefaultType,
     witness_path: &str,
 ) -> Result<(), RunError>
 where
@@ -534,7 +538,7 @@ where
         + Clone,
 {
     let witness = witness_solver
-        .solve_witness_with_hints(&assignment, hint_registry)
+        .solve_witness_with_hints(assignment, hint_registry)
         .map_err(|e| RunError::Witness(format!("{e:?}")))?;
 
     let output = layered_circuit.run(&witness);
@@ -558,6 +562,11 @@ where
     Ok(())
 }
 
+/// Generates witnesses for multiple inputs in parallel.
+///
+/// # Errors
+///
+/// Returns a [`RunError`] if loading the manifest, circuit, or witness solver fails.
 pub fn run_batch_witness<C: Config, I, CircuitDefaultType>(
     io_reader_factory: impl Fn() -> I + Sync,
     manifest_path: &str,
@@ -578,7 +587,9 @@ where
     let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
 
     let job_count = manifest.jobs.len();
-    println!("Loaded circuit and witness solver. Processing {job_count} jobs with {parallel} threads.");
+    println!(
+        "Loaded circuit and witness solver. Processing {job_count} jobs with {parallel} threads."
+    );
 
     let succeeded = AtomicUsize::new(0);
     let failed = AtomicUsize::new(0);
@@ -617,7 +628,7 @@ where
                     &witness_solver,
                     &layered_circuit,
                     &hint_registry,
-                    assignment,
+                    &assignment,
                     &job.witness,
                 ) {
                     Ok(()) => {
@@ -642,6 +653,11 @@ where
     })
 }
 
+/// Generates proofs for multiple witnesses in parallel.
+///
+/// # Errors
+///
+/// Returns a [`RunError`] if loading the manifest or circuit fails.
 pub fn run_batch_prove<C: Config, CircuitDefaultType>(
     manifest_path: &str,
     circuit_path: &str,
@@ -703,6 +719,11 @@ where
     })
 }
 
+/// Verifies multiple proofs in parallel.
+///
+/// # Errors
+///
+/// Returns a [`RunError`] if loading the manifest or circuit fails.
 pub fn run_batch_verify<C: Config, I, CircuitDefaultType>(
     io_reader_factory: impl Fn() -> I + Sync + Send,
     manifest_path: &str,
@@ -877,6 +898,7 @@ pub fn get_arg(matches: &clap::ArgMatches, name: &'static str) -> Result<String,
 ///     Ok(())
 /// }
 /// ```
+#[allow(clippy::too_many_lines)]
 pub fn handle_args<
     C: Config,
     CircuitType,
