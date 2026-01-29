@@ -8,12 +8,10 @@ use expander_compiler::frontend::{
 use gkr_engine::{FieldEngine, GKREngine, MPIConfig};
 use io_reader::IOReader;
 use peakmem_alloc::{INSTRUMENTED_SYSTEM, PeakMemAlloc, PeakMemAllocTrait};
-use rayon::prelude::*;
 use serde::Deserialize;
 use serdes::ExpSerde;
 use std::alloc::System;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::io::io_reader;
 use crate::runner::errors::{CliError, RunError};
@@ -568,18 +566,15 @@ where
 ///
 /// Returns a [`RunError`] if loading the manifest, circuit, or witness solver fails.
 pub fn run_batch_witness<C: Config, I, CircuitDefaultType>(
-    io_reader_factory: impl Fn() -> I + Sync,
+    io_reader_factory: impl Fn() -> I,
     manifest_path: &str,
     circuit_path: &str,
-    parallel: usize,
 ) -> Result<BatchResult, RunError>
 where
-    I: IOReader<CircuitDefaultType, C> + Send,
+    I: IOReader<CircuitDefaultType, C>,
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
-        + Clone
-        + Send
-        + Sync,
+        + Clone,
 {
     let manifest: BatchManifest<WitnessJob> = load_manifest(manifest_path)?;
     let witness_solver = load_witness_solver::<C>(circuit_path)?;
@@ -587,68 +582,56 @@ where
     let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
 
     let job_count = manifest.jobs.len();
-    println!(
-        "Loaded circuit and witness solver. Processing {job_count} jobs with {parallel} threads."
-    );
+    println!("Loaded circuit and witness solver. Processing {job_count} jobs.");
 
-    let succeeded = AtomicUsize::new(0);
-    let failed = AtomicUsize::new(0);
+    let mut succeeded = 0usize;
+    let mut failed = 0usize;
+    let mut errors: Vec<(usize, String)> = Vec::new();
 
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(parallel)
-        .build()
-        .map_err(|e| RunError::Compile(format!("Failed to create thread pool: {e}")))?;
+    for (idx, job) in manifest.jobs.into_iter().enumerate() {
+        let mut io_reader = io_reader_factory();
+        let assignment = CircuitDefaultType::default();
+        let assignment = match io_reader.read_inputs(&job.input, assignment) {
+            Ok(a) => a,
+            Err(e) => {
+                failed += 1;
+                eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
+                errors.push((idx, e.to_string()));
+                continue;
+            }
+        };
+        let assignment = match io_reader.read_outputs(&job.output, assignment) {
+            Ok(a) => a,
+            Err(e) => {
+                failed += 1;
+                eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
+                errors.push((idx, e.to_string()));
+                continue;
+            }
+        };
 
-    let errors: Vec<_> = pool.install(|| {
-        manifest
-            .jobs
-            .into_par_iter()
-            .enumerate()
-            .filter_map(|(idx, job)| {
-                let mut io_reader = io_reader_factory();
-                let assignment = CircuitDefaultType::default();
-                let assignment = match io_reader.read_inputs(&job.input, assignment) {
-                    Ok(a) => a,
-                    Err(e) => {
-                        failed.fetch_add(1, Ordering::Relaxed);
-                        eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
-                        return Some((idx, e.to_string()));
-                    }
-                };
-                let assignment = match io_reader.read_outputs(&job.output, assignment) {
-                    Ok(a) => a,
-                    Err(e) => {
-                        failed.fetch_add(1, Ordering::Relaxed);
-                        eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
-                        return Some((idx, e.to_string()));
-                    }
-                };
-
-                match witness_core::<C, CircuitDefaultType>(
-                    &witness_solver,
-                    &layered_circuit,
-                    &hint_registry,
-                    &assignment,
-                    &job.witness,
-                ) {
-                    Ok(()) => {
-                        succeeded.fetch_add(1, Ordering::Relaxed);
-                        println!("[{}/{}] witness: {}", idx + 1, job_count, job.witness);
-                        None
-                    }
-                    Err(e) => {
-                        failed.fetch_add(1, Ordering::Relaxed);
-                        eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
-                        Some((idx, e.to_string()))
-                    }
-                }
-            })
-            .collect()
-    });
+        match witness_core::<C, CircuitDefaultType>(
+            &witness_solver,
+            &layered_circuit,
+            &hint_registry,
+            &assignment,
+            &job.witness,
+        ) {
+            Ok(()) => {
+                succeeded += 1;
+                println!("[{}/{}] witness: {}", idx + 1, job_count, job.witness);
+            }
+            Err(e) => {
+                failed += 1;
+                eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
+                errors.push((idx, e.to_string()));
+            }
+        }
+    }
 
     Ok(BatchResult {
-        succeeded: succeeded.load(Ordering::Relaxed),
-        failed: failed.load(Ordering::Relaxed),
+        succeeded,
+        failed,
         errors,
     })
 }
@@ -661,60 +644,40 @@ where
 pub fn run_batch_prove<C: Config, CircuitDefaultType>(
     manifest_path: &str,
     circuit_path: &str,
-    parallel: usize,
 ) -> Result<BatchResult, RunError>
 where
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
-        + Clone
-        + Send
-        + Sync,
+        + Clone,
 {
     let manifest: BatchManifest<ProveJob> = load_manifest(manifest_path)?;
     let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
-    let expander_template = layered_circuit.export_to_expander_flatten();
 
     let job_count = manifest.jobs.len();
-    println!("Loaded circuit. Processing {job_count} prove jobs with {parallel} threads.");
+    println!("Loaded circuit. Processing {job_count} prove jobs.");
 
-    let circuits: Vec<_> = (0..job_count).map(|_| expander_template.clone()).collect();
+    let mut succeeded = 0usize;
+    let mut failed = 0usize;
+    let mut errors: Vec<(usize, String)> = Vec::new();
 
-    let succeeded = AtomicUsize::new(0);
-    let failed = AtomicUsize::new(0);
-
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(parallel)
-        .build()
-        .map_err(|e| RunError::Compile(format!("Failed to create thread pool: {e}")))?;
-
-    let errors: Vec<_> = pool.install(|| {
-        manifest
-            .jobs
-            .into_iter()
-            .zip(circuits)
-            .enumerate()
-            .collect::<Vec<_>>()
-            .into_par_iter()
-            .filter_map(|(idx, (job, mut circuit))| {
-                match prove_core::<C>(&mut circuit, &job.witness, &job.proof) {
-                    Ok(()) => {
-                        succeeded.fetch_add(1, Ordering::Relaxed);
-                        println!("[{}/{}] proof: {}", idx + 1, job_count, job.proof);
-                        None
-                    }
-                    Err(e) => {
-                        failed.fetch_add(1, Ordering::Relaxed);
-                        eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
-                        Some((idx, e.to_string()))
-                    }
-                }
-            })
-            .collect()
-    });
+    for (idx, job) in manifest.jobs.into_iter().enumerate() {
+        let mut circuit = layered_circuit.export_to_expander_flatten();
+        match prove_core::<C>(&mut circuit, &job.witness, &job.proof) {
+            Ok(()) => {
+                succeeded += 1;
+                println!("[{}/{}] proof: {}", idx + 1, job_count, job.proof);
+            }
+            Err(e) => {
+                failed += 1;
+                eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
+                errors.push((idx, e.to_string()));
+            }
+        }
+    }
 
     Ok(BatchResult {
-        succeeded: succeeded.load(Ordering::Relaxed),
-        failed: failed.load(Ordering::Relaxed),
+        succeeded,
+        failed,
         errors,
     })
 }
@@ -725,72 +688,52 @@ where
 ///
 /// Returns a [`RunError`] if loading the manifest or circuit fails.
 pub fn run_batch_verify<C: Config, I, CircuitDefaultType>(
-    io_reader_factory: impl Fn() -> I + Sync + Send,
+    io_reader_factory: impl Fn() -> I,
     manifest_path: &str,
     circuit_path: &str,
-    parallel: usize,
 ) -> Result<BatchResult, RunError>
 where
-    I: IOReader<CircuitDefaultType, C> + Send,
+    I: IOReader<CircuitDefaultType, C>,
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
-        + Clone
-        + Send
-        + Sync,
+        + Clone,
 {
     let manifest: BatchManifest<VerifyJob> = load_manifest(manifest_path)?;
     let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
-    let expander_template = layered_circuit.export_to_expander_flatten();
 
     let job_count = manifest.jobs.len();
-    println!("Loaded circuit. Processing {job_count} verify jobs with {parallel} threads.");
+    println!("Loaded circuit. Processing {job_count} verify jobs.");
 
-    let circuits: Vec<_> = (0..job_count).map(|_| expander_template.clone()).collect();
+    let mut succeeded = 0usize;
+    let mut failed = 0usize;
+    let mut errors: Vec<(usize, String)> = Vec::new();
 
-    let succeeded = AtomicUsize::new(0);
-    let failed = AtomicUsize::new(0);
-
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(parallel)
-        .build()
-        .map_err(|e| RunError::Compile(format!("Failed to create thread pool: {e}")))?;
-
-    let errors: Vec<_> = pool.install(|| {
-        manifest
-            .jobs
-            .into_iter()
-            .zip(circuits)
-            .enumerate()
-            .collect::<Vec<_>>()
-            .into_par_iter()
-            .filter_map(|(idx, (job, mut circuit))| {
-                let mut io_reader = io_reader_factory();
-                match verify_core::<C, I, CircuitDefaultType>(
-                    &mut circuit,
-                    &mut io_reader,
-                    &job.input,
-                    &job.output,
-                    &job.witness,
-                    &job.proof,
-                ) {
-                    Ok(()) => {
-                        succeeded.fetch_add(1, Ordering::Relaxed);
-                        println!("[{}/{}] verified: {}", idx + 1, job_count, job.proof);
-                        None
-                    }
-                    Err(e) => {
-                        failed.fetch_add(1, Ordering::Relaxed);
-                        eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
-                        Some((idx, e.to_string()))
-                    }
-                }
-            })
-            .collect()
-    });
+    for (idx, job) in manifest.jobs.into_iter().enumerate() {
+        let mut circuit = layered_circuit.export_to_expander_flatten();
+        let mut io_reader = io_reader_factory();
+        match verify_core::<C, I, CircuitDefaultType>(
+            &mut circuit,
+            &mut io_reader,
+            &job.input,
+            &job.output,
+            &job.witness,
+            &job.proof,
+        ) {
+            Ok(()) => {
+                succeeded += 1;
+                println!("[{}/{}] verified: {}", idx + 1, job_count, job.proof);
+            }
+            Err(e) => {
+                failed += 1;
+                eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
+                errors.push((idx, e.to_string()));
+            }
+        }
+    }
 
     Ok(BatchResult {
-        succeeded: succeeded.load(Ordering::Relaxed),
-        failed: failed.load(Ordering::Relaxed),
+        succeeded,
+        failed,
         errors,
     })
 }
@@ -977,16 +920,11 @@ where
         "run_batch_witness" => {
             let manifest_path = get_arg(matches, "manifest")?;
             let circuit_path = get_arg(matches, "circuit_path")?;
-            let parallel: usize = matches
-                .get_one::<String>("parallel")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(1);
             let reader_template = file_reader.clone();
             let result = run_batch_witness::<C, _, CircuitDefaultType>(
                 move || reader_template.clone(),
                 &manifest_path,
                 &circuit_path,
-                parallel,
             )?;
             println!(
                 "Batch witness complete: {} succeeded, {} failed",
@@ -996,12 +934,7 @@ where
         "run_batch_prove" => {
             let manifest_path = get_arg(matches, "manifest")?;
             let circuit_path = get_arg(matches, "circuit_path")?;
-            let parallel: usize = matches
-                .get_one::<String>("parallel")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(1);
-            let result =
-                run_batch_prove::<C, CircuitDefaultType>(&manifest_path, &circuit_path, parallel)?;
+            let result = run_batch_prove::<C, CircuitDefaultType>(&manifest_path, &circuit_path)?;
             println!(
                 "Batch prove complete: {} succeeded, {} failed",
                 result.succeeded, result.failed
@@ -1010,16 +943,11 @@ where
         "run_batch_verify" => {
             let manifest_path = get_arg(matches, "manifest")?;
             let circuit_path = get_arg(matches, "circuit_path")?;
-            let parallel: usize = matches
-                .get_one::<String>("parallel")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(1);
             let reader_template = file_reader.clone();
             let result = run_batch_verify::<C, _, CircuitDefaultType>(
                 move || reader_template.clone(),
                 &manifest_path,
                 &circuit_path,
-                parallel,
             )?;
             println!(
                 "Batch verify complete: {} succeeded, {} failed",
@@ -1112,14 +1040,6 @@ pub fn get_args() -> clap::ArgMatches {
                 .required(false)
                 .long("manifest")
                 .short('f'),
-        )
-        .arg(
-            Arg::new("parallel")
-                .help("Number of parallel threads for batch operations (default: 1)")
-                .required(false)
-                .long("parallel")
-                .short('j')
-                .default_value("1"),
         )
         .get_matches();
     matches

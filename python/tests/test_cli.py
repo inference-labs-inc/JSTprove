@@ -1053,8 +1053,6 @@ def test_batch_prove_dispatch(tmp_path: Path) -> None:
                 str(circuit),
                 "-f",
                 str(manifest),
-                "-j",
-                "4",
             ],
         )
 
@@ -1064,7 +1062,6 @@ def test_batch_prove_dispatch(tmp_path: Path) -> None:
     assert call_kwargs["command_type"] == "run_batch_prove"
     assert call_kwargs["args"]["c"] == str(circuit)
     assert call_kwargs["args"]["f"] == str(manifest)
-    assert call_kwargs["args"]["j"] == "4"
 
 
 @pytest.mark.unit
@@ -1111,7 +1108,6 @@ def test_batch_verify_dispatch(tmp_path: Path) -> None:
     mock_cargo.assert_called_once()
     call_kwargs = mock_cargo.call_args[1]
     assert call_kwargs["command_type"] == "run_batch_verify"
-    assert call_kwargs["args"]["j"] == "1"
     assert call_kwargs["args"]["f"] == str(processed)
 
 
@@ -1151,8 +1147,6 @@ def test_batch_witness_dispatch(tmp_path: Path) -> None:
                 str(circuit),
                 "-f",
                 str(manifest),
-                "-j",
-                "2",
             ],
         )
 
@@ -1161,7 +1155,6 @@ def test_batch_witness_dispatch(tmp_path: Path) -> None:
     mock_cargo.assert_called_once()
     call_kwargs = mock_cargo.call_args[1]
     assert call_kwargs["command_type"] == "run_batch_witness"
-    assert call_kwargs["args"]["j"] == "2"
     assert call_kwargs["args"]["f"] == str(processed)
 
 
@@ -1203,68 +1196,3 @@ def test_batch_missing_manifest(tmp_path: Path) -> None:
     )
 
     assert rc == 1
-
-
-ARGPARSE_ERROR_EXIT_CODE = 2
-
-
-@pytest.mark.unit
-def test_batch_invalid_parallel_zero(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture,
-) -> None:
-    circuit = tmp_path / "circuit.txt"
-    circuit.write_text("ok")
-
-    manifest = tmp_path / "manifest.json"
-    manifest.write_text('{"jobs": []}')
-
-    with pytest.raises(SystemExit) as exc_info:
-        main(
-            [
-                "--no-banner",
-                "batch",
-                "prove",
-                "-c",
-                str(circuit),
-                "-f",
-                str(manifest),
-                "-j",
-                "0",
-            ],
-        )
-
-    assert exc_info.value.code == ARGPARSE_ERROR_EXIT_CODE
-    captured = capsys.readouterr()
-    assert "positive" in captured.err.lower()
-
-
-@pytest.mark.unit
-def test_batch_invalid_parallel_negative(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture,
-) -> None:
-    circuit = tmp_path / "circuit.txt"
-    circuit.write_text("ok")
-
-    manifest = tmp_path / "manifest.json"
-    manifest.write_text('{"jobs": []}')
-
-    with pytest.raises(SystemExit) as exc_info:
-        main(
-            [
-                "--no-banner",
-                "batch",
-                "prove",
-                "-c",
-                str(circuit),
-                "-f",
-                str(manifest),
-                "-j",
-                "-1",
-            ],
-        )
-
-    assert exc_info.value.code == ARGPARSE_ERROR_EXIT_CODE
-    captured = capsys.readouterr()
-    assert "positive" in captured.err.lower()

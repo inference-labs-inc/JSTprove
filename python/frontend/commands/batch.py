@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -13,21 +12,10 @@ from python.frontend.commands.args import CIRCUIT_PATH
 from python.frontend.commands.base import BaseCommand
 
 if TYPE_CHECKING:
+    import argparse
     from collections.abc import Callable
 
     from python.core.circuits.base import Circuit
-
-
-def _positive_int(value: str) -> int:
-    try:
-        ivalue = int(value)
-    except ValueError:
-        msg = f"invalid int value: '{value}'"
-        raise argparse.ArgumentTypeError(msg) from None
-    if ivalue <= 0:
-        msg = f"parallel must be a positive integer, got {ivalue}"
-        raise argparse.ArgumentTypeError(msg)
-    return ivalue
 
 
 def _preprocess_manifest(
@@ -101,13 +89,6 @@ class BatchCommand(BaseCommand):
             required=True,
             help="Path to batch manifest JSON file.",
         )
-        subparser.add_argument(
-            "-j",
-            "--parallel",
-            type=_positive_int,
-            default=1,
-            help="Number of parallel threads (default: 1).",
-        )
 
     @classmethod
     def configure_parser(
@@ -145,7 +126,6 @@ class BatchCommand(BaseCommand):
             msg = f"Manifest file not found: {manifest_path}"
             raise FileNotFoundError(msg)
 
-        parallel = args.parallel
         batch_mode = args.batch_mode
 
         circuit = cls._build_circuit("cli")
@@ -184,7 +164,6 @@ class BatchCommand(BaseCommand):
                 args={
                     "c": circuit_path,
                     "f": manifest_path,
-                    "j": str(parallel),
                     "m": metadata_path,
                 },
                 dev_mode=False,
