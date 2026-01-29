@@ -1075,8 +1075,8 @@ def test_batch_verify_dispatch(tmp_path: Path) -> None:
     manifest = tmp_path / "manifest.json"
     manifest.write_text('{"jobs": []}')
 
-    metadata = tmp_path / "circuit_metadata.json"
-    metadata.write_text("{}")
+    processed = tmp_path / "manifest_processed.json"
+    processed.write_text('{"jobs": []}')
 
     fake_circuit = MagicMock()
     fake_circuit.name = "test_circuit"
@@ -1086,6 +1086,10 @@ def test_batch_verify_dispatch(tmp_path: Path) -> None:
             "python.frontend.commands.batch.BatchCommand._build_circuit",
             return_value=fake_circuit,
         ),
+        patch(
+            "python.frontend.commands.batch._preprocess_manifest",
+            return_value=str(processed),
+        ) as mock_preprocess,
         patch(
             "python.frontend.commands.batch.run_cargo_command",
         ) as mock_cargo,
@@ -1103,10 +1107,12 @@ def test_batch_verify_dispatch(tmp_path: Path) -> None:
         )
 
     assert rc == 0
+    mock_preprocess.assert_called_once()
     mock_cargo.assert_called_once()
     call_kwargs = mock_cargo.call_args[1]
     assert call_kwargs["command_type"] == "run_batch_verify"
     assert call_kwargs["args"]["j"] == "1"
+    assert call_kwargs["args"]["f"] == str(processed)
 
 
 @pytest.mark.unit
@@ -1117,8 +1123,8 @@ def test_batch_witness_dispatch(tmp_path: Path) -> None:
     manifest = tmp_path / "manifest.json"
     manifest.write_text('{"jobs": []}')
 
-    metadata = tmp_path / "circuit_metadata.json"
-    metadata.write_text("{}")
+    processed = tmp_path / "manifest_processed.json"
+    processed.write_text('{"jobs": []}')
 
     fake_circuit = MagicMock()
     fake_circuit.name = "test_circuit"
@@ -1128,6 +1134,10 @@ def test_batch_witness_dispatch(tmp_path: Path) -> None:
             "python.frontend.commands.batch.BatchCommand._build_circuit",
             return_value=fake_circuit,
         ),
+        patch(
+            "python.frontend.commands.batch._preprocess_manifest",
+            return_value=str(processed),
+        ) as mock_preprocess,
         patch(
             "python.frontend.commands.batch.run_cargo_command",
         ) as mock_cargo,
@@ -1147,10 +1157,12 @@ def test_batch_witness_dispatch(tmp_path: Path) -> None:
         )
 
     assert rc == 0
+    mock_preprocess.assert_called_once()
     mock_cargo.assert_called_once()
     call_kwargs = mock_cargo.call_args[1]
     assert call_kwargs["command_type"] == "run_batch_witness"
     assert call_kwargs["args"]["j"] == "2"
+    assert call_kwargs["args"]["f"] == str(processed)
 
 
 @pytest.mark.unit

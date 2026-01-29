@@ -2,11 +2,20 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
-from python.core.utils.helper_functions import run_cargo_command
+from python.core.utils.helper_functions import (
+    read_from_json,
+    run_cargo_command,
+    to_json,
+)
 from python.frontend.commands.args import CIRCUIT_PATH
 from python.frontend.commands.base import BaseCommand
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from python.core.circuits.base import Circuit
 
 
 def _positive_int(value: str) -> int:
@@ -19,6 +28,61 @@ def _positive_int(value: str) -> int:
         msg = f"parallel must be a positive integer, got {ivalue}"
         raise argparse.ArgumentTypeError(msg)
     return ivalue
+
+
+def _preprocess_manifest(
+    circuit: Circuit,
+    manifest_path: str,
+    circuit_path: str,
+    transform_job: Callable[[Circuit, dict[str, Any]], None],
+) -> str:
+    circuit_file = Path(circuit_path)
+    quantized_path = str(
+        circuit_file.parent / f"{circuit_file.stem}_quantized_model.onnx",
+    )
+    circuit.load_quantized_model(quantized_path)
+
+    manifest: dict[str, Any] = read_from_json(manifest_path)
+    for job in manifest["jobs"]:
+        transform_job(circuit, job)
+
+    manifest_file = Path(manifest_path)
+    processed_path = str(
+        manifest_file.with_name(
+            manifest_file.stem + "_processed" + manifest_file.suffix,
+        ),
+    )
+    to_json(manifest, processed_path)
+    return processed_path
+
+
+def _transform_witness_job(circuit: Circuit, job: dict[str, Any]) -> None:
+    inputs = read_from_json(job["input"])
+    scaled = circuit.scale_inputs_only(inputs)
+
+    inference_inputs = circuit.reshape_inputs_for_inference(scaled)
+    circuit_inputs = circuit.reshape_inputs_for_circuit(scaled)
+
+    path = Path(job["input"])
+    adjusted_path = str(path.with_name(path.stem + "_adjusted" + path.suffix))
+    to_json(circuit_inputs, adjusted_path)
+
+    outputs = circuit.get_outputs(inference_inputs)
+    formatted = circuit.format_outputs(outputs)
+    to_json(formatted, job["output"])
+
+    job["input"] = adjusted_path
+
+
+def _transform_verify_job(circuit: Circuit, job: dict[str, Any]) -> None:
+    inputs = read_from_json(job["input"])
+    circuit_inputs = circuit.reshape_inputs_for_circuit(inputs)
+
+    path = Path(job["input"])
+    processed_path = str(path.with_name(path.stem + "_veri" + path.suffix))
+    to_json(circuit_inputs, processed_path)
+
+    job["input"] = processed_path
 
 
 class BatchCommand(BaseCommand):
@@ -100,6 +164,18 @@ class BatchCommand(BaseCommand):
         circuit_dir = circuit_file.parent
         name = circuit_file.stem
         metadata_path = str(circuit_dir / f"{name}_metadata.json")
+
+        preprocess_map = {
+            "witness": _transform_witness_job,
+            "verify": _transform_verify_job,
+        }
+        if batch_mode in preprocess_map:
+            manifest_path = _preprocess_manifest(
+                circuit,
+                manifest_path,
+                circuit_path,
+                preprocess_map[batch_mode],
+            )
 
         try:
             run_cargo_command(
