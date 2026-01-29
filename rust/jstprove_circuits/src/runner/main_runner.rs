@@ -2,20 +2,18 @@ use clap::{Arg, Command};
 use expander_compiler::circuit::layered::witness::Witness;
 use expander_compiler::circuit::layered::{Circuit, NormalInputType};
 use io_reader::IOReader;
-// use expander_compiler::frontend::{extra::debug_eval, internal::DumpLoadTwoVariables, *};
-// use expander_compiler::utils::serde::Serde;
 use expander_compiler::frontend::{
     ChallengeField, CircuitField, CompileOptions, Config, Define, Variable, WitnessSolver, compile,
     extra::debug_eval, internal::DumpLoadTwoVariables,
 };
 use gkr_engine::{FieldEngine, GKREngine, MPIConfig};
 use peakmem_alloc::{INSTRUMENTED_SYSTEM, PeakMemAlloc, PeakMemAllocTrait};
+use rayon::prelude::*;
+use serde::Deserialize;
 use serdes::ExpSerde;
-// use serde_json::{from_reader, to_writer};
 use std::alloc::System;
 use std::path::{Path, PathBuf};
-// use std::io::{Read, Write};
-// use std::time::Instant;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::io::io_reader;
 use crate::runner::errors::{CliError, RunError};
@@ -508,15 +506,392 @@ where
     }
 
     println!("Verified");
-    // let mem_mb = GLOBAL.get_peak_memory().saturating_div(1024 * 1024);
-    // println!("Peak Memory used Overall : {mem_mb:.2}");
-    // let duration = start.elapsed();
-    // println!(
-    //     "Time elapsed: {}.{} seconds",
-    //     duration.as_secs(),
-    //     duration.subsec_millis()
-    // );
     Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WitnessJob {
+    pub input: String,
+    pub output: String,
+    pub witness: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ProveJob {
+    pub witness: String,
+    pub proof: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct VerifyJob {
+    pub input: String,
+    pub output: String,
+    pub witness: String,
+    pub proof: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BatchManifest<T> {
+    pub jobs: Vec<T>,
+}
+
+#[derive(Debug)]
+pub struct BatchResult {
+    pub succeeded: usize,
+    pub failed: usize,
+    pub errors: Vec<(usize, String)>,
+}
+
+pub fn run_batch_witness<C: Config, I, CircuitDefaultType>(
+    io_reader_factory: impl Fn() -> I + Sync,
+    manifest_path: &str,
+    circuit_path: &str,
+    parallel: usize,
+) -> Result<BatchResult, RunError>
+where
+    I: IOReader<CircuitDefaultType, C> + Send,
+    CircuitDefaultType: Default
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
+        + Clone
+        + Send
+        + Sync,
+{
+    let manifest_content = std::fs::read_to_string(manifest_path).map_err(|e| RunError::Io {
+        source: e,
+        path: manifest_path.into(),
+    })?;
+    let manifest: BatchManifest<WitnessJob> =
+        serde_json::from_str(&manifest_content).map_err(|e| RunError::Json(format!("{e:?}")))?;
+
+    let witness_file = get_witness_solver_path(circuit_path);
+    let file = std::fs::File::open(&witness_file).map_err(|e| RunError::Io {
+        source: e,
+        path: witness_file.display().to_string(),
+    })?;
+    let reader = std::io::BufReader::new(file);
+    let witness_solver = WitnessSolver::<C>::deserialize_from(reader)
+        .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+
+    let file = std::fs::File::open(circuit_path).map_err(|e| RunError::Io {
+        source: e,
+        path: circuit_path.into(),
+    })?;
+    let reader = std::io::BufReader::new(file);
+    let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader)
+        .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+
+    println!(
+        "Loaded circuit and witness solver. Processing {} jobs with {} threads.",
+        manifest.jobs.len(),
+        parallel
+    );
+
+    let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
+    let succeeded = AtomicUsize::new(0);
+    let failed = AtomicUsize::new(0);
+
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(parallel)
+        .build_global()
+        .ok();
+
+    let errors: Vec<(usize, String)> = manifest
+        .jobs
+        .par_iter()
+        .enumerate()
+        .filter_map(|(idx, job)| {
+            let result = (|| -> Result<(), RunError> {
+                let mut io_reader = io_reader_factory();
+                let assignment = CircuitDefaultType::default();
+                let assignment = io_reader.read_inputs(&job.input, assignment)?;
+                let assignment = io_reader.read_outputs(&job.output, assignment)?;
+
+                let witness = witness_solver
+                    .solve_witness_with_hints(&assignment, &hint_registry)
+                    .map_err(|e| RunError::Witness(format!("{e:?}")))?;
+
+                let output = layered_circuit.run(&witness);
+                for x in &output {
+                    if !(*x) {
+                        return Err(RunError::Witness(
+                            "Witness generation failed sanity check".into(),
+                        ));
+                    }
+                }
+
+                let file = std::fs::File::create(&job.witness).map_err(|e| RunError::Io {
+                    source: e,
+                    path: job.witness.clone(),
+                })?;
+                let writer = std::io::BufWriter::new(file);
+                witness
+                    .serialize_into(writer)
+                    .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
+
+                Ok(())
+            })();
+
+            match result {
+                Ok(()) => {
+                    succeeded.fetch_add(1, Ordering::Relaxed);
+                    println!("[{}/{}] witness: {}", idx + 1, manifest.jobs.len(), job.witness);
+                    None
+                }
+                Err(e) => {
+                    failed.fetch_add(1, Ordering::Relaxed);
+                    eprintln!("[{}/{}] FAILED: {}", idx + 1, manifest.jobs.len(), e);
+                    Some((idx, e.to_string()))
+                }
+            }
+        })
+        .collect();
+
+    Ok(BatchResult {
+        succeeded: succeeded.load(Ordering::Relaxed),
+        failed: failed.load(Ordering::Relaxed),
+        errors,
+    })
+}
+
+pub fn run_batch_prove<C: Config, CircuitDefaultType>(
+    manifest_path: &str,
+    circuit_path: &str,
+    parallel: usize,
+) -> Result<BatchResult, RunError>
+where
+    CircuitDefaultType: Default
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
+        + Clone
+        + Send
+        + Sync,
+{
+    let manifest_content = std::fs::read_to_string(manifest_path).map_err(|e| RunError::Io {
+        source: e,
+        path: manifest_path.into(),
+    })?;
+    let manifest: BatchManifest<ProveJob> =
+        serde_json::from_str(&manifest_content).map_err(|e| RunError::Json(format!("{e:?}")))?;
+
+    let file = std::fs::File::open(circuit_path).map_err(|e| RunError::Io {
+        source: e,
+        path: circuit_path.into(),
+    })?;
+    let reader = std::io::BufReader::new(file);
+    let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader)
+        .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+
+    let expander_circuit_template = layered_circuit.export_to_expander_flatten();
+
+    println!(
+        "Loaded circuit. Processing {} prove jobs with {} threads.",
+        manifest.jobs.len(),
+        parallel
+    );
+
+    let job_count = manifest.jobs.len();
+    let circuits_with_jobs: Vec<_> = manifest
+        .jobs
+        .into_iter()
+        .map(|job| (expander_circuit_template.clone(), job))
+        .collect();
+
+    let succeeded = AtomicUsize::new(0);
+    let failed = AtomicUsize::new(0);
+
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(parallel)
+        .build_global()
+        .ok();
+
+    let errors: Vec<(usize, String)> = circuits_with_jobs
+        .into_par_iter()
+        .enumerate()
+        .filter_map(|(idx, (mut expander_circuit, job))| {
+            let result = (|| -> Result<(), RunError> {
+                let file = std::fs::File::open(&job.witness).map_err(|e| RunError::Io {
+                    source: e,
+                    path: job.witness.clone(),
+                })?;
+                let reader = std::io::BufReader::new(file);
+                let witness: Witness<C> = Witness::deserialize_from(reader)
+                    .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+
+                let (simd_input, simd_public_input) = witness.to_simd();
+
+                expander_circuit.layers[0].input_vals = simd_input;
+                expander_circuit.public_input.clone_from(&simd_public_input);
+
+                expander_circuit.evaluate();
+                let mpi_config = MPIConfig::prover_new(None, None);
+                let (claimed_v, proof) =
+                    executor::prove::<C>(&mut expander_circuit, mpi_config);
+
+                let proof_bytes: Vec<u8> = executor::dump_proof_and_claimed_v(&proof, &claimed_v)
+                    .map_err(|e| RunError::Serialize(format!("Error serializing proof {e:?}")))?;
+
+                let file = std::fs::File::create(&job.proof).map_err(|e| RunError::Io {
+                    source: e,
+                    path: job.proof.clone(),
+                })?;
+                let writer = std::io::BufWriter::new(file);
+                proof_bytes
+                    .serialize_into(writer)
+                    .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
+
+                Ok(())
+            })();
+
+            match result {
+                Ok(()) => {
+                    succeeded.fetch_add(1, Ordering::Relaxed);
+                    println!("[{}/{}] proof: {}", idx + 1, job_count, job.proof);
+                    None
+                }
+                Err(e) => {
+                    failed.fetch_add(1, Ordering::Relaxed);
+                    eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
+                    Some((idx, e.to_string()))
+                }
+            }
+        })
+        .collect();
+
+    Ok(BatchResult {
+        succeeded: succeeded.load(Ordering::Relaxed),
+        failed: failed.load(Ordering::Relaxed),
+        errors,
+    })
+}
+
+pub fn run_batch_verify<C: Config, I, CircuitDefaultType>(
+    io_reader_factory: impl Fn() -> I + Sync + Send,
+    manifest_path: &str,
+    circuit_path: &str,
+    parallel: usize,
+) -> Result<BatchResult, RunError>
+where
+    I: IOReader<CircuitDefaultType, C> + Send,
+    CircuitDefaultType: Default
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
+        + Clone
+        + Send
+        + Sync,
+{
+    let manifest_content = std::fs::read_to_string(manifest_path).map_err(|e| RunError::Io {
+        source: e,
+        path: manifest_path.into(),
+    })?;
+    let manifest: BatchManifest<VerifyJob> =
+        serde_json::from_str(&manifest_content).map_err(|e| RunError::Json(format!("{e:?}")))?;
+
+    let file = std::fs::File::open(circuit_path).map_err(|e| RunError::Io {
+        source: e,
+        path: circuit_path.into(),
+    })?;
+    let reader = std::io::BufReader::new(file);
+    let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader)
+        .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+
+    let expander_circuit_template = layered_circuit.export_to_expander_flatten();
+
+    println!(
+        "Loaded circuit. Processing {} verify jobs with {} threads.",
+        manifest.jobs.len(),
+        parallel
+    );
+
+    let job_count = manifest.jobs.len();
+    let circuits_with_jobs: Vec<_> = manifest
+        .jobs
+        .into_iter()
+        .map(|job| (expander_circuit_template.clone(), job))
+        .collect();
+
+    let succeeded = AtomicUsize::new(0);
+    let failed = AtomicUsize::new(0);
+
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(parallel)
+        .build_global()
+        .ok();
+
+    let errors: Vec<(usize, String)> = circuits_with_jobs
+        .into_par_iter()
+        .enumerate()
+        .filter_map(|(idx, (mut expander_circuit, job))| {
+            let result = (|| -> Result<(), RunError> {
+                let mut io_reader = io_reader_factory();
+                let assignment = CircuitDefaultType::default();
+                let assignment = io_reader.read_inputs(&job.input, assignment)?;
+                let assignment = io_reader.read_outputs(&job.output, assignment)?;
+
+                let mut vars: Vec<_> = Vec::new();
+                let mut public_vars: Vec<_> = Vec::new();
+                assignment.dump_into(&mut vars, &mut public_vars);
+
+                let file = std::fs::File::open(&job.witness).map_err(|e| RunError::Io {
+                    source: e,
+                    path: job.witness.clone(),
+                })?;
+                let reader = std::io::BufReader::new(file);
+                let witness = Witness::<C>::deserialize_from(reader)
+                    .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+
+                let (simd_input, simd_public_input) = witness.to_simd();
+
+                expander_circuit.layers[0].input_vals.clone_from(&simd_input);
+                expander_circuit.public_input.clone_from(&simd_public_input);
+
+                for (i, _) in public_vars.iter().enumerate() {
+                    let x = format!("{:?}", public_vars[i]);
+                    let y = format!("{:?}", expander_circuit.public_input[i]);
+                    if x != y {
+                        return Err(RunError::Verify(
+                            "inputs/outputs don't match the witness".into(),
+                        ));
+                    }
+                }
+
+                let file = std::fs::File::open(&job.proof).map_err(|e| RunError::Io {
+                    source: e,
+                    path: job.proof.clone(),
+                })?;
+                let reader = std::io::BufReader::new(file);
+                let proof_and_claimed_v: Vec<u8> = Vec::deserialize_from(reader)
+                    .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+
+                let (proof, claimed_v) =
+                    executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v)
+                        .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+
+                let mpi_config = gkr_engine::MPIConfig::verifier_new(1);
+                if !executor::verify::<C>(&mut expander_circuit, mpi_config, &proof, &claimed_v) {
+                    return Err(RunError::Verify("Verification failed".into()));
+                }
+
+                Ok(())
+            })();
+
+            match result {
+                Ok(()) => {
+                    succeeded.fetch_add(1, Ordering::Relaxed);
+                    println!("[{}/{}] verified: {}", idx + 1, job_count, job.proof);
+                    None
+                }
+                Err(e) => {
+                    failed.fetch_add(1, Ordering::Relaxed);
+                    eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
+                    Some((idx, e.to_string()))
+                }
+            }
+        })
+        .collect();
+
+    Ok(BatchResult {
+        succeeded: succeeded.load(Ordering::Relaxed),
+        failed: failed.load(Ordering::Relaxed),
+        errors,
+    })
 }
 
 /// A trait for circuits that can configure their internal inputs/outputs
@@ -626,7 +1001,7 @@ pub fn handle_args<
     C: Config,
     CircuitType,
     CircuitDefaultType,
-    Filereader: IOReader<CircuitDefaultType, C>,
+    Filereader: IOReader<CircuitDefaultType, C> + Send + Sync + Clone,
 >(
     matches: &clap::ArgMatches,
     file_reader: &mut Filereader,
@@ -634,14 +1009,15 @@ pub fn handle_args<
 where
     CircuitDefaultType: std::default::Default
         + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
-        + std::clone::Clone,
+        + std::clone::Clone
+        + Send
+        + Sync,
     CircuitType: std::default::Default
         + expander_compiler::frontend::internal::DumpLoadTwoVariables<Variable>
         + std::clone::Clone
         + Define<C>
-        + MaybeConfigure, //+ RunBehavior<C>,
+        + MaybeConfigure,
 {
-    // The first argument is the command we need to identify
     let command = get_arg(matches, "type")?;
 
     match command.as_str() {
@@ -661,7 +1037,6 @@ where
                 &witness_path,
                 &circuit_path,
             )?;
-            // debug_witness::<C, _, CircuitDefaultType, CircuitType>(file_reader, input_path, output_path, &witness_path, circuit_path);
         }
         "run_debug_witness" => {
             let input_path = get_arg(matches, "input")?;
@@ -680,7 +1055,6 @@ where
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
             let circuit_path = get_arg(matches, "circuit_path")?;
-
             run_prove_witness::<C, CircuitDefaultType>(&circuit_path, &witness_path, &proof_path)?;
         }
         "run_gen_verify" => {
@@ -689,8 +1063,6 @@ where
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
             let circuit_path = get_arg(matches, "circuit_path")?;
-
-            // run_verify::<BN254Config, Filereader, CircuitDefaultType>(&circuit_name);
             run_verify_io::<C, Filereader, CircuitDefaultType>(
                 &circuit_path,
                 file_reader,
@@ -699,6 +1071,58 @@ where
                 &witness_path,
                 &proof_path,
             )?;
+        }
+        "run_batch_witness" => {
+            let manifest_path = get_arg(matches, "manifest")?;
+            let circuit_path = get_arg(matches, "circuit_path")?;
+            let parallel: usize = matches
+                .get_one::<String>("parallel")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1);
+            let reader_template = file_reader.clone();
+            let result = run_batch_witness::<C, _, CircuitDefaultType>(
+                move || reader_template.clone(),
+                &manifest_path,
+                &circuit_path,
+                parallel,
+            )?;
+            println!(
+                "Batch witness complete: {} succeeded, {} failed",
+                result.succeeded, result.failed
+            );
+        }
+        "run_batch_prove" => {
+            let manifest_path = get_arg(matches, "manifest")?;
+            let circuit_path = get_arg(matches, "circuit_path")?;
+            let parallel: usize = matches
+                .get_one::<String>("parallel")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1);
+            let result =
+                run_batch_prove::<C, CircuitDefaultType>(&manifest_path, &circuit_path, parallel)?;
+            println!(
+                "Batch prove complete: {} succeeded, {} failed",
+                result.succeeded, result.failed
+            );
+        }
+        "run_batch_verify" => {
+            let manifest_path = get_arg(matches, "manifest")?;
+            let circuit_path = get_arg(matches, "circuit_path")?;
+            let parallel: usize = matches
+                .get_one::<String>("parallel")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1);
+            let reader_template = file_reader.clone();
+            let result = run_batch_verify::<C, _, CircuitDefaultType>(
+                move || reader_template.clone(),
+                &manifest_path,
+                &circuit_path,
+                parallel,
+            )?;
+            println!(
+                "Batch verify complete: {} succeeded, {} failed",
+                result.succeeded, result.failed
+            );
         }
         _ => return Err(CliError::UnknownCommand(command.to_string())),
     }
@@ -779,6 +1203,21 @@ pub fn get_args() -> clap::ArgMatches {
                 .required(false)
                 .long("wandb")
                 .short('b'),
+        )
+        .arg(
+            Arg::new("manifest")
+                .help("Path to batch manifest JSON file")
+                .required(false)
+                .long("manifest")
+                .short('f'),
+        )
+        .arg(
+            Arg::new("parallel")
+                .help("Number of parallel threads for batch operations (default: 1)")
+                .required(false)
+                .long("parallel")
+                .short('j')
+                .default_value("1"),
         )
         .get_matches();
     matches

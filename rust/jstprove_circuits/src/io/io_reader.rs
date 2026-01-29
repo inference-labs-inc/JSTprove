@@ -115,6 +115,7 @@ where
     fn get_path(&self) -> &str;
 }
 /// To implement `IOReader` in each binary to read in inputs and outputs of the circuit as is needed on an individual circuit basis
+#[derive(Clone)]
 pub struct FileReader {
     pub path: String,
 }
