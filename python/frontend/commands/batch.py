@@ -19,68 +19,36 @@ class BatchCommand(BaseCommand):
     help: ClassVar[str] = "Run batch witness/prove/verify operations."
 
     @classmethod
+    def _add_batch_args(cls, subparser: argparse.ArgumentParser) -> None:
+        CIRCUIT_PATH.add_to_parser(subparser)
+        subparser.add_argument(
+            "-f",
+            "--manifest",
+            required=True,
+            help="Path to batch manifest JSON file.",
+        )
+        subparser.add_argument(
+            "-j",
+            "--parallel",
+            type=int,
+            default=1,
+            help="Number of parallel threads (default: 1).",
+        )
+
+    @classmethod
     def configure_parser(
         cls: type[BatchCommand],
         parser: argparse.ArgumentParser,
     ) -> None:
         subparsers = parser.add_subparsers(dest="batch_mode", required=True)
 
-        witness_parser = subparsers.add_parser(
-            "witness",
-            help="Generate witnesses for multiple inputs.",
-        )
-        CIRCUIT_PATH.add_to_parser(witness_parser)
-        witness_parser.add_argument(
-            "-f",
-            "--manifest",
-            required=True,
-            help="Path to batch manifest JSON file.",
-        )
-        witness_parser.add_argument(
-            "-j",
-            "--parallel",
-            type=int,
-            default=1,
-            help="Number of parallel threads (default: 1).",
-        )
-
-        prove_parser = subparsers.add_parser(
-            "prove",
-            help="Generate proofs for multiple witnesses.",
-        )
-        CIRCUIT_PATH.add_to_parser(prove_parser)
-        prove_parser.add_argument(
-            "-f",
-            "--manifest",
-            required=True,
-            help="Path to batch manifest JSON file.",
-        )
-        prove_parser.add_argument(
-            "-j",
-            "--parallel",
-            type=int,
-            default=1,
-            help="Number of parallel threads (default: 1).",
-        )
-
-        verify_parser = subparsers.add_parser(
-            "verify",
-            help="Verify multiple proofs.",
-        )
-        CIRCUIT_PATH.add_to_parser(verify_parser)
-        verify_parser.add_argument(
-            "-f",
-            "--manifest",
-            required=True,
-            help="Path to batch manifest JSON file.",
-        )
-        verify_parser.add_argument(
-            "-j",
-            "--parallel",
-            type=int,
-            default=1,
-            help="Number of parallel threads (default: 1).",
-        )
+        for name, help_text in [
+            ("witness", "Generate witnesses for multiple inputs."),
+            ("prove", "Generate proofs for multiple witnesses."),
+            ("verify", "Verify multiple proofs."),
+        ]:
+            sub = subparsers.add_parser(name, help=help_text)
+            cls._add_batch_args(sub)
 
     @classmethod
     def run(cls: type[BatchCommand], args: argparse.Namespace) -> None:
