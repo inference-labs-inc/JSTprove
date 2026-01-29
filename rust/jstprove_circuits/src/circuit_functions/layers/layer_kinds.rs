@@ -19,6 +19,8 @@ use crate::circuit_functions::layers::maxpool::MaxPoolLayer;
 use crate::circuit_functions::layers::min::MinLayer;
 use crate::circuit_functions::layers::relu::ReluLayer;
 use crate::circuit_functions::layers::reshape::ReshapeLayer;
+use crate::circuit_functions::layers::squeeze::SqueezeLayer;
+use crate::circuit_functions::layers::unsqueeze::UnsqueezeLayer;
 
 use expander_compiler::frontend::{Config, RootAPI};
 use std::str::FromStr;
@@ -144,4 +146,6 @@ define_layers! {
     Min       => { name: "Min", builder: MinLayer::build },
     ReLU      => { name: "ReLU", builder: ReluLayer::build, aliases: ["Relu"] },
     Reshape   => { name: "Reshape", builder: ReshapeLayer::build },
+    Squeeze   => { name: "Squeeze", builder: SqueezeLayer::build },
+    Unsqueeze => { name: "Unsqueeze", builder: UnsqueezeLayer::build },
 }

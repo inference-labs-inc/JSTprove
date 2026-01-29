@@ -12,6 +12,9 @@ pub const GEMM: &str = "Gemm";
 /// Value for Constant layer
 pub const VALUE: &str = "value";
 
+/// AXES for squeezing/unsqueezing/reductions, etc.
+pub const AXES: &str = "axes";
+
 /// AXIS for reshaping
 pub const AXIS: &str = "axis";
 
