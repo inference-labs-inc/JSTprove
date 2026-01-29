@@ -1022,7 +1022,9 @@ class ONNXConverter(ModelConverter):
         ]
         self.input_shape = get_input_shapes(onnx_model)
 
-    def get_weights(self: ONNXConverter) -> tuple[
+    def get_weights(
+        self: ONNXConverter,
+    ) -> tuple[
         dict[str, list[ONNXLayerDict]],
         dict[str, list[ONNXLayerDict]],
         CircuitParamsDict,
@@ -1055,7 +1057,7 @@ class ONNXConverter(ModelConverter):
             scale_base=scale_base,
         )
         # Get layers in correct format
-        (architecture, w_and_b) = self.analyze_layers(
+        architecture, w_and_b = self.analyze_layers(
             scaled_and_transformed_model,
             output_name_to_shape,
         )
