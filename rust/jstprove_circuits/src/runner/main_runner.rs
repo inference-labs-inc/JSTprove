@@ -392,6 +392,26 @@ pub struct BatchResult {
     pub errors: Vec<(usize, String)>,
 }
 
+fn check_batch_result(operation: &str, result: &BatchResult) -> Result<(), CliError> {
+    println!(
+        "Batch {operation} complete: {} succeeded, {} failed",
+        result.succeeded, result.failed
+    );
+    if result.failed > 0 {
+        let msgs: Vec<_> = result
+            .errors
+            .iter()
+            .map(|(idx, msg)| format!("  job {idx}: {msg}"))
+            .collect();
+        return Err(CliError::Other(format!(
+            "Batch {operation}: {} job(s) failed:\n{}",
+            result.failed,
+            msgs.join("\n")
+        )));
+    }
+    Ok(())
+}
+
 fn load_manifest<T: serde::de::DeserializeOwned>(path: &str) -> Result<BatchManifest<T>, RunError> {
     let content = std::fs::read_to_string(path).map_err(|e| RunError::Io {
         source: e,
@@ -560,7 +580,7 @@ where
     Ok(())
 }
 
-/// Generates witnesses for multiple inputs in parallel.
+/// Generates witnesses for multiple inputs sequentially.
 ///
 /// # Errors
 ///
@@ -636,7 +656,7 @@ where
     })
 }
 
-/// Generates proofs for multiple witnesses in parallel.
+/// Generates proofs for multiple witnesses sequentially.
 ///
 /// # Errors
 ///
@@ -682,7 +702,7 @@ where
     })
 }
 
-/// Verifies multiple proofs in parallel.
+/// Verifies multiple proofs sequentially.
 ///
 /// # Errors
 ///
@@ -926,19 +946,13 @@ where
                 &manifest_path,
                 &circuit_path,
             )?;
-            println!(
-                "Batch witness complete: {} succeeded, {} failed",
-                result.succeeded, result.failed
-            );
+            check_batch_result("witness", &result)?;
         }
         "run_batch_prove" => {
             let manifest_path = get_arg(matches, "manifest")?;
             let circuit_path = get_arg(matches, "circuit_path")?;
             let result = run_batch_prove::<C, CircuitDefaultType>(&manifest_path, &circuit_path)?;
-            println!(
-                "Batch prove complete: {} succeeded, {} failed",
-                result.succeeded, result.failed
-            );
+            check_batch_result("prove", &result)?;
         }
         "run_batch_verify" => {
             let manifest_path = get_arg(matches, "manifest")?;
@@ -949,10 +963,7 @@ where
                 &manifest_path,
                 &circuit_path,
             )?;
-            println!(
-                "Batch verify complete: {} succeeded, {} failed",
-                result.succeeded, result.failed
-            );
+            check_batch_result("verify", &result)?;
         }
         _ => return Err(CliError::UnknownCommand(command.to_string())),
     }

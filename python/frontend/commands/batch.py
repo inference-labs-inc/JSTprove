@@ -31,6 +31,12 @@ def _preprocess_manifest(
     circuit.load_quantized_model(quantized_path)
 
     manifest: dict[str, Any] = read_from_json(manifest_path)
+    if not isinstance(manifest, dict) or not isinstance(
+        manifest.get("jobs"),
+        list,
+    ):
+        msg = f"Invalid manifest: expected {{'jobs': [...]}} in {manifest_path}"
+        raise TypeError(msg)
     for job in manifest["jobs"]:
         transform_job(circuit, job)
 
