@@ -583,52 +583,57 @@ where
     let succeeded = AtomicUsize::new(0);
     let failed = AtomicUsize::new(0);
 
-    rayon::ThreadPoolBuilder::new().num_threads(parallel).build_global().ok();
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(parallel)
+        .build()
+        .map_err(|e| RunError::Compile(format!("Failed to create thread pool: {e}")))?;
 
-    let errors: Vec<_> = manifest
-        .jobs
-        .into_par_iter()
-        .enumerate()
-        .filter_map(|(idx, job)| {
-            let mut io_reader = io_reader_factory();
-            let assignment = CircuitDefaultType::default();
-            let assignment = match io_reader.read_inputs(&job.input, assignment) {
-                Ok(a) => a,
-                Err(e) => {
-                    failed.fetch_add(1, Ordering::Relaxed);
-                    eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
-                    return Some((idx, e.to_string()));
-                }
-            };
-            let assignment = match io_reader.read_outputs(&job.output, assignment) {
-                Ok(a) => a,
-                Err(e) => {
-                    failed.fetch_add(1, Ordering::Relaxed);
-                    eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
-                    return Some((idx, e.to_string()));
-                }
-            };
+    let errors: Vec<_> = pool.install(|| {
+        manifest
+            .jobs
+            .into_par_iter()
+            .enumerate()
+            .filter_map(|(idx, job)| {
+                let mut io_reader = io_reader_factory();
+                let assignment = CircuitDefaultType::default();
+                let assignment = match io_reader.read_inputs(&job.input, assignment) {
+                    Ok(a) => a,
+                    Err(e) => {
+                        failed.fetch_add(1, Ordering::Relaxed);
+                        eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
+                        return Some((idx, e.to_string()));
+                    }
+                };
+                let assignment = match io_reader.read_outputs(&job.output, assignment) {
+                    Ok(a) => a,
+                    Err(e) => {
+                        failed.fetch_add(1, Ordering::Relaxed);
+                        eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
+                        return Some((idx, e.to_string()));
+                    }
+                };
 
-            match witness_core::<C, CircuitDefaultType>(
-                &witness_solver,
-                &layered_circuit,
-                &hint_registry,
-                assignment,
-                &job.witness,
-            ) {
-                Ok(()) => {
-                    succeeded.fetch_add(1, Ordering::Relaxed);
-                    println!("[{}/{}] witness: {}", idx + 1, job_count, job.witness);
-                    None
+                match witness_core::<C, CircuitDefaultType>(
+                    &witness_solver,
+                    &layered_circuit,
+                    &hint_registry,
+                    assignment,
+                    &job.witness,
+                ) {
+                    Ok(()) => {
+                        succeeded.fetch_add(1, Ordering::Relaxed);
+                        println!("[{}/{}] witness: {}", idx + 1, job_count, job.witness);
+                        None
+                    }
+                    Err(e) => {
+                        failed.fetch_add(1, Ordering::Relaxed);
+                        eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
+                        Some((idx, e.to_string()))
+                    }
                 }
-                Err(e) => {
-                    failed.fetch_add(1, Ordering::Relaxed);
-                    eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
-                    Some((idx, e.to_string()))
-                }
-            }
-        })
-        .collect();
+            })
+            .collect()
+    });
 
     Ok(BatchResult {
         succeeded: succeeded.load(Ordering::Relaxed),
@@ -661,30 +666,35 @@ where
     let succeeded = AtomicUsize::new(0);
     let failed = AtomicUsize::new(0);
 
-    rayon::ThreadPoolBuilder::new().num_threads(parallel).build_global().ok();
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(parallel)
+        .build()
+        .map_err(|e| RunError::Compile(format!("Failed to create thread pool: {e}")))?;
 
-    let errors: Vec<_> = manifest
-        .jobs
-        .into_iter()
-        .zip(circuits)
-        .enumerate()
-        .collect::<Vec<_>>()
-        .into_par_iter()
-        .filter_map(|(idx, (job, mut circuit))| {
-            match prove_core::<C>(&mut circuit, &job.witness, &job.proof) {
-                Ok(()) => {
-                    succeeded.fetch_add(1, Ordering::Relaxed);
-                    println!("[{}/{}] proof: {}", idx + 1, job_count, job.proof);
-                    None
+    let errors: Vec<_> = pool.install(|| {
+        manifest
+            .jobs
+            .into_iter()
+            .zip(circuits)
+            .enumerate()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .filter_map(|(idx, (job, mut circuit))| {
+                match prove_core::<C>(&mut circuit, &job.witness, &job.proof) {
+                    Ok(()) => {
+                        succeeded.fetch_add(1, Ordering::Relaxed);
+                        println!("[{}/{}] proof: {}", idx + 1, job_count, job.proof);
+                        None
+                    }
+                    Err(e) => {
+                        failed.fetch_add(1, Ordering::Relaxed);
+                        eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
+                        Some((idx, e.to_string()))
+                    }
                 }
-                Err(e) => {
-                    failed.fetch_add(1, Ordering::Relaxed);
-                    eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
-                    Some((idx, e.to_string()))
-                }
-            }
-        })
-        .collect();
+            })
+            .collect()
+    });
 
     Ok(BatchResult {
         succeeded: succeeded.load(Ordering::Relaxed),
@@ -719,38 +729,43 @@ where
     let succeeded = AtomicUsize::new(0);
     let failed = AtomicUsize::new(0);
 
-    rayon::ThreadPoolBuilder::new().num_threads(parallel).build_global().ok();
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(parallel)
+        .build()
+        .map_err(|e| RunError::Compile(format!("Failed to create thread pool: {e}")))?;
 
-    let errors: Vec<_> = manifest
-        .jobs
-        .into_iter()
-        .zip(circuits)
-        .enumerate()
-        .collect::<Vec<_>>()
-        .into_par_iter()
-        .filter_map(|(idx, (job, mut circuit))| {
-            let mut io_reader = io_reader_factory();
-            match verify_core::<C, I, CircuitDefaultType>(
-                &mut circuit,
-                &mut io_reader,
-                &job.input,
-                &job.output,
-                &job.witness,
-                &job.proof,
-            ) {
-                Ok(()) => {
-                    succeeded.fetch_add(1, Ordering::Relaxed);
-                    println!("[{}/{}] verified: {}", idx + 1, job_count, job.proof);
-                    None
+    let errors: Vec<_> = pool.install(|| {
+        manifest
+            .jobs
+            .into_iter()
+            .zip(circuits)
+            .enumerate()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .filter_map(|(idx, (job, mut circuit))| {
+                let mut io_reader = io_reader_factory();
+                match verify_core::<C, I, CircuitDefaultType>(
+                    &mut circuit,
+                    &mut io_reader,
+                    &job.input,
+                    &job.output,
+                    &job.witness,
+                    &job.proof,
+                ) {
+                    Ok(()) => {
+                        succeeded.fetch_add(1, Ordering::Relaxed);
+                        println!("[{}/{}] verified: {}", idx + 1, job_count, job.proof);
+                        None
+                    }
+                    Err(e) => {
+                        failed.fetch_add(1, Ordering::Relaxed);
+                        eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
+                        Some((idx, e.to_string()))
+                    }
                 }
-                Err(e) => {
-                    failed.fetch_add(1, Ordering::Relaxed);
-                    eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
-                    Some((idx, e.to_string()))
-                }
-            }
-        })
-        .collect();
+            })
+            .collect()
+    });
 
     Ok(BatchResult {
         succeeded: succeeded.load(Ordering::Relaxed),

@@ -1191,3 +1191,59 @@ def test_batch_missing_manifest(tmp_path: Path) -> None:
     )
 
     assert rc == 1
+
+
+@pytest.mark.unit
+def test_batch_invalid_parallel_zero(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    circuit = tmp_path / "circuit.txt"
+    circuit.write_text("ok")
+
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text('{"jobs": []}')
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--no-banner",
+                "batch",
+                "prove",
+                "-c",
+                str(circuit),
+                "-f",
+                str(manifest),
+                "-j",
+                "0",
+            ],
+        )
+
+    assert exc_info.value.code == 2
+    captured = capsys.readouterr()
+    assert "positive" in captured.err.lower()
+
+
+@pytest.mark.unit
+def test_batch_invalid_parallel_negative(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    circuit = tmp_path / "circuit.txt"
+    circuit.write_text("ok")
+
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text('{"jobs": []}')
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--no-banner",
+                "batch",
+                "prove",
+                "-c",
+                str(circuit),
+                "-f",
+                str(manifest),
+                "-j",
+                "-1",
+            ],
+        )
+
+    assert exc_info.value.code == 2
+    captured = capsys.readouterr()
+    assert "positive" in captured.err.lower()

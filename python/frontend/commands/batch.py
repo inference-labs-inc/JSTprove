@@ -1,14 +1,24 @@
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
-
-if TYPE_CHECKING:
-    import argparse
+from typing import ClassVar
 
 from python.core.utils.helper_functions import run_cargo_command
 from python.frontend.commands.args import CIRCUIT_PATH
 from python.frontend.commands.base import BaseCommand
+
+
+def _positive_int(value: str) -> int:
+    try:
+        ivalue = int(value)
+    except ValueError:
+        msg = f"invalid int value: '{value}'"
+        raise argparse.ArgumentTypeError(msg) from None
+    if ivalue <= 0:
+        msg = f"parallel must be a positive integer, got {ivalue}"
+        raise argparse.ArgumentTypeError(msg)
+    return ivalue
 
 
 class BatchCommand(BaseCommand):
@@ -30,7 +40,7 @@ class BatchCommand(BaseCommand):
         subparser.add_argument(
             "-j",
             "--parallel",
-            type=int,
+            type=_positive_int,
             default=1,
             help="Number of parallel threads (default: 1).",
         )
