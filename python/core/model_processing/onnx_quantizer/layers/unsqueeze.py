@@ -214,7 +214,7 @@ def _extract_unsqueeze_axes_into_params(  # noqa: PLR0913
     name: str,
     inputs: list[str] | tuple[str, ...],
     params: dict | None,
-    graph: onnx.ModelProto,
+    graph: onnx.GraphProto,
     model_type: ModelType,
     initializer_map: dict[str, onnx.TensorProto] | None = None,
 ) -> dict:
