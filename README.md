@@ -218,6 +218,10 @@ To keep paths simple (and to match our scripts), **clone Expander as a subfolder
 git clone https://github.com/PolyhedraZK/Expander.git
 cd Expander
 
+git fetch
+git checkout af1b7473bc858d250e481d6bb7db98a1ee6b7fc5
+
+
 # Build (uses the toolchain you configured with rustup)
 cargo build --release
 ```
