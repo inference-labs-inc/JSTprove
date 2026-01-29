@@ -3,8 +3,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
-from onnx import numpy_helper
+from onnx import helper, numpy_helper
 
+from python.core.model_processing.converters.base import ModelType
+from python.core.model_processing.errors import LayerAnalysisError
+from python.core.model_processing.onnx_custom_ops.onnx_helpers import parse_attributes
 from python.core.model_processing.onnx_quantizer.exceptions import (
     InvalidParamError,
 )
@@ -16,6 +19,8 @@ from python.core.model_processing.onnx_quantizer.layers.base import (
 
 if TYPE_CHECKING:
     import onnx
+
+_N_UNSQUEEZE_INPUTS: int = 2
 
 
 class QuantizeUnsqueeze(QuantizerBase):
@@ -69,6 +74,32 @@ class UnsqueezeQuantizer(BaseOpQuantizer, QuantizeUnsqueeze):
             scale_config,
             initializer_map,
         )
+
+    def pre_analysis_transform(
+        self: UnsqueezeQuantizer,
+        node: onnx.NodeProto,
+        graph: onnx.GraphProto,
+        initializer_map: dict[str, onnx.TensorProto],
+        scale_base: int,
+        scale_exponent: int,
+    ) -> None:
+        _ = initializer_map, scale_base, scale_exponent
+        model_type = ModelType.ONNX
+        params = parse_attributes(node.attribute)
+        if node.op_type != "Unsqueeze":
+            return
+        if params and "axes" in params:
+            return
+        axes = _extract_unsqueeze_axes_into_params(
+            name=node.name,
+            inputs=node.input,
+            params=params,
+            graph=graph,
+            model_type=model_type,
+            initializer_map=initializer_map,
+        )
+        attr = helper.make_attribute("axes", axes["axes"])
+        node.attribute.append(attr)
 
     _N_INPUTS_NO_AXES: ClassVar[int] = 1
     _N_INPUTS_WITH_AXES: ClassVar[int] = 2
@@ -176,3 +207,107 @@ class UnsqueezeQuantizer(BaseOpQuantizer, QuantizeUnsqueeze):
                 attr_key="axes",
                 expected="axes list with unique entries",
             )
+
+
+def _extract_unsqueeze_axes_into_params(  # noqa: PLR0913
+    *,
+    name: str,
+    inputs: list[str] | tuple[str, ...],
+    params: dict | None,
+    graph: onnx.ModelProto,
+    model_type: ModelType,
+    initializer_map: dict[str, onnx.TensorProto] | None = None,
+) -> dict:
+    if len(inputs) != _N_UNSQUEEZE_INPUTS:
+        msg = (
+            f"Unsqueeze '{name}' is missing axes input. "
+            f"Expected 2 inputs (data, axes), got {len(inputs)}: {list(inputs)}"
+        )
+        raise LayerAnalysisError(model_type=model_type, reason=msg)
+
+    axes_name = inputs[1]
+
+    axes_arr = _resolve_unsqueeze_axes_array(
+        name=name,
+        axes_name=axes_name,
+        graph=graph,
+        model_type=model_type,
+        initializer_map=initializer_map,
+    )
+
+    _validate_unsqueeze_axes_are_integer(
+        name=name,
+        axes_arr=axes_arr,
+        model_type=model_type,
+    )
+
+    out_params = params or {}
+    out_params["axes"] = _axes_array_to_int_list(axes_arr)
+    return out_params
+
+
+def _resolve_unsqueeze_axes_array(
+    *,
+    name: str,
+    axes_name: str,
+    graph: onnx.GraphProto,
+    model_type: ModelType,
+    initializer_map: dict[str, onnx.TensorProto] | None = None,
+) -> np.ndarray:
+    if not initializer_map:
+        initializer_map = {init.name: init for init in graph.initializer}
+
+    if axes_name in initializer_map:
+        return numpy_helper.to_array(initializer_map[axes_name])
+
+    const_tensor = _find_constant_tensor_by_output_name(
+        graph=graph,
+        output_name=axes_name,
+    )
+
+    if const_tensor is not None:
+        return numpy_helper.to_array(const_tensor)
+
+    msg = (
+        f"Unsqueeze '{name}' has dynamic axes input '{axes_name}'. "
+        "Only constant initializer axes or Constant-node axes are supported."
+    )
+    raise LayerAnalysisError(model_type=model_type, reason=msg)
+
+
+def _find_constant_tensor_by_output_name(
+    *,
+    graph: onnx.GraphProto,
+    output_name: str,
+) -> onnx.TensorProto | None:
+    for n in graph.node:
+        if n.op_type != "Constant" or not n.output:
+            continue
+        if n.output[0] != output_name:
+            continue
+
+        for attr in n.attribute:
+            if attr.name == "value" and attr.t is not None:
+                return attr.t
+
+        # Constant node exists but doesn't have the expected tensor attribute.
+        return None
+
+    return None
+
+
+def _validate_unsqueeze_axes_are_integer(
+    *,
+    name: str,
+    axes_arr: np.ndarray,
+    model_type: ModelType,
+) -> None:
+    if not np.issubdtype(axes_arr.dtype, np.integer):
+        msg = f"Unsqueeze '{name}' axes must be integer, got dtype {axes_arr.dtype}."
+        raise LayerAnalysisError(model_type=model_type, reason=msg)
+
+
+def _axes_array_to_int_list(axes_arr: np.ndarray) -> list[int]:
+    if axes_arr.ndim == 0:
+        return [int(axes_arr)]
+    return [int(x) for x in axes_arr.reshape(-1).tolist()]
