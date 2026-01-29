@@ -24,6 +24,9 @@ dependencies = [
 ]
 
 [dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+]
 test = [
     "pytest==8.3.5",
     "pytest-html==4.1.1",

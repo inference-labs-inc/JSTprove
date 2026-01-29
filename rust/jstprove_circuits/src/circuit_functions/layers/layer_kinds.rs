@@ -1,5 +1,6 @@
 use crate::circuit_functions::layers::LayerError;
 use crate::circuit_functions::layers::batchnorm::BatchnormLayer;
+use crate::circuit_functions::layers::div::DivLayer;
 use crate::circuit_functions::layers::layer_ops::LayerOp;
 use crate::circuit_functions::layers::mul::MulLayer;
 use crate::circuit_functions::layers::sub::SubLayer;
@@ -133,6 +134,7 @@ define_layers! {
     Add       => { name: "Add", builder: AddLayer::build },
     Clip      => { name: "Clip", builder: ClipLayer::build },
     Batchnorm => { name: "BatchNormalization", builder: BatchnormLayer::build },
+    Div       => { name: "Div", builder: DivLayer::build },
     Sub       => { name: "Sub", builder: SubLayer::build },
     Mul       => { name: "Mul", builder: MulLayer::build },
     Constant  => { name: "Constant", builder: ConstantLayer::build },
