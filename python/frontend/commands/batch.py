@@ -50,7 +50,15 @@ def _preprocess_manifest(
     return processed_path
 
 
+def _validate_job_keys(job: dict[str, Any], *keys: str) -> None:
+    missing = [k for k in keys if k not in job]
+    if missing:
+        msg = f"Job missing required keys {missing}: {job}"
+        raise ValueError(msg)
+
+
 def _transform_witness_job(circuit: Circuit, job: dict[str, Any]) -> None:
+    _validate_job_keys(job, "input", "output")
     inputs = read_from_json(job["input"])
     scaled = circuit.scale_inputs_only(inputs)
 
@@ -69,6 +77,7 @@ def _transform_witness_job(circuit: Circuit, job: dict[str, Any]) -> None:
 
 
 def _transform_verify_job(circuit: Circuit, job: dict[str, Any]) -> None:
+    _validate_job_keys(job, "input")
     inputs = read_from_json(job["input"])
     circuit_inputs = circuit.reshape_inputs_for_circuit(inputs)
 
@@ -150,6 +159,9 @@ class BatchCommand(BaseCommand):
         circuit_dir = circuit_file.parent
         name = circuit_file.stem
         metadata_path = str(circuit_dir / f"{name}_metadata.json")
+        if not Path(metadata_path).is_file():
+            msg = f"Metadata file not found: {metadata_path}"
+            raise FileNotFoundError(msg)
 
         preprocess_map = {
             "witness": _transform_witness_job,

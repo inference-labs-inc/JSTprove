@@ -1072,6 +1072,9 @@ def test_batch_verify_dispatch(tmp_path: Path) -> None:
     manifest = tmp_path / "manifest.json"
     manifest.write_text('{"jobs": []}')
 
+    metadata = tmp_path / "circuit_metadata.json"
+    metadata.write_text("{}")
+
     processed = tmp_path / "manifest_processed.json"
     processed.write_text('{"jobs": []}')
 
@@ -1118,6 +1121,9 @@ def test_batch_witness_dispatch(tmp_path: Path) -> None:
 
     manifest = tmp_path / "manifest.json"
     manifest.write_text('{"jobs": []}')
+
+    metadata = tmp_path / "circuit_metadata.json"
+    metadata.write_text("{}")
 
     processed = tmp_path / "manifest_processed.json"
     processed.write_text('{"jobs": []}')
