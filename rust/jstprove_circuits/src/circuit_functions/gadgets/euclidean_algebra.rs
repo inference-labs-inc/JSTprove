@@ -2,6 +2,11 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::{gadgets::LogupRangeCheckContext, utils::RescaleError};
 
+use crate::circuit_functions::gadgets::{
+    LogupRangeCheckContextV2,
+    logup_range_check_pow2_unsigned_v2, 
+};
+
 /// Performs division of a positive integer variable by a **power-of-two constant**
 /// inside the circuit, with range-checked quotient and remainder.
 ///
@@ -71,12 +76,17 @@ pub fn div_pos_integer_pow2_constant<C: Config, Builder: RootAPI<C>>(
     api.assert_is_equal(shifted_dividend, rhs);
 
     // Step 4: LogUp range-check r in [0, alpha − 1] using kappa bits
-    logup_ctx
-        .range_check::<C, Builder>(api, remainder, divisor_exponent)
-        .map_err(|e| RescaleError::BitDecompositionError {
-            var_name: format!("remainder (LogUp): {e}"),
-            n_bits: divisor_exponent,
-        })?;
+    // logup_ctx
+    //     .range_check::<C, Builder>(api, remainder, divisor_exponent)
+    //     .map_err(|e| RescaleError::BitDecompositionError {
+    //         var_name: format!("remainder (LogUp): {e}"),
+    //         n_bits: divisor_exponent,
+    //     })?;
+    logup_range_check_pow2_unsigned_v2::<C, Builder>(api, remainder, divisor_exponent)
+    .map_err(|e| RescaleError::BitDecompositionError {
+        var_name: format!("remainder (LogUp v2 one-shot): {e}"),
+        n_bits: divisor_exponent,
+    })?;
 
     // Step 5: LogUp range-check q_shifted in [0, 2^(s + 1) − 1] using s + 1 bits
     let n_bits_q =
