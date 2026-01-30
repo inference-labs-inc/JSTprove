@@ -30,7 +30,7 @@ jobs:
 
       - name: Install and run cargo-audit
         run: |
-          cargo +stable install cargo-audit
+          cargo +stable install cargo-audit --version 0.22.0 --locked
           cargo +stable audit
 
   python-audit:
