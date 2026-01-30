@@ -77,11 +77,11 @@ def _transform_witness_job(circuit: Circuit, job: dict[str, Any]) -> None:
     job["input"] = adjusted_path
 
 
-def preprocess_witness_from_tensors(
+def batch_witness_from_tensors(
     circuit_path: str,
     jobs: list[dict[str, Any]],
     manifest_path: str,
-) -> tuple[str, list[dict[str, Any]]]:
+) -> list[dict[str, Any]]:
     circuit = GenericModelONNX(model_name="cli")
     circuit_file = Path(circuit_path)
     quantized_path = str(
@@ -116,7 +116,20 @@ def preprocess_witness_from_tensors(
         ),
     )
     to_json({"jobs": jobs}, processed_path)
-    return processed_path, outputs
+
+    metadata_path = str(circuit_file.parent / f"{circuit_file.stem}_metadata.json")
+    run_cargo_command(
+        binary_name=circuit.name,
+        command_type="run_batch_witness",
+        args={
+            "c": circuit_path,
+            "f": processed_path,
+            "m": metadata_path,
+        },
+        dev_mode=False,
+    )
+
+    return outputs
 
 
 def _transform_verify_job(circuit: Circuit, job: dict[str, Any]) -> None:
