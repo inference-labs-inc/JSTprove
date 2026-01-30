@@ -36,9 +36,7 @@ strum.workspace = true
 strum_macros.workspace = true
 once_cell.workspace = true
 
-
 [dev-dependencies]
-rayon = "1.9"
 sha2 = "0.10.8"
 
 [dependencies.serde]

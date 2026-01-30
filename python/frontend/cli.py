@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from python.frontend.commands import BaseCommand
 
 from python.frontend.commands import (
+    BatchCommand,
     BenchCommand,
     CompileCommand,
     ModelCheckCommand,
@@ -41,6 +42,7 @@ COMMANDS: list[type[BaseCommand]] = [
     WitnessCommand,
     ProveCommand,
     VerifyCommand,
+    BatchCommand,
     BenchCommand,
 ]
 

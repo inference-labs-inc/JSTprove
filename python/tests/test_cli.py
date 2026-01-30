@@ -1019,3 +1019,186 @@ def test_bench_with_iterations(tmp_path: Path) -> None:
     assert "--iterations" in cmd
     idx = cmd.index("--iterations")
     assert cmd[idx + 1] == "10"
+
+
+@pytest.mark.unit
+def test_batch_prove_dispatch(tmp_path: Path) -> None:
+    circuit = tmp_path / "circuit.txt"
+    circuit.write_text("ok")
+
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text('{"jobs": []}')
+
+    metadata = tmp_path / "circuit_metadata.json"
+    metadata.write_text("{}")
+
+    fake_circuit = MagicMock()
+    fake_circuit.name = "test_circuit"
+
+    with (
+        patch(
+            "python.frontend.commands.batch.BatchCommand._build_circuit",
+            return_value=fake_circuit,
+        ),
+        patch(
+            "python.frontend.commands.batch.run_cargo_command",
+        ) as mock_cargo,
+    ):
+        rc = main(
+            [
+                "--no-banner",
+                "batch",
+                "prove",
+                "-c",
+                str(circuit),
+                "-f",
+                str(manifest),
+            ],
+        )
+
+    assert rc == 0
+    mock_cargo.assert_called_once()
+    call_kwargs = mock_cargo.call_args[1]
+    assert call_kwargs["command_type"] == "run_batch_prove"
+    assert call_kwargs["args"]["c"] == str(circuit)
+    assert call_kwargs["args"]["f"] == str(manifest)
+
+
+@pytest.mark.unit
+def test_batch_verify_dispatch(tmp_path: Path) -> None:
+    circuit = tmp_path / "circuit.txt"
+    circuit.write_text("ok")
+
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text('{"jobs": []}')
+
+    metadata = tmp_path / "circuit_metadata.json"
+    metadata.write_text("{}")
+
+    processed = tmp_path / "manifest_processed.json"
+    processed.write_text('{"jobs": []}')
+
+    fake_circuit = MagicMock()
+    fake_circuit.name = "test_circuit"
+
+    with (
+        patch(
+            "python.frontend.commands.batch.BatchCommand._build_circuit",
+            return_value=fake_circuit,
+        ),
+        patch(
+            "python.frontend.commands.batch._preprocess_manifest",
+            return_value=str(processed),
+        ) as mock_preprocess,
+        patch(
+            "python.frontend.commands.batch.run_cargo_command",
+        ) as mock_cargo,
+    ):
+        rc = main(
+            [
+                "--no-banner",
+                "batch",
+                "verify",
+                "-c",
+                str(circuit),
+                "-f",
+                str(manifest),
+            ],
+        )
+
+    assert rc == 0
+    mock_preprocess.assert_called_once()
+    mock_cargo.assert_called_once()
+    call_kwargs = mock_cargo.call_args[1]
+    assert call_kwargs["command_type"] == "run_batch_verify"
+    assert call_kwargs["args"]["f"] == str(processed)
+
+
+@pytest.mark.unit
+def test_batch_witness_dispatch(tmp_path: Path) -> None:
+    circuit = tmp_path / "circuit.txt"
+    circuit.write_text("ok")
+
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text('{"jobs": []}')
+
+    metadata = tmp_path / "circuit_metadata.json"
+    metadata.write_text("{}")
+
+    processed = tmp_path / "manifest_processed.json"
+    processed.write_text('{"jobs": []}')
+
+    fake_circuit = MagicMock()
+    fake_circuit.name = "test_circuit"
+
+    with (
+        patch(
+            "python.frontend.commands.batch.BatchCommand._build_circuit",
+            return_value=fake_circuit,
+        ),
+        patch(
+            "python.frontend.commands.batch._preprocess_manifest",
+            return_value=str(processed),
+        ) as mock_preprocess,
+        patch(
+            "python.frontend.commands.batch.run_cargo_command",
+        ) as mock_cargo,
+    ):
+        rc = main(
+            [
+                "--no-banner",
+                "batch",
+                "witness",
+                "-c",
+                str(circuit),
+                "-f",
+                str(manifest),
+            ],
+        )
+
+    assert rc == 0
+    mock_preprocess.assert_called_once()
+    mock_cargo.assert_called_once()
+    call_kwargs = mock_cargo.call_args[1]
+    assert call_kwargs["command_type"] == "run_batch_witness"
+    assert call_kwargs["args"]["f"] == str(processed)
+
+
+@pytest.mark.unit
+def test_batch_missing_circuit(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text('{"jobs": []}')
+
+    rc = main(
+        [
+            "--no-banner",
+            "batch",
+            "prove",
+            "-c",
+            str(tmp_path / "nonexistent.txt"),
+            "-f",
+            str(manifest),
+        ],
+    )
+
+    assert rc == 1
+
+
+@pytest.mark.unit
+def test_batch_missing_manifest(tmp_path: Path) -> None:
+    circuit = tmp_path / "circuit.txt"
+    circuit.write_text("ok")
+
+    rc = main(
+        [
+            "--no-banner",
+            "batch",
+            "prove",
+            "-c",
+            str(circuit),
+            "-f",
+            str(tmp_path / "nonexistent.json"),
+        ],
+    )
+
+    assert rc == 1
