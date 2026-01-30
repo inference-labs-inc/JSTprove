@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from python.core.circuit_models.generic_onnx import GenericModelONNX
 from python.core.utils.helper_functions import (
     read_from_json,
     run_cargo_command,
@@ -74,6 +75,48 @@ def _transform_witness_job(circuit: Circuit, job: dict[str, Any]) -> None:
     to_json(formatted, job["output"])
 
     job["input"] = adjusted_path
+
+
+def preprocess_witness_from_tensors(
+    circuit_path: str,
+    jobs: list[dict[str, Any]],
+    manifest_path: str,
+) -> tuple[str, list[dict[str, Any]]]:
+    circuit = GenericModelONNX(model_name="cli")
+    circuit_file = Path(circuit_path)
+    quantized_path = str(
+        circuit_file.parent / f"{circuit_file.stem}_quantized_model.onnx",
+    )
+    circuit.load_quantized_model(quantized_path)
+
+    outputs = []
+    for job in jobs:
+        _validate_job_keys(job, "output")
+        inputs = job.pop("_tensor_inputs")
+        scaled = circuit.scale_inputs_only(inputs)
+
+        inference_inputs = circuit.reshape_inputs_for_inference(scaled)
+        circuit_inputs = circuit.reshape_inputs_for_circuit(scaled)
+
+        out_path = Path(job["output"])
+        adjusted_path = str(out_path.with_name(out_path.stem + "_adjusted.json"))
+        to_json(circuit_inputs, adjusted_path)
+
+        raw_outputs = circuit.get_outputs(inference_inputs)
+        formatted = circuit.format_outputs(raw_outputs)
+        to_json(formatted, job["output"])
+
+        job["input"] = adjusted_path
+        outputs.append(formatted)
+
+    manifest_file = Path(manifest_path)
+    processed_path = str(
+        manifest_file.with_name(
+            manifest_file.stem + "_processed" + manifest_file.suffix,
+        ),
+    )
+    to_json({"jobs": jobs}, processed_path)
+    return processed_path, outputs
 
 
 def _transform_verify_job(circuit: Circuit, job: dict[str, Any]) -> None:
