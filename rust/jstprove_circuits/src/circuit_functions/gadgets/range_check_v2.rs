@@ -65,7 +65,7 @@ fn debug_assert_signed_shift_ok<C: Config>(n: usize) {
         // Let bitlen(p + 1) = floor(log2(p + 1)) + 1.
         // We have n + 2 <= floor(log2(p + 1))  iff  n + 3 <= bitlen(p + 1)
         let p = CircuitField::<C>::MODULUS;
-        let p_plus_1 = p.wrapping_add(U256::from(1u8));
+        let p_plus_1 = p.checked_add(U256::from(1u8)).unwrap();
         let l = bitlen_u256(p_plus_1);
         n.saturating_add(3) <= l
     });
@@ -192,12 +192,12 @@ impl LogupRangeCheckContext {
         }
         if n_bits == 0 {
             return Err(CircuitError::Other(
-                "logup_range_check_pow2_unsigned: n_bits must be > 0".into(),
+                "LogupRangeCheckContext::range_check: n_bits must be > 0".into(),
             ));
         }
         if n_bits > 128 {
             return Err(CircuitError::Other(
-                "logup_range_check_pow2_unsigned: n_bits > 128 not supported".into(),
+                "LogupRangeCheckContext::range_check: n_bits > 128 not supported".into(),
             ));
         }
 
@@ -265,6 +265,16 @@ pub fn logup_range_check_pow2_unsigned_with_debug<C: Config, B: RootAPI<C>>(
     Ok(())
 }
 
+/// Inputs for a signed power-of-two range check under balanced-residue semantics.
+///
+/// Proves the underlying integer lies in `[-2^signed_bound_bits, 2^signed_bound_bits - 1]`,
+/// assuming the caller's balanced-residue precondition.
+#[derive(Clone, Copy, Debug)]
+pub struct SignedRangeInput {
+    pub value: Variable,
+    pub signed_bound_bits: usize,
+}
+
 /// Signed power-of-two range check under balanced-residue semantics.
 ///
 /// # Semantics
@@ -316,11 +326,13 @@ pub fn logup_range_check_pow2_unsigned_with_debug<C: Config, B: RootAPI<C>>(
 pub fn logup_range_check_pow2_signed<C: Config, B: RootAPI<C>>(
     api: &mut B,
     logup_ctx: &mut LogupRangeCheckContext,
-    left: Variable, // left = least nonnegative residue of left_int mod p
-    // prove left_int in [-2^{signed_bound_bits}, 2^{signed_bound_bits} - 1]
-    signed_bound_bits: usize,
+    input: SignedRangeInput,
 ) -> Result<(), CircuitError> {
-    // n_bits = signed_bound_bits + 1 (unsigned range on [0, 2^{signed_bound_bits+1} - 1])
+    let SignedRangeInput {
+        value: left,
+        signed_bound_bits,
+    } = input;
+    // n_bits = signed_bound_bits + 1 (unsigned range on [0, 2^{signed_bound_bits + 1} - 1])
     let n_bits = signed_bound_bits.checked_add(1).ok_or_else(|| {
         CircuitError::Other("logup_range_check_pow2_signed: signed_bound_bits overflow".into())
     })?;
@@ -367,7 +379,14 @@ pub fn logup_range_check_pow2_signed_one_shot<C: Config, B: RootAPI<C>>(
 ) -> Result<(), CircuitError> {
     let mut ctx = LogupRangeCheckContext::new_default();
     ctx.init::<C, B>(api);
-    logup_range_check_pow2_signed::<C, B>(api, &mut ctx, left, signed_bound_bits)?;
+    logup_range_check_pow2_signed::<C, B>(
+        api,
+        &mut ctx,
+        SignedRangeInput {
+            value: left,
+            signed_bound_bits,
+        },
+    )?;
     ctx.finalize::<C, B>(api);
     Ok(())
 }
@@ -385,26 +404,49 @@ pub fn logup_range_check_pow2_signed_one_shot_with_debug<C: Config, B: RootAPI<C
 ) -> Result<(), CircuitError> {
     let mut ctx = LogupRangeCheckContext::new_default().with_debug_checks(debug_checks);
     ctx.init::<C, B>(api);
-    logup_range_check_pow2_signed::<C, B>(api, &mut ctx, left, signed_bound_bits)?;
+    logup_range_check_pow2_signed::<C, B>(
+        api,
+        &mut ctx,
+        SignedRangeInput {
+            value: left,
+            signed_bound_bits,
+        },
+    )?;
     ctx.finalize::<C, B>(api);
     Ok(())
 }
 
 /// Policy for enabling or disabling debug-only checks.
 #[derive(Clone, Copy, Debug)]
-pub enum DebugChecks {
+pub enum SignedPreconditionChecks {
     On,
     Off,
 }
 
 #[inline]
-fn maybe_debug_assert_signed_shift_ok<C: Config>(n: usize, checks: DebugChecks) {
+fn maybe_debug_assert_signed_shift_ok<C: Config>(n: usize, checks: SignedPreconditionChecks) {
     #[cfg(debug_assertions)]
     {
-        if matches!(checks, DebugChecks::On) {
+        if matches!(checks, SignedPreconditionChecks::On) {
             debug_assert_signed_shift_ok::<C>(n);
         }
     }
+}
+
+/// Operands and shared signed bound for comparison gadgets.
+#[derive(Clone, Copy, Debug)]
+pub struct SignedBounds {
+    pub left: Variable,
+    pub right: Variable,
+    pub signed_bound_bits: usize,
+}
+
+/// Options for signed comparison gadgets (pre-checks and debug-only assertions).
+#[derive(Clone, Copy, Debug)]
+pub struct CmpOptions {
+    pub check_left: bool,
+    pub check_right: bool,
+    pub debug_checks: SignedPreconditionChecks,
 }
 
 // Signed comparisons `left_int <= right_int` under assumptions.
@@ -463,11 +505,14 @@ fn maybe_debug_assert_signed_shift_ok<C: Config>(n: usize, checks: DebugChecks) 
 fn logup_leq_var_signed_assuming_bounds<C: Config, B: RootAPI<C>>(
     api: &mut B,
     logup_ctx: &mut LogupRangeCheckContext,
-    left: Variable,
-    right: Variable,
-    signed_bound_bits: usize,
-    debug_checks: DebugChecks,
+    bounds: SignedBounds,
+    debug_checks: SignedPreconditionChecks,
 ) -> Result<(), CircuitError> {
+    let SignedBounds {
+        left,
+        right,
+        signed_bound_bits,
+    } = bounds;
     // We will call unsigned with n_bits = signed_bound_bits + 1.
     let n_bits = signed_bound_bits.checked_add(1).ok_or_else(|| {
         CircuitError::Other(
@@ -510,20 +555,27 @@ fn logup_leq_var_signed_assuming_bounds<C: Config, B: RootAPI<C>>(
 }
 
 /// Wrapper: enforce `left_int >= right_int` by swapping arguments (`right_int <= left_int`).
+#[allow(dead_code)]
 fn logup_geq_var_signed_assuming_bounds<C: Config, B: RootAPI<C>>(
     api: &mut B,
     logup_ctx: &mut LogupRangeCheckContext,
-    left: Variable,
-    right: Variable,
-    signed_bound_bits: usize,
-    debug_checks: DebugChecks,
+    bounds: SignedBounds,
+    debug_checks: SignedPreconditionChecks,
 ) -> Result<(), CircuitError> {
+    let SignedBounds {
+        left,
+        right,
+        signed_bound_bits,
+    } = bounds;
+
     logup_leq_var_signed_assuming_bounds::<C, B>(
         api,
         logup_ctx,
-        right,
-        left,
-        signed_bound_bits,
+        SignedBounds {
+            left: right,
+            right: left,
+            signed_bound_bits,
+        },
         debug_checks,
     )
 }
@@ -554,31 +606,39 @@ fn logup_geq_var_signed_assuming_bounds<C: Config, B: RootAPI<C>>(
 pub fn logup_leq_var_signed<C: Config, B: RootAPI<C>>(
     api: &mut B,
     logup_ctx: &mut LogupRangeCheckContext,
-    left: Variable,
-    right: Variable,
-    signed_bound_bits: usize,
-    check_left: bool,
-    check_right: bool,
-    debug_checks: DebugChecks,
+    bounds: SignedBounds,
+    opts: CmpOptions,
 ) -> Result<(), CircuitError> {
-    // Fail early (optionally) on the shared shift precondition.
-    maybe_debug_assert_signed_shift_ok::<C>(signed_bound_bits, debug_checks);
-
-    if check_left {
-        logup_range_check_pow2_signed::<C, B>(api, logup_ctx, left, signed_bound_bits)?;
-    }
-    if check_right {
-        logup_range_check_pow2_signed::<C, B>(api, logup_ctx, right, signed_bound_bits)?;
-    }
-
-    logup_leq_var_signed_assuming_bounds::<C, B>(
-        api,
-        logup_ctx,
+    let SignedBounds {
         left,
         right,
         signed_bound_bits,
-        debug_checks,
-    )
+    } = bounds;
+
+    maybe_debug_assert_signed_shift_ok::<C>(signed_bound_bits, opts.debug_checks);
+
+    if opts.check_left {
+        logup_range_check_pow2_signed::<C, B>(
+            api,
+            logup_ctx,
+            SignedRangeInput {
+                value: left,
+                signed_bound_bits,
+            },
+        )?;
+    }
+    if opts.check_right {
+        logup_range_check_pow2_signed::<C, B>(
+            api,
+            logup_ctx,
+            SignedRangeInput {
+                value: right,
+                signed_bound_bits,
+            },
+        )?;
+    }
+
+    logup_leq_var_signed_assuming_bounds::<C, B>(api, logup_ctx, bounds, opts.debug_checks)
 }
 
 /// Enforce `left_int >= right_int` under signed semantics.
@@ -591,22 +651,28 @@ pub fn logup_leq_var_signed<C: Config, B: RootAPI<C>>(
 pub fn logup_geq_var_signed<C: Config, B: RootAPI<C>>(
     api: &mut B,
     logup_ctx: &mut LogupRangeCheckContext,
-    left: Variable,
-    right: Variable,
-    signed_bound_bits: usize,
-    check_left: bool,
-    check_right: bool,
-    debug_checks: DebugChecks,
+    bounds: SignedBounds,
+    opts: CmpOptions,
 ) -> Result<(), CircuitError> {
+    let SignedBounds {
+        left,
+        right,
+        signed_bound_bits,
+    } = bounds;
+
     logup_leq_var_signed::<C, B>(
         api,
         logup_ctx,
-        right,
-        left,
-        signed_bound_bits,
-        check_right,
-        check_left,
-        debug_checks,
+        SignedBounds {
+            left: right,
+            right: left,
+            signed_bound_bits,
+        },
+        CmpOptions {
+            check_left: opts.check_right,
+            check_right: opts.check_left,
+            debug_checks: opts.debug_checks,
+        },
     )
 }
 

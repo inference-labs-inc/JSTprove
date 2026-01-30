@@ -8,7 +8,7 @@ pub mod max_min_clip;
 pub mod range_check;
 
 // temporary until v2 replaces original
-pub mod range_check_v2; 
+pub mod range_check_v2;
 
 pub use max_min_clip::{ShiftRangeContext, constrained_clip, constrained_max, constrained_min};
 pub use range_check::{
