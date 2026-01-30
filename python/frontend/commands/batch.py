@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import contextlib
+import logging
+import math
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -11,6 +15,8 @@ from python.core.utils.helper_functions import (
 )
 from python.frontend.commands.args import CIRCUIT_PATH
 from python.frontend.commands.base import BaseCommand
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import argparse
@@ -77,10 +83,38 @@ def _transform_witness_job(circuit: Circuit, job: dict[str, Any]) -> None:
     job["input"] = adjusted_path
 
 
+def _warm_page_cache(*paths: str) -> None:
+    for p in paths:
+        with contextlib.suppress(OSError), Path(p).open("rb") as f:
+            while f.read(8 * 1024 * 1024):
+                pass
+
+
+def _run_witness_chunk(
+    binary_name: str,
+    circuit_path: str,
+    metadata_path: str,
+    chunk_jobs: list[dict[str, Any]],
+    chunk_manifest_path: str,
+) -> None:
+    to_json({"jobs": chunk_jobs}, chunk_manifest_path)
+    run_cargo_command(
+        binary_name=binary_name,
+        command_type="run_batch_witness",
+        args={
+            "c": circuit_path,
+            "f": chunk_manifest_path,
+            "m": metadata_path,
+        },
+        dev_mode=False,
+    )
+
+
 def batch_witness_from_tensors(
     circuit_path: str,
     jobs: list[dict[str, Any]],
     manifest_path: str,
+    workers: int = 1,
 ) -> list[dict[str, Any]]:
     circuit = GenericModelONNX(model_name="cli")
     circuit_file = Path(circuit_path)
@@ -109,25 +143,60 @@ def batch_witness_from_tensors(
         job["input"] = adjusted_path
         outputs.append(formatted)
 
-    manifest_file = Path(manifest_path)
-    processed_path = str(
-        manifest_file.with_name(
-            manifest_file.stem + "_processed" + manifest_file.suffix,
-        ),
-    )
-    to_json({"jobs": jobs}, processed_path)
-
     metadata_path = str(circuit_file.parent / f"{circuit_file.stem}_metadata.json")
-    run_cargo_command(
-        binary_name=circuit.name,
-        command_type="run_batch_witness",
-        args={
-            "c": circuit_path,
-            "f": processed_path,
-            "m": metadata_path,
-        },
-        dev_mode=False,
-    )
+    manifest_file = Path(manifest_path)
+    binary_name = circuit.name
+
+    workers = min(workers, len(jobs))
+    if workers <= 1:
+        processed_path = str(
+            manifest_file.with_name(
+                manifest_file.stem + "_processed" + manifest_file.suffix,
+            ),
+        )
+        _run_witness_chunk(
+            binary_name,
+            circuit_path,
+            metadata_path,
+            jobs,
+            processed_path,
+        )
+    else:
+        chunk_size = math.ceil(len(jobs) / workers)
+        chunks = [jobs[i : i + chunk_size] for i in range(0, len(jobs), chunk_size)]
+        logger.info(
+            "Parallel witness: %d workers x ~%d tiles",
+            len(chunks),
+            chunk_size,
+        )
+
+        _warm_page_cache(circuit_path, metadata_path)
+
+        def run_chunk(idx: int, chunk: list[dict[str, Any]]) -> None:
+            chunk_path = str(
+                manifest_file.with_name(
+                    f"{manifest_file.stem}_chunk{idx}_processed{manifest_file.suffix}",
+                ),
+            )
+            _run_witness_chunk(
+                binary_name,
+                circuit_path,
+                metadata_path,
+                chunk,
+                chunk_path,
+            )
+
+        with ThreadPoolExecutor(max_workers=len(chunks)) as pool:
+            futures = {pool.submit(run_chunk, i, c): i for i, c in enumerate(chunks)}
+            errors = []
+            for future in as_completed(futures):
+                exc = future.exception()
+                if exc is not None:
+                    errors.append((futures[future], exc))
+            if errors:
+                detail = "; ".join(f"chunk {i}: {e}" for i, e in errors)
+                msg = f"Parallel witness failed: {detail}"
+                raise RuntimeError(msg)
 
     return outputs
 
