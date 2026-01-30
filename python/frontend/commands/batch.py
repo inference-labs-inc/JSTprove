@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import math
+import mmap
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -86,8 +87,9 @@ def _transform_witness_job(circuit: Circuit, job: dict[str, Any]) -> None:
 def _warm_page_cache(*paths: str) -> None:
     for p in paths:
         with contextlib.suppress(OSError), Path(p).open("rb") as f:
-            while f.read(8 * 1024 * 1024):
-                pass
+            mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+            mm.madvise(mmap.MADV_WILLNEED)
+            mm.close()
 
 
 def _run_witness_chunk(
