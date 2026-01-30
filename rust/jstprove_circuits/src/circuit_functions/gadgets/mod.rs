@@ -7,7 +7,8 @@ pub mod linear_algebra;
 pub mod max_min_clip;
 pub mod range_check;
 
-pub mod range_check_v2; // temporary until v2 replaces original
+// temporary until v2 replaces original
+pub mod range_check_v2; 
 
 pub use max_min_clip::{ShiftRangeContext, constrained_clip, constrained_max, constrained_min};
 pub use range_check::{
@@ -15,6 +16,9 @@ pub use range_check::{
     logup_range_check_pow2_unsigned, range_check_pow2_unsigned,
 };
 
+// temporary until v2 replaces original
 pub use range_check_v2::{
-    DEFAULT_LOGUP_CHUNK_BITS, LogupRangeCheckContext, logup_range_check_pow2_unsigned,
-}; // temporary until v2 replaces original
+    DEFAULT_LOGUP_CHUNK_BITS as DEFAULT_LOGUP_CHUNK_BITS_V2,
+    LogupRangeCheckContext as LogupRangeCheckContextV2,
+    logup_range_check_pow2_unsigned as logup_range_check_pow2_unsigned_v2,
+};

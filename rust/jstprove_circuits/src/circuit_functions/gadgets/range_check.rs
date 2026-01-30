@@ -3,13 +3,11 @@
 //! - LogUp-based range check with sharable context,
 //! - helper gadget for reconstructing integers from boolean bitstrings.
 
-use ethnum::U256;
-
 /// External crate imports
 use circuit_std_rs::logup::LogUpRangeProofTable;
 
 /// `ExpanderCompilerCollection` imports
-use expander_compiler::frontend::{CircuitField, Config, RootAPI, Variable};
+use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 /// Internal crate imports
 use crate::circuit_functions::CircuitError;
