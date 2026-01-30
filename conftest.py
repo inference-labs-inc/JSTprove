@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+import functools
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
+
     from _pytest.config import Config, Parser
     from _pytest.nodes import Item
     from _pytest.python import Metafunc
+
+import onnx
 import pytest
 
+from python.core.model_processing.converters.onnx_converter import _clamp_for_ort
 from python.core.utils.model_registry import get_models_to_test, list_available_models
 
 
@@ -141,3 +148,22 @@ def ensure_dev_mode_compile_for_e2e(
 
     # On initial tests this approach works. If this breaks, we can run
     # compilation of a basic circuit with dev_mode = True
+
+
+_original_make_model = onnx.helper.make_model
+
+
+@functools.wraps(_original_make_model)
+def _make_model_clamped(
+    *args,  # noqa: ANN002
+    **kwargs,  # noqa: ANN003
+) -> onnx.ModelProto:
+    model = _original_make_model(*args, **kwargs)
+    _clamp_for_ort(model)
+    return model
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _clamp_onnx_ir_for_ort() -> Generator[None, None, None]:
+    with patch("onnx.helper.make_model", _make_model_clamped):
+        yield

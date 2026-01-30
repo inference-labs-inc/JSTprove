@@ -48,10 +48,16 @@ from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import (
     ONNXOpQuantizer,
 )
 
-try:
-    import tomllib  # Python 3.11+
-except ModuleNotFoundError:
-    import tomli as tomllib  # noqa: F401
+_MAX_ORT_IR_VERSION = 10
+_MAX_ORT_OPSET_VERSION = 22
+
+
+def _clamp_for_ort(model: onnx.ModelProto) -> None:
+    model.ir_version = _MAX_ORT_IR_VERSION
+    for opset in model.opset_import:
+        if opset.domain in ("", "ai.onnx"):
+            opset.version = _MAX_ORT_OPSET_VERSION
+
 
 ONNXLayerDict = dict[
     str,
@@ -147,6 +153,7 @@ class ONNXConverter(ModelConverter):
         """
         try:
             Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+            _clamp_for_ort(self.model)
             onnx.save(self.model, file_path)
         except Exception as e:
             raise ModelSaveError(
@@ -196,6 +203,7 @@ class ONNXConverter(ModelConverter):
         """
         try:
             Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+            _clamp_for_ort(self.quantized_model)
             onnx.save(self.quantized_model, file_path)
         except Exception as e:
             raise ModelSaveError(
