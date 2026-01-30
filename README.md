@@ -122,7 +122,7 @@ uv tool install /path/to/JSTprove-*.whl
 
 ### 0) Requirements
 
-- **Python**: 3.10–3.12 (⚠️ Not compatible with Python 3.13)
+- **Python**: >=3.12
 - **UV**: Fast Python package manager ([install UV](https://docs.astral.sh/uv/getting-started/installation/))
 
 > Note: UV will automatically install and manage the correct Python version for you.
