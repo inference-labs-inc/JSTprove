@@ -11,7 +11,7 @@ authors = [{ name = "Inference Labs Inc" }]
 requires-python = ">=3.12"
 dependencies = [
     "numpy==2.2.6",
-    "onnx>=1.17.0,<2.0",
+    "onnx>=1.18.0,<2.0",
     "onnxruntime==1.21.0",
     "onnxruntime_extensions==0.14.0",
     "psutil==7.0.0",

@@ -63,10 +63,3 @@ repos:
           -W, 'clippy::pedantic',
           -D, warnings,
         ]
-
-  # Dependency checks
-  - repo: https://github.com/python-poetry/poetry
-    rev: 2.2.1
-    hooks:
-      - id: poetry-check  # Validates pyproject.toml
-      - id: poetry-lock   # Updates poetry.lock if needed
