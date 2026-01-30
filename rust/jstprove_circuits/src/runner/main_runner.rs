@@ -1,9 +1,10 @@
+use arith::SimdField;
 use clap::{Arg, Command};
 use expander_compiler::circuit::layered::witness::Witness;
 use expander_compiler::circuit::layered::{Circuit, NormalInputType};
 use expander_compiler::frontend::{
-    ChallengeField, CircuitField, CompileOptions, Config, Define, Variable, WitnessSolver, compile,
-    extra::debug_eval, internal::DumpLoadTwoVariables,
+    ChallengeField, CircuitField, CompileOptions, Config, Define, SIMDField, Variable,
+    WitnessSolver, compile, extra::debug_eval, internal::DumpLoadTwoVariables,
 };
 use gkr_engine::{FieldEngine, GKREngine, MPIConfig};
 use io_reader::IOReader;
@@ -36,6 +37,13 @@ fn get_witness_solver_path(input: &str) -> PathBuf {
     };
 
     PathBuf::from(file_name)
+}
+
+fn get_vkey_path(input: &str) -> PathBuf {
+    let path = Path::new(input);
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or(input);
+    let parent = path.parent().and_then(|s| s.to_str()).unwrap_or(input);
+    PathBuf::from(format!("{parent}/{stem}_vkey.bin"))
 }
 
 /// Compiles a circuit and serializes both the compiled circuit and witness solver.
@@ -101,11 +109,17 @@ where
         .serialize_into(writer)
         .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
 
-    // println!(
-    //     "Time elapsed: {}.{} seconds",
-    //     duration.as_secs(),
-    //     duration.subsec_millis()
-    // );
+    let expander_circuit = compile_result.layered_circuit.export_to_expander_flatten();
+    let vkey_path = get_vkey_path(circuit_path);
+    let file = std::fs::File::create(&vkey_path).map_err(|e| RunError::Io {
+        source: e,
+        path: vkey_path.display().to_string(),
+    })?;
+    let writer = std::io::BufWriter::new(file);
+    expander_circuit
+        .serialize_into(writer)
+        .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
+
     Ok(())
 }
 
@@ -331,11 +345,12 @@ where
 /// - The proof fails to verify (`RunError::Verify`)
 ///
 fn run_verify_io<C: Config, I, CircuitDefaultType>(
-    circuit_path: &str,
+    circuit_path: Option<&str>,
+    vkey_path: Option<&str>,
     io_reader: &mut I,
     input_path: &str,
     output_path: &str,
-    witness_path: &str,
+    witness_path: Option<&str>,
     proof_path: &str,
 ) -> Result<(), RunError>
 where
@@ -345,8 +360,7 @@ where
         + Clone,
 {
     GLOBAL.reset_peak_memory();
-    let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
-    let mut expander_circuit = layered_circuit.export_to_expander_flatten();
+    let mut expander_circuit = load_expander_circuit::<C>(circuit_path, vkey_path)?;
     verify_core::<C, I, CircuitDefaultType>(
         &mut expander_circuit,
         io_reader,
@@ -357,6 +371,30 @@ where
     )?;
     println!("Verified");
     Ok(())
+}
+
+fn load_expander_circuit<C: Config>(
+    circuit_path: Option<&str>,
+    vkey_path: Option<&str>,
+) -> Result<expander_circuit::Circuit<C::FieldConfig>, RunError> {
+    if let Some(vkey) = vkey_path {
+        let file = std::fs::File::open(vkey).map_err(|e| RunError::Io {
+            source: e,
+            path: vkey.into(),
+        })?;
+        let reader = std::io::BufReader::new(file);
+        let mut circuit = expander_circuit::Circuit::<C::FieldConfig>::deserialize_from(reader)
+            .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+        circuit.pre_process_gkr();
+        Ok(circuit)
+    } else if let Some(cp) = circuit_path {
+        let layered_circuit = load_layered_circuit::<C>(cp)?;
+        Ok(layered_circuit.export_to_expander_flatten())
+    } else {
+        Err(RunError::Verify(
+            "either --circuit or --vkey must be provided".into(),
+        ))
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -376,7 +414,7 @@ pub struct ProveJob {
 pub struct VerifyJob {
     pub input: String,
     pub output: String,
-    pub witness: String,
+    pub witness: Option<String>,
     pub proof: String,
 }
 
@@ -482,7 +520,7 @@ fn verify_core<C: Config, I, CircuitDefaultType>(
     io_reader: &mut I,
     input_path: &str,
     output_path: &str,
-    witness_path: &str,
+    witness_path: Option<&str>,
     proof_path: &str,
 ) -> Result<(), RunError>
 where
@@ -499,28 +537,40 @@ where
     let mut public_vars: Vec<_> = Vec::new();
     assignment.dump_into(&mut vars, &mut public_vars);
 
-    let file = std::fs::File::open(witness_path).map_err(|e| RunError::Io {
-        source: e,
-        path: witness_path.into(),
-    })?;
-    let reader = std::io::BufReader::new(file);
-    let witness = Witness::<C>::deserialize_from(reader)
-        .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+    if let Some(wp) = witness_path {
+        let file = std::fs::File::open(wp).map_err(|e| RunError::Io {
+            source: e,
+            path: wp.into(),
+        })?;
+        let reader = std::io::BufReader::new(file);
+        let witness = Witness::<C>::deserialize_from(reader)
+            .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
 
-    let (simd_input, simd_public_input) = witness.to_simd();
-    expander_circuit.layers[0]
-        .input_vals
-        .clone_from(&simd_input);
-    expander_circuit.public_input.clone_from(&simd_public_input);
+        let (simd_input, simd_public_input) = witness.to_simd();
+        expander_circuit.layers[0]
+            .input_vals
+            .clone_from(&simd_input);
+        expander_circuit.public_input.clone_from(&simd_public_input);
 
-    for (i, _) in public_vars.iter().enumerate() {
-        let x = format!("{:?}", public_vars[i]);
-        let y = format!("{:?}", expander_circuit.public_input[i]);
-        if x != y {
-            return Err(RunError::Verify(
-                "inputs/outputs don't match the witness".into(),
-            ));
+        for (i, _) in public_vars.iter().enumerate() {
+            let x = format!("{:?}", public_vars[i]);
+            let y = format!("{:?}", expander_circuit.public_input[i]);
+            if x != y {
+                return Err(RunError::Verify(
+                    "inputs/outputs don't match the witness".into(),
+                ));
+            }
         }
+    } else {
+        let pack_size = SIMDField::<C>::PACK_SIZE;
+        let simd_public_input: Vec<SIMDField<C>> = public_vars
+            .iter()
+            .map(|v| {
+                let filled = vec![*v; pack_size];
+                SIMDField::<C>::pack(&filled)
+            })
+            .collect();
+        expander_circuit.public_input = simd_public_input;
     }
 
     let file = std::fs::File::open(proof_path).map_err(|e| RunError::Io {
@@ -736,7 +786,7 @@ where
             &mut io_reader,
             &job.input,
             &job.output,
-            &job.witness,
+            job.witness.as_deref(),
             &job.proof,
         ) {
             Ok(()) => {
@@ -925,15 +975,26 @@ where
         "run_gen_verify" => {
             let input_path = get_arg(matches, "input")?;
             let output_path = get_arg(matches, "output")?;
-            let witness_path = get_arg(matches, "witness")?;
+            let witness_path = matches
+                .get_one::<String>("witness")
+                .map(String::as_str)
+                .map(str::to_owned);
             let proof_path = get_arg(matches, "proof")?;
-            let circuit_path = get_arg(matches, "circuit_path")?;
+            let circuit_path = matches
+                .get_one::<String>("circuit_path")
+                .map(String::as_str)
+                .map(str::to_owned);
+            let vkey_path = matches
+                .get_one::<String>("vkey")
+                .map(String::as_str)
+                .map(str::to_owned);
             run_verify_io::<C, Filereader, CircuitDefaultType>(
-                &circuit_path,
+                circuit_path.as_deref(),
+                vkey_path.as_deref(),
                 file_reader,
                 &input_path,
                 &output_path,
-                &witness_path,
+                witness_path.as_deref(),
                 &proof_path,
             )?;
         }
@@ -1051,6 +1112,13 @@ pub fn get_args() -> clap::ArgMatches {
                 .required(false)
                 .long("manifest")
                 .short('f'),
+        )
+        .arg(
+            Arg::new("vkey")
+                .help("Path to the verification key file")
+                .required(false)
+                .long("vkey")
+                .short('k'),
         )
         .get_matches();
     matches

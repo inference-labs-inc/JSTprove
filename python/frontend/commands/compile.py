@@ -55,4 +55,9 @@ class CompileCommand(BaseCommand):
         except CircuitRunError as e:
             raise RuntimeError(e) from e
 
-        print(f"[compile] done → circuit={args.circuit_path}")  # noqa: T201
+        stem = Path(args.circuit_path).stem
+        parent = Path(args.circuit_path).parent
+        vkey = parent / f"{stem}_vkey.bin"
+        print(  # noqa: T201
+            f"[compile] done → circuit={args.circuit_path}  vkey={vkey}",
+        )

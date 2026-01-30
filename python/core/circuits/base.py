@@ -275,7 +275,7 @@ class Circuit:
                 processed_input_file = self.prepare_inputs_for_verification(exec_config)
 
                 proof_system = exec_config.proof_system
-                if not self.load_and_compare_witness_to_io(
+                if witness_file and not self.load_and_compare_witness_to_io(
                     witness_path=witness_file,
                     input_path=processed_input_file,
                     output_path=output_file,
@@ -294,6 +294,7 @@ class Circuit:
                     dev_mode=exec_config.dev_mode,
                     ecc=exec_config.ecc,
                     bench=exec_config.bench,
+                    vkey_path=exec_config.verification_key,
                 )
             else:
                 self._raise_unknown_run_type(exec_config.run_type)

@@ -916,10 +916,10 @@ def generate_proof(  # noqa: PLR0913
 
 def generate_verification(  # noqa: PLR0913
     circuit_name: str,
-    circuit_path: str,
+    circuit_path: str | None,
     input_file: str,
     output_file: str,
-    witness_file: str,
+    witness_file: str | None,
     proof_file: str,
     metadata_path: str,
     proof_system: ZKProofSystems = ZKProofSystems.Expander,
@@ -927,16 +927,18 @@ def generate_verification(  # noqa: PLR0913
     dev_mode: bool = False,
     ecc: bool = True,
     bench: bool = False,
+    vkey_path: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Verify a given proof.
 
     Args:
         circuit_name (str): Name of the circuit.
-        circuit_path (str): Path to the circuit definition.
+        circuit_path (str | None): Path to the circuit definition.
         input_file (str): Path to the input JSON file with public inputs.
         output_file (str): Path to the output JSON file with expected outputs.
-        witness_file (str): Path to the witness file.
+        witness_file (str | None): Path to the witness file.
         proof_file (str): Path to the output proof file.
+        metadata_path (str): Path to the metadata file.
         proof_system (ZKProofSystems, optional): Proof system to use.
             Defaults to ZKProofSystems.Expander.
         dev_mode (bool, optional):
@@ -947,6 +949,8 @@ def generate_verification(  # noqa: PLR0913
             Defaults to True.
         bench (bool, optional):
             If True, enable benchmarking. Defaults to False.
+        vkey_path (str | None, optional):
+            Path to the verification key file. Defaults to None.
 
     Raises:
         NotImplementedError: If proof system is not supported.
@@ -956,20 +960,21 @@ def generate_verification(  # noqa: PLR0913
     """
     if proof_system == ZKProofSystems.Expander:
         if ecc:
-            # Extract the binary name from the circuit path
             binary_name = Path(circuit_name).name
 
-            # Prepare arguments
             args = {
                 "n": circuit_name,
-                "c": circuit_path,
                 "i": input_file,
                 "o": output_file,
-                "w": witness_file,
                 "p": proof_file,
                 "m": metadata_path,
             }
-            # Run the command
+            if circuit_path:
+                args["c"] = circuit_path
+            if witness_file:
+                args["w"] = witness_file
+            if vkey_path:
+                args["k"] = vkey_path
             try:
                 return run_cargo_command(
                     binary_name=binary_name,

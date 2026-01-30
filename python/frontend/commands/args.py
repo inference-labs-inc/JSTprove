@@ -98,3 +98,10 @@ PROOF_PATH = ArgSpec(
     short="-p",
     help_text="Path to write proof.",
 )
+
+VKEY_PATH = ArgSpec(
+    name="vkey_path",
+    flag="--vkey-path",
+    short="-k",
+    help_text="Path to the verification key file.",
+)
