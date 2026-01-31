@@ -33,6 +33,9 @@ test = [
 [project.scripts]
 jst = "python.frontend.cli:main"
 
+[tool.ruff.lint.per-file-ignores]
+"python/tests/circuit_e2e_tests/*.py" = ["F811"]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["python*"]

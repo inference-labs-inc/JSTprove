@@ -35,6 +35,16 @@ repos:
           '--per-file-ignores=python/tests/**.py:ARG001', # Allows unused function arguments in tests (used for mocked variables)
           '--per-file-ignores=python/core/model_processing/onnx_custom_ops/**.py:PLR0913', # Allows more arguments in onnx_custom_ops, due to necessity of integration BLE001
           '--per-file-ignores=python/**.py:BLE001', # Allows blind exception handling
+          '--per-file-ignores=setup.py:ANN',
+          '--per-file-ignores=setup.py:C901',
+          '--per-file-ignores=setup.py:E501',
+          '--per-file-ignores=setup.py:EM101',
+          '--per-file-ignores=setup.py:PLR0912',
+          '--per-file-ignores=setup.py:PLW2901',
+          '--per-file-ignores=setup.py:S603',
+          '--per-file-ignores=setup.py:S607',
+          '--per-file-ignores=setup.py:T201',
+          '--per-file-ignores=setup.py:TRY003',
 
         ]
 

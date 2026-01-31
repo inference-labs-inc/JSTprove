@@ -25,7 +25,7 @@ __pycache__/
 *.py[cod]
 *.ipynb_checkpoints/
 *.cfg
-lib/
+/lib/
 bin/
 share/
 report
@@ -35,6 +35,8 @@ report
 target/
 !rust/jstprove_circuits/bin
 python/core/binaries/
+python/core/lib/*.so*
+python/core/lib/*.dylib
 
 # Dataset and binary files
 *.json
