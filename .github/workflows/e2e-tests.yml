@@ -120,6 +120,9 @@ jobs:
           git checkout af1b7473bc858d250e481d6bb7db98a1ee6b7fc5
           cd ..
 
+      - name: Build Expander binary
+        run: cargo build --release --manifest-path Expander/Cargo.toml --bin expander-exec
+
       - name: Run E2E Tests
         run: |
           mkdir -p report
