@@ -274,6 +274,8 @@ jobs:
         run: |
           cargo build --release --target aarch64-apple-darwin --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
           cargo build --release --target aarch64-apple-darwin --manifest-path Expander/Cargo.toml --bin expander-exec
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
 
       - name: Collect and bundle MPI libraries
         shell: bash
