@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import functools
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 if TYPE_CHECKING:
@@ -155,8 +155,8 @@ _original_make_model = onnx.helper.make_model
 
 @functools.wraps(_original_make_model)
 def _make_model_clamped(
-    *args,  # noqa: ANN002
-    **kwargs,  # noqa: ANN003
+    *args: Any,  # noqa: ANN401
+    **kwargs: Any,  # noqa: ANN401
 ) -> onnx.ModelProto:
     model = _original_make_model(*args, **kwargs)
     _clamp_for_ort(model)

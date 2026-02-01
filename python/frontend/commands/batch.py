@@ -19,6 +19,8 @@ from python.frontend.commands.base import BaseCommand
 
 logger = logging.getLogger(__name__)
 
+_PLACEHOLDER_MODEL_NAME = "unset"
+
 if TYPE_CHECKING:
     import argparse
     from collections.abc import Callable
@@ -118,7 +120,7 @@ def batch_witness_from_tensors(
     manifest_path: str,
     workers: int = 1,
 ) -> list[dict[str, Any]]:
-    circuit = GenericModelONNX(model_name="cli")
+    circuit = GenericModelONNX(model_name=_PLACEHOLDER_MODEL_NAME)
     circuit_file = Path(circuit_path)
     quantized_path = str(
         circuit_file.parent / f"{circuit_file.stem}_quantized_model.onnx",
