@@ -96,14 +96,14 @@ jobs:
       - name: Build Rust binaries
         run: |
           cargo build --release --target x86_64-unknown-linux-gnu --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
-          cargo build --release --manifest-path Expander/Cargo.toml --bin expander-exec
+          cargo build --release --target x86_64-unknown-linux-gnu --manifest-path Expander/Cargo.toml --bin expander-exec
 
       - name: Collect and bundle MPI libraries
         shell: bash
         run: |
           BINARY_NAME="onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"
           MAIN_BIN="target/x86_64-unknown-linux-gnu/release/${BINARY_NAME}"
-          EXPANDER_BIN="Expander/target/release/expander-exec"
+          EXPANDER_BIN="Expander/target/x86_64-unknown-linux-gnu/release/expander-exec"
           BIN_DIR="python/core/binaries"
           LIB_DIR="python/core/lib"
           MPI_LIB_DIR="/usr/lib64/openmpi/lib"
