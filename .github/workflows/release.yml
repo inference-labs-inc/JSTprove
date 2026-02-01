@@ -349,6 +349,8 @@ jobs:
 
       - name: Build wheel
         run: uv build
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
 
       - name: Retag wheel with platform
         run: |
