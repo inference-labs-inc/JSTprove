@@ -16,8 +16,7 @@ jobs:
     container:
       image: quay.io/pypa/manylinux_2_28_x86_64
     permissions:
-      contents: write
-      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v5
 
@@ -185,6 +184,7 @@ jobs:
         run: |
           WHEEL=$(ls dist/*.whl)
           uv tool install "$WHEEL"
+          export PATH="$HOME/.local/bin:$PATH"
           jst compile -m python/models/models_onnx/lenet.onnx -c ./test_circuit.txt
           if [ ! -f ./test_circuit.txt ]; then
             echo "Error: Circuit file was not created"
@@ -204,8 +204,7 @@ jobs:
       contains(github.event.pull_request.labels.*.name, 'test-build')
     runs-on: macos-latest
     permissions:
-      contents: write
-      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v5
 
@@ -361,6 +360,7 @@ jobs:
         run: |
           WHEEL=$(ls dist/*.whl)
           uv tool install "$WHEEL"
+          export PATH="$HOME/.local/bin:$PATH"
           jst compile -m python/models/models_onnx/lenet.onnx -c ./test_circuit.txt
           if [[ ! -f ./test_circuit.txt ]]; then
             echo "Error: Circuit file was not created"
