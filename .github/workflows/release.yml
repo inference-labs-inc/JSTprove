@@ -120,7 +120,7 @@ jobs:
             cp "$(readlink -f "$lib")" "$LIB_DIR/$soname"
           done
 
-          BASELINE="libc.so libm.so libpthread.so libdl.so librt.so libstdc++ libgcc_s linux-vdso ld-linux libnsl libutil libresolv libcrypt"
+          BASELINE="libc.so libm.so libpthread.so libdl.so librt.so libstdc++ libgcc_s linux-vdso ld-linux libnsl libutil libresolv libcrypt.so"
           while true; do
             FOUND_NEW=0
             for f in "$LIB_DIR"/*.so*; do
