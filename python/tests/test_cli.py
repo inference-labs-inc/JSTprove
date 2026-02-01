@@ -230,6 +230,53 @@ def test_verify_dispatch(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_verify_dispatch_vkey(tmp_path: Path) -> None:
+    vkey = tmp_path / "verify.vkey"
+    vkey.write_bytes(b"\x00")
+
+    inputj = tmp_path / "in.json"
+    inputj.write_text('{"input":[0]}')
+
+    outputj = tmp_path / "out.json"
+    outputj.write_text('{"output":[0]}')
+
+    proof = tmp_path / "p.bin"
+    proof.write_bytes(b"\x00")
+
+    fake_circuit = MagicMock()
+
+    with patch(
+        "python.frontend.commands.verify.VerifyCommand._build_circuit",
+        return_value=fake_circuit,
+    ):
+        rc = main(
+            [
+                "--no-banner",
+                "verify",
+                "-k",
+                str(vkey),
+                "-i",
+                str(inputj),
+                "-o",
+                str(outputj),
+                "-p",
+                str(proof),
+            ],
+        )
+
+    assert rc == 0
+    call_args = fake_circuit.base_testing.call_args
+    config = call_args[0][0]
+    assert config.run_type == RunType.GEN_VERIFY
+    assert config.circuit_path is None
+    assert config.verification_key == str(vkey)
+    assert config.input_file == str(inputj)
+    assert config.output_file == str(outputj)
+    assert config.proof_file == str(proof)
+    assert config.ecc is False
+
+
+@pytest.mark.unit
 def test_verify_dispatch_positional(tmp_path: Path) -> None:
     circuit = tmp_path / "circuit.txt"
     circuit.write_text("ok")
@@ -259,10 +306,15 @@ def test_verify_dispatch_positional(tmp_path: Path) -> None:
             [
                 "--no-banner",
                 "verify",
+                "-c",
                 str(circuit),
+                "-i",
                 str(inputj),
+                "-o",
                 str(outputj),
+                "-w",
                 str(witness),
+                "-p",
                 str(proof),
             ],
         )
@@ -378,6 +430,32 @@ def test_verify_missing_args() -> None:
 
 
 @pytest.mark.unit
+def test_verify_missing_circuit_and_vkey(tmp_path: Path) -> None:
+    inputj = tmp_path / "in.json"
+    inputj.write_text('{"input":[0]}')
+
+    outputj = tmp_path / "out.json"
+    outputj.write_text('{"output":[0]}')
+
+    proof = tmp_path / "p.bin"
+    proof.write_bytes(b"\x00")
+
+    rc = main(
+        [
+            "--no-banner",
+            "verify",
+            "-i",
+            str(inputj),
+            "-o",
+            str(outputj),
+            "-p",
+            str(proof),
+        ],
+    )
+    assert rc == 1
+
+
+@pytest.mark.unit
 def test_model_check_missing_model_path() -> None:
     rc = main(["--no-banner", "model_check"])
     assert rc == 1
@@ -454,6 +532,34 @@ def test_verify_file_not_found(tmp_path: Path) -> None:
             "nonexistent.bin",
             "-p",
             "nonexistent_proof.bin",
+        ],
+    )
+    assert rc == 1
+
+
+@pytest.mark.unit
+def test_verify_vkey_file_not_found(tmp_path: Path) -> None:
+    inputj = tmp_path / "in.json"
+    inputj.write_text('{"input":[0]}')
+
+    outputj = tmp_path / "out.json"
+    outputj.write_text('{"output":[0]}')
+
+    proof = tmp_path / "p.bin"
+    proof.write_bytes(b"\x00")
+
+    rc = main(
+        [
+            "--no-banner",
+            "verify",
+            "-k",
+            "nonexistent.vkey",
+            "-i",
+            str(inputj),
+            "-o",
+            str(outputj),
+            "-p",
+            str(proof),
         ],
     )
     assert rc == 1
@@ -654,7 +760,9 @@ def test_verify_mixed_positional_and_flag(tmp_path: Path) -> None:
             [
                 "--no-banner",
                 "verify",
+                "-c",
                 str(circuit),
+                "-i",
                 str(inputj),
                 "-o",
                 str(outputj),

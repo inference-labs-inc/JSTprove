@@ -694,6 +694,34 @@ def test_generate_verify_expander_with_ecc_dev_mode_true(mock_run: MagicMock) ->
     mock_run.assert_called_once()
 
 
+@pytest.mark.integration
+@patch("python.core.utils.helper_functions.run_cargo_command")
+def test_generate_verify_with_vkey_path(mock_run: MagicMock) -> None:
+    generate_verification(
+        "model",
+        None,
+        "i",
+        "o",
+        None,
+        "p",
+        "metadata.json",
+        ZKProofSystems.Expander,
+        ecc=True,
+        vkey_path="verify.vkey",
+    )
+    mock_run.assert_called_once()
+
+    _, kwargs = mock_run.call_args
+    assert kwargs["args"]["k"] == "verify.vkey"
+    assert "c" not in kwargs["args"]
+    assert "w" not in kwargs["args"]
+    assert kwargs["args"]["n"] == "model"
+    assert kwargs["args"]["i"] == "i"
+    assert kwargs["args"]["o"] == "o"
+    assert kwargs["args"]["p"] == "p"
+    assert kwargs["args"]["m"] == "metadata.json"
+
+
 @pytest.mark.unit
 def test_generate_verify_unknown_raises() -> None:
     with pytest.raises(ProofSystemNotImplementedError):

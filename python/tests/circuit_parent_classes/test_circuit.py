@@ -308,6 +308,7 @@ def test_parse_proof_dispatch_logic(
         "ecc": True,
         "bench": False,
         "metadata_path": "metadata",
+        "vkey_path": "vk",
     }
 
     # END_TO_END
@@ -492,29 +493,6 @@ def test_gen_witness_preprocessing_write_json_false(tmp_path: Path) -> None:
 
 
 # ---------- _compile_preprocessing ----------
-@pytest.mark.unit
-@patch("python.core.circuits.base.to_json")
-def test_compile_preprocessing_saves_all_files(mock_to_json: MagicMock) -> None:
-    c = Circuit()
-    c._file_info = {"quantized_model_path": "model.pth"}
-    c.get_model_and_quantize = MagicMock()
-    c.get_metadata = MagicMock(return_value={"version": "1.0"})
-    c.get_architecture = MagicMock(return_value={"layers": ["conv", "relu"]})
-    c.get_w_and_b = MagicMock(return_value={"weights": [1, 2, 3]})
-    c.save_quantized_model = MagicMock()
-
-    c._compile_preprocessing("metadata.json", "architecture.json", "w_and_b.json", None)
-
-    c.get_model_and_quantize.assert_called_once()
-    c.get_metadata.assert_called_once()
-    c.get_architecture.assert_called_once()
-    c.get_w_and_b.assert_called_once()
-    c.save_quantized_model.assert_called_once_with("model.pth")
-    mock_to_json.assert_any_call({"version": "1.0"}, "metadata.json")
-    mock_to_json.assert_any_call({"layers": ["conv", "relu"]}, "architecture.json")
-    mock_to_json.assert_any_call({"weights": [1, 2, 3]}, "w_and_b.json")
-
-
 @pytest.mark.unit
 @patch("python.core.circuits.base.to_json")
 def test_compile_preprocessing_saves_all_files(mock_to_json: MagicMock) -> None:
