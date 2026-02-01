@@ -4,10 +4,14 @@ on:
   push:
     tags:
       - "v*"
+  pull_request:
   workflow_dispatch:
 
 jobs:
   build-linux:
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'test-build')
     runs-on: ubuntu-latest
     container:
       image: quay.io/pypa/manylinux_2_28_x86_64
@@ -39,11 +43,15 @@ jobs:
       - name: Set up Python
         run: uv python install 3.10
 
-      - name: Extract version from tag
+      - name: Extract version
         id: get_version
         shell: bash
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION=$(grep -m1 '^version' pyproject.toml | sed 's/.*"\(.*\)".*/\1/')
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "version_underscore=$(echo $VERSION | tr '.' '-')" >> $GITHUB_OUTPUT
 
@@ -191,6 +199,9 @@ jobs:
           path: ./dist/*.whl
 
   build-macos:
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'test-build')
     runs-on: macos-latest
     permissions:
       contents: write
@@ -204,11 +215,15 @@ jobs:
       - name: Set up Python
         run: uv python install 3.10
 
-      - name: Extract version from tag
+      - name: Extract version
         id: get_version
         shell: bash
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION=$(grep -m1 '^version' pyproject.toml | sed 's/.*"\(.*\)".*/\1/')
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "version_underscore=$(echo $VERSION | tr '.' '-')" >> $GITHUB_OUTPUT
 
@@ -358,6 +373,7 @@ jobs:
           path: ./dist/*.whl
 
   publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: [build-linux, build-macos]
     runs-on: ubuntu-latest
     permissions:
