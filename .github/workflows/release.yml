@@ -22,7 +22,7 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          dnf install -y openmpi-devel pkgconf-pkg-config perl-IPC-Cmd clang-devel
+          dnf install -y openmpi-devel pkgconf-pkg-config perl-IPC-Cmd perl-Time-Piece clang-devel
 
       - name: Configure MPI environment
         run: |
