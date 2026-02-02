@@ -24,24 +24,29 @@ jobs:
         run: |
           dnf install -y pkgconf-pkg-config perl-IPC-Cmd perl-Time-Piece clang-devel
 
-      - name: Cache static MPICH
-        id: cache-mpich
+      - name: Cache static OpenMPI
+        id: cache-openmpi
         uses: actions/cache@v4
         with:
-          path: /opt/mpich-static
-          key: mpich-4.2.3-static-fpic-manylinux2028
+          path: /opt/openmpi-static
+          key: openmpi-4.1.6-static-fpic-manylinux2028
 
-      - name: Build static MPICH
-        if: steps.cache-mpich.outputs.cache-hit != 'true'
+      - name: Build static OpenMPI
+        if: steps.cache-openmpi.outputs.cache-hit != 'true'
         run: |
-          curl -L https://www.mpich.org/static/downloads/4.2.3/mpich-4.2.3.tar.gz | tar xz
-          cd mpich-4.2.3
-          ./configure --prefix=/opt/mpich-static \
+          curl -L https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.6.tar.gz | tar xz
+          cd openmpi-4.1.6
+          ./configure --prefix=/opt/openmpi-static \
+            --without-memory-manager \
+            --disable-dlopen \
             --enable-static \
             --disable-shared \
-            --disable-fortran \
+            --with-hwloc=internal \
+            --with-libevent=internal \
             --without-cuda \
-            --without-ze \
+            --without-ucx \
+            --without-ofi \
+            --without-verbs \
             CFLAGS="-fPIC" \
             CXXFLAGS="-fPIC"
           make -j$(nproc)
@@ -49,10 +54,10 @@ jobs:
 
       - name: Configure MPI environment
         run: |
-          echo "/opt/mpich-static/bin" >> $GITHUB_PATH
-          echo "LIBRARY_PATH=/opt/mpich-static/lib" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=/opt/mpich-static/lib" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=/opt/mpich-static/lib/pkgconfig" >> $GITHUB_ENV
+          echo "/opt/openmpi-static/bin" >> $GITHUB_PATH
+          echo "LIBRARY_PATH=/opt/openmpi-static/lib" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=/opt/openmpi-static/lib" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/opt/openmpi-static/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Install Rust
         run: |
@@ -133,10 +138,14 @@ jobs:
           cp "$EXPANDER_BIN" "$BIN_DIR/"
           chmod +x "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"
 
-          echo "=== ldd verification (should have no libmpi/libopen-pal/libopen-rte) ==="
+          echo "=== ldd verification ==="
           for bin in "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"; do
             echo "--- $(basename $bin) ---"
             ldd "$bin" 2>&1
+            if ldd "$bin" 2>&1 | grep -qE 'libmpi|libopen-pal|libopen-rte'; then
+              echo "FAIL: $(basename $bin) still dynamically links MPI"
+              exit 1
+            fi
           done
 
       - name: Build wheel
