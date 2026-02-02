@@ -895,7 +895,11 @@ def test_get_files_non_proof_system() -> None:
 
 @pytest.mark.unit
 @patch("python.core.utils.helper_functions.Path")
-def test_resolve_binary_finds_existing(mock_path_class: MagicMock) -> None:
+@patch("python.core.utils.helper_functions.get_version", return_value="0.0.0")
+def test_resolve_binary_finds_existing(
+    _mock_version: MagicMock,
+    mock_path_class: MagicMock,
+) -> None:
     mock_instance = MagicMock()
     mock_instance.exists.return_value = True
     mock_path_class.return_value = mock_instance
@@ -907,7 +911,11 @@ def test_resolve_binary_finds_existing(mock_path_class: MagicMock) -> None:
 
 @pytest.mark.unit
 @patch("python.core.utils.helper_functions.Path")
-def test_resolve_binary_fallback(mock_path_class: MagicMock) -> None:
+@patch("python.core.utils.helper_functions.get_version", return_value="0.0.0")
+def test_resolve_binary_fallback(
+    _mock_version: MagicMock,
+    mock_path_class: MagicMock,
+) -> None:
     mock_instance = MagicMock()
     mock_instance.exists.return_value = False
     mock_path_class.return_value = mock_instance
@@ -929,8 +937,8 @@ def test_resolve_binary_fallback(mock_path_class: MagicMock) -> None:
     return_value=["./target/release/testbin", "run_pipe_witness", "-c", "c.txt"],
 )
 def test_run_cargo_command_piped_success(
-    _mock_build: MagicMock,  # noqa: PT019
-    _mock_resolve: MagicMock,  # noqa: PT019
+    _mock_build: MagicMock,
+    _mock_resolve: MagicMock,
     mock_run: MagicMock,
 ) -> None:
     mock_run.return_value = MagicMock(
@@ -963,8 +971,8 @@ def test_run_cargo_command_piped_success(
     return_value=["./target/release/testbin", "run_pipe_witness"],
 )
 def test_run_cargo_command_piped_failure(
-    _mock_build: MagicMock,  # noqa: PT019
-    _mock_resolve: MagicMock,  # noqa: PT019
+    _mock_build: MagicMock,
+    _mock_resolve: MagicMock,
     mock_run: MagicMock,
 ) -> None:
     mock_run.return_value = MagicMock(
@@ -990,9 +998,9 @@ def test_run_cargo_command_piped_failure(
     return_value=["./missing", "run_pipe_witness"],
 )
 def test_run_cargo_command_piped_os_error(
-    _mock_build: MagicMock,  # noqa: PT019
-    _mock_resolve: MagicMock,  # noqa: PT019
-    _mock_run: MagicMock,  # noqa: PT019
+    _mock_build: MagicMock,
+    _mock_resolve: MagicMock,
+    _mock_run: MagicMock,
 ) -> None:
     with pytest.raises(ProofBackendError, match="Failed to execute"):
         run_cargo_command_piped("missing", "run_pipe_witness", b"{}")
