@@ -88,10 +88,13 @@ def _transform_witness_job(circuit: Circuit, job: dict[str, Any]) -> None:
 
 def _warm_page_cache(*paths: str) -> None:
     for p in paths:
-        with contextlib.suppress(OSError, AttributeError), Path(p).open("rb") as f:
+        with contextlib.suppress(OSError), Path(p).open("rb") as f:
             mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
-            mm.madvise(mmap.MADV_WILLNEED)
-            mm.close()
+            try:
+                if hasattr(mm, "madvise") and hasattr(mmap, "MADV_WILLNEED"):
+                    mm.madvise(mmap.MADV_WILLNEED)
+            finally:
+                mm.close()
 
 
 def _run_witness_chunk(
@@ -120,6 +123,13 @@ def batch_witness_from_tensors(
     manifest_path: str,
     workers: int = 1,
 ) -> list[dict[str, Any]]:
+    if not jobs:
+        msg = "jobs list must not be empty"
+        raise ValueError(msg)
+    if workers <= 0:
+        msg = f"workers must be a positive integer, got {workers}"
+        raise ValueError(msg)
+
     circuit = GenericModelONNX(model_name=_PLACEHOLDER_MODEL_NAME)
     circuit_file = Path(circuit_path)
     quantized_path = str(
