@@ -22,14 +22,40 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          dnf install -y openmpi-devel pkgconf-pkg-config perl-IPC-Cmd perl-Time-Piece clang-devel
+          dnf install -y pkgconf-pkg-config perl-IPC-Cmd perl-Time-Piece clang-devel
+
+      - name: Cache static OpenMPI
+        id: cache-openmpi
+        uses: actions/cache@v4
+        with:
+          path: /opt/openmpi-static
+          key: openmpi-4.1.6-static-manylinux2028
+
+      - name: Build static OpenMPI
+        if: steps.cache-openmpi.outputs.cache-hit != 'true'
+        run: |
+          curl -L https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.6.tar.gz | tar xz
+          cd openmpi-4.1.6
+          ./configure --prefix=/opt/openmpi-static \
+            --without-memory-manager \
+            --disable-dlopen \
+            --enable-static \
+            --disable-shared \
+            --with-hwloc=internal \
+            --with-libevent=internal \
+            --without-cuda \
+            --without-ucx \
+            --without-ofi \
+            --without-verbs
+          make -j$(nproc)
+          make install
 
       - name: Configure MPI environment
         run: |
-          echo "/usr/lib64/openmpi/bin" >> $GITHUB_PATH
-          echo "LIBRARY_PATH=/usr/lib64/openmpi/lib" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=/usr/lib64/openmpi/lib" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=/usr/lib64/openmpi/lib/pkgconfig" >> $GITHUB_ENV
+          echo "/opt/openmpi-static/bin" >> $GITHUB_PATH
+          echo "LIBRARY_PATH=/opt/openmpi-static/lib" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=/opt/openmpi-static/lib" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/opt/openmpi-static/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Install Rust
         run: |
@@ -83,7 +109,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: target
-          key: manylinux-2-28-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          key: manylinux-2-28-cargo-build-static-mpi-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Clone ECC
         run: |
@@ -97,79 +123,23 @@ jobs:
           cargo build --release --target x86_64-unknown-linux-gnu --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
           cargo build --release --target x86_64-unknown-linux-gnu --manifest-path Expander/Cargo.toml --bin expander-exec
 
-      - name: Collect and bundle MPI libraries
+      - name: Collect binaries
         shell: bash
         run: |
           BINARY_NAME="onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"
           MAIN_BIN="target/x86_64-unknown-linux-gnu/release/${BINARY_NAME}"
           EXPANDER_BIN="Expander/target/x86_64-unknown-linux-gnu/release/expander-exec"
           BIN_DIR="python/core/binaries"
-          LIB_DIR="python/core/lib"
-          MPI_LIB_DIR="/usr/lib64/openmpi/lib"
 
-          mkdir -p "$BIN_DIR" "$LIB_DIR"
-          touch "$LIB_DIR/__init__.py"
+          mkdir -p "$BIN_DIR"
           cp "$MAIN_BIN" "$BIN_DIR/"
           cp "$EXPANDER_BIN" "$BIN_DIR/"
           chmod +x "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"
 
-          for lib in "$MPI_LIB_DIR"/libmpi.so* "$MPI_LIB_DIR"/libopen-pal.so* "$MPI_LIB_DIR"/libopen-rte.so*; do
-            [ -f "$lib" ] || continue
-            soname=$(patchelf --print-soname "$(readlink -f "$lib")" 2>/dev/null || basename "$lib")
-            [ -f "$LIB_DIR/$soname" ] && continue
-            cp "$(readlink -f "$lib")" "$LIB_DIR/$soname"
-          done
-
-          BASELINE="libc.so libm.so libpthread.so libdl.so librt.so libstdc++ libgcc_s linux-vdso ld-linux libnsl libutil libresolv libcrypt.so"
-          while true; do
-            FOUND_NEW=0
-            for f in "$LIB_DIR"/*.so*; do
-              [ -f "$f" ] || continue
-              for needed in $(patchelf --print-needed "$f" 2>/dev/null); do
-                skip=0
-                for b in $BASELINE; do
-                  case "$needed" in "$b"*) skip=1; break;; esac
-                done
-                [ "$skip" -eq 1 ] && continue
-                [ -f "$LIB_DIR/$needed" ] && continue
-                src=""
-                for search_dir in "$MPI_LIB_DIR" /usr/lib64 /usr/lib; do
-                  if [ -f "$search_dir/$needed" ]; then
-                    src="$(readlink -f "$search_dir/$needed")"
-                    break
-                  fi
-                done
-                if [ -z "$src" ]; then
-                  found=$(ldconfig -p 2>/dev/null | grep -F "$needed" | head -1 | awk '{print $NF}')
-                  [ -n "$found" ] && [ -f "$found" ] && src="$(readlink -f "$found")"
-                fi
-                if [ -n "$src" ] && [ -f "$src" ]; then
-                  cp "$src" "$LIB_DIR/$needed"
-                  FOUND_NEW=1
-                fi
-              done
-            done
-            [ "$FOUND_NEW" -eq 0 ] && break
-          done
-
-          for f in "$LIB_DIR"/*.so*; do
-            [ -f "$f" ] || continue
-            patchelf --set-rpath '$ORIGIN' "$f"
-          done
+          echo "=== ldd verification (should have no libmpi/libopen-pal/libopen-rte) ==="
           for bin in "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"; do
-            patchelf --set-rpath '$ORIGIN/../lib' "$bin"
-          done
-
-          echo "=== Verification ==="
-          for f in "$LIB_DIR"/*.so* "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"; do
-            [ -f "$f" ] || continue
-            rpath=$(patchelf --print-rpath "$f" 2>/dev/null)
-            needed=$(patchelf --print-needed "$f" 2>/dev/null | tr '\n' ' ')
-            echo "$f  rpath=$rpath  needed=$needed"
-            if echo "$rpath" | grep -qE '^/'; then
-              echo "FAIL: absolute rpath in $f"
-              exit 1
-            fi
+            echo "--- $(basename $bin) ---"
+            ldd "$bin" 2>&1
           done
 
       - name: Build wheel
