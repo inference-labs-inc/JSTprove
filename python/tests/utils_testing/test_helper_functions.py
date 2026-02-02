@@ -929,8 +929,8 @@ def test_resolve_binary_fallback(mock_path_class: MagicMock) -> None:
     return_value=["./target/release/testbin", "run_pipe_witness", "-c", "c.txt"],
 )
 def test_run_cargo_command_piped_success(
-    mock_build: MagicMock,
-    mock_resolve: MagicMock,
+    _mock_build: MagicMock,  # noqa: PT019
+    _mock_resolve: MagicMock,  # noqa: PT019
     mock_run: MagicMock,
 ) -> None:
     mock_run.return_value = MagicMock(
@@ -963,8 +963,8 @@ def test_run_cargo_command_piped_success(
     return_value=["./target/release/testbin", "run_pipe_witness"],
 )
 def test_run_cargo_command_piped_failure(
-    mock_build: MagicMock,
-    mock_resolve: MagicMock,
+    _mock_build: MagicMock,  # noqa: PT019
+    _mock_resolve: MagicMock,  # noqa: PT019
     mock_run: MagicMock,
 ) -> None:
     mock_run.return_value = MagicMock(
@@ -990,9 +990,9 @@ def test_run_cargo_command_piped_failure(
     return_value=["./missing", "run_pipe_witness"],
 )
 def test_run_cargo_command_piped_os_error(
-    mock_build: MagicMock,
-    mock_resolve: MagicMock,
-    mock_run: MagicMock,
+    _mock_build: MagicMock,  # noqa: PT019
+    _mock_resolve: MagicMock,  # noqa: PT019
+    _mock_run: MagicMock,  # noqa: PT019
 ) -> None:
     with pytest.raises(ProofBackendError, match="Failed to execute"):
         run_cargo_command_piped("missing", "run_pipe_witness", b"{}")
