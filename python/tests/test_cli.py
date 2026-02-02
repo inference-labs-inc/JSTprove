@@ -1,4 +1,5 @@
 # python/testing/core/tests/test_cli.py
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -10,6 +11,14 @@ from python.core.model_processing.onnx_quantizer.exceptions import (
 )
 from python.core.utils.helper_functions import RunType
 from python.frontend.cli import main
+from python.frontend.commands.batch import (
+    _run_prove_chunk_piped,
+    _run_verify_chunk_piped,
+    _run_witness_chunk_piped,
+    batch_prove_piped,
+    batch_verify_from_tensors,
+    batch_witness_from_tensors,
+)
 
 # -----------------------
 # unit tests: dispatch only
@@ -1202,3 +1211,336 @@ def test_batch_missing_manifest(tmp_path: Path) -> None:
     )
 
     assert rc == 1
+
+
+@pytest.mark.unit
+@patch("python.frontend.commands.batch.run_cargo_command_piped")
+def test_run_witness_chunk_piped_builds_payload(
+    mock_piped: MagicMock,
+) -> None:
+    mock_piped.return_value = MagicMock(
+        stdout=b'{"succeeded":1,"failed":0,"errors":[]}',
+    )
+    jobs = [
+        {
+            "_circuit_inputs": {"input": [1, 2]},
+            "_circuit_outputs": {"output": [3]},
+            "witness": "/data/w.bin",
+        },
+    ]
+    result = _run_witness_chunk_piped("circ", "/c.txt", "/m.json", jobs)
+
+    assert result["succeeded"] == 1
+    assert result["failed"] == 0
+    mock_piped.assert_called_once()
+    call_kwargs = mock_piped.call_args[1]
+    assert call_kwargs["command_type"] == "run_pipe_witness"
+    payload = json.loads(call_kwargs["payload"])
+    assert len(payload["jobs"]) == 1
+    assert payload["jobs"][0]["witness"] == "/data/w.bin"
+
+
+@pytest.mark.unit
+@patch("python.frontend.commands.batch.run_cargo_command_piped")
+def test_run_prove_chunk_piped_builds_payload(
+    mock_piped: MagicMock,
+) -> None:
+    expected_job_count = 2
+    mock_piped.return_value = MagicMock(
+        stdout=b'{"succeeded":2,"failed":0,"errors":[]}',
+    )
+    jobs = [
+        {"witness": "/data/w1.bin", "proof": "/data/p1.bin"},
+        {"witness": "/data/w2.bin", "proof": "/data/p2.bin"},
+    ]
+    result = _run_prove_chunk_piped("circ", "/c.txt", "/m.json", jobs)
+
+    assert result["succeeded"] == expected_job_count
+    mock_piped.assert_called_once()
+    payload = json.loads(mock_piped.call_args[1]["payload"])
+    assert len(payload["jobs"]) == expected_job_count
+    assert payload["jobs"][0]["witness"] == "/data/w1.bin"
+    assert payload["jobs"][1]["proof"] == "/data/p2.bin"
+
+
+@pytest.mark.unit
+@patch("python.frontend.commands.batch.run_cargo_command_piped")
+def test_run_verify_chunk_piped_builds_payload(
+    mock_piped: MagicMock,
+) -> None:
+    mock_piped.return_value = MagicMock(
+        stdout=b'{"succeeded":1,"failed":0,"errors":[]}',
+    )
+    jobs = [
+        {
+            "_circuit_inputs": {"input": [1]},
+            "_circuit_outputs": {"output": [2]},
+            "witness": "/data/w.bin",
+            "proof": "/data/p.bin",
+        },
+    ]
+    result = _run_verify_chunk_piped("circ", "/c.txt", "/m.json", jobs)
+
+    assert result["succeeded"] == 1
+    payload = json.loads(mock_piped.call_args[1]["payload"])
+    assert payload["jobs"][0]["proof"] == "/data/p.bin"
+
+
+@pytest.mark.unit
+@patch("python.frontend.commands.batch._run_witness_chunk_piped")
+def test_batch_witness_from_tensors_single_chunk(
+    mock_chunk: MagicMock,
+) -> None:
+    expected_job_count = 2
+    mock_chunk.return_value = {
+        "succeeded": expected_job_count,
+        "failed": 0,
+        "errors": [],
+    }
+
+    circuit = MagicMock()
+    circuit.scale_inputs_only.return_value = {"scaled": True}
+    circuit.reshape_inputs_for_inference.return_value = {"inf": True}
+    circuit.reshape_inputs_for_circuit.return_value = {"circ": True}
+    circuit.get_outputs.return_value = [0.5]
+    circuit.format_outputs.return_value = {"output": [0.5]}
+
+    jobs = [
+        {"input": {"raw": 1}, "witness": "/w1.bin"},
+        {"input": {"raw": 2}, "witness": "/w2.bin"},
+    ]
+    result = batch_witness_from_tensors(
+        circuit,
+        jobs,
+        "/models/test_circuit.txt",
+    )
+
+    assert result["succeeded"] == expected_job_count
+    assert result["failed"] == 0
+    mock_chunk.assert_called_once()
+    chunk_jobs = mock_chunk.call_args[1]["chunk_jobs"]
+    assert len(chunk_jobs) == expected_job_count
+    assert chunk_jobs[0]["_circuit_inputs"] == {"circ": True}
+    assert chunk_jobs[1]["_circuit_outputs"] == {"output": [0.5]}
+
+
+@pytest.mark.unit
+@patch("python.frontend.commands.batch._run_witness_chunk_piped")
+def test_batch_witness_from_tensors_chunked(
+    mock_chunk: MagicMock,
+) -> None:
+    expected_total = 2
+    mock_chunk.side_effect = [
+        {"succeeded": 1, "failed": 0, "errors": []},
+        {"succeeded": 1, "failed": 0, "errors": []},
+    ]
+
+    circuit = MagicMock()
+    circuit.scale_inputs_only.return_value = {}
+    circuit.reshape_inputs_for_inference.return_value = {}
+    circuit.reshape_inputs_for_circuit.return_value = {}
+    circuit.get_outputs.return_value = []
+    circuit.format_outputs.return_value = {}
+
+    jobs = [
+        {"input": {}, "witness": "/w1.bin"},
+        {"input": {}, "witness": "/w2.bin"},
+    ]
+    result = batch_witness_from_tensors(
+        circuit,
+        jobs,
+        "/models/test_circuit.txt",
+        chunk_size=1,
+    )
+
+    assert result["succeeded"] == expected_total
+    assert mock_chunk.call_count == expected_total
+
+
+@pytest.mark.unit
+@patch("python.frontend.commands.batch._run_witness_chunk_piped")
+def test_batch_witness_from_tensors_reads_file_inputs(
+    mock_chunk: MagicMock,
+) -> None:
+    mock_chunk.return_value = {
+        "succeeded": 1,
+        "failed": 0,
+        "errors": [],
+    }
+
+    circuit = MagicMock()
+    circuit.scale_inputs_only.return_value = {}
+    circuit.reshape_inputs_for_inference.return_value = {}
+    circuit.reshape_inputs_for_circuit.return_value = {}
+    circuit.get_outputs.return_value = []
+    circuit.format_outputs.return_value = {}
+
+    jobs = [{"input": "/path/to/input.json", "witness": "/w.bin"}]
+    with patch(
+        "python.frontend.commands.batch.read_from_json",
+        return_value={"data": 1},
+    ) as mock_read:
+        batch_witness_from_tensors(
+            circuit,
+            jobs,
+            "/models/test_circuit.txt",
+        )
+    mock_read.assert_called_once_with("/path/to/input.json")
+
+
+@pytest.mark.unit
+@patch("python.frontend.commands.batch._run_prove_chunk_piped")
+def test_batch_prove_piped_single_chunk(
+    mock_chunk: MagicMock,
+) -> None:
+    expected_count = 3
+    mock_chunk.return_value = {
+        "succeeded": expected_count,
+        "failed": 0,
+        "errors": [],
+    }
+
+    jobs = [
+        {"witness": f"/w{i}.bin", "proof": f"/p{i}.bin"} for i in range(expected_count)
+    ]
+    result = batch_prove_piped(
+        "circ",
+        jobs,
+        "/models/circ_circuit.txt",
+    )
+
+    assert result["succeeded"] == expected_count
+    mock_chunk.assert_called_once()
+
+
+@pytest.mark.unit
+@patch("python.frontend.commands.batch._run_prove_chunk_piped")
+def test_batch_prove_piped_chunked(
+    mock_chunk: MagicMock,
+) -> None:
+    expected_total = 3
+    expected_chunks = 2
+    mock_chunk.side_effect = [
+        {"succeeded": 2, "failed": 0, "errors": []},
+        {"succeeded": 1, "failed": 0, "errors": []},
+    ]
+
+    jobs = [
+        {"witness": f"/w{i}.bin", "proof": f"/p{i}.bin"} for i in range(expected_total)
+    ]
+    result = batch_prove_piped(
+        "circ",
+        jobs,
+        "/models/circ_circuit.txt",
+        chunk_size=2,
+    )
+
+    assert result["succeeded"] == expected_total
+    assert mock_chunk.call_count == expected_chunks
+
+
+@pytest.mark.unit
+@patch("python.frontend.commands.batch._run_verify_chunk_piped")
+def test_batch_verify_from_tensors_single_chunk(
+    mock_chunk: MagicMock,
+) -> None:
+    mock_chunk.return_value = {
+        "succeeded": 1,
+        "failed": 0,
+        "errors": [],
+    }
+
+    circuit = MagicMock()
+    circuit.reshape_inputs_for_circuit.return_value = {"circ": True}
+
+    jobs = [
+        {
+            "input": {"raw": 1},
+            "output": {"out": 2},
+            "witness": "/w.bin",
+            "proof": "/p.bin",
+        },
+    ]
+    result = batch_verify_from_tensors(
+        circuit,
+        jobs,
+        "/models/test_circuit.txt",
+    )
+
+    assert result["succeeded"] == 1
+    mock_chunk.assert_called_once()
+    chunk_jobs = mock_chunk.call_args[1]["chunk_jobs"]
+    assert chunk_jobs[0]["_circuit_inputs"] == {"circ": True}
+    assert chunk_jobs[0]["_circuit_outputs"] == {"out": 2}
+
+
+@pytest.mark.unit
+@patch("python.frontend.commands.batch._run_verify_chunk_piped")
+def test_batch_verify_from_tensors_reads_files(
+    mock_chunk: MagicMock,
+) -> None:
+    expected_read_count = 2
+    mock_chunk.return_value = {
+        "succeeded": 1,
+        "failed": 0,
+        "errors": [],
+    }
+
+    circuit = MagicMock()
+    circuit.reshape_inputs_for_circuit.return_value = {}
+
+    jobs = [
+        {
+            "input": "/in.json",
+            "output": "/out.json",
+            "witness": "/w.bin",
+            "proof": "/p.bin",
+        },
+    ]
+    with patch(
+        "python.frontend.commands.batch.read_from_json",
+        side_effect=[{"i": 1}, {"o": 2}],
+    ) as mock_read:
+        batch_verify_from_tensors(
+            circuit,
+            jobs,
+            "/models/test_circuit.txt",
+        )
+    assert mock_read.call_count == expected_read_count
+
+
+@pytest.mark.unit
+@patch("python.frontend.commands.batch._run_witness_chunk_piped")
+def test_batch_witness_aggregates_errors(
+    mock_chunk: MagicMock,
+) -> None:
+    mock_chunk.side_effect = [
+        {
+            "succeeded": 0,
+            "failed": 1,
+            "errors": [[0, "bad input"]],
+        },
+        {"succeeded": 1, "failed": 0, "errors": []},
+    ]
+
+    circuit = MagicMock()
+    circuit.scale_inputs_only.return_value = {}
+    circuit.reshape_inputs_for_inference.return_value = {}
+    circuit.reshape_inputs_for_circuit.return_value = {}
+    circuit.get_outputs.return_value = []
+    circuit.format_outputs.return_value = {}
+
+    jobs = [
+        {"input": {}, "witness": "/w1.bin"},
+        {"input": {}, "witness": "/w2.bin"},
+    ]
+    result = batch_witness_from_tensors(
+        circuit,
+        jobs,
+        "/models/test_circuit.txt",
+        chunk_size=1,
+    )
+
+    assert result["succeeded"] == 1
+    assert result["failed"] == 1
+    assert len(result["errors"]) == 1

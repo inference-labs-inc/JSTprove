@@ -407,31 +407,7 @@ def run_cargo_command(
     Returns:
         subprocess.CompletedProcess[str]: Exit message from the subprocess.
     """
-    try:
-        version = get_version(PACKAGE_NAME)
-        binary_name = binary_name + f"_{version}".replace(".", "-")
-    except Exception:
-        try:
-            pyproject = tomllib.loads(Path("pyproject.toml").read_text())
-            version = pyproject["project"]["version"]
-            binary_name = binary_name + f"_{version}".replace(".", "-")
-        except (FileNotFoundError, KeyError, tomllib.TOMLDecodeError):
-            pass
-
-    binary_path = None
-    possible_paths = [
-        f"./target/release/{binary_name}",
-        Path(__file__).parent.parent / "binaries" / binary_name,
-        Path(sys.prefix) / "bin" / binary_name,
-    ]
-
-    for path in possible_paths:
-        if Path(path).exists():
-            binary_path = str(path)
-            break
-
-    if not binary_path:
-        binary_path = f"./target/release/{binary_name}"
+    binary_path, binary_name = _resolve_binary(binary_name)
     cmd = _build_command(
         binary_path=binary_path,
         command_type=command_type,
@@ -464,6 +440,74 @@ def run_cargo_command(
         rust_error = extract_rust_error(e.stderr)
         msg = f"Rust backend error '{rust_error}'"
         raise ProofBackendError(msg, cmd) from e
+    else:
+        return result
+
+
+def _resolve_binary(binary_name: str) -> tuple[str, str]:
+    try:
+        version = get_version(PACKAGE_NAME)
+        binary_name = binary_name + f"_{version}".replace(".", "-")
+    except Exception:
+        try:
+            pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+            version = pyproject["project"]["version"]
+            binary_name = binary_name + f"_{version}".replace(".", "-")
+        except (FileNotFoundError, KeyError, tomllib.TOMLDecodeError):
+            pass
+
+    possible_paths = [
+        f"./target/release/{binary_name}",
+        Path(__file__).parent.parent / "binaries" / binary_name,
+        Path(sys.prefix) / "bin" / binary_name,
+    ]
+
+    for path in possible_paths:
+        if Path(path).exists():
+            return str(path), binary_name
+
+    return f"./target/release/{binary_name}", binary_name
+
+
+def run_cargo_command_piped(
+    binary_name: str,
+    command_type: str,
+    payload: bytes,
+    args: dict[str, str] | None = None,
+    *,
+    dev_mode: bool = False,
+) -> subprocess.CompletedProcess[bytes]:
+    binary_path, binary_name = _resolve_binary(binary_name)
+    cmd = _build_command(
+        binary_path=binary_path,
+        command_type=command_type,
+        args=args,
+        dev_mode=dev_mode,
+        binary_name=binary_name,
+    )
+    env = os.environ.copy()
+    env["RUST_BACKTRACE"] = "1"
+
+    msg = f"Running piped cargo command: {' '.join(cmd)}"
+    logger.info(msg)
+
+    try:
+        result = subprocess.run(  # noqa: S603
+            cmd,
+            input=payload,
+            capture_output=True,
+            env=env,
+            check=False,
+        )
+        if result.returncode != 0:
+            stderr_text = result.stderr.decode("utf-8", errors="replace")
+            rust_error = extract_rust_error(stderr_text)
+            msg = f"Piped cargo command failed (code {result.returncode}): {rust_error}"
+            raise ProofBackendError(msg, cmd)
+    except OSError as e:
+        msg = f"Failed to execute piped proof backend command '{cmd}': {e}"
+        logger.exception(msg)
+        raise ProofBackendError(msg) from e
     else:
         return result
 

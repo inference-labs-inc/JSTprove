@@ -12,6 +12,7 @@ from python.core.utils.helper_functions import (
     ExpanderMode,
     RunType,
     ZKProofSystems,
+    _resolve_binary,
     compile_circuit,
     compute_and_store_output,
     generate_proof,
@@ -22,6 +23,7 @@ from python.core.utils.helper_functions import (
     prepare_io_files,
     read_from_json,
     run_cargo_command,
+    run_cargo_command_piped,
     run_end_to_end,
     to_json,
 )
@@ -889,3 +891,108 @@ def test_get_files_non_proof_system() -> None:
         match=f"Proof system {fake_proof_system} not implemented",
     ):
         get_files("model", fake_proof_system, folders)
+
+
+@pytest.mark.unit
+@patch("python.core.utils.helper_functions.Path")
+def test_resolve_binary_finds_existing(mock_path_class: MagicMock) -> None:
+    mock_instance = MagicMock()
+    mock_instance.exists.return_value = True
+    mock_path_class.return_value = mock_instance
+    mock_path_class.__truediv__ = MagicMock()
+
+    _, result_name = _resolve_binary("testbin")
+    assert "testbin" in result_name
+
+
+@pytest.mark.unit
+@patch("python.core.utils.helper_functions.Path")
+def test_resolve_binary_fallback(mock_path_class: MagicMock) -> None:
+    mock_instance = MagicMock()
+    mock_instance.exists.return_value = False
+    mock_path_class.return_value = mock_instance
+    mock_path_class.__truediv__ = MagicMock()
+
+    result_path, result_name = _resolve_binary("missingbin")
+    assert "target/release" in result_path
+    assert "missingbin" in result_name
+
+
+@pytest.mark.unit
+@patch("python.core.utils.helper_functions.subprocess.run")
+@patch(
+    "python.core.utils.helper_functions._resolve_binary",
+    return_value=("./target/release/testbin", "testbin"),
+)
+@patch(
+    "python.core.utils.helper_functions._build_command",
+    return_value=["./target/release/testbin", "run_pipe_witness", "-c", "c.txt"],
+)
+def test_run_cargo_command_piped_success(
+    mock_build: MagicMock,
+    mock_resolve: MagicMock,
+    mock_run: MagicMock,
+) -> None:
+    mock_run.return_value = MagicMock(
+        returncode=0,
+        stdout=b'{"succeeded":2,"failed":0,"errors":[]}',
+        stderr=b"",
+    )
+    payload = b'{"jobs": []}'
+    result = run_cargo_command_piped(
+        "testbin",
+        "run_pipe_witness",
+        payload,
+        args={"c": "c.txt"},
+    )
+    mock_run.assert_called_once()
+    call_kwargs = mock_run.call_args[1]
+    assert call_kwargs["input"] == payload
+    assert call_kwargs["capture_output"] is True
+    assert result.returncode == 0
+
+
+@pytest.mark.unit
+@patch("python.core.utils.helper_functions.subprocess.run")
+@patch(
+    "python.core.utils.helper_functions._resolve_binary",
+    return_value=("./target/release/testbin", "testbin"),
+)
+@patch(
+    "python.core.utils.helper_functions._build_command",
+    return_value=["./target/release/testbin", "run_pipe_witness"],
+)
+def test_run_cargo_command_piped_failure(
+    mock_build: MagicMock,
+    mock_resolve: MagicMock,
+    mock_run: MagicMock,
+) -> None:
+    mock_run.return_value = MagicMock(
+        returncode=1,
+        stdout=b"",
+        stderr=b"Error: something went wrong",
+    )
+    with pytest.raises(ProofBackendError, match="Piped cargo command failed"):
+        run_cargo_command_piped("testbin", "run_pipe_witness", b"{}")
+
+
+@pytest.mark.unit
+@patch(
+    "python.core.utils.helper_functions.subprocess.run",
+    side_effect=OSError("spawn failed"),
+)
+@patch(
+    "python.core.utils.helper_functions._resolve_binary",
+    return_value=("./missing", "missing"),
+)
+@patch(
+    "python.core.utils.helper_functions._build_command",
+    return_value=["./missing", "run_pipe_witness"],
+)
+def test_run_cargo_command_piped_os_error(
+    mock_build: MagicMock,
+    mock_resolve: MagicMock,
+    mock_run: MagicMock,
+) -> None:
+    with pytest.raises(ProofBackendError, match="Failed to execute"):
+        run_cargo_command_piped("missing", "run_pipe_witness", b"{}")

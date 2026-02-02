@@ -159,69 +159,92 @@ impl ConfigurableCircuit for Circuit<Variable> {
     }
 }
 
+fn apply_input_data<C: Config>(
+    data: &InputData,
+    mut assignment: Circuit<CircuitField<C>>,
+) -> Result<Circuit<CircuitField<C>>, RunError> {
+    let params = OnnxContext::get_params()?;
+
+    let input_dims: &[usize] = &[params
+        .inputs
+        .iter()
+        .map(|obj| obj.shape.iter().product::<usize>())
+        .sum()];
+
+    assignment.dummy[0] = CircuitField::<C>::from(1);
+    assignment.dummy[1] = CircuitField::<C>::from(1);
+
+    assignment.scale_base[0] = CircuitField::<C>::from(params.scale_base);
+    assignment.scale_exponent[0] = CircuitField::<C>::from(params.scale_exponent);
+
+    let arr: ArrayD<CircuitField<C>> = get_nd_circuit_inputs::<C>(&data.input, input_dims)
+        .map_err(|e| RunError::Json(format!("Invalid input shape: {e}")))?;
+
+    let flat: Vec<CircuitField<C>> = arr
+        .into_dimensionality::<Ix1>()
+        .map_err(|_| RunError::Json("Expected a 1-D input array".into()))?
+        .to_vec();
+
+    assignment.input_arr = flat;
+    Ok(assignment)
+}
+
+fn apply_output_data<C: Config>(
+    data: &OutputData,
+    mut assignment: Circuit<CircuitField<C>>,
+) -> Result<Circuit<CircuitField<C>>, RunError> {
+    let params = OnnxContext::get_params()?;
+    let output_dims: &[usize] = &[params
+        .outputs
+        .iter()
+        .map(|obj| obj.shape.iter().product::<usize>())
+        .sum()];
+
+    let arr: ArrayD<CircuitField<C>> = get_nd_circuit_inputs::<C>(&data.output, output_dims)
+        .map_err(|e| RunError::Json(format!("Invalid output shape: {e}")))?;
+
+    let flat: Vec<CircuitField<C>> = arr
+        .into_dimensionality::<Ix1>()
+        .map_err(|_| RunError::Json("Expected a 1-D output array".into()))?
+        .to_vec();
+
+    assignment.outputs = flat;
+    Ok(assignment)
+}
+
 impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
         file_path: &str,
-        mut assignment: Circuit<CircuitField<C>>,
+        assignment: Circuit<CircuitField<C>>,
     ) -> Result<Circuit<CircuitField<C>>, RunError> {
         let data: InputData =
             <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<InputData>(file_path)?;
-
-        let params = OnnxContext::get_params()?;
-
-        // compute the total number of inputs
-        let input_dims: &[usize] = &[params
-            .inputs
-            .iter()
-            .map(|obj| obj.shape.iter().product::<usize>())
-            .sum()];
-
-        assignment.dummy[0] = CircuitField::<C>::from(1);
-        assignment.dummy[1] = CircuitField::<C>::from(1);
-
-        assignment.scale_base[0] = CircuitField::<C>::from(params.scale_base);
-        assignment.scale_exponent[0] = CircuitField::<C>::from(params.scale_exponent);
-
-        // 1) get back an ArrayD<CircuitField<C>>
-        let arr: ArrayD<CircuitField<C>> = get_nd_circuit_inputs::<C>(&data.input, input_dims)
-            .map_err(|e| RunError::Json(format!("Invalid input shape: {e}")))?;
-
-        // 2) downcast to Ix1 and collect into a Vec
-        let flat: Vec<CircuitField<C>> = arr
-            .into_dimensionality::<Ix1>()
-            .map_err(|_| RunError::Json("Expected a 1-D input array".into()))?
-            .to_vec();
-
-        assignment.input_arr = flat;
-        Ok(assignment)
+        apply_input_data::<C>(&data, assignment)
     }
 
     fn read_outputs(
         &mut self,
         file_path: &str,
-        mut assignment: Circuit<CircuitField<C>>,
+        assignment: Circuit<CircuitField<C>>,
     ) -> Result<Circuit<CircuitField<C>>, RunError> {
         let data: OutputData =
             <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<OutputData>(file_path)?;
+        apply_output_data::<C>(&data, assignment)
+    }
 
-        let params = OnnxContext::get_params()?;
-        let output_dims: &[usize] = &[params
-            .outputs
-            .iter()
-            .map(|obj| obj.shape.iter().product::<usize>())
-            .sum()];
-
-        let arr: ArrayD<CircuitField<C>> = get_nd_circuit_inputs::<C>(&data.output, output_dims)
-            .map_err(|e| RunError::Json(format!("Invalid output shape: {e}")))?;
-
-        let flat: Vec<CircuitField<C>> = arr
-            .into_dimensionality::<Ix1>()
-            .map_err(|_| RunError::Json("Expected a 1-D output array".into()))?
-            .to_vec();
-
-        assignment.outputs = flat;
-        Ok(assignment)
+    fn apply_values(
+        &mut self,
+        input: serde_json::Value,
+        output: serde_json::Value,
+        assignment: Circuit<CircuitField<C>>,
+    ) -> Result<Circuit<CircuitField<C>>, RunError> {
+        let input_data: InputData =
+            serde_json::from_value(input).map_err(|e| RunError::Json(format!("{e:?}")))?;
+        let output_data: OutputData =
+            serde_json::from_value(output).map_err(|e| RunError::Json(format!("{e:?}")))?;
+        let assignment = apply_input_data::<C>(&input_data, assignment)?;
+        apply_output_data::<C>(&output_data, assignment)
     }
 
     fn get_path(&self) -> &str {

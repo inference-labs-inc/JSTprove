@@ -3,6 +3,7 @@ use expander_compiler::frontend::Config;
 use expander_compiler::frontend::internal::DumpLoadTwoVariables;
 use gkr_engine::{FieldEngine, GKREngine};
 use serde::de::DeserializeOwned;
+use serde_json::Value;
 use std::io::Read;
 
 /// Implement `io_reader` to read inputs and outputs of the circuit.
@@ -112,6 +113,22 @@ where
         file_path: &str,
         assignment: CircuitType,
     ) -> Result<CircuitType, RunError>;
+    /// Applies inline JSON input/output values to a circuit assignment.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`RunError`] if deserialization or assignment fails.
+    fn apply_values(
+        &mut self,
+        _input: Value,
+        _output: Value,
+        _assignment: CircuitType,
+    ) -> Result<CircuitType, RunError> {
+        Err(RunError::Json(
+            "apply_values not implemented for this IOReader".into(),
+        ))
+    }
+
     fn get_path(&self) -> &str;
 }
 /// To implement `IOReader` in each binary to read in inputs and outputs of the circuit as is needed on an individual circuit basis
