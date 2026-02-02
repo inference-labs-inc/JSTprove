@@ -88,7 +88,7 @@ def _transform_witness_job(circuit: Circuit, job: dict[str, Any]) -> None:
 
 def _warm_page_cache(*paths: str) -> None:
     for p in paths:
-        with contextlib.suppress(OSError), Path(p).open("rb") as f:
+        with contextlib.suppress(OSError, AttributeError), Path(p).open("rb") as f:
             mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
             mm.madvise(mmap.MADV_WILLNEED)
             mm.close()
