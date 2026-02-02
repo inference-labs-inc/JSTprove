@@ -100,7 +100,9 @@ uv tool install JSTprove
 jst --help
 ```
 
-> Note: The package includes all necessary binaries and MPI libraries — no system dependencies required.
+> **Prerequisite**: OpenMPI must be installed on the host:
+> - **Ubuntu/Debian**: `sudo apt-get install -y openmpi-bin openmpi-common`
+> - **Fedora/RHEL**: `sudo dnf install openmpi`
 
 ### Installing from GitHub Release
 
@@ -122,7 +124,7 @@ uv tool install /path/to/JSTprove-*.whl
 
 ### 0) Requirements
 
-- **Python**: 3.10–3.12 (⚠️ Not compatible with Python 3.13)
+- **Python**: >=3.12
 - **UV**: Fast Python package manager ([install UV](https://docs.astral.sh/uv/getting-started/installation/))
 
 > Note: UV will automatically install and manage the correct Python version for you.

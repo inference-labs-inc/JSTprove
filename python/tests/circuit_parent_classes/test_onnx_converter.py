@@ -50,10 +50,16 @@ def converter() -> ONNXConverter:
 
 
 @pytest.mark.unit
+@patch("python.core.model_processing.converters.onnx_converter._clamp_for_ort")
 @patch("python.core.model_processing.converters.onnx_converter.onnx.save")
-def test_save_model(mock_save: MagicMock, converter: ONNXConverter) -> None:
+def test_save_model(
+    mock_save: MagicMock,
+    mock_clamp: MagicMock,
+    converter: ONNXConverter,
+) -> None:
     path = "model.onnx"
     converter.save_model(path)
+    mock_clamp.assert_called_once_with(converter.model)
     mock_save.assert_called_once_with(converter.model, path)
 
 
@@ -71,10 +77,16 @@ def test_load_model(mock_load: MagicMock, converter: ONNXConverter) -> None:
 
 
 @pytest.mark.unit
+@patch("python.core.model_processing.converters.onnx_converter._clamp_for_ort")
 @patch("python.core.model_processing.converters.onnx_converter.onnx.save")
-def test_save_quantized_model(mock_save: MagicMock, converter: ONNXConverter) -> None:
+def test_save_quantized_model(
+    mock_save: MagicMock,
+    mock_clamp: MagicMock,
+    converter: ONNXConverter,
+) -> None:
     path = "quantized_model.onnx"
     converter.save_quantized_model(path)
+    mock_clamp.assert_called_once_with(converter.quantized_model)
     mock_save.assert_called_once_with(converter.quantized_model, path)
 
 
