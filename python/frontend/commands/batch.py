@@ -129,7 +129,7 @@ def batch_witness_from_tensors(
 
     outputs = []
     for job in jobs:
-        _validate_job_keys(job, "output")
+        _validate_job_keys(job, "output", "_tensor_inputs")
         inputs = job.pop("_tensor_inputs")
         scaled = circuit.scale_inputs_only(inputs)
 

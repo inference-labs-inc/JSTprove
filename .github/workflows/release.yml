@@ -22,7 +22,7 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          dnf install -y openmpi-devel pkgconf-pkg-config perl-IPC-Cmd perl-Time-Piece clang-devel
+          dnf install -y openmpi-devel pkgconf-pkg-config perl-IPC-Cmd perl-Time-Piece clang-devel patchelf
 
       - name: Configure MPI environment
         run: |
@@ -85,7 +85,7 @@ jobs:
           path: target
           key: manylinux-2-28-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Clone ECC
+      - name: Clone Expander
         run: |
           git clone https://github.com/PolyhedraZK/Expander.git
           cd Expander
@@ -263,7 +263,7 @@ jobs:
           path: target
           key: macos-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Clone ECC
+      - name: Clone Expander
         run: |
           git clone https://github.com/PolyhedraZK/Expander.git
           cd Expander

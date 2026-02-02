@@ -71,16 +71,15 @@ def _clamp_for_ort(model: onnx.ModelProto) -> None:
             model.ir_version,
             _MAX_ORT_IR_VERSION,
         )
-    model.ir_version = _MAX_ORT_IR_VERSION
+        model.ir_version = _MAX_ORT_IR_VERSION
     for opset in model.opset_import:
-        if opset.domain in ("", "ai.onnx"):
-            if opset.version > _MAX_ORT_OPSET_VERSION:
-                _logger.warning(
-                    "Clamping opset '%s' version %d -> %d for ORT compatibility",
-                    opset.domain or "ai.onnx",
-                    opset.version,
-                    _MAX_ORT_OPSET_VERSION,
-                )
+        if opset.domain in ("", "ai.onnx") and opset.version > _MAX_ORT_OPSET_VERSION:
+            _logger.warning(
+                "Clamping opset '%s' version %d -> %d for ORT compatibility",
+                opset.domain or "ai.onnx",
+                opset.version,
+                _MAX_ORT_OPSET_VERSION,
+            )
             opset.version = _MAX_ORT_OPSET_VERSION
 
 
