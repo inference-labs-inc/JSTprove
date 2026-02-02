@@ -100,7 +100,9 @@ uv tool install JSTprove
 jst --help
 ```
 
-> Note: The package includes all necessary binaries and MPI libraries — no system dependencies required.
+> **Prerequisite**: OpenMPI must be installed on the host:
+> - **Ubuntu/Debian**: `sudo apt-get install -y openmpi-bin openmpi-common`
+> - **Fedora/RHEL**: `sudo dnf install openmpi`
 
 ### Installing from GitHub Release
 
