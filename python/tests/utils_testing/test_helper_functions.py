@@ -1028,7 +1028,7 @@ def test_get_lib_dir_returns_path_when_libs_present(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 @patch("python.core.utils.helper_functions._get_lib_dir", return_value=None)
-def test_prepare_subprocess_env_noop_without_libs(mock_lib_dir: MagicMock) -> None:
+def test_prepare_subprocess_env_noop_without_libs(_mock_lib_dir: MagicMock) -> None:
     env = {"PATH": "/usr/bin"}
     result = _prepare_subprocess_env(env)
     assert result is env
