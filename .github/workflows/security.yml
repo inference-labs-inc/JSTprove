@@ -55,7 +55,7 @@ jobs:
         run: uv pip install --system pip-audit bandit
 
       - name: Export locked dependencies
-        run: uv export --format requirements.txt --output-file requirements.lock.txt
+        run: uv export --format requirements.txt --no-emit-project --output-file requirements.lock.txt
 
       - name: Run pip-audit
         run: pip-audit --requirement requirements.lock.txt
