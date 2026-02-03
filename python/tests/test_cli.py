@@ -1220,7 +1220,6 @@ def test_batch_missing_manifest(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.unit
 @patch("python.frontend.commands.batch.run_cargo_command_piped")
 def test_run_witness_chunk_piped_builds_payload(
     mock_piped: MagicMock,
@@ -1668,7 +1667,7 @@ def test_transform_verify_job_missing_keys() -> None:
     return_value={"jobs": [{"input": "/a.json", "output": "/b.json"}]},
 )
 def test_preprocess_manifest(
-    mock_read: MagicMock,
+    _mock_read: MagicMock,
     mock_to_json: MagicMock,
     tmp_path: Path,
 ) -> None:
