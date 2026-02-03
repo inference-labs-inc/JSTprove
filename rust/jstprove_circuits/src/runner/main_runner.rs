@@ -1250,25 +1250,22 @@ where
         "run_pipe_witness" => {
             let circuit_path = get_arg(matches, "circuit_path")?;
             let reader_template = file_reader.clone();
-            let result = run_pipe_witness::<C, _, CircuitDefaultType>(
+            run_pipe_witness::<C, _, CircuitDefaultType>(
                 move || reader_template.clone(),
                 &circuit_path,
             )?;
-            check_batch_result("pipe_witness", &result)?;
         }
         "run_pipe_prove" => {
             let circuit_path = get_arg(matches, "circuit_path")?;
-            let result = run_pipe_prove::<C, CircuitDefaultType>(&circuit_path)?;
-            check_batch_result("pipe_prove", &result)?;
+            run_pipe_prove::<C, CircuitDefaultType>(&circuit_path)?;
         }
         "run_pipe_verify" => {
             let circuit_path = get_arg(matches, "circuit_path")?;
             let reader_template = file_reader.clone();
-            let result = run_pipe_verify::<C, _, CircuitDefaultType>(
+            run_pipe_verify::<C, _, CircuitDefaultType>(
                 move || reader_template.clone(),
                 &circuit_path,
             )?;
-            check_batch_result("pipe_verify", &result)?;
         }
         _ => return Err(CliError::UnknownCommand(command.to_string())),
     }

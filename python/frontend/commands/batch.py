@@ -23,6 +23,16 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _parse_piped_result(stdout: bytes) -> dict[str, Any]:
+    lines = stdout.strip().split(b"\n")
+    for line in reversed(lines):
+        stripped = line.strip()
+        if stripped.startswith(b"{"):
+            return json.loads(stripped)
+    msg = f"No JSON object found in piped stdout: {stdout[:200]}"
+    raise ValueError(msg)
+
+
 def _preprocess_manifest(
     circuit: Circuit,
     manifest_path: str,
@@ -94,7 +104,7 @@ def _transform_verify_job(circuit: Circuit, job: dict[str, Any]) -> None:
 
 
 def _run_witness_chunk_piped(
-    circuit_name: str,
+    binary_name: str,
     circuit_path: str,
     metadata_path: str,
     chunk_jobs: list[dict[str, Any]],
@@ -112,13 +122,13 @@ def _run_witness_chunk_piped(
     payload = json.dumps(payload_obj).encode()
 
     result = run_cargo_command_piped(
-        binary_name=Path(circuit_name).name,
+        binary_name=binary_name,
         command_type="run_pipe_witness",
         payload=payload,
         args={"c": circuit_path, "m": metadata_path},
     )
 
-    return json.loads(result.stdout)
+    return _parse_piped_result(result.stdout)
 
 
 def batch_witness_from_tensors(
@@ -128,9 +138,10 @@ def batch_witness_from_tensors(
     chunk_size: int = 0,
 ) -> dict[str, Any]:
     circuit_file = Path(circuit_path)
-    circuit_name = circuit_file.stem
-    metadata_path = str(circuit_file.parent / f"{circuit_name}_metadata.json")
-    quantized_path = str(circuit_file.parent / f"{circuit_name}_quantized_model.onnx")
+    file_stem = circuit_file.stem
+    binary_name = circuit.name
+    metadata_path = str(circuit_file.parent / f"{file_stem}_metadata.json")
+    quantized_path = str(circuit_file.parent / f"{file_stem}_quantized_model.onnx")
     circuit.load_quantized_model(quantized_path)
 
     piped_jobs: list[dict[str, Any]] = []
@@ -164,7 +175,7 @@ def batch_witness_from_tensors(
 
     for chunk in chunks:
         result = _run_witness_chunk_piped(
-            circuit_name=circuit_name,
+            binary_name=binary_name,
             circuit_path=circuit_path,
             metadata_path=metadata_path,
             chunk_jobs=chunk,
@@ -181,7 +192,7 @@ def batch_witness_from_tensors(
 
 
 def _run_prove_chunk_piped(
-    circuit_name: str,
+    binary_name: str,
     circuit_path: str,
     metadata_path: str,
     chunk_jobs: list[dict[str, Any]],
@@ -194,17 +205,17 @@ def _run_prove_chunk_piped(
     payload = json.dumps(payload_obj).encode()
 
     result = run_cargo_command_piped(
-        binary_name=Path(circuit_name).name,
+        binary_name=binary_name,
         command_type="run_pipe_prove",
         payload=payload,
         args={"c": circuit_path, "m": metadata_path},
     )
 
-    return json.loads(result.stdout)
+    return _parse_piped_result(result.stdout)
 
 
 def batch_prove_piped(
-    circuit_name: str,
+    binary_name: str,
     jobs: list[dict[str, Any]],
     circuit_path: str,
     chunk_size: int = 0,
@@ -223,7 +234,7 @@ def batch_prove_piped(
 
     for chunk in chunks:
         result = _run_prove_chunk_piped(
-            circuit_name=circuit_name,
+            binary_name=binary_name,
             circuit_path=circuit_path,
             metadata_path=metadata_path,
             chunk_jobs=chunk,
@@ -240,7 +251,7 @@ def batch_prove_piped(
 
 
 def _run_verify_chunk_piped(
-    circuit_name: str,
+    binary_name: str,
     circuit_path: str,
     metadata_path: str,
     chunk_jobs: list[dict[str, Any]],
@@ -259,13 +270,13 @@ def _run_verify_chunk_piped(
     payload = json.dumps(payload_obj).encode()
 
     result = run_cargo_command_piped(
-        binary_name=Path(circuit_name).name,
+        binary_name=binary_name,
         command_type="run_pipe_verify",
         payload=payload,
         args={"c": circuit_path, "m": metadata_path},
     )
 
-    return json.loads(result.stdout)
+    return _parse_piped_result(result.stdout)
 
 
 def batch_verify_from_tensors(
@@ -275,9 +286,10 @@ def batch_verify_from_tensors(
     chunk_size: int = 0,
 ) -> dict[str, Any]:
     circuit_file = Path(circuit_path)
-    circuit_name = circuit_file.stem
-    metadata_path = str(circuit_file.parent / f"{circuit_name}_metadata.json")
-    quantized_path = str(circuit_file.parent / f"{circuit_name}_quantized_model.onnx")
+    file_stem = circuit_file.stem
+    binary_name = circuit.name
+    metadata_path = str(circuit_file.parent / f"{file_stem}_metadata.json")
+    quantized_path = str(circuit_file.parent / f"{file_stem}_quantized_model.onnx")
     circuit.load_quantized_model(quantized_path)
 
     piped_jobs: list[dict[str, Any]] = []
@@ -310,7 +322,7 @@ def batch_verify_from_tensors(
 
     for chunk in chunks:
         result = _run_verify_chunk_piped(
-            circuit_name=circuit_name,
+            binary_name=binary_name,
             circuit_path=circuit_path,
             metadata_path=metadata_path,
             chunk_jobs=chunk,
