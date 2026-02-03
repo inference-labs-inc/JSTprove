@@ -7,18 +7,22 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  EXPANDER_COMMIT: af1b7473bc858d250e481d6bb7db98a1ee6b7fc5
+
 jobs:
   build-linux:
     if: >-
       github.event_name != 'pull_request' ||
       contains(github.event.pull_request.labels.*.name, 'test-build')
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     container:
       image: quay.io/pypa/manylinux_2_28_x86_64
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Install system dependencies
         run: |
@@ -37,10 +41,10 @@ jobs:
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
 
       - name: Set up Python
-        run: uv python install 3.10
+        run: uv python install 3.12
 
       - name: Extract version
         id: get_version
@@ -68,19 +72,19 @@ jobs:
         run: rustup target add x86_64-unknown-linux-gnu
 
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cargo/registry
           key: manylinux-2-28-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo index
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cargo/git
           key: manylinux-2-28-cargo-git-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: target
           key: manylinux-2-28-cargo-build-${{ hashFiles('**/Cargo.lock') }}
@@ -89,7 +93,7 @@ jobs:
         run: |
           git clone https://github.com/PolyhedraZK/Expander.git
           cd Expander
-          git checkout af1b7473bc858d250e481d6bb7db98a1ee6b7fc5
+          git checkout ${{ env.EXPANDER_COMMIT }}
           cd ..
 
       - name: Build Rust binaries
@@ -193,7 +197,7 @@ jobs:
           echo "Wheel test passed"
 
       - name: Upload wheel artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheel-ubuntu-x86_64
           path: ./dist/*.whl
@@ -203,16 +207,17 @@ jobs:
       github.event_name != 'pull_request' ||
       contains(github.event.pull_request.labels.*.name, 'test-build')
     runs-on: macos-latest
+    timeout-minutes: 60
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
 
       - name: Set up Python
-        run: uv python install 3.10
+        run: uv python install 3.12
 
       - name: Extract version
         id: get_version
@@ -246,19 +251,19 @@ jobs:
         run: rustup target add aarch64-apple-darwin
 
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cargo/registry
           key: macos-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo index
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cargo/git
           key: macos-cargo-git-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: target
           key: macos-cargo-build-${{ hashFiles('**/Cargo.lock') }}
@@ -267,7 +272,7 @@ jobs:
         run: |
           git clone https://github.com/PolyhedraZK/Expander.git
           cd Expander
-          git checkout af1b7473bc858d250e481d6bb7db98a1ee6b7fc5
+          git checkout ${{ env.EXPANDER_COMMIT }}
           cd ..
 
       - name: Build Rust binaries
@@ -371,7 +376,7 @@ jobs:
           echo "Wheel test passed"
 
       - name: Upload wheel artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheel-macos-aarch64
           path: ./dist/*.whl
@@ -380,12 +385,13 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: [build-linux, build-macos]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
       id-token: write
     steps:
       - name: Download all wheels
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: wheel-*
           merge-multiple: true
@@ -405,7 +411,7 @@ jobs:
           files: ./dist/*.whl
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
 
       - name: Publish to PyPI
         run: uv publish ./dist/*
