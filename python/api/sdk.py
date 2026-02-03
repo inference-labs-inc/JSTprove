@@ -53,13 +53,6 @@ SUPPORTED_OPS = {
 
 
 @dataclass
-class CompileResult:
-    circuit_path: str
-    metadata_path: str
-    quantized_model_path: str
-
-
-@dataclass
 class WitnessResult:
     witness_path: str
     output: dict[str, Any]
@@ -282,7 +275,7 @@ class Circuit:
 
         for job, formatted in zip(jobs, per_job_formatted, strict=False):
             output = job.get("output")
-            if output is not None:
+            if output is not None and Path(job["witness"]).exists():
                 to_json(formatted, output)
 
         return BatchResult(
@@ -322,6 +315,10 @@ class Circuit:
         chunk_size: int = 0,
     ) -> BatchResult:
         for job in jobs:
+            witness = Path(job["witness"])
+            if not witness.exists():
+                msg = f"Witness file not found: {witness}"
+                raise FileNotFoundError(msg)
             Path(job["proof"]).parent.mkdir(parents=True, exist_ok=True)
 
         if chunk_size <= 0:
@@ -378,26 +375,23 @@ class Circuit:
             input_data = json.load(f)
         circuit_inputs = circuit.reshape_inputs_for_circuit(input_data)
 
-        veri_input = str(
-            input_path.parent / f"{input_path.stem}_veri.json",
-        )
-        veri_output = str(
-            output_path.parent / f"{output_path.stem}_veri.json",
-        )
-        to_json(circuit_inputs, veri_input)
-        to_json(scaled_output, veri_output)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            veri_input = str(Path(tmpdir) / "input_veri.json")
+            veri_output = str(Path(tmpdir) / "output_veri.json")
+            to_json(circuit_inputs, veri_input)
+            to_json(scaled_output, veri_output)
 
-        generate_verification(
-            RUST_BINARY_NAME,
-            str(self._circuit_path),
-            veri_input,
-            veri_output,
-            str(witness_path),
-            str(proof_path),
-            self._paths["metadata"],
-            dev_mode=False,
-            ecc=True,
-        )
+            generate_verification(
+                RUST_BINARY_NAME,
+                str(self._circuit_path),
+                veri_input,
+                veri_output,
+                str(witness_path),
+                str(proof_path),
+                self._paths["metadata"],
+                dev_mode=False,
+                ecc=True,
+            )
 
         return True
 

@@ -1,3 +1,3 @@
-from python.api.sdk import BatchResult, Circuit, CompileResult, WitnessResult
+from python.api.sdk import BatchResult, Circuit, WitnessResult
 
-__all__ = ["BatchResult", "Circuit", "CompileResult", "WitnessResult"]
+__all__ = ["BatchResult", "Circuit", "WitnessResult"]
