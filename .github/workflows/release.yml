@@ -7,18 +7,22 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  EXPANDER_COMMIT: af1b7473bc858d250e481d6bb7db98a1ee6b7fc5
+
 jobs:
   build-linux:
     if: >-
       github.event_name != 'pull_request' ||
       contains(github.event.pull_request.labels.*.name, 'test-build')
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     container:
       image: quay.io/pypa/manylinux_2_28_x86_64
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Install system dependencies
         run: |
@@ -40,7 +44,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Set up Python
-        run: uv python install 3.10
+        run: uv python install 3.12
 
       - name: Extract version
         id: get_version
@@ -89,7 +93,7 @@ jobs:
         run: |
           git clone https://github.com/PolyhedraZK/Expander.git
           cd Expander
-          git checkout af1b7473bc858d250e481d6bb7db98a1ee6b7fc5
+          git checkout ${{ env.EXPANDER_COMMIT }}
           cd ..
 
       - name: Build Rust binaries
@@ -203,16 +207,17 @@ jobs:
       github.event_name != 'pull_request' ||
       contains(github.event.pull_request.labels.*.name, 'test-build')
     runs-on: macos-latest
+    timeout-minutes: 60
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
 
       - name: Set up Python
-        run: uv python install 3.10
+        run: uv python install 3.12
 
       - name: Extract version
         id: get_version
@@ -267,7 +272,7 @@ jobs:
         run: |
           git clone https://github.com/PolyhedraZK/Expander.git
           cd Expander
-          git checkout af1b7473bc858d250e481d6bb7db98a1ee6b7fc5
+          git checkout ${{ env.EXPANDER_COMMIT }}
           cd ..
 
       - name: Build Rust binaries
@@ -380,6 +385,7 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: [build-linux, build-macos]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
       id-token: write

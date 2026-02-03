@@ -3,30 +3,45 @@ name: End-to-End Tests
 on:
   push:
     branches: [ "main" ]
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
   pull_request:
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPANDER_COMMIT: af1b7473bc858d250e481d6bb7db98a1ee6b7fc5
 
 jobs:
   formatting-and-linting:
     name: Check Formatting and Linting
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Required for file change detection
+          fetch-depth: 0
 
-      # Setup Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      # Setup Rust
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@nightly
         with:
           toolchain: nightly-2025-03-27
           components: rustfmt, clippy
-          override: true
 
       - name: Install OMPI
         run: |
@@ -37,14 +52,11 @@ jobs:
             clang \
             openmpi-bin
 
-      # Install UV
       - name: Install UV
         uses: astral-sh/setup-uv@v5
 
-      # Run formatters and linters
       - name: Install the project
         run: uv sync --group test
-
 
       - name: Get changed files
         id: changed-files
@@ -57,10 +69,11 @@ jobs:
       - name: Run pre-commit on changed files
         if: steps.changed-files.outputs.any_changed == 'true'
         uses: pre-commit/action@v3.0.1
+        env:
+          SKIP: fmt,clippy
         with:
           extra_args: --files ${{ steps.changed-files.outputs.all_changed_files}}
 
-      # Additional Rust checks (easier to just run on all)
       - name: Run cargo fmt check
         run: cargo fmt --all -- --check
 
@@ -69,7 +82,9 @@ jobs:
 
   e2e-test:
     name: End-to-End Testing
+    needs: formatting-and-linting
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       matrix:
         python-version: ["3.12", "3.13"]
@@ -84,10 +99,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@nightly
         with:
           toolchain: nightly-2025-03-27
-          override: true
 
       - name: Cache Rust dependencies
         uses: actions/cache@v4
@@ -117,7 +131,7 @@ jobs:
         run: |
           git clone https://github.com/PolyhedraZK/Expander.git
           cd Expander
-          git checkout af1b7473bc858d250e481d6bb7db98a1ee6b7fc5
+          git checkout ${{ env.EXPANDER_COMMIT }}
           cd ..
 
       - name: Build Expander binary
@@ -133,31 +147,3 @@ jobs:
         with:
           name: e2e-test-report-python-${{ matrix.python-version }}
           path: report
-
-  python-setup:
-    name: Python Setup Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify Python setup
-        run: |
-          if [ ! -f pyproject.toml ]; then
-            echo "pyproject.toml is missing"
-            exit 1
-          fi
-          if [ ! -f uv.lock ]; then
-            echo "uv.lock is missing"
-            exit 1
-          fi
-
-  rust-setup:
-    name: Rust Setup Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify Rust setup
-        run: |
-          if [ ! -f Cargo.toml ]; then
-            echo "Cargo.toml is missing"
-            exit 1
-          fi

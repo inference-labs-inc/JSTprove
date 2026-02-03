@@ -2,16 +2,16 @@ name: Security Audit
 
 on:
   schedule:
-    - cron: "0 0 * * *" # Run daily at midnight
+    - cron: "0 0 * * *"
   push:
-    branches: ["main", "rustfmt"]
+    branches: ["main"]
     paths:
       - "**/Cargo.toml"
       - "**/Cargo.lock"
       - "pyproject.toml"
       - "uv.lock"
   pull_request:
-    branches: ["main", "rustfmt"]
+    branches: ["main"]
     paths:
       - "**/Cargo.toml"
       - "**/Cargo.lock"
@@ -22,20 +22,22 @@ jobs:
   rust-audit:
     name: Rust Security Audit
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7 # stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install and run cargo-audit
         run: |
-          cargo +stable install cargo-audit --version 0.22.0 --locked
-          cargo +stable audit
+          cargo install cargo-audit --locked
+          cargo audit
 
   python-audit:
     name: Python Security Audit
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -48,27 +50,25 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Install security tools
-        run: |
-          uv pip install --system safety bandit
+        run: uv pip install --system pip-audit bandit
 
-      - name: Run safety check
-        run: safety check
+      - name: Run pip-audit
+        run: pip-audit --requirement <(uv pip compile pyproject.toml)
 
       - name: Run bandit
         id: bandit
         run: |
-          set +e  # Don't exit on error
+          set +e
 
           bandit -r ./python --severity-level high -f json -o bandit-report.json
           BANDIT_EXIT_CODE=$?
           echo "exit_code=$BANDIT_EXIT_CODE" >> $GITHUB_OUTPUT
 
-          # Also output to console for visibility
           echo "::group::Bandit Security Report"
           bandit -r ./python --severity-level high -f txt
           echo "::endgroup::"
 
-          exit 0  # Continue to upload artifact
+          exit 0
 
       - name: Upload security report
         uses: actions/upload-artifact@v4
@@ -80,4 +80,4 @@ jobs:
         if: steps.bandit.outputs.exit_code != '0'
         run: |
           echo "Bandit found security issues. Please review the report."
-          exit ${{ steps.bandit.outputs.exit_code }}
+          exit 1
