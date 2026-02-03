@@ -35,34 +35,8 @@ from python.core.utils.errors import (
 F = TypeVar("F", bound=Callable[..., Any])
 logger = logging.getLogger(__name__)
 
-_LIB_DIR = Path(__file__).resolve().parent.parent / "lib"
-
-
-def _get_lib_dir() -> Path | None:
-    if _LIB_DIR.is_dir() and any(_LIB_DIR.glob("libmpi*")):
-        return _LIB_DIR
-    return None
-
-
-def _find_opal_prefix() -> str | None:
-    for prefix in ("/usr", "/usr/local", "/usr/lib64/openmpi"):
-        if Path(f"{prefix}/share/openmpi").is_dir():
-            return prefix
-    return None
-
 
 def _prepare_subprocess_env(env: dict[str, str]) -> dict[str, str]:
-    lib_dir = _get_lib_dir()
-    if lib_dir is not None:
-        lib_path = str(lib_dir)
-        key = "DYLD_LIBRARY_PATH" if sys.platform == "darwin" else "LD_LIBRARY_PATH"
-        existing = env.get(key, "")
-        if lib_path not in existing:
-            env[key] = f"{lib_path}:{existing}" if existing else lib_path
-    if sys.platform == "linux" and "OPAL_PREFIX" not in env:
-        opal_prefix = _find_opal_prefix()
-        if opal_prefix:
-            env["OPAL_PREFIX"] = opal_prefix
     env.setdefault("OMPI_MCA_mca_base_component_show_load_errors", "0")
     env.setdefault("PRTE_MCA_prte_silence_shared_fs", "1")
     return env

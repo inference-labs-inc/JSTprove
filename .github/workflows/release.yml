@@ -26,7 +26,7 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          dnf install -y openmpi-devel pkgconf-pkg-config perl-IPC-Cmd perl-Time-Piece clang-devel patchelf
+          dnf install -y openmpi-devel pkgconf-pkg-config perl-IPC-Cmd perl-Time-Piece clang-devel
 
       - name: Configure MPI environment
         run: |
@@ -101,80 +101,18 @@ jobs:
           cargo build --release --target x86_64-unknown-linux-gnu --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
           cargo build --release --target x86_64-unknown-linux-gnu --manifest-path Expander/Cargo.toml --bin expander-exec
 
-      - name: Collect and bundle MPI libraries
+      - name: Collect binaries
         shell: bash
         run: |
           BINARY_NAME="onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"
           MAIN_BIN="target/x86_64-unknown-linux-gnu/release/${BINARY_NAME}"
           EXPANDER_BIN="Expander/target/x86_64-unknown-linux-gnu/release/expander-exec"
           BIN_DIR="python/core/binaries"
-          LIB_DIR="python/core/lib"
-          MPI_LIB_DIR="/usr/lib64/openmpi/lib"
 
-          mkdir -p "$BIN_DIR" "$LIB_DIR"
-          touch "$LIB_DIR/__init__.py"
+          mkdir -p "$BIN_DIR"
           cp "$MAIN_BIN" "$BIN_DIR/"
           cp "$EXPANDER_BIN" "$BIN_DIR/"
           chmod +x "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"
-
-          for lib in "$MPI_LIB_DIR"/libmpi.so* "$MPI_LIB_DIR"/libopen-pal.so* "$MPI_LIB_DIR"/libopen-rte.so*; do
-            [ -f "$lib" ] || continue
-            soname=$(patchelf --print-soname "$(readlink -f "$lib")" 2>/dev/null || basename "$lib")
-            [ -f "$LIB_DIR/$soname" ] && continue
-            cp "$(readlink -f "$lib")" "$LIB_DIR/$soname"
-          done
-
-          BASELINE="libc.so libm.so libpthread.so libdl.so librt.so libstdc++ libgcc_s linux-vdso ld-linux libnsl libutil libresolv libcrypt.so"
-          while true; do
-            FOUND_NEW=0
-            for f in "$LIB_DIR"/*.so*; do
-              [ -f "$f" ] || continue
-              for needed in $(patchelf --print-needed "$f" 2>/dev/null); do
-                skip=0
-                for b in $BASELINE; do
-                  case "$needed" in "$b"*) skip=1; break;; esac
-                done
-                [ "$skip" -eq 1 ] && continue
-                [ -f "$LIB_DIR/$needed" ] && continue
-                src=""
-                for search_dir in "$MPI_LIB_DIR" /usr/lib64 /usr/lib; do
-                  if [ -f "$search_dir/$needed" ]; then
-                    src="$(readlink -f "$search_dir/$needed")"
-                    break
-                  fi
-                done
-                if [ -z "$src" ]; then
-                  found=$(ldconfig -p 2>/dev/null | grep -F "$needed" | head -1 | awk '{print $NF}')
-                  [ -n "$found" ] && [ -f "$found" ] && src="$(readlink -f "$found")"
-                fi
-                if [ -n "$src" ] && [ -f "$src" ]; then
-                  cp "$src" "$LIB_DIR/$needed"
-                  FOUND_NEW=1
-                fi
-              done
-            done
-            [ "$FOUND_NEW" -eq 0 ] && break
-          done
-
-          for f in "$LIB_DIR"/*.so*; do
-            [ -f "$f" ] || continue
-            patchelf --set-rpath '$ORIGIN' "$f"
-          done
-          for bin in "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"; do
-            patchelf --set-rpath '$ORIGIN/../lib' "$bin"
-          done
-
-          echo "=== Verification ==="
-          for f in "$LIB_DIR"/*.so* "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"; do
-            [ -f "$f" ] || continue
-            rpath=$(patchelf --print-rpath "$f" 2>/dev/null)
-            needed=$(patchelf --print-needed "$f" 2>/dev/null | tr '\n' ' ')
-            echo "$f  rpath=$rpath  needed=$needed"
-            if echo "$rpath" | grep -qE '^/'; then
-              echo "FAIL: absolute rpath in $f"
-              exit 1
-            fi
-          done
 
       - name: Build wheel
         run: uv build
@@ -282,76 +220,18 @@ jobs:
         env:
           MACOSX_DEPLOYMENT_TARGET: "11.0"
 
-      - name: Collect and bundle MPI libraries
+      - name: Collect binaries
         shell: bash
         run: |
           BINARY_NAME="onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"
           MAIN_BIN="target/aarch64-apple-darwin/release/${BINARY_NAME}"
           EXPANDER_BIN="Expander/target/aarch64-apple-darwin/release/expander-exec"
           BIN_DIR="python/core/binaries"
-          LIB_DIR="python/core/lib"
 
-          mkdir -p "$BIN_DIR" "$LIB_DIR"
-          touch "$LIB_DIR/__init__.py"
+          mkdir -p "$BIN_DIR"
           cp "$MAIN_BIN" "$BIN_DIR/"
           cp "$EXPANDER_BIN" "$BIN_DIR/"
           chmod +x "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"
-
-          MPI_PREFIX=$(brew --prefix open-mpi)
-          MPI_DYLIB=$(ls "$MPI_PREFIX/lib"/libmpi.*.dylib 2>/dev/null | head -1)
-          if [ -z "$MPI_DYLIB" ]; then
-            echo "FAIL: no libmpi.*.dylib found in $MPI_PREFIX/lib"
-            exit 1
-          fi
-          cp "$MPI_DYLIB" "$LIB_DIR/"
-
-          while true; do
-            FOUND_NEW=0
-            for lib in "$LIB_DIR"/*.dylib; do
-              [ -f "$lib" ] || continue
-              for dep in $(otool -L "$lib" | tail -n +2 | awk '{print $1}'); do
-                case "$dep" in /usr/lib/*|/System/*|@*) continue;; esac
-                dep_name=$(basename "$dep")
-                [ -f "$LIB_DIR/$dep_name" ] && continue
-                [ ! -f "$dep" ] && continue
-                cp "$dep" "$LIB_DIR/$dep_name"
-                FOUND_NEW=1
-              done
-            done
-            [ "$FOUND_NEW" -eq 0 ] && break
-          done
-
-          for lib in "$LIB_DIR"/*.dylib; do
-            [ -f "$lib" ] || continue
-            install_name_tool -id "@loader_path/$(basename "$lib")" "$lib"
-            for dep in $(otool -L "$lib" | tail -n +2 | awk '{print $1}'); do
-              case "$dep" in @*|/usr/lib/*|/System/*) continue;; esac
-              dep_name=$(basename "$dep")
-              [ -f "$LIB_DIR/$dep_name" ] && install_name_tool -change "$dep" "@loader_path/$dep_name" "$lib"
-            done
-            codesign --force --sign - "$lib"
-          done
-
-          for bin in "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"; do
-            for dep in $(otool -L "$bin" | tail -n +2 | awk '{print $1}'); do
-              case "$dep" in @*|/usr/lib/*|/System/*) continue;; esac
-              dep_name=$(basename "$dep")
-              [ -f "$LIB_DIR/$dep_name" ] && install_name_tool -change "$dep" "@rpath/$dep_name" "$bin"
-            done
-            install_name_tool -add_rpath "@loader_path/../lib" "$bin" 2>/dev/null || true
-            codesign --force --sign - "$bin"
-          done
-
-          echo "=== Verification ==="
-          for f in "$LIB_DIR"/*.dylib "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"; do
-            [ -f "$f" ] || continue
-            echo "--- $f ---"
-            otool -L "$f"
-          done
-          if otool -L "$LIB_DIR"/*.dylib "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec" 2>/dev/null | grep -E '/opt/homebrew|/usr/local/Cellar'; then
-            echo "FAIL: absolute homebrew paths found"
-            exit 1
-          fi
 
       - name: Build wheel
         run: uv build

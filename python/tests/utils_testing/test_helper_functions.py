@@ -2,12 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
-from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, mock_open, patch
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 import pytest
 
@@ -17,7 +12,6 @@ from python.core.utils.helper_functions import (
     ExpanderMode,
     RunType,
     ZKProofSystems,
-    _get_lib_dir,
     _prepare_subprocess_env,
     _resolve_binary,
     compile_circuit,
@@ -1011,67 +1005,11 @@ def test_run_cargo_command_piped_os_error(
 
 
 @pytest.mark.unit
-def test_get_lib_dir_returns_none_without_libs(tmp_path: Path) -> None:
-    with patch("python.core.utils.helper_functions._LIB_DIR", tmp_path):
-        assert _get_lib_dir() is None
-
-
-@pytest.mark.unit
-def test_get_lib_dir_returns_path_when_libs_present(tmp_path: Path) -> None:
-    lib_dir = tmp_path / "lib"
-    lib_dir.mkdir()
-    (lib_dir / "libmpi.so.40").touch()
-    with patch("python.core.utils.helper_functions._LIB_DIR", lib_dir):
-        result = _get_lib_dir()
-        assert result == lib_dir
-
-
-@pytest.mark.unit
-@patch("python.core.utils.helper_functions._get_lib_dir", return_value=None)
-def test_prepare_subprocess_env_noop_without_libs(_mock_lib_dir: MagicMock) -> None:
+def test_prepare_subprocess_env_sets_mca_defaults() -> None:
     env = {"PATH": "/usr/bin"}
     result = _prepare_subprocess_env(env)
     assert result is env
-    assert "LD_LIBRARY_PATH" not in result
-    assert "DYLD_LIBRARY_PATH" not in result
-
-
-@pytest.mark.unit
-@patch("python.core.utils.helper_functions._get_lib_dir")
-def test_prepare_subprocess_env_sets_lib_path(
-    mock_lib_dir: MagicMock,
-    tmp_path: Path,
-) -> None:
-    mock_lib_dir.return_value = tmp_path
-    env = {"PATH": "/usr/bin"}
-    result = _prepare_subprocess_env(env)
-    key = "DYLD_LIBRARY_PATH" if sys.platform == "darwin" else "LD_LIBRARY_PATH"
-    assert str(tmp_path) in result[key]
     assert result["OMPI_MCA_mca_base_component_show_load_errors"] == "0"
     assert result["PRTE_MCA_prte_silence_shared_fs"] == "1"
-
-
-@pytest.mark.unit
-@patch("python.core.utils.helper_functions._get_lib_dir")
-def test_prepare_subprocess_env_preserves_existing(
-    mock_lib_dir: MagicMock,
-    tmp_path: Path,
-) -> None:
-    mock_lib_dir.return_value = tmp_path
-    key = "DYLD_LIBRARY_PATH" if sys.platform == "darwin" else "LD_LIBRARY_PATH"
-    env = {key: "/existing/path"}
-    _prepare_subprocess_env(env)
-    assert env[key] == f"{tmp_path}:/existing/path"
-
-
-@pytest.mark.unit
-@patch("python.core.utils.helper_functions._get_lib_dir")
-def test_prepare_subprocess_env_no_duplicate(
-    mock_lib_dir: MagicMock,
-    tmp_path: Path,
-) -> None:
-    mock_lib_dir.return_value = tmp_path
-    key = "DYLD_LIBRARY_PATH" if sys.platform == "darwin" else "LD_LIBRARY_PATH"
-    env = {key: str(tmp_path)}
-    _prepare_subprocess_env(env)
-    assert env[key] == str(tmp_path)
+    assert "LD_LIBRARY_PATH" not in result
+    assert "DYLD_LIBRARY_PATH" not in result
