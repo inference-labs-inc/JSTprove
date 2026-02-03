@@ -14,13 +14,13 @@ from python.core.utils.helper_functions import (
 from python.frontend.commands.args import CIRCUIT_PATH
 from python.frontend.commands.base import BaseCommand
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     import argparse
     from collections.abc import Callable
 
     from python.core.circuits.base import Circuit
-
-logger = logging.getLogger(__name__)
 
 
 def _parse_piped_result(stdout: bytes) -> dict[str, Any]:

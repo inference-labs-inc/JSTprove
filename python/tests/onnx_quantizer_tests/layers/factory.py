@@ -44,7 +44,7 @@ class TestLayerFactory:
                         provider_instance = obj()
                         cls._providers[provider_instance.layer_name] = provider_instance
 
-            except ImportError as e:  # noqa: PERF203
+            except ImportError as e:
                 msg = f"Warning: Could not import {module_name}: {e}"
                 logger.warning(msg)
 

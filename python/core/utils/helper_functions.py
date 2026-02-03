@@ -5,7 +5,6 @@ import json
 import logging
 import os
 import re
-import shutil
 import subprocess
 import sys
 from collections.abc import Callable
@@ -35,6 +34,38 @@ from python.core.utils.errors import (
 
 F = TypeVar("F", bound=Callable[..., Any])
 logger = logging.getLogger(__name__)
+
+_LIB_DIR = Path(__file__).resolve().parent.parent / "lib"
+
+
+def _get_lib_dir() -> Path | None:
+    if _LIB_DIR.is_dir() and any(_LIB_DIR.glob("libmpi*")):
+        return _LIB_DIR
+    return None
+
+
+def _find_opal_prefix() -> str | None:
+    for prefix in ("/usr", "/usr/local", "/usr/lib64/openmpi"):
+        if Path(f"{prefix}/share/openmpi").is_dir():
+            return prefix
+    return None
+
+
+def _prepare_subprocess_env(env: dict[str, str]) -> dict[str, str]:
+    lib_dir = _get_lib_dir()
+    if lib_dir is not None:
+        lib_path = str(lib_dir)
+        key = "DYLD_LIBRARY_PATH" if sys.platform == "darwin" else "LD_LIBRARY_PATH"
+        existing = env.get(key, "")
+        if lib_path not in existing:
+            env[key] = f"{lib_path}:{existing}" if existing else lib_path
+    if sys.platform == "linux" and "OPAL_PREFIX" not in env:
+        opal_prefix = _find_opal_prefix()
+        if opal_prefix:
+            env["OPAL_PREFIX"] = opal_prefix
+    env.setdefault("OMPI_MCA_mca_base_component_show_load_errors", "0")
+    env.setdefault("PRTE_MCA_prte_silence_shared_fs", "1")
+    return env
 
 
 class RunType(Enum):
@@ -348,6 +379,7 @@ def run_subprocess(cmd: list[str]) -> None:
     """
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")
+    _prepare_subprocess_env(env)
     proc = subprocess.run(cmd, text=True, env=env, check=False)  # noqa: S603
     if proc.returncode != 0:
         msg = f"Command failed with exit code {proc.returncode}"
@@ -417,6 +449,7 @@ def run_cargo_command(
     )
     env = os.environ.copy()
     env["RUST_BACKTRACE"] = "1"
+    _prepare_subprocess_env(env)
 
     msg = f"Running cargo command: {' '.join(cmd)}"
     print(msg)  # noqa: T201
@@ -523,9 +556,7 @@ def _build_command(
     """Build the command list for subprocess."""
     cmd = (
         ["cargo", "run", "--bin", binary_name, "--release"]
-        if dev_mode or not Path(binary_path).exists()
-        # dev_mode indicates that we want a recompile, this happens with compile
-        # or if there is no executable already created, then we create a new one
+        if dev_mode
         else [binary_path]
     )
     cmd.append(command_type)
@@ -587,18 +618,6 @@ def _handle_result(result: subprocess.CompletedProcess[str], cmd: list[str]) -> 
         raise ProofBackendError(msg)
 
 
-def _copy_binary_if_needed(
-    binary_name: str,
-    binary_path: str,
-    *,
-    dev_mode: bool,
-) -> None:
-    """Copy the binary if conditions are met."""
-    src = f"./target/release/{binary_name}"
-    if Path(src).exists() and (str(src) != str(binary_path)) and dev_mode:
-        shutil.copy(src, binary_path)
-
-
 def get_expander_file_paths(circuit_name: str) -> dict[str, str]:
     """Generate standard file paths for an Expander circuit.
 
@@ -617,7 +636,7 @@ def get_expander_file_paths(circuit_name: str) -> dict[str, str]:
     }
 
 
-def run_expander_raw(  # noqa: PLR0913, PLR0912, C901
+def run_expander_raw(  # noqa: PLR0913, C901
     mode: ExpanderMode,
     circuit_file: str,
     witness_file: str,
@@ -655,6 +674,7 @@ def run_expander_raw(  # noqa: PLR0913, PLR0912, C901
 
     env = os.environ.copy()
     env["RUSTFLAGS"] = "-C target-cpu=native"
+    _prepare_subprocess_env(env)
     time_measure = "/usr/bin/time"
 
     expander_binary_path = None
@@ -669,30 +689,19 @@ def run_expander_raw(  # noqa: PLR0913, PLR0912, C901
             expander_binary_path = str(path)
             break
 
-    if expander_binary_path:
-        args = [
-            time_measure,
-            expander_binary_path,
-            "-p",
-            pcs_type,
-        ]
-    else:
-        args = [
-            time_measure,
-            "mpiexec",
-            "-n",
-            "1",
-            "cargo",
-            "run",
-            "--manifest-path",
-            "Expander/Cargo.toml",
-            "--bin",
-            "expander-exec",
-            "--release",
-            "--",
-            "-p",
-            pcs_type,
-        ]
+    if not expander_binary_path:
+        msg = (
+            "Binary 'expander-exec' not found. Install JSTprove with "
+            "'uv tool install .' or build with 'cargo build --release "
+            "--manifest-path Expander/Cargo.toml --bin expander-exec'."
+        )
+        raise ProofBackendError(msg)
+    args = [
+        time_measure,
+        expander_binary_path,
+        "-p",
+        pcs_type,
+    ]
     if mode == ExpanderMode.PROVE:
         args.append(mode.value)
         proof_command = "-o"

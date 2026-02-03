@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Generator, Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
@@ -109,10 +109,8 @@ def temp_proof_file(tmp_path: str) -> Generator[Path, None, None]:
         output_path.unlink()
 
 
-ScalarOrTensor: TypeAlias = int | float | torch.Tensor
-NestedArray: TypeAlias = (
-    ScalarOrTensor | list["NestedArray"] | tuple["NestedArray"] | np.ndarray
-)
+type ScalarOrTensor = int | float | torch.Tensor
+type NestedArray = ScalarOrTensor | list[NestedArray] | tuple[NestedArray] | np.ndarray
 
 
 def add_1_to_first_element(x: NestedArray) -> NestedArray:
@@ -135,7 +133,7 @@ def add_1_to_first_element(x: NestedArray) -> NestedArray:
 circuit_compile_results = {}
 witness_generated_results = {}
 
-Nested: TypeAlias = float | Mapping[str, "Nested"] | Sequence["Nested"]
+type Nested = float | Mapping[str, Nested] | Sequence[Nested]
 
 
 def contains_float(obj: Nested) -> bool:

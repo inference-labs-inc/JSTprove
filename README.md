@@ -89,22 +89,6 @@ ONNX model ─► Quantizer (Py) ─► Circuit via ECC (Rust) ─► Witness (R
 
 #### Prerequisites
 - **UV**: Fast Python package manager ([install UV](https://docs.astral.sh/uv/getting-started/installation/))
-- **OpenMPI**: Required system dependency
-
-**macOS:**
-```bash
-brew install open-mpi
-```
-
-**Ubuntu/Debian:**
-```bash
-sudo apt-get update
-sudo apt-get install -y libopenmpi-dev openmpi-bin
-```
-
-**Other Linux:**
-- RHEL/CentOS/Fedora: `sudo dnf install openmpi openmpi-devel`
-- Arch: `sudo pacman -S openmpi`
 
 #### Install JSTprove
 ```bash
@@ -116,7 +100,9 @@ uv tool install JSTprove
 jst --help
 ```
 
-> Note: The package includes all necessary binaries (onnx_generic_circuit and expander-exec) for the full workflow.
+> **Prerequisite**: OpenMPI must be installed on the host:
+> - **Ubuntu/Debian**: `sudo apt-get install -y openmpi-bin openmpi-common`
+> - **Fedora/RHEL**: `sudo dnf install openmpi`
 
 ### Installing from GitHub Release
 
@@ -138,7 +124,7 @@ uv tool install /path/to/JSTprove-*.whl
 
 ### 0) Requirements
 
-- **Python**: 3.10–3.12 (⚠️ Not compatible with Python 3.13)
+- **Python**: >=3.12
 - **UV**: Fast Python package manager ([install UV](https://docs.astral.sh/uv/getting-started/installation/))
 
 > Note: UV will automatically install and manage the correct Python version for you.

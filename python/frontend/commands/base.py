@@ -192,7 +192,7 @@ class BaseCommand(ABC):
         ):
             try:
                 return attempt()
-            except TypeError:  # noqa: PERF203
+            except TypeError:
                 continue
 
         msg = f"Could not construct {cls.__name__} with/without name '{name}'"

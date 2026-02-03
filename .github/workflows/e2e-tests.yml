@@ -72,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]  # Test all supported versions
+        python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -119,6 +119,9 @@ jobs:
           cd Expander
           git checkout af1b7473bc858d250e481d6bb7db98a1ee6b7fc5
           cd ..
+
+      - name: Build Expander binary
+        run: cargo build --release --manifest-path Expander/Cargo.toml --bin expander-exec
 
       - name: Run E2E Tests
         run: |
