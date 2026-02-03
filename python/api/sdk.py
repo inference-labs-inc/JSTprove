@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 import onnx
 import torch
+from google.protobuf.message import DecodeError
 from onnx import numpy_helper
 
 from python.core import RUST_BINARY_NAME
@@ -72,7 +73,7 @@ class BatchResult:
     errors: list[Any] = field(default_factory=list)
 
 
-class ZKCircuit:
+class Circuit:
     def __init__(self, circuit_path: str | Path) -> None:
         self._circuit_path = Path(circuit_path)
         self._model: GenericModelONNX | None = None
@@ -100,12 +101,29 @@ class ZKCircuit:
         self._model = circuit
         return circuit
 
+    def _normalize_outputs(self, output_data: dict[str, Any]) -> dict[str, Any]:
+        raw_output = output_data.get("raw_output")
+        if raw_output is not None:
+            return {"output": raw_output}
+
+        output_values = output_data.get("output")
+        if output_values is None:
+            return output_data
+
+        flat = torch.tensor(output_values).flatten()
+        if flat.is_floating_point():
+            with Path(self._paths["metadata"]).open() as f:
+                metadata = json.load(f)
+            scale = metadata["scale_base"] ** metadata["scale_exponent"]
+            flat = torch.round(flat * scale).long()
+        return {"output": flat.long().tolist()}
+
     @classmethod
     def compile(
         cls,
         model_path: str | Path,
         output_dir: str | Path,
-    ) -> ZKCircuit:
+    ) -> Circuit:
         model_path = Path(model_path)
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -188,7 +206,7 @@ class ZKCircuit:
 
         circuit_inputs, formatted = self._process_inputs(inputs)
 
-        _run_witness_chunk_piped(
+        result = _run_witness_chunk_piped(
             binary_name=RUST_BINARY_NAME,
             circuit_path=str(self._circuit_path),
             metadata_path=self._paths["metadata"],
@@ -200,6 +218,12 @@ class ZKCircuit:
                 },
             ],
         )
+
+        failed = result.get("failed", 0)
+        if failed > 0:
+            errors = result.get("errors", [])
+            msg = f"Witness generation failed: {errors}"
+            raise RuntimeError(msg)
 
         if output_path is not None:
             to_json(formatted, str(output_path))
@@ -348,21 +372,7 @@ class ZKCircuit:
         with output_path.open() as f:
             output_data = json.load(f)
 
-        raw_output = output_data.get("raw_output")
-        if raw_output is not None:
-            scaled_output = {"output": raw_output}
-        else:
-            output_values = output_data.get("output")
-            if output_values is not None:
-                flat = torch.tensor(output_values).flatten()
-                if flat.is_floating_point():
-                    with Path(self._paths["metadata"]).open() as f:
-                        metadata = json.load(f)
-                    scale = metadata["scale_base"] ** metadata["scale_exponent"]
-                    flat = torch.round(flat * scale).long()
-                scaled_output = {"output": flat.long().tolist()}
-            else:
-                scaled_output = output_data
+        scaled_output = self._normalize_outputs(output_data)
 
         with input_path.open() as f:
             input_data = json.load(f)
@@ -406,11 +416,12 @@ class ZKCircuit:
 
             raw_out = job["output"]
             outputs = read_from_json(raw_out) if isinstance(raw_out, str) else raw_out
+            normalized = self._normalize_outputs(outputs)
 
             piped_jobs.append(
                 {
                     "_circuit_inputs": circuit_inputs,
-                    "_circuit_outputs": outputs,
+                    "_circuit_outputs": normalized,
                     "witness": job["witness"],
                     "proof": job["proof"],
                 },
@@ -484,7 +495,7 @@ class ZKCircuit:
             model = onnx.load(str(model_path))
             ops = {node.op_type for node in model.graph.node}
             unsupported = ops - SUPPORTED_OPS
-        except Exception:
+        except (OSError, ValueError, KeyError, DecodeError):
             logger.warning("Failed to check compatibility", exc_info=True)
             return False, {"LOAD_ERROR"}
         else:
