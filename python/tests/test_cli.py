@@ -1,6 +1,7 @@
 # python/testing/core/tests/test_cli.py
 import json
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,9 +13,14 @@ from python.core.model_processing.onnx_quantizer.exceptions import (
 from python.core.utils.helper_functions import RunType
 from python.frontend.cli import main
 from python.frontend.commands.batch import (
+    _parse_piped_result,
+    _preprocess_manifest,
     _run_prove_chunk_piped,
     _run_verify_chunk_piped,
     _run_witness_chunk_piped,
+    _transform_verify_job,
+    _transform_witness_job,
+    _validate_job_keys,
     batch_prove_piped,
     batch_verify_from_tensors,
     batch_witness_from_tensors,
@@ -1214,6 +1220,7 @@ def test_batch_missing_manifest(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.unit
 @patch("python.frontend.commands.batch.run_cargo_command_piped")
 def test_run_witness_chunk_piped_builds_payload(
     mock_piped: MagicMock,
@@ -1544,3 +1551,232 @@ def test_batch_witness_aggregates_errors(
     assert result["succeeded"] == 1
     assert result["failed"] == 1
     assert len(result["errors"]) == 1
+
+
+@pytest.mark.unit
+def test_parse_piped_result_single_json_line() -> None:
+    stdout = b'{"succeeded":3,"failed":0,"errors":[]}'
+    result = _parse_piped_result(stdout)
+    assert result == {"succeeded": 3, "failed": 0, "errors": []}
+
+
+@pytest.mark.unit
+def test_parse_piped_result_json_after_log_lines() -> None:
+    expected_succeeded = 2
+    stdout = (
+        b"Loading circuit...\nProcessing 2 jobs.\n"
+        b'{"succeeded":2,"failed":0,"errors":[]}\n'
+    )
+    result = _parse_piped_result(stdout)
+    assert result["succeeded"] == expected_succeeded
+
+
+@pytest.mark.unit
+def test_parse_piped_result_no_json() -> None:
+    with pytest.raises(ValueError, match="No JSON object found"):
+        _parse_piped_result(b"some log output\nanother line\n")
+
+
+@pytest.mark.unit
+def test_parse_piped_result_empty_stdout() -> None:
+    with pytest.raises(ValueError, match="No JSON object found"):
+        _parse_piped_result(b"")
+
+
+@pytest.mark.unit
+def test_parse_piped_result_picks_last_json() -> None:
+    stdout = b'{"first":true}\nlog line\n{"second":true}\n'
+    result = _parse_piped_result(stdout)
+    assert result == {"second": True}
+
+
+@pytest.mark.unit
+def test_validate_job_keys_passes() -> None:
+    _validate_job_keys({"input": "a", "output": "b"}, "input", "output")
+
+
+@pytest.mark.unit
+def test_validate_job_keys_missing() -> None:
+    with pytest.raises(ValueError, match=r"missing required keys.*output"):
+        _validate_job_keys({"input": "a"}, "input", "output")
+
+
+@pytest.mark.unit
+@patch("python.frontend.commands.batch.to_json")
+@patch("python.frontend.commands.batch.read_from_json", return_value={"raw": 1})
+def test_transform_witness_job(
+    mock_read: MagicMock,
+    mock_to_json: MagicMock,
+) -> None:
+    circuit = MagicMock()
+    circuit.scale_inputs_only.return_value = {"scaled": True}
+    circuit.reshape_inputs_for_inference.return_value = {"inf": True}
+    circuit.reshape_inputs_for_circuit.return_value = {"circ": True}
+    circuit.get_outputs.return_value = [0.5]
+    circuit.format_outputs.return_value = {"out": [0.5]}
+
+    job: dict[str, Any] = {"input": "/data/input.json", "output": "/data/output.json"}
+    _transform_witness_job(circuit, job)
+
+    mock_read.assert_called_once_with("/data/input.json")
+    expected_to_json_calls = 2
+    circuit.scale_inputs_only.assert_called_once_with({"raw": 1})
+    assert job["input"].endswith("_adjusted.json")
+    assert mock_to_json.call_count == expected_to_json_calls
+    adjusted_call, output_call = mock_to_json.call_args_list
+    assert adjusted_call[0][0] == {"circ": True}
+    assert output_call[0][0] == {"out": [0.5]}
+    assert output_call[0][1] == "/data/output.json"
+
+
+@pytest.mark.unit
+def test_transform_witness_job_missing_keys() -> None:
+    circuit = MagicMock()
+    with pytest.raises(ValueError, match="missing required keys"):
+        _transform_witness_job(circuit, {"input": "/data/input.json"})
+
+
+@pytest.mark.unit
+@patch("python.frontend.commands.batch.to_json")
+@patch("python.frontend.commands.batch.read_from_json", return_value={"raw": 1})
+def test_transform_verify_job(
+    mock_read: MagicMock,
+    mock_to_json: MagicMock,
+) -> None:
+    circuit = MagicMock()
+    circuit.reshape_inputs_for_circuit.return_value = {"circ": True}
+
+    job: dict[str, Any] = {"input": "/data/input.json"}
+    _transform_verify_job(circuit, job)
+
+    mock_read.assert_called_once_with("/data/input.json")
+    assert job["input"].endswith("_veri.json")
+    mock_to_json.assert_called_once_with({"circ": True}, job["input"])
+
+
+@pytest.mark.unit
+def test_transform_verify_job_missing_keys() -> None:
+    circuit = MagicMock()
+    with pytest.raises(ValueError, match="missing required keys"):
+        _transform_verify_job(circuit, {"output": "x"})
+
+
+@pytest.mark.unit
+@patch("python.frontend.commands.batch.to_json")
+@patch(
+    "python.frontend.commands.batch.read_from_json",
+    return_value={"jobs": [{"input": "/a.json", "output": "/b.json"}]},
+)
+def test_preprocess_manifest(
+    mock_read: MagicMock,
+    mock_to_json: MagicMock,
+    tmp_path: Path,
+) -> None:
+    manifest_path = str(tmp_path / "manifest.json")
+    circuit_path = str(tmp_path / "model_circuit.txt")
+
+    circuit = MagicMock()
+    transform = MagicMock()
+
+    result = _preprocess_manifest(circuit, manifest_path, circuit_path, transform)
+
+    circuit.load_quantized_model.assert_called_once()
+    transform.assert_called_once()
+    assert "_processed" in result
+    mock_to_json.assert_called_once()
+
+
+@pytest.mark.unit
+@patch(
+    "python.frontend.commands.batch.read_from_json",
+    return_value="not a dict",
+)
+def test_preprocess_manifest_invalid_format(
+    _mock_read: MagicMock,
+    tmp_path: Path,
+) -> None:
+    circuit = MagicMock()
+    with pytest.raises(TypeError, match="Invalid manifest"):
+        _preprocess_manifest(
+            circuit,
+            str(tmp_path / "bad.json"),
+            str(tmp_path / "circuit.txt"),
+            MagicMock(),
+        )
+
+
+@pytest.mark.unit
+@patch("python.frontend.commands.batch._run_prove_chunk_piped")
+def test_batch_prove_piped_aggregates_errors(
+    mock_chunk: MagicMock,
+) -> None:
+    mock_chunk.side_effect = [
+        {"succeeded": 0, "failed": 1, "errors": [[0, "witness corrupt"]]},
+        {"succeeded": 1, "failed": 0, "errors": []},
+    ]
+
+    jobs = [{"witness": f"/w{i}.bin", "proof": f"/p{i}.bin"} for i in range(2)]
+    result = batch_prove_piped("circ", jobs, "/models/circ.txt", chunk_size=1)
+
+    assert result["succeeded"] == 1
+    assert result["failed"] == 1
+    assert len(result["errors"]) == 1
+
+
+@pytest.mark.unit
+@patch("python.frontend.commands.batch._run_verify_chunk_piped")
+def test_batch_verify_from_tensors_aggregates_errors(
+    mock_chunk: MagicMock,
+) -> None:
+    mock_chunk.side_effect = [
+        {"succeeded": 0, "failed": 1, "errors": [[0, "mismatch"]]},
+        {"succeeded": 1, "failed": 0, "errors": []},
+    ]
+
+    circuit = MagicMock()
+    circuit.reshape_inputs_for_circuit.return_value = {}
+
+    jobs = [
+        {"input": {}, "output": {}, "witness": f"/w{i}.bin", "proof": f"/p{i}.bin"}
+        for i in range(2)
+    ]
+    result = batch_verify_from_tensors(
+        circuit,
+        jobs,
+        "/models/test_circuit.txt",
+        chunk_size=1,
+    )
+
+    assert result["succeeded"] == 1
+    assert result["failed"] == 1
+    assert len(result["errors"]) == 1
+
+
+@pytest.mark.unit
+@patch("python.frontend.commands.batch._run_verify_chunk_piped")
+def test_batch_verify_from_tensors_chunked(
+    mock_chunk: MagicMock,
+) -> None:
+    expected_total = 3
+    expected_chunks = 2
+    mock_chunk.side_effect = [
+        {"succeeded": 2, "failed": 0, "errors": []},
+        {"succeeded": 1, "failed": 0, "errors": []},
+    ]
+
+    circuit = MagicMock()
+    circuit.reshape_inputs_for_circuit.return_value = {}
+
+    jobs = [
+        {"input": {}, "output": {}, "witness": f"/w{i}.bin", "proof": f"/p{i}.bin"}
+        for i in range(expected_total)
+    ]
+    result = batch_verify_from_tensors(
+        circuit,
+        jobs,
+        "/models/test_circuit.txt",
+        chunk_size=2,
+    )
+
+    assert result["succeeded"] == expected_total
+    assert mock_chunk.call_count == expected_chunks

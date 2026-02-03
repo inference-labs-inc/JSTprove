@@ -739,14 +739,24 @@ where
             &assignment,
         ) {
             Ok(witness) => {
-                let file = std::fs::File::create(&job.witness).map_err(|e| RunError::Io {
-                    source: e,
-                    path: job.witness.clone(),
-                })?;
+                let file = match std::fs::File::create(&job.witness) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        failed += 1;
+                        let msg = format!("witness I/O: {e:?}");
+                        eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, msg);
+                        errors.push((idx, msg));
+                        continue;
+                    }
+                };
                 let writer = std::io::BufWriter::new(file);
-                witness
-                    .serialize_into(writer)
-                    .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
+                if let Err(e) = witness.serialize_into(writer) {
+                    failed += 1;
+                    let msg = format!("witness serialize: {e:?}");
+                    eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, msg);
+                    errors.push((idx, msg));
+                    continue;
+                }
                 succeeded += 1;
                 eprintln!("[{}/{}] witness: {}", idx + 1, job_count, job.witness);
             }
@@ -825,6 +835,61 @@ where
     Ok(result)
 }
 
+fn verify_single_job<C: Config, I, CircuitDefaultType>(
+    io_reader_factory: &impl Fn() -> I,
+    layered_circuit: &Circuit<C, NormalInputType>,
+    job: PipeVerifyJob,
+) -> Result<String, String>
+where
+    I: IOReader<CircuitDefaultType, C>,
+    CircuitDefaultType: Default
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
+        + Clone,
+{
+    let mut io_reader = io_reader_factory();
+    let assignment = CircuitDefaultType::default();
+    let assignment = io_reader
+        .apply_values(job.input, job.output, assignment)
+        .map_err(|e| e.to_string())?;
+
+    let mut vars: Vec<_> = Vec::new();
+    let mut public_vars: Vec<_> = Vec::new();
+    assignment.dump_into(&mut vars, &mut public_vars);
+
+    let mut circuit = layered_circuit.export_to_expander_flatten();
+
+    let file = std::fs::File::open(&job.witness).map_err(|e| format!("witness I/O: {e:?}"))?;
+    let witness = Witness::<C>::deserialize_from(std::io::BufReader::new(file))
+        .map_err(|e| format!("witness deserialize: {e:?}"))?;
+
+    let (simd_input, simd_public_input) = witness.to_simd();
+    circuit.layers[0].input_vals.clone_from(&simd_input);
+    circuit.public_input.clone_from(&simd_public_input);
+
+    let mismatch = public_vars
+        .iter()
+        .enumerate()
+        .any(|(i, _)| format!("{:?}", public_vars[i]) != format!("{:?}", circuit.public_input[i]));
+    if mismatch {
+        return Err("inputs/outputs don't match the witness".into());
+    }
+
+    let file = std::fs::File::open(&job.proof).map_err(|e| format!("proof I/O: {e:?}"))?;
+    let proof_and_claimed_v: Vec<u8> = Vec::deserialize_from(std::io::BufReader::new(file))
+        .map_err(|e| format!("proof deserialize: {e:?}"))?;
+
+    let (proof, claimed_v) =
+        executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v)
+            .map_err(|e| format!("proof load: {e:?}"))?;
+
+    let mpi_config = gkr_engine::MPIConfig::verifier_new(1);
+    if executor::verify::<C>(&mut circuit, mpi_config, &proof, &claimed_v) {
+        Ok(format!("verified: {}", job.proof))
+    } else {
+        Err("Verification failed".into())
+    }
+}
+
 /// Verifies multiple proofs via stdin/stdout piping.
 ///
 /// # Errors
@@ -854,74 +919,20 @@ where
     let mut errors: Vec<(usize, String)> = Vec::new();
 
     for (idx, job) in manifest.jobs.into_iter().enumerate() {
-        let mut io_reader = io_reader_factory();
-        let assignment = CircuitDefaultType::default();
-        let assignment = match io_reader.apply_values(job.input, job.output, assignment) {
-            Ok(a) => a,
-            Err(e) => {
+        match verify_single_job::<C, I, CircuitDefaultType>(
+            &io_reader_factory,
+            &layered_circuit,
+            job,
+        ) {
+            Ok(msg) => {
+                succeeded += 1;
+                eprintln!("[{}/{}] {msg}", idx + 1, job_count);
+            }
+            Err(msg) => {
                 failed += 1;
-                eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
-                errors.push((idx, e.to_string()));
-                continue;
+                eprintln!("[{}/{}] FAILED: {msg}", idx + 1, job_count);
+                errors.push((idx, msg));
             }
-        };
-
-        let mut vars: Vec<_> = Vec::new();
-        let mut public_vars: Vec<_> = Vec::new();
-        assignment.dump_into(&mut vars, &mut public_vars);
-
-        let mut circuit = layered_circuit.export_to_expander_flatten();
-
-        let file = std::fs::File::open(&job.witness).map_err(|e| RunError::Io {
-            source: e,
-            path: job.witness.clone(),
-        })?;
-        let reader = std::io::BufReader::new(file);
-        let witness = Witness::<C>::deserialize_from(reader)
-            .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
-
-        let (simd_input, simd_public_input) = witness.to_simd();
-        circuit.layers[0].input_vals.clone_from(&simd_input);
-        circuit.public_input.clone_from(&simd_public_input);
-
-        let mut mismatch = false;
-        for (i, _) in public_vars.iter().enumerate() {
-            let x = format!("{:?}", public_vars[i]);
-            let y = format!("{:?}", circuit.public_input[i]);
-            if x != y {
-                mismatch = true;
-                break;
-            }
-        }
-        if mismatch {
-            failed += 1;
-            let msg = "inputs/outputs don't match the witness";
-            eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, msg);
-            errors.push((idx, msg.to_string()));
-            continue;
-        }
-
-        let file = std::fs::File::open(&job.proof).map_err(|e| RunError::Io {
-            source: e,
-            path: job.proof.clone(),
-        })?;
-        let reader = std::io::BufReader::new(file);
-        let proof_and_claimed_v: Vec<u8> =
-            Vec::deserialize_from(reader).map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
-
-        let (proof, claimed_v) =
-            executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v)
-                .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
-
-        let mpi_config = gkr_engine::MPIConfig::verifier_new(1);
-        if executor::verify::<C>(&mut circuit, mpi_config, &proof, &claimed_v) {
-            succeeded += 1;
-            eprintln!("[{}/{}] verified: {}", idx + 1, job_count, job.proof);
-        } else {
-            failed += 1;
-            let msg = "Verification failed";
-            eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, msg);
-            errors.push((idx, msg.to_string()));
         }
     }
 
