@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-from typing import TypeVar
-
-T = TypeVar("T")
-
 
 def rescaling(scaling_factor: int, rescale: int, y: int) -> int:
     """Applies integer rescaling to a value based on the given scaling factor.
@@ -32,7 +28,7 @@ def rescaling(scaling_factor: int, rescale: int, y: int) -> int:
     raise ValueError(msg)
 
 
-def parse_attr(attr: str, default: T) -> T:
+def parse_attr[T](attr: str, default: T) -> T:
     """Parses an attribute list of strings into a list of integers.
 
     Args:

@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, mock_open, patch
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 import pytest
 
@@ -12,6 +17,9 @@ from python.core.utils.helper_functions import (
     ExpanderMode,
     RunType,
     ZKProofSystems,
+    _get_lib_dir,
+    _prepare_subprocess_env,
+    _resolve_binary,
     compile_circuit,
     compute_and_store_output,
     generate_proof,
@@ -22,6 +30,7 @@ from python.core.utils.helper_functions import (
     prepare_io_files,
     read_from_json,
     run_cargo_command,
+    run_cargo_command_piped,
     run_end_to_end,
     to_json,
 )
@@ -273,38 +282,35 @@ def test_run_cargo_command_dev_mode(
 
 @pytest.mark.unit
 @patch("python.core.utils.helper_functions.Path")
-@patch("python.core.utils.helper_functions.subprocess.run")
 def test_run_cargo_command_fallback_to_cargo_run(
-    mock_run: MagicMock,
     mock_path_class: MagicMock,
 ) -> None:
     """Test that when binary doesn't exist
-    and dev_mode=False, it falls back to cargo run."""
+    and dev_mode=False, it raises ProofBackendError."""
     mock_path_instance = MagicMock()
     mock_path_instance.exists.return_value = False
     mock_path_class.return_value = mock_path_instance
 
-    mock_run.return_value = MagicMock(returncode=0)
-    run_cargo_command("missingbin", "compile", dev_mode=False)
-
-    args = mock_run.call_args[0][0]
-    assert args[:3] == ["cargo", "run", "--bin"]
-    assert "missingbin" in args[3]
-    assert args[4] == "--release"
-    assert "compile" in args
+    with pytest.raises(ProofBackendError, match="Failed to execute"):
+        run_cargo_command("missingbin", "compile", dev_mode=False)
 
 
 @pytest.mark.unit
 @patch("python.core.utils.helper_functions.subprocess.run")
 def test_run_cargo_command_bool_args(mock_run: MagicMock) -> None:
     mock_run.return_value = MagicMock(returncode=0)
-    run_cargo_command("zkproof", "verify", {"v": True, "json": False, "i": "in.json"})
+    run_cargo_command(
+        "zkproof",
+        "verify",
+        {"v": True, "json": False, "i": "in.json"},
+        dev_mode=True,
+    )
 
     args = mock_run.call_args[0][0]
     assert "-v" in args
     assert "-i" in args
     assert "in.json" in args
-    assert "-json" in args  # Even though False, it's added
+    assert "-json" in args
 
 
 @pytest.mark.unit
@@ -314,7 +320,7 @@ def test_run_cargo_command_bool_args(mock_run: MagicMock) -> None:
 )
 def test_run_cargo_command_raises_on_failure(mock_run: MagicMock) -> None:
     with pytest.raises(Exception, match="subprocess failed"):
-        run_cargo_command("failbin", "fail_cmd", {"x": 1})
+        run_cargo_command("failbin", "fail_cmd", {"x": 1}, dev_mode=True)
 
 
 @pytest.mark.unit
@@ -889,3 +895,183 @@ def test_get_files_non_proof_system() -> None:
         match=f"Proof system {fake_proof_system} not implemented",
     ):
         get_files("model", fake_proof_system, folders)
+
+
+@pytest.mark.unit
+@patch("python.core.utils.helper_functions.Path")
+@patch("python.core.utils.helper_functions.get_version", return_value="0.0.0")
+def test_resolve_binary_finds_existing(
+    _mock_version: MagicMock,
+    mock_path_class: MagicMock,
+) -> None:
+    mock_instance = MagicMock()
+    mock_instance.exists.return_value = True
+    mock_path_class.return_value = mock_instance
+    mock_path_class.__truediv__ = MagicMock()
+
+    _, result_name = _resolve_binary("testbin")
+    assert "testbin" in result_name
+
+
+@pytest.mark.unit
+@patch("python.core.utils.helper_functions.Path")
+@patch("python.core.utils.helper_functions.get_version", return_value="0.0.0")
+def test_resolve_binary_fallback(
+    _mock_version: MagicMock,
+    mock_path_class: MagicMock,
+) -> None:
+    mock_instance = MagicMock()
+    mock_instance.exists.return_value = False
+    mock_path_class.return_value = mock_instance
+    mock_path_class.__truediv__ = MagicMock()
+
+    result_path, result_name = _resolve_binary("missingbin")
+    assert "target/release" in result_path
+    assert "missingbin" in result_name
+
+
+@pytest.mark.unit
+@patch("python.core.utils.helper_functions.subprocess.run")
+@patch(
+    "python.core.utils.helper_functions._resolve_binary",
+    return_value=("./target/release/testbin", "testbin"),
+)
+@patch(
+    "python.core.utils.helper_functions._build_command",
+    return_value=["./target/release/testbin", "run_pipe_witness", "-c", "c.txt"],
+)
+def test_run_cargo_command_piped_success(
+    _mock_build: MagicMock,
+    _mock_resolve: MagicMock,
+    mock_run: MagicMock,
+) -> None:
+    mock_run.return_value = MagicMock(
+        returncode=0,
+        stdout=b'{"succeeded":2,"failed":0,"errors":[]}',
+        stderr=b"",
+    )
+    payload = b'{"jobs": []}'
+    result = run_cargo_command_piped(
+        "testbin",
+        "run_pipe_witness",
+        payload,
+        args={"c": "c.txt"},
+    )
+    mock_run.assert_called_once()
+    call_kwargs = mock_run.call_args[1]
+    assert call_kwargs["input"] == payload
+    assert call_kwargs["capture_output"] is True
+    assert result.returncode == 0
+
+
+@pytest.mark.unit
+@patch("python.core.utils.helper_functions.subprocess.run")
+@patch(
+    "python.core.utils.helper_functions._resolve_binary",
+    return_value=("./target/release/testbin", "testbin"),
+)
+@patch(
+    "python.core.utils.helper_functions._build_command",
+    return_value=["./target/release/testbin", "run_pipe_witness"],
+)
+def test_run_cargo_command_piped_failure(
+    _mock_build: MagicMock,
+    _mock_resolve: MagicMock,
+    mock_run: MagicMock,
+) -> None:
+    mock_run.return_value = MagicMock(
+        returncode=1,
+        stdout=b"",
+        stderr=b"Error: something went wrong",
+    )
+    with pytest.raises(ProofBackendError, match="Piped cargo command failed"):
+        run_cargo_command_piped("testbin", "run_pipe_witness", b"{}")
+
+
+@pytest.mark.unit
+@patch(
+    "python.core.utils.helper_functions.subprocess.run",
+    side_effect=OSError("spawn failed"),
+)
+@patch(
+    "python.core.utils.helper_functions._resolve_binary",
+    return_value=("./missing", "missing"),
+)
+@patch(
+    "python.core.utils.helper_functions._build_command",
+    return_value=["./missing", "run_pipe_witness"],
+)
+def test_run_cargo_command_piped_os_error(
+    _mock_build: MagicMock,
+    _mock_resolve: MagicMock,
+    _mock_run: MagicMock,
+) -> None:
+    with pytest.raises(ProofBackendError, match="Failed to execute"):
+        run_cargo_command_piped("missing", "run_pipe_witness", b"{}")
+
+
+@pytest.mark.unit
+def test_get_lib_dir_returns_none_without_libs(tmp_path: Path) -> None:
+    with patch("python.core.utils.helper_functions._LIB_DIR", tmp_path):
+        assert _get_lib_dir() is None
+
+
+@pytest.mark.unit
+def test_get_lib_dir_returns_path_when_libs_present(tmp_path: Path) -> None:
+    lib_dir = tmp_path / "lib"
+    lib_dir.mkdir()
+    (lib_dir / "libmpi.so.40").touch()
+    with patch("python.core.utils.helper_functions._LIB_DIR", lib_dir):
+        result = _get_lib_dir()
+        assert result == lib_dir
+
+
+@pytest.mark.unit
+@patch("python.core.utils.helper_functions._get_lib_dir", return_value=None)
+def test_prepare_subprocess_env_noop_without_libs(_mock_lib_dir: MagicMock) -> None:
+    env = {"PATH": "/usr/bin"}
+    result = _prepare_subprocess_env(env)
+    assert result is env
+    assert "LD_LIBRARY_PATH" not in result
+    assert "DYLD_LIBRARY_PATH" not in result
+
+
+@pytest.mark.unit
+@patch("python.core.utils.helper_functions._get_lib_dir")
+def test_prepare_subprocess_env_sets_lib_path(
+    mock_lib_dir: MagicMock,
+    tmp_path: Path,
+) -> None:
+    mock_lib_dir.return_value = tmp_path
+    env = {"PATH": "/usr/bin"}
+    result = _prepare_subprocess_env(env)
+    key = "DYLD_LIBRARY_PATH" if sys.platform == "darwin" else "LD_LIBRARY_PATH"
+    assert str(tmp_path) in result[key]
+    assert result["OMPI_MCA_mca_base_component_show_load_errors"] == "0"
+    assert result["PRTE_MCA_prte_silence_shared_fs"] == "1"
+
+
+@pytest.mark.unit
+@patch("python.core.utils.helper_functions._get_lib_dir")
+def test_prepare_subprocess_env_preserves_existing(
+    mock_lib_dir: MagicMock,
+    tmp_path: Path,
+) -> None:
+    mock_lib_dir.return_value = tmp_path
+    key = "DYLD_LIBRARY_PATH" if sys.platform == "darwin" else "LD_LIBRARY_PATH"
+    env = {key: "/existing/path"}
+    _prepare_subprocess_env(env)
+    assert env[key] == f"{tmp_path}:/existing/path"
+
+
+@pytest.mark.unit
+@patch("python.core.utils.helper_functions._get_lib_dir")
+def test_prepare_subprocess_env_no_duplicate(
+    mock_lib_dir: MagicMock,
+    tmp_path: Path,
+) -> None:
+    mock_lib_dir.return_value = tmp_path
+    key = "DYLD_LIBRARY_PATH" if sys.platform == "darwin" else "LD_LIBRARY_PATH"
+    env = {key: str(tmp_path)}
+    _prepare_subprocess_env(env)
+    assert env[key] == str(tmp_path)

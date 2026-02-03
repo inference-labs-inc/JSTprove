@@ -4,23 +4,207 @@ on:
   push:
     tags:
       - "v*"
+  pull_request:
   workflow_dispatch:
 
 jobs:
-  build-wheels:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            arch: x86_64
-            target: x86_64-unknown-linux-gnu
-          - os: macos-latest
-            arch: aarch64
-            target: aarch64-apple-darwin
-    runs-on: ${{ matrix.os }}
+  build-linux:
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'test-build')
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/pypa/manylinux_2_28_x86_64
     permissions:
-      contents: write
-      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: |
+          dnf install -y openmpi-devel pkgconf-pkg-config perl-IPC-Cmd perl-Time-Piece clang-devel patchelf
+
+      - name: Configure MPI environment
+        run: |
+          echo "/usr/lib64/openmpi/bin" >> $GITHUB_PATH
+          echo "LIBRARY_PATH=/usr/lib64/openmpi/lib" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=/usr/lib64/openmpi/lib" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/usr/lib64/openmpi/lib/pkgconfig" >> $GITHUB_ENV
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        run: uv python install 3.10
+
+      - name: Extract version
+        id: get_version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION=$(grep -m1 '^version' pyproject.toml | sed 's/.*"\(.*\)".*/\1/')
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version_underscore=$(echo $VERSION | tr '.' '-')" >> $GITHUB_OUTPUT
+
+      - name: Update pyproject.toml version
+        run: |
+          sed -i 's/version = ".*"/version = "${{ steps.get_version.outputs.version }}"/' pyproject.toml
+          sed -i 's/onnx_generic_circuit_[0-9-]*/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}/' pyproject.toml
+
+      - name: Update Cargo.toml version
+        run: |
+          sed -i '0,/^version = ".*"/{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/}' rust/jstprove_circuits/Cargo.toml
+          sed -i 's/name = "onnx_generic_circuit_.*"/name = "onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"/' rust/jstprove_circuits/Cargo.toml
+
+      - name: Install Rust target
+        run: rustup target add x86_64-unknown-linux-gnu
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: manylinux-2-28-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: manylinux-2-28-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: manylinux-2-28-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Clone Expander
+        run: |
+          git clone https://github.com/PolyhedraZK/Expander.git
+          cd Expander
+          git checkout af1b7473bc858d250e481d6bb7db98a1ee6b7fc5
+          cd ..
+
+      - name: Build Rust binaries
+        run: |
+          cargo build --release --target x86_64-unknown-linux-gnu --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
+          cargo build --release --target x86_64-unknown-linux-gnu --manifest-path Expander/Cargo.toml --bin expander-exec
+
+      - name: Collect and bundle MPI libraries
+        shell: bash
+        run: |
+          BINARY_NAME="onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"
+          MAIN_BIN="target/x86_64-unknown-linux-gnu/release/${BINARY_NAME}"
+          EXPANDER_BIN="Expander/target/x86_64-unknown-linux-gnu/release/expander-exec"
+          BIN_DIR="python/core/binaries"
+          LIB_DIR="python/core/lib"
+          MPI_LIB_DIR="/usr/lib64/openmpi/lib"
+
+          mkdir -p "$BIN_DIR" "$LIB_DIR"
+          touch "$LIB_DIR/__init__.py"
+          cp "$MAIN_BIN" "$BIN_DIR/"
+          cp "$EXPANDER_BIN" "$BIN_DIR/"
+          chmod +x "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"
+
+          for lib in "$MPI_LIB_DIR"/libmpi.so* "$MPI_LIB_DIR"/libopen-pal.so* "$MPI_LIB_DIR"/libopen-rte.so*; do
+            [ -f "$lib" ] || continue
+            soname=$(patchelf --print-soname "$(readlink -f "$lib")" 2>/dev/null || basename "$lib")
+            [ -f "$LIB_DIR/$soname" ] && continue
+            cp "$(readlink -f "$lib")" "$LIB_DIR/$soname"
+          done
+
+          BASELINE="libc.so libm.so libpthread.so libdl.so librt.so libstdc++ libgcc_s linux-vdso ld-linux libnsl libutil libresolv libcrypt.so"
+          while true; do
+            FOUND_NEW=0
+            for f in "$LIB_DIR"/*.so*; do
+              [ -f "$f" ] || continue
+              for needed in $(patchelf --print-needed "$f" 2>/dev/null); do
+                skip=0
+                for b in $BASELINE; do
+                  case "$needed" in "$b"*) skip=1; break;; esac
+                done
+                [ "$skip" -eq 1 ] && continue
+                [ -f "$LIB_DIR/$needed" ] && continue
+                src=""
+                for search_dir in "$MPI_LIB_DIR" /usr/lib64 /usr/lib; do
+                  if [ -f "$search_dir/$needed" ]; then
+                    src="$(readlink -f "$search_dir/$needed")"
+                    break
+                  fi
+                done
+                if [ -z "$src" ]; then
+                  found=$(ldconfig -p 2>/dev/null | grep -F "$needed" | head -1 | awk '{print $NF}')
+                  [ -n "$found" ] && [ -f "$found" ] && src="$(readlink -f "$found")"
+                fi
+                if [ -n "$src" ] && [ -f "$src" ]; then
+                  cp "$src" "$LIB_DIR/$needed"
+                  FOUND_NEW=1
+                fi
+              done
+            done
+            [ "$FOUND_NEW" -eq 0 ] && break
+          done
+
+          for f in "$LIB_DIR"/*.so*; do
+            [ -f "$f" ] || continue
+            patchelf --set-rpath '$ORIGIN' "$f"
+          done
+          for bin in "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"; do
+            patchelf --set-rpath '$ORIGIN/../lib' "$bin"
+          done
+
+          echo "=== Verification ==="
+          for f in "$LIB_DIR"/*.so* "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"; do
+            [ -f "$f" ] || continue
+            rpath=$(patchelf --print-rpath "$f" 2>/dev/null)
+            needed=$(patchelf --print-needed "$f" 2>/dev/null | tr '\n' ' ')
+            echo "$f  rpath=$rpath  needed=$needed"
+            if echo "$rpath" | grep -qE '^/'; then
+              echo "FAIL: absolute rpath in $f"
+              exit 1
+            fi
+          done
+
+      - name: Build wheel
+        run: uv build
+
+      - name: Retag wheel with platform
+        run: |
+          uv tool install wheel
+          uvx wheel tags --platform-tag=manylinux_2_28_x86_64 --remove dist/*.whl
+
+      - name: Test wheel installation
+        run: |
+          WHEEL=$(ls dist/*.whl)
+          uv tool install "$WHEEL"
+          export PATH="$HOME/.local/bin:$PATH"
+          jst compile -m python/models/models_onnx/lenet.onnx -c ./test_circuit.txt
+          if [ ! -f ./test_circuit.txt ]; then
+            echo "Error: Circuit file was not created"
+            exit 1
+          fi
+          echo "Wheel test passed"
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-ubuntu-x86_64
+          path: ./dist/*.whl
+
+  build-macos:
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'test-build')
+    runs-on: macos-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v5
 
@@ -30,71 +214,56 @@ jobs:
       - name: Set up Python
         run: uv python install 3.10
 
-      - name: Extract version from tag
+      - name: Extract version
         id: get_version
         shell: bash
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION=$(grep -m1 '^version' pyproject.toml | sed 's/.*"\(.*\)".*/\1/')
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "version_underscore=$(echo $VERSION | tr '.' '-')" >> $GITHUB_OUTPUT
 
       - name: Update pyproject.toml version
-        shell: bash
         run: |
-          if [[ "${{ runner.os }}" == "macOS" ]]; then
-            sed -i '' 's/version = ".*"/version = "${{ steps.get_version.outputs.version }}"/' pyproject.toml
-            sed -i '' 's/onnx_generic_circuit_[0-9-]*/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}/' pyproject.toml
-          else
-            sed -i 's/version = ".*"/version = "${{ steps.get_version.outputs.version }}"/' pyproject.toml
-            sed -i 's/onnx_generic_circuit_[0-9-]*/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}/' pyproject.toml
-          fi
+          sed -i '' 's/version = ".*"/version = "${{ steps.get_version.outputs.version }}"/' pyproject.toml
+          sed -i '' 's/onnx_generic_circuit_[0-9-]*/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}/' pyproject.toml
 
       - name: Update Cargo.toml version
-        shell: bash
         run: |
-          if [[ "${{ runner.os }}" == "macOS" ]]; then
-            sed -i '' '1,/^version = /{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/;}' rust/jstprove_circuits/Cargo.toml
-            sed -i '' 's/name = "onnx_generic_circuit_.*"/name = "onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"/' rust/jstprove_circuits/Cargo.toml
-          else
-            sed -i '0,/^version = ".*"/{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/}' rust/jstprove_circuits/Cargo.toml
-            sed -i 's/name = "onnx_generic_circuit_.*"/name = "onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"/' rust/jstprove_circuits/Cargo.toml
-          fi
+          sed -i '' '1,/^version = /{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/;}' rust/jstprove_circuits/Cargo.toml
+          sed -i '' 's/name = "onnx_generic_circuit_.*"/name = "onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"/' rust/jstprove_circuits/Cargo.toml
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: brew install open-mpi
+
+      - name: Install Rust target
+        run: rustup target add aarch64-apple-darwin
 
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: macos-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+          key: macos-cargo-git-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          key: macos-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Install system dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libopenmpi-dev openmpi-bin pkg-config libssl-dev
-
-      - name: Install system dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: brew install open-mpi
-
-      - name: Install Rust target
-        run: rustup target add ${{ matrix.target }}
-
-      - name: Clone ECC
+      - name: Clone Expander
         run: |
           git clone https://github.com/PolyhedraZK/Expander.git
           cd Expander
@@ -102,54 +271,98 @@ jobs:
           cd ..
 
       - name: Build Rust binaries
-        shell: bash
         run: |
-          cargo build --release --target ${{ matrix.target }} --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
-          cargo build --release --manifest-path Expander/Cargo.toml --bin expander-exec
+          cargo build --release --target aarch64-apple-darwin --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
+          cargo build --release --target aarch64-apple-darwin --manifest-path Expander/Cargo.toml --bin expander-exec
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
 
-      - name: Fix library paths for portability
+      - name: Collect and bundle MPI libraries
         shell: bash
         run: |
-          if [[ "${{ runner.os }}" == "macOS" ]]; then
-            install_name_tool -change /opt/homebrew/opt/open-mpi/lib/libmpi.40.dylib @rpath/libmpi.40.dylib Expander/target/release/expander-exec || true
-            install_name_tool -add_rpath /opt/homebrew/opt/open-mpi/lib Expander/target/release/expander-exec || true
-            install_name_tool -add_rpath /usr/local/opt/open-mpi/lib Expander/target/release/expander-exec || true
-            install_name_tool -add_rpath /opt/homebrew/lib Expander/target/release/expander-exec || true
-            install_name_tool -add_rpath /usr/local/lib Expander/target/release/expander-exec || true
-          else
-            sudo apt-get install -y patchelf
-            patchelf --set-rpath '/usr/lib/x86_64-linux-gnu:/usr/local/lib:/usr/lib' Expander/target/release/expander-exec || true
-          fi
-
-      - name: Copy binaries to package
-        shell: bash
-        run: |
-          mkdir -p python/core/binaries
           BINARY_NAME="onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"
-          cp target/${{ matrix.target }}/release/${BINARY_NAME} python/core/binaries/
-          cp Expander/target/release/expander-exec python/core/binaries/
-          chmod +x python/core/binaries/${BINARY_NAME}
-          chmod +x python/core/binaries/expander-exec
+          MAIN_BIN="target/aarch64-apple-darwin/release/${BINARY_NAME}"
+          EXPANDER_BIN="Expander/target/aarch64-apple-darwin/release/expander-exec"
+          BIN_DIR="python/core/binaries"
+          LIB_DIR="python/core/lib"
+
+          mkdir -p "$BIN_DIR" "$LIB_DIR"
+          touch "$LIB_DIR/__init__.py"
+          cp "$MAIN_BIN" "$BIN_DIR/"
+          cp "$EXPANDER_BIN" "$BIN_DIR/"
+          chmod +x "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"
+
+          MPI_PREFIX=$(brew --prefix open-mpi)
+          MPI_DYLIB=$(ls "$MPI_PREFIX/lib"/libmpi.*.dylib 2>/dev/null | head -1)
+          if [ -z "$MPI_DYLIB" ]; then
+            echo "FAIL: no libmpi.*.dylib found in $MPI_PREFIX/lib"
+            exit 1
+          fi
+          cp "$MPI_DYLIB" "$LIB_DIR/"
+
+          while true; do
+            FOUND_NEW=0
+            for lib in "$LIB_DIR"/*.dylib; do
+              [ -f "$lib" ] || continue
+              for dep in $(otool -L "$lib" | tail -n +2 | awk '{print $1}'); do
+                case "$dep" in /usr/lib/*|/System/*|@*) continue;; esac
+                dep_name=$(basename "$dep")
+                [ -f "$LIB_DIR/$dep_name" ] && continue
+                [ ! -f "$dep" ] && continue
+                cp "$dep" "$LIB_DIR/$dep_name"
+                FOUND_NEW=1
+              done
+            done
+            [ "$FOUND_NEW" -eq 0 ] && break
+          done
+
+          for lib in "$LIB_DIR"/*.dylib; do
+            [ -f "$lib" ] || continue
+            install_name_tool -id "@loader_path/$(basename "$lib")" "$lib"
+            for dep in $(otool -L "$lib" | tail -n +2 | awk '{print $1}'); do
+              case "$dep" in @*|/usr/lib/*|/System/*) continue;; esac
+              dep_name=$(basename "$dep")
+              [ -f "$LIB_DIR/$dep_name" ] && install_name_tool -change "$dep" "@loader_path/$dep_name" "$lib"
+            done
+            codesign --force --sign - "$lib"
+          done
+
+          for bin in "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"; do
+            for dep in $(otool -L "$bin" | tail -n +2 | awk '{print $1}'); do
+              case "$dep" in @*|/usr/lib/*|/System/*) continue;; esac
+              dep_name=$(basename "$dep")
+              [ -f "$LIB_DIR/$dep_name" ] && install_name_tool -change "$dep" "@rpath/$dep_name" "$bin"
+            done
+            install_name_tool -add_rpath "@loader_path/../lib" "$bin" 2>/dev/null || true
+            codesign --force --sign - "$bin"
+          done
+
+          echo "=== Verification ==="
+          for f in "$LIB_DIR"/*.dylib "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"; do
+            [ -f "$f" ] || continue
+            echo "--- $f ---"
+            otool -L "$f"
+          done
+          if otool -L "$LIB_DIR"/*.dylib "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec" 2>/dev/null | grep -E '/opt/homebrew|/usr/local/Cellar'; then
+            echo "FAIL: absolute homebrew paths found"
+            exit 1
+          fi
 
       - name: Build wheel
         run: uv build
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
 
       - name: Retag wheel with platform
-        shell: bash
         run: |
           uv tool install wheel
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            PLAT="manylinux_2_17_x86_64.manylinux2014_x86_64"
-          else
-            PLAT="macosx_11_0_arm64"
-          fi
-          uvx wheel tags --platform-tag=$PLAT --remove dist/*.whl
+          uvx wheel tags --platform-tag=macosx_11_0_arm64 --remove dist/*.whl
 
       - name: Test wheel installation and compile
-        shell: bash
         run: |
           WHEEL=$(ls dist/*.whl)
           uv tool install "$WHEEL"
+          export PATH="$HOME/.local/bin:$PATH"
           jst compile -m python/models/models_onnx/lenet.onnx -c ./test_circuit.txt
           if [[ ! -f ./test_circuit.txt ]]; then
             echo "Error: Circuit file was not created"
@@ -160,11 +373,12 @@ jobs:
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4
         with:
-          name: wheel-${{ matrix.os }}-${{ matrix.arch }}
+          name: wheel-macos-aarch64
           path: ./dist/*.whl
 
   publish:
-    needs: build-wheels
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [build-linux, build-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write

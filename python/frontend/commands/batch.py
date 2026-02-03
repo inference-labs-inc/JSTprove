@@ -1,21 +1,36 @@
 from __future__ import annotations
 
+import json
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from python.core.utils.helper_functions import (
     read_from_json,
     run_cargo_command,
+    run_cargo_command_piped,
     to_json,
 )
 from python.frontend.commands.args import CIRCUIT_PATH
 from python.frontend.commands.base import BaseCommand
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import argparse
     from collections.abc import Callable
 
     from python.core.circuits.base import Circuit
+
+
+def _parse_piped_result(stdout: bytes) -> dict[str, Any]:
+    lines = stdout.strip().split(b"\n")
+    for line in reversed(lines):
+        stripped = line.strip()
+        if stripped.startswith(b"{"):
+            return json.loads(stripped)
+    msg = f"No JSON object found in piped stdout: {stdout[:200]}"
+    raise ValueError(msg)
 
 
 def _preprocess_manifest(
@@ -86,6 +101,241 @@ def _transform_verify_job(circuit: Circuit, job: dict[str, Any]) -> None:
     to_json(circuit_inputs, processed_path)
 
     job["input"] = processed_path
+
+
+def _run_witness_chunk_piped(
+    binary_name: str,
+    circuit_path: str,
+    metadata_path: str,
+    chunk_jobs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    payload_obj = {
+        "jobs": [
+            {
+                "input": job["_circuit_inputs"],
+                "output": job["_circuit_outputs"],
+                "witness": job["witness"],
+            }
+            for job in chunk_jobs
+        ],
+    }
+    payload = json.dumps(payload_obj).encode()
+
+    result = run_cargo_command_piped(
+        binary_name=binary_name,
+        command_type="run_pipe_witness",
+        payload=payload,
+        args={"c": circuit_path, "m": metadata_path},
+    )
+
+    return _parse_piped_result(result.stdout)
+
+
+def batch_witness_from_tensors(
+    circuit: Circuit,
+    jobs: list[dict[str, Any]],
+    circuit_path: str,
+    chunk_size: int = 0,
+) -> dict[str, Any]:
+    circuit_file = Path(circuit_path)
+    file_stem = circuit_file.stem
+    binary_name = circuit.name
+    metadata_path = str(circuit_file.parent / f"{file_stem}_metadata.json")
+    quantized_path = str(circuit_file.parent / f"{file_stem}_quantized_model.onnx")
+    circuit.load_quantized_model(quantized_path)
+
+    piped_jobs: list[dict[str, Any]] = []
+    for job in jobs:
+        raw = job["input"]
+        inputs = read_from_json(raw) if isinstance(raw, str) else raw
+        scaled = circuit.scale_inputs_only(inputs)
+        inference_inputs = circuit.reshape_inputs_for_inference(scaled)
+        circuit_inputs = circuit.reshape_inputs_for_circuit(scaled)
+        outputs = circuit.get_outputs(inference_inputs)
+        formatted = circuit.format_outputs(outputs)
+        piped_jobs.append(
+            {
+                "_circuit_inputs": circuit_inputs,
+                "_circuit_outputs": formatted,
+                "witness": job["witness"],
+            },
+        )
+
+    if chunk_size <= 0:
+        chunks = [piped_jobs]
+    else:
+        chunks = [
+            piped_jobs[i : i + chunk_size]
+            for i in range(0, len(piped_jobs), chunk_size)
+        ]
+
+    total_succeeded = 0
+    total_failed = 0
+    all_errors: list[Any] = []
+
+    for chunk in chunks:
+        result = _run_witness_chunk_piped(
+            binary_name=binary_name,
+            circuit_path=circuit_path,
+            metadata_path=metadata_path,
+            chunk_jobs=chunk,
+        )
+        total_succeeded += result.get("succeeded", 0)
+        total_failed += result.get("failed", 0)
+        all_errors.extend(result.get("errors", []))
+
+    return {
+        "succeeded": total_succeeded,
+        "failed": total_failed,
+        "errors": all_errors,
+    }
+
+
+def _run_prove_chunk_piped(
+    binary_name: str,
+    circuit_path: str,
+    metadata_path: str,
+    chunk_jobs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    payload_obj = {
+        "jobs": [
+            {"witness": job["witness"], "proof": job["proof"]} for job in chunk_jobs
+        ],
+    }
+    payload = json.dumps(payload_obj).encode()
+
+    result = run_cargo_command_piped(
+        binary_name=binary_name,
+        command_type="run_pipe_prove",
+        payload=payload,
+        args={"c": circuit_path, "m": metadata_path},
+    )
+
+    return _parse_piped_result(result.stdout)
+
+
+def batch_prove_piped(
+    binary_name: str,
+    jobs: list[dict[str, Any]],
+    circuit_path: str,
+    chunk_size: int = 0,
+) -> dict[str, Any]:
+    circuit_file = Path(circuit_path)
+    metadata_path = str(circuit_file.parent / f"{circuit_file.stem}_metadata.json")
+
+    if chunk_size <= 0:
+        chunks = [jobs]
+    else:
+        chunks = [jobs[i : i + chunk_size] for i in range(0, len(jobs), chunk_size)]
+
+    total_succeeded = 0
+    total_failed = 0
+    all_errors: list[Any] = []
+
+    for chunk in chunks:
+        result = _run_prove_chunk_piped(
+            binary_name=binary_name,
+            circuit_path=circuit_path,
+            metadata_path=metadata_path,
+            chunk_jobs=chunk,
+        )
+        total_succeeded += result.get("succeeded", 0)
+        total_failed += result.get("failed", 0)
+        all_errors.extend(result.get("errors", []))
+
+    return {
+        "succeeded": total_succeeded,
+        "failed": total_failed,
+        "errors": all_errors,
+    }
+
+
+def _run_verify_chunk_piped(
+    binary_name: str,
+    circuit_path: str,
+    metadata_path: str,
+    chunk_jobs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    payload_obj = {
+        "jobs": [
+            {
+                "input": job["_circuit_inputs"],
+                "output": job["_circuit_outputs"],
+                "witness": job["witness"],
+                "proof": job["proof"],
+            }
+            for job in chunk_jobs
+        ],
+    }
+    payload = json.dumps(payload_obj).encode()
+
+    result = run_cargo_command_piped(
+        binary_name=binary_name,
+        command_type="run_pipe_verify",
+        payload=payload,
+        args={"c": circuit_path, "m": metadata_path},
+    )
+
+    return _parse_piped_result(result.stdout)
+
+
+def batch_verify_from_tensors(
+    circuit: Circuit,
+    jobs: list[dict[str, Any]],
+    circuit_path: str,
+    chunk_size: int = 0,
+) -> dict[str, Any]:
+    circuit_file = Path(circuit_path)
+    file_stem = circuit_file.stem
+    binary_name = circuit.name
+    metadata_path = str(circuit_file.parent / f"{file_stem}_metadata.json")
+    quantized_path = str(circuit_file.parent / f"{file_stem}_quantized_model.onnx")
+    circuit.load_quantized_model(quantized_path)
+
+    piped_jobs: list[dict[str, Any]] = []
+    for job in jobs:
+        raw_in = job["input"]
+        inputs = read_from_json(raw_in) if isinstance(raw_in, str) else raw_in
+        circuit_inputs = circuit.reshape_inputs_for_circuit(inputs)
+        raw_out = job["output"]
+        outputs = read_from_json(raw_out) if isinstance(raw_out, str) else raw_out
+        piped_jobs.append(
+            {
+                "_circuit_inputs": circuit_inputs,
+                "_circuit_outputs": outputs,
+                "witness": job["witness"],
+                "proof": job["proof"],
+            },
+        )
+
+    if chunk_size <= 0:
+        chunks = [piped_jobs]
+    else:
+        chunks = [
+            piped_jobs[i : i + chunk_size]
+            for i in range(0, len(piped_jobs), chunk_size)
+        ]
+
+    total_succeeded = 0
+    total_failed = 0
+    all_errors: list[Any] = []
+
+    for chunk in chunks:
+        result = _run_verify_chunk_piped(
+            binary_name=binary_name,
+            circuit_path=circuit_path,
+            metadata_path=metadata_path,
+            chunk_jobs=chunk,
+        )
+        total_succeeded += result.get("succeeded", 0)
+        total_failed += result.get("failed", 0)
+        all_errors.extend(result.get("errors", []))
+
+    return {
+        "succeeded": total_succeeded,
+        "failed": total_failed,
+        "errors": all_errors,
+    }
 
 
 class BatchCommand(BaseCommand):

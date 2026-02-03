@@ -48,10 +48,40 @@ from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import (
     ONNXOpQuantizer,
 )
 
-try:
-    import tomllib  # Python 3.11+
-except ModuleNotFoundError:
-    import tomli as tomllib  # noqa: F401
+_MAX_ORT_IR_VERSION = 10
+_MAX_ORT_OPSET_VERSION = 22
+
+
+_logger = logging.getLogger(__name__)
+
+
+def _clamp_for_ort(model: onnx.ModelProto) -> None:
+    """Clamp IR and opset versions to the maximums supported by ORT.
+
+    ONNX may emit models whose IR or opset version exceeds what the bundled
+    ORT release can consume.  Rather than failing at inference time, this
+    function down-converts the versions in-place so the model remains
+    loadable.  The semantic gap between adjacent versions is typically
+    backward-compatible, but any behavioural change from the downgrade is
+    accepted as a trade-off for runtime compatibility.
+    """
+    if model.ir_version > _MAX_ORT_IR_VERSION:
+        _logger.warning(
+            "Clamping model IR version %d -> %d for ORT compatibility",
+            model.ir_version,
+            _MAX_ORT_IR_VERSION,
+        )
+        model.ir_version = _MAX_ORT_IR_VERSION
+    for opset in model.opset_import:
+        if opset.domain in ("", "ai.onnx") and opset.version > _MAX_ORT_OPSET_VERSION:
+            _logger.warning(
+                "Clamping opset '%s' version %d -> %d for ORT compatibility",
+                opset.domain or "ai.onnx",
+                opset.version,
+                _MAX_ORT_OPSET_VERSION,
+            )
+            opset.version = _MAX_ORT_OPSET_VERSION
+
 
 ONNXLayerDict = dict[
     str,
@@ -147,6 +177,7 @@ class ONNXConverter(ModelConverter):
         """
         try:
             Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+            _clamp_for_ort(self.model)
             onnx.save(self.model, file_path)
         except Exception as e:
             raise ModelSaveError(
@@ -196,6 +227,7 @@ class ONNXConverter(ModelConverter):
         """
         try:
             Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+            _clamp_for_ort(self.quantized_model)
             onnx.save(self.quantized_model, file_path)
         except Exception as e:
             raise ModelSaveError(

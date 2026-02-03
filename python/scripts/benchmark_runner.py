@@ -23,7 +23,7 @@ import tempfile
 import time
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from statistics import mean, stdev
 
@@ -218,12 +218,7 @@ def now_utc() -> str:
     UTC timestamp in RFC3339 format without subseconds
     (e.g., '2025-01-01T00:00:00Z').
     """
-    return (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)

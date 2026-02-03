@@ -8,7 +8,8 @@ use expander_compiler::frontend::{
 use gkr_engine::{FieldEngine, GKREngine, MPIConfig};
 use io_reader::IOReader;
 use peakmem_alloc::{INSTRUMENTED_SYSTEM, PeakMemAlloc, PeakMemAllocTrait};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use serdes::ExpSerde;
 use std::alloc::System;
 use std::path::{Path, PathBuf};
@@ -381,11 +382,26 @@ pub struct VerifyJob {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct PipeWitnessJob {
+    pub input: Value,
+    pub output: Value,
+    pub witness: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PipeVerifyJob {
+    pub input: Value,
+    pub output: Value,
+    pub witness: String,
+    pub proof: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct BatchManifest<T> {
     pub jobs: Vec<T>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct BatchResult {
     pub succeeded: usize,
     pub failed: usize,
@@ -543,13 +559,12 @@ where
     Ok(())
 }
 
-fn witness_core<C: Config, CircuitDefaultType>(
+fn solve_and_validate_witness<C: Config, CircuitDefaultType>(
     witness_solver: &WitnessSolver<C>,
     layered_circuit: &Circuit<C, NormalInputType>,
     hint_registry: &expander_compiler::frontend::HintRegistry<CircuitField<C>>,
     assignment: &CircuitDefaultType,
-    witness_path: &str,
-) -> Result<(), RunError>
+) -> Result<Witness<C>, RunError>
 where
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
@@ -567,6 +582,24 @@ where
             ));
         }
     }
+
+    Ok(witness)
+}
+
+fn witness_core<C: Config, CircuitDefaultType>(
+    witness_solver: &WitnessSolver<C>,
+    layered_circuit: &Circuit<C, NormalInputType>,
+    hint_registry: &expander_compiler::frontend::HintRegistry<CircuitField<C>>,
+    assignment: &CircuitDefaultType,
+    witness_path: &str,
+) -> Result<(), RunError>
+where
+    CircuitDefaultType: Default
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
+        + Clone,
+{
+    let witness =
+        solve_and_validate_witness(witness_solver, layered_circuit, hint_registry, assignment)?;
 
     let file = std::fs::File::create(witness_path).map_err(|e| RunError::Io {
         source: e,
@@ -654,6 +687,266 @@ where
         failed,
         errors,
     })
+}
+
+/// Generates witnesses for multiple inputs via stdin/stdout piping.
+///
+/// # Errors
+///
+/// Returns a [`RunError`] if loading the circuit, reading stdin, or witness generation fails.
+pub fn run_pipe_witness<C: Config, I, CircuitDefaultType>(
+    io_reader_factory: impl Fn() -> I,
+    circuit_path: &str,
+) -> Result<BatchResult, RunError>
+where
+    I: IOReader<CircuitDefaultType, C>,
+    CircuitDefaultType: Default
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
+        + Clone,
+{
+    let witness_solver = load_witness_solver::<C>(circuit_path)?;
+    let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
+    let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
+
+    let stdin = std::io::stdin();
+    let manifest: BatchManifest<PipeWitnessJob> =
+        serde_json::from_reader(stdin.lock()).map_err(|e| RunError::Json(format!("{e:?}")))?;
+
+    let job_count = manifest.jobs.len();
+    eprintln!("Loaded circuit and witness solver. Processing {job_count} piped jobs.");
+
+    let mut succeeded = 0usize;
+    let mut failed = 0usize;
+    let mut errors: Vec<(usize, String)> = Vec::new();
+
+    for (idx, job) in manifest.jobs.into_iter().enumerate() {
+        let mut io_reader = io_reader_factory();
+        let assignment = CircuitDefaultType::default();
+        let assignment = match io_reader.apply_values(job.input, job.output, assignment) {
+            Ok(a) => a,
+            Err(e) => {
+                failed += 1;
+                eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
+                errors.push((idx, e.to_string()));
+                continue;
+            }
+        };
+
+        match solve_and_validate_witness::<C, CircuitDefaultType>(
+            &witness_solver,
+            &layered_circuit,
+            &hint_registry,
+            &assignment,
+        ) {
+            Ok(witness) => {
+                let file = match std::fs::File::create(&job.witness) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        failed += 1;
+                        let msg = format!("witness I/O: {e:?}");
+                        eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, msg);
+                        errors.push((idx, msg));
+                        continue;
+                    }
+                };
+                let writer = std::io::BufWriter::new(file);
+                if let Err(e) = witness.serialize_into(writer) {
+                    failed += 1;
+                    let msg = format!("witness serialize: {e:?}");
+                    eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, msg);
+                    errors.push((idx, msg));
+                    continue;
+                }
+                succeeded += 1;
+                eprintln!("[{}/{}] witness: {}", idx + 1, job_count, job.witness);
+            }
+            Err(e) => {
+                failed += 1;
+                eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
+                errors.push((idx, e.to_string()));
+            }
+        }
+    }
+
+    let result = BatchResult {
+        succeeded,
+        failed,
+        errors,
+    };
+    let stdout = std::io::stdout();
+    serde_json::to_writer(stdout.lock(), &result)
+        .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
+    println!();
+
+    Ok(result)
+}
+
+/// Generates proofs for multiple witnesses via stdin/stdout piping.
+///
+/// # Errors
+///
+/// Returns a [`RunError`] if loading the circuit, reading stdin, or proving fails.
+pub fn run_pipe_prove<C: Config, CircuitDefaultType>(
+    circuit_path: &str,
+) -> Result<BatchResult, RunError>
+where
+    CircuitDefaultType: Default
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
+        + Clone,
+{
+    let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
+
+    let stdin = std::io::stdin();
+    let manifest: BatchManifest<ProveJob> =
+        serde_json::from_reader(stdin.lock()).map_err(|e| RunError::Json(format!("{e:?}")))?;
+
+    let job_count = manifest.jobs.len();
+    eprintln!("Loaded circuit. Processing {job_count} piped prove jobs.");
+
+    let mut succeeded = 0usize;
+    let mut failed = 0usize;
+    let mut errors: Vec<(usize, String)> = Vec::new();
+
+    for (idx, job) in manifest.jobs.into_iter().enumerate() {
+        let mut circuit = layered_circuit.export_to_expander_flatten();
+        match prove_core::<C>(&mut circuit, &job.witness, &job.proof) {
+            Ok(()) => {
+                succeeded += 1;
+                eprintln!("[{}/{}] proof: {}", idx + 1, job_count, job.proof);
+            }
+            Err(e) => {
+                failed += 1;
+                eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
+                errors.push((idx, e.to_string()));
+            }
+        }
+    }
+
+    let result = BatchResult {
+        succeeded,
+        failed,
+        errors,
+    };
+    let stdout = std::io::stdout();
+    serde_json::to_writer(stdout.lock(), &result)
+        .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
+    println!();
+
+    Ok(result)
+}
+
+fn verify_single_job<C: Config, I, CircuitDefaultType>(
+    io_reader_factory: &impl Fn() -> I,
+    layered_circuit: &Circuit<C, NormalInputType>,
+    job: PipeVerifyJob,
+) -> Result<String, String>
+where
+    I: IOReader<CircuitDefaultType, C>,
+    CircuitDefaultType: Default
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
+        + Clone,
+{
+    let mut io_reader = io_reader_factory();
+    let assignment = CircuitDefaultType::default();
+    let assignment = io_reader
+        .apply_values(job.input, job.output, assignment)
+        .map_err(|e| e.to_string())?;
+
+    let mut vars: Vec<_> = Vec::new();
+    let mut public_vars: Vec<_> = Vec::new();
+    assignment.dump_into(&mut vars, &mut public_vars);
+
+    let mut circuit = layered_circuit.export_to_expander_flatten();
+
+    let file = std::fs::File::open(&job.witness).map_err(|e| format!("witness I/O: {e:?}"))?;
+    let witness = Witness::<C>::deserialize_from(std::io::BufReader::new(file))
+        .map_err(|e| format!("witness deserialize: {e:?}"))?;
+
+    let (simd_input, simd_public_input) = witness.to_simd();
+    circuit.layers[0].input_vals.clone_from(&simd_input);
+    circuit.public_input.clone_from(&simd_public_input);
+
+    let mismatch = public_vars
+        .iter()
+        .enumerate()
+        .any(|(i, _)| format!("{:?}", public_vars[i]) != format!("{:?}", circuit.public_input[i]));
+    if mismatch {
+        return Err("inputs/outputs don't match the witness".into());
+    }
+
+    let file = std::fs::File::open(&job.proof).map_err(|e| format!("proof I/O: {e:?}"))?;
+    let proof_and_claimed_v: Vec<u8> = Vec::deserialize_from(std::io::BufReader::new(file))
+        .map_err(|e| format!("proof deserialize: {e:?}"))?;
+
+    let (proof, claimed_v) =
+        executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v)
+            .map_err(|e| format!("proof load: {e:?}"))?;
+
+    let mpi_config = gkr_engine::MPIConfig::verifier_new(1);
+    if executor::verify::<C>(&mut circuit, mpi_config, &proof, &claimed_v) {
+        Ok(format!("verified: {}", job.proof))
+    } else {
+        Err("Verification failed".into())
+    }
+}
+
+/// Verifies multiple proofs via stdin/stdout piping.
+///
+/// # Errors
+///
+/// Returns a [`RunError`] if loading the circuit, reading stdin, or verification fails.
+pub fn run_pipe_verify<C: Config, I, CircuitDefaultType>(
+    io_reader_factory: impl Fn() -> I,
+    circuit_path: &str,
+) -> Result<BatchResult, RunError>
+where
+    I: IOReader<CircuitDefaultType, C>,
+    CircuitDefaultType: Default
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
+        + Clone,
+{
+    let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
+
+    let stdin = std::io::stdin();
+    let manifest: BatchManifest<PipeVerifyJob> =
+        serde_json::from_reader(stdin.lock()).map_err(|e| RunError::Json(format!("{e:?}")))?;
+
+    let job_count = manifest.jobs.len();
+    eprintln!("Loaded circuit. Processing {job_count} piped verify jobs.");
+
+    let mut succeeded = 0usize;
+    let mut failed = 0usize;
+    let mut errors: Vec<(usize, String)> = Vec::new();
+
+    for (idx, job) in manifest.jobs.into_iter().enumerate() {
+        match verify_single_job::<C, I, CircuitDefaultType>(
+            &io_reader_factory,
+            &layered_circuit,
+            job,
+        ) {
+            Ok(msg) => {
+                succeeded += 1;
+                eprintln!("[{}/{}] {msg}", idx + 1, job_count);
+            }
+            Err(msg) => {
+                failed += 1;
+                eprintln!("[{}/{}] FAILED: {msg}", idx + 1, job_count);
+                errors.push((idx, msg));
+            }
+        }
+    }
+
+    let result = BatchResult {
+        succeeded,
+        failed,
+        errors,
+    };
+    let stdout = std::io::stdout();
+    serde_json::to_writer(stdout.lock(), &result)
+        .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
+    println!();
+
+    Ok(result)
 }
 
 /// Generates proofs for multiple witnesses sequentially.
@@ -964,6 +1257,26 @@ where
                 &circuit_path,
             )?;
             check_batch_result("verify", &result)?;
+        }
+        "run_pipe_witness" => {
+            let circuit_path = get_arg(matches, "circuit_path")?;
+            let reader_template = file_reader.clone();
+            run_pipe_witness::<C, _, CircuitDefaultType>(
+                move || reader_template.clone(),
+                &circuit_path,
+            )?;
+        }
+        "run_pipe_prove" => {
+            let circuit_path = get_arg(matches, "circuit_path")?;
+            run_pipe_prove::<C, CircuitDefaultType>(&circuit_path)?;
+        }
+        "run_pipe_verify" => {
+            let circuit_path = get_arg(matches, "circuit_path")?;
+            let reader_template = file_reader.clone();
+            run_pipe_verify::<C, _, CircuitDefaultType>(
+                move || reader_template.clone(),
+                &circuit_path,
+            )?;
         }
         _ => return Err(CliError::UnknownCommand(command.to_string())),
     }
