@@ -21,6 +21,7 @@ concurrency:
 
 env:
   EXPANDER_COMMIT: af1b7473bc858d250e481d6bb7db98a1ee6b7fc5
+  RUST_NIGHTLY: nightly-2025-03-27
 
 jobs:
   formatting-and-linting:
@@ -28,19 +29,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@nightly
         with:
-          toolchain: nightly-2025-03-27
+          toolchain: ${{ env.RUST_NIGHTLY }}
           components: rustfmt, clippy
 
       - name: Install OMPI
@@ -53,14 +54,14 @@ jobs:
             openmpi-bin
 
       - name: Install UV
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
 
       - name: Install the project
         run: uv sync --group test
 
       - name: Get changed files
         id: changed-files
-        uses: tj-actions/changed-files@v46
+        uses: tj-actions/changed-files@v47
         with:
           files: |
             **/*.py
@@ -89,22 +90,20 @@ jobs:
       matrix:
         python-version: ["3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v6
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@nightly
         with:
-          toolchain: nightly-2025-03-27
+          toolchain: ${{ env.RUST_NIGHTLY }}
 
       - name: Cache Rust dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -113,7 +112,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install UV
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
 
       - name: Install the project
         run: uv sync --group test
@@ -143,7 +142,7 @@ jobs:
           uv run pytest --e2e --model lenet --source onnx --html=report/e2e_tests.html
 
       - name: Upload test report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: e2e-test-report-python-${{ matrix.python-version }}
           path: report
