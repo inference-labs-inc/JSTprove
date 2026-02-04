@@ -304,7 +304,7 @@ def test_run_cargo_command_bool_args(mock_run: MagicMock) -> None:
     assert "-v" in args
     assert "-i" in args
     assert "in.json" in args
-    assert "-json" in args
+    assert "--json" in args
 
 
 @pytest.mark.unit
@@ -344,9 +344,9 @@ def test_run_command_failure(mock_run: MagicMock, mock_path_class: MagicMock) ->
 def test_get_expander_file_paths() -> None:
     name = "model"
     paths = get_expander_file_paths(name)
-    assert paths["circuit_file"] == "model_circuit.txt"
-    assert paths["witness_file"] == "model_witness.txt"
-    assert paths["proof_file"] == "model_proof.txt"
+    assert paths["circuit_file"] == "model_circuit.bin"
+    assert paths["witness_file"] == "model_witness.bin"
+    assert paths["proof_file"] == "model_proof.bin"
 
 
 # ---------- compile_circuit ----------
@@ -793,47 +793,50 @@ def test_run_end_to_end_calls_all(
     mock_proof: MagicMock,
     mock_verify: MagicMock,
 ) -> None:
-    run_end_to_end("m", "m_circuit.txt", "i.json", "o.json")
+    run_end_to_end("m", "m_circuit.bin", "i.json", "o.json")
     mock_compile.assert_called_once_with(
         "m",
-        "m_circuit.txt",
+        "m_circuit.bin",
         "m_circuit_metadata.json",
         "m_circuit_architecture.json",
         "m_circuit_wandb.json",
         ZKProofSystems.Expander,
-        False,  # noqa: FBT003
+        dev_mode=False,
+        compress=True,
     )
     mock_witness.assert_called_once_with(
         "m",
-        "m_circuit.txt",
-        "m_circuit_witness.txt",
+        "m_circuit.bin",
+        "m_circuit_witness.bin",
         "i.json",
         "o.json",
         "m_circuit_metadata.json",
         ZKProofSystems.Expander,
-        False,  # noqa: FBT003
+        dev_mode=False,
+        compress=True,
     )
     mock_proof.assert_called_once_with(
         "m",
-        "m_circuit.txt",
-        "m_circuit_witness.txt",
+        "m_circuit.bin",
+        "m_circuit_witness.bin",
         "m_circuit_proof.bin",
         "m_circuit_metadata.json",
         ZKProofSystems.Expander,
-        False,  # noqa: FBT003
-        True,  # noqa: FBT003
+        dev_mode=False,
+        ecc=True,
+        compress=True,
     )
     mock_verify.assert_called_once_with(
         "m",
-        "m_circuit.txt",
+        "m_circuit.bin",
         "i.json",
         "o.json",
-        "m_circuit_witness.txt",
+        "m_circuit_witness.bin",
         "m_circuit_proof.bin",
         "m_circuit_metadata.json",
         ZKProofSystems.Expander,
-        False,  # noqa: FBT003
-        True,  # noqa: FBT003
+        dev_mode=False,
+        ecc=True,
     )
 
 
@@ -852,7 +855,7 @@ def test_unknown_proof_system_errors_end_to_end(
         ProofSystemNotImplementedError,
         match="Proof system UnknownProofSystem not implemented",
     ):
-        run_end_to_end("m", "m_circuit.txt", "i.json", "o.json", "UnknownProofSystem")
+        run_end_to_end("m", "m_circuit.bin", "i.json", "o.json", "UnknownProofSystem")
 
 
 # # ---------- get_files ----------
@@ -932,7 +935,7 @@ def test_resolve_binary_fallback(
 )
 @patch(
     "python.core.utils.helper_functions._build_command",
-    return_value=["./target/release/testbin", "run_pipe_witness", "-c", "c.txt"],
+    return_value=["./target/release/testbin", "run_pipe_witness", "-c", "c.bin"],
 )
 def test_run_cargo_command_piped_success(
     _mock_build: MagicMock,
@@ -949,7 +952,7 @@ def test_run_cargo_command_piped_success(
         "testbin",
         "run_pipe_witness",
         payload,
-        args={"c": "c.txt"},
+        args={"c": "c.bin"},
     )
     mock_run.assert_called_once()
     call_kwargs = mock_run.call_args[1]

@@ -1,15 +1,29 @@
 from __future__ import annotations
 
+import io
 import struct
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO
 
+import zstandard
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 from python.core.utils.errors import ProofSystemNotImplementedError
-from python.core.utils.helper_functions import ZKProofSystems
+from python.core.utils.helper_functions import ZSTD_MAGIC, ZKProofSystems
+
+
+def _open_maybe_compressed(path: str) -> BinaryIO:
+    with Path(path).open("rb") as raw:
+        magic = raw.read(4)
+        raw.seek(0)
+        if magic == ZSTD_MAGIC:
+            dctx = zstandard.ZstdDecompressor()
+            reader = dctx.stream_reader(raw)
+            return io.BytesIO(reader.read())
+        return io.BytesIO(raw.read())
 
 
 # -------------------------
@@ -104,7 +118,7 @@ class ExpanderWitnessLoader(WitnessLoader):
                 - witnesses (list of dicts with 'inputs' and 'public_inputs')
         """
         path = self.path
-        with Path(path).open("rb") as f:
+        with _open_maybe_compressed(path) as f:
             num_witnesses = read_usize(f)
             num_inputs = read_usize(f)
             num_public_inputs = read_usize(f)

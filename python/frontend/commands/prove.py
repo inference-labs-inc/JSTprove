@@ -7,7 +7,12 @@ if TYPE_CHECKING:
 
 from python.core.circuits.errors import CircuitRunError
 from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
-from python.frontend.commands.args import CIRCUIT_PATH, PROOF_PATH, WITNESS_PATH
+from python.frontend.commands.args import (
+    CIRCUIT_PATH,
+    NO_COMPRESS,
+    PROOF_PATH,
+    WITNESS_PATH,
+)
 from python.frontend.commands.base import BaseCommand
 
 
@@ -26,6 +31,7 @@ class ProveCommand(BaseCommand):
         CIRCUIT_PATH.add_to_parser(parser)
         WITNESS_PATH.add_to_parser(parser, "Path to an existing witness.")
         PROOF_PATH.add_to_parser(parser)
+        NO_COMPRESS.add_to_parser(parser)
 
     @classmethod
     @BaseCommand.validate_required(CIRCUIT_PATH, WITNESS_PATH, PROOF_PATH)
@@ -42,6 +48,7 @@ class ProveCommand(BaseCommand):
                     witness_file=args.witness_path,
                     proof_file=args.proof_path,
                     ecc=False,
+                    compress=not args.no_compress,
                 ),
             )
         except CircuitRunError as e:

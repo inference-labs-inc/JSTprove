@@ -36,6 +36,7 @@ strum.workspace = true
 strum_macros.workspace = true
 once_cell.workspace = true
 openssl.workspace = true
+zstd.workspace = true
 
 [dev-dependencies]
 sha2 = "0.10.8"

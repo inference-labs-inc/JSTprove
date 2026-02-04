@@ -5,8 +5,10 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
@@ -81,6 +83,7 @@ class CircuitExecutionConfig:
     dev_mode: bool = False
     write_json: bool = False
     bench: bool = False
+    compress: bool = True
 
 
 def filter_expander_output(stderr: str) -> str:
@@ -536,7 +539,8 @@ def _build_command(
     cmd.append(command_type)
     if args:
         for key, value in args.items():
-            cmd.append(f"-{key}")
+            prefix = "--" if len(key) > 1 else "-"
+            cmd.append(f"{prefix}{key}")
             if not (isinstance(value, bool) and value):
                 cmd.append(str(value))
     return cmd
@@ -604,13 +608,43 @@ def get_expander_file_paths(circuit_name: str) -> dict[str, str]:
                 circuit_file, witness_file, proof_file
     """
     return {
-        "circuit_file": f"{circuit_name}_circuit.txt",
-        "witness_file": f"{circuit_name}_witness.txt",
-        "proof_file": f"{circuit_name}_proof.txt",
+        "circuit_file": circuit_path(circuit_name),
+        "witness_file": witness_path(circuit_name),
+        "proof_file": proof_path(circuit_name),
     }
 
 
-def run_expander_raw(  # noqa: PLR0913, C901
+ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
+ARTIFACT_EXT = ".bin"
+
+
+def circuit_path(base: str) -> str:
+    return f"{base}_circuit{ARTIFACT_EXT}"
+
+
+def witness_path(base: str) -> str:
+    return f"{base}_witness{ARTIFACT_EXT}"
+
+
+def proof_path(base: str) -> str:
+    return f"{base}_proof{ARTIFACT_EXT}"
+
+
+def _maybe_decompress(src: str, tmp_dir: str) -> str:
+    with Path(src).open("rb") as f:
+        magic = f.read(4)
+    if magic != ZSTD_MAGIC:
+        return src
+    import zstandard  # noqa: PLC0415
+
+    dst = str(Path(tmp_dir) / Path(src).name)
+    dctx = zstandard.ZstdDecompressor()
+    with Path(src).open("rb") as fin, Path(dst).open("wb") as fout:
+        dctx.copy_stream(fin, fout)
+    return dst
+
+
+def run_expander_raw(  # noqa: PLR0913, PLR0912, PLR0915, C901
     mode: ExpanderMode,
     circuit_file: str,
     witness_file: str,
@@ -670,24 +704,30 @@ def run_expander_raw(  # noqa: PLR0913, C901
             "--manifest-path Expander/Cargo.toml --bin expander-exec'."
         )
         raise ProofBackendError(msg)
-    args = [
-        time_measure,
-        expander_binary_path,
-        "-p",
-        pcs_type,
-    ]
-    if mode == ExpanderMode.PROVE:
-        args.append(mode.value)
-        proof_command = "-o"
-    else:
-        args.append(mode.value)
-        proof_command = "-i"
-
-    args.extend(["-c", circuit_file])
-    args.extend(["-w", witness_file])
-    args.extend([proof_command, proof_file])
-
+    args: list[str] = []
+    tmp_dir = tempfile.mkdtemp(prefix="jstprove_expander_")
     try:
+        circuit_file = _maybe_decompress(circuit_file, tmp_dir)
+        witness_file = _maybe_decompress(witness_file, tmp_dir)
+
+        args = [
+            time_measure,
+            expander_binary_path,
+            "-p",
+            pcs_type,
+        ]
+        if mode == ExpanderMode.PROVE:
+            args.append(mode.value)
+            proof_command = "-o"
+        else:
+            args.append(mode.value)
+            proof_command = "-i"
+            proof_file = _maybe_decompress(proof_file, tmp_dir)
+
+        args.extend(["-c", circuit_file])
+        args.extend(["-w", witness_file])
+        args.extend([proof_command, proof_file])
+
         if bench:
             stop_event, monitor_thread, monitor_results = start_memory_collection(
                 "expander-exec",
@@ -736,6 +776,8 @@ def run_expander_raw(  # noqa: PLR0913, C901
         ) from e
     else:
         return result
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 def compile_circuit(  # noqa: PLR0913
@@ -748,6 +790,7 @@ def compile_circuit(  # noqa: PLR0913
     *,
     dev_mode: bool = True,
     bench: bool = False,
+    compress: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     """Compile a model into zk circuit
 
@@ -779,7 +822,8 @@ def compile_circuit(  # noqa: PLR0913
             "a": architecture_path,
             "b": w_and_b_path,
         }
-        # Run the command
+        if not compress:
+            args["no-compress"] = True
         try:
             return run_cargo_command(
                 binary_name=binary_name,
@@ -811,6 +855,7 @@ def generate_witness(  # noqa: PLR0913
     *,
     dev_mode: bool = False,
     bench: bool = False,
+    compress: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     """Generate a witness file for a circuit.
 
@@ -847,7 +892,8 @@ def generate_witness(  # noqa: PLR0913
             "w": witness_file,
             "m": metadata_path,
         }
-        # Run the command
+        if not compress:
+            args["no-compress"] = True
         try:
             return run_cargo_command(
                 binary_name=binary_name,
@@ -876,6 +922,7 @@ def generate_proof(  # noqa: PLR0913
     dev_mode: bool = False,
     ecc: bool = True,
     bench: bool = False,
+    compress: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     """Generate proof for the witness.
 
@@ -914,8 +961,9 @@ def generate_proof(  # noqa: PLR0913
                 "p": proof_file,
                 "m": metadata_path,
             }
+            if not compress:
+                args["no-compress"] = True
 
-            # Run the command
             try:
                 return run_cargo_command(
                     binary_name=binary_name,
@@ -1032,6 +1080,7 @@ def run_end_to_end(  # noqa: PLR0913
     demo: bool = False,
     dev_mode: bool = False,
     ecc: bool = True,
+    compress: bool = True,
 ) -> int:
     """Run the full pipeline for proving and verifying a circuit.
 
@@ -1066,11 +1115,10 @@ def run_end_to_end(  # noqa: PLR0913
     _ = demo
     if proof_system == ZKProofSystems.Expander:
         path = Path(circuit_path)
-        base = str(path.with_suffix(""))  # filename without extension
-        ext = path.suffix
+        base = str(path.with_suffix(""))
 
-        witness_file = f"{base}_witness{ext}"
-        proof_file = f"{base}_proof.bin"
+        witness_file = witness_path(base)
+        proof_file = proof_path(base)
         compile_circuit(
             circuit_name,
             circuit_path,
@@ -1078,7 +1126,8 @@ def run_end_to_end(  # noqa: PLR0913
             f"{base}_architecture.json",
             f"{base}_wandb.json",
             proof_system,
-            dev_mode,
+            dev_mode=dev_mode,
+            compress=compress,
         )
         generate_witness(
             circuit_name,
@@ -1088,7 +1137,8 @@ def run_end_to_end(  # noqa: PLR0913
             output_file,
             f"{base}_metadata.json",
             proof_system,
-            dev_mode,
+            dev_mode=dev_mode,
+            compress=compress,
         )
         generate_proof(
             circuit_name,
@@ -1097,8 +1147,9 @@ def run_end_to_end(  # noqa: PLR0913
             proof_file,
             f"{base}_metadata.json",
             proof_system,
-            dev_mode,
-            ecc,
+            dev_mode=dev_mode,
+            ecc=ecc,
+            compress=compress,
         )
         return generate_verification(
             circuit_name,
@@ -1109,8 +1160,8 @@ def run_end_to_end(  # noqa: PLR0913
             proof_file,
             f"{base}_metadata.json",
             proof_system,
-            dev_mode,
-            ecc,
+            dev_mode=dev_mode,
+            ecc=ecc,
         )
     msg = f"Proof system {proof_system} not implemented"
     raise ProofSystemNotImplementedError(msg)
@@ -1154,8 +1205,12 @@ def get_files(
         paths.update(
             {
                 "circuit_name": name,
-                "witness_file": str(Path(folders["input"]) / f"{name}_witness.txt"),
-                "proof_path": str(Path(folders["proof"]) / f"{name}_proof.bin"),
+                "witness_file": str(
+                    Path(folders["input"]) / witness_path(name),
+                ),
+                "proof_path": str(
+                    Path(folders["proof"]) / proof_path(name),
+                ),
             },
         )
     else:

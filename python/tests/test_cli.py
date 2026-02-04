@@ -34,7 +34,7 @@ from python.frontend.commands.batch import (
 @pytest.mark.unit
 def test_witness_dispatch(tmp_path: Path) -> None:
     # minimal files so _ensure_exists passes
-    circuit = tmp_path / "circuit.txt"
+    circuit = tmp_path / "circuit.bin"
     circuit.write_text("ok")
 
     quant = tmp_path / "q.onnx"
@@ -78,7 +78,7 @@ def test_witness_dispatch(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_witness_dispatch_positional(tmp_path: Path) -> None:
-    circuit = tmp_path / "circuit.txt"
+    circuit = tmp_path / "circuit.bin"
     circuit.write_text("ok")
 
     quant = tmp_path / "q.onnx"
@@ -118,7 +118,7 @@ def test_witness_dispatch_positional(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_prove_dispatch(tmp_path: Path) -> None:
-    circuit = tmp_path / "circuit.txt"
+    circuit = tmp_path / "circuit.bin"
     circuit.write_text("ok")
 
     witness = tmp_path / "w.bin"
@@ -156,7 +156,7 @@ def test_prove_dispatch(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_prove_dispatch_positional(tmp_path: Path) -> None:
-    circuit = tmp_path / "circuit.txt"
+    circuit = tmp_path / "circuit.bin"
     circuit.write_text("ok")
 
     witness = tmp_path / "w.bin"
@@ -191,7 +191,7 @@ def test_prove_dispatch_positional(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_verify_dispatch(tmp_path: Path) -> None:
-    circuit = tmp_path / "circuit.txt"
+    circuit = tmp_path / "circuit.bin"
     circuit.write_text("ok")
 
     inputj = tmp_path / "in.json"
@@ -246,7 +246,7 @@ def test_verify_dispatch(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_verify_dispatch_positional(tmp_path: Path) -> None:
-    circuit = tmp_path / "circuit.txt"
+    circuit = tmp_path / "circuit.bin"
     circuit.write_text("ok")
 
     inputj = tmp_path / "in.json"
@@ -300,7 +300,7 @@ def test_compile_dispatch(tmp_path: Path) -> None:
     model = tmp_path / "model.onnx"
     model.write_bytes(b"\x00")
 
-    circuit = tmp_path / "circuit.txt"  # doesn't need to pre-exist
+    circuit = tmp_path / "circuit.bin"  # doesn't need to pre-exist
 
     fake_circuit = MagicMock()
     with patch(
@@ -335,7 +335,7 @@ def test_compile_dispatch_positional(tmp_path: Path) -> None:
     model = tmp_path / "model.onnx"
     model.write_bytes(b"\x00")
 
-    circuit = tmp_path / "circuit.txt"
+    circuit = tmp_path / "circuit.bin"
 
     fake_circuit = MagicMock()
     with patch(
@@ -364,7 +364,7 @@ def test_compile_dispatch_positional(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_compile_missing_model_path() -> None:
-    rc = main(["--no-banner", "compile", "-c", "circuit.txt"])
+    rc = main(["--no-banner", "compile", "-c", "circuit.bin"])
     assert rc == 1
 
 
@@ -376,19 +376,19 @@ def test_compile_missing_circuit_path() -> None:
 
 @pytest.mark.unit
 def test_witness_missing_args() -> None:
-    rc = main(["--no-banner", "witness", "-c", "circuit.txt"])
+    rc = main(["--no-banner", "witness", "-c", "circuit.bin"])
     assert rc == 1
 
 
 @pytest.mark.unit
 def test_prove_missing_args() -> None:
-    rc = main(["--no-banner", "prove", "-c", "circuit.txt"])
+    rc = main(["--no-banner", "prove", "-c", "circuit.bin"])
     assert rc == 1
 
 
 @pytest.mark.unit
 def test_verify_missing_args() -> None:
-    rc = main(["--no-banner", "verify", "-c", "circuit.txt"])
+    rc = main(["--no-banner", "verify", "-c", "circuit.bin"])
     assert rc == 1
 
 
@@ -400,7 +400,7 @@ def test_model_check_missing_model_path() -> None:
 
 @pytest.mark.unit
 def test_compile_file_not_found(tmp_path: Path) -> None:
-    circuit = tmp_path / "circuit.txt"
+    circuit = tmp_path / "circuit.bin"
     rc = main(
         [
             "--no-banner",
@@ -423,7 +423,7 @@ def test_witness_file_not_found(tmp_path: Path) -> None:
             "--no-banner",
             "witness",
             "-c",
-            "nonexistent.txt",
+            "nonexistent.bin",
             "-i",
             "nonexistent.json",
             "-o",
@@ -443,7 +443,7 @@ def test_prove_file_not_found(tmp_path: Path) -> None:
             "--no-banner",
             "prove",
             "-c",
-            "nonexistent.txt",
+            "nonexistent.bin",
             "-w",
             "nonexistent.bin",
             "-p",
@@ -460,7 +460,7 @@ def test_verify_file_not_found(tmp_path: Path) -> None:
             "--no-banner",
             "verify",
             "-c",
-            "nonexistent.txt",
+            "nonexistent.bin",
             "-i",
             "nonexistent.json",
             "-o",
@@ -484,7 +484,7 @@ def test_model_check_file_not_found() -> None:
 def test_compile_mixed_positional_and_flag(tmp_path: Path) -> None:
     model = tmp_path / "model.onnx"
     model.write_bytes(b"\x00")
-    circuit = tmp_path / "circuit.txt"
+    circuit = tmp_path / "circuit.bin"
 
     fake_circuit = MagicMock()
     with patch(
@@ -506,7 +506,7 @@ def test_compile_mixed_positional_and_flag(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_witness_mixed_positional_and_flag(tmp_path: Path) -> None:
-    circuit = tmp_path / "circuit.txt"
+    circuit = tmp_path / "circuit.bin"
     circuit.write_text("ok")
 
     inputj = tmp_path / "in.json"
@@ -539,7 +539,7 @@ def test_witness_mixed_positional_and_flag(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_prove_mixed_positional_and_flag(tmp_path: Path) -> None:
-    circuit = tmp_path / "circuit.txt"
+    circuit = tmp_path / "circuit.bin"
     circuit.write_text("ok")
 
     witness = tmp_path / "w.bin"
@@ -594,7 +594,7 @@ def test_flag_takes_precedence_over_positional(tmp_path: Path) -> None:
     model_flag.write_bytes(b"\x00")
     model_pos = tmp_path / "pos_model.onnx"
     model_pos.write_bytes(b"\x00")
-    circuit = tmp_path / "circuit.txt"
+    circuit = tmp_path / "circuit.bin"
 
     fake_circuit = MagicMock()
     with patch(
@@ -621,7 +621,7 @@ def test_flag_takes_precedence_over_positional(tmp_path: Path) -> None:
 def test_parent_dir_creation(tmp_path: Path) -> None:
     model = tmp_path / "model.onnx"
     model.write_bytes(b"\x00")
-    nested_circuit = tmp_path / "nested" / "deep" / "circuit.txt"
+    nested_circuit = tmp_path / "nested" / "deep" / "circuit.bin"
 
     fake_circuit = MagicMock()
     with patch(
@@ -645,7 +645,7 @@ def test_parent_dir_creation(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_verify_mixed_positional_and_flag(tmp_path: Path) -> None:
-    circuit = tmp_path / "circuit.txt"
+    circuit = tmp_path / "circuit.bin"
     circuit.write_text("ok")
 
     inputj = tmp_path / "in.json"
@@ -687,7 +687,7 @@ def test_verify_mixed_positional_and_flag(tmp_path: Path) -> None:
 def test_circuit_run_error_handling(tmp_path: Path) -> None:
     model = tmp_path / "model.onnx"
     model.write_bytes(b"\x00")
-    circuit = tmp_path / "circuit.txt"
+    circuit = tmp_path / "circuit.bin"
 
     fake_circuit = MagicMock()
     fake_circuit.base_testing.side_effect = CircuitRunError("Test error")
@@ -733,7 +733,7 @@ def test_model_check_unsupported_op_error(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_empty_string_arg() -> None:
-    rc = main(["--no-banner", "compile", "-m", "", "-c", "circuit.txt"])
+    rc = main(["--no-banner", "compile", "-m", "", "-c", "circuit.bin"])
     assert rc == 1
 
 
@@ -741,7 +741,7 @@ def test_empty_string_arg() -> None:
 def test_flag_empty_string_uses_positional(tmp_path: Path) -> None:
     model = tmp_path / "model.onnx"
     model.write_bytes(b"\x00")
-    circuit = tmp_path / "circuit.txt"
+    circuit = tmp_path / "circuit.bin"
 
     fake_circuit = MagicMock()
     with patch(
@@ -1038,7 +1038,7 @@ def test_bench_with_iterations(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_batch_prove_dispatch(tmp_path: Path) -> None:
-    circuit = tmp_path / "circuit.txt"
+    circuit = tmp_path / "circuit.bin"
     circuit.write_text("ok")
 
     manifest = tmp_path / "manifest.json"
@@ -1081,7 +1081,7 @@ def test_batch_prove_dispatch(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_batch_verify_dispatch(tmp_path: Path) -> None:
-    circuit = tmp_path / "circuit.txt"
+    circuit = tmp_path / "circuit.bin"
     circuit.write_text("ok")
 
     manifest = tmp_path / "manifest.json"
@@ -1131,7 +1131,7 @@ def test_batch_verify_dispatch(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_batch_witness_dispatch(tmp_path: Path) -> None:
-    circuit = tmp_path / "circuit.txt"
+    circuit = tmp_path / "circuit.bin"
     circuit.write_text("ok")
 
     manifest = tmp_path / "manifest.json"
@@ -1190,7 +1190,7 @@ def test_batch_missing_circuit(tmp_path: Path) -> None:
             "batch",
             "prove",
             "-c",
-            str(tmp_path / "nonexistent.txt"),
+            str(tmp_path / "nonexistent.bin"),
             "-f",
             str(manifest),
         ],
@@ -1201,7 +1201,7 @@ def test_batch_missing_circuit(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_batch_missing_manifest(tmp_path: Path) -> None:
-    circuit = tmp_path / "circuit.txt"
+    circuit = tmp_path / "circuit.bin"
     circuit.write_text("ok")
 
     rc = main(
@@ -1234,7 +1234,7 @@ def test_run_witness_chunk_piped_builds_payload(
             "witness": "/data/w.bin",
         },
     ]
-    result = _run_witness_chunk_piped("circ", "/c.txt", "/m.json", jobs)
+    result = _run_witness_chunk_piped("circ", "/c.bin", "/m.json", jobs)
 
     assert result["succeeded"] == 1
     assert result["failed"] == 0
@@ -1259,7 +1259,7 @@ def test_run_prove_chunk_piped_builds_payload(
         {"witness": "/data/w1.bin", "proof": "/data/p1.bin"},
         {"witness": "/data/w2.bin", "proof": "/data/p2.bin"},
     ]
-    result = _run_prove_chunk_piped("circ", "/c.txt", "/m.json", jobs)
+    result = _run_prove_chunk_piped("circ", "/c.bin", "/m.json", jobs)
 
     assert result["succeeded"] == expected_job_count
     mock_piped.assert_called_once()
@@ -1285,7 +1285,7 @@ def test_run_verify_chunk_piped_builds_payload(
             "proof": "/data/p.bin",
         },
     ]
-    result = _run_verify_chunk_piped("circ", "/c.txt", "/m.json", jobs)
+    result = _run_verify_chunk_piped("circ", "/c.bin", "/m.json", jobs)
 
     assert result["succeeded"] == 1
     payload = json.loads(mock_piped.call_args[1]["payload"])
@@ -1318,7 +1318,7 @@ def test_batch_witness_from_tensors_single_chunk(
     result = batch_witness_from_tensors(
         circuit,
         jobs,
-        "/models/test_circuit.txt",
+        "/models/test_circuit.bin",
     )
 
     assert result["succeeded"] == expected_job_count
@@ -1355,7 +1355,7 @@ def test_batch_witness_from_tensors_chunked(
     result = batch_witness_from_tensors(
         circuit,
         jobs,
-        "/models/test_circuit.txt",
+        "/models/test_circuit.bin",
         chunk_size=1,
     )
 
@@ -1389,7 +1389,7 @@ def test_batch_witness_from_tensors_reads_file_inputs(
         batch_witness_from_tensors(
             circuit,
             jobs,
-            "/models/test_circuit.txt",
+            "/models/test_circuit.bin",
         )
     mock_read.assert_called_once_with("/path/to/input.json")
 
@@ -1412,7 +1412,7 @@ def test_batch_prove_piped_single_chunk(
     result = batch_prove_piped(
         "circ",
         jobs,
-        "/models/circ_circuit.txt",
+        "/models/circ_circuit.bin",
     )
 
     assert result["succeeded"] == expected_count
@@ -1437,7 +1437,7 @@ def test_batch_prove_piped_chunked(
     result = batch_prove_piped(
         "circ",
         jobs,
-        "/models/circ_circuit.txt",
+        "/models/circ_circuit.bin",
         chunk_size=2,
     )
 
@@ -1470,7 +1470,7 @@ def test_batch_verify_from_tensors_single_chunk(
     result = batch_verify_from_tensors(
         circuit,
         jobs,
-        "/models/test_circuit.txt",
+        "/models/test_circuit.bin",
     )
 
     assert result["succeeded"] == 1
@@ -1510,7 +1510,7 @@ def test_batch_verify_from_tensors_reads_files(
         batch_verify_from_tensors(
             circuit,
             jobs,
-            "/models/test_circuit.txt",
+            "/models/test_circuit.bin",
         )
     assert mock_read.call_count == expected_read_count
 
@@ -1543,7 +1543,7 @@ def test_batch_witness_aggregates_errors(
     result = batch_witness_from_tensors(
         circuit,
         jobs,
-        "/models/test_circuit.txt",
+        "/models/test_circuit.bin",
         chunk_size=1,
     )
 
@@ -1672,7 +1672,7 @@ def test_preprocess_manifest(
     tmp_path: Path,
 ) -> None:
     manifest_path = str(tmp_path / "manifest.json")
-    circuit_path = str(tmp_path / "model_circuit.txt")
+    circuit_path = str(tmp_path / "model_circuit.bin")
 
     circuit = MagicMock()
     transform = MagicMock()
@@ -1699,7 +1699,7 @@ def test_preprocess_manifest_invalid_format(
         _preprocess_manifest(
             circuit,
             str(tmp_path / "bad.json"),
-            str(tmp_path / "circuit.txt"),
+            str(tmp_path / "circuit.bin"),
             MagicMock(),
         )
 
@@ -1715,7 +1715,7 @@ def test_batch_prove_piped_aggregates_errors(
     ]
 
     jobs = [{"witness": f"/w{i}.bin", "proof": f"/p{i}.bin"} for i in range(2)]
-    result = batch_prove_piped("circ", jobs, "/models/circ.txt", chunk_size=1)
+    result = batch_prove_piped("circ", jobs, "/models/circ.bin", chunk_size=1)
 
     assert result["succeeded"] == 1
     assert result["failed"] == 1
@@ -1742,7 +1742,7 @@ def test_batch_verify_from_tensors_aggregates_errors(
     result = batch_verify_from_tensors(
         circuit,
         jobs,
-        "/models/test_circuit.txt",
+        "/models/test_circuit.bin",
         chunk_size=1,
     )
 
@@ -1773,7 +1773,7 @@ def test_batch_verify_from_tensors_chunked(
     result = batch_verify_from_tensors(
         circuit,
         jobs,
-        "/models/test_circuit.txt",
+        "/models/test_circuit.bin",
         chunk_size=2,
     )
 

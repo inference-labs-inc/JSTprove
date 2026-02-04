@@ -10,6 +10,7 @@ from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
 from python.frontend.commands.args import (
     CIRCUIT_PATH,
     INPUT_PATH,
+    NO_COMPRESS,
     OUTPUT_PATH,
     WITNESS_PATH,
 )
@@ -32,6 +33,7 @@ class WitnessCommand(BaseCommand):
         INPUT_PATH.add_to_parser(parser)
         OUTPUT_PATH.add_to_parser(parser)
         WITNESS_PATH.add_to_parser(parser)
+        NO_COMPRESS.add_to_parser(parser)
 
     @classmethod
     @BaseCommand.validate_required(
@@ -53,6 +55,7 @@ class WitnessCommand(BaseCommand):
                     input_file=args.input_path,
                     output_file=args.output_path,
                     witness_file=args.witness_path,
+                    compress=not args.no_compress,
                 ),
             )
         except CircuitRunError as e:

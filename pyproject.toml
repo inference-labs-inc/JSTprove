@@ -20,6 +20,7 @@ dependencies = [
     "toml==0.10.2",
     "torch==2.6.0",
     "transformers==4.52.4",
+    "zstandard>=0.25.0",
 ]
 
 [dependency-groups]

@@ -196,6 +196,7 @@ def test_parse_proof_dispatch_logic(
         "architecture_path": "architecture",
         "metadata_path": "metadata",
         "w_and_b_path": "w_and_b",
+        "compress": True,
     }
 
     # GEN_WITNESS
@@ -233,6 +234,7 @@ def test_parse_proof_dispatch_logic(
         "dev_mode": False,
         "bench": False,
         "metadata_path": "metadata",
+        "compress": True,
     }
 
     # PROVE_WITNESS
@@ -270,6 +272,7 @@ def test_parse_proof_dispatch_logic(
         "ecc": True,
         "bench": False,
         "metadata_path": "metadata",
+        "compress": True,
     }
 
     # GEN_VERIFY
@@ -681,7 +684,7 @@ def test_base_testing_calls_parse_proof_run_type_correctly(
             verification_key="vk.key",
             circuit_name="circuit_model",
             output_file="o.json",
-            circuit_path="circuit_path.txt",
+            circuit_path="circuit_path.bin",
             quantized_path="quantized_path.pt",
             write_json=True,
             proof_system=ZKProofSystems.Expander,
@@ -696,7 +699,7 @@ def test_base_testing_calls_parse_proof_run_type_correctly(
         public_path="pub.json",
         verification_key="vk.key",
         circuit_name="circuit_model",
-        circuit_path="circuit_path.txt",
+        circuit_path="circuit_path.bin",
         proof_system=ZKProofSystems.Expander,
         output_file="o.json",
         metadata_path="metadata.json",
@@ -772,7 +775,7 @@ def test_base_testing_uses_default_circuit_path(mock_parse: MagicMock) -> None:
     config = mock_parse.call_args[0][0]
 
     assert config.circuit_name == "test_model"
-    assert config.circuit_path == "test_model.txt"
+    assert config.circuit_path == "test_model.bin"
     assert config.metadata_path == "metadata.json"
     assert config.architecture_path == "architecture.json"
     assert config.w_and_b_path == "w_and_b.json"
@@ -822,7 +825,7 @@ def test_parse_proof_run_type_invalid_run_type(
         public_path="pub.json",
         verification_key="vk.key",
         circuit_name="model",
-        circuit_path="path.txt",
+        circuit_path="path.bin",
         proof_system=None,
         output_file="out.json",
         metadata_path="metadata.json",
@@ -864,7 +867,7 @@ def test_parse_proof_run_type_catches_internal_exception(
         public_path="pub.json",
         verification_key="vk.key",
         circuit_name="model",
-        circuit_path="path.txt",
+        circuit_path="path.bin",
         proof_system=None,
         output_file="out.json",
         metadata_path="metadata.json",

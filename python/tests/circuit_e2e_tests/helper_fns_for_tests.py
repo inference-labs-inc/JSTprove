@@ -41,7 +41,7 @@ def model_fixture(
         args, kwargs = param[2], param[3]
 
     temp_dir = tmp_path_factory.mktemp(name)
-    circuit_path = temp_dir / f"{name}_circuit.txt"
+    circuit_path = temp_dir / f"{name}_circuit.bin"
     quantized_path = temp_dir / f"{name}_quantized.pt"
 
     model = model_class(*args, **kwargs)
@@ -67,7 +67,7 @@ def model_fixture(
 
 @pytest.fixture
 def temp_witness_file(tmp_path: str) -> Generator[Path, None, None]:
-    witness_path = tmp_path / "temp_witness.txt"
+    witness_path = tmp_path / "temp_witness.bin"
     # Give it to the test
     yield witness_path
 
@@ -100,7 +100,7 @@ def temp_output_file(tmp_path: str) -> Generator[Path, None, None]:
 
 @pytest.fixture
 def temp_proof_file(tmp_path: str) -> Generator[Path, None, None]:
-    output_path = tmp_path / "temp_proof.txt"
+    output_path = tmp_path / "temp_proof.bin"
     # Give it to the test
     yield output_path
 

@@ -98,3 +98,10 @@ PROOF_PATH = ArgSpec(
     short="-p",
     help_text="Path to write proof.",
 )
+
+NO_COMPRESS = ArgSpec(
+    name="no_compress",
+    flag="--no-compress",
+    help_text="Disable zstd compression for output files.",
+    extra_kwargs={"action": "store_true", "default": False},
+)
