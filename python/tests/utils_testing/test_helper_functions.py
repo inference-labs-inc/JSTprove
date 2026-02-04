@@ -304,7 +304,7 @@ def test_run_cargo_command_bool_args(mock_run: MagicMock) -> None:
     assert "-v" in args
     assert "-i" in args
     assert "in.json" in args
-    assert "-json" in args
+    assert "--json" in args
 
 
 @pytest.mark.unit
@@ -802,6 +802,7 @@ def test_run_end_to_end_calls_all(
         "m_circuit_wandb.json",
         ZKProofSystems.Expander,
         False,  # noqa: FBT003
+        compress=True,
     )
     mock_witness.assert_called_once_with(
         "m",
@@ -812,6 +813,7 @@ def test_run_end_to_end_calls_all(
         "m_circuit_metadata.json",
         ZKProofSystems.Expander,
         False,  # noqa: FBT003
+        compress=True,
     )
     mock_proof.assert_called_once_with(
         "m",
@@ -822,6 +824,7 @@ def test_run_end_to_end_calls_all(
         ZKProofSystems.Expander,
         False,  # noqa: FBT003
         True,  # noqa: FBT003
+        compress=True,
     )
     mock_verify.assert_called_once_with(
         "m",

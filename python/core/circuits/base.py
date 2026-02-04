@@ -220,6 +220,7 @@ class Circuit:
                     proof_system=exec_config.proof_system,
                     dev_mode=exec_config.dev_mode,
                     ecc=exec_config.ecc,
+                    compress=exec_config.compress,
                 )
             elif exec_config.run_type == RunType.COMPILE_CIRCUIT:
                 self._compile_preprocessing(

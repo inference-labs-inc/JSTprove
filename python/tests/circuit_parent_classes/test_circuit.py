@@ -196,6 +196,7 @@ def test_parse_proof_dispatch_logic(
         "architecture_path": "architecture",
         "metadata_path": "metadata",
         "w_and_b_path": "w_and_b",
+        "compress": True,
     }
 
     # GEN_WITNESS
@@ -233,6 +234,7 @@ def test_parse_proof_dispatch_logic(
         "dev_mode": False,
         "bench": False,
         "metadata_path": "metadata",
+        "compress": True,
     }
 
     # PROVE_WITNESS
@@ -270,6 +272,7 @@ def test_parse_proof_dispatch_logic(
         "ecc": True,
         "bench": False,
         "metadata_path": "metadata",
+        "compress": True,
     }
 
     # GEN_VERIFY

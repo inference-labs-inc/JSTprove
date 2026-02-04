@@ -1040,6 +1040,7 @@ def run_end_to_end(  # noqa: PLR0913
     demo: bool = False,
     dev_mode: bool = False,
     ecc: bool = True,
+    compress: bool = True,
 ) -> int:
     """Run the full pipeline for proving and verifying a circuit.
 
@@ -1087,6 +1088,7 @@ def run_end_to_end(  # noqa: PLR0913
             f"{base}_wandb.json",
             proof_system,
             dev_mode,
+            compress=compress,
         )
         generate_witness(
             circuit_name,
@@ -1097,6 +1099,7 @@ def run_end_to_end(  # noqa: PLR0913
             f"{base}_metadata.json",
             proof_system,
             dev_mode,
+            compress=compress,
         )
         generate_proof(
             circuit_name,
@@ -1107,6 +1110,7 @@ def run_end_to_end(  # noqa: PLR0913
             proof_system,
             dev_mode,
             ecc,
+            compress=compress,
         )
         return generate_verification(
             circuit_name,

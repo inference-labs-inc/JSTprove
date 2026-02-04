@@ -46,7 +46,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 
 ndarray = { version = "0.16.1", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
-zstd = "0.13"
+zstd = "0.13.3"
 
 [patch."https://github.com/rsmpi/rsmpi"]
 mpi = { git = "https://github.com/0pendansor/rsmpi", branch = "patch-1" }

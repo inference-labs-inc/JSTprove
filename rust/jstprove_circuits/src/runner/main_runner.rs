@@ -47,13 +47,16 @@ impl std::io::Write for MaybeCompressed {
 
 impl MaybeCompressed {
     fn finish(self) -> Result<(), RunError> {
+        use std::io::Write;
         match self {
             Self::Compressed(enc) => {
                 enc.finish()
                     .map_err(|e| RunError::Serialize(format!("zstd finish: {e:?}")))?;
                 Ok(())
             }
-            Self::Plain(_) => Ok(()),
+            Self::Plain(mut w) => w
+                .flush()
+                .map_err(|e| RunError::Serialize(format!("flush: {e:?}"))),
         }
     }
 }
