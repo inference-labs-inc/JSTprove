@@ -708,6 +708,7 @@ def run_expander_raw(  # noqa: PLR0913, PLR0912, PLR0915, C901
         else:
             args.append(mode.value)
             proof_command = "-i"
+            proof_file = _maybe_decompress(proof_file, tmp_dir)
 
         args.extend(["-c", circuit_file])
         args.extend(["-w", witness_file])
@@ -1112,7 +1113,7 @@ def run_end_to_end(  # noqa: PLR0913
             f"{base}_architecture.json",
             f"{base}_wandb.json",
             proof_system,
-            dev_mode,
+            dev_mode=dev_mode,
             compress=compress,
         )
         generate_witness(
@@ -1123,7 +1124,7 @@ def run_end_to_end(  # noqa: PLR0913
             output_file,
             f"{base}_metadata.json",
             proof_system,
-            dev_mode,
+            dev_mode=dev_mode,
             compress=compress,
         )
         generate_proof(
@@ -1133,8 +1134,8 @@ def run_end_to_end(  # noqa: PLR0913
             proof_file,
             f"{base}_metadata.json",
             proof_system,
-            dev_mode,
-            ecc,
+            dev_mode=dev_mode,
+            ecc=ecc,
             compress=compress,
         )
         return generate_verification(
@@ -1146,8 +1147,8 @@ def run_end_to_end(  # noqa: PLR0913
             proof_file,
             f"{base}_metadata.json",
             proof_system,
-            dev_mode,
-            ecc,
+            dev_mode=dev_mode,
+            ecc=ecc,
         )
     msg = f"Proof system {proof_system} not implemented"
     raise ProofSystemNotImplementedError(msg)

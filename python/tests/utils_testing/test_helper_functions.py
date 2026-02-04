@@ -801,7 +801,7 @@ def test_run_end_to_end_calls_all(
         "m_circuit_architecture.json",
         "m_circuit_wandb.json",
         ZKProofSystems.Expander,
-        False,  # noqa: FBT003
+        dev_mode=False,
         compress=True,
     )
     mock_witness.assert_called_once_with(
@@ -812,7 +812,7 @@ def test_run_end_to_end_calls_all(
         "o.json",
         "m_circuit_metadata.json",
         ZKProofSystems.Expander,
-        False,  # noqa: FBT003
+        dev_mode=False,
         compress=True,
     )
     mock_proof.assert_called_once_with(
@@ -822,8 +822,8 @@ def test_run_end_to_end_calls_all(
         "m_circuit_proof.bin",
         "m_circuit_metadata.json",
         ZKProofSystems.Expander,
-        False,  # noqa: FBT003
-        True,  # noqa: FBT003
+        dev_mode=False,
+        ecc=True,
         compress=True,
     )
     mock_verify.assert_called_once_with(
@@ -835,8 +835,8 @@ def test_run_end_to_end_calls_all(
         "m_circuit_proof.bin",
         "m_circuit_metadata.json",
         ZKProofSystems.Expander,
-        False,  # noqa: FBT003
-        True,  # noqa: FBT003
+        dev_mode=False,
+        ecc=True,
     )
 
 
