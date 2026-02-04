@@ -21,6 +21,7 @@ from python.core.circuits.errors import (
     WitnessMatchError,
 )
 from python.core.utils.helper_functions import (
+    ARTIFACT_EXT,
     CircuitExecutionConfig,
     RunType,
     ZKProofSystems,
@@ -155,7 +156,7 @@ class Circuit:
             CircuitConfigurationError: If `_file_info` is not set by the decorator.
         """
         if exec_config.circuit_path is None:
-            exec_config.circuit_path = f"{exec_config.circuit_name}.bin"
+            exec_config.circuit_path = f"{exec_config.circuit_name}{ARTIFACT_EXT}"
 
         if not self._file_info:
             msg = (

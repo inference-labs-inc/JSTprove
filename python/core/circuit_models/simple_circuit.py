@@ -3,7 +3,11 @@ from __future__ import annotations
 from random import randint
 
 from python.core.circuits.base import Circuit, RunType
-from python.core.utils.helper_functions import CircuitExecutionConfig, ZKProofSystems
+from python.core.utils.helper_functions import (
+    ARTIFACT_EXT,
+    CircuitExecutionConfig,
+    ZKProofSystems,
+)
 
 
 class SimpleCircuit(Circuit):
@@ -87,7 +91,7 @@ if __name__ == "__main__":
         CircuitExecutionConfig(
             run_type=RunType.COMPILE_CIRCUIT,
             dev_mode=True,
-            circuit_path="simple_circuit.bin",
+            circuit_path=f"simple_circuit{ARTIFACT_EXT}",
             input_file="inputs/simple_circuit_input.json",
             output_file="output/simple_circuit_output.json",
             proof_system=ZKProofSystems.Expander,
@@ -102,7 +106,7 @@ if __name__ == "__main__":
     circuit.base_testing(
         CircuitExecutionConfig(
             run_type=RunType.GEN_WITNESS,
-            circuit_path="simple_circuit.bin",
+            circuit_path=f"simple_circuit{ARTIFACT_EXT}",
             input_file="inputs/simple_circuit_input.json",
             output_file="output/simple_circuit_output.json",
             write_json=True,
@@ -114,7 +118,7 @@ if __name__ == "__main__":
     circuit.base_testing(
         CircuitExecutionConfig(
             run_type=RunType.PROVE_WITNESS,
-            circuit_path="simple_circuit.bin",
+            circuit_path=f"simple_circuit{ARTIFACT_EXT}",
             input_file="inputs/simple_circuit_input.json",
             output_file="output/simple_circuit_output.json",
             proof_system=ZKProofSystems.Expander,
@@ -125,7 +129,7 @@ if __name__ == "__main__":
     circuit.base_testing(
         CircuitExecutionConfig(
             run_type=RunType.GEN_VERIFY,
-            circuit_path="simple_circuit.bin",
+            circuit_path=f"simple_circuit{ARTIFACT_EXT}",
             input_file="inputs/simple_circuit_input.json",
             output_file="output/simple_circuit_output.json",
             proof_system=ZKProofSystems.Expander,

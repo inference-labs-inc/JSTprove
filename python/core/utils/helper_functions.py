@@ -608,13 +608,26 @@ def get_expander_file_paths(circuit_name: str) -> dict[str, str]:
                 circuit_file, witness_file, proof_file
     """
     return {
-        "circuit_file": f"{circuit_name}_circuit.bin",
-        "witness_file": f"{circuit_name}_witness.bin",
-        "proof_file": f"{circuit_name}_proof.bin",
+        "circuit_file": circuit_path(circuit_name),
+        "witness_file": witness_path(circuit_name),
+        "proof_file": proof_path(circuit_name),
     }
 
 
 ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
+ARTIFACT_EXT = ".bin"
+
+
+def circuit_path(base: str) -> str:
+    return f"{base}_circuit{ARTIFACT_EXT}"
+
+
+def witness_path(base: str) -> str:
+    return f"{base}_witness{ARTIFACT_EXT}"
+
+
+def proof_path(base: str) -> str:
+    return f"{base}_proof{ARTIFACT_EXT}"
 
 
 def _maybe_decompress(src: str, tmp_dir: str) -> str:
@@ -1102,11 +1115,10 @@ def run_end_to_end(  # noqa: PLR0913
     _ = demo
     if proof_system == ZKProofSystems.Expander:
         path = Path(circuit_path)
-        base = str(path.with_suffix(""))  # filename without extension
-        ext = path.suffix
+        base = str(path.with_suffix(""))
 
-        witness_file = f"{base}_witness{ext}"
-        proof_file = f"{base}_proof.bin"
+        witness_file = witness_path(base)
+        proof_file = proof_path(base)
         compile_circuit(
             circuit_name,
             circuit_path,
@@ -1193,8 +1205,12 @@ def get_files(
         paths.update(
             {
                 "circuit_name": name,
-                "witness_file": str(Path(folders["input"]) / f"{name}_witness.bin"),
-                "proof_path": str(Path(folders["proof"]) / f"{name}_proof.bin"),
+                "witness_file": str(
+                    Path(folders["input"]) / witness_path(name),
+                ),
+                "proof_path": str(
+                    Path(folders["proof"]) / proof_path(name),
+                ),
             },
         )
     else:

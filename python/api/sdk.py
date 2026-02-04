@@ -17,6 +17,7 @@ from onnx import numpy_helper
 from python.core import RUST_BINARY_NAME
 from python.core.circuit_models.generic_onnx import GenericModelONNX
 from python.core.utils.helper_functions import (
+    circuit_path,
     compile_circuit,
     generate_proof,
     generate_verification,
@@ -136,7 +137,7 @@ class Circuit:
 
             circuit_obj = GenericModelONNX(preprocessed_path)
             stem = model_path.stem
-            circuit_path = str(output_dir / f"{stem}_circuit.bin")
+            compiled = str(output_dir / circuit_path(stem))
             metadata_path = str(
                 output_dir / f"{stem}_circuit_metadata.json",
             )
@@ -157,21 +158,18 @@ class Circuit:
 
             compile_circuit(
                 RUST_BINARY_NAME,
-                circuit_path,
+                compiled,
                 metadata_path,
                 architecture_path,
                 wandb_path,
                 dev_mode=False,
             )
 
-            if not Path(circuit_path).exists():
-                msg = (
-                    "Compilation succeeded but circuit file "
-                    f"not found at {circuit_path}"
-                )
+            if not Path(compiled).exists():
+                msg = f"Compilation succeeded but circuit file not found at {compiled}"
                 raise RuntimeError(msg)
 
-            return cls(circuit_path)
+            return cls(compiled)
         finally:
             if preprocessed.exists():
                 preprocessed.unlink()
