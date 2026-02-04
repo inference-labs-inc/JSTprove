@@ -5,8 +5,10 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
@@ -612,7 +614,24 @@ def get_expander_file_paths(circuit_name: str) -> dict[str, str]:
     }
 
 
-def run_expander_raw(  # noqa: PLR0913, C901
+_ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
+
+
+def _maybe_decompress(src: str, tmp_dir: str) -> str:
+    with Path(src).open("rb") as f:
+        magic = f.read(4)
+    if magic != _ZSTD_MAGIC:
+        return src
+    import zstandard  # noqa: PLC0415
+
+    dst = str(Path(tmp_dir) / Path(src).name)
+    dctx = zstandard.ZstdDecompressor()
+    with Path(src).open("rb") as fin, Path(dst).open("wb") as fout:
+        dctx.copy_stream(fin, fout)
+    return dst
+
+
+def run_expander_raw(  # noqa: PLR0913, PLR0912, PLR0915, C901
     mode: ExpanderMode,
     circuit_file: str,
     witness_file: str,
@@ -672,6 +691,14 @@ def run_expander_raw(  # noqa: PLR0913, C901
             "--manifest-path Expander/Cargo.toml --bin expander-exec'."
         )
         raise ProofBackendError(msg)
+    tmp_dir = tempfile.mkdtemp(prefix="jstprove_expander_")
+    try:
+        circuit_file = _maybe_decompress(circuit_file, tmp_dir)
+        witness_file = _maybe_decompress(witness_file, tmp_dir)
+    except Exception:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
+
     args = [
         time_measure,
         expander_binary_path,
@@ -738,6 +765,8 @@ def run_expander_raw(  # noqa: PLR0913, C901
         ) from e
     else:
         return result
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 def compile_circuit(  # noqa: PLR0913
