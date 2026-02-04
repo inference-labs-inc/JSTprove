@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 from python.core.circuits.errors import CircuitRunError
 from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
-from python.frontend.commands.args import CIRCUIT_PATH, MODEL_PATH
+from python.frontend.commands.args import CIRCUIT_PATH, MODEL_PATH, NO_COMPRESS
 from python.frontend.commands.base import BaseCommand
 
 
@@ -29,8 +29,9 @@ class CompileCommand(BaseCommand):
         MODEL_PATH.add_to_parser(parser)
         CIRCUIT_PATH.add_to_parser(
             parser,
-            "Output path for the compiled circuit (e.g., circuit.txt).",
+            "Output path for the compiled circuit (e.g., circuit.bin).",
         )
+        NO_COMPRESS.add_to_parser(parser)
 
     @classmethod
     @BaseCommand.validate_required(MODEL_PATH, CIRCUIT_PATH)
@@ -50,6 +51,7 @@ class CompileCommand(BaseCommand):
                     run_type=RunType.COMPILE_CIRCUIT,
                     circuit_path=args.circuit_path,
                     dev_mode=False,
+                    compress=not args.no_compress,
                 ),
             )
         except CircuitRunError as e:

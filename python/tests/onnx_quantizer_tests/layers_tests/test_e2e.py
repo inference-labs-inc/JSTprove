@@ -36,7 +36,7 @@ class TestE2EQuantizer(BaseQuantizerTest):
     @pytest.fixture
     def temp_circuit_path(self, tmp_path: Path) -> Generator[Path, None, None]:
         """Temporary path for circuit file."""
-        path = tmp_path / "circuit.txt"
+        path = tmp_path / "circuit.bin"
         yield path
         if path.exists():
             path.unlink()

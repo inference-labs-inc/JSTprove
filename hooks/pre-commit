@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+export PATH="$REPO_ROOT/.venv/bin:$PATH"
+
+pre-commit run --config="$REPO_ROOT/.pre-commit-config.yaml" || {
+    changed=$(git diff --name-only)
+    if [ -z "$changed" ]; then
+        exit 1
+    fi
+    echo ""
+    echo "Auto-staging formatter changes and retrying..."
+    git add -u
+    pre-commit run --config="$REPO_ROOT/.pre-commit-config.yaml"
+}

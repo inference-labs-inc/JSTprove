@@ -87,9 +87,9 @@ if __name__ == "__main__":
         CircuitExecutionConfig(
             run_type=RunType.COMPILE_CIRCUIT,
             dev_mode=True,
-            circuit_path="simple_circuit.txt",
+            circuit_path="simple_circuit.bin",
             input_file="inputs/simple_circuit_input.json",
-            output_file="output/simple_circuit_output.txt",
+            output_file="output/simple_circuit_output.json",
             proof_system=ZKProofSystems.Expander,
         ),
     )
@@ -102,7 +102,7 @@ if __name__ == "__main__":
     circuit.base_testing(
         CircuitExecutionConfig(
             run_type=RunType.GEN_WITNESS,
-            circuit_path="simple_circuit.txt",
+            circuit_path="simple_circuit.bin",
             input_file="inputs/simple_circuit_input.json",
             output_file="output/simple_circuit_output.json",
             write_json=True,
@@ -114,7 +114,7 @@ if __name__ == "__main__":
     circuit.base_testing(
         CircuitExecutionConfig(
             run_type=RunType.PROVE_WITNESS,
-            circuit_path="simple_circuit.txt",
+            circuit_path="simple_circuit.bin",
             input_file="inputs/simple_circuit_input.json",
             output_file="output/simple_circuit_output.json",
             proof_system=ZKProofSystems.Expander,
@@ -125,7 +125,7 @@ if __name__ == "__main__":
     circuit.base_testing(
         CircuitExecutionConfig(
             run_type=RunType.GEN_VERIFY,
-            circuit_path="simple_circuit.txt",
+            circuit_path="simple_circuit.bin",
             input_file="inputs/simple_circuit_input.json",
             output_file="output/simple_circuit_output.json",
             proof_system=ZKProofSystems.Expander,

@@ -136,7 +136,7 @@ class Circuit:
 
             circuit_obj = GenericModelONNX(preprocessed_path)
             stem = model_path.stem
-            circuit_path = str(output_dir / f"{stem}_circuit.txt")
+            circuit_path = str(output_dir / f"{stem}_circuit.bin")
             metadata_path = str(
                 output_dir / f"{stem}_circuit_metadata.json",
             )

@@ -90,8 +90,8 @@ def test_parallel_compile_and_witness_two_simple_models(  # noqa: PLR0915
     create_simple_gemm_onnx_model(model2_input_size, model2_output_size, model2_path)
 
     # Define paths for artifacts
-    circuit1_path = Path(tmp_path) / "circuit1.txt"
-    circuit2_path = Path(tmp_path) / "circuit2.txt"
+    circuit1_path = Path(tmp_path) / "circuit1.bin"
+    circuit2_path = Path(tmp_path) / "circuit2.bin"
 
     # Compile both models
     compile_cmd1 = [
@@ -263,7 +263,7 @@ def test_multi_input_multi_output_model_e2e(tmp_path: Path) -> None:
     for a multi-input/multi-output ONNX model.
     """
     model_path = tmp_path / "multi_output_no_identity.onnx"
-    circuit_path = tmp_path / "circuit.txt"
+    circuit_path = tmp_path / "circuit.bin"
     input_path = tmp_path / "input.json"
     output_path = tmp_path / "output.json"
     witness_path = tmp_path / "witness.bin"

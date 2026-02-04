@@ -81,6 +81,7 @@ class CircuitExecutionConfig:
     dev_mode: bool = False
     write_json: bool = False
     bench: bool = False
+    compress: bool = True
 
 
 def filter_expander_output(stderr: str) -> str:
@@ -536,7 +537,8 @@ def _build_command(
     cmd.append(command_type)
     if args:
         for key, value in args.items():
-            cmd.append(f"-{key}")
+            prefix = "--" if len(key) > 1 else "-"
+            cmd.append(f"{prefix}{key}")
             if not (isinstance(value, bool) and value):
                 cmd.append(str(value))
     return cmd
@@ -604,9 +606,9 @@ def get_expander_file_paths(circuit_name: str) -> dict[str, str]:
                 circuit_file, witness_file, proof_file
     """
     return {
-        "circuit_file": f"{circuit_name}_circuit.txt",
-        "witness_file": f"{circuit_name}_witness.txt",
-        "proof_file": f"{circuit_name}_proof.txt",
+        "circuit_file": f"{circuit_name}_circuit.bin",
+        "witness_file": f"{circuit_name}_witness.bin",
+        "proof_file": f"{circuit_name}_proof.bin",
     }
 
 
@@ -748,6 +750,7 @@ def compile_circuit(  # noqa: PLR0913
     *,
     dev_mode: bool = True,
     bench: bool = False,
+    compress: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     """Compile a model into zk circuit
 
@@ -779,7 +782,8 @@ def compile_circuit(  # noqa: PLR0913
             "a": architecture_path,
             "b": w_and_b_path,
         }
-        # Run the command
+        if not compress:
+            args["no-compress"] = True
         try:
             return run_cargo_command(
                 binary_name=binary_name,
@@ -811,6 +815,7 @@ def generate_witness(  # noqa: PLR0913
     *,
     dev_mode: bool = False,
     bench: bool = False,
+    compress: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     """Generate a witness file for a circuit.
 
@@ -847,7 +852,8 @@ def generate_witness(  # noqa: PLR0913
             "w": witness_file,
             "m": metadata_path,
         }
-        # Run the command
+        if not compress:
+            args["no-compress"] = True
         try:
             return run_cargo_command(
                 binary_name=binary_name,
@@ -876,6 +882,7 @@ def generate_proof(  # noqa: PLR0913
     dev_mode: bool = False,
     ecc: bool = True,
     bench: bool = False,
+    compress: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     """Generate proof for the witness.
 
@@ -914,8 +921,9 @@ def generate_proof(  # noqa: PLR0913
                 "p": proof_file,
                 "m": metadata_path,
             }
+            if not compress:
+                args["no-compress"] = True
 
-            # Run the command
             try:
                 return run_cargo_command(
                     binary_name=binary_name,
@@ -1154,7 +1162,7 @@ def get_files(
         paths.update(
             {
                 "circuit_name": name,
-                "witness_file": str(Path(folders["input"]) / f"{name}_witness.txt"),
+                "witness_file": str(Path(folders["input"]) / f"{name}_witness.bin"),
                 "proof_path": str(Path(folders["proof"]) / f"{name}_proof.bin"),
             },
         )

@@ -155,7 +155,7 @@ class Circuit:
             CircuitConfigurationError: If `_file_info` is not set by the decorator.
         """
         if exec_config.circuit_path is None:
-            exec_config.circuit_path = f"{exec_config.circuit_name}.txt"
+            exec_config.circuit_path = f"{exec_config.circuit_name}.bin"
 
         if not self._file_info:
             msg = (
@@ -237,6 +237,7 @@ class Circuit:
                     proof_system=exec_config.proof_system,
                     dev_mode=exec_config.dev_mode,
                     bench=exec_config.bench,
+                    compress=exec_config.compress,
                 )
             elif exec_config.run_type == RunType.GEN_WITNESS:
                 processed_input_file = self._gen_witness_preprocessing(
@@ -256,6 +257,7 @@ class Circuit:
                     proof_system=exec_config.proof_system,
                     dev_mode=exec_config.dev_mode,
                     bench=exec_config.bench,
+                    compress=exec_config.compress,
                 )
             elif exec_config.run_type == RunType.PROVE_WITNESS:
                 generate_proof(
@@ -268,6 +270,7 @@ class Circuit:
                     dev_mode=exec_config.dev_mode,
                     ecc=exec_config.ecc,
                     bench=exec_config.bench,
+                    compress=exec_config.compress,
                 )
             elif exec_config.run_type == RunType.GEN_VERIFY:
                 witness_file = exec_config.witness_file

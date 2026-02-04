@@ -53,7 +53,8 @@ repos:
     rev: v1.0
     hooks:
       - id: fmt
-        args: ['--manifest-path=./Cargo.toml', '--all', '--', '--check']
+        args: ['--manifest-path=./Cargo.toml', '--all']
+        pass_filenames: false
       - id: clippy
         args: [
           '--manifest-path=./Cargo.toml',

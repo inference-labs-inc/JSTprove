@@ -26,13 +26,10 @@ uv pip install -e .
 ## **2. Install Git hooks**:
 
 ```bash
-uv run pre-commit install --hook-type pre-commit --hook-type pre-push
+git config core.hooksPath hooks/
 ```
 
-This ensures that every commit automatically runs the pre-commit hooks locally, including:
-
-- Rust formatting (`cargo fmt`)
-- Trailing newline enforcement for `.rs` and `.py` files
+This points git at the tracked `hooks/` directory. The pre-commit hook automatically formats staged files (black, ruff, cargo fmt), re-stages them, then runs linters and checks (clippy, trailing whitespace, etc.).
 
 ---
 
@@ -62,8 +59,7 @@ git add <files>
 git commit -m "Your commit message"
 ```
 
-The pre-commit hooks will automatically run. If any errors are detected, the commit will be blocked. Fix the issues,
-stage the files again, and commit.
+The pre-commit hook will automatically format and re-stage your files. If a linter error can't be auto-fixed, the commit will be blocked and you'll need to fix it manually.
 
 ---
 

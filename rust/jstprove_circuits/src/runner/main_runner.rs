@@ -22,6 +22,73 @@ use crate::circuit_functions::hints::build_logup_hint_registry;
 
 // use crate::io::io_reader;
 
+const ZSTD_COMPRESSION_LEVEL: i32 = 3;
+
+enum MaybeCompressed {
+    Compressed(zstd::stream::write::Encoder<'static, std::io::BufWriter<std::fs::File>>),
+    Plain(std::io::BufWriter<std::fs::File>),
+}
+
+impl std::io::Write for MaybeCompressed {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match self {
+            Self::Compressed(enc) => enc.write(buf),
+            Self::Plain(w) => w.write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        match self {
+            Self::Compressed(enc) => enc.flush(),
+            Self::Plain(w) => w.flush(),
+        }
+    }
+}
+
+impl MaybeCompressed {
+    fn finish(self) -> Result<(), RunError> {
+        match self {
+            Self::Compressed(enc) => {
+                enc.finish()
+                    .map_err(|e| RunError::Serialize(format!("zstd finish: {e:?}")))?;
+                Ok(())
+            }
+            Self::Plain(_) => Ok(()),
+        }
+    }
+}
+
+fn compressed_writer(file: std::fs::File, compress: bool) -> Result<MaybeCompressed, RunError> {
+    if compress {
+        let enc = zstd::stream::write::Encoder::new(
+            std::io::BufWriter::new(file),
+            ZSTD_COMPRESSION_LEVEL,
+        )
+        .map_err(|e| RunError::Serialize(format!("zstd encoder: {e:?}")))?;
+        Ok(MaybeCompressed::Compressed(enc))
+    } else {
+        Ok(MaybeCompressed::Plain(std::io::BufWriter::new(file)))
+    }
+}
+
+fn auto_reader(file: std::fs::File) -> Result<Box<dyn std::io::Read>, RunError> {
+    use std::io::Read;
+
+    let mut buf = std::io::BufReader::new(file);
+    let mut magic = [0u8; 4];
+    let n = buf
+        .read(&mut magic)
+        .map_err(|e| RunError::Deserialize(format!("reading magic: {e:?}")))?;
+    let chain = std::io::Cursor::new(magic[..n].to_vec()).chain(buf);
+    if n == 4 && magic == [0x28, 0xB5, 0x2F, 0xFD] {
+        Ok(Box::new(zstd::stream::read::Decoder::new(chain).map_err(
+            |e| RunError::Deserialize(format!("zstd decoder: {e:?}")),
+        )?))
+    } else {
+        Ok(Box::new(chain))
+    }
+}
+
 #[global_allocator]
 static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
 
@@ -64,7 +131,10 @@ fn get_witness_solver_path(input: &str) -> PathBuf {
 /// - The circuit or witness solver cannot be serialized (`RunError::Serialize`)
 /// - The circuit or witness solver files cannot be created (`RunError::Io`)
 ///
-pub fn run_compile_and_serialize<C: Config, CircuitType>(circuit_path: &str) -> Result<(), RunError>
+pub fn run_compile_and_serialize<C: Config, CircuitType>(
+    circuit_path: &str,
+    compress: bool,
+) -> Result<(), RunError>
 where
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone + MaybeConfigure,
 {
@@ -85,22 +155,24 @@ where
         path: circuit_path.into(),
     })?;
 
-    let writer = std::io::BufWriter::new(file);
+    let mut writer = compressed_writer(file, compress)?;
     compile_result
         .layered_circuit
-        .serialize_into(writer)
+        .serialize_into(&mut writer)
         .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
+    writer.finish()?;
 
     let witness_path = get_witness_solver_path(circuit_path);
     let file = std::fs::File::create(&witness_path).map_err(|e| RunError::Io {
         source: e,
         path: witness_path.display().to_string(),
     })?;
-    let writer = std::io::BufWriter::new(file);
+    let mut writer = compressed_writer(file, compress)?;
     compile_result
         .witness_solver
-        .serialize_into(writer)
+        .serialize_into(&mut writer)
         .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
+    writer.finish()?;
 
     // println!(
     //     "Time elapsed: {}.{} seconds",
@@ -142,6 +214,7 @@ pub fn run_witness<C: Config, I, CircuitDefaultType>(
     output_path: &str,
     witness_path: &str,
     circuit_path: &str,
+    compress: bool,
 ) -> Result<(), RunError>
 where
     I: IOReader<CircuitDefaultType, C>,
@@ -165,6 +238,7 @@ where
         &hint_registry,
         &assignment,
         witness_path,
+        compress,
     )?;
 
     println!("Witness Generated");
@@ -222,7 +296,7 @@ where
         source: e,
         path: witness_path.display().to_string(),
     })?;
-    let reader = std::io::BufReader::new(file);
+    let reader = auto_reader(file)?;
     let witness_solver = WitnessSolver::<C>::deserialize_from(reader)
         .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
 
@@ -230,7 +304,7 @@ where
         source: e,
         path: circuit_path.into(),
     })?;
-    let reader = std::io::BufReader::new(file);
+    let reader = auto_reader(file)?;
     let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader)
         .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
 
@@ -288,6 +362,7 @@ pub fn run_prove_witness<C: Config, CircuitDefaultType>(
     circuit_path: &str,
     witness_path: &str,
     proof_path: &str,
+    compress: bool,
 ) -> Result<(), RunError>
 where
     CircuitDefaultType: Default
@@ -297,7 +372,7 @@ where
     GLOBAL.reset_peak_memory();
     let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
     let mut expander_circuit = layered_circuit.export_to_expander_flatten();
-    prove_core::<C>(&mut expander_circuit, witness_path, proof_path)?;
+    prove_core::<C>(&mut expander_circuit, witness_path, proof_path, compress)?;
     println!("Proved");
     Ok(())
 }
@@ -441,7 +516,7 @@ fn load_layered_circuit<C: Config>(path: &str) -> Result<Circuit<C, NormalInputT
         source: e,
         path: path.into(),
     })?;
-    let reader = std::io::BufReader::new(file);
+    let reader = auto_reader(file)?;
     Circuit::<C, NormalInputType>::deserialize_from(reader)
         .map_err(|e| RunError::Deserialize(format!("{e:?}")))
 }
@@ -452,7 +527,7 @@ fn load_witness_solver<C: Config>(circuit_path: &str) -> Result<WitnessSolver<C>
         source: e,
         path: witness_file.display().to_string(),
     })?;
-    let reader = std::io::BufReader::new(file);
+    let reader = auto_reader(file)?;
     WitnessSolver::<C>::deserialize_from(reader)
         .map_err(|e| RunError::Deserialize(format!("{e:?}")))
 }
@@ -461,12 +536,13 @@ fn prove_core<C: Config>(
     expander_circuit: &mut expander_circuit::Circuit<C::FieldConfig>,
     witness_path: &str,
     proof_path: &str,
+    compress: bool,
 ) -> Result<(), RunError> {
     let file = std::fs::File::open(witness_path).map_err(|e| RunError::Io {
         source: e,
         path: witness_path.into(),
     })?;
-    let reader = std::io::BufReader::new(file);
+    let reader = auto_reader(file)?;
     let witness: Witness<C> =
         Witness::deserialize_from(reader).map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
 
@@ -485,10 +561,11 @@ fn prove_core<C: Config>(
         source: e,
         path: proof_path.into(),
     })?;
-    let writer = std::io::BufWriter::new(file);
+    let mut writer = compressed_writer(file, compress)?;
     proof_bytes
-        .serialize_into(writer)
+        .serialize_into(&mut writer)
         .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
+    writer.finish()?;
 
     Ok(())
 }
@@ -519,7 +596,7 @@ where
         source: e,
         path: witness_path.into(),
     })?;
-    let reader = std::io::BufReader::new(file);
+    let reader = auto_reader(file)?;
     let witness = Witness::<C>::deserialize_from(reader)
         .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
 
@@ -543,7 +620,7 @@ where
         source: e,
         path: proof_path.into(),
     })?;
-    let reader = std::io::BufReader::new(file);
+    let reader = auto_reader(file)?;
     let proof_and_claimed_v: Vec<u8> =
         Vec::deserialize_from(reader).map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
 
@@ -592,6 +669,7 @@ fn witness_core<C: Config, CircuitDefaultType>(
     hint_registry: &expander_compiler::frontend::HintRegistry<CircuitField<C>>,
     assignment: &CircuitDefaultType,
     witness_path: &str,
+    compress: bool,
 ) -> Result<(), RunError>
 where
     CircuitDefaultType: Default
@@ -605,10 +683,11 @@ where
         source: e,
         path: witness_path.into(),
     })?;
-    let writer = std::io::BufWriter::new(file);
+    let mut writer = compressed_writer(file, compress)?;
     witness
-        .serialize_into(writer)
+        .serialize_into(&mut writer)
         .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
+    writer.finish()?;
 
     Ok(())
 }
@@ -622,6 +701,7 @@ pub fn run_batch_witness<C: Config, I, CircuitDefaultType>(
     io_reader_factory: impl Fn() -> I,
     manifest_path: &str,
     circuit_path: &str,
+    compress: bool,
 ) -> Result<BatchResult, RunError>
 where
     I: IOReader<CircuitDefaultType, C>,
@@ -669,6 +749,7 @@ where
             &hint_registry,
             &assignment,
             &job.witness,
+            compress,
         ) {
             Ok(()) => {
                 succeeded += 1;
@@ -697,6 +778,7 @@ where
 pub fn run_pipe_witness<C: Config, I, CircuitDefaultType>(
     io_reader_factory: impl Fn() -> I,
     circuit_path: &str,
+    compress: bool,
 ) -> Result<BatchResult, RunError>
 where
     I: IOReader<CircuitDefaultType, C>,
@@ -749,8 +831,21 @@ where
                         continue;
                     }
                 };
-                let writer = std::io::BufWriter::new(file);
-                if let Err(e) = witness.serialize_into(writer) {
+                let mut writer = match compressed_writer(file, compress) {
+                    Ok(w) => w,
+                    Err(e) => {
+                        failed += 1;
+                        let msg = format!("witness compress: {e:?}");
+                        eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, msg);
+                        errors.push((idx, msg));
+                        continue;
+                    }
+                };
+                if let Err(e) = witness
+                    .serialize_into(&mut writer)
+                    .map_err(|e| RunError::Serialize(format!("{e:?}")))
+                    .and_then(|()| writer.finish())
+                {
                     failed += 1;
                     let msg = format!("witness serialize: {e:?}");
                     eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, msg);
@@ -788,6 +883,7 @@ where
 /// Returns a [`RunError`] if loading the circuit, reading stdin, or proving fails.
 pub fn run_pipe_prove<C: Config, CircuitDefaultType>(
     circuit_path: &str,
+    compress: bool,
 ) -> Result<BatchResult, RunError>
 where
     CircuitDefaultType: Default
@@ -809,7 +905,7 @@ where
 
     for (idx, job) in manifest.jobs.into_iter().enumerate() {
         let mut circuit = layered_circuit.export_to_expander_flatten();
-        match prove_core::<C>(&mut circuit, &job.witness, &job.proof) {
+        match prove_core::<C>(&mut circuit, &job.witness, &job.proof, compress) {
             Ok(()) => {
                 succeeded += 1;
                 eprintln!("[{}/{}] proof: {}", idx + 1, job_count, job.proof);
@@ -859,7 +955,8 @@ where
     let mut circuit = layered_circuit.export_to_expander_flatten();
 
     let file = std::fs::File::open(&job.witness).map_err(|e| format!("witness I/O: {e:?}"))?;
-    let witness = Witness::<C>::deserialize_from(std::io::BufReader::new(file))
+    let reader = auto_reader(file).map_err(|e| format!("witness reader: {e:?}"))?;
+    let witness = Witness::<C>::deserialize_from(reader)
         .map_err(|e| format!("witness deserialize: {e:?}"))?;
 
     let (simd_input, simd_public_input) = witness.to_simd();
@@ -875,8 +972,9 @@ where
     }
 
     let file = std::fs::File::open(&job.proof).map_err(|e| format!("proof I/O: {e:?}"))?;
-    let proof_and_claimed_v: Vec<u8> = Vec::deserialize_from(std::io::BufReader::new(file))
-        .map_err(|e| format!("proof deserialize: {e:?}"))?;
+    let reader = auto_reader(file).map_err(|e| format!("proof reader: {e:?}"))?;
+    let proof_and_claimed_v: Vec<u8> =
+        Vec::deserialize_from(reader).map_err(|e| format!("proof deserialize: {e:?}"))?;
 
     let (proof, claimed_v) =
         executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v)
@@ -957,6 +1055,7 @@ where
 pub fn run_batch_prove<C: Config, CircuitDefaultType>(
     manifest_path: &str,
     circuit_path: &str,
+    compress: bool,
 ) -> Result<BatchResult, RunError>
 where
     CircuitDefaultType: Default
@@ -975,7 +1074,7 @@ where
 
     for (idx, job) in manifest.jobs.into_iter().enumerate() {
         let mut circuit = layered_circuit.export_to_expander_flatten();
-        match prove_core::<C>(&mut circuit, &job.witness, &job.proof) {
+        match prove_core::<C>(&mut circuit, &job.witness, &job.proof, compress) {
             Ok(()) => {
                 succeeded += 1;
                 println!("[{}/{}] proof: {}", idx + 1, job_count, job.proof);
@@ -1177,11 +1276,12 @@ where
         + MaybeConfigure,
 {
     let command = get_arg(matches, "type")?;
+    let compress = !matches.get_flag("no_compress");
 
     match command.as_str() {
         "run_compile_circuit" => {
             let circuit_path = get_arg(matches, "circuit_path")?;
-            run_compile_and_serialize::<C, CircuitType>(&circuit_path)?;
+            run_compile_and_serialize::<C, CircuitType>(&circuit_path, compress)?;
         }
         "run_gen_witness" => {
             let input_path = get_arg(matches, "input")?;
@@ -1194,6 +1294,7 @@ where
                 &output_path,
                 &witness_path,
                 &circuit_path,
+                compress,
             )?;
         }
         "run_debug_witness" => {
@@ -1213,7 +1314,12 @@ where
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
             let circuit_path = get_arg(matches, "circuit_path")?;
-            run_prove_witness::<C, CircuitDefaultType>(&circuit_path, &witness_path, &proof_path)?;
+            run_prove_witness::<C, CircuitDefaultType>(
+                &circuit_path,
+                &witness_path,
+                &proof_path,
+                compress,
+            )?;
         }
         "run_gen_verify" => {
             let input_path = get_arg(matches, "input")?;
@@ -1238,13 +1344,15 @@ where
                 move || reader_template.clone(),
                 &manifest_path,
                 &circuit_path,
+                compress,
             )?;
             check_batch_result("witness", &result)?;
         }
         "run_batch_prove" => {
             let manifest_path = get_arg(matches, "manifest")?;
             let circuit_path = get_arg(matches, "circuit_path")?;
-            let result = run_batch_prove::<C, CircuitDefaultType>(&manifest_path, &circuit_path)?;
+            let result =
+                run_batch_prove::<C, CircuitDefaultType>(&manifest_path, &circuit_path, compress)?;
             check_batch_result("prove", &result)?;
         }
         "run_batch_verify" => {
@@ -1264,11 +1372,12 @@ where
             run_pipe_witness::<C, _, CircuitDefaultType>(
                 move || reader_template.clone(),
                 &circuit_path,
+                compress,
             )?;
         }
         "run_pipe_prove" => {
             let circuit_path = get_arg(matches, "circuit_path")?;
-            run_pipe_prove::<C, CircuitDefaultType>(&circuit_path)?;
+            run_pipe_prove::<C, CircuitDefaultType>(&circuit_path, compress)?;
         }
         "run_pipe_verify" => {
             let circuit_path = get_arg(matches, "circuit_path")?;
@@ -1364,6 +1473,13 @@ pub fn get_args() -> clap::ArgMatches {
                 .required(false)
                 .long("manifest")
                 .short('f'),
+        )
+        .arg(
+            Arg::new("no_compress")
+                .help("Disable zstd compression for output files")
+                .required(false)
+                .long("no-compress")
+                .action(clap::ArgAction::SetTrue),
         )
         .get_matches();
     matches
