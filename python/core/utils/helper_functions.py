@@ -691,6 +691,7 @@ def run_expander_raw(  # noqa: PLR0913, PLR0912, PLR0915, C901
             "--manifest-path Expander/Cargo.toml --bin expander-exec'."
         )
         raise ProofBackendError(msg)
+    args: list[str] = []
     tmp_dir = tempfile.mkdtemp(prefix="jstprove_expander_")
     try:
         circuit_file = _maybe_decompress(circuit_file, tmp_dir)
