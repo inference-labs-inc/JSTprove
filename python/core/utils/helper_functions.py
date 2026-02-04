@@ -614,13 +614,13 @@ def get_expander_file_paths(circuit_name: str) -> dict[str, str]:
     }
 
 
-_ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
+ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
 
 
 def _maybe_decompress(src: str, tmp_dir: str) -> str:
     with Path(src).open("rb") as f:
         magic = f.read(4)
-    if magic != _ZSTD_MAGIC:
+    if magic != ZSTD_MAGIC:
         return src
     import zstandard  # noqa: PLC0415
 
@@ -695,28 +695,24 @@ def run_expander_raw(  # noqa: PLR0913, PLR0912, PLR0915, C901
     try:
         circuit_file = _maybe_decompress(circuit_file, tmp_dir)
         witness_file = _maybe_decompress(witness_file, tmp_dir)
-    except Exception:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        raise
 
-    args = [
-        time_measure,
-        expander_binary_path,
-        "-p",
-        pcs_type,
-    ]
-    if mode == ExpanderMode.PROVE:
-        args.append(mode.value)
-        proof_command = "-o"
-    else:
-        args.append(mode.value)
-        proof_command = "-i"
+        args = [
+            time_measure,
+            expander_binary_path,
+            "-p",
+            pcs_type,
+        ]
+        if mode == ExpanderMode.PROVE:
+            args.append(mode.value)
+            proof_command = "-o"
+        else:
+            args.append(mode.value)
+            proof_command = "-i"
 
-    args.extend(["-c", circuit_file])
-    args.extend(["-w", witness_file])
-    args.extend([proof_command, proof_file])
+        args.extend(["-c", circuit_file])
+        args.extend(["-w", witness_file])
+        args.extend([proof_command, proof_file])
 
-    try:
         if bench:
             stop_event, monitor_thread, monitor_results = start_memory_collection(
                 "expander-exec",
