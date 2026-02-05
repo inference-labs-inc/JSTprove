@@ -5,9 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-import msgpack
+from typing import Any
 
 from python.core.msgpack_schema import (
     CompiledCircuit,
@@ -19,9 +17,6 @@ from python.core.msgpack_schema import (
     WitnessRequest,
 )
 from python.core.utils.helper_functions import run_msgpack_command
-
-if TYPE_CHECKING:
-    from python.core.circuits.base import Circuit
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +52,9 @@ def load_circuit_bundle(circuit_path: str | Path) -> tuple[bytes, bytes]:
     circuit_file = parent / f"{stem}.txt"
     ws_file = parent / f"{stem}_witness_solver.txt"
 
-    with open(circuit_file, "rb") as f:
+    with circuit_file.open("rb") as f:
         circuit_bytes = f.read()
-    with open(ws_file, "rb") as f:
+    with ws_file.open("rb") as f:
         ws_bytes = f.read()
 
     return circuit_bytes, ws_bytes
@@ -74,7 +69,7 @@ def load_circuit_msgpack(path: str | Path) -> tuple[bytes, bytes]:
     Returns:
         Tuple of (circuit_bytes, witness_solver_bytes).
     """
-    with open(path, "rb") as f:
+    with Path(path).open("rb") as f:
         data = f.read()
     bundle = CompiledCircuit.unpack(data)
     return bundle.circuit, bundle.witness_solver
@@ -99,7 +94,7 @@ def save_circuit_msgpack(
         witness_solver=witness_solver_bytes,
         metadata=metadata,
     )
-    with open(path, "wb") as f:
+    with Path(path).open("wb") as f:
         f.write(bundle.pack())
 
 
@@ -282,14 +277,10 @@ class MsgpackCircuitRunner:
 
     def _load_circuit(self) -> tuple[bytes, bytes]:
         if self._circuit_bytes is None or self._ws_bytes is None:
-            self._circuit_bytes, self._ws_bytes = load_circuit_bundle(
-                self.circuit_path
-            )
+            self._circuit_bytes, self._ws_bytes = load_circuit_bundle(self.circuit_path)
         return self._circuit_bytes, self._ws_bytes
 
-    def witness(
-        self, inputs: dict[str, Any], outputs: dict[str, Any]
-    ) -> WitnessBundle:
+    def witness(self, inputs: dict[str, Any], outputs: dict[str, Any]) -> WitnessBundle:
         circuit, ws = self._load_circuit()
         return msgpack_witness(
             binary_name=self.binary_name,
@@ -326,7 +317,9 @@ class MsgpackCircuitRunner:
         )
 
     def witness_and_prove(
-        self, inputs: dict[str, Any], outputs: dict[str, Any]
+        self,
+        inputs: dict[str, Any],
+        outputs: dict[str, Any],
     ) -> tuple[WitnessBundle, ProofBundle]:
         circuit, ws = self._load_circuit()
         return msgpack_witness_prove(
