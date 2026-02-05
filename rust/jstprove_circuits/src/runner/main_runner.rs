@@ -1290,7 +1290,9 @@ where
         source: e,
         path: path.into(),
     })?;
-    rmp_serde::encode::write(&mut std::io::BufWriter::new(file), &bundle)
+    let mut writer = std::io::BufWriter::new(file);
+    bundle
+        .serialize(&mut rmp_serde::Serializer::new(&mut writer).with_struct_map())
         .map_err(|e| RunError::Serialize(format!("msgpack: {e:?}")))?;
 
     Ok(())
@@ -1314,7 +1316,8 @@ pub fn msgpack_prove_stdin<C: Config>(compress: bool) -> Result<(), RunError> {
 
     let resp = ProofBundle { proof };
     let stdout = std::io::stdout();
-    rmp_serde::encode::write(&mut stdout.lock(), &resp)
+    let mut lock = stdout.lock();
+    resp.serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
         .map_err(|e| RunError::Serialize(format!("msgpack stdout: {e:?}")))?;
 
     Ok(())
@@ -1329,7 +1332,8 @@ pub fn msgpack_verify_stdin<C: Config>() -> Result<(), RunError> {
 
     let resp = VerifyResponse { valid, error: None };
     let stdout = std::io::stdout();
-    rmp_serde::encode::write(&mut stdout.lock(), &resp)
+    let mut lock = stdout.lock();
+    resp.serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
         .map_err(|e| RunError::Serialize(format!("msgpack stdout: {e:?}")))?;
 
     Ok(())
@@ -1377,7 +1381,8 @@ where
         output_data: None,
     };
     let stdout = std::io::stdout();
-    rmp_serde::encode::write(&mut stdout.lock(), &resp)
+    let mut lock = stdout.lock();
+    resp.serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
         .map_err(|e| RunError::Serialize(format!("msgpack stdout: {e:?}")))?;
 
     Ok(())
@@ -1406,7 +1411,8 @@ pub fn msgpack_prove_file<C: Config>(
         source: e,
         path: proof_path.into(),
     })?;
-    rmp_serde::encode::write(&mut std::io::BufWriter::new(file), &resp)
+    let mut writer = std::io::BufWriter::new(file);
+    resp.serialize(&mut rmp_serde::Serializer::new(&mut writer).with_struct_map())
         .map_err(|e| RunError::Serialize(format!("proof msgpack: {e:?}")))?;
 
     Ok(())
