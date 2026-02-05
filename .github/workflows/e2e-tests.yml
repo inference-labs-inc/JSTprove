@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  EXPANDER_COMMIT: af1b7473bc858d250e481d6bb7db98a1ee6b7fc5
+  EXPANDER_COMMIT: f97e058
   RUST_NIGHTLY: nightly-2025-03-27
 
 jobs:
@@ -128,7 +128,7 @@ jobs:
 
       - name: Clone Expander
         run: |
-          git clone https://github.com/PolyhedraZK/Expander.git
+          git clone https://github.com/inference-labs-inc/Expander.git
           cd Expander
           git checkout ${{ env.EXPANDER_COMMIT }}
           cd ..

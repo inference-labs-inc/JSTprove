@@ -1179,7 +1179,9 @@ where
     })
 }
 
-fn load_circuit_from_bytes<C: Config>(data: &[u8]) -> Result<Circuit<C, NormalInputType>, RunError> {
+fn load_circuit_from_bytes<C: Config>(
+    data: &[u8],
+) -> Result<Circuit<C, NormalInputType>, RunError> {
     let data = auto_decompress_bytes(data)?;
     Circuit::<C, NormalInputType>::deserialize_from(Cursor::new(&*data))
         .map_err(|e| RunError::Deserialize(format!("circuit: {e:?}")))
@@ -1241,12 +1243,16 @@ fn verify_from_bytes<C: Config>(
     expander_circuit.public_input.clone_from(&simd_public_input);
 
     let proof_data = auto_decompress_bytes(proof_bytes)?;
-    let (proof, claimed_v) =
-        executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_data)
-            .map_err(|e| RunError::Deserialize(format!("proof: {e:?}")))?;
+    let (proof, claimed_v) = executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_data)
+        .map_err(|e| RunError::Deserialize(format!("proof: {e:?}")))?;
 
     let mpi_config = gkr_engine::MPIConfig::verifier_new(1);
-    Ok(executor::verify::<C>(&mut expander_circuit, mpi_config, &proof, &claimed_v))
+    Ok(executor::verify::<C>(
+        &mut expander_circuit,
+        mpi_config,
+        &proof,
+        &claimed_v,
+    ))
 }
 
 pub fn write_circuit_msgpack<C: Config, CircuitType>(
@@ -1357,8 +1363,12 @@ where
         .apply_values(input_json, output_json, assignment)
         .map_err(|e| RunError::Witness(format!("apply_values: {e:?}")))?;
 
-    let witness =
-        solve_and_validate_witness(&witness_solver, &layered_circuit, &hint_registry, &assignment)?;
+    let witness = solve_and_validate_witness(
+        &witness_solver,
+        &layered_circuit,
+        &hint_registry,
+        &assignment,
+    )?;
 
     let witness_bytes = serialize_witness::<C>(&witness, compress)?;
 
@@ -1425,7 +1435,11 @@ pub fn msgpack_verify_file<C: Config>(
             .map_err(|e| RunError::Deserialize(format!("proof msgpack: {e:?}")))?
     };
 
-    verify_from_bytes::<C>(&circuit_bundle.circuit, &witness_bundle.witness, &proof_bundle.proof)
+    verify_from_bytes::<C>(
+        &circuit_bundle.circuit,
+        &witness_bundle.witness,
+        &proof_bundle.proof,
+    )
 }
 
 /// A trait for circuits that can configure their internal inputs/outputs
