@@ -291,7 +291,11 @@ fn main() {
 
     let matches = get_args();
 
-    set_onnx_context(&matches);
+    let cmd_type = get_arg(&matches, "type").unwrap_or_default();
+    let skip_context = cmd_type.starts_with("msgpack_") && cmd_type.ends_with("_stdin");
+    if !skip_context {
+        set_onnx_context(&matches);
+    }
 
     if let Err(err) =
         handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(&matches, &mut file_reader)
