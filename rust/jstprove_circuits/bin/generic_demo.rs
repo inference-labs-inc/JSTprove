@@ -292,8 +292,8 @@ fn main() {
     let matches = get_args();
 
     let cmd_type = get_arg(&matches, "type").unwrap_or_default();
-    let skip_context = cmd_type.starts_with("msgpack_") && cmd_type.ends_with("_stdin");
-    if !skip_context {
+    let has_meta = matches.get_one::<String>("meta").is_some();
+    if has_meta {
         set_onnx_context(&matches);
     }
 
