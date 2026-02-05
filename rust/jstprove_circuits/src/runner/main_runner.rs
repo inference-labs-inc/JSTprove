@@ -109,7 +109,7 @@ fn auto_reader(file: std::fs::File) -> Result<Box<dyn std::io::Read>, RunError> 
         .read(&mut magic)
         .map_err(|e| RunError::Deserialize(format!("reading magic: {e:?}")))?;
     let chain = std::io::Cursor::new(magic[..n].to_vec()).chain(buf);
-    if n == 4 && magic == [0x28, 0xB5, 0x2F, 0xFD] {
+    if n == 4 && magic == ZSTD_MAGIC {
         Ok(Box::new(zstd::stream::read::Decoder::new(chain).map_err(
             |e| RunError::Deserialize(format!("zstd decoder: {e:?}")),
         )?))
@@ -1255,6 +1255,16 @@ fn verify_from_bytes<C: Config>(
     ))
 }
 
+fn verify_from_bytes_with_io<C: Config>(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+    _inputs_json: Option<&[u8]>,
+    _outputs_json: Option<&[u8]>,
+) -> Result<bool, RunError> {
+    verify_from_bytes::<C>(circuit_bytes, witness_bytes, proof_bytes)
+}
+
 pub fn write_circuit_msgpack<C: Config, CircuitType>(
     path: &str,
     compress_blobs: bool,
@@ -1422,6 +1432,8 @@ pub fn msgpack_verify_file<C: Config>(
     circuit_path: &str,
     witness_path: &str,
     proof_path: &str,
+    inputs_path: Option<&str>,
+    outputs_path: Option<&str>,
 ) -> Result<bool, RunError> {
     let circuit_bundle = read_circuit_msgpack(circuit_path)?;
     let witness_bundle: WitnessBundle = {
@@ -1441,10 +1453,29 @@ pub fn msgpack_verify_file<C: Config>(
             .map_err(|e| RunError::Deserialize(format!("proof msgpack: {e:?}")))?
     };
 
-    verify_from_bytes::<C>(
+    let inputs_json = if let Some(path) = inputs_path {
+        Some(std::fs::read(path).map_err(|e| RunError::Io {
+            source: e,
+            path: path.into(),
+        })?)
+    } else {
+        None
+    };
+    let outputs_json = if let Some(path) = outputs_path {
+        Some(std::fs::read(path).map_err(|e| RunError::Io {
+            source: e,
+            path: path.into(),
+        })?)
+    } else {
+        None
+    };
+
+    verify_from_bytes_with_io::<C>(
         &circuit_bundle.circuit,
         &witness_bundle.witness,
         &proof_bundle.proof,
+        inputs_json.as_deref(),
+        outputs_json.as_deref(),
     )
 }
 
@@ -1701,7 +1732,15 @@ where
             let circuit_path = get_arg(matches, "circuit_path")?;
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
-            let valid = msgpack_verify_file::<C>(&circuit_path, &witness_path, &proof_path)?;
+            let inputs_path = matches.get_one::<String>("input").map(|s| s.as_str());
+            let outputs_path = matches.get_one::<String>("output").map(|s| s.as_str());
+            let valid = msgpack_verify_file::<C>(
+                &circuit_path,
+                &witness_path,
+                &proof_path,
+                inputs_path,
+                outputs_path,
+            )?;
             if valid {
                 eprintln!("Verified");
             } else {

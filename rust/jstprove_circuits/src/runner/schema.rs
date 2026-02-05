@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompiledCircuit {
     #[serde(with = "serde_bytes")]
     pub circuit: Vec<u8>,
@@ -10,7 +10,7 @@ pub struct CompiledCircuit {
     pub metadata: Option<Metadata>,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Metadata {
     #[serde(default)]
     pub input_shapes: Vec<Vec<usize>>,
@@ -20,7 +20,7 @@ pub struct Metadata {
     pub scale: Option<f64>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WitnessRequest {
     #[serde(with = "serde_bytes")]
     pub circuit: Vec<u8>,
@@ -32,7 +32,7 @@ pub struct WitnessRequest {
     pub outputs: Vec<u8>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WitnessBundle {
     #[serde(with = "serde_bytes")]
     pub witness: Vec<u8>,
@@ -40,7 +40,7 @@ pub struct WitnessBundle {
     pub output_data: Option<Vec<i64>>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProveRequest {
     #[serde(with = "serde_bytes")]
     pub circuit: Vec<u8>,
@@ -48,13 +48,13 @@ pub struct ProveRequest {
     pub witness: Vec<u8>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProofBundle {
     #[serde(with = "serde_bytes")]
     pub proof: Vec<u8>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerifyRequest {
     #[serde(with = "serde_bytes")]
     pub circuit: Vec<u8>,
@@ -68,7 +68,7 @@ pub struct VerifyRequest {
     pub outputs: Vec<u8>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerifyResponse {
     pub valid: bool,
     #[serde(default)]

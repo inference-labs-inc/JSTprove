@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  EXPANDER_COMMIT: f97e058
+  EXPANDER_COMMIT: f97e058fbdb6f9bccc3b7e7c98d6fdc42df72934
 
 jobs:
   build-linux:

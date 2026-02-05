@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  EXPANDER_COMMIT: f97e058
+  EXPANDER_COMMIT: f97e058fbdb6f9bccc3b7e7c98d6fdc42df72934
   RUST_NIGHTLY: nightly-2025-03-27
 
 jobs:
