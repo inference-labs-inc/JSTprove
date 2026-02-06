@@ -15,7 +15,7 @@ dependencies = [
     "onnxruntime==1.21.0",
     "onnxruntime_extensions==0.14.0",
     "psutil==7.0.0",
-    "torch>=2.8.0",
+    "torch>=2.6.0",
     "transformers>=4.53.0",
     "zstandard>=0.25.0",
     "msgpack>=1.0.0",
