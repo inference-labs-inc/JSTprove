@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 from python.core.utils.errors import ProofSystemNotImplementedError
 from python.core.utils.helper_functions import ZSTD_MAGIC, ZKProofSystems
 
+MIN_PUBLIC_INPUTS_LENGTH = 2  # scale_base + scale_exponent
+
 
 def _open_maybe_compressed(path: str) -> BinaryIO:
     with Path(path).open("rb") as raw:
@@ -102,6 +104,166 @@ def to_field_repr(value: int, modulus: int) -> int:
         int: Least field representation of the integer, ensuring a non-negative result.
     """
     return value % modulus
+
+
+def from_field_repr(value: int, modulus: int) -> int:
+    """
+    Convert a field element back to a signed integer.
+
+    Values greater than modulus/2 are treated as negative.
+
+    Args:
+        value (int): Field element.
+        modulus (int): Field modulus.
+
+    Returns:
+        int: Signed integer representation.
+    """
+    if value > modulus // 2:
+        return value - modulus
+    return value
+
+
+def scale_to_field(
+    values: list,
+    scale_base: int,
+    scale_exp: int,
+    modulus: int,
+) -> list[int]:
+    """
+    Scale values and convert to field representation.
+
+    Args:
+        values: List of numeric values to scale.
+        scale_base: Base for scaling (e.g., 2).
+        scale_exp: Exponent for scaling (e.g., 18 for 2^18).
+        modulus: Field modulus.
+
+    Returns:
+        List of field elements.
+    """
+    if scale_base <= 0 or scale_exp <= 0:
+        return [int(v) % modulus for v in values]
+    scale = scale_base**scale_exp
+    return [round(v * scale) % modulus for v in values]
+
+
+def descale_outputs(
+    outputs: list[int],
+    scale_base: int,
+    scale_exp: int,
+) -> list[float]:
+    """
+    Descale output values back to original range.
+
+    Args:
+        outputs: List of signed integer outputs.
+        scale_base: Base for scaling.
+        scale_exp: Exponent for scaling.
+
+    Returns:
+        List of descaled float values.
+    """
+    if scale_base <= 0 or scale_exp <= 0:
+        return [float(v) for v in outputs]
+    scale = scale_base**scale_exp
+    return [v / scale for v in outputs]
+
+
+def compare_field_values(
+    expected: list[int],
+    actual: list[int],
+    modulus: int,
+    tolerance: int = 1,
+) -> bool:
+    """
+    Compare field values with tolerance for rounding errors.
+
+    Args:
+        expected: Expected field values.
+        actual: Actual field values.
+        modulus: Field modulus.
+        tolerance: Maximum allowed difference (default 1).
+
+    Returns:
+        True if all values match within tolerance.
+    """
+    if len(expected) != len(actual):
+        return False
+    for e, a in zip(expected, actual, strict=False):
+        diff = abs((e - a) % modulus)
+        if diff > tolerance and diff < modulus - tolerance:
+            return False
+    return True
+
+
+def extract_io_from_witness(
+    witness_data: dict,
+    num_inputs: int,
+) -> dict | None:
+    """
+    Extract inputs, outputs, and scaling parameters from witness public inputs.
+
+    The witness public_inputs layout is: [inputs..., outputs..., scale_base, scale_exp]
+
+    Args:
+        witness_data: Witness data as returned by load_witness().
+        num_inputs: Number of input values in the public inputs.
+
+    Returns:
+        Dictionary containing:
+            - inputs: Raw input field elements
+            - raw_outputs: Raw output field elements (unsigned)
+            - outputs: Output values converted to signed integers
+            - rescaled_outputs: Outputs converted back to original scale
+            - scale_base: Scaling base from witness
+            - scale_exponent: Scaling exponent from witness
+            - modulus: Field modulus
+        Returns None if witness structure is invalid.
+    """
+    witnesses = witness_data.get("witnesses")
+    if not isinstance(witnesses, list) or len(witnesses) == 0:
+        return None
+
+    first_witness = witnesses[0]
+    if not isinstance(first_witness, dict):
+        return None
+
+    public_inputs = first_witness.get("public_inputs")
+    if (
+        not isinstance(public_inputs, list)
+        or len(public_inputs) < MIN_PUBLIC_INPUTS_LENGTH
+    ):
+        return None
+
+    modulus = witness_data.get("modulus")
+    if modulus is None:
+        return None
+
+    if (
+        not isinstance(num_inputs, int)
+        or num_inputs < 0
+        or num_inputs > len(public_inputs) - MIN_PUBLIC_INPUTS_LENGTH
+    ):
+        return None
+
+    inputs = public_inputs[:num_inputs]
+    raw_outputs = public_inputs[num_inputs:-2]
+    scale_base = public_inputs[-2]
+    scale_exponent = public_inputs[-1]
+
+    signed_outputs = [from_field_repr(v, modulus) for v in raw_outputs]
+    rescaled_outputs = descale_outputs(signed_outputs, scale_base, scale_exponent)
+
+    return {
+        "inputs": inputs,
+        "raw_outputs": raw_outputs,
+        "outputs": signed_outputs,
+        "rescaled_outputs": rescaled_outputs,
+        "scale_base": scale_base,
+        "scale_exponent": scale_exponent,
+        "modulus": modulus,
+    }
 
 
 class ExpanderWitnessLoader(WitnessLoader):

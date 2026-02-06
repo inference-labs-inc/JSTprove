@@ -303,7 +303,7 @@ requires-dist = [
     { name = "onnxruntime-extensions", specifier = "==0.14.0" },
     { name = "protobuf", specifier = ">=6.33.5" },
     { name = "psutil", specifier = "==7.0.0" },
-    { name = "torch", specifier = ">=2.8.0" },
+    { name = "torch", specifier = ">=2.6.0" },
     { name = "transformers", specifier = ">=4.53.0" },
     { name = "urllib3", specifier = ">=2.6.3" },
     { name = "zstandard", specifier = ">=0.25.0" },
