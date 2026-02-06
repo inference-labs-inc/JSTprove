@@ -287,6 +287,7 @@ const ONNX_META_COMMANDS: &[&str] = &[
     "run_batch_verify",
     "run_pipe_witness",
     "run_pipe_verify",
+    "msgpack_witness_stdin",
 ];
 
 const ONNX_FULL_COMMANDS: &[&str] = &[
