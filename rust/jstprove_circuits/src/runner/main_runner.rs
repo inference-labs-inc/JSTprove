@@ -1,3 +1,8 @@
+use std::alloc::System;
+use std::borrow::Cow;
+use std::io::Cursor;
+use std::path::{Path, PathBuf};
+
 use clap::{Arg, Command};
 use expander_compiler::circuit::layered::witness::Witness;
 use expander_compiler::circuit::layered::{Circuit, NormalInputType};
@@ -11,18 +16,37 @@ use peakmem_alloc::{INSTRUMENTED_SYSTEM, PeakMemAlloc, PeakMemAllocTrait};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serdes::ExpSerde;
-use std::alloc::System;
-use std::path::{Path, PathBuf};
-
-use crate::io::io_reader;
-use crate::runner::errors::{CliError, RunError};
-use expander_binary::executor;
 
 use crate::circuit_functions::hints::build_logup_hint_registry;
-
-// use crate::io::io_reader;
+use crate::io::io_reader;
+use crate::runner::errors::{CliError, RunError};
+use crate::runner::schema::{
+    CompiledCircuit, ProofBundle, ProveRequest, VerifyRequest, VerifyResponse, WitnessBundle,
+    WitnessRequest,
+};
+use expander_binary::executor;
 
 const ZSTD_COMPRESSION_LEVEL: i32 = 3;
+const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
+
+fn auto_decompress_bytes(data: &[u8]) -> Result<Cow<[u8]>, RunError> {
+    if data.len() >= 4 && data[..4] == ZSTD_MAGIC {
+        zstd::decode_all(Cursor::new(data))
+            .map(Cow::Owned)
+            .map_err(|e| RunError::Deserialize(format!("zstd decompress: {e}")))
+    } else {
+        Ok(Cow::Borrowed(data))
+    }
+}
+
+fn maybe_compress_bytes(data: &[u8], compress: bool) -> Result<Vec<u8>, RunError> {
+    if compress {
+        zstd::encode_all(Cursor::new(data), ZSTD_COMPRESSION_LEVEL)
+            .map_err(|e| RunError::Serialize(format!("zstd compress: {e}")))
+    } else {
+        Ok(data.to_vec())
+    }
+}
 
 enum MaybeCompressed {
     Compressed(zstd::stream::write::Encoder<'static, std::io::BufWriter<std::fs::File>>),
@@ -83,7 +107,7 @@ fn auto_reader(file: std::fs::File) -> Result<Box<dyn std::io::Read>, RunError> 
         .read(&mut magic)
         .map_err(|e| RunError::Deserialize(format!("reading magic: {e:?}")))?;
     let chain = std::io::Cursor::new(magic[..n].to_vec()).chain(buf);
-    if n == 4 && magic == [0x28, 0xB5, 0x2F, 0xFD] {
+    if n == 4 && magic == ZSTD_MAGIC {
         Ok(Box::new(zstd::stream::read::Decoder::new(chain).map_err(
             |e| RunError::Deserialize(format!("zstd decoder: {e:?}")),
         )?))
@@ -1153,6 +1177,348 @@ where
     })
 }
 
+fn load_circuit_from_bytes<C: Config>(
+    data: &[u8],
+) -> Result<Circuit<C, NormalInputType>, RunError> {
+    let data = auto_decompress_bytes(data)?;
+    Circuit::<C, NormalInputType>::deserialize_from(Cursor::new(&*data))
+        .map_err(|e| RunError::Deserialize(format!("circuit: {e:?}")))
+}
+
+fn load_witness_solver_from_bytes<C: Config>(data: &[u8]) -> Result<WitnessSolver<C>, RunError> {
+    let data = auto_decompress_bytes(data)?;
+    WitnessSolver::<C>::deserialize_from(Cursor::new(&*data))
+        .map_err(|e| RunError::Deserialize(format!("witness_solver: {e:?}")))
+}
+
+fn load_witness_from_bytes<C: Config>(data: &[u8]) -> Result<Witness<C>, RunError> {
+    let data = auto_decompress_bytes(data)?;
+    Witness::<C>::deserialize_from(Cursor::new(&*data))
+        .map_err(|e| RunError::Deserialize(format!("witness: {e:?}")))
+}
+
+fn serialize_witness<C: Config>(witness: &Witness<C>, compress: bool) -> Result<Vec<u8>, RunError> {
+    let mut buf = Vec::new();
+    witness
+        .serialize_into(&mut buf)
+        .map_err(|e| RunError::Serialize(format!("witness: {e:?}")))?;
+    maybe_compress_bytes(&buf, compress)
+}
+
+fn prove_from_bytes<C: Config>(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    compress: bool,
+) -> Result<Vec<u8>, RunError> {
+    let layered_circuit = load_circuit_from_bytes::<C>(circuit_bytes)?;
+    let mut expander_circuit = layered_circuit.export_to_expander_flatten();
+    let witness = load_witness_from_bytes::<C>(witness_bytes)?;
+
+    let (simd_input, simd_public_input) = witness.to_simd();
+    expander_circuit.layers[0].input_vals = simd_input;
+    expander_circuit.public_input.clone_from(&simd_public_input);
+    expander_circuit.evaluate();
+
+    let mpi_config = MPIConfig::prover_new(None, None);
+    let (claimed_v, proof) = executor::prove::<C>(&mut expander_circuit, mpi_config);
+    let proof_bytes = executor::dump_proof_and_claimed_v(&proof, &claimed_v)
+        .map_err(|e| RunError::Serialize(format!("proof: {e:?}")))?;
+
+    maybe_compress_bytes(&proof_bytes, compress)
+}
+
+fn verify_from_bytes<C: Config>(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+) -> Result<bool, RunError> {
+    let layered_circuit = load_circuit_from_bytes::<C>(circuit_bytes)?;
+    let mut expander_circuit = layered_circuit.export_to_expander_flatten();
+    let witness = load_witness_from_bytes::<C>(witness_bytes)?;
+
+    let (simd_input, simd_public_input) = witness.to_simd();
+    expander_circuit.layers[0].input_vals = simd_input;
+    expander_circuit.public_input.clone_from(&simd_public_input);
+
+    let proof_data = auto_decompress_bytes(proof_bytes)?;
+    let (proof, claimed_v) = executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_data)
+        .map_err(|e| RunError::Deserialize(format!("proof: {e:?}")))?;
+
+    let mpi_config = gkr_engine::MPIConfig::verifier_new(1);
+    Ok(executor::verify::<C>(
+        &mut expander_circuit,
+        mpi_config,
+        &proof,
+        &claimed_v,
+    ))
+}
+
+fn verify_from_bytes_with_io<C: Config>(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+    _inputs_json: Option<&[u8]>,
+    _outputs_json: Option<&[u8]>,
+) -> Result<bool, RunError> {
+    verify_from_bytes::<C>(circuit_bytes, witness_bytes, proof_bytes)
+}
+
+/// Compiles a circuit and writes it to a msgpack file.
+///
+/// # Errors
+/// Returns `RunError` if compilation, serialization, or file I/O fails.
+pub fn write_circuit_msgpack<C: Config, CircuitType>(
+    path: &str,
+    compress_blobs: bool,
+) -> Result<(), RunError>
+where
+    CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone + MaybeConfigure,
+{
+    let mut circuit = CircuitType::default();
+    configure_if_possible::<CircuitType>(&mut circuit);
+
+    let compile_result = compile(&circuit, CompileOptions::default())
+        .map_err(|e| RunError::Compile(format!("{e:?}")))?;
+
+    let mut circuit_buf = Vec::new();
+    compile_result
+        .layered_circuit
+        .serialize_into(&mut circuit_buf)
+        .map_err(|e| RunError::Serialize(format!("circuit: {e:?}")))?;
+
+    let mut ws_buf = Vec::new();
+    compile_result
+        .witness_solver
+        .serialize_into(&mut ws_buf)
+        .map_err(|e| RunError::Serialize(format!("witness_solver: {e:?}")))?;
+
+    let bundle = CompiledCircuit {
+        circuit: maybe_compress_bytes(&circuit_buf, compress_blobs)?,
+        witness_solver: maybe_compress_bytes(&ws_buf, compress_blobs)?,
+        metadata: None,
+    };
+
+    let file = std::fs::File::create(path).map_err(|e| RunError::Io {
+        source: e,
+        path: path.into(),
+    })?;
+    let mut writer = std::io::BufWriter::new(file);
+    bundle
+        .serialize(&mut rmp_serde::Serializer::new(&mut writer).with_struct_map())
+        .map_err(|e| RunError::Serialize(format!("msgpack: {e:?}")))?;
+    std::io::Write::flush(&mut writer).map_err(|e| RunError::Io {
+        source: e,
+        path: path.into(),
+    })?;
+
+    Ok(())
+}
+
+/// Reads a compiled circuit bundle from a msgpack file.
+///
+/// # Errors
+/// Returns `RunError` if file I/O or deserialization fails.
+pub fn read_circuit_msgpack(path: &str) -> Result<CompiledCircuit, RunError> {
+    let file = std::fs::File::open(path).map_err(|e| RunError::Io {
+        source: e,
+        path: path.into(),
+    })?;
+    rmp_serde::decode::from_read(std::io::BufReader::new(file))
+        .map_err(|e| RunError::Deserialize(format!("msgpack: {e:?}")))
+}
+
+/// Reads a prove request from stdin and writes the proof to stdout via msgpack.
+///
+/// # Errors
+/// Returns `RunError` if deserialization, proving, or serialization fails.
+pub fn msgpack_prove_stdin<C: Config>(compress: bool) -> Result<(), RunError> {
+    let stdin = std::io::stdin();
+    let req: ProveRequest = rmp_serde::decode::from_read(stdin.lock())
+        .map_err(|e| RunError::Deserialize(format!("msgpack stdin: {e:?}")))?;
+
+    let proof = prove_from_bytes::<C>(&req.circuit, &req.witness, compress)?;
+
+    let resp = ProofBundle { proof };
+    let stdout = std::io::stdout();
+    let mut lock = stdout.lock();
+    resp.serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
+        .map_err(|e| RunError::Serialize(format!("msgpack stdout: {e:?}")))?;
+    std::io::Write::flush(&mut lock)
+        .map_err(|e| RunError::Serialize(format!("msgpack stdout flush: {e:?}")))?;
+
+    Ok(())
+}
+
+/// Reads a verify request from stdin and writes the result to stdout via msgpack.
+///
+/// # Errors
+/// Returns `RunError` if deserialization, verification, or serialization fails.
+pub fn msgpack_verify_stdin<C: Config>() -> Result<(), RunError> {
+    let stdin = std::io::stdin();
+    let req: VerifyRequest = rmp_serde::decode::from_read(stdin.lock())
+        .map_err(|e| RunError::Deserialize(format!("msgpack stdin: {e:?}")))?;
+
+    let valid = verify_from_bytes::<C>(&req.circuit, &req.witness, &req.proof)?;
+
+    let resp = VerifyResponse { valid, error: None };
+    let stdout = std::io::stdout();
+    let mut lock = stdout.lock();
+    resp.serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
+        .map_err(|e| RunError::Serialize(format!("msgpack stdout: {e:?}")))?;
+    std::io::Write::flush(&mut lock)
+        .map_err(|e| RunError::Serialize(format!("msgpack stdout flush: {e:?}")))?;
+
+    Ok(())
+}
+
+/// Reads a witness request from stdin and writes the witness to stdout via msgpack.
+///
+/// # Errors
+/// Returns `RunError` if deserialization, witness generation, or serialization fails.
+pub fn msgpack_witness_stdin<C: Config, I, CircuitDefaultType>(
+    io_reader: &mut I,
+    compress: bool,
+) -> Result<(), RunError>
+where
+    I: IOReader<CircuitDefaultType, C>,
+    CircuitDefaultType: Default
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
+        + Clone,
+{
+    let stdin = std::io::stdin();
+    let req: WitnessRequest = rmp_serde::decode::from_read(stdin.lock())
+        .map_err(|e| RunError::Deserialize(format!("msgpack stdin: {e:?}")))?;
+
+    let layered_circuit = load_circuit_from_bytes::<C>(&req.circuit)?;
+    let witness_solver = load_witness_solver_from_bytes::<C>(&req.witness_solver)?;
+    let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
+
+    let input_json: Value = serde_json::from_slice(&req.inputs)
+        .map_err(|e| RunError::Deserialize(format!("input json: {e:?}")))?;
+    let output_json: Value = serde_json::from_slice(&req.outputs)
+        .map_err(|e| RunError::Deserialize(format!("output json: {e:?}")))?;
+
+    let assignment = CircuitDefaultType::default();
+    let assignment = io_reader
+        .apply_values(input_json, output_json, assignment)
+        .map_err(|e| RunError::Witness(format!("apply_values: {e:?}")))?;
+
+    let witness = solve_and_validate_witness(
+        &witness_solver,
+        &layered_circuit,
+        &hint_registry,
+        &assignment,
+    )?;
+
+    let witness_bytes = serialize_witness::<C>(&witness, compress)?;
+
+    let resp = WitnessBundle {
+        witness: witness_bytes,
+        output_data: None,
+    };
+    let stdout = std::io::stdout();
+    let mut lock = stdout.lock();
+    resp.serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
+        .map_err(|e| RunError::Serialize(format!("msgpack stdout: {e:?}")))?;
+    std::io::Write::flush(&mut lock)
+        .map_err(|e| RunError::Serialize(format!("msgpack stdout flush: {e:?}")))?;
+
+    Ok(())
+}
+
+/// Proves a circuit from msgpack files and writes the proof to a file.
+///
+/// # Errors
+/// Returns `RunError` if file I/O, deserialization, proving, or serialization fails.
+pub fn msgpack_prove_file<C: Config>(
+    circuit_path: &str,
+    witness_path: &str,
+    proof_path: &str,
+    compress: bool,
+) -> Result<(), RunError> {
+    let circuit_bundle = read_circuit_msgpack(circuit_path)?;
+    let witness_bundle: WitnessBundle = {
+        let file = std::fs::File::open(witness_path).map_err(|e| RunError::Io {
+            source: e,
+            path: witness_path.into(),
+        })?;
+        rmp_serde::decode::from_read(std::io::BufReader::new(file))
+            .map_err(|e| RunError::Deserialize(format!("witness msgpack: {e:?}")))?
+    };
+
+    let proof = prove_from_bytes::<C>(&circuit_bundle.circuit, &witness_bundle.witness, compress)?;
+
+    let resp = ProofBundle { proof };
+    let file = std::fs::File::create(proof_path).map_err(|e| RunError::Io {
+        source: e,
+        path: proof_path.into(),
+    })?;
+    let mut writer = std::io::BufWriter::new(file);
+    resp.serialize(&mut rmp_serde::Serializer::new(&mut writer).with_struct_map())
+        .map_err(|e| RunError::Serialize(format!("proof msgpack: {e:?}")))?;
+    std::io::Write::flush(&mut writer).map_err(|e| RunError::Io {
+        source: e,
+        path: proof_path.into(),
+    })?;
+
+    Ok(())
+}
+
+/// Verifies a proof from msgpack files.
+///
+/// # Errors
+/// Returns `RunError` if file I/O, deserialization, or verification fails.
+pub fn msgpack_verify_file<C: Config>(
+    circuit_path: &str,
+    witness_path: &str,
+    proof_path: &str,
+    inputs_path: Option<&str>,
+    outputs_path: Option<&str>,
+) -> Result<bool, RunError> {
+    let circuit_bundle = read_circuit_msgpack(circuit_path)?;
+    let witness_bundle: WitnessBundle = {
+        let file = std::fs::File::open(witness_path).map_err(|e| RunError::Io {
+            source: e,
+            path: witness_path.into(),
+        })?;
+        rmp_serde::decode::from_read(std::io::BufReader::new(file))
+            .map_err(|e| RunError::Deserialize(format!("witness msgpack: {e:?}")))?
+    };
+    let proof_bundle: ProofBundle = {
+        let file = std::fs::File::open(proof_path).map_err(|e| RunError::Io {
+            source: e,
+            path: proof_path.into(),
+        })?;
+        rmp_serde::decode::from_read(std::io::BufReader::new(file))
+            .map_err(|e| RunError::Deserialize(format!("proof msgpack: {e:?}")))?
+    };
+
+    let inputs_json = if let Some(path) = inputs_path {
+        Some(std::fs::read(path).map_err(|e| RunError::Io {
+            source: e,
+            path: path.into(),
+        })?)
+    } else {
+        None
+    };
+    let outputs_json = if let Some(path) = outputs_path {
+        Some(std::fs::read(path).map_err(|e| RunError::Io {
+            source: e,
+            path: path.into(),
+        })?)
+    } else {
+        None
+    };
+
+    verify_from_bytes_with_io::<C>(
+        &circuit_bundle.circuit,
+        &witness_bundle.witness,
+        &proof_bundle.proof,
+        inputs_json.as_deref(),
+        outputs_json.as_deref(),
+    )
+}
+
 /// A trait for circuits that can configure their internal inputs/outputs
 /// before being used.
 ///
@@ -1389,6 +1755,46 @@ where
                 move || reader_template.clone(),
                 &circuit_path,
             )?;
+        }
+        "msgpack_compile" => {
+            let circuit_path = get_arg(matches, "circuit_path")?;
+            write_circuit_msgpack::<C, CircuitType>(&circuit_path, compress)?;
+            eprintln!("Compiled to {circuit_path}");
+        }
+        "msgpack_prove" => {
+            let circuit_path = get_arg(matches, "circuit_path")?;
+            let witness_path = get_arg(matches, "witness")?;
+            let proof_path = get_arg(matches, "proof")?;
+            msgpack_prove_file::<C>(&circuit_path, &witness_path, &proof_path, compress)?;
+            eprintln!("Proved to {proof_path}");
+        }
+        "msgpack_verify" => {
+            let circuit_path = get_arg(matches, "circuit_path")?;
+            let witness_path = get_arg(matches, "witness")?;
+            let proof_path = get_arg(matches, "proof")?;
+            let inputs_path = matches.get_one::<String>("input").map(String::as_str);
+            let outputs_path = matches.get_one::<String>("output").map(String::as_str);
+            let valid = msgpack_verify_file::<C>(
+                &circuit_path,
+                &witness_path,
+                &proof_path,
+                inputs_path,
+                outputs_path,
+            )?;
+            if valid {
+                eprintln!("Verified");
+            } else {
+                return Err(RunError::Verify("verification failed".into()).into());
+            }
+        }
+        "msgpack_prove_stdin" => {
+            msgpack_prove_stdin::<C>(compress)?;
+        }
+        "msgpack_verify_stdin" => {
+            msgpack_verify_stdin::<C>()?;
+        }
+        "msgpack_witness_stdin" => {
+            msgpack_witness_stdin::<C, _, CircuitDefaultType>(file_reader, compress)?;
         }
         _ => return Err(CliError::UnknownCommand(command.to_string())),
     }

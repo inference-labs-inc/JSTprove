@@ -357,7 +357,7 @@ def run_subprocess(cmd: list[str]) -> None:
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")
     _prepare_subprocess_env(env)
-    proc = subprocess.run(cmd, text=True, env=env, check=False)  # noqa: S603
+    proc = subprocess.run(cmd, text=True, env=env, check=False)
     if proc.returncode != 0:
         msg = f"Command failed with exit code {proc.returncode}"
         raise RuntimeError(msg)
@@ -502,7 +502,7 @@ def run_cargo_command_piped(
     logger.info(msg)
 
     try:
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(
             cmd,
             input=payload,
             capture_output=True,
@@ -520,6 +520,63 @@ def run_cargo_command_piped(
         raise ProofBackendError(msg) from e
     else:
         return result
+
+
+def run_msgpack_command(
+    binary_name: str,
+    command_type: str,
+    payload: bytes,
+    args: dict[str, str] | None = None,
+    *,
+    dev_mode: bool = False,
+) -> bytes:
+    """Run a msgpack-based command via stdin/stdout.
+
+    Args:
+        binary_name: Name of the binary to run.
+        command_type: The msgpack command (e.g., msgpack_prove_stdin).
+        payload: MessagePack-encoded request bytes.
+        args: Optional CLI arguments (e.g., metadata path).
+        dev_mode: If True, use cargo run instead of the binary.
+
+    Returns:
+        Raw stdout bytes (msgpack-encoded response).
+
+    Raises:
+        ProofBackendError: If the command fails.
+    """
+    binary_path, binary_name = _resolve_binary(binary_name)
+    cmd = _build_command(
+        binary_path=binary_path,
+        command_type=command_type,
+        args=args,
+        dev_mode=dev_mode,
+        binary_name=binary_name,
+    )
+    env = os.environ.copy()
+    env["RUST_BACKTRACE"] = "1"
+    _prepare_subprocess_env(env)
+
+    logger.info("Running msgpack command: %s", " ".join(cmd))
+
+    try:
+        result = subprocess.run(
+            cmd,
+            input=payload,
+            capture_output=True,
+            env=env,
+            check=False,
+        )
+        if result.returncode != 0:
+            stderr_text = result.stderr.decode("utf-8", errors="replace")
+            rust_error = extract_rust_error(stderr_text)
+            msg = f"Msgpack command failed (code {result.returncode}): {rust_error}"
+            raise ProofBackendError(msg, cmd)
+    except OSError as e:
+        msg = f"Failed to execute msgpack command '{cmd}': {e}"
+        logger.exception(msg)
+        raise ProofBackendError(msg) from e
+    return result.stdout
 
 
 def _build_command(
@@ -559,7 +616,7 @@ def _run_subprocess_with_bench(
             binary_name,
         )
     start_time = time()
-    result = subprocess.run(  # noqa: S603
+    result = subprocess.run(
         cmd,
         check=True,
         capture_output=True,
@@ -733,7 +790,7 @@ def run_expander_raw(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 "expander-exec",
             )
         start_time = time()
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(
             args,
             env=env,
             capture_output=True,

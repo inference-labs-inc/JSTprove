@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  EXPANDER_COMMIT: af1b7473bc858d250e481d6bb7db98a1ee6b7fc5
+  EXPANDER_COMMIT: f97e058fbdb6f9bccc3b7e7c98d6fdc42df72934
 
 jobs:
   build-linux:
@@ -91,7 +91,7 @@ jobs:
 
       - name: Clone Expander
         run: |
-          git clone https://github.com/PolyhedraZK/Expander.git
+          git clone https://github.com/inference-labs-inc/Expander.git
           cd Expander
           git checkout ${{ env.EXPANDER_COMMIT }}
           cd ..
@@ -208,7 +208,7 @@ jobs:
 
       - name: Clone Expander
         run: |
-          git clone https://github.com/PolyhedraZK/Expander.git
+          git clone https://github.com/inference-labs-inc/Expander.git
           cd Expander
           git checkout ${{ env.EXPANDER_COMMIT }}
           cd ..

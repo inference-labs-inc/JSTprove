@@ -3,11 +3,8 @@ members = [
     "rust/jstprove_circuits",
 ]
 
-
 resolver = "2"
-# Important to avoid the multiple workspaces error
 exclude = ["ExpanderCompilerCollection"]
-
 
 [workspace.dependencies]
 serde_json = "1.0"
@@ -19,66 +16,33 @@ chrono = "0.4"
 clap = { version = "4.1", features = ["derive"] }
 ethnum = "1.5.0"
 tiny-keccak = { version = "2.0", features = ["keccak"] }
-halo2curves = { git = "https://github.com/PolyhedraZK/halo2curves", default-features = false, features = ["bits",] }
-arith = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
-expander_circuit = { git = "https://github.com/PolyhedraZK/Expander", branch = "main", package = "circuit" }
-gkr = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
-gf2 = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
-expander_binary = { git = "https://github.com/PolyhedraZK/Expander", branch = "main", package = "bin" }
-mersenne31 = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
-expander_transcript = { git = "https://github.com/PolyhedraZK/Expander", branch = "main", package = "transcript" }
-crosslayer_prototype = { git = "https://github.com/PolyhedraZK/Expander", branch = "main"}
-expander_compiler = {git = "https://github.com/PolyhedraZK/ExpanderCompilerCollection"}
-circuit-std-rs = {git = "https://github.com/PolyhedraZK/ExpanderCompilerCollection"}
-babybear = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
-gkr_engine = { git = "https://github.com/PolyhedraZK/Expander", branch = "main", package = "gkr_engine" }
-gkr_hashers = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
-goldilocks = { git = "https://github.com/PolyhedraZK/Expander", branch = "main" }
-serdes = { git = "https://github.com/PolyhedraZK/Expander", branch = "main"}
+halo2curves = { git = "https://github.com/PolyhedraZK/halo2curves", default-features = false, features = ["bits"] }
+
+# All deps from inference-labs-inc
+arith = { git = "https://github.com/inference-labs-inc/Expander", rev = "f97e058" }
+expander_circuit = { git = "https://github.com/inference-labs-inc/Expander", rev = "f97e058", package = "circuit" }
+gkr = { git = "https://github.com/inference-labs-inc/Expander", rev = "f97e058" }
+gf2 = { git = "https://github.com/inference-labs-inc/Expander", rev = "f97e058" }
+expander_binary = { git = "https://github.com/inference-labs-inc/Expander", rev = "f97e058", package = "bin" }
+mersenne31 = { git = "https://github.com/inference-labs-inc/Expander", rev = "f97e058" }
+expander_transcript = { git = "https://github.com/inference-labs-inc/Expander", rev = "f97e058", package = "transcript" }
+crosslayer_prototype = { git = "https://github.com/inference-labs-inc/Expander", rev = "f97e058" }
+babybear = { git = "https://github.com/inference-labs-inc/Expander", rev = "f97e058" }
+gkr_engine = { git = "https://github.com/inference-labs-inc/Expander", rev = "f97e058", package = "gkr_engine" }
+gkr_hashers = { git = "https://github.com/inference-labs-inc/Expander", rev = "f97e058" }
+goldilocks = { git = "https://github.com/inference-labs-inc/Expander", rev = "f97e058" }
+serdes = { git = "https://github.com/inference-labs-inc/Expander", rev = "f97e058" }
+
+# ECC from inference-labs-inc (branch will be updated after push)
+expander_compiler = { git = "https://github.com/inference-labs-inc/ecc", branch = "feat/inference-labs-expander" }
+circuit-std-rs = { git = "https://github.com/inference-labs-inc/ecc", branch = "feat/inference-labs-expander" }
+
 mpi = "0.8.0"
 thiserror = "2.0.15"
 strum = "0.27.2"
 strum_macros = "0.27.2"
 once_cell = "1.21.3"
 openssl = { version = "0.10", features = ["vendored"] }
-
-# ndarray = "0.16.1"
-
 ndarray = { version = "0.16.1", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 zstd = "0.13.3"
-
-[patch."https://github.com/rsmpi/rsmpi"]
-mpi = { git = "https://github.com/0pendansor/rsmpi", branch = "patch-1" }
-mpi-sys = { git = "https://github.com/0pendansor/rsmpi", branch = "patch-1", package = "mpi-sys" }
-
-[patch.crates-io]
-mpi = { git = "https://github.com/0pendansor/rsmpi", branch = "patch-1" }
-mpi-sys = { git = "https://github.com/0pendansor/rsmpi", branch = "patch-1", package = "mpi-sys" }
-
-
-# serde_json = "1.0"
-
-
-# [workspace.metadata.cross.target.x86_64-unknown-linux-gnu]
-# # Add custom pre-build steps or configurations if needed
-# pre-build = [
-#     "apt-get update && apt-get install -y libssl-dev && apt-get install libopenmpi-dev && apt-get install openmpi-bin && apt-get install libmpich-dev && apt-get install pkg-config",
-#     "sudo apt install openmpi-bin openmpi-common libopenmpi-dev",
-#     "mpirun --version"
-#     # openmpi-bin \
-#     # libopenmpi-dev \ libmpich-dev
-#     # apt-get install -y \
-#     # libmpich-dev \
-#     # libopenmpi-dev \
-#     # pkg-config \
-#     # libclang-dev \
-#     # clang \
-# ]
-# [workspace.metadata.cross.target.x86_64-unknown-linux-gnu]
-# pre-build = [
-#     "apt-get update && apt-get install -y openmpi-bin libopenmpi-dev"
-# ]
-
-# [workspace.metadata.cross.target.armv7-unknown-linux-gnueabi]
-# image = "my_rust_mpi_image"

@@ -34,6 +34,8 @@ repos:
           '--per-file-ignores=python/tests/**.py:ARG001', # Allows unused function arguments in tests (used for mocked variables)
           '--per-file-ignores=python/tests/**.py:PT019', # Suppresses fixture-param-without-value for fixtures injected for side effects but not referenced in the test body
           '--per-file-ignores=python/core/model_processing/onnx_custom_ops/**.py:PLR0913', # Allows more arguments in onnx_custom_ops, due to necessity of integration BLE001
+          '--per-file-ignores=python/core/msgpack_ops.py:PLR0913', # Allows more arguments in msgpack functions
+          '--per-file-ignores=python/core/utils/helper_functions.py:S603', # subprocess call to controlled internal binaries
           '--per-file-ignores=python/**.py:BLE001', # Allows blind exception handling
           '--per-file-ignores=setup.py:ANN',
           '--per-file-ignores=setup.py:C901',
