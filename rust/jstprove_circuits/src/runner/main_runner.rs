@@ -1265,6 +1265,10 @@ fn verify_from_bytes_with_io<C: Config>(
     verify_from_bytes::<C>(circuit_bytes, witness_bytes, proof_bytes)
 }
 
+/// Compiles a circuit and writes it to a msgpack file.
+///
+/// # Errors
+/// Returns `RunError` if compilation, serialization, or file I/O fails.
 pub fn write_circuit_msgpack<C: Config, CircuitType>(
     path: &str,
     compress_blobs: bool,
@@ -1308,6 +1312,10 @@ where
     Ok(())
 }
 
+/// Reads a compiled circuit bundle from a msgpack file.
+///
+/// # Errors
+/// Returns `RunError` if file I/O or deserialization fails.
 pub fn read_circuit_msgpack(path: &str) -> Result<CompiledCircuit, RunError> {
     let file = std::fs::File::open(path).map_err(|e| RunError::Io {
         source: e,
@@ -1317,6 +1325,10 @@ pub fn read_circuit_msgpack(path: &str) -> Result<CompiledCircuit, RunError> {
         .map_err(|e| RunError::Deserialize(format!("msgpack: {e:?}")))
 }
 
+/// Reads a prove request from stdin and writes the proof to stdout via msgpack.
+///
+/// # Errors
+/// Returns `RunError` if deserialization, proving, or serialization fails.
 pub fn msgpack_prove_stdin<C: Config>(compress: bool) -> Result<(), RunError> {
     let stdin = std::io::stdin();
     let req: ProveRequest = rmp_serde::decode::from_read(stdin.lock())
@@ -1333,6 +1345,10 @@ pub fn msgpack_prove_stdin<C: Config>(compress: bool) -> Result<(), RunError> {
     Ok(())
 }
 
+/// Reads a verify request from stdin and writes the result to stdout via msgpack.
+///
+/// # Errors
+/// Returns `RunError` if deserialization, verification, or serialization fails.
 pub fn msgpack_verify_stdin<C: Config>() -> Result<(), RunError> {
     let stdin = std::io::stdin();
     let req: VerifyRequest = rmp_serde::decode::from_read(stdin.lock())
@@ -1349,6 +1365,10 @@ pub fn msgpack_verify_stdin<C: Config>() -> Result<(), RunError> {
     Ok(())
 }
 
+/// Reads a witness request from stdin and writes the witness to stdout via msgpack.
+///
+/// # Errors
+/// Returns `RunError` if deserialization, witness generation, or serialization fails.
 pub fn msgpack_witness_stdin<C: Config, I, CircuitDefaultType>(
     io_reader: &mut I,
     compress: bool,
@@ -1398,6 +1418,10 @@ where
     Ok(())
 }
 
+/// Proves a circuit from msgpack files and writes the proof to a file.
+///
+/// # Errors
+/// Returns `RunError` if file I/O, deserialization, proving, or serialization fails.
 pub fn msgpack_prove_file<C: Config>(
     circuit_path: &str,
     witness_path: &str,
@@ -1428,6 +1452,10 @@ pub fn msgpack_prove_file<C: Config>(
     Ok(())
 }
 
+/// Verifies a proof from msgpack files.
+///
+/// # Errors
+/// Returns `RunError` if file I/O, deserialization, or verification fails.
 pub fn msgpack_verify_file<C: Config>(
     circuit_path: &str,
     witness_path: &str,
@@ -1732,8 +1760,8 @@ where
             let circuit_path = get_arg(matches, "circuit_path")?;
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
-            let inputs_path = matches.get_one::<String>("input").map(|s| s.as_str());
-            let outputs_path = matches.get_one::<String>("output").map(|s| s.as_str());
+            let inputs_path = matches.get_one::<String>("input").map(String::as_str);
+            let outputs_path = matches.get_one::<String>("output").map(String::as_str);
             let valid = msgpack_verify_file::<C>(
                 &circuit_path,
                 &witness_path,

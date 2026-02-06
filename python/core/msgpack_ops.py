@@ -94,7 +94,9 @@ def save_circuit_msgpack(
         witness_solver=witness_solver_bytes,
         metadata=metadata,
     )
-    with Path(path).open("wb") as f:
+    out_path = Path(path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("wb") as f:
         f.write(bundle.pack())
 
 

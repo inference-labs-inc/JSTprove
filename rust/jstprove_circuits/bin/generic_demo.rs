@@ -284,6 +284,8 @@ fn set_onnx_context(matches: &clap::ArgMatches) {
     }
 }
 
+const ONNX_CONTEXT_COMMANDS: &[&str] = &["run_compile_circuit", "run_debug_witness"];
+
 fn main() {
     let mut file_reader = FileReader {
         path: "demo_cnn".to_owned(),
@@ -293,6 +295,14 @@ fn main() {
 
     let cmd_type = get_arg(&matches, "type").unwrap_or_default();
     let has_meta = matches.get_one::<String>("meta").is_some();
+
+    if ONNX_CONTEXT_COMMANDS.contains(&cmd_type.as_str()) && !has_meta {
+        eprintln!(
+            "Error: command '{cmd_type}' requires ONNX context. Provide --meta, --arch, and --wandb arguments."
+        );
+        std::process::exit(1);
+    }
+
     if has_meta {
         set_onnx_context(&matches);
     }
