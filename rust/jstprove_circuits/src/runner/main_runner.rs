@@ -26,8 +26,6 @@ use crate::runner::schema::{
 };
 use expander_binary::executor;
 
-// use crate::io::io_reader;
-
 const ZSTD_COMPRESSION_LEVEL: i32 = 3;
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 
