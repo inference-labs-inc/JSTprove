@@ -2,20 +2,16 @@
 
 from __future__ import annotations
 
-import json
-import tempfile
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pytest
+import msgpack
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from python.core.msgpack_ops import (
-    MsgpackCircuitRunner,
     load_circuit_bundle,
     load_circuit_msgpack,
-    msgpack_prove,
-    msgpack_verify,
-    msgpack_witness,
-    msgpack_witness_prove,
 )
 from python.core.msgpack_schema import (
     CompiledCircuit,
@@ -46,8 +42,6 @@ class TestMsgpackSchema:
             witness=b"witness_bytes",
             output_data=[1, 2, 3],
         )
-        import msgpack
-
         packed = msgpack.packb(
             {"witness": original.witness, "output_data": original.output_data},
             use_bin_type=True,
@@ -58,22 +52,19 @@ class TestMsgpackSchema:
         assert unpacked.output_data == original.output_data
 
     def test_proof_bundle_roundtrip(self) -> None:
-        import msgpack
-
         packed = msgpack.packb({"proof": b"proof_data"}, use_bin_type=True)
         unpacked = ProofBundle.unpack(packed)
         assert unpacked.proof == b"proof_data"
 
     def test_verify_response_roundtrip(self) -> None:
-        import msgpack
-
         packed = msgpack.packb({"valid": True, "error": None}, use_bin_type=True)
         unpacked = VerifyResponse.unpack(packed)
         assert unpacked.valid is True
         assert unpacked.error is None
 
         packed_err = msgpack.packb(
-            {"valid": False, "error": "bad proof"}, use_bin_type=True
+            {"valid": False, "error": "bad proof"},
+            use_bin_type=True,
         )
         unpacked_err = VerifyResponse.unpack(packed_err)
         assert unpacked_err.valid is False
@@ -94,7 +85,7 @@ class TestLoadCircuitBundle:
         )
 
         msgpack_file = tmp_path / "test.msgpack"
-        with open(msgpack_file, "wb") as f:
+        with msgpack_file.open("wb") as f:
             f.write(bundle.pack())
 
         loaded_circuit, loaded_ws = load_circuit_msgpack(msgpack_file)
@@ -107,12 +98,12 @@ class TestLoadCircuitBundle:
 
         bundle = CompiledCircuit(circuit=circuit_bytes, witness_solver=ws_bytes)
         msgpack_file = tmp_path / "test.msgpack"
-        with open(msgpack_file, "wb") as f:
+        with msgpack_file.open("wb") as f:
             f.write(bundle.pack())
 
-        with open(tmp_path / "test.txt", "wb") as f:
+        with (tmp_path / "test.txt").open("wb") as f:
             f.write(b"legacy_circuit")
-        with open(tmp_path / "test_witness_solver.txt", "wb") as f:
+        with (tmp_path / "test_witness_solver.txt").open("wb") as f:
             f.write(b"legacy_ws")
 
         loaded_circuit, loaded_ws = load_circuit_bundle(tmp_path / "test.txt")
@@ -120,9 +111,9 @@ class TestLoadCircuitBundle:
         assert loaded_ws == ws_bytes
 
     def test_load_legacy_format(self, tmp_path: Path) -> None:
-        with open(tmp_path / "circuit.txt", "wb") as f:
+        with (tmp_path / "circuit.txt").open("wb") as f:
             f.write(b"legacy_circuit")
-        with open(tmp_path / "circuit_witness_solver.txt", "wb") as f:
+        with (tmp_path / "circuit_witness_solver.txt").open("wb") as f:
             f.write(b"legacy_ws")
 
         loaded_circuit, loaded_ws = load_circuit_bundle(tmp_path / "circuit.txt")

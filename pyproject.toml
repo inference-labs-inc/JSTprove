@@ -15,13 +15,16 @@ dependencies = [
     "onnxruntime==1.21.0",
     "onnxruntime_extensions==0.14.0",
     "psutil==7.0.0",
-    "Requests==2.32.3",
+    "Requests>=2.32.4",
     "scikit_learn==1.6.1",
     "toml==0.10.2",
-    "torch==2.6.0",
-    "transformers==4.52.4",
+    "torch>=2.8.0",
+    "transformers>=4.53.0",
     "zstandard>=0.25.0",
     "msgpack>=1.0.0",
+    "filelock>=3.20.3",
+    "protobuf>=6.33.5",
+    "urllib3>=2.6.3",
 ]
 
 [dependency-groups]
