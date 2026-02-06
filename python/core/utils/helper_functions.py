@@ -357,7 +357,7 @@ def run_subprocess(cmd: list[str]) -> None:
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")
     _prepare_subprocess_env(env)
-    proc = subprocess.run(cmd, text=True, env=env, check=False)  # noqa: S603
+    proc = subprocess.run(cmd, text=True, env=env, check=False)
     if proc.returncode != 0:
         msg = f"Command failed with exit code {proc.returncode}"
         raise RuntimeError(msg)
@@ -502,7 +502,7 @@ def run_cargo_command_piped(
     logger.info(msg)
 
     try:
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(
             cmd,
             input=payload,
             capture_output=True,
@@ -616,7 +616,7 @@ def _run_subprocess_with_bench(
             binary_name,
         )
     start_time = time()
-    result = subprocess.run(  # noqa: S603
+    result = subprocess.run(
         cmd,
         check=True,
         capture_output=True,
@@ -790,7 +790,7 @@ def run_expander_raw(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 "expander-exec",
             )
         start_time = time()
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(
             args,
             env=env,
             capture_output=True,
