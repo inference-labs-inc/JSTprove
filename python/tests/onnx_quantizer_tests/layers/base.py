@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+import pytest
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -51,8 +53,26 @@ class LayerTestSpec:
 
     # Omit attributes
     omit_attrs: list[str] = field(default_factory=list)
+    onnx_opset_versions: list[int] = field(default_factory=list)
+    onnx_opset_version: int | None = field(default=None)
 
     # Remove __post_init__ validation - we'll validate in the builder instead
+
+    min_supported_opset: int | None = None
+    max_supported_opset: int | None = None
+
+    def supports_opset(self, opset_version: int) -> bool:
+        """Return True if this test supports the given ONNX opset version"""
+        return not (
+            (
+                self.min_supported_opset is not None
+                and opset_version < self.min_supported_opset
+            )
+            or (
+                self.max_supported_opset is not None
+                and opset_version > self.max_supported_opset
+            )
+        )
 
 
 class LayerTestConfig:
@@ -66,6 +86,8 @@ class LayerTestConfig:
         required_initializers: dict[str, np.ndarray],
         input_shapes: dict[str, list[int]] | None = None,
         output_shapes: dict[str, list[int]] | None = None,
+        min_opset: int | None = None,
+        max_opset: int | None = None,
     ) -> None:
         self.op_type = op_type
         self.valid_inputs = valid_inputs
@@ -73,6 +95,8 @@ class LayerTestConfig:
         self.required_initializers = required_initializers
         self.input_shapes = input_shapes or {"input": [1, 16, 224, 224]}
         self.output_shapes = output_shapes or {f"{op_type.lower()}_output": [1, 10]}
+        self.min_opset = min_opset
+        self.max_opset = max_opset
 
     def create_node(
         self: LayerTestConfig,
@@ -105,8 +129,20 @@ class LayerTestConfig:
             initializers[name] = tensor
         return initializers
 
-    def create_test_model(self, test_spec: LayerTestSpec) -> onnx.ModelProto:
+    def create_test_model(
+        self,
+        test_spec: LayerTestSpec,
+        opset_version: int | None = None,
+    ) -> onnx.ModelProto:
         """Create a complete model for a specific test case"""
+        effective_min = test_spec.min_supported_opset or self.min_opset
+        effective_max = test_spec.max_supported_opset or self.max_opset
+
+        if opset_version is not None:
+            min_violation = effective_min is not None and opset_version < effective_min
+            max_violation = effective_max is not None and opset_version > effective_max
+            if min_violation or max_violation:
+                pytest.skip(f"{test_spec.name} does not support opset {opset_version}")
 
         # Determine node-level inputs.
         # If dev overrides inputs explicitly,
@@ -114,9 +150,11 @@ class LayerTestConfig:
         inputs = test_spec.input_overrides or self.valid_inputs
 
         # Prepare attributes and remove omitted attributes if specified
-        attrs = {**self.valid_attributes, **test_spec.attr_overrides}
+        raw_attrs = {**self.valid_attributes, **test_spec.attr_overrides}
         for key in getattr(test_spec, "omit_attrs", []):
-            attrs.pop(key, None)
+            raw_attrs.pop(key, None)
+
+        attrs = self._resolve_attrs(raw_attrs, opset_version)
 
         # Create initializers (may introduce overrides)
         initializers = self.create_initializers(**test_spec.initializer_overrides)
@@ -162,8 +200,31 @@ class LayerTestConfig:
             outputs=graph_outputs,
             initializer=list(initializers.values()),
         )
+        model = helper.make_model(graph)
 
-        return helper.make_model(graph)
+        if opset_version is not None:
+            model.opset_import.clear()
+            model.opset_import.extend([helper.make_opsetid("", opset_version)])
+
+        return model
+
+    def _resolve_attrs(
+        self,
+        attrs: dict[str, Any],
+        opset_version: int | None,
+    ) -> dict[str, Any]:
+        resolved = {}
+
+        for name, val in attrs.items():
+            if isinstance(val, OpsetConditionalAttr):
+                if opset_version is None:
+                    continue  # safest default
+                if val.is_supported(opset_version):
+                    resolved[name] = val.value
+            else:
+                resolved[name] = val
+
+        return resolved
 
 
 class TestSpecBuilder:
@@ -218,6 +279,14 @@ class TestSpecBuilder:
 
     def skip(self, reason: str) -> TestSpecBuilder:
         self._spec.skip_reason = reason
+        return self
+
+    def min_opset(self, version: int) -> TestSpecBuilder:
+        self._spec.min_supported_opset = version
+        return self
+
+    def max_opset(self, version: int) -> TestSpecBuilder:
+        self._spec.max_supported_opset = version
         return self
 
     def build(self) -> LayerTestSpec:
@@ -275,3 +344,16 @@ class BaseLayerConfigProvider(ABC):
         return [
             spec for spec in self.get_test_specs() if spec.spec_type == SpecType.ERROR
         ]
+
+
+@dataclass(frozen=True)
+class OpsetConditionalAttr:
+    value: Any
+    min_opset: int | None = None
+    max_opset: int | None = None
+
+    def is_supported(self, opset: int) -> bool:
+        return not (
+            (self.min_opset is not None and opset < self.min_opset)
+            or (self.max_opset is not None and opset > self.max_opset)
+        )
