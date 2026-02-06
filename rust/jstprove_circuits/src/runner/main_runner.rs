@@ -1345,6 +1345,8 @@ pub fn msgpack_prove_stdin<C: Config>(compress: bool) -> Result<(), RunError> {
     let mut lock = stdout.lock();
     resp.serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
         .map_err(|e| RunError::Serialize(format!("msgpack stdout: {e:?}")))?;
+    std::io::Write::flush(&mut lock)
+        .map_err(|e| RunError::Serialize(format!("msgpack stdout flush: {e:?}")))?;
 
     Ok(())
 }
@@ -1365,6 +1367,8 @@ pub fn msgpack_verify_stdin<C: Config>() -> Result<(), RunError> {
     let mut lock = stdout.lock();
     resp.serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
         .map_err(|e| RunError::Serialize(format!("msgpack stdout: {e:?}")))?;
+    std::io::Write::flush(&mut lock)
+        .map_err(|e| RunError::Serialize(format!("msgpack stdout flush: {e:?}")))?;
 
     Ok(())
 }
@@ -1418,6 +1422,8 @@ where
     let mut lock = stdout.lock();
     resp.serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
         .map_err(|e| RunError::Serialize(format!("msgpack stdout: {e:?}")))?;
+    std::io::Write::flush(&mut lock)
+        .map_err(|e| RunError::Serialize(format!("msgpack stdout flush: {e:?}")))?;
 
     Ok(())
 }

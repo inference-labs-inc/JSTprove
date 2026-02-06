@@ -254,38 +254,33 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
 
 fn set_onnx_context(matches: &clap::ArgMatches) {
     let meta_file_path = get_arg(matches, "meta").unwrap();
-
     let meta_file = std::fs::read_to_string(&meta_file_path).expect("Failed to read metadata file");
     let params: CircuitParams = serde_json::from_str(&meta_file).expect("Invalid metadata JSON");
-
     OnnxContext::set_params(params)
         .map_err(|e| CircuitError::Other(e.to_string()))
         .unwrap();
 
-    let cmd_type = get_arg(matches, "type").unwrap();
-    if cmd_type == "run_compile_circuit" || cmd_type == "run_debug_witness" {
-        let arch_file_path = get_arg(matches, "arch").unwrap();
-        let arch_file =
-            std::fs::read_to_string(&arch_file_path).expect("Failed to read architecture file");
-        let arch: Architecture =
-            serde_json::from_str(&arch_file).expect("Invalid architecture JSON");
+    let arch_file_path = get_arg(matches, "arch").unwrap();
+    let arch_file =
+        std::fs::read_to_string(&arch_file_path).expect("Failed to read architecture file");
+    let arch: Architecture = serde_json::from_str(&arch_file).expect("Invalid architecture JSON");
+    OnnxContext::set_architecture(arch)
+        .map_err(|e| CircuitError::Other(e.to_string()))
+        .unwrap();
 
-        OnnxContext::set_architecture(arch)
-            .map_err(|e| CircuitError::Other(e.to_string()))
-            .unwrap();
-
-        let wandb_file_path = get_arg(matches, "wandb").unwrap();
-        let wandb_file =
-            std::fs::read_to_string(&wandb_file_path).expect("Failed to read W&B file");
-        let wandb: WANDB = serde_json::from_str(&wandb_file).expect("Invalid W&B JSON");
-
-        OnnxContext::set_wandb(wandb)
-            .map_err(|e| CircuitError::Other(e.to_string()))
-            .unwrap();
-    }
+    let wandb_file_path = get_arg(matches, "wandb").unwrap();
+    let wandb_file = std::fs::read_to_string(&wandb_file_path).expect("Failed to read W&B file");
+    let wandb: WANDB = serde_json::from_str(&wandb_file).expect("Invalid W&B JSON");
+    OnnxContext::set_wandb(wandb)
+        .map_err(|e| CircuitError::Other(e.to_string()))
+        .unwrap();
 }
 
-const ONNX_CONTEXT_COMMANDS: &[&str] = &["run_compile_circuit", "run_debug_witness"];
+const ONNX_CONTEXT_COMMANDS: &[&str] = &[
+    "run_compile_circuit",
+    "run_debug_witness",
+    "msgpack_compile",
+];
 
 fn main() {
     let mut file_reader = FileReader {
@@ -295,23 +290,21 @@ fn main() {
     let matches = get_args();
 
     let cmd_type = get_arg(&matches, "type").unwrap_or_default();
-    let has_meta = matches.get_one::<String>("meta").is_some();
+    let needs_onnx_context = ONNX_CONTEXT_COMMANDS.contains(&cmd_type.as_str());
 
-    let needs_arch_wandb = cmd_type == "run_compile_circuit" || cmd_type == "run_debug_witness";
-    if ONNX_CONTEXT_COMMANDS.contains(&cmd_type.as_str()) && !has_meta {
-        eprintln!(
-            "Error: command '{cmd_type}' requires ONNX context. Provide --meta, --arch, and --wandb arguments."
-        );
-        std::process::exit(1);
-    }
-    let has_arch = matches.get_one::<String>("arch").is_some();
-    let has_wandb = matches.get_one::<String>("wandb").is_some();
-    if needs_arch_wandb && (!has_arch || !has_wandb) {
-        eprintln!("Error: command '{cmd_type}' requires --arch and --wandb arguments.");
-        std::process::exit(1);
+    if needs_onnx_context {
+        let has_meta = matches.get_one::<String>("meta").is_some();
+        let has_arch = matches.get_one::<String>("arch").is_some();
+        let has_wandb = matches.get_one::<String>("wandb").is_some();
+        if !has_meta || !has_arch || !has_wandb {
+            eprintln!(
+                "Error: command '{cmd_type}' requires ONNX context. Provide --meta, --arch, and --wandb arguments."
+            );
+            std::process::exit(1);
+        }
     }
 
-    if has_meta {
+    if needs_onnx_context {
         set_onnx_context(&matches);
     }
 
