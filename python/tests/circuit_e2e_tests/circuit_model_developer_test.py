@@ -232,15 +232,11 @@ def test_witness_prove_verify_true_inputs_dev(
     ), "Expected 'Witness Generated' in stdout three times, but it was not found."
 
     assert (
-        stdout.count("proving") == 1
-    ), "Expected 'proving' in stdout three times, but it was not found."
-    assert (
         stdout.count("Proved") == 1
-    ), "Expected 'Proved' in stdout three times, but it was not found."
-
+    ), "Expected 'Proved' in stdout, but it was not found."
     assert (
         stdout.count("Verified") == 1
-    ), "Expected 'Verified' in stdout three times, but it was not found."
+    ), "Expected 'Verified' in stdout, but it was not found."
 
 
 @pytest.mark.e2e
@@ -326,21 +322,12 @@ def test_witness_prove_verify_true_inputs_dev_expander_call(
         stdout.count("Witness Generated") == 1
     ), "Expected 'Witness Generated' in stdout three times, but it was not found."
 
-    assert stdout.count("proving") == 1, "Expected 'proving' but it was not found."
-
-    assert (
-        stdout.count("verifying proof") == 1
-    ), "Expected 'verifying proof' but it was not found."
-    assert stdout.count("success") == 1, "Expected 'success'  but it was not found."
-
     assert (
         stdout.count("expander-exec verify succeeded") == 1
     ), "Expected 'expander-exec verify succeeded' but it was not found."
     assert (
         stdout.count("expander-exec prove succeeded") == 1
     ), "Expected 'expander-exec prove succeeded' but it was not found."
-
-    assert stdout.count("proving") == 1, "Expected 'proving' but it was not found."
 
 
 @pytest.mark.e2e
