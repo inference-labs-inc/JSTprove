@@ -262,7 +262,8 @@ fn set_onnx_context(matches: &clap::ArgMatches) {
         .map_err(|e| CircuitError::Other(e.to_string()))
         .unwrap();
 
-    if get_arg(matches, "type").unwrap() == "run_compile_circuit" {
+    let cmd_type = get_arg(matches, "type").unwrap();
+    if cmd_type == "run_compile_circuit" || cmd_type == "run_debug_witness" {
         let arch_file_path = get_arg(matches, "arch").unwrap();
         let arch_file =
             std::fs::read_to_string(&arch_file_path).expect("Failed to read architecture file");
@@ -296,10 +297,17 @@ fn main() {
     let cmd_type = get_arg(&matches, "type").unwrap_or_default();
     let has_meta = matches.get_one::<String>("meta").is_some();
 
+    let needs_arch_wandb = cmd_type == "run_compile_circuit" || cmd_type == "run_debug_witness";
     if ONNX_CONTEXT_COMMANDS.contains(&cmd_type.as_str()) && !has_meta {
         eprintln!(
             "Error: command '{cmd_type}' requires ONNX context. Provide --meta, --arch, and --wandb arguments."
         );
+        std::process::exit(1);
+    }
+    let has_arch = matches.get_one::<String>("arch").is_some();
+    let has_wandb = matches.get_one::<String>("wandb").is_some();
+    if needs_arch_wandb && (!has_arch || !has_wandb) {
+        eprintln!("Error: command '{cmd_type}' requires --arch and --wandb arguments.");
         std::process::exit(1);
     }
 

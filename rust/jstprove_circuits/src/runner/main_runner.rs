@@ -1308,6 +1308,10 @@ where
     bundle
         .serialize(&mut rmp_serde::Serializer::new(&mut writer).with_struct_map())
         .map_err(|e| RunError::Serialize(format!("msgpack: {e:?}")))?;
+    std::io::Write::flush(&mut writer).map_err(|e| RunError::Io {
+        source: e,
+        path: path.into(),
+    })?;
 
     Ok(())
 }
@@ -1448,6 +1452,10 @@ pub fn msgpack_prove_file<C: Config>(
     let mut writer = std::io::BufWriter::new(file);
     resp.serialize(&mut rmp_serde::Serializer::new(&mut writer).with_struct_map())
         .map_err(|e| RunError::Serialize(format!("proof msgpack: {e:?}")))?;
+    std::io::Write::flush(&mut writer).map_err(|e| RunError::Io {
+        source: e,
+        path: proof_path.into(),
+    })?;
 
     Ok(())
 }

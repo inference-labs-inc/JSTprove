@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 from pathlib import Path
 from typing import Any
 
@@ -17,8 +16,6 @@ from python.core.msgpack_schema import (
     WitnessRequest,
 )
 from python.core.utils.helper_functions import run_msgpack_command
-
-logger = logging.getLogger(__name__)
 
 
 def load_circuit_bundle(circuit_path: str | Path) -> tuple[bytes, bytes]:
