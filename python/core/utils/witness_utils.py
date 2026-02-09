@@ -240,6 +240,9 @@ def extract_io_from_witness(
     if modulus is None:
         return None
 
+    if num_inputs > len(public_inputs) - MIN_PUBLIC_INPUTS_LENGTH:
+        return None
+
     inputs = public_inputs[:num_inputs]
     raw_outputs = public_inputs[num_inputs:-2]
     scale_base = public_inputs[-2]

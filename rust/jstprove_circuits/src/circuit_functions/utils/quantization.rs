@@ -66,7 +66,7 @@ use crate::circuit_functions::gadgets::{
 /// - `scaling_exponent` (`kappa`): exponent such that `alpha = 2^kappa`.
 /// - `shift_exponent` (`s`): exponent such that `S = 2^s`.
 /// - `scaling_factor_`: native `u32` equal to `alpha`.
-/// - `shift_`: native `u32` equal to `S`.
+/// - `shift_`: native `u64` equal to `S`.
 /// - `scaled_shift_`: native `U256` equal to `alpha * S = 2^(kappa + s)`.
 /// - `scaling_factor`, `shift`, `scaled_shift`: the same quantities lifted
 ///   into the circuit as `Variable`s.
@@ -97,7 +97,7 @@ impl RescalingContext {
     ///
     /// - Native powers of two:
     ///   - `scaling_factor_ = 2^kappa` as `u32`.
-    ///   - `shift_ = 2^s` as `u32`.
+    ///   - `shift_ = 2^s` as `u64`.
     ///   - `scaled_shift_ = 2^(kappa + s)` as `U256` (to avoid overflow).
     /// - Circuit-lifted versions of these values:
     ///   - `scaling_factor`, `shift`, `scaled_shift` as `Variable`s.

@@ -51,7 +51,7 @@ impl ShiftRangeContext {
     /// Creates a new context for max/min assertion gadgets, given a
     /// `shift_exponent = s`.
     ///
-    /// Internally computes S = 2^s as a `u32`, lifts it as a circuit
+    /// Internally computes S = 2^s as a `u64`, lifts it as a circuit
     /// constant, and stores both `s` and `S`.
     ///
     /// # Arguments
@@ -60,7 +60,7 @@ impl ShiftRangeContext {
     ///
     /// # Errors
     /// - `LayerError::Other` if `shift_exponent` is too large to fit in `u32`.
-    /// - `LayerError::InvalidParameterValue` if computing `2^s` overflows `u32`.
+    /// - `LayerError::InvalidParameterValue` if computing `2^s` overflows `u64`.
     pub fn new<C: Config, Builder: RootAPI<C>>(
         api: &mut Builder,
         shift_exponent: usize,

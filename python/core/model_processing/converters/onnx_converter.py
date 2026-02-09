@@ -1199,12 +1199,12 @@ class ONNXConverter(ModelConverter):
         output_names = [o.name for o in output_infos]
 
         max_values: dict[str, float] = {}
+        rng = np.random.default_rng(seed=42)
 
         for _ in range(num_samples):
             feeds: dict[str, np.ndarray] = {}
             for inp in input_infos:
                 shape = [d if isinstance(d, int) and d > 0 else 1 for d in inp.shape]
-                rng = np.random.default_rng()
                 if inp.type == "tensor(double)":
                     feeds[inp.name] = rng.standard_normal(shape, dtype=np.float64) * 0.5
                 else:
