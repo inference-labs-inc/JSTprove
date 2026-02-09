@@ -194,17 +194,27 @@ def _bound_clip(
     _bn_eps: dict[str, float],
 ) -> float:
     m_in = _resolve_bound(layer.inputs[0], tensor_bound, initializer_map)
-    max_clip_idx = 2
-    if max_clip_idx < len(layer.inputs) and layer.inputs[max_clip_idx]:
-        name = layer.inputs[max_clip_idx]
+    clip_bounds: list[float] = []
+    has_max = False
+    for idx in (1, _BIAS_INPUT_IDX):
+        if idx >= len(layer.inputs) or not layer.inputs[idx]:
+            continue
+        name = layer.inputs[idx]
+        val: float | None = None
         if name in initializer_map:
-            return min(m_in, float(np.max(np.abs(initializer_map[name]))))
-        if layer.params and name in layer.params:
-            val = layer.params[name]
-            if isinstance(val, (list, np.ndarray)):
-                return min(m_in, float(np.max(np.abs(val))))
-            if isinstance(val, (int, float)):
-                return min(m_in, abs(float(val)))
+            val = float(np.max(np.abs(initializer_map[name])))
+        elif layer.params and name in layer.params:
+            p = layer.params[name]
+            if isinstance(p, (list, np.ndarray)):
+                val = float(np.max(np.abs(p)))
+            elif isinstance(p, (int, float)):
+                val = abs(float(p))
+        if val is not None:
+            clip_bounds.append(val)
+            if idx == _BIAS_INPUT_IDX:
+                has_max = True
+    if has_max and clip_bounds:
+        return min(m_in, max(clip_bounds))
     return m_in
 
 
