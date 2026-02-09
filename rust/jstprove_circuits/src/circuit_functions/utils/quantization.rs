@@ -112,7 +112,7 @@ impl RescalingContext {
     /// - Returns [`RescaleError::ScalingExponentTooLargeError`] if computing
     ///   `1u32 << scaling_exponent` overflows.
     /// - Returns [`RescaleError::ShiftExponentTooLargeError`] if computing
-    ///   `1u32 << shift_exponent` overflows.
+    ///   `1u64 << shift_exponent` overflows.
     pub fn new<C: Config, Builder: RootAPI<C>>(
         api: &mut Builder,
         scaling_exponent: usize,
