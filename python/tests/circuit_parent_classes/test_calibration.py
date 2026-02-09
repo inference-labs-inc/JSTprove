@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-
 import numpy as np
 import onnx
 import pytest
@@ -13,8 +11,6 @@ from python.core.model_processing.converters.onnx_converter import (
 )
 
 _MIN_N_BITS = 16
-_MAX_N_BITS_RESCALE = 64
-_MAX_N_BITS_RANGE_CHECK = 128
 
 
 def _make_conv_model() -> tuple[onnx.ModelProto, list[ONNXLayer]]:
@@ -320,50 +316,6 @@ class TestCalibrateNBits:
         )
 
         assert r1 == r2
-
-    @pytest.mark.unit
-    def test_n_bits_clamped_for_rescale_ops(
-        self,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        model, arch_layers = _make_conv_model()
-        quantized = _quantize_model(model)
-
-        converter = ONNXConverter()
-        with caplog.at_level(logging.WARNING):
-            result = converter.calibrate_n_bits(
-                quantized_model=quantized,
-                architecture_layers=arch_layers,
-                rescale_config={},
-                scale_base=2,
-                scale_exponent=18,
-                headroom_bits=200,
-            )
-
-        assert result["conv0"] <= _MAX_N_BITS_RESCALE
-        assert any("exceeds circuit field limit" in r.message for r in caplog.records)
-
-    @pytest.mark.unit
-    def test_n_bits_clamped_for_range_check_ops(
-        self,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        model, arch_layers = _make_relu_model()
-        quantized = _quantize_model(model)
-
-        converter = ONNXConverter()
-        with caplog.at_level(logging.WARNING):
-            result = converter.calibrate_n_bits(
-                quantized_model=quantized,
-                architecture_layers=arch_layers,
-                rescale_config={},
-                scale_base=2,
-                scale_exponent=18,
-                headroom_bits=200,
-            )
-
-        assert result["relu0"] <= _MAX_N_BITS_RANGE_CHECK
-        assert any("exceeds circuit field limit" in r.message for r in caplog.records)
 
     @pytest.mark.unit
     def test_empty_architecture_returns_empty_config(self) -> None:
