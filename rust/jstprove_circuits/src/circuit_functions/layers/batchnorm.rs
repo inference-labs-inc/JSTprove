@@ -112,7 +112,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
                 get_input_name(&layer.inputs, 2, LayerKind::Batchnorm, "bias")?,
             )?,
             is_rescale,
-            v_plus_one: layer_context.n_bits,
+            v_plus_one: layer_context.n_bits_for(&layer.name),
             optimization_pattern,
             scaling: circuit_params.scale_exponent.into(), // TODO: Becomes scaling_in?
             inputs: layer.inputs.clone(),

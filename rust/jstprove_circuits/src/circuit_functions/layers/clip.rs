@@ -280,14 +280,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
         };
 
         // Match Max/Min/MaxPool: use n_bits - 1 as shift exponent.
-        let shift_exponent =
-            layer_context
-                .n_bits
-                .checked_sub(1)
-                .ok_or_else(|| LayerError::Other {
-                    layer: LayerKind::Clip,
-                    msg: "layer_context.n_bits too small to derive shift_exponent".to_string(),
-                })?;
+        let shift_exponent = layer_context
+            .n_bits_for(&layer.name)
+            .checked_sub(1)
+            .ok_or_else(|| LayerError::Other {
+                layer: LayerKind::Clip,
+                msg: "n_bits too small to derive shift_exponent".to_string(),
+            })?;
 
         let clip_layer = Self {
             name: layer.name.clone(),

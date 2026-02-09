@@ -21,7 +21,7 @@ use crate::circuit_functions::{
             extract_params_and_expected_shape, get_input_name, get_param, get_param_or_default,
             get_w_or_b,
         },
-        typecasting::{AsI32, AsU32, AsUsize, UsizeAsU32, i32_to_usize},
+        typecasting::{AsI32, AsUsize, UsizeAsU32, i32_to_usize},
     },
 };
 
@@ -52,8 +52,6 @@ pub struct ConvLayer {
     scaling: u64,
     optimization_pattern: PatternRegistry,
     v_plus_one: usize,
-    two_v: u32,
-    alpha_two_v: u64,
     is_rescale: bool,
     inputs: Vec<String>,
     outputs: Vec<String>,
@@ -78,29 +76,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             })?
             .clone();
 
-        // Convert weights
         let weights = load_array_constants(api, &self.weights);
-
         let bias = self.bias.mapv(|x| load_circuit_constant(api, x));
-        // Scaling
-        let scale_factor = 1u64.checked_shl(self.scaling.as_u32()?).ok_or_else(|| {
-            LayerError::InvalidParameterValue {
-                layer: LayerKind::Conv,
-                layer_name: self.name.clone(),
-                param_name: "scaling".into(),
-                value: self.scaling.to_string(),
-            }
-        })?;
-        let alpha_two_v = api.mul(self.two_v, scale_factor.as_u32()?);
 
-        // Get shape
         let in_shape = layer_input
             .shape()
             .iter()
             .map(|&x| x.as_u32())
             .collect::<Result<Vec<u32>, UtilsError>>()?;
 
-        // Convolution
         let out = conv_4d_run(
             api,
             &layer_input,
@@ -118,8 +102,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
                 scaling: self.scaling,
                 quantized: self.is_rescale,
                 v_plus_one: self.v_plus_one,
-                _two_v: self.two_v,
-                _alpha_two_v: alpha_two_v,
                 is_relu,
             },
         )?;
@@ -175,9 +157,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             input_shape: expected_shape.clone(),
             scaling: circuit_params.scale_exponent.into(),
             optimization_pattern,
-            v_plus_one: layer_context.n_bits,
-            two_v: layer_context.two_v,
-            alpha_two_v: layer_context.alpha_two_v,
+            v_plus_one: layer_context.n_bits_for(&layer.name),
             is_rescale,
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
@@ -195,12 +175,10 @@ pub struct Conv2DParams {
     groups: Vec<u32>,
 }
 
-pub struct ConvQuantizationParams<T> {
+pub struct ConvQuantizationParams {
     scaling: u64,
     quantized: bool,
     v_plus_one: usize,
-    _two_v: T,
-    _alpha_two_v: Variable,
     is_relu: bool,
 }
 
@@ -604,13 +582,13 @@ fn flatten_and_perform_dot<C: Config, Builder: RootAPI<C>>(
 /// - [`LayerError::UnsupportedConfig`] if group > 1 or unsupported dilation is used.
 /// - [`LayerError::Other`] if scaling cannot be converted to `usize`.
 /// - [`CircuitError`] other errors that propogate through.
-pub fn conv_4d_run<C: Config, T: Into<u64>, Builder: RootAPI<C>>(
+pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input_arr: &ArrayD<Variable>,
     weights: &ArrayD<Variable>,
-    bias: &ArrayD<Variable>, // formerly Vec<Variable>
+    bias: &ArrayD<Variable>,
     conv_params: &Conv2DParams,
-    quantization_params: &ConvQuantizationParams<T>,
+    quantization_params: &ConvQuantizationParams,
 ) -> Result<ArrayD<Variable>, CircuitError> {
     let conv_params = set_default_params(conv_params)?;
     not_yet_implemented_conv(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import math
 from dataclasses import asdict, dataclass
 from importlib.metadata import version as get_version
 from pathlib import Path
@@ -1053,6 +1054,198 @@ class ONNXConverter(ModelConverter):
             graph_input.name for graph_input in onnx_model.graph.input
         ]
         self.input_shape = get_input_shapes(onnx_model)
+
+    _RESCALABLE_OPS: frozenset[str] = frozenset(
+        {"Conv", "Gemm", "BatchNormalization", "Mul"},
+    )
+    _RANGE_CHECK_OPS: frozenset[str] = frozenset(
+        {"MaxPool", "Relu", "ReLU", "Max", "Min", "Clip"},
+    )
+
+    @staticmethod
+    def _build_calibration_model(  # noqa: C901, PLR0912
+        quantized_model: onnx.ModelProto,
+        architecture_layers: list[ONNXLayer],
+        rescale_config: dict[str, bool],
+        alpha: float,
+    ) -> tuple[onnx.ModelProto, list[str], list[str]]:
+        model = copy.deepcopy(quantized_model)
+
+        alpha_init = numpy_helper.from_array(
+            np.array([alpha], dtype=np.float64),
+            name="__cal_alpha",
+        )
+        model.graph.initializer.append(alpha_init)
+
+        rescale_outputs: set[str] = set()
+        for layer in architecture_layers:
+            is_rescaled = (
+                rescale_config.get(layer.name, True)
+                and layer.op_type in ONNXConverter._RESCALABLE_OPS
+            )
+            if is_rescaled:
+                for out in layer.outputs:
+                    rescale_outputs.add(out)
+
+        range_check_outputs: set[str] = set()
+        for layer in architecture_layers:
+            if layer.op_type in ONNXConverter._RANGE_CHECK_OPS:
+                for out in layer.outputs:
+                    range_check_outputs.add(out)
+
+        new_nodes: list[onnx.NodeProto] = []
+        pre_rescale_names: list[str] = []
+        captured_range_names: list[str] = []
+
+        for node in model.graph.node:
+            rescaled_output = None
+            for out in node.output:
+                if out in rescale_outputs:
+                    rescaled_output = out
+                    break
+
+            if rescaled_output:
+                pre_name = f"{rescaled_output}__pre_rescale"
+                cast_name = f"{rescaled_output}__cast"
+                div_name = f"{rescaled_output}__div"
+                floor_name = f"{rescaled_output}__floor"
+
+                for i, out in enumerate(node.output):
+                    if out == rescaled_output:
+                        node.output[i] = pre_name
+                new_nodes.append(node)
+
+                new_nodes.append(
+                    helper.make_node(
+                        "Cast",
+                        [pre_name],
+                        [cast_name],
+                        to=TensorProto.DOUBLE,
+                    ),
+                )
+                new_nodes.append(
+                    helper.make_node("Div", [cast_name, "__cal_alpha"], [div_name]),
+                )
+                new_nodes.append(
+                    helper.make_node("Floor", [div_name], [floor_name]),
+                )
+                new_nodes.append(
+                    helper.make_node(
+                        "Cast",
+                        [floor_name],
+                        [rescaled_output],
+                        to=TensorProto.INT64,
+                    ),
+                )
+
+                pre_rescale_names.append(pre_name)
+            else:
+                new_nodes.append(node)
+
+            for out in node.output:
+                actual_out = out
+                if rescaled_output and out == pre_name:
+                    actual_out = rescaled_output
+                if actual_out in range_check_outputs:
+                    captured_range_names.append(actual_out)
+
+        model.graph.ClearField("node")
+        model.graph.node.extend(new_nodes)
+
+        for name in pre_rescale_names:
+            model.graph.output.append(
+                helper.make_tensor_value_info(name, TensorProto.UNDEFINED, None),
+            )
+        for name in captured_range_names:
+            already_output = any(o.name == name for o in model.graph.output)
+            if not already_output:
+                model.graph.output.append(
+                    helper.make_tensor_value_info(name, TensorProto.UNDEFINED, None),
+                )
+
+        return model, pre_rescale_names, captured_range_names
+
+    def calibrate_n_bits(  # noqa: PLR0913, C901
+        self: ONNXConverter,
+        quantized_model: onnx.ModelProto,
+        architecture_layers: list[ONNXLayer],
+        rescale_config: dict[str, bool],
+        scale_base: int,
+        scale_exponent: int,
+        num_samples: int = 5,
+        headroom_bits: int = 6,
+    ) -> dict[str, int]:
+        alpha = float(scale_base**scale_exponent)
+
+        cal_model, pre_rescale_names, range_names = self._build_calibration_model(
+            quantized_model,
+            architecture_layers,
+            rescale_config,
+            alpha,
+        )
+
+        _clamp_for_ort(cal_model)
+
+        opts = SessionOptions()
+        opts.register_custom_ops_library(get_library_path())
+        session = InferenceSession(
+            cal_model.SerializeToString(),
+            opts,
+            providers=["CPUExecutionProvider"],
+        )
+
+        input_infos = session.get_inputs()
+        output_infos = session.get_outputs()
+        output_names = [o.name for o in output_infos]
+
+        max_values: dict[str, float] = {}
+
+        for _ in range(num_samples):
+            feeds: dict[str, np.ndarray] = {}
+            for inp in input_infos:
+                shape = [d if isinstance(d, int) and d > 0 else 1 for d in inp.shape]
+                rng = np.random.default_rng()
+                if inp.type == "tensor(double)":
+                    feeds[inp.name] = rng.standard_normal(shape, dtype=np.float64) * 0.5
+                else:
+                    feeds[inp.name] = (
+                        rng.standard_normal(shape).astype(np.float32) * 0.5
+                    )
+
+            results = session.run(output_names, feeds)
+            for name, val in zip(output_names, results, strict=False):
+                arr = np.asarray(val, dtype=np.float64)
+                max_abs = float(np.max(np.abs(arr))) if arr.size > 0 else 0.0
+                max_values[name] = max(max_values.get(name, 0.0), max_abs)
+
+        pre_rescale_set = set(pre_rescale_names)
+        range_set = set(range_names)
+
+        output_to_layer: dict[str, str] = {}
+        for layer in architecture_layers:
+            for out in layer.outputs:
+                output_to_layer[out] = layer.name
+                output_to_layer[f"{out}__pre_rescale"] = layer.name
+
+        def _compute_n_bits(max_val: float) -> int:
+            if max_val < 1:
+                return 16
+            return max(math.ceil(math.log2(max_val + 1)) + 1 + headroom_bits, 16)
+
+        n_bits_config: dict[str, int] = {}
+
+        for name, max_val in max_values.items():
+            layer_name = output_to_layer.get(name)
+            if layer_name is None:
+                continue
+
+            if name in pre_rescale_set:
+                q_max = max_val / alpha
+                n_bits_config[layer_name] = _compute_n_bits(q_max)
+            elif name in range_set and layer_name not in n_bits_config:
+                n_bits_config[layer_name] = _compute_n_bits(max_val)
+
+        return n_bits_config
 
     def get_weights(
         self: ONNXConverter,

@@ -78,7 +78,7 @@ pub struct RescalingContext {
     pub shift_exponent: usize,   // s: exponent such that S = 2^s
 
     pub scaling_factor_: u32, // alpha = 2^kappa, as a native u32
-    pub shift_: u32,          // S = 2^s, as a native u32
+    pub shift_: u64,          // S = 2^s, as a native u64 (supports n_bits > 32)
     pub scaled_shift_: U256,  // alpha*S = 2^{kappa + s}, as a U256 for overflow safety
 
     pub scaling_factor: Variable, // alpha = 2^kappa, lifted to the circuit as a Variable
@@ -136,17 +136,17 @@ impl RescalingContext {
                 type_name: "u32",
             }
         })?;
-        let shift_ = 1u32.checked_shl(shift_exponent_u32).ok_or(
+        let shift_ = 1u64.checked_shl(shift_exponent_u32).ok_or(
             RescaleError::ShiftExponentTooLargeError {
-                exp: scaling_exponent,
-                type_name: "u32",
+                exp: shift_exponent,
+                type_name: "u64",
             },
         )?;
-        let scaled_shift_ = U256::from(scaling_factor_) * U256::from(shift_); // alpha*S = 2^{kappa + s}
+        let scaled_shift_ = U256::from(scaling_factor_) * U256::from(shift_);
 
-        let scaling_factor = api.constant(scaling_factor_); // alpha as Variable
-        let shift = api.constant(shift_); // S as Variable
-        let scaled_shift = api.constant(CircuitField::<C>::from_u256(scaled_shift_)); // alpha*S as Variable
+        let scaling_factor = api.constant(scaling_factor_);
+        let shift = api.constant(CircuitField::<C>::from_u256(U256::from(shift_)));
+        let scaled_shift = api.constant(CircuitField::<C>::from_u256(scaled_shift_));
 
         Ok(Self {
             scaling_exponent, // kappa

@@ -12,13 +12,24 @@ use crate::circuit_functions::{
 
 use expander_compiler::frontend::{Config, RootAPI};
 
+const DEFAULT_N_BITS: usize = 48;
+
 type BoxedDynLayer<C, B> = Box<dyn LayerOp<C, B>>;
 pub struct BuildLayerContext {
     pub w_and_b_map: HashMap<String, ONNXLayer>,
     pub shapes_map: HashMap<String, Vec<usize>>,
-    pub n_bits: usize,
-    pub two_v: u32,
-    pub alpha_two_v: u64,
+    pub n_bits_config: HashMap<String, usize>,
+    pub default_n_bits: usize,
+}
+
+impl BuildLayerContext {
+    #[must_use]
+    pub fn n_bits_for(&self, layer_name: &str) -> usize {
+        self.n_bits_config
+            .get(layer_name)
+            .copied()
+            .unwrap_or(self.default_n_bits)
+    }
 }
 
 /// Builds a sequence of circuit layers from an architecture and parameters.
@@ -44,15 +55,7 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
     architecture: &Architecture,
     w_and_b: &WANDB,
 ) -> Result<Vec<Box<dyn LayerOp<C, Builder>>>, BuildError> {
-    const N_BITS: usize = 32;
-    const V_PLUS_ONE: usize = N_BITS;
-    const TWO_V: u32 = 1 << (V_PLUS_ONE - 1);
     let mut layers: Vec<BoxedDynLayer<C, Builder>> = vec![];
-    let alpha_two_v: u64 = u64::from((1 << circuit_params.scale_exponent) * TWO_V);
-
-    /*
-    TODO: Inject weights + bias data with external functions instead of regular assignment in function.
-     */
 
     let w_and_b_map: HashMap<String, ONNXLayer> = w_and_b
         .w_and_b
@@ -65,16 +68,14 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
 
     let inputs = &circuit_params.inputs;
 
-    // TODO havent figured out how but this can maybe go in build layers?
     let shapes_map: HashMap<String, Vec<usize>> =
         collect_all_shapes(&architecture.architecture, inputs);
 
     let layer_context = BuildLayerContext {
         w_and_b_map: w_and_b_map.clone(),
         shapes_map: shapes_map.clone(),
-        n_bits: N_BITS,
-        two_v: TWO_V,
-        alpha_two_v,
+        n_bits_config: circuit_params.n_bits_config.clone(),
+        default_n_bits: DEFAULT_N_BITS,
     };
 
     let matcher = PatternMatcher::new();

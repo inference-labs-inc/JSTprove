@@ -6,7 +6,7 @@
 //! - are used by `Max`, `Min`, `Clip`, `MaxPool`, and quantization layers.
 
 /// `ExpanderCompilerCollection` imports
-use expander_compiler::frontend::{Config, RootAPI, Variable};
+use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
 
 /// Internal crate imports
 use crate::circuit_functions::{
@@ -65,7 +65,7 @@ impl ShiftRangeContext {
         api: &mut Builder,
         shift_exponent: usize,
     ) -> Result<Self, LayerError> {
-        let offset_: u32 = 1u32
+        let offset_: u64 = 1u64
             .checked_shl(
                 u32::try_from(shift_exponent).map_err(|_| LayerError::Other {
                     layer: LayerKind::MaxPool,
@@ -78,7 +78,7 @@ impl ShiftRangeContext {
                 param_name: "shift_exponent".to_string(),
                 value: shift_exponent.to_string(),
             })?;
-        let offset = api.constant(offset_);
+        let offset = api.constant(CircuitField::<C>::from_u256(ethnum::U256::from(offset_)));
         Ok(Self {
             shift_exponent,
             offset,

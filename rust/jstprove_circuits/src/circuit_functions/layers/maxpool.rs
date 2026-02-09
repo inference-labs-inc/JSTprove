@@ -123,7 +123,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
             )?,
             padding: get_param_or_default(&layer.name, PADS, &params, Some(&default_pads))?,
             input_shape: expected_shape.clone(),
-            shift_exponent: layer_context.n_bits - 1,
+            shift_exponent: layer_context.n_bits_for(&layer.name) - 1,
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
         };

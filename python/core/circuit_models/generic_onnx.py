@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     )
 from python.core.model_processing.converters.onnx_converter import (
     ONNXConverter,
+    ONNXLayer,
     ONNXOpQuantizer,
 )
 from python.core.model_processing.onnx_quantizer.layers.base import BaseOpQuantizer
@@ -256,9 +257,36 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
     def get_metadata(
         self: GenericModelONNX,
     ) -> CircuitParamsDict:
-        _, _, circuit_params = super().get_weights()
-        # Currently want to read these in separately
+        architecture, _, circuit_params = super().get_weights()
+        quantized_model = getattr(self, "quantized_model", None)
+        if quantized_model is not None:
+            architecture_layers = [
+                self._dict_to_onnx_layer(d)
+                for d in architecture.get("architecture", [])
+            ]
+            n_bits_config = self.calibrate_n_bits(
+                quantized_model=quantized_model,
+                architecture_layers=architecture_layers,
+                rescale_config=circuit_params.get("rescale_config", {}),
+                scale_base=circuit_params.get("scale_base", 2),
+                scale_exponent=circuit_params.get("scale_exponent", 18),
+            )
+            circuit_params["n_bits_config"] = n_bits_config
         return circuit_params
+
+    @staticmethod
+    def _dict_to_onnx_layer(d: dict) -> ONNXLayer:
+        return ONNXLayer(
+            id=d.get("id", 0),
+            name=d.get("name", ""),
+            op_type=d.get("op_type", ""),
+            inputs=d.get("inputs", []),
+            outputs=d.get("outputs", []),
+            shape=d.get("shape", {}),
+            tensor=d.get("tensor"),
+            params=d.get("params"),
+            opset_version_number=d.get("opset_version_number", -1),
+        )
 
 
 if __name__ == "__main__":
