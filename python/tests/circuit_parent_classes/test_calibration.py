@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import onnx
 import pytest
@@ -152,201 +154,144 @@ def _make_conv_relu_model() -> tuple[onnx.ModelProto, list[ONNXLayer]]:
     return model, architecture_layers
 
 
-def _quantize_model(model: onnx.ModelProto) -> onnx.ModelProto:
+def _make_unit_conv_model() -> tuple[onnx.ModelProto, list[ONNXLayer]]:
+    x_info = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 1, 1, 1])
+    y_info = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 1, 1, 1])
+
+    w_data = np.ones((1, 1, 1, 1), dtype=np.float32)
+    w_init = numpy_helper.from_array(w_data, name="W")
+
+    conv_node = helper.make_node(
+        "Conv",
+        inputs=["X", "W"],
+        outputs=["Y"],
+        name="conv0",
+        kernel_shape=[1, 1],
+        pads=[0, 0, 0, 0],
+        strides=[1, 1],
+    )
+
+    graph = helper.make_graph(
+        [conv_node],
+        "unit_conv_graph",
+        [x_info],
+        [y_info],
+        initializer=[w_init],
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+    model.ir_version = 8
+
+    architecture_layers = [
+        ONNXLayer(
+            id=0,
+            name="conv0",
+            op_type="Conv",
+            inputs=["X", "W"],
+            outputs=["Y"],
+            shape={"Y": [1, 1, 1, 1]},
+            tensor=None,
+            params={"kernel_shape": [1, 1], "pads": [0, 0, 0, 0], "strides": [1, 1]},
+            opset_version_number=13,
+        ),
+    ]
+    return model, architecture_layers
+
+
+def _call_compute_n_bits(
+    model: onnx.ModelProto,
+    arch_layers: list[ONNXLayer],
+    rescale_config: dict[str, bool] | None = None,
+    scale_base: int = 2,
+    scale_exponent: int = 18,
+    input_bounds: tuple[float, float] = (0.0, 1.0),
+) -> dict[str, int]:
     converter = ONNXConverter()
     converter.model = model
-    converter.model_file_name = "test"
-    return converter.quantize_model(model, scale_base=2, scale_exponent=18)
+    return converter.compute_n_bits_from_bounds(
+        architecture_layers=arch_layers,
+        rescale_config=rescale_config or {},
+        scale_base=scale_base,
+        scale_exponent=scale_exponent,
+        input_bounds=input_bounds,
+    )
 
 
-class TestBuildCalibrationModel:
+class TestComputeNBitsFromBounds:
     @pytest.mark.unit
-    def test_returns_pre_rescale_outputs_for_conv(self) -> None:
+    def test_conv_returns_n_bits(self) -> None:
         model, arch_layers = _make_conv_model()
-        quantized = _quantize_model(model)
-
-        cal_model, pre_rescale, _range_names = ONNXConverter._build_calibration_model(
-            quantized,
-            arch_layers,
-            rescale_config={},
-            alpha=float(2**18),
-        )
-
-        assert len(pre_rescale) > 0
-        output_names = [o.name for o in cal_model.graph.output]
-        for name in pre_rescale:
-            assert name in output_names
-            assert name.endswith("__pre_rescale")
-
-    @pytest.mark.unit
-    def test_returns_range_check_outputs_for_relu(self) -> None:
-        model, arch_layers = _make_relu_model()
-        quantized = _quantize_model(model)
-
-        _, pre_rescale, range_names = ONNXConverter._build_calibration_model(
-            quantized,
-            arch_layers,
-            rescale_config={},
-            alpha=float(2**18),
-        )
-
-        assert len(pre_rescale) == 0
-        assert len(range_names) > 0
-
-    @pytest.mark.unit
-    def test_conv_relu_captures_both_types(self) -> None:
-        model, arch_layers = _make_conv_relu_model()
-        quantized = _quantize_model(model)
-
-        _, pre_rescale, range_names = ONNXConverter._build_calibration_model(
-            quantized,
-            arch_layers,
-            rescale_config={},
-            alpha=float(2**18),
-        )
-
-        assert len(pre_rescale) > 0
-        assert len(range_names) > 0
-
-    @pytest.mark.unit
-    def test_rescale_config_false_skips_rescaling(self) -> None:
-        model, arch_layers = _make_conv_model()
-        quantized = _quantize_model(model)
-
-        _, pre_rescale, _ = ONNXConverter._build_calibration_model(
-            quantized,
-            arch_layers,
-            rescale_config={"conv0": False},
-            alpha=float(2**18),
-        )
-
-        assert len(pre_rescale) == 0
-
-    @pytest.mark.unit
-    def test_calibration_model_outputs_have_valid_types(self) -> None:
-        model, arch_layers = _make_conv_model()
-        quantized = _quantize_model(model)
-
-        cal_model, _, _ = ONNXConverter._build_calibration_model(
-            quantized,
-            arch_layers,
-            rescale_config={},
-            alpha=float(2**18),
-        )
-
-        for output in cal_model.graph.output:
-            assert (
-                output.type.tensor_type.elem_type != TensorProto.UNDEFINED
-            ), f"Output '{output.name}' has UNDEFINED type (data type 0)"
-
-
-class TestCalibrateNBits:
-    @pytest.mark.unit
-    def test_returns_dict_with_layer_names(self) -> None:
-        model, arch_layers = _make_conv_model()
-        quantized = _quantize_model(model)
-
-        converter = ONNXConverter()
-        result = converter.calibrate_n_bits(
-            quantized_model=quantized,
-            architecture_layers=arch_layers,
-            rescale_config={},
-            scale_base=2,
-            scale_exponent=18,
-        )
-
+        result = _call_compute_n_bits(model, arch_layers)
         assert isinstance(result, dict)
         assert "conv0" in result
 
     @pytest.mark.unit
+    def test_relu_returns_n_bits(self) -> None:
+        model, arch_layers = _make_relu_model()
+        result = _call_compute_n_bits(model, arch_layers)
+        assert isinstance(result, dict)
+        assert "relu0" in result
+
+    @pytest.mark.unit
+    def test_conv_relu_both_layers(self) -> None:
+        model, arch_layers = _make_conv_relu_model()
+        result = _call_compute_n_bits(model, arch_layers)
+        assert "conv0" in result
+        assert "relu0" in result
+
+    @pytest.mark.unit
     def test_n_bits_at_least_minimum(self) -> None:
         model, arch_layers = _make_conv_model()
-        quantized = _quantize_model(model)
-
-        converter = ONNXConverter()
-        result = converter.calibrate_n_bits(
-            quantized_model=quantized,
-            architecture_layers=arch_layers,
-            rescale_config={},
-            scale_base=2,
-            scale_exponent=18,
-        )
-
+        result = _call_compute_n_bits(model, arch_layers)
         for layer_name, n_bits in result.items():
             assert (
                 n_bits >= _MIN_N_BITS
             ), f"n_bits for {layer_name} is {n_bits}, expected >= {_MIN_N_BITS}"
 
     @pytest.mark.unit
-    def test_conv_relu_model_calibrates_both_layers(self) -> None:
-        model, arch_layers = _make_conv_relu_model()
-        quantized = _quantize_model(model)
-
-        converter = ONNXConverter()
-        result = converter.calibrate_n_bits(
-            quantized_model=quantized,
-            architecture_layers=arch_layers,
-            rescale_config={},
-            scale_base=2,
-            scale_exponent=18,
-        )
-
-        assert "conv0" in result
-        assert "relu0" in result
-
-    @pytest.mark.unit
-    def test_deterministic_with_same_seed(self) -> None:
-        model, arch_layers = _make_conv_model()
-        quantized = _quantize_model(model)
-
-        converter = ONNXConverter()
-        r1 = converter.calibrate_n_bits(
-            quantized_model=quantized,
-            architecture_layers=arch_layers,
-            rescale_config={},
-            scale_base=2,
-            scale_exponent=18,
-        )
-        r2 = converter.calibrate_n_bits(
-            quantized_model=quantized,
-            architecture_layers=arch_layers,
-            rescale_config={},
-            scale_base=2,
-            scale_exponent=18,
-        )
-
-        assert r1 == r2
-
-    @pytest.mark.unit
-    def test_empty_architecture_returns_empty_config(self) -> None:
+    def test_empty_architecture(self) -> None:
         model, _ = _make_conv_model()
-        quantized = _quantize_model(model)
-
-        converter = ONNXConverter()
-        result = converter.calibrate_n_bits(
-            quantized_model=quantized,
-            architecture_layers=[],
-            rescale_config={},
-            scale_base=2,
-            scale_exponent=18,
-        )
-
+        result = _call_compute_n_bits(model, [])
         assert result == {}
 
     @pytest.mark.unit
-    def test_num_samples_parameter(self) -> None:
+    def test_deterministic(self) -> None:
         model, arch_layers = _make_conv_model()
-        quantized = _quantize_model(model)
+        r1 = _call_compute_n_bits(model, arch_layers)
+        r2 = _call_compute_n_bits(model, arch_layers)
+        assert r1 == r2
 
-        converter = ONNXConverter()
-        result = converter.calibrate_n_bits(
-            quantized_model=quantized,
-            architecture_layers=arch_layers,
-            rescale_config={},
-            scale_base=2,
-            scale_exponent=18,
-            num_samples=1,
+    @pytest.mark.unit
+    def test_wider_bounds_increase_n_bits(self) -> None:
+        model, arch_layers = _make_conv_model()
+        narrow = _call_compute_n_bits(model, arch_layers, input_bounds=(0.0, 1.0))
+        wide = _call_compute_n_bits(model, arch_layers, input_bounds=(0.0, 10.0))
+        for layer_name in narrow:
+            assert wide[layer_name] >= narrow[layer_name]
+
+    @pytest.mark.unit
+    def test_known_conv_value(self) -> None:
+        model, arch_layers = _make_unit_conv_model()
+        result = _call_compute_n_bits(model, arch_layers)
+        alpha = 2**18
+        real_max = 1.0
+        raw = alpha * real_max + 1
+        expected_n_bits = max(math.ceil(math.log2(raw)) + 1, _MIN_N_BITS)
+        assert result["conv0"] == expected_n_bits
+
+    @pytest.mark.unit
+    def test_unknown_op_passthrough(self) -> None:
+        model, _ = _make_relu_model()
+        custom_layer = ONNXLayer(
+            id=0,
+            name="custom0",
+            op_type="CustomOp",
+            inputs=["X"],
+            outputs=["Y"],
+            shape={"Y": [1, 4]},
+            tensor=None,
+            params=None,
+            opset_version_number=13,
         )
-
+        result = _call_compute_n_bits(model, [custom_layer])
         assert isinstance(result, dict)
-        assert len(result) > 0
+        assert "custom0" not in result

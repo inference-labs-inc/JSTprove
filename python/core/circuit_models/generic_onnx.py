@@ -258,20 +258,17 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         self: GenericModelONNX,
     ) -> CircuitParamsDict:
         architecture, _, circuit_params = super().get_weights()
-        quantized_model = getattr(self, "quantized_model", None)
-        if quantized_model is not None:
-            architecture_layers = [
-                self._dict_to_onnx_layer(d)
-                for d in architecture.get("architecture", [])
-            ]
-            n_bits_config = self.calibrate_n_bits(
-                quantized_model=quantized_model,
-                architecture_layers=architecture_layers,
-                rescale_config=circuit_params.get("rescale_config", {}),
-                scale_base=circuit_params.get("scale_base", 2),
-                scale_exponent=circuit_params.get("scale_exponent", 18),
-            )
-            circuit_params["n_bits_config"] = n_bits_config
+        architecture_layers = [
+            self._dict_to_onnx_layer(d) for d in architecture.get("architecture", [])
+        ]
+        n_bits_config = self.compute_n_bits_from_bounds(
+            architecture_layers=architecture_layers,
+            rescale_config=circuit_params.get("rescale_config", {}),
+            scale_base=circuit_params.get("scale_base", 2),
+            scale_exponent=circuit_params.get("scale_exponent", 18),
+            input_bounds=getattr(self, "input_bounds", (0.0, 1.0)),
+        )
+        circuit_params["n_bits_config"] = n_bits_config
         return circuit_params
 
     @staticmethod

@@ -55,6 +55,199 @@ _MAX_ORT_OPSET_VERSION = 22
 
 _logger = logging.getLogger(__name__)
 
+_MIN_N_BITS = 16
+_BIAS_INPUT_IDX = 2
+_BN_NUM_INPUTS = 5
+
+
+def _compute_n_bits(alpha: float, real_out_max: float) -> int:
+    raw = alpha * real_out_max + 1
+    if raw > 1:
+        return max(math.ceil(math.log2(raw)) + 1, _MIN_N_BITS)
+    return _MIN_N_BITS
+
+
+def _resolve_bound(
+    name: str,
+    tensor_bound: dict[str, float],
+    initializer_map: dict[str, np.ndarray],
+) -> float:
+    if name in tensor_bound:
+        return tensor_bound[name]
+    if name in initializer_map:
+        arr = initializer_map[name]
+        return float(np.max(np.abs(arr))) if arr.size > 0 else 0.0
+    return 0.0
+
+
+def _bound_conv(
+    layer: ONNXLayer,
+    tensor_bound: dict[str, float],
+    initializer_map: dict[str, np.ndarray],
+    _bn_inputs: dict[str, list[str]],
+    _bn_eps: dict[str, float],
+) -> float:
+    m_in = _resolve_bound(layer.inputs[0], tensor_bound, initializer_map)
+    w = initializer_map.get(layer.inputs[1])
+    if w is None:
+        return m_in
+    per_channel = np.sum(np.abs(w.reshape(w.shape[0], -1)), axis=1) * m_in
+    if (
+        len(layer.inputs) > _BIAS_INPUT_IDX
+        and layer.inputs[_BIAS_INPUT_IDX] in initializer_map
+    ):
+        per_channel = per_channel + np.abs(
+            initializer_map[layer.inputs[_BIAS_INPUT_IDX]].flatten(),
+        )
+    return float(np.max(per_channel))
+
+
+def _bound_gemm(
+    layer: ONNXLayer,
+    tensor_bound: dict[str, float],
+    initializer_map: dict[str, np.ndarray],
+    _bn_inputs: dict[str, list[str]],
+    _bn_eps: dict[str, float],
+) -> float:
+    m_in = _resolve_bound(layer.inputs[0], tensor_bound, initializer_map)
+    b_mat = initializer_map.get(layer.inputs[1])
+    if b_mat is None:
+        return m_in
+    trans_b = (layer.params or {}).get("transB", 0)
+    b_eff = b_mat if trans_b else b_mat.T
+    per_output = np.sum(np.abs(b_eff), axis=1) * m_in
+    if (
+        len(layer.inputs) > _BIAS_INPUT_IDX
+        and layer.inputs[_BIAS_INPUT_IDX] in initializer_map
+    ):
+        per_output = per_output + np.abs(
+            initializer_map[layer.inputs[_BIAS_INPUT_IDX]].flatten(),
+        )
+    return float(np.max(per_output))
+
+
+def _bound_batchnorm(
+    layer: ONNXLayer,
+    tensor_bound: dict[str, float],
+    initializer_map: dict[str, np.ndarray],
+    bn_inputs: dict[str, list[str]],
+    bn_eps: dict[str, float],
+) -> float:
+    m_in = _resolve_bound(layer.inputs[0], tensor_bound, initializer_map)
+    orig = bn_inputs.get(layer.name)
+    if orig is None or len(orig) < _BN_NUM_INPUTS:
+        return m_in
+    gamma = initializer_map.get(orig[1])
+    beta = initializer_map.get(orig[2])
+    mean = initializer_map.get(orig[3])
+    var = initializer_map.get(orig[4])
+    if gamma is None or beta is None or mean is None or var is None:
+        return m_in
+    epsilon = bn_eps.get(layer.name, 1e-5)
+    mul = gamma / np.sqrt(var + epsilon)
+    add = beta - mean * mul
+    per_channel = np.abs(mul) * m_in + np.abs(add)
+    return float(np.max(per_channel))
+
+
+def _bound_mul(
+    layer: ONNXLayer,
+    tensor_bound: dict[str, float],
+    initializer_map: dict[str, np.ndarray],
+    _bn_inputs: dict[str, list[str]],
+    _bn_eps: dict[str, float],
+) -> float:
+    m_a = _resolve_bound(layer.inputs[0], tensor_bound, initializer_map)
+    m_b = _resolve_bound(layer.inputs[1], tensor_bound, initializer_map)
+    return m_a * m_b
+
+
+def _bound_passthrough(
+    layer: ONNXLayer,
+    tensor_bound: dict[str, float],
+    initializer_map: dict[str, np.ndarray],
+    _bn_inputs: dict[str, list[str]],
+    _bn_eps: dict[str, float],
+) -> float:
+    if not layer.inputs:
+        return 0.0
+    return _resolve_bound(layer.inputs[0], tensor_bound, initializer_map)
+
+
+def _bound_binary_max(
+    layer: ONNXLayer,
+    tensor_bound: dict[str, float],
+    initializer_map: dict[str, np.ndarray],
+    _bn_inputs: dict[str, list[str]],
+    _bn_eps: dict[str, float],
+) -> float:
+    return max(
+        _resolve_bound(inp, tensor_bound, initializer_map) for inp in layer.inputs
+    )
+
+
+def _bound_clip(
+    layer: ONNXLayer,
+    tensor_bound: dict[str, float],
+    initializer_map: dict[str, np.ndarray],
+    _bn_inputs: dict[str, list[str]],
+    _bn_eps: dict[str, float],
+) -> float:
+    m_in = _resolve_bound(layer.inputs[0], tensor_bound, initializer_map)
+    clip_bounds: list[float] = []
+    for idx in (1, 2):
+        if idx < len(layer.inputs) and layer.inputs[idx]:
+            name = layer.inputs[idx]
+            if name in initializer_map:
+                clip_bounds.append(float(np.max(np.abs(initializer_map[name]))))
+            elif layer.params and name in layer.params:
+                val = layer.params[name]
+                if isinstance(val, (list, np.ndarray)):
+                    clip_bounds.append(float(np.max(np.abs(val))))
+                elif isinstance(val, (int, float)):
+                    clip_bounds.append(abs(float(val)))
+    if clip_bounds:
+        return min(m_in, max(clip_bounds))
+    return m_in
+
+
+def _bound_add(
+    layer: ONNXLayer,
+    tensor_bound: dict[str, float],
+    initializer_map: dict[str, np.ndarray],
+    _bn_inputs: dict[str, list[str]],
+    _bn_eps: dict[str, float],
+) -> float:
+    m_a = _resolve_bound(layer.inputs[0], tensor_bound, initializer_map)
+    m_b = _resolve_bound(layer.inputs[1], tensor_bound, initializer_map)
+    return m_a + m_b
+
+
+_BoundFn = type(_bound_passthrough)
+
+_BOUND_DISPATCH: dict[str, _BoundFn] = {
+    "Conv": _bound_conv,
+    "Gemm": _bound_gemm,
+    "BatchNormalization": _bound_batchnorm,
+    "Mul": _bound_mul,
+    "Relu": _bound_passthrough,
+    "ReLU": _bound_passthrough,
+    "MaxPool": _bound_passthrough,
+    "Max": _bound_binary_max,
+    "Min": _bound_binary_max,
+    "Clip": _bound_clip,
+    "Add": _bound_add,
+    "Sub": _bound_add,
+    "Reshape": _bound_passthrough,
+    "Flatten": _bound_passthrough,
+    "Squeeze": _bound_passthrough,
+    "Unsqueeze": _bound_passthrough,
+    "Transpose": _bound_passthrough,
+    "Concat": _bound_binary_max,
+    "Pad": _bound_passthrough,
+    "Identity": _bound_passthrough,
+}
+
 
 def _clamp_for_ort(model: onnx.ModelProto) -> None:
     """Clamp IR and opset versions to the maximums supported by ORT.
@@ -1062,188 +1255,78 @@ class ONNXConverter(ModelConverter):
         {"MaxPool", "Relu", "ReLU", "Max", "Min", "Clip"},
     )
 
-    @staticmethod
-    def _build_calibration_model(  # noqa: C901, PLR0912
-        quantized_model: onnx.ModelProto,
-        architecture_layers: list[ONNXLayer],
-        rescale_config: dict[str, bool],
-        alpha: float,
-    ) -> tuple[onnx.ModelProto, list[str], list[str]]:
-        model = copy.deepcopy(quantized_model)
-
-        alpha_init = numpy_helper.from_array(
-            np.array([alpha], dtype=np.float64),
-            name="__cal_alpha",
-        )
-        model.graph.initializer.append(alpha_init)
-
-        rescale_outputs: set[str] = set()
-        for layer in architecture_layers:
-            is_rescaled = (
-                rescale_config.get(layer.name, True)
-                and layer.op_type in ONNXConverter._RESCALABLE_OPS
-            )
-            if is_rescaled:
-                for out in layer.outputs:
-                    rescale_outputs.add(out)
-
-        range_check_outputs: set[str] = set()
-        for layer in architecture_layers:
-            if layer.op_type in ONNXConverter._RANGE_CHECK_OPS:
-                for out in layer.outputs:
-                    range_check_outputs.add(out)
-
-        new_nodes: list[onnx.NodeProto] = []
-        pre_rescale_names: list[str] = []
-        captured_range_names: list[str] = []
-
-        for node in model.graph.node:
-            rescaled_output = None
-            for out in node.output:
-                if out in rescale_outputs:
-                    rescaled_output = out
-                    break
-
-            if rescaled_output:
-                pre_name = f"{rescaled_output}__pre_rescale"
-                cast_name = f"{rescaled_output}__cast"
-                div_name = f"{rescaled_output}__div"
-                floor_name = f"{rescaled_output}__floor"
-
-                for i, out in enumerate(node.output):
-                    if out == rescaled_output:
-                        node.output[i] = pre_name
-                new_nodes.append(node)
-
-                new_nodes.append(
-                    helper.make_node(
-                        "Cast",
-                        [pre_name],
-                        [cast_name],
-                        to=TensorProto.DOUBLE,
-                    ),
-                )
-                new_nodes.append(
-                    helper.make_node("Div", [cast_name, "__cal_alpha"], [div_name]),
-                )
-                new_nodes.append(
-                    helper.make_node("Floor", [div_name], [floor_name]),
-                )
-                new_nodes.append(
-                    helper.make_node(
-                        "Cast",
-                        [floor_name],
-                        [rescaled_output],
-                        to=TensorProto.INT64,
-                    ),
-                )
-
-                pre_rescale_names.append(pre_name)
-            else:
-                new_nodes.append(node)
-
-            for out in node.output:
-                actual_out = out
-                if rescaled_output and out == pre_name:
-                    actual_out = rescaled_output
-                if actual_out in range_check_outputs:
-                    captured_range_names.append(actual_out)
-
-        model.graph.ClearField("node")
-        model.graph.node.extend(new_nodes)
-
-        for name in pre_rescale_names:
-            model.graph.output.append(
-                helper.make_tensor_value_info(name, TensorProto.INT64, None),
-            )
-        for name in captured_range_names:
-            already_output = any(o.name == name for o in model.graph.output)
-            if not already_output:
-                model.graph.output.append(
-                    helper.make_tensor_value_info(name, TensorProto.INT64, None),
-                )
-
-        return model, pre_rescale_names, captured_range_names
-
-    def calibrate_n_bits(  # noqa: PLR0913, C901
+    def compute_n_bits_from_bounds(
         self: ONNXConverter,
-        quantized_model: onnx.ModelProto,
         architecture_layers: list[ONNXLayer],
         rescale_config: dict[str, bool],
         scale_base: int,
         scale_exponent: int,
-        num_samples: int = 5,
-        headroom_bits: int = 6,
+        input_bounds: tuple[float, float] = (0.0, 1.0),
     ) -> dict[str, int]:
         alpha = float(scale_base**scale_exponent)
 
-        cal_model, pre_rescale_names, range_names = self._build_calibration_model(
-            quantized_model,
-            architecture_layers,
-            rescale_config,
-            alpha,
+        initializer_map: dict[str, np.ndarray] = {
+            init.name: numpy_helper.to_array(init).astype(np.float64)
+            for init in self.model.graph.initializer
+        }
+
+        bn_original_inputs: dict[str, list[str]] = {}
+        bn_epsilon: dict[str, float] = {}
+        for node in self.model.graph.node:
+            if node.op_type == "BatchNormalization":
+                name = node.name
+                bn_original_inputs[name] = list(node.input)
+                eps_attr = next(
+                    (a for a in node.attribute if a.name == "epsilon"),
+                    None,
+                )
+                bn_epsilon[name] = float(eps_attr.f) if eps_attr else 1e-5
+
+        input_names = {inp.name for inp in self.model.graph.input} - set(
+            initializer_map.keys(),
         )
+        input_max = max(abs(input_bounds[0]), abs(input_bounds[1]))
 
-        _clamp_for_ort(cal_model)
-
-        opts = SessionOptions()
-        opts.register_custom_ops_library(get_library_path())
-        session = InferenceSession(
-            cal_model.SerializeToString(),
-            opts,
-            providers=["CPUExecutionProvider"],
-        )
-
-        input_infos = session.get_inputs()
-        output_infos = session.get_outputs()
-        output_names = [o.name for o in output_infos]
-
-        max_values: dict[str, float] = {}
-        rng = np.random.default_rng(seed=42)
-
-        for _ in range(num_samples):
-            feeds: dict[str, np.ndarray] = {}
-            for inp in input_infos:
-                shape = [d if isinstance(d, int) and d > 0 else 1 for d in inp.shape]
-                if inp.type == "tensor(double)":
-                    feeds[inp.name] = rng.standard_normal(shape, dtype=np.float64) * 0.5
-                else:
-                    feeds[inp.name] = (
-                        rng.standard_normal(shape).astype(np.float32) * 0.5
-                    )
-
-            results = session.run(output_names, feeds)
-            for name, val in zip(output_names, results, strict=False):
-                arr = np.asarray(val, dtype=np.float64)
-                max_abs = float(np.max(np.abs(arr))) if arr.size > 0 else 0.0
-                max_values[name] = max(max_values.get(name, 0.0), max_abs)
-
-        pre_rescale_set = set(pre_rescale_names)
-        range_set = set(range_names)
-
-        output_to_layer: dict[str, str] = {}
-        for layer in architecture_layers:
-            for out in layer.outputs:
-                output_to_layer[out] = layer.name
-                output_to_layer[f"{out}__pre_rescale"] = layer.name
-
-        def _compute_n_bits(max_val: float) -> int:
-            if max_val < 1:
-                return 16
-            return max(math.ceil(math.log2(max_val + 1)) + 1 + headroom_bits, 16)
+        tensor_bound: dict[str, float] = {}
+        for name in input_names:
+            tensor_bound[name] = input_max
 
         n_bits_config: dict[str, int] = {}
 
-        for name, max_val in max_values.items():
-            layer_name = output_to_layer.get(name)
-            if layer_name is None:
-                continue
+        for layer in architecture_layers:
+            op = layer.op_type
+            propagator = _BOUND_DISPATCH.get(op)
+            if propagator is None:
+                _logger.warning(
+                    "No bound propagation rule for op '%s' (layer '%s'); "
+                    "assuming pass-through",
+                    op,
+                    layer.name,
+                )
+                propagator = _bound_passthrough
 
-            if name in pre_rescale_set:
-                q_max = max_val / alpha
-                n_bits_config[layer_name] = _compute_n_bits(q_max)
-            elif name in range_set and layer_name not in n_bits_config:
-                n_bits_config[layer_name] = _compute_n_bits(max_val)
+            real_out_max = propagator(
+                layer,
+                tensor_bound,
+                initializer_map,
+                bn_original_inputs,
+                bn_epsilon,
+            )
+
+            is_rescaled = (
+                rescale_config.get(layer.name, True) and op in self._RESCALABLE_OPS
+            )
+
+            if is_rescaled or op in self._RANGE_CHECK_OPS:
+                n_bits_config[layer.name] = _compute_n_bits(alpha, real_out_max)
+                propagated = real_out_max
+            elif op in self._RESCALABLE_OPS:
+                propagated = alpha * real_out_max
+            else:
+                propagated = real_out_max
+
+            for out_name in layer.outputs:
+                tensor_bound[out_name] = propagated
 
         return n_bits_config
 
