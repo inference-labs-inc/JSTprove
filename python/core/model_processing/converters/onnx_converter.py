@@ -62,9 +62,9 @@ _BN_NUM_INPUTS = 5
 
 def _compute_n_bits(alpha: float, real_out_max: float) -> int:
     raw = alpha * real_out_max + 1
-    if raw > 1:
-        return max(math.ceil(math.log2(raw)) + 1, _MIN_N_BITS)
-    return _MIN_N_BITS
+    if not math.isfinite(raw) or raw <= 1:
+        return _MIN_N_BITS
+    return max(math.ceil(math.log2(raw)) + 1, _MIN_N_BITS)
 
 
 def _resolve_bound(
@@ -194,20 +194,17 @@ def _bound_clip(
     _bn_eps: dict[str, float],
 ) -> float:
     m_in = _resolve_bound(layer.inputs[0], tensor_bound, initializer_map)
-    clip_bounds: list[float] = []
-    for idx in (1, 2):
-        if idx < len(layer.inputs) and layer.inputs[idx]:
-            name = layer.inputs[idx]
-            if name in initializer_map:
-                clip_bounds.append(float(np.max(np.abs(initializer_map[name]))))
-            elif layer.params and name in layer.params:
-                val = layer.params[name]
-                if isinstance(val, (list, np.ndarray)):
-                    clip_bounds.append(float(np.max(np.abs(val))))
-                elif isinstance(val, (int, float)):
-                    clip_bounds.append(abs(float(val)))
-    if clip_bounds:
-        return min(m_in, max(clip_bounds))
+    max_clip_idx = 2
+    if max_clip_idx < len(layer.inputs) and layer.inputs[max_clip_idx]:
+        name = layer.inputs[max_clip_idx]
+        if name in initializer_map:
+            return min(m_in, float(np.max(np.abs(initializer_map[name]))))
+        if layer.params and name in layer.params:
+            val = layer.params[name]
+            if isinstance(val, (list, np.ndarray)):
+                return min(m_in, float(np.max(np.abs(val))))
+            if isinstance(val, (int, float)):
+                return min(m_in, abs(float(val)))
     return m_in
 
 

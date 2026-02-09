@@ -8,11 +8,10 @@ import pytest
 from onnx import TensorProto, helper, numpy_helper
 
 from python.core.model_processing.converters.onnx_converter import (
+    _MIN_N_BITS,
     ONNXConverter,
     ONNXLayer,
 )
-
-_MIN_N_BITS = 16
 
 
 def _make_conv_model() -> tuple[onnx.ModelProto, list[ONNXLayer]]:
