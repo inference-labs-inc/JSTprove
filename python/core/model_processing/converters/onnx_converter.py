@@ -51,6 +51,8 @@ from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import (
 
 _MAX_ORT_IR_VERSION = 10
 _MAX_ORT_OPSET_VERSION = 22
+_MAX_N_BITS_RESCALE = 64
+_MAX_N_BITS_RANGE_CHECK = 128
 
 
 _logger = logging.getLogger(__name__)
@@ -1154,13 +1156,13 @@ class ONNXConverter(ModelConverter):
 
         for name in pre_rescale_names:
             model.graph.output.append(
-                helper.make_tensor_value_info(name, TensorProto.UNDEFINED, None),
+                helper.make_tensor_value_info(name, TensorProto.INT64, None),
             )
         for name in captured_range_names:
             already_output = any(o.name == name for o in model.graph.output)
             if not already_output:
                 model.graph.output.append(
-                    helper.make_tensor_value_info(name, TensorProto.UNDEFINED, None),
+                    helper.make_tensor_value_info(name, TensorProto.INT64, None),
                 )
 
         return model, pre_rescale_names, captured_range_names
@@ -1227,10 +1229,33 @@ class ONNXConverter(ModelConverter):
                 output_to_layer[out] = layer.name
                 output_to_layer[f"{out}__pre_rescale"] = layer.name
 
-        def _compute_n_bits(max_val: float) -> int:
+        layer_op_types: dict[str, str] = {
+            layer.name: layer.op_type for layer in architecture_layers
+        }
+
+        def _compute_n_bits(max_val: float, layer_name: str) -> int:
             if max_val < 1:
-                return 16
-            return max(math.ceil(math.log2(max_val + 1)) + 1 + headroom_bits, 16)
+                raw = 16
+            else:
+                raw = max(math.ceil(math.log2(max_val + 1)) + 1 + headroom_bits, 16)
+            op_type = layer_op_types.get(layer_name, "")
+            limit = (
+                _MAX_N_BITS_RESCALE
+                if op_type in ONNXConverter._RESCALABLE_OPS
+                else _MAX_N_BITS_RANGE_CHECK
+            )
+            if raw > limit:
+                _logger.warning(
+                    "Calibrated n_bits=%d for layer '%s' (op=%s) exceeds circuit "
+                    "field limit of %d; clamping. Model values may be too large "
+                    "for fixed-point representation.",
+                    raw,
+                    layer_name,
+                    op_type,
+                    limit,
+                )
+                return limit
+            return raw
 
         n_bits_config: dict[str, int] = {}
 
@@ -1241,9 +1266,9 @@ class ONNXConverter(ModelConverter):
 
             if name in pre_rescale_set:
                 q_max = max_val / alpha
-                n_bits_config[layer_name] = _compute_n_bits(q_max)
+                n_bits_config[layer_name] = _compute_n_bits(q_max, layer_name)
             elif name in range_set and layer_name not in n_bits_config:
-                n_bits_config[layer_name] = _compute_n_bits(max_val)
+                n_bits_config[layer_name] = _compute_n_bits(max_val, layer_name)
 
         return n_bits_config
 
