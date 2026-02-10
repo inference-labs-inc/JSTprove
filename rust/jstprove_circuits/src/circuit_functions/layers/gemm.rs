@@ -217,12 +217,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             .into());
         }
 
+        let w_name = get_input_name(&layer.inputs, 1, LayerKind::Gemm, "weights")?;
+        let b_name = get_input_name(&layer.inputs, 2, LayerKind::Gemm, "bias")?;
+
         let (weights, bias) = if layer_context.weights_as_inputs {
             (None, None)
         } else {
             (
-                Some(get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[1])?),
-                Some(get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[2])?),
+                Some(get_w_or_b(&layer_context.w_and_b_map, w_name)?),
+                Some(get_w_or_b(&layer_context.w_and_b_map, b_name)?),
             )
         };
 

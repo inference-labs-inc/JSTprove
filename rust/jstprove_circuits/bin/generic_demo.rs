@@ -1,7 +1,9 @@
 #[allow(unused_imports)]
 /// Standard library imports
 use core::panic;
+use std::ops::Neg;
 
+use ethnum::U256;
 use jstprove_circuits::circuit_functions::CircuitError;
 use jstprove_circuits::circuit_functions::utils::ArrayConversionError;
 use jstprove_circuits::circuit_functions::utils::build_layers::build_layers;
@@ -11,7 +13,7 @@ use ndarray::{Array1, ArrayD, ArrayView1, Axis, Ix1, IxDyn, concatenate};
 
 /// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{
-    BN254Config, CircuitField, Config, Define, RootAPI, Variable, declare_circuit,
+    BN254Config, CircuitField, Config, Define, FieldArith, RootAPI, Variable, declare_circuit,
 };
 
 /// Internal crate imports
@@ -61,6 +63,8 @@ impl Circuit<Variable> {
 
         if params.weights_as_inputs {
             let mut offset = 0usize;
+            // Weight tensors are unpacked in w_and_b.w_and_b iteration order.
+            // apply_input_data must populate weights_arr using the same order.
             for wb_layer in &w_and_b.w_and_b {
                 let shape = wb_layer.shape.get(&wb_layer.name).ok_or_else(|| {
                     CircuitError::Other(format!("Missing shape for weight '{}'", wb_layer.name))
@@ -175,15 +179,13 @@ impl ConfigurableCircuit for Circuit<Variable> {
 
         if params.weights_as_inputs {
             let w_and_b = OnnxContext::get_wandb()?;
-            let total_weight_count: usize = w_and_b
-                .w_and_b
-                .iter()
-                .map(|wb| {
-                    wb.shape
-                        .get(&wb.name)
-                        .map_or(0, |s| s.iter().product::<usize>())
-                })
-                .sum();
+            let mut total_weight_count: usize = 0;
+            for wb in &w_and_b.w_and_b {
+                let shape = wb.shape.get(&wb.name).ok_or_else(|| {
+                    RunError::Json(format!("Missing shape for weight '{}'", wb.name))
+                })?;
+                total_weight_count += shape.iter().product::<usize>();
+            }
             eprintln!("weights_as_inputs: {total_weight_count} weight elements");
             self.weights_arr = vec![Variable::default(); total_weight_count];
         }
@@ -243,9 +245,6 @@ fn apply_input_data<C: Config>(
 }
 
 fn convert_i64_to_field<C: Config>(val: i64) -> CircuitField<C> {
-    use ethnum::U256;
-    use expander_compiler::frontend::FieldArith;
-    use std::ops::Neg;
     if val < 0 {
         CircuitField::<C>::from_u256(U256::from(val.unsigned_abs())).neg()
     } else {
@@ -316,11 +315,20 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
     }
 }
 
-fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool) {
+fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool, has_wandb: bool) {
     let meta_file_path = get_arg(matches, "meta").unwrap();
     let meta_file = std::fs::read_to_string(&meta_file_path).expect("Failed to read metadata file");
     let params: CircuitParams = serde_json::from_str(&meta_file).expect("Invalid metadata JSON");
     let needs_wandb = needs_full || params.weights_as_inputs;
+
+    if needs_wandb && !has_wandb {
+        let cmd_type = get_arg(matches, "type").unwrap_or_default();
+        eprintln!(
+            "Error: command '{cmd_type}' requires --wandb (weights_as_inputs is enabled in metadata)."
+        );
+        std::process::exit(1);
+    }
+
     OnnxContext::set_params(params)
         .map_err(|e| CircuitError::Other(e.to_string()))
         .unwrap();
@@ -389,17 +397,7 @@ fn main() {
     }
 
     if has_meta {
-        set_onnx_context(&matches, needs_full);
-
-        if needs_meta && !needs_full {
-            let params = OnnxContext::get_params().unwrap();
-            if params.weights_as_inputs && !has_wandb {
-                eprintln!(
-                    "Error: command '{cmd_type}' requires --wandb when weights_as_inputs is enabled."
-                );
-                std::process::exit(1);
-            }
-        }
+        set_onnx_context(&matches, needs_full, has_wandb);
     }
 
     if let Err(err) =

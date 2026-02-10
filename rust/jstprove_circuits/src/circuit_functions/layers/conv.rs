@@ -150,16 +150,16 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         let (weights, bias) = if layer_context.weights_as_inputs {
             (None, None)
         } else {
-            let w = get_w_or_b(&layer_context.w_and_b_map, w_name).map_err(|_| {
+            let w = get_w_or_b(&layer_context.w_and_b_map, w_name).map_err(|e| {
                 LayerError::MissingParameter {
                     layer: LayerKind::Conv,
-                    param: format!("weights (W), requested={w_name}"),
+                    param: format!("weights (W), requested={w_name}: {e}"),
                 }
             })?;
-            let b = get_w_or_b(&layer_context.w_and_b_map, b_name).map_err(|_| {
+            let b = get_w_or_b(&layer_context.w_and_b_map, b_name).map_err(|e| {
                 LayerError::MissingParameter {
                     layer: LayerKind::Conv,
-                    param: format!("bias (B), requested={b_name}"),
+                    param: format!("bias (B), requested={b_name}: {e}"),
                 }
             })?;
             (Some(w), Some(b))

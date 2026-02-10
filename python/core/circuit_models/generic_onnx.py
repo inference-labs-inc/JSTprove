@@ -258,7 +258,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         self: GenericModelONNX,
     ) -> CircuitParamsDict:
         _, _, circuit_params = super().get_weights()
-        circuit_params["weights_as_inputs"] = getattr(self, "weights_as_inputs", False)
+        circuit_params["weights_as_inputs"] = self.weights_as_inputs
         return circuit_params
 
 
