@@ -86,6 +86,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
 
             self.scale_base = 2
             self.scale_exponent = 18
+            self.weights_as_inputs = False
             ONNXConverter.__init__(self)
         except Exception as e:
 
@@ -257,7 +258,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         self: GenericModelONNX,
     ) -> CircuitParamsDict:
         _, _, circuit_params = super().get_weights()
-        # Currently want to read these in separately
+        circuit_params["weights_as_inputs"] = self.weights_as_inputs
         return circuit_params
 
 

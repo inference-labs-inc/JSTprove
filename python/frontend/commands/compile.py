@@ -8,7 +8,12 @@ if TYPE_CHECKING:
 
 from python.core.circuits.errors import CircuitRunError
 from python.core.utils.helper_functions import CircuitExecutionConfig, RunType
-from python.frontend.commands.args import CIRCUIT_PATH, MODEL_PATH, NO_COMPRESS
+from python.frontend.commands.args import (
+    CIRCUIT_PATH,
+    MODEL_PATH,
+    NO_COMPRESS,
+    WEIGHTS_AS_INPUTS,
+)
 from python.frontend.commands.base import BaseCommand
 
 
@@ -32,6 +37,7 @@ class CompileCommand(BaseCommand):
             "Output path for the compiled circuit (e.g., circuit.bin).",
         )
         NO_COMPRESS.add_to_parser(parser)
+        WEIGHTS_AS_INPUTS.add_to_parser(parser)
 
     @classmethod
     @BaseCommand.validate_required(MODEL_PATH, CIRCUIT_PATH)
@@ -44,6 +50,7 @@ class CompileCommand(BaseCommand):
         circuit.model_file_name = args.model_path
         circuit.onnx_path = args.model_path
         circuit.model_path = args.model_path
+        circuit.weights_as_inputs = args.weights_as_inputs
 
         try:
             circuit.base_testing(

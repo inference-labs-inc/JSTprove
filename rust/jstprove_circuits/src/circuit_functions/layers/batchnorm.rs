@@ -15,7 +15,7 @@ use crate::circuit_functions::{
         graph_pattern_matching::PatternRegistry,
         onnx_model::{get_input_name, get_w_or_b},
         quantization::rescale_array,
-        tensor_ops::load_array_constants,
+        tensor_ops::load_array_constants_or_get_inputs,
     },
 };
 /// `ExpanderCompilerCollection` imports
@@ -27,8 +27,8 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 pub struct BatchnormLayer {
     name: String,
     index: usize,
-    weights: ArrayD<i64>,
-    bias: ArrayD<i64>,
+    weights: Option<ArrayD<i64>>,
+    bias: Option<ArrayD<i64>>,
     is_rescale: bool,
     v_plus_one: usize,
     optimization_pattern: PatternRegistry,
@@ -56,8 +56,22 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
             })?
             .clone();
 
-        let mul_raw = load_array_constants(api, &self.weights);
-        let add_raw = load_array_constants(api, &self.bias);
+        let w_name = get_input_name(&self.inputs, 1, LayerKind::Batchnorm, "weights")?;
+        let mul_raw = load_array_constants_or_get_inputs(
+            api,
+            &input,
+            w_name,
+            &self.weights,
+            LayerKind::Batchnorm,
+        )?;
+        let b_name = get_input_name(&self.inputs, 2, LayerKind::Batchnorm, "bias")?;
+        let add_raw = load_array_constants_or_get_inputs(
+            api,
+            &input,
+            b_name,
+            &self.bias,
+            LayerKind::Batchnorm,
+        )?;
 
         let mul_input = reshape_channel_vector_for_broadcast(&mul_raw, &layer_input)?;
         let add_input = reshape_channel_vector_for_broadcast(&add_raw, &layer_input)?;
@@ -100,17 +114,26 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
         index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
+        let (weights, bias) = if layer_context.weights_as_inputs {
+            (None, None)
+        } else {
+            (
+                Some(get_w_or_b(
+                    &layer_context.w_and_b_map,
+                    get_input_name(&layer.inputs, 1, LayerKind::Batchnorm, "weights")?,
+                )?),
+                Some(get_w_or_b(
+                    &layer_context.w_and_b_map,
+                    get_input_name(&layer.inputs, 2, LayerKind::Batchnorm, "bias")?,
+                )?),
+            )
+        };
+
         let batchnorm = Self {
             name: layer.name.clone(),
             index,
-            weights: get_w_or_b(
-                &layer_context.w_and_b_map,
-                get_input_name(&layer.inputs, 1, LayerKind::Batchnorm, "weights")?,
-            )?,
-            bias: get_w_or_b(
-                &layer_context.w_and_b_map,
-                get_input_name(&layer.inputs, 2, LayerKind::Batchnorm, "bias")?,
-            )?,
+            weights,
+            bias,
             is_rescale,
             v_plus_one: layer_context.n_bits,
             optimization_pattern,

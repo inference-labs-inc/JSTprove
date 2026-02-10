@@ -19,6 +19,7 @@ pub struct BuildLayerContext {
     pub n_bits: usize,
     pub two_v: u32,
     pub alpha_two_v: u64,
+    pub weights_as_inputs: bool,
 }
 
 /// Builds a sequence of circuit layers from an architecture and parameters.
@@ -75,6 +76,7 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
         n_bits: N_BITS,
         two_v: TWO_V,
         alpha_two_v,
+        weights_as_inputs: circuit_params.weights_as_inputs,
     };
 
     let matcher = PatternMatcher::new();
