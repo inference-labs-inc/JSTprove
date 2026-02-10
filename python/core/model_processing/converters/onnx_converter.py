@@ -192,7 +192,7 @@ def _bound_clip(
     initializer_map: dict[str, np.ndarray],
     _bn_inputs: dict[str, list[str]],
     _bn_eps: dict[str, float],
-) -> float:
+) -> tuple[float, float]:
     m_in = _resolve_bound(layer.inputs[0], tensor_bound, initializer_map)
     clip_bounds: list[float] = []
     has_max = False
@@ -213,9 +213,10 @@ def _bound_clip(
             clip_bounds.append(val)
             if idx == _BIAS_INPUT_IDX:
                 has_max = True
+    rangecheck_bound = max(m_in, *clip_bounds) if clip_bounds else m_in
     if has_max and clip_bounds:
-        return min(m_in, max(clip_bounds))
-    return m_in
+        return min(m_in, max(clip_bounds)), rangecheck_bound
+    return m_in, rangecheck_bound
 
 
 def _bound_add(
@@ -1312,20 +1313,25 @@ class ONNXConverter(ModelConverter):
                 )
                 propagator = _bound_passthrough
 
-            real_out_max = propagator(
+            result = propagator(
                 layer,
                 tensor_bound,
                 initializer_map,
                 bn_original_inputs,
                 bn_epsilon,
             )
+            if isinstance(result, tuple):
+                real_out_max, rangecheck_bound = result
+            else:
+                real_out_max = result
+                rangecheck_bound = real_out_max
 
             is_rescaled = (
                 rescale_config.get(layer.name, True) and op in self._RESCALABLE_OPS
             )
 
             if is_rescaled or op in self._RANGE_CHECK_OPS:
-                n_bits_config[layer.name] = _compute_n_bits(alpha, real_out_max)
+                n_bits_config[layer.name] = _compute_n_bits(alpha, rangecheck_bound)
                 propagated = real_out_max
             elif op in self._RESCALABLE_OPS:
                 propagated = alpha * real_out_max

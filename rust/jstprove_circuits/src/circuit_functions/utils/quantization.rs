@@ -110,7 +110,7 @@ impl RescalingContext {
     /// - Returns [`RescaleError::ShiftExponentTooLargeError`] if either exponent
     ///   does not fit in `u32`.
     /// - Returns [`RescaleError::ScalingExponentTooLargeError`] if computing
-    ///   `1u32 << scaling_exponent` overflows.
+    ///   `1u32 << scaling_exponent` overflows `u32`.
     /// - Returns [`RescaleError::ShiftExponentTooLargeError`] if computing
     ///   `1u64 << shift_exponent` overflows.
     pub fn new<C: Config, Builder: RootAPI<C>>(
