@@ -33,7 +33,7 @@ declare_circuit!(Circuit {
     dummy: [Variable; 2],
     scale_base: [PublicVariable; 1],
     scale_exponent: [PublicVariable; 1],
-    weights_arr: [Variable],
+    weights_arr: [PublicVariable],
 });
 
 // Memorization, in a better place
