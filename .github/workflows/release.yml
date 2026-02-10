@@ -7,9 +7,6 @@ on:
   pull_request:
   workflow_dispatch:
 
-env:
-  EXPANDER_COMMIT: f97e058fbdb6f9bccc3b7e7c98d6fdc42df72934
-
 jobs:
   build-linux:
     if: >-
@@ -89,29 +86,25 @@ jobs:
           path: target
           key: manylinux-2-28-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Clone Expander
+      - name: Download Expander binary
         run: |
-          git clone https://github.com/inference-labs-inc/Expander.git
-          cd Expander
-          git checkout ${{ env.EXPANDER_COMMIT }}
-          cd ..
+          EXPANDER_TAG=$(grep -m1 'inference-labs-inc/Expander.*tag' Cargo.toml | grep -o 'tag = "[^"]*"' | sed 's/tag = "\(.*\)"/\1/')
+          curl -sfL "https://github.com/inference-labs-inc/Expander/releases/download/${EXPANDER_TAG}/expander-exec-linux-x86_64" -o expander-exec
+          chmod +x expander-exec
 
       - name: Build Rust binaries
-        run: |
-          cargo build --release --target x86_64-unknown-linux-gnu --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
-          cargo build --release --target x86_64-unknown-linux-gnu --manifest-path Expander/Cargo.toml --bin expander-exec
+        run: cargo build --release --target x86_64-unknown-linux-gnu --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
 
       - name: Collect binaries
         shell: bash
         run: |
           BINARY_NAME="onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"
           MAIN_BIN="target/x86_64-unknown-linux-gnu/release/${BINARY_NAME}"
-          EXPANDER_BIN="Expander/target/x86_64-unknown-linux-gnu/release/expander-exec"
           BIN_DIR="python/core/binaries"
 
           mkdir -p "$BIN_DIR"
           cp "$MAIN_BIN" "$BIN_DIR/"
-          cp "$EXPANDER_BIN" "$BIN_DIR/"
+          cp expander-exec "$BIN_DIR/"
           chmod +x "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"
 
       - name: Build wheel
@@ -206,17 +199,14 @@ jobs:
           path: target
           key: macos-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Clone Expander
+      - name: Download Expander binary
         run: |
-          git clone https://github.com/inference-labs-inc/Expander.git
-          cd Expander
-          git checkout ${{ env.EXPANDER_COMMIT }}
-          cd ..
+          EXPANDER_TAG=$(grep -m1 'inference-labs-inc/Expander.*tag' Cargo.toml | grep -o 'tag = "[^"]*"' | sed 's/tag = "\(.*\)"/\1/')
+          curl -sfL "https://github.com/inference-labs-inc/Expander/releases/download/${EXPANDER_TAG}/expander-exec-macos-aarch64" -o expander-exec
+          chmod +x expander-exec
 
       - name: Build Rust binaries
-        run: |
-          cargo build --release --target aarch64-apple-darwin --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
-          cargo build --release --target aarch64-apple-darwin --manifest-path Expander/Cargo.toml --bin expander-exec
+        run: cargo build --release --target aarch64-apple-darwin --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
         env:
           MACOSX_DEPLOYMENT_TARGET: "11.0"
 
@@ -225,12 +215,11 @@ jobs:
         run: |
           BINARY_NAME="onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"
           MAIN_BIN="target/aarch64-apple-darwin/release/${BINARY_NAME}"
-          EXPANDER_BIN="Expander/target/aarch64-apple-darwin/release/expander-exec"
           BIN_DIR="python/core/binaries"
 
           mkdir -p "$BIN_DIR"
           cp "$MAIN_BIN" "$BIN_DIR/"
-          cp "$EXPANDER_BIN" "$BIN_DIR/"
+          cp expander-exec "$BIN_DIR/"
           chmod +x "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"
 
       - name: Build wheel
