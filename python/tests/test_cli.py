@@ -363,6 +363,59 @@ def test_compile_dispatch_positional(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_compile_dispatch_weights_as_inputs(tmp_path: Path) -> None:
+    model = tmp_path / "model.onnx"
+    model.write_bytes(b"\x00")
+    circuit = tmp_path / "circuit.bin"
+
+    fake_circuit = MagicMock()
+    with patch(
+        "python.frontend.commands.compile.CompileCommand._build_circuit",
+        return_value=fake_circuit,
+    ):
+        rc = main(
+            [
+                "--no-banner",
+                "compile",
+                "-m",
+                str(model),
+                "-c",
+                str(circuit),
+                "--weights-as-inputs",
+            ],
+        )
+
+    assert rc == 0
+    assert fake_circuit.weights_as_inputs is True
+
+
+@pytest.mark.unit
+def test_compile_dispatch_weights_as_inputs_default(tmp_path: Path) -> None:
+    model = tmp_path / "model.onnx"
+    model.write_bytes(b"\x00")
+    circuit = tmp_path / "circuit.bin"
+
+    fake_circuit = MagicMock()
+    with patch(
+        "python.frontend.commands.compile.CompileCommand._build_circuit",
+        return_value=fake_circuit,
+    ):
+        rc = main(
+            [
+                "--no-banner",
+                "compile",
+                "-m",
+                str(model),
+                "-c",
+                str(circuit),
+            ],
+        )
+
+    assert rc == 0
+    assert fake_circuit.weights_as_inputs is False
+
+
+@pytest.mark.unit
 def test_compile_missing_model_path() -> None:
     rc = main(["--no-banner", "compile", "-c", "circuit.bin"])
     assert rc == 1

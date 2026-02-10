@@ -25,13 +25,9 @@ use crate::circuit_functions::{
     },
 };
 
-/// Internal module imports
 use crate::circuit_functions::{
     layers::layer_ops::LayerOp,
-    utils::{
-        quantization::rescale_array,
-        tensor_ops::{load_array_constants, load_circuit_constant},
-    },
+    utils::{quantization::rescale_array, tensor_ops::load_array_constants_or_get_inputs},
 };
 
 // -------- Struct --------
@@ -41,8 +37,8 @@ use crate::circuit_functions::{
 pub struct ConvLayer {
     name: String,
     index: usize,
-    weights: ArrayD<i64>,
-    bias: ArrayD<i64>,
+    weights: Option<ArrayD<i64>>,
+    bias: Option<ArrayD<i64>>,
     strides: Vec<u32>,
     kernel_shape: Vec<u32>,
     group: Vec<u32>,
@@ -78,10 +74,18 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             })?
             .clone();
 
-        // Convert weights
-        let weights = load_array_constants(api, &self.weights);
+        let w_name = get_input_name(&self.inputs, 1, LayerKind::Conv, WEIGHTS)?;
+        let weights = load_array_constants_or_get_inputs(
+            api,
+            &input,
+            w_name,
+            &self.weights,
+            LayerKind::Conv,
+        )?;
 
-        let bias = self.bias.mapv(|x| load_circuit_constant(api, x));
+        let b_name = get_input_name(&self.inputs, 2, LayerKind::Conv, BIAS)?;
+        let bias =
+            load_array_constants_or_get_inputs(api, &input, b_name, &self.bias, LayerKind::Conv)?;
         // Scaling
         let scale_factor = 1u64.checked_shl(self.scaling.as_u32()?).ok_or_else(|| {
             LayerError::InvalidParameterValue {
@@ -141,21 +145,25 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
                 msg: format!("extract_params_and_expected_shape failed: {e}"),
             })?;
         let w_name = get_input_name(&layer.inputs, 1, LayerKind::Conv, WEIGHTS)?;
-
-        let weights = get_w_or_b(&layer_context.w_and_b_map, w_name).map_err(|_| {
-            LayerError::MissingParameter {
-                layer: LayerKind::Conv,
-                param: format!("weights (W), requested={w_name}"),
-            }
-        })?;
-
         let b_name = get_input_name(&layer.inputs, 2, LayerKind::Conv, BIAS)?;
-        let bias = get_w_or_b(&layer_context.w_and_b_map, b_name).map_err(|_| {
-            LayerError::MissingParameter {
-                layer: LayerKind::Conv,
-                param: format!("bias (B), requested={b_name}"),
-            }
-        })?;
+
+        let (weights, bias) = if layer_context.weights_as_inputs {
+            (None, None)
+        } else {
+            let w = get_w_or_b(&layer_context.w_and_b_map, w_name).map_err(|_| {
+                LayerError::MissingParameter {
+                    layer: LayerKind::Conv,
+                    param: format!("weights (W), requested={w_name}"),
+                }
+            })?;
+            let b = get_w_or_b(&layer_context.w_and_b_map, b_name).map_err(|_| {
+                LayerError::MissingParameter {
+                    layer: LayerKind::Conv,
+                    param: format!("bias (B), requested={b_name}"),
+                }
+            })?;
+            (Some(w), Some(b))
+        };
 
         let kernel_shape: Vec<u32> = get_param(&layer.name, KERNEL_SHAPE, &params)?;
         let spatial_rank = kernel_shape.len();

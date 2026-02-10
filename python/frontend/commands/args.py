@@ -105,3 +105,13 @@ NO_COMPRESS = ArgSpec(
     help_text="Disable zstd compression for output files.",
     extra_kwargs={"action": "store_true", "default": False},
 )
+
+WEIGHTS_AS_INPUTS = ArgSpec(
+    name="weights_as_inputs",
+    flag="--weights-as-inputs",
+    help_text=(
+        "Treat model weights as private witness inputs"
+        " instead of compile-time constants."
+    ),
+    extra_kwargs={"action": "store_true", "default": False},
+)

@@ -910,6 +910,7 @@ def generate_witness(  # noqa: PLR0913
     metadata_path: str,
     proof_system: ZKProofSystems = ZKProofSystems.Expander,
     *,
+    w_and_b_path: str | None = None,
     dev_mode: bool = False,
     bench: bool = False,
     compress: bool = True,
@@ -949,6 +950,8 @@ def generate_witness(  # noqa: PLR0913
             "w": witness_file,
             "m": metadata_path,
         }
+        if w_and_b_path:
+            args["b"] = w_and_b_path
         if not compress:
             args["no-compress"] = True
         try:
@@ -1194,6 +1197,7 @@ def run_end_to_end(  # noqa: PLR0913
             output_file,
             f"{base}_metadata.json",
             proof_system,
+            w_and_b_path=f"{base}_wandb.json",
             dev_mode=dev_mode,
             compress=compress,
         )

@@ -493,6 +493,42 @@ def test_generate_witness_expander_rust_error(
     assert "Warning: Witness generation failed: TEST" in caplog.text
 
 
+@pytest.mark.integration
+@patch("python.core.utils.helper_functions.run_cargo_command")
+def test_generate_witness_with_w_and_b_path(mock_run: MagicMock) -> None:
+    generate_witness(
+        "model",
+        "path/to/circuit",
+        "witness",
+        "input",
+        "output",
+        "metadata.json",
+        ZKProofSystems.Expander,
+        w_and_b_path="wandb.json",
+    )
+    _, kwargs = mock_run.call_args
+    assert kwargs["args"]["b"] == "wandb.json"
+    assert kwargs["args"]["m"] == "metadata.json"
+    mock_run.assert_called_once()
+
+
+@pytest.mark.integration
+@patch("python.core.utils.helper_functions.run_cargo_command")
+def test_generate_witness_without_w_and_b_path(mock_run: MagicMock) -> None:
+    generate_witness(
+        "model",
+        "path/to/circuit",
+        "witness",
+        "input",
+        "output",
+        "metadata.json",
+        ZKProofSystems.Expander,
+    )
+    _, kwargs = mock_run.call_args
+    assert "b" not in kwargs["args"]
+    mock_run.assert_called_once()
+
+
 @pytest.mark.unit
 def test_generate_witness_unknown_raises() -> None:
     with pytest.raises(ProofSystemNotImplementedError):
@@ -812,6 +848,7 @@ def test_run_end_to_end_calls_all(
         "o.json",
         "m_circuit_metadata.json",
         ZKProofSystems.Expander,
+        w_and_b_path="m_circuit_wandb.json",
         dev_mode=False,
         compress=True,
     )
