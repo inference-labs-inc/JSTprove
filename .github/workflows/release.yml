@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  EXPANDER_COMMIT: f97e058fbdb6f9bccc3b7e7c98d6fdc42df72934
+  EXPANDER_TAG: v0.1.0
 
 jobs:
   build-linux:
@@ -93,7 +93,7 @@ jobs:
         run: |
           git clone https://github.com/inference-labs-inc/Expander.git
           cd Expander
-          git checkout ${{ env.EXPANDER_COMMIT }}
+          git checkout ${{ env.EXPANDER_TAG }}
           cd ..
 
       - name: Build Rust binaries
@@ -210,7 +210,7 @@ jobs:
         run: |
           git clone https://github.com/inference-labs-inc/Expander.git
           cd Expander
-          git checkout ${{ env.EXPANDER_COMMIT }}
+          git checkout ${{ env.EXPANDER_TAG }}
           cd ..
 
       - name: Build Rust binaries
