@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 import functools
 import json
 import logging
@@ -9,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
@@ -701,6 +703,45 @@ def _maybe_decompress(src: str, tmp_dir: str) -> str:
     return dst
 
 
+_circuit_cache_lock = threading.Lock()
+_circuit_cache: dict[str, str] = {}
+_circuit_cache_dir: str | None = None
+
+
+def _get_circuit_cache_dir() -> str:
+    global _circuit_cache_dir  # noqa: PLW0603
+    if _circuit_cache_dir is None:
+        _circuit_cache_dir = tempfile.mkdtemp(prefix="jstprove_circuit_cache_")
+        atexit.register(shutil.rmtree, _circuit_cache_dir, ignore_errors=True)
+    return _circuit_cache_dir
+
+
+def _decompress_circuit_cached(src: str) -> str:
+    with _circuit_cache_lock:
+        if src in _circuit_cache:
+            cached = _circuit_cache[src]
+            if Path(cached).exists():
+                return cached
+            del _circuit_cache[src]
+
+        with Path(src).open("rb") as f:
+            magic = f.read(4)
+        if magic != ZSTD_MAGIC:
+            _circuit_cache[src] = src
+            return src
+
+        import zstandard  # noqa: PLC0415
+
+        cache_dir = _get_circuit_cache_dir()
+        fd, dst = tempfile.mkstemp(dir=cache_dir, suffix=".bin")
+        os.close(fd)
+        dctx = zstandard.ZstdDecompressor()
+        with Path(src).open("rb") as fin, Path(dst).open("wb") as fout:
+            dctx.copy_stream(fin, fout)
+        _circuit_cache[src] = dst
+        return dst
+
+
 def run_expander_raw(  # noqa: PLR0913, PLR0912, PLR0915, C901
     mode: ExpanderMode,
     circuit_file: str,
@@ -764,7 +805,7 @@ def run_expander_raw(  # noqa: PLR0913, PLR0912, PLR0915, C901
     args: list[str] = []
     tmp_dir = tempfile.mkdtemp(prefix="jstprove_expander_")
     try:
-        circuit_file = _maybe_decompress(circuit_file, tmp_dir)
+        circuit_file = _decompress_circuit_cached(circuit_file)
         witness_file = _maybe_decompress(witness_file, tmp_dir)
 
         args = [
