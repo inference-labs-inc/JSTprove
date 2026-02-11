@@ -83,7 +83,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
             input_shape: expected_shape.clone(),
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
-            n_bits: layer_context.n_bits,
+            n_bits: layer_context.n_bits_for(&layer.name),
         };
 
         Ok(Box::new(relu))

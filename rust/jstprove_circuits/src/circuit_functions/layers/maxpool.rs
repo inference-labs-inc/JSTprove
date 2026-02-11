@@ -123,7 +123,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
             )?,
             padding: get_param_or_default(&layer.name, PADS, &params, Some(&default_pads))?,
             input_shape: expected_shape.clone(),
-            shift_exponent: layer_context.n_bits - 1,
+            shift_exponent: layer_context
+                .n_bits_for(&layer.name)
+                .checked_sub(1)
+                .ok_or_else(|| LayerError::Other {
+                    layer: LayerKind::MaxPool,
+                    msg: "n_bits too small to derive shift_exponent".to_string(),
+                })?,
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
         };

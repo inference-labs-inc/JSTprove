@@ -235,7 +235,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             weights,
             bias,
             is_rescale,
-            source_scale_exponent: layer_context.n_bits,
+            source_scale_exponent: layer_context.n_bits_for(&layer.name),
             optimization_pattern,
             scaling: circuit_params.scale_exponent.into(),
             input_shape: expected_shape.clone(),

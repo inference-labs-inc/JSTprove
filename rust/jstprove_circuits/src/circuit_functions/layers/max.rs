@@ -164,14 +164,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxLayer {
         let initializer_b = get_optional_w_or_b(layer_context, b_input_name)?;
 
         // Match MaxPool’s choice: use n_bits - 1 as the shift exponent
-        let shift_exponent =
-            layer_context
-                .n_bits
-                .checked_sub(1)
-                .ok_or_else(|| LayerError::Other {
-                    layer: LayerKind::Max,
-                    msg: "layer_context.n_bits too small to derive shift_exponent".to_string(),
-                })?;
+        let shift_exponent = layer_context
+            .n_bits_for(&layer.name)
+            .checked_sub(1)
+            .ok_or_else(|| LayerError::Other {
+                layer: LayerKind::Max,
+                msg: "n_bits too small to derive shift_exponent".to_string(),
+            })?;
 
         let max_layer = Self {
             name: layer.name.clone(),

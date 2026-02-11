@@ -120,7 +120,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MulLayer {
             initializer_b,
             scaling: circuit_params.scale_exponent.into(),
             is_rescale,
-            v_plus_one: layer_context.n_bits,
+            v_plus_one: layer_context.n_bits_for(&layer.name),
         };
         Ok(Box::new(mul))
     }

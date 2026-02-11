@@ -37,6 +37,8 @@ pub struct CircuitParams {
     #[serde(default = "default_freivalds_reps")]
     pub freivalds_reps: usize,
     #[serde(default)]
+    pub n_bits_config: HashMap<String, usize>,
+    #[serde(default)]
     pub weights_as_inputs: bool,
 }
 
