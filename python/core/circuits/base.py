@@ -256,6 +256,7 @@ class Circuit:
                     input_file=processed_input_file,
                     output_file=exec_config.output_file,
                     metadata_path=exec_config.metadata_path,
+                    w_and_b_path=exec_config.w_and_b_path,
                     proof_system=exec_config.proof_system,
                     dev_mode=exec_config.dev_mode,
                     bench=exec_config.bench,

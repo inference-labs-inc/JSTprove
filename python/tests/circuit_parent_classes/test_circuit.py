@@ -234,6 +234,7 @@ def test_parse_proof_dispatch_logic(
         "dev_mode": False,
         "bench": False,
         "metadata_path": "metadata",
+        "w_and_b_path": "w_and_b",
         "compress": True,
     }
 

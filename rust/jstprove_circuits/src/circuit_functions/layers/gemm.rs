@@ -60,7 +60,7 @@ use crate::circuit_functions::{
         },
         quantization::rescale_array,
         shaping::check_and_apply_transpose_array,
-        tensor_ops::load_array_constants,
+        tensor_ops::load_array_constants_or_get_inputs,
     },
 };
 
@@ -73,8 +73,8 @@ use crate::circuit_functions::{
 pub struct GemmLayer {
     name: String,
     index: usize,
-    weights: ArrayD<i64>,
-    bias: ArrayD<i64>,
+    weights: Option<ArrayD<i64>>,
+    bias: Option<ArrayD<i64>>,
     is_rescale: bool,
     source_scale_exponent: usize,
     optimization_pattern: PatternRegistry,
@@ -118,12 +118,19 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
                     layer: LayerKind::Gemm,
                     msg: format!("Expected 2D input for layer {}", self.name),
                 })?;
-        let mut weights_array = load_array_constants(api, &self.weights)
-            .into_dimensionality::<Ix2>()
-            .map_err(|_| LayerError::InvalidShape {
-                layer: LayerKind::Gemm,
-                msg: format!("Expected 2D weights array for layer {}", self.name),
-            })?;
+        let w_name = get_input_name(&self.inputs, 1, LayerKind::Gemm, "weights")?;
+        let mut weights_array = load_array_constants_or_get_inputs(
+            api,
+            &input,
+            w_name,
+            &self.weights,
+            LayerKind::Gemm,
+        )?
+        .into_dimensionality::<Ix2>()
+        .map_err(|_| LayerError::InvalidShape {
+            layer: LayerKind::Gemm,
+            msg: format!("Expected 2D weights array for layer {}", self.name),
+        })?;
 
         // Apply transposes according to ONNX attributes.
         input_array = check_and_apply_transpose_array(
@@ -141,7 +148,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             &self.name,
         )?;
 
-        let bias_array = load_array_constants(api, &self.bias);
+        let b_name = get_input_name(&self.inputs, 2, LayerKind::Gemm, "bias")?;
+        let bias_array =
+            load_array_constants_or_get_inputs(api, &input, b_name, &self.bias, LayerKind::Gemm)?;
 
         // Sanity check alpha and beta.
         check_alpha_beta(self.alpha, ALPHA, LayerKind::Gemm, &self.name)?;
@@ -208,11 +217,23 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             .into());
         }
 
+        let w_name = get_input_name(&layer.inputs, 1, LayerKind::Gemm, "weights")?;
+        let b_name = get_input_name(&layer.inputs, 2, LayerKind::Gemm, "bias")?;
+
+        let (weights, bias) = if layer_context.weights_as_inputs {
+            (None, None)
+        } else {
+            (
+                Some(get_w_or_b(&layer_context.w_and_b_map, w_name)?),
+                Some(get_w_or_b(&layer_context.w_and_b_map, b_name)?),
+            )
+        };
+
         let gemm = Self {
             name: layer.name.clone(),
             index,
-            weights: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[1])?,
-            bias: get_w_or_b(&layer_context.w_and_b_map, &layer.inputs[2])?,
+            weights,
+            bias,
             is_rescale,
             source_scale_exponent: layer_context.n_bits_for(&layer.name),
             optimization_pattern,

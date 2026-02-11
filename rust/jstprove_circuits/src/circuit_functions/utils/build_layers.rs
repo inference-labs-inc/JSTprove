@@ -20,6 +20,7 @@ pub struct BuildLayerContext {
     pub shapes_map: HashMap<String, Vec<usize>>,
     pub n_bits_config: HashMap<String, usize>,
     pub default_n_bits: usize,
+    pub weights_as_inputs: bool,
 }
 
 impl BuildLayerContext {
@@ -76,6 +77,7 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
         shapes_map: shapes_map.clone(),
         n_bits_config: circuit_params.n_bits_config.clone(),
         default_n_bits: DEFAULT_N_BITS,
+        weights_as_inputs: circuit_params.weights_as_inputs,
     };
 
     let matcher = PatternMatcher::new();

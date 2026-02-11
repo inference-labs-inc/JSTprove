@@ -87,6 +87,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
 
             self.scale_base = 2
             self.scale_exponent = 18
+            self.weights_as_inputs = False
             ONNXConverter.__init__(self)
         except Exception as e:
 
@@ -269,6 +270,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
             input_bounds=getattr(self, "input_bounds", (0.0, 1.0)),
         )
         circuit_params["n_bits_config"] = n_bits_config
+        circuit_params["weights_as_inputs"] = self.weights_as_inputs
         return circuit_params
 
     @staticmethod

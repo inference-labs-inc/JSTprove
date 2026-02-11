@@ -38,6 +38,8 @@ pub struct CircuitParams {
     pub freivalds_reps: usize,
     #[serde(default)]
     pub n_bits_config: HashMap<String, usize>,
+    #[serde(default)]
+    pub weights_as_inputs: bool,
 }
 
 fn default_freivalds_reps() -> usize {
@@ -301,5 +303,52 @@ pub fn get_param_or_default<I: DeserializeOwned + Clone>(
                 param: param_name.to_string(),
             }),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn circuit_params_weights_as_inputs_true() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [{"name": "input", "elem_type": 1, "shape": [1, 3, 224, 224]}],
+            "outputs": [{"name": "output", "elem_type": 1, "shape": [1, 10]}],
+            "weights_as_inputs": true
+        }"#;
+        let params: CircuitParams = serde_json::from_str(json).unwrap();
+        assert!(params.weights_as_inputs);
+        assert_eq!(params.freivalds_reps, 1);
+    }
+
+    #[test]
+    fn circuit_params_weights_as_inputs_defaults_false() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [{"name": "input", "elem_type": 1, "shape": [1, 3, 224, 224]}],
+            "outputs": [{"name": "output", "elem_type": 1, "shape": [1, 10]}]
+        }"#;
+        let params: CircuitParams = serde_json::from_str(json).unwrap();
+        assert!(!params.weights_as_inputs);
+    }
+
+    #[test]
+    fn circuit_params_weights_as_inputs_false_explicit() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [],
+            "outputs": [],
+            "weights_as_inputs": false
+        }"#;
+        let params: CircuitParams = serde_json::from_str(json).unwrap();
+        assert!(!params.weights_as_inputs);
     }
 }
