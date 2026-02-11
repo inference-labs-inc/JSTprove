@@ -1,22 +1,27 @@
 from __future__ import annotations
 
 import atexit
+import contextlib
 import functools
 import json
 import logging
 import os
 import re
 import shutil
+import socket
+import struct
 import subprocess
 import sys
 import tempfile
 import threading
+import urllib.error
+import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from importlib.metadata import version as get_version
 from pathlib import Path
-from time import time
+from time import sleep, time
 from typing import Any, TypeVar
 
 try:
@@ -742,6 +747,157 @@ def _decompress_circuit_cached(src: str) -> str:
         return dst
 
 
+@dataclass
+class _ExpanderDaemon:
+    process: subprocess.Popen
+    port: int
+    circuit_file: str
+
+
+_daemon_lock = threading.Lock()
+_daemon_registry: dict[str, _ExpanderDaemon] = {}
+
+_EXPANDER_BINARY_PATHS = [
+    "./Expander/target/release/expander-exec",
+    Path(__file__).parent.parent / "binaries" / "expander-exec",
+    Path(sys.prefix) / "bin" / "expander-exec",
+]
+
+
+def _find_expander_binary() -> str | None:
+    for path in _EXPANDER_BINARY_PATHS:
+        if Path(path).exists():
+            return str(path)
+    return None
+
+
+def _find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
+
+
+def _start_daemon(circuit_file: str, pcs_type: str) -> _ExpanderDaemon | None:
+    binary = _find_expander_binary()
+    if binary is None:
+        return None
+    port = _find_free_port()
+    env = os.environ.copy()
+    env["RUSTFLAGS"] = "-C target-cpu=native"
+    _prepare_subprocess_env(env)
+    try:
+        process = subprocess.Popen(
+            [
+                binary,
+                "-p",
+                pcs_type,
+                "serve",
+                "--circuit-file",
+                circuit_file,
+                "--host-ip",
+                "127.0.0.1",
+                "--port",
+                str(port),
+            ],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except OSError:
+        logger.exception("Failed to start expander daemon")
+        return None
+
+    url = f"http://127.0.0.1:{port}/ready"
+    for _ in range(300):
+        if process.poll() is not None:
+            logger.warning("Expander daemon exited during startup")
+            return None
+        try:
+            with urllib.request.urlopen(url, timeout=1) as resp:  # noqa: S310
+                if resp.status == 200:  # noqa: PLR2004
+                    logger.info(
+                        "Expander daemon ready on port %d for %s",
+                        port,
+                        circuit_file,
+                    )
+                    return _ExpanderDaemon(
+                        process=process,
+                        port=port,
+                        circuit_file=circuit_file,
+                    )
+        except (urllib.error.URLError, OSError, TimeoutError):
+            pass
+        sleep(0.1)
+
+    logger.warning("Expander daemon failed to become ready within 30s")
+    process.terminate()
+    process.wait(timeout=5)
+    return None
+
+
+def _get_daemon(circuit_file: str, pcs_type: str) -> _ExpanderDaemon | None:
+    with _daemon_lock:
+        daemon = _daemon_registry.get(circuit_file)
+        if daemon is not None:
+            if daemon.process.poll() is None:
+                return daemon
+            del _daemon_registry[circuit_file]
+        daemon = _start_daemon(circuit_file, pcs_type)
+        if daemon is not None:
+            _daemon_registry[circuit_file] = daemon
+        return daemon
+
+
+def _verify_via_daemon(
+    daemon: _ExpanderDaemon,
+    witness_file: str,
+    proof_file: str,
+) -> subprocess.CompletedProcess[str] | None:
+    try:
+        witness_bytes = Path(witness_file).read_bytes()
+        proof_bytes = Path(proof_file).read_bytes()
+    except OSError:
+        return None
+
+    payload = (
+        struct.pack("<QQ", len(witness_bytes), len(proof_bytes))
+        + witness_bytes
+        + proof_bytes
+    )
+
+    url = f"http://127.0.0.1:{daemon.port}/verify"
+    req = urllib.request.Request(url, data=payload, method="POST")  # noqa: S310
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310
+            body = resp.read().decode()
+    except (urllib.error.URLError, OSError, TimeoutError):
+        return None
+
+    if body.strip() == "success":
+        return subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=body,
+            stderr="",
+        )
+    msg = "Expander daemon verification failed"
+    raise ProofBackendError(msg)
+
+
+def _shutdown_daemons() -> None:
+    for daemon in _daemon_registry.values():
+        try:
+            daemon.process.terminate()
+            daemon.process.wait(timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            with contextlib.suppress(OSError):
+                daemon.process.kill()
+    _daemon_registry.clear()
+
+
+atexit.register(_shutdown_daemons)
+
+
 def run_expander_raw(  # noqa: PLR0913, PLR0912, PLR0915, C901
     mode: ExpanderMode,
     circuit_file: str,
@@ -778,23 +934,20 @@ def run_expander_raw(  # noqa: PLR0913, PLR0912, PLR0915, C901
             msg = f"Missing file required for {label}"
             raise MissingFileError(msg, file_path)
 
+    if mode == ExpanderMode.VERIFY:
+        daemon = _get_daemon(circuit_file, pcs_type)
+        if daemon is not None:
+            result = _verify_via_daemon(daemon, witness_file, proof_file)
+            if result is not None:
+                return result
+            logger.warning("Daemon verify failed, falling back to subprocess")
+
     env = os.environ.copy()
     env["RUSTFLAGS"] = "-C target-cpu=native"
     _prepare_subprocess_env(env)
     time_measure = "/usr/bin/time"
 
-    expander_binary_path = None
-    possible_paths = [
-        "./Expander/target/release/expander-exec",
-        Path(__file__).parent.parent / "binaries" / "expander-exec",
-        Path(sys.prefix) / "bin" / "expander-exec",
-    ]
-
-    for path in possible_paths:
-        if Path(path).exists():
-            expander_binary_path = str(path)
-            break
-
+    expander_binary_path = _find_expander_binary()
     if not expander_binary_path:
         msg = (
             "Binary 'expander-exec' not found. Install JSTprove with "
