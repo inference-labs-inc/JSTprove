@@ -722,6 +722,7 @@ def _get_circuit_cache_dir() -> str:
 
 
 def _decompress_circuit_cached(src: str) -> str:
+    src = str(Path(src).resolve())
     with _circuit_cache_lock:
         if src in _circuit_cache:
             cached = _circuit_cache[src]
@@ -800,8 +801,8 @@ def _start_daemon(circuit_file: str, pcs_type: str) -> _ExpanderDaemon | None:
                 str(port),
             ],
             env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
     except OSError:
         logger.exception("Failed to start expander daemon")
