@@ -856,8 +856,11 @@ def _get_daemon(circuit_file: str, pcs_type: str) -> _ExpanderDaemon | None:
         existing = _daemon_registry.get(circuit_file)
         if existing is not None and existing.process.poll() is None:
             daemon.process.terminate()
-            with contextlib.suppress(OSError):
+            with contextlib.suppress(OSError, subprocess.TimeoutExpired):
                 daemon.process.wait(timeout=5)
+            if daemon.process.poll() is None:
+                with contextlib.suppress(OSError):
+                    daemon.process.kill()
             return existing
         _daemon_registry[circuit_file] = daemon
     return daemon
@@ -888,9 +891,13 @@ def _verify_via_daemon(
     except (urllib.error.URLError, OSError, TimeoutError):
         return None
 
+    if body.strip() != "success":
+        logger.warning("Expander daemon verification returned: %s", body.strip())
+        return None
+
     return subprocess.CompletedProcess(
         args=[],
-        returncode=0 if body.strip() == "success" else 1,
+        returncode=0,
         stdout=body,
         stderr="",
     )
@@ -948,6 +955,8 @@ def run_expander_raw(  # noqa: PLR0913, PLR0912, PLR0915, C901
             msg = f"Missing file required for {label}"
             raise MissingFileError(msg, file_path)
 
+    circuit_file = _decompress_circuit_cached(circuit_file)
+
     if mode == ExpanderMode.VERIFY:
         try:
             daemon = _get_daemon(circuit_file, pcs_type)
@@ -975,7 +984,6 @@ def run_expander_raw(  # noqa: PLR0913, PLR0912, PLR0915, C901
     args: list[str] = []
     tmp_dir = tempfile.mkdtemp(prefix="jstprove_expander_")
     try:
-        circuit_file = _decompress_circuit_cached(circuit_file)
         witness_file = _maybe_decompress(witness_file, tmp_dir)
 
         args = [
