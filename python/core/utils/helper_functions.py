@@ -831,7 +831,11 @@ def _start_daemon(circuit_file: str, pcs_type: str) -> _ExpanderDaemon | None:
 
     logger.warning("Expander daemon failed to become ready within 30s")
     process.terminate()
-    process.wait(timeout=5)
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
     return None
 
 
@@ -842,10 +846,20 @@ def _get_daemon(circuit_file: str, pcs_type: str) -> _ExpanderDaemon | None:
             if daemon.process.poll() is None:
                 return daemon
             del _daemon_registry[circuit_file]
-        daemon = _start_daemon(circuit_file, pcs_type)
-        if daemon is not None:
-            _daemon_registry[circuit_file] = daemon
-        return daemon
+
+    daemon = _start_daemon(circuit_file, pcs_type)
+    if daemon is None:
+        return None
+
+    with _daemon_lock:
+        existing = _daemon_registry.get(circuit_file)
+        if existing is not None and existing.process.poll() is None:
+            daemon.process.terminate()
+            with contextlib.suppress(OSError):
+                daemon.process.wait(timeout=5)
+            return existing
+        _daemon_registry[circuit_file] = daemon
+    return daemon
 
 
 def _verify_via_daemon(
@@ -873,26 +887,25 @@ def _verify_via_daemon(
     except (urllib.error.URLError, OSError, TimeoutError):
         return None
 
-    if body.strip() == "success":
-        return subprocess.CompletedProcess(
-            args=[],
-            returncode=0,
-            stdout=body,
-            stderr="",
-        )
-    msg = "Expander daemon verification failed"
-    raise ProofBackendError(msg)
+    return subprocess.CompletedProcess(
+        args=[],
+        returncode=0 if body.strip() == "success" else 1,
+        stdout=body,
+        stderr="",
+    )
 
 
 def _shutdown_daemons() -> None:
-    for daemon in _daemon_registry.values():
+    with _daemon_lock:
+        daemons = list(_daemon_registry.values())
+        _daemon_registry.clear()
+    for daemon in daemons:
         try:
             daemon.process.terminate()
             daemon.process.wait(timeout=5)
         except (OSError, subprocess.TimeoutExpired):
             with contextlib.suppress(OSError):
                 daemon.process.kill()
-    _daemon_registry.clear()
 
 
 atexit.register(_shutdown_daemons)
@@ -935,12 +948,15 @@ def run_expander_raw(  # noqa: PLR0913, PLR0912, PLR0915, C901
             raise MissingFileError(msg, file_path)
 
     if mode == ExpanderMode.VERIFY:
-        daemon = _get_daemon(circuit_file, pcs_type)
-        if daemon is not None:
-            result = _verify_via_daemon(daemon, witness_file, proof_file)
-            if result is not None:
-                return result
-            logger.warning("Daemon verify failed, falling back to subprocess")
+        try:
+            daemon = _get_daemon(circuit_file, pcs_type)
+            if daemon is not None:
+                result = _verify_via_daemon(daemon, witness_file, proof_file)
+                if result is not None:
+                    return result
+                logger.warning("Daemon verify failed, falling back to subprocess")
+        except Exception:
+            logger.exception("Daemon path error, falling back to subprocess")
 
     env = os.environ.copy()
     env["RUSTFLAGS"] = "-C target-cpu=native"
