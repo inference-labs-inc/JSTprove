@@ -45,7 +45,7 @@ use ndarray::ArrayD;
 use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
 
 use crate::circuit_functions::{
-    gadgets::euclidean_algebra::div_pos_integer_pow2_constant,
+    gadgets::euclidean_division::div_pos_integer_pow2_constant,
     utils::{
         UtilsError,
         errors::{ArrayConversionError, RescaleError},
@@ -122,7 +122,7 @@ impl RescalingContext {
         shift_exponent: usize,
     ) -> Result<Self, RescaleError> {
         let scaling_exponent_u32 = u32::try_from(scaling_exponent).map_err(|_| {
-            RescaleError::ShiftExponentTooLargeError {
+            RescaleError::ScalingExponentTooLargeError {
                 exp: scaling_exponent,
                 type_name: "u32",
             }

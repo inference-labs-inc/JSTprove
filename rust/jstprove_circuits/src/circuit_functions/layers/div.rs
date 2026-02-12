@@ -5,7 +5,7 @@ use ndarray::{ArrayD, IxDyn};
 use ethnum::U256;
 use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
 
-use crate::circuit_functions::gadgets::euclidean_algebra::div_pos_integer_pow2_constant;
+use crate::circuit_functions::gadgets::euclidean_division::div_pos_integer_pow2_constant;
 use crate::circuit_functions::gadgets::range_check::LogupRangeCheckContext;
 use crate::circuit_functions::utils::RescaleError;
 use crate::circuit_functions::utils::onnx_model::get_optional_w_or_b;
@@ -25,7 +25,7 @@ pub struct DivLayer {
     initializer_a: Option<ArrayD<i64>>,
     initializer_b: Option<ArrayD<i64>>,
     scaling: u64,
-    v_plus_one: usize,
+    shift_exponent_plus_one: usize,
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
@@ -73,13 +73,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
             msg: "Cannot convert scaling to usize".to_string(),
         })?;
         let s =
-            self.v_plus_one
+            self.shift_exponent_plus_one
                 .checked_sub(1)
                 .ok_or_else(|| LayerError::InvalidParameterValue {
                     layer: LayerKind::Div,
                     layer_name: self.name.clone(),
-                    param_name: "v_plus_one".to_string(),
-                    value: self.v_plus_one.to_string(),
+                    param_name: "shift_exponent_plus_one".to_string(),
+                    value: self.shift_exponent_plus_one.to_string(),
                 })?;
         let context = RescalingContext::new(api, k, s)?;
 
@@ -173,7 +173,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
             outputs: layer.outputs.clone(),
             initializer_a,
             initializer_b,
-            v_plus_one: layer_context.n_bits,
+            shift_exponent_plus_one: layer_context.n_bits,
             scaling: circuit_params.scale_exponent.into(),
         }))
     }
