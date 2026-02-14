@@ -43,7 +43,9 @@ class AddQuantizer(BaseOpQuantizer, QuantizeAdd):
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
+        opset_version: int | None = None,
     ) -> list[onnx.NodeProto]:
+        _ = opset_version
         return QuantizeAdd.quantize(self, node, graph, scale_config, initializer_map)
 
     def check_supported(

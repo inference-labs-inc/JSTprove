@@ -5,6 +5,7 @@ from python.tests.onnx_quantizer_tests.layers.base import (
     BaseLayerConfigProvider,
     LayerTestConfig,
     LayerTestSpec,
+    OpsetConditionalAttr,
     e2e_test,
     valid_test,
 )
@@ -31,7 +32,10 @@ class BatchNormConfigProvider(BaseLayerConfigProvider):
             valid_attributes={
                 "epsilon": 1e-5,
                 "momentum": 0.9,
-                "training_mode": 0,
+                "training_mode": OpsetConditionalAttr(
+                    value=0,
+                    min_opset=14,
+                ),
             },
             required_initializers={
                 # Defaults are stored as numpy arrays with shape (C,)

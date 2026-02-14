@@ -56,6 +56,22 @@ def pytest_addoption(parser: Parser) -> None:
         default=False,
         help="Run only end-to-end tests.",
     )
+    parser.addoption(
+        "--onnx-opset-versions",
+        action="store",
+        default=None,
+        help=(
+            "Comma-separated ONNX opset versions to test. "
+            "When specified, valid and e2e tests will be duplicated and run "
+            "for each version (e.g., --onnx-opset-versions 14,15,16,19)"
+        ),
+    )
+    parser.addoption(
+        "--all-opset-versions",
+        action="store_true",
+        default=False,
+        help=("All opset versions 7-22 will be tested when this is specified"),
+    )
 
 
 def pytest_collection_modifyitems(config: Config, items: list[Item]) -> None:
@@ -117,6 +133,30 @@ def pytest_configure(config: Config) -> None:
         pytest.exit(
             "Exiting after listing available models.",
         )  # This prevents tests from running
+
+    from python.tests.onnx_quantizer_tests.layers.factory import (  # noqa: PLC0415
+        set_onnx_opset_versions,
+    )
+
+    onnx_versions_str = config.getoption("onnx_opset_versions")
+    if onnx_versions_str:
+        try:
+            onnx_versions = [int(v.strip()) for v in onnx_versions_str.split(",")]
+            set_onnx_opset_versions(onnx_versions)
+            config.onnx_opset_versions = onnx_versions
+            print(f"\nONNX opset versions for testing: {onnx_versions}")  # noqa: T201
+        except ValueError:
+            pytest.exit(
+                f"Invalid ONNX opset versions: {onnx_versions_str}. "
+                "Expected comma-separated integers (e.g., 14,15,16,19)",
+            )
+    else:
+        set_onnx_opset_versions(None)
+        config.onnx_opset_versions = None
+
+    all_onnx_versions = config.getoption("all_opset_versions")
+    if all_onnx_versions:
+        set_onnx_opset_versions(list(range(7, 23)))
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -49,6 +49,7 @@ class ConstantQuantizer(BaseOpQuantizer):
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
+        opset_version: int | None = None,
     ) -> list[onnx.NodeProto]:
         """Apply quantization scaling to a constant if it is used in
             numeric computation.
@@ -69,7 +70,7 @@ class ConstantQuantizer(BaseOpQuantizer):
         Raises:
             HandlerImplementationError: If tensor is unreadable
         """
-        _ = initializer_map
+        _ = initializer_map, opset_version
         self.validate_node_has_output(node)
 
         output_name = node.output[0]
