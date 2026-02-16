@@ -72,15 +72,14 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
             layer: LayerKind::Div,
             msg: "Cannot convert scaling to usize".to_string(),
         })?;
-        let s =
-            self.shift_exponent_plus_one
-                .checked_sub(1)
-                .ok_or_else(|| LayerError::InvalidParameterValue {
-                    layer: LayerKind::Div,
-                    layer_name: self.name.clone(),
-                    param_name: "shift_exponent_plus_one".to_string(),
-                    value: self.shift_exponent_plus_one.to_string(),
-                })?;
+        let s = self.shift_exponent_plus_one.checked_sub(1).ok_or_else(|| {
+            LayerError::InvalidParameterValue {
+                layer: LayerKind::Div,
+                layer_name: self.name.clone(),
+                param_name: "shift_exponent_plus_one".to_string(),
+                value: self.shift_exponent_plus_one.to_string(),
+            }
+        })?;
         let context = RescalingContext::new(api, k, s)?;
 
         let mut div_cache: HashMap<u32, Variable> = HashMap::new();
