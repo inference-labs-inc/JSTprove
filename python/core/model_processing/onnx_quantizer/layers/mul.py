@@ -49,5 +49,7 @@ class MulQuantizer(BaseOpQuantizer, QuantizeMul):
         self: MulQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto] | None = None,
+        scale_base: int | None = 2,
+        scale_exponent: int | None = 18,
     ) -> None:
         pass

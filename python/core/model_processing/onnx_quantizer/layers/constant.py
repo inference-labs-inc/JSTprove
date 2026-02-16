@@ -107,6 +107,8 @@ class ConstantQuantizer(BaseOpQuantizer):
         self: ConstantQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto] | None = None,
+        scale_base: int | None = 2,
+        scale_exponent: int | None = 18,
     ) -> None:
         """All Constant nodes are supported... For now.
 
@@ -115,4 +117,4 @@ class ConstantQuantizer(BaseOpQuantizer):
             initializer_map (dict[str, onnx.TensorProto], optional):
                 Map of initializer names to tensor data. Defaults to None.
         """
-        _ = node, initializer_map
+        _ = node, initializer_map, scale_exponent, scale_base

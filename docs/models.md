@@ -38,24 +38,22 @@ This page explains what kinds of models JSTprove supports and how they're handle
   - Make sure to match the name of the inputs to the model, to the inputs that the model expects to receive.
 
 **Single-input example (flattened vector):**
+
 ```json
 {
   "input": [0, 1, 2, 3, 4, 5]
 }
-````
+```
 
 **Single-input example (already shaped, e.g., 1×1×28×28):**
 
 ```json
 {
-  "input": [[[
-    [0, 1, 2, "... 28 values ..."],
-    "... 28 rows ..."
-  ]]]
+  "input": [[[[0, 1, 2, "... 28 values ..."], "... 28 rows ..."]]]
 }
 ```
 
-* **Output JSON** produced by the pipeline is written under the key `"output"`, e.g.:
+- **Output JSON** produced by the pipeline is written under the key `"output"`, e.g.:
 
 ```json
 {
@@ -67,6 +65,6 @@ This page explains what kinds of models JSTprove supports and how they're handle
 
 ## Best practices
 
-* Use **one** ONNX model per compile. If you change the model, **re-run compile** to refresh the circuit and quantization.
-* Keep a consistent set of artifacts: `circuit.txt`, `quantized.onnx`, `input.json`, `output.json`, `witness.bin`, `proof.bin`.
-* For large CNNs, start with a small batch size and small inputs to validate the pipeline before scaling up.
+- Use **one** ONNX model per compile. If you change the model, **re-run compile** to refresh the circuit and quantization.
+- Keep a consistent set of artifacts: `circuit.txt`, `quantized.onnx`, `input.json`, `output.json`, `witness.bin`, `proof.bin`.
+- For large CNNs, start with a small batch size and small inputs to validate the pipeline before scaling up.

@@ -49,7 +49,11 @@ class TestIntegration(BaseQuantizerTest):
 
         # Step 1: Create and validate model
         model = self.create_model_with_layers(layer_combination, layer_configs)
-        quantizer.check_model(model)  # Should not raise
+        quantizer.check_model(
+            model,
+            scale_base=scale_base,
+            scale_exponent=scale_exponent,
+        )  # Should not raise
 
         # Step 2: Quantize each layer
         initializer_map = quantizer.get_initializer_map(model)

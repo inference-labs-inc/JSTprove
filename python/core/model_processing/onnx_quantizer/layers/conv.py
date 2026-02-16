@@ -52,6 +52,8 @@ class ConvQuantizer(BaseOpQuantizer, QuantizeConv):
         self: ConvQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto],
+        scale_base: int | None = 2,
+        scale_exponent: int | None = 18,
     ) -> None:
         """
         Perform high-level validation to ensure that this Conv node
@@ -65,6 +67,7 @@ class ConvQuantizer(BaseOpQuantizer, QuantizeConv):
         Raises:
             InvalidParamError: If any requirement is not met.
         """
+        _ = scale_base, scale_exponent
         num_inputs = 2
         if len(node.input) < num_inputs:
             raise InvalidParamError(

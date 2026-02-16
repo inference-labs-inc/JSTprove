@@ -48,7 +48,9 @@ class MinQuantizer(BaseOpQuantizer, QuantizeMin):
         self: MinQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto] | None = None,
+        scale_base: int | None = 2,
+        scale_exponent: int | None = 18,
     ) -> None:
         # Min has no attributes; elementwise, variadic ≥ 1 input per ONNX spec.
         # We mirror Add/Max broadcasting behavior; no extra checks here.
-        _ = node, initializer_map
+        _ = node, initializer_map, scale_base, scale_exponent

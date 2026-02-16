@@ -81,6 +81,8 @@ class ClipQuantizer(BaseOpQuantizer, QuantizeClip):
         self,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto] | None = None,
+        scale_base: int | None = 2,
+        scale_exponent: int | None = 18,
     ) -> None:
         """
         Minimal support check for Clip:
@@ -89,4 +91,4 @@ class ClipQuantizer(BaseOpQuantizer, QuantizeClip):
         - We accept both forms; if attrs are present, ORT enforces semantics.
         - Broadcasting is ONNX-standard; we don't restrict further here.
         """
-        _ = node, initializer_map
+        _ = node, initializer_map, scale_base, scale_exponent

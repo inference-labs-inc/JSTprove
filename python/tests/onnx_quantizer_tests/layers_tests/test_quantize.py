@@ -7,7 +7,10 @@ import onnx
 import pytest
 from onnx import NodeProto
 
-from python.core.model_processing.onnx_quantizer.exceptions import UnsupportedOpError
+from python.core.model_processing.onnx_quantizer.exceptions import (
+    InvalidParamError,
+    UnsupportedOpError,
+)
 
 if TYPE_CHECKING:
     from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import (
@@ -85,7 +88,7 @@ class TestQuantize(BaseQuantizerTest):
     ) -> None:
         """Test quantization for each individual valid test case"""
 
-        scale_exponent, scale_base = 2, 10
+        scale_exponent, scale_base = 10, 2
         rescale = True
 
         result, (layer_name, _config, test_spec, _node) = self.setup_quantize_test(
@@ -129,7 +132,7 @@ class TestQuantize(BaseQuantizerTest):
     ) -> None:
         """Test quantization for each individual valid test case"""
 
-        scale_exponent, scale_base = 2, 10
+        scale_exponent, scale_base = 10, 2
         rescale = True
         result, (_layer_name, config, _test_spec, node) = self.setup_quantize_test(
             test_case_data,
@@ -184,7 +187,7 @@ class TestQuantize(BaseQuantizerTest):
         ), "Cannot find quantized node relating to prequantized node"
 
     @pytest.mark.unit
-    @pytest.mark.parametrize("scale_params", [(2, 10), (0, 5)])
+    @pytest.mark.parametrize("scale_params", [(10, 2), (0, 5)])
     @pytest.mark.parametrize(
         "test_case_data",
         TestLayerFactory.get_test_cases_by_type(SpecType.VALID),  # type: ignore[arg-type]
@@ -197,17 +200,26 @@ class TestQuantize(BaseQuantizerTest):
         scale_params: tuple[int, int],
     ) -> None:
         """Test quantization for each individual valid test case"""
-
+        op_type, _, _ = test_case_data
         # Test for both scale parameters
         scale_exponent, scale_base = scale_params
         rescale = True
-        result, (_layer_name, _config, _test_spec, _node) = self.setup_quantize_test(
-            test_case_data,
-            quantizer,
-            scale_exponent,
-            scale_base,
-            rescale=rescale,
-        )
+        try:
+            result, _ = self.setup_quantize_test(
+                test_case_data,
+                quantizer,
+                scale_exponent,
+                scale_base,
+                rescale=rescale,
+            )
+        except InvalidParamError:
+            # Only Div is allowed to fail for (0, 5)
+            assert op_type == "Div", (
+                f"Quantize failed for op={op_type} "
+                f"with scale=(base={scale_base}, exponent={scale_exponent})"
+            )
+            assert scale_base == 0 or scale_exponent == 0
+            return
 
         # Should return valid result regardless of scale values
         assert (
@@ -230,7 +242,7 @@ class TestQuantize(BaseQuantizerTest):
     ) -> None:
         """Test quantization for each individual valid test case"""
 
-        scale_exponent, scale_base = 2, 10
+        scale_exponent, scale_base = 10, 2
 
         # Test that quantizing works with both rescaling values
         result, (_layer_name, _config, _test_spec, _node) = self.setup_quantize_test(
