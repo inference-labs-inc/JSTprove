@@ -65,7 +65,7 @@ class GeneralLayerFunctions:
         Returns:
             torch.Tensor: The loaded, reshaped, and potentially rescaled input tensor.
         """
-        import torch
+        import torch  # noqa: PLC0415
 
         inputs = self.read_input(file_name)
         try:
@@ -182,7 +182,7 @@ class GeneralLayerFunctions:
                 context,
             )
 
-        import torch
+        import torch  # noqa: PLC0415
 
         return torch.mul(
             self.get_rand_inputs(self.input_shape),
@@ -212,7 +212,7 @@ class GeneralLayerFunctions:
                 expected_shape="positive integers",
                 actual_shape=input_shape,
             )
-        import torch
+        import torch  # noqa: PLC0415
 
         return torch.rand(input_shape) * 2 - 1
 
@@ -248,7 +248,7 @@ class GeneralLayerFunctions:
                   - "rescaled_output": the output divided by the scaling factor.
         """
         if hasattr(self, "scale_exponent") and hasattr(self, "scale_base"):
-            import torch
+            import torch  # noqa: PLC0415
 
             try:
                 rescaled = torch.div(outputs, self.scale_base**self.scale_exponent)
