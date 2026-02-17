@@ -346,11 +346,18 @@ class ExpanderWitnessLoader(WitnessLoader):
 
         import torch  # noqa: PLC0415
 
-        scale_base = witnesses["witnesses"][0]["public_inputs"][-2]
-        scale_exponent = witnesses["witnesses"][0]["public_inputs"][-1]
-
-        # Convert expectations into field form
         inputs_list = expected_inputs.get("input", [])
+        outputs_list = expected_outputs.get("output", [])
+        n_in = len(inputs_list)
+        n_out = len(outputs_list)
+
+        witness = witnesses["witnesses"][0]["public_inputs"]
+
+        if len(witness) < n_in + n_out + 2:
+            return False
+
+        scale_base = witness[n_in + n_out]
+        scale_exponent = witness[n_in + n_out + 1]
 
         if callable(scaling_function):
             inputs_list = (
@@ -366,7 +373,6 @@ class ExpanderWitnessLoader(WitnessLoader):
                 .long()
                 .tolist()
             )
-        outputs_list = expected_outputs.get("output", [])
 
         expected_inputs_mod = [
             to_field_repr(v, modulus)
@@ -374,17 +380,9 @@ class ExpanderWitnessLoader(WitnessLoader):
         ]
         expected_outputs_mod = [to_field_repr(v, modulus) for v in outputs_list]
 
-        n_inputs = len(expected_inputs_mod) + len(expected_outputs_mod) + 2
+        actual_inputs = witness[:n_in]
+        actual_outputs = witness[n_in : n_in + n_out]
 
-        witness = witnesses["witnesses"][0]["public_inputs"]
-
-        if n_inputs != len(witness):
-            return False
-
-        actual_inputs = witness[: len(expected_inputs_mod)]
-        actual_outputs = witness[len(expected_inputs_mod) : -2]
-
-        # Compare
         return (
             actual_inputs == expected_inputs_mod
             and actual_outputs == expected_outputs_mod
