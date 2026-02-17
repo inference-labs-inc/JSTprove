@@ -200,15 +200,18 @@ def compare_field_values(
 def extract_io_from_witness(
     witness_data: dict,
     num_inputs: int,
+    num_outputs: int,
 ) -> dict | None:
     """
     Extract inputs, outputs, and scaling parameters from witness public inputs.
 
-    The witness public_inputs layout is: [inputs..., outputs..., scale_base, scale_exp]
+    The witness public_inputs layout is:
+    [inputs..., outputs..., scale_base, scale_exp, weights... (if WAI)]
 
     Args:
         witness_data: Witness data as returned by load_witness().
         num_inputs: Number of input values in the public inputs.
+        num_outputs: Number of output values in the public inputs.
 
     Returns:
         Dictionary containing:
@@ -243,14 +246,14 @@ def extract_io_from_witness(
     if (
         not isinstance(num_inputs, int)
         or num_inputs < 0
-        or num_inputs > len(public_inputs) - MIN_PUBLIC_INPUTS_LENGTH
+        or num_inputs + num_outputs + 2 > len(public_inputs)
     ):
         return None
 
     inputs = public_inputs[:num_inputs]
-    raw_outputs = public_inputs[num_inputs:-2]
-    scale_base = public_inputs[-2]
-    scale_exponent = public_inputs[-1]
+    raw_outputs = public_inputs[num_inputs : num_inputs + num_outputs]
+    scale_base = public_inputs[num_inputs + num_outputs]
+    scale_exponent = public_inputs[num_inputs + num_outputs + 1]
 
     signed_outputs = [from_field_repr(v, modulus) for v in raw_outputs]
     rescaled_outputs = descale_outputs(signed_outputs, scale_base, scale_exponent)
@@ -366,13 +369,16 @@ class ExpanderWitnessLoader(WitnessLoader):
                 .tolist()
             )
         else:
-            inputs_list = (
-                torch.round(
-                    torch.tensor(inputs_list) * (scale_base**scale_exponent),
+            if scale_base <= 0 or scale_exponent <= 0:
+                inputs_list = [int(v) for v in inputs_list]
+            else:
+                inputs_list = (
+                    torch.round(
+                        torch.tensor(inputs_list) * (scale_base**scale_exponent),
+                    )
+                    .long()
+                    .tolist()
                 )
-                .long()
-                .tolist()
-            )
 
         expected_inputs_mod = [
             to_field_repr(v, modulus)
