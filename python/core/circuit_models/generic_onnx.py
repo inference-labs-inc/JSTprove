@@ -167,7 +167,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         Returns:
             torch.Tensor: Flattened model outputs as a tensor.
         """
-        import torch  # noqa: PLC0415
+        import torch
 
         try:
             raw_outputs = super().get_outputs(inputs)
@@ -197,7 +197,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         Returns:
             Dict[str, List[int]]: Dictionary mapping `input` to scaled integer values.
         """
-        import torch  # noqa: PLC0415
+        import torch
 
         def _raise_type_error(inputs: np.ndarray | list[int] | torch.Tensor) -> None:
             msg = (
