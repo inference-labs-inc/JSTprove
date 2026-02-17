@@ -15,6 +15,8 @@ from python.core.circuits.errors import (
 from python.core.circuits.zk_model_base import ZKModelBase
 
 if TYPE_CHECKING:
+    import torch
+
     from python.core.model_processing.converters.onnx_converter import (
         CircuitParamsDict,
         ONNXLayerDict,
@@ -89,7 +91,6 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
             self.weights_as_inputs = False
             ONNXConverter.__init__(self)
         except Exception as e:
-
             msg = f"Failed to initialize GenericModelONNX with model '{model_name}'"
             raise CircuitFileError(
                 msg,

@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from onnxruntime import NodeArg
+    import torch
+
+    from onnxruntime import InferenceSession, NodeArg
 
 import numpy as np
 import onnx
@@ -733,9 +735,12 @@ class ONNXConverter(ModelConverter):
             InferenceSession: A configured InferenceSession.
         """
         try:
-            from python.core.model_processing.onnx_custom_ops import load_custom_ops  # noqa: PLC0415
             from onnxruntime import InferenceSession, SessionOptions  # noqa: PLC0415
             from onnxruntime_extensions import get_library_path  # noqa: PLC0415
+
+            from python.core.model_processing.onnx_custom_ops import (  # noqa: PLC0415
+                load_custom_ops,
+            )
 
             load_custom_ops()
             opts = SessionOptions()
