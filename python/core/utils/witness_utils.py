@@ -15,6 +15,20 @@ from python.core.utils.errors import ProofSystemNotImplementedError
 from python.core.utils.helper_functions import ZSTD_MAGIC, ZKProofSystems
 
 MIN_PUBLIC_INPUTS_LENGTH = 2  # scale_base + scale_exponent
+MAX_SCALE_BASE = 256
+MAX_SCALE_EXPONENT = 64
+
+
+def _flatten(x: list | int | float) -> list:
+    if not isinstance(x, list):
+        return [x]
+    result = []
+    for item in x:
+        if isinstance(item, list):
+            result.extend(_flatten(item))
+        else:
+            result.append(item)
+    return result
 
 
 def _open_maybe_compressed(path: str) -> BinaryIO:
@@ -245,7 +259,9 @@ def extract_io_from_witness(
 
     if (
         not isinstance(num_inputs, int)
+        or not isinstance(num_outputs, int)
         or num_inputs < 0
+        or num_outputs < 0
         or num_inputs + num_outputs + 2 > len(public_inputs)
     ):
         return None
@@ -254,6 +270,9 @@ def extract_io_from_witness(
     raw_outputs = public_inputs[num_inputs : num_inputs + num_outputs]
     scale_base = public_inputs[num_inputs + num_outputs]
     scale_exponent = public_inputs[num_inputs + num_outputs + 1]
+
+    if scale_base > MAX_SCALE_BASE or scale_exponent > MAX_SCALE_EXPONENT:
+        return None
 
     signed_outputs = [from_field_repr(v, modulus) for v in raw_outputs]
     rescaled_outputs = descale_outputs(signed_outputs, scale_base, scale_exponent)
@@ -347,14 +366,19 @@ class ExpanderWitnessLoader(WitnessLoader):
             False otherwise.
         """
 
-        import torch  # noqa: PLC0415
+        inputs_raw = expected_inputs.get("input", [])
+        outputs_raw = expected_outputs.get("output", [])
 
-        inputs_list = expected_inputs.get("input", [])
-        outputs_list = expected_outputs.get("output", [])
-        n_in = len(inputs_list)
-        n_out = len(outputs_list)
+        flat_inputs = _flatten(inputs_raw)
+        flat_outputs = _flatten(outputs_raw)
+        n_in = len(flat_inputs)
+        n_out = len(flat_outputs)
 
-        witness = witnesses["witnesses"][0]["public_inputs"]
+        witness_list = witnesses.get("witnesses")
+        if not witness_list:
+            return False
+
+        witness = witness_list[0]["public_inputs"]
 
         if len(witness) < n_in + n_out + 2:
             return False
@@ -362,29 +386,21 @@ class ExpanderWitnessLoader(WitnessLoader):
         scale_base = witness[n_in + n_out]
         scale_exponent = witness[n_in + n_out + 1]
 
-        if callable(scaling_function):
-            inputs_list = (
-                torch.tensor(scaling_function(inputs_list, scale_base, scale_exponent))
-                .flatten()
-                .tolist()
-            )
-        else:
-            if scale_base <= 0 or scale_exponent <= 0:
-                inputs_list = [int(v) for v in inputs_list]
-            else:
-                inputs_list = (
-                    torch.round(
-                        torch.tensor(inputs_list) * (scale_base**scale_exponent),
-                    )
-                    .long()
-                    .tolist()
-                )
+        if scale_base > MAX_SCALE_BASE or scale_exponent > MAX_SCALE_EXPONENT:
+            return False
 
-        expected_inputs_mod = [
-            to_field_repr(v, modulus)
-            for v in torch.tensor(inputs_list).flatten().tolist()
-        ]
-        expected_outputs_mod = [to_field_repr(v, modulus) for v in outputs_list]
+        if callable(scaling_function):
+            scaled_inputs = _flatten(
+                scaling_function(flat_inputs, scale_base, scale_exponent)
+            )
+        elif scale_base <= 0 or scale_exponent <= 0:
+            scaled_inputs = [int(v) for v in flat_inputs]
+        else:
+            scale = scale_base**scale_exponent
+            scaled_inputs = [round(v * scale) for v in flat_inputs]
+
+        expected_inputs_mod = [v % modulus for v in scaled_inputs]
+        expected_outputs_mod = [v % modulus for v in flat_outputs]
 
         actual_inputs = witness[:n_in]
         actual_outputs = witness[n_in : n_in + n_out]
