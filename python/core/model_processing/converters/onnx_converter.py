@@ -10,12 +10,12 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import torch
-
     from onnxruntime import InferenceSession, NodeArg
 
 import numpy as np
 import onnx
 from onnx import NodeProto, TensorProto, helper, numpy_helper, shape_inference
+
 from python.core import PACKAGE_NAME
 from python.core.circuits.errors import CircuitConfigurationError
 from python.core.model_processing.converters.base import ModelConverter, ModelType
