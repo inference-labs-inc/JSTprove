@@ -378,7 +378,12 @@ class ExpanderWitnessLoader(WitnessLoader):
         if not witness_list:
             return False
 
-        witness = witness_list[0]["public_inputs"]
+        first = witness_list[0]
+        if not isinstance(first, dict):
+            return False
+        witness = first.get("public_inputs")
+        if not isinstance(witness, list):
+            return False
 
         if len(witness) < n_in + n_out + 2:
             return False
@@ -405,9 +410,10 @@ class ExpanderWitnessLoader(WitnessLoader):
         actual_inputs = witness[:n_in]
         actual_outputs = witness[n_in : n_in + n_out]
 
-        return (
-            actual_inputs == expected_inputs_mod
-            and actual_outputs == expected_outputs_mod
+        return compare_field_values(
+            expected_inputs_mod, actual_inputs, modulus
+        ) and compare_field_values(
+            expected_outputs_mod, actual_outputs, modulus
         )
 
 
