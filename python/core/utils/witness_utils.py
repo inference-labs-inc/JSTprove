@@ -239,14 +239,14 @@ def extract_io_from_witness(
         Returns None if witness structure is invalid.
     """
     witnesses = witness_data.get("witnesses")
-    if not isinstance(witnesses, list) or len(witnesses) == 0:
+    if (
+        not isinstance(witnesses, list)
+        or len(witnesses) == 0
+        or not isinstance(witnesses[0], dict)
+    ):
         return None
 
-    first_witness = witnesses[0]
-    if not isinstance(first_witness, dict):
-        return None
-
-    public_inputs = first_witness.get("public_inputs")
+    public_inputs = witnesses[0].get("public_inputs")
     if (
         not isinstance(public_inputs, list)
         or len(public_inputs) < MIN_PUBLIC_INPUTS_LENGTH
@@ -254,11 +254,9 @@ def extract_io_from_witness(
         return None
 
     modulus = witness_data.get("modulus")
-    if modulus is None:
-        return None
-
     if (
-        not isinstance(num_inputs, int)
+        modulus is None
+        or not isinstance(num_inputs, int)
         or not isinstance(num_outputs, int)
         or num_inputs < 0
         or num_outputs < 0
