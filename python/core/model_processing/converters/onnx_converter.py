@@ -13,15 +13,7 @@ if TYPE_CHECKING:
 
 import numpy as np
 import onnx
-import torch
 from onnx import NodeProto, TensorProto, helper, numpy_helper, shape_inference
-
-# Keep the ununused import below as it
-# must remain due to 'SessionOptions' dependency.
-from onnxruntime import InferenceSession, SessionOptions
-from onnxruntime_extensions import get_library_path
-
-import python.core.model_processing.onnx_custom_ops  # noqa: F401
 from python.core import PACKAGE_NAME
 from python.core.circuits.errors import CircuitConfigurationError
 from python.core.model_processing.converters.base import ModelConverter, ModelType
@@ -624,7 +616,7 @@ class ONNXConverter(ModelConverter):
                 if not hasattr(layer, "params") or layer.params is None:
                     layer.params = {}
                 result = constant_values[input_name]
-                if isinstance(result, (np.ndarray, torch.Tensor)):
+                if isinstance(result, np.ndarray) or hasattr(result, "tolist"):
                     layer.params[input_name] = result.tolist()
                 else:
                     layer.params[input_name] = constant_values[input_name]
@@ -741,6 +733,11 @@ class ONNXConverter(ModelConverter):
             InferenceSession: A configured InferenceSession.
         """
         try:
+            from python.core.model_processing.onnx_custom_ops import load_custom_ops  # noqa: PLC0415
+            from onnxruntime import InferenceSession, SessionOptions  # noqa: PLC0415
+            from onnxruntime_extensions import get_library_path  # noqa: PLC0415
+
+            load_custom_ops()
             opts = SessionOptions()
             opts.register_custom_ops_library(get_library_path())
             return InferenceSession(
@@ -1455,6 +1452,8 @@ class ONNXConverter(ModelConverter):
         input_def: NodeArg,
     ) -> np.ndarray:
         """Process a single input tensor according to dtype and scale settings."""
+        import torch  # noqa: PLC0415
+
         value = torch.as_tensor(value)
 
         if value.dtype in (
@@ -1486,6 +1485,7 @@ class ONNXConverter(ModelConverter):
         Returns:
             list[np.ndarray]: List of output arrays from ONNX Runtime inference.
         """
+        import torch  # noqa: PLC0415
 
         def _raise_type_error(inputs: np.ndarray | torch.Tensor) -> None:
             msg = (

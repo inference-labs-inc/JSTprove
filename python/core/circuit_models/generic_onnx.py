@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
-import torch
 
 from python.core import RUST_BINARY_NAME
 from python.core.circuits.errors import (
@@ -167,6 +166,8 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         Returns:
             torch.Tensor: Flattened model outputs as a tensor.
         """
+        import torch  # noqa: PLC0415
+
         try:
             raw_outputs = super().get_outputs(inputs)
         except Exception as e:
@@ -195,6 +196,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         Returns:
             Dict[str, List[int]]: Dictionary mapping `input` to scaled integer values.
         """
+        import torch  # noqa: PLC0415
 
         def _raise_type_error(inputs: np.ndarray | list[int] | torch.Tensor) -> None:
             msg = (
