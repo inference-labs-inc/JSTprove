@@ -19,12 +19,12 @@ MAX_SCALE_BASE = 256
 MAX_SCALE_EXPONENT = 64
 
 
-def _flatten(x: list | int | float) -> list:
-    if not isinstance(x, list):
+def _flatten(x: list | tuple | int | float) -> list:
+    if not isinstance(x, (list, tuple)):
         return [x]
     result = []
     for item in x:
-        if isinstance(item, list):
+        if isinstance(item, (list, tuple)):
             result.extend(_flatten(item))
         else:
             result.append(item)
@@ -204,8 +204,8 @@ def compare_field_values(
     """
     if len(expected) != len(actual):
         return False
-    for e, a in zip(expected, actual, strict=False):
-        diff = abs((e - a) % modulus)
+    for e, a in zip(expected, actual, strict=True):
+        diff = (e - a) % modulus
         if diff > tolerance and diff < modulus - tolerance:
             return False
     return True
@@ -395,9 +395,7 @@ class ExpanderWitnessLoader(WitnessLoader):
             return False
 
         if callable(scaling_function):
-            scaled_inputs = _flatten(
-                scaling_function(flat_inputs, scale_base, scale_exponent)
-            )
+            scaled_inputs = scaling_function(flat_inputs, scale_base, scale_exponent)
         elif scale_base <= 0 or scale_exponent <= 0:
             scaled_inputs = [int(v) for v in flat_inputs]
         else:
