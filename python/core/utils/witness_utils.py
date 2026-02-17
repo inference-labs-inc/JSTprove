@@ -19,7 +19,7 @@ MAX_SCALE_BASE = 256
 MAX_SCALE_EXPONENT = 64
 
 
-def _flatten(x: list | tuple | int | float) -> list:
+def _flatten(x: list | tuple | float) -> list:
     if not isinstance(x, (list, tuple)):
         return [x]
     result = []
@@ -409,10 +409,10 @@ class ExpanderWitnessLoader(WitnessLoader):
         actual_outputs = witness[n_in : n_in + n_out]
 
         return compare_field_values(
-            expected_inputs_mod, actual_inputs, modulus
-        ) and compare_field_values(
-            expected_outputs_mod, actual_outputs, modulus
-        )
+            expected_inputs_mod,
+            actual_inputs,
+            modulus,
+        ) and compare_field_values(expected_outputs_mod, actual_outputs, modulus)
 
 
 # -------------------------
