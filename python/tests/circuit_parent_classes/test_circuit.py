@@ -1442,7 +1442,12 @@ def test_load_and_compare_witness_to_io_missing_modulus(mock_load: MagicMock) ->
 def test_prepare_inputs_for_verification_success(tmp_path: Path) -> None:
     c = Circuit()
     c._read_from_json_safely = MagicMock(return_value={"input": [1, 2, 3, 4]})
-    c.reshape_inputs_for_circuit = MagicMock(return_value={"input": [1, 2, 3, 4]})
+    c.scale_inputs_only = MagicMock(
+        return_value={"input": [262144, 524288, 786432, 1048576]},
+    )
+    c.reshape_inputs_for_circuit = MagicMock(
+        return_value={"input": [262144, 524288, 786432, 1048576]},
+    )
     c._to_json_safely = MagicMock()
 
     input_file = tmp_path / "input.json"
@@ -1455,9 +1460,12 @@ def test_prepare_inputs_for_verification_success(tmp_path: Path) -> None:
     assert result == expected_file
 
     c._read_from_json_safely.assert_called_once_with(str(input_file))
-    c.reshape_inputs_for_circuit.assert_called_once_with({"input": [1, 2, 3, 4]})
+    c.scale_inputs_only.assert_called_once_with({"input": [1, 2, 3, 4]})
+    c.reshape_inputs_for_circuit.assert_called_once_with(
+        {"input": [262144, 524288, 786432, 1048576]},
+    )
     c._to_json_safely.assert_called_once_with(
-        {"input": [1, 2, 3, 4]},
+        {"input": [262144, 524288, 786432, 1048576]},
         expected_file,
         "renamed input",
     )
