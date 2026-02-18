@@ -577,7 +577,6 @@ fn prove_core<C: Config>(
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input.clone_from(&simd_public_input);
 
-    expander_circuit.evaluate();
     let mpi_config = MPIConfig::prover_new();
     let (claimed_v, proof) = executor::prove::<C>(expander_circuit, mpi_config);
 
