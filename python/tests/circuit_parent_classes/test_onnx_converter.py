@@ -92,8 +92,8 @@ def test_save_quantized_model(
 
 @pytest.mark.unit
 @patch("python.core.model_processing.converters.onnx_converter.Path.exists")
-@patch("python.core.model_processing.converters.onnx_converter.SessionOptions")
-@patch("python.core.model_processing.converters.onnx_converter.InferenceSession")
+@patch("onnxruntime.SessionOptions")
+@patch("onnxruntime.InferenceSession")
 @patch("python.core.model_processing.converters.onnx_converter.onnx.load")
 def test_load_quantized_model(
     mock_load: MagicMock,

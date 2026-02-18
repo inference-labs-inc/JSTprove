@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
-import torch
 
 from python.core import RUST_BINARY_NAME
 from python.core.circuits.errors import (
@@ -16,6 +15,8 @@ from python.core.circuits.errors import (
 from python.core.circuits.zk_model_base import ZKModelBase
 
 if TYPE_CHECKING:
+    import torch
+
     from python.core.model_processing.converters.onnx_converter import (
         CircuitParamsDict,
         ONNXLayerDict,
@@ -90,7 +91,6 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
             self.weights_as_inputs = False
             ONNXConverter.__init__(self)
         except Exception as e:
-
             msg = f"Failed to initialize GenericModelONNX with model '{model_name}'"
             raise CircuitFileError(
                 msg,
@@ -167,6 +167,8 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         Returns:
             torch.Tensor: Flattened model outputs as a tensor.
         """
+        import torch  # noqa: PLC0415
+
         try:
             raw_outputs = super().get_outputs(inputs)
         except Exception as e:
@@ -195,6 +197,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         Returns:
             Dict[str, List[int]]: Dictionary mapping `input` to scaled integer values.
         """
+        import torch  # noqa: PLC0415
 
         def _raise_type_error(inputs: np.ndarray | list[int] | torch.Tensor) -> None:
             msg = (
