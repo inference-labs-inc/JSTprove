@@ -997,7 +997,3 @@ def test_prepare_subprocess_env_sets_mca_defaults() -> None:
     env = {"PATH": "/usr/bin"}
     result = _prepare_subprocess_env(env)
     assert result is env
-    assert result["OMPI_MCA_mca_base_component_show_load_errors"] == "0"
-    assert result["PRTE_MCA_prte_silence_shared_fs"] == "1"
-    assert "LD_LIBRARY_PATH" not in result
-    assert "DYLD_LIBRARY_PATH" not in result

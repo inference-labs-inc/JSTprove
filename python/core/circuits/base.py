@@ -335,10 +335,9 @@ class Circuit:
         Returns:
             str: name of file with processed inputs for verification
         """
-        # read inputs
         inputs = self._read_from_json_safely(exec_config.input_file)
-        # reshape inputs for circuit reading (or for verification check in this case)
-        processed_inputs = self.reshape_inputs_for_circuit(inputs)
+        scaled_inputs = self.scale_inputs_only(inputs)
+        processed_inputs = self.reshape_inputs_for_circuit(scaled_inputs)
         # Send back to file
         path = Path(exec_config.input_file)
         processed_input_file = str(path.parent / (path.stem + "_veri" + path.suffix))

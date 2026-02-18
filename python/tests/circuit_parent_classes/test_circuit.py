@@ -267,7 +267,6 @@ def test_parse_proof_dispatch_logic(
         "proof_file": "p",
         "proof_system": ZKProofSystems.Expander,
         "dev_mode": False,
-        "ecc": True,
         "bench": False,
         "metadata_path": "metadata",
         "compress": True,
@@ -305,7 +304,6 @@ def test_parse_proof_dispatch_logic(
         "proof_file": "p",
         "proof_system": ZKProofSystems.Expander,
         "dev_mode": False,
-        "ecc": True,
         "bench": False,
         "metadata_path": "metadata",
     }
