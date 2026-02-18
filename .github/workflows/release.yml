@@ -81,7 +81,7 @@ jobs:
 
       - name: Download Expander binary
         run: |
-          EXPANDER_TAG=$(grep -m1 'inference-labs-inc/Expander.*tag' Cargo.toml | grep -o 'tag = "[^"]*"' | sed 's/tag = "\(.*\)"/\1/')
+          EXPANDER_TAG=$(grep -m1 'inference-labs-inc/Expander.*tag=' Cargo.lock | grep -o 'tag=[^#]*' | sed 's/tag=//')
           curl -sfL "https://github.com/inference-labs-inc/Expander/releases/download/${EXPANDER_TAG}/expander-exec-linux-x86_64" -o expander-exec
           chmod +x expander-exec
 
@@ -191,7 +191,7 @@ jobs:
 
       - name: Download Expander binary
         run: |
-          EXPANDER_TAG=$(grep -m1 'inference-labs-inc/Expander.*tag' Cargo.toml | grep -o 'tag = "[^"]*"' | sed 's/tag = "\(.*\)"/\1/')
+          EXPANDER_TAG=$(grep -m1 'inference-labs-inc/Expander.*tag=' Cargo.lock | grep -o 'tag=[^#]*' | sed 's/tag=//')
           curl -sfL "https://github.com/inference-labs-inc/Expander/releases/download/${EXPANDER_TAG}/expander-exec-macos-aarch64" -o expander-exec
           chmod +x expander-exec
 
