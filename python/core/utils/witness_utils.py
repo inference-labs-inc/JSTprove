@@ -15,6 +15,20 @@ from python.core.utils.errors import ProofSystemNotImplementedError
 from python.core.utils.helper_functions import ZSTD_MAGIC, ZKProofSystems
 
 MIN_PUBLIC_INPUTS_LENGTH = 2  # scale_base + scale_exponent
+MAX_SCALE_BASE = 256
+MAX_SCALE_EXPONENT = 64
+
+
+def _flatten(x: list | tuple | float) -> list:
+    if not isinstance(x, (list, tuple)):
+        return [x]
+    result = []
+    for item in x:
+        if isinstance(item, (list, tuple)):
+            result.extend(_flatten(item))
+        else:
+            result.append(item)
+    return result
 
 
 def _open_maybe_compressed(path: str) -> BinaryIO:
@@ -190,8 +204,8 @@ def compare_field_values(
     """
     if len(expected) != len(actual):
         return False
-    for e, a in zip(expected, actual, strict=False):
-        diff = abs((e - a) % modulus)
+    for e, a in zip(expected, actual, strict=True):
+        diff = (e - a) % modulus
         if diff > tolerance and diff < modulus - tolerance:
             return False
     return True
@@ -200,15 +214,18 @@ def compare_field_values(
 def extract_io_from_witness(
     witness_data: dict,
     num_inputs: int,
+    num_outputs: int,
 ) -> dict | None:
     """
     Extract inputs, outputs, and scaling parameters from witness public inputs.
 
-    The witness public_inputs layout is: [inputs..., outputs..., scale_base, scale_exp]
+    The witness public_inputs layout is:
+    [inputs..., outputs..., scale_base, scale_exp, weights... (if WAI)]
 
     Args:
         witness_data: Witness data as returned by load_witness().
         num_inputs: Number of input values in the public inputs.
+        num_outputs: Number of output values in the public inputs.
 
     Returns:
         Dictionary containing:
@@ -222,14 +239,14 @@ def extract_io_from_witness(
         Returns None if witness structure is invalid.
     """
     witnesses = witness_data.get("witnesses")
-    if not isinstance(witnesses, list) or len(witnesses) == 0:
+    if (
+        not isinstance(witnesses, list)
+        or len(witnesses) == 0
+        or not isinstance(witnesses[0], dict)
+    ):
         return None
 
-    first_witness = witnesses[0]
-    if not isinstance(first_witness, dict):
-        return None
-
-    public_inputs = first_witness.get("public_inputs")
+    public_inputs = witnesses[0].get("public_inputs")
     if (
         not isinstance(public_inputs, list)
         or len(public_inputs) < MIN_PUBLIC_INPUTS_LENGTH
@@ -237,20 +254,23 @@ def extract_io_from_witness(
         return None
 
     modulus = witness_data.get("modulus")
-    if modulus is None:
-        return None
-
     if (
-        not isinstance(num_inputs, int)
+        modulus is None
+        or not isinstance(num_inputs, int)
+        or not isinstance(num_outputs, int)
         or num_inputs < 0
-        or num_inputs > len(public_inputs) - MIN_PUBLIC_INPUTS_LENGTH
+        or num_outputs < 0
+        or num_inputs + num_outputs + 2 > len(public_inputs)
     ):
         return None
 
     inputs = public_inputs[:num_inputs]
-    raw_outputs = public_inputs[num_inputs:-2]
-    scale_base = public_inputs[-2]
-    scale_exponent = public_inputs[-1]
+    raw_outputs = public_inputs[num_inputs : num_inputs + num_outputs]
+    scale_base = public_inputs[num_inputs + num_outputs]
+    scale_exponent = public_inputs[num_inputs + num_outputs + 1]
+
+    if scale_base > MAX_SCALE_BASE or scale_exponent > MAX_SCALE_EXPONENT:
+        return None
 
     signed_outputs = [from_field_repr(v, modulus) for v in raw_outputs]
     rescaled_outputs = descale_outputs(signed_outputs, scale_base, scale_exponent)
@@ -344,14 +364,24 @@ class ExpanderWitnessLoader(WitnessLoader):
             False otherwise.
         """
 
-        import torch  # noqa: PLC0415
+        inputs_raw = expected_inputs.get("input", [])
+        outputs_raw = expected_outputs.get("output", [])
 
-        inputs_list = expected_inputs.get("input", [])
-        outputs_list = expected_outputs.get("output", [])
-        n_in = len(inputs_list)
-        n_out = len(outputs_list)
+        flat_inputs = _flatten(inputs_raw)
+        flat_outputs = _flatten(outputs_raw)
+        n_in = len(flat_inputs)
+        n_out = len(flat_outputs)
 
-        witness = witnesses["witnesses"][0]["public_inputs"]
+        witness_list = witnesses.get("witnesses")
+        if not witness_list:
+            return False
+
+        first = witness_list[0]
+        if not isinstance(first, dict):
+            return False
+        witness = first.get("public_inputs")
+        if not isinstance(witness, list):
+            return False
 
         if len(witness) < n_in + n_out + 2:
             return False
@@ -359,34 +389,28 @@ class ExpanderWitnessLoader(WitnessLoader):
         scale_base = witness[n_in + n_out]
         scale_exponent = witness[n_in + n_out + 1]
 
-        if callable(scaling_function):
-            inputs_list = (
-                torch.tensor(scaling_function(inputs_list, scale_base, scale_exponent))
-                .flatten()
-                .tolist()
-            )
-        else:
-            inputs_list = (
-                torch.round(
-                    torch.tensor(inputs_list) * (scale_base**scale_exponent),
-                )
-                .long()
-                .tolist()
-            )
+        if scale_base > MAX_SCALE_BASE or scale_exponent > MAX_SCALE_EXPONENT:
+            return False
 
-        expected_inputs_mod = [
-            to_field_repr(v, modulus)
-            for v in torch.tensor(inputs_list).flatten().tolist()
-        ]
-        expected_outputs_mod = [to_field_repr(v, modulus) for v in outputs_list]
+        if callable(scaling_function):
+            scaled_inputs = scaling_function(flat_inputs, scale_base, scale_exponent)
+        elif scale_base <= 0 or scale_exponent <= 0:
+            scaled_inputs = [int(v) for v in flat_inputs]
+        else:
+            scale = scale_base**scale_exponent
+            scaled_inputs = [round(v * scale) for v in flat_inputs]
+
+        expected_inputs_mod = [v % modulus for v in scaled_inputs]
+        expected_outputs_mod = [v % modulus for v in flat_outputs]
 
         actual_inputs = witness[:n_in]
         actual_outputs = witness[n_in : n_in + n_out]
 
-        return (
-            actual_inputs == expected_inputs_mod
-            and actual_outputs == expected_outputs_mod
-        )
+        return compare_field_values(
+            expected_inputs_mod,
+            actual_inputs,
+            modulus,
+        ) and compare_field_values(expected_outputs_mod, actual_outputs, modulus)
 
 
 # -------------------------
