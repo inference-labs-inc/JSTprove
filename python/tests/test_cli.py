@@ -151,7 +151,6 @@ def test_prove_dispatch(tmp_path: Path) -> None:
     assert config.circuit_path == str(circuit)
     assert config.witness_file == str(witness)
     assert config.proof_file == str(proof)
-    assert config.ecc is False
 
 
 @pytest.mark.unit
@@ -186,7 +185,6 @@ def test_prove_dispatch_positional(tmp_path: Path) -> None:
     assert config.circuit_path == str(circuit)
     assert config.witness_file == str(witness)
     assert config.proof_file == str(proof)
-    assert config.ecc is False
 
 
 @pytest.mark.unit
@@ -241,7 +239,6 @@ def test_verify_dispatch(tmp_path: Path) -> None:
     assert config.output_file == str(outputj)
     assert config.witness_file == str(witness)
     assert config.proof_file == str(proof)
-    assert config.ecc is False
 
 
 @pytest.mark.unit
@@ -291,7 +288,6 @@ def test_verify_dispatch_positional(tmp_path: Path) -> None:
     assert config.output_file == str(outputj)
     assert config.witness_file == str(witness)
     assert config.proof_file == str(proof)
-    assert config.ecc is False
 
 
 @pytest.mark.unit

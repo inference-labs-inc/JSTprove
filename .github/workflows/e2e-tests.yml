@@ -20,7 +20,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  EXPANDER_COMMIT: f97e058fbdb6f9bccc3b7e7c98d6fdc42df72934
   RUST_NIGHTLY: nightly-2025-03-27
 
 jobs:
@@ -44,14 +43,12 @@ jobs:
           toolchain: ${{ env.RUST_NIGHTLY }}
           components: rustfmt, clippy
 
-      - name: Install OMPI
+      - name: Install system dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y \
-            libopenmpi-dev \
             pkg-config \
             libclang-dev \
-            clang \
-            openmpi-bin
+            clang
 
       - name: Install UV
         uses: astral-sh/setup-uv@v7
@@ -117,24 +114,12 @@ jobs:
       - name: Install the project
         run: uv sync --group test
 
-      - name: Install OMPI
+      - name: Install system dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y \
-            libopenmpi-dev \
             pkg-config \
             libclang-dev \
-            clang \
-            openmpi-bin
-
-      - name: Clone Expander
-        run: |
-          git clone https://github.com/inference-labs-inc/Expander.git
-          cd Expander
-          git checkout ${{ env.EXPANDER_COMMIT }}
-          cd ..
-
-      - name: Build Expander binary
-        run: cargo build --release --manifest-path Expander/Cargo.toml --bin expander-exec
+            clang
 
       - name: Run E2E Tests
         run: |

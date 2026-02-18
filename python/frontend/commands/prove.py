@@ -47,7 +47,6 @@ class ProveCommand(BaseCommand):
                     circuit_path=args.circuit_path,
                     witness_file=args.witness_path,
                     proof_file=args.proof_path,
-                    ecc=False,
                     compress=not args.no_compress,
                 ),
             )

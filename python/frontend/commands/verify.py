@@ -62,7 +62,6 @@ class VerifyCommand(BaseCommand):
                     output_file=args.output_path,
                     witness_file=args.witness_path,
                     proof_file=args.proof_path,
-                    ecc=False,
                 ),
             )
         except CircuitRunError as e:

@@ -23,14 +23,7 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          dnf install -y openmpi-devel pkgconf-pkg-config perl-IPC-Cmd perl-Time-Piece clang-devel
-
-      - name: Configure MPI environment
-        run: |
-          echo "/usr/lib64/openmpi/bin" >> $GITHUB_PATH
-          echo "LIBRARY_PATH=/usr/lib64/openmpi/lib" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=/usr/lib64/openmpi/lib" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=/usr/lib64/openmpi/lib/pkgconfig" >> $GITHUB_ENV
+          dnf install -y pkgconf-pkg-config perl-IPC-Cmd perl-Time-Piece clang-devel
 
       - name: Install Rust
         run: |
@@ -86,12 +79,6 @@ jobs:
           path: target
           key: manylinux-2-28-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Download Expander binary
-        run: |
-          EXPANDER_TAG=$(grep -m1 'inference-labs-inc/Expander.*tag' Cargo.toml | grep -o 'tag = "[^"]*"' | sed 's/tag = "\(.*\)"/\1/')
-          curl -sfL "https://github.com/inference-labs-inc/Expander/releases/download/${EXPANDER_TAG}/expander-exec-linux-x86_64" -o expander-exec
-          chmod +x expander-exec
-
       - name: Build Rust binaries
         run: cargo build --release --target x86_64-unknown-linux-gnu --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
 
@@ -104,8 +91,7 @@ jobs:
 
           mkdir -p "$BIN_DIR"
           cp "$MAIN_BIN" "$BIN_DIR/"
-          cp expander-exec "$BIN_DIR/"
-          chmod +x "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"
+          chmod +x "$BIN_DIR/$BINARY_NAME"
 
       - name: Build wheel
         run: uv build
@@ -175,9 +161,6 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install system dependencies
-        run: brew install open-mpi
-
       - name: Install Rust target
         run: rustup target add aarch64-apple-darwin
 
@@ -199,12 +182,6 @@ jobs:
           path: target
           key: macos-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Download Expander binary
-        run: |
-          EXPANDER_TAG=$(grep -m1 'inference-labs-inc/Expander.*tag' Cargo.toml | grep -o 'tag = "[^"]*"' | sed 's/tag = "\(.*\)"/\1/')
-          curl -sfL "https://github.com/inference-labs-inc/Expander/releases/download/${EXPANDER_TAG}/expander-exec-macos-aarch64" -o expander-exec
-          chmod +x expander-exec
-
       - name: Build Rust binaries
         run: cargo build --release --target aarch64-apple-darwin --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
         env:
@@ -219,8 +196,7 @@ jobs:
 
           mkdir -p "$BIN_DIR"
           cp "$MAIN_BIN" "$BIN_DIR/"
-          cp expander-exec "$BIN_DIR/"
-          chmod +x "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"
+          chmod +x "$BIN_DIR/$BINARY_NAME"
 
       - name: Build wheel
         run: uv build

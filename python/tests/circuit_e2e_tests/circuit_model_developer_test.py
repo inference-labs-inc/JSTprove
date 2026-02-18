@@ -275,7 +275,6 @@ def test_witness_prove_verify_true_inputs_dev_expander_call(
             input_file=temp_input_file,
             output_file=temp_output_file,
             proof_file=temp_proof_file,
-            ecc=False,
             quantized_path=str(model_fixture["quantized_model"]),
         ),
     )
@@ -288,7 +287,6 @@ def test_witness_prove_verify_true_inputs_dev_expander_call(
             input_file=temp_input_file,
             output_file=temp_output_file,
             proof_file=temp_proof_file,
-            ecc=False,
             quantized_path=str(model_fixture["quantized_model"]),
         ),
     )
@@ -315,19 +313,15 @@ def test_witness_prove_verify_true_inputs_dev_expander_call(
 
     assert stdout.count("Verification generation failed") == 0, "Verification failed"
     # Expected output
+    expected_cargo_runs = 3
     assert (
-        stdout.count("Running cargo command:") == 1
-    ), "Expected 'Running cargo command: ' in stdout once, but it was not found."
+        stdout.count("Running cargo command:") == expected_cargo_runs
+    ), "Expected 'Running cargo command:' three times."
     assert (
         stdout.count("Witness Generated") == 1
-    ), "Expected 'Witness Generated' in stdout three times, but it was not found."
-
-    assert (
-        stdout.count("expander-exec verify succeeded") == 1
-    ), "Expected 'expander-exec verify succeeded' but it was not found."
-    assert (
-        stdout.count("expander-exec prove succeeded") == 1
-    ), "Expected 'expander-exec prove succeeded' but it was not found."
+    ), "Expected 'Witness Generated' in stdout once."
+    assert stdout.count("Proved") >= 1, "Expected 'Proved' in stdout."
+    assert stdout.count("Verified") >= 1, "Expected 'Verified' in stdout."
 
 
 @pytest.mark.e2e
@@ -1113,7 +1107,6 @@ def test_witness_prove_verify_false_inputs_dev(
             output_file=temp_output_file,
             proof_file=temp_proof_file,
             quantized_path=str(model_fixture["quantized_model"]),
-            ecc=False,
         ),
     )
 
@@ -1129,7 +1122,6 @@ def test_witness_prove_verify_false_inputs_dev(
                 output_file=temp_output_file,
                 proof_file=temp_proof_file,
                 quantized_path=str(model_fixture["quantized_model"]),
-                ecc=False,
             ),
         )
 

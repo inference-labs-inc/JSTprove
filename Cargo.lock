@@ -96,8 +96,8 @@ checksum = "5f0e0fee31ef5ed1ba1316088939cea399010ed7731dba877ed44aeb407a75ea"
 
 [[package]]
 name = "arith"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "ark-std",
  "criterion",
@@ -320,8 +320,8 @@ dependencies = [
 
 [[package]]
 name = "babybear"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "arith",
  "ark-std",
@@ -358,8 +358,8 @@ dependencies = [
 
 [[package]]
 name = "bin"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "arith",
  "babybear",
@@ -376,7 +376,6 @@ dependencies = [
  "goldilocks",
  "log",
  "mersenne31",
- "mpi",
  "poly_commit",
  "polynomials",
  "serdes",
@@ -385,26 +384,6 @@ dependencies = [
  "transcript",
  "utils",
  "warp",
-]
-
-[[package]]
-name = "bindgen"
-version = "0.69.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "271383c67ccabffb7381723dea0672a673f292304fcb45c01cc648c7a8d58088"
-dependencies = [
- "bitflags 2.10.0",
- "cexpr",
- "clang-sys",
- "itertools 0.12.1",
- "lazy_static",
- "lazycell",
- "proc-macro2",
- "quote",
- "regex",
- "rustc-hash",
- "shlex",
- "syn 2.0.114",
 ]
 
 [[package]]
@@ -461,16 +440,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "build-probe-mpi"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d78ace2bb02fc18ad937f1599a853fcf3da2327bc1eb3c8e62b1f2fe4573bfd6"
-dependencies = [
- "pkg-config",
- "shell-words",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -504,15 +473,6 @@ dependencies = [
  "jobserver",
  "libc",
  "shlex",
-]
-
-[[package]]
-name = "cexpr"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fac387a98bb7c37292057cffc56d62ecb629900026402633ae9160df93a8766"
-dependencies = [
- "nom",
 ]
 
 [[package]]
@@ -563,8 +523,8 @@ dependencies = [
 
 [[package]]
 name = "circuit"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "arith",
  "ark-std",
@@ -573,7 +533,6 @@ dependencies = [
  "gkr_engine",
  "gkr_hashers",
  "log",
- "mpi",
  "rand",
  "serdes",
  "thiserror 1.0.69",
@@ -583,7 +542,7 @@ dependencies = [
 [[package]]
 name = "circuit-std-rs"
 version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/ecc?tag=v0.2.0#156a39cfd3fdaa396311e25b6ca58ec437ecdfb4"
+source = "git+https://github.com/inference-labs-inc/ecc?tag=v0.3.3#cb5bee0235182e4f0888d86fc201f1564030846c"
 dependencies = [
  "arith",
  "ark-bls12-381",
@@ -605,17 +564,6 @@ dependencies = [
  "serdes",
  "sha2",
  "tiny-keccak",
-]
-
-[[package]]
-name = "clang-sys"
-version = "1.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b023947811758c97c59bf9d1c188fd619ad4718dcaa767947df1cadb14f39f4"
-dependencies = [
- "glob",
- "libc",
- "libloading",
 ]
 
 [[package]]
@@ -666,8 +614,8 @@ checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
 
 [[package]]
 name = "config_macros"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "gkr_engine",
  "gkr_hashers",
@@ -683,15 +631,6 @@ name = "constant_time_eq"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
-
-[[package]]
-name = "conv"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78ff10625fd0ac447827aa30ea8b861fead473bb60aeb73af6c1c58caf0d1299"
-dependencies = [
- "custom_derive",
-]
 
 [[package]]
 name = "core-foundation"
@@ -781,8 +720,8 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
 name = "crosslayer_prototype"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "arith",
  "env_logger",
@@ -813,12 +752,6 @@ dependencies = [
  "generic-array",
  "typenum",
 ]
-
-[[package]]
-name = "custom_derive"
-version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef8ae57c4978a2acd8b869ce6b9ca1dfe817bff704c220209fdef2c0b75a01b9"
 
 [[package]]
 name = "data-encoding"
@@ -922,7 +855,7 @@ checksum = "ca81e6b4777c89fd810c25a4be2b1bd93ea034fbe58e6a75216a34c6b82c539b"
 [[package]]
 name = "expander_compiler"
 version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/ecc?tag=v0.2.0#156a39cfd3fdaa396311e25b6ca58ec437ecdfb4"
+source = "git+https://github.com/inference-labs-inc/ecc?tag=v0.3.3#cb5bee0235182e4f0888d86fc201f1564030846c"
 dependencies = [
  "arith",
  "ark-std",
@@ -942,7 +875,6 @@ dependencies = [
  "halo2curves",
  "macros",
  "mersenne31",
- "mpi",
  "num_cpus",
  "once_cell",
  "poly_commit",
@@ -1116,8 +1048,8 @@ dependencies = [
 
 [[package]]
 name = "gf2"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "arith",
  "ark-std",
@@ -1133,8 +1065,8 @@ dependencies = [
 
 [[package]]
 name = "gf2_128"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "arith",
  "ark-std",
@@ -1146,8 +1078,8 @@ dependencies = [
 
 [[package]]
 name = "gkr"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "arith",
  "ark-std",
@@ -1164,7 +1096,6 @@ dependencies = [
  "halo2curves",
  "log",
  "mersenne31",
- "mpi",
  "poly_commit",
  "polynomials",
  "rand",
@@ -1179,8 +1110,8 @@ dependencies = [
 
 [[package]]
 name = "gkr_engine"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "arith",
  "babybear",
@@ -1189,7 +1120,6 @@ dependencies = [
  "goldilocks",
  "itertools 0.13.0",
  "mersenne31",
- "mpi",
  "polynomials",
  "rand",
  "serdes",
@@ -1198,8 +1128,8 @@ dependencies = [
 
 [[package]]
 name = "gkr_hashers"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "arith",
  "halo2curves",
@@ -1209,15 +1139,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "glob"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
-
-[[package]]
 name = "goldilocks"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "arith",
  "ark-std",
@@ -1669,15 +1593,6 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
@@ -1739,26 +1654,14 @@ dependencies = [
 name = "jstprove_circuits"
 version = "0.1.0"
 dependencies = [
- "arith",
  "ark-std",
- "babybear",
- "bin",
  "chrono",
- "circuit",
  "circuit-std-rs",
  "clap",
- "crosslayer_prototype",
  "ethnum",
  "expander_compiler",
- "gf2",
- "gkr",
- "gkr_engine",
- "gkr_hashers",
- "goldilocks",
  "halo2curves",
  "lazy_static",
- "mersenne31",
- "mpi",
  "ndarray",
  "once_cell",
  "openssl",
@@ -1768,13 +1671,11 @@ dependencies = [
  "serde",
  "serde_bytes",
  "serde_json",
- "serdes",
  "sha2",
  "strum",
  "strum_macros",
  "thiserror 2.0.18",
  "tiny-keccak",
- "transcript",
  "zstd",
 ]
 
@@ -1788,12 +1689,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lazycell"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
-
-[[package]]
 name = "leb128fmt"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1804,35 +1699,6 @@ name = "libc"
 version = "0.2.181"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "459427e2af2b9c839b132acb702a1c654d95e10f8c326bfc2ad11310e458b1c5"
-
-[[package]]
-name = "libffi"
-version = "5.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0498fe5655f857803e156523e644dcdcdc3b3c7edda42ea2afdae2e09b2db87b"
-dependencies = [
- "libc",
- "libffi-sys",
-]
-
-[[package]]
-name = "libffi-sys"
-version = "4.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71d4f1d4ce15091955144350b75db16a96d4a63728500122706fb4d29a26afbb"
-dependencies = [
- "cc",
-]
-
-[[package]]
-name = "libloading"
-version = "0.8.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
-dependencies = [
- "cfg-if",
- "windows-link",
-]
 
 [[package]]
 name = "linux-raw-sys"
@@ -1864,7 +1730,7 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 [[package]]
 name = "macros"
 version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/ecc?tag=v0.2.0#156a39cfd3fdaa396311e25b6ca58ec437ecdfb4"
+source = "git+https://github.com/inference-labs-inc/ecc?tag=v0.3.3#cb5bee0235182e4f0888d86fc201f1564030846c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1904,8 +1770,8 @@ dependencies = [
 
 [[package]]
 name = "mersenne31"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "arith",
  "ark-std",
@@ -1951,32 +1817,6 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "mpi"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41457b69d35846af2fec1877a4f3b866a72b6ab2c9500218f115e65e10993b21"
-dependencies = [
- "build-probe-mpi",
- "conv",
- "libffi",
- "mpi-sys",
- "once_cell",
- "smallvec",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "mpi-sys"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f655543f54b263cbc3d2456bf714bd807d66a33eff8f70136687f0776d34f76"
-dependencies = [
- "bindgen",
- "build-probe-mpi",
- "cc",
 ]
 
 [[package]]
@@ -2305,8 +2145,8 @@ dependencies = [
 
 [[package]]
 name = "poly_commit"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "arith",
  "ark-std",
@@ -2330,8 +2170,8 @@ dependencies = [
 
 [[package]]
 name = "polynomials"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "arith",
  "ark-std",
@@ -2578,12 +2418,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustc-hash"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
-
-[[package]]
 name = "rustc_version"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2763,8 +2597,8 @@ dependencies = [
 
 [[package]]
 name = "serdes"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "ethnum",
  "halo2curves",
@@ -2774,8 +2608,8 @@ dependencies = [
 
 [[package]]
 name = "serdes_derive"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2816,12 +2650,6 @@ dependencies = [
  "rand",
  "win-sys",
 ]
-
-[[package]]
-name = "shell-words"
-version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc6fe69c597f9c37bfeeeeeb33da3530379845f10be461a66d16d03eca2ded77"
 
 [[package]]
 name = "shlex"
@@ -2927,8 +2755,8 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "sumcheck"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "arith",
  "circuit",
@@ -3210,8 +3038,8 @@ dependencies = [
 
 [[package]]
 name = "transcript"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "arith",
  "gkr_engine",
@@ -3233,8 +3061,8 @@ dependencies = [
 
 [[package]]
 name = "tree"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 dependencies = [
  "arith",
  "ark-std",
@@ -3342,8 +3170,8 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "utils"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.2.0#94d1da21d94c126b1ba1af868d0ee158665e4ebf"
+version = "0.3.0"
+source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
 
 [[package]]
 name = "vcpkg"
