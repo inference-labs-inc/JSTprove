@@ -8,7 +8,7 @@ use serde_json::Value;
 
 /// `ExpanderCompilerCollection` and proving framework imports
 use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
-use gkr_engine::{FieldEngine, GKREngine};
+use expander_compiler::gkr_engine::{FieldEngine, GKREngine};
 
 use crate::circuit_functions::{
     CircuitError,

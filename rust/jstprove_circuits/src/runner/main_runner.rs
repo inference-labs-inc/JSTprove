@@ -10,12 +10,12 @@ use expander_compiler::frontend::{
     ChallengeField, CircuitField, CompileOptions, Config, Define, Variable, WitnessSolver, compile,
     extra::debug_eval, internal::DumpLoadTwoVariables,
 };
-use gkr_engine::{FieldEngine, GKREngine, MPIConfig};
+use expander_compiler::gkr_engine::{FieldEngine, GKREngine, MPIConfig};
+use expander_compiler::serdes::ExpSerde;
 use io_reader::IOReader;
 use peakmem_alloc::{INSTRUMENTED_SYSTEM, PeakMemAlloc, PeakMemAllocTrait};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use serdes::ExpSerde;
 
 use crate::circuit_functions::hints::build_logup_hint_registry;
 use crate::io::io_reader;
@@ -24,7 +24,7 @@ use crate::runner::schema::{
     CompiledCircuit, ProofBundle, ProveRequest, VerifyRequest, VerifyResponse, WitnessBundle,
     WitnessRequest,
 };
-use expander_binary::executor;
+use expander_compiler::expander_binary::executor;
 
 const ZSTD_COMPRESSION_LEVEL: i32 = 3;
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
@@ -560,7 +560,7 @@ fn load_witness_solver<C: Config>(circuit_path: &str) -> Result<WitnessSolver<C>
 }
 
 fn prove_core<C: Config>(
-    expander_circuit: &mut expander_circuit::Circuit<C::FieldConfig>,
+    expander_circuit: &mut expander_compiler::expander_circuit::Circuit<C::FieldConfig>,
     witness_path: &str,
     proof_path: &str,
     compress: bool,
@@ -598,7 +598,7 @@ fn prove_core<C: Config>(
 }
 
 fn verify_core<C: Config, I, CircuitDefaultType>(
-    expander_circuit: &mut expander_circuit::Circuit<C::FieldConfig>,
+    expander_circuit: &mut expander_compiler::expander_circuit::Circuit<C::FieldConfig>,
     io_reader: &mut I,
     input_path: &str,
     output_path: &str,
@@ -655,7 +655,7 @@ where
         executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v)
             .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
 
-    let mpi_config = gkr_engine::MPIConfig::verifier_new(1);
+    let mpi_config = MPIConfig::verifier_new(1);
     if !executor::verify::<C>(expander_circuit, mpi_config, &proof, &claimed_v) {
         return Err(RunError::Verify("Verification failed".into()));
     }
@@ -1007,7 +1007,7 @@ where
         executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v)
             .map_err(|e| format!("proof load: {e:?}"))?;
 
-    let mpi_config = gkr_engine::MPIConfig::verifier_new(1);
+    let mpi_config = MPIConfig::verifier_new(1);
     if executor::verify::<C>(&mut circuit, mpi_config, &proof, &claimed_v) {
         Ok(format!("verified: {}", job.proof))
     } else {
@@ -1244,7 +1244,7 @@ fn verify_from_bytes<C: Config>(
     let (proof, claimed_v) = executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_data)
         .map_err(|e| RunError::Deserialize(format!("proof: {e:?}")))?;
 
-    let mpi_config = gkr_engine::MPIConfig::verifier_new(1);
+    let mpi_config = MPIConfig::verifier_new(1);
     Ok(executor::verify::<C>(
         &mut expander_circuit,
         mpi_config,

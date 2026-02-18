@@ -1,7 +1,7 @@
 use crate::runner::errors::RunError;
 use expander_compiler::frontend::Config;
 use expander_compiler::frontend::internal::DumpLoadTwoVariables;
-use gkr_engine::{FieldEngine, GKREngine};
+use expander_compiler::gkr_engine::{FieldEngine, GKREngine};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::io::Read;
