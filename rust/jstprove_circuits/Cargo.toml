@@ -30,7 +30,6 @@ gkr_hashers.workspace = true
 goldilocks.workspace = true
 serdes.workspace = true
 ndarray.workspace = true
-mpi.workspace = true
 thiserror.workspace = true
 strum.workspace = true
 strum_macros.workspace = true

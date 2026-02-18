@@ -971,8 +971,6 @@ def run_expander_raw(  # noqa: PLR0913, PLR0912, PLR0915, C901
     env = os.environ.copy()
     env["RUSTFLAGS"] = "-C target-cpu=native"
     _prepare_subprocess_env(env)
-    time_measure = "/usr/bin/time"
-
     expander_binary_path = _find_expander_binary()
     if not expander_binary_path:
         msg = (
@@ -987,7 +985,6 @@ def run_expander_raw(  # noqa: PLR0913, PLR0912, PLR0915, C901
         witness_file = _maybe_decompress(witness_file, tmp_dir)
 
         args = [
-            time_measure,
             expander_binary_path,
             "-p",
             pcs_type,

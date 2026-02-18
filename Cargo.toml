@@ -19,25 +19,23 @@ tiny-keccak = { version = "2.0", features = ["keccak"] }
 halo2curves = { git = "https://github.com/PolyhedraZK/halo2curves", default-features = false, features = ["bits"] }
 
 # All deps from inference-labs-inc
-arith = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.2.0" }
-expander_circuit = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.2.0", package = "circuit" }
-gkr = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.2.0" }
-gf2 = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.2.0" }
-expander_binary = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.2.0", package = "bin" }
-mersenne31 = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.2.0" }
-expander_transcript = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.2.0", package = "transcript" }
-crosslayer_prototype = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.2.0" }
-babybear = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.2.0" }
-gkr_engine = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.2.0", package = "gkr_engine" }
-gkr_hashers = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.2.0" }
-goldilocks = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.2.0" }
-serdes = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.2.0" }
+arith = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.3.1" }
+expander_circuit = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.3.1", package = "circuit" }
+gkr = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.3.1" }
+gf2 = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.3.1" }
+expander_binary = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.3.1", package = "bin" }
+mersenne31 = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.3.1" }
+expander_transcript = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.3.1", package = "transcript" }
+crosslayer_prototype = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.3.1" }
+babybear = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.3.1" }
+gkr_engine = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.3.1", package = "gkr_engine" }
+gkr_hashers = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.3.1" }
+goldilocks = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.3.1" }
+serdes = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.3.1" }
 
 # ECC from inference-labs-inc
-expander_compiler = { git = "https://github.com/inference-labs-inc/ecc", tag = "v0.2.0" }
-circuit-std-rs = { git = "https://github.com/inference-labs-inc/ecc", tag = "v0.2.0" }
-
-mpi = "0.8.0"
+expander_compiler = { git = "https://github.com/inference-labs-inc/ecc", tag = "v0.3.1" }
+circuit-std-rs = { git = "https://github.com/inference-labs-inc/ecc", tag = "v0.3.1" }
 thiserror = "2.0.15"
 strum = "0.27.2"
 strum_macros = "0.27.2"

@@ -578,7 +578,7 @@ fn prove_core<C: Config>(
     expander_circuit.public_input.clone_from(&simd_public_input);
 
     expander_circuit.evaluate();
-    let mpi_config = MPIConfig::prover_new(None, None);
+    let mpi_config = MPIConfig::prover_new();
     let (claimed_v, proof) = executor::prove::<C>(expander_circuit, mpi_config);
 
     let proof_bytes: Vec<u8> = executor::dump_proof_and_claimed_v(&proof, &claimed_v)
@@ -1219,7 +1219,7 @@ fn prove_from_bytes<C: Config>(
     expander_circuit.public_input.clone_from(&simd_public_input);
     expander_circuit.evaluate();
 
-    let mpi_config = MPIConfig::prover_new(None, None);
+    let mpi_config = MPIConfig::prover_new();
     let (claimed_v, proof) = executor::prove::<C>(&mut expander_circuit, mpi_config);
     let proof_bytes = executor::dump_proof_and_claimed_v(&proof, &claimed_v)
         .map_err(|e| RunError::Serialize(format!("proof: {e:?}")))?;

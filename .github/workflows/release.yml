@@ -23,14 +23,7 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          dnf install -y openmpi-devel pkgconf-pkg-config perl-IPC-Cmd perl-Time-Piece clang-devel
-
-      - name: Configure MPI environment
-        run: |
-          echo "/usr/lib64/openmpi/bin" >> $GITHUB_PATH
-          echo "LIBRARY_PATH=/usr/lib64/openmpi/lib" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=/usr/lib64/openmpi/lib" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=/usr/lib64/openmpi/lib/pkgconfig" >> $GITHUB_ENV
+          dnf install -y pkgconf-pkg-config perl-IPC-Cmd perl-Time-Piece clang-devel
 
       - name: Install Rust
         run: |
@@ -174,9 +167,6 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Install system dependencies
-        run: brew install open-mpi
 
       - name: Install Rust target
         run: rustup target add aarch64-apple-darwin
