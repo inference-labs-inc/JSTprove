@@ -1,27 +1,18 @@
 from __future__ import annotations
 
-import atexit
-import contextlib
 import functools
 import json
 import logging
 import os
 import re
-import shutil
-import socket
-import struct
 import subprocess
 import sys
-import tempfile
-import threading
-import urllib.error
-import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from importlib.metadata import version as get_version
 from pathlib import Path
-from time import sleep, time
+from time import time
 from typing import Any, TypeVar
 
 try:
@@ -36,7 +27,6 @@ from python.core.utils.benchmarking_helpers import (
 )
 from python.core.utils.errors import (
     FileCacheError,
-    MissingFileError,
     ProofBackendError,
     ProofSystemNotImplementedError,
 )
@@ -46,8 +36,6 @@ logger = logging.getLogger(__name__)
 
 
 def _prepare_subprocess_env(env: dict[str, str]) -> dict[str, str]:
-    env.setdefault("OMPI_MCA_mca_base_component_show_load_errors", "0")
-    env.setdefault("PRTE_MCA_prte_silence_shared_fs", "1")
     return env
 
 
@@ -61,11 +49,6 @@ class RunType(Enum):
 
 class ZKProofSystems(Enum):
     Expander = "Expander"
-
-
-class ExpanderMode(Enum):
-    PROVE = "prove"
-    VERIFY = "verify"
 
 
 @dataclass
@@ -86,42 +69,10 @@ class CircuitExecutionConfig:
     proof_system: ZKProofSystems = ZKProofSystems.Expander
     circuit_path: str | None = None
     quantized_path: str | None = None
-    ecc: bool = True
     dev_mode: bool = False
     write_json: bool = False
     bench: bool = False
     compress: bool = True
-
-
-def filter_expander_output(stderr: str) -> str:
-    """Keep Rust panic + MPI exit summary, drop system stack traces and notes."""
-    lines = stderr.splitlines()
-    filtered = []
-    rust_panic_started = False
-
-    for line in lines:
-        # Start capturing Rust panic/assertion
-        if "panicked at" in line or "assertion" in line.lower():
-            rust_panic_started = True
-            filtered.append(line)
-            continue
-
-        # Keep lines following Rust panic that are relevant
-        if rust_panic_started:
-            # Stop at system stack traces or abort messages
-            if (
-                re.match(r"\[\s*\d+\]", line)
-                or "*** Process received signal ***" in line
-            ):
-                rust_panic_started = False
-                continue
-            filtered.append(line)
-
-        # Always keep MPI exit summary
-        if line.startswith("prterun noticed that process rank"):
-            filtered.append(line)
-
-    return "\n".join(filtered)
 
 
 def extract_rust_error(stderr: str) -> str:
@@ -694,365 +645,6 @@ def proof_path(base: str) -> str:
     return f"{base}_proof{ARTIFACT_EXT}"
 
 
-def _maybe_decompress(src: str, tmp_dir: str) -> str:
-    with Path(src).open("rb") as f:
-        magic = f.read(4)
-    if magic != ZSTD_MAGIC:
-        return src
-    import zstandard  # noqa: PLC0415
-
-    dst = str(Path(tmp_dir) / Path(src).name)
-    dctx = zstandard.ZstdDecompressor()
-    with Path(src).open("rb") as fin, Path(dst).open("wb") as fout:
-        dctx.copy_stream(fin, fout)
-    return dst
-
-
-_circuit_cache_lock = threading.Lock()
-_circuit_cache: dict[str, str] = {}
-_circuit_cache_dir: str | None = None
-
-
-def _get_circuit_cache_dir() -> str:
-    global _circuit_cache_dir  # noqa: PLW0603
-    if _circuit_cache_dir is None:
-        _circuit_cache_dir = tempfile.mkdtemp(prefix="jstprove_circuit_cache_")
-        atexit.register(shutil.rmtree, _circuit_cache_dir, ignore_errors=True)
-    return _circuit_cache_dir
-
-
-def _decompress_circuit_cached(src: str) -> str:
-    src = str(Path(src).resolve())
-    with _circuit_cache_lock:
-        if src in _circuit_cache:
-            cached = _circuit_cache[src]
-            if Path(cached).exists():
-                return cached
-            del _circuit_cache[src]
-
-        with Path(src).open("rb") as f:
-            magic = f.read(4)
-        if magic != ZSTD_MAGIC:
-            _circuit_cache[src] = src
-            return src
-
-        import zstandard  # noqa: PLC0415
-
-        cache_dir = _get_circuit_cache_dir()
-        fd, dst = tempfile.mkstemp(dir=cache_dir, suffix=".bin")
-        os.close(fd)
-        dctx = zstandard.ZstdDecompressor()
-        with Path(src).open("rb") as fin, Path(dst).open("wb") as fout:
-            dctx.copy_stream(fin, fout)
-        _circuit_cache[src] = dst
-        return dst
-
-
-@dataclass
-class _ExpanderDaemon:
-    process: subprocess.Popen
-    port: int
-    circuit_file: str
-
-
-_daemon_lock = threading.Lock()
-_daemon_registry: dict[str, _ExpanderDaemon] = {}
-
-_EXPANDER_BINARY_PATHS = [
-    "./Expander/target/release/expander-exec",
-    Path(__file__).parent.parent / "binaries" / "expander-exec",
-    Path(sys.prefix) / "bin" / "expander-exec",
-]
-
-
-def _find_expander_binary() -> str | None:
-    for path in _EXPANDER_BINARY_PATHS:
-        if Path(path).exists():
-            return str(path)
-    return None
-
-
-def _find_free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("", 0))
-        return s.getsockname()[1]
-
-
-def _start_daemon(circuit_file: str, pcs_type: str) -> _ExpanderDaemon | None:
-    binary = _find_expander_binary()
-    if binary is None:
-        return None
-    port = _find_free_port()
-    env = os.environ.copy()
-    env["RUSTFLAGS"] = "-C target-cpu=native"
-    _prepare_subprocess_env(env)
-    try:
-        process = subprocess.Popen(
-            [
-                binary,
-                "-p",
-                pcs_type,
-                "serve",
-                "--circuit-file",
-                circuit_file,
-                "--host-ip",
-                "127.0.0.1",
-                "--port",
-                str(port),
-            ],
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except OSError:
-        logger.exception("Failed to start expander daemon")
-        return None
-
-    url = f"http://127.0.0.1:{port}/ready"
-    for _ in range(300):
-        if process.poll() is not None:
-            logger.warning("Expander daemon exited during startup")
-            return None
-        try:
-            with urllib.request.urlopen(url, timeout=1) as resp:  # noqa: S310
-                if resp.status == 200:  # noqa: PLR2004
-                    logger.info(
-                        "Expander daemon ready on port %d for %s",
-                        port,
-                        circuit_file,
-                    )
-                    return _ExpanderDaemon(
-                        process=process,
-                        port=port,
-                        circuit_file=circuit_file,
-                    )
-        except (urllib.error.URLError, OSError, TimeoutError):
-            pass
-        sleep(0.1)
-
-    logger.warning("Expander daemon failed to become ready within 30s")
-    process.terminate()
-    try:
-        process.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait()
-    return None
-
-
-def _get_daemon(circuit_file: str, pcs_type: str) -> _ExpanderDaemon | None:
-    with _daemon_lock:
-        daemon = _daemon_registry.get(circuit_file)
-        if daemon is not None:
-            if daemon.process.poll() is None:
-                return daemon
-            del _daemon_registry[circuit_file]
-
-    daemon = _start_daemon(circuit_file, pcs_type)
-    if daemon is None:
-        return None
-
-    with _daemon_lock:
-        existing = _daemon_registry.get(circuit_file)
-        if existing is not None and existing.process.poll() is None:
-            daemon.process.terminate()
-            with contextlib.suppress(OSError, subprocess.TimeoutExpired):
-                daemon.process.wait(timeout=5)
-            if daemon.process.poll() is None:
-                with contextlib.suppress(OSError):
-                    daemon.process.kill()
-            return existing
-        _daemon_registry[circuit_file] = daemon
-    return daemon
-
-
-def _verify_via_daemon(
-    daemon: _ExpanderDaemon,
-    witness_file: str,
-    proof_file: str,
-) -> subprocess.CompletedProcess[str] | None:
-    try:
-        witness_bytes = Path(witness_file).read_bytes()
-        proof_bytes = Path(proof_file).read_bytes()
-    except OSError:
-        return None
-
-    payload = (
-        struct.pack("<QQ", len(witness_bytes), len(proof_bytes))
-        + witness_bytes
-        + proof_bytes
-    )
-
-    url = f"http://127.0.0.1:{daemon.port}/verify"
-    req = urllib.request.Request(url, data=payload, method="POST")  # noqa: S310
-    try:
-        with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310
-            body = resp.read().decode()
-    except (urllib.error.URLError, OSError, TimeoutError):
-        return None
-
-    if body.strip() != "success":
-        logger.warning("Expander daemon verification returned: %s", body.strip())
-        return None
-
-    return subprocess.CompletedProcess(
-        args=[],
-        returncode=0,
-        stdout=body,
-        stderr="",
-    )
-
-
-def _shutdown_daemons() -> None:
-    with _daemon_lock:
-        daemons = list(_daemon_registry.values())
-        _daemon_registry.clear()
-    for daemon in daemons:
-        try:
-            daemon.process.terminate()
-            daemon.process.wait(timeout=5)
-        except (OSError, subprocess.TimeoutExpired):
-            with contextlib.suppress(OSError):
-                daemon.process.kill()
-
-
-atexit.register(_shutdown_daemons)
-
-
-def run_expander_raw(  # noqa: PLR0913, PLR0912, PLR0915, C901
-    mode: ExpanderMode,
-    circuit_file: str,
-    witness_file: str,
-    proof_file: str,
-    pcs_type: str = "Hyrax",
-    *,
-    bench: bool = False,
-) -> subprocess.CompletedProcess[str]:
-    """Run the Expander executable directly using Cargo.
-
-    Args:
-        mode (ExpanderMode): Operation mode (PROVE or VERIFY).
-        circuit_file (str): Path to the circuit definition file.
-        witness_file (str): Path to the witness file.
-        proof_file (str): Path to the proof file (input for verification,
-                          output for proving).
-        pcs_type (str, optional):
-            Polynomial commitment scheme type ("Hyrax" or "Raw").
-            Defaults to "Hyrax".
-        bench (bool, optional):
-            If True, collect runtime and memory benchmark data. Defaults to False.
-
-    Returns:
-        subprocess.CompletedProcess[str]: Exit message from the subprocess.
-    """
-    for file_path, label in [
-        (circuit_file, "circuit_file"),
-        (witness_file, "witness_file"),
-        # For VERIFY mode, the proof_file is an input, not just an output
-        (proof_file, "proof_file") if mode == ExpanderMode.VERIFY else (None, None),
-    ]:
-        if file_path and not Path(file_path).exists():
-            msg = f"Missing file required for {label}"
-            raise MissingFileError(msg, file_path)
-
-    circuit_file = _decompress_circuit_cached(circuit_file)
-
-    if mode == ExpanderMode.VERIFY:
-        try:
-            daemon = _get_daemon(circuit_file, pcs_type)
-            if daemon is not None:
-                result = _verify_via_daemon(daemon, witness_file, proof_file)
-                if result is not None:
-                    return result
-                logger.warning("Daemon verify failed, falling back to subprocess")
-        except Exception:
-            logger.exception("Daemon path error, falling back to subprocess")
-
-    env = os.environ.copy()
-    env["RUSTFLAGS"] = "-C target-cpu=native"
-    _prepare_subprocess_env(env)
-    expander_binary_path = _find_expander_binary()
-    if not expander_binary_path:
-        msg = (
-            "Binary 'expander-exec' not found. Install JSTprove with "
-            "'uv tool install .' or build with 'cargo build --release "
-            "--manifest-path Expander/Cargo.toml --bin expander-exec'."
-        )
-        raise ProofBackendError(msg)
-    args: list[str] = []
-    tmp_dir = tempfile.mkdtemp(prefix="jstprove_expander_")
-    try:
-        witness_file = _maybe_decompress(witness_file, tmp_dir)
-
-        args = [
-            expander_binary_path,
-            "-p",
-            pcs_type,
-        ]
-        if mode == ExpanderMode.PROVE:
-            args.append(mode.value)
-            proof_command = "-o"
-        else:
-            args.append(mode.value)
-            proof_command = "-i"
-            proof_file = _maybe_decompress(proof_file, tmp_dir)
-
-        args.extend(["-c", circuit_file])
-        args.extend(["-w", witness_file])
-        args.extend([proof_command, proof_file])
-
-        if bench:
-            stop_event, monitor_thread, monitor_results = start_memory_collection(
-                "expander-exec",
-            )
-        start_time = time()
-        result = subprocess.run(
-            args,
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        end_time = time()
-
-        print("\n--- BENCHMARK RESULTS ---")  # noqa: T201
-        print(f"Rust time taken: {end_time - start_time:.4f} seconds")  # noqa: T201
-
-        if bench:
-            memory = end_memory_collection(stop_event, monitor_thread, monitor_results)
-            print(f"Rust subprocess memory: {memory['total']:.2f} MB")  # noqa: T201
-
-        if result.returncode != 0:
-            clean_stderr = filter_expander_output(result.stderr)
-            msg = f"Expander {mode.value} failed:\n{clean_stderr}"
-            logger.warning(msg)
-            msg = f"Expander {mode.value} failed"
-            raise ProofBackendError(
-                msg,
-                command=args,
-                returncode=result.returncode,
-                stdout=result.stdout,
-                stderr=clean_stderr,
-            )
-
-        print(  # noqa: T201
-            f"✅ expander-exec {mode.value} succeeded:\n{result.stdout}",
-        )
-
-        print(f"Time taken: {end_time - start_time:.4f} seconds")  # noqa: T201
-    except OSError as e:
-        msg = f"Failed to execute Expander {mode.value}: {e}"
-        logger.exception(msg)
-        raise ProofBackendError(
-            msg,
-            command=args,
-        ) from e
-    else:
-        return result
-    finally:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-
-
 def compile_circuit(  # noqa: PLR0913
     circuit_name: str,
     circuit_path: str,
@@ -1196,7 +788,6 @@ def generate_proof(  # noqa: PLR0913
     proof_system: ZKProofSystems = ZKProofSystems.Expander,
     *,
     dev_mode: bool = False,
-    ecc: bool = True,
     bench: bool = False,
     compress: bool = True,
 ) -> subprocess.CompletedProcess[str]:
@@ -1212,9 +803,6 @@ def generate_proof(  # noqa: PLR0913
         dev_mode (bool, optional):
             If True, recompiles the rust binary (run in development mode).
             Defaults to False.
-        ecc (bool, optional):
-            If true, run proof using ECC api, otherwise run directly through Expander.
-            Defaults to True.
         bench (bool, optional):
             If True, enable benchmarking. Defaults to False.
 
@@ -1225,44 +813,31 @@ def generate_proof(  # noqa: PLR0913
         subprocess.CompletedProcess[str]: Exit message from the subprocess.
     """
     if proof_system == ZKProofSystems.Expander:
-        if ecc:
-            # Extract the binary name from the circuit path
-            binary_name = Path(circuit_name).name
+        binary_name = Path(circuit_name).name
+        args = {
+            "n": circuit_name,
+            "c": circuit_path,
+            "w": witness_file,
+            "p": proof_file,
+            "m": metadata_path,
+        }
+        if not compress:
+            args["no-compress"] = True
 
-            # Prepare arguments
-            args = {
-                "n": circuit_name,
-                "c": circuit_path,
-                "w": witness_file,
-                "p": proof_file,
-                "m": metadata_path,
-            }
-            if not compress:
-                args["no-compress"] = True
-
-            try:
-                return run_cargo_command(
-                    binary_name=binary_name,
-                    command_type=RunType.PROVE_WITNESS.value,
-                    args=args,
-                    dev_mode=dev_mode,
-                    bench=bench,
-                )
-            except ProofBackendError as e:
-                warning = f"Warning: Proof generation failed: {e}"
-                logger.warning(warning)
-                raise
-        else:
-            return run_expander_raw(
-                mode=ExpanderMode.PROVE,
-                circuit_file=circuit_path,
-                witness_file=witness_file,
-                proof_file=proof_file,
+        try:
+            return run_cargo_command(
+                binary_name=binary_name,
+                command_type=RunType.PROVE_WITNESS.value,
+                args=args,
+                dev_mode=dev_mode,
                 bench=bench,
             )
-    else:
-        msg = f"Proof system {proof_system} not implemented"
-        raise ProofSystemNotImplementedError(msg)
+        except ProofBackendError as e:
+            warning = f"Warning: Proof generation failed: {e}"
+            logger.warning(warning)
+            raise
+    msg = f"Proof system {proof_system} not implemented"
+    raise ProofSystemNotImplementedError(msg)
 
 
 def generate_verification(  # noqa: PLR0913
@@ -1276,7 +851,6 @@ def generate_verification(  # noqa: PLR0913
     proof_system: ZKProofSystems = ZKProofSystems.Expander,
     *,
     dev_mode: bool = False,
-    ecc: bool = True,
     bench: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """Verify a given proof.
@@ -1293,9 +867,6 @@ def generate_verification(  # noqa: PLR0913
         dev_mode (bool, optional):
             If True, recompiles the rust binary (run in development mode).
             Defaults to False.
-        ecc (bool, optional):
-            If true, run proof using ECC api, otherwise run directly through Expander.
-            Defaults to True.
         bench (bool, optional):
             If True, enable benchmarking. Defaults to False.
 
@@ -1306,44 +877,30 @@ def generate_verification(  # noqa: PLR0913
         subprocess.CompletedProcess[str]: Exit message from the subprocess.
     """
     if proof_system == ZKProofSystems.Expander:
-        if ecc:
-            # Extract the binary name from the circuit path
-            binary_name = Path(circuit_name).name
-
-            # Prepare arguments
-            args = {
-                "n": circuit_name,
-                "c": circuit_path,
-                "i": input_file,
-                "o": output_file,
-                "w": witness_file,
-                "p": proof_file,
-                "m": metadata_path,
-            }
-            # Run the command
-            try:
-                return run_cargo_command(
-                    binary_name=binary_name,
-                    command_type=RunType.GEN_VERIFY.value,
-                    args=args,
-                    dev_mode=dev_mode,
-                    bench=bench,
-                )
-            except ProofBackendError as e:
-                warning = f"Warning: Verification generation failed: {e}"
-                logger.warning(warning)
-                raise
-        else:
-            return run_expander_raw(
-                mode=ExpanderMode.VERIFY,
-                circuit_file=circuit_path,
-                witness_file=witness_file,
-                proof_file=proof_file,
+        binary_name = Path(circuit_name).name
+        args = {
+            "n": circuit_name,
+            "c": circuit_path,
+            "i": input_file,
+            "o": output_file,
+            "w": witness_file,
+            "p": proof_file,
+            "m": metadata_path,
+        }
+        try:
+            return run_cargo_command(
+                binary_name=binary_name,
+                command_type=RunType.GEN_VERIFY.value,
+                args=args,
+                dev_mode=dev_mode,
                 bench=bench,
             )
-    else:
-        msg = f"Proof system {proof_system} not implemented"
-        raise ProofSystemNotImplementedError(msg)
+        except ProofBackendError as e:
+            warning = f"Warning: Verification generation failed: {e}"
+            logger.warning(warning)
+            raise
+    msg = f"Proof system {proof_system} not implemented"
+    raise ProofSystemNotImplementedError(msg)
 
 
 def run_end_to_end(  # noqa: PLR0913
@@ -1355,7 +912,6 @@ def run_end_to_end(  # noqa: PLR0913
     *,
     demo: bool = False,
     dev_mode: bool = False,
-    ecc: bool = True,
     compress: bool = True,
 ) -> int:
     """Run the full pipeline for proving and verifying a circuit.
@@ -1378,9 +934,6 @@ def run_end_to_end(  # noqa: PLR0913
         dev_mode (bool, optional):
             If True, recompiles the rust binary (run in development mode).
             Defaults to False.
-        ecc (bool, optional):
-            If true, run proof using ECC api, otherwise run directly through Expander.
-            Defaults to True.
 
     Raises:
         NotImplementedError: If proof system is not supported.
@@ -1425,7 +978,6 @@ def run_end_to_end(  # noqa: PLR0913
             f"{base}_metadata.json",
             proof_system,
             dev_mode=dev_mode,
-            ecc=ecc,
             compress=compress,
         )
         return generate_verification(
@@ -1438,7 +990,6 @@ def run_end_to_end(  # noqa: PLR0913
             f"{base}_metadata.json",
             proof_system,
             dev_mode=dev_mode,
-            ecc=ecc,
         )
     msg = f"Proof system {proof_system} not implemented"
     raise ProofSystemNotImplementedError(msg)

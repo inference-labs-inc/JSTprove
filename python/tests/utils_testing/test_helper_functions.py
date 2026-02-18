@@ -9,7 +9,6 @@ import pytest
 from python.core.utils.errors import ProofBackendError, ProofSystemNotImplementedError
 from python.core.utils.helper_functions import (
     CircuitExecutionConfig,
-    ExpanderMode,
     RunType,
     ZKProofSystems,
     _prepare_subprocess_env,
@@ -547,25 +546,6 @@ def test_generate_witness_unknown_raises() -> None:
 
 
 @pytest.mark.integration
-@patch("python.core.utils.helper_functions.run_expander_raw")
-@patch(
-    "python.core.utils.helper_functions.get_expander_file_paths",
-    return_value={"circuit_file": "c", "witness_file": "w", "proof_file": "p"},
-)
-def test_generate_proof_expander_no_ecc(
-    mock_paths: MagicMock,
-    mock_exec: MagicMock,
-) -> None:
-    generate_proof("model", "c", "w", "p", ZKProofSystems.Expander, ecc=False)
-    assert mock_exec.call_args[1]["mode"] == ExpanderMode.PROVE
-    assert mock_exec.call_args[1]["circuit_file"] == "c"
-    assert mock_exec.call_args[1]["witness_file"] == "w"
-    assert mock_exec.call_args[1]["proof_file"] == "p"
-
-    assert mock_exec.call_count == 1
-
-
-@pytest.mark.integration
 @patch("python.core.utils.helper_functions.run_cargo_command")
 def test_generate_proof_expander_with_ecc(mock_run: MagicMock) -> None:
     generate_proof(
@@ -575,7 +555,6 @@ def test_generate_proof_expander_with_ecc(mock_run: MagicMock) -> None:
         "p",
         "metadata.json",
         ZKProofSystems.Expander,
-        ecc=True,
     )
     mock_run.assert_called_once()
     _, kwargs = mock_run.call_args
@@ -599,7 +578,6 @@ def test_generate_proof_expander_with_ecc_dev_mode_true(mock_run: MagicMock) -> 
         "p",
         "metadata.json",
         ZKProofSystems.Expander,
-        ecc=True,
         dev_mode=True,
     )
     mock_run.assert_called_once()
@@ -643,32 +621,6 @@ def test_generate_proof_expander_rust_error(
 
 
 # # ---------- generate_verification ----------
-@pytest.mark.integration
-@patch("python.core.utils.helper_functions.run_expander_raw")
-@patch(
-    "python.core.utils.helper_functions.get_expander_file_paths",
-    return_value={"circuit_file": "c", "witness_file": "w", "proof_file": "p"},
-)
-def test_generate_verify_expander_no_ecc(
-    mock_paths: MagicMock,
-    mock_exec: MagicMock,
-) -> None:
-    generate_verification(
-        "model",
-        "c",
-        "i",
-        "o",
-        "w",
-        "p",
-        ZKProofSystems.Expander,
-        ecc=False,
-    )
-    assert mock_exec.call_args[1]["mode"] == ExpanderMode.VERIFY
-    assert mock_exec.call_args[1]["circuit_file"] == "c"
-    assert mock_exec.call_args[1]["witness_file"] == "w"
-    assert mock_exec.call_args[1]["proof_file"] == "p"
-
-    assert mock_exec.call_count == 1
 
 
 @pytest.mark.integration
@@ -683,7 +635,6 @@ def test_generate_verify_expander_with_ecc(mock_run: MagicMock) -> None:
         "p",
         "metadata.json",
         ZKProofSystems.Expander,
-        ecc=True,
     )
     mock_run.assert_called_once()
 
@@ -713,7 +664,6 @@ def test_generate_verify_expander_with_ecc_dev_mode_true(mock_run: MagicMock) ->
         "p",
         "metadata.json",
         ZKProofSystems.Expander,
-        ecc=True,
         dev_mode=True,
     )
     _, kwargs = mock_run.call_args
@@ -860,7 +810,6 @@ def test_run_end_to_end_calls_all(
         "m_circuit_metadata.json",
         ZKProofSystems.Expander,
         dev_mode=False,
-        ecc=True,
         compress=True,
     )
     mock_verify.assert_called_once_with(
@@ -873,7 +822,6 @@ def test_run_end_to_end_calls_all(
         "m_circuit_metadata.json",
         ZKProofSystems.Expander,
         dev_mode=False,
-        ecc=True,
     )
 
 

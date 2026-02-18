@@ -174,7 +174,6 @@ def test_parse_proof_dispatch_logic(
         quantized_path="q",
         run_type=RunType.COMPILE_CIRCUIT,
         dev_mode=False,
-        ecc=True,
         write_json=False,
         bench=False,
     )
@@ -216,7 +215,6 @@ def test_parse_proof_dispatch_logic(
         quantized_path="q",
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
-        ecc=True,
         write_json=False,
         bench=False,
     )
@@ -255,7 +253,6 @@ def test_parse_proof_dispatch_logic(
         quantized_path="q",
         run_type=RunType.PROVE_WITNESS,
         dev_mode=False,
-        ecc=True,
         write_json=False,
         bench=False,
     )
@@ -293,7 +290,6 @@ def test_parse_proof_dispatch_logic(
         quantized_path="q",
         run_type=RunType.GEN_VERIFY,
         dev_mode=False,
-        ecc=True,
         write_json=False,
         bench=False,
     )
@@ -331,7 +327,6 @@ def test_parse_proof_dispatch_logic(
         quantized_path="q",
         run_type=RunType.END_TO_END,
         dev_mode=False,
-        ecc=True,
         write_json=False,
         bench=False,
     )
@@ -709,7 +704,6 @@ def test_base_testing_calls_parse_proof_run_type_correctly(
         quantized_path="quantized_path.pt",
         run_type=RunType.GEN_WITNESS,
         dev_mode=False,
-        ecc=True,
         write_json=True,
         bench=False,
     )
@@ -835,7 +829,6 @@ def test_parse_proof_run_type_invalid_run_type(
         quantized_path="quantized_model.pt",
         run_type="NOT_A_REAL_RUN_TYPE",  # Invalid run type
         dev_mode=False,
-        ecc=True,
         write_json=False,
         bench=False,
     )
@@ -877,7 +870,6 @@ def test_parse_proof_run_type_catches_internal_exception(
         quantized_path="quantized_path.pt",
         run_type=RunType.COMPILE_CIRCUIT,
         dev_mode=False,
-        ecc=True,
         write_json=False,
         bench=False,
     )

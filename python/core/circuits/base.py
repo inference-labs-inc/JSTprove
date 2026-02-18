@@ -220,7 +220,6 @@ class Circuit:
                     output_file=exec_config.output_file,
                     proof_system=exec_config.proof_system,
                     dev_mode=exec_config.dev_mode,
-                    ecc=exec_config.ecc,
                     compress=exec_config.compress,
                 )
             elif exec_config.run_type == RunType.COMPILE_CIRCUIT:
@@ -271,7 +270,6 @@ class Circuit:
                     metadata_path=exec_config.metadata_path,
                     proof_system=exec_config.proof_system,
                     dev_mode=exec_config.dev_mode,
-                    ecc=exec_config.ecc,
                     bench=exec_config.bench,
                     compress=exec_config.compress,
                 )
@@ -298,7 +296,6 @@ class Circuit:
                     metadata_path=exec_config.metadata_path,
                     proof_system=proof_system,
                     dev_mode=exec_config.dev_mode,
-                    ecc=exec_config.ecc,
                     bench=exec_config.bench,
                 )
             else:

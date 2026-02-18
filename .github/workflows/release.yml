@@ -79,12 +79,6 @@ jobs:
           path: target
           key: manylinux-2-28-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Download Expander binary
-        run: |
-          EXPANDER_TAG=$(grep -m1 'inference-labs-inc/Expander.*tag=' Cargo.lock | grep -o 'tag=[^#]*' | sed 's/tag=//')
-          curl -sfL "https://github.com/inference-labs-inc/Expander/releases/download/${EXPANDER_TAG}/expander-exec-linux-x86_64" -o expander-exec
-          chmod +x expander-exec
-
       - name: Build Rust binaries
         run: cargo build --release --target x86_64-unknown-linux-gnu --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
 
@@ -97,8 +91,7 @@ jobs:
 
           mkdir -p "$BIN_DIR"
           cp "$MAIN_BIN" "$BIN_DIR/"
-          cp expander-exec "$BIN_DIR/"
-          chmod +x "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"
+          chmod +x "$BIN_DIR/$BINARY_NAME"
 
       - name: Build wheel
         run: uv build
@@ -189,12 +182,6 @@ jobs:
           path: target
           key: macos-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Download Expander binary
-        run: |
-          EXPANDER_TAG=$(grep -m1 'inference-labs-inc/Expander.*tag=' Cargo.lock | grep -o 'tag=[^#]*' | sed 's/tag=//')
-          curl -sfL "https://github.com/inference-labs-inc/Expander/releases/download/${EXPANDER_TAG}/expander-exec-macos-aarch64" -o expander-exec
-          chmod +x expander-exec
-
       - name: Build Rust binaries
         run: cargo build --release --target aarch64-apple-darwin --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
         env:
@@ -209,8 +196,7 @@ jobs:
 
           mkdir -p "$BIN_DIR"
           cp "$MAIN_BIN" "$BIN_DIR/"
-          cp expander-exec "$BIN_DIR/"
-          chmod +x "$BIN_DIR/$BINARY_NAME" "$BIN_DIR/expander-exec"
+          chmod +x "$BIN_DIR/$BINARY_NAME"
 
       - name: Build wheel
         run: uv build

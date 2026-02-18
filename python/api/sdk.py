@@ -302,7 +302,6 @@ class Circuit:
             str(proof_path),
             self._paths["metadata"],
             dev_mode=False,
-            ecc=True,
         )
 
         return str(proof_path)
@@ -388,7 +387,6 @@ class Circuit:
                 str(proof_path),
                 self._paths["metadata"],
                 dev_mode=False,
-                ecc=True,
             )
 
         return True
