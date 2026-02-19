@@ -512,8 +512,6 @@ class ONNXConverter(ModelConverter):
                   constant tensors (initializers).
         """
         try:
-            id_count = 0
-            # Apply shape inference on the model
             if not output_name_to_shape:
                 inferred_model = shape_inference.infer_shapes(model)
                 self._onnx_check_model_safely(inferred_model)
@@ -837,10 +835,8 @@ class ONNXConverter(ModelConverter):
         outputs = []
         opset_version = -1
         params = {}
-        constant_dtype = node.data_type
-        # Can do this step in rust potentially to keep file sizes low if needed
         try:
-            np_data = onnx.numpy_helper.to_array(node, constant_dtype)
+            np_data = onnx.numpy_helper.to_array(node)
         except (ValueError, TypeError, onnx.ONNXException, Exception) as e:
             raise SerializationError(
                 model_type=self.model_type,
@@ -857,7 +853,7 @@ class ONNXConverter(ModelConverter):
             shape=output_shapes,
             params=params,
             opset_version_number=opset_version,
-            tensor=np_data.tolist(),
+            tensor=np.atleast_1d(np_data).tolist(),
         )
 
     def _prepare_model_for_quantization(

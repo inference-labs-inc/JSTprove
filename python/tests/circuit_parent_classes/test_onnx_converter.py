@@ -269,4 +269,4 @@ def test_analyze_constant_shape_has_empty_dims_for_scalar() -> None:
     assert layer.inputs == []
     assert layer.outputs == []
     assert layer.shape == {"scalar_const": []}
-    assert layer.tensor == scalar_data.tolist()
+    assert layer.tensor == [1.0]
