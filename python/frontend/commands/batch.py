@@ -108,6 +108,7 @@ def _run_witness_chunk_piped(
     circuit_path: str,
     metadata_path: str,
     chunk_jobs: list[dict[str, Any]],
+    wandb_path: str | None = None,
 ) -> dict[str, Any]:
     payload_obj = {
         "jobs": [
@@ -121,11 +122,15 @@ def _run_witness_chunk_piped(
     }
     payload = json.dumps(payload_obj).encode()
 
+    args: dict[str, str] = {"c": circuit_path, "m": metadata_path}
+    if wandb_path:
+        args["b"] = wandb_path
+
     result = run_cargo_command_piped(
         binary_name=binary_name,
         command_type="run_pipe_witness",
         payload=payload,
-        args={"c": circuit_path, "m": metadata_path},
+        args=args,
     )
 
     return _parse_piped_result(result.stdout)
@@ -136,6 +141,7 @@ def batch_witness_from_tensors(
     jobs: list[dict[str, Any]],
     circuit_path: str,
     chunk_size: int = 0,
+    wandb_path: str | None = None,
 ) -> dict[str, Any]:
     circuit_file = Path(circuit_path)
     file_stem = circuit_file.stem
@@ -179,6 +185,7 @@ def batch_witness_from_tensors(
             circuit_path=circuit_path,
             metadata_path=metadata_path,
             chunk_jobs=chunk,
+            wandb_path=wandb_path,
         )
         total_succeeded += result.get("succeeded", 0)
         total_failed += result.get("failed", 0)
@@ -255,6 +262,7 @@ def _run_verify_chunk_piped(
     circuit_path: str,
     metadata_path: str,
     chunk_jobs: list[dict[str, Any]],
+    wandb_path: str | None = None,
 ) -> dict[str, Any]:
     payload_obj = {
         "jobs": [
@@ -269,11 +277,15 @@ def _run_verify_chunk_piped(
     }
     payload = json.dumps(payload_obj).encode()
 
+    args: dict[str, str] = {"c": circuit_path, "m": metadata_path}
+    if wandb_path:
+        args["b"] = wandb_path
+
     result = run_cargo_command_piped(
         binary_name=binary_name,
         command_type="run_pipe_verify",
         payload=payload,
-        args={"c": circuit_path, "m": metadata_path},
+        args=args,
     )
 
     return _parse_piped_result(result.stdout)
@@ -284,6 +296,7 @@ def batch_verify_from_tensors(
     jobs: list[dict[str, Any]],
     circuit_path: str,
     chunk_size: int = 0,
+    wandb_path: str | None = None,
 ) -> dict[str, Any]:
     circuit_file = Path(circuit_path)
     file_stem = circuit_file.stem
@@ -326,6 +339,7 @@ def batch_verify_from_tensors(
             circuit_path=circuit_path,
             metadata_path=metadata_path,
             chunk_jobs=chunk,
+            wandb_path=wandb_path,
         )
         total_succeeded += result.get("succeeded", 0)
         total_failed += result.get("failed", 0)
