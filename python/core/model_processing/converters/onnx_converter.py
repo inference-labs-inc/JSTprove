@@ -829,7 +829,7 @@ class ONNXConverter(ModelConverter):
             ONNXLayer: ONNXLayer describing the node.
         """
         name = node.name
-        id_count += 1
+        layer_id = id_count
         op_type = "Const"
         inputs = []
         outputs = []
@@ -845,7 +845,7 @@ class ONNXConverter(ModelConverter):
             ) from e
         output_shapes = {name: list(node.dims)}
         return ONNXLayer(
-            id=id_count,
+            id=layer_id,
             name=name,
             op_type=op_type,
             inputs=list(inputs),
