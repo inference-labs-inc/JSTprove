@@ -885,6 +885,10 @@ class ONNXConverter(ModelConverter):
     ) -> list[onnx.NodeProto]:
         """Quantize model inputs and update node connections.
 
+        Inputs that also appear as initializers are skipped here; their
+        per-layer scaling is handled by ``add_scaled_initializer_inputs``
+        during node quantization (respecting each layer's SCALE_PLAN).
+
         Args:
             model (onnx.ModelProto): The model being quantized.
             input_names (list[str]): Names of input tensors.
@@ -894,8 +898,11 @@ class ONNXConverter(ModelConverter):
         Returns:
             list[onnx.NodeProto]: New nodes created for input quantization.
         """
+        initializer_names = {init.name for init in model.graph.initializer}
         new_nodes = []
         for name in input_names:
+            if name in initializer_names:
+                continue
             output_name, mul_node, _, cast_to_int64 = self.quantize_input(
                 input_name=name,
                 op_quantizer=self.op_quantizer,
