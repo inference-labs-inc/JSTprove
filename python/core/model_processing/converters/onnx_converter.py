@@ -845,7 +845,7 @@ class ONNXConverter(ModelConverter):
         Returns:
             ONNXLayer: ONNXLayer describing the node
         """
-        _ = domain_to_version
+        _ = domain_to_version, output_name_to_shape
         name = node.name
         id_count += 1
         op_type = "Const"
@@ -863,10 +863,7 @@ class ONNXConverter(ModelConverter):
                 tensor_name=node.name,
                 reason=f"Failed to convert tensor: {e!s}",
             ) from e
-        # 💡 Extract output shapes
-        output_shapes = {
-            out_name: output_name_to_shape.get(out_name, []) for out_name in outputs
-        }
+        output_shapes = {name: list(node.dims)}
         return ONNXLayer(
             id=id_count,
             name=name,

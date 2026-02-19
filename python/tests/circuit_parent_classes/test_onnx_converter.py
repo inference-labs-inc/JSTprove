@@ -10,7 +10,7 @@ import onnx
 import onnxruntime as ort
 import pytest
 import torch
-from onnx import TensorProto, helper
+from onnx import TensorProto, helper, numpy_helper
 
 from python.core.model_processing.converters.onnx_converter import ONNXConverter
 
@@ -220,3 +220,43 @@ def test_real_inference_from_onnx() -> None:
 
         assert isinstance(result, list)
         print(result)  # Identity op should return input
+
+
+@pytest.mark.unit
+def test_analyze_constant_populates_shape_with_own_name() -> None:
+    converter = ONNXConverter()
+    rng = np.random.default_rng(42)
+    weight_data = rng.standard_normal((16, 4, 3, 3)).astype(np.float32)
+    tensor_proto = numpy_helper.from_array(weight_data, name="conv1.weight")
+    output_name_to_shape: dict[str, list[int]] = {}
+
+    layer = converter.analyze_constant(tensor_proto, output_name_to_shape, id_count=0)
+
+    assert layer.name == "conv1.weight"
+    assert layer.op_type == "Const"
+    assert "conv1.weight" in layer.shape
+    assert layer.shape["conv1.weight"] == [16, 4, 3, 3]
+
+
+@pytest.mark.unit
+def test_analyze_constant_shape_not_empty_for_bias() -> None:
+    converter = ONNXConverter()
+    bias_data = np.zeros(64, dtype=np.float32)
+    tensor_proto = numpy_helper.from_array(bias_data, name="conv1.bias")
+    output_name_to_shape: dict[str, list[int]] = {}
+
+    layer = converter.analyze_constant(tensor_proto, output_name_to_shape, id_count=0)
+
+    assert layer.shape == {"conv1.bias": [64]}
+
+
+@pytest.mark.unit
+def test_analyze_constant_shape_not_empty_for_scalar() -> None:
+    converter = ONNXConverter()
+    scalar_data = np.array(1.0, dtype=np.float32)
+    tensor_proto = numpy_helper.from_array(scalar_data, name="scalar_const")
+    output_name_to_shape: dict[str, list[int]] = {}
+
+    layer = converter.analyze_constant(tensor_proto, output_name_to_shape, id_count=0)
+
+    assert layer.shape == {"scalar_const": []}
