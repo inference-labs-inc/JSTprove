@@ -6,7 +6,8 @@ import math
 from dataclasses import asdict, dataclass
 from importlib.metadata import version as get_version
 from pathlib import Path
-from typing import TYPE_CHECKING
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     import torch
@@ -1465,6 +1466,40 @@ class ONNXConverter(ModelConverter):
             return np.asarray(value).astype(np.float64)
         return np.asarray(value)
 
+    _onnx_elem_type_str: ClassVar[dict[int, str]] = {
+        1: "tensor(float)",
+        7: "tensor(int64)",
+        11: "tensor(double)",
+    }
+
+    def _process_overridable_inputs(
+        self: ONNXConverter,
+        inputs: dict[str, np.ndarray | torch.Tensor],
+        processed_inputs: dict[str, np.ndarray],
+    ) -> None:
+        """Include overridable inputs with matching initializers."""
+        overridable = set(inputs.keys()) - set(processed_inputs.keys())
+        if not overridable or not hasattr(self, "quantized_model"):
+            return
+        init_names = {i.name for i in self.quantized_model.graph.initializer}
+        gi_map = {
+            gi.name: gi
+            for gi in self.quantized_model.graph.input
+            if gi.name in init_names
+        }
+        for name in overridable:
+            if name not in gi_map:
+                continue
+            elem = gi_map[name].type.tensor_type.elem_type
+            shim = SimpleNamespace(
+                name=name,
+                type=self._onnx_elem_type_str.get(elem, "tensor(float)"),
+            )
+            processed_inputs[name] = self._process_single_input_for_get_outputs(
+                inputs[name],
+                shim,
+            )
+
     def get_outputs(
         self: ONNXConverter,
         inputs: np.ndarray | torch.Tensor | dict[str, np.ndarray | torch.Tensor],
@@ -1524,6 +1559,8 @@ class ONNXConverter(ModelConverter):
                     inputs[name],
                     input_def,
                 )
+
+            self._process_overridable_inputs(inputs, processed_inputs)
 
             return self.ort_sess.run(output_names, processed_inputs)
 
