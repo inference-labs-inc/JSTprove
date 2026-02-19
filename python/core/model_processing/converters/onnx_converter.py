@@ -529,9 +529,7 @@ class ONNXConverter(ModelConverter):
             )
             w_and_b = self.get_model_w_and_b(
                 model,
-                output_name_to_shape,
                 id_count,
-                domain_to_version,
             )
         except InvalidModelError:
             raise
@@ -700,36 +698,27 @@ class ONNXConverter(ModelConverter):
     def get_model_w_and_b(
         self: ONNXConverter,
         model: onnx.ModelProto,
-        output_name_to_shape: dict[str, list[int]],
         id_count: int = 0,
-        domain_to_version: dict[str, int] | None = None,
     ) -> list[ONNXLayer]:
         """Extract constant initializers (weights/biases) as layers.
 
         Iterates through graph initializers and wraps each tensor
-        into an ONNXLayers.
+        into an ONNXLayer.
 
         Args:
             model (onnx.ModelProto): The ONNX model to analyze.
-            output_name_to_shape (dict[str, list[int]]):
-                Map of value name -> inferred shape
             id_count (int, optional):
                 Starting numeric ID for layers (incremented per tensor).
                 Defaults to 0.
-            domain_to_version (dict[str, int], optional):
-                Map of opset domain -> version used (unused). Defaults to None.
 
         Returns:
-            list[ONNXLayer]: ONNXLayers representing weights/biases found in the graph
+            list[ONNXLayer]: ONNXLayers representing weights/biases found in the graph.
         """
         layers = []
-        # Check the model and print Y"s shape information
         for _, node in enumerate(model.graph.initializer):
             layer = self.analyze_constant(
                 node,
-                output_name_to_shape,
                 id_count,
-                domain_to_version,
             )
             layers.append(layer)
             id_count += 1
@@ -826,26 +815,19 @@ class ONNXConverter(ModelConverter):
     def analyze_constant(
         self: ONNXConverter,
         node: TensorProto,
-        output_name_to_shape: dict[str, list[int]],
         id_count: int = -1,
-        domain_to_version: dict[str, int] | None = None,
-    ) -> list[ONNXLayer]:
+    ) -> ONNXLayer:
         """Convert a constant ONNX node (weights or bias) into a structured ONNXLayer.
 
         Args:
-            node (NodeProto): The ONNX node to analyze.
-            output_name_to_shape (dict[str, list[int]]):
-                 Map of value name -> inferred shape.
+            node (TensorProto): The ONNX tensor to analyze.
             id_count (int, optional):
                 Numeric ID to assign to this layer (increment handled by caller).
                 Defaults to -1.
-            domain_to_version (dict[str, int], optional):
-                Map of opset domain -> version number. Defaults to None.
 
         Returns:
-            ONNXLayer: ONNXLayer describing the node
+            ONNXLayer: ONNXLayer describing the node.
         """
-        _ = domain_to_version, output_name_to_shape
         name = node.name
         id_count += 1
         op_type = "Const"

@@ -228,9 +228,8 @@ def test_analyze_constant_populates_shape_with_own_name() -> None:
     rng = np.random.default_rng(42)
     weight_data = rng.standard_normal((16, 4, 3, 3)).astype(np.float32)
     tensor_proto = numpy_helper.from_array(weight_data, name="conv1.weight")
-    output_name_to_shape: dict[str, list[int]] = {}
 
-    layer = converter.analyze_constant(tensor_proto, output_name_to_shape, id_count=0)
+    layer = converter.analyze_constant(tensor_proto, id_count=0)
 
     assert layer.name == "conv1.weight"
     assert layer.op_type == "Const"
@@ -243,20 +242,22 @@ def test_analyze_constant_shape_not_empty_for_bias() -> None:
     converter = ONNXConverter()
     bias_data = np.zeros(64, dtype=np.float32)
     tensor_proto = numpy_helper.from_array(bias_data, name="conv1.bias")
-    output_name_to_shape: dict[str, list[int]] = {}
 
-    layer = converter.analyze_constant(tensor_proto, output_name_to_shape, id_count=0)
+    layer = converter.analyze_constant(tensor_proto, id_count=0)
 
+    assert layer.name == "conv1.bias"
+    assert layer.op_type == "Const"
     assert layer.shape == {"conv1.bias": [64]}
 
 
 @pytest.mark.unit
-def test_analyze_constant_shape_not_empty_for_scalar() -> None:
+def test_analyze_constant_shape_has_empty_dims_for_scalar() -> None:
     converter = ONNXConverter()
     scalar_data = np.array(1.0, dtype=np.float32)
     tensor_proto = numpy_helper.from_array(scalar_data, name="scalar_const")
-    output_name_to_shape: dict[str, list[int]] = {}
 
-    layer = converter.analyze_constant(tensor_proto, output_name_to_shape, id_count=0)
+    layer = converter.analyze_constant(tensor_proto, id_count=0)
 
+    assert layer.name == "scalar_const"
+    assert layer.op_type == "Const"
     assert layer.shape == {"scalar_const": []}
