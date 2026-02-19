@@ -40,6 +40,8 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
     - Validates that all required MaxPool parameters are present.
     """
 
+    SUPPORTED_OPSETS: ClassVar = list(range(10, 24))
+
     def __init__(
         self: MaxpoolQuantizer,
         new_initializer: list[onnx.TensorProto] | None = None,
@@ -54,7 +56,9 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
+        opset_version: int | None = None,
     ) -> list[onnx.NodeProto]:
+        _ = opset_version
         return QuantizeMaxpool.quantize(
             self,
             node,

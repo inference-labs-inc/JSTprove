@@ -81,7 +81,7 @@ class TestE2EQuantizer(BaseQuantizerTest):
     )
     def test_e2e_quantize_compile_witness_prove_verify(
         self,
-        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec],
+        test_case_data: tuple[str, LayerTestConfig, LayerTestSpec, int | None],
         temp_quantized_model: Path,
         temp_circuit_path: Path,
         temp_witness_file: Path,
@@ -92,7 +92,7 @@ class TestE2EQuantizer(BaseQuantizerTest):
     ) -> None:
         """Test end-to-end flow: quantize model, compile circuit,
         generate witness, prove, and verify."""
-        layer_name, config, test_spec = test_case_data
+        layer_name, config, test_spec, opset_version = test_case_data
 
         # Skip if validation failed or test is skipped
         self._check_validation_dependency(test_case_data)
@@ -103,7 +103,10 @@ class TestE2EQuantizer(BaseQuantizerTest):
             pytest.skip(f"No e2e test for layer {layer_name} yet")
 
         # Create original model
-        original_model = config.create_test_model(test_spec)
+        original_model = config.create_test_model(
+            test_spec,
+            opset_version=opset_version,
+        )
 
         # Save quantized model to temp location
         import onnx  # noqa: PLC0415

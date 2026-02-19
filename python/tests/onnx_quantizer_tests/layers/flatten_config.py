@@ -1,5 +1,7 @@
+from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
 from python.tests.onnx_quantizer_tests.layers.base import (
     e2e_test,
+    error_test,
     valid_test,
 )
 from python.tests.onnx_quantizer_tests.layers.factory import (
@@ -21,6 +23,7 @@ class FlattenConfigProvider(BaseLayerConfigProvider):
             valid_inputs=["input"],
             valid_attributes={"axis": 1},
             required_initializers={},
+            min_opset=9,
         )
 
     def get_test_specs(self) -> list:
@@ -57,5 +60,12 @@ class FlattenConfigProvider(BaseLayerConfigProvider):
             .override_input_shapes(input=[1, 3, 256, 256])
             .tags("flatten", "large", "performance")
             .skip("Performance test, skipped by default")
+            .build(),
+            # --- Error TEST ---
+            error_test("invalid_opset")
+            .description("Opset 8 and below should fail")
+            .expects_error(InvalidParamError, "Unsupported opset")
+            .min_opset(7)
+            .max_opset(8)
             .build(),
         ]

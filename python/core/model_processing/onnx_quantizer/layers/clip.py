@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from typing import ClassVar
+
     import onnx
 
 from python.core.model_processing.onnx_quantizer.layers.base import (
@@ -56,6 +58,8 @@ class ClipQuantizer(BaseOpQuantizer, QuantizeClip):
       representation as A.
     """
 
+    SUPPORTED_OPSETS: ClassVar = list(range(12, 24))
+
     def __init__(
         self,
         new_initializers: dict[str, onnx.TensorProto] | None = None,
@@ -70,11 +74,13 @@ class ClipQuantizer(BaseOpQuantizer, QuantizeClip):
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
+        opset_version: int | None = None,
     ) -> list[onnx.NodeProto]:
         # Delegate to the shared QuantizerBase logic, which will:
         # - keep X as-is (already scaled/cast by the converter),
         # - rescale / cast min/max according to SCALE_PLAN,
         # - update initializers as needed.
+        _ = opset_version
         return QuantizeClip.quantize(self, node, graph, scale_config, initializer_map)
 
     def check_supported(

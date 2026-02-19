@@ -128,6 +128,7 @@ class BaseOpQuantizer:
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
+        opset_version: int | None = None,
     ) -> list[onnx.NodeProto]:
         """
         Quantize the given node.
@@ -137,7 +138,7 @@ class BaseOpQuantizer:
         Raises:
             HandlerImplementationError: If subclass does not implement quantize
         """
-        _ = node, graph, scale_config, initializer_map
+        _ = node, graph, scale_config, initializer_map, opset_version
         raise HandlerImplementationError(
             op_type=self.__class__.__name__,
             message="quantize() not implemented in subclass.",
@@ -161,6 +162,28 @@ class BaseOpQuantizer:
             op_type=self.__class__.__name__,
             message="check_supported() not implemented in subclass.",
         )
+
+    def check_supported_op(
+        self: BaseOpQuantizer,
+        opset_version: int,
+        op_name: str,
+        node_name: str,
+    ) -> None:
+        if opset_version is None:
+            return
+        if (
+            hasattr(self, "SUPPORTED_OPSETS")
+            and opset_version not in self.SUPPORTED_OPSETS
+        ):
+            raise InvalidParamError(
+                node_name=node_name,
+                op_type=op_name,
+                message=(
+                    f"Unsupported opset version {opset_version} "
+                    f"for {op_name}. "
+                    f"Supported versions are {self.SUPPORTED_OPSETS}."
+                ),
+            )
 
     def rescale_layer(
         self: BaseOpQuantizer,
@@ -633,8 +656,11 @@ class PassthroughQuantizer(BaseOpQuantizer):
     def __init__(
         self: BaseOpQuantizer,
         new_initializer: dict[str, onnx.TensorProto] | None = None,
+        supported_opsets: list[int] | None = None,
     ) -> None:
         _ = new_initializer
+        if supported_opsets is not None:
+            self.SUPPORTED_OPSETS = supported_opsets
         super().__init__()
 
     def quantize(
@@ -643,8 +669,9 @@ class PassthroughQuantizer(BaseOpQuantizer):
         graph: onnx.GraphProto,
         scale_config: ScaleConfig,
         initializer_map: dict[str, onnx.TensorProto],
+        opset_version: int | None = None,
     ) -> list[onnx.NodeProto]:
-        _ = graph, scale_config, initializer_map
+        _ = graph, scale_config, initializer_map, opset_version
         if not isinstance(node, onnx.NodeProto):
             raise HandlerImplementationError(
                 op_type="PassthroughQuantizer",
