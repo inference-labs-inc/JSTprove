@@ -225,6 +225,22 @@ def _bound_add(
     return m_a + m_b
 
 
+def _collect_batchnorm_metadata(
+    nodes: list,
+) -> tuple[dict[str, list[str]], dict[str, float]]:
+    bn_original_inputs: dict[str, list[str]] = {}
+    bn_epsilon: dict[str, float] = {}
+    for node in nodes:
+        if node.op_type == "BatchNormalization":
+            bn_original_inputs[node.name] = list(node.input)
+            eps_attr = next(
+                (a for a in node.attribute if a.name == "epsilon"),
+                None,
+            )
+            bn_epsilon[node.name] = float(eps_attr.f) if eps_attr else 1e-5
+    return bn_original_inputs, bn_epsilon
+
+
 _BoundFn = type(_bound_passthrough)
 
 _BOUND_DISPATCH: dict[str, _BoundFn] = {
@@ -1271,8 +1287,10 @@ class ONNXConverter(ModelConverter):
         rescale_config: dict[str, bool],
         scale_base: int,
         scale_exponent: int,
-        input_bounds: tuple[float, float] = (0.0, 1.0),
+        input_bounds: tuple[float, float] | None = (0.0, 1.0),
     ) -> dict[str, int]:
+        if input_bounds is None:
+            return {}
         alpha = float(scale_base**scale_exponent)
 
         initializer_map: dict[str, np.ndarray] = {
@@ -1280,17 +1298,9 @@ class ONNXConverter(ModelConverter):
             for init in self.model.graph.initializer
         }
 
-        bn_original_inputs: dict[str, list[str]] = {}
-        bn_epsilon: dict[str, float] = {}
-        for node in self.model.graph.node:
-            if node.op_type == "BatchNormalization":
-                name = node.name
-                bn_original_inputs[name] = list(node.input)
-                eps_attr = next(
-                    (a for a in node.attribute if a.name == "epsilon"),
-                    None,
-                )
-                bn_epsilon[name] = float(eps_attr.f) if eps_attr else 1e-5
+        bn_original_inputs, bn_epsilon = _collect_batchnorm_metadata(
+            self.model.graph.node,
+        )
 
         input_names = {inp.name for inp in self.model.graph.input} - set(
             initializer_map.keys(),
