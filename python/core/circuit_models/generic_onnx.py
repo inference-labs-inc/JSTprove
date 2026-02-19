@@ -263,22 +263,32 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         """Read per-input scale factors from the quantized model's initializers.
 
         Each input ``X`` may have a corresponding ``X_scale`` initializer
-        created during quantization (reflecting SCALE_PLAN). Inputs without
-        a dedicated scale initializer fall back to
-        ``scale_base ** scale_exponent``.
+        created during quantization (reflecting SCALE_PLAN). Only inputs
+        with an explicit scale initializer are included; callers fall back
+        to ``scale_base ** scale_exponent`` for unlisted inputs.
+
+        Results are cached on the instance since the quantized model is
+        immutable after loading.
         """
+        cached = getattr(self, "_cached_input_scales", None)
+        if cached is not None:
+            return cached
+
         if not hasattr(self, "quantized_model") or self.quantized_model is None:
             return {}
         init_map = {i.name: i for i in self.quantized_model.graph.initializer}
-        default = float(self.scale_base**self.scale_exponent)
         scales: dict[str, float] = {}
         graph_input_names = {gi.name for gi in self.quantized_model.graph.input}
         for name in graph_input_names:
             scale_name = f"{name}_scale"
-            if scale_name in init_map:
-                scales[name] = float(numpy_helper.to_array(init_map[scale_name]).item())
-            elif name in init_map:
-                scales[name] = default
+            if scale_name not in init_map:
+                continue
+            arr = numpy_helper.to_array(init_map[scale_name])
+            # Scale initializers are scalar (shape [1]) from insert_scale_node;
+            # take flat[0] to stay safe if a future quantizer produces 1-D
+            # per-channel scales.
+            scales[name] = float(arr.flat[0])
+        self._cached_input_scales = scales
         return scales
 
     def process_for_witness(
@@ -333,7 +343,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
 
         circuit_inputs = self.reshape_inputs_for_circuit(scaled)
 
-        inference_only = {k: raw_inputs[k] for k in raw_inputs}
+        inference_only = dict(raw_inputs)
         inference_inputs = self.reshape_inputs_for_inference(inference_only)
         raw_outputs = self.get_outputs(inference_inputs)
         flat = raw_outputs.flatten()
