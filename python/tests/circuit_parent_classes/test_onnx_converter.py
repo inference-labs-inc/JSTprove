@@ -233,8 +233,11 @@ def test_analyze_constant_populates_shape_with_own_name() -> None:
 
     assert layer.name == "conv1.weight"
     assert layer.op_type == "Const"
+    assert layer.inputs == []
+    assert layer.outputs == []
     assert "conv1.weight" in layer.shape
     assert layer.shape["conv1.weight"] == [16, 4, 3, 3]
+    assert layer.tensor == weight_data.tolist()
 
 
 @pytest.mark.unit
@@ -247,7 +250,10 @@ def test_analyze_constant_shape_not_empty_for_bias() -> None:
 
     assert layer.name == "conv1.bias"
     assert layer.op_type == "Const"
+    assert layer.inputs == []
+    assert layer.outputs == []
     assert layer.shape == {"conv1.bias": [64]}
+    assert layer.tensor == bias_data.tolist()
 
 
 @pytest.mark.unit
@@ -260,4 +266,7 @@ def test_analyze_constant_shape_has_empty_dims_for_scalar() -> None:
 
     assert layer.name == "scalar_const"
     assert layer.op_type == "Const"
+    assert layer.inputs == []
+    assert layer.outputs == []
     assert layer.shape == {"scalar_const": []}
+    assert layer.tensor == scalar_data.tolist()

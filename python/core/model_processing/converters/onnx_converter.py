@@ -322,8 +322,10 @@ class ONNXLayer:
             such as "Conv" for convolution layers.
         inputs (list[str]): A list of input names that this layer depends on.
         outputs (list[str]): A list of output names produced by this layer.
-        shape (dict[str, list[int]]): A dictionary mapping output names
-            to their corresponding shapes.
+        shape (dict[str, list[int]]): A dictionary mapping layer or
+            initializer names to their corresponding shapes. For graph nodes
+            this is keyed by output names; for constants it is keyed by the
+            initializer name (consumed as wb_layer.shape[wb_layer.name]).
         tensor (Optional[list]): For constant nodes, this contains the
             tensor data (weights or biases) as a list. For other layers, empty.
         params (Optional[dict]): A dictionary of parameters specific to the
