@@ -2,9 +2,8 @@
 use std::collections::HashMap;
 
 use ndarray::ArrayD;
-use serde::Deserialize;
-/// External crate imports
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::circuit_functions::layers::LayerError;
@@ -27,7 +26,7 @@ pub struct WANDB {
     pub w_and_b: Vec<ONNXLayer>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct CircuitParams {
     pub scale_base: u32,
     pub scale_exponent: u32,

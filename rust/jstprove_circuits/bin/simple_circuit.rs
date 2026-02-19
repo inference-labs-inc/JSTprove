@@ -91,9 +91,11 @@ fn main() {
 
     let matches = get_args();
 
-    if let Err(err) =
-        handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(&matches, &mut file_reader)
-    {
+    if let Err(err) = handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(
+        &matches,
+        &mut file_reader,
+        None,
+    ) {
         eprintln!("Error: {err}");
         std::process::exit(1);
     }

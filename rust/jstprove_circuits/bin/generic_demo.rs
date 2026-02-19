@@ -24,7 +24,9 @@ use jstprove_circuits::circuit_functions::utils::shaping::get_inputs;
 
 use jstprove_circuits::circuit_functions::utils::tensor_ops::get_nd_circuit_inputs;
 use jstprove_circuits::io::io_reader::{FileReader, IOReader};
-use jstprove_circuits::runner::main_runner::{ConfigurableCircuit, get_arg, get_args, handle_args};
+use jstprove_circuits::runner::main_runner::{
+    ConfigurableCircuit, get_arg, get_args, handle_args, try_load_metadata_from_circuit,
+};
 
 /// Your new context module
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
@@ -387,22 +389,36 @@ fn main() {
     let has_arch = matches.get_one::<String>("arch").is_some();
     let has_wandb = matches.get_one::<String>("wandb").is_some();
 
-    if needs_meta && !has_meta {
-        eprintln!("Error: command '{cmd_type}' requires --meta argument.");
-        std::process::exit(1);
-    }
-    if needs_full && (!has_arch || !has_wandb) {
+    if needs_full && (!has_meta || !has_arch || !has_wandb) {
         eprintln!("Error: command '{cmd_type}' requires --meta, --arch, and --wandb arguments.");
         std::process::exit(1);
     }
 
     if has_meta {
         set_onnx_context(&matches, needs_full, has_wandb);
+    } else if needs_meta {
+        let circuit_path = matches
+            .get_one::<String>("circuit_path")
+            .expect("command requires --meta or -c with bundled metadata");
+        if let Some(params) = try_load_metadata_from_circuit(circuit_path) {
+            OnnxContext::set_params(params)
+                .map_err(|e| CircuitError::Other(e.to_string()))
+                .unwrap();
+        } else {
+            eprintln!(
+                "Error: command '{cmd_type}' requires --meta or circuit .msgpack with bundled metadata."
+            );
+            std::process::exit(1);
+        }
     }
 
-    if let Err(err) =
-        handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(&matches, &mut file_reader)
-    {
+    let metadata = OnnxContext::get_params().ok().cloned();
+
+    if let Err(err) = handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(
+        &matches,
+        &mut file_reader,
+        metadata,
+    ) {
         eprintln!("Error: {err}");
         std::process::exit(1);
     }
