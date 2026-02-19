@@ -329,7 +329,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         for name, value in all_inputs.items():
             scale = input_scales.get(name, default_scale)
             tensor = torch.as_tensor(value, dtype=torch.float64)
-            scaled[name] = torch.round(tensor * scale).long().tolist()
+            scaled[name] = (tensor * scale).long().tolist()
 
         circuit_inputs = self.reshape_inputs_for_circuit(scaled)
 
