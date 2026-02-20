@@ -18,18 +18,20 @@ from python.core.msgpack_schema import (
 from python.core.utils.helper_functions import run_msgpack_command
 
 
-def load_circuit_bundle(circuit_path: str | Path) -> tuple[bytes, bytes]:
-    """Load circuit and witness_solver bytes from compiled circuit files.
+def load_circuit_bundle(
+    circuit_path: str | Path,
+) -> tuple[bytes, bytes, dict[str, Any] | None]:
+    """Load circuit, witness_solver bytes, and optional metadata.
 
     Supports both formats:
-    - Msgpack bundle: single .msgpack file with circuit+witness_solver
+    - Msgpack bundle: single .msgpack file with circuit+witness_solver+metadata
     - Legacy format: separate .txt and _witness_solver.txt files
 
     Args:
         circuit_path: Path to circuit file (.msgpack or .txt).
 
     Returns:
-        Tuple of (circuit_bytes, witness_solver_bytes).
+        Tuple of (circuit_bytes, witness_solver_bytes, metadata_or_none).
     """
     circuit_path = Path(circuit_path)
 
@@ -54,22 +56,24 @@ def load_circuit_bundle(circuit_path: str | Path) -> tuple[bytes, bytes]:
     with ws_file.open("rb") as f:
         ws_bytes = f.read()
 
-    return circuit_bytes, ws_bytes
+    return circuit_bytes, ws_bytes, None
 
 
-def load_circuit_msgpack(path: str | Path) -> tuple[bytes, bytes]:
+def load_circuit_msgpack(
+    path: str | Path,
+) -> tuple[bytes, bytes, dict[str, Any] | None]:
     """Load circuit bundle from msgpack file.
 
     Args:
         path: Path to .msgpack circuit file.
 
     Returns:
-        Tuple of (circuit_bytes, witness_solver_bytes).
+        Tuple of (circuit_bytes, witness_solver_bytes, metadata_or_none).
     """
     with Path(path).open("rb") as f:
         data = f.read()
     bundle = CompiledCircuit.unpack(data)
-    return bundle.circuit, bundle.witness_solver
+    return bundle.circuit, bundle.witness_solver, bundle.metadata
 
 
 def save_circuit_msgpack(
@@ -266,6 +270,7 @@ class MsgpackCircuitRunner:
         self.metadata_path = Path(metadata_path) if metadata_path else None
         self._circuit_bytes: bytes | None = None
         self._ws_bytes: bytes | None = None
+        self._metadata: dict[str, Any] | None = None
 
         if self.metadata_path is None:
             stem = self.circuit_path.stem
@@ -276,7 +281,9 @@ class MsgpackCircuitRunner:
 
     def _load_circuit(self) -> tuple[bytes, bytes]:
         if self._circuit_bytes is None or self._ws_bytes is None:
-            self._circuit_bytes, self._ws_bytes = load_circuit_bundle(self.circuit_path)
+            self._circuit_bytes, self._ws_bytes, self._metadata = load_circuit_bundle(
+                self.circuit_path,
+            )
         return self._circuit_bytes, self._ws_bytes
 
     def witness(self, inputs: dict[str, Any], outputs: dict[str, Any]) -> WitnessBundle:

@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::circuit_functions::utils::onnx_model::CircuitParams;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompiledCircuit {
     #[serde(with = "serde_bytes")]
@@ -7,17 +9,7 @@ pub struct CompiledCircuit {
     #[serde(with = "serde_bytes")]
     pub witness_solver: Vec<u8>,
     #[serde(default)]
-    pub metadata: Option<Metadata>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Metadata {
-    #[serde(default)]
-    pub input_shapes: Vec<Vec<usize>>,
-    #[serde(default)]
-    pub output_shapes: Vec<Vec<usize>>,
-    #[serde(default)]
-    pub scale: Option<f64>,
+    pub metadata: Option<CircuitParams>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

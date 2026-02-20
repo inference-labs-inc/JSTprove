@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
+from onnx import numpy_helper
 
 from python.core import RUST_BINARY_NAME
 from python.core.circuits.errors import (
@@ -258,6 +259,105 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         # Currently want to read these in separately
         return architecture
 
+    def _get_input_scales(self: GenericModelONNX) -> dict[str, float]:
+        """Read per-input scale factors from the quantized model's initializers.
+
+        Each input ``X`` may have a corresponding ``X_scale`` initializer
+        created during quantization (reflecting SCALE_PLAN). Only inputs
+        with an explicit scale initializer are included; callers fall back
+        to ``scale_base ** scale_exponent`` for unlisted inputs.
+
+        Results are cached on the instance since the quantized model is
+        immutable after loading.
+        """
+        cached = getattr(self, "_cached_input_scales", None)
+        if cached is not None:
+            return cached
+
+        if not hasattr(self, "quantized_model") or self.quantized_model is None:
+            return {}
+        init_map = {i.name: i for i in self.quantized_model.graph.initializer}
+        scales: dict[str, float] = {}
+        graph_input_names = {gi.name for gi in self.quantized_model.graph.input}
+        for name in graph_input_names:
+            scale_name = f"{name}_scale"
+            if scale_name not in init_map:
+                continue
+            arr = numpy_helper.to_array(init_map[scale_name])
+            # Scale initializers are scalar (shape [1]) from insert_scale_node;
+            # take flat[0] to stay safe if a future quantizer produces 1-D
+            # per-channel scales.
+            scales[name] = float(arr.flat[0])
+        self._cached_input_scales = scales
+        return scales
+
+    def process_for_witness(
+        self: GenericModelONNX,
+        raw_inputs: dict[str, list],
+    ) -> tuple[dict[str, list[int]], dict[str, list]]:
+        """Scale inputs and run inference in a single pass.
+
+        Parameters
+        ----------
+        raw_inputs : dict[str, list]
+            User-provided float inputs (e.g. ``{"tile_in": [...]}``).\
+            Missing WAI inputs (W, B) are filled from the quantized
+            model's initializers automatically.
+
+        Returns
+        -------
+        tuple[dict[str, list[int]], dict[str, list]]
+            ``(circuit_inputs, formatted_outputs)`` where
+            ``circuit_inputs`` is ``{"input": [flat ints]}`` and
+            ``formatted_outputs`` has ``"output"`` (int) and
+            ``"rescaled_output"`` (float) keys.
+        """
+        import torch  # noqa: PLC0415
+
+        ordered_inputs = {}
+
+        if (
+            hasattr(self, "input_shape")
+            and isinstance(self.input_shape, dict)
+            and hasattr(self, "quantized_model")
+            and self.quantized_model is not None
+        ):
+            provided = set(raw_inputs.keys())
+            qm_init = {i.name: i for i in self.quantized_model.graph.initializer}
+            for name in self.input_shape:
+                if name in provided:
+                    ordered_inputs[name] = raw_inputs[name]
+                elif name in qm_init:
+                    ordered_inputs[name] = numpy_helper.to_array(qm_init[name]).tolist()
+                else:
+                    src = "raw_inputs" if name not in provided else "initializer"
+                    msg = f"Input '{name}' missing from {src}"
+                    raise CircuitProcessingError(msg)
+        else:
+            ordered_inputs = dict(raw_inputs)
+
+        input_scales = self._get_input_scales()
+        default_scale = float(self.scale_base**self.scale_exponent)
+
+        scaled = {}
+        for name, value in ordered_inputs.items():
+            scale = input_scales.get(name, default_scale)
+            tensor = torch.as_tensor(value, dtype=torch.float64)
+            scaled[name] = (tensor * scale).long().tolist()
+
+        circuit_inputs = self.reshape_inputs_for_circuit(scaled)
+
+        inference_inputs = dict(ordered_inputs)
+        inference_inputs = self.reshape_inputs_for_inference(inference_inputs)
+        raw_outputs = self.get_outputs(inference_inputs)
+        flat = raw_outputs.flatten()
+
+        formatted = {
+            "output": flat.long().tolist(),
+            "rescaled_output": (flat.double() / default_scale).tolist(),
+        }
+        return circuit_inputs, formatted
+
     def get_metadata(
         self: GenericModelONNX,
     ) -> CircuitParamsDict:
@@ -274,6 +374,9 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         )
         circuit_params["n_bits_config"] = n_bits_config
         circuit_params["weights_as_inputs"] = self.weights_as_inputs
+        input_scales = self._get_input_scales()
+        if input_scales:
+            circuit_params["input_scales"] = input_scales
         return circuit_params
 
     @staticmethod

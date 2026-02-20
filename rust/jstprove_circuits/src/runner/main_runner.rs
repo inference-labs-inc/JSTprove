@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::circuit_functions::hints::build_logup_hint_registry;
+use crate::circuit_functions::utils::onnx_model::CircuitParams;
 use crate::io::io_reader;
 use crate::runner::errors::{CliError, RunError};
 use crate::runner::schema::{
@@ -161,12 +162,12 @@ fn get_witness_solver_path(input: &str) -> PathBuf {
 pub fn run_compile_and_serialize<C: Config, CircuitType>(
     circuit_path: &str,
     compress: bool,
+    metadata: Option<CircuitParams>,
 ) -> Result<(), RunError>
 where
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone + MaybeConfigure,
 {
-    GLOBAL.reset_peak_memory(); // Note that other threads may impact the peak memory computation.
-    // let start = Instant::now();
+    GLOBAL.reset_peak_memory();
 
     let mut circuit = CircuitType::default();
     configure_if_possible::<CircuitType>(&mut circuit);
@@ -177,35 +178,57 @@ where
     // println!("Peak Memory used Overall : {mem_mb:.2}");
     // let duration = start.elapsed();
 
+    let mut circuit_buf = Vec::new();
+    compile_result
+        .layered_circuit
+        .serialize_into(&mut circuit_buf)
+        .map_err(|e| RunError::Serialize(format!("circuit: {e:?}")))?;
+
+    let mut ws_buf = Vec::new();
+    compile_result
+        .witness_solver
+        .serialize_into(&mut ws_buf)
+        .map_err(|e| RunError::Serialize(format!("witness_solver: {e:?}")))?;
+
+    let compressed_circuit = maybe_compress_bytes(&circuit_buf, compress)?;
+    let compressed_ws = maybe_compress_bytes(&ws_buf, compress)?;
+
     let file = std::fs::File::create(circuit_path).map_err(|e| RunError::Io {
         source: e,
         path: circuit_path.into(),
     })?;
-
-    let mut writer = compressed_writer(file, compress)?;
-    compile_result
-        .layered_circuit
-        .serialize_into(&mut writer)
-        .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
-    writer.finish()?;
+    std::io::Write::write_all(&mut std::io::BufWriter::new(file), &compressed_circuit).map_err(
+        |e| RunError::Io {
+            source: e,
+            path: circuit_path.into(),
+        },
+    )?;
 
     let witness_path = get_witness_solver_path(circuit_path);
     let file = std::fs::File::create(&witness_path).map_err(|e| RunError::Io {
         source: e,
         path: witness_path.display().to_string(),
     })?;
-    let mut writer = compressed_writer(file, compress)?;
-    compile_result
-        .witness_solver
-        .serialize_into(&mut writer)
-        .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
-    writer.finish()?;
+    std::io::Write::write_all(&mut std::io::BufWriter::new(file), &compressed_ws).map_err(|e| {
+        RunError::Io {
+            source: e,
+            path: witness_path.display().to_string(),
+        }
+    })?;
 
-    // println!(
-    //     "Time elapsed: {}.{} seconds",
-    //     duration.as_secs(),
-    //     duration.subsec_millis()
-    // );
+    let bundle = CompiledCircuit {
+        circuit: compressed_circuit,
+        witness_solver: compressed_ws,
+        metadata,
+    };
+    let msgpack_path = Path::new(circuit_path).with_extension("msgpack");
+    write_circuit_bundle(
+        msgpack_path
+            .to_str()
+            .ok_or_else(|| RunError::Json("invalid msgpack path".into()))?,
+        &bundle,
+    )?;
+
     Ok(())
 }
 
@@ -1269,6 +1292,7 @@ fn verify_from_bytes_with_io<C: Config>(
 pub fn write_circuit_msgpack<C: Config, CircuitType>(
     path: &str,
     compress_blobs: bool,
+    metadata: Option<CircuitParams>,
 ) -> Result<(), RunError>
 where
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone + MaybeConfigure,
@@ -1294,9 +1318,13 @@ where
     let bundle = CompiledCircuit {
         circuit: maybe_compress_bytes(&circuit_buf, compress_blobs)?,
         witness_solver: maybe_compress_bytes(&ws_buf, compress_blobs)?,
-        metadata: None,
+        metadata,
     };
 
+    write_circuit_bundle(path, &bundle)
+}
+
+fn write_circuit_bundle(path: &str, bundle: &CompiledCircuit) -> Result<(), RunError> {
     let file = std::fs::File::create(path).map_err(|e| RunError::Io {
         source: e,
         path: path.into(),
@@ -1309,7 +1337,6 @@ where
         source: e,
         path: path.into(),
     })?;
-
     Ok(())
 }
 
@@ -1324,6 +1351,15 @@ pub fn read_circuit_msgpack(path: &str) -> Result<CompiledCircuit, RunError> {
     })?;
     rmp_serde::decode::from_read(std::io::BufReader::new(file))
         .map_err(|e| RunError::Deserialize(format!("msgpack: {e:?}")))
+}
+
+#[must_use]
+pub fn try_load_metadata_from_circuit(circuit_path: &str) -> Option<CircuitParams> {
+    let msgpack_path = Path::new(circuit_path).with_extension("msgpack");
+    if !msgpack_path.exists() {
+        return None;
+    }
+    read_circuit_msgpack(msgpack_path.to_str()?).ok()?.metadata
 }
 
 /// Reads a prove request from stdin and writes the proof to stdout via msgpack.
@@ -1630,6 +1666,7 @@ pub fn handle_args<
 >(
     matches: &clap::ArgMatches,
     file_reader: &mut Filereader,
+    metadata: Option<CircuitParams>,
 ) -> Result<(), CliError>
 where
     CircuitDefaultType: std::default::Default
@@ -1649,7 +1686,7 @@ where
     match command.as_str() {
         "run_compile_circuit" => {
             let circuit_path = get_arg(matches, "circuit_path")?;
-            run_compile_and_serialize::<C, CircuitType>(&circuit_path, compress)?;
+            run_compile_and_serialize::<C, CircuitType>(&circuit_path, compress, metadata)?;
         }
         "run_gen_witness" => {
             let input_path = get_arg(matches, "input")?;
@@ -1757,7 +1794,7 @@ where
         }
         "msgpack_compile" => {
             let circuit_path = get_arg(matches, "circuit_path")?;
-            write_circuit_msgpack::<C, CircuitType>(&circuit_path, compress)?;
+            write_circuit_msgpack::<C, CircuitType>(&circuit_path, compress, metadata)?;
             eprintln!("Compiled to {circuit_path}");
         }
         "msgpack_prove" => {

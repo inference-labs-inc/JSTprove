@@ -106,8 +106,9 @@ def _transform_verify_job(circuit: Circuit, job: dict[str, Any]) -> None:
 def _run_witness_chunk_piped(
     binary_name: str,
     circuit_path: str,
-    metadata_path: str,
+    metadata_path: str | None,
     chunk_jobs: list[dict[str, Any]],
+    wandb_path: str | None = None,
 ) -> dict[str, Any]:
     payload_obj = {
         "jobs": [
@@ -121,14 +122,28 @@ def _run_witness_chunk_piped(
     }
     payload = json.dumps(payload_obj).encode()
 
+    args: dict[str, str] = {"c": circuit_path}
+    if metadata_path:
+        args["m"] = metadata_path
+    if wandb_path:
+        args["b"] = wandb_path
+
     result = run_cargo_command_piped(
         binary_name=binary_name,
         command_type="run_pipe_witness",
         payload=payload,
-        args={"c": circuit_path, "m": metadata_path},
+        args=args,
     )
 
     return _parse_piped_result(result.stdout)
+
+
+def _resolve_metadata_path(circuit_path: str) -> str | None:
+    circuit_file = Path(circuit_path)
+    candidate = circuit_file.parent / f"{circuit_file.stem}_metadata.json"
+    if candidate.exists():
+        return str(candidate)
+    return None
 
 
 def batch_witness_from_tensors(
@@ -136,11 +151,12 @@ def batch_witness_from_tensors(
     jobs: list[dict[str, Any]],
     circuit_path: str,
     chunk_size: int = 0,
+    wandb_path: str | None = None,
 ) -> dict[str, Any]:
     circuit_file = Path(circuit_path)
     file_stem = circuit_file.stem
     binary_name = circuit.name
-    metadata_path = str(circuit_file.parent / f"{file_stem}_metadata.json")
+    metadata_path = _resolve_metadata_path(circuit_path)
     quantized_path = str(circuit_file.parent / f"{file_stem}_quantized_model.onnx")
     circuit.load_quantized_model(quantized_path)
 
@@ -179,6 +195,7 @@ def batch_witness_from_tensors(
             circuit_path=circuit_path,
             metadata_path=metadata_path,
             chunk_jobs=chunk,
+            wandb_path=wandb_path,
         )
         total_succeeded += result.get("succeeded", 0)
         total_failed += result.get("failed", 0)
@@ -194,7 +211,7 @@ def batch_witness_from_tensors(
 def _run_prove_chunk_piped(
     binary_name: str,
     circuit_path: str,
-    metadata_path: str,
+    metadata_path: str | None,
     chunk_jobs: list[dict[str, Any]],
 ) -> dict[str, Any]:
     payload_obj = {
@@ -204,11 +221,15 @@ def _run_prove_chunk_piped(
     }
     payload = json.dumps(payload_obj).encode()
 
+    args: dict[str, str] = {"c": circuit_path}
+    if metadata_path:
+        args["m"] = metadata_path
+
     result = run_cargo_command_piped(
         binary_name=binary_name,
         command_type="run_pipe_prove",
         payload=payload,
-        args={"c": circuit_path, "m": metadata_path},
+        args=args,
     )
 
     return _parse_piped_result(result.stdout)
@@ -220,8 +241,7 @@ def batch_prove_piped(
     circuit_path: str,
     chunk_size: int = 0,
 ) -> dict[str, Any]:
-    circuit_file = Path(circuit_path)
-    metadata_path = str(circuit_file.parent / f"{circuit_file.stem}_metadata.json")
+    metadata_path = _resolve_metadata_path(circuit_path)
 
     if chunk_size <= 0:
         chunks = [jobs]
@@ -253,8 +273,9 @@ def batch_prove_piped(
 def _run_verify_chunk_piped(
     binary_name: str,
     circuit_path: str,
-    metadata_path: str,
+    metadata_path: str | None,
     chunk_jobs: list[dict[str, Any]],
+    wandb_path: str | None = None,
 ) -> dict[str, Any]:
     payload_obj = {
         "jobs": [
@@ -269,11 +290,17 @@ def _run_verify_chunk_piped(
     }
     payload = json.dumps(payload_obj).encode()
 
+    args: dict[str, str] = {"c": circuit_path}
+    if metadata_path:
+        args["m"] = metadata_path
+    if wandb_path:
+        args["b"] = wandb_path
+
     result = run_cargo_command_piped(
         binary_name=binary_name,
         command_type="run_pipe_verify",
         payload=payload,
-        args={"c": circuit_path, "m": metadata_path},
+        args=args,
     )
 
     return _parse_piped_result(result.stdout)
@@ -284,11 +311,12 @@ def batch_verify_from_tensors(
     jobs: list[dict[str, Any]],
     circuit_path: str,
     chunk_size: int = 0,
+    wandb_path: str | None = None,
 ) -> dict[str, Any]:
     circuit_file = Path(circuit_path)
     file_stem = circuit_file.stem
     binary_name = circuit.name
-    metadata_path = str(circuit_file.parent / f"{file_stem}_metadata.json")
+    metadata_path = _resolve_metadata_path(circuit_path)
     quantized_path = str(circuit_file.parent / f"{file_stem}_quantized_model.onnx")
     circuit.load_quantized_model(quantized_path)
 
@@ -326,6 +354,7 @@ def batch_verify_from_tensors(
             circuit_path=circuit_path,
             metadata_path=metadata_path,
             chunk_jobs=chunk,
+            wandb_path=wandb_path,
         )
         total_succeeded += result.get("succeeded", 0)
         total_failed += result.get("failed", 0)
@@ -406,12 +435,7 @@ class BatchCommand(BaseCommand):
             msg = f"Unknown batch mode: {batch_mode}"
             raise ValueError(msg)
 
-        circuit_dir = circuit_file.parent
-        name = circuit_file.stem
-        metadata_path = str(circuit_dir / f"{name}_metadata.json")
-        if not Path(metadata_path).is_file():
-            msg = f"Metadata file not found: {metadata_path}"
-            raise FileNotFoundError(msg)
+        metadata_path = _resolve_metadata_path(circuit_path)
 
         preprocess_map = {
             "witness": _transform_witness_job,
@@ -426,14 +450,16 @@ class BatchCommand(BaseCommand):
             )
 
         try:
+            cargo_args: dict[str, str] = {
+                "c": circuit_path,
+                "f": manifest_path,
+            }
+            if metadata_path:
+                cargo_args["m"] = metadata_path
             run_cargo_command(
                 binary_name=circuit.name,
                 command_type=run_type_str,
-                args={
-                    "c": circuit_path,
-                    "f": manifest_path,
-                    "m": metadata_path,
-                },
+                args=cargo_args,
                 dev_mode=False,
             )
         except Exception as e:

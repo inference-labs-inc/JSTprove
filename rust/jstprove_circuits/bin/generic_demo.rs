@@ -1,9 +1,7 @@
 #[allow(unused_imports)]
 /// Standard library imports
 use core::panic;
-use std::ops::Neg;
 
-use ethnum::U256;
 use jstprove_circuits::circuit_functions::CircuitError;
 use jstprove_circuits::circuit_functions::utils::ArrayConversionError;
 use jstprove_circuits::circuit_functions::utils::build_layers::build_layers;
@@ -13,18 +11,20 @@ use ndarray::{Array1, ArrayD, ArrayView1, Axis, Ix1, IxDyn, concatenate};
 
 /// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{
-    BN254Config, CircuitField, Config, Define, FieldArith, RootAPI, Variable, declare_circuit,
+    BN254Config, CircuitField, Config, Define, RootAPI, Variable, declare_circuit,
 };
 
 /// Internal crate imports
 use jstprove_circuits::circuit_functions::utils::onnx_model::{
-    Architecture, CircuitParams, InputData, OutputData, WANDB, get_w_or_b,
+    Architecture, CircuitParams, InputData, OutputData, WANDB,
 };
 use jstprove_circuits::circuit_functions::utils::shaping::get_inputs;
 
 use jstprove_circuits::circuit_functions::utils::tensor_ops::get_nd_circuit_inputs;
 use jstprove_circuits::io::io_reader::{FileReader, IOReader};
-use jstprove_circuits::runner::main_runner::{ConfigurableCircuit, get_arg, get_args, handle_args};
+use jstprove_circuits::runner::main_runner::{
+    ConfigurableCircuit, get_arg, get_args, handle_args, try_load_metadata_from_circuit,
+};
 
 /// Your new context module
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
@@ -35,7 +35,6 @@ declare_circuit!(Circuit {
     dummy: [Variable; 2],
     scale_base: [PublicVariable; 1],
     scale_exponent: [PublicVariable; 1],
-    weights_arr: [PublicVariable],
 });
 
 // Memorization, in a better place
@@ -60,27 +59,6 @@ impl Circuit<Variable> {
         let w_and_b = OnnxContext::get_wandb()?;
 
         let mut out = get_inputs(&self.input_arr, params.inputs.clone())?;
-
-        if params.weights_as_inputs {
-            let mut offset = 0usize;
-            // Weight tensors are unpacked in w_and_b.w_and_b iteration order.
-            // apply_input_data must populate weights_arr using the same order.
-            for wb_layer in &w_and_b.w_and_b {
-                let shape = wb_layer.shape.get(&wb_layer.name).ok_or_else(|| {
-                    CircuitError::Other(format!("Missing shape for weight '{}'", wb_layer.name))
-                })?;
-                let total: usize = shape.iter().product();
-                let vars: Vec<Variable> = self.weights_arr[offset..offset + total].to_vec();
-                let arr = ArrayD::from_shape_vec(IxDyn(shape), vars).map_err(|e| {
-                    CircuitError::Other(format!(
-                        "Shape mismatch unpacking weight '{}': {e}",
-                        wb_layer.name
-                    ))
-                })?;
-                out.insert(wb_layer.name.clone(), arr);
-                offset += total;
-            }
-        }
 
         let layers = build_layers::<C, Builder>(params, architecture, w_and_b)?;
 
@@ -177,19 +155,6 @@ impl ConfigurableCircuit for Circuit<Variable> {
         eprintln!("input_dims {:?}", params.inputs);
         self.input_arr = vec![Variable::default(); input_dims];
 
-        if params.weights_as_inputs {
-            let w_and_b = OnnxContext::get_wandb()?;
-            let mut total_weight_count: usize = 0;
-            for wb in &w_and_b.w_and_b {
-                let shape = wb.shape.get(&wb.name).ok_or_else(|| {
-                    RunError::Json(format!("Missing shape for weight '{}'", wb.name))
-                })?;
-                total_weight_count += shape.iter().product::<usize>();
-            }
-            eprintln!("weights_as_inputs: {total_weight_count} weight elements");
-            self.weights_arr = vec![Variable::default(); total_weight_count];
-        }
-
         Ok(())
     }
 }
@@ -222,34 +187,7 @@ fn apply_input_data<C: Config>(
 
     assignment.input_arr = flat;
 
-    if params.weights_as_inputs {
-        let w_and_b = OnnxContext::get_wandb()?;
-        let w_and_b_map: std::collections::HashMap<String, _> = w_and_b
-            .w_and_b
-            .iter()
-            .map(|layer| (layer.name.clone(), layer.clone()))
-            .collect();
-
-        let mut weight_values: Vec<CircuitField<C>> = Vec::new();
-        for wb_layer in &w_and_b.w_and_b {
-            let tensor: ArrayD<i64> = get_w_or_b(&w_and_b_map, &wb_layer.name)
-                .map_err(|e| RunError::Json(format!("Weight tensor '{}': {e}", wb_layer.name)))?;
-            for &val in &tensor {
-                weight_values.push(convert_i64_to_field::<C>(val));
-            }
-        }
-        assignment.weights_arr = weight_values;
-    }
-
     Ok(assignment)
-}
-
-fn convert_i64_to_field<C: Config>(val: i64) -> CircuitField<C> {
-    if val < 0 {
-        CircuitField::<C>::from_u256(U256::from(val.unsigned_abs())).neg()
-    } else {
-        CircuitField::<C>::from_u256(U256::from(val.unsigned_abs()))
-    }
 }
 
 fn apply_output_data<C: Config>(
@@ -319,9 +257,7 @@ fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool, has_wandb: boo
     let meta_file_path = get_arg(matches, "meta").unwrap();
     let meta_file = std::fs::read_to_string(&meta_file_path).expect("Failed to read metadata file");
     let params: CircuitParams = serde_json::from_str(&meta_file).expect("Invalid metadata JSON");
-    let needs_wandb = needs_full || params.weights_as_inputs;
-
-    if needs_wandb && !has_wandb {
+    if params.weights_as_inputs && !has_wandb {
         let cmd_type = get_arg(matches, "type").unwrap_or_default();
         eprintln!(
             "Error: command '{cmd_type}' requires --wandb (weights_as_inputs is enabled in metadata)."
@@ -344,7 +280,7 @@ fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool, has_wandb: boo
             .unwrap();
     }
 
-    if needs_wandb {
+    if has_wandb {
         let wandb_file_path = get_arg(matches, "wandb").unwrap();
         let wandb_file =
             std::fs::read_to_string(&wandb_file_path).expect("Failed to read W&B file");
@@ -387,22 +323,36 @@ fn main() {
     let has_arch = matches.get_one::<String>("arch").is_some();
     let has_wandb = matches.get_one::<String>("wandb").is_some();
 
-    if needs_meta && !has_meta {
-        eprintln!("Error: command '{cmd_type}' requires --meta argument.");
-        std::process::exit(1);
-    }
-    if needs_full && (!has_arch || !has_wandb) {
-        eprintln!("Error: command '{cmd_type}' requires --meta, --arch, and --wandb arguments.");
+    if needs_full && (!has_meta || !has_arch) {
+        eprintln!("Error: command '{cmd_type}' requires --meta and --arch arguments.");
         std::process::exit(1);
     }
 
     if has_meta {
         set_onnx_context(&matches, needs_full, has_wandb);
+    } else if needs_meta {
+        let circuit_path = matches
+            .get_one::<String>("circuit_path")
+            .expect("command requires --meta or -c with bundled metadata");
+        if let Some(params) = try_load_metadata_from_circuit(circuit_path) {
+            OnnxContext::set_params(params)
+                .map_err(|e| CircuitError::Other(e.to_string()))
+                .unwrap();
+        } else {
+            eprintln!(
+                "Error: command '{cmd_type}' requires --meta or circuit .msgpack with bundled metadata."
+            );
+            std::process::exit(1);
+        }
     }
 
-    if let Err(err) =
-        handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(&matches, &mut file_reader)
-    {
+    let metadata = OnnxContext::get_params().ok().cloned();
+
+    if let Err(err) = handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(
+        &matches,
+        &mut file_reader,
+        metadata,
+    ) {
         eprintln!("Error: {err}");
         std::process::exit(1);
     }

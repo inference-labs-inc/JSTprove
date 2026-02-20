@@ -88,9 +88,10 @@ class TestLoadCircuitBundle:
         with msgpack_file.open("wb") as f:
             f.write(bundle.pack())
 
-        loaded_circuit, loaded_ws = load_circuit_msgpack(msgpack_file)
+        loaded_circuit, loaded_ws, loaded_meta = load_circuit_msgpack(msgpack_file)
         assert loaded_circuit == circuit_bytes
         assert loaded_ws == ws_bytes
+        assert loaded_meta is None
 
     def test_load_bundle_prefers_msgpack(self, tmp_path: Path) -> None:
         circuit_bytes = b"msgpack_circuit"
@@ -106,7 +107,7 @@ class TestLoadCircuitBundle:
         with (tmp_path / "test_witness_solver.txt").open("wb") as f:
             f.write(b"legacy_ws")
 
-        loaded_circuit, loaded_ws = load_circuit_bundle(tmp_path / "test.txt")
+        loaded_circuit, loaded_ws, _ = load_circuit_bundle(tmp_path / "test.txt")
         assert loaded_circuit == circuit_bytes
         assert loaded_ws == ws_bytes
 
@@ -116,6 +117,9 @@ class TestLoadCircuitBundle:
         with (tmp_path / "circuit_witness_solver.txt").open("wb") as f:
             f.write(b"legacy_ws")
 
-        loaded_circuit, loaded_ws = load_circuit_bundle(tmp_path / "circuit.txt")
+        loaded_circuit, loaded_ws, loaded_meta = load_circuit_bundle(
+            tmp_path / "circuit.txt",
+        )
         assert loaded_circuit == b"legacy_circuit"
         assert loaded_ws == b"legacy_ws"
+        assert loaded_meta is None
