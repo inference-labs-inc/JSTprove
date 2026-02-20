@@ -314,7 +314,7 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
         """
         import torch  # noqa: PLC0415
 
-        all_inputs = dict(raw_inputs)
+        ordered_inputs = {}
 
         if (
             hasattr(self, "input_shape")
@@ -322,25 +322,28 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
             and hasattr(self, "quantized_model")
             and self.quantized_model is not None
         ):
-            missing = set(self.input_shape.keys()) - set(all_inputs.keys())
-            if missing:
-                qm_init = {i.name: i for i in self.quantized_model.graph.initializer}
-                for name in missing:
-                    if name in qm_init:
-                        all_inputs[name] = numpy_helper.to_array(qm_init[name]).tolist()
+            provided = set(raw_inputs.keys())
+            qm_init = {i.name: i for i in self.quantized_model.graph.initializer}
+            for name in self.input_shape:
+                if name in provided:
+                    ordered_inputs[name] = raw_inputs[name]
+                elif name in qm_init:
+                    ordered_inputs[name] = numpy_helper.to_array(qm_init[name]).tolist()
+        else:
+            ordered_inputs = dict(raw_inputs)
 
         input_scales = self._get_input_scales()
         default_scale = float(self.scale_base**self.scale_exponent)
 
         scaled = {}
-        for name, value in all_inputs.items():
+        for name, value in ordered_inputs.items():
             scale = input_scales.get(name, default_scale)
             tensor = torch.as_tensor(value, dtype=torch.float64)
             scaled[name] = (tensor * scale).long().tolist()
 
         circuit_inputs = self.reshape_inputs_for_circuit(scaled)
 
-        inference_inputs = dict(all_inputs)
+        inference_inputs = dict(ordered_inputs)
         inference_inputs = self.reshape_inputs_for_inference(inference_inputs)
         raw_outputs = self.get_outputs(inference_inputs)
         flat = raw_outputs.flatten()
