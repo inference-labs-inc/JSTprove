@@ -277,8 +277,8 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let stride_h = strides.map(|s| s[0] as usize).unwrap_or(pool_h);
                 let stride_w = strides.map(|s| s[1] as usize).unwrap_or(pool_w);
 
-                let pool_oh = in_h / stride_h;
-                let pool_ow = in_w / stride_w;
+                let pool_oh = (in_h - pool_h) / stride_h + 1;
+                let pool_ow = (in_w - pool_w) / stride_w + 1;
                 let window_size = pool_h * pool_w;
                 let num_pool_out = pool_oh * pool_ow * c;
                 let pad_pool = next_power_of_two(num_pool_out);
