@@ -12,7 +12,7 @@ use crate::circuit_functions::{
 
 use expander_compiler::frontend::{Config, RootAPI};
 
-const DEFAULT_N_BITS: usize = 48;
+const DEFAULT_N_BITS: usize = 64;
 
 type BoxedDynLayer<C, B> = Box<dyn LayerOp<C, B>>;
 pub struct BuildLayerContext {

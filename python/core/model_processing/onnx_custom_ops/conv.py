@@ -1,11 +1,88 @@
 from __future__ import annotations
 
 import numpy as np
-import torch
-import torch.nn.functional as f
 from onnxruntime_extensions import PyCustomOpDef, onnx_op
 
 from .custom_helpers import parse_attr, rescaling
+
+_I64_MOD = 1 << 64
+_I64_HALF = 1 << 63
+
+
+def _object_to_int64(arr: np.ndarray) -> np.ndarray:
+    flat = arr.ravel()
+    out = np.empty(flat.shape, dtype=np.int64)
+    for i, val in enumerate(flat):
+        wrapped = int(val) % _I64_MOD
+        out[i] = wrapped - _I64_MOD if wrapped >= _I64_HALF else wrapped
+    return out.reshape(arr.shape)
+
+
+def _conv2d_bigint(
+    x: np.ndarray,
+    w: np.ndarray,
+    b: np.ndarray | None,
+    stride: list[int],
+    padding: list[int],
+    dilation: list[int],
+    groups: int,
+) -> np.ndarray:
+    x = np.asarray(x, dtype=object)
+    w = np.asarray(w, dtype=object)
+
+    n_batch, c_in, h_in, w_in = x.shape
+    c_out, c_in_g, kh, kw = w.shape
+    c_out_g = c_out // groups
+
+    ph_begin, pw_begin, ph_end, pw_end = padding
+    sh, sw = stride
+    dh, dw = dilation
+
+    if ph_begin > 0 or pw_begin > 0 or ph_end > 0 or pw_end > 0:
+        x_pad = np.zeros(
+            (n_batch, c_in, h_in + ph_begin + ph_end, w_in + pw_begin + pw_end),
+            dtype=object,
+        )
+        x_pad[:, :, ph_begin : ph_begin + h_in, pw_begin : pw_begin + w_in] = x
+        x = x_pad
+        h_in += ph_begin + ph_end
+        w_in += pw_begin + pw_end
+
+    h_out = (h_in - dh * (kh - 1) - 1) // sh + 1
+    w_out = (w_in - dw * (kw - 1) - 1) // sw + 1
+
+    output = np.zeros((n_batch, c_out, h_out, w_out), dtype=object)
+
+    for g in range(groups):
+        o_s = g * c_out_g
+        i_s = g * c_in_g
+        w_g = w[o_s : o_s + c_out_g]
+
+        for kkh in range(kh):
+            for kkw in range(kw):
+                x_slice = x[
+                    :,
+                    i_s : i_s + c_in_g,
+                    kkh * dh : kkh * dh + h_out * sh : sh,
+                    kkw * dw : kkw * dw + w_out * sw : sw,
+                ].copy()
+
+                w_kk = w_g[:, :, kkh, kkw]
+
+                for n in range(n_batch):
+                    x_mat = x_slice[n].reshape(c_in_g, -1)
+                    contrib = np.dot(w_kk, x_mat)
+                    output[n, o_s : o_s + c_out_g] += contrib.reshape(
+                        c_out_g,
+                        h_out,
+                        w_out,
+                    )
+
+    if b is not None:
+        b_obj = np.asarray(b, dtype=object)
+        output += b_obj[np.newaxis, :, np.newaxis, np.newaxis]
+
+    return output
 
 
 @onnx_op(
@@ -42,20 +119,16 @@ def int64_conv(
     rescale: int | None = None,
 ) -> np.ndarray:
     """
-    Performs a convolution on int64 input tensors.
-
-    This function is registered as a custom ONNX operator via onnxruntime_extensions
-    and is used in the JSTprove quantized inference pipeline. It parses ONNX-style
-    convolution attributes, applies convolution
-    and optionally rescales the result.
+    Performs a convolution on int64 input tensors using arbitrary-precision
+    Python integers to avoid int64 overflow in intermediate accumulations.
 
     Parameters
     ----------
-    X : Input tensor with dtype int64.
-    W : Convolution weight tensor with dtype int64.
-    B : Optional bias tensor with dtype int64.
+    x : Input tensor with dtype int64.
+    w : Convolution weight tensor with dtype int64.
+    b : Optional bias tensor with dtype int64.
     scaling_factor : Scaling factor for rescaling the output.
-    auto_pad : Optional ONNX auto padding type (`SAME_UPPER`, `SAME_LOWER`, `VALID`).
+    auto_pad : Optional ONNX auto padding type.
     dilations : Dilation values for the convolution (default: `[1, 1]`).
     group : Group value for the convolution (default: 1).
     kernel_shape : Kernel shape (default: `[3, 3]`).
@@ -67,17 +140,6 @@ def int64_conv(
     -------
     numpy.ndarray
         Convolved tensor with dtype int64.
-
-    Notes
-    -----
-    - This op is part of the `ai.onnx.contrib` custom domain.
-    - ONNX Runtime Extensions is required to register this op.
-
-    References
-    ----------
-    For more information on the convolution operation, please refer to the
-    ONNX standard Conv operator documentation:
-    https://onnx.ai/onnx/operators/onnx__Conv.html
     """
     _ = auto_pad
     try:
@@ -85,26 +147,23 @@ def int64_conv(
         dilations = parse_attr(dilations, [1, 1])
         pads = parse_attr(pads, [0, 0, 0, 0])
         kernel_shape = parse_attr(kernel_shape, [3, 3])
+        if group is None:
+            group = 1
 
-        x = torch.from_numpy(x)
-        w = torch.from_numpy(w)
-        b = torch.from_numpy(b)
-
-        result = (
-            f.conv2d(
-                x,
-                w,
-                bias=b,
-                stride=strides,
-                padding=pads[:2],
-                dilation=dilations,
-                groups=group,
-            )
-            .numpy()
-            .astype(np.int64)
+        result = _conv2d_bigint(
+            x,
+            w,
+            b,
+            stride=strides,
+            padding=pads,
+            dilation=dilations,
+            groups=group,
         )
+
+        if scaling_factor is not None:
+            scaling_factor = int(scaling_factor.flat[0])
         result = rescaling(scaling_factor, rescale, result)
-        return result.astype(np.int64)
+        return _object_to_int64(result)
 
     except Exception as e:
         msg = f"Int64Conv failed: {e}"
