@@ -98,6 +98,8 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let weight_data = layer.weights.get(weight_tensor_name)
                     .ok_or_else(|| anyhow::anyhow!("Gemm {} missing weight {}", layer.name, weight_tensor_name))?;
 
+                let trans_a = layer.get_int_attr("transA").map(|v| v != 0).unwrap_or(false);
+                anyhow::ensure!(!trans_a, "Gemm {} has transA=1 which is not supported", layer.name);
                 let trans_b = layer.get_int_attr("transB").map(|v| v != 0).unwrap_or(false);
 
                 let w_shape = weight_data.shape();
@@ -164,6 +166,10 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let c_in = w_shape[1];
                 let kh = w_shape[2];
                 let kw = w_shape[3];
+
+                if let Some(pads) = layer.get_ints_attr("pads") {
+                    anyhow::ensure!(pads.iter().all(|&p| p == 0), "Conv {} has non-zero pads {:?} which is not supported", layer.name, pads);
+                }
 
                 let strides = layer.get_ints_attr("strides");
                 let stride_h = strides.and_then(|s| s.first()).map(|&v| v as usize).unwrap_or(1);

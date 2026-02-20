@@ -67,6 +67,13 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
     let public = builder.add_input_layer("Public", LayerVisibility::Public);
     let committed = builder.add_input_layer("Committed", LayerVisibility::Committed);
 
+    anyhow::ensure!(
+        model.graph.input_names.len() <= 1,
+        "multi-input models not supported (found {} inputs: {:?})",
+        model.graph.input_names.len(),
+        model.graph.input_names
+    );
+
     let input_vars = num_vars_for(input_size);
 
     let input_shred_name = model.graph.input_names.first()
@@ -210,6 +217,8 @@ fn build_gemm_layer(
     let weight_data = layer.weights.get(weight_tensor_name)
         .ok_or_else(|| anyhow::anyhow!("Gemm {} missing weight tensor {}", layer.name, weight_tensor_name))?;
 
+    let trans_a = layer.get_int_attr("transA").map(|v| v != 0).unwrap_or(false);
+    anyhow::ensure!(!trans_a, "Gemm {} has transA=1 which is not supported", layer.name);
     let trans_b = layer.get_int_attr("transB").map(|v| v != 0).unwrap_or(false);
 
     let w_shape = weight_data.shape();
@@ -295,6 +304,10 @@ fn build_conv_layer(
     let c_in = w_shape[1];
     let kh = w_shape[2];
     let kw = w_shape[3];
+
+    if let Some(pads) = layer.get_ints_attr("pads") {
+        anyhow::ensure!(pads.iter().all(|&p| p == 0), "Conv {} has non-zero pads {:?} which is not supported", layer.name, pads);
+    }
 
     let strides = layer.get_ints_attr("strides");
     let stride_h = strides.and_then(|s| s.first()).map(|&v| v as usize).unwrap_or(1);
