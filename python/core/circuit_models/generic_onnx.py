@@ -297,15 +297,12 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
     ) -> tuple[dict[str, list[int]], dict[str, list]]:
         """Scale inputs and run inference in a single pass.
 
-        Takes raw float inputs, applies per-input scaling from the
-        quantized model for circuit consumption, and runs ONNX inference
-        (where the model applies its own internal scaling) for output
-        computation.
-
         Parameters
         ----------
         raw_inputs : dict[str, list]
-            User-provided float inputs (e.g. ``{"tile_in": [...]}``)
+            User-provided float inputs (e.g. ``{"tile_in": [...]}``).\
+            Missing WAI inputs (W, B) are filled from the quantized
+            model's initializers automatically.
 
         Returns
         -------
@@ -343,8 +340,8 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
 
         circuit_inputs = self.reshape_inputs_for_circuit(scaled)
 
-        inference_only = dict(raw_inputs)
-        inference_inputs = self.reshape_inputs_for_inference(inference_only)
+        inference_inputs = dict(all_inputs)
+        inference_inputs = self.reshape_inputs_for_inference(inference_inputs)
         raw_outputs = self.get_outputs(inference_inputs)
         flat = raw_outputs.flatten()
 

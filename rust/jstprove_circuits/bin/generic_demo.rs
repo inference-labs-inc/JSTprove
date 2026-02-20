@@ -1,9 +1,7 @@
 #[allow(unused_imports)]
 /// Standard library imports
 use core::panic;
-use std::ops::Neg;
 
-use ethnum::U256;
 use jstprove_circuits::circuit_functions::CircuitError;
 use jstprove_circuits::circuit_functions::utils::ArrayConversionError;
 use jstprove_circuits::circuit_functions::utils::build_layers::build_layers;
@@ -13,12 +11,12 @@ use ndarray::{Array1, ArrayD, ArrayView1, Axis, Ix1, IxDyn, concatenate};
 
 /// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{
-    BN254Config, CircuitField, Config, Define, FieldArith, RootAPI, Variable, declare_circuit,
+    BN254Config, CircuitField, Config, Define, RootAPI, Variable, declare_circuit,
 };
 
 /// Internal crate imports
 use jstprove_circuits::circuit_functions::utils::onnx_model::{
-    Architecture, CircuitParams, InputData, OutputData, WANDB, get_w_or_b,
+    Architecture, CircuitParams, InputData, OutputData, WANDB,
 };
 use jstprove_circuits::circuit_functions::utils::shaping::get_inputs;
 
@@ -37,7 +35,6 @@ declare_circuit!(Circuit {
     dummy: [Variable; 2],
     scale_base: [PublicVariable; 1],
     scale_exponent: [PublicVariable; 1],
-    weights_arr: [PublicVariable],
 });
 
 // Memorization, in a better place
@@ -62,27 +59,6 @@ impl Circuit<Variable> {
         let w_and_b = OnnxContext::get_wandb()?;
 
         let mut out = get_inputs(&self.input_arr, params.inputs.clone())?;
-
-        if params.weights_as_inputs {
-            let mut offset = 0usize;
-            // Weight tensors are unpacked in w_and_b.w_and_b iteration order.
-            // apply_input_data must populate weights_arr using the same order.
-            for wb_layer in &w_and_b.w_and_b {
-                let shape = wb_layer.shape.get(&wb_layer.name).ok_or_else(|| {
-                    CircuitError::Other(format!("Missing shape for weight '{}'", wb_layer.name))
-                })?;
-                let total: usize = shape.iter().product();
-                let vars: Vec<Variable> = self.weights_arr[offset..offset + total].to_vec();
-                let arr = ArrayD::from_shape_vec(IxDyn(shape), vars).map_err(|e| {
-                    CircuitError::Other(format!(
-                        "Shape mismatch unpacking weight '{}': {e}",
-                        wb_layer.name
-                    ))
-                })?;
-                out.insert(wb_layer.name.clone(), arr);
-                offset += total;
-            }
-        }
 
         let layers = build_layers::<C, Builder>(params, architecture, w_and_b)?;
 
@@ -179,19 +155,6 @@ impl ConfigurableCircuit for Circuit<Variable> {
         eprintln!("input_dims {:?}", params.inputs);
         self.input_arr = vec![Variable::default(); input_dims];
 
-        if params.weights_as_inputs {
-            let w_and_b = OnnxContext::get_wandb()?;
-            let mut total_weight_count: usize = 0;
-            for wb in &w_and_b.w_and_b {
-                let shape = wb.shape.get(&wb.name).ok_or_else(|| {
-                    RunError::Json(format!("Missing shape for weight '{}'", wb.name))
-                })?;
-                total_weight_count += shape.iter().product::<usize>();
-            }
-            eprintln!("weights_as_inputs: {total_weight_count} weight elements");
-            self.weights_arr = vec![Variable::default(); total_weight_count];
-        }
-
         Ok(())
     }
 }
@@ -224,34 +187,7 @@ fn apply_input_data<C: Config>(
 
     assignment.input_arr = flat;
 
-    if params.weights_as_inputs {
-        let w_and_b = OnnxContext::get_wandb()?;
-        let w_and_b_map: std::collections::HashMap<String, _> = w_and_b
-            .w_and_b
-            .iter()
-            .map(|layer| (layer.name.clone(), layer.clone()))
-            .collect();
-
-        let mut weight_values: Vec<CircuitField<C>> = Vec::new();
-        for wb_layer in &w_and_b.w_and_b {
-            let tensor: ArrayD<i64> = get_w_or_b(&w_and_b_map, &wb_layer.name)
-                .map_err(|e| RunError::Json(format!("Weight tensor '{}': {e}", wb_layer.name)))?;
-            for &val in &tensor {
-                weight_values.push(convert_i64_to_field::<C>(val));
-            }
-        }
-        assignment.weights_arr = weight_values;
-    }
-
     Ok(assignment)
-}
-
-fn convert_i64_to_field<C: Config>(val: i64) -> CircuitField<C> {
-    if val < 0 {
-        CircuitField::<C>::from_u256(U256::from(val.unsigned_abs())).neg()
-    } else {
-        CircuitField::<C>::from_u256(U256::from(val.unsigned_abs()))
-    }
 }
 
 fn apply_output_data<C: Config>(
@@ -321,7 +257,7 @@ fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool, has_wandb: boo
     let meta_file_path = get_arg(matches, "meta").unwrap();
     let meta_file = std::fs::read_to_string(&meta_file_path).expect("Failed to read metadata file");
     let params: CircuitParams = serde_json::from_str(&meta_file).expect("Invalid metadata JSON");
-    let needs_wandb = needs_full || params.weights_as_inputs;
+    let needs_wandb = needs_full;
 
     if needs_wandb && !has_wandb {
         let cmd_type = get_arg(matches, "type").unwrap_or_default();
