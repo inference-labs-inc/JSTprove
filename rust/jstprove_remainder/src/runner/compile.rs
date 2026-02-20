@@ -4,9 +4,11 @@ use anyhow::Result;
 
 use crate::onnx::parser;
 use crate::onnx::graph::LayerGraph;
-use crate::onnx::quantizer::{self, ScaleConfig};
+use crate::onnx::quantizer::{self, QuantizedModel, ScaleConfig};
 
-pub fn run(model_path: &Path, output_path: &Path) -> Result<()> {
+use super::serialization;
+
+pub fn run(model_path: &Path, output_path: &Path, compress: bool) -> Result<()> {
     tracing::info!("parsing ONNX model: {}", model_path.display());
     let parsed = parser::parse_onnx(model_path)?;
 
@@ -23,21 +25,11 @@ pub fn run(model_path: &Path, output_path: &Path) -> Result<()> {
         quantized.n_bits_config.len()
     );
 
-    let serialized = bincode::serialize(&quantized)?;
-    let compressed = zstd::encode_all(serialized.as_slice(), 3)?;
-    std::fs::write(output_path, &compressed)?;
-
-    tracing::info!(
-        "model written to {} ({} bytes compressed)",
-        output_path.display(),
-        compressed.len()
-    );
+    let size = serialization::serialize_to_file(&quantized, output_path, compress)?;
+    tracing::info!("model written to {} ({} bytes)", output_path.display(), size);
     Ok(())
 }
 
-pub fn load_model(path: &Path) -> Result<crate::onnx::quantizer::QuantizedModel> {
-    let compressed = std::fs::read(path)?;
-    let decompressed = zstd::decode_all(compressed.as_slice())?;
-    let model: crate::onnx::quantizer::QuantizedModel = bincode::deserialize(&decompressed)?;
-    Ok(model)
+pub fn load_model(path: &Path) -> Result<QuantizedModel> {
+    serialization::deserialize_from_file(path)
 }

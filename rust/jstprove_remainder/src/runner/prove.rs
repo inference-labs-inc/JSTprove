@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use std::path::Path;
+use std::collections::HashMap;
 
 use anyhow::Result;
 use remainder::mle::evals::MultilinearExtension;
@@ -10,15 +10,28 @@ use shared_types::transcript::{Transcript, TranscriptWriter};
 use shared_types::{perform_function_under_prover_config, Fr};
 
 use crate::runner::circuit_builder;
+use crate::padding::num_vars_for;
 
-pub fn run(model_path: &Path, witness_path: &Path, output_path: &Path) -> Result<()> {
+use super::serialization;
+
+pub fn run(model_path: &Path, witness_path: &Path, output_path: &Path, compress: bool) -> Result<()> {
     tracing::info!("loading model from {}", model_path.display());
     let model = super::compile::load_model(model_path)?;
 
     tracing::info!("loading witness from {}", witness_path.display());
     let witness = super::witness::load_witness(witness_path)?;
 
-    tracing::info!("building circuit");
+    let proof = generate_proof(&model, &witness)?;
+
+    let size = serialization::serialize_to_file(&proof, output_path, compress)?;
+    tracing::info!("proof written to {} ({} bytes)", output_path.display(), size);
+    Ok(())
+}
+
+pub fn generate_proof(
+    model: &crate::onnx::quantizer::QuantizedModel,
+    witness: &HashMap<String, Vec<i64>>,
+) -> Result<SerializableProof> {
     let input_name = model.graph.input_names.first()
         .cloned()
         .unwrap_or_else(|| "input".to_string());
@@ -26,11 +39,30 @@ pub fn run(model_path: &Path, witness_path: &Path, output_path: &Path) -> Result
         .map(|v| v.len())
         .ok_or_else(|| anyhow::anyhow!("witness missing input shred '{}'", input_name))?;
 
-    let build_result = circuit_builder::build_circuit(&model, input_size)?;
+    tracing::info!("building circuit");
+    let build_result = circuit_builder::build_circuit(model, input_size)?;
     let mut circuit = build_result.circuit;
 
+    tracing::info!("validating witness completeness against manifest");
+    for (name, entry) in &build_result.manifest {
+        match witness.get(name) {
+            None => anyhow::bail!("witness missing shred '{}' ({:?})", name, entry.visibility),
+            Some(values) => {
+                let expected_nv = entry.num_vars;
+                let actual_nv = num_vars_for(values.len());
+                if actual_nv != expected_nv {
+                    anyhow::bail!(
+                        "witness shred '{}' has {} vars (len {}), circuit expects {} vars",
+                        name, actual_nv, values.len(), expected_nv
+                    );
+                }
+            }
+        }
+    }
+    tracing::info!("witness validation passed ({} shreds verified)", build_result.manifest.len());
+
     tracing::info!("setting {} witness shreds on circuit", witness.len());
-    for (name, values) in &witness {
+    for (name, values) in witness {
         let mle = MultilinearExtension::new(
             values.iter().map(|&v| i64_to_fr(v)).collect(),
         );
@@ -42,21 +74,10 @@ pub fn run(model_path: &Path, witness_path: &Path, output_path: &Path) -> Result
 
     let (proof_config, proof_transcript) = prove_and_get_transcript(&provable)?;
 
-    let serializable = SerializableProof {
+    Ok(SerializableProof {
         proof_config,
         transcript: proof_transcript,
-    };
-
-    let serialized = bincode::serialize(&serializable)?;
-    let compressed = zstd::encode_all(serialized.as_slice(), 3)?;
-    std::fs::write(output_path, &compressed)?;
-
-    tracing::info!(
-        "proof written to {} ({} bytes compressed)",
-        output_path.display(),
-        compressed.len()
-    );
-    Ok(())
+    })
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -66,10 +87,7 @@ pub struct SerializableProof {
 }
 
 pub fn load_proof(path: &Path) -> Result<SerializableProof> {
-    let compressed = std::fs::read(path)?;
-    let decompressed = zstd::decode_all(compressed.as_slice())?;
-    let proof: SerializableProof = bincode::deserialize(&decompressed)?;
-    Ok(proof)
+    serialization::deserialize_from_file(path)
 }
 
 fn prove_and_get_transcript(

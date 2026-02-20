@@ -9,13 +9,33 @@ use crate::onnx::quantizer::QuantizedModel;
 use crate::padding::{next_power_of_two, num_vars_for};
 use crate::runner::circuit_builder::{transpose_matrix, pad_matrix, pad_to_size, SpatialInfo};
 
-pub fn run(model_path: &Path, input_path: &Path, output_path: &Path) -> Result<()> {
+use super::serialization;
+
+pub fn run(model_path: &Path, input_path: &Path, output_path: &Path, compress: bool) -> Result<()> {
     tracing::info!("loading model from {}", model_path.display());
     let model = super::compile::load_model(model_path)?;
 
-    tracing::info!("loading input from {}", input_path.display());
-    let input_json: serde_json::Value = serde_json::from_reader(std::fs::File::open(input_path)?)?;
+    let quantized_input = load_and_quantize_input(input_path, model.scale_config.alpha)?;
 
+    tracing::info!("computing witness for {} layers", model.graph.layers.len());
+    let witness = compute_witness(&model, &quantized_input)?;
+
+    let size = serialization::serialize_to_file(&witness, output_path, compress)?;
+    tracing::info!(
+        "witness written to {} ({} shreds, {} bytes)",
+        output_path.display(),
+        witness.len(),
+        size
+    );
+    Ok(())
+}
+
+pub fn load_and_quantize_input(input_path: &Path, alpha: i64) -> Result<Vec<i64>> {
+    let input_json: serde_json::Value = serde_json::from_reader(std::fs::File::open(input_path)?)?;
+    quantize_input_json(&input_json, alpha)
+}
+
+pub fn quantize_input_json(input_json: &serde_json::Value, alpha: i64) -> Result<Vec<i64>> {
     let raw_input: Vec<f64> = input_json.get("input")
         .and_then(|v| v.as_array())
         .ok_or_else(|| anyhow::anyhow!("input JSON must have an \"input\" array field"))?
@@ -23,32 +43,13 @@ pub fn run(model_path: &Path, input_path: &Path, output_path: &Path) -> Result<(
         .map(|v| v.as_f64().unwrap_or(0.0))
         .collect();
 
-    let alpha = model.scale_config.alpha;
-    let quantized_input: Vec<i64> = raw_input.iter()
+    Ok(raw_input.iter()
         .map(|&v| (v * alpha as f64).round() as i64)
-        .collect();
-
-    tracing::info!("computing witness for {} layers", model.graph.layers.len());
-    let witness = compute_witness(&model, &quantized_input)?;
-
-    let serialized = bincode::serialize(&witness)?;
-    let compressed = zstd::encode_all(serialized.as_slice(), 3)?;
-    std::fs::write(output_path, &compressed)?;
-
-    tracing::info!(
-        "witness written to {} ({} shreds, {} bytes compressed)",
-        output_path.display(),
-        witness.len(),
-        compressed.len()
-    );
-    Ok(())
+        .collect())
 }
 
 pub fn load_witness(path: &Path) -> Result<HashMap<String, Vec<i64>>> {
-    let compressed = std::fs::read(path)?;
-    let decompressed = zstd::decode_all(compressed.as_slice())?;
-    let witness: HashMap<String, Vec<i64>> = bincode::deserialize(&decompressed)?;
-    Ok(witness)
+    serialization::deserialize_from_file(path)
 }
 
 pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Result<HashMap<String, Vec<i64>>> {

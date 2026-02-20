@@ -18,21 +18,30 @@ pub fn run(model_path: &Path, proof_path: &Path, input_path: &Path) -> Result<()
     let proof = super::prove::load_proof(proof_path)?;
 
     tracing::info!("loading input from {}", input_path.display());
-    let input_json: serde_json::Value = serde_json::from_reader(std::fs::File::open(input_path)?)?;
+    let quantized_input = super::witness::load_and_quantize_input(input_path, model.scale_config.alpha)?;
 
-    let raw_input: Vec<f64> = input_json.get("input")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| anyhow::anyhow!("input JSON must have an \"input\" array field"))?
-        .iter()
-        .map(|v| v.as_f64().unwrap_or(0.0))
-        .collect();
+    let result = verify_with_model(&model, &proof, &quantized_input);
 
-    let alpha = model.scale_config.alpha;
-    let quantized_input: Vec<i64> = raw_input.iter()
-        .map(|&v| (v * alpha as f64).round() as i64)
-        .collect();
+    match &result {
+        Ok(()) => {
+            tracing::info!("verification PASSED");
+            println!("Verification: PASS");
+        }
+        Err(e) => {
+            tracing::error!("verification FAILED: {}", e);
+            println!("Verification: FAIL");
+        }
+    }
 
-    let witness = super::witness::compute_witness(&model, &quantized_input)?;
+    result
+}
+
+pub fn verify_with_model(
+    model: &crate::onnx::quantizer::QuantizedModel,
+    proof: &super::prove::SerializableProof,
+    quantized_input: &[i64],
+) -> Result<()> {
+    let witness = super::witness::compute_witness(model, quantized_input)?;
 
     let input_name = model.graph.input_names.first()
         .cloned()
@@ -41,8 +50,7 @@ pub fn run(model_path: &Path, proof_path: &Path, input_path: &Path) -> Result<()
         .map(|v| v.len())
         .ok_or_else(|| anyhow::anyhow!("witness missing input shred '{}'", input_name))?;
 
-    tracing::info!("building verifier circuit");
-    let build_result = circuit_builder::build_circuit(&model, input_size)?;
+    let build_result = circuit_builder::build_circuit(model, input_size)?;
     let mut circuit = build_result.circuit;
 
     for (name, entry) in &build_result.manifest {
@@ -56,11 +64,10 @@ pub fn run(model_path: &Path, proof_path: &Path, input_path: &Path) -> Result<()
         }
     }
 
-    tracing::info!("verifying proof");
     let verifiable = circuit.gen_verifiable_circuit()?;
 
     let mut transcript_reader =
-        TranscriptReader::<Fr, PoseidonSponge<Fr>>::new(proof.transcript);
+        TranscriptReader::<Fr, PoseidonSponge<Fr>>::new(proof.transcript.clone());
 
     let verifier_config =
         GKRCircuitVerifierConfig::new_from_proof_config(&proof.proof_config, false);
@@ -73,18 +80,7 @@ pub fn run(model_path: &Path, proof_path: &Path, input_path: &Path) -> Result<()
         &proof.proof_config
     );
 
-    match result {
-        Ok(()) => {
-            tracing::info!("verification PASSED");
-            println!("Verification: PASS");
-            Ok(())
-        }
-        Err(e) => {
-            tracing::error!("verification FAILED: {}", e);
-            println!("Verification: FAIL");
-            anyhow::bail!("verification failed: {}", e)
-        }
-    }
+    result.map_err(|e| anyhow::anyhow!("verification failed: {}", e))
 }
 
 fn verify_internal(

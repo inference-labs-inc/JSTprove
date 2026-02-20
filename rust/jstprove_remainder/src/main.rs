@@ -17,6 +17,8 @@ enum Commands {
         model: PathBuf,
         #[arg(short, long)]
         output: PathBuf,
+        #[arg(long, default_value_t = false)]
+        no_compress: bool,
     },
     Witness {
         #[arg(long)]
@@ -25,6 +27,8 @@ enum Commands {
         input: PathBuf,
         #[arg(short, long)]
         output: PathBuf,
+        #[arg(long, default_value_t = false)]
+        no_compress: bool,
     },
     Prove {
         #[arg(long)]
@@ -33,6 +37,8 @@ enum Commands {
         witness: PathBuf,
         #[arg(short, long)]
         output: PathBuf,
+        #[arg(long, default_value_t = false)]
+        no_compress: bool,
     },
     Verify {
         #[arg(long)]
@@ -41,6 +47,44 @@ enum Commands {
         proof: PathBuf,
         #[arg(short, long)]
         input: PathBuf,
+    },
+    BatchWitness {
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(short, long)]
+        manifest: PathBuf,
+        #[arg(long, default_value_t = false)]
+        no_compress: bool,
+    },
+    BatchProve {
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(short, long)]
+        manifest: PathBuf,
+        #[arg(long, default_value_t = false)]
+        no_compress: bool,
+    },
+    BatchVerify {
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(short, long)]
+        manifest: PathBuf,
+    },
+    PipeWitness {
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(long, default_value_t = false)]
+        no_compress: bool,
+    },
+    PipeProve {
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(long, default_value_t = false)]
+        no_compress: bool,
+    },
+    PipeVerify {
+        #[arg(long)]
+        model: PathBuf,
     },
 }
 
@@ -52,23 +96,35 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Compile { model, output } => {
-            jstprove_remainder::runner::compile::run(&model, &output)
+        Commands::Compile { model, output, no_compress } => {
+            jstprove_remainder::runner::compile::run(&model, &output, !no_compress)
         }
-        Commands::Witness {
-            model,
-            input,
-            output,
-        } => jstprove_remainder::runner::witness::run(&model, &input, &output),
-        Commands::Prove {
-            model,
-            witness,
-            output,
-        } => jstprove_remainder::runner::prove::run(&model, &witness, &output),
-        Commands::Verify {
-            model,
-            proof,
-            input,
-        } => jstprove_remainder::runner::verify::run(&model, &proof, &input),
+        Commands::Witness { model, input, output, no_compress } => {
+            jstprove_remainder::runner::witness::run(&model, &input, &output, !no_compress)
+        }
+        Commands::Prove { model, witness, output, no_compress } => {
+            jstprove_remainder::runner::prove::run(&model, &witness, &output, !no_compress)
+        }
+        Commands::Verify { model, proof, input } => {
+            jstprove_remainder::runner::verify::run(&model, &proof, &input)
+        }
+        Commands::BatchWitness { model, manifest, no_compress } => {
+            jstprove_remainder::runner::batch::run_batch_witness(&model, &manifest, !no_compress)
+        }
+        Commands::BatchProve { model, manifest, no_compress } => {
+            jstprove_remainder::runner::batch::run_batch_prove(&model, &manifest, !no_compress)
+        }
+        Commands::BatchVerify { model, manifest } => {
+            jstprove_remainder::runner::batch::run_batch_verify(&model, &manifest)
+        }
+        Commands::PipeWitness { model, no_compress } => {
+            jstprove_remainder::runner::pipe::run_pipe_witness(&model, !no_compress)
+        }
+        Commands::PipeProve { model, no_compress } => {
+            jstprove_remainder::runner::pipe::run_pipe_prove(&model, !no_compress)
+        }
+        Commands::PipeVerify { model } => {
+            jstprove_remainder::runner::pipe::run_pipe_verify(&model)
+        }
     }
 }
