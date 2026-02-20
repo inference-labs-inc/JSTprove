@@ -122,10 +122,9 @@ fn prove_internal(
 }
 
 fn i64_to_fr(val: i64) -> Fr {
-    use shared_types::Field;
     if val >= 0 {
         Fr::from(val as u64)
     } else {
-        Fr::from(val.unsigned_abs()).neg()
+        -Fr::from(val.unsigned_abs())
     }
 }

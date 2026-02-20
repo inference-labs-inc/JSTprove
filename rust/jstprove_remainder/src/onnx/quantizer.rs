@@ -130,49 +130,41 @@ fn compute_layer_bound(
             .unwrap_or(alpha as f64)
     };
 
+    let get_weight_bound = |input_idx: usize| -> f64 {
+        layer
+            .inputs
+            .get(input_idx)
+            .and_then(|name| layer.weights.get(name))
+            .map(|w| {
+                let vals = w.as_i64_vec();
+                vals.iter().map(|v| v.unsigned_abs()).sum::<u64>() as f64
+            })
+            .unwrap_or(1.0)
+    };
+
+    let get_bias_bound = |input_idx: usize| -> f64 {
+        layer
+            .inputs
+            .get(input_idx)
+            .and_then(|name| layer.weights.get(name))
+            .map(|b| {
+                let vals = b.as_i64_vec();
+                vals.iter().map(|v| v.unsigned_abs()).max().unwrap_or(0) as f64
+            })
+            .unwrap_or(0.0)
+    };
+
     match layer.op_type {
         OpType::Conv => {
             let m_in = get_input_bound(0);
-            let weight = layer
-                .weights
-                .values()
-                .next()
-                .map(|w| {
-                    let vals = w.as_i64_vec();
-                    vals.iter().map(|v| v.unsigned_abs()).sum::<u64>() as f64
-                })
-                .unwrap_or(1.0);
-            let bias_bound = layer
-                .weights
-                .values()
-                .nth(1)
-                .map(|b| {
-                    let vals = b.as_i64_vec();
-                    vals.iter().map(|v| v.unsigned_abs()).max().unwrap_or(0) as f64
-                })
-                .unwrap_or(0.0);
+            let weight = get_weight_bound(1);
+            let bias_bound = get_bias_bound(2);
             Ok(weight * m_in + bias_bound)
         }
         OpType::Gemm => {
             let m_in = get_input_bound(0);
-            let weight_sum: f64 = layer
-                .weights
-                .values()
-                .next()
-                .map(|w| {
-                    let vals = w.as_i64_vec();
-                    vals.iter().map(|v| v.unsigned_abs()).sum::<u64>() as f64
-                })
-                .unwrap_or(1.0);
-            let bias_bound: f64 = layer
-                .weights
-                .values()
-                .nth(1)
-                .map(|b| {
-                    let vals = b.as_i64_vec();
-                    vals.iter().map(|v| v.unsigned_abs()).max().unwrap_or(0) as f64
-                })
-                .unwrap_or(0.0);
+            let weight_sum = get_weight_bound(1);
+            let bias_bound = get_bias_bound(2);
             Ok(weight_sum * m_in + bias_bound)
         }
         OpType::BatchNormalization => {

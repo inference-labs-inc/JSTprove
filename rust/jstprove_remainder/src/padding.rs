@@ -1,5 +1,3 @@
-use shared_types::Field;
-
 pub fn next_power_of_two(n: usize) -> usize {
     n.next_power_of_two()
 }
@@ -9,14 +7,6 @@ pub fn log2_ceil(n: usize) -> usize {
         return 0;
     }
     (usize::BITS - (n - 1).leading_zeros()) as usize
-}
-
-pub fn pad_to_power_of_two<F: Field>(data: &[F], pad_value: F) -> Vec<F> {
-    let target = next_power_of_two(data.len());
-    let mut padded = Vec::with_capacity(target);
-    padded.extend_from_slice(data);
-    padded.resize(target, pad_value);
-    padded
 }
 
 pub fn pad_to_power_of_two_i64(data: &[i64]) -> Vec<i64> {

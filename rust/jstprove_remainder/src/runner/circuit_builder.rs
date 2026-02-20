@@ -300,14 +300,15 @@ fn build_conv_layer(
     let kw = w_shape[3];
 
     let strides = layer.get_ints_attr("strides");
-    let stride_h = strides.map(|s| s[0] as usize).unwrap_or(1);
-    let stride_w = strides.map(|s| s[1] as usize).unwrap_or(1);
+    let stride_h = strides.and_then(|s| s.first()).map(|&v| v as usize).unwrap_or(1);
+    let stride_w = strides.and_then(|s| s.get(1)).map(|&v| v as usize).unwrap_or(1);
 
     let input_layout = tensor_layouts.get(input_name)
         .ok_or_else(|| anyhow::anyhow!("Conv {} input {} has no spatial layout", layer.name, input_name))?
         .clone();
 
     let (in_h, in_w) = input_layout.hw();
+    anyhow::ensure!(in_h >= kh && in_w >= kw, "Conv {}: input {}x{} smaller than kernel {}x{}", layer.name, in_h, in_w, kh, kw);
     let out_h = (in_h - kh) / stride_h + 1;
     let out_w = (in_w - kw) / stride_w + 1;
     let patch_size = c_in * kh * kw;
@@ -466,12 +467,13 @@ fn build_maxpool_layer(
 
     let kernel_shape = layer.get_ints_attr("kernel_shape")
         .ok_or_else(|| anyhow::anyhow!("MaxPool {} missing kernel_shape", layer.name))?;
+    anyhow::ensure!(kernel_shape.len() >= 2, "MaxPool {} kernel_shape has fewer than 2 dimensions", layer.name);
     let pool_h = kernel_shape[0] as usize;
     let pool_w = kernel_shape[1] as usize;
 
     let strides = layer.get_ints_attr("strides");
-    let stride_h = strides.map(|s| s[0] as usize).unwrap_or(pool_h);
-    let stride_w = strides.map(|s| s[1] as usize).unwrap_or(pool_w);
+    let stride_h = strides.and_then(|s| s.first()).map(|&v| v as usize).unwrap_or(pool_h);
+    let stride_w = strides.and_then(|s| s.get(1)).map(|&v| v as usize).unwrap_or(pool_w);
 
     let pool_oh = (in_h - pool_h) / stride_h + 1;
     let pool_ow = (in_w - pool_w) / stride_w + 1;

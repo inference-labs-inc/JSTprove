@@ -40,8 +40,9 @@ pub fn quantize_input_json(input_json: &serde_json::Value, alpha: i64) -> Result
         .and_then(|v| v.as_array())
         .ok_or_else(|| anyhow::anyhow!("input JSON must have an \"input\" array field"))?
         .iter()
-        .map(|v| v.as_f64().unwrap_or(0.0))
-        .collect();
+        .enumerate()
+        .map(|(i, v)| v.as_f64().ok_or_else(|| anyhow::anyhow!("input[{}] is not a number: {}", i, v)))
+        .collect::<Result<Vec<f64>>>()?;
 
     Ok(raw_input.iter()
         .map(|&v| (v * alpha as f64).round() as i64)
@@ -163,8 +164,8 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let kw = w_shape[3];
 
                 let strides = layer.get_ints_attr("strides");
-                let stride_h = strides.map(|s| s[0] as usize).unwrap_or(1);
-                let stride_w = strides.map(|s| s[1] as usize).unwrap_or(1);
+                let stride_h = strides.and_then(|s| s.first()).map(|&v| v as usize).unwrap_or(1);
+                let stride_w = strides.and_then(|s| s.get(1)).map(|&v| v as usize).unwrap_or(1);
 
                 let (in_h, in_w) = input_layout.hw();
                 let out_h = (in_h - kh) / stride_h + 1;
@@ -270,12 +271,14 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
 
                 let kernel_shape = layer.get_ints_attr("kernel_shape")
                     .ok_or_else(|| anyhow::anyhow!("MaxPool {} missing kernel_shape", layer.name))?;
-                let pool_h = kernel_shape[0] as usize;
-                let pool_w = kernel_shape[1] as usize;
+                let pool_h = kernel_shape.first().map(|&v| v as usize)
+                    .ok_or_else(|| anyhow::anyhow!("MaxPool {} kernel_shape empty", layer.name))?;
+                let pool_w = kernel_shape.get(1).map(|&v| v as usize)
+                    .ok_or_else(|| anyhow::anyhow!("MaxPool {} kernel_shape has < 2 dims", layer.name))?;
 
                 let strides = layer.get_ints_attr("strides");
-                let stride_h = strides.map(|s| s[0] as usize).unwrap_or(pool_h);
-                let stride_w = strides.map(|s| s[1] as usize).unwrap_or(pool_w);
+                let stride_h = strides.and_then(|s| s.first()).map(|&v| v as usize).unwrap_or(pool_h);
+                let stride_w = strides.and_then(|s| s.get(1)).map(|&v| v as usize).unwrap_or(pool_w);
 
                 let pool_oh = (in_h - pool_h) / stride_h + 1;
                 let pool_ow = (in_w - pool_w) / stride_w + 1;

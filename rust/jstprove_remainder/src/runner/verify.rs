@@ -55,12 +55,12 @@ pub fn verify_with_model(
 
     for (name, entry) in &build_result.manifest {
         if entry.visibility == Visibility::Public {
-            if let Some(values) = witness.get(name) {
-                let mle = MultilinearExtension::new(
-                    values.iter().map(|&v| i64_to_fr(v)).collect(),
-                );
-                circuit.set_input(name, mle);
-            }
+            let values = witness.get(name)
+                .ok_or_else(|| anyhow::anyhow!("missing public input '{}'", name))?;
+            let mle = MultilinearExtension::new(
+                values.iter().map(|&v| i64_to_fr(v)).collect(),
+            );
+            circuit.set_input(name, mle);
         }
     }
 
@@ -98,10 +98,9 @@ fn verify_internal(
 }
 
 fn i64_to_fr(val: i64) -> Fr {
-    use shared_types::Field;
     if val >= 0 {
         Fr::from(val as u64)
     } else {
-        Fr::from(val.unsigned_abs()).neg()
+        -Fr::from(val.unsigned_abs())
     }
 }
