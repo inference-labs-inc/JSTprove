@@ -34,16 +34,19 @@ def _conv2d_bigint(
     c_out, c_in_g, kh, kw = w.shape
     c_out_g = c_out // groups
 
-    ph, pw = padding
+    ph_begin, pw_begin, ph_end, pw_end = padding
     sh, sw = stride
     dh, dw = dilation
 
-    if ph > 0 or pw > 0:
-        x_pad = np.zeros((n_batch, c_in, h_in + 2 * ph, w_in + 2 * pw), dtype=object)
-        x_pad[:, :, ph : ph + h_in, pw : pw + w_in] = x
+    if ph_begin > 0 or pw_begin > 0 or ph_end > 0 or pw_end > 0:
+        x_pad = np.zeros(
+            (n_batch, c_in, h_in + ph_begin + ph_end, w_in + pw_begin + pw_end),
+            dtype=object,
+        )
+        x_pad[:, :, ph_begin : ph_begin + h_in, pw_begin : pw_begin + w_in] = x
         x = x_pad
-        h_in += 2 * ph
-        w_in += 2 * pw
+        h_in += ph_begin + ph_end
+        w_in += pw_begin + pw_end
 
     h_out = (h_in - dh * (kh - 1) - 1) // sh + 1
     w_out = (w_in - dw * (kw - 1) - 1) // sw + 1
@@ -150,7 +153,7 @@ def int64_conv(
             w,
             b,
             stride=strides,
-            padding=pads[:2],
+            padding=pads,
             dilation=dilations,
             groups=group,
         )

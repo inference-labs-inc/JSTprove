@@ -257,9 +257,7 @@ fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool, has_wandb: boo
     let meta_file_path = get_arg(matches, "meta").unwrap();
     let meta_file = std::fs::read_to_string(&meta_file_path).expect("Failed to read metadata file");
     let params: CircuitParams = serde_json::from_str(&meta_file).expect("Invalid metadata JSON");
-    let needs_wandb = needs_full;
-
-    if needs_wandb && !has_wandb {
+    if params.weights_as_inputs && !has_wandb {
         let cmd_type = get_arg(matches, "type").unwrap_or_default();
         eprintln!(
             "Error: command '{cmd_type}' requires --wandb (weights_as_inputs is enabled in metadata)."
@@ -282,7 +280,7 @@ fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool, has_wandb: boo
             .unwrap();
     }
 
-    if needs_wandb {
+    if has_wandb {
         let wandb_file_path = get_arg(matches, "wandb").unwrap();
         let wandb_file =
             std::fs::read_to_string(&wandb_file_path).expect("Failed to read W&B file");

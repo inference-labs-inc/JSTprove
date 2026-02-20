@@ -21,20 +21,26 @@ class BuildRustBinaries(build_py):
         binaries_dir = Path("python/core/binaries")
         binaries_dir.mkdir(parents=True, exist_ok=True)
 
-        if shutil.which("cargo"):
-            self._cargo_build(
-                binary_name,
-                binaries_dir,
-                source_dir=Path("target/release"),
+        if not shutil.which("cargo"):
+            print(
+                "WARNING: cargo not found — skipping Rust binary builds",
+                file=sys.stderr,
             )
-            expander_manifest = Path("Expander/Cargo.toml")
-            if expander_manifest.exists():
-                self._cargo_build(
-                    "expander-exec",
-                    binaries_dir,
-                    manifest_path=str(expander_manifest),
-                    source_dir=Path("Expander/target/release"),
-                )
+            return
+
+        self._cargo_build(
+            binary_name,
+            binaries_dir,
+            source_dir=Path("target/release"),
+        )
+        expander_manifest = Path("Expander/Cargo.toml")
+        if expander_manifest.exists():
+            self._cargo_build(
+                "expander-exec",
+                binaries_dir,
+                manifest_path=str(expander_manifest),
+                source_dir=Path("Expander/target/release"),
+            )
 
     def _read_version(self):
         text = Path("pyproject.toml").read_text()
@@ -44,13 +50,6 @@ class BuildRustBinaries(build_py):
         return match.group(1)
 
     def _cargo_build(self, binary_name, target_dir, source_dir, manifest_path=None):
-        if not shutil.which("cargo"):
-            print(
-                f"WARNING: cargo not found, skipping build of {binary_name}",
-                file=sys.stderr,
-            )
-            return
-
         cmd = ["cargo", "build", "--release", "--bin", binary_name]
         if manifest_path:
             cmd.extend(["--manifest-path", manifest_path])
