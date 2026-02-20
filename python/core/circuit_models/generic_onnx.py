@@ -341,7 +341,8 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
             tensor = torch.as_tensor(value, dtype=torch.float64)
             scaled[name] = (tensor * scale).long().tolist()
 
-        circuit_inputs = self.reshape_inputs_for_circuit(scaled)
+        circuit_scaled = {k: v for k, v in scaled.items() if k in raw_inputs}
+        circuit_inputs = self.reshape_inputs_for_circuit(circuit_scaled)
 
         inference_only = dict(raw_inputs)
         inference_inputs = self.reshape_inputs_for_inference(inference_only)
