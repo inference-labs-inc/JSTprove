@@ -21,14 +21,12 @@ class BuildRustBinaries(build_py):
         binaries_dir = Path("python/core/binaries")
         binaries_dir.mkdir(parents=True, exist_ok=True)
 
-        if not (binaries_dir / binary_name).exists():
+        if shutil.which("cargo"):
             self._cargo_build(
                 binary_name,
                 binaries_dir,
                 source_dir=Path("target/release"),
             )
-
-        if not (binaries_dir / "expander-exec").exists():
             expander_manifest = Path("Expander/Cargo.toml")
             if expander_manifest.exists():
                 self._cargo_build(
