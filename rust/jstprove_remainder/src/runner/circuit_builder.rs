@@ -150,14 +150,18 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
             OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
                 let input_name = layer.inputs.first()
                     .ok_or_else(|| anyhow::anyhow!("shape op {} has no inputs", layer.name))?;
-                let node = tensor_nodes.get(input_name).cloned();
-                let nv = tensor_num_vars.get(input_name).copied();
-                if let Some(node) = node {
-                    for out in &layer.outputs {
-                        tensor_nodes.insert(out.clone(), node.clone());
-                        if let Some(nv) = nv {
-                            tensor_num_vars.insert(out.clone(), nv);
-                        }
+                let node = tensor_nodes.get(input_name)
+                    .ok_or_else(|| anyhow::anyhow!("shape op {} input {} not in tensor_nodes", layer.name, input_name))?
+                    .clone();
+                let nv = tensor_num_vars.get(input_name)
+                    .copied()
+                    .ok_or_else(|| anyhow::anyhow!("shape op {} input {} has no num_vars", layer.name, input_name))?;
+                let layout = tensor_layouts.get(input_name).cloned();
+                for out in &layer.outputs {
+                    tensor_nodes.insert(out.clone(), node.clone());
+                    tensor_num_vars.insert(out.clone(), nv);
+                    if let Some(ref layout) = layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
                     }
                 }
             }
@@ -545,7 +549,7 @@ pub fn transpose_matrix(data: &[i64], rows: usize, cols: usize) -> Vec<i64> {
 }
 
 pub fn pad_matrix(data: &[i64], orig_rows: usize, orig_cols: usize, pad_rows: usize, pad_cols: usize) -> Vec<i64> {
-    debug_assert!(orig_rows <= pad_rows && orig_cols <= pad_cols,
+    assert!(orig_rows <= pad_rows && orig_cols <= pad_cols,
         "pad_matrix: orig {}x{} exceeds target {}x{}", orig_rows, orig_cols, pad_rows, pad_cols);
     let mut out = vec![0i64; pad_rows * pad_cols];
     for r in 0..orig_rows {

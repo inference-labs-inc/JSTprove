@@ -101,6 +101,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let trans_b = layer.get_int_attr("transB").map(|v| v != 0).unwrap_or(false);
 
                 let w_shape = weight_data.shape();
+                anyhow::ensure!(w_shape.len() >= 2, "Gemm {} weight has {} dims, need >= 2", layer.name, w_shape.len());
                 let (w_rows, w_cols) = (w_shape[0], w_shape[1]);
                 let (k_dim, n_dim) = if trans_b { (w_cols, w_rows) } else { (w_rows, w_cols) };
 
@@ -158,6 +159,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     .clone();
 
                 let w_shape = weight_data.shape();
+                anyhow::ensure!(w_shape.len() >= 4, "Conv {} weight has {} dims, need >= 4", layer.name, w_shape.len());
                 let c_out = w_shape[0];
                 let c_in = w_shape[1];
                 let kh = w_shape[2];
@@ -331,9 +333,14 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
             OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
                 let input_tensor_name = layer.inputs.first()
                     .ok_or_else(|| anyhow::anyhow!("shape op {} has no input", layer.name))?;
-                if let Some(data) = tensors.get(input_tensor_name).cloned() {
-                    for out in &layer.outputs {
-                        tensors.insert(out.clone(), data.clone());
+                let data = tensors.get(input_tensor_name)
+                    .ok_or_else(|| anyhow::anyhow!("shape op {} input {} not computed", layer.name, input_tensor_name))?
+                    .clone();
+                let layout = tensor_layouts.get(input_tensor_name).cloned();
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), data.clone());
+                    if let Some(ref layout) = layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
                     }
                 }
             }
@@ -362,7 +369,7 @@ fn padded_matmul(a: &[i64], a_rows: usize, a_cols: usize, b: &[i64], b_cols: usi
             for k in 0..a_cols {
                 sum += a[i * a_cols + k] as i128 * b[k * b_cols + j] as i128;
             }
-            out[i * b_cols + j] = sum as i64;
+            out[i * b_cols + j] = i64::try_from(sum).expect("matmul accumulator overflows i64");
         }
     }
     out

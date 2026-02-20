@@ -23,15 +23,10 @@ pub fn run(model_path: &Path, proof_path: &Path, input_path: &Path) -> Result<()
 
     let result = verify_with_model(&model, &proof, &quantized_input);
 
-    match &result {
-        Ok(()) => {
-            tracing::info!("verification PASSED");
-            println!("Verification: PASS");
-        }
-        Err(e) => {
-            tracing::error!("verification FAILED: {}", e);
-            println!("Verification: FAIL");
-        }
+    if result.is_ok() {
+        tracing::info!("verification PASSED");
+    } else {
+        tracing::error!("verification FAILED: {}", result.as_ref().unwrap_err());
     }
 
     result
@@ -97,4 +92,3 @@ fn verify_internal(
         )
         .map_err(|e| anyhow::anyhow!("{}", e))
 }
-

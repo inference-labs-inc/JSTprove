@@ -96,18 +96,18 @@ fn prove_and_get_transcript(
 ) -> Result<(ProofConfig, Transcript<Fr>)> {
     let runtime_optimized_config = GKRCircuitProverConfig::runtime_optimized_default();
 
-    let result: (ProofConfig, Transcript<Fr>) = perform_function_under_prover_config!(
+    let result: Result<(ProofConfig, Transcript<Fr>)> = perform_function_under_prover_config!(
         prove_internal,
         &runtime_optimized_config,
         provable
     );
 
-    Ok(result)
+    result
 }
 
 fn prove_internal(
     provable: &remainder::provable_circuit::ProvableCircuit<Fr>,
-) -> (ProofConfig, Transcript<Fr>) {
+) -> Result<(ProofConfig, Transcript<Fr>)> {
     let mut transcript_writer =
         TranscriptWriter::<Fr, PoseidonSponge<Fr>>::new("GKR Prover Transcript");
 
@@ -116,9 +116,8 @@ fn prove_internal(
             global_prover_circuit_description_hash_type(),
             &mut transcript_writer,
         )
-        .expect("proof generation failed");
+        .map_err(|e| anyhow::anyhow!("proof generation failed: {}", e))?;
 
     let transcript = transcript_writer.get_transcript();
-    (proof_config, transcript)
+    Ok((proof_config, transcript))
 }
-
