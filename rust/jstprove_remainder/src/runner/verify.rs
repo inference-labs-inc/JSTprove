@@ -40,8 +40,8 @@ pub fn verify_with_model(
     let witness = super::witness::compute_witness(model, quantized_input)?;
 
     let input_name = model.graph.input_names.first()
-        .cloned()
-        .unwrap_or_else(|| "input".to_string());
+        .ok_or_else(|| anyhow::anyhow!("model has no input names defined"))?
+        .clone();
     let input_size = witness.get(&input_name)
         .map(|v| v.len())
         .ok_or_else(|| anyhow::anyhow!("witness missing input shred '{}'", input_name))?;

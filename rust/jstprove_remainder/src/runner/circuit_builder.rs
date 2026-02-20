@@ -77,8 +77,8 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
     let input_vars = num_vars_for(input_size);
 
     let input_shred_name = model.graph.input_names.first()
-        .cloned()
-        .unwrap_or_else(|| "input".to_string());
+        .ok_or_else(|| anyhow::anyhow!("model has no input names defined"))?
+        .clone();
 
     let input_node = builder.add_input_shred(&input_shred_name, input_vars, &public);
     manifest.insert(input_shred_name.clone(), ShredEntry { num_vars: input_vars, visibility: Visibility::Public });
@@ -101,7 +101,13 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
         }
     }
 
-    let mut last_output_name = String::new();
+    anyhow::ensure!(
+        model.graph.output_names.len() == 1,
+        "expected exactly 1 output, found {} ({:?})",
+        model.graph.output_names.len(),
+        model.graph.output_names
+    );
+    let declared_output = &model.graph.output_names[0];
 
     for layer in model.graph.iter_topo() {
         match layer.op_type {
@@ -177,21 +183,18 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
             }
         }
 
-        for out in &layer.outputs {
-            last_output_name = out.clone();
-        }
     }
 
-    let expected_name = "expected_output".to_string();
-    let output_vars = tensor_num_vars.get(&last_output_name)
+    let output_vars = tensor_num_vars.get(declared_output)
         .copied()
-        .ok_or_else(|| anyhow::anyhow!("no output tensor found"))?;
+        .ok_or_else(|| anyhow::anyhow!("declared output '{}' not found in tensor_num_vars", declared_output))?;
+    let expected_name = "expected_output".to_string();
     let expected_node = builder.add_input_shred(&expected_name, output_vars, &public);
     manifest.insert(expected_name, ShredEntry { num_vars: output_vars, visibility: Visibility::Public });
 
-    let last_output_node = tensor_nodes.get(&last_output_name)
-        .ok_or_else(|| anyhow::anyhow!("no output node for {}", last_output_name))?;
-    let out_check = builder.add_sector(last_output_node.expr() - expected_node.expr());
+    let output_node = tensor_nodes.get(declared_output)
+        .ok_or_else(|| anyhow::anyhow!("declared output '{}' not found in tensor_nodes", declared_output))?;
+    let out_check = builder.add_sector(output_node.expr() - expected_node.expr());
     builder.set_output(&out_check);
 
     let circuit = builder.build_with_layer_combination()?;
@@ -317,7 +320,8 @@ fn build_conv_layer(
         .ok_or_else(|| anyhow::anyhow!("Conv {} input {} has no spatial layout", layer.name, input_name))?
         .clone();
 
-    let (in_h, in_w) = input_layout.hw();
+    let (input_ch, in_h, in_w) = input_layout.spatial_dims();
+    anyhow::ensure!(input_ch == c_in, "Conv {}: weight c_in {} does not match input channels {}", layer.name, c_in, input_ch);
     anyhow::ensure!(in_h >= kh && in_w >= kw, "Conv {}: input {}x{} smaller than kernel {}x{}", layer.name, in_h, in_w, kh, kw);
     let out_h = (in_h - kh) / stride_h + 1;
     let out_w = (in_w - kw) / stride_w + 1;

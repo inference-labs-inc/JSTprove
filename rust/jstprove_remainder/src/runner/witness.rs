@@ -62,8 +62,8 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
     let mut tensor_layouts: HashMap<String, SpatialInfo> = HashMap::new();
 
     let input_name = model.graph.input_names.first()
-        .cloned()
-        .unwrap_or_else(|| "input".to_string());
+        .ok_or_else(|| anyhow::anyhow!("model has no input names defined"))?
+        .clone();
 
     let input_size = quantized_input.len();
     let input_padded_size = next_power_of_two(input_size);
@@ -81,7 +81,13 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
         }
     }
 
-    let mut last_output_name = String::new();
+    anyhow::ensure!(
+        model.graph.output_names.len() == 1,
+        "expected exactly 1 output, found {} ({:?})",
+        model.graph.output_names.len(),
+        model.graph.output_names
+    );
+    let declared_output = &model.graph.output_names[0];
 
     for layer in model.graph.iter_topo() {
         match layer.op_type {
@@ -175,7 +181,8 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let stride_h = strides.and_then(|s| s.first()).map(|&v| v as usize).unwrap_or(1);
                 let stride_w = strides.and_then(|s| s.get(1)).map(|&v| v as usize).unwrap_or(1);
 
-                let (in_h, in_w) = input_layout.hw();
+                let (input_ch, in_h, in_w) = input_layout.spatial_dims();
+                anyhow::ensure!(input_ch == c_in, "Conv {}: weight c_in {} does not match input channels {}", layer.name, c_in, input_ch);
                 anyhow::ensure!(in_h >= kh && in_w >= kw, "Conv {}: input {}x{} smaller than kernel {}x{}", layer.name, in_h, in_w, kh, kw);
                 let out_h = (in_h - kh) / stride_h + 1;
                 let out_w = (in_w - kw) / stride_w + 1;
@@ -355,14 +362,11 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
             }
         }
 
-        for out in &layer.outputs {
-            last_output_name = out.clone();
-        }
     }
 
-    if let Some(final_output) = tensors.get(&last_output_name) {
-        shreds.insert("expected_output".to_string(), final_output.clone());
-    }
+    let final_output = tensors.get(declared_output)
+        .ok_or_else(|| anyhow::anyhow!("declared output '{}' not computed", declared_output))?;
+    shreds.insert("expected_output".to_string(), final_output.clone());
 
     Ok(shreds)
 }
