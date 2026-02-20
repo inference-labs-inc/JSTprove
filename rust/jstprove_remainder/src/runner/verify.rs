@@ -9,6 +9,7 @@ use shared_types::transcript::TranscriptReader;
 use shared_types::{perform_function_under_verifier_config, Fr};
 
 use crate::runner::circuit_builder::{self, Visibility};
+use crate::util::i64_to_fr;
 
 pub fn run(model_path: &Path, proof_path: &Path, input_path: &Path) -> Result<()> {
     tracing::info!("loading model from {}", model_path.display());
@@ -97,10 +98,3 @@ fn verify_internal(
         .map_err(|e| anyhow::anyhow!("{}", e))
 }
 
-fn i64_to_fr(val: i64) -> Fr {
-    if val >= 0 {
-        Fr::from(val as u64)
-    } else {
-        -Fr::from(val.unsigned_abs())
-    }
-}

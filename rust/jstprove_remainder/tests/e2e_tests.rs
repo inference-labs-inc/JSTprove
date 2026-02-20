@@ -7,15 +7,7 @@ use remainder::prover::helpers::{
 };
 use shared_types::transcript::poseidon_sponge::PoseidonSponge;
 use shared_types::Fr;
-
-fn i64_to_fr(val: i64) -> Fr {
-    use shared_types::Field;
-    if val >= 0 {
-        Fr::from(val as u64)
-    } else {
-        Fr::from(val.unsigned_abs()).neg()
-    }
-}
+use jstprove_remainder::util::i64_to_fr;
 
 fn matmul_native(a: &[i64], a_rows: usize, a_cols: usize, b: &[i64], b_cols: usize) -> Vec<i64> {
     let mut result = vec![0i64; a_rows * b_cols];

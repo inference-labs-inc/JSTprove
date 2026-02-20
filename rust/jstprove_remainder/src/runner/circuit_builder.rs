@@ -8,6 +8,7 @@ use shared_types::Fr;
 use crate::onnx::graph::OpType;
 use crate::onnx::quantizer::QuantizedModel;
 use crate::padding::{next_power_of_two, num_vars_for};
+use crate::util::i64_to_fr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Visibility {
@@ -54,14 +55,6 @@ impl SpatialInfo {
             SpatialInfo::CHW { h, w, .. } => (*h, *w),
             SpatialInfo::HWC { h, w, .. } => (*h, *w),
         }
-    }
-}
-
-fn i64_to_fr(val: i64) -> Fr {
-    if val >= 0 {
-        Fr::from(val as u64)
-    } else {
-        Fr::from(val.unsigned_abs()).neg()
     }
 }
 
@@ -475,6 +468,7 @@ fn build_maxpool_layer(
     let stride_h = strides.and_then(|s| s.first()).map(|&v| v as usize).unwrap_or(pool_h);
     let stride_w = strides.and_then(|s| s.get(1)).map(|&v| v as usize).unwrap_or(pool_w);
 
+    anyhow::ensure!(in_h >= pool_h && in_w >= pool_w, "MaxPool {}: input {}x{} smaller than kernel {}x{}", layer.name, in_h, in_w, pool_h, pool_w);
     let pool_oh = (in_h - pool_h) / stride_h + 1;
     let pool_ow = (in_w - pool_w) / stride_w + 1;
     let window_size = pool_h * pool_w;
@@ -551,6 +545,8 @@ pub fn transpose_matrix(data: &[i64], rows: usize, cols: usize) -> Vec<i64> {
 }
 
 pub fn pad_matrix(data: &[i64], orig_rows: usize, orig_cols: usize, pad_rows: usize, pad_cols: usize) -> Vec<i64> {
+    debug_assert!(orig_rows <= pad_rows && orig_cols <= pad_cols,
+        "pad_matrix: orig {}x{} exceeds target {}x{}", orig_rows, orig_cols, pad_rows, pad_cols);
     let mut out = vec![0i64; pad_rows * pad_cols];
     for r in 0..orig_rows {
         for c in 0..orig_cols {

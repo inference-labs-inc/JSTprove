@@ -11,6 +11,7 @@ use shared_types::{perform_function_under_prover_config, Fr};
 
 use crate::runner::circuit_builder;
 use crate::padding::num_vars_for;
+use crate::util::i64_to_fr;
 
 use super::serialization;
 
@@ -121,10 +122,3 @@ fn prove_internal(
     (proof_config, transcript)
 }
 
-fn i64_to_fr(val: i64) -> Fr {
-    if val >= 0 {
-        Fr::from(val as u64)
-    } else {
-        -Fr::from(val.unsigned_abs())
-    }
-}

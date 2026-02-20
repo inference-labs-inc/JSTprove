@@ -108,9 +108,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let n_padded = next_power_of_two(n_dim);
 
                 let w_transposed = if trans_b {
-                    weight_data.as_i64_vec()
-                } else {
                     transpose_matrix(&weight_data.as_i64_vec(), w_rows, w_cols)
+                } else {
+                    weight_data.as_i64_vec()
                 };
                 let w_padded = pad_matrix(&w_transposed, k_dim, n_dim, k_padded, n_padded);
 
@@ -168,6 +168,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let stride_w = strides.and_then(|s| s.get(1)).map(|&v| v as usize).unwrap_or(1);
 
                 let (in_h, in_w) = input_layout.hw();
+                anyhow::ensure!(in_h >= kh && in_w >= kw, "Conv {}: input {}x{} smaller than kernel {}x{}", layer.name, in_h, in_w, kh, kw);
                 let out_h = (in_h - kh) / stride_h + 1;
                 let out_w = (in_w - kw) / stride_w + 1;
                 let patch_size = c_in * kh * kw;
@@ -280,6 +281,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let stride_h = strides.and_then(|s| s.first()).map(|&v| v as usize).unwrap_or(pool_h);
                 let stride_w = strides.and_then(|s| s.get(1)).map(|&v| v as usize).unwrap_or(pool_w);
 
+                anyhow::ensure!(in_h >= pool_h && in_w >= pool_w, "MaxPool {}: input {}x{} smaller than kernel {}x{}", layer.name, in_h, in_w, pool_h, pool_w);
                 let pool_oh = (in_h - pool_h) / stride_h + 1;
                 let pool_ow = (in_w - pool_w) / stride_w + 1;
                 let window_size = pool_h * pool_w;
@@ -356,11 +358,11 @@ fn padded_matmul(a: &[i64], a_rows: usize, a_cols: usize, b: &[i64], b_cols: usi
     let mut out = vec![0i64; a_rows * b_cols];
     for i in 0..a_rows {
         for j in 0..b_cols {
-            let mut sum = 0i64;
+            let mut sum = 0i128;
             for k in 0..a_cols {
-                sum += a[i * a_cols + k] * b[k * b_cols + j];
+                sum += a[i * a_cols + k] as i128 * b[k * b_cols + j] as i128;
             }
-            out[i * b_cols + j] = sum;
+            out[i * b_cols + j] = sum as i64;
         }
     }
     out
