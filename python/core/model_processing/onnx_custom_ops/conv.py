@@ -147,6 +147,8 @@ def int64_conv(
         dilations = parse_attr(dilations, [1, 1])
         pads = parse_attr(pads, [0, 0, 0, 0])
         kernel_shape = parse_attr(kernel_shape, [3, 3])
+        if group is None:
+            group = 1
 
         result = _conv2d_bigint(
             x,

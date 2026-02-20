@@ -323,8 +323,8 @@ fn main() {
     let has_arch = matches.get_one::<String>("arch").is_some();
     let has_wandb = matches.get_one::<String>("wandb").is_some();
 
-    if needs_full && (!has_meta || !has_arch || !has_wandb) {
-        eprintln!("Error: command '{cmd_type}' requires --meta, --arch, and --wandb arguments.");
+    if needs_full && (!has_meta || !has_arch) {
+        eprintln!("Error: command '{cmd_type}' requires --meta and --arch arguments.");
         std::process::exit(1);
     }
 

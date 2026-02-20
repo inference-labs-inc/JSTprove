@@ -329,6 +329,10 @@ class GenericModelONNX(ONNXConverter, ZKModelBase):
                     ordered_inputs[name] = raw_inputs[name]
                 elif name in qm_init:
                     ordered_inputs[name] = numpy_helper.to_array(qm_init[name]).tolist()
+                else:
+                    src = "raw_inputs" if name not in provided else "initializer"
+                    msg = f"Input '{name}' missing from {src}"
+                    raise CircuitProcessingError(msg)
         else:
             ordered_inputs = dict(raw_inputs)
 
