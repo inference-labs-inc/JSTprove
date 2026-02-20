@@ -5,6 +5,18 @@ from onnxruntime_extensions import PyCustomOpDef, onnx_op
 
 from .custom_helpers import parse_attr, rescaling
 
+_I64_MOD = 1 << 64
+_I64_HALF = 1 << 63
+
+
+def _object_to_int64(arr: np.ndarray) -> np.ndarray:
+    flat = arr.ravel()
+    out = np.empty(flat.shape, dtype=np.int64)
+    for i, val in enumerate(flat):
+        wrapped = int(val) % _I64_MOD
+        out[i] = wrapped - _I64_MOD if wrapped >= _I64_HALF else wrapped
+    return out.reshape(arr.shape)
+
 
 def _conv2d_bigint(
     x: np.ndarray,
@@ -146,7 +158,7 @@ def int64_conv(
         if scaling_factor is not None:
             scaling_factor = int(scaling_factor.flat[0])
         result = rescaling(scaling_factor, rescale, result)
-        return result.astype(np.int64)
+        return _object_to_int64(result)
 
     except Exception as e:
         msg = f"Int64Conv failed: {e}"
