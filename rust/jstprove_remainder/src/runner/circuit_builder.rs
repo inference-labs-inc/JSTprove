@@ -68,7 +68,7 @@ pub fn delta_table_nv(layer_n_bits: usize, exponent: usize) -> usize {
     layer_n_bits.saturating_sub(exponent).max(1)
 }
 
-pub fn compute_range_check_plan(model: &QuantizedModel) -> BTreeMap<usize, Vec<String>> {
+pub fn compute_range_check_plan(model: &QuantizedModel) -> Result<BTreeMap<usize, Vec<String>>> {
     let exponent = model.scale_config.exponent as usize;
     let mut plan: BTreeMap<usize, Vec<String>> = BTreeMap::new();
 
@@ -88,7 +88,8 @@ pub fn compute_range_check_plan(model: &QuantizedModel) -> BTreeMap<usize, Vec<S
             OpType::MaxPool => {
                 if let Some(n_bits) = layer.n_bits {
                     let dnv = delta_table_nv(n_bits, exponent);
-                    let kernel_shape = layer.get_ints_attr("kernel_shape").unwrap_or(&[2, 2]);
+                    let kernel_shape = layer.get_ints_attr("kernel_shape")
+                        .ok_or_else(|| anyhow::anyhow!("MaxPool {} missing kernel_shape attribute", layer.name))?;
                     let window_size: usize = kernel_shape.iter().map(|&v| v as usize).product();
                     let entry = plan.entry(dnv).or_default();
                     for i in 0..window_size {
@@ -100,7 +101,7 @@ pub fn compute_range_check_plan(model: &QuantizedModel) -> BTreeMap<usize, Vec<S
         }
     }
 
-    plan
+    Ok(plan)
 }
 
 pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildResult> {
@@ -150,6 +151,18 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
         model.graph.output_names
     );
     let declared_output = &model.graph.output_names[0];
+
+    anyhow::ensure!(
+        model.scale_config.base == 2,
+        "LogUp range checks require base == 2, got base = {}",
+        model.scale_config.base
+    );
+    anyhow::ensure!(
+        model.scale_config.exponent < 63,
+        "scale_config.exponent {} is too large for range table construction",
+        model.scale_config.exponent
+    );
+
     let mut range_checks: Vec<RangeCheckRequest> = Vec::new();
 
     for layer in model.graph.iter_topo() {

@@ -67,6 +67,17 @@ pub fn load_witness(path: &Path) -> Result<HashMap<String, Vec<i64>>> {
 }
 
 pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Result<HashMap<String, Vec<i64>>> {
+    anyhow::ensure!(
+        model.scale_config.base == 2,
+        "range check multiplicities require base == 2, got base = {}",
+        model.scale_config.base
+    );
+    anyhow::ensure!(
+        model.scale_config.exponent < 63,
+        "scale_config.exponent {} is too large for range table construction",
+        model.scale_config.exponent
+    );
+
     let alpha = model.scale_config.alpha;
     let offset = 1i64 << 30;
 
@@ -580,8 +591,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
         .ok_or_else(|| anyhow::anyhow!("declared output '{}' not computed", declared_output))?;
     shreds.insert("expected_output".to_string(), final_output.clone());
 
-    let rc_plan = compute_range_check_plan(model);
+    let rc_plan = compute_range_check_plan(model)?;
     for (&table_nv, shred_names) in &rc_plan {
+        anyhow::ensure!(table_nv < 63, "table_nv {} is too large for range table construction", table_nv);
         let table_shred_name = format!("range_table_{}", table_nv);
         if !shreds.contains_key(&table_shred_name) {
             let table_data: Vec<i64> = (0..(1i64 << table_nv)).collect();
@@ -630,6 +642,17 @@ pub fn prepare_public_shreds(
     quantized_input: &[i64],
     expected_output: &[i64],
 ) -> Result<HashMap<String, Vec<i64>>> {
+    anyhow::ensure!(
+        model.scale_config.base == 2,
+        "range check tables require base == 2, got base = {}",
+        model.scale_config.base
+    );
+    anyhow::ensure!(
+        model.scale_config.exponent < 63,
+        "scale_config.exponent {} is too large for range table construction",
+        model.scale_config.exponent
+    );
+
     let mut shreds: HashMap<String, Vec<i64>> = HashMap::new();
     let mut tensor_sizes: HashMap<String, usize> = HashMap::new();
     let mut tensor_layouts: HashMap<String, SpatialInfo> = HashMap::new();
@@ -718,6 +741,7 @@ pub fn prepare_public_shreds(
                 let (_input_ch, in_h, in_w) = input_layout.spatial_dims();
                 let padded_h = in_h + pad_top + pad_bottom;
                 let padded_w = in_w + pad_left + pad_right;
+                anyhow::ensure!(padded_h >= kh && padded_w >= kw, "Conv {}: padded input {}x{} smaller than kernel {}x{}", layer.name, padded_h, padded_w, kh, kw);
                 let out_h = (padded_h - kh) / stride_h + 1;
                 let out_w = (padded_w - kw) / stride_w + 1;
                 let patch_size = c_in * kh * kw;
@@ -784,6 +808,7 @@ pub fn prepare_public_shreds(
                 let strides = layer.get_ints_attr("strides");
                 let stride_h = strides.and_then(|s| s.first()).map(|&v| v as usize).unwrap_or(pool_h);
                 let stride_w = strides.and_then(|s| s.get(1)).map(|&v| v as usize).unwrap_or(pool_w);
+                anyhow::ensure!(in_h >= pool_h && in_w >= pool_w, "MaxPool {}: input {}x{} smaller than kernel {}x{}", layer.name, in_h, in_w, pool_h, pool_w);
                 let pool_oh = (in_h - pool_h) / stride_h + 1;
                 let pool_ow = (in_w - pool_w) / stride_w + 1;
                 let num_pool_out = pool_oh * pool_ow * c;
@@ -935,8 +960,9 @@ pub fn prepare_public_shreds(
     let out_padded_size = next_power_of_two(expected_output.len());
     shreds.insert("expected_output".to_string(), pad_to_size(expected_output, out_padded_size));
 
-    let rc_plan = compute_range_check_plan(model);
+    let rc_plan = compute_range_check_plan(model)?;
     for (&table_nv, _) in &rc_plan {
+        anyhow::ensure!(table_nv < 63, "table_nv {} is too large for range table construction", table_nv);
         let table_shred_name = format!("range_table_{}", table_nv);
         if !shreds.contains_key(&table_shred_name) {
             let table_data: Vec<i64> = (0..(1i64 << table_nv)).collect();
