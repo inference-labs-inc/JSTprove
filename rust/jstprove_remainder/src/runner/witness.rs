@@ -452,6 +452,54 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     }
                 }
             }
+            OpType::Add | OpType::Sub => {
+                let input_a_name = layer.inputs.first()
+                    .ok_or_else(|| anyhow::anyhow!("{:?} {} has no first input", layer.op_type, layer.name))?;
+                let input_b_name = layer.inputs.get(1)
+                    .ok_or_else(|| anyhow::anyhow!("{:?} {} has no second input", layer.op_type, layer.name))?;
+
+                let get_data = |name: &str| -> Result<Vec<i64>> {
+                    if let Some(t) = tensors.get(name) {
+                        Ok(t.clone())
+                    } else if let Some(w) = layer.weights.get(name) {
+                        Ok(w.as_i64_vec())
+                    } else {
+                        bail!("{:?} {} input {} not computed and not a weight", layer.op_type, layer.name, name)
+                    }
+                };
+
+                let a_data = get_data(input_a_name)?;
+                let b_data = get_data(input_b_name)?;
+
+                let out_len = a_data.len().max(b_data.len());
+                let padded_size = next_power_of_two(out_len);
+                let a_padded = pad_to_size(&a_data, padded_size);
+                let b_padded = pad_to_size(&b_data, padded_size);
+
+                let result: Vec<i64> = if layer.op_type == OpType::Add {
+                    a_padded.iter().zip(b_padded.iter()).map(|(&a, &b)| a + b).collect()
+                } else {
+                    a_padded.iter().zip(b_padded.iter()).map(|(&a, &b)| a - b).collect()
+                };
+
+                if !tensors.contains_key(input_b_name) {
+                    shreds.insert(format!("{}_{}", layer.name, input_b_name), b_padded);
+                }
+                if !tensors.contains_key(input_a_name) {
+                    shreds.insert(format!("{}_{}", layer.name, input_a_name), a_padded);
+                }
+                shreds.insert(format!("{}_result", layer.name), result.clone());
+
+                let layout = tensor_layouts.get(input_a_name)
+                    .or_else(|| tensor_layouts.get(input_b_name))
+                    .cloned();
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), result.clone());
+                    if let Some(ref layout) = layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
+                }
+            }
             OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
                 let input_tensor_name = layer.inputs.first()
                     .ok_or_else(|| anyhow::anyhow!("shape op {} has no input", layer.name))?;
