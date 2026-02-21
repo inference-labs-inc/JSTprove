@@ -6,9 +6,15 @@ use frontend::layouter::builder::{CircuitBuilder, Circuit, InputLayerNodeRef, La
 use shared_types::Fr;
 
 use crate::onnx::graph::OpType;
-use crate::onnx::quantizer::QuantizedModel;
+use crate::onnx::quantizer::{QuantizedModel, ScaleConfig};
 use crate::padding::{next_power_of_two, num_vars_for};
 use crate::util::i64_to_fr;
+
+struct RangeCheckRequest {
+    shred_name: String,
+    node: NodeRef<Fr>,
+    table_nv: usize,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Visibility {
@@ -58,10 +64,46 @@ impl SpatialInfo {
     }
 }
 
-pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildResult> {
-    let alpha = model.scale_config.alpha;
-    let alpha_fr = i64_to_fr(alpha);
+pub fn delta_table_nv(layer_n_bits: usize, exponent: usize) -> usize {
+    layer_n_bits.saturating_sub(exponent).max(1)
+}
 
+pub fn compute_range_check_plan(model: &QuantizedModel) -> HashMap<usize, Vec<String>> {
+    let exponent = model.scale_config.exponent as usize;
+    let mut plan: HashMap<usize, Vec<String>> = HashMap::new();
+
+    for layer in model.graph.iter_topo() {
+        match layer.op_type {
+            OpType::Gemm | OpType::Conv | OpType::BatchNormalization => {
+                plan.entry(exponent).or_default().push(format!("{}_r", layer.name));
+            }
+            OpType::Relu => {
+                if let Some(n_bits) = layer.n_bits {
+                    let dnv = delta_table_nv(n_bits, exponent);
+                    let entry = plan.entry(dnv).or_default();
+                    entry.push(format!("{}_di", layer.name));
+                    entry.push(format!("{}_dz", layer.name));
+                }
+            }
+            OpType::MaxPool => {
+                if let Some(n_bits) = layer.n_bits {
+                    let dnv = delta_table_nv(n_bits, exponent);
+                    let kernel_shape = layer.get_ints_attr("kernel_shape").unwrap_or(&[2, 2]);
+                    let window_size: usize = kernel_shape.iter().map(|&v| v as usize).product();
+                    let entry = plan.entry(dnv).or_default();
+                    for i in 0..window_size {
+                        entry.push(format!("{}_d{}", layer.name, i));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    plan
+}
+
+pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildResult> {
     let mut manifest = ShredManifest::new();
     let mut builder = CircuitBuilder::<Fr>::new();
     let public = builder.add_input_layer("Public", LayerVisibility::Public);
@@ -108,6 +150,7 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
         model.graph.output_names
     );
     let declared_output = &model.graph.output_names[0];
+    let mut range_checks: Vec<RangeCheckRequest> = Vec::new();
 
     for layer in model.graph.iter_topo() {
         match layer.op_type {
@@ -120,7 +163,8 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                     &mut tensor_nodes,
                     &mut tensor_num_vars,
                     &mut manifest,
-                    alpha_fr,
+                    &model.scale_config,
+                    &mut range_checks,
                 )?;
             }
             OpType::Conv => {
@@ -133,7 +177,8 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                     &mut tensor_num_vars,
                     &mut tensor_layouts,
                     &mut manifest,
-                    alpha_fr,
+                    &model.scale_config,
+                    &mut range_checks,
                 )?;
             }
             OpType::Relu => {
@@ -146,6 +191,8 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                     &mut tensor_num_vars,
                     &mut tensor_layouts,
                     &mut manifest,
+                    &model.scale_config,
+                    &mut range_checks,
                 )?;
             }
             OpType::MaxPool => {
@@ -158,6 +205,8 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                     &mut tensor_num_vars,
                     &mut tensor_layouts,
                     &mut manifest,
+                    &model.scale_config,
+                    &mut range_checks,
                 )?;
             }
             OpType::Add | OpType::Sub => {
@@ -182,7 +231,8 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                     &mut tensor_num_vars,
                     &mut tensor_layouts,
                     &mut manifest,
-                    alpha_fr,
+                    &model.scale_config,
+                    &mut range_checks,
                 )?;
             }
             OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
@@ -222,6 +272,47 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
     let out_check = builder.add_sector(output_node.expr() - expected_node.expr());
     builder.set_output(&out_check);
 
+    if !range_checks.is_empty() {
+        let fs_node = builder.add_fiat_shamir_challenge_node(1);
+
+        let mut checks_by_nv: HashMap<usize, Vec<RangeCheckRequest>> = HashMap::new();
+        for rc in range_checks {
+            checks_by_nv.entry(rc.table_nv).or_default().push(rc);
+        }
+
+        for (table_nv, requests) in &checks_by_nv {
+            let table_shred_name = format!("range_table_{}", table_nv);
+            let table_node = builder.add_input_shred(&table_shred_name, *table_nv, &public);
+            manifest.insert(table_shred_name, ShredEntry { num_vars: *table_nv, visibility: Visibility::Public });
+
+            let lookup_table = builder.add_lookup_table(&table_node, &fs_node);
+
+            let real_count = requests.len();
+            let target_count = real_count.next_power_of_two();
+            let dummy_count = target_count - real_count;
+
+            for i in 0..dummy_count {
+                let dummy_name = format!("range_dummy_nv{}_{}", table_nv, i);
+                let dummy_node = builder.add_input_shred(&dummy_name, 1, &committed);
+                manifest.insert(dummy_name.clone(), ShredEntry { num_vars: 1, visibility: Visibility::Committed });
+
+                let dummy_mults_name = format!("{}_mults", dummy_name);
+                let dummy_mults_node = builder.add_input_shred(&dummy_mults_name, *table_nv, &committed);
+                manifest.insert(dummy_mults_name, ShredEntry { num_vars: *table_nv, visibility: Visibility::Committed });
+
+                builder.add_lookup_constraint(&lookup_table, &dummy_node, &dummy_mults_node);
+            }
+
+            for rc in requests {
+                let mults_name = format!("{}_mults", rc.shred_name);
+                let mults_node = builder.add_input_shred(&mults_name, *table_nv, &committed);
+                manifest.insert(mults_name, ShredEntry { num_vars: *table_nv, visibility: Visibility::Committed });
+
+                builder.add_lookup_constraint(&lookup_table, &rc.node, &mults_node);
+            }
+        }
+    }
+
     let circuit = builder.build_with_layer_combination()?;
 
     Ok(BuildResult { circuit, manifest })
@@ -235,8 +326,10 @@ fn build_gemm_layer(
     tensor_nodes: &mut HashMap<String, NodeRef<Fr>>,
     tensor_num_vars: &mut HashMap<String, usize>,
     manifest: &mut ShredManifest,
-    alpha_fr: Fr,
+    scale_config: &ScaleConfig,
+    range_checks: &mut Vec<RangeCheckRequest>,
 ) -> Result<()> {
+    let alpha_fr = i64_to_fr(scale_config.alpha);
     let input_name = layer.inputs.first()
         .ok_or_else(|| anyhow::anyhow!("Gemm {} has no input", layer.name))?;
     let weight_tensor_name = layer.inputs.get(1)
@@ -278,7 +371,7 @@ fn build_gemm_layer(
     let q_node = builder.add_input_shred(&q_name, n_vars, committed);
     let r_node = builder.add_input_shred(&r_name, n_vars, committed);
     manifest.insert(q_name, ShredEntry { num_vars: n_vars, visibility: Visibility::Committed });
-    manifest.insert(r_name, ShredEntry { num_vars: n_vars, visibility: Visibility::Committed });
+    manifest.insert(r_name.clone(), ShredEntry { num_vars: n_vars, visibility: Visibility::Committed });
 
     let input_node = tensor_nodes.get(input_name)
         .ok_or_else(|| anyhow::anyhow!("Gemm {} input {} not in tensor_nodes", layer.name, input_name))?;
@@ -297,6 +390,12 @@ fn build_gemm_layer(
     );
     builder.set_output(&rescale_check);
 
+    range_checks.push(RangeCheckRequest {
+        shred_name: r_name,
+        node: r_node,
+        table_nv: scale_config.exponent as usize,
+    });
+
     for out in &layer.outputs {
         tensor_nodes.insert(out.clone(), q_node.clone());
         tensor_num_vars.insert(out.clone(), n_vars);
@@ -314,8 +413,10 @@ fn build_conv_layer(
     tensor_num_vars: &mut HashMap<String, usize>,
     tensor_layouts: &mut HashMap<String, SpatialInfo>,
     manifest: &mut ShredManifest,
-    alpha_fr: Fr,
+    scale_config: &ScaleConfig,
+    range_checks: &mut Vec<RangeCheckRequest>,
 ) -> Result<()> {
+    let alpha_fr = i64_to_fr(scale_config.alpha);
     let input_name = layer.inputs.first()
         .ok_or_else(|| anyhow::anyhow!("Conv {} has no input", layer.name))?;
     let weight_tensor_name = layer.inputs.get(1)
@@ -406,7 +507,7 @@ fn build_conv_layer(
     let q_node = builder.add_input_shred(&q_name, result_vars, committed);
     let r_node = builder.add_input_shred(&r_name, result_vars, committed);
     manifest.insert(q_name, ShredEntry { num_vars: result_vars, visibility: Visibility::Committed });
-    manifest.insert(r_name, ShredEntry { num_vars: result_vars, visibility: Visibility::Committed });
+    manifest.insert(r_name.clone(), ShredEntry { num_vars: result_vars, visibility: Visibility::Committed });
 
     let im2col_node = builder.add_identity_gate_node(input_node, wiring, im2col_vars, None);
     let mm_node = builder.add_matmult_node(
@@ -422,6 +523,12 @@ fn build_conv_layer(
             - r_node.expr(),
     );
     builder.set_output(&rescale_check);
+
+    range_checks.push(RangeCheckRequest {
+        shred_name: r_name,
+        node: r_node,
+        table_nv: scale_config.exponent as usize,
+    });
 
     for out in &layer.outputs {
         tensor_nodes.insert(out.clone(), q_node.clone());
@@ -443,6 +550,8 @@ fn build_relu_layer(
     tensor_num_vars: &mut HashMap<String, usize>,
     tensor_layouts: &mut HashMap<String, SpatialInfo>,
     manifest: &mut ShredManifest,
+    scale_config: &ScaleConfig,
+    range_checks: &mut Vec<RangeCheckRequest>,
 ) -> Result<()> {
     let input_name = layer.inputs.first()
         .ok_or_else(|| anyhow::anyhow!("Relu {} has no input", layer.name))?;
@@ -480,6 +589,20 @@ fn build_relu_layer(
     );
     builder.set_output(&prod);
 
+    if let Some(n_bits) = layer.n_bits {
+        let dnv = delta_table_nv(n_bits, scale_config.exponent as usize);
+        range_checks.push(RangeCheckRequest {
+            shred_name: di_name,
+            node: di_node,
+            table_nv: dnv,
+        });
+        range_checks.push(RangeCheckRequest {
+            shred_name: dz_name,
+            node: dz_node,
+            table_nv: dnv,
+        });
+    }
+
     let layout = tensor_layouts.get(input_name).cloned();
 
     for out in &layer.outputs {
@@ -502,6 +625,8 @@ fn build_maxpool_layer(
     tensor_num_vars: &mut HashMap<String, usize>,
     tensor_layouts: &mut HashMap<String, SpatialInfo>,
     manifest: &mut ShredManifest,
+    scale_config: &ScaleConfig,
+    range_checks: &mut Vec<RangeCheckRequest>,
 ) -> Result<()> {
     let input_name = layer.inputs.first()
         .ok_or_else(|| anyhow::anyhow!("MaxPool {} has no input", layer.name))?;
@@ -577,6 +702,17 @@ fn build_maxpool_layer(
     ));
     builder.set_output(&prod);
 
+    if let Some(n_bits) = layer.n_bits {
+        let dnv = delta_table_nv(n_bits, scale_config.exponent as usize);
+        for (i, dnode) in delta_nodes.into_iter().enumerate() {
+            range_checks.push(RangeCheckRequest {
+                shred_name: format!("{}_d{}", layer.name, i),
+                node: dnode,
+                table_nv: dnv,
+            });
+        }
+    }
+
     for out in &layer.outputs {
         tensor_nodes.insert(out.clone(), max_node.clone());
         tensor_num_vars.insert(out.clone(), pool_out_vars);
@@ -597,8 +733,10 @@ fn build_batchnorm_layer(
     tensor_num_vars: &mut HashMap<String, usize>,
     tensor_layouts: &mut HashMap<String, SpatialInfo>,
     manifest: &mut ShredManifest,
-    alpha_fr: Fr,
+    scale_config: &ScaleConfig,
+    range_checks: &mut Vec<RangeCheckRequest>,
 ) -> Result<()> {
+    let alpha_fr = i64_to_fr(scale_config.alpha);
     let input_name = layer.inputs.first()
         .ok_or_else(|| anyhow::anyhow!("BatchNorm {} has no input", layer.name))?;
 
@@ -619,7 +757,7 @@ fn build_batchnorm_layer(
     manifest.insert(mul_name, ShredEntry { num_vars: nv, visibility: Visibility::Public });
     manifest.insert(add_name, ShredEntry { num_vars: nv, visibility: Visibility::Public });
     manifest.insert(q_name, ShredEntry { num_vars: nv, visibility: Visibility::Committed });
-    manifest.insert(r_name, ShredEntry { num_vars: nv, visibility: Visibility::Committed });
+    manifest.insert(r_name.clone(), ShredEntry { num_vars: nv, visibility: Visibility::Committed });
 
     let input_node = tensor_nodes.get(input_name)
         .ok_or_else(|| anyhow::anyhow!("BatchNorm {} input {} not in tensor_nodes", layer.name, input_name))?;
@@ -631,6 +769,12 @@ fn build_batchnorm_layer(
             - r_node.expr(),
     );
     builder.set_output(&rescale_check);
+
+    range_checks.push(RangeCheckRequest {
+        shred_name: r_name,
+        node: r_node,
+        table_nv: scale_config.exponent as usize,
+    });
 
     let layout = tensor_layouts.get(input_name).cloned();
     for out in &layer.outputs {

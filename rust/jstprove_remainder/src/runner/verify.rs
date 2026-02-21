@@ -8,6 +8,7 @@ use shared_types::transcript::poseidon_sponge::PoseidonSponge;
 use shared_types::transcript::TranscriptReader;
 use shared_types::{perform_function_under_verifier_config, Fr};
 
+use crate::padding::next_power_of_two;
 use crate::runner::circuit_builder::{self, Visibility};
 use crate::util::i64_to_fr;
 
@@ -37,21 +38,20 @@ pub fn verify_with_model(
     proof: &super::prove::SerializableProof,
     quantized_input: &[i64],
 ) -> Result<()> {
-    let witness = super::witness::compute_witness(model, quantized_input)?;
+    let input_padded_size = next_power_of_two(quantized_input.len());
 
-    let input_name = model.graph.input_names.first()
-        .ok_or_else(|| anyhow::anyhow!("model has no input names defined"))?
-        .clone();
-    let input_size = witness.get(&input_name)
-        .map(|v| v.len())
-        .ok_or_else(|| anyhow::anyhow!("witness missing input shred '{}'", input_name))?;
+    let public_shreds = super::witness::prepare_public_shreds(
+        model,
+        quantized_input,
+        &proof.expected_output,
+    )?;
 
-    let build_result = circuit_builder::build_circuit(model, input_size)?;
+    let build_result = circuit_builder::build_circuit(model, input_padded_size)?;
     let mut circuit = build_result.circuit;
 
     for (name, entry) in &build_result.manifest {
         if entry.visibility == Visibility::Public {
-            let values = witness.get(name)
+            let values = public_shreds.get(name)
                 .ok_or_else(|| anyhow::anyhow!("missing public input '{}'", name))?;
             let mle = MultilinearExtension::new(
                 values.iter().map(|&v| i64_to_fr(v)).collect(),

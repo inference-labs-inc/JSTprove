@@ -75,9 +75,14 @@ pub fn generate_proof(
 
     let (proof_config, proof_transcript) = prove_and_get_transcript(&provable)?;
 
+    let expected_output = witness.get("expected_output")
+        .ok_or_else(|| anyhow::anyhow!("witness missing expected_output shred"))?
+        .clone();
+
     Ok(SerializableProof {
         proof_config,
         transcript: proof_transcript,
+        expected_output,
     })
 }
 
@@ -85,6 +90,7 @@ pub fn generate_proof(
 pub struct SerializableProof {
     pub proof_config: ProofConfig,
     pub transcript: Transcript<Fr>,
+    pub expected_output: Vec<i64>,
 }
 
 pub fn load_proof(path: &Path) -> Result<SerializableProof> {
