@@ -11,7 +11,7 @@ use crate::runner::circuit_builder::{transpose_matrix, pad_matrix, pad_to_size, 
 
 use super::serialization;
 
-fn compute_multiplicities(values: &[i64], table_size: usize) -> Result<Vec<i64>> {
+pub fn compute_multiplicities(values: &[i64], table_size: usize) -> Result<Vec<i64>> {
     let mut mults = vec![0i64; table_size];
     for (i, &v) in values.iter().enumerate() {
         anyhow::ensure!(
@@ -593,10 +593,10 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
         let dummy_count = target_count - real_count;
         for i in 0..dummy_count {
             let dummy_name = format!("range_dummy_nv{}_{}", table_nv, i);
-            shreds.insert(dummy_name.clone(), vec![0i64; 2]);
-            let mut dummy_mults = vec![0i64; 1 << table_nv];
-            dummy_mults[0] = 2;
+            let dummy_data = vec![0i64; 2];
+            let dummy_mults = compute_multiplicities(&dummy_data, 1 << table_nv)?;
             shreds.insert(format!("{}_mults", dummy_name), dummy_mults);
+            shreds.insert(dummy_name, dummy_data);
         }
     }
 
@@ -844,6 +844,9 @@ pub fn prepare_public_shreds(
                     }
                     None => {
                         let spatial = if ch > 0 && sz > ch {
+                            anyhow::ensure!(sz % ch == 0,
+                                "BatchNorm {} has no spatial layout and size {} is not divisible by channels {}",
+                                layer.name, sz, ch);
                             sz / ch
                         } else {
                             1
@@ -923,7 +926,9 @@ pub fn prepare_public_shreds(
                     }
                 }
             }
-            _ => {}
+            other => {
+                bail!("prepare_public_shreds: unsupported op type {:?} in layer {}", other, layer.name);
+            }
         }
     }
 

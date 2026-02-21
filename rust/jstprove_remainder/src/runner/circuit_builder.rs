@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use anyhow::{Result, bail};
 use frontend::abstract_expr::AbstractExpression;
@@ -68,9 +68,9 @@ pub fn delta_table_nv(layer_n_bits: usize, exponent: usize) -> usize {
     layer_n_bits.saturating_sub(exponent).max(1)
 }
 
-pub fn compute_range_check_plan(model: &QuantizedModel) -> HashMap<usize, Vec<String>> {
+pub fn compute_range_check_plan(model: &QuantizedModel) -> BTreeMap<usize, Vec<String>> {
     let exponent = model.scale_config.exponent as usize;
-    let mut plan: HashMap<usize, Vec<String>> = HashMap::new();
+    let mut plan: BTreeMap<usize, Vec<String>> = BTreeMap::new();
 
     for layer in model.graph.iter_topo() {
         match layer.op_type {
@@ -275,7 +275,7 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
     if !range_checks.is_empty() {
         let fs_node = builder.add_fiat_shamir_challenge_node(1);
 
-        let mut checks_by_nv: HashMap<usize, Vec<RangeCheckRequest>> = HashMap::new();
+        let mut checks_by_nv: BTreeMap<usize, Vec<RangeCheckRequest>> = BTreeMap::new();
         for rc in range_checks {
             checks_by_nv.entry(rc.table_nv).or_default().push(rc);
         }

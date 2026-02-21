@@ -7,6 +7,7 @@ use remainder::prover::helpers::{
 };
 use shared_types::transcript::poseidon_sponge::PoseidonSponge;
 use shared_types::Fr;
+use jstprove_remainder::runner::witness::compute_multiplicities;
 use jstprove_remainder::util::i64_to_fr;
 
 fn matmul_native(a: &[i64], a_rows: usize, a_cols: usize, b: &[i64], b_cols: usize) -> Vec<i64> {
@@ -1570,15 +1571,6 @@ fn test_addsub_prove_verify() {
     verify_circuit_with_proof_config(&verifiable, &proof_config, proof_transcript);
 }
 
-fn compute_multiplicities(values: &[i64], table_size: usize) -> Vec<i64> {
-    let mut mults = vec![0i64; table_size];
-    for &v in values {
-        assert!(v >= 0 && (v as usize) < table_size, "value {} out of range [0, {})", v, table_size);
-        mults[v as usize] += 1;
-    }
-    mults
-}
-
 #[test]
 fn test_rescale_with_logup() {
     let alpha: i64 = 1 << 4;
@@ -1592,7 +1584,7 @@ fn test_rescale_with_logup() {
     let raw = matmul_native(&input, 2, 2, &weights, 1);
     let (quotients, remainders) = rescale_array(&raw, alpha, offset);
 
-    let r_mults = compute_multiplicities(&remainders, table_size);
+    let r_mults = compute_multiplicities(&remainders, table_size).unwrap();
     let table: Vec<i64> = (0..table_size as i64).collect();
 
     let m_vars = 1usize;
@@ -1663,8 +1655,8 @@ fn test_relu_with_logup() {
     let di: Vec<i64> = relu_out.iter().zip(input.iter()).map(|(o, x)| o - x).collect();
     let dz: Vec<i64> = relu_out.clone();
 
-    let di_mults = compute_multiplicities(&di, delta_table_size);
-    let dz_mults = compute_multiplicities(&dz, delta_table_size);
+    let di_mults = compute_multiplicities(&di, delta_table_size).unwrap();
+    let dz_mults = compute_multiplicities(&dz, delta_table_size).unwrap();
 
     let mut builder = CircuitBuilder::<Fr>::new();
     let public = builder.add_input_layer("Public", LayerVisibility::Public);
@@ -1750,10 +1742,10 @@ fn test_gemm_relu_gemm_with_logup() {
     let rescale_table: Vec<i64> = (0..rescale_table_size as i64).collect();
     let delta_table: Vec<i64> = (0..delta_table_size as i64).collect();
 
-    let r1_mults = compute_multiplicities(&r1, rescale_table_size);
-    let r2_mults = compute_multiplicities(&r2, rescale_table_size);
-    let di_mults = compute_multiplicities(&di, delta_table_size);
-    let dz_mults = compute_multiplicities(&dz, delta_table_size);
+    let r1_mults = compute_multiplicities(&r1, rescale_table_size).unwrap();
+    let r2_mults = compute_multiplicities(&r2, rescale_table_size).unwrap();
+    let di_mults = compute_multiplicities(&di, delta_table_size).unwrap();
+    let dz_mults = compute_multiplicities(&dz, delta_table_size).unwrap();
 
     let m_vars = 1usize;
     let k_vars = 1usize;
