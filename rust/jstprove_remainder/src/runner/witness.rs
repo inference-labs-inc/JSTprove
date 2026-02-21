@@ -311,6 +311,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
 
                 if let Some(n_bits) = layer.n_bits {
                     let dnv = delta_table_nv(n_bits, model.scale_config.exponent as usize);
+                    anyhow::ensure!(dnv < usize::BITS as usize, "Relu {} delta_table_nv {} exceeds shift width", layer.name, dnv);
                     let delta_table_size = 1usize << dnv;
                     shreds.insert(
                         format!("{}_di_mults", layer.name),
@@ -395,6 +396,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
 
                 if let Some(n_bits) = layer.n_bits {
                     let dnv = delta_table_nv(n_bits, model.scale_config.exponent as usize);
+                    anyhow::ensure!(dnv < usize::BITS as usize, "MaxPool {} delta_table_nv {} exceeds shift width", layer.name, dnv);
                     let dt_size = 1usize << dnv;
                     for i in 0..window_size {
                         shreds.insert(
@@ -910,26 +912,24 @@ pub fn prepare_public_shreds(
                 let a_is_tensor = tensor_sizes.contains_key(input_a_name);
                 let b_is_tensor = tensor_sizes.contains_key(input_b_name);
 
-                if !b_is_tensor {
-                    if let Some(w) = layer.weights.get(input_b_name) {
-                        let data = w.as_i64_vec();
-                        let padded_size = next_power_of_two(data.len());
-                        shreds.insert(format!("{}_{}", layer.name, input_b_name), pad_to_size(&data, padded_size));
-                    }
-                }
-                if !a_is_tensor {
-                    if let Some(w) = layer.weights.get(input_a_name) {
-                        let data = w.as_i64_vec();
-                        let padded_size = next_power_of_two(data.len());
-                        shreds.insert(format!("{}_{}", layer.name, input_a_name), pad_to_size(&data, padded_size));
-                    }
-                }
-
                 let a_sz = if a_is_tensor { tensor_sizes.get(input_a_name).copied().unwrap_or(1) }
                     else { layer.weights.get(input_a_name).map(|w| w.as_i64_vec().len()).unwrap_or(1) };
                 let b_sz = if b_is_tensor { tensor_sizes.get(input_b_name).copied().unwrap_or(1) }
                     else { layer.weights.get(input_b_name).map(|w| w.as_i64_vec().len()).unwrap_or(1) };
                 let out_sz = next_power_of_two(a_sz.max(b_sz));
+
+                if !b_is_tensor {
+                    if let Some(w) = layer.weights.get(input_b_name) {
+                        let data = w.as_i64_vec();
+                        shreds.insert(format!("{}_{}", layer.name, input_b_name), pad_to_size(&data, out_sz));
+                    }
+                }
+                if !a_is_tensor {
+                    if let Some(w) = layer.weights.get(input_a_name) {
+                        let data = w.as_i64_vec();
+                        shreds.insert(format!("{}_{}", layer.name, input_a_name), pad_to_size(&data, out_sz));
+                    }
+                }
 
                 let layout = tensor_layouts.get(input_a_name)
                     .or_else(|| tensor_layouts.get(input_b_name))
