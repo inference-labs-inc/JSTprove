@@ -684,6 +684,7 @@ pub fn prepare_public_shreds(
                     .ok_or_else(|| anyhow::anyhow!("Gemm {} missing weight {}", layer.name, weight_tensor_name))?;
                 let trans_b = layer.get_int_attr("transB").map(|v| v != 0).unwrap_or(false);
                 let w_shape = weight_data.shape();
+                anyhow::ensure!(w_shape.len() >= 2, "Gemm {} weight has {} dims, need >= 2", layer.name, w_shape.len());
                 let (w_rows, w_cols) = (w_shape[0], w_shape[1]);
                 let (k_dim, n_dim) = if trans_b { (w_cols, w_rows) } else { (w_rows, w_cols) };
                 let k_padded = next_power_of_two(k_dim);
@@ -726,6 +727,7 @@ pub fn prepare_public_shreds(
                     .clone();
 
                 let w_shape = weight_data.shape();
+                anyhow::ensure!(w_shape.len() >= 4, "Conv {} weight has {} dims, need >= 4", layer.name, w_shape.len());
                 let c_out = w_shape[0];
                 let c_in = w_shape[1];
                 let kh = w_shape[2];
@@ -803,6 +805,7 @@ pub fn prepare_public_shreds(
                 let (c, in_h, in_w) = input_layout.spatial_dims();
                 let kernel_shape = layer.get_ints_attr("kernel_shape")
                     .ok_or_else(|| anyhow::anyhow!("MaxPool {} missing kernel_shape", layer.name))?;
+                anyhow::ensure!(kernel_shape.len() >= 2, "MaxPool {} kernel_shape has fewer than 2 dimensions", layer.name);
                 let pool_h = kernel_shape[0] as usize;
                 let pool_w = kernel_shape[1] as usize;
                 let strides = layer.get_ints_attr("strides");
