@@ -48,6 +48,9 @@ pub fn quantize_model(mut graph: LayerGraph, config: &ScaleConfig) -> Result<Qua
     let alpha = config.alpha;
 
     for layer in &mut graph.layers {
+        if layer.op_type == OpType::BatchNormalization {
+            fold_batchnorm_params(layer)?;
+        }
         quantize_layer_weights(layer, alpha)?;
     }
 
@@ -83,6 +86,74 @@ fn quantize_layer_weights(layer: &mut LayerNode, alpha: i64) -> Result<()> {
             }
         }
     }
+
+    Ok(())
+}
+
+fn fold_batchnorm_params(layer: &mut LayerNode) -> Result<()> {
+    let epsilon = layer.get_float_attr("epsilon").unwrap_or(1e-5) as f64;
+
+    let scale_name = layer.inputs.get(1)
+        .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing scale input", layer.name))?.clone();
+    let bias_name = layer.inputs.get(2)
+        .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing bias input", layer.name))?.clone();
+    let mean_name = layer.inputs.get(3)
+        .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing mean input", layer.name))?.clone();
+    let var_name = layer.inputs.get(4)
+        .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing var input", layer.name))?.clone();
+
+    let get_floats = |name: &str| -> Result<Vec<f64>> {
+        let td = layer.weights.get(name)
+            .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing weight '{}'", layer.name, name))?;
+        if !td.float_data.is_empty() {
+            Ok(td.float_data.clone())
+        } else {
+            Ok(td.int_data.iter().map(|&v| v as f64).collect())
+        }
+    };
+
+    let scale = get_floats(&scale_name)?;
+    let bias = get_floats(&bias_name)?;
+    let mean = get_floats(&mean_name)?;
+    let var = get_floats(&var_name)?;
+
+    let c = scale.len();
+    anyhow::ensure!(bias.len() == c && mean.len() == c && var.len() == c,
+        "BatchNorm {} parameter length mismatch: scale={}, bias={}, mean={}, var={}",
+        layer.name, c, bias.len(), mean.len(), var.len());
+
+    let mut mul = Vec::with_capacity(c);
+    let mut add = Vec::with_capacity(c);
+    for i in 0..c {
+        let m = scale[i] / (var[i] + epsilon).sqrt();
+        mul.push(m);
+        add.push(bias[i] - mean[i] * m);
+    }
+
+    let mul_tensor_name = format!("{}_folded_mul", layer.name);
+    let add_tensor_name = format!("{}_folded_add", layer.name);
+
+    use super::parser::TensorData;
+    layer.weights.insert(mul_tensor_name.clone(), TensorData {
+        name: mul_tensor_name.clone(),
+        dims: vec![c as i64],
+        data_type: 1,
+        float_data: mul,
+        int_data: vec![],
+    });
+    layer.weights.insert(add_tensor_name.clone(), TensorData {
+        name: add_tensor_name.clone(),
+        dims: vec![c as i64],
+        data_type: 1,
+        float_data: add,
+        int_data: vec![],
+    });
+
+    layer.inputs = vec![
+        layer.inputs[0].clone(),
+        mul_tensor_name,
+        add_tensor_name,
+    ];
 
     Ok(())
 }
@@ -169,7 +240,9 @@ fn compute_layer_bound(
         }
         OpType::BatchNormalization => {
             let m_in = get_input_bound(0);
-            Ok(m_in * alpha as f64)
+            let weight = get_weight_bound(1);
+            let bias_bound = get_bias_bound(2);
+            Ok(weight * m_in + bias_bound)
         }
         OpType::Mul => {
             let m_a = get_input_bound(0);

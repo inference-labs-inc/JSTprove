@@ -351,6 +351,95 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     });
                 }
             }
+            OpType::BatchNormalization => {
+                let input_tensor_name = layer.inputs.first()
+                    .ok_or_else(|| anyhow::anyhow!("BatchNorm {} has no input", layer.name))?;
+                let mul_tensor_name = layer.inputs.get(1)
+                    .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing mul input", layer.name))?;
+                let add_tensor_name = layer.inputs.get(2)
+                    .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing add input", layer.name))?;
+
+                let input_data = tensors.get(input_tensor_name)
+                    .ok_or_else(|| anyhow::anyhow!("BatchNorm {} input {} not computed", layer.name, input_tensor_name))?;
+
+                let mul_data = layer.weights.get(mul_tensor_name)
+                    .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing weight '{}'", layer.name, mul_tensor_name))?;
+                let add_data = layer.weights.get(add_tensor_name)
+                    .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing weight '{}'", layer.name, add_tensor_name))?;
+
+                let mul_per_ch = mul_data.as_i64_vec();
+                let add_per_ch = add_data.as_i64_vec();
+                let c = mul_per_ch.len();
+                anyhow::ensure!(add_per_ch.len() == c,
+                    "BatchNorm {} mul/add length mismatch: {} vs {}", layer.name, c, add_per_ch.len());
+
+                let input_layout = tensor_layouts.get(input_tensor_name).cloned();
+                let padded_size = next_power_of_two(input_data.len());
+
+                let mut mul_broadcast = vec![0i64; padded_size];
+                let mut add_broadcast = vec![0i64; padded_size];
+
+                match &input_layout {
+                    Some(SpatialInfo::CHW { h, w, .. }) => {
+                        let hw = h * w;
+                        for ch in 0..c {
+                            for s in 0..hw {
+                                let idx = ch * hw + s;
+                                if idx < padded_size {
+                                    mul_broadcast[idx] = mul_per_ch[ch];
+                                    add_broadcast[idx] = add_per_ch[ch];
+                                }
+                            }
+                        }
+                    }
+                    Some(SpatialInfo::HWC { h, w, stride_c, .. }) => {
+                        for row in 0..(h * w) {
+                            for ch in 0..c {
+                                let idx = row * stride_c + ch;
+                                if idx < padded_size {
+                                    mul_broadcast[idx] = mul_per_ch[ch];
+                                    add_broadcast[idx] = add_per_ch[ch];
+                                }
+                            }
+                        }
+                    }
+                    None => {
+                        anyhow::ensure!(input_data.len() <= c,
+                            "BatchNorm {} has no spatial layout and input len {} > channels {}",
+                            layer.name, input_data.len(), c);
+                        for i in 0..c.min(padded_size) {
+                            mul_broadcast[i] = mul_per_ch[i];
+                            add_broadcast[i] = add_per_ch[i];
+                        }
+                    }
+                }
+
+                let input_padded = pad_to_size(input_data, padded_size);
+                let product: Vec<i64> = input_padded.iter().zip(mul_broadcast.iter())
+                    .map(|(&x, &m)| {
+                        let prod = x as i128 * m as i128;
+                        i64::try_from(prod).expect("BatchNorm mul overflows i64")
+                    })
+                    .collect();
+                let with_add: Vec<i64> = product.iter().zip(add_broadcast.iter())
+                    .map(|(&p, &a)| p + a)
+                    .collect();
+
+                let (quotients, remainders) = rescale::compute_rescale_array(&with_add, alpha, offset);
+
+                shreds.insert(format!("{}_mul", layer.name), mul_broadcast);
+                shreds.insert(format!("{}_add", layer.name), add_broadcast);
+                shreds.insert(format!("{}_q", layer.name), quotients.clone());
+                shreds.insert(format!("{}_r", layer.name), remainders);
+
+                let layout = tensor_layouts.get(input_tensor_name).cloned();
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), quotients.clone());
+                    if let Some(ref layout) = layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
+                }
+            }
             OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
                 let input_tensor_name = layer.inputs.first()
                     .ok_or_else(|| anyhow::anyhow!("shape op {} has no input", layer.name))?;

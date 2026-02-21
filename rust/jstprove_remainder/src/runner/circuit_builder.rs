@@ -160,6 +160,19 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                     &mut manifest,
                 )?;
             }
+            OpType::BatchNormalization => {
+                build_batchnorm_layer(
+                    &mut builder,
+                    &public,
+                    &committed,
+                    layer,
+                    &mut tensor_nodes,
+                    &mut tensor_num_vars,
+                    &mut tensor_layouts,
+                    &mut manifest,
+                    alpha_fr,
+                )?;
+            }
             OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
                 let input_name = layer.inputs.first()
                     .ok_or_else(|| anyhow::anyhow!("shape op {} has no inputs", layer.name))?;
@@ -558,6 +571,62 @@ fn build_maxpool_layer(
         tensor_layouts.insert(out.clone(), SpatialInfo::HWC {
             h: pool_oh, w: pool_ow, c, stride_c: c,
         });
+    }
+
+    Ok(())
+}
+
+fn build_batchnorm_layer(
+    builder: &mut CircuitBuilder<Fr>,
+    public: &InputLayerNodeRef<Fr>,
+    committed: &InputLayerNodeRef<Fr>,
+    layer: &crate::onnx::graph::LayerNode,
+    tensor_nodes: &mut HashMap<String, NodeRef<Fr>>,
+    tensor_num_vars: &mut HashMap<String, usize>,
+    tensor_layouts: &mut HashMap<String, SpatialInfo>,
+    manifest: &mut ShredManifest,
+    alpha_fr: Fr,
+) -> Result<()> {
+    let input_name = layer.inputs.first()
+        .ok_or_else(|| anyhow::anyhow!("BatchNorm {} has no input", layer.name))?;
+
+    let nv = tensor_num_vars.get(input_name)
+        .copied()
+        .ok_or_else(|| anyhow::anyhow!("BatchNorm {} input {} has no num_vars", layer.name, input_name))?;
+
+    let mul_name = format!("{}_mul", layer.name);
+    let add_name = format!("{}_add", layer.name);
+    let q_name = format!("{}_q", layer.name);
+    let r_name = format!("{}_r", layer.name);
+
+    let mul_node = builder.add_input_shred(&mul_name, nv, public);
+    let add_node = builder.add_input_shred(&add_name, nv, public);
+    let q_node = builder.add_input_shred(&q_name, nv, committed);
+    let r_node = builder.add_input_shred(&r_name, nv, committed);
+
+    manifest.insert(mul_name, ShredEntry { num_vars: nv, visibility: Visibility::Public });
+    manifest.insert(add_name, ShredEntry { num_vars: nv, visibility: Visibility::Public });
+    manifest.insert(q_name, ShredEntry { num_vars: nv, visibility: Visibility::Committed });
+    manifest.insert(r_name, ShredEntry { num_vars: nv, visibility: Visibility::Committed });
+
+    let input_node = tensor_nodes.get(input_name)
+        .ok_or_else(|| anyhow::anyhow!("BatchNorm {} input {} not in tensor_nodes", layer.name, input_name))?;
+
+    let rescale_check = builder.add_sector(
+        AbstractExpression::products(vec![input_node.id(), mul_node.id()])
+            + add_node.expr()
+            - AbstractExpression::scaled(q_node.expr(), alpha_fr)
+            - r_node.expr(),
+    );
+    builder.set_output(&rescale_check);
+
+    let layout = tensor_layouts.get(input_name).cloned();
+    for out in &layer.outputs {
+        tensor_nodes.insert(out.clone(), q_node.clone());
+        tensor_num_vars.insert(out.clone(), nv);
+        if let Some(ref layout) = layout {
+            tensor_layouts.insert(out.clone(), layout.clone());
+        }
     }
 
     Ok(())
