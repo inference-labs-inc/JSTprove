@@ -1520,3 +1520,52 @@ fn test_batchnorm_prove_verify() {
     let verifiable = verifier_circuit.gen_verifiable_circuit().unwrap();
     verify_circuit_with_proof_config(&verifiable, &proof_config, proof_transcript);
 }
+
+#[test]
+fn test_addsub_prove_verify() {
+    let a: Vec<i64> = vec![10, 20, 30, 40];
+    let b: Vec<i64> = vec![1, 2, 3, 4];
+    let sum: Vec<i64> = a.iter().zip(b.iter()).map(|(&x, &y)| x + y).collect();
+    let diff: Vec<i64> = sum.iter().zip(b.iter()).map(|(&x, &y)| x - y).collect();
+
+    let nv = 2usize;
+
+    let mut builder = CircuitBuilder::<Fr>::new();
+    let public = builder.add_input_layer("Public", LayerVisibility::Public);
+    let committed = builder.add_input_layer("Committed", LayerVisibility::Committed);
+
+    let a_node = builder.add_input_shred("a", nv, &public);
+    let b_node = builder.add_input_shred("b", nv, &public);
+    let sum_node = builder.add_input_shred("sum_result", nv, &committed);
+    let diff_node = builder.add_input_shred("diff_result", nv, &committed);
+    let expected_node = builder.add_input_shred("expected", nv, &public);
+
+    let add_chk = builder.add_sector(a_node.expr() + b_node.expr() - sum_node.expr());
+    builder.set_output(&add_chk);
+
+    let sub_chk = builder.add_sector(sum_node.expr() - b_node.expr() - diff_node.expr());
+    builder.set_output(&sub_chk);
+
+    let out_chk = builder.add_sector(diff_node.expr() - expected_node.expr());
+    builder.set_output(&out_chk);
+
+    let mut prover_circuit = builder.build_with_layer_combination().unwrap();
+    let mut verifier_circuit = prover_circuit.clone();
+
+    prover_circuit.set_input("a", MultilinearExtension::new(to_fr_vec(&a)));
+    prover_circuit.set_input("b", MultilinearExtension::new(to_fr_vec(&b)));
+    prover_circuit.set_input("sum_result", MultilinearExtension::new(to_fr_vec(&sum)));
+    prover_circuit.set_input("diff_result", MultilinearExtension::new(to_fr_vec(&diff)));
+    prover_circuit.set_input("expected", MultilinearExtension::new(to_fr_vec(&diff)));
+
+    let provable = prover_circuit.gen_provable_circuit().unwrap();
+    let (proof_config, proof_transcript) =
+        prove_circuit_with_runtime_optimized_config::<Fr, PoseidonSponge<Fr>>(&provable);
+
+    verifier_circuit.set_input("a", MultilinearExtension::new(to_fr_vec(&a)));
+    verifier_circuit.set_input("b", MultilinearExtension::new(to_fr_vec(&b)));
+    verifier_circuit.set_input("expected", MultilinearExtension::new(to_fr_vec(&diff)));
+
+    let verifiable = verifier_circuit.gen_verifiable_circuit().unwrap();
+    verify_circuit_with_proof_config(&verifiable, &proof_config, proof_transcript);
+}

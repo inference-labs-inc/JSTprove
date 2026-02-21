@@ -160,6 +160,18 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                     &mut manifest,
                 )?;
             }
+            OpType::Add | OpType::Sub => {
+                build_addsub_layer(
+                    &mut builder,
+                    &public,
+                    &committed,
+                    layer,
+                    &mut tensor_nodes,
+                    &mut tensor_num_vars,
+                    &mut tensor_layouts,
+                    &mut manifest,
+                )?;
+            }
             OpType::BatchNormalization => {
                 build_batchnorm_layer(
                     &mut builder,
@@ -624,6 +636,78 @@ fn build_batchnorm_layer(
     for out in &layer.outputs {
         tensor_nodes.insert(out.clone(), q_node.clone());
         tensor_num_vars.insert(out.clone(), nv);
+        if let Some(ref layout) = layout {
+            tensor_layouts.insert(out.clone(), layout.clone());
+        }
+    }
+
+    Ok(())
+}
+
+fn build_addsub_layer(
+    builder: &mut CircuitBuilder<Fr>,
+    public: &InputLayerNodeRef<Fr>,
+    committed: &InputLayerNodeRef<Fr>,
+    layer: &crate::onnx::graph::LayerNode,
+    tensor_nodes: &mut HashMap<String, NodeRef<Fr>>,
+    tensor_num_vars: &mut HashMap<String, usize>,
+    tensor_layouts: &mut HashMap<String, SpatialInfo>,
+    manifest: &mut ShredManifest,
+) -> Result<()> {
+    let input_a_name = layer.inputs.first()
+        .ok_or_else(|| anyhow::anyhow!("{:?} {} has no first input", layer.op_type, layer.name))?;
+    let input_b_name = layer.inputs.get(1)
+        .ok_or_else(|| anyhow::anyhow!("{:?} {} has no second input", layer.op_type, layer.name))?;
+
+    let a_is_tensor = tensor_nodes.contains_key(input_a_name);
+    let b_is_tensor = tensor_nodes.contains_key(input_b_name);
+
+    anyhow::ensure!(a_is_tensor || b_is_tensor,
+        "{:?} {} has no computed tensor inputs", layer.op_type, layer.name);
+
+    let mut resolve_input = |name: &str, is_tensor: bool| -> Result<(NodeRef<Fr>, usize)> {
+        if is_tensor {
+            let node = tensor_nodes.get(name)
+                .ok_or_else(|| anyhow::anyhow!("{:?} {} input {} not in tensor_nodes", layer.op_type, layer.name, name))?
+                .clone();
+            let nv = tensor_num_vars.get(name)
+                .copied()
+                .ok_or_else(|| anyhow::anyhow!("{:?} {} input {} has no num_vars", layer.op_type, layer.name, name))?;
+            Ok((node, nv))
+        } else {
+            let weight = layer.weights.get(name)
+                .ok_or_else(|| anyhow::anyhow!("{:?} {} input {} not in tensor_nodes or weights", layer.op_type, layer.name, name))?;
+            let data = weight.as_i64_vec();
+            let nv = num_vars_for(data.len());
+            let shred_name = format!("{}_{}", layer.name, name);
+            let node = builder.add_input_shred(&shred_name, nv, public);
+            manifest.insert(shred_name, ShredEntry { num_vars: nv, visibility: Visibility::Public });
+            Ok((node, nv))
+        }
+    };
+
+    let (a_node, a_nv) = resolve_input(input_a_name, a_is_tensor)?;
+    let (b_node, b_nv) = resolve_input(input_b_name, b_is_tensor)?;
+
+    let out_nv = a_nv.max(b_nv);
+
+    let result_name = format!("{}_result", layer.name);
+    let result_node = builder.add_input_shred(&result_name, out_nv, committed);
+    manifest.insert(result_name, ShredEntry { num_vars: out_nv, visibility: Visibility::Committed });
+
+    let constraint = if layer.op_type == OpType::Add {
+        builder.add_sector(a_node.expr() + b_node.expr() - result_node.expr())
+    } else {
+        builder.add_sector(a_node.expr() - b_node.expr() - result_node.expr())
+    };
+    builder.set_output(&constraint);
+
+    let layout = tensor_layouts.get(input_a_name)
+        .or_else(|| tensor_layouts.get(input_b_name))
+        .cloned();
+    for out in &layer.outputs {
+        tensor_nodes.insert(out.clone(), result_node.clone());
+        tensor_num_vars.insert(out.clone(), out_nv);
         if let Some(ref layout) = layout {
             tensor_layouts.insert(out.clone(), layout.clone());
         }
