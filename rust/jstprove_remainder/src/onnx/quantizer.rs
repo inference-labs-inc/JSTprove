@@ -127,8 +127,8 @@ fn fold_batchnorm_params(layer: &mut LayerNode) -> Result<()> {
     let mut add = Vec::with_capacity(c);
     for i in 0..c {
         let v = var[i] + epsilon;
-        anyhow::ensure!(v >= 0.0,
-            "BatchNorm {} channel {} has negative variance+epsilon: var={}, eps={}",
+        anyhow::ensure!(v > 0.0,
+            "BatchNorm {} channel {} has non-positive variance+epsilon: var={}, eps={}",
             layer.name, i, var[i], epsilon);
         let m = scale[i] / v.sqrt();
         mul.push(m);
@@ -153,10 +153,7 @@ fn fold_batchnorm_params(layer: &mut LayerNode) -> Result<()> {
         int_data: vec![],
     });
 
-    let stale: Vec<String> = [scale_name, bias_name, mean_name, var_name]
-        .into_iter()
-        .filter(|n| *n != mul_tensor_name && *n != add_tensor_name)
-        .collect();
+    let stale = [scale_name, bias_name, mean_name, var_name];
 
     layer.inputs = vec![
         layer.inputs[0].clone(),
