@@ -240,9 +240,17 @@ fn compute_layer_bound(
         }
         OpType::BatchNormalization => {
             let m_in = get_input_bound(0);
-            let weight = get_weight_bound(1);
+            let max_mul = layer
+                .inputs
+                .get(1)
+                .and_then(|name| layer.weights.get(name))
+                .map(|w| {
+                    let vals = w.as_i64_vec();
+                    vals.iter().map(|v| v.unsigned_abs()).max().unwrap_or(0) as f64
+                })
+                .unwrap_or(1.0);
             let bias_bound = get_bias_bound(2);
-            Ok(weight * m_in + bias_bound)
+            Ok(max_mul * m_in + bias_bound)
         }
         OpType::Mul => {
             let m_a = get_input_bound(0);

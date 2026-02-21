@@ -404,12 +404,22 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                         }
                     }
                     None => {
-                        anyhow::ensure!(input_data.len() <= c,
-                            "BatchNorm {} has no spatial layout and input len {} > channels {}",
-                            layer.name, input_data.len(), c);
-                        for i in 0..c.min(padded_size) {
-                            mul_broadcast[i] = mul_per_ch[i];
-                            add_broadcast[i] = add_per_ch[i];
+                        let spatial = if c > 0 && input_data.len() > c {
+                            anyhow::ensure!(input_data.len() % c == 0,
+                                "BatchNorm {} has no spatial layout and input len {} is not divisible by channels {}",
+                                layer.name, input_data.len(), c);
+                            input_data.len() / c
+                        } else {
+                            1
+                        };
+                        for ch in 0..c {
+                            for s in 0..spatial {
+                                let idx = ch * spatial + s;
+                                if idx < padded_size {
+                                    mul_broadcast[idx] = mul_per_ch[ch];
+                                    add_broadcast[idx] = add_per_ch[ch];
+                                }
+                            }
                         }
                     }
                 }
@@ -422,7 +432,10 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     })
                     .collect();
                 let with_add: Vec<i64> = product.iter().zip(add_broadcast.iter())
-                    .map(|(&p, &a)| p + a)
+                    .map(|(&p, &a)| {
+                        let sum = p as i128 + a as i128;
+                        i64::try_from(sum).expect("BatchNorm add overflows i64")
+                    })
                     .collect();
 
                 let (quotients, remainders) = rescale::compute_rescale_array(&with_add, alpha, offset);
@@ -432,10 +445,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 shreds.insert(format!("{}_q", layer.name), quotients.clone());
                 shreds.insert(format!("{}_r", layer.name), remainders);
 
-                let layout = tensor_layouts.get(input_tensor_name).cloned();
                 for out in &layer.outputs {
                     tensors.insert(out.clone(), quotients.clone());
-                    if let Some(ref layout) = layout {
+                    if let Some(ref layout) = input_layout {
                         tensor_layouts.insert(out.clone(), layout.clone());
                     }
                 }
