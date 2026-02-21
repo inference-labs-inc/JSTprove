@@ -149,11 +149,22 @@ fn fold_batchnorm_params(layer: &mut LayerNode) -> Result<()> {
         int_data: vec![],
     });
 
+    let stale: Vec<String> = [scale_name, bias_name, mean_name, var_name]
+        .into_iter()
+        .filter(|n| *n != mul_tensor_name && *n != add_tensor_name)
+        .collect();
+
     layer.inputs = vec![
         layer.inputs[0].clone(),
         mul_tensor_name,
         add_tensor_name,
     ];
+
+    for name in &stale {
+        if !layer.inputs.contains(name) {
+            layer.weights.remove(name);
+        }
+    }
 
     Ok(())
 }
