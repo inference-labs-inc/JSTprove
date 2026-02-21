@@ -4,6 +4,7 @@ use anyhow::Result;
 
 use super::graph::{LayerGraph, LayerNode, OpType};
 use super::ops;
+use super::parser::TensorData;
 
 pub const DEFAULT_SCALE_BASE: u64 = 2;
 pub const DEFAULT_SCALE_EXPONENT: u32 = 18;
@@ -125,7 +126,11 @@ fn fold_batchnorm_params(layer: &mut LayerNode) -> Result<()> {
     let mut mul = Vec::with_capacity(c);
     let mut add = Vec::with_capacity(c);
     for i in 0..c {
-        let m = scale[i] / (var[i] + epsilon).sqrt();
+        let v = var[i] + epsilon;
+        anyhow::ensure!(v >= 0.0,
+            "BatchNorm {} channel {} has negative variance+epsilon: var={}, eps={}",
+            layer.name, i, var[i], epsilon);
+        let m = scale[i] / v.sqrt();
         mul.push(m);
         add.push(bias[i] - mean[i] * m);
     }
@@ -133,7 +138,6 @@ fn fold_batchnorm_params(layer: &mut LayerNode) -> Result<()> {
     let mul_tensor_name = format!("{}_folded_mul", layer.name);
     let add_tensor_name = format!("{}_folded_add", layer.name);
 
-    use super::parser::TensorData;
     layer.weights.insert(mul_tensor_name.clone(), TensorData {
         name: mul_tensor_name.clone(),
         dims: vec![c as i64],
@@ -161,9 +165,7 @@ fn fold_batchnorm_params(layer: &mut LayerNode) -> Result<()> {
     ];
 
     for name in &stale {
-        if !layer.inputs.contains(name) {
-            layer.weights.remove(name);
-        }
+        layer.weights.remove(name);
     }
 
     Ok(())
