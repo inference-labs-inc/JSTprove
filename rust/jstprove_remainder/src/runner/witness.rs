@@ -173,9 +173,11 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let kh = w_shape[2];
                 let kw = w_shape[3];
 
-                if let Some(pads) = layer.get_ints_attr("pads") {
-                    anyhow::ensure!(pads.iter().all(|&p| p == 0), "Conv {} has non-zero pads {:?} which is not supported", layer.name, pads);
-                }
+                let pads = layer.get_ints_attr("pads");
+                let pad_top = pads.and_then(|p| p.first().copied()).unwrap_or(0) as usize;
+                let pad_left = pads.and_then(|p| p.get(1).copied()).unwrap_or(0) as usize;
+                let pad_bottom = pads.and_then(|p| p.get(2).copied()).unwrap_or(0) as usize;
+                let pad_right = pads.and_then(|p| p.get(3).copied()).unwrap_or(0) as usize;
 
                 let strides = layer.get_ints_attr("strides");
                 let stride_h = strides.and_then(|s| s.first()).map(|&v| v as usize).unwrap_or(1);
@@ -183,9 +185,11 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
 
                 let (input_ch, in_h, in_w) = input_layout.spatial_dims();
                 anyhow::ensure!(input_ch == c_in, "Conv {}: weight c_in {} does not match input channels {}", layer.name, c_in, input_ch);
-                anyhow::ensure!(in_h >= kh && in_w >= kw, "Conv {}: input {}x{} smaller than kernel {}x{}", layer.name, in_h, in_w, kh, kw);
-                let out_h = (in_h - kh) / stride_h + 1;
-                let out_w = (in_w - kw) / stride_w + 1;
+                let padded_h = in_h + pad_top + pad_bottom;
+                let padded_w = in_w + pad_left + pad_right;
+                anyhow::ensure!(padded_h >= kh && padded_w >= kw, "Conv {}: padded input {}x{} smaller than kernel {}x{}", layer.name, padded_h, padded_w, kh, kw);
+                let out_h = (padded_h - kh) / stride_h + 1;
+                let out_w = (padded_w - kw) / stride_w + 1;
                 let patch_size = c_in * kh * kw;
                 let num_patches = out_h * out_w;
 
@@ -200,9 +204,13 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                         for c in 0..c_in {
                             for kr in 0..kh {
                                 for kc in 0..kw {
+                                    let abs_h = oh * stride_h + kr;
+                                    let abs_w = ow * stride_w + kc;
+                                    if abs_h < pad_top || abs_w < pad_left { continue; }
+                                    let ih = abs_h - pad_top;
+                                    let iw = abs_w - pad_left;
+                                    if ih >= in_h || iw >= in_w { continue; }
                                     let col = c * kh * kw + kr * kw + kc;
-                                    let ih = oh * stride_h + kr;
-                                    let iw = ow * stride_w + kc;
                                     let src = input_layout.index(c, ih, iw);
                                     im2col_data[patch * pad_psize + col] = input_data[src];
                                 }

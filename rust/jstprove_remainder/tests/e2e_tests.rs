@@ -1283,3 +1283,133 @@ fn test_lenet_conv1_prove_verify() {
     let verifiable = verifier_circuit.gen_verifiable_circuit().unwrap();
     verify_circuit_with_proof_config(&verifiable, &proof_config, proof_transcript);
 }
+
+#[test]
+fn test_conv2d_with_padding_prove_verify() {
+    let alpha: i64 = 1 << 18;
+    let offset: i64 = 1 << 30;
+
+    let in_h = 3usize;
+    let in_w = 3usize;
+    let c_in = 1usize;
+    let c_out = 1usize;
+    let kh_size = 3usize;
+    let kw_size = 3usize;
+    let stride = 1usize;
+    let pad_top = 1usize;
+    let pad_left = 1usize;
+    let pad_bottom = 1usize;
+    let pad_right = 1usize;
+
+    let padded_h = in_h + pad_top + pad_bottom;
+    let padded_w = in_w + pad_left + pad_right;
+    let out_h = (padded_h - kh_size) / stride + 1;
+    let out_w = (padded_w - kw_size) / stride + 1;
+    assert_eq!(out_h, 3);
+    assert_eq!(out_w, 3);
+    let patch_size = c_in * kh_size * kw_size;
+    let num_patches = out_h * out_w;
+
+    let input: Vec<i64> = (1..=9).map(|x| x as i64).collect();
+    let kernel: Vec<i64> = vec![0, 0, 0, 0, alpha, 0, 0, 0, 0];
+    let bias: Vec<i64> = vec![0];
+
+    let pad_patches_sz = next_pow2(num_patches);
+    let pad_psize = next_pow2(patch_size);
+    let pad_cout = next_pow2(c_out);
+
+    let mut im2col = vec![0i64; pad_patches_sz * pad_psize];
+    let mut wiring: Vec<(u32, u32)> = Vec::new();
+    for oh in 0..out_h {
+        for ow in 0..out_w {
+            let patch = oh * out_w + ow;
+            for c in 0..c_in {
+                for kr in 0..kh_size {
+                    for kc in 0..kw_size {
+                        let abs_h = oh * stride + kr;
+                        let abs_w = ow * stride + kc;
+                        if abs_h < pad_top || abs_w < pad_left { continue; }
+                        let ih = abs_h - pad_top;
+                        let iw = abs_w - pad_left;
+                        if ih >= in_h || iw >= in_w { continue; }
+                        let col = c * kh_size * kw_size + kr * kw_size + kc;
+                        let src = c * in_h * in_w + ih * in_w + iw;
+                        let dest = patch * pad_psize + col;
+                        im2col[dest] = input[src];
+                        wiring.push((dest as u32, src as u32));
+                    }
+                }
+            }
+        }
+    }
+
+    let kernel_t = transpose_matrix(&kernel, c_out, patch_size);
+    let kernel_padded = pad_matrix(&kernel_t, patch_size, c_out, pad_psize, pad_cout);
+    let mm_result = padded_matmul(&im2col, pad_patches_sz, pad_psize, &kernel_padded, pad_cout);
+
+    let bias_bc: Vec<i64> = (0..pad_patches_sz * pad_cout)
+        .map(|i| { let j = i % pad_cout; if j < c_out { bias[j] } else { 0 } })
+        .collect();
+    let mm_with_bias: Vec<i64> = mm_result.iter().zip(bias_bc.iter()).map(|(m, b)| m + b).collect();
+    let (quotients, remainders) = rescale_array(&mm_with_bias, alpha, offset);
+
+    assert_eq!(&quotients[0..9], &[1, 2, 3, 4, 5, 6, 7, 8, 9]);
+
+    let input_vars = log2(next_pow2(c_in * in_h * in_w));
+    let im2col_row_vars = log2(pad_patches_sz);
+    let im2col_col_vars = log2(pad_psize);
+    let im2col_vars = im2col_row_vars + im2col_col_vars;
+    let out_col_vars = log2(pad_cout);
+    let weight_vars = im2col_col_vars + out_col_vars;
+    let result_vars = im2col_row_vars + out_col_vars;
+
+    let mut builder = CircuitBuilder::<Fr>::new();
+    let public = builder.add_input_layer("Public", LayerVisibility::Public);
+    let committed = builder.add_input_layer("Committed", LayerVisibility::Committed);
+
+    let input_node = builder.add_input_shred("input", input_vars, &public);
+    let weight_node = builder.add_input_shred("weight", weight_vars, &public);
+    let bias_bc_node = builder.add_input_shred("bias_bc", result_vars, &public);
+    let expected_node = builder.add_input_shred("expected", result_vars, &public);
+    let q_node = builder.add_input_shred("quotient", result_vars, &committed);
+    let r_node = builder.add_input_shred("remainder", result_vars, &committed);
+
+    let im2col_node = builder.add_identity_gate_node(&input_node, wiring, im2col_vars, None);
+    let mm_node = builder.add_matmult_node(
+        &im2col_node, (im2col_row_vars, im2col_col_vars),
+        &weight_node, (im2col_col_vars, out_col_vars),
+    );
+
+    let alpha_fr = i64_to_fr(alpha);
+    let rescale_chk = builder.add_sector(
+        mm_node.expr() + bias_bc_node.expr()
+            - AbstractExpression::scaled(q_node.expr(), alpha_fr)
+            - r_node.expr(),
+    );
+    builder.set_output(&rescale_chk);
+    let out_chk = builder.add_sector(q_node.expr() - expected_node.expr());
+    builder.set_output(&out_chk);
+
+    let mut prover_circuit = builder.build_with_layer_combination().unwrap();
+    let mut verifier_circuit = prover_circuit.clone();
+
+    let input_padded = pad_to_size(&input, 1 << input_vars);
+    prover_circuit.set_input("input", MultilinearExtension::new(to_fr_vec(&input_padded)));
+    prover_circuit.set_input("weight", MultilinearExtension::new(to_fr_vec(&kernel_padded)));
+    prover_circuit.set_input("bias_bc", MultilinearExtension::new(to_fr_vec(&bias_bc)));
+    prover_circuit.set_input("expected", MultilinearExtension::new(to_fr_vec(&quotients)));
+    prover_circuit.set_input("quotient", MultilinearExtension::new(to_fr_vec(&quotients)));
+    prover_circuit.set_input("remainder", MultilinearExtension::new(to_fr_vec(&remainders)));
+
+    let provable = prover_circuit.gen_provable_circuit().unwrap();
+    let (proof_config, proof_transcript) =
+        prove_circuit_with_runtime_optimized_config::<Fr, PoseidonSponge<Fr>>(&provable);
+
+    verifier_circuit.set_input("input", MultilinearExtension::new(to_fr_vec(&input_padded)));
+    verifier_circuit.set_input("weight", MultilinearExtension::new(to_fr_vec(&kernel_padded)));
+    verifier_circuit.set_input("bias_bc", MultilinearExtension::new(to_fr_vec(&bias_bc)));
+    verifier_circuit.set_input("expected", MultilinearExtension::new(to_fr_vec(&quotients)));
+
+    let verifiable = verifier_circuit.gen_verifiable_circuit().unwrap();
+    verify_circuit_with_proof_config(&verifiable, &proof_config, proof_transcript);
+}
