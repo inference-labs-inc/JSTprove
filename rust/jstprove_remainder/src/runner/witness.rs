@@ -112,6 +112,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
         model.graph.output_names
     );
     let declared_output = &model.graph.output_names[0];
+    let rescale_table_size = 1usize << model.scale_config.exponent;
 
     for layer in model.graph.iter_topo() {
         match layer.op_type {
@@ -169,7 +170,6 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 shreds.insert(format!("{}_q", layer.name), quotients.clone());
                 shreds.insert(format!("{}_r", layer.name), remainders.clone());
 
-                let rescale_table_size = 1usize << model.scale_config.exponent;
                 shreds.insert(
                     format!("{}_r_mults", layer.name),
                     compute_multiplicities(&remainders, rescale_table_size)?,
@@ -278,7 +278,6 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 shreds.insert(format!("{}_q", layer.name), quotients.clone());
                 shreds.insert(format!("{}_r", layer.name), remainders.clone());
 
-                let rescale_table_size = 1usize << model.scale_config.exponent;
                 shreds.insert(
                     format!("{}_r_mults", layer.name),
                     compute_multiplicities(&remainders, rescale_table_size)?,
@@ -507,7 +506,6 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 shreds.insert(format!("{}_q", layer.name), quotients.clone());
                 shreds.insert(format!("{}_r", layer.name), remainders.clone());
 
-                let rescale_table_size = 1usize << model.scale_config.exponent;
                 shreds.insert(
                     format!("{}_r_mults", layer.name),
                     compute_multiplicities(&remainders, rescale_table_size)?,
