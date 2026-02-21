@@ -179,6 +179,13 @@ impl LayerNode {
             _ => None,
         }
     }
+
+    pub fn get_float_attr(&self, name: &str) -> Option<f32> {
+        match self.attributes.get(name)? {
+            AttrValue::Float(v) => Some(*v),
+            _ => None,
+        }
+    }
 }
 
 fn topological_sort(layers: &[LayerNode]) -> Result<Vec<usize>> {

@@ -1413,3 +1413,110 @@ fn test_conv2d_with_padding_prove_verify() {
     let verifiable = verifier_circuit.gen_verifiable_circuit().unwrap();
     verify_circuit_with_proof_config(&verifiable, &proof_config, proof_transcript);
 }
+
+#[test]
+fn test_batchnorm_prove_verify() {
+    use jstprove_remainder::gadgets::rescale;
+    use jstprove_remainder::padding::{next_power_of_two, num_vars_for};
+
+    let alpha: i64 = 2i64.pow(18);
+    let offset = 1i64 << 30;
+
+    let c = 2usize;
+    let h = 2usize;
+    let w = 2usize;
+    let hw = h * w;
+    let total = c * hw;
+
+    let input_raw: Vec<i64> = vec![
+        1 * alpha, 2 * alpha, 3 * alpha, 4 * alpha,
+        5 * alpha, 6 * alpha, 7 * alpha, 8 * alpha,
+    ];
+    let padded_size = next_power_of_two(total);
+    let nv = num_vars_for(total);
+    let mut input_padded = input_raw.clone();
+    input_padded.resize(padded_size, 0);
+
+    let scale = vec![2.0f64, 0.5];
+    let bias = vec![0.0f64, 1.0];
+    let mean = vec![0.0f64, 0.0];
+    let var = vec![1.0f64, 1.0];
+    let epsilon = 1e-5f64;
+
+    let mut mul_per_ch = Vec::with_capacity(c);
+    let mut add_per_ch = Vec::with_capacity(c);
+    for i in 0..c {
+        let m = scale[i] / (var[i] + epsilon).sqrt();
+        mul_per_ch.push((m * alpha as f64).round() as i64);
+        add_per_ch.push((((bias[i] - mean[i] * m) * (alpha as f64).powi(2))).round() as i64);
+    }
+
+    let mut mul_broadcast = vec![0i64; padded_size];
+    let mut add_broadcast = vec![0i64; padded_size];
+    for ch in 0..c {
+        for s in 0..hw {
+            let idx = ch * hw + s;
+            if idx < padded_size {
+                mul_broadcast[idx] = mul_per_ch[ch];
+                add_broadcast[idx] = add_per_ch[ch];
+            }
+        }
+    }
+
+    let product: Vec<i64> = input_padded.iter().zip(mul_broadcast.iter())
+        .map(|(&x, &m)| {
+            let prod = x as i128 * m as i128;
+            i64::try_from(prod).unwrap()
+        })
+        .collect();
+    let with_add: Vec<i64> = product.iter().zip(add_broadcast.iter())
+        .map(|(&p, &a)| p + a)
+        .collect();
+
+    let (quotients, remainders) = rescale::compute_rescale_array(&with_add, alpha, offset);
+
+    let alpha_fr = i64_to_fr(alpha);
+
+    let mut builder = CircuitBuilder::<Fr>::new();
+    let public = builder.add_input_layer("Public", LayerVisibility::Public);
+    let committed = builder.add_input_layer("Committed", LayerVisibility::Committed);
+
+    let input_node = builder.add_input_shred("input", nv, &public);
+    let mul_node = builder.add_input_shred("mul", nv, &public);
+    let add_node = builder.add_input_shred("add", nv, &public);
+    let expected_node = builder.add_input_shred("expected", nv, &public);
+    let q_node = builder.add_input_shred("quotient", nv, &committed);
+    let r_node = builder.add_input_shred("remainder", nv, &committed);
+
+    let rescale_chk = builder.add_sector(
+        AbstractExpression::products(vec![input_node.id(), mul_node.id()])
+            + add_node.expr()
+            - AbstractExpression::scaled(q_node.expr(), alpha_fr)
+            - r_node.expr(),
+    );
+    builder.set_output(&rescale_chk);
+    let out_chk = builder.add_sector(q_node.expr() - expected_node.expr());
+    builder.set_output(&out_chk);
+
+    let mut prover_circuit = builder.build_with_layer_combination().unwrap();
+    let mut verifier_circuit = prover_circuit.clone();
+
+    prover_circuit.set_input("input", MultilinearExtension::new(to_fr_vec(&input_padded)));
+    prover_circuit.set_input("mul", MultilinearExtension::new(to_fr_vec(&mul_broadcast)));
+    prover_circuit.set_input("add", MultilinearExtension::new(to_fr_vec(&add_broadcast)));
+    prover_circuit.set_input("expected", MultilinearExtension::new(to_fr_vec(&quotients)));
+    prover_circuit.set_input("quotient", MultilinearExtension::new(to_fr_vec(&quotients)));
+    prover_circuit.set_input("remainder", MultilinearExtension::new(to_fr_vec(&remainders)));
+
+    let provable = prover_circuit.gen_provable_circuit().unwrap();
+    let (proof_config, proof_transcript) =
+        prove_circuit_with_runtime_optimized_config::<Fr, PoseidonSponge<Fr>>(&provable);
+
+    verifier_circuit.set_input("input", MultilinearExtension::new(to_fr_vec(&input_padded)));
+    verifier_circuit.set_input("mul", MultilinearExtension::new(to_fr_vec(&mul_broadcast)));
+    verifier_circuit.set_input("add", MultilinearExtension::new(to_fr_vec(&add_broadcast)));
+    verifier_circuit.set_input("expected", MultilinearExtension::new(to_fr_vec(&quotients)));
+
+    let verifiable = verifier_circuit.gen_verifiable_circuit().unwrap();
+    verify_circuit_with_proof_config(&verifiable, &proof_config, proof_transcript);
+}
