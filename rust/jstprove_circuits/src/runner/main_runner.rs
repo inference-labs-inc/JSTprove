@@ -170,13 +170,10 @@ where
     GLOBAL.reset_peak_memory();
 
     let mut circuit = CircuitType::default();
-    configure_if_possible::<CircuitType>(&mut circuit);
+    configure_if_possible::<CircuitType>(&mut circuit)?;
 
     let compile_result = compile(&circuit, CompileOptions::default())
         .map_err(|e| RunError::Compile(format!("{e:?}")))?;
-    // let mem_mb = GLOBAL.get_peak_memory().saturating_div(1024 * 1024);
-    // println!("Peak Memory used Overall : {mem_mb:.2}");
-    // let duration = start.elapsed();
 
     let mut circuit_buf = Vec::new();
     compile_result
@@ -363,16 +360,11 @@ where
     let assignment = io_reader.read_outputs(output_path, assignment)?;
 
     let mut circuit = CircuitType::default();
-    configure_if_possible::<CircuitType>(&mut circuit);
+    configure_if_possible::<CircuitType>(&mut circuit)?;
 
-    // Build LogUp registry once
-    let logup_hints = build_logup_hint_registry::<CircuitField<C>>();
-
-    // Use it for the frontend debug evaluation
-    debug_eval(&circuit, &assignment, logup_hints.clone());
-
-    // And for the witness solver
     let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
+
+    debug_eval(&circuit, &assignment, hint_registry.clone());
 
     let witness = witness_solver
         .solve_witness_with_hints(&assignment, &hint_registry)
@@ -1289,7 +1281,7 @@ where
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone + MaybeConfigure,
 {
     let mut circuit = CircuitType::default();
-    configure_if_possible::<CircuitType>(&mut circuit);
+    configure_if_possible::<CircuitType>(&mut circuit)?;
 
     let compile_result = compile(&circuit, CompileOptions::default())
         .map_err(|e| RunError::Compile(format!("{e:?}")))?;
@@ -1417,6 +1409,8 @@ where
     let output_json: Value = serde_json::from_slice(&req.outputs)
         .map_err(|e| RunError::Deserialize(format!("output json: {e:?}")))?;
 
+    let output_data = flatten_json_to_i64(&output_json);
+
     let assignment = CircuitDefaultType::default();
     let assignment = io_reader
         .apply_values(input_json, output_json, assignment)
@@ -1433,8 +1427,29 @@ where
 
     Ok(WitnessBundle {
         witness: witness_bytes,
-        output_data: None,
+        output_data: if output_data.is_empty() {
+            None
+        } else {
+            Some(output_data)
+        },
     })
+}
+
+fn flatten_json_to_i64(val: &Value) -> Vec<i64> {
+    match val {
+        Value::Array(arr) => arr.iter().flat_map(flatten_json_to_i64).collect(),
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                vec![i]
+            } else if let Some(f) = n.as_f64() {
+                vec![f as i64]
+            } else {
+                vec![]
+            }
+        }
+        Value::Object(map) => map.values().flat_map(flatten_json_to_i64).collect(),
+        _ => vec![],
+    }
 }
 
 /// Reads a witness request from stdin and writes the witness to stdout via msgpack.
@@ -1568,18 +1583,19 @@ pub trait ConfigurableCircuit {
 }
 
 pub trait MaybeConfigure {
-    fn maybe_configure(&mut self) {}
-}
-
-impl<T: ConfigurableCircuit> MaybeConfigure for T {
-    fn maybe_configure(&mut self) {
-        let _ = self.configure();
+    fn maybe_configure(&mut self) -> Result<(), RunError> {
+        Ok(())
     }
 }
 
-// Usage
-fn configure_if_possible<T: MaybeConfigure>(circuit: &mut T) {
-    circuit.maybe_configure();
+impl<T: ConfigurableCircuit> MaybeConfigure for T {
+    fn maybe_configure(&mut self) -> Result<(), RunError> {
+        self.configure()
+    }
+}
+
+fn configure_if_possible<T: MaybeConfigure>(circuit: &mut T) -> Result<(), RunError> {
+    circuit.maybe_configure()
 }
 
 /// Retrieves the value of a CLI argument as a `String`.

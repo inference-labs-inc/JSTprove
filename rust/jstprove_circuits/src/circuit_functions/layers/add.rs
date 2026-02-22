@@ -41,7 +41,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AddLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
+        input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let a_name = get_input_name(&self.inputs, 0, LayerKind::Add, INPUT)?;
         let b_name = get_input_name(&self.inputs, 1, LayerKind::Add, INPUT)?;

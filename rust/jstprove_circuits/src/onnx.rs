@@ -52,7 +52,7 @@ impl Circuit<Variable> {
         let layers = build_layers::<C, Builder>(&params, &architecture, &w_and_b)?;
 
         for layer in &layers {
-            let (keys, value) = layer.apply(api, out.clone())?;
+            let (keys, value) = layer.apply(api, &out)?;
             for key in keys {
                 out.insert(key, value.clone());
             }
@@ -98,8 +98,6 @@ impl Circuit<Variable> {
             .map_err(ArrayConversionError::ShapeError)?;
 
         for (j, _) in self.outputs.iter().enumerate() {
-            api.display("out1", self.outputs[j]);
-            api.display("out2", combined_output[j]);
             api.assert_is_equal(self.outputs[j], combined_output[j]);
         }
 

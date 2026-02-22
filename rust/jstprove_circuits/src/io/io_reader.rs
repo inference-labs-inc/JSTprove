@@ -161,22 +161,41 @@ pub mod onnx_context {
     pub struct OnnxContext;
 
     impl OnnxContext {
-        /// Overwrites the stored architecture. Safe to call multiple times
-        /// (e.g. per-slice with different architectures).
+        /// Sets all three context fields atomically by acquiring all three
+        /// write locks before mutating. Use this when updating the full
+        /// context (e.g. per-slice) to avoid partial-update races.
+        pub fn set_all(
+            architecture: Architecture,
+            params: CircuitParams,
+            wandb: Option<WANDB>,
+        ) {
+            let mut arch_guard = ARCHITECTURE.write().unwrap_or_else(|e| e.into_inner());
+            let mut params_guard = CIRCUITPARAMS.write().unwrap_or_else(|e| e.into_inner());
+            let mut wandb_guard = W_AND_B.write().unwrap_or_else(|e| e.into_inner());
+            *arch_guard = Some(architecture);
+            *params_guard = Some(params);
+            *wandb_guard = wandb;
+        }
+
+        /// Overwrites the stored architecture. WARNING: concurrent partial
+        /// updates via individual setters are not atomic — prefer `set_all`
+        /// when updating multiple fields, or ensure external synchronization.
         pub fn set_architecture(meta: Architecture) {
             let mut guard = ARCHITECTURE.write().unwrap_or_else(|e| e.into_inner());
             *guard = Some(meta);
         }
 
-        /// Overwrites the stored circuit parameters. Safe to call multiple
-        /// times (e.g. per-slice with different parameters).
+        /// Overwrites the stored circuit parameters. WARNING: concurrent
+        /// partial updates via individual setters are not atomic — prefer
+        /// `set_all` or ensure external synchronization.
         pub fn set_params(meta: CircuitParams) {
             let mut guard = CIRCUITPARAMS.write().unwrap_or_else(|e| e.into_inner());
             *guard = Some(meta);
         }
 
-        /// Overwrites the stored weights & biases. Safe to call multiple
-        /// times (e.g. per-slice with different W&B data).
+        /// Overwrites the stored weights & biases. WARNING: concurrent
+        /// partial updates via individual setters are not atomic — prefer
+        /// `set_all` or ensure external synchronization.
         pub fn set_wandb(meta: WANDB) {
             let mut guard = W_AND_B.write().unwrap_or_else(|e| e.into_inner());
             *guard = Some(meta);
