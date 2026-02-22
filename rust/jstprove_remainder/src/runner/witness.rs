@@ -310,7 +310,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
 
                 if let Some(n_bits) = layer.n_bits {
                     let dnv = delta_table_nv(n_bits, model.scale_config.exponent as usize);
-                    anyhow::ensure!(dnv < usize::BITS as usize, "Relu {} delta_table_nv {} exceeds shift width", layer.name, dnv);
+                    anyhow::ensure!(dnv < 63, "Relu {} delta_table_nv {} exceeds safe shift width", layer.name, dnv);
                     let delta_table_size = 1usize << dnv;
                     shreds.insert(
                         format!("{}_di_mults", layer.name),
@@ -395,7 +395,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
 
                 if let Some(n_bits) = layer.n_bits {
                     let dnv = delta_table_nv(n_bits, model.scale_config.exponent as usize);
-                    anyhow::ensure!(dnv < usize::BITS as usize, "MaxPool {} delta_table_nv {} exceeds shift width", layer.name, dnv);
+                    anyhow::ensure!(dnv < 63, "MaxPool {} delta_table_nv {} exceeds safe shift width", layer.name, dnv);
                     let dt_size = 1usize << dnv;
                     for i in 0..window_size {
                         shreds.insert(
@@ -838,6 +838,8 @@ pub fn prepare_public_shreds(
                 let mul_per_ch = mul_data.as_i64_vec();
                 let add_per_ch = add_data.as_i64_vec();
                 let ch = mul_per_ch.len();
+                anyhow::ensure!(add_per_ch.len() == ch,
+                    "BatchNorm {} mul/add length mismatch: {} vs {}", layer.name, ch, add_per_ch.len());
                 let sz = tensor_sizes.get(input_tensor_name).copied()
                     .unwrap_or(input_padded_size);
                 let padded_size = next_power_of_two(sz);
