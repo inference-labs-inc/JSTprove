@@ -7,6 +7,7 @@ use remainder::prover::helpers::{
 };
 use shared_types::transcript::poseidon_sponge::PoseidonSponge;
 use shared_types::Fr;
+use jstprove_remainder::runner::witness::compute_multiplicities;
 use jstprove_remainder::util::i64_to_fr;
 
 fn matmul_native(a: &[i64], a_rows: usize, a_cols: usize, b: &[i64], b_cols: usize) -> Vec<i64> {
@@ -1565,6 +1566,284 @@ fn test_addsub_prove_verify() {
     verifier_circuit.set_input("a", MultilinearExtension::new(to_fr_vec(&a)));
     verifier_circuit.set_input("b", MultilinearExtension::new(to_fr_vec(&b)));
     verifier_circuit.set_input("expected", MultilinearExtension::new(to_fr_vec(&diff)));
+
+    let verifiable = verifier_circuit.gen_verifiable_circuit().unwrap();
+    verify_circuit_with_proof_config(&verifiable, &proof_config, proof_transcript);
+}
+
+#[test]
+fn test_rescale_with_logup() {
+    let alpha: i64 = 1 << 4;
+    let table_nv: usize = 4;
+    let table_size: usize = 1 << table_nv;
+    let offset: i64 = 1 << 30;
+
+    let input: Vec<i64> = vec![1, 2, 3, 4];
+    let weights: Vec<i64> = vec![17, 17];
+
+    let raw = matmul_native(&input, 2, 2, &weights, 1);
+    let (quotients, remainders) = rescale_array(&raw, alpha, offset);
+
+    let r_mults = compute_multiplicities(&remainders, table_size).unwrap();
+    let table: Vec<i64> = (0..table_size as i64).collect();
+
+    let m_vars = 1usize;
+    let k_vars = 1usize;
+    let n_vars = 0usize;
+    let result_nv = m_vars + n_vars;
+
+    let mut builder = CircuitBuilder::<Fr>::new();
+    let public = builder.add_input_layer("Public", LayerVisibility::Public);
+    let committed = builder.add_input_layer("Committed", LayerVisibility::Committed);
+
+    let input_node = builder.add_input_shred("input", m_vars + k_vars, &public);
+    let weight_node = builder.add_input_shred("weights", k_vars + n_vars, &public);
+    let expected_node = builder.add_input_shred("expected", result_nv, &public);
+
+    let q_node = builder.add_input_shred("quotient", result_nv, &committed);
+    let r_node = builder.add_input_shred("remainder", result_nv, &committed);
+
+    let mm = builder.add_matmult_node(&input_node, (m_vars, k_vars), &weight_node, (k_vars, n_vars));
+    let alpha_fr = i64_to_fr(alpha);
+    let rescale_chk = builder.add_sector(
+        mm.expr() - AbstractExpression::scaled(q_node.expr(), alpha_fr) - r_node.expr(),
+    );
+    builder.set_output(&rescale_chk);
+
+    let out_chk = builder.add_sector(q_node.expr() - expected_node.expr());
+    builder.set_output(&out_chk);
+
+    let table_node = builder.add_input_shred("range_table", table_nv, &public);
+    let mults_node = builder.add_input_shred("r_mults", table_nv, &committed);
+    let fs = builder.add_fiat_shamir_challenge_node(1);
+    let lookup = builder.add_lookup_table(&table_node, &fs);
+    builder.add_lookup_constraint(&lookup, &r_node, &mults_node);
+
+    let mut prover_circuit = builder.build_with_layer_combination().unwrap();
+    let mut verifier_circuit = prover_circuit.clone();
+
+    prover_circuit.set_input("input", MultilinearExtension::new(to_fr_vec(&input)));
+    prover_circuit.set_input("weights", MultilinearExtension::new(to_fr_vec(&weights)));
+    prover_circuit.set_input("expected", MultilinearExtension::new(to_fr_vec(&quotients)));
+    prover_circuit.set_input("quotient", MultilinearExtension::new(to_fr_vec(&quotients)));
+    prover_circuit.set_input("remainder", MultilinearExtension::new(to_fr_vec(&remainders)));
+    prover_circuit.set_input("range_table", MultilinearExtension::new(to_fr_vec(&table)));
+    prover_circuit.set_input("r_mults", MultilinearExtension::new(to_fr_vec(&r_mults)));
+
+    let provable = prover_circuit.gen_provable_circuit().unwrap();
+    let (proof_config, proof_transcript) =
+        prove_circuit_with_runtime_optimized_config::<Fr, PoseidonSponge<Fr>>(&provable);
+
+    verifier_circuit.set_input("input", MultilinearExtension::new(to_fr_vec(&input)));
+    verifier_circuit.set_input("weights", MultilinearExtension::new(to_fr_vec(&weights)));
+    verifier_circuit.set_input("expected", MultilinearExtension::new(to_fr_vec(&quotients)));
+    verifier_circuit.set_input("range_table", MultilinearExtension::new(to_fr_vec(&table)));
+
+    let verifiable = verifier_circuit.gen_verifiable_circuit().unwrap();
+    verify_circuit_with_proof_config(&verifiable, &proof_config, proof_transcript);
+}
+
+#[test]
+fn test_relu_with_logup() {
+    let delta_nv: usize = 4;
+    let delta_table_size: usize = 1 << delta_nv;
+    let delta_table: Vec<i64> = (0..delta_table_size as i64).collect();
+
+    let input: Vec<i64> = vec![10, -5, 3, -8];
+    let nv = 2usize;
+    let relu_out: Vec<i64> = input.iter().map(|&x| x.max(0)).collect();
+    let di: Vec<i64> = relu_out.iter().zip(input.iter()).map(|(o, x)| o - x).collect();
+    let dz: Vec<i64> = relu_out.clone();
+
+    let di_mults = compute_multiplicities(&di, delta_table_size).unwrap();
+    let dz_mults = compute_multiplicities(&dz, delta_table_size).unwrap();
+
+    let mut builder = CircuitBuilder::<Fr>::new();
+    let public = builder.add_input_layer("Public", LayerVisibility::Public);
+    let committed = builder.add_input_layer("Committed", LayerVisibility::Committed);
+
+    let input_node = builder.add_input_shred("input", nv, &public);
+    let zero_node = builder.add_input_shred("zero", nv, &public);
+    let expected_node = builder.add_input_shred("expected", nv, &public);
+
+    let max_node = builder.add_input_shred("max", nv, &committed);
+    let di_node = builder.add_input_shred("di", nv, &committed);
+    let dz_node = builder.add_input_shred("dz", nv, &committed);
+
+    let c1 = builder.add_sector(max_node.expr() - input_node.expr() - di_node.expr());
+    builder.set_output(&c1);
+    let c2 = builder.add_sector(max_node.expr() - zero_node.expr() - dz_node.expr());
+    builder.set_output(&c2);
+    let prod = builder.add_sector(AbstractExpression::products(vec![di_node.id(), dz_node.id()]));
+    builder.set_output(&prod);
+    let out_chk = builder.add_sector(max_node.expr() - expected_node.expr());
+    builder.set_output(&out_chk);
+
+    let table_node = builder.add_input_shred("delta_table", delta_nv, &public);
+    let di_mults_node = builder.add_input_shred("di_mults", delta_nv, &committed);
+    let dz_mults_node = builder.add_input_shred("dz_mults", delta_nv, &committed);
+
+    let fs = builder.add_fiat_shamir_challenge_node(1);
+    let lookup = builder.add_lookup_table(&table_node, &fs);
+    builder.add_lookup_constraint(&lookup, &di_node, &di_mults_node);
+    builder.add_lookup_constraint(&lookup, &dz_node, &dz_mults_node);
+
+    let mut prover_circuit = builder.build_with_layer_combination().unwrap();
+    let mut verifier_circuit = prover_circuit.clone();
+
+    prover_circuit.set_input("input", MultilinearExtension::new(to_fr_vec(&input)));
+    prover_circuit.set_input("zero", MultilinearExtension::new(vec![Fr::from(0u64); 4]));
+    prover_circuit.set_input("expected", MultilinearExtension::new(to_fr_vec(&relu_out)));
+    prover_circuit.set_input("max", MultilinearExtension::new(to_fr_vec(&relu_out)));
+    prover_circuit.set_input("di", MultilinearExtension::new(to_fr_vec(&di)));
+    prover_circuit.set_input("dz", MultilinearExtension::new(to_fr_vec(&dz)));
+    prover_circuit.set_input("delta_table", MultilinearExtension::new(to_fr_vec(&delta_table)));
+    prover_circuit.set_input("di_mults", MultilinearExtension::new(to_fr_vec(&di_mults)));
+    prover_circuit.set_input("dz_mults", MultilinearExtension::new(to_fr_vec(&dz_mults)));
+
+    let provable = prover_circuit.gen_provable_circuit().unwrap();
+    let (proof_config, proof_transcript) =
+        prove_circuit_with_runtime_optimized_config::<Fr, PoseidonSponge<Fr>>(&provable);
+
+    verifier_circuit.set_input("input", MultilinearExtension::new(to_fr_vec(&input)));
+    verifier_circuit.set_input("zero", MultilinearExtension::new(vec![Fr::from(0u64); 4]));
+    verifier_circuit.set_input("expected", MultilinearExtension::new(to_fr_vec(&relu_out)));
+    verifier_circuit.set_input("delta_table", MultilinearExtension::new(to_fr_vec(&delta_table)));
+
+    let verifiable = verifier_circuit.gen_verifiable_circuit().unwrap();
+    verify_circuit_with_proof_config(&verifiable, &proof_config, proof_transcript);
+}
+
+#[test]
+fn test_gemm_relu_gemm_with_logup() {
+    let alpha: i64 = 1 << 4;
+    let exponent: usize = 4;
+    let offset: i64 = 1 << 30;
+
+    let input: Vec<i64> = vec![3, 1, -3, 2];
+    let w1: Vec<i64> = vec![17, 0, 0, 17];
+    let w2: Vec<i64> = vec![17, 0, 0, 17];
+
+    let mm1 = matmul_native(&input, 2, 2, &w1, 2);
+    let (q1, r1) = rescale_array(&mm1, alpha, offset);
+
+    let relu_out: Vec<i64> = q1.iter().map(|&x| x.max(0)).collect();
+    let di: Vec<i64> = relu_out.iter().zip(q1.iter()).map(|(o, x)| o - x).collect();
+    let dz: Vec<i64> = relu_out.clone();
+
+    let mm2 = matmul_native(&relu_out, 2, 2, &w2, 2);
+    let (q2, r2) = rescale_array(&mm2, alpha, offset);
+    let expected = q2.clone();
+
+    let delta_nv: usize = 3;
+    let rescale_table_size: usize = 1 << exponent;
+    let delta_table_size: usize = 1 << delta_nv;
+
+    let rescale_table: Vec<i64> = (0..rescale_table_size as i64).collect();
+    let delta_table: Vec<i64> = (0..delta_table_size as i64).collect();
+
+    let r1_mults = compute_multiplicities(&r1, rescale_table_size).unwrap();
+    let r2_mults = compute_multiplicities(&r2, rescale_table_size).unwrap();
+    let di_mults = compute_multiplicities(&di, delta_table_size).unwrap();
+    let dz_mults = compute_multiplicities(&dz, delta_table_size).unwrap();
+
+    let m_vars = 1usize;
+    let k_vars = 1usize;
+    let n_vars = 1usize;
+    let nv = m_vars + n_vars;
+
+    let mut builder = CircuitBuilder::<Fr>::new();
+    let public = builder.add_input_layer("Public", LayerVisibility::Public);
+    let committed = builder.add_input_layer("Committed", LayerVisibility::Committed);
+
+    let input_node = builder.add_input_shred("input", m_vars + k_vars, &public);
+    let w1_node = builder.add_input_shred("w1", k_vars + n_vars, &public);
+    let zero_node = builder.add_input_shred("zero", nv, &public);
+    let w2_node = builder.add_input_shred("w2", k_vars + n_vars, &public);
+    let expected_node = builder.add_input_shred("expected", nv, &public);
+
+    let q1_node = builder.add_input_shred("q1", nv, &committed);
+    let r1_node = builder.add_input_shred("r1", nv, &committed);
+    let max_node = builder.add_input_shred("max", nv, &committed);
+    let di_node = builder.add_input_shred("di", nv, &committed);
+    let dz_node = builder.add_input_shred("dz", nv, &committed);
+    let q2_node = builder.add_input_shred("q2", nv, &committed);
+    let r2_node = builder.add_input_shred("r2", nv, &committed);
+
+    let alpha_fr = i64_to_fr(alpha);
+
+    let mm1_node = builder.add_matmult_node(&input_node, (m_vars, k_vars), &w1_node, (k_vars, n_vars));
+    let rescale1 = builder.add_sector(
+        mm1_node.expr() - AbstractExpression::scaled(q1_node.expr(), alpha_fr) - r1_node.expr(),
+    );
+    builder.set_output(&rescale1);
+
+    let c1 = builder.add_sector(max_node.expr() - q1_node.expr() - di_node.expr());
+    builder.set_output(&c1);
+    let c2 = builder.add_sector(max_node.expr() - zero_node.expr() - dz_node.expr());
+    builder.set_output(&c2);
+    let prod = builder.add_sector(AbstractExpression::products(vec![di_node.id(), dz_node.id()]));
+    builder.set_output(&prod);
+
+    let mm2_node = builder.add_matmult_node(&max_node, (m_vars, n_vars), &w2_node, (k_vars, n_vars));
+    let rescale2 = builder.add_sector(
+        mm2_node.expr() - AbstractExpression::scaled(q2_node.expr(), alpha_fr) - r2_node.expr(),
+    );
+    builder.set_output(&rescale2);
+
+    let out_chk = builder.add_sector(q2_node.expr() - expected_node.expr());
+    builder.set_output(&out_chk);
+
+    let rescale_tbl_node = builder.add_input_shred("rescale_table", exponent, &public);
+    let r1_mults_node = builder.add_input_shred("r1_mults", exponent, &committed);
+    let r2_mults_node = builder.add_input_shred("r2_mults", exponent, &committed);
+    let delta_tbl_node = builder.add_input_shred("delta_table", delta_nv, &public);
+    let di_mults_node = builder.add_input_shred("di_mults", delta_nv, &committed);
+    let dz_mults_node = builder.add_input_shred("dz_mults", delta_nv, &committed);
+
+    let fs = builder.add_fiat_shamir_challenge_node(1);
+
+    let rescale_lookup = builder.add_lookup_table(&rescale_tbl_node, &fs);
+    builder.add_lookup_constraint(&rescale_lookup, &r1_node, &r1_mults_node);
+    builder.add_lookup_constraint(&rescale_lookup, &r2_node, &r2_mults_node);
+
+    let delta_lookup = builder.add_lookup_table(&delta_tbl_node, &fs);
+    builder.add_lookup_constraint(&delta_lookup, &di_node, &di_mults_node);
+    builder.add_lookup_constraint(&delta_lookup, &dz_node, &dz_mults_node);
+
+    let mut prover_circuit = builder.build_with_layer_combination().unwrap();
+    let mut verifier_circuit = prover_circuit.clone();
+
+    prover_circuit.set_input("input", MultilinearExtension::new(to_fr_vec(&input)));
+    prover_circuit.set_input("w1", MultilinearExtension::new(to_fr_vec(&w1)));
+    prover_circuit.set_input("zero", MultilinearExtension::new(vec![Fr::from(0u64); 1 << nv]));
+    prover_circuit.set_input("w2", MultilinearExtension::new(to_fr_vec(&w2)));
+    prover_circuit.set_input("expected", MultilinearExtension::new(to_fr_vec(&expected)));
+    prover_circuit.set_input("q1", MultilinearExtension::new(to_fr_vec(&q1)));
+    prover_circuit.set_input("r1", MultilinearExtension::new(to_fr_vec(&r1)));
+    prover_circuit.set_input("max", MultilinearExtension::new(to_fr_vec(&relu_out)));
+    prover_circuit.set_input("di", MultilinearExtension::new(to_fr_vec(&di)));
+    prover_circuit.set_input("dz", MultilinearExtension::new(to_fr_vec(&dz)));
+    prover_circuit.set_input("q2", MultilinearExtension::new(to_fr_vec(&q2)));
+    prover_circuit.set_input("r2", MultilinearExtension::new(to_fr_vec(&r2)));
+    prover_circuit.set_input("rescale_table", MultilinearExtension::new(to_fr_vec(&rescale_table)));
+    prover_circuit.set_input("r1_mults", MultilinearExtension::new(to_fr_vec(&r1_mults)));
+    prover_circuit.set_input("r2_mults", MultilinearExtension::new(to_fr_vec(&r2_mults)));
+    prover_circuit.set_input("delta_table", MultilinearExtension::new(to_fr_vec(&delta_table)));
+    prover_circuit.set_input("di_mults", MultilinearExtension::new(to_fr_vec(&di_mults)));
+    prover_circuit.set_input("dz_mults", MultilinearExtension::new(to_fr_vec(&dz_mults)));
+
+    let provable = prover_circuit.gen_provable_circuit().unwrap();
+    let (proof_config, proof_transcript) =
+        prove_circuit_with_runtime_optimized_config::<Fr, PoseidonSponge<Fr>>(&provable);
+
+    verifier_circuit.set_input("input", MultilinearExtension::new(to_fr_vec(&input)));
+    verifier_circuit.set_input("w1", MultilinearExtension::new(to_fr_vec(&w1)));
+    verifier_circuit.set_input("zero", MultilinearExtension::new(vec![Fr::from(0u64); 1 << nv]));
+    verifier_circuit.set_input("w2", MultilinearExtension::new(to_fr_vec(&w2)));
+    verifier_circuit.set_input("expected", MultilinearExtension::new(to_fr_vec(&expected)));
+    verifier_circuit.set_input("rescale_table", MultilinearExtension::new(to_fr_vec(&rescale_table)));
+    verifier_circuit.set_input("delta_table", MultilinearExtension::new(to_fr_vec(&delta_table)));
 
     let verifiable = verifier_circuit.gen_verifiable_circuit().unwrap();
     verify_circuit_with_proof_config(&verifiable, &proof_config, proof_transcript);
