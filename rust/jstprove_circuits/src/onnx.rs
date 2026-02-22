@@ -43,20 +43,19 @@ impl Circuit<Variable> {
         let architecture = OnnxContext::get_architecture()?;
         let w_and_b = OnnxContext::get_wandb()?;
 
-        let mut out = get_inputs(&self.input_arr, params.inputs.clone())?;
-
-        let layers = build_layers::<C, Builder>(&params, &architecture, &w_and_b)?;
-
         if architecture.architecture.is_empty() {
             return Err(CircuitError::EmptyArchitecture);
         }
 
-        for (i, layer) in layers.iter().enumerate() {
-            eprintln!("Applying Layer {:?}", &architecture.architecture[i].name);
-            let result = layer.apply(api, out.clone())?;
-            result.0.into_iter().for_each(|key| {
-                out.insert(key, result.1.clone());
-            });
+        let mut out = get_inputs(&self.input_arr, params.inputs.clone())?;
+
+        let layers = build_layers::<C, Builder>(&params, &architecture, &w_and_b)?;
+
+        for layer in &layers {
+            let (keys, value) = layer.apply(api, out.clone())?;
+            for key in keys {
+                out.insert(key, value.clone());
+            }
         }
 
         let flatten_shape: Vec<usize> = vec![
@@ -66,8 +65,6 @@ impl Circuit<Variable> {
                 .map(|obj| obj.shape.iter().product::<usize>())
                 .sum(),
         ];
-        eprintln!("Flatten shape {flatten_shape:?}");
-
         let mut flat_outputs: Vec<Array1<Variable>> = Vec::new();
 
         for output_info in &params.outputs {
@@ -100,7 +97,6 @@ impl Circuit<Variable> {
             .into_shape_with_order(IxDyn(&flatten_shape))
             .map_err(ArrayConversionError::ShapeError)?;
 
-        eprintln!("Check outputs");
         for (j, _) in self.outputs.iter().enumerate() {
             api.display("out1", self.outputs[j]);
             api.display("out2", combined_output[j]);
@@ -133,7 +129,6 @@ impl ConfigurableCircuit for Circuit<Variable> {
             .iter()
             .map(|obj| obj.shape.iter().product::<usize>())
             .sum();
-        eprintln!("input_dims {:?}", params.inputs);
         self.input_arr = vec![Variable::default(); input_dims];
 
         Ok(())

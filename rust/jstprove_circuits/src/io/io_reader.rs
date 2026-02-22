@@ -161,36 +161,39 @@ pub mod onnx_context {
     pub struct OnnxContext;
 
     impl OnnxContext {
-        pub fn set_architecture(meta: Architecture) -> Result<(), OnnxContextError> {
-            let mut guard = ARCHITECTURE.write().unwrap();
+        /// Overwrites the stored architecture. Safe to call multiple times
+        /// (e.g. per-slice with different architectures).
+        pub fn set_architecture(meta: Architecture) {
+            let mut guard = ARCHITECTURE.write().unwrap_or_else(|e| e.into_inner());
             *guard = Some(meta);
-            Ok(())
         }
 
-        pub fn set_params(meta: CircuitParams) -> Result<(), OnnxContextError> {
-            let mut guard = CIRCUITPARAMS.write().unwrap();
+        /// Overwrites the stored circuit parameters. Safe to call multiple
+        /// times (e.g. per-slice with different parameters).
+        pub fn set_params(meta: CircuitParams) {
+            let mut guard = CIRCUITPARAMS.write().unwrap_or_else(|e| e.into_inner());
             *guard = Some(meta);
-            Ok(())
         }
 
-        pub fn set_wandb(meta: WANDB) -> Result<(), OnnxContextError> {
-            let mut guard = W_AND_B.write().unwrap();
+        /// Overwrites the stored weights & biases. Safe to call multiple
+        /// times (e.g. per-slice with different W&B data).
+        pub fn set_wandb(meta: WANDB) {
+            let mut guard = W_AND_B.write().unwrap_or_else(|e| e.into_inner());
             *guard = Some(meta);
-            Ok(())
         }
 
         pub fn get_architecture() -> Result<Architecture, OnnxContextError> {
-            let guard = ARCHITECTURE.read().unwrap();
+            let guard = ARCHITECTURE.read().unwrap_or_else(|e| e.into_inner());
             guard.clone().ok_or(OnnxContextError::ArchitectureNotSet)
         }
 
         pub fn get_params() -> Result<CircuitParams, OnnxContextError> {
-            let guard = CIRCUITPARAMS.read().unwrap();
+            let guard = CIRCUITPARAMS.read().unwrap_or_else(|e| e.into_inner());
             guard.clone().ok_or(OnnxContextError::CircuitParamsNotSet)
         }
 
         pub fn get_wandb() -> Result<WANDB, OnnxContextError> {
-            let guard = W_AND_B.read().unwrap();
+            let guard = W_AND_B.read().unwrap_or_else(|e| e.into_inner());
             guard.clone().ok_or(OnnxContextError::WandbNotSet)
         }
     }

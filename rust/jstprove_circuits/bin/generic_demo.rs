@@ -1,8 +1,3 @@
-#[allow(unused_imports)]
-use core::panic;
-
-use jstprove_circuits::circuit_functions::CircuitError;
-
 use jstprove_circuits::circuit_functions::utils::onnx_model::{
     Architecture, CircuitParams, WANDB,
 };
@@ -29,9 +24,7 @@ fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool, has_wandb: boo
         std::process::exit(1);
     }
 
-    OnnxContext::set_params(params)
-        .map_err(|e| CircuitError::Other(e.to_string()))
-        .unwrap();
+    OnnxContext::set_params(params);
 
     if needs_full {
         let arch_file_path = get_arg(matches, "arch").unwrap();
@@ -39,9 +32,7 @@ fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool, has_wandb: boo
             std::fs::read_to_string(&arch_file_path).expect("Failed to read architecture file");
         let arch: Architecture =
             serde_json::from_str(&arch_file).expect("Invalid architecture JSON");
-        OnnxContext::set_architecture(arch)
-            .map_err(|e| CircuitError::Other(e.to_string()))
-            .unwrap();
+        OnnxContext::set_architecture(arch);
     }
 
     if has_wandb {
@@ -49,9 +40,7 @@ fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool, has_wandb: boo
         let wandb_file =
             std::fs::read_to_string(&wandb_file_path).expect("Failed to read W&B file");
         let wandb: WANDB = serde_json::from_str(&wandb_file).expect("Invalid W&B JSON");
-        OnnxContext::set_wandb(wandb)
-            .map_err(|e| CircuitError::Other(e.to_string()))
-            .unwrap();
+        OnnxContext::set_wandb(wandb);
     }
 }
 
@@ -99,9 +88,13 @@ fn main() {
             .get_one::<String>("circuit_path")
             .expect("command requires --meta or -c with bundled metadata");
         if let Some(params) = try_load_metadata_from_circuit(circuit_path) {
-            OnnxContext::set_params(params)
-                .map_err(|e| CircuitError::Other(e.to_string()))
-                .unwrap();
+            if params.weights_as_inputs && !has_wandb {
+                eprintln!(
+                    "Error: command '{cmd_type}' requires --wandb (weights_as_inputs is enabled in bundled metadata)."
+                );
+                std::process::exit(1);
+            }
+            OnnxContext::set_params(params);
         } else {
             eprintln!(
                 "Error: command '{cmd_type}' requires --meta or circuit .msgpack with bundled metadata."
