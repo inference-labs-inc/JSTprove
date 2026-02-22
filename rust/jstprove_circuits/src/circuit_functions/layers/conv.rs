@@ -271,7 +271,7 @@ pub fn not_yet_implemented_conv(
     group: &[u32],
     dilations: &Vec<u32>,
 ) -> Result<(), CircuitError> {
-    if input_shape[1] != input_shape[1] * group[0] || input_shape[0] % group[0] != 0 {
+    if group[0] == 0 || input_shape[1] % group[0] != 0 || input_shape[0] % group[0] != 0 {
         return Err(LayerError::InvalidShape {
             layer: LayerKind::Conv,
             msg: "shape inconsistencies (channels or batch vs group)".into(),

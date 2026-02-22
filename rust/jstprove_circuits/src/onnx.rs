@@ -96,6 +96,13 @@ impl Circuit<Variable> {
             .into_shape_with_order(IxDyn(&flatten_shape))
             .map_err(ArrayConversionError::ShapeError)?;
 
+        if combined_output.len() != self.outputs.len() {
+            return Err(CircuitError::Other(format!(
+                "output length mismatch: circuit has {} outputs but computed {} values",
+                self.outputs.len(),
+                combined_output.len()
+            )));
+        }
         for (j, _) in self.outputs.iter().enumerate() {
             api.assert_is_equal(self.outputs[j], combined_output[j]);
         }
@@ -232,6 +239,9 @@ pub fn witness_bn254(
     req: &WitnessRequest,
     compress: bool,
 ) -> Result<WitnessBundle, RunError> {
+    // Empty path is intentional: witness_from_request calls
+    // io_reader.apply_values() with inline Value data and never
+    // invokes FileReader::read_inputs or read_outputs.
     let mut reader = FileReader {
         path: String::new(),
     };
