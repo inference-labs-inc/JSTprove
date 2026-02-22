@@ -75,7 +75,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         let w_name = get_input_name(&self.inputs, 1, LayerKind::Conv, WEIGHTS)?;
         let weights = load_array_constants_or_get_inputs(
             api,
-            &input,
+            input,
             w_name,
             &self.weights,
             LayerKind::Conv,
@@ -83,7 +83,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
 
         let b_name = get_input_name(&self.inputs, 2, LayerKind::Conv, BIAS)?;
         let bias =
-            load_array_constants_or_get_inputs(api, &input, b_name, &self.bias, LayerKind::Conv)?;
+            load_array_constants_or_get_inputs(api, input, b_name, &self.bias, LayerKind::Conv)?;
 
         let in_shape = layer_input
             .shape()

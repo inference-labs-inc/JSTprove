@@ -591,6 +591,7 @@ fn prove_core<C: Config>(
     let (simd_input, simd_public_input) = witness.to_simd();
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input.clone_from(&simd_public_input);
+    expander_circuit.evaluate();
 
     let mpi_config = MPIConfig::prover_new();
     let (claimed_v, proof) = executor::prove::<C>(expander_circuit, mpi_config);
@@ -1442,7 +1443,11 @@ fn flatten_json_to_i64(val: &Value) -> Vec<i64> {
             if let Some(i) = n.as_i64() {
                 vec![i]
             } else if let Some(f) = n.as_f64() {
-                vec![f as i64]
+                if f.is_finite() && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
+                    vec![f as i64]
+                } else {
+                    vec![]
+                }
             } else {
                 vec![]
             }

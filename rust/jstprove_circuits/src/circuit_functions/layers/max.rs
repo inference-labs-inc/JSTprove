@@ -59,7 +59,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxLayer {
         // 2. Load either constants (initializers) or runtime inputs
         let a_input = load_array_constants_or_get_inputs(
             api,
-            &input,
+            input,
             a_name,
             &self.initializer_a,
             LayerKind::Max,
@@ -67,7 +67,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxLayer {
 
         let b_input = load_array_constants_or_get_inputs(
             api,
-            &input,
+            input,
             b_name,
             &self.initializer_b,
             LayerKind::Max,

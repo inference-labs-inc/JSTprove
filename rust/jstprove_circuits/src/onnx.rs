@@ -26,6 +26,9 @@ declare_circuit!(Circuit {
     scale_exponent: [PublicVariable; 1],
 });
 
+/// Panics if OnnxContext is not populated. Callers must call
+/// `OnnxContext::set_all` (or the individual setters) before any
+/// compilation or evaluation path that invokes `define`/`try_define`.
 impl<C: Config> Define<C> for Circuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         if let Err(e) = self.try_define(api) {
@@ -77,11 +80,7 @@ impl Circuit<Variable> {
                 })?
                 .clone();
 
-            let output_slice = output.as_slice().ok_or_else(|| {
-                CircuitError::Other(format!("Output '{output_name}' array not contiguous"))
-            })?;
-
-            flat_outputs.push(Array1::from(output_slice.to_vec()));
+            flat_outputs.push(Array1::from_iter(output.iter().copied()));
         }
 
         let combined_output = concatenate(
@@ -101,6 +100,8 @@ impl Circuit<Variable> {
             api.assert_is_equal(self.outputs[j], combined_output[j]);
         }
 
+        // Constant placeholders required by the circuit framework to anchor
+        // the constraint system when no other fixed-value wires are present.
         api.assert_is_equal(self.dummy[0], 1);
         api.assert_is_equal(self.dummy[1], 1);
 

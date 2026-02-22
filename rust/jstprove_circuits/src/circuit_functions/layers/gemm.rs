@@ -121,7 +121,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         let w_name = get_input_name(&self.inputs, 1, LayerKind::Gemm, "weights")?;
         let mut weights_array = load_array_constants_or_get_inputs(
             api,
-            &input,
+            input,
             w_name,
             &self.weights,
             LayerKind::Gemm,
@@ -150,7 +150,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
 
         let b_name = get_input_name(&self.inputs, 2, LayerKind::Gemm, "bias")?;
         let bias_array =
-            load_array_constants_or_get_inputs(api, &input, b_name, &self.bias, LayerKind::Gemm)?;
+            load_array_constants_or_get_inputs(api, input, b_name, &self.bias, LayerKind::Gemm)?;
 
         // Sanity check alpha and beta.
         check_alpha_beta(self.alpha, ALPHA, LayerKind::Gemm, &self.name)?;

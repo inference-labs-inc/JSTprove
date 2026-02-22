@@ -32,11 +32,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let reshape_shape = self.shape.clone();
-        let input_name = get_input_name(&self.inputs, 0, LayerKind::Conv, INPUT)?;
+        let input_name = get_input_name(&self.inputs, 0, LayerKind::Reshape, INPUT)?;
         let layer_input = input
             .get(&input_name.clone())
             .ok_or_else(|| LayerError::MissingInput {
-                layer: LayerKind::Conv,
+                layer: LayerKind::Reshape,
                 name: input_name.clone(),
             })?
             .clone();

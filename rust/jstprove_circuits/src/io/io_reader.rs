@@ -161,9 +161,11 @@ pub mod onnx_context {
     pub struct OnnxContext;
 
     impl OnnxContext {
-        /// Sets all three context fields atomically by acquiring all three
-        /// write locks before mutating. Use this when updating the full
-        /// context (e.g. per-slice) to avoid partial-update races.
+        /// Acquires write locks on ARCHITECTURE, CIRCUITPARAMS, and W_AND_B
+        /// (sequentially, in that order) before performing any mutations,
+        /// preventing partial-update races. Note: a concurrent reader (e.g.
+        /// `get_params()`) may observe stale values during lock acquisition.
+        /// Use this when updating the full context (e.g. per-slice).
         pub fn set_all(
             architecture: Architecture,
             params: CircuitParams,

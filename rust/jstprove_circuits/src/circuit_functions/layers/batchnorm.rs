@@ -59,7 +59,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
         let w_name = get_input_name(&self.inputs, 1, LayerKind::Batchnorm, "weights")?;
         let mul_raw = load_array_constants_or_get_inputs(
             api,
-            &input,
+            input,
             w_name,
             &self.weights,
             LayerKind::Batchnorm,
@@ -67,7 +67,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
         let b_name = get_input_name(&self.inputs, 2, LayerKind::Batchnorm, "bias")?;
         let add_raw = load_array_constants_or_get_inputs(
             api,
-            &input,
+            input,
             b_name,
             &self.bias,
             LayerKind::Batchnorm,
