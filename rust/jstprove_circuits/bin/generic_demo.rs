@@ -1,6 +1,4 @@
-use jstprove_circuits::circuit_functions::utils::onnx_model::{
-    Architecture, CircuitParams, WANDB,
-};
+use jstprove_circuits::circuit_functions::utils::onnx_model::{Architecture, CircuitParams, WANDB};
 
 use jstprove_circuits::io::io_reader::FileReader;
 use jstprove_circuits::runner::main_runner::{

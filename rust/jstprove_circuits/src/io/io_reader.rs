@@ -166,11 +166,7 @@ pub mod onnx_context {
         /// preventing partial-update races. Note: a concurrent reader (e.g.
         /// `get_params()`) may observe stale values during lock acquisition.
         /// Use this when updating the full context (e.g. per-slice).
-        pub fn set_all(
-            architecture: Architecture,
-            params: CircuitParams,
-            wandb: Option<WANDB>,
-        ) {
+        pub fn set_all(architecture: Architecture, params: CircuitParams, wandb: Option<WANDB>) {
             let mut arch_guard = ARCHITECTURE.write().unwrap_or_else(|e| e.into_inner());
             let mut params_guard = CIRCUITPARAMS.write().unwrap_or_else(|e| e.into_inner());
             let mut wandb_guard = W_AND_B.write().unwrap_or_else(|e| e.into_inner());

@@ -119,18 +119,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
                     msg: format!("Expected 2D input for layer {}", self.name),
                 })?;
         let w_name = get_input_name(&self.inputs, 1, LayerKind::Gemm, "weights")?;
-        let mut weights_array = load_array_constants_or_get_inputs(
-            api,
-            input,
-            w_name,
-            &self.weights,
-            LayerKind::Gemm,
-        )?
-        .into_dimensionality::<Ix2>()
-        .map_err(|_| LayerError::InvalidShape {
-            layer: LayerKind::Gemm,
-            msg: format!("Expected 2D weights array for layer {}", self.name),
-        })?;
+        let mut weights_array =
+            load_array_constants_or_get_inputs(api, input, w_name, &self.weights, LayerKind::Gemm)?
+                .into_dimensionality::<Ix2>()
+                .map_err(|_| LayerError::InvalidShape {
+                    layer: LayerKind::Gemm,
+                    msg: format!("Expected 2D weights array for layer {}", self.name),
+                })?;
 
         // Apply transposes according to ONNX attributes.
         input_array = check_and_apply_transpose_array(

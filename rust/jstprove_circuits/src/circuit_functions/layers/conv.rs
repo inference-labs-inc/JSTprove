@@ -73,13 +73,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             .clone();
 
         let w_name = get_input_name(&self.inputs, 1, LayerKind::Conv, WEIGHTS)?;
-        let weights = load_array_constants_or_get_inputs(
-            api,
-            input,
-            w_name,
-            &self.weights,
-            LayerKind::Conv,
-        )?;
+        let weights =
+            load_array_constants_or_get_inputs(api, input, w_name, &self.weights, LayerKind::Conv)?;
 
         let b_name = get_input_name(&self.inputs, 2, LayerKind::Conv, BIAS)?;
         let bias =
@@ -271,14 +266,18 @@ pub fn not_yet_implemented_conv(
     group: &[u32],
     dilations: &Vec<u32>,
 ) -> Result<(), CircuitError> {
-    if group[0] == 0 || input_shape[1] % group[0] != 0 || input_shape[0] % group[0] != 0 {
+    let g = *group.first().ok_or(LayerError::InvalidShape {
+        layer: LayerKind::Conv,
+        msg: "group parameter is empty".into(),
+    })?;
+    if g == 0 || input_shape[1] % g != 0 || input_shape[0] % g != 0 {
         return Err(LayerError::InvalidShape {
             layer: LayerKind::Conv,
             msg: "shape inconsistencies (channels or batch vs group)".into(),
         }
         .into());
     }
-    if group[0] > 1 {
+    if g > 1 {
         return Err(LayerError::UnsupportedConfig {
             layer: LayerKind::Conv,
             msg: "Not yet implemented for group > 1".into(),

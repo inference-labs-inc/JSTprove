@@ -61,6 +61,12 @@ impl Circuit<Variable> {
             }
         }
 
+        if params.outputs.is_empty() {
+            return Err(CircuitError::Other(
+                "circuit has no declared outputs".into(),
+            ));
+        }
+
         let flatten_shape: Vec<usize> = vec![
             params
                 .outputs
@@ -183,6 +189,11 @@ pub fn apply_output_data<C: Config>(
         .map(|obj| obj.shape.iter().product::<usize>())
         .sum()];
 
+    assignment.dummy[0] = CircuitField::<C>::from(1);
+    assignment.dummy[1] = CircuitField::<C>::from(1);
+    assignment.scale_base[0] = CircuitField::<C>::from(params.scale_base);
+    assignment.scale_exponent[0] = CircuitField::<C>::from(params.scale_exponent);
+
     let arr: ArrayD<CircuitField<C>> = get_nd_circuit_inputs::<C>(&data.output, output_dims)
         .map_err(|e| RunError::Json(format!("Invalid output shape: {e}")))?;
 
@@ -235,10 +246,7 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
     }
 }
 
-pub fn witness_bn254(
-    req: &WitnessRequest,
-    compress: bool,
-) -> Result<WitnessBundle, RunError> {
+pub fn witness_bn254(req: &WitnessRequest, compress: bool) -> Result<WitnessBundle, RunError> {
     // Empty path is intentional: witness_from_request calls
     // io_reader.apply_values() with inline Value data and never
     // invokes FileReader::read_inputs or read_outputs.

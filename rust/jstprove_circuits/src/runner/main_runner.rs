@@ -1200,7 +1200,9 @@ pub fn load_circuit_from_bytes<C: Config>(
         .map_err(|e| RunError::Deserialize(format!("circuit: {e:?}")))
 }
 
-pub fn load_witness_solver_from_bytes<C: Config>(data: &[u8]) -> Result<WitnessSolver<C>, RunError> {
+pub fn load_witness_solver_from_bytes<C: Config>(
+    data: &[u8],
+) -> Result<WitnessSolver<C>, RunError> {
     let data = auto_decompress_bytes(data)?;
     WitnessSolver::<C>::deserialize_from(Cursor::new(&*data))
         .map_err(|e| RunError::Deserialize(format!("witness_solver: {e:?}")))
@@ -1212,7 +1214,10 @@ pub fn load_witness_from_bytes<C: Config>(data: &[u8]) -> Result<Witness<C>, Run
         .map_err(|e| RunError::Deserialize(format!("witness: {e:?}")))
 }
 
-pub fn serialize_witness<C: Config>(witness: &Witness<C>, compress: bool) -> Result<Vec<u8>, RunError> {
+pub fn serialize_witness<C: Config>(
+    witness: &Witness<C>,
+    compress: bool,
+) -> Result<Vec<u8>, RunError> {
     let mut buf = Vec::new();
     witness
         .serialize_into(&mut buf)
@@ -1267,7 +1272,6 @@ pub fn verify_from_bytes<C: Config>(
         &claimed_v,
     ))
 }
-
 
 /// Compiles a circuit and writes it to a msgpack file.
 ///
@@ -1814,11 +1818,7 @@ where
             let circuit_path = get_arg(matches, "circuit_path")?;
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
-            let valid = msgpack_verify_file::<C>(
-                &circuit_path,
-                &witness_path,
-                &proof_path,
-            )?;
+            let valid = msgpack_verify_file::<C>(&circuit_path, &witness_path, &proof_path)?;
             if valid {
                 eprintln!("Verified");
             } else {
