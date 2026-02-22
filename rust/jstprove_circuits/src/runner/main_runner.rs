@@ -1199,7 +1199,7 @@ where
     })
 }
 
-fn load_circuit_from_bytes<C: Config>(
+pub fn load_circuit_from_bytes<C: Config>(
     data: &[u8],
 ) -> Result<Circuit<C, NormalInputType>, RunError> {
     let data = auto_decompress_bytes(data)?;
@@ -1207,19 +1207,19 @@ fn load_circuit_from_bytes<C: Config>(
         .map_err(|e| RunError::Deserialize(format!("circuit: {e:?}")))
 }
 
-fn load_witness_solver_from_bytes<C: Config>(data: &[u8]) -> Result<WitnessSolver<C>, RunError> {
+pub fn load_witness_solver_from_bytes<C: Config>(data: &[u8]) -> Result<WitnessSolver<C>, RunError> {
     let data = auto_decompress_bytes(data)?;
     WitnessSolver::<C>::deserialize_from(Cursor::new(&*data))
         .map_err(|e| RunError::Deserialize(format!("witness_solver: {e:?}")))
 }
 
-fn load_witness_from_bytes<C: Config>(data: &[u8]) -> Result<Witness<C>, RunError> {
+pub fn load_witness_from_bytes<C: Config>(data: &[u8]) -> Result<Witness<C>, RunError> {
     let data = auto_decompress_bytes(data)?;
     Witness::<C>::deserialize_from(Cursor::new(&*data))
         .map_err(|e| RunError::Deserialize(format!("witness: {e:?}")))
 }
 
-fn serialize_witness<C: Config>(witness: &Witness<C>, compress: bool) -> Result<Vec<u8>, RunError> {
+pub fn serialize_witness<C: Config>(witness: &Witness<C>, compress: bool) -> Result<Vec<u8>, RunError> {
     let mut buf = Vec::new();
     witness
         .serialize_into(&mut buf)
@@ -1227,7 +1227,7 @@ fn serialize_witness<C: Config>(witness: &Witness<C>, compress: bool) -> Result<
     maybe_compress_bytes(&buf, compress)
 }
 
-fn prove_from_bytes<C: Config>(
+pub fn prove_from_bytes<C: Config>(
     circuit_bytes: &[u8],
     witness_bytes: &[u8],
     compress: bool,
@@ -1249,7 +1249,7 @@ fn prove_from_bytes<C: Config>(
     maybe_compress_bytes(&proof_bytes, compress)
 }
 
-fn verify_from_bytes<C: Config>(
+pub fn verify_from_bytes<C: Config>(
     circuit_bytes: &[u8],
     witness_bytes: &[u8],
     proof_bytes: &[u8],
@@ -1406,24 +1406,17 @@ pub fn msgpack_verify_stdin<C: Config>() -> Result<(), RunError> {
     Ok(())
 }
 
-/// Reads a witness request from stdin and writes the witness to stdout via msgpack.
-///
-/// # Errors
-/// Returns `RunError` if deserialization, witness generation, or serialization fails.
-pub fn msgpack_witness_stdin<C: Config, I, CircuitDefaultType>(
+pub fn witness_from_request<C: Config, I, CircuitDefaultType>(
+    req: &WitnessRequest,
     io_reader: &mut I,
     compress: bool,
-) -> Result<(), RunError>
+) -> Result<WitnessBundle, RunError>
 where
     I: IOReader<CircuitDefaultType, C>,
     CircuitDefaultType: Default
         + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
         + Clone,
 {
-    let stdin = std::io::stdin();
-    let req: WitnessRequest = rmp_serde::decode::from_read(stdin.lock())
-        .map_err(|e| RunError::Deserialize(format!("msgpack stdin: {e:?}")))?;
-
     let layered_circuit = load_circuit_from_bytes::<C>(&req.circuit)?;
     let witness_solver = load_witness_solver_from_bytes::<C>(&req.witness_solver)?;
     let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
@@ -1447,10 +1440,32 @@ where
 
     let witness_bytes = serialize_witness::<C>(&witness, compress)?;
 
-    let resp = WitnessBundle {
+    Ok(WitnessBundle {
         witness: witness_bytes,
         output_data: None,
-    };
+    })
+}
+
+/// Reads a witness request from stdin and writes the witness to stdout via msgpack.
+///
+/// # Errors
+/// Returns `RunError` if deserialization, witness generation, or serialization fails.
+pub fn msgpack_witness_stdin<C: Config, I, CircuitDefaultType>(
+    io_reader: &mut I,
+    compress: bool,
+) -> Result<(), RunError>
+where
+    I: IOReader<CircuitDefaultType, C>,
+    CircuitDefaultType: Default
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
+        + Clone,
+{
+    let stdin = std::io::stdin();
+    let req: WitnessRequest = rmp_serde::decode::from_read(stdin.lock())
+        .map_err(|e| RunError::Deserialize(format!("msgpack stdin: {e:?}")))?;
+
+    let resp = witness_from_request::<C, I, CircuitDefaultType>(&req, io_reader, compress)?;
+
     let stdout = std::io::stdout();
     let mut lock = stdout.lock();
     resp.serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
