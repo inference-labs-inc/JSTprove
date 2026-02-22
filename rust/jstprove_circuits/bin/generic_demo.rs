@@ -110,7 +110,7 @@ fn main() {
         }
     }
 
-    let metadata = OnnxContext::get_params().ok().cloned();
+    let metadata = OnnxContext::get_params().ok();
 
     if let Err(err) = handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(
         &matches,

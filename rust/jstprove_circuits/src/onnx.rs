@@ -1,7 +1,7 @@
 use ndarray::{Array1, ArrayD, ArrayView1, Axis, Ix1, IxDyn, concatenate};
 
 use expander_compiler::frontend::{
-    CircuitField, Config, Define, RootAPI, Variable, declare_circuit,
+    BN254Config, CircuitField, Config, Define, RootAPI, Variable, declare_circuit,
 };
 
 use crate::circuit_functions::CircuitError;
@@ -13,7 +13,10 @@ use crate::circuit_functions::utils::tensor_ops::get_nd_circuit_inputs;
 use crate::io::io_reader::onnx_context::OnnxContext;
 use crate::io::io_reader::{FileReader, IOReader};
 use crate::runner::errors::RunError;
-use crate::runner::main_runner::ConfigurableCircuit;
+use crate::runner::main_runner::{
+    ConfigurableCircuit, prove_from_bytes, verify_from_bytes, witness_from_request,
+};
+use crate::runner::schema::{WitnessBundle, WitnessRequest};
 
 declare_circuit!(Circuit {
     input_arr: [PublicVariable],
@@ -42,7 +45,7 @@ impl Circuit<Variable> {
 
         let mut out = get_inputs(&self.input_arr, params.inputs.clone())?;
 
-        let layers = build_layers::<C, Builder>(params, architecture, w_and_b)?;
+        let layers = build_layers::<C, Builder>(&params, &architecture, &w_and_b)?;
 
         if architecture.architecture.is_empty() {
             return Err(CircuitError::EmptyArchitecture);
@@ -229,4 +232,46 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
     fn get_path(&self) -> &str {
         &self.path
     }
+}
+
+pub fn witness_bn254(
+    req: &WitnessRequest,
+    compress: bool,
+) -> Result<WitnessBundle, RunError> {
+    let mut reader = FileReader {
+        path: String::new(),
+    };
+    witness_from_request::<BN254Config, FileReader, Circuit<CircuitField<BN254Config>>>(
+        req,
+        &mut reader,
+        compress,
+    )
+}
+
+pub fn prove_bn254(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    compress: bool,
+) -> Result<Vec<u8>, RunError> {
+    prove_from_bytes::<BN254Config>(circuit_bytes, witness_bytes, compress)
+}
+
+pub fn verify_bn254(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+) -> Result<bool, RunError> {
+    verify_from_bytes::<BN254Config>(circuit_bytes, witness_bytes, proof_bytes)
+}
+
+pub fn compile_bn254(
+    circuit_path: &str,
+    compress: bool,
+    metadata: Option<crate::circuit_functions::utils::onnx_model::CircuitParams>,
+) -> Result<(), RunError> {
+    crate::runner::main_runner::run_compile_and_serialize::<BN254Config, Circuit<Variable>>(
+        circuit_path,
+        compress,
+        metadata,
+    )
 }
