@@ -2,6 +2,7 @@ use std::alloc::System;
 use std::borrow::Cow;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use clap::{Arg, Command};
 use expander_compiler::circuit::layered::witness::Witness;
@@ -18,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::circuit_functions::hints::build_logup_hint_registry;
+use crate::io::io_reader::onnx_context::OnnxContext;
 use crate::circuit_functions::utils::onnx_model::CircuitParams;
 use crate::io::io_reader;
 use crate::runner::errors::{CliError, RunError};
@@ -30,7 +32,9 @@ use expander_compiler::expander_binary::executor;
 const ZSTD_COMPRESSION_LEVEL: i32 = 3;
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 
-fn auto_decompress_bytes(data: &[u8]) -> Result<Cow<[u8]>, RunError> {
+static WITNESS_LOCK: Mutex<()> = Mutex::new(());
+
+pub(crate) fn auto_decompress_bytes(data: &[u8]) -> Result<Cow<[u8]>, RunError> {
     if data.len() >= 4 && data[..4] == ZSTD_MAGIC {
         zstd::decode_all(Cursor::new(data))
             .map(Cow::Owned)
@@ -1405,6 +1409,12 @@ where
         + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
         + Clone,
 {
+    let _guard = WITNESS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+    if let Some(ref params) = req.metadata {
+        OnnxContext::set_params(params.clone());
+    }
+
     let layered_circuit = load_circuit_from_bytes::<C>(&req.circuit)?;
     let witness_solver = load_witness_solver_from_bytes::<C>(&req.witness_solver)?;
     let hint_registry = build_logup_hint_registry::<CircuitField<C>>();

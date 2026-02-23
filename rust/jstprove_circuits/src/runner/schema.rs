@@ -22,6 +22,8 @@ pub struct WitnessRequest {
     pub inputs: Vec<u8>,
     #[serde(with = "serde_bytes")]
     pub outputs: Vec<u8>,
+    #[serde(default)]
+    pub metadata: Option<CircuitParams>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
