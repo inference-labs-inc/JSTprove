@@ -233,6 +233,10 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
     }
 }
 
+/// In-memory IOReader that only supports [`IOReader::apply_values`].
+///
+/// File-based methods ([`IOReader::read_inputs`], [`IOReader::read_outputs`])
+/// return [`RunError::Json`]. [`IOReader::get_path`] returns an empty string.
 pub struct ValueReader;
 
 impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for ValueReader {
