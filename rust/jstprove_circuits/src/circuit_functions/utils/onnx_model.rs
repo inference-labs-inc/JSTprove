@@ -377,7 +377,7 @@ mod tests {
             "outputs": []
         }"#;
         let params: CircuitParams = serde_json::from_str(json).unwrap();
-        assert_eq!(params.total_input_dims(), 1 * 3 * 224 * 224);
+        assert_eq!(params.total_input_dims(), 3 * 224 * 224);
     }
 
     #[test]
