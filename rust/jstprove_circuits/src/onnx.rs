@@ -7,7 +7,7 @@ use expander_compiler::frontend::{
 use crate::circuit_functions::CircuitError;
 use crate::circuit_functions::utils::ArrayConversionError;
 use crate::circuit_functions::utils::build_layers::build_layers;
-use crate::circuit_functions::utils::onnx_model::{CircuitParams, InputData, OutputData};
+use crate::circuit_functions::utils::onnx_model::{CircuitParams, InputData, OutputData, WANDB};
 use crate::circuit_functions::utils::shaping::get_inputs;
 use crate::circuit_functions::utils::tensor_ops::get_nd_circuit_inputs;
 use crate::io::io_reader::onnx_context::OnnxContext;
@@ -44,7 +44,7 @@ impl Circuit<Variable> {
     ) -> Result<(), CircuitError> {
         let params = OnnxContext::get_params()?;
         let architecture = OnnxContext::get_architecture()?;
-        let w_and_b = OnnxContext::get_wandb()?;
+        let w_and_b = OnnxContext::get_wandb().unwrap_or_else(|_| WANDB { w_and_b: vec![] });
 
         if architecture.architecture.is_empty() {
             return Err(CircuitError::EmptyArchitecture);

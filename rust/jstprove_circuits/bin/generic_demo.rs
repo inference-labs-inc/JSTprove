@@ -14,11 +14,14 @@ fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool, has_wandb: boo
     let meta_file_path = get_arg(matches, "meta").unwrap();
     let meta_file = std::fs::read_to_string(&meta_file_path).expect("Failed to read metadata file");
     let params: CircuitParams = serde_json::from_str(&meta_file).expect("Invalid metadata JSON");
-    if params.weights_as_inputs && !has_wandb {
+    if !has_wandb && (params.weights_as_inputs || needs_full) {
         let cmd_type = get_arg(matches, "type").unwrap_or_default();
-        eprintln!(
-            "Error: command '{cmd_type}' requires --wandb (weights_as_inputs is enabled in metadata)."
-        );
+        let reason = if params.weights_as_inputs {
+            "weights_as_inputs is enabled in metadata"
+        } else {
+            "compile commands require weight data"
+        };
+        eprintln!("Error: command '{cmd_type}' requires --wandb ({reason}).");
         std::process::exit(1);
     }
 

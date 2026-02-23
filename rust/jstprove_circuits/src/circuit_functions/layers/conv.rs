@@ -277,10 +277,13 @@ pub fn not_yet_implemented_conv(
         layer: LayerKind::Conv,
         msg: "group parameter is empty".into(),
     })?;
-    if g == 0 || input_shape[1] % g != 0 || input_shape[0] % g != 0 {
+    if g == 0 || input_shape[1] % g != 0 {
         return Err(LayerError::InvalidShape {
             layer: LayerKind::Conv,
-            msg: "shape inconsistencies (channels or batch vs group)".into(),
+            msg: format!(
+                "input channels {} not divisible by group {g}",
+                input_shape[1]
+            ),
         }
         .into());
     }
@@ -333,13 +336,10 @@ fn conv_shape_4_setup_res<C: Config, Builder: RootAPI<C>>(
         let zero = api.constant(0);
         ArrayD::from_elem(shape, zero)
     } else {
-        // Create array filled with bias values
-        let mut res = ArrayD::from_elem(shape, bias[[0]]);
-        if !bias.is_empty() {
-            // Broadcast bias values across the second dimension (j)
-            for j in 0..bias.shape()[0] {
-                res.slice_mut(s![.., j, .., ..]).fill(bias[[j]]); // Assign bias[j] to all relevant elements
-            }
+        let zero = api.constant(0);
+        let mut res = ArrayD::from_elem(shape, zero);
+        for j in 0..bias.shape()[0] {
+            res.slice_mut(s![.., j, .., ..]).fill(bias[[j]]);
         }
         res
     }
