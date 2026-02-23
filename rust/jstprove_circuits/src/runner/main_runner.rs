@@ -1,3 +1,4 @@
+#[cfg(feature = "peak-mem")]
 use std::alloc::System;
 use std::borrow::Cow;
 use std::io::Cursor;
@@ -14,6 +15,7 @@ use expander_compiler::frontend::{
 use expander_compiler::gkr_engine::{FieldEngine, GKREngine, MPIConfig};
 use expander_compiler::serdes::ExpSerde;
 use io_reader::IOReader;
+#[cfg(feature = "peak-mem")]
 use peakmem_alloc::{INSTRUMENTED_SYSTEM, PeakMemAlloc, PeakMemAllocTrait};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -120,6 +122,7 @@ fn auto_reader(file: std::fs::File) -> Result<Box<dyn std::io::Read>, RunError> 
     }
 }
 
+#[cfg(feature = "peak-mem")]
 #[global_allocator]
 static GLOBAL: &PeakMemAlloc<System> = &INSTRUMENTED_SYSTEM;
 
@@ -170,6 +173,7 @@ pub fn run_compile_and_serialize<C: Config, CircuitType>(
 where
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone + MaybeConfigure,
 {
+    #[cfg(feature = "peak-mem")]
     GLOBAL.reset_peak_memory();
 
     let mut circuit = CircuitType::default();
@@ -279,6 +283,7 @@ where
     let assignment = io_reader.read_inputs(input_path, assignment)?;
     let assignment = io_reader.read_outputs(output_path, assignment)?;
 
+    #[cfg(feature = "peak-mem")]
     GLOBAL.reset_peak_memory();
     let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
 
@@ -414,6 +419,7 @@ where
         + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
         + Clone,
 {
+    #[cfg(feature = "peak-mem")]
     GLOBAL.reset_peak_memory();
     let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
     let mut expander_circuit = layered_circuit.export_to_expander_flatten();
@@ -465,6 +471,7 @@ where
         + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
         + Clone,
 {
+    #[cfg(feature = "peak-mem")]
     GLOBAL.reset_peak_memory();
     let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
     let mut expander_circuit = layered_circuit.export_to_expander_flatten();

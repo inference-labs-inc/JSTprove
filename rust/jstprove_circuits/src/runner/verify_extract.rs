@@ -2,10 +2,10 @@ use std::io::{Cursor, Read};
 
 use expander_compiler::circuit::layered::NormalInputType;
 use expander_compiler::circuit::layered::witness::Witness;
+use expander_compiler::expander_binary::executor;
 use expander_compiler::frontend::{ChallengeField, Config};
 use expander_compiler::gkr_engine::MPIConfig;
 use expander_compiler::serdes::ExpSerde;
-use expander_compiler::expander_binary::executor;
 use num_bigint::{BigInt, BigUint, Sign};
 use num_traits::{ToPrimitive, Zero};
 use serde::{Deserialize, Serialize};
@@ -57,9 +57,14 @@ fn from_field_repr(value: &BigUint, modulus: &BigUint) -> BigInt {
     }
 }
 
-fn descale_outputs(values: &[BigInt], scale_base: u64, scale_exp: u64) -> Result<Vec<f64>, RunError> {
+fn descale_outputs(
+    values: &[BigInt],
+    scale_base: u64,
+    scale_exp: u64,
+) -> Result<Vec<f64>, RunError> {
     let scale = (scale_base as f64).powi(
-        i32::try_from(scale_exp).map_err(|_| RunError::Deserialize("scale_exp overflows i32".into()))?,
+        i32::try_from(scale_exp)
+            .map_err(|_| RunError::Deserialize("scale_exp overflows i32".into()))?,
     );
     if !scale.is_finite() || scale == 0.0 {
         return Err(RunError::Deserialize("invalid scale factor".into()));
@@ -69,7 +74,9 @@ fn descale_outputs(values: &[BigInt], scale_base: u64, scale_exp: u64) -> Result
         .map(|v| {
             let f = v.to_f64().unwrap_or(f64::INFINITY);
             if !f.is_finite() {
-                return Err(RunError::Deserialize("non-finite value converting BigInt to f64".into()));
+                return Err(RunError::Deserialize(
+                    "non-finite value converting BigInt to f64".into(),
+                ));
             }
             Ok(f / scale)
         })
@@ -83,7 +90,8 @@ fn scale_to_field(
     modulus: &BigUint,
 ) -> Result<Vec<BigUint>, RunError> {
     let scale_f64 = (scale_base as f64).powi(
-        i32::try_from(scale_exp).map_err(|_| RunError::Deserialize("scale_exp overflows i32".into()))?,
+        i32::try_from(scale_exp)
+            .map_err(|_| RunError::Deserialize("scale_exp overflows i32".into()))?,
     );
     if !scale_f64.is_finite() || scale_f64 == 0.0 {
         return Err(RunError::Deserialize("invalid scale factor".into()));
@@ -92,17 +100,25 @@ fn scale_to_field(
         .iter()
         .map(|v| {
             if !v.is_finite() {
-                return Err(RunError::Verify(format!("scale_to_field: non-finite input {v}")));
+                return Err(RunError::Verify(format!(
+                    "scale_to_field: non-finite input {v}"
+                )));
             }
             let product = *v * scale_f64;
             if !product.is_finite() {
-                return Err(RunError::Verify(format!("scale_to_field: non-finite scaled value {product}")));
+                return Err(RunError::Verify(format!(
+                    "scale_to_field: non-finite scaled value {product}"
+                )));
             }
             let scaled = product.round() as i128;
             Ok(if scaled < 0 {
                 let abs = BigUint::from(scaled.unsigned_abs());
                 let reduced = &abs % modulus;
-                if reduced.is_zero() { BigUint::ZERO } else { modulus - reduced }
+                if reduced.is_zero() {
+                    BigUint::ZERO
+                } else {
+                    modulus - reduced
+                }
             } else {
                 BigUint::from(scaled as u128) % modulus
             })
@@ -116,7 +132,9 @@ fn compare_field_values(
     modulus: &BigUint,
     tolerance: u64,
 ) -> bool {
-    if expected.len() != actual.len() { return false; }
+    if expected.len() != actual.len() {
+        return false;
+    }
     let tol = BigUint::from(tolerance);
     let neg_tol = modulus - &tol;
     for (e, a) in expected.iter().zip(actual.iter()) {
@@ -145,9 +163,9 @@ fn parse_public_inputs_from_witness_bytes(
     let modulus_bytes = read_32_bytes(&mut cursor)?;
     let modulus = biguint_from_le_bytes(&modulus_bytes);
 
-    let total_values = num_inputs
-        .checked_add(num_public_inputs)
-        .ok_or_else(|| RunError::Deserialize("num_inputs + num_public_inputs overflows usize".into()))?;
+    let total_values = num_inputs.checked_add(num_public_inputs).ok_or_else(|| {
+        RunError::Deserialize("num_inputs + num_public_inputs overflows usize".into())
+    })?;
     let required_bytes = total_values
         .checked_mul(32)
         .ok_or_else(|| RunError::Deserialize("public input byte size overflows usize".into()))?;
