@@ -76,7 +76,7 @@ pub struct LayerNode {
     pub n_bits: Option<usize>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LayerGraph {
     pub layers: Vec<LayerNode>,
     pub input_names: Vec<String>,

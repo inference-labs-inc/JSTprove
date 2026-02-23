@@ -7,9 +7,15 @@ use crate::gadgets::rescale;
 use crate::onnx::graph::OpType;
 use crate::onnx::quantizer::QuantizedModel;
 use crate::padding::{next_power_of_two, num_vars_for};
-use crate::runner::circuit_builder::{transpose_matrix, pad_matrix, pad_to_size, SpatialInfo, compute_range_check_plan, delta_table_nv};
+use crate::runner::circuit_builder::{transpose_matrix, pad_matrix, pad_to_size, SpatialInfo, delta_table_nv, compute_range_check_plan};
 
 use super::serialization;
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct WitnessData {
+    pub shreds: HashMap<String, Vec<i64>>,
+    pub observed_n_bits: HashMap<String, usize>,
+}
 
 pub fn compute_multiplicities(values: &[i64], table_size: usize) -> Result<Vec<i64>> {
     let mut mults = vec![0i64; table_size];
@@ -24,6 +30,14 @@ pub fn compute_multiplicities(values: &[i64], table_size: usize) -> Result<Vec<i
     Ok(mults)
 }
 
+fn observed_n_bits_for_delta(max_val: u64, exponent: usize) -> usize {
+    if max_val == 0 {
+        return exponent + 1;
+    }
+    let bits_needed = 64 - max_val.leading_zeros() as usize;
+    bits_needed + exponent
+}
+
 pub fn run(model_path: &Path, input_path: &Path, output_path: &Path, compress: bool) -> Result<()> {
     tracing::info!("loading model from {}", model_path.display());
     let model = super::compile::load_model(model_path)?;
@@ -31,13 +45,14 @@ pub fn run(model_path: &Path, input_path: &Path, output_path: &Path, compress: b
     let quantized_input = load_and_quantize_input(input_path, model.scale_config.alpha)?;
 
     tracing::info!("computing witness for {} layers", model.graph.layers.len());
-    let witness = compute_witness(&model, &quantized_input)?;
+    let witness_data = compute_witness(&model, &quantized_input)?;
 
-    let size = serialization::serialize_to_file(&witness, output_path, compress)?;
+    let size = serialization::serialize_to_file(&witness_data, output_path, compress)?;
     tracing::info!(
-        "witness written to {} ({} shreds, {} bytes)",
+        "witness written to {} ({} shreds, {} observed_n_bits, {} bytes)",
         output_path.display(),
-        witness.len(),
+        witness_data.shreds.len(),
+        witness_data.observed_n_bits.len(),
         size
     );
     Ok(())
@@ -62,11 +77,11 @@ pub fn quantize_input_json(input_json: &serde_json::Value, alpha: i64) -> Result
         .collect())
 }
 
-pub fn load_witness(path: &Path) -> Result<HashMap<String, Vec<i64>>> {
+pub fn load_witness(path: &Path) -> Result<WitnessData> {
     serialization::deserialize_from_file(path)
 }
 
-pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Result<HashMap<String, Vec<i64>>> {
+pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Result<WitnessData> {
     anyhow::ensure!(
         model.scale_config.base == 2,
         "range check multiplicities require base == 2, got base = {}",
@@ -79,11 +94,13 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
     );
 
     let alpha = model.scale_config.alpha;
+    let exponent = model.scale_config.exponent as usize;
     let offset = 1i64 << 30;
 
     let mut shreds: HashMap<String, Vec<i64>> = HashMap::new();
     let mut tensors: HashMap<String, Vec<i64>> = HashMap::new();
     let mut tensor_layouts: HashMap<String, SpatialInfo> = HashMap::new();
+    let mut observed_n_bits: HashMap<String, usize> = HashMap::new();
 
     let input_name = model.graph.input_names.first()
         .ok_or_else(|| anyhow::anyhow!("model has no input names defined"))?
@@ -170,6 +187,11 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 shreds.insert(format!("{}_q", layer.name), quotients.clone());
                 shreds.insert(format!("{}_r", layer.name), remainders.clone());
 
+                let r_max = remainders.iter().copied().max().unwrap_or(0);
+                tracing::info!(
+                    "Gemm {} rescale r_max={} table_size={}",
+                    layer.name, r_max, rescale_table_size
+                );
                 shreds.insert(
                     format!("{}_r_mults", layer.name),
                     compute_multiplicities(&remainders, rescale_table_size)?,
@@ -278,6 +300,11 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 shreds.insert(format!("{}_q", layer.name), quotients.clone());
                 shreds.insert(format!("{}_r", layer.name), remainders.clone());
 
+                let r_max = remainders.iter().copied().max().unwrap_or(0);
+                tracing::info!(
+                    "Conv {} rescale r_max={} table_size={}",
+                    layer.name, r_max, rescale_table_size
+                );
                 shreds.insert(
                     format!("{}_r_mults", layer.name),
                     compute_multiplicities(&remainders, rescale_table_size)?,
@@ -308,10 +335,18 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 shreds.insert(format!("{}_di", layer.name), delta_input.clone());
                 shreds.insert(format!("{}_dz", layer.name), delta_zero.clone());
 
-                if let Some(n_bits) = layer.n_bits {
-                    let dnv = delta_table_nv(n_bits, model.scale_config.exponent as usize);
-                    anyhow::ensure!(dnv < 63, "Relu {} delta_table_nv {} exceeds safe shift width", layer.name, dnv);
+                {
+                    let di_max = delta_input.iter().copied().max().unwrap_or(0) as u64;
+                    let dz_max = delta_zero.iter().copied().max().unwrap_or(0) as u64;
+                    let max_delta = di_max.max(dz_max);
+                    let obs_n_bits = observed_n_bits_for_delta(max_delta, exponent);
+                    let dnv = delta_table_nv(obs_n_bits, exponent);
                     let delta_table_size = 1usize << dnv;
+                    tracing::info!(
+                        "Relu {} observed_n_bits={} dnv={} table_size={} di_max={} dz_max={}",
+                        layer.name, obs_n_bits, dnv, delta_table_size, di_max, dz_max
+                    );
+                    observed_n_bits.insert(layer.name.clone(), obs_n_bits);
                     shreds.insert(
                         format!("{}_di_mults", layer.name),
                         compute_multiplicities(&delta_input, delta_table_size)?,
@@ -393,10 +428,19 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     shreds.insert(format!("{}_d{}", layer.name, i), deltas[i].clone());
                 }
 
-                if let Some(n_bits) = layer.n_bits {
-                    let dnv = delta_table_nv(n_bits, model.scale_config.exponent as usize);
-                    anyhow::ensure!(dnv < 63, "MaxPool {} delta_table_nv {} exceeds safe shift width", layer.name, dnv);
+                {
+                    let max_delta = deltas.iter()
+                        .flat_map(|d| d.iter().copied())
+                        .max()
+                        .unwrap_or(0) as u64;
+                    let obs_n_bits = observed_n_bits_for_delta(max_delta, exponent);
+                    let dnv = delta_table_nv(obs_n_bits, exponent);
                     let dt_size = 1usize << dnv;
+                    tracing::info!(
+                        "MaxPool {} observed_n_bits={} dnv={} table_size={} max_delta={}",
+                        layer.name, obs_n_bits, dnv, dt_size, max_delta
+                    );
+                    observed_n_bits.insert(layer.name.clone(), obs_n_bits);
                     for i in 0..window_size {
                         shreds.insert(
                             format!("{}_d{}_mults", layer.name, i),
@@ -506,6 +550,11 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 shreds.insert(format!("{}_q", layer.name), quotients.clone());
                 shreds.insert(format!("{}_r", layer.name), remainders.clone());
 
+                let r_max = remainders.iter().copied().max().unwrap_or(0);
+                tracing::info!(
+                    "BatchNorm {} rescale r_max={} table_size={}",
+                    layer.name, r_max, rescale_table_size
+                );
                 shreds.insert(
                     format!("{}_r_mults", layer.name),
                     compute_multiplicities(&remainders, rescale_table_size)?,
@@ -591,8 +640,23 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
         .ok_or_else(|| anyhow::anyhow!("declared output '{}' not computed", declared_output))?;
     shreds.insert("expected_output".to_string(), final_output.clone());
 
-    let rc_plan = compute_range_check_plan(model)?;
+    let rc_plan = compute_range_check_plan_with_overrides(model, &observed_n_bits)?;
+
+    let mut grouped: std::collections::BTreeMap<(usize, usize), Vec<String>> = std::collections::BTreeMap::new();
     for (&table_nv, shred_names) in &rc_plan {
+        let mut by_nv: std::collections::BTreeMap<usize, Vec<String>> = std::collections::BTreeMap::new();
+        for name in shred_names {
+            let nv = shreds.get(name)
+                .map(|s| num_vars_for(s.len()))
+                .ok_or_else(|| anyhow::anyhow!("range check shred '{}' not found in witness shreds", name))?;
+            by_nv.entry(nv).or_default().push(name.clone());
+        }
+        for (node_nv, names) in by_nv {
+            grouped.entry((table_nv, node_nv)).or_default().extend(names);
+        }
+    }
+
+    for (&(table_nv, node_nv), shred_names) in &grouped {
         anyhow::ensure!(table_nv < 63, "table_nv {} is too large for range table construction", table_nv);
         let table_shred_name = format!("range_table_{}", table_nv);
         if !shreds.contains_key(&table_shred_name) {
@@ -603,16 +667,60 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
         let real_count = shred_names.len();
         let target_count = real_count.next_power_of_two();
         let dummy_count = target_count - real_count;
+        let dummy_size = 1usize << node_nv;
         for i in 0..dummy_count {
-            let dummy_name = format!("range_dummy_nv{}_{}", table_nv, i);
-            let dummy_data = vec![0i64; 2];
+            let dummy_name = format!("range_dummy_t{}_n{}_{}", table_nv, node_nv, i);
+            let dummy_data = vec![0i64; dummy_size];
             let dummy_mults = compute_multiplicities(&dummy_data, 1 << table_nv)?;
             shreds.insert(format!("{}_mults", dummy_name), dummy_mults);
             shreds.insert(dummy_name, dummy_data);
         }
     }
 
-    Ok(shreds)
+    Ok(WitnessData { shreds, observed_n_bits })
+}
+
+fn compute_range_check_plan_with_overrides(
+    model: &QuantizedModel,
+    observed_n_bits: &HashMap<String, usize>,
+) -> Result<std::collections::BTreeMap<usize, Vec<String>>> {
+    let exponent = model.scale_config.exponent as usize;
+    let mut plan: std::collections::BTreeMap<usize, Vec<String>> = std::collections::BTreeMap::new();
+
+    for layer in model.graph.iter_topo() {
+        match layer.op_type {
+            OpType::Gemm | OpType::Conv | OpType::BatchNormalization => {
+                plan.entry(exponent).or_default().push(format!("{}_r", layer.name));
+            }
+            OpType::Relu => {
+                let n_bits = observed_n_bits.get(&layer.name).copied()
+                    .or(layer.n_bits);
+                if let Some(n_bits) = n_bits {
+                    let dnv = delta_table_nv(n_bits, exponent);
+                    let entry = plan.entry(dnv).or_default();
+                    entry.push(format!("{}_di", layer.name));
+                    entry.push(format!("{}_dz", layer.name));
+                }
+            }
+            OpType::MaxPool => {
+                let n_bits = observed_n_bits.get(&layer.name).copied()
+                    .or(layer.n_bits);
+                if let Some(n_bits) = n_bits {
+                    let dnv = delta_table_nv(n_bits, exponent);
+                    let kernel_shape = layer.get_ints_attr("kernel_shape")
+                        .ok_or_else(|| anyhow::anyhow!("MaxPool {} missing kernel_shape attribute", layer.name))?;
+                    let window_size: usize = kernel_shape.iter().map(|&v| v as usize).product();
+                    let entry = plan.entry(dnv).or_default();
+                    for i in 0..window_size {
+                        entry.push(format!("{}_d{}", layer.name, i));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(plan)
 }
 
 fn padded_matmul(a: &[i64], a_rows: usize, a_cols: usize, b: &[i64], b_cols: usize) -> Vec<i64> {

@@ -132,8 +132,16 @@ fn process_prove_job(
     job: &ProveJob,
     compress: bool,
 ) -> Result<()> {
-    let witness = super::witness::load_witness(Path::new(&job.witness))?;
-    let proof = super::prove::generate_proof(model, &witness)?;
+    let witness_data = super::witness::load_witness(Path::new(&job.witness))?;
+    let mut model = model.clone();
+    for layer in &mut model.graph.layers {
+        if let Some(&obs) = witness_data.observed_n_bits.get(&layer.name) {
+            layer.n_bits = Some(obs);
+            model.n_bits_config.insert(layer.name.clone(), obs);
+        }
+    }
+    let mut proof = super::prove::generate_proof(&model, &witness_data.shreds)?;
+    proof.observed_n_bits = witness_data.observed_n_bits;
     super::serialization::serialize_to_file(&proof, Path::new(&job.proof), compress)?;
     Ok(())
 }
