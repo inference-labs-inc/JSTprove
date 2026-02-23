@@ -155,7 +155,16 @@ fn process_verify_job(
         model.scale_config.alpha,
     )?;
     let proof = super::prove::load_proof(Path::new(&job.proof))?;
-    super::verify::verify_with_model(model, &proof, &quantized_input)
+    let mut model = model.clone();
+    if !proof.observed_n_bits.is_empty() {
+        for layer in &mut model.graph.layers {
+            if let Some(&obs) = proof.observed_n_bits.get(&layer.name) {
+                layer.n_bits = Some(obs);
+                model.n_bits_config.insert(layer.name.clone(), obs);
+            }
+        }
+    }
+    super::verify::verify_with_model(&model, &proof, &quantized_input)
 }
 
 fn print_batch_result(result: &BatchResult) {

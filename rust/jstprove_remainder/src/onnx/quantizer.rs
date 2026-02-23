@@ -236,6 +236,12 @@ fn compute_layer_bound(
                 if out_channels == 0 || vals.is_empty() {
                     return 1.0;
                 }
+                assert!(
+                    vals.len() % out_channels == 0,
+                    "weight length {} not divisible by out_channels {}",
+                    vals.len(),
+                    out_channels,
+                );
                 let per_channel = vals.len() / out_channels;
                 (0..out_channels)
                     .map(|oc| {
