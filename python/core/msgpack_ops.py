@@ -108,6 +108,7 @@ def msgpack_witness(
     inputs: dict[str, Any],
     outputs: dict[str, Any],
     metadata_path: str | Path | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> WitnessBundle:
     """Generate witness via msgpack stdin/stdout (zero file I/O).
 
@@ -117,7 +118,8 @@ def msgpack_witness(
         witness_solver_bytes: Raw witness solver bytes.
         inputs: Circuit inputs dict.
         outputs: Circuit outputs dict.
-        metadata_path: Optional path to circuit metadata JSON.
+        metadata_path: Optional path to circuit metadata JSON (CLI flag).
+        metadata: Optional inline circuit params dict embedded in the request.
 
     Returns:
         WitnessBundle with witness bytes.
@@ -125,11 +127,17 @@ def msgpack_witness(
     inputs_json = json.dumps(inputs).encode("utf-8")
     outputs_json = json.dumps(outputs).encode("utf-8")
 
+    resolved_metadata = metadata
+    if resolved_metadata is None and metadata_path is not None:
+        with Path(metadata_path).open() as f:
+            resolved_metadata = json.load(f)
+
     req = WitnessRequest(
         circuit=circuit_bytes,
         witness_solver=witness_solver_bytes,
         inputs=inputs_json,
         outputs=outputs_json,
+        metadata=resolved_metadata,
     )
 
     args = {"m": str(metadata_path)} if metadata_path else None

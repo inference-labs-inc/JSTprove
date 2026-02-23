@@ -40,17 +40,18 @@ class WitnessRequest:
     witness_solver: bytes
     inputs: bytes
     outputs: bytes
+    metadata: dict[str, Any] | None = None
 
     def pack(self) -> bytes:
-        return msgpack.packb(
-            {
-                "circuit": self.circuit,
-                "witness_solver": self.witness_solver,
-                "inputs": self.inputs,
-                "outputs": self.outputs,
-            },
-            use_bin_type=True,
-        )
+        d: dict[str, Any] = {
+            "circuit": self.circuit,
+            "witness_solver": self.witness_solver,
+            "inputs": self.inputs,
+            "outputs": self.outputs,
+        }
+        if self.metadata is not None:
+            d["metadata"] = self.metadata
+        return msgpack.packb(d, use_bin_type=True)
 
 
 @dataclass
