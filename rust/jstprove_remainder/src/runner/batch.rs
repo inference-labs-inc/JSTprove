@@ -132,8 +132,11 @@ fn process_prove_job(
     job: &ProveJob,
     compress: bool,
 ) -> Result<()> {
-    let witness = super::witness::load_witness(Path::new(&job.witness))?;
-    let proof = super::prove::generate_proof(model, &witness)?;
+    let witness_data = super::witness::load_witness(Path::new(&job.witness))?;
+    let mut model = model.clone();
+    model.apply_observed_n_bits(&witness_data.observed_n_bits);
+    let mut proof = super::prove::generate_proof(&model, &witness_data.shreds)?;
+    proof.observed_n_bits = witness_data.observed_n_bits;
     super::serialization::serialize_to_file(&proof, Path::new(&job.proof), compress)?;
     Ok(())
 }
@@ -147,7 +150,9 @@ fn process_verify_job(
         model.scale_config.alpha,
     )?;
     let proof = super::prove::load_proof(Path::new(&job.proof))?;
-    super::verify::verify_with_model(model, &proof, &quantized_input)
+    let mut model = model.clone();
+    model.apply_observed_n_bits(&proof.observed_n_bits);
+    super::verify::verify_with_model(&model, &proof, &quantized_input)
 }
 
 fn print_batch_result(result: &BatchResult) {
