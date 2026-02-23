@@ -17,6 +17,7 @@ use crate::runner::main_runner::{
     ConfigurableCircuit, prove_from_bytes, verify_from_bytes, witness_from_request,
 };
 use crate::runner::schema::{WitnessBundle, WitnessRequest};
+use crate::runner::verify_extract::{VerifiedOutput, verify_and_extract_from_bytes};
 
 declare_circuit!(Circuit {
     input_arr: [PublicVariable],
@@ -308,5 +309,21 @@ pub fn compile_bn254(
         circuit_path,
         compress,
         metadata,
+    )
+}
+
+pub fn verify_and_extract_bn254(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+    num_inputs: usize,
+    expected_inputs: Option<&[f64]>,
+) -> Result<VerifiedOutput, RunError> {
+    verify_and_extract_from_bytes::<BN254Config>(
+        circuit_bytes,
+        witness_bytes,
+        proof_bytes,
+        num_inputs,
+        expected_inputs,
     )
 }
