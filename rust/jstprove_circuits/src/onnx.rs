@@ -32,7 +32,7 @@ declare_circuit!(Circuit {
 impl<C: Config> Define<C> for Circuit<Variable> {
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         if let Err(e) = self.try_define(api) {
-            panic!("Circuit definition failed: {e:?}");
+            panic!("Circuit definition failed: {e}");
         }
     }
 }
@@ -126,7 +126,7 @@ impl ConfigurableCircuit for Circuit<Variable> {
         let params = OnnxContext::get_params()?;
 
         self.outputs = vec![Variable::default(); params.effective_output_dims()];
-        self.input_arr = vec![Variable::default(); params.total_input_dims()];
+        self.input_arr = vec![Variable::default(); params.effective_input_dims()];
 
         Ok(())
     }
@@ -149,7 +149,7 @@ pub fn apply_input_data<C: Config>(
     let params = OnnxContext::get_params()?;
     init_circuit_fields::<C>(&mut assignment, &params);
 
-    let input_dims: &[usize] = &[params.total_input_dims()];
+    let input_dims: &[usize] = &[params.effective_input_dims()];
 
     let arr: ArrayD<CircuitField<C>> = get_nd_circuit_inputs::<C>(&data.input, input_dims)
         .map_err(|e| RunError::Json(format!("Invalid input shape: {e}")))?;

@@ -64,6 +64,15 @@ impl CircuitParams {
             dims
         }
     }
+
+    pub fn effective_input_dims(&self) -> usize {
+        let dims = self.total_input_dims();
+        if dims == 0 && !self.inputs.is_empty() {
+            self.inputs.len()
+        } else {
+            dims
+        }
+    }
 }
 
 fn default_freivalds_reps() -> usize {
