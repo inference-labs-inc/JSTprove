@@ -330,13 +330,11 @@ fn conv_shape_4_setup_res<C: Config, Builder: RootAPI<C>>(
     shape_3: usize,
 ) -> ArrayD<Variable> {
     let shape = vec![shape_0, shape_1, shape_2, shape_3];
+    let zero = api.constant(0);
 
     if bias.is_empty() {
-        // Create array filled with zeros
-        let zero = api.constant(0);
         ArrayD::from_elem(shape, zero)
     } else {
-        let zero = api.constant(0);
         let mut res = ArrayD::from_elem(shape, zero);
         for j in 0..bias.shape()[0] {
             res.slice_mut(s![.., j, .., ..]).fill(bias[[j]]);

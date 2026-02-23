@@ -147,23 +147,28 @@ impl ConfigurableCircuit for Circuit<Variable> {
     }
 }
 
+fn init_circuit_fields<C: Config>(
+    assignment: &mut Circuit<CircuitField<C>>,
+    params: &CircuitParams,
+) {
+    assignment.dummy[0] = CircuitField::<C>::from(1);
+    assignment.dummy[1] = CircuitField::<C>::from(1);
+    assignment.scale_base[0] = CircuitField::<C>::from(params.scale_base);
+    assignment.scale_exponent[0] = CircuitField::<C>::from(params.scale_exponent);
+}
+
 pub fn apply_input_data<C: Config>(
     data: &InputData,
     mut assignment: Circuit<CircuitField<C>>,
 ) -> Result<Circuit<CircuitField<C>>, RunError> {
     let params = OnnxContext::get_params()?;
+    init_circuit_fields::<C>(&mut assignment, &params);
 
     let input_dims: &[usize] = &[params
         .inputs
         .iter()
         .map(|obj| obj.shape.iter().product::<usize>())
         .sum()];
-
-    assignment.dummy[0] = CircuitField::<C>::from(1);
-    assignment.dummy[1] = CircuitField::<C>::from(1);
-
-    assignment.scale_base[0] = CircuitField::<C>::from(params.scale_base);
-    assignment.scale_exponent[0] = CircuitField::<C>::from(params.scale_exponent);
 
     let arr: ArrayD<CircuitField<C>> = get_nd_circuit_inputs::<C>(&data.input, input_dims)
         .map_err(|e| RunError::Json(format!("Invalid input shape: {e}")))?;
@@ -183,16 +188,13 @@ pub fn apply_output_data<C: Config>(
     mut assignment: Circuit<CircuitField<C>>,
 ) -> Result<Circuit<CircuitField<C>>, RunError> {
     let params = OnnxContext::get_params()?;
+    init_circuit_fields::<C>(&mut assignment, &params);
+
     let output_dims: &[usize] = &[params
         .outputs
         .iter()
         .map(|obj| obj.shape.iter().product::<usize>())
         .sum()];
-
-    assignment.dummy[0] = CircuitField::<C>::from(1);
-    assignment.dummy[1] = CircuitField::<C>::from(1);
-    assignment.scale_base[0] = CircuitField::<C>::from(params.scale_base);
-    assignment.scale_exponent[0] = CircuitField::<C>::from(params.scale_exponent);
 
     let arr: ArrayD<CircuitField<C>> = get_nd_circuit_inputs::<C>(&data.output, output_dims)
         .map_err(|e| RunError::Json(format!("Invalid output shape: {e}")))?;
