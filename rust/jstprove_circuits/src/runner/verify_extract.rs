@@ -58,7 +58,7 @@ fn from_field_repr(value: &BigUint, modulus: &BigUint) -> BigInt {
 }
 
 fn descale_outputs(values: &[BigInt], scale_base: u64, scale_exp: u64) -> Vec<f64> {
-    let scale = (scale_base as f64).powi(scale_exp as i32);
+    let scale = (scale_base as f64).powi(i32::try_from(scale_exp).expect("scale exponent overflows i32"));
     values
         .iter()
         .map(|v| v.to_f64().unwrap_or(0.0) / scale)
@@ -71,13 +71,13 @@ fn scale_to_field(
     scale_exp: u64,
     modulus: &BigUint,
 ) -> Vec<BigUint> {
-    let scale_f64 = (scale_base as f64).powi(scale_exp as i32);
+    let scale_f64 = (scale_base as f64).powi(i32::try_from(scale_exp).expect("scale exponent overflows i32"));
     values
         .iter()
         .map(|v| {
             let scaled = (*v * scale_f64).round() as i128;
             if scaled < 0 {
-                let abs = BigUint::from((-scaled) as u128);
+                let abs = BigUint::from(scaled.unsigned_abs());
                 let reduced = &abs % modulus;
                 if reduced.is_zero() {
                     BigUint::ZERO
@@ -97,6 +97,7 @@ fn compare_field_values(
     modulus: &BigUint,
     tolerance: u64,
 ) -> bool {
+    if expected.len() != actual.len() { return false; }
     let tol = BigUint::from(tolerance);
     let neg_tol = modulus - &tol;
     for (e, a) in expected.iter().zip(actual.iter()) {
