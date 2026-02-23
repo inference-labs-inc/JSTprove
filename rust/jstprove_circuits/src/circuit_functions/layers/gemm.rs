@@ -97,7 +97,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
+        input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let is_relu = matches!(self.optimization_pattern, PatternRegistry::GemmRelu);
 
@@ -119,18 +119,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
                     msg: format!("Expected 2D input for layer {}", self.name),
                 })?;
         let w_name = get_input_name(&self.inputs, 1, LayerKind::Gemm, "weights")?;
-        let mut weights_array = load_array_constants_or_get_inputs(
-            api,
-            &input,
-            w_name,
-            &self.weights,
-            LayerKind::Gemm,
-        )?
-        .into_dimensionality::<Ix2>()
-        .map_err(|_| LayerError::InvalidShape {
-            layer: LayerKind::Gemm,
-            msg: format!("Expected 2D weights array for layer {}", self.name),
-        })?;
+        let mut weights_array =
+            load_array_constants_or_get_inputs(api, input, w_name, &self.weights, LayerKind::Gemm)?
+                .into_dimensionality::<Ix2>()
+                .map_err(|_| LayerError::InvalidShape {
+                    layer: LayerKind::Gemm,
+                    msg: format!("Expected 2D weights array for layer {}", self.name),
+                })?;
 
         // Apply transposes according to ONNX attributes.
         input_array = check_and_apply_transpose_array(
@@ -150,7 +145,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
 
         let b_name = get_input_name(&self.inputs, 2, LayerKind::Gemm, "bias")?;
         let bias_array =
-            load_array_constants_or_get_inputs(api, &input, b_name, &self.bias, LayerKind::Gemm)?;
+            load_array_constants_or_get_inputs(api, input, b_name, &self.bias, LayerKind::Gemm)?;
 
         // Sanity check alpha and beta.
         check_alpha_beta(self.alpha, ALPHA, LayerKind::Gemm, &self.name)?;

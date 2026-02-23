@@ -59,7 +59,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
+        input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let is_relu = matches!(self.optimization_pattern, PatternRegistry::ConvRelu);
 
@@ -73,17 +73,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             .clone();
 
         let w_name = get_input_name(&self.inputs, 1, LayerKind::Conv, WEIGHTS)?;
-        let weights = load_array_constants_or_get_inputs(
-            api,
-            &input,
-            w_name,
-            &self.weights,
-            LayerKind::Conv,
-        )?;
+        let weights =
+            load_array_constants_or_get_inputs(api, input, w_name, &self.weights, LayerKind::Conv)?;
 
         let b_name = get_input_name(&self.inputs, 2, LayerKind::Conv, BIAS)?;
         let bias =
-            load_array_constants_or_get_inputs(api, &input, b_name, &self.bias, LayerKind::Conv)?;
+            load_array_constants_or_get_inputs(api, input, b_name, &self.bias, LayerKind::Conv)?;
 
         let in_shape = layer_input
             .shape()
@@ -271,14 +266,35 @@ pub fn not_yet_implemented_conv(
     group: &[u32],
     dilations: &Vec<u32>,
 ) -> Result<(), CircuitError> {
-    if input_shape[1] != input_shape[1] * group[0] || input_shape[0] % group[0] != 0 {
+    if input_shape.len() < 2 {
         return Err(LayerError::InvalidShape {
             layer: LayerKind::Conv,
-            msg: "shape inconsistencies (channels or batch vs group)".into(),
+            msg: format!("input_shape length {} < 2", input_shape.len()),
         }
         .into());
     }
-    if group[0] > 1 {
+    let g = *group.first().ok_or_else(|| LayerError::InvalidShape {
+        layer: LayerKind::Conv,
+        msg: "group parameter is empty".into(),
+    })?;
+    if g == 0 {
+        return Err(LayerError::InvalidShape {
+            layer: LayerKind::Conv,
+            msg: "group parameter cannot be zero".into(),
+        }
+        .into());
+    }
+    if input_shape[1] % g != 0 {
+        return Err(LayerError::InvalidShape {
+            layer: LayerKind::Conv,
+            msg: format!(
+                "input channels {} not divisible by group {g}",
+                input_shape[1]
+            ),
+        }
+        .into());
+    }
+    if g > 1 {
         return Err(LayerError::UnsupportedConfig {
             layer: LayerKind::Conv,
             msg: "Not yet implemented for group > 1".into(),
@@ -319,23 +335,28 @@ fn conv_shape_4_setup_res<C: Config, Builder: RootAPI<C>>(
     shape_1: usize,
     shape_2: usize,
     shape_3: usize,
-) -> ArrayD<Variable> {
+) -> Result<ArrayD<Variable>, CircuitError> {
     let shape = vec![shape_0, shape_1, shape_2, shape_3];
+    let zero = api.constant(0);
 
     if bias.is_empty() {
-        // Create array filled with zeros
-        let zero = api.constant(0);
-        ArrayD::from_elem(shape, zero)
+        Ok(ArrayD::from_elem(shape, zero))
     } else {
-        // Create array filled with bias values
-        let mut res = ArrayD::from_elem(shape, bias[[0]]);
-        if !bias.is_empty() {
-            // Broadcast bias values across the second dimension (j)
-            for j in 0..bias.shape()[0] {
-                res.slice_mut(s![.., j, .., ..]).fill(bias[[j]]); // Assign bias[j] to all relevant elements
+        if bias.shape()[0] != shape_1 {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::Conv,
+                msg: format!(
+                    "bias length {} != output channels {shape_1}",
+                    bias.shape()[0]
+                ),
             }
+            .into());
         }
-        res
+        let mut res = ArrayD::from_elem(shape, zero);
+        for j in 0..shape_1 {
+            res.slice_mut(s![.., j, .., ..]).fill(bias[[j]]);
+        }
+        Ok(res)
     }
 }
 
@@ -465,7 +486,7 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
         weights.shape()[0],
         h_out as usize,
         w_out as usize,
-    );
+    )?;
 
     for n in 0..s_n {
         for nw in 0..weights.shape()[0] {

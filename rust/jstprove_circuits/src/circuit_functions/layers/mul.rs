@@ -45,7 +45,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MulLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
+        input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let is_relu = matches!(self.optimization_pattern, PatternRegistry::MulRelu);
         let a_name = get_input_name(&self.inputs, 0, LayerKind::Mul, INPUT)?;
@@ -53,7 +53,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MulLayer {
 
         let a_input = load_array_constants_or_get_inputs(
             api,
-            &input,
+            input,
             a_name,
             &self.initializer_a,
             LayerKind::Mul,
@@ -61,7 +61,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MulLayer {
 
         let b_input = load_array_constants_or_get_inputs(
             api,
-            &input,
+            input,
             b_name,
             &self.initializer_b,
             LayerKind::Mul,

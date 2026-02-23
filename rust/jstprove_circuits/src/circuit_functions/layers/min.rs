@@ -50,7 +50,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MinLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
+        input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         // 1. Resolve input names (mirrors AddLayer)
         let a_name = get_input_name(&self.inputs, 0, LayerKind::Min, INPUT)?;
@@ -59,7 +59,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MinLayer {
         // 2. Load either constants (initializers) or runtime inputs
         let a_input = load_array_constants_or_get_inputs(
             api,
-            &input,
+            input,
             a_name,
             &self.initializer_a,
             LayerKind::Min,
@@ -67,7 +67,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MinLayer {
 
         let b_input = load_array_constants_or_get_inputs(
             api,
-            &input,
+            input,
             b_name,
             &self.initializer_b,
             LayerKind::Min,
