@@ -335,24 +335,28 @@ fn conv_shape_4_setup_res<C: Config, Builder: RootAPI<C>>(
     shape_1: usize,
     shape_2: usize,
     shape_3: usize,
-) -> ArrayD<Variable> {
+) -> Result<ArrayD<Variable>, CircuitError> {
     let shape = vec![shape_0, shape_1, shape_2, shape_3];
     let zero = api.constant(0);
 
     if bias.is_empty() {
-        ArrayD::from_elem(shape, zero)
+        Ok(ArrayD::from_elem(shape, zero))
     } else {
-        assert_eq!(
-            bias.shape()[0],
-            shape_1,
-            "bias length {} != output channels {shape_1}",
-            bias.shape()[0]
-        );
+        if bias.shape()[0] != shape_1 {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::Conv,
+                msg: format!(
+                    "bias length {} != output channels {shape_1}",
+                    bias.shape()[0]
+                ),
+            }
+            .into());
+        }
         let mut res = ArrayD::from_elem(shape, zero);
         for j in 0..shape_1 {
             res.slice_mut(s![.., j, .., ..]).fill(bias[[j]]);
         }
-        res
+        Ok(res)
     }
 }
 
@@ -482,7 +486,7 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
         weights.shape()[0],
         h_out as usize,
         w_out as usize,
-    );
+    )?;
 
     for n in 0..s_n {
         for nw in 0..weights.shape()[0] {

@@ -97,15 +97,13 @@ pub fn onnx_flatten<T>(array: ArrayD<T>, axis: usize) -> Result<ArrayD<T>, Array
 ///
 pub fn get_inputs<T: Clone>(
     v: &[T],
-    inputs: Vec<ONNXIO>,
+    inputs: &[ONNXIO],
 ) -> Result<HashMap<String, ArrayD<T>>, UtilsError> {
-    // Step 1: Compute total number of elements required
     let total_required: usize = inputs
         .iter()
         .map(|input| input.shape.iter().product::<usize>())
         .sum();
 
-    // Step 2: Validate that v has exactly the required number of elements
     if v.len() != total_required {
         return Err(UtilsError::InputDataLengthMismatch {
             got: v.len(),
@@ -113,7 +111,6 @@ pub fn get_inputs<T: Clone>(
         });
     }
 
-    // Step 3: Split and reshape
     let mut result = HashMap::new();
     let mut start = 0usize;
 

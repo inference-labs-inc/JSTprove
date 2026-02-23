@@ -55,6 +55,15 @@ impl CircuitParams {
             .map(|obj| obj.shape.iter().product::<usize>())
             .sum()
     }
+
+    pub fn effective_output_dims(&self) -> usize {
+        let dims = self.total_output_dims();
+        if dims == 0 && !self.outputs.is_empty() {
+            self.outputs.len()
+        } else {
+            dims
+        }
+    }
 }
 
 fn default_freivalds_reps() -> usize {

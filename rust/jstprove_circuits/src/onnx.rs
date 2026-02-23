@@ -7,7 +7,7 @@ use expander_compiler::frontend::{
 use crate::circuit_functions::CircuitError;
 use crate::circuit_functions::utils::ArrayConversionError;
 use crate::circuit_functions::utils::build_layers::build_layers;
-use crate::circuit_functions::utils::onnx_model::{CircuitParams, InputData, OutputData, WANDB};
+use crate::circuit_functions::utils::onnx_model::{CircuitParams, InputData, OutputData};
 use crate::circuit_functions::utils::shaping::get_inputs;
 use crate::circuit_functions::utils::tensor_ops::get_nd_circuit_inputs;
 use crate::io::io_reader::onnx_context::OnnxContext;
@@ -44,18 +44,13 @@ impl Circuit<Variable> {
     ) -> Result<(), CircuitError> {
         let params = OnnxContext::get_params()?;
         let architecture = OnnxContext::get_architecture()?;
-        let w_and_b = OnnxContext::get_wandb().unwrap_or_else(|e| {
-            eprintln!(
-                "wandb not set ({e}), using empty weights; build_layers may fail for non-WAI models"
-            );
-            WANDB { w_and_b: vec![] }
-        });
+        let w_and_b = OnnxContext::get_wandb()?;
 
         if architecture.architecture.is_empty() {
             return Err(CircuitError::EmptyArchitecture);
         }
 
-        let mut out = get_inputs(&self.input_arr, params.inputs.clone())?;
+        let mut out = get_inputs(&self.input_arr, &params.inputs)?;
 
         let layers = build_layers::<C, Builder>(&params, &architecture, &w_and_b)?;
 
@@ -72,7 +67,7 @@ impl Circuit<Variable> {
             ));
         }
 
-        let flatten_shape: Vec<usize> = vec![params.total_output_dims()];
+        let flatten_shape: Vec<usize> = vec![params.effective_output_dims()];
         let mut flat_outputs: Vec<Array1<Variable>> = Vec::new();
 
         for output_info in &params.outputs {
@@ -100,9 +95,10 @@ impl Circuit<Variable> {
 
         if combined_output.len() != self.outputs.len() {
             return Err(CircuitError::Other(format!(
-                "output length mismatch: circuit has {} outputs but computed {} values",
+                "output length mismatch: circuit has {} outputs but computed {} values (total_output_dims={})",
                 self.outputs.len(),
-                combined_output.len()
+                combined_output.len(),
+                params.total_output_dims()
             )));
         }
         for (&out, &combined) in self.outputs.iter().zip(combined_output.iter()) {
@@ -125,12 +121,7 @@ impl ConfigurableCircuit for Circuit<Variable> {
     fn configure(&mut self) -> Result<(), RunError> {
         let params = OnnxContext::get_params()?;
 
-        let out_dims = params.total_output_dims();
-        if out_dims == 0 && !params.outputs.is_empty() {
-            self.outputs = vec![Variable::default(); params.outputs.len()];
-        } else {
-            self.outputs = vec![Variable::default(); out_dims];
-        }
+        self.outputs = vec![Variable::default(); params.effective_output_dims()];
         self.input_arr = vec![Variable::default(); params.total_input_dims()];
 
         Ok(())
@@ -176,7 +167,7 @@ pub fn apply_output_data<C: Config>(
     let params = OnnxContext::get_params()?;
     init_circuit_fields::<C>(&mut assignment, &params);
 
-    let output_dims: &[usize] = &[params.total_output_dims()];
+    let output_dims: &[usize] = &[params.effective_output_dims()];
 
     let arr: ArrayD<CircuitField<C>> = get_nd_circuit_inputs::<C>(&data.output, output_dims)
         .map_err(|e| RunError::Json(format!("Invalid output shape: {e}")))?;
@@ -230,14 +221,51 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
     }
 }
 
+pub struct ValueReader;
+
+impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for ValueReader {
+    fn read_inputs(
+        &mut self,
+        _file_path: &str,
+        _assignment: Circuit<CircuitField<C>>,
+    ) -> Result<Circuit<CircuitField<C>>, RunError> {
+        Err(RunError::Json(
+            "ValueReader does not support file-based read_inputs".into(),
+        ))
+    }
+
+    fn read_outputs(
+        &mut self,
+        _file_path: &str,
+        _assignment: Circuit<CircuitField<C>>,
+    ) -> Result<Circuit<CircuitField<C>>, RunError> {
+        Err(RunError::Json(
+            "ValueReader does not support file-based read_outputs".into(),
+        ))
+    }
+
+    fn apply_values(
+        &mut self,
+        input: serde_json::Value,
+        output: serde_json::Value,
+        assignment: Circuit<CircuitField<C>>,
+    ) -> Result<Circuit<CircuitField<C>>, RunError> {
+        let input_data: InputData =
+            serde_json::from_value(input).map_err(|e| RunError::Json(format!("{e:?}")))?;
+        let output_data: OutputData =
+            serde_json::from_value(output).map_err(|e| RunError::Json(format!("{e:?}")))?;
+        let assignment = apply_input_data::<C>(&input_data, assignment)?;
+        apply_output_data::<C>(&output_data, assignment)
+    }
+
+    fn get_path(&self) -> &str {
+        ""
+    }
+}
+
 pub fn witness_bn254(req: &WitnessRequest, compress: bool) -> Result<WitnessBundle, RunError> {
-    // Empty path is intentional: witness_from_request calls
-    // io_reader.apply_values() with inline Value data and never
-    // invokes FileReader::read_inputs or read_outputs.
-    let mut reader = FileReader {
-        path: String::new(),
-    };
-    witness_from_request::<BN254Config, FileReader, Circuit<CircuitField<BN254Config>>>(
+    let mut reader = ValueReader;
+    witness_from_request::<BN254Config, ValueReader, Circuit<CircuitField<BN254Config>>>(
         req,
         &mut reader,
         compress,
