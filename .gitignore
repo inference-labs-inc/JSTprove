@@ -62,3 +62,8 @@ python/core/lib/*.dylib
 
 # Proving System
 Expander/
+
+# Gas Town (added by gt)
+.runtime/
+.claude/commands/
+.logs/

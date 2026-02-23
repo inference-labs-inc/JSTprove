@@ -146,9 +146,9 @@ fn init_circuit_fields<C: Config>(
 pub fn apply_input_data<C: Config>(
     data: &InputData,
     mut assignment: Circuit<CircuitField<C>>,
+    params: &CircuitParams,
 ) -> Result<Circuit<CircuitField<C>>, RunError> {
-    let params = OnnxContext::get_params()?;
-    init_circuit_fields::<C>(&mut assignment, &params);
+    init_circuit_fields::<C>(&mut assignment, params);
 
     let input_dims: &[usize] = &[params.effective_input_dims()];
 
@@ -168,9 +168,9 @@ pub fn apply_input_data<C: Config>(
 pub fn apply_output_data<C: Config>(
     data: &OutputData,
     mut assignment: Circuit<CircuitField<C>>,
+    params: &CircuitParams,
 ) -> Result<Circuit<CircuitField<C>>, RunError> {
-    let params = OnnxContext::get_params()?;
-    init_circuit_fields::<C>(&mut assignment, &params);
+    init_circuit_fields::<C>(&mut assignment, params);
 
     let output_dims: &[usize] = &[params.effective_output_dims()];
 
@@ -190,13 +190,14 @@ fn apply_values_common<C: Config>(
     input: serde_json::Value,
     output: serde_json::Value,
     assignment: Circuit<CircuitField<C>>,
+    params: &CircuitParams,
 ) -> Result<Circuit<CircuitField<C>>, RunError> {
     let input_data: InputData =
         serde_json::from_value(input).map_err(|e| RunError::Json(format!("{e}")))?;
     let output_data: OutputData =
         serde_json::from_value(output).map_err(|e| RunError::Json(format!("{e}")))?;
-    let assignment = apply_input_data::<C>(&input_data, assignment)?;
-    apply_output_data::<C>(&output_data, assignment)
+    let assignment = apply_input_data::<C>(&input_data, assignment, params)?;
+    apply_output_data::<C>(&output_data, assignment, params)
 }
 
 impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
@@ -207,7 +208,8 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
     ) -> Result<Circuit<CircuitField<C>>, RunError> {
         let data: InputData =
             <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<InputData>(file_path)?;
-        apply_input_data::<C>(&data, assignment)
+        let params = OnnxContext::get_params()?;
+        apply_input_data::<C>(&data, assignment, &params)
     }
 
     fn read_outputs(
@@ -217,7 +219,8 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
     ) -> Result<Circuit<CircuitField<C>>, RunError> {
         let data: OutputData =
             <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<OutputData>(file_path)?;
-        apply_output_data::<C>(&data, assignment)
+        let params = OnnxContext::get_params()?;
+        apply_output_data::<C>(&data, assignment, &params)
     }
 
     fn apply_values(
@@ -226,7 +229,8 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
         output: serde_json::Value,
         assignment: Circuit<CircuitField<C>>,
     ) -> Result<Circuit<CircuitField<C>>, RunError> {
-        apply_values_common::<C>(input, output, assignment)
+        let params = OnnxContext::get_params()?;
+        apply_values_common::<C>(input, output, assignment, &params)
     }
 
     fn get_path(&self) -> &str {
@@ -238,7 +242,13 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
 ///
 /// File-based methods ([`IOReader::read_inputs`], [`IOReader::read_outputs`])
 /// return [`RunError::Unsupported`]. [`IOReader::get_path`] returns an empty string.
-pub struct ValueReader;
+///
+/// When `params` is `Some`, the instance uses per-invocation circuit parameters
+/// instead of reading from `OnnxContext` globals, enabling concurrent witness
+/// generation for different circuits.
+pub struct ValueReader {
+    pub params: Option<CircuitParams>,
+}
 
 impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for ValueReader {
     fn read_inputs(
@@ -267,7 +277,15 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for ValueReader {
         output: serde_json::Value,
         assignment: Circuit<CircuitField<C>>,
     ) -> Result<Circuit<CircuitField<C>>, RunError> {
-        apply_values_common::<C>(input, output, assignment)
+        let owned;
+        let params = match self.params {
+            Some(ref p) => p,
+            None => {
+                owned = OnnxContext::get_params()?;
+                &owned
+            }
+        };
+        apply_values_common::<C>(input, output, assignment, params)
     }
 
     fn get_path(&self) -> &str {
@@ -276,7 +294,9 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for ValueReader {
 }
 
 pub fn witness_bn254(req: &WitnessRequest, compress: bool) -> Result<WitnessBundle, RunError> {
-    let mut reader = ValueReader;
+    let mut reader = ValueReader {
+        params: req.metadata.clone(),
+    };
     witness_from_request::<BN254Config, ValueReader, Circuit<CircuitField<BN254Config>>>(
         req,
         &mut reader,
