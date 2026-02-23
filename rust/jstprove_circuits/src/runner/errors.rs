@@ -52,6 +52,9 @@ pub enum RunError {
     #[error("Verifying proof failed: {0}")]
     Verify(String),
 
+    #[error("Operation not supported: {0}")]
+    Unsupported(String),
+
     #[error("Error configuring circuit: {0}")]
     ConfigureCircuit(#[from] OnnxContextError),
 }

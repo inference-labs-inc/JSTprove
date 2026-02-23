@@ -27,7 +27,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConstantLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        _input: HashMap<String, ArrayD<Variable>>,
+        _input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let arr = ArrayD::from_shape_vec(IxDyn(&[1]), vec![api.constant(0)]).map_err(|e| {
             LayerError::InvalidShape {

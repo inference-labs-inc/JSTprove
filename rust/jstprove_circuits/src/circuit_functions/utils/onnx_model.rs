@@ -41,6 +41,40 @@ pub struct CircuitParams {
     pub weights_as_inputs: bool,
 }
 
+impl CircuitParams {
+    pub fn total_input_dims(&self) -> usize {
+        self.inputs
+            .iter()
+            .map(|obj| obj.shape.iter().product::<usize>())
+            .sum()
+    }
+
+    pub fn total_output_dims(&self) -> usize {
+        self.outputs
+            .iter()
+            .map(|obj| obj.shape.iter().product::<usize>())
+            .sum()
+    }
+
+    pub fn effective_output_dims(&self) -> usize {
+        let dims = self.total_output_dims();
+        if dims == 0 && !self.outputs.is_empty() {
+            self.outputs.len()
+        } else {
+            dims
+        }
+    }
+
+    pub fn effective_input_dims(&self) -> usize {
+        let dims = self.total_input_dims();
+        if dims == 0 && !self.inputs.is_empty() {
+            self.inputs.len()
+        } else {
+            dims
+        }
+    }
+}
+
 fn default_freivalds_reps() -> usize {
     1
 }
@@ -349,5 +383,89 @@ mod tests {
         }"#;
         let params: CircuitParams = serde_json::from_str(json).unwrap();
         assert!(!params.weights_as_inputs);
+    }
+
+    #[test]
+    fn total_input_dims_single_input() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [{"name": "x", "elem_type": 1, "shape": [1, 3, 224, 224]}],
+            "outputs": []
+        }"#;
+        let params: CircuitParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.total_input_dims(), 3 * 224 * 224);
+    }
+
+    #[test]
+    fn total_input_dims_multiple_inputs() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [
+                {"name": "a", "elem_type": 1, "shape": [2, 3]},
+                {"name": "b", "elem_type": 1, "shape": [4, 5]}
+            ],
+            "outputs": []
+        }"#;
+        let params: CircuitParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.total_input_dims(), 6 + 20);
+    }
+
+    #[test]
+    fn total_output_dims_single_output() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [],
+            "outputs": [{"name": "out", "elem_type": 1, "shape": [1, 10]}]
+        }"#;
+        let params: CircuitParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.total_output_dims(), 10);
+    }
+
+    #[test]
+    fn effective_input_dims_zero_shape_fallback() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [{"name": "in", "elem_type": 1, "shape": [0, 10]}],
+            "outputs": []
+        }"#;
+        let params: CircuitParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.total_input_dims(), 0);
+        assert_eq!(params.effective_input_dims(), 1);
+    }
+
+    #[test]
+    fn effective_output_dims_zero_shape_fallback() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [],
+            "outputs": [{"name": "out", "elem_type": 1, "shape": [0, 10]}]
+        }"#;
+        let params: CircuitParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.total_output_dims(), 0);
+        assert_eq!(params.effective_output_dims(), 1);
+    }
+
+    #[test]
+    fn total_dims_empty() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [],
+            "outputs": []
+        }"#;
+        let params: CircuitParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.total_input_dims(), 0);
+        assert_eq!(params.total_output_dims(), 0);
     }
 }

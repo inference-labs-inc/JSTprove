@@ -29,4 +29,5 @@
 
 pub mod circuit_functions;
 pub mod io;
+pub mod onnx;
 pub mod runner;

@@ -170,13 +170,10 @@ where
     GLOBAL.reset_peak_memory();
 
     let mut circuit = CircuitType::default();
-    configure_if_possible::<CircuitType>(&mut circuit);
+    configure_if_possible::<CircuitType>(&mut circuit)?;
 
     let compile_result = compile(&circuit, CompileOptions::default())
         .map_err(|e| RunError::Compile(format!("{e:?}")))?;
-    // let mem_mb = GLOBAL.get_peak_memory().saturating_div(1024 * 1024);
-    // println!("Peak Memory used Overall : {mem_mb:.2}");
-    // let duration = start.elapsed();
 
     let mut circuit_buf = Vec::new();
     compile_result
@@ -363,16 +360,11 @@ where
     let assignment = io_reader.read_outputs(output_path, assignment)?;
 
     let mut circuit = CircuitType::default();
-    configure_if_possible::<CircuitType>(&mut circuit);
+    configure_if_possible::<CircuitType>(&mut circuit)?;
 
-    // Build LogUp registry once
-    let logup_hints = build_logup_hint_registry::<CircuitField<C>>();
-
-    // Use it for the frontend debug evaluation
-    debug_eval(&circuit, &assignment, logup_hints.clone());
-
-    // And for the witness solver
     let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
+
+    debug_eval(&circuit, &assignment, hint_registry.clone());
 
     let witness = witness_solver
         .solve_witness_with_hints(&assignment, &hint_registry)
@@ -599,6 +591,7 @@ fn prove_core<C: Config>(
     let (simd_input, simd_public_input) = witness.to_simd();
     expander_circuit.layers[0].input_vals = simd_input;
     expander_circuit.public_input.clone_from(&simd_public_input);
+    expander_circuit.evaluate();
 
     let mpi_config = MPIConfig::prover_new();
     let (claimed_v, proof) = executor::prove::<C>(expander_circuit, mpi_config);
@@ -1199,7 +1192,7 @@ where
     })
 }
 
-fn load_circuit_from_bytes<C: Config>(
+pub fn load_circuit_from_bytes<C: Config>(
     data: &[u8],
 ) -> Result<Circuit<C, NormalInputType>, RunError> {
     let data = auto_decompress_bytes(data)?;
@@ -1207,19 +1200,24 @@ fn load_circuit_from_bytes<C: Config>(
         .map_err(|e| RunError::Deserialize(format!("circuit: {e:?}")))
 }
 
-fn load_witness_solver_from_bytes<C: Config>(data: &[u8]) -> Result<WitnessSolver<C>, RunError> {
+pub fn load_witness_solver_from_bytes<C: Config>(
+    data: &[u8],
+) -> Result<WitnessSolver<C>, RunError> {
     let data = auto_decompress_bytes(data)?;
     WitnessSolver::<C>::deserialize_from(Cursor::new(&*data))
         .map_err(|e| RunError::Deserialize(format!("witness_solver: {e:?}")))
 }
 
-fn load_witness_from_bytes<C: Config>(data: &[u8]) -> Result<Witness<C>, RunError> {
+pub fn load_witness_from_bytes<C: Config>(data: &[u8]) -> Result<Witness<C>, RunError> {
     let data = auto_decompress_bytes(data)?;
     Witness::<C>::deserialize_from(Cursor::new(&*data))
         .map_err(|e| RunError::Deserialize(format!("witness: {e:?}")))
 }
 
-fn serialize_witness<C: Config>(witness: &Witness<C>, compress: bool) -> Result<Vec<u8>, RunError> {
+pub fn serialize_witness<C: Config>(
+    witness: &Witness<C>,
+    compress: bool,
+) -> Result<Vec<u8>, RunError> {
     let mut buf = Vec::new();
     witness
         .serialize_into(&mut buf)
@@ -1227,7 +1225,7 @@ fn serialize_witness<C: Config>(witness: &Witness<C>, compress: bool) -> Result<
     maybe_compress_bytes(&buf, compress)
 }
 
-fn prove_from_bytes<C: Config>(
+pub fn prove_from_bytes<C: Config>(
     circuit_bytes: &[u8],
     witness_bytes: &[u8],
     compress: bool,
@@ -1249,7 +1247,7 @@ fn prove_from_bytes<C: Config>(
     maybe_compress_bytes(&proof_bytes, compress)
 }
 
-fn verify_from_bytes<C: Config>(
+pub fn verify_from_bytes<C: Config>(
     circuit_bytes: &[u8],
     witness_bytes: &[u8],
     proof_bytes: &[u8],
@@ -1275,16 +1273,6 @@ fn verify_from_bytes<C: Config>(
     ))
 }
 
-fn verify_from_bytes_with_io<C: Config>(
-    circuit_bytes: &[u8],
-    witness_bytes: &[u8],
-    proof_bytes: &[u8],
-    _inputs_json: Option<&[u8]>,
-    _outputs_json: Option<&[u8]>,
-) -> Result<bool, RunError> {
-    verify_from_bytes::<C>(circuit_bytes, witness_bytes, proof_bytes)
-}
-
 /// Compiles a circuit and writes it to a msgpack file.
 ///
 /// # Errors
@@ -1298,7 +1286,7 @@ where
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone + MaybeConfigure,
 {
     let mut circuit = CircuitType::default();
-    configure_if_possible::<CircuitType>(&mut circuit);
+    configure_if_possible::<CircuitType>(&mut circuit)?;
 
     let compile_result = compile(&circuit, CompileOptions::default())
         .map_err(|e| RunError::Compile(format!("{e:?}")))?;
@@ -1406,6 +1394,80 @@ pub fn msgpack_verify_stdin<C: Config>() -> Result<(), RunError> {
     Ok(())
 }
 
+pub fn witness_from_request<C: Config, I, CircuitDefaultType>(
+    req: &WitnessRequest,
+    io_reader: &mut I,
+    compress: bool,
+) -> Result<WitnessBundle, RunError>
+where
+    I: IOReader<CircuitDefaultType, C>,
+    CircuitDefaultType: Default
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
+        + Clone,
+{
+    let layered_circuit = load_circuit_from_bytes::<C>(&req.circuit)?;
+    let witness_solver = load_witness_solver_from_bytes::<C>(&req.witness_solver)?;
+    let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
+
+    let input_json: Value = serde_json::from_slice(&req.inputs)
+        .map_err(|e| RunError::Deserialize(format!("input json: {e:?}")))?;
+    let output_json: Value = serde_json::from_slice(&req.outputs)
+        .map_err(|e| RunError::Deserialize(format!("output json: {e:?}")))?;
+
+    let output_data = flatten_json_to_i64(&output_json);
+
+    let assignment = CircuitDefaultType::default();
+    let assignment = io_reader
+        .apply_values(input_json, output_json, assignment)
+        .map_err(|e| RunError::Witness(format!("apply_values: {e:?}")))?;
+
+    let witness = solve_and_validate_witness(
+        &witness_solver,
+        &layered_circuit,
+        &hint_registry,
+        &assignment,
+    )?;
+
+    let witness_bytes = serialize_witness::<C>(&witness, compress)?;
+
+    Ok(WitnessBundle {
+        witness: witness_bytes,
+        output_data: if output_data.is_empty() {
+            None
+        } else {
+            Some(output_data)
+        },
+    })
+}
+
+fn flatten_json_to_i64(val: &Value) -> Vec<i64> {
+    match val {
+        Value::Array(arr) => arr.iter().flat_map(flatten_json_to_i64).collect(),
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                vec![i]
+            } else if let Some(f) = n.as_f64() {
+                if f.is_finite() && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
+                    vec![f as i64]
+                } else {
+                    vec![]
+                }
+            } else {
+                vec![]
+            }
+        }
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            keys.into_iter()
+                .filter_map(|k| map.get(k))
+                .flat_map(flatten_json_to_i64)
+                .collect()
+        }
+        _ => vec![],
+    }
+}
+
 /// Reads a witness request from stdin and writes the witness to stdout via msgpack.
 ///
 /// # Errors
@@ -1424,33 +1486,8 @@ where
     let req: WitnessRequest = rmp_serde::decode::from_read(stdin.lock())
         .map_err(|e| RunError::Deserialize(format!("msgpack stdin: {e:?}")))?;
 
-    let layered_circuit = load_circuit_from_bytes::<C>(&req.circuit)?;
-    let witness_solver = load_witness_solver_from_bytes::<C>(&req.witness_solver)?;
-    let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
+    let resp = witness_from_request::<C, I, CircuitDefaultType>(&req, io_reader, compress)?;
 
-    let input_json: Value = serde_json::from_slice(&req.inputs)
-        .map_err(|e| RunError::Deserialize(format!("input json: {e:?}")))?;
-    let output_json: Value = serde_json::from_slice(&req.outputs)
-        .map_err(|e| RunError::Deserialize(format!("output json: {e:?}")))?;
-
-    let assignment = CircuitDefaultType::default();
-    let assignment = io_reader
-        .apply_values(input_json, output_json, assignment)
-        .map_err(|e| RunError::Witness(format!("apply_values: {e:?}")))?;
-
-    let witness = solve_and_validate_witness(
-        &witness_solver,
-        &layered_circuit,
-        &hint_registry,
-        &assignment,
-    )?;
-
-    let witness_bytes = serialize_witness::<C>(&witness, compress)?;
-
-    let resp = WitnessBundle {
-        witness: witness_bytes,
-        output_data: None,
-    };
     let stdout = std::io::stdout();
     let mut lock = stdout.lock();
     resp.serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
@@ -1507,8 +1544,6 @@ pub fn msgpack_verify_file<C: Config>(
     circuit_path: &str,
     witness_path: &str,
     proof_path: &str,
-    inputs_path: Option<&str>,
-    outputs_path: Option<&str>,
 ) -> Result<bool, RunError> {
     let circuit_bundle = read_circuit_msgpack(circuit_path)?;
     let witness_bundle: WitnessBundle = {
@@ -1528,29 +1563,10 @@ pub fn msgpack_verify_file<C: Config>(
             .map_err(|e| RunError::Deserialize(format!("proof msgpack: {e:?}")))?
     };
 
-    let inputs_json = if let Some(path) = inputs_path {
-        Some(std::fs::read(path).map_err(|e| RunError::Io {
-            source: e,
-            path: path.into(),
-        })?)
-    } else {
-        None
-    };
-    let outputs_json = if let Some(path) = outputs_path {
-        Some(std::fs::read(path).map_err(|e| RunError::Io {
-            source: e,
-            path: path.into(),
-        })?)
-    } else {
-        None
-    };
-
-    verify_from_bytes_with_io::<C>(
+    verify_from_bytes::<C>(
         &circuit_bundle.circuit,
         &witness_bundle.witness,
         &proof_bundle.proof,
-        inputs_json.as_deref(),
-        outputs_json.as_deref(),
     )
 }
 
@@ -1583,18 +1599,19 @@ pub trait ConfigurableCircuit {
 }
 
 pub trait MaybeConfigure {
-    fn maybe_configure(&mut self) {}
-}
-
-impl<T: ConfigurableCircuit> MaybeConfigure for T {
-    fn maybe_configure(&mut self) {
-        let _ = self.configure();
+    fn maybe_configure(&mut self) -> Result<(), RunError> {
+        Ok(())
     }
 }
 
-// Usage
-fn configure_if_possible<T: MaybeConfigure>(circuit: &mut T) {
-    circuit.maybe_configure();
+impl<T: ConfigurableCircuit> MaybeConfigure for T {
+    fn maybe_configure(&mut self) -> Result<(), RunError> {
+        self.configure()
+    }
+}
+
+fn configure_if_possible<T: MaybeConfigure>(circuit: &mut T) -> Result<(), RunError> {
+    circuit.maybe_configure()
 }
 
 /// Retrieves the value of a CLI argument as a `String`.
@@ -1808,15 +1825,7 @@ where
             let circuit_path = get_arg(matches, "circuit_path")?;
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
-            let inputs_path = matches.get_one::<String>("input").map(String::as_str);
-            let outputs_path = matches.get_one::<String>("output").map(String::as_str);
-            let valid = msgpack_verify_file::<C>(
-                &circuit_path,
-                &witness_path,
-                &proof_path,
-                inputs_path,
-                outputs_path,
-            )?;
+            let valid = msgpack_verify_file::<C>(&circuit_path, &witness_path, &proof_path)?;
             if valid {
                 eprintln!("Verified");
             } else {

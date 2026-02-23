@@ -63,13 +63,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
+        input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         // 1. Resolve required input X
         let x_name = get_input_name(&self.inputs, 0, LayerKind::Clip, INPUT)?;
         let x_input = load_array_constants_or_get_inputs(
             api,
-            &input,
+            input,
             x_name,
             &self.initializer_x,
             LayerKind::Clip,
@@ -81,7 +81,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
             let min_name = get_input_name(&self.inputs, 1, LayerKind::Clip, INPUT)?;
             Some(load_array_constants_or_get_inputs(
                 api,
-                &input,
+                input,
                 min_name,
                 &self.initializer_min,
                 LayerKind::Clip,
@@ -94,7 +94,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
             let max_name = get_input_name(&self.inputs, 2, LayerKind::Clip, INPUT)?;
             Some(load_array_constants_or_get_inputs(
                 api,
-                &input,
+                input,
                 max_name,
                 &self.initializer_max,
                 LayerKind::Clip,

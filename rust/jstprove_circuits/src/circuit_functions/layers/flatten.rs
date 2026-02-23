@@ -30,7 +30,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for FlattenLayer {
     fn apply(
         &self,
         _api: &mut Builder,
-        input: HashMap<String, ArrayD<Variable>>,
+        input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let reshape_axis = self.axis;
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Flatten, INPUT)?;
