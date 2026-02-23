@@ -110,7 +110,13 @@ fn scale_to_field(
                     "scale_to_field: non-finite scaled value {product}"
                 )));
             }
-            let scaled = product.round() as i128;
+            let rounded = product.round();
+            if rounded.abs() > i128::MAX as f64 {
+                return Err(RunError::Verify(
+                    "scale_to_field: scaled value overflows i128".into(),
+                ));
+            }
+            let scaled = rounded as i128;
             Ok(if scaled < 0 {
                 let abs = BigUint::from(scaled.unsigned_abs());
                 let reduced = &abs % modulus;
@@ -229,10 +235,13 @@ pub fn verify_and_extract_from_bytes<C: Config>(
 
     let (modulus, public_inputs) = parse_public_inputs_from_witness_bytes(&witness_data)?;
 
-    if public_inputs.len() < num_inputs + 2 {
+    let min_public = num_inputs
+        .checked_add(2)
+        .ok_or_else(|| RunError::Deserialize("num_inputs overflows usize".into()))?;
+    if public_inputs.len() < min_public {
         return Err(RunError::Deserialize(format!(
             "expected at least {} public inputs (num_inputs={} + 2 scale params), got {}",
-            num_inputs + 2,
+            min_public,
             num_inputs,
             public_inputs.len()
         )));
