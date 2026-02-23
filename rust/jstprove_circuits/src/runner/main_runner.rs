@@ -19,9 +19,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::circuit_functions::hints::build_logup_hint_registry;
-use crate::io::io_reader::onnx_context::OnnxContext;
 use crate::circuit_functions::utils::onnx_model::CircuitParams;
 use crate::io::io_reader;
+use crate::io::io_reader::onnx_context::OnnxContext;
 use crate::runner::errors::{CliError, RunError};
 use crate::runner::schema::{
     CompiledCircuit, ProofBundle, ProveRequest, VerifyRequest, VerifyResponse, WitnessBundle,
