@@ -14,6 +14,7 @@ struct RangeCheckRequest {
     shred_name: String,
     node: NodeRef<Fr>,
     table_nv: usize,
+    node_nv: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -288,26 +289,33 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
     if !range_checks.is_empty() {
         let fs_node = builder.add_fiat_shamir_challenge_node(1);
 
-        let mut checks_by_nv: BTreeMap<usize, Vec<RangeCheckRequest>> = BTreeMap::new();
+        let mut checks_by_key: BTreeMap<(usize, usize), Vec<RangeCheckRequest>> = BTreeMap::new();
         for rc in range_checks {
-            checks_by_nv.entry(rc.table_nv).or_default().push(rc);
+            checks_by_key.entry((rc.table_nv, rc.node_nv)).or_default().push(rc);
         }
 
-        for (table_nv, requests) in &checks_by_nv {
-            let table_shred_name = format!("range_table_{}", table_nv);
-            let table_node = builder.add_input_shred(&table_shred_name, *table_nv, &public);
-            manifest.insert(table_shred_name, ShredEntry { num_vars: *table_nv, visibility: Visibility::Public });
+        let mut table_nodes: HashMap<usize, NodeRef<Fr>> = HashMap::new();
+        for &(table_nv, _) in checks_by_key.keys() {
+            if !table_nodes.contains_key(&table_nv) {
+                let table_shred_name = format!("range_table_{}", table_nv);
+                let table_node = builder.add_input_shred(&table_shred_name, table_nv, &public);
+                manifest.insert(table_shred_name, ShredEntry { num_vars: table_nv, visibility: Visibility::Public });
+                table_nodes.insert(table_nv, table_node);
+            }
+        }
 
-            let lookup_table = builder.add_lookup_table(&table_node, &fs_node);
+        for ((table_nv, node_nv), requests) in &checks_by_key {
+            let table_node = table_nodes.get(table_nv).unwrap();
+            let lookup_table = builder.add_lookup_table(table_node, &fs_node);
 
             let real_count = requests.len();
             let target_count = real_count.next_power_of_two();
             let dummy_count = target_count - real_count;
 
             for i in 0..dummy_count {
-                let dummy_name = format!("range_dummy_nv{}_{}", table_nv, i);
-                let dummy_node = builder.add_input_shred(&dummy_name, 1, &committed);
-                manifest.insert(dummy_name.clone(), ShredEntry { num_vars: 1, visibility: Visibility::Committed });
+                let dummy_name = format!("range_dummy_t{}_n{}_{}", table_nv, node_nv, i);
+                let dummy_node = builder.add_input_shred(&dummy_name, *node_nv, &committed);
+                manifest.insert(dummy_name.clone(), ShredEntry { num_vars: *node_nv, visibility: Visibility::Committed });
 
                 let dummy_mults_name = format!("{}_mults", dummy_name);
                 let dummy_mults_node = builder.add_input_shred(&dummy_mults_name, *table_nv, &committed);
@@ -407,6 +415,7 @@ fn build_gemm_layer(
         shred_name: r_name,
         node: r_node,
         table_nv: scale_config.exponent as usize,
+        node_nv: n_vars,
     });
 
     for out in &layer.outputs {
@@ -541,6 +550,7 @@ fn build_conv_layer(
         shred_name: r_name,
         node: r_node,
         table_nv: scale_config.exponent as usize,
+        node_nv: result_vars,
     });
 
     for out in &layer.outputs {
@@ -608,11 +618,13 @@ fn build_relu_layer(
             shred_name: di_name,
             node: di_node,
             table_nv: dnv,
+            node_nv: nv,
         });
         range_checks.push(RangeCheckRequest {
             shred_name: dz_name,
             node: dz_node,
             table_nv: dnv,
+            node_nv: nv,
         });
     }
 
@@ -722,6 +734,7 @@ fn build_maxpool_layer(
                 shred_name: format!("{}_d{}", layer.name, i),
                 node: dnode,
                 table_nv: dnv,
+                node_nv: pool_out_vars,
             });
         }
     }
@@ -787,6 +800,7 @@ fn build_batchnorm_layer(
         shred_name: r_name,
         node: r_node,
         table_nv: scale_config.exponent as usize,
+        node_nv: nv,
     });
 
     let layout = tensor_layouts.get(input_name).cloned();

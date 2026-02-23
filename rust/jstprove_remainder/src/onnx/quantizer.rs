@@ -38,11 +38,23 @@ impl ScaleConfig {
     }
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct QuantizedModel {
     pub graph: LayerGraph,
     pub scale_config: ScaleConfig,
+    #[serde(default)]
     pub n_bits_config: HashMap<String, usize>,
+}
+
+impl QuantizedModel {
+    pub fn apply_observed_n_bits(&mut self, overrides: &HashMap<String, usize>) {
+        for layer in &mut self.graph.layers {
+            if let Some(&obs) = overrides.get(&layer.name) {
+                layer.n_bits = Some(obs);
+                self.n_bits_config.insert(layer.name.clone(), obs);
+            }
+        }
+    }
 }
 
 pub fn quantize_model(mut graph: LayerGraph, config: &ScaleConfig) -> Result<QuantizedModel> {
@@ -173,24 +185,27 @@ fn compute_bounds(graph: &LayerGraph, config: &ScaleConfig) -> Result<HashMap<St
     let mut bounds: HashMap<String, f64> = HashMap::new();
     let mut n_bits_config = HashMap::new();
 
+    for name in &graph.input_names {
+        bounds.insert(name.clone(), alpha as f64);
+    }
+
     for layer in graph.iter_topo() {
         let bound = compute_layer_bound(layer, &bounds, alpha)?;
 
-        if layer.needs_rescale || is_range_check_op(layer.op_type) {
-            let rangecheck_bound = if layer.needs_rescale {
-                bound
-            } else {
-                bound
-            };
-            let n_bits = compute_n_bits(alpha, rangecheck_bound);
+        let stored_bound = if layer.needs_rescale || is_range_check_op(layer.op_type) {
+            let n_bits = compute_n_bits(alpha, bound);
             n_bits_config.insert(layer.name.clone(), n_bits);
             if layer.needs_rescale {
-                bounds.insert(layer.name.clone(), rangecheck_bound / alpha as f64);
+                bound / alpha as f64
             } else {
-                bounds.insert(layer.name.clone(), bound);
+                bound
             }
         } else {
-            bounds.insert(layer.name.clone(), bound);
+            bound
+        };
+
+        for out_name in &layer.outputs {
+            bounds.insert(out_name.clone(), stored_bound);
         }
     }
 
@@ -211,18 +226,6 @@ fn compute_layer_bound(
             .unwrap_or(alpha as f64)
     };
 
-    let get_weight_bound = |input_idx: usize| -> f64 {
-        layer
-            .inputs
-            .get(input_idx)
-            .and_then(|name| layer.weights.get(name))
-            .map(|w| {
-                let vals = w.as_i64_vec();
-                vals.iter().map(|v| v.unsigned_abs()).sum::<u64>() as f64
-            })
-            .unwrap_or(1.0)
-    };
-
     let get_bias_bound = |input_idx: usize| -> f64 {
         layer
             .inputs
@@ -235,18 +238,81 @@ fn compute_layer_bound(
             .unwrap_or(0.0)
     };
 
+    let max_output_channel_l1 = |input_idx: usize, out_channels: usize| -> Result<f64> {
+        let Some(name) = layer.inputs.get(input_idx) else { return Ok(1.0) };
+        let Some(w) = layer.weights.get(name) else { return Ok(1.0) };
+        let vals = w.as_i64_vec();
+        if out_channels == 0 || vals.is_empty() {
+            return Ok(1.0);
+        }
+        anyhow::ensure!(
+            vals.len() % out_channels == 0,
+            "layer {}: weight tensor length {} not divisible by out_channels {}",
+            layer.name, vals.len(), out_channels,
+        );
+        let per_channel = vals.len() / out_channels;
+        Ok((0..out_channels)
+            .map(|oc| {
+                vals[oc * per_channel..(oc + 1) * per_channel]
+                    .iter()
+                    .map(|v| v.unsigned_abs())
+                    .sum::<u64>() as f64
+            })
+            .fold(0.0_f64, f64::max))
+    };
+
     match layer.op_type {
         OpType::Conv => {
             let m_in = get_input_bound(0);
-            let weight = get_weight_bound(1);
+            let w = layer.inputs.get(1).and_then(|n| layer.weights.get(n));
+            let c_out = w.map(|w| {
+                let d = w.shape();
+                if d.len() >= 4 { d[0] } else { 1 }
+            }).unwrap_or(1);
+            let weight = max_output_channel_l1(1, c_out)?;
             let bias_bound = get_bias_bound(2);
             Ok(weight * m_in + bias_bound)
         }
         OpType::Gemm => {
             let m_in = get_input_bound(0);
-            let weight_sum = get_weight_bound(1);
+            let w = layer.inputs.get(1).and_then(|n| layer.weights.get(n));
+            let trans_b = layer.get_int_attr("transB").map(|v| v != 0).unwrap_or(false);
+            let n_out = w.map(|w| {
+                let d = w.shape();
+                if d.len() >= 2 {
+                    if trans_b { d[0] } else { d[1] }
+                } else { 1 }
+            }).unwrap_or(1);
+            let weight_l1 = if trans_b {
+                max_output_channel_l1(1, n_out)?
+            } else {
+                match layer.inputs.get(1).and_then(|name| layer.weights.get(name)) {
+                    Some(w) => {
+                        let vals = w.as_i64_vec();
+                        let d = w.shape();
+                        if d.len() >= 2 {
+                            let (rows, cols) = (d[0], d[1]);
+                            anyhow::ensure!(
+                                cols > 0 && !vals.is_empty() && vals.len() == rows * cols,
+                                "layer {}: Gemm weight tensor size mismatch: vals.len()={} expected {}x{}={}",
+                                layer.name, vals.len(), rows, cols, rows * cols,
+                            );
+                            (0..cols)
+                                .map(|c| {
+                                    (0..rows)
+                                        .map(|r| vals[r * cols + c].unsigned_abs())
+                                        .sum::<u64>() as f64
+                                })
+                                .fold(0.0_f64, f64::max)
+                        } else {
+                            vals.iter().map(|v| v.unsigned_abs()).sum::<u64>() as f64
+                        }
+                    }
+                    None => 1.0,
+                }
+            };
             let bias_bound = get_bias_bound(2);
-            Ok(weight_sum * m_in + bias_bound)
+            Ok(weight_l1 * m_in + bias_bound)
         }
         OpType::BatchNormalization => {
             let m_in = get_input_bound(0);

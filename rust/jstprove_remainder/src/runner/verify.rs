@@ -14,10 +14,20 @@ use crate::util::i64_to_fr;
 
 pub fn run(model_path: &Path, proof_path: &Path, input_path: &Path) -> Result<()> {
     tracing::info!("loading model from {}", model_path.display());
-    let model = super::compile::load_model(model_path)?;
+    let mut model = super::compile::load_model(model_path)?;
 
     tracing::info!("loading proof from {}", proof_path.display());
     let proof = super::prove::load_proof(proof_path)?;
+
+    if !proof.observed_n_bits.is_empty() {
+        tracing::info!("applying {} observed n_bits overrides from proof", proof.observed_n_bits.len());
+        for layer in &mut model.graph.layers {
+            if let Some(&obs) = proof.observed_n_bits.get(&layer.name) {
+                layer.n_bits = Some(obs);
+                model.n_bits_config.insert(layer.name.clone(), obs);
+            }
+        }
+    }
 
     tracing::info!("loading input from {}", input_path.display());
     let quantized_input = super::witness::load_and_quantize_input(input_path, model.scale_config.alpha)?;

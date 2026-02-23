@@ -17,12 +17,23 @@ use super::serialization;
 
 pub fn run(model_path: &Path, witness_path: &Path, output_path: &Path, compress: bool) -> Result<()> {
     tracing::info!("loading model from {}", model_path.display());
-    let model = super::compile::load_model(model_path)?;
+    let mut model = super::compile::load_model(model_path)?;
 
     tracing::info!("loading witness from {}", witness_path.display());
-    let witness = super::witness::load_witness(witness_path)?;
+    let witness_data = super::witness::load_witness(witness_path)?;
 
-    let proof = generate_proof(&model, &witness)?;
+    if !witness_data.observed_n_bits.is_empty() {
+        tracing::info!("applying {} observed n_bits overrides from witness", witness_data.observed_n_bits.len());
+        for layer in &mut model.graph.layers {
+            if let Some(&obs) = witness_data.observed_n_bits.get(&layer.name) {
+                layer.n_bits = Some(obs);
+                model.n_bits_config.insert(layer.name.clone(), obs);
+            }
+        }
+    }
+
+    let mut proof = generate_proof(&model, &witness_data.shreds)?;
+    proof.observed_n_bits = witness_data.observed_n_bits;
 
     let size = serialization::serialize_to_file(&proof, output_path, compress)?;
     tracing::info!("proof written to {} ({} bytes)", output_path.display(), size);
@@ -83,6 +94,7 @@ pub fn generate_proof(
         proof_config,
         transcript: proof_transcript,
         expected_output,
+        observed_n_bits: HashMap::new(),
     })
 }
 
@@ -91,6 +103,8 @@ pub struct SerializableProof {
     pub proof_config: ProofConfig,
     pub transcript: Transcript<Fr>,
     pub expected_output: Vec<i64>,
+    #[serde(default)]
+    pub observed_n_bits: HashMap<String, usize>,
 }
 
 pub fn load_proof(path: &Path) -> Result<SerializableProof> {
