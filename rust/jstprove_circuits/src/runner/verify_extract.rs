@@ -168,6 +168,9 @@ fn parse_public_inputs_from_witness_bytes(
         .map_err(|_| RunError::Deserialize("num_public_inputs overflows usize".into()))?;
     let modulus_bytes = read_32_bytes(&mut cursor)?;
     let modulus = biguint_from_le_bytes(&modulus_bytes);
+    if modulus.is_zero() {
+        return Err(RunError::Deserialize("modulus is zero".into()));
+    }
 
     let total_values = num_inputs.checked_add(num_public_inputs).ok_or_else(|| {
         RunError::Deserialize("num_inputs + num_public_inputs overflows usize".into())
