@@ -238,33 +238,27 @@ fn compute_layer_bound(
             .unwrap_or(0.0)
     };
 
-    let max_output_channel_l1 = |input_idx: usize, out_channels: usize| -> f64 {
-        layer
-            .inputs
-            .get(input_idx)
-            .and_then(|name| layer.weights.get(name))
-            .map(|w| {
-                let vals = w.as_i64_vec();
-                if out_channels == 0 || vals.is_empty() {
-                    return 1.0;
-                }
-                assert!(
-                    vals.len() % out_channels == 0,
-                    "weight length {} not divisible by out_channels {}",
-                    vals.len(),
-                    out_channels,
-                );
-                let per_channel = vals.len() / out_channels;
-                (0..out_channels)
-                    .map(|oc| {
-                        vals[oc * per_channel..(oc + 1) * per_channel]
-                            .iter()
-                            .map(|v| v.unsigned_abs())
-                            .sum::<u64>() as f64
-                    })
-                    .fold(0.0_f64, f64::max)
+    let max_output_channel_l1 = |input_idx: usize, out_channels: usize| -> Result<f64> {
+        let Some(name) = layer.inputs.get(input_idx) else { return Ok(1.0) };
+        let Some(w) = layer.weights.get(name) else { return Ok(1.0) };
+        let vals = w.as_i64_vec();
+        if out_channels == 0 || vals.is_empty() {
+            return Ok(1.0);
+        }
+        anyhow::ensure!(
+            vals.len() % out_channels == 0,
+            "layer {}: weight tensor length {} not divisible by out_channels {}",
+            layer.name, vals.len(), out_channels,
+        );
+        let per_channel = vals.len() / out_channels;
+        Ok((0..out_channels)
+            .map(|oc| {
+                vals[oc * per_channel..(oc + 1) * per_channel]
+                    .iter()
+                    .map(|v| v.unsigned_abs())
+                    .sum::<u64>() as f64
             })
-            .unwrap_or(1.0)
+            .fold(0.0_f64, f64::max))
     };
 
     match layer.op_type {
@@ -275,7 +269,7 @@ fn compute_layer_bound(
                 let d = w.shape();
                 if d.len() >= 4 { d[0] } else { 1 }
             }).unwrap_or(1);
-            let weight = max_output_channel_l1(1, c_out);
+            let weight = max_output_channel_l1(1, c_out)?;
             let bias_bound = get_bias_bound(2);
             Ok(weight * m_in + bias_bound)
         }
@@ -290,18 +284,19 @@ fn compute_layer_bound(
                 } else { 1 }
             }).unwrap_or(1);
             let weight_l1 = if trans_b {
-                max_output_channel_l1(1, n_out)
+                max_output_channel_l1(1, n_out)?
             } else {
-                layer.inputs.get(1)
-                    .and_then(|name| layer.weights.get(name))
-                    .map(|w| {
+                match layer.inputs.get(1).and_then(|name| layer.weights.get(name)) {
+                    Some(w) => {
                         let vals = w.as_i64_vec();
                         let d = w.shape();
                         if d.len() >= 2 {
                             let (rows, cols) = (d[0], d[1]);
-                            if cols == 0 || vals.is_empty() || vals.len() != rows * cols {
-                                return 1.0;
-                            }
+                            anyhow::ensure!(
+                                cols > 0 && !vals.is_empty() && vals.len() == rows * cols,
+                                "layer {}: Gemm weight tensor size mismatch: vals.len()={} expected {}x{}={}",
+                                layer.name, vals.len(), rows, cols, rows * cols,
+                            );
                             (0..cols)
                                 .map(|c| {
                                     (0..rows)
@@ -312,8 +307,9 @@ fn compute_layer_bound(
                         } else {
                             vals.iter().map(|v| v.unsigned_abs()).sum::<u64>() as f64
                         }
-                    })
-                    .unwrap_or(1.0)
+                    }
+                    None => 1.0,
+                }
             };
             let bias_bound = get_bias_bound(2);
             Ok(weight_l1 * m_in + bias_bound)
