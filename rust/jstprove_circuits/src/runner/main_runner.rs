@@ -1413,6 +1413,8 @@ where
 
     if let Some(ref params) = req.metadata {
         OnnxContext::set_params(params.clone());
+    } else {
+        OnnxContext::clear_params();
     }
 
     let layered_circuit = load_circuit_from_bytes::<C>(&req.circuit)?;
