@@ -57,14 +57,21 @@ fn from_field_repr(value: &BigUint, modulus: &BigUint) -> BigInt {
     }
 }
 
-fn descale_outputs(values: &[BigInt], scale_base: u64, scale_exp: u64) -> Vec<f64> {
-    let scale = (scale_base as f64).powi(i32::try_from(scale_exp).expect("scale exponent overflows i32"));
+fn descale_outputs(values: &[BigInt], scale_base: u64, scale_exp: u64) -> Result<Vec<f64>, RunError> {
+    let scale = (scale_base as f64).powi(
+        i32::try_from(scale_exp).map_err(|_| RunError::Deserialize("scale_exp overflows i32".into()))?,
+    );
+    if !scale.is_finite() || scale == 0.0 {
+        return Err(RunError::Deserialize("invalid scale factor".into()));
+    }
     values
         .iter()
         .map(|v| {
             let f = v.to_f64().unwrap_or(f64::INFINITY);
-            assert!(f.is_finite(), "descale_outputs: non-finite value from BigInt");
-            f / scale
+            if !f.is_finite() {
+                return Err(RunError::Deserialize("non-finite value converting BigInt to f64".into()));
+            }
+            Ok(f / scale)
         })
         .collect()
 }
@@ -74,26 +81,31 @@ fn scale_to_field(
     scale_base: u64,
     scale_exp: u64,
     modulus: &BigUint,
-) -> Vec<BigUint> {
-    let scale_f64 = (scale_base as f64).powi(i32::try_from(scale_exp).expect("scale exponent overflows i32"));
+) -> Result<Vec<BigUint>, RunError> {
+    let scale_f64 = (scale_base as f64).powi(
+        i32::try_from(scale_exp).map_err(|_| RunError::Deserialize("scale_exp overflows i32".into()))?,
+    );
+    if !scale_f64.is_finite() || scale_f64 == 0.0 {
+        return Err(RunError::Deserialize("invalid scale factor".into()));
+    }
     values
         .iter()
         .map(|v| {
-            assert!(v.is_finite(), "scale_to_field: non-finite input {v}");
+            if !v.is_finite() {
+                return Err(RunError::Verify(format!("scale_to_field: non-finite input {v}")));
+            }
             let product = *v * scale_f64;
-            assert!(product.is_finite(), "scale_to_field: non-finite scaled value {product}");
+            if !product.is_finite() {
+                return Err(RunError::Verify(format!("scale_to_field: non-finite scaled value {product}")));
+            }
             let scaled = product.round() as i128;
-            if scaled < 0 {
+            Ok(if scaled < 0 {
                 let abs = BigUint::from(scaled.unsigned_abs());
                 let reduced = &abs % modulus;
-                if reduced.is_zero() {
-                    BigUint::ZERO
-                } else {
-                    modulus - reduced
-                }
+                if reduced.is_zero() { BigUint::ZERO } else { modulus - reduced }
             } else {
                 BigUint::from(scaled as u128) % modulus
-            }
+            })
         })
         .collect()
 }
@@ -133,7 +145,19 @@ fn parse_public_inputs_from_witness_bytes(
     let modulus_bytes = read_32_bytes(&mut cursor)?;
     let modulus = biguint_from_le_bytes(&modulus_bytes);
 
-    let total_values = num_inputs + num_public_inputs;
+    let total_values = num_inputs
+        .checked_add(num_public_inputs)
+        .ok_or_else(|| RunError::Deserialize("num_inputs + num_public_inputs overflows usize".into()))?;
+    let required_bytes = total_values
+        .checked_mul(32)
+        .ok_or_else(|| RunError::Deserialize("public input byte size overflows usize".into()))?;
+    let remaining = data.len().saturating_sub(cursor.position() as usize);
+    if remaining < required_bytes {
+        return Err(RunError::Deserialize(format!(
+            "witness too short: need {} bytes for {} field elements, have {}",
+            required_bytes, total_values, remaining
+        )));
+    }
     let mut values = Vec::with_capacity(total_values);
     for _ in 0..total_values {
         let bytes = read_32_bytes(&mut cursor)?;
@@ -210,7 +234,7 @@ pub fn verify_and_extract_from_bytes<C: Config>(
                 num_inputs
             )));
         }
-        let expected_field = scale_to_field(expected, scale_base, scale_exponent, &modulus);
+        let expected_field = scale_to_field(expected, scale_base, scale_exponent, &modulus)?;
         if !compare_field_values(&expected_field, raw_model_inputs, &modulus, 1) {
             return Err(RunError::Verify(
                 "input verification failed: expected inputs do not match witness".into(),
@@ -227,8 +251,8 @@ pub fn verify_and_extract_from_bytes<C: Config>(
         .map(|v| from_field_repr(v, &modulus))
         .collect();
 
-    let inputs = descale_outputs(&signed_inputs, scale_base, scale_exponent);
-    let outputs = descale_outputs(&signed_outputs, scale_base, scale_exponent);
+    let inputs = descale_outputs(&signed_inputs, scale_base, scale_exponent)?;
+    let outputs = descale_outputs(&signed_outputs, scale_base, scale_exponent)?;
 
     Ok(VerifiedOutput {
         valid,
