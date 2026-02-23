@@ -61,7 +61,11 @@ fn descale_outputs(values: &[BigInt], scale_base: u64, scale_exp: u64) -> Vec<f6
     let scale = (scale_base as f64).powi(i32::try_from(scale_exp).expect("scale exponent overflows i32"));
     values
         .iter()
-        .map(|v| v.to_f64().unwrap_or(0.0) / scale)
+        .map(|v| {
+            let f = v.to_f64().unwrap_or(f64::INFINITY);
+            assert!(f.is_finite(), "descale_outputs: non-finite value from BigInt");
+            f / scale
+        })
         .collect()
 }
 
@@ -75,7 +79,10 @@ fn scale_to_field(
     values
         .iter()
         .map(|v| {
-            let scaled = (*v * scale_f64).round() as i128;
+            assert!(v.is_finite(), "scale_to_field: non-finite input {v}");
+            let product = *v * scale_f64;
+            assert!(product.is_finite(), "scale_to_field: non-finite scaled value {product}");
+            let scaled = product.round() as i128;
             if scaled < 0 {
                 let abs = BigUint::from(scaled.unsigned_abs());
                 let reduced = &abs % modulus;
@@ -114,14 +121,15 @@ fn compare_field_values(
 }
 
 fn parse_public_inputs_from_witness_bytes(
-    raw: &[u8],
+    data: &[u8],
 ) -> Result<(BigUint, Vec<BigUint>), RunError> {
-    let data = auto_decompress_bytes(raw)?;
-    let mut cursor = Cursor::new(data.as_ref());
+    let mut cursor = Cursor::new(data);
 
     let _num_witnesses = read_u64_le(&mut cursor)?;
-    let num_inputs = read_u64_le(&mut cursor)? as usize;
-    let num_public_inputs = read_u64_le(&mut cursor)? as usize;
+    let num_inputs = usize::try_from(read_u64_le(&mut cursor)?)
+        .map_err(|_| RunError::Deserialize("num_inputs overflows usize".into()))?;
+    let num_public_inputs = usize::try_from(read_u64_le(&mut cursor)?)
+        .map_err(|_| RunError::Deserialize("num_public_inputs overflows usize".into()))?;
     let modulus_bytes = read_32_bytes(&mut cursor)?;
     let modulus = biguint_from_le_bytes(&modulus_bytes);
 
@@ -177,7 +185,7 @@ pub fn verify_and_extract_from_bytes<C: Config>(
         });
     }
 
-    let (modulus, public_inputs) = parse_public_inputs_from_witness_bytes(witness_bytes)?;
+    let (modulus, public_inputs) = parse_public_inputs_from_witness_bytes(&witness_data)?;
 
     if public_inputs.len() < num_inputs + 2 {
         return Err(RunError::Deserialize(format!(
@@ -203,7 +211,7 @@ pub fn verify_and_extract_from_bytes<C: Config>(
             )));
         }
         let expected_field = scale_to_field(expected, scale_base, scale_exponent, &modulus);
-        if !compare_field_values(&expected_field, &raw_model_inputs.to_vec(), &modulus, 1) {
+        if !compare_field_values(&expected_field, raw_model_inputs, &modulus, 1) {
             return Err(RunError::Verify(
                 "input verification failed: expected inputs do not match witness".into(),
             ));
