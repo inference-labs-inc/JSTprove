@@ -91,7 +91,7 @@ pub fn onnx_flatten<T>(array: ArrayD<T>, axis: usize) -> Result<ArrayD<T>, Array
 ///     ONNXIO { name: "x".into(), shape: vec![2, 3] }
 /// ];
 ///
-/// let result = get_inputs(&v, inputs)?;
+/// let result = get_inputs(&v, &inputs)?;
 /// assert_eq!(result["x"].shape(), &[2, 3]);
 /// ```
 ///

@@ -7,7 +7,7 @@ use expander_compiler::frontend::{
 use crate::circuit_functions::CircuitError;
 use crate::circuit_functions::utils::ArrayConversionError;
 use crate::circuit_functions::utils::build_layers::build_layers;
-use crate::circuit_functions::utils::onnx_model::{CircuitParams, InputData, OutputData};
+use crate::circuit_functions::utils::onnx_model::{CircuitParams, InputData, OutputData, WANDB};
 use crate::circuit_functions::utils::shaping::get_inputs;
 use crate::circuit_functions::utils::tensor_ops::get_nd_circuit_inputs;
 use crate::io::io_reader::onnx_context::OnnxContext;
@@ -44,7 +44,11 @@ impl Circuit<Variable> {
     ) -> Result<(), CircuitError> {
         let params = OnnxContext::get_params()?;
         let architecture = OnnxContext::get_architecture()?;
-        let w_and_b = OnnxContext::get_wandb()?;
+        let w_and_b = if params.weights_as_inputs {
+            WANDB { w_and_b: vec![] }
+        } else {
+            OnnxContext::get_wandb()?
+        };
 
         if architecture.architecture.is_empty() {
             return Err(CircuitError::EmptyArchitecture);
@@ -181,6 +185,19 @@ pub fn apply_output_data<C: Config>(
     Ok(assignment)
 }
 
+fn apply_values_common<C: Config>(
+    input: serde_json::Value,
+    output: serde_json::Value,
+    assignment: Circuit<CircuitField<C>>,
+) -> Result<Circuit<CircuitField<C>>, RunError> {
+    let input_data: InputData =
+        serde_json::from_value(input).map_err(|e| RunError::Json(format!("{e:?}")))?;
+    let output_data: OutputData =
+        serde_json::from_value(output).map_err(|e| RunError::Json(format!("{e:?}")))?;
+    let assignment = apply_input_data::<C>(&input_data, assignment)?;
+    apply_output_data::<C>(&output_data, assignment)
+}
+
 impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
     fn read_inputs(
         &mut self,
@@ -208,12 +225,7 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
         output: serde_json::Value,
         assignment: Circuit<CircuitField<C>>,
     ) -> Result<Circuit<CircuitField<C>>, RunError> {
-        let input_data: InputData =
-            serde_json::from_value(input).map_err(|e| RunError::Json(format!("{e:?}")))?;
-        let output_data: OutputData =
-            serde_json::from_value(output).map_err(|e| RunError::Json(format!("{e:?}")))?;
-        let assignment = apply_input_data::<C>(&input_data, assignment)?;
-        apply_output_data::<C>(&output_data, assignment)
+        apply_values_common::<C>(input, output, assignment)
     }
 
     fn get_path(&self) -> &str {
@@ -250,12 +262,7 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for ValueReader {
         output: serde_json::Value,
         assignment: Circuit<CircuitField<C>>,
     ) -> Result<Circuit<CircuitField<C>>, RunError> {
-        let input_data: InputData =
-            serde_json::from_value(input).map_err(|e| RunError::Json(format!("{e:?}")))?;
-        let output_data: OutputData =
-            serde_json::from_value(output).map_err(|e| RunError::Json(format!("{e:?}")))?;
-        let assignment = apply_input_data::<C>(&input_data, assignment)?;
-        apply_output_data::<C>(&output_data, assignment)
+        apply_values_common::<C>(input, output, assignment)
     }
 
     fn get_path(&self) -> &str {

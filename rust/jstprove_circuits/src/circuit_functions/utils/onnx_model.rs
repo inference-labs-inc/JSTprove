@@ -419,6 +419,20 @@ mod tests {
     }
 
     #[test]
+    fn effective_output_dims_zero_shape_fallback() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [],
+            "outputs": [{"name": "out", "elem_type": 1, "shape": [0, 10]}]
+        }"#;
+        let params: CircuitParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.total_output_dims(), 0);
+        assert_eq!(params.effective_output_dims(), 1);
+    }
+
+    #[test]
     fn total_dims_empty() {
         let json = r#"{
             "scale_base": 2,
