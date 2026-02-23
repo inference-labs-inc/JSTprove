@@ -266,7 +266,14 @@ pub fn not_yet_implemented_conv(
     group: &[u32],
     dilations: &Vec<u32>,
 ) -> Result<(), CircuitError> {
-    let g = *group.first().ok_or(LayerError::InvalidShape {
+    if input_shape.len() < 2 {
+        return Err(LayerError::InvalidShape {
+            layer: LayerKind::Conv,
+            msg: format!("input_shape length {} < 2", input_shape.len()),
+        }
+        .into());
+    }
+    let g = *group.first().ok_or_else(|| LayerError::InvalidShape {
         layer: LayerKind::Conv,
         msg: "group parameter is empty".into(),
     })?;

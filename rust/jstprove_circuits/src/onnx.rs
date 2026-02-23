@@ -7,7 +7,7 @@ use expander_compiler::frontend::{
 use crate::circuit_functions::CircuitError;
 use crate::circuit_functions::utils::ArrayConversionError;
 use crate::circuit_functions::utils::build_layers::build_layers;
-use crate::circuit_functions::utils::onnx_model::{InputData, OutputData};
+use crate::circuit_functions::utils::onnx_model::{CircuitParams, InputData, OutputData};
 use crate::circuit_functions::utils::shaping::get_inputs;
 use crate::circuit_functions::utils::tensor_ops::get_nd_circuit_inputs;
 use crate::io::io_reader::onnx_context::OnnxContext;
@@ -279,7 +279,7 @@ pub fn verify_bn254(
 pub fn compile_bn254(
     circuit_path: &str,
     compress: bool,
-    metadata: Option<crate::circuit_functions::utils::onnx_model::CircuitParams>,
+    metadata: Option<CircuitParams>,
 ) -> Result<(), RunError> {
     crate::runner::main_runner::run_compile_and_serialize::<BN254Config, Circuit<Variable>>(
         circuit_path,

@@ -1456,7 +1456,14 @@ fn flatten_json_to_i64(val: &Value) -> Vec<i64> {
                 vec![]
             }
         }
-        Value::Object(map) => map.values().flat_map(flatten_json_to_i64).collect(),
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            keys.into_iter()
+                .filter_map(|k| map.get(k))
+                .flat_map(flatten_json_to_i64)
+                .collect()
+        }
         _ => vec![],
     }
 }

@@ -22,7 +22,14 @@ fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool, has_wandb: boo
         std::process::exit(1);
     }
 
-    OnnxContext::set_params(params);
+    let wandb = if has_wandb {
+        let wandb_file_path = get_arg(matches, "wandb").unwrap();
+        let wandb_file =
+            std::fs::read_to_string(&wandb_file_path).expect("Failed to read W&B file");
+        Some(serde_json::from_str::<WANDB>(&wandb_file).expect("Invalid W&B JSON"))
+    } else {
+        None
+    };
 
     if needs_full {
         let arch_file_path = get_arg(matches, "arch").unwrap();
@@ -30,15 +37,12 @@ fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool, has_wandb: boo
             std::fs::read_to_string(&arch_file_path).expect("Failed to read architecture file");
         let arch: Architecture =
             serde_json::from_str(&arch_file).expect("Invalid architecture JSON");
-        OnnxContext::set_architecture(arch);
-    }
-
-    if has_wandb {
-        let wandb_file_path = get_arg(matches, "wandb").unwrap();
-        let wandb_file =
-            std::fs::read_to_string(&wandb_file_path).expect("Failed to read W&B file");
-        let wandb: WANDB = serde_json::from_str(&wandb_file).expect("Invalid W&B JSON");
-        OnnxContext::set_wandb(wandb);
+        OnnxContext::set_all(arch, params, wandb);
+    } else {
+        OnnxContext::set_params(params);
+        if let Some(w) = wandb {
+            OnnxContext::set_wandb(w);
+        }
     }
 }
 
@@ -93,6 +97,13 @@ fn main() {
                 std::process::exit(1);
             }
             OnnxContext::set_params(params);
+            if has_wandb {
+                let wandb_file_path = get_arg(&matches, "wandb").unwrap();
+                let wandb_file =
+                    std::fs::read_to_string(&wandb_file_path).expect("Failed to read W&B file");
+                let wandb: WANDB = serde_json::from_str(&wandb_file).expect("Invalid W&B JSON");
+                OnnxContext::set_wandb(wandb);
+            }
         } else {
             eprintln!(
                 "Error: command '{cmd_type}' requires --meta or circuit .msgpack with bundled metadata."
