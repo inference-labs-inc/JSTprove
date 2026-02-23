@@ -33,7 +33,6 @@ const ZSTD_COMPRESSION_LEVEL: i32 = 3;
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 
 static WITNESS_LOCK: Mutex<()> = Mutex::new(());
-
 pub(crate) fn auto_decompress_bytes(data: &[u8]) -> Result<Cow<[u8]>, RunError> {
     if data.len() >= 4 && data[..4] == ZSTD_MAGIC {
         zstd::decode_all(Cursor::new(data))
