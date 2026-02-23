@@ -342,15 +342,14 @@ fn conv_shape_4_setup_res<C: Config, Builder: RootAPI<C>>(
     if bias.is_empty() {
         ArrayD::from_elem(shape, zero)
     } else {
-        debug_assert_eq!(
+        assert_eq!(
             bias.shape()[0],
             shape_1,
             "bias length {} != output channels {shape_1}",
             bias.shape()[0]
         );
         let mut res = ArrayD::from_elem(shape, zero);
-        let bias_len = bias.shape()[0].min(shape_1);
-        for j in 0..bias_len {
+        for j in 0..shape_1 {
             res.slice_mut(s![.., j, .., ..]).fill(bias[[j]]);
         }
         res

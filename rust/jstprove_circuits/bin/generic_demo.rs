@@ -10,17 +10,29 @@ use jstprove_circuits::onnx::Circuit;
 
 use expander_compiler::frontend::{BN254Config, Variable};
 
-fn load_wandb(matches: &clap::ArgMatches) -> Option<WANDB> {
-    let wandb_file_path = get_arg(matches, "wandb").ok()?;
-    let wandb_file = std::fs::read_to_string(&wandb_file_path).expect("Failed to read W&B file");
-    Some(serde_json::from_str::<WANDB>(&wandb_file).expect("Invalid W&B JSON"))
+fn load_wandb(matches: &clap::ArgMatches) -> Result<Option<WANDB>, String> {
+    let wandb_file_path = match get_arg(matches, "wandb") {
+        Ok(p) => p,
+        Err(_) => return Ok(None),
+    };
+    let wandb_file = std::fs::read_to_string(&wandb_file_path)
+        .map_err(|e| format!("Failed to read W&B file '{wandb_file_path}': {e}"))?;
+    let wandb: WANDB = serde_json::from_str(&wandb_file)
+        .map_err(|e| format!("Invalid W&B JSON in '{wandb_file_path}': {e}"))?;
+    Ok(Some(wandb))
 }
 
 fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool) {
     let meta_file_path = get_arg(matches, "meta").unwrap();
     let meta_file = std::fs::read_to_string(&meta_file_path).expect("Failed to read metadata file");
     let params: CircuitParams = serde_json::from_str(&meta_file).expect("Invalid metadata JSON");
-    let wandb = load_wandb(matches);
+    let wandb = match load_wandb(matches) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    };
 
     if wandb.is_none() && (params.weights_as_inputs || needs_full) {
         let cmd_type = get_arg(matches, "type").unwrap_or_default();
@@ -91,7 +103,13 @@ fn main() {
             .get_one::<String>("circuit_path")
             .expect("command requires --meta or -c with bundled metadata");
         if let Some(params) = try_load_metadata_from_circuit(circuit_path) {
-            let wandb = load_wandb(&matches);
+            let wandb = match load_wandb(&matches) {
+                Ok(w) => w,
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            };
             if params.weights_as_inputs && wandb.is_none() {
                 eprintln!(
                     "Error: command '{cmd_type}' requires --wandb (weights_as_inputs is enabled in bundled metadata)."

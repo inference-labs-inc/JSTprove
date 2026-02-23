@@ -78,12 +78,9 @@ impl Circuit<Variable> {
         for output_info in &params.outputs {
             let output_name = &output_info.name;
 
-            let output = out
-                .get(output_name)
-                .ok_or_else(|| {
-                    CircuitError::Other(format!("Missing output '{output_name}' in map"))
-                })?
-                .clone();
+            let output = out.get(output_name).ok_or_else(|| {
+                CircuitError::Other(format!("Missing output '{output_name}' in map"))
+            })?;
 
             flat_outputs.push(Array1::from_iter(output.iter().copied()));
         }
@@ -128,7 +125,12 @@ impl ConfigurableCircuit for Circuit<Variable> {
     fn configure(&mut self) -> Result<(), RunError> {
         let params = OnnxContext::get_params()?;
 
-        self.outputs = vec![Variable::default(); params.total_output_dims()];
+        let out_dims = params.total_output_dims();
+        if out_dims == 0 && !params.outputs.is_empty() {
+            self.outputs = vec![Variable::default(); params.outputs.len()];
+        } else {
+            self.outputs = vec![Variable::default(); out_dims];
+        }
         self.input_arr = vec![Variable::default(); params.total_input_dims()];
 
         Ok(())
