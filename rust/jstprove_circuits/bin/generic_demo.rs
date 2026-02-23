@@ -10,11 +10,19 @@ use jstprove_circuits::onnx::Circuit;
 
 use expander_compiler::frontend::{BN254Config, Variable};
 
-fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool, has_wandb: bool) {
+fn load_wandb(matches: &clap::ArgMatches) -> Option<WANDB> {
+    let wandb_file_path = get_arg(matches, "wandb").ok()?;
+    let wandb_file = std::fs::read_to_string(&wandb_file_path).expect("Failed to read W&B file");
+    Some(serde_json::from_str::<WANDB>(&wandb_file).expect("Invalid W&B JSON"))
+}
+
+fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool) {
     let meta_file_path = get_arg(matches, "meta").unwrap();
     let meta_file = std::fs::read_to_string(&meta_file_path).expect("Failed to read metadata file");
     let params: CircuitParams = serde_json::from_str(&meta_file).expect("Invalid metadata JSON");
-    if !has_wandb && (params.weights_as_inputs || needs_full) {
+    let wandb = load_wandb(matches);
+
+    if wandb.is_none() && (params.weights_as_inputs || needs_full) {
         let cmd_type = get_arg(matches, "type").unwrap_or_default();
         let reason = if params.weights_as_inputs {
             "weights_as_inputs is enabled in metadata"
@@ -24,15 +32,6 @@ fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool, has_wandb: boo
         eprintln!("Error: command '{cmd_type}' requires --wandb ({reason}).");
         std::process::exit(1);
     }
-
-    let wandb = if has_wandb {
-        let wandb_file_path = get_arg(matches, "wandb").unwrap();
-        let wandb_file =
-            std::fs::read_to_string(&wandb_file_path).expect("Failed to read W&B file");
-        Some(serde_json::from_str::<WANDB>(&wandb_file).expect("Invalid W&B JSON"))
-    } else {
-        None
-    };
 
     if needs_full {
         let arch_file_path = get_arg(matches, "arch").unwrap();
@@ -79,33 +78,29 @@ fn main() {
 
     let has_meta = matches.get_one::<String>("meta").is_some();
     let has_arch = matches.get_one::<String>("arch").is_some();
-    let has_wandb = matches.get_one::<String>("wandb").is_some();
 
-    if needs_full && (!has_meta || !has_arch || !has_wandb) {
-        eprintln!("Error: command '{cmd_type}' requires --meta, --arch, and --wandb arguments.");
+    if needs_full && (!has_meta || !has_arch) {
+        eprintln!("Error: command '{cmd_type}' requires --meta and --arch arguments.");
         std::process::exit(1);
     }
 
     if has_meta {
-        set_onnx_context(&matches, needs_full, has_wandb);
+        set_onnx_context(&matches, needs_full);
     } else if needs_meta {
         let circuit_path = matches
             .get_one::<String>("circuit_path")
             .expect("command requires --meta or -c with bundled metadata");
         if let Some(params) = try_load_metadata_from_circuit(circuit_path) {
-            if params.weights_as_inputs && !has_wandb {
+            let wandb = load_wandb(&matches);
+            if params.weights_as_inputs && wandb.is_none() {
                 eprintln!(
                     "Error: command '{cmd_type}' requires --wandb (weights_as_inputs is enabled in bundled metadata)."
                 );
                 std::process::exit(1);
             }
             OnnxContext::set_params(params);
-            if has_wandb {
-                let wandb_file_path = get_arg(&matches, "wandb").unwrap();
-                let wandb_file =
-                    std::fs::read_to_string(&wandb_file_path).expect("Failed to read W&B file");
-                let wandb: WANDB = serde_json::from_str(&wandb_file).expect("Invalid W&B JSON");
-                OnnxContext::set_wandb(wandb);
+            if let Some(w) = wandb {
+                OnnxContext::set_wandb(w);
             }
         } else {
             eprintln!(

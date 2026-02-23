@@ -41,6 +41,22 @@ pub struct CircuitParams {
     pub weights_as_inputs: bool,
 }
 
+impl CircuitParams {
+    pub fn total_input_dims(&self) -> usize {
+        self.inputs
+            .iter()
+            .map(|obj| obj.shape.iter().product::<usize>())
+            .sum()
+    }
+
+    pub fn total_output_dims(&self) -> usize {
+        self.outputs
+            .iter()
+            .map(|obj| obj.shape.iter().product::<usize>())
+            .sum()
+    }
+}
+
 fn default_freivalds_reps() -> usize {
     1
 }

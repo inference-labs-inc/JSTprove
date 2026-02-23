@@ -44,7 +44,12 @@ impl Circuit<Variable> {
     ) -> Result<(), CircuitError> {
         let params = OnnxContext::get_params()?;
         let architecture = OnnxContext::get_architecture()?;
-        let w_and_b = OnnxContext::get_wandb().unwrap_or_else(|_| WANDB { w_and_b: vec![] });
+        let w_and_b = OnnxContext::get_wandb().unwrap_or_else(|e| {
+            eprintln!(
+                "wandb not set ({e}), using empty weights; build_layers may fail for non-WAI models"
+            );
+            WANDB { w_and_b: vec![] }
+        });
 
         if architecture.architecture.is_empty() {
             return Err(CircuitError::EmptyArchitecture);
@@ -67,13 +72,7 @@ impl Circuit<Variable> {
             ));
         }
 
-        let flatten_shape: Vec<usize> = vec![
-            params
-                .outputs
-                .iter()
-                .map(|obj| obj.shape.iter().product::<usize>())
-                .sum(),
-        ];
+        let flatten_shape: Vec<usize> = vec![params.total_output_dims()];
         let mut flat_outputs: Vec<Array1<Variable>> = Vec::new();
 
         for output_info in &params.outputs {
@@ -109,8 +108,8 @@ impl Circuit<Variable> {
                 combined_output.len()
             )));
         }
-        for (j, _) in self.outputs.iter().enumerate() {
-            api.assert_is_equal(self.outputs[j], combined_output[j]);
+        for (&out, &combined) in self.outputs.iter().zip(combined_output.iter()) {
+            api.assert_is_equal(out, combined);
         }
 
         // Constant placeholders required by the circuit framework to anchor
@@ -129,19 +128,8 @@ impl ConfigurableCircuit for Circuit<Variable> {
     fn configure(&mut self) -> Result<(), RunError> {
         let params = OnnxContext::get_params()?;
 
-        let output_dims: usize = params
-            .outputs
-            .iter()
-            .map(|obj| obj.shape.iter().product::<usize>())
-            .sum();
-        self.outputs = vec![Variable::default(); output_dims];
-
-        let input_dims: usize = params
-            .inputs
-            .iter()
-            .map(|obj| obj.shape.iter().product::<usize>())
-            .sum();
-        self.input_arr = vec![Variable::default(); input_dims];
+        self.outputs = vec![Variable::default(); params.total_output_dims()];
+        self.input_arr = vec![Variable::default(); params.total_input_dims()];
 
         Ok(())
     }
@@ -164,11 +152,7 @@ pub fn apply_input_data<C: Config>(
     let params = OnnxContext::get_params()?;
     init_circuit_fields::<C>(&mut assignment, &params);
 
-    let input_dims: &[usize] = &[params
-        .inputs
-        .iter()
-        .map(|obj| obj.shape.iter().product::<usize>())
-        .sum()];
+    let input_dims: &[usize] = &[params.total_input_dims()];
 
     let arr: ArrayD<CircuitField<C>> = get_nd_circuit_inputs::<C>(&data.input, input_dims)
         .map_err(|e| RunError::Json(format!("Invalid input shape: {e}")))?;
@@ -190,11 +174,7 @@ pub fn apply_output_data<C: Config>(
     let params = OnnxContext::get_params()?;
     init_circuit_fields::<C>(&mut assignment, &params);
 
-    let output_dims: &[usize] = &[params
-        .outputs
-        .iter()
-        .map(|obj| obj.shape.iter().product::<usize>())
-        .sum()];
+    let output_dims: &[usize] = &[params.total_output_dims()];
 
     let arr: ArrayD<CircuitField<C>> = get_nd_circuit_inputs::<C>(&data.output, output_dims)
         .map_err(|e| RunError::Json(format!("Invalid output shape: {e}")))?;

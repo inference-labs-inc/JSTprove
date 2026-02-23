@@ -277,7 +277,14 @@ pub fn not_yet_implemented_conv(
         layer: LayerKind::Conv,
         msg: "group parameter is empty".into(),
     })?;
-    if g == 0 || input_shape[1] % g != 0 {
+    if g == 0 {
+        return Err(LayerError::InvalidShape {
+            layer: LayerKind::Conv,
+            msg: "group parameter cannot be zero".into(),
+        }
+        .into());
+    }
+    if input_shape[1] % g != 0 {
         return Err(LayerError::InvalidShape {
             layer: LayerKind::Conv,
             msg: format!(
@@ -335,8 +342,15 @@ fn conv_shape_4_setup_res<C: Config, Builder: RootAPI<C>>(
     if bias.is_empty() {
         ArrayD::from_elem(shape, zero)
     } else {
+        debug_assert_eq!(
+            bias.shape()[0],
+            shape_1,
+            "bias length {} != output channels {shape_1}",
+            bias.shape()[0]
+        );
         let mut res = ArrayD::from_elem(shape, zero);
-        for j in 0..bias.shape()[0] {
+        let bias_len = bias.shape()[0].min(shape_1);
+        for j in 0..bias_len {
             res.slice_mut(s![.., j, .., ..]).fill(bias[[j]]);
         }
         res
