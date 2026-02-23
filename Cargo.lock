@@ -1663,6 +1663,8 @@ dependencies = [
  "halo2curves",
  "lazy_static",
  "ndarray",
+ "num-bigint",
+ "num-traits",
  "once_cell",
  "openssl",
  "peakmem-alloc",
