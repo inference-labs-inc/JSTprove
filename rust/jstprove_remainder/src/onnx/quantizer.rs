@@ -42,7 +42,19 @@ impl ScaleConfig {
 pub struct QuantizedModel {
     pub graph: LayerGraph,
     pub scale_config: ScaleConfig,
+    #[serde(default)]
     pub n_bits_config: HashMap<String, usize>,
+}
+
+impl QuantizedModel {
+    pub fn apply_observed_n_bits(&mut self, overrides: &HashMap<String, usize>) {
+        for layer in &mut self.graph.layers {
+            if let Some(&obs) = overrides.get(&layer.name) {
+                layer.n_bits = Some(obs);
+                self.n_bits_config.insert(layer.name.clone(), obs);
+            }
+        }
+    }
 }
 
 pub fn quantize_model(mut graph: LayerGraph, config: &ScaleConfig) -> Result<QuantizedModel> {
@@ -287,6 +299,9 @@ fn compute_layer_bound(
                         let d = w.shape();
                         if d.len() >= 2 {
                             let (rows, cols) = (d[0], d[1]);
+                            if cols == 0 || vals.is_empty() || vals.len() != rows * cols {
+                                return 1.0;
+                            }
                             (0..cols)
                                 .map(|c| {
                                     (0..rows)
