@@ -199,6 +199,11 @@ pub mod onnx_context {
             *guard = Some(meta);
         }
 
+        pub fn clear_params() {
+            let mut guard = CIRCUITPARAMS.write().unwrap_or_else(|e| e.into_inner());
+            *guard = None;
+        }
+
         pub fn get_architecture() -> Result<Architecture, OnnxContextError> {
             let guard = ARCHITECTURE.read().unwrap_or_else(|e| e.into_inner());
             guard.clone().ok_or(OnnxContextError::ArchitectureNotSet)
