@@ -191,9 +191,9 @@ fn apply_values_common<C: Config>(
     assignment: Circuit<CircuitField<C>>,
 ) -> Result<Circuit<CircuitField<C>>, RunError> {
     let input_data: InputData =
-        serde_json::from_value(input).map_err(|e| RunError::Json(format!("{e:?}")))?;
+        serde_json::from_value(input).map_err(|e| RunError::Json(format!("{e}")))?;
     let output_data: OutputData =
-        serde_json::from_value(output).map_err(|e| RunError::Json(format!("{e:?}")))?;
+        serde_json::from_value(output).map_err(|e| RunError::Json(format!("{e}")))?;
     let assignment = apply_input_data::<C>(&input_data, assignment)?;
     apply_output_data::<C>(&output_data, assignment)
 }
@@ -236,7 +236,7 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
 /// In-memory IOReader that only supports [`IOReader::apply_values`].
 ///
 /// File-based methods ([`IOReader::read_inputs`], [`IOReader::read_outputs`])
-/// return [`RunError::Json`]. [`IOReader::get_path`] returns an empty string.
+/// return [`RunError::Unsupported`]. [`IOReader::get_path`] returns an empty string.
 pub struct ValueReader;
 
 impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for ValueReader {
@@ -245,7 +245,7 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for ValueReader {
         _file_path: &str,
         _assignment: Circuit<CircuitField<C>>,
     ) -> Result<Circuit<CircuitField<C>>, RunError> {
-        Err(RunError::Json(
+        Err(RunError::Unsupported(
             "ValueReader does not support file-based read_inputs".into(),
         ))
     }
@@ -255,7 +255,7 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for ValueReader {
         _file_path: &str,
         _assignment: Circuit<CircuitField<C>>,
     ) -> Result<Circuit<CircuitField<C>>, RunError> {
-        Err(RunError::Json(
+        Err(RunError::Unsupported(
             "ValueReader does not support file-based read_outputs".into(),
         ))
     }
