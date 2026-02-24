@@ -141,17 +141,20 @@ class TestE2EQuantizer(BaseQuantizerTest):
                 ),
             )
         except Exception:
-            model.base_testing(
-                CircuitExecutionConfig(
-                    run_type=RunType.DEBUG_WITNESS,
-                    dev_mode=False,
-                    witness_file=temp_witness_file,
-                    circuit_path=str(temp_circuit_path),
-                    input_file=temp_input_file,
-                    output_file=temp_output_file,
-                    write_json=True,
-                ),
-            )
+            try:
+                model.base_testing(
+                    CircuitExecutionConfig(
+                        run_type=RunType.DEBUG_WITNESS,
+                        dev_mode=False,
+                        witness_file=temp_witness_file,
+                        circuit_path=str(temp_circuit_path),
+                        input_file=temp_input_file,
+                        output_file=temp_output_file,
+                        write_json=True,
+                    ),
+                )
+            except Exception:
+                pass
             raise
         # Verify witness and output files exist
         assert (

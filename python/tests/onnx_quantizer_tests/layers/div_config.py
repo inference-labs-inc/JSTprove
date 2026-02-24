@@ -1,4 +1,4 @@
-from collections.abc import Generator
+from numpy.random import Generator
 
 import numpy as np
 

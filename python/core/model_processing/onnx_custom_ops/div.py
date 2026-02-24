@@ -36,7 +36,7 @@ def int64_div(
         Optional scalar tensor for rescaling when rescale=1.
         Kept for future use, currently does not do anything.
     mode : str, optional
-        Mode of operation. Currently only "constant_pos_int" is supported.
+        Mode of operation. Currently only "constant_pos_int_pow_two" is supported.
 
     Returns
     -------
