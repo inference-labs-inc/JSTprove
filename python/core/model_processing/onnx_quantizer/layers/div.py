@@ -43,6 +43,9 @@ class DivQuantizer(BaseOpQuantizer):
         initializer_map: dict[str, onnx.TensorProto],
     ) -> list[onnx.NodeProto]:
         _ = graph
+        if not self.check_divisor_num_inputs(node, 2):
+            msg = "Div must have exactly 2 inputs"
+            raise InvalidParamError(node.name, node.op_type, msg)
         attrs = {}
         attrs["mode"] = "default_error"
         if self.check_divisor_circuit_constant(node, initializer_map):
