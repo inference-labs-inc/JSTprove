@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 import pytest
@@ -141,7 +142,7 @@ class TestE2EQuantizer(BaseQuantizerTest):
                 ),
             )
         except Exception:
-            try:
+            with contextlib.suppress(Exception):
                 model.base_testing(
                     CircuitExecutionConfig(
                         run_type=RunType.DEBUG_WITNESS,
@@ -153,8 +154,6 @@ class TestE2EQuantizer(BaseQuantizerTest):
                         write_json=True,
                     ),
                 )
-            except Exception:
-                pass
             raise
         # Verify witness and output files exist
         assert (
