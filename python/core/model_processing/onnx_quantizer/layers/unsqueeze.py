@@ -155,7 +155,10 @@ class UnsqueezeQuantizer(BaseOpQuantizer, QuantizeUnsqueeze):
         self: UnsqueezeQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto] | None = None,
+        scale_base: int | None = 2,
+        scale_exponent: int | None = 18,
     ) -> None:
+        _, _ = scale_base, scale_exponent
         self.validate_node_has_output(node)
         initializer_map = initializer_map or {}
 

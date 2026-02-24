@@ -1,6 +1,5 @@
-from numpy.random import Generator
-
 import numpy as np
+from numpy.random import Generator
 
 from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
 from python.tests.onnx_quantizer_tests import TEST_RNG_SEED
