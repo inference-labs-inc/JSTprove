@@ -44,9 +44,12 @@ use ndarray::ArrayD;
 /// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
 
-use crate::circuit_functions::utils::{
-    UtilsError,
-    errors::{ArrayConversionError, RescaleError},
+use crate::circuit_functions::{
+    gadgets::euclidean_division::div_pos_integer_pow2_constant,
+    utils::{
+        UtilsError,
+        errors::{ArrayConversionError, RescaleError},
+    },
 };
 
 // Internal modules: LogUp-based range-check helper + max gadget
@@ -119,7 +122,7 @@ impl RescalingContext {
         shift_exponent: usize,
     ) -> Result<Self, RescaleError> {
         let scaling_exponent_u32 = u32::try_from(scaling_exponent).map_err(|_| {
-            RescaleError::ShiftExponentTooLargeError {
+            RescaleError::ScalingExponentTooLargeError {
                 exp: scaling_exponent,
                 type_name: "u32",
             }
@@ -218,46 +221,16 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
     dividend: Variable,
     apply_relu: bool,
 ) -> Result<Variable, RescaleError> {
-    // Step 1: compute shifted_dividend = alpha*S + c
-    let shifted_dividend = api.add(context.scaled_shift, dividend);
-
-    // Step 2: Compute unchecked witness values q_shifted, r via unconstrained Euclidean division:
-    //         alpha*S + c = alpha*q_shifted + r
-    let shifted_q = api.unconstrained_int_div(shifted_dividend, context.scaling_factor_); // q_shifted
-    let remainder = api.unconstrained_mod(shifted_dividend, context.scaling_factor_); // r
-
-    // Step 3: Enforce alpha*S + c = alpha*q_shifted + r
-    let rhs_first_term = api.mul(context.scaling_factor, shifted_q);
-    let rhs = api.add(rhs_first_term, remainder);
-    api.assert_is_equal(shifted_dividend, rhs);
-
-    // Step 4: LogUp range-check r in [0, alpha − 1] using kappa bits
-    logup_ctx
-        .range_check::<C, Builder>(api, remainder, context.scaling_exponent)
-        .map_err(|e| RescaleError::BitDecompositionError {
-            var_name: format!("remainder (LogUp): {e}"),
-            n_bits: context.scaling_exponent,
-        })?;
-
-    // Step 5: LogUp range-check q_shifted in [0, 2^(s + 1) − 1] using s + 1 bits
-    let n_bits_q =
-        context
-            .shift_exponent
-            .checked_add(1)
-            .ok_or(RescaleError::ShiftExponentTooLargeError {
-                exp: context.shift_exponent,
-                type_name: "usize",
-            })?;
-
-    logup_ctx
-        .range_check::<C, Builder>(api, shifted_q, n_bits_q)
-        .map_err(|e| RescaleError::BitDecompositionError {
-            var_name: format!("quotient (LogUp): {e}"),
-            n_bits: n_bits_q,
-        })?;
-
-    // Step 6: Recover quotient q = q_shifted − S
-    let quotient = api.sub(shifted_q, context.shift); // q = q_shifted − S
+    let quotient = div_pos_integer_pow2_constant(
+        api,
+        logup_ctx,
+        dividend,
+        context.scaling_factor,
+        context.scaled_shift,
+        context.scaling_exponent,
+        context.shift_exponent,
+        context.shift,
+    )?;
 
     // Step 7: If ReLU is applied, enforce ReLU(q) = max(q, 0) via constrained_max
     if apply_relu {

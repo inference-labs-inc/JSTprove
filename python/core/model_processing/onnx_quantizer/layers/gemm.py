@@ -52,6 +52,8 @@ class GemmQuantizer(BaseOpQuantizer, QuantizeGemm):
         self: GemmQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto] | None = None,
+        scale_base: int | None = 2,
+        scale_exponent: int | None = 18,
     ) -> None:
         """
         Perform high-level validation to ensure that this node
@@ -65,7 +67,7 @@ class GemmQuantizer(BaseOpQuantizer, QuantizeGemm):
         Raises:
             InvalidParamError: If any requirement is not met.
         """
-        _ = initializer_map
+        _ = initializer_map, scale_exponent, scale_base
         num_valid_inputs = 2
         # Ensure inputs exist
         if len(node.input) < num_valid_inputs:

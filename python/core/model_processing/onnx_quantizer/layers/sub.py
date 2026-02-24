@@ -50,5 +50,7 @@ class SubQuantizer(BaseOpQuantizer, QuantizeSub):
         self: SubQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto] | None = None,
+        scale_base: int | None = 2,
+        scale_exponent: int | None = 18,
     ) -> None:
         pass

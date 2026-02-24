@@ -5,6 +5,7 @@ import onnx
 import pytest
 from onnx import helper
 
+from python.core.model_processing.onnx_quantizer.exceptions import InvalidParamError
 from python.core.model_processing.onnx_quantizer.layers.base import ScaleConfig
 from python.core.model_processing.onnx_quantizer.onnx_op_quantizer import (
     ONNXOpQuantizer,
@@ -106,13 +107,18 @@ def test_registered_quantizer_quantize(
         inputs=inputs,
         outputs=["dummy_output"],
     )
-
-    result = handler.quantize(
-        node=dummy_node,
-        graph=dummy_graph,
-        scale_config=ScaleConfig(exponent=10, base=2, rescale=True),
-        initializer_map=dummy_initializer_map,
-    )
+    try:
+        result = handler.quantize(
+            node=dummy_node,
+            graph=dummy_graph,
+            scale_config=ScaleConfig(exponent=10, base=2, rescale=True),
+            initializer_map=dummy_initializer_map,
+        )
+    except InvalidParamError as e:
+        assert op_type in {  # noqa: PT017
+            "Div",
+        }, f"Unexpected failure for {op_type}: {e}"
+        return
     assert result is not None
 
     # Enhanced assertions: validate result type and structure

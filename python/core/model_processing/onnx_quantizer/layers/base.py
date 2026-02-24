@@ -147,6 +147,8 @@ class BaseOpQuantizer:
         self: BaseOpQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto] | None = None,
+        scale_base: int | None = 2,
+        scale_exponent: int | None = 18,
     ) -> str | None:
         """
         Check if the node is supported by the quantizer.
@@ -156,7 +158,7 @@ class BaseOpQuantizer:
         Raises:
             HandlerImplementationError: If called on BaseOpQuantizer directly.
         """
-        _ = node, initializer_map
+        _ = node, initializer_map, scale_exponent, scale_base
         raise HandlerImplementationError(
             op_type=self.__class__.__name__,
             message="check_supported() not implemented in subclass.",
@@ -656,5 +658,7 @@ class PassthroughQuantizer(BaseOpQuantizer):
         self: BaseOpQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto] | None = None,
+        scale_base: int | None = 2,
+        scale_exponent: int | None = 18,
     ) -> None:
-        _ = node, initializer_map
+        _ = node, initializer_map, scale_base, scale_exponent

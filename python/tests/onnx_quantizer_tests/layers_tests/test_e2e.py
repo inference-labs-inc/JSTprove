@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 import pytest
@@ -128,17 +129,32 @@ class TestE2EQuantizer(BaseQuantizerTest):
         ), f"Circuit file not created for {layer_name}.{test_spec.name}"
 
         # Step 2: Generate witness
-        model.base_testing(
-            CircuitExecutionConfig(
-                run_type=RunType.GEN_WITNESS,
-                dev_mode=False,
-                witness_file=temp_witness_file,
-                circuit_path=str(temp_circuit_path),
-                input_file=temp_input_file,
-                output_file=temp_output_file,
-                write_json=True,
-            ),
-        )
+        try:
+            model.base_testing(
+                CircuitExecutionConfig(
+                    run_type=RunType.GEN_WITNESS,
+                    dev_mode=False,
+                    witness_file=temp_witness_file,
+                    circuit_path=str(temp_circuit_path),
+                    input_file=temp_input_file,
+                    output_file=temp_output_file,
+                    write_json=True,
+                ),
+            )
+        except Exception:
+            with contextlib.suppress(Exception):
+                model.base_testing(
+                    CircuitExecutionConfig(
+                        run_type=RunType.DEBUG_WITNESS,
+                        dev_mode=False,
+                        witness_file=temp_witness_file,
+                        circuit_path=str(temp_circuit_path),
+                        input_file=temp_input_file,
+                        output_file=temp_output_file,
+                        write_json=True,
+                    ),
+                )
+            raise
         # Verify witness and output files exist
         assert (
             temp_witness_file.exists()
@@ -183,8 +199,10 @@ class TestE2EQuantizer(BaseQuantizerTest):
         stdout = captured.out
         stderr = captured.err
 
-        assert stderr == "", "Errors occurred during e2e test for "
-        f"{layer_name}.{test_spec.name}: {stderr}"
+        assert stderr == "", (
+            "Errors occurred during e2e test for "
+            f"{layer_name}.{test_spec.name}: {stderr}"
+        )
 
         # Check for expected success messages (similar to circuit e2e tests)
         assert (

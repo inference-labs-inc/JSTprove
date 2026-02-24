@@ -5,8 +5,13 @@ from typing import TYPE_CHECKING, ClassVar
 if TYPE_CHECKING:
     import argparse
 
+from python.core.circuit_models.generic_onnx import GenericModelONNX
 from python.frontend.commands.args import MODEL_PATH
 from python.frontend.commands.base import BaseCommand
+
+DEFAULT_ONNX_MODEL_GENERATOR = GenericModelONNX("")
+DEFAULT_SCALE_BASE = DEFAULT_ONNX_MODEL_GENERATOR.scale_base
+DEFAULT_SCALE_EXP = DEFAULT_ONNX_MODEL_GENERATOR.scale_exponent
 
 
 class ModelCheckCommand(BaseCommand):
@@ -40,7 +45,11 @@ class ModelCheckCommand(BaseCommand):
         model = onnx.load(args.model_path)
         quantizer = ONNXOpQuantizer()
         try:
-            quantizer.check_model(model)
+            quantizer.check_model(
+                model,
+                scale_base=DEFAULT_SCALE_BASE,
+                scale_exponent=DEFAULT_SCALE_EXP,
+            )
             print(f"Model {args.model_path} is supported.")  # noqa: T201
         except UnsupportedOpError as e:
             msg = (
