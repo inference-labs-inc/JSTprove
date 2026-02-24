@@ -1,5 +1,3 @@
-use std::ops::Neg;
-
 use ndarray::{Array1, ArrayD, ArrayView1, Axis, Ix1, IxDyn, concatenate};
 
 use expander_compiler::frontend::{
@@ -401,20 +399,19 @@ fn witness_from_f64<C: Config>(
         .next()
         .ok_or_else(|| RunError::Witness("empty probe witness".into()))?;
 
-    let constraint_values =
-        layered_circuit.eval_constraint_values(private_inputs, &public_inputs);
+    let (actual_outputs, _) =
+        layered_circuit.eval_with_public_inputs(private_inputs, &public_inputs);
 
-    if constraint_values.len() < num_outputs {
+    if actual_outputs.len() < num_outputs {
         return Err(RunError::Witness(format!(
-            "constraint values length {}: expected at least {num_outputs}",
-            constraint_values.len()
+            "circuit actual outputs length {}: expected at least {num_outputs} (expected_num_output_zeroes={}, num_actual_outputs={})",
+            actual_outputs.len(),
+            layered_circuit.expected_num_output_zeroes,
+            layered_circuit.num_actual_outputs,
         )));
     }
 
-    let computed_outputs: Vec<CircuitField<C>> = constraint_values[..num_outputs]
-        .iter()
-        .map(|v| v.neg())
-        .collect();
+    let computed_outputs: Vec<CircuitField<C>> = actual_outputs[..num_outputs].to_vec();
 
     assignment.input_arr = input_arr;
     assignment.outputs = computed_outputs;
