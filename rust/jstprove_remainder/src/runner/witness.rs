@@ -561,6 +561,13 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     layer.name,
                     kernel_shape.len()
                 );
+                anyhow::ensure!(
+                    kernel_shape[0] > 0 && kernel_shape[1] > 0,
+                    "MaxPool {} kernel_shape values must be positive, got [{}, {}]",
+                    layer.name,
+                    kernel_shape[0],
+                    kernel_shape[1]
+                );
                 let pool_h = kernel_shape[0] as usize;
                 let pool_w = kernel_shape[1] as usize;
 
@@ -588,8 +595,26 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 );
                 let pool_oh = (in_h - pool_h) / stride_h + 1;
                 let pool_ow = (in_w - pool_w) / stride_w + 1;
-                let window_size = pool_h * pool_w;
-                let num_pool_out = pool_oh * pool_ow * c;
+                let window_size = pool_h.checked_mul(pool_w).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "MaxPool {} window_size overflow: {} * {}",
+                        layer.name,
+                        pool_h,
+                        pool_w
+                    )
+                })?;
+                let num_pool_out = pool_oh
+                    .checked_mul(pool_ow)
+                    .and_then(|v| v.checked_mul(c))
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "MaxPool {} num_pool_out overflow: {} * {} * {}",
+                            layer.name,
+                            pool_oh,
+                            pool_ow,
+                            c
+                        )
+                    })?;
                 let pad_pool = next_power_of_two(num_pool_out);
 
                 let mut max_values = vec![0i64; pad_pool];
@@ -1032,7 +1057,23 @@ fn compute_range_check_plan_with_overrides(
                         layer.name,
                         kernel_shape.len()
                     );
-                    let window_size = kernel_shape[0] as usize * kernel_shape[1] as usize;
+                    anyhow::ensure!(
+                        kernel_shape[0] > 0 && kernel_shape[1] > 0,
+                        "MaxPool {} kernel_shape values must be positive, got [{}, {}]",
+                        layer.name,
+                        kernel_shape[0],
+                        kernel_shape[1]
+                    );
+                    let window_size = (kernel_shape[0] as usize)
+                        .checked_mul(kernel_shape[1] as usize)
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "MaxPool {} kernel window_size overflow: {} * {}",
+                                layer.name,
+                                kernel_shape[0],
+                                kernel_shape[1]
+                            )
+                        })?;
                     let entry = plan.entry(dnv).or_default();
                     for i in 0..window_size {
                         entry.push(format!("{}_d{}", layer.name, i));
@@ -1346,6 +1387,13 @@ pub fn prepare_public_shreds(
                     layer.name,
                     kernel_shape.len()
                 );
+                anyhow::ensure!(
+                    kernel_shape[0] > 0 && kernel_shape[1] > 0,
+                    "MaxPool {} kernel_shape values must be positive, got [{}, {}]",
+                    layer.name,
+                    kernel_shape[0],
+                    kernel_shape[1]
+                );
                 let pool_h = kernel_shape[0] as usize;
                 let pool_w = kernel_shape[1] as usize;
                 let strides = layer.get_ints_attr("strides");
@@ -1371,7 +1419,18 @@ pub fn prepare_public_shreds(
                 );
                 let pool_oh = (in_h - pool_h) / stride_h + 1;
                 let pool_ow = (in_w - pool_w) / stride_w + 1;
-                let num_pool_out = pool_oh * pool_ow * c;
+                let num_pool_out = pool_oh
+                    .checked_mul(pool_ow)
+                    .and_then(|v| v.checked_mul(c))
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "MaxPool {} num_pool_out overflow: {} * {} * {}",
+                            layer.name,
+                            pool_oh,
+                            pool_ow,
+                            c
+                        )
+                    })?;
                 let pad_pool = next_power_of_two(num_pool_out);
 
                 for out_name in &layer.outputs {

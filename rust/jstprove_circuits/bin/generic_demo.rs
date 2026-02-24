@@ -103,8 +103,9 @@ fn main() {
     let matches = get_args();
 
     let cmd_type = get_arg(&matches, "type").unwrap_or_default();
-    let cli_is_remainder = matches.value_source("backend")
-        == Some(clap::parser::ValueSource::CommandLine)
+    let cli_backend_explicit =
+        matches.value_source("backend") == Some(clap::parser::ValueSource::CommandLine);
+    let cli_is_remainder = cli_backend_explicit
         && matches
             .get_one::<String>("backend")
             .is_some_and(|b| b == "remainder");
@@ -125,9 +126,11 @@ fn main() {
     if !is_remainder {
         if has_meta {
             set_onnx_context(&matches, needs_full);
-            if let Ok(params) = OnnxContext::get_params() {
-                if params.backend.is_remainder() {
-                    is_remainder = true;
+            if !cli_backend_explicit {
+                if let Ok(params) = OnnxContext::get_params() {
+                    if params.backend.is_remainder() {
+                        is_remainder = true;
+                    }
                 }
             }
         } else if needs_meta {
@@ -135,7 +138,7 @@ fn main() {
                 .get_one::<String>("circuit_path")
                 .expect("command requires --meta or -c with bundled metadata");
             if let Some(params) = try_load_metadata_from_circuit(circuit_path) {
-                if params.backend.is_remainder() {
+                if !cli_backend_explicit && params.backend.is_remainder() {
                     is_remainder = true;
                 }
                 let wandb = match load_wandb(&matches) {
