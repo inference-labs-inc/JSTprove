@@ -19,8 +19,8 @@ tiny-keccak = { version = "2.0", features = ["keccak"] }
 halo2curves = { git = "https://github.com/PolyhedraZK/halo2curves", default-features = false, features = ["bits"] }
 
 # ECC from inference-labs-inc
-expander_compiler = { git = "https://github.com/inference-labs-inc/ecc", rev = "98ef4d3" }
-circuit-std-rs = { git = "https://github.com/inference-labs-inc/ecc", rev = "98ef4d3" }
+expander_compiler = { git = "https://github.com/inference-labs-inc/ecc", rev = "f858279" }
+circuit-std-rs = { git = "https://github.com/inference-labs-inc/ecc", rev = "f858279" }
 thiserror = "2.0.15"
 strum = "0.27.2"
 strum_macros = "0.27.2"
