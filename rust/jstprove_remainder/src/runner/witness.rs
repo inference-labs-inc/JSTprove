@@ -1484,7 +1484,14 @@ pub fn prepare_public_shreds(
                         .weights
                         .get(input_a_name)
                         .map(|w| w.as_i64_vec().len())
-                        .unwrap_or(1)
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "{:?} {} missing weight for input {}",
+                                layer.op_type,
+                                layer.name,
+                                input_a_name
+                            )
+                        })?
                 };
                 let b_sz = if b_is_tensor {
                     tensor_sizes.get(input_b_name).copied().unwrap_or(1)
@@ -1493,7 +1500,14 @@ pub fn prepare_public_shreds(
                         .weights
                         .get(input_b_name)
                         .map(|w| w.as_i64_vec().len())
-                        .unwrap_or(1)
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "{:?} {} missing weight for input {}",
+                                layer.op_type,
+                                layer.name,
+                                input_b_name
+                            )
+                        })?
                 };
                 let out_sz = next_power_of_two(a_sz.max(b_sz));
 

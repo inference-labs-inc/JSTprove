@@ -1663,13 +1663,17 @@ pub fn get_arg(matches: &clap::ArgMatches, name: &'static str) -> Result<String,
 }
 
 fn is_remainder_backend(matches: &clap::ArgMatches, metadata: Option<&CircuitParams>) -> bool {
-    if matches
-        .get_one::<String>("backend")
-        .is_some_and(|b| b == "remainder")
-    {
-        return true;
+    if matches.value_source("backend") == Some(clap::parser::ValueSource::CommandLine) {
+        return matches
+            .get_one::<String>("backend")
+            .is_some_and(|b| b == "remainder");
     }
     metadata.is_some_and(|m| m.backend.is_remainder())
+}
+
+#[cfg(feature = "remainder")]
+fn get_model_or_circuit(matches: &clap::ArgMatches) -> Result<String, CliError> {
+    get_arg(matches, "model").or_else(|_| get_arg(matches, "circuit_path"))
 }
 
 #[cfg(feature = "remainder")]
@@ -1690,7 +1694,7 @@ fn dispatch_remainder(
             .map_err(|e| RunError::Compile(format!("{e:#}")))?;
         }
         "run_gen_witness" => {
-            let model_path = get_arg(matches, "circuit_path")?;
+            let model_path = get_model_or_circuit(matches)?;
             let input_path = get_arg(matches, "input")?;
             let witness_path = get_arg(matches, "witness")?;
             jstprove_remainder::runner::witness::run(
@@ -1702,7 +1706,7 @@ fn dispatch_remainder(
             .map_err(|e| RunError::Witness(format!("{e:#}")))?;
         }
         "run_prove_witness" => {
-            let model_path = get_arg(matches, "circuit_path")?;
+            let model_path = get_model_or_circuit(matches)?;
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
             jstprove_remainder::runner::prove::run(
@@ -1714,7 +1718,7 @@ fn dispatch_remainder(
             .map_err(|e| RunError::Prove(format!("{e:#}")))?;
         }
         "run_gen_verify" => {
-            let model_path = get_arg(matches, "circuit_path")?;
+            let model_path = get_model_or_circuit(matches)?;
             let proof_path = get_arg(matches, "proof")?;
             let input_path = get_arg(matches, "input")?;
             jstprove_remainder::runner::verify::run(
@@ -1725,7 +1729,7 @@ fn dispatch_remainder(
             .map_err(|e| RunError::Verify(format!("{e:#}")))?;
         }
         "run_batch_witness" => {
-            let model_path = get_arg(matches, "circuit_path")?;
+            let model_path = get_model_or_circuit(matches)?;
             let manifest_path = get_arg(matches, "manifest")?;
             jstprove_remainder::runner::batch::run_batch_witness(
                 Path::new(&model_path),
@@ -1735,7 +1739,7 @@ fn dispatch_remainder(
             .map_err(|e| RunError::Witness(format!("{e:#}")))?;
         }
         "run_batch_prove" => {
-            let model_path = get_arg(matches, "circuit_path")?;
+            let model_path = get_model_or_circuit(matches)?;
             let manifest_path = get_arg(matches, "manifest")?;
             jstprove_remainder::runner::batch::run_batch_prove(
                 Path::new(&model_path),
@@ -1745,7 +1749,7 @@ fn dispatch_remainder(
             .map_err(|e| RunError::Prove(format!("{e:#}")))?;
         }
         "run_batch_verify" => {
-            let model_path = get_arg(matches, "circuit_path")?;
+            let model_path = get_model_or_circuit(matches)?;
             let manifest_path = get_arg(matches, "manifest")?;
             jstprove_remainder::runner::batch::run_batch_verify(
                 Path::new(&model_path),
@@ -1754,17 +1758,17 @@ fn dispatch_remainder(
             .map_err(|e| RunError::Verify(format!("{e:#}")))?;
         }
         "run_pipe_witness" => {
-            let model_path = get_arg(matches, "circuit_path")?;
+            let model_path = get_model_or_circuit(matches)?;
             jstprove_remainder::runner::pipe::run_pipe_witness(Path::new(&model_path), compress)
                 .map_err(|e| RunError::Witness(format!("{e:#}")))?;
         }
         "run_pipe_prove" => {
-            let model_path = get_arg(matches, "circuit_path")?;
+            let model_path = get_model_or_circuit(matches)?;
             jstprove_remainder::runner::pipe::run_pipe_prove(Path::new(&model_path), compress)
                 .map_err(|e| RunError::Prove(format!("{e:#}")))?;
         }
         "run_pipe_verify" => {
-            let model_path = get_arg(matches, "circuit_path")?;
+            let model_path = get_model_or_circuit(matches)?;
             jstprove_remainder::runner::pipe::run_pipe_verify(Path::new(&model_path))
                 .map_err(|e| RunError::Verify(format!("{e:#}")))?;
         }
