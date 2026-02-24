@@ -27,7 +27,6 @@ pub fn run(model_path: &Path, proof_path: &Path, input_path: &Path) -> Result<()
         for layer in &mut model.graph.layers {
             if let Some(&obs) = proof.observed_n_bits.get(&layer.name) {
                 layer.n_bits = Some(obs);
-                model.n_bits_config.insert(layer.name.clone(), obs);
             }
         }
     }
@@ -38,10 +37,10 @@ pub fn run(model_path: &Path, proof_path: &Path, input_path: &Path) -> Result<()
 
     let result = verify_with_model(&model, &proof, &quantized_input);
 
-    if result.is_ok() {
-        tracing::info!("verification PASSED");
+    if let Err(ref e) = result {
+        tracing::error!("verification FAILED: {}", e);
     } else {
-        tracing::error!("verification FAILED: {}", result.as_ref().unwrap_err());
+        tracing::info!("verification PASSED");
     }
 
     result

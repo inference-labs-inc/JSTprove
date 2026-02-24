@@ -1429,7 +1429,13 @@ pub fn prepare_public_shreds(
                 let sz = tensor_sizes
                     .get(input_tensor_name)
                     .copied()
-                    .unwrap_or(input_padded_size);
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Relu {} input {} not found in tensor_sizes",
+                            layer.name,
+                            input_tensor_name
+                        )
+                    })?;
                 let nv = num_vars_for(sz);
                 shreds.insert(format!("{}_zero", layer.name), vec![0i64; 1 << nv]);
 
@@ -1565,7 +1571,13 @@ pub fn prepare_public_shreds(
                 let sz = tensor_sizes
                     .get(input_tensor_name)
                     .copied()
-                    .unwrap_or(input_padded_size);
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "BatchNorm {} input {} not found in tensor_sizes",
+                            layer.name,
+                            input_tensor_name
+                        )
+                    })?;
                 let padded_size = next_power_of_two(sz);
 
                 let mut mul_broadcast = vec![0i64; padded_size];
@@ -1710,7 +1722,14 @@ pub fn prepare_public_shreds(
                 let sz = tensor_sizes
                     .get(input_tensor_name)
                     .copied()
-                    .unwrap_or(input_padded_size);
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "{:?} {} input {} not found in tensor_sizes",
+                            layer.op_type,
+                            layer.name,
+                            input_tensor_name
+                        )
+                    })?;
                 let layout = tensor_layouts.get(input_tensor_name).cloned();
                 for out_name in &layer.outputs {
                     tensor_sizes.insert(out_name.clone(), sz);
