@@ -58,5 +58,5 @@ jobs:
       - name: Run workspace tests
         run: cargo test --workspace --lib --tests --bins
 
-      - name: Run remainder tests
-        run: cargo test --manifest-path rust/jstprove_remainder/Cargo.toml
+      - name: Run remainder unit tests
+        run: cargo test --manifest-path rust/jstprove_remainder/Cargo.toml --lib
