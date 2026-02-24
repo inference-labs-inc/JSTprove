@@ -57,6 +57,7 @@ fn from_field_repr(value: &BigUint, modulus: &BigUint) -> BigInt {
     }
 }
 
+#[allow(clippy::cast_precision_loss)]
 fn descale_outputs(
     values: &[BigInt],
     scale_base: u64,
@@ -83,6 +84,11 @@ fn descale_outputs(
         .collect()
 }
 
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 fn scale_to_field(
     values: &[f64],
     scale_base: u64,
@@ -178,11 +184,11 @@ fn parse_public_inputs_from_witness_bytes(
     let required_bytes = total_values
         .checked_mul(32)
         .ok_or_else(|| RunError::Deserialize("public input byte size overflows usize".into()))?;
+    #[allow(clippy::cast_possible_truncation)]
     let remaining = data.len().saturating_sub(cursor.position() as usize);
     if remaining < required_bytes {
         return Err(RunError::Deserialize(format!(
-            "witness too short: need {} bytes for {} field elements, have {}",
-            required_bytes, total_values, remaining
+            "witness too short: need {required_bytes} bytes for {total_values} field elements, have {remaining}"
         )));
     }
     let mut values = Vec::with_capacity(total_values);
@@ -195,6 +201,8 @@ fn parse_public_inputs_from_witness_bytes(
     Ok((modulus, public_inputs))
 }
 
+/// # Errors
+/// Returns `RunError` on deserialization, verification, or extraction failure.
 pub fn verify_and_extract_from_bytes<C: Config>(
     circuit_bytes: &[u8],
     witness_bytes: &[u8],

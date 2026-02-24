@@ -96,24 +96,38 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Compile { model, output, no_compress } => {
-            jstprove_remainder::runner::compile::run(&model, &output, !no_compress)
-        }
-        Commands::Witness { model, input, output, no_compress } => {
-            jstprove_remainder::runner::witness::run(&model, &input, &output, !no_compress)
-        }
-        Commands::Prove { model, witness, output, no_compress } => {
-            jstprove_remainder::runner::prove::run(&model, &witness, &output, !no_compress)
-        }
-        Commands::Verify { model, proof, input } => {
-            jstprove_remainder::runner::verify::run(&model, &proof, &input)
-        }
-        Commands::BatchWitness { model, manifest, no_compress } => {
-            jstprove_remainder::runner::batch::run_batch_witness(&model, &manifest, !no_compress)
-        }
-        Commands::BatchProve { model, manifest, no_compress } => {
-            jstprove_remainder::runner::batch::run_batch_prove(&model, &manifest, !no_compress)
-        }
+        Commands::Compile {
+            model,
+            output,
+            no_compress,
+        } => jstprove_remainder::runner::compile::run(&model, &output, !no_compress),
+        Commands::Witness {
+            model,
+            input,
+            output,
+            no_compress,
+        } => jstprove_remainder::runner::witness::run(&model, &input, &output, !no_compress),
+        Commands::Prove {
+            model,
+            witness,
+            output,
+            no_compress,
+        } => jstprove_remainder::runner::prove::run(&model, &witness, &output, !no_compress),
+        Commands::Verify {
+            model,
+            proof,
+            input,
+        } => jstprove_remainder::runner::verify::run(&model, &proof, &input),
+        Commands::BatchWitness {
+            model,
+            manifest,
+            no_compress,
+        } => jstprove_remainder::runner::batch::run_batch_witness(&model, &manifest, !no_compress),
+        Commands::BatchProve {
+            model,
+            manifest,
+            no_compress,
+        } => jstprove_remainder::runner::batch::run_batch_prove(&model, &manifest, !no_compress),
         Commands::BatchVerify { model, manifest } => {
             jstprove_remainder::runner::batch::run_batch_verify(&model, &manifest)
         }
@@ -123,8 +137,6 @@ fn main() -> anyhow::Result<()> {
         Commands::PipeProve { model, no_compress } => {
             jstprove_remainder::runner::pipe::run_pipe_prove(&model, !no_compress)
         }
-        Commands::PipeVerify { model } => {
-            jstprove_remainder::runner::pipe::run_pipe_verify(&model)
-        }
+        Commands::PipeVerify { model } => jstprove_remainder::runner::pipe::run_pipe_verify(&model),
     }
 }

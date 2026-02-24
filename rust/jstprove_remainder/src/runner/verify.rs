@@ -20,24 +20,27 @@ pub fn run(model_path: &Path, proof_path: &Path, input_path: &Path) -> Result<()
     let proof = super::prove::load_proof(proof_path)?;
 
     if !proof.observed_n_bits.is_empty() {
-        tracing::info!("applying {} observed n_bits overrides from proof", proof.observed_n_bits.len());
+        tracing::info!(
+            "applying {} observed n_bits overrides from proof",
+            proof.observed_n_bits.len()
+        );
         for layer in &mut model.graph.layers {
             if let Some(&obs) = proof.observed_n_bits.get(&layer.name) {
                 layer.n_bits = Some(obs);
-                model.n_bits_config.insert(layer.name.clone(), obs);
             }
         }
     }
 
     tracing::info!("loading input from {}", input_path.display());
-    let quantized_input = super::witness::load_and_quantize_input(input_path, model.scale_config.alpha)?;
+    let quantized_input =
+        super::witness::load_and_quantize_input(input_path, model.scale_config.alpha)?;
 
     let result = verify_with_model(&model, &proof, &quantized_input);
 
-    if result.is_ok() {
-        tracing::info!("verification PASSED");
+    if let Err(ref e) = result {
+        tracing::error!("verification FAILED: {}", e);
     } else {
-        tracing::error!("verification FAILED: {}", result.as_ref().unwrap_err());
+        tracing::info!("verification PASSED");
     }
 
     result
@@ -54,6 +57,7 @@ pub fn verify_with_model(
         model,
         quantized_input,
         &proof.expected_output,
+        &proof.observed_n_bits,
     )?;
 
     let build_result = circuit_builder::build_circuit(model, input_padded_size)?;
@@ -61,11 +65,10 @@ pub fn verify_with_model(
 
     for (name, entry) in &build_result.manifest {
         if entry.visibility == Visibility::Public {
-            let values = public_shreds.get(name)
+            let values = public_shreds
+                .get(name)
                 .ok_or_else(|| anyhow::anyhow!("missing public input '{}'", name))?;
-            let mle = MultilinearExtension::new(
-                values.iter().map(|&v| i64_to_fr(v)).collect(),
-            );
+            let mle = MultilinearExtension::new(values.iter().map(|&v| i64_to_fr(v)).collect());
             circuit.set_input(name, mle);
         }
     }

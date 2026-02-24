@@ -1,7 +1,7 @@
-pub mod parser;
 pub mod graph;
-pub mod quantizer;
 pub mod ops;
+pub mod parser;
+pub mod quantizer;
 
 #[allow(clippy::all)]
 #[allow(non_camel_case_types)]
