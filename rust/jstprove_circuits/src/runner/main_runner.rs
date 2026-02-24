@@ -685,6 +685,8 @@ where
     Ok(())
 }
 
+/// # Errors
+/// Returns `RunError` on witness solving or validation failure.
 pub fn solve_and_validate_witness<C: Config, CircuitDefaultType>(
     witness_solver: &WitnessSolver<C>,
     layered_circuit: &Circuit<C, NormalInputType>,
@@ -1199,6 +1201,8 @@ where
     })
 }
 
+/// # Errors
+/// Returns `RunError` on decompression or deserialization failure.
 pub fn load_circuit_from_bytes<C: Config>(
     data: &[u8],
 ) -> Result<Circuit<C, NormalInputType>, RunError> {
@@ -1207,6 +1211,8 @@ pub fn load_circuit_from_bytes<C: Config>(
         .map_err(|e| RunError::Deserialize(format!("circuit: {e:?}")))
 }
 
+/// # Errors
+/// Returns `RunError` on decompression or deserialization failure.
 pub fn load_witness_solver_from_bytes<C: Config>(
     data: &[u8],
 ) -> Result<WitnessSolver<C>, RunError> {
@@ -1215,12 +1221,16 @@ pub fn load_witness_solver_from_bytes<C: Config>(
         .map_err(|e| RunError::Deserialize(format!("witness_solver: {e:?}")))
 }
 
+/// # Errors
+/// Returns `RunError` on decompression or deserialization failure.
 pub fn load_witness_from_bytes<C: Config>(data: &[u8]) -> Result<Witness<C>, RunError> {
     let data = auto_decompress_bytes(data)?;
     Witness::<C>::deserialize_from(Cursor::new(&*data))
         .map_err(|e| RunError::Deserialize(format!("witness: {e:?}")))
 }
 
+/// # Errors
+/// Returns `RunError` on serialization or compression failure.
 pub fn serialize_witness<C: Config>(
     witness: &Witness<C>,
     compress: bool,
@@ -1232,6 +1242,8 @@ pub fn serialize_witness<C: Config>(
     maybe_compress_bytes(&buf, compress)
 }
 
+/// # Errors
+/// Returns `RunError` on proof generation failure.
 pub fn prove_from_bytes<C: Config>(
     circuit_bytes: &[u8],
     witness_bytes: &[u8],
@@ -1254,6 +1266,8 @@ pub fn prove_from_bytes<C: Config>(
     maybe_compress_bytes(&proof_bytes, compress)
 }
 
+/// # Errors
+/// Returns `RunError` on verification failure.
 pub fn verify_from_bytes<C: Config>(
     circuit_bytes: &[u8],
     witness_bytes: &[u8],
@@ -1401,6 +1415,8 @@ pub fn msgpack_verify_stdin<C: Config>() -> Result<(), RunError> {
     Ok(())
 }
 
+/// # Errors
+/// Returns `RunError` on witness generation or serialization failure.
 pub fn witness_from_request<C: Config, I, CircuitDefaultType>(
     req: &WitnessRequest,
     io_reader: &mut I,
@@ -1447,6 +1463,7 @@ where
     })
 }
 
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
 fn flatten_json_to_i64(val: &Value) -> Vec<i64> {
     match val {
         Value::Array(arr) => arr.iter().flat_map(flatten_json_to_i64).collect(),
@@ -1606,6 +1623,8 @@ pub trait ConfigurableCircuit {
 }
 
 pub trait MaybeConfigure {
+    /// # Errors
+    /// Returns `RunError` if configuration fails.
     fn maybe_configure(&mut self) -> Result<(), RunError> {
         Ok(())
     }
@@ -1643,52 +1662,14 @@ pub fn get_arg(matches: &clap::ArgMatches, name: &'static str) -> Result<String,
         .ok_or(CliError::MissingArgument(name))
 }
 
-/// Handles CLI arguments and dispatches to the appropriate runner command.
-///
-/// This function parses command-line arguments (using [`clap`]) and executes
-/// one of the supported commands:
-///
-/// - `run_compile_circuit` – creates and compiles a circuit and serializes it
-/// - `run_gen_witness` – generates a witness from inputs and outputs
-/// - `run_debug_witness` – runs witness generation in debug mode
-/// - `run_prove_witness` – produces a proof from a witness
-/// - `run_gen_verify` – verifies the proof
-///
-/// # Arguments
-///
-/// - `file_reader` - A mutable reference to the file reader used for circuit input/output.
-///
-/// # Errors
-///
-/// Returns a [`CliError`] if:
-///
-/// - A required argument is missing
-/// - An unknown command is provided
-/// - Any of the underlying runner functions (`run_compile_and_serialize`,
-///   `run_witness`, `debug_witness`, `run_prove_witness`, `run_verify_io`)
-///   fails during execution
-///
-/// # Example
-///
-/// ```ignore
-/// use mycrate::{handle_args, MyConfig, MyCircuit, MyDefaultCircuit, MyFileReader};
-///
-/// fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     let mut file_reader = FileReader {
-///        path: "my_path",
-///     };
-///     handle_args::<MyConfig, MyCircuit, MyDefaultCircuit, _>(&mut reader)?;
-///     Ok(())
-/// }
-/// ```
-fn is_remainder_backend(matches: &clap::ArgMatches, metadata: &Option<CircuitParams>) -> bool {
+fn is_remainder_backend(matches: &clap::ArgMatches, metadata: Option<&CircuitParams>) -> bool {
     if matches
         .get_one::<String>("backend")
         .is_some_and(|b| b == "remainder")
     {
         return true;
     }
-    metadata.as_ref().is_some_and(|m| m.backend.is_remainder())
+    metadata.is_some_and(|m| m.backend.is_remainder())
 }
 
 #[cfg(feature = "remainder")]
@@ -1817,6 +1798,10 @@ fn dispatch_remainder(
     Err(RunError::Unsupported("remainder backend requires the 'remainder' feature".into()).into())
 }
 
+/// Handles CLI arguments and dispatches to the appropriate runner command.
+///
+/// # Errors
+/// Returns `CliError` on missing arguments, unknown commands, or runner failures.
 #[allow(clippy::too_many_lines)]
 pub fn handle_args<
     C: Config,
@@ -1842,7 +1827,7 @@ where
 {
     let command = get_arg(matches, "type")?;
     let compress = !matches.get_flag("no_compress");
-    let use_remainder = is_remainder_backend(matches, &metadata);
+    let use_remainder = is_remainder_backend(matches, metadata.as_ref());
 
     if use_remainder {
         return dispatch_remainder(matches, &command, compress);
@@ -1995,6 +1980,7 @@ where
 }
 
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn get_args() -> clap::ArgMatches {
     let matches: clap::ArgMatches = Command::new("File Copier")
         .version("1.0")

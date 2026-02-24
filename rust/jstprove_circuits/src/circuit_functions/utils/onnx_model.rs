@@ -59,6 +59,7 @@ pub struct CircuitParams {
 }
 
 impl CircuitParams {
+    #[must_use]
     pub fn total_input_dims(&self) -> usize {
         self.inputs
             .iter()
@@ -66,6 +67,7 @@ impl CircuitParams {
             .sum()
     }
 
+    #[must_use]
     pub fn total_output_dims(&self) -> usize {
         self.outputs
             .iter()
@@ -73,6 +75,7 @@ impl CircuitParams {
             .sum()
     }
 
+    #[must_use]
     pub fn effective_output_dims(&self) -> usize {
         let dims = self.total_output_dims();
         if dims == 0 && !self.outputs.is_empty() {
@@ -82,6 +85,7 @@ impl CircuitParams {
         }
     }
 
+    #[must_use]
     pub fn effective_input_dims(&self) -> usize {
         let dims = self.total_input_dims();
         if dims == 0 && !self.inputs.is_empty() {

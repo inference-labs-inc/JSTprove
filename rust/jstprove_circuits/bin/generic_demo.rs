@@ -13,9 +13,8 @@ use jstprove_circuits::onnx::Circuit;
 use expander_compiler::frontend::{BN254Config, Variable};
 
 fn load_wandb(matches: &clap::ArgMatches) -> Result<Option<WANDB>, String> {
-    let wandb_file_path = match get_arg(matches, "wandb") {
-        Ok(p) => p,
-        Err(_) => return Ok(None),
+    let Ok(wandb_file_path) = get_arg(matches, "wandb") else {
+        return Ok(None);
     };
     let wandb_file = std::fs::read_to_string(&wandb_file_path)
         .map_err(|e| format!("Failed to read W&B file '{wandb_file_path}': {e}"))?;
@@ -106,8 +105,7 @@ fn main() {
     let cmd_type = get_arg(&matches, "type").unwrap_or_default();
     let backend = matches
         .get_one::<String>("backend")
-        .map(String::as_str)
-        .unwrap_or("expander");
+        .map_or("expander", String::as_str);
     let is_remainder = backend == "remainder";
 
     let needs_meta = ONNX_META_COMMANDS.contains(&cmd_type.as_str())
