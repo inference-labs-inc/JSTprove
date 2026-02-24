@@ -613,7 +613,9 @@ fn build_conv_layer(
     anyhow::ensure!(
         raw_stride_h > 0 && raw_stride_w > 0,
         "Conv {} stride_h={} stride_w={} must be positive",
-        layer.name, raw_stride_h, raw_stride_w
+        layer.name,
+        raw_stride_h,
+        raw_stride_w
     );
     let stride_h = raw_stride_h as usize;
     let stride_w = raw_stride_w as usize;
@@ -933,7 +935,9 @@ fn build_maxpool_layer(
     anyhow::ensure!(
         raw_stride_h > 0 && raw_stride_w > 0,
         "MaxPool {} stride_h={} stride_w={} must be positive",
-        layer.name, raw_stride_h, raw_stride_w
+        layer.name,
+        raw_stride_h,
+        raw_stride_w
     );
     let stride_h = raw_stride_h as usize;
     let stride_w = raw_stride_w as usize;

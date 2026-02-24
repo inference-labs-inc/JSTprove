@@ -312,7 +312,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 anyhow::ensure!(
                     raw_stride_h > 0 && raw_stride_w > 0,
                     "Conv {} stride_h={} stride_w={} must be positive",
-                    layer.name, raw_stride_h, raw_stride_w
+                    layer.name,
+                    raw_stride_h,
+                    raw_stride_w
                 );
                 let stride_h = raw_stride_h as usize;
                 let stride_w = raw_stride_w as usize;
@@ -545,7 +547,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 anyhow::ensure!(
                     raw_stride_h > 0 && raw_stride_w > 0,
                     "MaxPool {} stride_h={} stride_w={} must be positive",
-                    layer.name, raw_stride_h, raw_stride_w
+                    layer.name,
+                    raw_stride_h,
+                    raw_stride_w
                 );
                 let stride_h = raw_stride_h as usize;
                 let stride_w = raw_stride_w as usize;
@@ -1027,7 +1031,11 @@ fn padded_matmul(
     b_cols: usize,
 ) -> anyhow::Result<Vec<i64>> {
     let alloc_size = a_rows.checked_mul(b_cols).ok_or_else(|| {
-        anyhow::anyhow!("padded_matmul: a_rows * b_cols overflow: {}x{}", a_rows, b_cols)
+        anyhow::anyhow!(
+            "padded_matmul: a_rows * b_cols overflow: {}x{}",
+            a_rows,
+            b_cols
+        )
     })?;
     let mut out = vec![0i64; alloc_size];
     for i in 0..a_rows {
@@ -1203,7 +1211,9 @@ pub fn prepare_public_shreds(
                 anyhow::ensure!(
                     raw_stride_h > 0 && raw_stride_w > 0,
                     "Conv {} stride_h={} stride_w={} must be positive",
-                    layer.name, raw_stride_h, raw_stride_w
+                    layer.name,
+                    raw_stride_h,
+                    raw_stride_w
                 );
                 let stride_h = raw_stride_h as usize;
                 let stride_w = raw_stride_w as usize;
@@ -1321,7 +1331,9 @@ pub fn prepare_public_shreds(
                 anyhow::ensure!(
                     raw_stride_h > 0 && raw_stride_w > 0,
                     "MaxPool {} stride_h={} stride_w={} must be positive",
-                    layer.name, raw_stride_h, raw_stride_w
+                    layer.name,
+                    raw_stride_h,
+                    raw_stride_w
                 );
                 let stride_h = raw_stride_h as usize;
                 let stride_w = raw_stride_w as usize;
