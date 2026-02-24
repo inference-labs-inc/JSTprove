@@ -138,15 +138,17 @@ pub struct FileReader {
 }
 
 pub mod onnx_context {
-    use std::sync::RwLock;
+    use std::cell::RefCell;
 
     use thiserror::Error;
 
     use crate::circuit_functions::utils::onnx_model::{Architecture, CircuitParams, WANDB};
 
-    static ARCHITECTURE: RwLock<Option<Architecture>> = RwLock::new(None);
-    static CIRCUITPARAMS: RwLock<Option<CircuitParams>> = RwLock::new(None);
-    static W_AND_B: RwLock<Option<WANDB>> = RwLock::new(None);
+    thread_local! {
+        static ARCHITECTURE: RefCell<Option<Architecture>> = const { RefCell::new(None) };
+        static CIRCUITPARAMS: RefCell<Option<CircuitParams>> = const { RefCell::new(None) };
+        static W_AND_B: RefCell<Option<WANDB>> = const { RefCell::new(None) };
+    }
 
     #[derive(Debug, Error)]
     pub enum OnnxContextError {
@@ -161,62 +163,38 @@ pub mod onnx_context {
     pub struct OnnxContext;
 
     impl OnnxContext {
-        /// Acquires write locks on ARCHITECTURE, CIRCUITPARAMS, and W_AND_B
-        /// (sequentially, in that order) before performing any mutations,
-        /// preventing partial-update races. Note: a concurrent reader (e.g.
-        /// `get_params()`) may observe stale values during lock acquisition.
-        /// Use this when updating the full context (e.g. per-slice).
         pub fn set_all(architecture: Architecture, params: CircuitParams, wandb: Option<WANDB>) {
-            let mut arch_guard = ARCHITECTURE.write().unwrap_or_else(|e| e.into_inner());
-            let mut params_guard = CIRCUITPARAMS.write().unwrap_or_else(|e| e.into_inner());
-            let mut wandb_guard = W_AND_B.write().unwrap_or_else(|e| e.into_inner());
-            *arch_guard = Some(architecture);
-            *params_guard = Some(params);
-            *wandb_guard = wandb;
+            ARCHITECTURE.with(|a| *a.borrow_mut() = Some(architecture));
+            CIRCUITPARAMS.with(|p| *p.borrow_mut() = Some(params));
+            W_AND_B.with(|w| *w.borrow_mut() = wandb);
         }
 
-        /// Overwrites the stored architecture. WARNING: concurrent partial
-        /// updates via individual setters are not atomic — prefer `set_all`
-        /// when updating multiple fields, or ensure external synchronization.
         pub fn set_architecture(meta: Architecture) {
-            let mut guard = ARCHITECTURE.write().unwrap_or_else(|e| e.into_inner());
-            *guard = Some(meta);
+            ARCHITECTURE.with(|a| *a.borrow_mut() = Some(meta));
         }
 
-        /// Overwrites the stored circuit parameters. WARNING: concurrent
-        /// partial updates via individual setters are not atomic — prefer
-        /// `set_all` or ensure external synchronization.
         pub fn set_params(meta: CircuitParams) {
-            let mut guard = CIRCUITPARAMS.write().unwrap_or_else(|e| e.into_inner());
-            *guard = Some(meta);
+            CIRCUITPARAMS.with(|p| *p.borrow_mut() = Some(meta));
         }
 
-        /// Overwrites the stored weights & biases. WARNING: concurrent
-        /// partial updates via individual setters are not atomic — prefer
-        /// `set_all` or ensure external synchronization.
         pub fn set_wandb(meta: WANDB) {
-            let mut guard = W_AND_B.write().unwrap_or_else(|e| e.into_inner());
-            *guard = Some(meta);
+            W_AND_B.with(|w| *w.borrow_mut() = Some(meta));
         }
 
         pub fn clear_params() {
-            let mut guard = CIRCUITPARAMS.write().unwrap_or_else(|e| e.into_inner());
-            *guard = None;
+            CIRCUITPARAMS.with(|p| *p.borrow_mut() = None);
         }
 
         pub fn get_architecture() -> Result<Architecture, OnnxContextError> {
-            let guard = ARCHITECTURE.read().unwrap_or_else(|e| e.into_inner());
-            guard.clone().ok_or(OnnxContextError::ArchitectureNotSet)
+            ARCHITECTURE.with(|a| a.borrow().clone().ok_or(OnnxContextError::ArchitectureNotSet))
         }
 
         pub fn get_params() -> Result<CircuitParams, OnnxContextError> {
-            let guard = CIRCUITPARAMS.read().unwrap_or_else(|e| e.into_inner());
-            guard.clone().ok_or(OnnxContextError::CircuitParamsNotSet)
+            CIRCUITPARAMS.with(|p| p.borrow().clone().ok_or(OnnxContextError::CircuitParamsNotSet))
         }
 
         pub fn get_wandb() -> Result<WANDB, OnnxContextError> {
-            let guard = W_AND_B.read().unwrap_or_else(|e| e.into_inner());
-            guard.clone().ok_or(OnnxContextError::WandbNotSet)
+            W_AND_B.with(|w| w.borrow().clone().ok_or(OnnxContextError::WandbNotSet))
         }
     }
 }
