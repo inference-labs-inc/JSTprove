@@ -118,6 +118,16 @@ fn main() {
     let has_meta = matches.get_one::<String>("meta").is_some();
     let has_arch = matches.get_one::<String>("arch").is_some();
 
+    if !is_remainder && !cli_backend_explicit {
+        if let Some(circuit_path) = matches.get_one::<String>("circuit_path") {
+            if let Some(params) = try_load_metadata_from_circuit(circuit_path) {
+                if params.backend.is_remainder() {
+                    is_remainder = true;
+                }
+            }
+        }
+    }
+
     if !is_remainder && needs_full && (!has_meta || !has_arch) {
         eprintln!("Error: command '{cmd_type}' requires --meta and --arch arguments.");
         std::process::exit(1);

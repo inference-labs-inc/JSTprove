@@ -633,9 +633,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                                     let src_idx = input_layout.index(ch, soh, sow);
                                     let val = input_data[src_idx];
                                     window_elems[elem_pos][dest_idx] = val;
-                                    if val > max_val {
-                                        max_val = val;
-                                    }
+                                    max_val = max_val.max(val);
                                 }
                             }
                             max_values[dest_idx] = max_val;
@@ -646,10 +644,21 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let deltas: Vec<Vec<i64>> = (0..window_size)
                     .map(|i| {
                         (0..pad_pool)
-                            .map(|w| max_values[w] - window_elems[i][w])
-                            .collect()
+                            .map(|w| {
+                                let diff =
+                                    i128::from(max_values[w]) - i128::from(window_elems[i][w]);
+                                i64::try_from(diff).map_err(|_| {
+                                    anyhow::anyhow!(
+                                        "MaxPool {} delta overflow: {} - {}",
+                                        layer.name,
+                                        max_values[w],
+                                        window_elems[i][w]
+                                    )
+                                })
+                            })
+                            .collect::<anyhow::Result<Vec<i64>>>()
                     })
-                    .collect();
+                    .collect::<anyhow::Result<Vec<Vec<i64>>>>()?;
 
                 shreds.insert(format!("{}_max", layer.name), max_values.clone());
                 for i in 0..window_size {
