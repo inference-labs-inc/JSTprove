@@ -114,6 +114,8 @@ impl Circuit<Variable> {
             api.assert_is_equal(out, combined);
         }
 
+        api.set_outputs(combined_output.iter().copied().collect());
+
         // Constant placeholders required by the circuit framework to anchor
         // the constraint system when no other fixed-value wires are present.
         api.assert_is_equal(self.dummy[0], 1);
