@@ -212,7 +212,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let w_padded = pad_matrix(&w_transposed, k_dim, n_dim, k_padded, n_padded)?;
 
                 let input_padded_for_mm = pad_to_size(input_data, k_padded);
-                let mm = padded_matmul(&input_padded_for_mm, 1, k_padded, &w_padded, n_padded);
+                let mm = padded_matmul(&input_padded_for_mm, 1, k_padded, &w_padded, n_padded)?;
 
                 let bias_padded = if let Some(bias_name) = bias_tensor_name {
                     if let Some(bias_data) = layer.weights.get(bias_name) {
@@ -378,7 +378,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     pad_psize,
                     &kernel_padded,
                     pad_cout,
-                );
+                )?;
 
                 let result_size = pad_patches * pad_cout;
                 let bias_bc = if let Some(bias_name) = bias_tensor_name {
@@ -746,17 +746,31 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     .zip(mul_broadcast.iter())
                     .map(|(&x, &m)| {
                         let prod = x as i128 * m as i128;
-                        i64::try_from(prod).expect("BatchNorm mul overflows i64")
+                        i64::try_from(prod).map_err(|_| {
+                            anyhow::anyhow!(
+                                "BatchNorm {} mul overflows i64: {} * {}",
+                                layer.name,
+                                x,
+                                m
+                            )
+                        })
                     })
-                    .collect();
+                    .collect::<anyhow::Result<Vec<i64>>>()?;
                 let with_add: Vec<i64> = product
                     .iter()
                     .zip(add_broadcast.iter())
                     .map(|(&p, &a)| {
                         let sum = p as i128 + a as i128;
-                        i64::try_from(sum).expect("BatchNorm add overflows i64")
+                        i64::try_from(sum).map_err(|_| {
+                            anyhow::anyhow!(
+                                "BatchNorm {} add overflows i64: {} + {}",
+                                layer.name,
+                                p,
+                                a
+                            )
+                        })
                     })
-                    .collect();
+                    .collect::<anyhow::Result<Vec<i64>>>()?;
 
                 let (quotients, remainders) =
                     rescale::compute_rescale_array(&with_add, alpha, offset)?;
@@ -820,14 +834,24 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     a_padded
                         .iter()
                         .zip(b_padded.iter())
-                        .map(|(&a, &b)| a + b)
-                        .collect()
+                        .map(|(&a, &b)| {
+                            let sum = a as i128 + b as i128;
+                            i64::try_from(sum).map_err(|_| {
+                                anyhow::anyhow!("Add {} overflows i64: {} + {}", layer.name, a, b)
+                            })
+                        })
+                        .collect::<anyhow::Result<Vec<i64>>>()?
                 } else {
                     a_padded
                         .iter()
                         .zip(b_padded.iter())
-                        .map(|(&a, &b)| a - b)
-                        .collect()
+                        .map(|(&a, &b)| {
+                            let diff = a as i128 - b as i128;
+                            i64::try_from(diff).map_err(|_| {
+                                anyhow::anyhow!("Sub {} overflows i64: {} - {}", layer.name, a, b)
+                            })
+                        })
+                        .collect::<anyhow::Result<Vec<i64>>>()?
                 };
 
                 if !tensors.contains_key(input_b_name) {
@@ -973,7 +997,13 @@ fn compute_range_check_plan_with_overrides(
                     let kernel_shape = layer.get_ints_attr("kernel_shape").ok_or_else(|| {
                         anyhow::anyhow!("MaxPool {} missing kernel_shape attribute", layer.name)
                     })?;
-                    let window_size: usize = kernel_shape.iter().map(|&v| v as usize).product();
+                    anyhow::ensure!(
+                        kernel_shape.len() == 2,
+                        "MaxPool {} requires exactly 2D kernel_shape, got {} dims",
+                        layer.name,
+                        kernel_shape.len()
+                    );
+                    let window_size = kernel_shape[0] as usize * kernel_shape[1] as usize;
                     let entry = plan.entry(dnv).or_default();
                     for i in 0..window_size {
                         entry.push(format!("{}_d{}", layer.name, i));
@@ -987,7 +1017,13 @@ fn compute_range_check_plan_with_overrides(
     Ok(plan)
 }
 
-fn padded_matmul(a: &[i64], a_rows: usize, a_cols: usize, b: &[i64], b_cols: usize) -> Vec<i64> {
+fn padded_matmul(
+    a: &[i64],
+    a_rows: usize,
+    a_cols: usize,
+    b: &[i64],
+    b_cols: usize,
+) -> anyhow::Result<Vec<i64>> {
     let mut out = vec![0i64; a_rows * b_cols];
     for i in 0..a_rows {
         for j in 0..b_cols {
@@ -995,10 +1031,12 @@ fn padded_matmul(a: &[i64], a_rows: usize, a_cols: usize, b: &[i64], b_cols: usi
             for k in 0..a_cols {
                 sum += a[i * a_cols + k] as i128 * b[k * b_cols + j] as i128;
             }
-            out[i * b_cols + j] = i64::try_from(sum).expect("matmul accumulator overflows i64");
+            out[i * b_cols + j] = i64::try_from(sum).map_err(|_| {
+                anyhow::anyhow!("matmul accumulator overflows i64 at [{i}][{j}]: {sum}")
+            })?;
         }
     }
-    out
+    Ok(out)
 }
 
 fn broadcast_bias(bias: &[i64], bias_len: usize, total: usize) -> Vec<i64> {

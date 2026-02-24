@@ -107,7 +107,13 @@ pub fn compute_range_check_plan(model: &QuantizedModel) -> Result<BTreeMap<usize
                     let kernel_shape = layer.get_ints_attr("kernel_shape").ok_or_else(|| {
                         anyhow::anyhow!("MaxPool {} missing kernel_shape attribute", layer.name)
                     })?;
-                    let window_size: usize = kernel_shape.iter().map(|&v| v as usize).product();
+                    anyhow::ensure!(
+                        kernel_shape.len() == 2,
+                        "MaxPool {} requires exactly 2D kernel_shape, got {} dims",
+                        layer.name,
+                        kernel_shape.len()
+                    );
+                    let window_size = kernel_shape[0] as usize * kernel_shape[1] as usize;
                     let entry = plan.entry(dnv).or_default();
                     for i in 0..window_size {
                         entry.push(format!("{}_d{}", layer.name, i));
@@ -981,26 +987,29 @@ fn build_maxpool_layer(
         },
     );
 
-    let delta_nodes: Vec<_> = (0..window_size)
-        .map(|i| {
-            let name = format!("{}_d{}", layer.name, i);
-            let node = builder.add_input_shred(&name, pool_out_vars, committed);
-            manifest.insert(
-                name,
-                ShredEntry {
-                    num_vars: pool_out_vars,
-                    visibility: Visibility::Committed,
-                },
-            );
-            node
-        })
-        .collect();
+    let mut delta_nodes = Vec::with_capacity(window_size);
+    for i in 0..window_size {
+        let name = format!("{}_d{}", layer.name, i);
+        let node = builder.add_input_shred(&name, pool_out_vars, committed);
+        manifest.insert(
+            name,
+            ShredEntry {
+                num_vars: pool_out_vars,
+                visibility: Visibility::Committed,
+            },
+        );
+        delta_nodes.push(node);
+    }
 
-    let gate_nodes: Vec<_> = (0..window_size)
-        .map(|i| {
-            builder.add_identity_gate_node(input_node, gate_wiring[i].clone(), pool_out_vars, None)
-        })
-        .collect();
+    let mut gate_nodes = Vec::with_capacity(window_size);
+    for i in 0..window_size {
+        gate_nodes.push(builder.add_identity_gate_node(
+            input_node,
+            gate_wiring[i].clone(),
+            pool_out_vars,
+            None,
+        ));
+    }
 
     for i in 0..window_size {
         let chk =
@@ -1293,7 +1302,14 @@ pub fn pad_matrix(
         pad_rows,
         pad_cols
     );
-    let mut out = vec![0i64; pad_rows * pad_cols];
+    let alloc_size = pad_rows.checked_mul(pad_cols).ok_or_else(|| {
+        anyhow::anyhow!(
+            "pad_matrix: pad_rows * pad_cols overflow: {}x{}",
+            pad_rows,
+            pad_cols
+        )
+    })?;
+    let mut out = vec![0i64; alloc_size];
     for r in 0..orig_rows {
         for c in 0..orig_cols {
             out[r * pad_cols + c] = data[r * orig_cols + c];
