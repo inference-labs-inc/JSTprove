@@ -380,17 +380,29 @@ fn witness_from_f64<C: Config>(
     }
 
     let layered_circuit = load_circuit_from_bytes::<C>(circuit_bytes)?;
-
+    let witness_solver = load_witness_solver_from_bytes::<C>(solver_bytes)?;
+    let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
     let num_outputs = params.effective_output_dims();
-    let private_inputs = vec![CircuitField::<C>::from(1u32), CircuitField::<C>::from(1u32)];
-    let mut public_inputs: Vec<CircuitField<C>> =
-        Vec::with_capacity(input_arr.len() + num_outputs + 2);
-    public_inputs.extend_from_slice(&input_arr);
-    public_inputs.extend(std::iter::repeat_n(CircuitField::<C>::zero(), num_outputs));
-    public_inputs.push(CircuitField::<C>::from(params.scale_base));
-    public_inputs.push(CircuitField::<C>::from(params.scale_exponent));
 
-    let constraint_values = layered_circuit.eval_constraint_values(private_inputs, &public_inputs);
+    let mut assignment = Circuit::<CircuitField<C>>::default();
+    assignment.input_arr = input_arr.clone();
+    assignment.outputs = vec![CircuitField::<C>::zero(); num_outputs];
+    assignment.dummy[0] = CircuitField::<C>::from(1u32);
+    assignment.dummy[1] = CircuitField::<C>::from(1u32);
+    assignment.scale_base[0] = CircuitField::<C>::from(params.scale_base);
+    assignment.scale_exponent[0] = CircuitField::<C>::from(params.scale_exponent);
+
+    let probe_witness = witness_solver
+        .solve_witness_with_hints(&assignment, &hint_registry)
+        .map_err(|e| RunError::Witness(format!("probe pass: {e:?}")))?;
+
+    let (private_inputs, public_inputs) = probe_witness
+        .iter_scalar()
+        .next()
+        .ok_or_else(|| RunError::Witness("empty probe witness".into()))?;
+
+    let constraint_values =
+        layered_circuit.eval_constraint_values(private_inputs, &public_inputs);
 
     if constraint_values.len() < num_outputs {
         return Err(RunError::Witness(format!(
@@ -404,16 +416,8 @@ fn witness_from_f64<C: Config>(
         .map(|v| v.neg())
         .collect();
 
-    let mut assignment = Circuit::<CircuitField<C>>::default();
     assignment.input_arr = input_arr;
     assignment.outputs = computed_outputs;
-    assignment.dummy[0] = CircuitField::<C>::from(1u32);
-    assignment.dummy[1] = CircuitField::<C>::from(1u32);
-    assignment.scale_base[0] = CircuitField::<C>::from(params.scale_base);
-    assignment.scale_exponent[0] = CircuitField::<C>::from(params.scale_exponent);
-
-    let witness_solver = load_witness_solver_from_bytes::<C>(solver_bytes)?;
-    let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
 
     let witness = solve_and_validate_witness(
         &witness_solver,
