@@ -46,6 +46,19 @@ jobs:
             clang \
             protobuf-compiler
 
+      - name: Cache Rust dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            rust/jstprove_remainder/target
+            rust/jstprove_pyo3/target
+          key: ${{ runner.os }}-lint-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-lint-cargo-
+
       - name: Run cargo fmt check
         run: cargo fmt --all -- --check
 
@@ -86,7 +99,11 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            rust/jstprove_remainder/target
+            rust/jstprove_pyo3/target
+          key: ${{ runner.os }}-e2e-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-e2e-cargo-
 
       - name: Run Rust e2e tests (Remainder)
         run: cargo test --release --manifest-path rust/jstprove_remainder/Cargo.toml

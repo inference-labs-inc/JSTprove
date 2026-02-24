@@ -53,23 +53,18 @@ jobs:
       - name: Install Rust target
         run: rustup target add x86_64-unknown-linux-gnu
 
-      - name: Cache cargo registry
+      - name: Cache Rust dependencies
         uses: actions/cache@v5
         with:
-          path: ~/.cargo/registry
-          key: manylinux-2-28-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Cache cargo index
-        uses: actions/cache@v5
-        with:
-          path: ~/.cargo/git
-          key: manylinux-2-28-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Cache cargo build
-        uses: actions/cache@v5
-        with:
-          path: target
-          key: manylinux-2-28-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            rust/jstprove_pyo3/target
+            rust/jstprove_remainder/target
+          key: manylinux-2-28-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            manylinux-2-28-cargo-
 
       - name: Build wheel
         run: maturin build --release --target x86_64-unknown-linux-gnu --manylinux 2_28
@@ -129,23 +124,18 @@ jobs:
       - name: Install Rust target
         run: rustup target add aarch64-apple-darwin
 
-      - name: Cache cargo registry
+      - name: Cache Rust dependencies
         uses: actions/cache@v5
         with:
-          path: ~/.cargo/registry
-          key: macos-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Cache cargo index
-        uses: actions/cache@v5
-        with:
-          path: ~/.cargo/git
-          key: macos-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Cache cargo build
-        uses: actions/cache@v5
-        with:
-          path: target
-          key: macos-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            rust/jstprove_pyo3/target
+            rust/jstprove_remainder/target
+          key: macos-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            macos-cargo-
 
       - name: Build wheel
         run: maturin build --release --target aarch64-apple-darwin
