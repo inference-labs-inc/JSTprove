@@ -58,7 +58,7 @@ python/core/lib/*.dylib
 
 # Retain Specific Model Files
 *.onnx
-!python/models/models_onnx/*.onnx
+!rust/jstprove_remainder/models/*.onnx
 
 # Proving System
 Expander/
