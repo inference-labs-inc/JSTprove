@@ -1,48 +1,17 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
 
 [project]
-name = "JSTprove"
+name = "jstprove"
 version = "0.1.0"
 description = "Zero-knowledge proofs of ML inference on ONNX models"
 readme = "README.md"
 authors = [{ name = "Inference Labs Inc" }]
-requires-python = ">=3.12"
-dependencies = [
-    "numpy==2.2.6",
-    "onnx>=1.17.0,<2.0",
-    "onnxruntime==1.21.0",
-    "onnxruntime_extensions==0.14.0",
-    "psutil==7.0.0",
-    "torch>=2.6.0",
-    "transformers>=4.53.0",
-    "zstandard>=0.25.0",
-    "msgpack>=1.0.0",
-    "filelock>=3.20.3",
-    "protobuf>=6.33.5",
-    "urllib3>=2.6.3",
-]
+requires-python = ">=3.9"
 
-[dependency-groups]
-dev = [
-    "pytest>=8.3.5",
-]
-test = [
-    "pytest==8.3.5",
-    "pytest-html==4.1.1",
-    "pre-commit==4.3.0"
-]
-
-[project.scripts]
-jst = "python.frontend.cli:main"
-
-[tool.ruff.lint.per-file-ignores]
-"python/tests/circuit_e2e_tests/*.py" = ["F811"]
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["python*"]
-
-[tool.setuptools.package-data]
-"python.core.binaries" = ["*"]
+[tool.maturin]
+manifest-path = "rust/jstprove_pyo3/Cargo.toml"
+features = ["pyo3/extension-module"]
+python-source = "pysrc"
+module-name = "jstprove._native"

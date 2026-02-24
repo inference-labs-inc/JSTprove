@@ -32,11 +32,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@nightly
         with:
@@ -51,54 +46,51 @@ jobs:
             clang \
             protobuf-compiler
 
-      - name: Install UV
-        uses: astral-sh/setup-uv@v7
-
-      - name: Install the project
-        run: uv sync --group test
-
-      - name: Get changed files
-        id: changed-files
-        uses: tj-actions/changed-files@v47
+      - name: Cache Rust dependencies
+        uses: actions/cache@v5
         with:
-          files: |
-            **/*.py
-            **/*.rs
-
-      - name: Run pre-commit on changed files
-        if: steps.changed-files.outputs.any_changed == 'true'
-        uses: pre-commit/action@v3.0.1
-        env:
-          SKIP: fmt,clippy
-        with:
-          extra_args: --files ${{ steps.changed-files.outputs.all_changed_files}}
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            rust/jstprove_remainder/target
+            rust/jstprove_pyo3/target
+          key: ${{ runner.os }}-lint-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-lint-cargo-
 
       - name: Run cargo fmt check
         run: cargo fmt --all -- --check
 
-      - name: Run cargo clippy
+      - name: Run cargo clippy (workspace)
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Run cargo clippy (jstprove-remainder)
+        run: cargo clippy --manifest-path rust/jstprove_remainder/Cargo.toml --all-targets --all-features
+
+      - name: Run cargo clippy (jstprove-pyo3)
+        run: cargo clippy --manifest-path rust/jstprove_pyo3/Cargo.toml --all-targets --all-features -- -D warnings
 
   e2e-test:
     name: End-to-End Testing
     needs: formatting-and-linting
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    strategy:
-      matrix:
-        python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v6
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@nightly
         with:
           toolchain: ${{ env.RUST_NIGHTLY }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            pkg-config \
+            libclang-dev \
+            clang \
+            protobuf-compiler
 
       - name: Cache Rust dependencies
         uses: actions/cache@v5
@@ -107,28 +99,27 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            rust/jstprove_remainder/target
+            rust/jstprove_pyo3/target
+          key: ${{ runner.os }}-e2e-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-e2e-cargo-
 
-      - name: Install UV
-        uses: astral-sh/setup-uv@v7
+      - name: Run Rust e2e tests (Remainder)
+        run: cargo test --release --manifest-path rust/jstprove_remainder/Cargo.toml
 
-      - name: Install the project
-        run: uv sync --group test
+      - name: Run Rust e2e tests (Expander + Remainder)
+        run: cargo test --release -p jstprove_circuits --features remainder
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update && sudo apt-get install -y \
-            pkg-config \
-            libclang-dev \
-            clang
-
-      - name: Run E2E Tests
-        run: |
-          mkdir -p report
-          uv run pytest --e2e --model lenet --source onnx --html=report/e2e_tests.html
-
-      - name: Upload test report
-        uses: actions/upload-artifact@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
-          name: e2e-test-report-python-${{ matrix.python-version }}
-          path: report
+          python-version: "3.12"
+
+      - name: Install maturin and build bindings
+        run: |
+          pip install maturin
+          maturin develop --release
+
+      - name: Verify PyO3 bindings
+        run: python -c "from jstprove import Circuit; print('PyO3 bindings OK')"

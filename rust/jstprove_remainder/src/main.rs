@@ -122,14 +122,16 @@ fn main() -> anyhow::Result<()> {
             model,
             manifest,
             no_compress,
-        } => jstprove_remainder::runner::batch::run_batch_witness(&model, &manifest, !no_compress),
+        } => jstprove_remainder::runner::batch::run_batch_witness(&model, &manifest, !no_compress)
+            .map(|_| ()),
         Commands::BatchProve {
             model,
             manifest,
             no_compress,
-        } => jstprove_remainder::runner::batch::run_batch_prove(&model, &manifest, !no_compress),
+        } => jstprove_remainder::runner::batch::run_batch_prove(&model, &manifest, !no_compress)
+            .map(|_| ()),
         Commands::BatchVerify { model, manifest } => {
-            jstprove_remainder::runner::batch::run_batch_verify(&model, &manifest)
+            jstprove_remainder::runner::batch::run_batch_verify(&model, &manifest).map(|_| ())
         }
         Commands::PipeWitness { model, no_compress } => {
             jstprove_remainder::runner::pipe::run_pipe_witness(&model, !no_compress)
