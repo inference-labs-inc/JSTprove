@@ -307,14 +307,15 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let pad_right = pads.and_then(|p| p.get(3).copied()).unwrap_or(0) as usize;
 
                 let strides = layer.get_ints_attr("strides");
-                let stride_h = strides
-                    .and_then(|s| s.first())
-                    .map(|&v| v as usize)
-                    .unwrap_or(1);
-                let stride_w = strides
-                    .and_then(|s| s.get(1))
-                    .map(|&v| v as usize)
-                    .unwrap_or(1);
+                let raw_stride_h = strides.and_then(|s| s.first().copied()).unwrap_or(1);
+                let raw_stride_w = strides.and_then(|s| s.get(1).copied()).unwrap_or(1);
+                anyhow::ensure!(
+                    raw_stride_h > 0 && raw_stride_w > 0,
+                    "Conv {} stride_h={} stride_w={} must be positive",
+                    layer.name, raw_stride_h, raw_stride_w
+                );
+                let stride_h = raw_stride_h as usize;
+                let stride_w = raw_stride_w as usize;
 
                 let (input_ch, in_h, in_w) = input_layout.spatial_dims();
                 anyhow::ensure!(
@@ -539,14 +540,15 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let pool_w = kernel_shape[1] as usize;
 
                 let strides = layer.get_ints_attr("strides");
-                let stride_h = strides
-                    .and_then(|s| s.first())
-                    .map(|&v| v as usize)
-                    .unwrap_or(1);
-                let stride_w = strides
-                    .and_then(|s| s.get(1))
-                    .map(|&v| v as usize)
-                    .unwrap_or(1);
+                let raw_stride_h = strides.and_then(|s| s.first().copied()).unwrap_or(1);
+                let raw_stride_w = strides.and_then(|s| s.get(1).copied()).unwrap_or(1);
+                anyhow::ensure!(
+                    raw_stride_h > 0 && raw_stride_w > 0,
+                    "MaxPool {} stride_h={} stride_w={} must be positive",
+                    layer.name, raw_stride_h, raw_stride_w
+                );
+                let stride_h = raw_stride_h as usize;
+                let stride_w = raw_stride_w as usize;
 
                 anyhow::ensure!(
                     in_h >= pool_h && in_w >= pool_w,
@@ -1024,7 +1026,10 @@ fn padded_matmul(
     b: &[i64],
     b_cols: usize,
 ) -> anyhow::Result<Vec<i64>> {
-    let mut out = vec![0i64; a_rows * b_cols];
+    let alloc_size = a_rows.checked_mul(b_cols).ok_or_else(|| {
+        anyhow::anyhow!("padded_matmul: a_rows * b_cols overflow: {}x{}", a_rows, b_cols)
+    })?;
+    let mut out = vec![0i64; alloc_size];
     for i in 0..a_rows {
         for j in 0..b_cols {
             let mut sum = 0i128;
@@ -1193,14 +1198,15 @@ pub fn prepare_public_shreds(
                 let pad_bottom = pads.and_then(|p| p.get(2).copied()).unwrap_or(0) as usize;
                 let pad_right = pads.and_then(|p| p.get(3).copied()).unwrap_or(0) as usize;
                 let strides = layer.get_ints_attr("strides");
-                let stride_h = strides
-                    .and_then(|s| s.first())
-                    .map(|&v| v as usize)
-                    .unwrap_or(1);
-                let stride_w = strides
-                    .and_then(|s| s.get(1))
-                    .map(|&v| v as usize)
-                    .unwrap_or(1);
+                let raw_stride_h = strides.and_then(|s| s.first().copied()).unwrap_or(1);
+                let raw_stride_w = strides.and_then(|s| s.get(1).copied()).unwrap_or(1);
+                anyhow::ensure!(
+                    raw_stride_h > 0 && raw_stride_w > 0,
+                    "Conv {} stride_h={} stride_w={} must be positive",
+                    layer.name, raw_stride_h, raw_stride_w
+                );
+                let stride_h = raw_stride_h as usize;
+                let stride_w = raw_stride_w as usize;
                 let (_input_ch, in_h, in_w) = input_layout.spatial_dims();
                 let padded_h = in_h + pad_top + pad_bottom;
                 let padded_w = in_w + pad_left + pad_right;
@@ -1310,14 +1316,15 @@ pub fn prepare_public_shreds(
                 let pool_h = kernel_shape[0] as usize;
                 let pool_w = kernel_shape[1] as usize;
                 let strides = layer.get_ints_attr("strides");
-                let stride_h = strides
-                    .and_then(|s| s.first())
-                    .map(|&v| v as usize)
-                    .unwrap_or(1);
-                let stride_w = strides
-                    .and_then(|s| s.get(1))
-                    .map(|&v| v as usize)
-                    .unwrap_or(1);
+                let raw_stride_h = strides.and_then(|s| s.first().copied()).unwrap_or(1);
+                let raw_stride_w = strides.and_then(|s| s.get(1).copied()).unwrap_or(1);
+                anyhow::ensure!(
+                    raw_stride_h > 0 && raw_stride_w > 0,
+                    "MaxPool {} stride_h={} stride_w={} must be positive",
+                    layer.name, raw_stride_h, raw_stride_w
+                );
+                let stride_h = raw_stride_h as usize;
+                let stride_w = raw_stride_w as usize;
                 anyhow::ensure!(
                     in_h >= pool_h && in_w >= pool_w,
                     "MaxPool {}: input {}x{} smaller than kernel {}x{}",

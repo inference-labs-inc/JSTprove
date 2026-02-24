@@ -608,14 +608,15 @@ fn build_conv_layer(
     let pad_right = pads.and_then(|p| p.get(3).copied()).unwrap_or(0) as usize;
 
     let strides = layer.get_ints_attr("strides");
-    let stride_h = strides
-        .and_then(|s| s.first())
-        .map(|&v| v as usize)
-        .unwrap_or(1);
-    let stride_w = strides
-        .and_then(|s| s.get(1))
-        .map(|&v| v as usize)
-        .unwrap_or(1);
+    let raw_stride_h = strides.and_then(|s| s.first().copied()).unwrap_or(1);
+    let raw_stride_w = strides.and_then(|s| s.get(1).copied()).unwrap_or(1);
+    anyhow::ensure!(
+        raw_stride_h > 0 && raw_stride_w > 0,
+        "Conv {} stride_h={} stride_w={} must be positive",
+        layer.name, raw_stride_h, raw_stride_w
+    );
+    let stride_h = raw_stride_h as usize;
+    let stride_w = raw_stride_w as usize;
 
     let input_layout = tensor_layouts
         .get(input_name)
@@ -927,14 +928,15 @@ fn build_maxpool_layer(
     let pool_w = kernel_shape[1] as usize;
 
     let strides = layer.get_ints_attr("strides");
-    let stride_h = strides
-        .and_then(|s| s.first())
-        .map(|&v| v as usize)
-        .unwrap_or(1);
-    let stride_w = strides
-        .and_then(|s| s.get(1))
-        .map(|&v| v as usize)
-        .unwrap_or(1);
+    let raw_stride_h = strides.and_then(|s| s.first().copied()).unwrap_or(1);
+    let raw_stride_w = strides.and_then(|s| s.get(1).copied()).unwrap_or(1);
+    anyhow::ensure!(
+        raw_stride_h > 0 && raw_stride_w > 0,
+        "MaxPool {} stride_h={} stride_w={} must be positive",
+        layer.name, raw_stride_h, raw_stride_w
+    );
+    let stride_h = raw_stride_h as usize;
+    let stride_w = raw_stride_w as usize;
 
     anyhow::ensure!(
         in_h >= pool_h && in_w >= pool_w,
