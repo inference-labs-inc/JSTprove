@@ -38,7 +38,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
 
         let a_input = load_array_constants_or_get_inputs(
             api,
-            &input,
+            input,
             a_name,
             &self.initializer_a,
             LayerKind::Div,
