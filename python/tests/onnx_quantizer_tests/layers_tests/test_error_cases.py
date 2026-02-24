@@ -38,6 +38,8 @@ class TestErrorCases(BaseQuantizerTest):
         """Test each individual error test case"""
         layer_name, config, test_spec = test_case_data
 
+        scale_exponent, scale_base = 18, 2
+
         # Skips if layer is not a valid onnx layer
         self._check_validation_dependency(test_case_data)
 
@@ -49,7 +51,11 @@ class TestErrorCases(BaseQuantizerTest):
 
         # Ensures that expected test is in fact raised
         with pytest.raises(test_spec.expected_error) as exc:
-            quantizer.check_model(model)
+            quantizer.check_model(
+                model,
+                scale_base=scale_base,
+                scale_exponent=scale_exponent,
+            )
 
         # Ensures the error message is as expected
         if isinstance(test_spec.error_match, list):
