@@ -6,11 +6,7 @@ pub fn compute_rescale(value: i64, alpha: i64, offset: i64) -> (i64, i64) {
     (quotient, remainder)
 }
 
-pub fn compute_rescale_array(
-    values: &[i64],
-    alpha: i64,
-    offset: i64,
-) -> (Vec<i64>, Vec<i64>) {
+pub fn compute_rescale_array(values: &[i64], alpha: i64, offset: i64) -> (Vec<i64>, Vec<i64>) {
     let mut quotients = Vec::with_capacity(values.len());
     let mut remainders = Vec::with_capacity(values.len());
     for &v in values {

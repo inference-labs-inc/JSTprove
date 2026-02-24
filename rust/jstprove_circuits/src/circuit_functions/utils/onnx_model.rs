@@ -39,6 +39,12 @@ pub struct CircuitParams {
     pub n_bits_config: HashMap<String, usize>,
     #[serde(default)]
     pub weights_as_inputs: bool,
+    #[serde(default = "default_backend")]
+    pub backend: String,
+}
+
+fn default_backend() -> String {
+    "expander".to_string()
 }
 
 impl CircuitParams {

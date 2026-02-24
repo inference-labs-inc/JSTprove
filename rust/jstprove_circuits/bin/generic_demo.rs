@@ -1,3 +1,5 @@
+use std::io::BufReader;
+
 use jstprove_circuits::circuit_functions::utils::onnx_model::{Architecture, CircuitParams, WANDB};
 
 use jstprove_circuits::io::io_reader::FileReader;
@@ -24,8 +26,9 @@ fn load_wandb(matches: &clap::ArgMatches) -> Result<Option<WANDB>, String> {
 
 fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool) {
     let meta_file_path = get_arg(matches, "meta").unwrap();
-    let meta_file = std::fs::read_to_string(&meta_file_path).expect("Failed to read metadata file");
-    let params: CircuitParams = serde_json::from_str(&meta_file).expect("Invalid metadata JSON");
+    let meta_file = std::fs::File::open(&meta_file_path).expect("Failed to open metadata file");
+    let params: CircuitParams =
+        rmp_serde::decode::from_read(BufReader::new(meta_file)).expect("Invalid metadata msgpack");
     let wandb = match load_wandb(matches) {
         Ok(w) => w,
         Err(e) => {
@@ -84,6 +87,12 @@ fn main() {
     let matches = get_args();
 
     let cmd_type = get_arg(&matches, "type").unwrap_or_default();
+    let backend = matches
+        .get_one::<String>("backend")
+        .map(String::as_str)
+        .unwrap_or("expander");
+    let is_remainder = backend == "remainder";
+
     let needs_meta = ONNX_META_COMMANDS.contains(&cmd_type.as_str())
         || ONNX_FULL_COMMANDS.contains(&cmd_type.as_str());
     let needs_full = ONNX_FULL_COMMANDS.contains(&cmd_type.as_str());
@@ -91,44 +100,60 @@ fn main() {
     let has_meta = matches.get_one::<String>("meta").is_some();
     let has_arch = matches.get_one::<String>("arch").is_some();
 
-    if needs_full && (!has_meta || !has_arch) {
+    if !is_remainder && needs_full && (!has_meta || !has_arch) {
         eprintln!("Error: command '{cmd_type}' requires --meta and --arch arguments.");
         std::process::exit(1);
     }
 
-    if has_meta {
-        set_onnx_context(&matches, needs_full);
-    } else if needs_meta {
-        let circuit_path = matches
-            .get_one::<String>("circuit_path")
-            .expect("command requires --meta or -c with bundled metadata");
-        if let Some(params) = try_load_metadata_from_circuit(circuit_path) {
-            let wandb = match load_wandb(&matches) {
-                Ok(w) => w,
-                Err(e) => {
-                    eprintln!("Error: {e}");
+    if !is_remainder {
+        if has_meta {
+            set_onnx_context(&matches, needs_full);
+        } else if needs_meta {
+            let circuit_path = matches
+                .get_one::<String>("circuit_path")
+                .expect("command requires --meta or -c with bundled metadata");
+            if let Some(params) = try_load_metadata_from_circuit(circuit_path) {
+                let wandb = match load_wandb(&matches) {
+                    Ok(w) => w,
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        std::process::exit(1);
+                    }
+                };
+                if params.weights_as_inputs && wandb.is_none() {
+                    eprintln!(
+                        "Error: command '{cmd_type}' requires --wandb (weights_as_inputs is enabled in bundled metadata)."
+                    );
                     std::process::exit(1);
                 }
-            };
-            if params.weights_as_inputs && wandb.is_none() {
+                OnnxContext::set_params(params);
+                if let Some(w) = wandb {
+                    OnnxContext::set_wandb(w);
+                }
+            } else {
                 eprintln!(
-                    "Error: command '{cmd_type}' requires --wandb (weights_as_inputs is enabled in bundled metadata)."
+                    "Error: command '{cmd_type}' requires --meta or circuit .msgpack with bundled metadata."
                 );
                 std::process::exit(1);
             }
-            OnnxContext::set_params(params);
-            if let Some(w) = wandb {
-                OnnxContext::set_wandb(w);
-            }
-        } else {
-            eprintln!(
-                "Error: command '{cmd_type}' requires --meta or circuit .msgpack with bundled metadata."
-            );
-            std::process::exit(1);
         }
     }
 
-    let metadata = OnnxContext::get_params().ok();
+    let mut metadata = OnnxContext::get_params().ok();
+    if is_remainder {
+        let params = metadata.get_or_insert_with(|| CircuitParams {
+            scale_base: 2,
+            scale_exponent: 18,
+            rescale_config: std::collections::HashMap::new(),
+            inputs: vec![],
+            outputs: vec![],
+            freivalds_reps: 1,
+            n_bits_config: std::collections::HashMap::new(),
+            weights_as_inputs: false,
+            backend: "remainder".to_string(),
+        });
+        params.backend = "remainder".to_string();
+    }
 
     if let Err(err) = handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(
         &matches,

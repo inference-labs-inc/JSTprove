@@ -1,8 +1,10 @@
 use std::collections::{BTreeMap, HashMap};
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use frontend::abstract_expr::AbstractExpression;
-use frontend::layouter::builder::{CircuitBuilder, Circuit, InputLayerNodeRef, LayerVisibility, NodeRef};
+use frontend::layouter::builder::{
+    Circuit, CircuitBuilder, InputLayerNodeRef, LayerVisibility, NodeRef,
+};
 use shared_types::Fr;
 
 use crate::onnx::graph::OpType;
@@ -38,15 +40,26 @@ pub struct BuildResult {
 
 #[derive(Debug, Clone)]
 pub enum SpatialInfo {
-    CHW { c: usize, h: usize, w: usize },
-    HWC { h: usize, w: usize, c: usize, stride_c: usize },
+    CHW {
+        c: usize,
+        h: usize,
+        w: usize,
+    },
+    HWC {
+        h: usize,
+        w: usize,
+        c: usize,
+        stride_c: usize,
+    },
 }
 
 impl SpatialInfo {
     pub fn index(&self, c: usize, h: usize, w: usize) -> usize {
         match self {
             SpatialInfo::CHW { h: hd, w: wd, .. } => c * hd * wd + h * wd + w,
-            SpatialInfo::HWC { w: wd, stride_c, .. } => (h * wd + w) * stride_c + c,
+            SpatialInfo::HWC {
+                w: wd, stride_c, ..
+            } => (h * wd + w) * stride_c + c,
         }
     }
 
@@ -76,7 +89,9 @@ pub fn compute_range_check_plan(model: &QuantizedModel) -> Result<BTreeMap<usize
     for layer in model.graph.iter_topo() {
         match layer.op_type {
             OpType::Gemm | OpType::Conv | OpType::BatchNormalization => {
-                plan.entry(exponent).or_default().push(format!("{}_r", layer.name));
+                plan.entry(exponent)
+                    .or_default()
+                    .push(format!("{}_r", layer.name));
             }
             OpType::Relu => {
                 if let Some(n_bits) = layer.n_bits {
@@ -89,8 +104,9 @@ pub fn compute_range_check_plan(model: &QuantizedModel) -> Result<BTreeMap<usize
             OpType::MaxPool => {
                 if let Some(n_bits) = layer.n_bits {
                     let dnv = delta_table_nv(n_bits, exponent);
-                    let kernel_shape = layer.get_ints_attr("kernel_shape")
-                        .ok_or_else(|| anyhow::anyhow!("MaxPool {} missing kernel_shape attribute", layer.name))?;
+                    let kernel_shape = layer.get_ints_attr("kernel_shape").ok_or_else(|| {
+                        anyhow::anyhow!("MaxPool {} missing kernel_shape attribute", layer.name)
+                    })?;
                     let window_size: usize = kernel_shape.iter().map(|&v| v as usize).product();
                     let entry = plan.entry(dnv).or_default();
                     for i in 0..window_size {
@@ -120,12 +136,21 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
 
     let input_vars = num_vars_for(input_size);
 
-    let input_shred_name = model.graph.input_names.first()
+    let input_shred_name = model
+        .graph
+        .input_names
+        .first()
         .ok_or_else(|| anyhow::anyhow!("model has no input names defined"))?
         .clone();
 
     let input_node = builder.add_input_shred(&input_shred_name, input_vars, &public);
-    manifest.insert(input_shred_name.clone(), ShredEntry { num_vars: input_vars, visibility: Visibility::Public });
+    manifest.insert(
+        input_shred_name.clone(),
+        ShredEntry {
+            num_vars: input_vars,
+            visibility: Visibility::Public,
+        },
+    );
 
     let mut tensor_nodes: HashMap<String, NodeRef<Fr>> = HashMap::new();
     let mut tensor_num_vars: HashMap<String, usize> = HashMap::new();
@@ -140,7 +165,11 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
         if shape.len() == 3 {
             tensor_layouts.insert(
                 name.clone(),
-                SpatialInfo::CHW { c: shape[0], h: shape[1], w: shape[2] },
+                SpatialInfo::CHW {
+                    c: shape[0],
+                    h: shape[1],
+                    w: shape[2],
+                },
             );
         }
     }
@@ -250,14 +279,27 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 )?;
             }
             OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
-                let input_name = layer.inputs.first()
+                let input_name = layer
+                    .inputs
+                    .first()
                     .ok_or_else(|| anyhow::anyhow!("shape op {} has no inputs", layer.name))?;
-                let node = tensor_nodes.get(input_name)
-                    .ok_or_else(|| anyhow::anyhow!("shape op {} input {} not in tensor_nodes", layer.name, input_name))?
+                let node = tensor_nodes
+                    .get(input_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "shape op {} input {} not in tensor_nodes",
+                            layer.name,
+                            input_name
+                        )
+                    })?
                     .clone();
-                let nv = tensor_num_vars.get(input_name)
-                    .copied()
-                    .ok_or_else(|| anyhow::anyhow!("shape op {} input {} has no num_vars", layer.name, input_name))?;
+                let nv = tensor_num_vars.get(input_name).copied().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "shape op {} input {} has no num_vars",
+                        layer.name,
+                        input_name
+                    )
+                })?;
                 let layout = tensor_layouts.get(input_name).cloned();
                 for out in &layer.outputs {
                     tensor_nodes.insert(out.clone(), node.clone());
@@ -268,21 +310,40 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 }
             }
             other => {
-                bail!("circuit builder: unsupported op type {:?} in layer {}", other, layer.name);
+                bail!(
+                    "circuit builder: unsupported op type {:?} in layer {}",
+                    other,
+                    layer.name
+                );
             }
         }
-
     }
 
-    let output_vars = tensor_num_vars.get(declared_output)
+    let output_vars = tensor_num_vars
+        .get(declared_output)
         .copied()
-        .ok_or_else(|| anyhow::anyhow!("declared output '{}' not found in tensor_num_vars", declared_output))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "declared output '{}' not found in tensor_num_vars",
+                declared_output
+            )
+        })?;
     let expected_name = "expected_output".to_string();
     let expected_node = builder.add_input_shred(&expected_name, output_vars, &public);
-    manifest.insert(expected_name, ShredEntry { num_vars: output_vars, visibility: Visibility::Public });
+    manifest.insert(
+        expected_name,
+        ShredEntry {
+            num_vars: output_vars,
+            visibility: Visibility::Public,
+        },
+    );
 
-    let output_node = tensor_nodes.get(declared_output)
-        .ok_or_else(|| anyhow::anyhow!("declared output '{}' not found in tensor_nodes", declared_output))?;
+    let output_node = tensor_nodes.get(declared_output).ok_or_else(|| {
+        anyhow::anyhow!(
+            "declared output '{}' not found in tensor_nodes",
+            declared_output
+        )
+    })?;
     let out_check = builder.add_sector(output_node.expr() - expected_node.expr());
     builder.set_output(&out_check);
 
@@ -291,7 +352,10 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
 
         let mut checks_by_key: BTreeMap<(usize, usize), Vec<RangeCheckRequest>> = BTreeMap::new();
         for rc in range_checks {
-            checks_by_key.entry((rc.table_nv, rc.node_nv)).or_default().push(rc);
+            checks_by_key
+                .entry((rc.table_nv, rc.node_nv))
+                .or_default()
+                .push(rc);
         }
 
         let mut table_nodes: HashMap<usize, NodeRef<Fr>> = HashMap::new();
@@ -299,7 +363,13 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
             if !table_nodes.contains_key(&table_nv) {
                 let table_shred_name = format!("range_table_{}", table_nv);
                 let table_node = builder.add_input_shred(&table_shred_name, table_nv, &public);
-                manifest.insert(table_shred_name, ShredEntry { num_vars: table_nv, visibility: Visibility::Public });
+                manifest.insert(
+                    table_shred_name,
+                    ShredEntry {
+                        num_vars: table_nv,
+                        visibility: Visibility::Public,
+                    },
+                );
                 table_nodes.insert(table_nv, table_node);
             }
         }
@@ -315,11 +385,24 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
             for i in 0..dummy_count {
                 let dummy_name = format!("range_dummy_t{}_n{}_{}", table_nv, node_nv, i);
                 let dummy_node = builder.add_input_shred(&dummy_name, *node_nv, &committed);
-                manifest.insert(dummy_name.clone(), ShredEntry { num_vars: *node_nv, visibility: Visibility::Committed });
+                manifest.insert(
+                    dummy_name.clone(),
+                    ShredEntry {
+                        num_vars: *node_nv,
+                        visibility: Visibility::Committed,
+                    },
+                );
 
                 let dummy_mults_name = format!("{}_mults", dummy_name);
-                let dummy_mults_node = builder.add_input_shred(&dummy_mults_name, *table_nv, &committed);
-                manifest.insert(dummy_mults_name, ShredEntry { num_vars: *table_nv, visibility: Visibility::Committed });
+                let dummy_mults_node =
+                    builder.add_input_shred(&dummy_mults_name, *table_nv, &committed);
+                manifest.insert(
+                    dummy_mults_name,
+                    ShredEntry {
+                        num_vars: *table_nv,
+                        visibility: Visibility::Committed,
+                    },
+                );
 
                 builder.add_lookup_constraint(&lookup_table, &dummy_node, &dummy_mults_node);
             }
@@ -327,7 +410,13 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
             for rc in requests {
                 let mults_name = format!("{}_mults", rc.shred_name);
                 let mults_node = builder.add_input_shred(&mults_name, *table_nv, &committed);
-                manifest.insert(mults_name, ShredEntry { num_vars: *table_nv, visibility: Visibility::Committed });
+                manifest.insert(
+                    mults_name,
+                    ShredEntry {
+                        num_vars: *table_nv,
+                        visibility: Visibility::Committed,
+                    },
+                );
 
                 builder.add_lookup_constraint(&lookup_table, &rc.node, &mults_node);
             }
@@ -351,17 +440,36 @@ fn build_gemm_layer(
     range_checks: &mut Vec<RangeCheckRequest>,
 ) -> Result<()> {
     let alpha_fr = i64_to_fr(scale_config.alpha);
-    let input_name = layer.inputs.first()
+    let input_name = layer
+        .inputs
+        .first()
         .ok_or_else(|| anyhow::anyhow!("Gemm {} has no input", layer.name))?;
-    let weight_tensor_name = layer.inputs.get(1)
+    let weight_tensor_name = layer
+        .inputs
+        .get(1)
         .ok_or_else(|| anyhow::anyhow!("Gemm {} has no weight input", layer.name))?;
 
-    let weight_data = layer.weights.get(weight_tensor_name)
-        .ok_or_else(|| anyhow::anyhow!("Gemm {} missing weight tensor {}", layer.name, weight_tensor_name))?;
+    let weight_data = layer.weights.get(weight_tensor_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Gemm {} missing weight tensor {}",
+            layer.name,
+            weight_tensor_name
+        )
+    })?;
 
-    let trans_a = layer.get_int_attr("transA").map(|v| v != 0).unwrap_or(false);
-    anyhow::ensure!(!trans_a, "Gemm {} has transA=1 which is not supported", layer.name);
-    let trans_b = layer.get_int_attr("transB").map(|v| v != 0).unwrap_or(false);
+    let trans_a = layer
+        .get_int_attr("transA")
+        .map(|v| v != 0)
+        .unwrap_or(false);
+    anyhow::ensure!(
+        !trans_a,
+        "Gemm {} has transA=1 which is not supported",
+        layer.name
+    );
+    let trans_b = layer
+        .get_int_attr("transB")
+        .map(|v| v != 0)
+        .unwrap_or(false);
 
     let w_shape = weight_data.shape();
     let (w_rows, w_cols) = if w_shape.len() >= 2 {
@@ -381,28 +489,52 @@ fn build_gemm_layer(
 
     let weight_shred_name = format!("{}_weight", layer.name);
     let weight_node = builder.add_input_shred(&weight_shred_name, k_vars + n_vars, public);
-    manifest.insert(weight_shred_name, ShredEntry { num_vars: k_vars + n_vars, visibility: Visibility::Public });
+    manifest.insert(
+        weight_shred_name,
+        ShredEntry {
+            num_vars: k_vars + n_vars,
+            visibility: Visibility::Public,
+        },
+    );
 
     let bias_shred_name = format!("{}_bias", layer.name);
     let bias_node = builder.add_input_shred(&bias_shred_name, n_vars, public);
-    manifest.insert(bias_shred_name, ShredEntry { num_vars: n_vars, visibility: Visibility::Public });
+    manifest.insert(
+        bias_shred_name,
+        ShredEntry {
+            num_vars: n_vars,
+            visibility: Visibility::Public,
+        },
+    );
 
     let q_name = format!("{}_q", layer.name);
     let r_name = format!("{}_r", layer.name);
     let q_node = builder.add_input_shred(&q_name, n_vars, committed);
     let r_node = builder.add_input_shred(&r_name, n_vars, committed);
-    manifest.insert(q_name, ShredEntry { num_vars: n_vars, visibility: Visibility::Committed });
-    manifest.insert(r_name.clone(), ShredEntry { num_vars: n_vars, visibility: Visibility::Committed });
-
-    let input_node = tensor_nodes.get(input_name)
-        .ok_or_else(|| anyhow::anyhow!("Gemm {} input {} not in tensor_nodes", layer.name, input_name))?;
-
-    let mm_node = builder.add_matmult_node(
-        input_node,
-        (0, k_vars),
-        &weight_node,
-        (k_vars, n_vars),
+    manifest.insert(
+        q_name,
+        ShredEntry {
+            num_vars: n_vars,
+            visibility: Visibility::Committed,
+        },
     );
+    manifest.insert(
+        r_name.clone(),
+        ShredEntry {
+            num_vars: n_vars,
+            visibility: Visibility::Committed,
+        },
+    );
+
+    let input_node = tensor_nodes.get(input_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Gemm {} input {} not in tensor_nodes",
+            layer.name,
+            input_name
+        )
+    })?;
+
+    let mm_node = builder.add_matmult_node(input_node, (0, k_vars), &weight_node, (k_vars, n_vars));
 
     let rescale_check = builder.add_sector(
         mm_node.expr() + bias_node.expr()
@@ -439,13 +571,18 @@ fn build_conv_layer(
     range_checks: &mut Vec<RangeCheckRequest>,
 ) -> Result<()> {
     let alpha_fr = i64_to_fr(scale_config.alpha);
-    let input_name = layer.inputs.first()
+    let input_name = layer
+        .inputs
+        .first()
         .ok_or_else(|| anyhow::anyhow!("Conv {} has no input", layer.name))?;
-    let weight_tensor_name = layer.inputs.get(1)
+    let weight_tensor_name = layer
+        .inputs
+        .get(1)
         .ok_or_else(|| anyhow::anyhow!("Conv {} has no weight", layer.name))?;
 
-    let weight_data = layer.weights.get(weight_tensor_name)
-        .ok_or_else(|| anyhow::anyhow!("Conv {} missing weight {}", layer.name, weight_tensor_name))?;
+    let weight_data = layer.weights.get(weight_tensor_name).ok_or_else(|| {
+        anyhow::anyhow!("Conv {} missing weight {}", layer.name, weight_tensor_name)
+    })?;
 
     let w_shape = weight_data.shape();
     if w_shape.len() < 4 {
@@ -463,18 +600,45 @@ fn build_conv_layer(
     let pad_right = pads.and_then(|p| p.get(3).copied()).unwrap_or(0) as usize;
 
     let strides = layer.get_ints_attr("strides");
-    let stride_h = strides.and_then(|s| s.first()).map(|&v| v as usize).unwrap_or(1);
-    let stride_w = strides.and_then(|s| s.get(1)).map(|&v| v as usize).unwrap_or(1);
+    let stride_h = strides
+        .and_then(|s| s.first())
+        .map(|&v| v as usize)
+        .unwrap_or(1);
+    let stride_w = strides
+        .and_then(|s| s.get(1))
+        .map(|&v| v as usize)
+        .unwrap_or(1);
 
-    let input_layout = tensor_layouts.get(input_name)
-        .ok_or_else(|| anyhow::anyhow!("Conv {} input {} has no spatial layout", layer.name, input_name))?
+    let input_layout = tensor_layouts
+        .get(input_name)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Conv {} input {} has no spatial layout",
+                layer.name,
+                input_name
+            )
+        })?
         .clone();
 
     let (input_ch, in_h, in_w) = input_layout.spatial_dims();
-    anyhow::ensure!(input_ch == c_in, "Conv {}: weight c_in {} does not match input channels {}", layer.name, c_in, input_ch);
+    anyhow::ensure!(
+        input_ch == c_in,
+        "Conv {}: weight c_in {} does not match input channels {}",
+        layer.name,
+        c_in,
+        input_ch
+    );
     let padded_h = in_h + pad_top + pad_bottom;
     let padded_w = in_w + pad_left + pad_right;
-    anyhow::ensure!(padded_h >= kh && padded_w >= kw, "Conv {}: padded input {}x{} smaller than kernel {}x{}", layer.name, padded_h, padded_w, kh, kw);
+    anyhow::ensure!(
+        padded_h >= kh && padded_w >= kw,
+        "Conv {}: padded input {}x{} smaller than kernel {}x{}",
+        layer.name,
+        padded_h,
+        padded_w,
+        kh,
+        kw
+    );
     let out_h = (padded_h - kh) / stride_h + 1;
     let out_w = (padded_w - kw) / stride_w + 1;
     let patch_size = c_in * kh * kw;
@@ -499,10 +663,14 @@ fn build_conv_layer(
                     for kc in 0..kw {
                         let abs_h = oh * stride_h + kr;
                         let abs_w = ow * stride_w + kc;
-                        if abs_h < pad_top || abs_w < pad_left { continue; }
+                        if abs_h < pad_top || abs_w < pad_left {
+                            continue;
+                        }
                         let ih = abs_h - pad_top;
                         let iw = abs_w - pad_left;
-                        if ih >= in_h || iw >= in_w { continue; }
+                        if ih >= in_h || iw >= in_w {
+                            continue;
+                        }
                         let col = c * kh * kw + kr * kw + kc;
                         let src = input_layout.index(c, ih, iw);
                         let dest = patch * pad_psize + col;
@@ -513,23 +681,52 @@ fn build_conv_layer(
         }
     }
 
-    let input_node = tensor_nodes.get(input_name)
-        .ok_or_else(|| anyhow::anyhow!("Conv {} input {} not in tensor_nodes", layer.name, input_name))?;
+    let input_node = tensor_nodes.get(input_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Conv {} input {} not in tensor_nodes",
+            layer.name,
+            input_name
+        )
+    })?;
 
     let weight_shred_name = format!("{}_weight", layer.name);
     let weight_node = builder.add_input_shred(&weight_shred_name, weight_vars, public);
-    manifest.insert(weight_shred_name, ShredEntry { num_vars: weight_vars, visibility: Visibility::Public });
+    manifest.insert(
+        weight_shred_name,
+        ShredEntry {
+            num_vars: weight_vars,
+            visibility: Visibility::Public,
+        },
+    );
 
     let bias_shred_name = format!("{}_bias", layer.name);
     let bias_node = builder.add_input_shred(&bias_shred_name, result_vars, public);
-    manifest.insert(bias_shred_name, ShredEntry { num_vars: result_vars, visibility: Visibility::Public });
+    manifest.insert(
+        bias_shred_name,
+        ShredEntry {
+            num_vars: result_vars,
+            visibility: Visibility::Public,
+        },
+    );
 
     let q_name = format!("{}_q", layer.name);
     let r_name = format!("{}_r", layer.name);
     let q_node = builder.add_input_shred(&q_name, result_vars, committed);
     let r_node = builder.add_input_shred(&r_name, result_vars, committed);
-    manifest.insert(q_name, ShredEntry { num_vars: result_vars, visibility: Visibility::Committed });
-    manifest.insert(r_name.clone(), ShredEntry { num_vars: result_vars, visibility: Visibility::Committed });
+    manifest.insert(
+        q_name,
+        ShredEntry {
+            num_vars: result_vars,
+            visibility: Visibility::Committed,
+        },
+    );
+    manifest.insert(
+        r_name.clone(),
+        ShredEntry {
+            num_vars: result_vars,
+            visibility: Visibility::Committed,
+        },
+    );
 
     let im2col_node = builder.add_identity_gate_node(input_node, wiring, im2col_vars, None);
     let mm_node = builder.add_matmult_node(
@@ -556,9 +753,15 @@ fn build_conv_layer(
     for out in &layer.outputs {
         tensor_nodes.insert(out.clone(), q_node.clone());
         tensor_num_vars.insert(out.clone(), result_vars);
-        tensor_layouts.insert(out.clone(), SpatialInfo::HWC {
-            h: out_h, w: out_w, c: c_out, stride_c: pad_cout,
-        });
+        tensor_layouts.insert(
+            out.clone(),
+            SpatialInfo::HWC {
+                h: out_h,
+                w: out_w,
+                c: c_out,
+                stride_c: pad_cout,
+            },
+        );
     }
 
     Ok(())
@@ -576,12 +779,14 @@ fn build_relu_layer(
     scale_config: &ScaleConfig,
     range_checks: &mut Vec<RangeCheckRequest>,
 ) -> Result<()> {
-    let input_name = layer.inputs.first()
+    let input_name = layer
+        .inputs
+        .first()
         .ok_or_else(|| anyhow::anyhow!("Relu {} has no input", layer.name))?;
 
-    let nv = tensor_num_vars.get(input_name)
-        .copied()
-        .ok_or_else(|| anyhow::anyhow!("Relu {} input {} has no num_vars", layer.name, input_name))?;
+    let nv = tensor_num_vars.get(input_name).copied().ok_or_else(|| {
+        anyhow::anyhow!("Relu {} input {} has no num_vars", layer.name, input_name)
+    })?;
 
     let zero_name = format!("{}_zero", layer.name);
     let max_name = format!("{}_max", layer.name);
@@ -593,13 +798,42 @@ fn build_relu_layer(
     let di_node = builder.add_input_shred(&di_name, nv, committed);
     let dz_node = builder.add_input_shred(&dz_name, nv, committed);
 
-    manifest.insert(zero_name, ShredEntry { num_vars: nv, visibility: Visibility::Public });
-    manifest.insert(max_name.clone(), ShredEntry { num_vars: nv, visibility: Visibility::Committed });
-    manifest.insert(di_name.clone(), ShredEntry { num_vars: nv, visibility: Visibility::Committed });
-    manifest.insert(dz_name.clone(), ShredEntry { num_vars: nv, visibility: Visibility::Committed });
+    manifest.insert(
+        zero_name,
+        ShredEntry {
+            num_vars: nv,
+            visibility: Visibility::Public,
+        },
+    );
+    manifest.insert(
+        max_name.clone(),
+        ShredEntry {
+            num_vars: nv,
+            visibility: Visibility::Committed,
+        },
+    );
+    manifest.insert(
+        di_name.clone(),
+        ShredEntry {
+            num_vars: nv,
+            visibility: Visibility::Committed,
+        },
+    );
+    manifest.insert(
+        dz_name.clone(),
+        ShredEntry {
+            num_vars: nv,
+            visibility: Visibility::Committed,
+        },
+    );
 
-    let input_node = tensor_nodes.get(input_name)
-        .ok_or_else(|| anyhow::anyhow!("Relu {} input {} not in tensor_nodes", layer.name, input_name))?;
+    let input_node = tensor_nodes.get(input_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Relu {} input {} not in tensor_nodes",
+            layer.name,
+            input_name
+        )
+    })?;
 
     let c1 = builder.add_sector(max_node.expr() - input_node.expr() - di_node.expr());
     builder.set_output(&c1);
@@ -607,9 +841,10 @@ fn build_relu_layer(
     let c2 = builder.add_sector(max_node.expr() - zero_node.expr() - dz_node.expr());
     builder.set_output(&c2);
 
-    let prod = builder.add_sector(
-        AbstractExpression::products(vec![di_node.id(), dz_node.id()]),
-    );
+    let prod = builder.add_sector(AbstractExpression::products(vec![
+        di_node.id(),
+        dz_node.id(),
+    ]));
     builder.set_output(&prod);
 
     if let Some(n_bits) = layer.n_bits {
@@ -653,26 +888,54 @@ fn build_maxpool_layer(
     scale_config: &ScaleConfig,
     range_checks: &mut Vec<RangeCheckRequest>,
 ) -> Result<()> {
-    let input_name = layer.inputs.first()
+    let input_name = layer
+        .inputs
+        .first()
         .ok_or_else(|| anyhow::anyhow!("MaxPool {} has no input", layer.name))?;
 
-    let input_layout = tensor_layouts.get(input_name)
-        .ok_or_else(|| anyhow::anyhow!("MaxPool {} input {} has no spatial layout", layer.name, input_name))?
+    let input_layout = tensor_layouts
+        .get(input_name)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "MaxPool {} input {} has no spatial layout",
+                layer.name,
+                input_name
+            )
+        })?
         .clone();
 
     let (c, in_h, in_w) = input_layout.spatial_dims();
 
-    let kernel_shape = layer.get_ints_attr("kernel_shape")
+    let kernel_shape = layer
+        .get_ints_attr("kernel_shape")
         .ok_or_else(|| anyhow::anyhow!("MaxPool {} missing kernel_shape", layer.name))?;
-    anyhow::ensure!(kernel_shape.len() >= 2, "MaxPool {} kernel_shape has fewer than 2 dimensions", layer.name);
+    anyhow::ensure!(
+        kernel_shape.len() >= 2,
+        "MaxPool {} kernel_shape has fewer than 2 dimensions",
+        layer.name
+    );
     let pool_h = kernel_shape[0] as usize;
     let pool_w = kernel_shape[1] as usize;
 
     let strides = layer.get_ints_attr("strides");
-    let stride_h = strides.and_then(|s| s.first()).map(|&v| v as usize).unwrap_or(pool_h);
-    let stride_w = strides.and_then(|s| s.get(1)).map(|&v| v as usize).unwrap_or(pool_w);
+    let stride_h = strides
+        .and_then(|s| s.first())
+        .map(|&v| v as usize)
+        .unwrap_or(pool_h);
+    let stride_w = strides
+        .and_then(|s| s.get(1))
+        .map(|&v| v as usize)
+        .unwrap_or(pool_w);
 
-    anyhow::ensure!(in_h >= pool_h && in_w >= pool_w, "MaxPool {}: input {}x{} smaller than kernel {}x{}", layer.name, in_h, in_w, pool_h, pool_w);
+    anyhow::ensure!(
+        in_h >= pool_h && in_w >= pool_w,
+        "MaxPool {}: input {}x{} smaller than kernel {}x{}",
+        layer.name,
+        in_h,
+        in_w,
+        pool_h,
+        pool_w
+    );
     let pool_oh = (in_h - pool_h) / stride_h + 1;
     let pool_ow = (in_w - pool_w) / stride_w + 1;
     let window_size = pool_h * pool_w;
@@ -697,28 +960,48 @@ fn build_maxpool_layer(
         }
     }
 
-    let input_node = tensor_nodes.get(input_name)
-        .ok_or_else(|| anyhow::anyhow!("MaxPool {} input {} not in tensor_nodes", layer.name, input_name))?;
+    let input_node = tensor_nodes.get(input_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "MaxPool {} input {} not in tensor_nodes",
+            layer.name,
+            input_name
+        )
+    })?;
 
     let max_name = format!("{}_max", layer.name);
     let max_node = builder.add_input_shred(&max_name, pool_out_vars, committed);
-    manifest.insert(max_name, ShredEntry { num_vars: pool_out_vars, visibility: Visibility::Committed });
+    manifest.insert(
+        max_name,
+        ShredEntry {
+            num_vars: pool_out_vars,
+            visibility: Visibility::Committed,
+        },
+    );
 
-    let delta_nodes: Vec<_> = (0..window_size).map(|i| {
-        let name = format!("{}_d{}", layer.name, i);
-        let node = builder.add_input_shred(&name, pool_out_vars, committed);
-        manifest.insert(name, ShredEntry { num_vars: pool_out_vars, visibility: Visibility::Committed });
-        node
-    }).collect();
+    let delta_nodes: Vec<_> = (0..window_size)
+        .map(|i| {
+            let name = format!("{}_d{}", layer.name, i);
+            let node = builder.add_input_shred(&name, pool_out_vars, committed);
+            manifest.insert(
+                name,
+                ShredEntry {
+                    num_vars: pool_out_vars,
+                    visibility: Visibility::Committed,
+                },
+            );
+            node
+        })
+        .collect();
 
-    let gate_nodes: Vec<_> = (0..window_size).map(|i| {
-        builder.add_identity_gate_node(input_node, gate_wiring[i].clone(), pool_out_vars, None)
-    }).collect();
+    let gate_nodes: Vec<_> = (0..window_size)
+        .map(|i| {
+            builder.add_identity_gate_node(input_node, gate_wiring[i].clone(), pool_out_vars, None)
+        })
+        .collect();
 
     for i in 0..window_size {
-        let chk = builder.add_sector(
-            max_node.expr() - gate_nodes[i].expr() - delta_nodes[i].expr(),
-        );
+        let chk =
+            builder.add_sector(max_node.expr() - gate_nodes[i].expr() - delta_nodes[i].expr());
         builder.set_output(&chk);
     }
 
@@ -742,9 +1025,15 @@ fn build_maxpool_layer(
     for out in &layer.outputs {
         tensor_nodes.insert(out.clone(), max_node.clone());
         tensor_num_vars.insert(out.clone(), pool_out_vars);
-        tensor_layouts.insert(out.clone(), SpatialInfo::HWC {
-            h: pool_oh, w: pool_ow, c, stride_c: c,
-        });
+        tensor_layouts.insert(
+            out.clone(),
+            SpatialInfo::HWC {
+                h: pool_oh,
+                w: pool_ow,
+                c,
+                stride_c: c,
+            },
+        );
     }
 
     Ok(())
@@ -763,12 +1052,18 @@ fn build_batchnorm_layer(
     range_checks: &mut Vec<RangeCheckRequest>,
 ) -> Result<()> {
     let alpha_fr = i64_to_fr(scale_config.alpha);
-    let input_name = layer.inputs.first()
+    let input_name = layer
+        .inputs
+        .first()
         .ok_or_else(|| anyhow::anyhow!("BatchNorm {} has no input", layer.name))?;
 
-    let nv = tensor_num_vars.get(input_name)
-        .copied()
-        .ok_or_else(|| anyhow::anyhow!("BatchNorm {} input {} has no num_vars", layer.name, input_name))?;
+    let nv = tensor_num_vars.get(input_name).copied().ok_or_else(|| {
+        anyhow::anyhow!(
+            "BatchNorm {} input {} has no num_vars",
+            layer.name,
+            input_name
+        )
+    })?;
 
     let mul_name = format!("{}_mul", layer.name);
     let add_name = format!("{}_add", layer.name);
@@ -780,17 +1075,45 @@ fn build_batchnorm_layer(
     let q_node = builder.add_input_shred(&q_name, nv, committed);
     let r_node = builder.add_input_shred(&r_name, nv, committed);
 
-    manifest.insert(mul_name, ShredEntry { num_vars: nv, visibility: Visibility::Public });
-    manifest.insert(add_name, ShredEntry { num_vars: nv, visibility: Visibility::Public });
-    manifest.insert(q_name, ShredEntry { num_vars: nv, visibility: Visibility::Committed });
-    manifest.insert(r_name.clone(), ShredEntry { num_vars: nv, visibility: Visibility::Committed });
+    manifest.insert(
+        mul_name,
+        ShredEntry {
+            num_vars: nv,
+            visibility: Visibility::Public,
+        },
+    );
+    manifest.insert(
+        add_name,
+        ShredEntry {
+            num_vars: nv,
+            visibility: Visibility::Public,
+        },
+    );
+    manifest.insert(
+        q_name,
+        ShredEntry {
+            num_vars: nv,
+            visibility: Visibility::Committed,
+        },
+    );
+    manifest.insert(
+        r_name.clone(),
+        ShredEntry {
+            num_vars: nv,
+            visibility: Visibility::Committed,
+        },
+    );
 
-    let input_node = tensor_nodes.get(input_name)
-        .ok_or_else(|| anyhow::anyhow!("BatchNorm {} input {} not in tensor_nodes", layer.name, input_name))?;
+    let input_node = tensor_nodes.get(input_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "BatchNorm {} input {} not in tensor_nodes",
+            layer.name,
+            input_name
+        )
+    })?;
 
     let rescale_check = builder.add_sector(
-        AbstractExpression::products(vec![input_node.id(), mul_node.id()])
-            + add_node.expr()
+        AbstractExpression::products(vec![input_node.id(), mul_node.id()]) + add_node.expr()
             - AbstractExpression::scaled(q_node.expr(), alpha_fr)
             - r_node.expr(),
     );
@@ -825,34 +1148,67 @@ fn build_addsub_layer(
     tensor_layouts: &mut HashMap<String, SpatialInfo>,
     manifest: &mut ShredManifest,
 ) -> Result<()> {
-    let input_a_name = layer.inputs.first()
+    let input_a_name = layer
+        .inputs
+        .first()
         .ok_or_else(|| anyhow::anyhow!("{:?} {} has no first input", layer.op_type, layer.name))?;
-    let input_b_name = layer.inputs.get(1)
+    let input_b_name = layer
+        .inputs
+        .get(1)
         .ok_or_else(|| anyhow::anyhow!("{:?} {} has no second input", layer.op_type, layer.name))?;
 
     let a_is_tensor = tensor_nodes.contains_key(input_a_name);
     let b_is_tensor = tensor_nodes.contains_key(input_b_name);
 
-    anyhow::ensure!(a_is_tensor || b_is_tensor,
-        "{:?} {} has no computed tensor inputs", layer.op_type, layer.name);
+    anyhow::ensure!(
+        a_is_tensor || b_is_tensor,
+        "{:?} {} has no computed tensor inputs",
+        layer.op_type,
+        layer.name
+    );
 
     let mut resolve_input = |name: &str, is_tensor: bool| -> Result<(NodeRef<Fr>, usize)> {
         if is_tensor {
-            let node = tensor_nodes.get(name)
-                .ok_or_else(|| anyhow::anyhow!("{:?} {} input {} not in tensor_nodes", layer.op_type, layer.name, name))?
+            let node = tensor_nodes
+                .get(name)
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "{:?} {} input {} not in tensor_nodes",
+                        layer.op_type,
+                        layer.name,
+                        name
+                    )
+                })?
                 .clone();
-            let nv = tensor_num_vars.get(name)
-                .copied()
-                .ok_or_else(|| anyhow::anyhow!("{:?} {} input {} has no num_vars", layer.op_type, layer.name, name))?;
+            let nv = tensor_num_vars.get(name).copied().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "{:?} {} input {} has no num_vars",
+                    layer.op_type,
+                    layer.name,
+                    name
+                )
+            })?;
             Ok((node, nv))
         } else {
-            let weight = layer.weights.get(name)
-                .ok_or_else(|| anyhow::anyhow!("{:?} {} input {} not in tensor_nodes or weights", layer.op_type, layer.name, name))?;
+            let weight = layer.weights.get(name).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "{:?} {} input {} not in tensor_nodes or weights",
+                    layer.op_type,
+                    layer.name,
+                    name
+                )
+            })?;
             let data = weight.as_i64_vec();
             let nv = num_vars_for(data.len());
             let shred_name = format!("{}_{}", layer.name, name);
             let node = builder.add_input_shred(&shred_name, nv, public);
-            manifest.insert(shred_name, ShredEntry { num_vars: nv, visibility: Visibility::Public });
+            manifest.insert(
+                shred_name,
+                ShredEntry {
+                    num_vars: nv,
+                    visibility: Visibility::Public,
+                },
+            );
             Ok((node, nv))
         }
     };
@@ -864,7 +1220,13 @@ fn build_addsub_layer(
 
     let result_name = format!("{}_result", layer.name);
     let result_node = builder.add_input_shred(&result_name, out_nv, committed);
-    manifest.insert(result_name, ShredEntry { num_vars: out_nv, visibility: Visibility::Committed });
+    manifest.insert(
+        result_name,
+        ShredEntry {
+            num_vars: out_nv,
+            visibility: Visibility::Committed,
+        },
+    );
 
     let constraint = if layer.op_type == OpType::Add {
         builder.add_sector(a_node.expr() + b_node.expr() - result_node.expr())
@@ -873,7 +1235,8 @@ fn build_addsub_layer(
     };
     builder.set_output(&constraint);
 
-    let layout = tensor_layouts.get(input_a_name)
+    let layout = tensor_layouts
+        .get(input_a_name)
         .or_else(|| tensor_layouts.get(input_b_name))
         .cloned();
     for out in &layer.outputs {
@@ -897,9 +1260,21 @@ pub fn transpose_matrix(data: &[i64], rows: usize, cols: usize) -> Vec<i64> {
     out
 }
 
-pub fn pad_matrix(data: &[i64], orig_rows: usize, orig_cols: usize, pad_rows: usize, pad_cols: usize) -> Vec<i64> {
-    assert!(orig_rows <= pad_rows && orig_cols <= pad_cols,
-        "pad_matrix: orig {}x{} exceeds target {}x{}", orig_rows, orig_cols, pad_rows, pad_cols);
+pub fn pad_matrix(
+    data: &[i64],
+    orig_rows: usize,
+    orig_cols: usize,
+    pad_rows: usize,
+    pad_cols: usize,
+) -> Vec<i64> {
+    assert!(
+        orig_rows <= pad_rows && orig_cols <= pad_cols,
+        "pad_matrix: orig {}x{} exceeds target {}x{}",
+        orig_rows,
+        orig_cols,
+        pad_rows,
+        pad_cols
+    );
     let mut out = vec![0i64; pad_rows * pad_cols];
     for r in 0..orig_rows {
         for c in 0..orig_cols {

@@ -1,13 +1,16 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 
 use crate::gadgets::rescale;
 use crate::onnx::graph::OpType;
 use crate::onnx::quantizer::QuantizedModel;
 use crate::padding::{next_power_of_two, num_vars_for};
-use crate::runner::circuit_builder::{transpose_matrix, pad_matrix, pad_to_size, SpatialInfo, delta_table_nv, compute_range_check_plan};
+use crate::runner::circuit_builder::{
+    compute_range_check_plan, delta_table_nv, pad_matrix, pad_to_size, transpose_matrix,
+    SpatialInfo,
+};
 
 use super::serialization;
 
@@ -23,7 +26,9 @@ pub fn compute_multiplicities(values: &[i64], table_size: usize) -> Result<Vec<i
         anyhow::ensure!(
             v >= 0 && (v as usize) < table_size,
             "range check: value at index {} is {} which is outside table range [0, {})",
-            i, v, table_size
+            i,
+            v,
+            table_size
         );
         mults[v as usize] += 1;
     }
@@ -64,15 +69,20 @@ pub fn load_and_quantize_input(input_path: &Path, alpha: i64) -> Result<Vec<i64>
 }
 
 pub fn quantize_input_json(input_json: &serde_json::Value, alpha: i64) -> Result<Vec<i64>> {
-    let raw_input: Vec<f64> = input_json.get("input")
+    let raw_input: Vec<f64> = input_json
+        .get("input")
         .and_then(|v| v.as_array())
         .ok_or_else(|| anyhow::anyhow!("input JSON must have an \"input\" array field"))?
         .iter()
         .enumerate()
-        .map(|(i, v)| v.as_f64().ok_or_else(|| anyhow::anyhow!("input[{}] is not a number: {}", i, v)))
+        .map(|(i, v)| {
+            v.as_f64()
+                .ok_or_else(|| anyhow::anyhow!("input[{}] is not a number: {}", i, v))
+        })
         .collect::<Result<Vec<f64>>>()?;
 
-    Ok(raw_input.iter()
+    Ok(raw_input
+        .iter()
         .map(|&v| (v * alpha as f64).round() as i64)
         .collect())
 }
@@ -102,7 +112,10 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
     let mut tensor_layouts: HashMap<String, SpatialInfo> = HashMap::new();
     let mut observed_n_bits: HashMap<String, usize> = HashMap::new();
 
-    let input_name = model.graph.input_names.first()
+    let input_name = model
+        .graph
+        .input_names
+        .first()
         .ok_or_else(|| anyhow::anyhow!("model has no input names defined"))?
         .clone();
 
@@ -117,7 +130,11 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
         if shape.len() == 3 {
             tensor_layouts.insert(
                 name.clone(),
-                SpatialInfo::CHW { c: shape[0], h: shape[1], w: shape[2] },
+                SpatialInfo::CHW {
+                    c: shape[0],
+                    h: shape[1],
+                    w: shape[2],
+                },
             );
         }
     }
@@ -134,26 +151,55 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
     for layer in model.graph.iter_topo() {
         match layer.op_type {
             OpType::Gemm => {
-                let input_tensor_name = layer.inputs.first()
+                let input_tensor_name = layer
+                    .inputs
+                    .first()
                     .ok_or_else(|| anyhow::anyhow!("Gemm {} has no input", layer.name))?;
-                let weight_tensor_name = layer.inputs.get(1)
+                let weight_tensor_name = layer
+                    .inputs
+                    .get(1)
                     .ok_or_else(|| anyhow::anyhow!("Gemm {} has no weight", layer.name))?;
                 let bias_tensor_name = layer.inputs.get(2);
 
-                let input_data = tensors.get(input_tensor_name)
-                    .ok_or_else(|| anyhow::anyhow!("Gemm {} input {} not computed", layer.name, input_tensor_name))?;
+                let input_data = tensors.get(input_tensor_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Gemm {} input {} not computed",
+                        layer.name,
+                        input_tensor_name
+                    )
+                })?;
 
-                let weight_data = layer.weights.get(weight_tensor_name)
-                    .ok_or_else(|| anyhow::anyhow!("Gemm {} missing weight {}", layer.name, weight_tensor_name))?;
+                let weight_data = layer.weights.get(weight_tensor_name).ok_or_else(|| {
+                    anyhow::anyhow!("Gemm {} missing weight {}", layer.name, weight_tensor_name)
+                })?;
 
-                let trans_a = layer.get_int_attr("transA").map(|v| v != 0).unwrap_or(false);
-                anyhow::ensure!(!trans_a, "Gemm {} has transA=1 which is not supported", layer.name);
-                let trans_b = layer.get_int_attr("transB").map(|v| v != 0).unwrap_or(false);
+                let trans_a = layer
+                    .get_int_attr("transA")
+                    .map(|v| v != 0)
+                    .unwrap_or(false);
+                anyhow::ensure!(
+                    !trans_a,
+                    "Gemm {} has transA=1 which is not supported",
+                    layer.name
+                );
+                let trans_b = layer
+                    .get_int_attr("transB")
+                    .map(|v| v != 0)
+                    .unwrap_or(false);
 
                 let w_shape = weight_data.shape();
-                anyhow::ensure!(w_shape.len() >= 2, "Gemm {} weight has {} dims, need >= 2", layer.name, w_shape.len());
+                anyhow::ensure!(
+                    w_shape.len() >= 2,
+                    "Gemm {} weight has {} dims, need >= 2",
+                    layer.name,
+                    w_shape.len()
+                );
                 let (w_rows, w_cols) = (w_shape[0], w_shape[1]);
-                let (k_dim, n_dim) = if trans_b { (w_cols, w_rows) } else { (w_rows, w_cols) };
+                let (k_dim, n_dim) = if trans_b {
+                    (w_cols, w_rows)
+                } else {
+                    (w_rows, w_cols)
+                };
 
                 let k_padded = next_power_of_two(k_dim);
                 let n_padded = next_power_of_two(n_dim);
@@ -179,8 +225,13 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     vec![0i64; n_padded]
                 };
 
-                let mm_with_bias: Vec<i64> = mm.iter().zip(bias_padded.iter()).map(|(m, b)| m + b).collect();
-                let (quotients, remainders) = rescale::compute_rescale_array(&mm_with_bias, alpha, offset);
+                let mm_with_bias: Vec<i64> = mm
+                    .iter()
+                    .zip(bias_padded.iter())
+                    .map(|(m, b)| m + b)
+                    .collect();
+                let (quotients, remainders) =
+                    rescale::compute_rescale_array(&mm_with_bias, alpha, offset);
 
                 shreds.insert(format!("{}_weight", layer.name), w_padded);
                 shreds.insert(format!("{}_bias", layer.name), bias_padded);
@@ -190,7 +241,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let r_max = remainders.iter().copied().max().unwrap_or(0);
                 tracing::info!(
                     "Gemm {} rescale r_max={} table_size={}",
-                    layer.name, r_max, rescale_table_size
+                    layer.name,
+                    r_max,
+                    rescale_table_size
                 );
                 shreds.insert(
                     format!("{}_r_mults", layer.name),
@@ -202,24 +255,46 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 }
             }
             OpType::Conv => {
-                let input_tensor_name = layer.inputs.first()
+                let input_tensor_name = layer
+                    .inputs
+                    .first()
                     .ok_or_else(|| anyhow::anyhow!("Conv {} has no input", layer.name))?;
-                let weight_tensor_name = layer.inputs.get(1)
+                let weight_tensor_name = layer
+                    .inputs
+                    .get(1)
                     .ok_or_else(|| anyhow::anyhow!("Conv {} has no weight", layer.name))?;
                 let bias_tensor_name = layer.inputs.get(2);
 
-                let input_data = tensors.get(input_tensor_name)
-                    .ok_or_else(|| anyhow::anyhow!("Conv {} input {} not computed", layer.name, input_tensor_name))?;
+                let input_data = tensors.get(input_tensor_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Conv {} input {} not computed",
+                        layer.name,
+                        input_tensor_name
+                    )
+                })?;
 
-                let weight_data = layer.weights.get(weight_tensor_name)
-                    .ok_or_else(|| anyhow::anyhow!("Conv {} missing weight {}", layer.name, weight_tensor_name))?;
+                let weight_data = layer.weights.get(weight_tensor_name).ok_or_else(|| {
+                    anyhow::anyhow!("Conv {} missing weight {}", layer.name, weight_tensor_name)
+                })?;
 
-                let input_layout = tensor_layouts.get(input_tensor_name)
-                    .ok_or_else(|| anyhow::anyhow!("Conv {} input {} has no spatial layout", layer.name, input_tensor_name))?
+                let input_layout = tensor_layouts
+                    .get(input_tensor_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Conv {} input {} has no spatial layout",
+                            layer.name,
+                            input_tensor_name
+                        )
+                    })?
                     .clone();
 
                 let w_shape = weight_data.shape();
-                anyhow::ensure!(w_shape.len() >= 4, "Conv {} weight has {} dims, need >= 4", layer.name, w_shape.len());
+                anyhow::ensure!(
+                    w_shape.len() >= 4,
+                    "Conv {} weight has {} dims, need >= 4",
+                    layer.name,
+                    w_shape.len()
+                );
                 let c_out = w_shape[0];
                 let c_in = w_shape[1];
                 let kh = w_shape[2];
@@ -232,14 +307,34 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let pad_right = pads.and_then(|p| p.get(3).copied()).unwrap_or(0) as usize;
 
                 let strides = layer.get_ints_attr("strides");
-                let stride_h = strides.and_then(|s| s.first()).map(|&v| v as usize).unwrap_or(1);
-                let stride_w = strides.and_then(|s| s.get(1)).map(|&v| v as usize).unwrap_or(1);
+                let stride_h = strides
+                    .and_then(|s| s.first())
+                    .map(|&v| v as usize)
+                    .unwrap_or(1);
+                let stride_w = strides
+                    .and_then(|s| s.get(1))
+                    .map(|&v| v as usize)
+                    .unwrap_or(1);
 
                 let (input_ch, in_h, in_w) = input_layout.spatial_dims();
-                anyhow::ensure!(input_ch == c_in, "Conv {}: weight c_in {} does not match input channels {}", layer.name, c_in, input_ch);
+                anyhow::ensure!(
+                    input_ch == c_in,
+                    "Conv {}: weight c_in {} does not match input channels {}",
+                    layer.name,
+                    c_in,
+                    input_ch
+                );
                 let padded_h = in_h + pad_top + pad_bottom;
                 let padded_w = in_w + pad_left + pad_right;
-                anyhow::ensure!(padded_h >= kh && padded_w >= kw, "Conv {}: padded input {}x{} smaller than kernel {}x{}", layer.name, padded_h, padded_w, kh, kw);
+                anyhow::ensure!(
+                    padded_h >= kh && padded_w >= kw,
+                    "Conv {}: padded input {}x{} smaller than kernel {}x{}",
+                    layer.name,
+                    padded_h,
+                    padded_w,
+                    kh,
+                    kw
+                );
                 let out_h = (padded_h - kh) / stride_h + 1;
                 let out_w = (padded_w - kw) / stride_w + 1;
                 let patch_size = c_in * kh * kw;
@@ -258,10 +353,14 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                                 for kc in 0..kw {
                                     let abs_h = oh * stride_h + kr;
                                     let abs_w = ow * stride_w + kc;
-                                    if abs_h < pad_top || abs_w < pad_left { continue; }
+                                    if abs_h < pad_top || abs_w < pad_left {
+                                        continue;
+                                    }
                                     let ih = abs_h - pad_top;
                                     let iw = abs_w - pad_left;
-                                    if ih >= in_h || iw >= in_w { continue; }
+                                    if ih >= in_h || iw >= in_w {
+                                        continue;
+                                    }
                                     let col = c * kh * kw + kr * kw + kc;
                                     let src = input_layout.index(c, ih, iw);
                                     im2col_data[patch * pad_psize + col] = input_data[src];
@@ -273,7 +372,13 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
 
                 let kernel_t = transpose_matrix(&weight_data.as_i64_vec(), c_out, patch_size);
                 let kernel_padded = pad_matrix(&kernel_t, patch_size, c_out, pad_psize, pad_cout);
-                let mm = padded_matmul(&im2col_data, pad_patches, pad_psize, &kernel_padded, pad_cout);
+                let mm = padded_matmul(
+                    &im2col_data,
+                    pad_patches,
+                    pad_psize,
+                    &kernel_padded,
+                    pad_cout,
+                );
 
                 let result_size = pad_patches * pad_cout;
                 let bias_bc = if let Some(bias_name) = bias_tensor_name {
@@ -282,7 +387,11 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                         (0..result_size)
                             .map(|i| {
                                 let j = i % pad_cout;
-                                if j < c_out && j < b.len() { b[j] } else { 0 }
+                                if j < c_out && j < b.len() {
+                                    b[j]
+                                } else {
+                                    0
+                                }
                             })
                             .collect()
                     } else {
@@ -292,8 +401,10 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     vec![0i64; result_size]
                 };
 
-                let mm_with_bias: Vec<i64> = mm.iter().zip(bias_bc.iter()).map(|(m, b)| m + b).collect();
-                let (quotients, remainders) = rescale::compute_rescale_array(&mm_with_bias, alpha, offset);
+                let mm_with_bias: Vec<i64> =
+                    mm.iter().zip(bias_bc.iter()).map(|(m, b)| m + b).collect();
+                let (quotients, remainders) =
+                    rescale::compute_rescale_array(&mm_with_bias, alpha, offset);
 
                 shreds.insert(format!("{}_weight", layer.name), kernel_padded);
                 shreds.insert(format!("{}_bias", layer.name), bias_bc);
@@ -303,7 +414,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let r_max = remainders.iter().copied().max().unwrap_or(0);
                 tracing::info!(
                     "Conv {} rescale r_max={} table_size={}",
-                    layer.name, r_max, rescale_table_size
+                    layer.name,
+                    r_max,
+                    rescale_table_size
                 );
                 shreds.insert(
                     format!("{}_r_mults", layer.name),
@@ -312,20 +425,37 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
 
                 for out in &layer.outputs {
                     tensors.insert(out.clone(), quotients.clone());
-                    tensor_layouts.insert(out.clone(), SpatialInfo::HWC {
-                        h: out_h, w: out_w, c: c_out, stride_c: pad_cout,
-                    });
+                    tensor_layouts.insert(
+                        out.clone(),
+                        SpatialInfo::HWC {
+                            h: out_h,
+                            w: out_w,
+                            c: c_out,
+                            stride_c: pad_cout,
+                        },
+                    );
                 }
             }
             OpType::Relu => {
-                let input_tensor_name = layer.inputs.first()
+                let input_tensor_name = layer
+                    .inputs
+                    .first()
                     .ok_or_else(|| anyhow::anyhow!("Relu {} has no input", layer.name))?;
-                let input_data = tensors.get(input_tensor_name)
-                    .ok_or_else(|| anyhow::anyhow!("Relu {} input {} not computed", layer.name, input_tensor_name))?;
+                let input_data = tensors.get(input_tensor_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Relu {} input {} not computed",
+                        layer.name,
+                        input_tensor_name
+                    )
+                })?;
 
                 let nv = num_vars_for(input_data.len());
                 let relu_out: Vec<i64> = input_data.iter().map(|&x| x.max(0)).collect();
-                let delta_input: Vec<i64> = relu_out.iter().zip(input_data.iter()).map(|(o, x)| o - x).collect();
+                let delta_input: Vec<i64> = relu_out
+                    .iter()
+                    .zip(input_data.iter())
+                    .map(|(o, x)| o - x)
+                    .collect();
                 let delta_zero: Vec<i64> = relu_out.clone();
 
                 let zero_vec = vec![0i64; 1 << nv];
@@ -344,7 +474,12 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     let delta_table_size = 1usize << dnv;
                     tracing::info!(
                         "Relu {} observed_n_bits={} dnv={} table_size={} di_max={} dz_max={}",
-                        layer.name, obs_n_bits, dnv, delta_table_size, di_max, dz_max
+                        layer.name,
+                        obs_n_bits,
+                        dnv,
+                        delta_table_size,
+                        di_max,
+                        dz_max
                     );
                     observed_n_bits.insert(layer.name.clone(), obs_n_bits);
                     shreds.insert(
@@ -366,29 +501,61 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 }
             }
             OpType::MaxPool => {
-                let input_tensor_name = layer.inputs.first()
+                let input_tensor_name = layer
+                    .inputs
+                    .first()
                     .ok_or_else(|| anyhow::anyhow!("MaxPool {} has no input", layer.name))?;
-                let input_data = tensors.get(input_tensor_name)
-                    .ok_or_else(|| anyhow::anyhow!("MaxPool {} input {} not computed", layer.name, input_tensor_name))?;
+                let input_data = tensors.get(input_tensor_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "MaxPool {} input {} not computed",
+                        layer.name,
+                        input_tensor_name
+                    )
+                })?;
 
-                let input_layout = tensor_layouts.get(input_tensor_name)
-                    .ok_or_else(|| anyhow::anyhow!("MaxPool {} input {} has no spatial layout", layer.name, input_tensor_name))?
+                let input_layout = tensor_layouts
+                    .get(input_tensor_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "MaxPool {} input {} has no spatial layout",
+                            layer.name,
+                            input_tensor_name
+                        )
+                    })?
                     .clone();
 
                 let (c, in_h, in_w) = input_layout.spatial_dims();
 
-                let kernel_shape = layer.get_ints_attr("kernel_shape")
-                    .ok_or_else(|| anyhow::anyhow!("MaxPool {} missing kernel_shape", layer.name))?;
-                let pool_h = kernel_shape.first().map(|&v| v as usize)
+                let kernel_shape = layer.get_ints_attr("kernel_shape").ok_or_else(|| {
+                    anyhow::anyhow!("MaxPool {} missing kernel_shape", layer.name)
+                })?;
+                let pool_h = kernel_shape
+                    .first()
+                    .map(|&v| v as usize)
                     .ok_or_else(|| anyhow::anyhow!("MaxPool {} kernel_shape empty", layer.name))?;
-                let pool_w = kernel_shape.get(1).map(|&v| v as usize)
-                    .ok_or_else(|| anyhow::anyhow!("MaxPool {} kernel_shape has < 2 dims", layer.name))?;
+                let pool_w = kernel_shape.get(1).map(|&v| v as usize).ok_or_else(|| {
+                    anyhow::anyhow!("MaxPool {} kernel_shape has < 2 dims", layer.name)
+                })?;
 
                 let strides = layer.get_ints_attr("strides");
-                let stride_h = strides.and_then(|s| s.first()).map(|&v| v as usize).unwrap_or(pool_h);
-                let stride_w = strides.and_then(|s| s.get(1)).map(|&v| v as usize).unwrap_or(pool_w);
+                let stride_h = strides
+                    .and_then(|s| s.first())
+                    .map(|&v| v as usize)
+                    .unwrap_or(pool_h);
+                let stride_w = strides
+                    .and_then(|s| s.get(1))
+                    .map(|&v| v as usize)
+                    .unwrap_or(pool_w);
 
-                anyhow::ensure!(in_h >= pool_h && in_w >= pool_w, "MaxPool {}: input {}x{} smaller than kernel {}x{}", layer.name, in_h, in_w, pool_h, pool_w);
+                anyhow::ensure!(
+                    in_h >= pool_h && in_w >= pool_w,
+                    "MaxPool {}: input {}x{} smaller than kernel {}x{}",
+                    layer.name,
+                    in_h,
+                    in_w,
+                    pool_h,
+                    pool_w
+                );
                 let pool_oh = (in_h - pool_h) / stride_h + 1;
                 let pool_ow = (in_w - pool_w) / stride_w + 1;
                 let window_size = pool_h * pool_w;
@@ -411,7 +578,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                                     let src_idx = input_layout.index(ch, soh, sow);
                                     let val = input_data[src_idx];
                                     window_elems[elem_pos][dest_idx] = val;
-                                    if val > max_val { max_val = val; }
+                                    if val > max_val {
+                                        max_val = val;
+                                    }
                                 }
                             }
                             max_values[dest_idx] = max_val;
@@ -420,7 +589,11 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 }
 
                 let deltas: Vec<Vec<i64>> = (0..window_size)
-                    .map(|i| (0..pad_pool).map(|w| max_values[w] - window_elems[i][w]).collect())
+                    .map(|i| {
+                        (0..pad_pool)
+                            .map(|w| max_values[w] - window_elems[i][w])
+                            .collect()
+                    })
                     .collect();
 
                 shreds.insert(format!("{}_max", layer.name), max_values.clone());
@@ -429,7 +602,8 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 }
 
                 {
-                    let max_delta = deltas.iter()
+                    let max_delta = deltas
+                        .iter()
                         .flat_map(|d| d.iter().copied())
                         .max()
                         .unwrap_or(0) as u64;
@@ -438,7 +612,11 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     let dt_size = 1usize << dnv;
                     tracing::info!(
                         "MaxPool {} observed_n_bits={} dnv={} table_size={} max_delta={}",
-                        layer.name, obs_n_bits, dnv, dt_size, max_delta
+                        layer.name,
+                        obs_n_bits,
+                        dnv,
+                        dt_size,
+                        max_delta
                     );
                     observed_n_bits.insert(layer.name.clone(), obs_n_bits);
                     for i in 0..window_size {
@@ -451,32 +629,64 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
 
                 for out in &layer.outputs {
                     tensors.insert(out.clone(), max_values.clone());
-                    tensor_layouts.insert(out.clone(), SpatialInfo::HWC {
-                        h: pool_oh, w: pool_ow, c, stride_c: c,
-                    });
+                    tensor_layouts.insert(
+                        out.clone(),
+                        SpatialInfo::HWC {
+                            h: pool_oh,
+                            w: pool_ow,
+                            c,
+                            stride_c: c,
+                        },
+                    );
                 }
             }
             OpType::BatchNormalization => {
-                let input_tensor_name = layer.inputs.first()
+                let input_tensor_name = layer
+                    .inputs
+                    .first()
                     .ok_or_else(|| anyhow::anyhow!("BatchNorm {} has no input", layer.name))?;
-                let mul_tensor_name = layer.inputs.get(1)
+                let mul_tensor_name = layer
+                    .inputs
+                    .get(1)
                     .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing mul input", layer.name))?;
-                let add_tensor_name = layer.inputs.get(2)
+                let add_tensor_name = layer
+                    .inputs
+                    .get(2)
                     .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing add input", layer.name))?;
 
-                let input_data = tensors.get(input_tensor_name)
-                    .ok_or_else(|| anyhow::anyhow!("BatchNorm {} input {} not computed", layer.name, input_tensor_name))?;
+                let input_data = tensors.get(input_tensor_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "BatchNorm {} input {} not computed",
+                        layer.name,
+                        input_tensor_name
+                    )
+                })?;
 
-                let mul_data = layer.weights.get(mul_tensor_name)
-                    .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing weight '{}'", layer.name, mul_tensor_name))?;
-                let add_data = layer.weights.get(add_tensor_name)
-                    .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing weight '{}'", layer.name, add_tensor_name))?;
+                let mul_data = layer.weights.get(mul_tensor_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "BatchNorm {} missing weight '{}'",
+                        layer.name,
+                        mul_tensor_name
+                    )
+                })?;
+                let add_data = layer.weights.get(add_tensor_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "BatchNorm {} missing weight '{}'",
+                        layer.name,
+                        add_tensor_name
+                    )
+                })?;
 
                 let mul_per_ch = mul_data.as_i64_vec();
                 let add_per_ch = add_data.as_i64_vec();
                 let c = mul_per_ch.len();
-                anyhow::ensure!(add_per_ch.len() == c,
-                    "BatchNorm {} mul/add length mismatch: {} vs {}", layer.name, c, add_per_ch.len());
+                anyhow::ensure!(
+                    add_per_ch.len() == c,
+                    "BatchNorm {} mul/add length mismatch: {} vs {}",
+                    layer.name,
+                    c,
+                    add_per_ch.len()
+                );
 
                 let input_layout = tensor_layouts.get(input_tensor_name).cloned();
                 let padded_size = next_power_of_two(input_data.len());
@@ -530,20 +740,25 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 }
 
                 let input_padded = pad_to_size(input_data, padded_size);
-                let product: Vec<i64> = input_padded.iter().zip(mul_broadcast.iter())
+                let product: Vec<i64> = input_padded
+                    .iter()
+                    .zip(mul_broadcast.iter())
                     .map(|(&x, &m)| {
                         let prod = x as i128 * m as i128;
                         i64::try_from(prod).expect("BatchNorm mul overflows i64")
                     })
                     .collect();
-                let with_add: Vec<i64> = product.iter().zip(add_broadcast.iter())
+                let with_add: Vec<i64> = product
+                    .iter()
+                    .zip(add_broadcast.iter())
                     .map(|(&p, &a)| {
                         let sum = p as i128 + a as i128;
                         i64::try_from(sum).expect("BatchNorm add overflows i64")
                     })
                     .collect();
 
-                let (quotients, remainders) = rescale::compute_rescale_array(&with_add, alpha, offset);
+                let (quotients, remainders) =
+                    rescale::compute_rescale_array(&with_add, alpha, offset);
 
                 shreds.insert(format!("{}_mul", layer.name), mul_broadcast);
                 shreds.insert(format!("{}_add", layer.name), add_broadcast);
@@ -553,7 +768,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let r_max = remainders.iter().copied().max().unwrap_or(0);
                 tracing::info!(
                     "BatchNorm {} rescale r_max={} table_size={}",
-                    layer.name, r_max, rescale_table_size
+                    layer.name,
+                    r_max,
+                    rescale_table_size
                 );
                 shreds.insert(
                     format!("{}_r_mults", layer.name),
@@ -568,10 +785,12 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 }
             }
             OpType::Add | OpType::Sub => {
-                let input_a_name = layer.inputs.first()
-                    .ok_or_else(|| anyhow::anyhow!("{:?} {} has no first input", layer.op_type, layer.name))?;
-                let input_b_name = layer.inputs.get(1)
-                    .ok_or_else(|| anyhow::anyhow!("{:?} {} has no second input", layer.op_type, layer.name))?;
+                let input_a_name = layer.inputs.first().ok_or_else(|| {
+                    anyhow::anyhow!("{:?} {} has no first input", layer.op_type, layer.name)
+                })?;
+                let input_b_name = layer.inputs.get(1).ok_or_else(|| {
+                    anyhow::anyhow!("{:?} {} has no second input", layer.op_type, layer.name)
+                })?;
 
                 let get_data = |name: &str| -> Result<Vec<i64>> {
                     if let Some(t) = tensors.get(name) {
@@ -579,7 +798,12 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     } else if let Some(w) = layer.weights.get(name) {
                         Ok(w.as_i64_vec())
                     } else {
-                        bail!("{:?} {} input {} not computed and not a weight", layer.op_type, layer.name, name)
+                        bail!(
+                            "{:?} {} input {} not computed and not a weight",
+                            layer.op_type,
+                            layer.name,
+                            name
+                        )
                     }
                 };
 
@@ -592,9 +816,17 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let b_padded = pad_to_size(&b_data, padded_size);
 
                 let result: Vec<i64> = if layer.op_type == OpType::Add {
-                    a_padded.iter().zip(b_padded.iter()).map(|(&a, &b)| a + b).collect()
+                    a_padded
+                        .iter()
+                        .zip(b_padded.iter())
+                        .map(|(&a, &b)| a + b)
+                        .collect()
                 } else {
-                    a_padded.iter().zip(b_padded.iter()).map(|(&a, &b)| a - b).collect()
+                    a_padded
+                        .iter()
+                        .zip(b_padded.iter())
+                        .map(|(&a, &b)| a - b)
+                        .collect()
                 };
 
                 if !tensors.contains_key(input_b_name) {
@@ -605,7 +837,8 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 }
                 shreds.insert(format!("{}_result", layer.name), result.clone());
 
-                let layout = tensor_layouts.get(input_a_name)
+                let layout = tensor_layouts
+                    .get(input_a_name)
                     .or_else(|| tensor_layouts.get(input_b_name))
                     .cloned();
                 for out in &layer.outputs {
@@ -616,10 +849,19 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 }
             }
             OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
-                let input_tensor_name = layer.inputs.first()
+                let input_tensor_name = layer
+                    .inputs
+                    .first()
                     .ok_or_else(|| anyhow::anyhow!("shape op {} has no input", layer.name))?;
-                let data = tensors.get(input_tensor_name)
-                    .ok_or_else(|| anyhow::anyhow!("shape op {} input {} not computed", layer.name, input_tensor_name))?
+                let data = tensors
+                    .get(input_tensor_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "shape op {} input {} not computed",
+                            layer.name,
+                            input_tensor_name
+                        )
+                    })?
                     .clone();
                 let layout = tensor_layouts.get(input_tensor_name).cloned();
                 for out in &layer.outputs {
@@ -630,34 +872,50 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 }
             }
             other => {
-                bail!("witness: unsupported op type {:?} in layer {}", other, layer.name);
+                bail!(
+                    "witness: unsupported op type {:?} in layer {}",
+                    other,
+                    layer.name
+                );
             }
         }
-
     }
 
-    let final_output = tensors.get(declared_output)
+    let final_output = tensors
+        .get(declared_output)
         .ok_or_else(|| anyhow::anyhow!("declared output '{}' not computed", declared_output))?;
     shreds.insert("expected_output".to_string(), final_output.clone());
 
     let rc_plan = compute_range_check_plan_with_overrides(model, &observed_n_bits)?;
 
-    let mut grouped: std::collections::BTreeMap<(usize, usize), Vec<String>> = std::collections::BTreeMap::new();
+    let mut grouped: std::collections::BTreeMap<(usize, usize), Vec<String>> =
+        std::collections::BTreeMap::new();
     for (&table_nv, shred_names) in &rc_plan {
-        let mut by_nv: std::collections::BTreeMap<usize, Vec<String>> = std::collections::BTreeMap::new();
+        let mut by_nv: std::collections::BTreeMap<usize, Vec<String>> =
+            std::collections::BTreeMap::new();
         for name in shred_names {
-            let nv = shreds.get(name)
+            let nv = shreds
+                .get(name)
                 .map(|s| num_vars_for(s.len()))
-                .ok_or_else(|| anyhow::anyhow!("range check shred '{}' not found in witness shreds", name))?;
+                .ok_or_else(|| {
+                    anyhow::anyhow!("range check shred '{}' not found in witness shreds", name)
+                })?;
             by_nv.entry(nv).or_default().push(name.clone());
         }
         for (node_nv, names) in by_nv {
-            grouped.entry((table_nv, node_nv)).or_default().extend(names);
+            grouped
+                .entry((table_nv, node_nv))
+                .or_default()
+                .extend(names);
         }
     }
 
     for (&(table_nv, node_nv), shred_names) in &grouped {
-        anyhow::ensure!(table_nv < 63, "table_nv {} is too large for range table construction", table_nv);
+        anyhow::ensure!(
+            table_nv < 63,
+            "table_nv {} is too large for range table construction",
+            table_nv
+        );
         let table_shred_name = format!("range_table_{}", table_nv);
         if !shreds.contains_key(&table_shred_name) {
             let table_data: Vec<i64> = (0..(1i64 << table_nv)).collect();
@@ -677,7 +935,10 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
         }
     }
 
-    Ok(WitnessData { shreds, observed_n_bits })
+    Ok(WitnessData {
+        shreds,
+        observed_n_bits,
+    })
 }
 
 fn compute_range_check_plan_with_overrides(
@@ -685,16 +946,18 @@ fn compute_range_check_plan_with_overrides(
     observed_n_bits: &HashMap<String, usize>,
 ) -> Result<std::collections::BTreeMap<usize, Vec<String>>> {
     let exponent = model.scale_config.exponent as usize;
-    let mut plan: std::collections::BTreeMap<usize, Vec<String>> = std::collections::BTreeMap::new();
+    let mut plan: std::collections::BTreeMap<usize, Vec<String>> =
+        std::collections::BTreeMap::new();
 
     for layer in model.graph.iter_topo() {
         match layer.op_type {
             OpType::Gemm | OpType::Conv | OpType::BatchNormalization => {
-                plan.entry(exponent).or_default().push(format!("{}_r", layer.name));
+                plan.entry(exponent)
+                    .or_default()
+                    .push(format!("{}_r", layer.name));
             }
             OpType::Relu => {
-                let n_bits = observed_n_bits.get(&layer.name).copied()
-                    .or(layer.n_bits);
+                let n_bits = observed_n_bits.get(&layer.name).copied().or(layer.n_bits);
                 if let Some(n_bits) = n_bits {
                     let dnv = delta_table_nv(n_bits, exponent);
                     let entry = plan.entry(dnv).or_default();
@@ -703,12 +966,12 @@ fn compute_range_check_plan_with_overrides(
                 }
             }
             OpType::MaxPool => {
-                let n_bits = observed_n_bits.get(&layer.name).copied()
-                    .or(layer.n_bits);
+                let n_bits = observed_n_bits.get(&layer.name).copied().or(layer.n_bits);
                 if let Some(n_bits) = n_bits {
                     let dnv = delta_table_nv(n_bits, exponent);
-                    let kernel_shape = layer.get_ints_attr("kernel_shape")
-                        .ok_or_else(|| anyhow::anyhow!("MaxPool {} missing kernel_shape attribute", layer.name))?;
+                    let kernel_shape = layer.get_ints_attr("kernel_shape").ok_or_else(|| {
+                        anyhow::anyhow!("MaxPool {} missing kernel_shape attribute", layer.name)
+                    })?;
                     let window_size: usize = kernel_shape.iter().map(|&v| v as usize).product();
                     let entry = plan.entry(dnv).or_default();
                     for i in 0..window_size {
@@ -765,19 +1028,29 @@ pub fn prepare_public_shreds(
     let mut tensor_sizes: HashMap<String, usize> = HashMap::new();
     let mut tensor_layouts: HashMap<String, SpatialInfo> = HashMap::new();
 
-    let input_name = model.graph.input_names.first()
+    let input_name = model
+        .graph
+        .input_names
+        .first()
         .ok_or_else(|| anyhow::anyhow!("model has no input names defined"))?
         .clone();
 
     let input_padded_size = next_power_of_two(quantized_input.len());
-    shreds.insert(input_name.clone(), pad_to_size(quantized_input, input_padded_size));
+    shreds.insert(
+        input_name.clone(),
+        pad_to_size(quantized_input, input_padded_size),
+    );
     tensor_sizes.insert(input_name.clone(), input_padded_size);
 
     for (name, shape) in &model.graph.input_shapes {
         if shape.len() == 3 {
             tensor_layouts.insert(
                 name.clone(),
-                SpatialInfo::CHW { c: shape[0], h: shape[1], w: shape[2] },
+                SpatialInfo::CHW {
+                    c: shape[0],
+                    h: shape[1],
+                    w: shape[2],
+                },
             );
         }
     }
@@ -785,16 +1058,31 @@ pub fn prepare_public_shreds(
     for layer in model.graph.iter_topo() {
         match layer.op_type {
             OpType::Gemm => {
-                let weight_tensor_name = layer.inputs.get(1)
+                let weight_tensor_name = layer
+                    .inputs
+                    .get(1)
                     .ok_or_else(|| anyhow::anyhow!("Gemm {} has no weight", layer.name))?;
                 let bias_tensor_name = layer.inputs.get(2);
-                let weight_data = layer.weights.get(weight_tensor_name)
-                    .ok_or_else(|| anyhow::anyhow!("Gemm {} missing weight {}", layer.name, weight_tensor_name))?;
-                let trans_b = layer.get_int_attr("transB").map(|v| v != 0).unwrap_or(false);
+                let weight_data = layer.weights.get(weight_tensor_name).ok_or_else(|| {
+                    anyhow::anyhow!("Gemm {} missing weight {}", layer.name, weight_tensor_name)
+                })?;
+                let trans_b = layer
+                    .get_int_attr("transB")
+                    .map(|v| v != 0)
+                    .unwrap_or(false);
                 let w_shape = weight_data.shape();
-                anyhow::ensure!(w_shape.len() >= 2, "Gemm {} weight has {} dims, need >= 2", layer.name, w_shape.len());
+                anyhow::ensure!(
+                    w_shape.len() >= 2,
+                    "Gemm {} weight has {} dims, need >= 2",
+                    layer.name,
+                    w_shape.len()
+                );
                 let (w_rows, w_cols) = (w_shape[0], w_shape[1]);
-                let (k_dim, n_dim) = if trans_b { (w_cols, w_rows) } else { (w_rows, w_cols) };
+                let (k_dim, n_dim) = if trans_b {
+                    (w_cols, w_rows)
+                } else {
+                    (w_rows, w_cols)
+                };
                 let k_padded = next_power_of_two(k_dim);
                 let n_padded = next_power_of_two(n_dim);
 
@@ -803,7 +1091,10 @@ pub fn prepare_public_shreds(
                 } else {
                     weight_data.as_i64_vec()
                 };
-                shreds.insert(format!("{}_weight", layer.name), pad_matrix(&w_transposed, k_dim, n_dim, k_padded, n_padded));
+                shreds.insert(
+                    format!("{}_weight", layer.name),
+                    pad_matrix(&w_transposed, k_dim, n_dim, k_padded, n_padded),
+                );
 
                 let bias_padded = if let Some(bias_name) = bias_tensor_name {
                     if let Some(bias_data) = layer.weights.get(bias_name) {
@@ -823,19 +1114,36 @@ pub fn prepare_public_shreds(
                 }
             }
             OpType::Conv => {
-                let input_tensor_name = layer.inputs.first()
+                let input_tensor_name = layer
+                    .inputs
+                    .first()
                     .ok_or_else(|| anyhow::anyhow!("Conv {} has no input", layer.name))?;
-                let weight_tensor_name = layer.inputs.get(1)
+                let weight_tensor_name = layer
+                    .inputs
+                    .get(1)
                     .ok_or_else(|| anyhow::anyhow!("Conv {} has no weight", layer.name))?;
                 let bias_tensor_name = layer.inputs.get(2);
-                let weight_data = layer.weights.get(weight_tensor_name)
-                    .ok_or_else(|| anyhow::anyhow!("Conv {} missing weight {}", layer.name, weight_tensor_name))?;
-                let input_layout = tensor_layouts.get(input_tensor_name)
-                    .ok_or_else(|| anyhow::anyhow!("Conv {} input {} has no spatial layout", layer.name, input_tensor_name))?
+                let weight_data = layer.weights.get(weight_tensor_name).ok_or_else(|| {
+                    anyhow::anyhow!("Conv {} missing weight {}", layer.name, weight_tensor_name)
+                })?;
+                let input_layout = tensor_layouts
+                    .get(input_tensor_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Conv {} input {} has no spatial layout",
+                            layer.name,
+                            input_tensor_name
+                        )
+                    })?
                     .clone();
 
                 let w_shape = weight_data.shape();
-                anyhow::ensure!(w_shape.len() >= 4, "Conv {} weight has {} dims, need >= 4", layer.name, w_shape.len());
+                anyhow::ensure!(
+                    w_shape.len() >= 4,
+                    "Conv {} weight has {} dims, need >= 4",
+                    layer.name,
+                    w_shape.len()
+                );
                 let c_out = w_shape[0];
                 let c_in = w_shape[1];
                 let kh = w_shape[2];
@@ -846,12 +1154,26 @@ pub fn prepare_public_shreds(
                 let pad_bottom = pads.and_then(|p| p.get(2).copied()).unwrap_or(0) as usize;
                 let pad_right = pads.and_then(|p| p.get(3).copied()).unwrap_or(0) as usize;
                 let strides = layer.get_ints_attr("strides");
-                let stride_h = strides.and_then(|s| s.first()).map(|&v| v as usize).unwrap_or(1);
-                let stride_w = strides.and_then(|s| s.get(1)).map(|&v| v as usize).unwrap_or(1);
+                let stride_h = strides
+                    .and_then(|s| s.first())
+                    .map(|&v| v as usize)
+                    .unwrap_or(1);
+                let stride_w = strides
+                    .and_then(|s| s.get(1))
+                    .map(|&v| v as usize)
+                    .unwrap_or(1);
                 let (_input_ch, in_h, in_w) = input_layout.spatial_dims();
                 let padded_h = in_h + pad_top + pad_bottom;
                 let padded_w = in_w + pad_left + pad_right;
-                anyhow::ensure!(padded_h >= kh && padded_w >= kw, "Conv {}: padded input {}x{} smaller than kernel {}x{}", layer.name, padded_h, padded_w, kh, kw);
+                anyhow::ensure!(
+                    padded_h >= kh && padded_w >= kw,
+                    "Conv {}: padded input {}x{} smaller than kernel {}x{}",
+                    layer.name,
+                    padded_h,
+                    padded_w,
+                    kh,
+                    kw
+                );
                 let out_h = (padded_h - kh) / stride_h + 1;
                 let out_w = (padded_w - kw) / stride_w + 1;
                 let patch_size = c_in * kh * kw;
@@ -862,7 +1184,10 @@ pub fn prepare_public_shreds(
                 let result_size = pad_patches * pad_cout;
 
                 let kernel_t = transpose_matrix(&weight_data.as_i64_vec(), c_out, patch_size);
-                shreds.insert(format!("{}_weight", layer.name), pad_matrix(&kernel_t, patch_size, c_out, pad_psize, pad_cout));
+                shreds.insert(
+                    format!("{}_weight", layer.name),
+                    pad_matrix(&kernel_t, patch_size, c_out, pad_psize, pad_cout),
+                );
 
                 let bias_bc = if let Some(bias_name) = bias_tensor_name {
                     if let Some(bias_data) = layer.weights.get(bias_name) {
@@ -870,7 +1195,11 @@ pub fn prepare_public_shreds(
                         (0..result_size)
                             .map(|i| {
                                 let j = i % pad_cout;
-                                if j < c_out && j < b.len() { b[j] } else { 0 }
+                                if j < c_out && j < b.len() {
+                                    b[j]
+                                } else {
+                                    0
+                                }
                             })
                             .collect()
                     } else {
@@ -883,15 +1212,25 @@ pub fn prepare_public_shreds(
 
                 for out_name in &layer.outputs {
                     tensor_sizes.insert(out_name.clone(), result_size);
-                    tensor_layouts.insert(out_name.clone(), SpatialInfo::HWC {
-                        h: out_h, w: out_w, c: c_out, stride_c: pad_cout,
-                    });
+                    tensor_layouts.insert(
+                        out_name.clone(),
+                        SpatialInfo::HWC {
+                            h: out_h,
+                            w: out_w,
+                            c: c_out,
+                            stride_c: pad_cout,
+                        },
+                    );
                 }
             }
             OpType::Relu => {
-                let input_tensor_name = layer.inputs.first()
+                let input_tensor_name = layer
+                    .inputs
+                    .first()
                     .ok_or_else(|| anyhow::anyhow!("Relu {} has no input", layer.name))?;
-                let sz = tensor_sizes.get(input_tensor_name).copied()
+                let sz = tensor_sizes
+                    .get(input_tensor_name)
+                    .copied()
                     .unwrap_or(input_padded_size);
                 let nv = num_vars_for(sz);
                 shreds.insert(format!("{}_zero", layer.name), vec![0i64; 1 << nv]);
@@ -905,21 +1244,49 @@ pub fn prepare_public_shreds(
                 }
             }
             OpType::MaxPool => {
-                let input_tensor_name = layer.inputs.first()
+                let input_tensor_name = layer
+                    .inputs
+                    .first()
                     .ok_or_else(|| anyhow::anyhow!("MaxPool {} has no input", layer.name))?;
-                let input_layout = tensor_layouts.get(input_tensor_name)
-                    .ok_or_else(|| anyhow::anyhow!("MaxPool {} input {} has no spatial layout", layer.name, input_tensor_name))?
+                let input_layout = tensor_layouts
+                    .get(input_tensor_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "MaxPool {} input {} has no spatial layout",
+                            layer.name,
+                            input_tensor_name
+                        )
+                    })?
                     .clone();
                 let (c, in_h, in_w) = input_layout.spatial_dims();
-                let kernel_shape = layer.get_ints_attr("kernel_shape")
-                    .ok_or_else(|| anyhow::anyhow!("MaxPool {} missing kernel_shape", layer.name))?;
-                anyhow::ensure!(kernel_shape.len() >= 2, "MaxPool {} kernel_shape has fewer than 2 dimensions", layer.name);
+                let kernel_shape = layer.get_ints_attr("kernel_shape").ok_or_else(|| {
+                    anyhow::anyhow!("MaxPool {} missing kernel_shape", layer.name)
+                })?;
+                anyhow::ensure!(
+                    kernel_shape.len() >= 2,
+                    "MaxPool {} kernel_shape has fewer than 2 dimensions",
+                    layer.name
+                );
                 let pool_h = kernel_shape[0] as usize;
                 let pool_w = kernel_shape[1] as usize;
                 let strides = layer.get_ints_attr("strides");
-                let stride_h = strides.and_then(|s| s.first()).map(|&v| v as usize).unwrap_or(pool_h);
-                let stride_w = strides.and_then(|s| s.get(1)).map(|&v| v as usize).unwrap_or(pool_w);
-                anyhow::ensure!(in_h >= pool_h && in_w >= pool_w, "MaxPool {}: input {}x{} smaller than kernel {}x{}", layer.name, in_h, in_w, pool_h, pool_w);
+                let stride_h = strides
+                    .and_then(|s| s.first())
+                    .map(|&v| v as usize)
+                    .unwrap_or(pool_h);
+                let stride_w = strides
+                    .and_then(|s| s.get(1))
+                    .map(|&v| v as usize)
+                    .unwrap_or(pool_w);
+                anyhow::ensure!(
+                    in_h >= pool_h && in_w >= pool_w,
+                    "MaxPool {}: input {}x{} smaller than kernel {}x{}",
+                    layer.name,
+                    in_h,
+                    in_w,
+                    pool_h,
+                    pool_w
+                );
                 let pool_oh = (in_h - pool_h) / stride_h + 1;
                 let pool_ow = (in_w - pool_w) / stride_w + 1;
                 let num_pool_out = pool_oh * pool_ow * c;
@@ -927,28 +1294,57 @@ pub fn prepare_public_shreds(
 
                 for out_name in &layer.outputs {
                     tensor_sizes.insert(out_name.clone(), pad_pool);
-                    tensor_layouts.insert(out_name.clone(), SpatialInfo::HWC {
-                        h: pool_oh, w: pool_ow, c, stride_c: c,
-                    });
+                    tensor_layouts.insert(
+                        out_name.clone(),
+                        SpatialInfo::HWC {
+                            h: pool_oh,
+                            w: pool_ow,
+                            c,
+                            stride_c: c,
+                        },
+                    );
                 }
             }
             OpType::BatchNormalization => {
-                let input_tensor_name = layer.inputs.first()
+                let input_tensor_name = layer
+                    .inputs
+                    .first()
                     .ok_or_else(|| anyhow::anyhow!("BatchNorm {} has no input", layer.name))?;
-                let mul_tensor_name = layer.inputs.get(1)
+                let mul_tensor_name = layer
+                    .inputs
+                    .get(1)
                     .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing mul input", layer.name))?;
-                let add_tensor_name = layer.inputs.get(2)
+                let add_tensor_name = layer
+                    .inputs
+                    .get(2)
                     .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing add input", layer.name))?;
-                let mul_data = layer.weights.get(mul_tensor_name)
-                    .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing weight '{}'", layer.name, mul_tensor_name))?;
-                let add_data = layer.weights.get(add_tensor_name)
-                    .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing weight '{}'", layer.name, add_tensor_name))?;
+                let mul_data = layer.weights.get(mul_tensor_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "BatchNorm {} missing weight '{}'",
+                        layer.name,
+                        mul_tensor_name
+                    )
+                })?;
+                let add_data = layer.weights.get(add_tensor_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "BatchNorm {} missing weight '{}'",
+                        layer.name,
+                        add_tensor_name
+                    )
+                })?;
                 let mul_per_ch = mul_data.as_i64_vec();
                 let add_per_ch = add_data.as_i64_vec();
                 let ch = mul_per_ch.len();
-                anyhow::ensure!(add_per_ch.len() == ch,
-                    "BatchNorm {} mul/add length mismatch: {} vs {}", layer.name, ch, add_per_ch.len());
-                let sz = tensor_sizes.get(input_tensor_name).copied()
+                anyhow::ensure!(
+                    add_per_ch.len() == ch,
+                    "BatchNorm {} mul/add length mismatch: {} vs {}",
+                    layer.name,
+                    ch,
+                    add_per_ch.len()
+                );
+                let sz = tensor_sizes
+                    .get(input_tensor_name)
+                    .copied()
                     .unwrap_or(input_padded_size);
                 let padded_size = next_power_of_two(sz);
 
@@ -1012,34 +1408,57 @@ pub fn prepare_public_shreds(
                 }
             }
             OpType::Add | OpType::Sub => {
-                let input_a_name = layer.inputs.first()
-                    .ok_or_else(|| anyhow::anyhow!("{:?} {} has no first input", layer.op_type, layer.name))?;
-                let input_b_name = layer.inputs.get(1)
-                    .ok_or_else(|| anyhow::anyhow!("{:?} {} has no second input", layer.op_type, layer.name))?;
+                let input_a_name = layer.inputs.first().ok_or_else(|| {
+                    anyhow::anyhow!("{:?} {} has no first input", layer.op_type, layer.name)
+                })?;
+                let input_b_name = layer.inputs.get(1).ok_or_else(|| {
+                    anyhow::anyhow!("{:?} {} has no second input", layer.op_type, layer.name)
+                })?;
 
                 let a_is_tensor = tensor_sizes.contains_key(input_a_name);
                 let b_is_tensor = tensor_sizes.contains_key(input_b_name);
 
-                let a_sz = if a_is_tensor { tensor_sizes.get(input_a_name).copied().unwrap_or(1) }
-                    else { layer.weights.get(input_a_name).map(|w| w.as_i64_vec().len()).unwrap_or(1) };
-                let b_sz = if b_is_tensor { tensor_sizes.get(input_b_name).copied().unwrap_or(1) }
-                    else { layer.weights.get(input_b_name).map(|w| w.as_i64_vec().len()).unwrap_or(1) };
+                let a_sz = if a_is_tensor {
+                    tensor_sizes.get(input_a_name).copied().unwrap_or(1)
+                } else {
+                    layer
+                        .weights
+                        .get(input_a_name)
+                        .map(|w| w.as_i64_vec().len())
+                        .unwrap_or(1)
+                };
+                let b_sz = if b_is_tensor {
+                    tensor_sizes.get(input_b_name).copied().unwrap_or(1)
+                } else {
+                    layer
+                        .weights
+                        .get(input_b_name)
+                        .map(|w| w.as_i64_vec().len())
+                        .unwrap_or(1)
+                };
                 let out_sz = next_power_of_two(a_sz.max(b_sz));
 
                 if !b_is_tensor {
                     if let Some(w) = layer.weights.get(input_b_name) {
                         let data = w.as_i64_vec();
-                        shreds.insert(format!("{}_{}", layer.name, input_b_name), pad_to_size(&data, out_sz));
+                        shreds.insert(
+                            format!("{}_{}", layer.name, input_b_name),
+                            pad_to_size(&data, out_sz),
+                        );
                     }
                 }
                 if !a_is_tensor {
                     if let Some(w) = layer.weights.get(input_a_name) {
                         let data = w.as_i64_vec();
-                        shreds.insert(format!("{}_{}", layer.name, input_a_name), pad_to_size(&data, out_sz));
+                        shreds.insert(
+                            format!("{}_{}", layer.name, input_a_name),
+                            pad_to_size(&data, out_sz),
+                        );
                     }
                 }
 
-                let layout = tensor_layouts.get(input_a_name)
+                let layout = tensor_layouts
+                    .get(input_a_name)
                     .or_else(|| tensor_layouts.get(input_b_name))
                     .cloned();
                 for out_name in &layer.outputs {
@@ -1050,9 +1469,13 @@ pub fn prepare_public_shreds(
                 }
             }
             OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
-                let input_tensor_name = layer.inputs.first()
+                let input_tensor_name = layer
+                    .inputs
+                    .first()
                     .ok_or_else(|| anyhow::anyhow!("shape op {} has no input", layer.name))?;
-                let sz = tensor_sizes.get(input_tensor_name).copied()
+                let sz = tensor_sizes
+                    .get(input_tensor_name)
+                    .copied()
                     .unwrap_or(input_padded_size);
                 let layout = tensor_layouts.get(input_tensor_name).cloned();
                 for out_name in &layer.outputs {
@@ -1063,17 +1486,28 @@ pub fn prepare_public_shreds(
                 }
             }
             other => {
-                bail!("prepare_public_shreds: unsupported op type {:?} in layer {}", other, layer.name);
+                bail!(
+                    "prepare_public_shreds: unsupported op type {:?} in layer {}",
+                    other,
+                    layer.name
+                );
             }
         }
     }
 
     let out_padded_size = next_power_of_two(expected_output.len());
-    shreds.insert("expected_output".to_string(), pad_to_size(expected_output, out_padded_size));
+    shreds.insert(
+        "expected_output".to_string(),
+        pad_to_size(expected_output, out_padded_size),
+    );
 
     let rc_plan = compute_range_check_plan(model)?;
     for (&table_nv, _) in &rc_plan {
-        anyhow::ensure!(table_nv < 63, "table_nv {} is too large for range table construction", table_nv);
+        anyhow::ensure!(
+            table_nv < 63,
+            "table_nv {} is too large for range table construction",
+            table_nv
+        );
         let table_shred_name = format!("range_table_{}", table_nv);
         if !shreds.contains_key(&table_shred_name) {
             let table_data: Vec<i64> = (0..(1i64 << table_nv)).collect();

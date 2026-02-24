@@ -1681,6 +1681,135 @@ pub fn get_arg(matches: &clap::ArgMatches, name: &'static str) -> Result<String,
 ///     Ok(())
 /// }
 /// ```
+fn is_remainder_backend(matches: &clap::ArgMatches, metadata: &Option<CircuitParams>) -> bool {
+    if let Some(backend) = matches.get_one::<String>("backend") {
+        if backend == "remainder" {
+            return true;
+        }
+    }
+    metadata.as_ref().is_some_and(|m| m.backend == "remainder")
+}
+
+#[cfg(feature = "remainder")]
+fn dispatch_remainder(
+    matches: &clap::ArgMatches,
+    command: &str,
+    compress: bool,
+) -> Result<(), CliError> {
+    match command {
+        "run_compile_circuit" | "msgpack_compile" => {
+            let model_path = get_arg(matches, "model")?;
+            let circuit_path = get_arg(matches, "circuit_path")?;
+            jstprove_remainder::runner::compile::run(
+                Path::new(&model_path),
+                Path::new(&circuit_path),
+                compress,
+            )
+            .map_err(|e| RunError::Compile(format!("{e:#}")))?;
+        }
+        "run_gen_witness" => {
+            let model_path = get_arg(matches, "circuit_path")?;
+            let input_path = get_arg(matches, "input")?;
+            let witness_path = get_arg(matches, "witness")?;
+            jstprove_remainder::runner::witness::run(
+                Path::new(&model_path),
+                Path::new(&input_path),
+                Path::new(&witness_path),
+                compress,
+            )
+            .map_err(|e| RunError::Witness(format!("{e:#}")))?;
+        }
+        "run_prove_witness" => {
+            let model_path = get_arg(matches, "circuit_path")?;
+            let witness_path = get_arg(matches, "witness")?;
+            let proof_path = get_arg(matches, "proof")?;
+            jstprove_remainder::runner::prove::run(
+                Path::new(&model_path),
+                Path::new(&witness_path),
+                Path::new(&proof_path),
+                compress,
+            )
+            .map_err(|e| RunError::Prove(format!("{e:#}")))?;
+        }
+        "run_gen_verify" => {
+            let model_path = get_arg(matches, "circuit_path")?;
+            let proof_path = get_arg(matches, "proof")?;
+            let input_path = get_arg(matches, "input")?;
+            jstprove_remainder::runner::verify::run(
+                Path::new(&model_path),
+                Path::new(&proof_path),
+                Path::new(&input_path),
+            )
+            .map_err(|e| RunError::Verify(format!("{e:#}")))?;
+        }
+        "run_batch_witness" => {
+            let model_path = get_arg(matches, "circuit_path")?;
+            let manifest_path = get_arg(matches, "manifest")?;
+            jstprove_remainder::runner::batch::run_batch_witness(
+                Path::new(&model_path),
+                Path::new(&manifest_path),
+                compress,
+            )
+            .map_err(|e| RunError::Witness(format!("{e:#}")))?;
+        }
+        "run_batch_prove" => {
+            let model_path = get_arg(matches, "circuit_path")?;
+            let manifest_path = get_arg(matches, "manifest")?;
+            jstprove_remainder::runner::batch::run_batch_prove(
+                Path::new(&model_path),
+                Path::new(&manifest_path),
+                compress,
+            )
+            .map_err(|e| RunError::Prove(format!("{e:#}")))?;
+        }
+        "run_batch_verify" => {
+            let model_path = get_arg(matches, "circuit_path")?;
+            let manifest_path = get_arg(matches, "manifest")?;
+            jstprove_remainder::runner::batch::run_batch_verify(
+                Path::new(&model_path),
+                Path::new(&manifest_path),
+            )
+            .map_err(|e| RunError::Verify(format!("{e:#}")))?;
+        }
+        "run_pipe_witness" => {
+            let model_path = get_arg(matches, "circuit_path")?;
+            jstprove_remainder::runner::pipe::run_pipe_witness(Path::new(&model_path), compress)
+                .map_err(|e| RunError::Witness(format!("{e:#}")))?;
+        }
+        "run_pipe_prove" => {
+            let model_path = get_arg(matches, "circuit_path")?;
+            jstprove_remainder::runner::pipe::run_pipe_prove(Path::new(&model_path), compress)
+                .map_err(|e| RunError::Prove(format!("{e:#}")))?;
+        }
+        "run_pipe_verify" => {
+            let model_path = get_arg(matches, "circuit_path")?;
+            jstprove_remainder::runner::pipe::run_pipe_verify(Path::new(&model_path))
+                .map_err(|e| RunError::Verify(format!("{e:#}")))?;
+        }
+        "msgpack_prove"
+        | "msgpack_prove_stdin"
+        | "msgpack_verify"
+        | "msgpack_verify_stdin"
+        | "msgpack_witness_stdin" => {
+            return Err(RunError::Unsupported(
+                "msgpack piped operations not supported for Remainder backend".into(),
+            )
+            .into());
+        }
+        _ => return Err(CliError::UnknownCommand(command.to_string())),
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "remainder"))]
+fn dispatch_remainder(
+    _matches: &clap::ArgMatches,
+    _command: &str,
+    _compress: bool,
+) -> Result<(), CliError> {
+    Err(RunError::Unsupported("remainder backend requires the 'remainder' feature".into()).into())
+}
+
 #[allow(clippy::too_many_lines)]
 pub fn handle_args<
     C: Config,
@@ -1706,6 +1835,11 @@ where
 {
     let command = get_arg(matches, "type")?;
     let compress = !matches.get_flag("no_compress");
+    let use_remainder = is_remainder_backend(matches, &metadata);
+
+    if use_remainder {
+        return dispatch_remainder(matches, &command, compress);
+    }
 
     match command.as_str() {
         "run_compile_circuit" => {
@@ -1941,6 +2075,20 @@ pub fn get_args() -> clap::ArgMatches {
                 .required(false)
                 .long("no-compress")
                 .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("backend")
+                .help("Proving backend: 'expander' (default) or 'remainder'")
+                .required(false)
+                .long("backend")
+                .value_parser(["expander", "remainder"])
+                .default_value("expander"),
+        )
+        .arg(
+            Arg::new("model")
+                .help("Path to quantized ONNX model (Remainder backend)")
+                .required(false)
+                .long("model"),
         )
         .get_matches();
     matches

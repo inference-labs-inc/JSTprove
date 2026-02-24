@@ -1,10 +1,14 @@
 use anyhow::Result;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 
 const ZSTD_COMPRESSION_LEVEL: i32 = 3;
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 
-pub fn serialize_to_file<T: Serialize>(value: &T, path: &std::path::Path, compress: bool) -> Result<usize> {
+pub fn serialize_to_file<T: Serialize>(
+    value: &T,
+    path: &std::path::Path,
+    compress: bool,
+) -> Result<usize> {
     let serialized = bincode::serialize(value)?;
     let bytes = if compress {
         zstd::encode_all(serialized.as_slice(), ZSTD_COMPRESSION_LEVEL)?

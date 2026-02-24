@@ -4,7 +4,7 @@ use std::path::Path;
 use anyhow::Result;
 use serde::Deserialize;
 
-use super::batch::{BatchManifest, BatchResult, WitnessJob, ProveJob, VerifyJob};
+use super::batch::{BatchManifest, BatchResult, ProveJob, VerifyJob, WitnessJob};
 
 fn read_stdin_json<T: for<'de> Deserialize<'de>>() -> Result<T> {
     let mut buf = String::new();
@@ -23,7 +23,11 @@ pub fn run_pipe_witness(model_path: &Path, compress: bool) -> Result<()> {
     let manifest: BatchManifest<WitnessJob> = read_stdin_json()?;
 
     let alpha = model.scale_config.alpha;
-    let mut result = BatchResult { succeeded: 0, failed: 0, errors: vec![] };
+    let mut result = BatchResult {
+        succeeded: 0,
+        failed: 0,
+        errors: vec![],
+    };
 
     for (idx, job) in manifest.jobs.iter().enumerate() {
         match process_pipe_witness_job(&model, job, alpha, compress) {
@@ -43,7 +47,11 @@ pub fn run_pipe_prove(model_path: &Path, compress: bool) -> Result<()> {
     let model = super::compile::load_model(model_path)?;
     let manifest: BatchManifest<ProveJob> = read_stdin_json()?;
 
-    let mut result = BatchResult { succeeded: 0, failed: 0, errors: vec![] };
+    let mut result = BatchResult {
+        succeeded: 0,
+        failed: 0,
+        errors: vec![],
+    };
 
     for (idx, job) in manifest.jobs.iter().enumerate() {
         match process_pipe_prove_job(&model, job, compress) {
@@ -63,7 +71,11 @@ pub fn run_pipe_verify(model_path: &Path) -> Result<()> {
     let model = super::compile::load_model(model_path)?;
     let manifest: BatchManifest<VerifyJob> = read_stdin_json()?;
 
-    let mut result = BatchResult { succeeded: 0, failed: 0, errors: vec![] };
+    let mut result = BatchResult {
+        succeeded: 0,
+        failed: 0,
+        errors: vec![],
+    };
 
     for (idx, job) in manifest.jobs.iter().enumerate() {
         match process_pipe_verify_job(&model, job) {
@@ -109,10 +121,8 @@ fn process_pipe_verify_job(
     model: &crate::onnx::quantizer::QuantizedModel,
     job: &VerifyJob,
 ) -> Result<()> {
-    let quantized_input = super::witness::load_and_quantize_input(
-        Path::new(&job.input),
-        model.scale_config.alpha,
-    )?;
+    let quantized_input =
+        super::witness::load_and_quantize_input(Path::new(&job.input), model.scale_config.alpha)?;
     let proof = super::prove::load_proof(Path::new(&job.proof))?;
     let mut model = model.clone();
     model.apply_observed_n_bits(&proof.observed_n_bits);

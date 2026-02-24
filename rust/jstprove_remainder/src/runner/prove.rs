@@ -1,5 +1,5 @@
-use std::path::Path;
 use std::collections::HashMap;
+use std::path::Path;
 
 use anyhow::Result;
 use remainder::mle::evals::MultilinearExtension;
@@ -9,13 +9,18 @@ use shared_types::transcript::poseidon_sponge::PoseidonSponge;
 use shared_types::transcript::{Transcript, TranscriptWriter};
 use shared_types::{perform_function_under_prover_config, Fr};
 
-use crate::runner::circuit_builder;
 use crate::padding::num_vars_for;
+use crate::runner::circuit_builder;
 use crate::util::i64_to_fr;
 
 use super::serialization;
 
-pub fn run(model_path: &Path, witness_path: &Path, output_path: &Path, compress: bool) -> Result<()> {
+pub fn run(
+    model_path: &Path,
+    witness_path: &Path,
+    output_path: &Path,
+    compress: bool,
+) -> Result<()> {
     tracing::info!("loading model from {}", model_path.display());
     let mut model = super::compile::load_model(model_path)?;
 
@@ -23,7 +28,10 @@ pub fn run(model_path: &Path, witness_path: &Path, output_path: &Path, compress:
     let witness_data = super::witness::load_witness(witness_path)?;
 
     if !witness_data.observed_n_bits.is_empty() {
-        tracing::info!("applying {} observed n_bits overrides from witness", witness_data.observed_n_bits.len());
+        tracing::info!(
+            "applying {} observed n_bits overrides from witness",
+            witness_data.observed_n_bits.len()
+        );
         for layer in &mut model.graph.layers {
             if let Some(&obs) = witness_data.observed_n_bits.get(&layer.name) {
                 layer.n_bits = Some(obs);
@@ -36,7 +44,11 @@ pub fn run(model_path: &Path, witness_path: &Path, output_path: &Path, compress:
     proof.observed_n_bits = witness_data.observed_n_bits;
 
     let size = serialization::serialize_to_file(&proof, output_path, compress)?;
-    tracing::info!("proof written to {} ({} bytes)", output_path.display(), size);
+    tracing::info!(
+        "proof written to {} ({} bytes)",
+        output_path.display(),
+        size
+    );
     Ok(())
 }
 
@@ -44,10 +56,14 @@ pub fn generate_proof(
     model: &crate::onnx::quantizer::QuantizedModel,
     witness: &HashMap<String, Vec<i64>>,
 ) -> Result<SerializableProof> {
-    let input_name = model.graph.input_names.first()
+    let input_name = model
+        .graph
+        .input_names
+        .first()
         .ok_or_else(|| anyhow::anyhow!("model has no input names defined"))?
         .clone();
-    let input_size = witness.get(&input_name)
+    let input_size = witness
+        .get(&input_name)
         .map(|v| v.len())
         .ok_or_else(|| anyhow::anyhow!("witness missing input shred '{}'", input_name))?;
 
@@ -65,19 +81,23 @@ pub fn generate_proof(
                 if actual_nv != expected_nv {
                     anyhow::bail!(
                         "witness shred '{}' has {} vars (len {}), circuit expects {} vars",
-                        name, actual_nv, values.len(), expected_nv
+                        name,
+                        actual_nv,
+                        values.len(),
+                        expected_nv
                     );
                 }
             }
         }
     }
-    tracing::info!("witness validation passed ({} shreds verified)", build_result.manifest.len());
+    tracing::info!(
+        "witness validation passed ({} shreds verified)",
+        build_result.manifest.len()
+    );
 
     tracing::info!("setting {} witness shreds on circuit", witness.len());
     for (name, values) in witness {
-        let mle = MultilinearExtension::new(
-            values.iter().map(|&v| i64_to_fr(v)).collect(),
-        );
+        let mle = MultilinearExtension::new(values.iter().map(|&v| i64_to_fr(v)).collect());
         circuit.set_input(name, mle);
     }
 
@@ -86,7 +106,8 @@ pub fn generate_proof(
 
     let (proof_config, proof_transcript) = prove_and_get_transcript(&provable)?;
 
-    let expected_output = witness.get("expected_output")
+    let expected_output = witness
+        .get("expected_output")
         .ok_or_else(|| anyhow::anyhow!("witness missing expected_output shred"))?
         .clone();
 
@@ -116,11 +137,8 @@ fn prove_and_get_transcript(
 ) -> Result<(ProofConfig, Transcript<Fr>)> {
     let runtime_optimized_config = GKRCircuitProverConfig::runtime_optimized_default();
 
-    let result: Result<(ProofConfig, Transcript<Fr>)> = perform_function_under_prover_config!(
-        prove_internal,
-        &runtime_optimized_config,
-        provable
-    );
+    let result: Result<(ProofConfig, Transcript<Fr>)> =
+        perform_function_under_prover_config!(prove_internal, &runtime_optimized_config, provable);
 
     result
 }

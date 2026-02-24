@@ -38,7 +38,11 @@ pub fn run_batch_witness(model_path: &Path, manifest_path: &Path, compress: bool
     let manifest: BatchManifest<WitnessJob> =
         serde_json::from_reader(std::fs::File::open(manifest_path)?)?;
 
-    let mut result = BatchResult { succeeded: 0, failed: 0, errors: vec![] };
+    let mut result = BatchResult {
+        succeeded: 0,
+        failed: 0,
+        errors: vec![],
+    };
     let alpha = model.scale_config.alpha;
 
     for (idx, job) in manifest.jobs.iter().enumerate() {
@@ -66,7 +70,11 @@ pub fn run_batch_prove(model_path: &Path, manifest_path: &Path, compress: bool) 
     let manifest: BatchManifest<ProveJob> =
         serde_json::from_reader(std::fs::File::open(manifest_path)?)?;
 
-    let mut result = BatchResult { succeeded: 0, failed: 0, errors: vec![] };
+    let mut result = BatchResult {
+        succeeded: 0,
+        failed: 0,
+        errors: vec![],
+    };
 
     for (idx, job) in manifest.jobs.iter().enumerate() {
         tracing::info!("batch prove job {}/{}", idx + 1, manifest.jobs.len());
@@ -93,7 +101,11 @@ pub fn run_batch_verify(model_path: &Path, manifest_path: &Path) -> Result<()> {
     let manifest: BatchManifest<VerifyJob> =
         serde_json::from_reader(std::fs::File::open(manifest_path)?)?;
 
-    let mut result = BatchResult { succeeded: 0, failed: 0, errors: vec![] };
+    let mut result = BatchResult {
+        succeeded: 0,
+        failed: 0,
+        errors: vec![],
+    };
 
     for (idx, job) in manifest.jobs.iter().enumerate() {
         tracing::info!("batch verify job {}/{}", idx + 1, manifest.jobs.len());
@@ -145,10 +157,8 @@ fn process_verify_job(
     model: &crate::onnx::quantizer::QuantizedModel,
     job: &VerifyJob,
 ) -> Result<()> {
-    let quantized_input = super::witness::load_and_quantize_input(
-        Path::new(&job.input),
-        model.scale_config.alpha,
-    )?;
+    let quantized_input =
+        super::witness::load_and_quantize_input(Path::new(&job.input), model.scale_config.alpha)?;
     let proof = super::prove::load_proof(Path::new(&job.proof))?;
     let mut model = model.clone();
     model.apply_observed_n_bits(&proof.observed_n_bits);

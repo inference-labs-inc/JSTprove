@@ -106,17 +106,31 @@ fn quantize_layer_weights(layer: &mut LayerNode, alpha: i64) -> Result<()> {
 fn fold_batchnorm_params(layer: &mut LayerNode) -> Result<()> {
     let epsilon = layer.get_float_attr("epsilon").unwrap_or(1e-5) as f64;
 
-    let scale_name = layer.inputs.get(1)
-        .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing scale input", layer.name))?.clone();
-    let bias_name = layer.inputs.get(2)
-        .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing bias input", layer.name))?.clone();
-    let mean_name = layer.inputs.get(3)
-        .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing mean input", layer.name))?.clone();
-    let var_name = layer.inputs.get(4)
-        .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing var input", layer.name))?.clone();
+    let scale_name = layer
+        .inputs
+        .get(1)
+        .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing scale input", layer.name))?
+        .clone();
+    let bias_name = layer
+        .inputs
+        .get(2)
+        .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing bias input", layer.name))?
+        .clone();
+    let mean_name = layer
+        .inputs
+        .get(3)
+        .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing mean input", layer.name))?
+        .clone();
+    let var_name = layer
+        .inputs
+        .get(4)
+        .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing var input", layer.name))?
+        .clone();
 
     let get_floats = |name: &str| -> Result<Vec<f64>> {
-        let td = layer.weights.get(name)
+        let td = layer
+            .weights
+            .get(name)
             .ok_or_else(|| anyhow::anyhow!("BatchNorm {} missing weight '{}'", layer.name, name))?;
         if !td.float_data.is_empty() {
             Ok(td.float_data.clone())
@@ -131,17 +145,28 @@ fn fold_batchnorm_params(layer: &mut LayerNode) -> Result<()> {
     let var = get_floats(&var_name)?;
 
     let c = scale.len();
-    anyhow::ensure!(bias.len() == c && mean.len() == c && var.len() == c,
+    anyhow::ensure!(
+        bias.len() == c && mean.len() == c && var.len() == c,
         "BatchNorm {} parameter length mismatch: scale={}, bias={}, mean={}, var={}",
-        layer.name, c, bias.len(), mean.len(), var.len());
+        layer.name,
+        c,
+        bias.len(),
+        mean.len(),
+        var.len()
+    );
 
     let mut mul = Vec::with_capacity(c);
     let mut add = Vec::with_capacity(c);
     for i in 0..c {
         let v = var[i] + epsilon;
-        anyhow::ensure!(v > 0.0,
+        anyhow::ensure!(
+            v > 0.0,
             "BatchNorm {} channel {} has non-positive variance+epsilon: var={}, eps={}",
-            layer.name, i, var[i], epsilon);
+            layer.name,
+            i,
+            var[i],
+            epsilon
+        );
         let m = scale[i] / v.sqrt();
         mul.push(m);
         add.push(bias[i] - mean[i] * m);
@@ -150,28 +175,30 @@ fn fold_batchnorm_params(layer: &mut LayerNode) -> Result<()> {
     let mul_tensor_name = format!("{}_folded_mul", layer.name);
     let add_tensor_name = format!("{}_folded_add", layer.name);
 
-    layer.weights.insert(mul_tensor_name.clone(), TensorData {
-        name: mul_tensor_name.clone(),
-        dims: vec![c as i64],
-        data_type: 1,
-        float_data: mul,
-        int_data: vec![],
-    });
-    layer.weights.insert(add_tensor_name.clone(), TensorData {
-        name: add_tensor_name.clone(),
-        dims: vec![c as i64],
-        data_type: 1,
-        float_data: add,
-        int_data: vec![],
-    });
+    layer.weights.insert(
+        mul_tensor_name.clone(),
+        TensorData {
+            name: mul_tensor_name.clone(),
+            dims: vec![c as i64],
+            data_type: 1,
+            float_data: mul,
+            int_data: vec![],
+        },
+    );
+    layer.weights.insert(
+        add_tensor_name.clone(),
+        TensorData {
+            name: add_tensor_name.clone(),
+            dims: vec![c as i64],
+            data_type: 1,
+            float_data: add,
+            int_data: vec![],
+        },
+    );
 
     let stale = [scale_name, bias_name, mean_name, var_name];
 
-    layer.inputs = vec![
-        layer.inputs[0].clone(),
-        mul_tensor_name,
-        add_tensor_name,
-    ];
+    layer.inputs = vec![layer.inputs[0].clone(), mul_tensor_name, add_tensor_name];
 
     for name in &stale {
         layer.weights.remove(name);
@@ -239,8 +266,12 @@ fn compute_layer_bound(
     };
 
     let max_output_channel_l1 = |input_idx: usize, out_channels: usize| -> Result<f64> {
-        let Some(name) = layer.inputs.get(input_idx) else { return Ok(1.0) };
-        let Some(w) = layer.weights.get(name) else { return Ok(1.0) };
+        let Some(name) = layer.inputs.get(input_idx) else {
+            return Ok(1.0);
+        };
+        let Some(w) = layer.weights.get(name) else {
+            return Ok(1.0);
+        };
         let vals = w.as_i64_vec();
         if out_channels == 0 || vals.is_empty() {
             return Ok(1.0);
@@ -248,7 +279,9 @@ fn compute_layer_bound(
         anyhow::ensure!(
             vals.len() % out_channels == 0,
             "layer {}: weight tensor length {} not divisible by out_channels {}",
-            layer.name, vals.len(), out_channels,
+            layer.name,
+            vals.len(),
+            out_channels,
         );
         let per_channel = vals.len() / out_channels;
         Ok((0..out_channels)
@@ -265,10 +298,16 @@ fn compute_layer_bound(
         OpType::Conv => {
             let m_in = get_input_bound(0);
             let w = layer.inputs.get(1).and_then(|n| layer.weights.get(n));
-            let c_out = w.map(|w| {
-                let d = w.shape();
-                if d.len() >= 4 { d[0] } else { 1 }
-            }).unwrap_or(1);
+            let c_out = w
+                .map(|w| {
+                    let d = w.shape();
+                    if d.len() >= 4 {
+                        d[0]
+                    } else {
+                        1
+                    }
+                })
+                .unwrap_or(1);
             let weight = max_output_channel_l1(1, c_out)?;
             let bias_bound = get_bias_bound(2);
             Ok(weight * m_in + bias_bound)
@@ -276,13 +315,24 @@ fn compute_layer_bound(
         OpType::Gemm => {
             let m_in = get_input_bound(0);
             let w = layer.inputs.get(1).and_then(|n| layer.weights.get(n));
-            let trans_b = layer.get_int_attr("transB").map(|v| v != 0).unwrap_or(false);
-            let n_out = w.map(|w| {
-                let d = w.shape();
-                if d.len() >= 2 {
-                    if trans_b { d[0] } else { d[1] }
-                } else { 1 }
-            }).unwrap_or(1);
+            let trans_b = layer
+                .get_int_attr("transB")
+                .map(|v| v != 0)
+                .unwrap_or(false);
+            let n_out = w
+                .map(|w| {
+                    let d = w.shape();
+                    if d.len() >= 2 {
+                        if trans_b {
+                            d[0]
+                        } else {
+                            d[1]
+                        }
+                    } else {
+                        1
+                    }
+                })
+                .unwrap_or(1);
             let weight_l1 = if trans_b {
                 max_output_channel_l1(1, n_out)?
             } else {

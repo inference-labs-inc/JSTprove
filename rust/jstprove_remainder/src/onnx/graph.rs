@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 
-use super::parser::{ParsedModel, TensorData, AttrValue};
+use super::parser::{AttrValue, ParsedModel, TensorData};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum OpType {
@@ -87,11 +87,8 @@ pub struct LayerGraph {
 
 impl LayerGraph {
     pub fn from_parsed(model: &ParsedModel) -> Result<Self> {
-        let initializer_names: std::collections::HashSet<&str> = model
-            .initializers
-            .keys()
-            .map(String::as_str)
-            .collect();
+        let initializer_names: std::collections::HashSet<&str> =
+            model.initializers.keys().map(String::as_str).collect();
 
         let mut layers = Vec::new();
 
