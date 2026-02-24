@@ -18,7 +18,7 @@ use crate::io::io_reader::{FileReader, IOReader};
 use crate::runner::errors::RunError;
 use crate::runner::main_runner::{
     ConfigurableCircuit, load_circuit_from_bytes, load_witness_solver_from_bytes, prove_from_bytes,
-    serialize_witness, solve_and_validate_witness, verify_from_bytes, witness_from_request,
+    serialize_witness, verify_from_bytes, witness_from_request,
 };
 use crate::runner::schema::{WitnessBundle, WitnessRequest};
 use crate::runner::verify_extract::{VerifiedOutput, verify_and_extract_from_bytes};
@@ -343,6 +343,7 @@ fn quantize_f64_to_field<C: Config>(val: f64, scale: f64) -> CircuitField<C> {
     convert_val_to_field_element::<C>(truncated)
 }
 
+#[allow(clippy::too_many_lines)]
 fn witness_from_f64<C: Config>(
     circuit_bytes: &[u8],
     solver_bytes: &[u8],
@@ -394,6 +395,13 @@ fn witness_from_f64<C: Config>(
     let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
     let num_outputs = params.effective_output_dims();
 
+    eprintln!(
+        "WAI DIAG: num_outputs={num_outputs}, expected_num_output_zeroes={}, num_actual_outputs={}, input_size={}",
+        layered_circuit.expected_num_output_zeroes,
+        layered_circuit.num_actual_outputs,
+        layered_circuit.input_size(),
+    );
+
     let mut assignment = Circuit::<CircuitField<C>> {
         input_arr: input_arr.clone(),
         outputs: vec![CircuitField::<C>::zero(); num_outputs],
@@ -408,13 +416,31 @@ fn witness_from_f64<C: Config>(
         .solve_witness_with_hints(&assignment, &hint_registry)
         .map_err(|e| RunError::Witness(format!("probe pass: {e:?}")))?;
 
+    let probe_validation = layered_circuit.run(&probe_witness);
+    eprintln!(
+        "WAI DIAG probe: validation_len={}, all_pass={} (expected false since outputs=0)",
+        probe_validation.len(),
+        probe_validation.iter().all(|&v| v),
+    );
+
     let (private_inputs, public_inputs) = probe_witness
         .iter_scalar()
         .next()
         .ok_or_else(|| RunError::Witness("empty probe witness".into()))?;
 
-    let (actual_outputs, _) =
-        layered_circuit.eval_with_public_inputs(private_inputs, &public_inputs);
+    eprintln!(
+        "WAI DIAG probe: private_inputs_len={}, public_inputs_len={}",
+        private_inputs.len(),
+        public_inputs.len(),
+    );
+
+    let (actual_outputs, probe_constraints_ok) =
+        layered_circuit.eval_with_public_inputs(private_inputs.clone(), &public_inputs);
+
+    eprintln!(
+        "WAI DIAG probe eval: actual_outputs_len={}, constraints_ok={probe_constraints_ok}",
+        actual_outputs.len(),
+    );
 
     if actual_outputs.len() < num_outputs {
         return Err(RunError::Witness(format!(
@@ -427,17 +453,76 @@ fn witness_from_f64<C: Config>(
 
     let computed_outputs: Vec<CircuitField<C>> = actual_outputs[..num_outputs].to_vec();
 
+    let non_zero_outputs = computed_outputs.iter().filter(|v| !v.is_zero()).count();
+    eprintln!("WAI DIAG: computed {num_outputs} outputs, {non_zero_outputs} non-zero",);
+
     assignment.input_arr = input_arr;
     assignment.outputs = computed_outputs;
 
-    let witness = solve_and_validate_witness(
-        &witness_solver,
-        &layered_circuit,
-        &hint_registry,
-        &assignment,
-    )?;
+    let final_witness = witness_solver
+        .solve_witness_with_hints(&assignment, &hint_registry)
+        .map_err(|e| RunError::Witness(format!("final pass solve: {e:?}")))?;
 
-    let witness_bytes = serialize_witness::<C>(&witness, compress)?;
+    let final_validation = layered_circuit.run(&final_witness);
+    let final_all_pass = final_validation.iter().all(|&v| v);
+    let final_fail_count = final_validation.iter().filter(|&&v| !v).count();
+
+    eprintln!(
+        "WAI DIAG final: validation_len={}, all_pass={final_all_pass}, fail_count={final_fail_count}",
+        final_validation.len(),
+    );
+
+    if !final_all_pass {
+        let (final_priv, final_pub) = final_witness
+            .iter_scalar()
+            .next()
+            .ok_or_else(|| RunError::Witness("empty final witness".into()))?;
+
+        eprintln!(
+            "WAI DIAG final: private_inputs_len={}, public_inputs_len={}",
+            final_priv.len(),
+            final_pub.len(),
+        );
+
+        let outputs_offset = params.effective_input_dims();
+        let outputs_end = outputs_offset + num_outputs;
+        eprintln!(
+            "WAI DIAG final: public_inputs outputs_offset={outputs_offset}, outputs_end={outputs_end}",
+        );
+
+        let pub_outputs_all_set = final_pub[outputs_offset..outputs_end]
+            .iter()
+            .zip(assignment.outputs.iter())
+            .all(|(a, b)| a == b);
+        eprintln!("WAI DIAG final: public_inputs outputs match assignment={pub_outputs_all_set}",);
+
+        let (final_actual, final_constraints_ok) =
+            layered_circuit.eval_with_public_inputs(final_priv, &final_pub);
+        eprintln!(
+            "WAI DIAG final eval: actual_outputs_len={}, constraints_ok={final_constraints_ok}",
+            final_actual.len(),
+        );
+
+        let outputs_match = final_actual[..num_outputs]
+            .iter()
+            .zip(assignment.outputs.iter())
+            .all(|(a, b)| a == b);
+        let mismatch_count = final_actual[..num_outputs]
+            .iter()
+            .zip(assignment.outputs.iter())
+            .filter(|(a, b)| a != b)
+            .count();
+        eprintln!(
+            "WAI DIAG final eval: outputs_match_assignment={outputs_match}, mismatch_count={mismatch_count}",
+        );
+
+        return Err(RunError::Witness(format!(
+            "WAI validation failed: {final_fail_count}/{} witnesses failed, constraints_ok={final_constraints_ok}, outputs_match={outputs_match}",
+            final_validation.len(),
+        )));
+    }
+
+    let witness_bytes = serialize_witness::<C>(&final_witness, compress)?;
 
     Ok(WitnessBundle {
         witness: witness_bytes,
