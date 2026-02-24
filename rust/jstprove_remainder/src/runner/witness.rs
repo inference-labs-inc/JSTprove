@@ -529,13 +529,14 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let kernel_shape = layer.get_ints_attr("kernel_shape").ok_or_else(|| {
                     anyhow::anyhow!("MaxPool {} missing kernel_shape", layer.name)
                 })?;
-                let pool_h = kernel_shape
-                    .first()
-                    .map(|&v| v as usize)
-                    .ok_or_else(|| anyhow::anyhow!("MaxPool {} kernel_shape empty", layer.name))?;
-                let pool_w = kernel_shape.get(1).map(|&v| v as usize).ok_or_else(|| {
-                    anyhow::anyhow!("MaxPool {} kernel_shape has < 2 dims", layer.name)
-                })?;
+                anyhow::ensure!(
+                    kernel_shape.len() == 2,
+                    "MaxPool {} requires exactly 2D kernel_shape, got {} dims",
+                    layer.name,
+                    kernel_shape.len()
+                );
+                let pool_h = kernel_shape[0] as usize;
+                let pool_w = kernel_shape[1] as usize;
 
                 let strides = layer.get_ints_attr("strides");
                 let stride_h = strides
@@ -1263,9 +1264,10 @@ pub fn prepare_public_shreds(
                     anyhow::anyhow!("MaxPool {} missing kernel_shape", layer.name)
                 })?;
                 anyhow::ensure!(
-                    kernel_shape.len() >= 2,
-                    "MaxPool {} kernel_shape has fewer than 2 dimensions",
-                    layer.name
+                    kernel_shape.len() == 2,
+                    "MaxPool {} requires exactly 2D kernel_shape, got {} dims",
+                    layer.name,
+                    kernel_shape.len()
                 );
                 let pool_h = kernel_shape[0] as usize;
                 let pool_w = kernel_shape[1] as usize;

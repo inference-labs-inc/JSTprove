@@ -912,9 +912,10 @@ fn build_maxpool_layer(
         .get_ints_attr("kernel_shape")
         .ok_or_else(|| anyhow::anyhow!("MaxPool {} missing kernel_shape", layer.name))?;
     anyhow::ensure!(
-        kernel_shape.len() >= 2,
-        "MaxPool {} kernel_shape has fewer than 2 dimensions",
-        layer.name
+        kernel_shape.len() == 2,
+        "MaxPool {} requires exactly 2D kernel_shape, got {} dims",
+        layer.name,
+        kernel_shape.len()
     );
     let pool_h = kernel_shape[0] as usize;
     let pool_w = kernel_shape[1] as usize;
@@ -1269,6 +1270,21 @@ pub fn pad_matrix(
     pad_rows: usize,
     pad_cols: usize,
 ) -> anyhow::Result<Vec<i64>> {
+    let expected = orig_rows.checked_mul(orig_cols).ok_or_else(|| {
+        anyhow::anyhow!(
+            "pad_matrix: orig_rows * orig_cols overflow: {}x{}",
+            orig_rows,
+            orig_cols
+        )
+    })?;
+    anyhow::ensure!(
+        data.len() >= expected,
+        "pad_matrix: data.len() {} < orig {}x{} = {}",
+        data.len(),
+        orig_rows,
+        orig_cols,
+        expected
+    );
     anyhow::ensure!(
         orig_rows <= pad_rows && orig_cols <= pad_cols,
         "pad_matrix: orig {}x{} exceeds target {}x{}",

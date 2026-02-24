@@ -27,18 +27,17 @@ pub struct WANDB {
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 pub enum Backend {
     #[default]
-    #[serde(rename = "expander")]
     Expander,
-    #[serde(rename = "remainder")]
     Remainder,
 }
 
 impl Backend {
     #[must_use]
     pub fn is_remainder(&self) -> bool {
-        *self == Self::Remainder
+        matches!(self, Self::Remainder)
     }
 }
 
@@ -517,6 +516,19 @@ mod tests {
         let params: CircuitParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.backend, Backend::Expander);
         assert!(!params.backend.is_remainder());
+    }
+
+    #[test]
+    fn backend_unknown_variant_rejected() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [],
+            "outputs": [],
+            "backend": "gkr"
+        }"#;
+        assert!(serde_json::from_str::<CircuitParams>(json).is_err());
     }
 
     #[test]
