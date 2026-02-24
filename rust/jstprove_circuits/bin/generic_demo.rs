@@ -28,18 +28,13 @@ fn load_metadata(path: &str) -> CircuitParams {
         eprintln!("Error: failed to read metadata file '{path}': {e}");
         std::process::exit(1);
     });
-    let first = bytes.iter().find(|b| !b.is_ascii_whitespace());
-    if first == Some(&b'{') || first == Some(&b'[') {
-        serde_json::from_slice(&bytes).unwrap_or_else(|e| {
-            eprintln!("Error: invalid metadata JSON in '{path}': {e}");
-            std::process::exit(1);
-        })
-    } else {
-        rmp_serde::decode::from_slice(&bytes).unwrap_or_else(|e| {
-            eprintln!("Error: invalid metadata msgpack in '{path}': {e}");
-            std::process::exit(1);
-        })
+    if let Ok(params) = serde_json::from_slice::<CircuitParams>(&bytes) {
+        return params;
     }
+    rmp_serde::decode::from_slice(&bytes).unwrap_or_else(|e| {
+        eprintln!("Error: failed to parse metadata '{path}' as JSON or msgpack: {e}");
+        std::process::exit(1);
+    })
 }
 
 fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool) {
@@ -95,6 +90,7 @@ const ONNX_FULL_COMMANDS: &[&str] = &[
     "msgpack_compile",
 ];
 
+#[allow(clippy::too_many_lines)]
 fn main() {
     let mut file_reader = FileReader {
         path: "demo_cnn".to_owned(),
@@ -136,11 +132,15 @@ fn main() {
     if !is_remainder {
         if has_meta {
             set_onnx_context(&matches, needs_full);
-            if !cli_backend_explicit {
-                if let Ok(params) = OnnxContext::get_params() {
-                    if params.backend.is_remainder() {
-                        is_remainder = true;
+            if let Ok(params) = OnnxContext::get_params() {
+                if params.backend.is_remainder() {
+                    if cli_backend_explicit {
+                        eprintln!(
+                            "Error: command '{cmd_type}' --backend conflicts with metadata (backend: remainder)."
+                        );
+                        std::process::exit(1);
                     }
+                    is_remainder = true;
                 }
             }
         } else if needs_meta {
@@ -148,7 +148,13 @@ fn main() {
                 .get_one::<String>("circuit_path")
                 .expect("command requires --meta or -c with bundled metadata");
             if let Some(params) = try_load_metadata_from_circuit(circuit_path) {
-                if !cli_backend_explicit && params.backend.is_remainder() {
+                if params.backend.is_remainder() {
+                    if cli_backend_explicit {
+                        eprintln!(
+                            "Error: command '{cmd_type}' --backend conflicts with metadata (backend: remainder)."
+                        );
+                        std::process::exit(1);
+                    }
                     is_remainder = true;
                 }
                 let wandb = match load_wandb(&matches) {

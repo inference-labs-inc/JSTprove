@@ -480,8 +480,13 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let delta_input: Vec<i64> = relu_out
                     .iter()
                     .zip(input_data.iter())
-                    .map(|(o, x)| o - x)
-                    .collect();
+                    .map(|(&o, &x)| {
+                        let diff = i128::from(o) - i128::from(x);
+                        i64::try_from(diff).map_err(|_| {
+                            anyhow::anyhow!("Relu {} delta overflow: {} - {}", layer.name, o, x)
+                        })
+                    })
+                    .collect::<anyhow::Result<Vec<i64>>>()?;
                 let delta_zero: Vec<i64> = relu_out.clone();
 
                 let zero_vec = vec![0i64; 1 << nv];
@@ -1290,7 +1295,14 @@ pub fn prepare_public_shreds(
                 );
                 let stride_h = raw_stride_h as usize;
                 let stride_w = raw_stride_w as usize;
-                let (_input_ch, in_h, in_w) = input_layout.spatial_dims();
+                let (input_ch, in_h, in_w) = input_layout.spatial_dims();
+                anyhow::ensure!(
+                    input_ch == c_in,
+                    "Conv {}: weight c_in {} does not match input channels {}",
+                    layer.name,
+                    c_in,
+                    input_ch
+                );
                 let padded_h = in_h + pad_top + pad_bottom;
                 let padded_w = in_w + pad_left + pad_right;
                 anyhow::ensure!(
