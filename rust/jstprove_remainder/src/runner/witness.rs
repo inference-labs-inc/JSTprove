@@ -209,7 +209,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 } else {
                     weight_data.as_i64_vec()
                 };
-                let w_padded = pad_matrix(&w_transposed, k_dim, n_dim, k_padded, n_padded);
+                let w_padded = pad_matrix(&w_transposed, k_dim, n_dim, k_padded, n_padded)?;
 
                 let input_padded_for_mm = pad_to_size(input_data, k_padded);
                 let mm = padded_matmul(&input_padded_for_mm, 1, k_padded, &w_padded, n_padded);
@@ -371,7 +371,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 }
 
                 let kernel_t = transpose_matrix(&weight_data.as_i64_vec(), c_out, patch_size);
-                let kernel_padded = pad_matrix(&kernel_t, patch_size, c_out, pad_psize, pad_cout);
+                let kernel_padded = pad_matrix(&kernel_t, patch_size, c_out, pad_psize, pad_cout)?;
                 let mm = padded_matmul(
                     &im2col_data,
                     pad_patches,
@@ -541,11 +541,11 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let stride_h = strides
                     .and_then(|s| s.first())
                     .map(|&v| v as usize)
-                    .unwrap_or(pool_h);
+                    .unwrap_or(1);
                 let stride_w = strides
                     .and_then(|s| s.get(1))
                     .map(|&v| v as usize)
-                    .unwrap_or(pool_w);
+                    .unwrap_or(1);
 
                 anyhow::ensure!(
                     in_h >= pool_h && in_w >= pool_w,
@@ -1093,7 +1093,7 @@ pub fn prepare_public_shreds(
                 };
                 shreds.insert(
                     format!("{}_weight", layer.name),
-                    pad_matrix(&w_transposed, k_dim, n_dim, k_padded, n_padded),
+                    pad_matrix(&w_transposed, k_dim, n_dim, k_padded, n_padded)?,
                 );
 
                 let bias_padded = if let Some(bias_name) = bias_tensor_name {
@@ -1186,7 +1186,7 @@ pub fn prepare_public_shreds(
                 let kernel_t = transpose_matrix(&weight_data.as_i64_vec(), c_out, patch_size);
                 shreds.insert(
                     format!("{}_weight", layer.name),
-                    pad_matrix(&kernel_t, patch_size, c_out, pad_psize, pad_cout),
+                    pad_matrix(&kernel_t, patch_size, c_out, pad_psize, pad_cout)?,
                 );
 
                 let bias_bc = if let Some(bias_name) = bias_tensor_name {
@@ -1273,11 +1273,11 @@ pub fn prepare_public_shreds(
                 let stride_h = strides
                     .and_then(|s| s.first())
                     .map(|&v| v as usize)
-                    .unwrap_or(pool_h);
+                    .unwrap_or(1);
                 let stride_w = strides
                     .and_then(|s| s.get(1))
                     .map(|&v| v as usize)
-                    .unwrap_or(pool_w);
+                    .unwrap_or(1);
                 anyhow::ensure!(
                     in_h >= pool_h && in_w >= pool_w,
                     "MaxPool {}: input {}x{} smaller than kernel {}x{}",

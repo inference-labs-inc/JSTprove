@@ -375,7 +375,9 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
         }
 
         for ((table_nv, node_nv), requests) in &checks_by_key {
-            let table_node = table_nodes.get(table_nv).unwrap();
+            let table_node = table_nodes
+                .get(table_nv)
+                .expect("table_node must exist for table_nv inserted above");
             let lookup_table = builder.add_lookup_table(table_node, &fs_node);
 
             let real_count = requests.len();
@@ -921,11 +923,11 @@ fn build_maxpool_layer(
     let stride_h = strides
         .and_then(|s| s.first())
         .map(|&v| v as usize)
-        .unwrap_or(pool_h);
+        .unwrap_or(1);
     let stride_w = strides
         .and_then(|s| s.get(1))
         .map(|&v| v as usize)
-        .unwrap_or(pool_w);
+        .unwrap_or(1);
 
     anyhow::ensure!(
         in_h >= pool_h && in_w >= pool_w,
@@ -1266,8 +1268,8 @@ pub fn pad_matrix(
     orig_cols: usize,
     pad_rows: usize,
     pad_cols: usize,
-) -> Vec<i64> {
-    assert!(
+) -> anyhow::Result<Vec<i64>> {
+    anyhow::ensure!(
         orig_rows <= pad_rows && orig_cols <= pad_cols,
         "pad_matrix: orig {}x{} exceeds target {}x{}",
         orig_rows,
@@ -1281,7 +1283,7 @@ pub fn pad_matrix(
             out[r * pad_cols + c] = data[r * orig_cols + c];
         }
     }
-    out
+    Ok(out)
 }
 
 pub fn pad_to_size(data: &[i64], target: usize) -> Vec<i64> {

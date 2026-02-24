@@ -474,6 +474,52 @@ mod tests {
     }
 
     #[test]
+    fn backend_defaults_to_expander() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [],
+            "outputs": []
+        }"#;
+        let params: CircuitParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.backend, Backend::Expander);
+    }
+
+    #[test]
+    fn backend_remainder_round_trip() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [],
+            "outputs": [],
+            "backend": "remainder"
+        }"#;
+        let params: CircuitParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.backend, Backend::Remainder);
+        assert!(params.backend.is_remainder());
+        let serialized = serde_json::to_string(&params).unwrap();
+        let round_tripped: CircuitParams = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(round_tripped.backend, Backend::Remainder);
+    }
+
+    #[test]
+    fn backend_expander_explicit() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [],
+            "outputs": [],
+            "backend": "expander"
+        }"#;
+        let params: CircuitParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.backend, Backend::Expander);
+        assert!(!params.backend.is_remainder());
+    }
+
+    #[test]
     fn total_dims_empty() {
         let json = r#"{
             "scale_base": 2,
