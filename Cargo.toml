@@ -4,7 +4,7 @@ members = [
 ]
 
 resolver = "2"
-exclude = ["ExpanderCompilerCollection", "rust/jstprove_remainder"]
+exclude = ["ExpanderCompilerCollection", "rust/jstprove_remainder", "rust/jstprove_pyo3", ".claude"]
 
 [workspace.dependencies]
 serde_json = "1.0"

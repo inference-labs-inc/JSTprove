@@ -1,3 +1,4 @@
+pub mod compat;
 pub mod graph;
 pub mod ops;
 pub mod parser;

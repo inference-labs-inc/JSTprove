@@ -8,15 +8,11 @@ on:
     paths:
       - "**/Cargo.toml"
       - "**/Cargo.lock"
-      - "pyproject.toml"
-      - "uv.lock"
   pull_request:
     branches: ["main"]
     paths:
       - "**/Cargo.toml"
       - "**/Cargo.lock"
-      - "pyproject.toml"
-      - "uv.lock"
 
 jobs:
   rust-audit:
@@ -35,54 +31,3 @@ jobs:
         run: |
           cargo install cargo-audit --locked
           cargo audit --ignore RUSTSEC-2025-0134
-
-  python-audit:
-    name: Python Security Audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install UV
-        uses: astral-sh/setup-uv@v7
-
-      - name: Install security tools
-        run: uv pip install --system pip-audit bandit
-
-      - name: Export locked dependencies
-        run: uv export --format requirements.txt --no-emit-project --output-file requirements.lock.txt
-
-      - name: Run pip-audit
-        run: pip-audit --requirement requirements.lock.txt
-
-      - name: Run bandit
-        id: bandit
-        run: |
-          set +e
-
-          bandit -r ./python --severity-level high -f json -o bandit-report.json
-          BANDIT_EXIT_CODE=$?
-          echo "exit_code=$BANDIT_EXIT_CODE" >> $GITHUB_OUTPUT
-
-          echo "::group::Bandit Security Report"
-          bandit -r ./python --severity-level high -f txt
-          echo "::endgroup::"
-
-          exit 0
-
-      - name: Upload security report
-        uses: actions/upload-artifact@v6
-        with:
-          name: security-reports
-          path: bandit-report.json
-
-      - name: Check bandit results
-        if: steps.bandit.outputs.exit_code != '0'
-        run: |
-          echo "Bandit found security issues. Please review the report."
-          exit 1

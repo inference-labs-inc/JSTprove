@@ -30,11 +30,8 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Set up Python
-        run: uv python install 3.12
+      - name: Install maturin
+        run: pip3 install maturin
 
       - name: Extract version
         id: get_version
@@ -46,17 +43,12 @@ jobs:
             VERSION=$(grep -m1 '^version' pyproject.toml | sed 's/.*"\(.*\)".*/\1/')
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "version_underscore=$(echo $VERSION | tr '.' '-')" >> $GITHUB_OUTPUT
 
-      - name: Update pyproject.toml version
+      - name: Update versions
         run: |
-          sed -i 's/version = ".*"/version = "${{ steps.get_version.outputs.version }}"/' pyproject.toml
-          sed -i 's/onnx_generic_circuit_[0-9-]*/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}/' pyproject.toml
-
-      - name: Update Cargo.toml version
-        run: |
+          sed -i 's/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/' pyproject.toml
+          sed -i '0,/^version = ".*"/{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/}' rust/jstprove_pyo3/Cargo.toml
           sed -i '0,/^version = ".*"/{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/}' rust/jstprove_circuits/Cargo.toml
-          sed -i 's/name = "onnx_generic_circuit_.*"/name = "onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"/' rust/jstprove_circuits/Cargo.toml
 
       - name: Install Rust target
         run: rustup target add x86_64-unknown-linux-gnu
@@ -79,45 +71,20 @@ jobs:
           path: target
           key: manylinux-2-28-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build Rust binaries
-        run: cargo build --release --target x86_64-unknown-linux-gnu --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
-
-      - name: Collect binaries
-        shell: bash
-        run: |
-          BINARY_NAME="onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"
-          MAIN_BIN="target/x86_64-unknown-linux-gnu/release/${BINARY_NAME}"
-          BIN_DIR="python/core/binaries"
-
-          mkdir -p "$BIN_DIR"
-          cp "$MAIN_BIN" "$BIN_DIR/"
-          chmod +x "$BIN_DIR/$BINARY_NAME"
-
       - name: Build wheel
-        run: uv build
-
-      - name: Retag wheel with platform
-        run: |
-          uv tool install wheel
-          uvx wheel tags --platform-tag=manylinux_2_28_x86_64 --remove dist/*.whl
+        run: maturin build --release --target x86_64-unknown-linux-gnu --manylinux 2_28
 
       - name: Test wheel installation
         run: |
-          WHEEL=$(ls dist/*.whl)
-          uv tool install "$WHEEL"
-          export PATH="$HOME/.local/bin:$PATH"
-          jst compile -m python/models/models_onnx/lenet.onnx -c ./test_circuit.txt
-          if [ ! -f ./test_circuit.txt ]; then
-            echo "Error: Circuit file was not created"
-            exit 1
-          fi
-          echo "Wheel test passed"
+          WHEEL=$(ls target/wheels/*.whl)
+          pip3 install "$WHEEL"
+          python3 -c "from jstprove import Circuit; print('PyO3 bindings OK')"
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v6
         with:
           name: wheel-ubuntu-x86_64
-          path: ./dist/*.whl
+          path: ./target/wheels/*.whl
 
   build-macos:
     if: >-
@@ -130,11 +97,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
       - name: Set up Python
-        run: uv python install 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install maturin
+        run: pip3 install maturin
 
       - name: Extract version
         id: get_version
@@ -146,17 +115,12 @@ jobs:
             VERSION=$(grep -m1 '^version' pyproject.toml | sed 's/.*"\(.*\)".*/\1/')
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "version_underscore=$(echo $VERSION | tr '.' '-')" >> $GITHUB_OUTPUT
 
-      - name: Update pyproject.toml version
+      - name: Update versions
         run: |
-          sed -i '' 's/version = ".*"/version = "${{ steps.get_version.outputs.version }}"/' pyproject.toml
-          sed -i '' 's/onnx_generic_circuit_[0-9-]*/onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}/' pyproject.toml
-
-      - name: Update Cargo.toml version
-        run: |
+          sed -i '' 's/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/' pyproject.toml
+          sed -i '' '1,/^version = /{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/;}' rust/jstprove_pyo3/Cargo.toml
           sed -i '' '1,/^version = /{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/;}' rust/jstprove_circuits/Cargo.toml
-          sed -i '' 's/name = "onnx_generic_circuit_.*"/name = "onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"/' rust/jstprove_circuits/Cargo.toml
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -182,49 +146,22 @@ jobs:
           path: target
           key: macos-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build Rust binaries
-        run: cargo build --release --target aarch64-apple-darwin --bin onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}
-        env:
-          MACOSX_DEPLOYMENT_TARGET: "11.0"
-
-      - name: Collect binaries
-        shell: bash
-        run: |
-          BINARY_NAME="onnx_generic_circuit_${{ steps.get_version.outputs.version_underscore }}"
-          MAIN_BIN="target/aarch64-apple-darwin/release/${BINARY_NAME}"
-          BIN_DIR="python/core/binaries"
-
-          mkdir -p "$BIN_DIR"
-          cp "$MAIN_BIN" "$BIN_DIR/"
-          chmod +x "$BIN_DIR/$BINARY_NAME"
-
       - name: Build wheel
-        run: uv build
+        run: maturin build --release --target aarch64-apple-darwin
         env:
           MACOSX_DEPLOYMENT_TARGET: "11.0"
 
-      - name: Retag wheel with platform
+      - name: Test wheel installation
         run: |
-          uv tool install wheel
-          uvx wheel tags --platform-tag=macosx_11_0_arm64 --remove dist/*.whl
-
-      - name: Test wheel installation and compile
-        run: |
-          WHEEL=$(ls dist/*.whl)
-          uv tool install "$WHEEL"
-          export PATH="$HOME/.local/bin:$PATH"
-          jst compile -m python/models/models_onnx/lenet.onnx -c ./test_circuit.txt
-          if [[ ! -f ./test_circuit.txt ]]; then
-            echo "Error: Circuit file was not created"
-            exit 1
-          fi
-          echo "Wheel test passed"
+          WHEEL=$(ls target/wheels/*.whl)
+          pip3 install "$WHEEL"
+          python3 -c "from jstprove import Circuit; print('PyO3 bindings OK')"
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v6
         with:
           name: wheel-macos-aarch64
-          path: ./dist/*.whl
+          path: ./target/wheels/*.whl
 
   publish:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')

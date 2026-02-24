@@ -33,7 +33,11 @@ pub struct VerifyJob {
     pub proof: String,
 }
 
-pub fn run_batch_witness(model_path: &Path, manifest_path: &Path, compress: bool) -> Result<()> {
+pub fn run_batch_witness(
+    model_path: &Path,
+    manifest_path: &Path,
+    compress: bool,
+) -> Result<BatchResult> {
     let model = super::compile::load_model(model_path)?;
     let manifest: BatchManifest<WitnessJob> =
         serde_json::from_reader(std::fs::File::open(manifest_path)?)?;
@@ -59,13 +63,14 @@ pub fn run_batch_witness(model_path: &Path, manifest_path: &Path, compress: bool
     }
 
     print_batch_result(&result);
-    if result.failed > 0 {
-        anyhow::bail!("{} of {} jobs failed", result.failed, manifest.jobs.len());
-    }
-    Ok(())
+    Ok(result)
 }
 
-pub fn run_batch_prove(model_path: &Path, manifest_path: &Path, compress: bool) -> Result<()> {
+pub fn run_batch_prove(
+    model_path: &Path,
+    manifest_path: &Path,
+    compress: bool,
+) -> Result<BatchResult> {
     let model = super::compile::load_model(model_path)?;
     let manifest: BatchManifest<ProveJob> =
         serde_json::from_reader(std::fs::File::open(manifest_path)?)?;
@@ -90,13 +95,10 @@ pub fn run_batch_prove(model_path: &Path, manifest_path: &Path, compress: bool) 
     }
 
     print_batch_result(&result);
-    if result.failed > 0 {
-        anyhow::bail!("{} of {} jobs failed", result.failed, manifest.jobs.len());
-    }
-    Ok(())
+    Ok(result)
 }
 
-pub fn run_batch_verify(model_path: &Path, manifest_path: &Path) -> Result<()> {
+pub fn run_batch_verify(model_path: &Path, manifest_path: &Path) -> Result<BatchResult> {
     let model = super::compile::load_model(model_path)?;
     let manifest: BatchManifest<VerifyJob> =
         serde_json::from_reader(std::fs::File::open(manifest_path)?)?;
@@ -121,10 +123,7 @@ pub fn run_batch_verify(model_path: &Path, manifest_path: &Path) -> Result<()> {
     }
 
     print_batch_result(&result);
-    if result.failed > 0 {
-        anyhow::bail!("{} of {} jobs failed", result.failed, manifest.jobs.len());
-    }
-    Ok(())
+    Ok(result)
 }
 
 fn process_witness_job(

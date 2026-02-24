@@ -1,4 +1,4 @@
-name: Unit, Integration Python Tests
+name: Rust Tests
 
 on:
   push:
@@ -24,45 +24,36 @@ permissions:
   contents: read
 
 jobs:
-  python-tests:
+  rust-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      matrix:
-        python-version: ["3.12", "3.13"]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
         with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install UV
-        uses: astral-sh/setup-uv@v7
-
-      - name: Install the project
-        run: uv sync --group test
+          toolchain: nightly-2025-03-27
 
       - name: Install system dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y \
             pkg-config \
             libclang-dev \
-            clang
+            clang \
+            protobuf-compiler
 
-      - name: Run Unit Tests
-        run: |
-          mkdir -p report
-          uv run pytest --unit --html=report/unit_tests.html
-
-      - name: Run Integration Tests
-        run: |
-          mkdir -p report
-          uv run pytest --integration --html=report/integration_tests.html
-
-      - name: Upload Pytest HTML Report
-        uses: actions/upload-artifact@v6
+      - name: Cache Rust dependencies
+        uses: actions/cache@v5
         with:
-          name: pytest-html-report-python-${{ matrix.python-version }}
-          path: report
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run workspace tests
+        run: cargo test --workspace
+
+      - name: Run remainder tests
+        run: cargo test -p jstprove-remainder
