@@ -42,12 +42,12 @@ pub(crate) fn auto_decompress_bytes(data: &[u8]) -> Result<Cow<[u8]>, RunError> 
     }
 }
 
-fn maybe_compress_bytes(data: &[u8], compress: bool) -> Result<Vec<u8>, RunError> {
+fn maybe_compress_bytes(data: Vec<u8>, compress: bool) -> Result<Vec<u8>, RunError> {
     if compress {
-        zstd::encode_all(Cursor::new(data), ZSTD_COMPRESSION_LEVEL)
+        zstd::encode_all(Cursor::new(&data), ZSTD_COMPRESSION_LEVEL)
             .map_err(|e| RunError::Serialize(format!("zstd compress: {e}")))
     } else {
-        Ok(data.to_vec())
+        Ok(data)
     }
 }
 
@@ -137,42 +137,12 @@ fn get_witness_solver_path(input: &str) -> PathBuf {
     PathBuf::from(file_name)
 }
 
-/// Compiles a circuit and serializes both the compiled circuit and witness solver.
-///
-/// This function instantiates a `CircuitType`, configures it, and
-/// compiles it into a layered circuit representation along with its associated
-/// witness solver using Expander's circuit compiler.
-/// Both artifacts are then serialized:
-///
-/// - The compiled circuit is written to `circuit_path`.
-/// - The witness solver is written to a companion file determined by
-///   [`get_witness_solver_path`].
-///
-/// # Arguments
-///
-/// - `circuit_path` – Path where the compiled circuit will be written.
-///   A companion file at the same location (with a modified extension)
-///   will hold the serialized witness solver.
-///
-/// # Errors
-///
-/// Returns a [`RunError`] if:
-///
-/// - The circuit fails to compile (`RunError::Compile`)
-/// - The circuit or witness solver cannot be serialized (`RunError::Serialize`)
-/// - The circuit or witness solver files cannot be created (`RunError::Io`)
-///
-pub fn run_compile_and_serialize<C: Config, CircuitType>(
-    circuit_path: &str,
-    compress: bool,
+fn compile_to_bundle<C: Config, CircuitType>(
     metadata: Option<CircuitParams>,
-) -> Result<(), RunError>
+) -> Result<CompiledCircuit, RunError>
 where
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone + MaybeConfigure,
 {
-    #[cfg(feature = "peak-mem")]
-    GLOBAL.reset_peak_memory();
-
     let mut circuit = CircuitType::default();
     configure_if_possible::<CircuitType>(&mut circuit)?;
 
@@ -191,46 +161,42 @@ where
         .serialize_into(&mut ws_buf)
         .map_err(|e| RunError::Serialize(format!("witness_solver: {e:?}")))?;
 
-    let compressed_circuit = maybe_compress_bytes(&circuit_buf, compress)?;
-    let compressed_ws = maybe_compress_bytes(&ws_buf, compress)?;
-
-    let file = std::fs::File::create(circuit_path).map_err(|e| RunError::Io {
-        source: e,
-        path: circuit_path.into(),
-    })?;
-    std::io::Write::write_all(&mut std::io::BufWriter::new(file), &compressed_circuit).map_err(
-        |e| RunError::Io {
-            source: e,
-            path: circuit_path.into(),
-        },
-    )?;
-
-    let witness_path = get_witness_solver_path(circuit_path);
-    let file = std::fs::File::create(&witness_path).map_err(|e| RunError::Io {
-        source: e,
-        path: witness_path.display().to_string(),
-    })?;
-    std::io::Write::write_all(&mut std::io::BufWriter::new(file), &compressed_ws).map_err(|e| {
-        RunError::Io {
-            source: e,
-            path: witness_path.display().to_string(),
-        }
-    })?;
-
-    let bundle = CompiledCircuit {
-        circuit: compressed_circuit,
-        witness_solver: compressed_ws,
+    Ok(CompiledCircuit {
+        circuit: circuit_buf,
+        witness_solver: ws_buf,
         metadata,
-    };
+    })
+}
+
+/// Compiles a circuit and writes a single msgpack bundle.
+///
+/// The output path is derived from `circuit_path` with the extension
+/// replaced by `.msgpack`. When `compress` is true the bundle is
+/// zstd-compressed; otherwise it is written as raw msgpack.
+///
+/// # Errors
+///
+/// Returns a [`RunError`] on compilation, serialization, or file I/O failure.
+pub fn run_compile_and_serialize<C: Config, CircuitType>(
+    circuit_path: &str,
+    compress: bool,
+    metadata: Option<CircuitParams>,
+) -> Result<(), RunError>
+where
+    CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone + MaybeConfigure,
+{
+    #[cfg(feature = "peak-mem")]
+    GLOBAL.reset_peak_memory();
+
+    let bundle = compile_to_bundle::<C, CircuitType>(metadata)?;
     let msgpack_path = Path::new(circuit_path).with_extension("msgpack");
     write_circuit_bundle(
         msgpack_path
             .to_str()
             .ok_or_else(|| RunError::Json("invalid msgpack path".into()))?,
         &bundle,
-    )?;
-
-    Ok(())
+        compress,
+    )
 }
 
 /// Generates a witness for a circuit from provided inputs and outputs, then writes it to disk.
@@ -273,8 +239,7 @@ where
         + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
         + Clone,
 {
-    let witness_solver = load_witness_solver::<C>(circuit_path)?;
-    let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
+    let (layered_circuit, witness_solver) = load_circuit_and_solver::<C>(circuit_path)?;
 
     let assignment = CircuitDefaultType::default();
     let assignment = io_reader.read_inputs(input_path, assignment)?;
@@ -343,22 +308,7 @@ where
         + Clone
         + MaybeConfigure,
 {
-    let witness_path = get_witness_solver_path(circuit_path);
-    let file = std::fs::File::open(&witness_path).map_err(|e| RunError::Io {
-        source: e,
-        path: witness_path.display().to_string(),
-    })?;
-    let reader = auto_reader(file)?;
-    let witness_solver = WitnessSolver::<C>::deserialize_from(reader)
-        .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
-
-    let file = std::fs::File::open(circuit_path).map_err(|e| RunError::Io {
-        source: e,
-        path: circuit_path.into(),
-    })?;
-    let reader = auto_reader(file)?;
-    let layered_circuit = Circuit::<C, NormalInputType>::deserialize_from(reader)
-        .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+    let (layered_circuit, witness_solver) = load_circuit_and_solver::<C>(circuit_path)?;
 
     let assignment = CircuitDefaultType::default();
     let assignment = io_reader.read_inputs(input_path, assignment)?;
@@ -561,24 +511,66 @@ fn load_manifest<T: serde::de::DeserializeOwned>(path: &str) -> Result<BatchMani
 }
 
 fn load_layered_circuit<C: Config>(path: &str) -> Result<Circuit<C, NormalInputType>, RunError> {
-    let file = std::fs::File::open(path).map_err(|e| RunError::Io {
-        source: e,
-        path: path.into(),
-    })?;
-    let reader = auto_reader(file)?;
-    Circuit::<C, NormalInputType>::deserialize_from(reader)
-        .map_err(|e| RunError::Deserialize(format!("{e:?}")))
+    let p = Path::new(path);
+    if p.extension().and_then(|e| e.to_str()) == Some("msgpack") {
+        let bundle = read_circuit_msgpack(path)?;
+        return load_circuit_from_bytes::<C>(&bundle.circuit);
+    }
+    if p.exists() {
+        let file = std::fs::File::open(path).map_err(|e| RunError::Io {
+            source: e,
+            path: path.into(),
+        })?;
+        let reader = auto_reader(file)?;
+        return Circuit::<C, NormalInputType>::deserialize_from(reader)
+            .map_err(|e| RunError::Deserialize(format!("{e:?}")));
+    }
+    let msgpack_path = p.with_extension("msgpack");
+    let bundle = read_circuit_msgpack(
+        msgpack_path
+            .to_str()
+            .ok_or_else(|| RunError::Deserialize("invalid msgpack path".into()))?,
+    )?;
+    load_circuit_from_bytes::<C>(&bundle.circuit)
 }
 
-fn load_witness_solver<C: Config>(circuit_path: &str) -> Result<WitnessSolver<C>, RunError> {
+fn load_circuit_and_solver<C: Config>(
+    circuit_path: &str,
+) -> Result<(Circuit<C, NormalInputType>, WitnessSolver<C>), RunError> {
+    let p = Path::new(circuit_path);
+    if p.extension().and_then(|e| e.to_str()) == Some("msgpack") {
+        let bundle = read_circuit_msgpack(circuit_path)?;
+        let circuit = load_circuit_from_bytes::<C>(&bundle.circuit)?;
+        let solver = load_witness_solver_from_bytes::<C>(&bundle.witness_solver)?;
+        return Ok((circuit, solver));
+    }
     let witness_file = get_witness_solver_path(circuit_path);
-    let file = std::fs::File::open(&witness_file).map_err(|e| RunError::Io {
-        source: e,
-        path: witness_file.display().to_string(),
-    })?;
-    let reader = auto_reader(file)?;
-    WitnessSolver::<C>::deserialize_from(reader)
-        .map_err(|e| RunError::Deserialize(format!("{e:?}")))
+    if p.exists() && witness_file.exists() {
+        let file = std::fs::File::open(circuit_path).map_err(|e| RunError::Io {
+            source: e,
+            path: circuit_path.into(),
+        })?;
+        let reader = auto_reader(file)?;
+        let circuit = Circuit::<C, NormalInputType>::deserialize_from(reader)
+            .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+        let file = std::fs::File::open(&witness_file).map_err(|e| RunError::Io {
+            source: e,
+            path: witness_file.display().to_string(),
+        })?;
+        let reader = auto_reader(file)?;
+        let solver = WitnessSolver::<C>::deserialize_from(reader)
+            .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+        return Ok((circuit, solver));
+    }
+    let msgpack_path = p.with_extension("msgpack");
+    let bundle = read_circuit_msgpack(
+        msgpack_path
+            .to_str()
+            .ok_or_else(|| RunError::Deserialize("invalid msgpack path".into()))?,
+    )?;
+    let circuit = load_circuit_from_bytes::<C>(&bundle.circuit)?;
+    let solver = load_witness_solver_from_bytes::<C>(&bundle.witness_solver)?;
+    Ok((circuit, solver))
 }
 
 fn prove_core<C: Config>(
@@ -761,8 +753,7 @@ where
         + Clone,
 {
     let manifest: BatchManifest<WitnessJob> = load_manifest(manifest_path)?;
-    let witness_solver = load_witness_solver::<C>(circuit_path)?;
-    let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
+    let (layered_circuit, witness_solver) = load_circuit_and_solver::<C>(circuit_path)?;
     let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
 
     let job_count = manifest.jobs.len();
@@ -837,8 +828,7 @@ where
         + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
         + Clone,
 {
-    let witness_solver = load_witness_solver::<C>(circuit_path)?;
-    let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
+    let (layered_circuit, witness_solver) = load_circuit_and_solver::<C>(circuit_path)?;
     let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
 
     let stdin = std::io::stdin();
@@ -1239,7 +1229,7 @@ pub fn serialize_witness<C: Config>(
     witness
         .serialize_into(&mut buf)
         .map_err(|e| RunError::Serialize(format!("witness: {e:?}")))?;
-    maybe_compress_bytes(&buf, compress)
+    maybe_compress_bytes(buf, compress)
 }
 
 /// # Errors
@@ -1263,7 +1253,7 @@ pub fn prove_from_bytes<C: Config>(
     let proof_bytes = executor::dump_proof_and_claimed_v(&proof, &claimed_v)
         .map_err(|e| RunError::Serialize(format!("proof: {e:?}")))?;
 
-    maybe_compress_bytes(&proof_bytes, compress)
+    maybe_compress_bytes(proof_bytes, compress)
 }
 
 /// # Errors
@@ -1300,52 +1290,35 @@ pub fn verify_from_bytes<C: Config>(
 /// Returns `RunError` if compilation, serialization, or file I/O fails.
 pub fn write_circuit_msgpack<C: Config, CircuitType>(
     path: &str,
-    compress_blobs: bool,
+    compress: bool,
     metadata: Option<CircuitParams>,
 ) -> Result<(), RunError>
 where
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone + MaybeConfigure,
 {
-    let mut circuit = CircuitType::default();
-    configure_if_possible::<CircuitType>(&mut circuit)?;
-
-    let compile_result = compile(&circuit, CompileOptions::default())
-        .map_err(|e| RunError::Compile(format!("{e:?}")))?;
-
-    let mut circuit_buf = Vec::new();
-    compile_result
-        .layered_circuit
-        .serialize_into(&mut circuit_buf)
-        .map_err(|e| RunError::Serialize(format!("circuit: {e:?}")))?;
-
-    let mut ws_buf = Vec::new();
-    compile_result
-        .witness_solver
-        .serialize_into(&mut ws_buf)
-        .map_err(|e| RunError::Serialize(format!("witness_solver: {e:?}")))?;
-
-    let bundle = CompiledCircuit {
-        circuit: maybe_compress_bytes(&circuit_buf, compress_blobs)?,
-        witness_solver: maybe_compress_bytes(&ws_buf, compress_blobs)?,
-        metadata,
-    };
-
-    write_circuit_bundle(path, &bundle)
+    let bundle = compile_to_bundle::<C, CircuitType>(metadata)?;
+    write_circuit_bundle(path, &bundle, compress)
 }
 
-fn write_circuit_bundle(path: &str, bundle: &CompiledCircuit) -> Result<(), RunError> {
+fn write_circuit_bundle(
+    path: &str,
+    bundle: &CompiledCircuit,
+    compress: bool,
+) -> Result<(), RunError> {
     let file = std::fs::File::create(path).map_err(|e| RunError::Io {
         source: e,
         path: path.into(),
     })?;
-    let mut writer = std::io::BufWriter::new(file);
-    bundle
+    let mut writer = compressed_writer(file, compress)?;
+    let ser_err = bundle
         .serialize(&mut rmp_serde::Serializer::new(&mut writer).with_struct_map())
-        .map_err(|e| RunError::Serialize(format!("msgpack: {e:?}")))?;
-    std::io::Write::flush(&mut writer).map_err(|e| RunError::Io {
-        source: e,
-        path: path.into(),
-    })?;
+        .map_err(|e| RunError::Serialize(format!("msgpack: {e:?}")))
+        .err();
+    let finish_err = writer.finish().err();
+    if let Some(e) = ser_err.or(finish_err) {
+        let _ = std::fs::remove_file(path);
+        return Err(e);
+    }
     Ok(())
 }
 
@@ -1358,7 +1331,8 @@ pub fn read_circuit_msgpack(path: &str) -> Result<CompiledCircuit, RunError> {
         source: e,
         path: path.into(),
     })?;
-    rmp_serde::decode::from_read(std::io::BufReader::new(file))
+    let reader = auto_reader(file)?;
+    rmp_serde::decode::from_read(reader)
         .map_err(|e| RunError::Deserialize(format!("msgpack: {e:?}")))
 }
 
