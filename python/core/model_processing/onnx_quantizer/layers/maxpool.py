@@ -67,6 +67,8 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
         self: MaxpoolQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto],
+        scale_base: int | None = 2,
+        scale_exponent: int | None = 18,
     ) -> None:
         """
         Perform high-level validation to ensure that this node
@@ -80,7 +82,7 @@ class MaxpoolQuantizer(BaseOpQuantizer, QuantizeMaxpool):
         Raises:
             InvalidParamError: If any requirement is not met.
         """
-        _ = initializer_map
+        _ = initializer_map, scale_base, scale_exponent
         attributes = extract_attributes(node)
         ceil_mode = attributes.get("ceil_mode", None)
         auto_pad = attributes.get("auto_pad", None)

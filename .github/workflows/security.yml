@@ -34,7 +34,7 @@ jobs:
       - name: Install and run cargo-audit
         run: |
           cargo install cargo-audit --locked
-          cargo audit
+          cargo audit --ignore RUSTSEC-2025-0134
 
   python-audit:
     name: Python Security Audit

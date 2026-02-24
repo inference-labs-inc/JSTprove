@@ -860,6 +860,8 @@ class ONNXConverter(ModelConverter):
     def _prepare_model_for_quantization(
         self: ONNXConverter,
         unscaled_model: onnx.ModelProto,
+        scale_base: int | None = 2,
+        scale_exponent: int | None = 18,
     ) -> tuple[onnx.ModelProto, dict[str, onnx.TensorProto], list[str]]:
         """Prepare the model for quantization by creating a copy and necessary mappings.
 
@@ -871,7 +873,11 @@ class ONNXConverter(ModelConverter):
                 Model copy, initializer map, and input names.
         """
         model = copy.deepcopy(unscaled_model)
-        self.op_quantizer.check_model(model)
+        self.op_quantizer.check_model(
+            model,
+            scale_base=scale_base,
+            scale_exponent=scale_exponent,
+        )
         initializer_map = {init.name: init for init in model.graph.initializer}
         input_names = [inp.name for inp in unscaled_model.graph.input]
         return model, initializer_map, input_names
@@ -1070,6 +1076,8 @@ class ONNXConverter(ModelConverter):
             # Prepare model and mappings
             model, initializer_map, input_names = self._prepare_model_for_quantization(
                 unscaled_model,
+                scale_base=scale_base,
+                scale_exponent=scale_exponent,
             )
 
             # Quantize inputs and collect new nodes
@@ -1115,7 +1123,6 @@ class ONNXConverter(ModelConverter):
         except (QuantizationError, ModelConversionError):
             raise
         except (
-            onnx.ONNXException,
             ValueError,
             TypeError,
             RuntimeError,

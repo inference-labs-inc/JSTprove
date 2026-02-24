@@ -384,9 +384,11 @@ fn witness_from_f64<C: Config>(
     let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
     let num_outputs = params.effective_output_dims();
 
-    let mut assignment = Circuit::<CircuitField<C>>::default();
-    assignment.input_arr = input_arr.clone();
-    assignment.outputs = vec![CircuitField::<C>::zero(); num_outputs];
+    let mut assignment = Circuit::<CircuitField<C>> {
+        input_arr: input_arr.clone(),
+        outputs: vec![CircuitField::<C>::zero(); num_outputs],
+        ..Default::default()
+    };
     assignment.dummy[0] = CircuitField::<C>::from(1u32);
     assignment.dummy[1] = CircuitField::<C>::from(1u32);
     assignment.scale_base[0] = CircuitField::<C>::from(params.scale_base);

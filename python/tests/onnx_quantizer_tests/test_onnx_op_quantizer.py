@@ -42,8 +42,10 @@ class MockHandler:
         self: MockHandler,
         node: NodeProto,
         initializer_map: dict[str, TensorProto],
+        scale_base: int,
+        scale_exponent: int,
     ) -> None:
-        _ = initializer_map
+        _ = initializer_map, scale_base, scale_exponent
         self.called_supported = True
         if node.name == "bad_node":
             msg = "Invalid node parameters"
@@ -95,7 +97,7 @@ def test_check_model_raises_on_unsupported_op() -> None:
     model = helper.make_model(graph)
 
     with pytest.raises(UnsupportedOpError):
-        quantizer.check_model(model)
+        quantizer.check_model(model, scale_base=2, scale_exponent=2)
 
 
 @pytest.mark.unit
@@ -107,7 +109,7 @@ def test_check_layer_invokes_check_supported() -> None:
     node = helper.make_node("FakeOp", ["x"], ["y"])
     initializer_map = {}
 
-    quantizer.check_layer(node, initializer_map)
+    quantizer.check_layer(node, initializer_map, scale_base=2, scale_exponent=2)
     # Check that check_supported is called
     assert handler.called_supported
 
@@ -157,7 +159,7 @@ def test_check_model_raises_unsupported(dummy_model: ModelProto) -> None:
     dummy_model.graph.node.append(helper.make_node("FakeOp", ["a"], ["b"]))
 
     with pytest.raises(UnsupportedOpError) as excinfo:
-        quantizer.check_model(dummy_model)
+        quantizer.check_model(dummy_model, scale_base=2, scale_exponent=2)
 
     assert "FakeOp" in str(excinfo.value)
 
@@ -166,7 +168,7 @@ def test_check_model_raises_unsupported(dummy_model: ModelProto) -> None:
 def test_check_layer_missing_handler(valid_node: NodeProto) -> None:
     quantizer = ONNXOpQuantizer()
     with pytest.raises(MissingHandlerError) as exc_info:
-        quantizer.check_layer(valid_node, {})
+        quantizer.check_layer(valid_node, {}, scale_base=2, scale_exponent=2)
 
     assert QuantizationError("").GENERIC_MESSAGE in str(exc_info.value)
     assert "No quantization handler registered for operator type 'Dummy'." in str(
@@ -181,7 +183,7 @@ def test_check_layer_with_bad_handler(invalid_node: NodeProto) -> None:
 
     # This error is created in our mock handler
     with pytest.raises(ValueError, match="Invalid node parameters"):
-        quantizer.check_layer(invalid_node, {})
+        quantizer.check_layer(invalid_node, {}, scale_base=2, scale_exponent=2)
 
 
 @pytest.mark.unit
@@ -223,7 +225,7 @@ def test_check_layer_skips_handler_without_check_supported() -> None:
 
     node = helper.make_node("NoCheckOp", ["x"], ["y"])
     # Should not raise
-    quantizer.check_layer(node, {})
+    quantizer.check_layer(node, {}, scale_base=2, scale_exponent=2)
 
 
 @pytest.mark.unit
@@ -243,4 +245,4 @@ def test_check_empty_model() -> None:
     model = helper.make_model(helper.make_graph([], "empty", [], []))
     quantizer = ONNXOpQuantizer()
     # Should not raise
-    quantizer.check_model(model)
+    quantizer.check_model(model, 2, 2)

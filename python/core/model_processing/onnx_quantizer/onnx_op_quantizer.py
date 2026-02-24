@@ -25,6 +25,7 @@ from python.core.model_processing.onnx_quantizer.layers.constant import (
     ConstantQuantizer,
 )
 from python.core.model_processing.onnx_quantizer.layers.conv import ConvQuantizer
+from python.core.model_processing.onnx_quantizer.layers.div import DivQuantizer
 from python.core.model_processing.onnx_quantizer.layers.gemm import GemmQuantizer
 from python.core.model_processing.onnx_quantizer.layers.max import MaxQuantizer
 from python.core.model_processing.onnx_quantizer.layers.maxpool import MaxpoolQuantizer
@@ -96,6 +97,7 @@ class ONNXOpQuantizer:
         self.register("BatchNormalization", BatchnormQuantizer(self.new_initializers))
         self.register("Squeeze", SqueezeQuantizer(self.new_initializers))
         self.register("Unsqueeze", UnsqueezeQuantizer(self.new_initializers))
+        self.register("Div", DivQuantizer(self.new_initializers))
 
     def register(
         self: ONNXOpQuantizer,
@@ -164,7 +166,12 @@ class ONNXOpQuantizer:
 
         raise UnsupportedOpError(node.op_type)
 
-    def check_model(self: ONNXOpQuantizer, model: onnx.ModelProto) -> None:
+    def check_model(
+        self: ONNXOpQuantizer,
+        model: onnx.ModelProto,
+        scale_base: int,
+        scale_exponent: int,
+    ) -> None:
         """Verify that all nodes in the model are supported and valid.
 
         Args:
@@ -183,12 +190,14 @@ class ONNXOpQuantizer:
 
         # Call check_layer on each node (e.g., for param validation)
         for node in model.graph.node:
-            self.check_layer(node, initializer_map)
+            self.check_layer(node, initializer_map, scale_base, scale_exponent)
 
     def check_layer(
         self: ONNXOpQuantizer,
         node: onnx.NodeProto,
         initializer_map: dict[str, onnx.TensorProto],
+        scale_base: int,
+        scale_exponent: int,
     ) -> None:
         """
         Check an individual node using its handler.
@@ -208,7 +217,7 @@ class ONNXOpQuantizer:
             raise MissingHandlerError(node.op_type)
 
         if hasattr(handler, "check_supported") and callable(handler.check_supported):
-            handler.check_supported(node, initializer_map)
+            handler.check_supported(node, initializer_map, scale_base, scale_exponent)
 
     def get_initializer_map(
         self: ONNXOpQuantizer,
