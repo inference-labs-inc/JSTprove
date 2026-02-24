@@ -8,8 +8,7 @@ use crate::onnx::graph::OpType;
 use crate::onnx::quantizer::QuantizedModel;
 use crate::padding::{next_power_of_two, num_vars_for};
 use crate::runner::circuit_builder::{
-    compute_range_check_plan, delta_table_nv, pad_matrix, pad_to_size, transpose_matrix,
-    SpatialInfo,
+    delta_table_nv, pad_matrix, pad_to_size, transpose_matrix, SpatialInfo,
 };
 
 use super::serialization;
@@ -350,14 +349,40 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 );
                 let out_h = (padded_h - kh) / stride_h + 1;
                 let out_w = (padded_w - kw) / stride_w + 1;
-                let patch_size = c_in * kh * kw;
-                let num_patches = out_h * out_w;
+                let patch_size = c_in
+                    .checked_mul(kh)
+                    .and_then(|v| v.checked_mul(kw))
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Conv {} patch_size overflow: {} * {} * {}",
+                            layer.name,
+                            c_in,
+                            kh,
+                            kw
+                        )
+                    })?;
+                let num_patches = out_h.checked_mul(out_w).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Conv {} num_patches overflow: {} * {}",
+                        layer.name,
+                        out_h,
+                        out_w
+                    )
+                })?;
 
                 let pad_patches = next_power_of_two(num_patches);
                 let pad_psize = next_power_of_two(patch_size);
                 let pad_cout = next_power_of_two(c_out);
 
-                let mut im2col_data = vec![0i64; pad_patches * pad_psize];
+                let im2col_size = pad_patches.checked_mul(pad_psize).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Conv {} im2col allocation overflow: {} * {}",
+                        layer.name,
+                        pad_patches,
+                        pad_psize
+                    )
+                })?;
+                let mut im2col_data = vec![0i64; im2col_size];
                 for oh in 0..out_h {
                     for ow in 0..out_w {
                         let patch = oh * out_w + ow;
@@ -393,7 +418,14 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     pad_cout,
                 )?;
 
-                let result_size = pad_patches * pad_cout;
+                let result_size = pad_patches.checked_mul(pad_cout).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Conv {} result_size overflow: {} * {}",
+                        layer.name,
+                        pad_patches,
+                        pad_cout
+                    )
+                })?;
                 let bias_bc = if let Some(bias_name) = bias_tensor_name {
                     if let Some(bias_data) = layer.weights.get(bias_name) {
                         let b = bias_data.as_i64_vec();
@@ -1142,6 +1174,7 @@ pub fn prepare_public_shreds(
     model: &QuantizedModel,
     quantized_input: &[i64],
     expected_output: &[i64],
+    observed_n_bits: &HashMap<String, usize>,
 ) -> Result<HashMap<String, Vec<i64>>> {
     anyhow::ensure!(
         model.scale_config.base == 2,
@@ -1316,12 +1349,37 @@ pub fn prepare_public_shreds(
                 );
                 let out_h = (padded_h - kh) / stride_h + 1;
                 let out_w = (padded_w - kw) / stride_w + 1;
-                let patch_size = c_in * kh * kw;
-                let num_patches = out_h * out_w;
+                let patch_size = c_in
+                    .checked_mul(kh)
+                    .and_then(|v| v.checked_mul(kw))
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Conv {} patch_size overflow: {} * {} * {}",
+                            layer.name,
+                            c_in,
+                            kh,
+                            kw
+                        )
+                    })?;
+                let num_patches = out_h.checked_mul(out_w).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Conv {} num_patches overflow: {} * {}",
+                        layer.name,
+                        out_h,
+                        out_w
+                    )
+                })?;
                 let pad_psize = next_power_of_two(patch_size);
                 let pad_cout = next_power_of_two(c_out);
                 let pad_patches = next_power_of_two(num_patches);
-                let result_size = pad_patches * pad_cout;
+                let result_size = pad_patches.checked_mul(pad_cout).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Conv {} result_size overflow: {} * {}",
+                        layer.name,
+                        pad_patches,
+                        pad_cout
+                    )
+                })?;
 
                 let kernel_t = transpose_matrix(&weight_data.as_i64_vec(), c_out, patch_size);
                 shreds.insert(
@@ -1677,7 +1735,7 @@ pub fn prepare_public_shreds(
         pad_to_size(expected_output, out_padded_size),
     );
 
-    let rc_plan = compute_range_check_plan(model)?;
+    let rc_plan = compute_range_check_plan_with_overrides(model, observed_n_bits)?;
     for (&table_nv, _) in &rc_plan {
         anyhow::ensure!(
             table_nv < 63,

@@ -54,8 +54,12 @@ pub fn verify_with_model(
 ) -> Result<()> {
     let input_padded_size = next_power_of_two(quantized_input.len());
 
-    let public_shreds =
-        super::witness::prepare_public_shreds(model, quantized_input, &proof.expected_output)?;
+    let public_shreds = super::witness::prepare_public_shreds(
+        model,
+        quantized_input,
+        &proof.expected_output,
+        &proof.observed_n_bits,
+    )?;
 
     let build_result = circuit_builder::build_circuit(model, input_padded_size)?;
     let mut circuit = build_result.circuit;
