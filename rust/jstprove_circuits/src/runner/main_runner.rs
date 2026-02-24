@@ -545,6 +545,15 @@ fn load_circuit_and_solver<C: Config>(
         return Ok((circuit, solver));
     }
     let witness_file = get_witness_solver_path(circuit_path);
+    if p.exists() && !witness_file.exists() {
+        return Err(RunError::Io {
+            source: std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "circuit binary exists but witness solver file is missing",
+            ),
+            path: witness_file.display().to_string(),
+        });
+    }
     if p.exists() && witness_file.exists() {
         let file = std::fs::File::open(circuit_path).map_err(|e| RunError::Io {
             source: e,
