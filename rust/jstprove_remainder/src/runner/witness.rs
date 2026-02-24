@@ -228,8 +228,18 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let mm_with_bias: Vec<i64> = mm
                     .iter()
                     .zip(bias_padded.iter())
-                    .map(|(m, b)| m + b)
-                    .collect();
+                    .map(|(&m, &b)| {
+                        let sum = i128::from(m) + i128::from(b);
+                        i64::try_from(sum).map_err(|_| {
+                            anyhow::anyhow!(
+                                "Gemm {} bias addition overflows i64: {} + {}",
+                                layer.name,
+                                m,
+                                b
+                            )
+                        })
+                    })
+                    .collect::<anyhow::Result<Vec<i64>>>()?;
                 let (quotients, remainders) =
                     rescale::compute_rescale_array(&mm_with_bias, alpha, offset)?;
 
@@ -404,8 +414,21 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     vec![0i64; result_size]
                 };
 
-                let mm_with_bias: Vec<i64> =
-                    mm.iter().zip(bias_bc.iter()).map(|(m, b)| m + b).collect();
+                let mm_with_bias: Vec<i64> = mm
+                    .iter()
+                    .zip(bias_bc.iter())
+                    .map(|(&m, &b)| {
+                        let sum = i128::from(m) + i128::from(b);
+                        i64::try_from(sum).map_err(|_| {
+                            anyhow::anyhow!(
+                                "Conv {} bias addition overflows i64: {} + {}",
+                                layer.name,
+                                m,
+                                b
+                            )
+                        })
+                    })
+                    .collect::<anyhow::Result<Vec<i64>>>()?;
                 let (quotients, remainders) =
                     rescale::compute_rescale_array(&mm_with_bias, alpha, offset)?;
 

@@ -113,7 +113,23 @@ pub fn compute_range_check_plan(model: &QuantizedModel) -> Result<BTreeMap<usize
                         layer.name,
                         kernel_shape.len()
                     );
-                    let window_size = kernel_shape[0] as usize * kernel_shape[1] as usize;
+                    anyhow::ensure!(
+                        kernel_shape[0] > 0 && kernel_shape[1] > 0,
+                        "MaxPool {} kernel_shape values must be positive, got [{}, {}]",
+                        layer.name,
+                        kernel_shape[0],
+                        kernel_shape[1]
+                    );
+                    let window_size = (kernel_shape[0] as usize)
+                        .checked_mul(kernel_shape[1] as usize)
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "MaxPool {} kernel_shape overflow: {} * {}",
+                                layer.name,
+                                kernel_shape[0],
+                                kernel_shape[1]
+                            )
+                        })?;
                     let entry = plan.entry(dnv).or_default();
                     for i in 0..window_size {
                         entry.push(format!("{}_d{}", layer.name, i));
@@ -381,9 +397,9 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
         }
 
         for ((table_nv, node_nv), requests) in &checks_by_key {
-            let table_node = table_nodes
-                .get(table_nv)
-                .expect("table_node must exist for table_nv inserted above");
+            let table_node = table_nodes.get(table_nv).ok_or_else(|| {
+                anyhow::anyhow!("missing range-check table node for nv={table_nv}")
+            })?;
             let lookup_table = builder.add_lookup_table(table_node, &fs_node);
 
             let real_count = requests.len();
@@ -925,6 +941,13 @@ fn build_maxpool_layer(
         "MaxPool {} requires exactly 2D kernel_shape, got {} dims",
         layer.name,
         kernel_shape.len()
+    );
+    anyhow::ensure!(
+        kernel_shape[0] > 0 && kernel_shape[1] > 0,
+        "MaxPool {} kernel_shape values must be positive, got [{}, {}]",
+        layer.name,
+        kernel_shape[0],
+        kernel_shape[1]
     );
     let pool_h = kernel_shape[0] as usize;
     let pool_w = kernel_shape[1] as usize;
