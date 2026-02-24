@@ -183,7 +183,8 @@ pub fn get_nd_circuit_inputs<C: Config>(
 }
 
 // TODO change 64 bits to 128 across the board, or add checks. If more than 64 bits, fail
-fn convert_val_to_field_element<C: Config>(
+#[must_use]
+pub fn convert_val_to_field_element<C: Config>(
     val: i64,
 ) -> <<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField {
     if val < 0 {

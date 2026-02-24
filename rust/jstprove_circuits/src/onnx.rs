@@ -1,20 +1,26 @@
+use std::ops::Neg;
+
 use ndarray::{Array1, ArrayD, ArrayView1, Axis, Ix1, IxDyn, concatenate};
 
 use expander_compiler::frontend::{
-    BN254Config, CircuitField, Config, Define, RootAPI, Variable, declare_circuit,
+    BN254Config, CircuitField, Config, Define, FieldArith, RootAPI, Variable, declare_circuit,
 };
 
 use crate::circuit_functions::CircuitError;
+use crate::circuit_functions::hints::build_logup_hint_registry;
 use crate::circuit_functions::utils::ArrayConversionError;
 use crate::circuit_functions::utils::build_layers::build_layers;
 use crate::circuit_functions::utils::onnx_model::{CircuitParams, InputData, OutputData, WANDB};
 use crate::circuit_functions::utils::shaping::get_inputs;
-use crate::circuit_functions::utils::tensor_ops::get_nd_circuit_inputs;
+use crate::circuit_functions::utils::tensor_ops::{
+    convert_val_to_field_element, get_nd_circuit_inputs,
+};
 use crate::io::io_reader::onnx_context::OnnxContext;
 use crate::io::io_reader::{FileReader, IOReader};
 use crate::runner::errors::RunError;
 use crate::runner::main_runner::{
-    ConfigurableCircuit, prove_from_bytes, verify_from_bytes, witness_from_request,
+    ConfigurableCircuit, load_circuit_from_bytes, load_witness_solver_from_bytes, prove_from_bytes,
+    serialize_witness, solve_and_validate_witness, verify_from_bytes, witness_from_request,
 };
 use crate::runner::schema::{WitnessBundle, WitnessRequest};
 use crate::runner::verify_extract::{VerifiedOutput, verify_and_extract_from_bytes};
@@ -302,6 +308,126 @@ pub fn witness_bn254(req: &WitnessRequest, compress: bool) -> Result<WitnessBund
         &mut reader,
         compress,
     )
+}
+
+pub fn witness_bn254_from_f64(
+    circuit_bytes: &[u8],
+    solver_bytes: &[u8],
+    params: &CircuitParams,
+    activations: &[f64],
+    initializers: &[(Vec<f64>, Vec<usize>)],
+    compress: bool,
+) -> Result<WitnessBundle, RunError> {
+    witness_from_f64::<BN254Config>(
+        circuit_bytes,
+        solver_bytes,
+        params,
+        activations,
+        initializers,
+        compress,
+    )
+}
+
+fn quantize_f64_to_field<C: Config>(val: f64, scale: f64) -> CircuitField<C> {
+    let scaled = val * scale;
+    let truncated = scaled as i64;
+    convert_val_to_field_element::<C>(truncated)
+}
+
+fn witness_from_f64<C: Config>(
+    circuit_bytes: &[u8],
+    solver_bytes: &[u8],
+    params: &CircuitParams,
+    activations: &[f64],
+    initializers: &[(Vec<f64>, Vec<usize>)],
+    compress: bool,
+) -> Result<WitnessBundle, RunError> {
+    let alpha = (params.scale_base as f64).powi(params.scale_exponent as i32);
+    let alpha_sq = alpha * alpha;
+
+    let num_activation_entries = params.inputs.len() - initializers.len();
+    let expected_activation_elems: usize = params.inputs[..num_activation_entries]
+        .iter()
+        .map(|io| io.shape.iter().product::<usize>())
+        .sum();
+    if activations.len() != expected_activation_elems {
+        return Err(RunError::Witness(format!(
+            "activation length mismatch: expected {expected_activation_elems}, got {}",
+            activations.len()
+        )));
+    }
+
+    let mut input_arr: Vec<CircuitField<C>> = Vec::with_capacity(params.effective_input_dims());
+
+    for &v in activations {
+        input_arr.push(quantize_f64_to_field::<C>(v, alpha));
+    }
+
+    for (idx, (values, _shape)) in initializers.iter().enumerate() {
+        let io = &params.inputs[num_activation_entries + idx];
+        let scale = if io.shape.len() == 1 { alpha_sq } else { alpha };
+        for &v in values {
+            input_arr.push(quantize_f64_to_field::<C>(v, scale));
+        }
+    }
+
+    if input_arr.len() != params.effective_input_dims() {
+        return Err(RunError::Witness(format!(
+            "total input length mismatch: expected {}, got {}",
+            params.effective_input_dims(),
+            input_arr.len()
+        )));
+    }
+
+    let layered_circuit = load_circuit_from_bytes::<C>(circuit_bytes)?;
+
+    let num_outputs = params.effective_output_dims();
+    let private_inputs = vec![CircuitField::<C>::from(1u32), CircuitField::<C>::from(1u32)];
+    let mut public_inputs: Vec<CircuitField<C>> =
+        Vec::with_capacity(input_arr.len() + num_outputs + 2);
+    public_inputs.extend_from_slice(&input_arr);
+    public_inputs.extend(std::iter::repeat_n(CircuitField::<C>::zero(), num_outputs));
+    public_inputs.push(CircuitField::<C>::from(params.scale_base));
+    public_inputs.push(CircuitField::<C>::from(params.scale_exponent));
+
+    let constraint_values = layered_circuit.eval_constraint_values(private_inputs, &public_inputs);
+
+    if constraint_values.len() < num_outputs {
+        return Err(RunError::Witness(format!(
+            "constraint values length {}: expected at least {num_outputs}",
+            constraint_values.len()
+        )));
+    }
+
+    let computed_outputs: Vec<CircuitField<C>> = constraint_values[..num_outputs]
+        .iter()
+        .map(|v| v.neg())
+        .collect();
+
+    let mut assignment = Circuit::<CircuitField<C>>::default();
+    assignment.input_arr = input_arr;
+    assignment.outputs = computed_outputs;
+    assignment.dummy[0] = CircuitField::<C>::from(1u32);
+    assignment.dummy[1] = CircuitField::<C>::from(1u32);
+    assignment.scale_base[0] = CircuitField::<C>::from(params.scale_base);
+    assignment.scale_exponent[0] = CircuitField::<C>::from(params.scale_exponent);
+
+    let witness_solver = load_witness_solver_from_bytes::<C>(solver_bytes)?;
+    let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
+
+    let witness = solve_and_validate_witness(
+        &witness_solver,
+        &layered_circuit,
+        &hint_registry,
+        &assignment,
+    )?;
+
+    let witness_bytes = serialize_witness::<C>(&witness, compress)?;
+
+    Ok(WitnessBundle {
+        witness: witness_bytes,
+        output_data: None,
+    })
 }
 
 pub fn prove_bn254(
