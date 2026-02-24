@@ -685,7 +685,7 @@ where
     Ok(())
 }
 
-fn solve_and_validate_witness<C: Config, CircuitDefaultType>(
+pub fn solve_and_validate_witness<C: Config, CircuitDefaultType>(
     witness_solver: &WitnessSolver<C>,
     layered_circuit: &Circuit<C, NormalInputType>,
     hint_registry: &expander_compiler::frontend::HintRegistry<CircuitField<C>>,

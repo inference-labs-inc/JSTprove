@@ -186,11 +186,19 @@ pub mod onnx_context {
         }
 
         pub fn get_architecture() -> Result<Architecture, OnnxContextError> {
-            ARCHITECTURE.with(|a| a.borrow().clone().ok_or(OnnxContextError::ArchitectureNotSet))
+            ARCHITECTURE.with(|a| {
+                a.borrow()
+                    .clone()
+                    .ok_or(OnnxContextError::ArchitectureNotSet)
+            })
         }
 
         pub fn get_params() -> Result<CircuitParams, OnnxContextError> {
-            CIRCUITPARAMS.with(|p| p.borrow().clone().ok_or(OnnxContextError::CircuitParamsNotSet))
+            CIRCUITPARAMS.with(|p| {
+                p.borrow()
+                    .clone()
+                    .ok_or(OnnxContextError::CircuitParamsNotSet)
+            })
         }
 
         pub fn get_wandb() -> Result<WANDB, OnnxContextError> {
