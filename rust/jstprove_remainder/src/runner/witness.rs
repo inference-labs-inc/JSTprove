@@ -231,7 +231,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     .map(|(m, b)| m + b)
                     .collect();
                 let (quotients, remainders) =
-                    rescale::compute_rescale_array(&mm_with_bias, alpha, offset);
+                    rescale::compute_rescale_array(&mm_with_bias, alpha, offset)?;
 
                 shreds.insert(format!("{}_weight", layer.name), w_padded);
                 shreds.insert(format!("{}_bias", layer.name), bias_padded);
@@ -404,7 +404,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let mm_with_bias: Vec<i64> =
                     mm.iter().zip(bias_bc.iter()).map(|(m, b)| m + b).collect();
                 let (quotients, remainders) =
-                    rescale::compute_rescale_array(&mm_with_bias, alpha, offset);
+                    rescale::compute_rescale_array(&mm_with_bias, alpha, offset)?;
 
                 shreds.insert(format!("{}_weight", layer.name), kernel_padded);
                 shreds.insert(format!("{}_bias", layer.name), bias_bc);
@@ -758,7 +758,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     .collect();
 
                 let (quotients, remainders) =
-                    rescale::compute_rescale_array(&with_add, alpha, offset);
+                    rescale::compute_rescale_array(&with_add, alpha, offset)?;
 
                 shreds.insert(format!("{}_mul", layer.name), mul_broadcast);
                 shreds.insert(format!("{}_add", layer.name), add_broadcast);

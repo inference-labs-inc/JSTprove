@@ -1682,12 +1682,13 @@ pub fn get_arg(matches: &clap::ArgMatches, name: &'static str) -> Result<String,
 /// }
 /// ```
 fn is_remainder_backend(matches: &clap::ArgMatches, metadata: &Option<CircuitParams>) -> bool {
-    if let Some(backend) = matches.get_one::<String>("backend") {
-        if backend == "remainder" {
-            return true;
-        }
+    if matches
+        .get_one::<String>("backend")
+        .is_some_and(|b| b == "remainder")
+    {
+        return true;
     }
-    metadata.as_ref().is_some_and(|m| m.backend == "remainder")
+    metadata.as_ref().is_some_and(|m| m.backend.is_remainder())
 }
 
 #[cfg(feature = "remainder")]
@@ -1785,6 +1786,12 @@ fn dispatch_remainder(
             let model_path = get_arg(matches, "circuit_path")?;
             jstprove_remainder::runner::pipe::run_pipe_verify(Path::new(&model_path))
                 .map_err(|e| RunError::Verify(format!("{e:#}")))?;
+        }
+        "run_debug_witness" => {
+            return Err(RunError::Unsupported(
+                "debug witness not supported for Remainder backend".into(),
+            )
+            .into());
         }
         "msgpack_prove"
         | "msgpack_prove_stdin"
@@ -2043,7 +2050,7 @@ pub fn get_args() -> clap::ArgMatches {
         )
         .arg(
             Arg::new("meta")
-                .help("Path to the ONNX generic circuit params and metadata JSON")
+                .help("Path to the ONNX circuit params and metadata (msgpack or JSON)")
                 .required(false)
                 .long("meta")
                 .short('m'),

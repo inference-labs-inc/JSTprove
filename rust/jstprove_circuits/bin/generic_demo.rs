@@ -1,6 +1,6 @@
-use std::io::BufReader;
-
-use jstprove_circuits::circuit_functions::utils::onnx_model::{Architecture, CircuitParams, WANDB};
+use jstprove_circuits::circuit_functions::utils::onnx_model::{
+    Architecture, Backend, CircuitParams, WANDB,
+};
 
 use jstprove_circuits::io::io_reader::FileReader;
 use jstprove_circuits::runner::main_runner::{
@@ -24,11 +24,28 @@ fn load_wandb(matches: &clap::ArgMatches) -> Result<Option<WANDB>, String> {
     Ok(Some(wandb))
 }
 
+fn load_metadata(path: &str) -> CircuitParams {
+    let bytes = std::fs::read(path).unwrap_or_else(|e| {
+        eprintln!("Error: failed to read metadata file '{path}': {e}");
+        std::process::exit(1);
+    });
+    let first = bytes.iter().find(|b| !b.is_ascii_whitespace());
+    if first == Some(&b'{') || first == Some(&b'[') {
+        serde_json::from_slice(&bytes).unwrap_or_else(|e| {
+            eprintln!("Error: invalid metadata JSON in '{path}': {e}");
+            std::process::exit(1);
+        })
+    } else {
+        rmp_serde::decode::from_slice(&bytes).unwrap_or_else(|e| {
+            eprintln!("Error: invalid metadata msgpack in '{path}': {e}");
+            std::process::exit(1);
+        })
+    }
+}
+
 fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool) {
     let meta_file_path = get_arg(matches, "meta").unwrap();
-    let meta_file = std::fs::File::open(&meta_file_path).expect("Failed to open metadata file");
-    let params: CircuitParams =
-        rmp_serde::decode::from_read(BufReader::new(meta_file)).expect("Invalid metadata msgpack");
+    let params = load_metadata(&meta_file_path);
     let wandb = match load_wandb(matches) {
         Ok(w) => w,
         Err(e) => {
@@ -139,9 +156,8 @@ fn main() {
         }
     }
 
-    let mut metadata = OnnxContext::get_params().ok();
-    if is_remainder {
-        let params = metadata.get_or_insert_with(|| CircuitParams {
+    let metadata = if is_remainder {
+        Some(CircuitParams {
             scale_base: 2,
             scale_exponent: 18,
             rescale_config: std::collections::HashMap::new(),
@@ -150,10 +166,11 @@ fn main() {
             freivalds_reps: 1,
             n_bits_config: std::collections::HashMap::new(),
             weights_as_inputs: false,
-            backend: "remainder".to_string(),
-        });
-        params.backend = "remainder".to_string();
-    }
+            backend: Backend::Remainder,
+        })
+    } else {
+        OnnxContext::get_params().ok()
+    };
 
     if let Err(err) = handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(
         &matches,

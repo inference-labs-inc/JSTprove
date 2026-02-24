@@ -1662,7 +1662,7 @@ fn test_batchnorm_prove_verify() {
         .map(|(&p, &a)| p + a)
         .collect();
 
-    let (quotients, remainders) = rescale::compute_rescale_array(&with_add, alpha, offset);
+    let (quotients, remainders) = rescale::compute_rescale_array(&with_add, alpha, offset).unwrap();
 
     let alpha_fr = i64_to_fr(alpha);
 

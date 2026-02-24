@@ -198,7 +198,12 @@ fn fold_batchnorm_params(layer: &mut LayerNode) -> Result<()> {
 
     let stale = [scale_name, bias_name, mean_name, var_name];
 
-    layer.inputs = vec![layer.inputs[0].clone(), mul_tensor_name, add_tensor_name];
+    let primary_input = layer
+        .inputs
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("BatchNorm {} has no inputs", layer.name))?
+        .clone();
+    layer.inputs = vec![primary_input, mul_tensor_name, add_tensor_name];
 
     for name in &stale {
         layer.weights.remove(name);
@@ -266,16 +271,29 @@ fn compute_layer_bound(
     };
 
     let max_output_channel_l1 = |input_idx: usize, out_channels: usize| -> Result<f64> {
-        let Some(name) = layer.inputs.get(input_idx) else {
-            return Ok(1.0);
-        };
-        let Some(w) = layer.weights.get(name) else {
-            return Ok(1.0);
-        };
+        let name = layer.inputs.get(input_idx).ok_or_else(|| {
+            anyhow::anyhow!(
+                "layer {}: expected weight input at index {input_idx} but only {} inputs present",
+                layer.name,
+                layer.inputs.len(),
+            )
+        })?;
+        let w = layer.weights.get(name).ok_or_else(|| {
+            anyhow::anyhow!(
+                "layer {}: weight tensor '{}' not found in initializers",
+                layer.name,
+                name,
+            )
+        })?;
         let vals = w.as_i64_vec();
-        if out_channels == 0 || vals.is_empty() {
-            return Ok(1.0);
-        }
+        anyhow::ensure!(
+            out_channels > 0 && !vals.is_empty(),
+            "layer {}: weight tensor '{}' has out_channels={} vals.len()={}",
+            layer.name,
+            name,
+            out_channels,
+            vals.len(),
+        );
         anyhow::ensure!(
             vals.len() % out_channels == 0,
             "layer {}: weight tensor length {} not divisible by out_channels {}",
@@ -297,68 +315,68 @@ fn compute_layer_bound(
     match layer.op_type {
         OpType::Conv => {
             let m_in = get_input_bound(0);
-            let w = layer.inputs.get(1).and_then(|n| layer.weights.get(n));
-            let c_out = w
-                .map(|w| {
-                    let d = w.shape();
-                    if d.len() >= 4 {
-                        d[0]
-                    } else {
-                        1
-                    }
-                })
-                .unwrap_or(1);
+            let weight_name = layer.inputs.get(1).ok_or_else(|| {
+                anyhow::anyhow!("layer {}: Conv missing weight input at index 1", layer.name)
+            })?;
+            let w = layer.weights.get(weight_name).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "layer {}: Conv weight tensor '{}' not found",
+                    layer.name,
+                    weight_name,
+                )
+            })?;
+            let d = w.shape();
+            let c_out = if d.len() >= 4 { d[0] } else { 1 };
             let weight = max_output_channel_l1(1, c_out)?;
             let bias_bound = get_bias_bound(2);
             Ok(weight * m_in + bias_bound)
         }
         OpType::Gemm => {
             let m_in = get_input_bound(0);
-            let w = layer.inputs.get(1).and_then(|n| layer.weights.get(n));
+            let weight_name = layer.inputs.get(1).ok_or_else(|| {
+                anyhow::anyhow!("layer {}: Gemm missing weight input at index 1", layer.name)
+            })?;
+            let w = layer.weights.get(weight_name).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "layer {}: Gemm weight tensor '{}' not found",
+                    layer.name,
+                    weight_name,
+                )
+            })?;
             let trans_b = layer
                 .get_int_attr("transB")
                 .map(|v| v != 0)
                 .unwrap_or(false);
-            let n_out = w
-                .map(|w| {
-                    let d = w.shape();
-                    if d.len() >= 2 {
-                        if trans_b {
-                            d[0]
-                        } else {
-                            d[1]
-                        }
-                    } else {
-                        1
-                    }
-                })
-                .unwrap_or(1);
+            let d = w.shape();
+            let n_out = if d.len() >= 2 {
+                if trans_b {
+                    d[0]
+                } else {
+                    d[1]
+                }
+            } else {
+                1
+            };
             let weight_l1 = if trans_b {
                 max_output_channel_l1(1, n_out)?
             } else {
-                match layer.inputs.get(1).and_then(|name| layer.weights.get(name)) {
-                    Some(w) => {
-                        let vals = w.as_i64_vec();
-                        let d = w.shape();
-                        if d.len() >= 2 {
-                            let (rows, cols) = (d[0], d[1]);
-                            anyhow::ensure!(
-                                cols > 0 && !vals.is_empty() && vals.len() == rows * cols,
-                                "layer {}: Gemm weight tensor size mismatch: vals.len()={} expected {}x{}={}",
-                                layer.name, vals.len(), rows, cols, rows * cols,
-                            );
-                            (0..cols)
-                                .map(|c| {
-                                    (0..rows)
-                                        .map(|r| vals[r * cols + c].unsigned_abs())
-                                        .sum::<u64>() as f64
-                                })
-                                .fold(0.0_f64, f64::max)
-                        } else {
-                            vals.iter().map(|v| v.unsigned_abs()).sum::<u64>() as f64
-                        }
-                    }
-                    None => 1.0,
+                let vals = w.as_i64_vec();
+                if d.len() >= 2 {
+                    let (rows, cols) = (d[0], d[1]);
+                    anyhow::ensure!(
+                        cols > 0 && !vals.is_empty() && vals.len() == rows * cols,
+                        "layer {}: Gemm weight tensor size mismatch: vals.len()={} expected {}x{}={}",
+                        layer.name, vals.len(), rows, cols, rows * cols,
+                    );
+                    (0..cols)
+                        .map(|c| {
+                            (0..rows)
+                                .map(|r| vals[r * cols + c].unsigned_abs())
+                                .sum::<u64>() as f64
+                        })
+                        .fold(0.0_f64, f64::max)
+                } else {
+                    vals.iter().map(|v| v.unsigned_abs()).sum::<u64>() as f64
                 }
             };
             let bias_bound = get_bias_bound(2);

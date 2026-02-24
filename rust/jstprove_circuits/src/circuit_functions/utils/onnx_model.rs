@@ -26,6 +26,22 @@ pub struct WANDB {
     pub w_and_b: Vec<ONNXLayer>,
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, Eq)]
+pub enum Backend {
+    #[default]
+    #[serde(rename = "expander")]
+    Expander,
+    #[serde(rename = "remainder")]
+    Remainder,
+}
+
+impl Backend {
+    #[must_use]
+    pub fn is_remainder(&self) -> bool {
+        *self == Self::Remainder
+    }
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct CircuitParams {
     pub scale_base: u32,
@@ -39,12 +55,8 @@ pub struct CircuitParams {
     pub n_bits_config: HashMap<String, usize>,
     #[serde(default)]
     pub weights_as_inputs: bool,
-    #[serde(default = "default_backend")]
-    pub backend: String,
-}
-
-fn default_backend() -> String {
-    "expander".to_string()
+    #[serde(default)]
+    pub backend: Backend,
 }
 
 impl CircuitParams {
