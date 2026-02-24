@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use prost::Message;
 
-use super::{ModelProto, TensorProto, GraphProto, AttributeProto};
-use super::tensor_proto::DataType;
 use super::attribute_proto::AttributeType;
+use super::tensor_proto::DataType;
+use super::{AttributeProto, GraphProto, ModelProto, TensorProto};
 
 pub struct ParsedModel {
     pub nodes: Vec<ParsedNode>,
@@ -142,10 +142,7 @@ fn extract_tensor_data(tensor: &TensorProto) -> Result<TensorData> {
 fn parse_nodes(graph: &GraphProto) -> Result<Vec<ParsedNode>> {
     let mut result = Vec::new();
     for (idx, node) in graph.node.iter().enumerate() {
-        let name = node
-            .name
-            .clone()
-            .unwrap_or_else(|| format!("node_{}", idx));
+        let name = node.name.clone().unwrap_or_else(|| format!("node_{}", idx));
         let op_type = node.op_type.clone().unwrap_or_default();
         let domain = node.domain.clone().unwrap_or_default();
 
@@ -176,11 +173,10 @@ fn parse_attribute(attr: &AttributeProto) -> Result<Option<AttrValue>> {
     match attr_type {
         Some(AttributeType::Float) => Ok(attr.f.map(AttrValue::Float)),
         Some(AttributeType::Int) => Ok(attr.i.map(AttrValue::Int)),
-        Some(AttributeType::String) => {
-            Ok(attr.s.as_ref().map(|s| {
-                AttrValue::String(String::from_utf8_lossy(s).to_string())
-            }))
-        }
+        Some(AttributeType::String) => Ok(attr
+            .s
+            .as_ref()
+            .map(|s| AttrValue::String(String::from_utf8_lossy(s).to_string()))),
         Some(AttributeType::Floats) => Ok(Some(AttrValue::Floats(attr.floats.clone()))),
         Some(AttributeType::Ints) => Ok(Some(AttrValue::Ints(attr.ints.clone()))),
         Some(AttributeType::Tensor) => {

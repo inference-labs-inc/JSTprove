@@ -18,7 +18,7 @@ use crate::io::io_reader::{FileReader, IOReader};
 use crate::runner::errors::RunError;
 use crate::runner::main_runner::{
     ConfigurableCircuit, load_circuit_from_bytes, load_witness_solver_from_bytes, prove_from_bytes,
-    serialize_witness, solve_and_validate_witness, verify_from_bytes, witness_from_request,
+    serialize_witness, verify_from_bytes, witness_from_request,
 };
 use crate::runner::schema::{WitnessBundle, WitnessRequest};
 use crate::runner::verify_extract::{VerifiedOutput, verify_and_extract_from_bytes};
@@ -149,6 +149,8 @@ fn init_circuit_fields<C: Config>(
     assignment.scale_exponent[0] = CircuitField::<C>::from(params.scale_exponent);
 }
 
+/// # Errors
+/// Returns `RunError` on invalid input shape or JSON parsing failure.
 pub fn apply_input_data<C: Config>(
     data: &InputData,
     mut assignment: Circuit<CircuitField<C>>,
@@ -171,6 +173,8 @@ pub fn apply_input_data<C: Config>(
     Ok(assignment)
 }
 
+/// # Errors
+/// Returns `RunError` on invalid output shape or JSON parsing failure.
 pub fn apply_output_data<C: Config>(
     data: &OutputData,
     mut assignment: Circuit<CircuitField<C>>,
@@ -284,21 +288,23 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for ValueReader {
         assignment: Circuit<CircuitField<C>>,
     ) -> Result<Circuit<CircuitField<C>>, RunError> {
         let owned;
-        let params = match self.params {
-            Some(ref p) => p,
-            None => {
-                owned = OnnxContext::get_params()?;
-                &owned
-            }
+        let params = if let Some(ref p) = self.params {
+            p
+        } else {
+            owned = OnnxContext::get_params()?;
+            &owned
         };
         apply_values_common::<C>(input, output, assignment, params)
     }
 
+    #[allow(clippy::unused_self, clippy::unnecessary_literal_bound)]
     fn get_path(&self) -> &str {
         ""
     }
 }
 
+/// # Errors
+/// Returns `RunError` on witness generation failure.
 pub fn witness_bn254(req: &WitnessRequest, compress: bool) -> Result<WitnessBundle, RunError> {
     let mut reader = ValueReader {
         params: req.metadata.clone(),
@@ -310,6 +316,8 @@ pub fn witness_bn254(req: &WitnessRequest, compress: bool) -> Result<WitnessBund
     )
 }
 
+/// # Errors
+/// Returns `RunError` on witness generation or activation mismatch.
 pub fn witness_bn254_from_f64(
     circuit_bytes: &[u8],
     solver_bytes: &[u8],
@@ -328,6 +336,7 @@ pub fn witness_bn254_from_f64(
     )
 }
 
+#[allow(clippy::cast_possible_truncation)]
 fn quantize_f64_to_field<C: Config>(val: f64, scale: f64) -> CircuitField<C> {
     let scaled = val * scale;
     let truncated = scaled as i64;
@@ -342,7 +351,8 @@ fn witness_from_f64<C: Config>(
     initializers: &[(Vec<f64>, Vec<usize>)],
     compress: bool,
 ) -> Result<WitnessBundle, RunError> {
-    let alpha = (params.scale_base as f64).powi(params.scale_exponent as i32);
+    #[allow(clippy::cast_possible_wrap)]
+    let alpha = (f64::from(params.scale_base)).powi(params.scale_exponent as i32);
     let alpha_sq = alpha * alpha;
 
     let num_activation_entries = params.inputs.len() - initializers.len();
@@ -420,12 +430,9 @@ fn witness_from_f64<C: Config>(
     assignment.input_arr = input_arr;
     assignment.outputs = computed_outputs;
 
-    let witness = solve_and_validate_witness(
-        &witness_solver,
-        &layered_circuit,
-        &hint_registry,
-        &assignment,
-    )?;
+    let witness = witness_solver
+        .solve_witness_with_hints(&assignment, &hint_registry)
+        .map_err(|e| RunError::Witness(format!("final pass: {e:?}")))?;
 
     let witness_bytes = serialize_witness::<C>(&witness, compress)?;
 
@@ -435,6 +442,8 @@ fn witness_from_f64<C: Config>(
     })
 }
 
+/// # Errors
+/// Returns `RunError` on proof generation failure.
 pub fn prove_bn254(
     circuit_bytes: &[u8],
     witness_bytes: &[u8],
@@ -443,6 +452,8 @@ pub fn prove_bn254(
     prove_from_bytes::<BN254Config>(circuit_bytes, witness_bytes, compress)
 }
 
+/// # Errors
+/// Returns `RunError` on verification failure.
 pub fn verify_bn254(
     circuit_bytes: &[u8],
     witness_bytes: &[u8],
@@ -451,6 +462,8 @@ pub fn verify_bn254(
     verify_from_bytes::<BN254Config>(circuit_bytes, witness_bytes, proof_bytes)
 }
 
+/// # Errors
+/// Returns `RunError` on compilation or serialization failure.
 pub fn compile_bn254(
     circuit_path: &str,
     compress: bool,
@@ -463,6 +476,8 @@ pub fn compile_bn254(
     )
 }
 
+/// # Errors
+/// Returns `RunError` on verification or output extraction failure.
 pub fn verify_and_extract_bn254(
     circuit_bytes: &[u8],
     witness_bytes: &[u8],

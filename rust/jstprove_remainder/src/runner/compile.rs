@@ -2,8 +2,8 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::onnx::parser;
 use crate::onnx::graph::LayerGraph;
+use crate::onnx::parser;
 use crate::onnx::quantizer::{self, QuantizedModel, ScaleConfig};
 
 use super::serialization;
@@ -26,7 +26,11 @@ pub fn run(model_path: &Path, output_path: &Path, compress: bool) -> Result<()> 
     );
 
     let size = serialization::serialize_to_file(&quantized, output_path, compress)?;
-    tracing::info!("model written to {} ({} bytes)", output_path.display(), size);
+    tracing::info!(
+        "model written to {} ({} bytes)",
+        output_path.display(),
+        size
+    );
     Ok(())
 }
 

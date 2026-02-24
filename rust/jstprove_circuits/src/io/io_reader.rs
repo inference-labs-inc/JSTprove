@@ -185,6 +185,8 @@ pub mod onnx_context {
             CIRCUITPARAMS.with(|p| *p.borrow_mut() = None);
         }
 
+        /// # Errors
+        /// Returns `OnnxContextError::ArchitectureNotSet` if uninitialized.
         pub fn get_architecture() -> Result<Architecture, OnnxContextError> {
             ARCHITECTURE.with(|a| {
                 a.borrow()
@@ -193,6 +195,8 @@ pub mod onnx_context {
             })
         }
 
+        /// # Errors
+        /// Returns `OnnxContextError::CircuitParamsNotSet` if uninitialized.
         pub fn get_params() -> Result<CircuitParams, OnnxContextError> {
             CIRCUITPARAMS.with(|p| {
                 p.borrow()
@@ -201,6 +205,8 @@ pub mod onnx_context {
             })
         }
 
+        /// # Errors
+        /// Returns `OnnxContextError::WandbNotSet` if uninitialized.
         pub fn get_wandb() -> Result<WANDB, OnnxContextError> {
             W_AND_B.with(|w| w.borrow().clone().ok_or(OnnxContextError::WandbNotSet))
         }

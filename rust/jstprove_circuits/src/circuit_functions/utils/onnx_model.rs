@@ -26,6 +26,21 @@ pub struct WANDB {
     pub w_and_b: Vec<ONNXLayer>,
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Backend {
+    #[default]
+    Expander,
+    Remainder,
+}
+
+impl Backend {
+    #[must_use]
+    pub fn is_remainder(&self) -> bool {
+        matches!(self, Self::Remainder)
+    }
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct CircuitParams {
     pub scale_base: u32,
@@ -39,9 +54,12 @@ pub struct CircuitParams {
     pub n_bits_config: HashMap<String, usize>,
     #[serde(default)]
     pub weights_as_inputs: bool,
+    #[serde(default)]
+    pub backend: Backend,
 }
 
 impl CircuitParams {
+    #[must_use]
     pub fn total_input_dims(&self) -> usize {
         self.inputs
             .iter()
@@ -49,6 +67,7 @@ impl CircuitParams {
             .sum()
     }
 
+    #[must_use]
     pub fn total_output_dims(&self) -> usize {
         self.outputs
             .iter()
@@ -56,6 +75,7 @@ impl CircuitParams {
             .sum()
     }
 
+    #[must_use]
     pub fn effective_output_dims(&self) -> usize {
         let dims = self.total_output_dims();
         if dims == 0 && !self.outputs.is_empty() {
@@ -65,6 +85,7 @@ impl CircuitParams {
         }
     }
 
+    #[must_use]
     pub fn effective_input_dims(&self) -> usize {
         let dims = self.total_input_dims();
         if dims == 0 && !self.inputs.is_empty() {
@@ -453,6 +474,65 @@ mod tests {
         let params: CircuitParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.total_output_dims(), 0);
         assert_eq!(params.effective_output_dims(), 1);
+    }
+
+    #[test]
+    fn backend_defaults_to_expander() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [],
+            "outputs": []
+        }"#;
+        let params: CircuitParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.backend, Backend::Expander);
+    }
+
+    #[test]
+    fn backend_remainder_round_trip() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [],
+            "outputs": [],
+            "backend": "remainder"
+        }"#;
+        let params: CircuitParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.backend, Backend::Remainder);
+        assert!(params.backend.is_remainder());
+        let serialized = serde_json::to_string(&params).unwrap();
+        let round_tripped: CircuitParams = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(round_tripped.backend, Backend::Remainder);
+    }
+
+    #[test]
+    fn backend_expander_explicit() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [],
+            "outputs": [],
+            "backend": "expander"
+        }"#;
+        let params: CircuitParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.backend, Backend::Expander);
+        assert!(!params.backend.is_remainder());
+    }
+
+    #[test]
+    fn backend_unknown_variant_rejected() {
+        let json = r#"{
+            "scale_base": 2,
+            "scale_exponent": 18,
+            "rescale_config": {},
+            "inputs": [],
+            "outputs": [],
+            "backend": "gkr"
+        }"#;
+        assert!(serde_json::from_str::<CircuitParams>(json).is_err());
     }
 
     #[test]
