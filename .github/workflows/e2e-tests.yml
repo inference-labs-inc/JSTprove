@@ -49,8 +49,14 @@ jobs:
       - name: Run cargo fmt check
         run: cargo fmt --all -- --check
 
-      - name: Run cargo clippy
+      - name: Run cargo clippy (workspace)
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Run cargo clippy (jstprove-remainder)
+        run: cargo clippy --manifest-path rust/jstprove_remainder/Cargo.toml --all-targets --all-features -- -D warnings
+
+      - name: Run cargo clippy (jstprove-pyo3)
+        run: cargo clippy --manifest-path rust/jstprove_pyo3/Cargo.toml --all-targets --all-features -- -D warnings
 
   e2e-test:
     name: End-to-End Testing
@@ -83,7 +89,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run Rust e2e tests (Remainder)
-        run: cargo test --release -p jstprove-remainder
+        run: cargo test --release --manifest-path rust/jstprove_remainder/Cargo.toml
 
       - name: Run Rust e2e tests (Expander + Remainder)
         run: cargo test --release -p jstprove_circuits --features remainder

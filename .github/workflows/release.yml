@@ -27,7 +27,7 @@ jobs:
 
       - name: Install Rust
         run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly-2025-03-27
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Install maturin
@@ -46,7 +46,7 @@ jobs:
 
       - name: Update versions
         run: |
-          sed -i 's/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/' pyproject.toml
+          sed -i '0,/^version = ".*"/{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/}' pyproject.toml
           sed -i '0,/^version = ".*"/{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/}' rust/jstprove_pyo3/Cargo.toml
           sed -i '0,/^version = ".*"/{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/}' rust/jstprove_circuits/Cargo.toml
 
@@ -76,8 +76,7 @@ jobs:
 
       - name: Test wheel installation
         run: |
-          WHEEL=$(ls target/wheels/*.whl)
-          pip3 install "$WHEEL"
+          pip3 install target/wheels/*.whl
           python3 -c "from jstprove import Circuit; print('PyO3 bindings OK')"
 
       - name: Upload wheel artifact
@@ -118,12 +117,14 @@ jobs:
 
       - name: Update versions
         run: |
-          sed -i '' 's/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/' pyproject.toml
+          sed -i '' '1,/^version = /{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/;}' pyproject.toml
           sed -i '' '1,/^version = /{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/;}' rust/jstprove_pyo3/Cargo.toml
           sed -i '' '1,/^version = /{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/;}' rust/jstprove_circuits/Cargo.toml
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          toolchain: nightly-2025-03-27
 
       - name: Install Rust target
         run: rustup target add aarch64-apple-darwin
@@ -153,8 +154,7 @@ jobs:
 
       - name: Test wheel installation
         run: |
-          WHEEL=$(ls target/wheels/*.whl)
-          pip3 install "$WHEEL"
+          pip3 install target/wheels/*.whl
           python3 -c "from jstprove import Circuit; print('PyO3 bindings OK')"
 
       - name: Upload wheel artifact

@@ -51,9 +51,11 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
       - name: Run workspace tests
         run: cargo test --workspace
 
       - name: Run remainder tests
-        run: cargo test -p jstprove-remainder
+        run: cargo test --manifest-path rust/jstprove_remainder/Cargo.toml
