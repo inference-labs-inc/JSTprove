@@ -545,15 +545,6 @@ fn load_circuit_and_solver<C: Config>(
         return Ok((circuit, solver));
     }
     let witness_file = get_witness_solver_path(circuit_path);
-    if p.exists() && !witness_file.exists() {
-        return Err(RunError::Io {
-            source: std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "circuit binary exists but witness solver file is missing",
-            ),
-            path: witness_file.display().to_string(),
-        });
-    }
     if p.exists() && witness_file.exists() {
         let file = std::fs::File::open(circuit_path).map_err(|e| RunError::Io {
             source: e,
@@ -572,14 +563,23 @@ fn load_circuit_and_solver<C: Config>(
         return Ok((circuit, solver));
     }
     let msgpack_path = p.with_extension("msgpack");
-    let bundle = read_circuit_msgpack(
-        msgpack_path
-            .to_str()
-            .ok_or_else(|| RunError::Deserialize("invalid msgpack path".into()))?,
-    )?;
-    let circuit = load_circuit_from_bytes::<C>(&bundle.circuit)?;
-    let solver = load_witness_solver_from_bytes::<C>(&bundle.witness_solver)?;
-    Ok((circuit, solver))
+    if msgpack_path.exists() {
+        let bundle = read_circuit_msgpack(
+            msgpack_path
+                .to_str()
+                .ok_or_else(|| RunError::Deserialize("invalid msgpack path".into()))?,
+        )?;
+        let circuit = load_circuit_from_bytes::<C>(&bundle.circuit)?;
+        let solver = load_witness_solver_from_bytes::<C>(&bundle.witness_solver)?;
+        return Ok((circuit, solver));
+    }
+    Err(RunError::Io {
+        source: std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "no witness solver file or msgpack bundle found",
+        ),
+        path: circuit_path.into(),
+    })
 }
 
 fn prove_core<C: Config>(
