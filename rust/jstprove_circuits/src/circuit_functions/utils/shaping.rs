@@ -162,14 +162,14 @@ pub fn get_inputs<T: Clone>(
 /// let m = array![[1, 2], [3, 4]];
 ///
 /// // flag = 0 → unchanged
-/// assert_eq!(check_and_apply_transpose_array(m.clone(), 0, "transpose", &LayerKind::MatMul, "layer1")?, m);
+/// assert_eq!(check_and_apply_transpose_array(m.clone(), 0, "transpose", &LayerKind::Gemm, "layer1")?, m);
 ///
 /// // flag = 1 → transpose
 /// let expected = array![[1, 3], [2, 4]];
-/// assert_eq!(check_and_apply_transpose_array(m, 1, "transpose", &LayerKind::MatMul, "layer1")?, expected);
+/// assert_eq!(check_and_apply_transpose_array(m, 1, "transpose", &LayerKind::Gemm, "layer1")?, expected);
 ///
 /// // invalid flag
-/// assert!(check_and_apply_transpose_array(m, 2, "transpose", &LayerKind::MatMul, "layer1").is_err());
+/// assert!(check_and_apply_transpose_array(m, 2, "transpose", &LayerKind::Gemm, "layer1").is_err());
 /// ```
 pub fn check_and_apply_transpose_array<T: Clone>(
     matrix: Array2<T>,
@@ -276,7 +276,24 @@ pub fn infer_reshape_shape(input_size: usize, shape: &[isize]) -> Result<Vec<usi
         }
     })?;
 
-    // Compute final shape
+    if minus_one_index.is_some() && input_size % known_product != 0 {
+        return Err(LayerError::InvalidShape {
+            layer: LayerKind::Reshape,
+            msg: format!(
+                "Cannot infer dimension: input size {input_size} is not divisible by {known_product}"
+            ),
+        });
+    }
+
+    if minus_one_index.is_none() && known_product != input_size {
+        return Err(LayerError::InvalidShape {
+            layer: LayerKind::Reshape,
+            msg: format!(
+                "Product of dimensions {known_product} does not match input size {input_size}"
+            ),
+        });
+    }
+
     let final_shape: Result<Vec<usize>, LayerError> = shape
         .iter()
         .map(|&d| {
@@ -292,4 +309,143 @@ pub fn infer_reshape_shape(input_size: usize, shape: &[isize]) -> Result<Vec<usi
         .collect();
 
     final_shape
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ndarray::{Array, array};
+
+    #[test]
+    fn onnx_flatten_axis_1() {
+        let arr = Array::from_shape_vec((2, 3, 4), (0..24).collect())
+            .unwrap()
+            .into_dyn();
+        let flat = onnx_flatten(arr, 1).unwrap();
+        assert_eq!(flat.shape(), &[2, 12]);
+    }
+
+    #[test]
+    fn onnx_flatten_axis_0() {
+        let arr = Array::from_shape_vec((2, 3, 4), (0..24).collect())
+            .unwrap()
+            .into_dyn();
+        let flat = onnx_flatten(arr, 0).unwrap();
+        assert_eq!(flat.shape(), &[1, 24]);
+    }
+
+    #[test]
+    fn onnx_flatten_axis_eq_rank() {
+        let arr = Array::from_shape_vec((2, 3, 4), (0..24).collect())
+            .unwrap()
+            .into_dyn();
+        let flat = onnx_flatten(arr, 3).unwrap();
+        assert_eq!(flat.shape(), &[24, 1]);
+    }
+
+    #[test]
+    fn onnx_flatten_axis_out_of_range() {
+        let arr = Array::from_shape_vec((2, 3), (0..6).collect())
+            .unwrap()
+            .into_dyn();
+        assert!(onnx_flatten(arr, 3).is_err());
+    }
+
+    #[test]
+    fn get_inputs_single_tensor() {
+        let v = vec![1, 2, 3, 4, 5, 6];
+        let inputs = vec![ONNXIO {
+            name: "x".into(),
+            elem_type: 1,
+            shape: vec![2, 3],
+        }];
+        let result = get_inputs(&v, &inputs).unwrap();
+        assert_eq!(result["x"].shape(), &[2, 3]);
+    }
+
+    #[test]
+    fn get_inputs_multiple_tensors() {
+        let v = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let inputs = vec![
+            ONNXIO {
+                name: "a".into(),
+                elem_type: 1,
+                shape: vec![2, 3],
+            },
+            ONNXIO {
+                name: "b".into(),
+                elem_type: 1,
+                shape: vec![2],
+            },
+        ];
+        let result = get_inputs(&v, &inputs).unwrap();
+        assert_eq!(result["a"].shape(), &[2, 3]);
+        assert_eq!(result["b"].shape(), &[2]);
+    }
+
+    #[test]
+    fn get_inputs_length_mismatch() {
+        let v = vec![1, 2, 3];
+        let inputs = vec![ONNXIO {
+            name: "x".into(),
+            elem_type: 1,
+            shape: vec![2, 3],
+        }];
+        assert!(get_inputs(&v, &inputs).is_err());
+    }
+
+    #[test]
+    fn transpose_flag_zero_unchanged() {
+        let m = array![[1, 2], [3, 4]];
+        let result =
+            check_and_apply_transpose_array(m.clone(), 0, "transpose", &LayerKind::Gemm, "l1")
+                .unwrap();
+        assert_eq!(result, m);
+    }
+
+    #[test]
+    fn transpose_flag_one_transposes() {
+        let m = array![[1, 2], [3, 4]];
+        let result =
+            check_and_apply_transpose_array(m, 1, "transpose", &LayerKind::Gemm, "l1").unwrap();
+        assert_eq!(result, array![[1, 3], [2, 4]]);
+    }
+
+    #[test]
+    fn transpose_invalid_flag() {
+        let m = array![[1, 2], [3, 4]];
+        assert!(
+            check_and_apply_transpose_array(m, 2, "transpose", &LayerKind::Gemm, "l1").is_err()
+        );
+    }
+
+    #[test]
+    fn reshape_no_inference() {
+        assert_eq!(infer_reshape_shape(12, &[3, 4]).unwrap(), vec![3, 4]);
+    }
+
+    #[test]
+    fn reshape_with_inference() {
+        assert_eq!(infer_reshape_shape(12, &[2, -1]).unwrap(), vec![2, 6]);
+    }
+
+    #[test]
+    fn reshape_two_minus_ones() {
+        assert!(infer_reshape_shape(12, &[-1, -1]).is_err());
+    }
+
+    #[test]
+    fn reshape_indivisible() {
+        assert!(infer_reshape_shape(12, &[5, -1]).is_err());
+    }
+
+    #[test]
+    fn reshape_zero_dimension() {
+        assert!(infer_reshape_shape(12, &[0, 4]).is_err());
+    }
+
+    #[test]
+    fn reshape_explicit_product_mismatch() {
+        assert!(infer_reshape_shape(12, &[3, 3]).is_err());
+    }
 }
