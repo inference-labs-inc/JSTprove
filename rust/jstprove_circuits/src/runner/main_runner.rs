@@ -1498,7 +1498,7 @@ fn flatten_value_to_i64(val: &Value) -> Vec<i64> {
             }
         }
         Value::F64(f) => {
-            if f.is_finite() && *f >= i64::MIN as f64 && *f <= i64::MAX as f64 {
+            if f.is_finite() && *f >= i64::MIN as f64 && *f < 9_223_372_036_854_775_808.0_f64 {
                 vec![*f as i64]
             } else {
                 vec![]
@@ -1506,7 +1506,7 @@ fn flatten_value_to_i64(val: &Value) -> Vec<i64> {
         }
         Value::F32(f) => {
             let d = f64::from(*f);
-            if f.is_finite() && d >= i64::MIN as f64 && d <= i64::MAX as f64 {
+            if f.is_finite() && d >= i64::MIN as f64 && d < 9_223_372_036_854_775_808.0_f64 {
                 vec![d as i64]
             } else {
                 vec![]
@@ -2291,5 +2291,12 @@ mod tests {
                 "output_20"
             ]
         );
+    }
+
+    #[test]
+    fn natural_key_cmp_tie_breaker_for_distinct_numerically_equal_keys() {
+        let mut keys = vec!["output_1", "output_01"];
+        keys.sort_by(|a, b| natural_key_cmp(a, b));
+        assert_eq!(keys, vec!["output_01", "output_1"]);
     }
 }
