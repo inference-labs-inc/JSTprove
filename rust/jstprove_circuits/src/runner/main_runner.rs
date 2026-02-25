@@ -505,11 +505,12 @@ fn check_batch_result(operation: &str, result: &BatchResult) -> Result<(), CliEr
 }
 
 fn load_manifest<T: serde::de::DeserializeOwned>(path: &str) -> Result<BatchManifest<T>, RunError> {
-    let bytes = std::fs::read(path).map_err(|e| RunError::Io {
+    let file = std::fs::File::open(path).map_err(|e| RunError::Io {
         source: e,
         path: path.into(),
     })?;
-    rmp_serde::from_slice(&bytes).map_err(|e| RunError::Deserialize(format!("{e:?}")))
+    let reader = auto_reader(file)?;
+    rmp_serde::from_read(reader).map_err(|e| RunError::Deserialize(format!("{e:?}")))
 }
 
 fn load_layered_circuit<C: Config>(path: &str) -> Result<Circuit<C, NormalInputType>, RunError> {
@@ -1479,7 +1480,10 @@ fn split_trailing_number(s: &str) -> (&str, Option<u64>) {
 fn natural_key_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     let (a_prefix, a_num) = split_trailing_number(a);
     let (b_prefix, b_num) = split_trailing_number(b);
-    a_prefix.cmp(b_prefix).then_with(|| a_num.cmp(&b_num))
+    a_prefix
+        .cmp(b_prefix)
+        .then_with(|| a_num.cmp(&b_num))
+        .then_with(|| a.cmp(b))
 }
 
 #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
