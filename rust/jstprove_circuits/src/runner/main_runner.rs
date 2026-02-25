@@ -393,8 +393,8 @@ where
 ///
 /// - `circuit_path` – Path to the serialized circuit file.
 /// - `io_reader` – The I/O reader used to load inputs and outputs.
-/// - `input_path` – Path to the JSON input file.
-/// - `output_path` – Path to the JSON output file.
+/// - `input_path` – Path to the msgpack-encoded input file.
+/// - `output_path` – Path to the msgpack-encoded output file.
 /// - `witness_path` – Path to the witness file.
 /// - `proof_path` – Path to the proof file.
 ///
@@ -1467,6 +1467,21 @@ where
     })
 }
 
+fn split_trailing_number(s: &str) -> (&str, Option<u64>) {
+    let pos = s.rfind(|c: char| !c.is_ascii_digit()).map_or(0, |i| i + 1);
+    if pos < s.len() {
+        (&s[..pos], s[pos..].parse::<u64>().ok())
+    } else {
+        (s, None)
+    }
+}
+
+fn natural_key_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    let (a_prefix, a_num) = split_trailing_number(a);
+    let (b_prefix, b_num) = split_trailing_number(b);
+    a_prefix.cmp(b_prefix).then_with(|| a_num.cmp(&b_num))
+}
+
 #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
 fn flatten_value_to_i64(val: &Value) -> Vec<i64> {
     match val {
@@ -1498,7 +1513,7 @@ fn flatten_value_to_i64(val: &Value) -> Vec<i64> {
                 .iter()
                 .filter_map(|(k, v)| k.as_str().map(|s| (s.to_string(), v)))
                 .collect();
-            pairs.sort_by(|(a, _), (b, _)| a.cmp(b));
+            pairs.sort_by(|(a, _), (b, _)| natural_key_cmp(a, b));
             pairs
                 .into_iter()
                 .flat_map(|(_, v)| flatten_value_to_i64(v))
@@ -2066,21 +2081,21 @@ pub fn get_args() -> clap::ArgMatches {
         )
         .arg(
             Arg::new("arch")
-                .help("Path to the ONNX generic circuit architecture JSON")
+                .help("Path to the ONNX generic circuit architecture (msgpack)")
                 .required(false)
                 .long("arch")
                 .short('a'),
         )
         .arg(
             Arg::new("wandb")
-                .help("Path to the ONNX generic circuit W&B JSON")
+                .help("Path to the ONNX generic circuit W&B (msgpack)")
                 .required(false)
                 .long("wandb")
                 .short('b'),
         )
         .arg(
             Arg::new("manifest")
-                .help("Path to batch manifest JSON file")
+                .help("Path to batch manifest (msgpack)")
                 .required(false)
                 .long("manifest")
                 .short('f'),
@@ -2248,5 +2263,29 @@ mod tests {
         let mut buf = Vec::new();
         std::io::Read::read_to_end(&mut reader, &mut buf).unwrap();
         assert_eq!(buf, original);
+    }
+
+    #[test]
+    fn natural_key_cmp_sorts_numeric_suffixes() {
+        let mut keys = vec![
+            "output_10",
+            "output_2",
+            "output_0",
+            "output_1",
+            "other",
+            "output_20",
+        ];
+        keys.sort_by(|a, b| natural_key_cmp(a, b));
+        assert_eq!(
+            keys,
+            vec![
+                "other",
+                "output_0",
+                "output_1",
+                "output_2",
+                "output_10",
+                "output_20"
+            ]
+        );
     }
 }

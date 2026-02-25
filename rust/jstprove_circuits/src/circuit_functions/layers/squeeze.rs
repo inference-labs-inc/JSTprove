@@ -173,7 +173,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SqueezeLayer {
             return Err(LayerError::Other {
                 layer: LayerKind::Squeeze,
                 msg: format!(
-                    "invalid params container for layer {}: expected Map",
+                    "invalid params container for layer {}: expected Map or Nil",
                     layer.name
                 ),
             }
