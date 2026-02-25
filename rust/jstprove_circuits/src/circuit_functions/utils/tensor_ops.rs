@@ -91,10 +91,10 @@ fn flatten_recursive(value: &Value, out: &mut Vec<i64>) -> Result<(), UtilsError
                 })
             }
         }
-        Value::F64(f) =>
-        {
-            #[allow(clippy::cast_possible_truncation)]
-            if f.is_finite() {
+        #[allow(clippy::cast_precision_loss)]
+        Value::F64(f) => {
+            if f.is_finite() && f.fract() == 0.0 && *f >= i64::MIN as f64 && *f <= i64::MAX as f64 {
+                #[allow(clippy::cast_possible_truncation)]
                 out.push(*f as i64);
                 Ok(())
             } else {
@@ -103,11 +103,12 @@ fn flatten_recursive(value: &Value, out: &mut Vec<i64>) -> Result<(), UtilsError
                 })
             }
         }
-        Value::F32(f) =>
-        {
-            #[allow(clippy::cast_possible_truncation)]
-            if f.is_finite() {
-                out.push(*f as i64);
+        #[allow(clippy::cast_precision_loss)]
+        Value::F32(f) => {
+            let d = f64::from(*f);
+            if f.is_finite() && d.fract() == 0.0 && d >= i64::MIN as f64 && d <= i64::MAX as f64 {
+                #[allow(clippy::cast_possible_truncation)]
+                out.push(d as i64);
                 Ok(())
             } else {
                 Err(UtilsError::InvalidNumber {

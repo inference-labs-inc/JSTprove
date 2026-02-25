@@ -114,7 +114,7 @@ where
         _output: Value,
         _assignment: CircuitType,
     ) -> Result<CircuitType, RunError> {
-        Err(RunError::Json(
+        Err(RunError::Unsupported(
             "apply_values not implemented for this IOReader".into(),
         ))
     }

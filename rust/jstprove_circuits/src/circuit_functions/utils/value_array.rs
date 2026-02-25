@@ -50,29 +50,48 @@ fn is_numeric(v: &Value) -> bool {
     matches!(v, Value::Integer(_) | Value::F32(_) | Value::F64(_))
 }
 
-fn get_array_shape(value: &Value) -> Result<Vec<usize>, ArrayConversionError> {
-    let mut shape = Vec::new();
-    let mut current = value;
-
-    loop {
-        match current {
-            Value::Array(arr) => {
-                if arr.is_empty() {
-                    shape.push(0);
-                    break;
-                }
+fn validate_shape(
+    value: &Value,
+    depth: usize,
+    shape: &mut Vec<usize>,
+) -> Result<(), ArrayConversionError> {
+    match value {
+        Value::Array(arr) => {
+            if depth == shape.len() {
                 shape.push(arr.len());
-                current = &arr[0];
-            }
-            v if is_numeric(v) => break,
-            _ => {
+            } else if arr.len() != shape[depth] {
                 return Err(ArrayConversionError::InvalidArrayStructure {
-                    expected: "array or number".to_string(),
-                    found: format!("{current:?}"),
+                    expected: format!("length {} at depth {depth}", shape[depth]),
+                    found: format!("length {} in {value:?}", arr.len()),
                 });
             }
+            if arr.is_empty() {
+                return Ok(());
+            }
+            for item in arr {
+                validate_shape(item, depth + 1, shape)?;
+            }
+            Ok(())
         }
+        v if is_numeric(v) => {
+            if depth != shape.len() {
+                return Err(ArrayConversionError::InvalidArrayStructure {
+                    expected: format!("array at depth {depth}"),
+                    found: format!("{value:?}"),
+                });
+            }
+            Ok(())
+        }
+        _ => Err(ArrayConversionError::InvalidArrayStructure {
+            expected: "array or number".to_string(),
+            found: format!("{value:?}"),
+        }),
     }
+}
+
+fn get_array_shape(value: &Value) -> Result<Vec<usize>, ArrayConversionError> {
+    let mut shape = Vec::new();
+    validate_shape(value, 0, &mut shape)?;
     Ok(shape)
 }
 

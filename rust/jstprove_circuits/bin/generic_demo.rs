@@ -58,9 +58,14 @@ fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool) {
 
     if needs_full {
         let arch_file_path = get_arg(matches, "arch").unwrap();
-        let arch_bytes = std::fs::read(&arch_file_path).expect("Failed to read architecture file");
-        let arch: Architecture =
-            rmp_serde::from_slice(&arch_bytes).expect("Invalid architecture msgpack");
+        let arch_bytes = std::fs::read(&arch_file_path).unwrap_or_else(|e| {
+            eprintln!("Error: failed to read architecture file '{arch_file_path}': {e}");
+            std::process::exit(1);
+        });
+        let arch: Architecture = rmp_serde::from_slice(&arch_bytes).unwrap_or_else(|e| {
+            eprintln!("Error: invalid architecture msgpack in '{arch_file_path}': {e}");
+            std::process::exit(1);
+        });
         OnnxContext::set_all(arch, params, wandb);
     } else {
         OnnxContext::set_params(params);

@@ -925,7 +925,10 @@ where
     result
         .serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
         .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
-    println!();
+    std::io::Write::flush(&mut lock).map_err(|e| RunError::Io {
+        source: e,
+        path: "stdout".into(),
+    })?;
 
     Ok(result)
 }
@@ -982,7 +985,10 @@ where
     result
         .serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
         .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
-    println!();
+    std::io::Write::flush(&mut lock).map_err(|e| RunError::Io {
+        source: e,
+        path: "stdout".into(),
+    })?;
 
     Ok(result)
 }
@@ -1100,7 +1106,10 @@ where
     result
         .serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
         .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
-    println!();
+    std::io::Write::flush(&mut lock).map_err(|e| RunError::Io {
+        source: e,
+        path: "stdout".into(),
+    })?;
 
     Ok(result)
 }
@@ -1477,8 +1486,9 @@ fn flatten_value_to_i64(val: &Value) -> Vec<i64> {
             }
         }
         Value::F32(f) => {
-            if f.is_finite() {
-                vec![*f as i64]
+            let d = f64::from(*f);
+            if f.is_finite() && d >= i64::MIN as f64 && d <= i64::MAX as f64 {
+                vec![d as i64]
             } else {
                 vec![]
             }

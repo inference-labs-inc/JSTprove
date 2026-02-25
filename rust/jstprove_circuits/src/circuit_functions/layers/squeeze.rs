@@ -170,8 +170,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SqueezeLayer {
             } else {
                 None
             }
-        } else {
+        } else if params.is_nil() {
             None
+        } else {
+            return Err(LayerError::Other {
+                layer: LayerKind::Squeeze,
+                msg: format!(
+                    "invalid params container for layer {}: expected Map",
+                    layer.name
+                ),
+            }
+            .into());
         };
 
         let squeeze = Self {
