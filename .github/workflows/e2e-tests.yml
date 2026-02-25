@@ -116,10 +116,22 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Cache Python virtualenv
+        uses: actions/cache@v5
+        with:
+          path: .venv
+          key: ${{ runner.os }}-pyo3-venv-maturin1.12-py3.12-${{ hashFiles('rust/jstprove_pyo3/**', 'pysrc/**') }}
+          restore-keys: |
+            ${{ runner.os }}-pyo3-venv-maturin1.12-py3.12-
+
       - name: Install maturin and build bindings
         run: |
-          pip install maturin
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install maturin==1.12.*
           maturin develop --release
 
       - name: Verify PyO3 bindings
-        run: python -c "from jstprove import Circuit; print('PyO3 bindings OK')"
+        run: |
+          source .venv/bin/activate
+          python -c "from jstprove import Circuit; print('PyO3 bindings OK')"
