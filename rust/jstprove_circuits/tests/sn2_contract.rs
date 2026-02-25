@@ -214,31 +214,40 @@ fn wandb_deserializes_from_json() {
 
 #[test]
 fn onnx_context_set_and_get() {
-    let params = sample_circuit_params();
-    let arch: Architecture = serde_json::from_value(serde_json::json!({
-        "architecture": []
-    }))
-    .unwrap();
-    let wandb: WANDB = serde_json::from_value(serde_json::json!({
-        "w_and_b": []
-    }))
-    .unwrap();
+    std::thread::spawn(|| {
+        let params = sample_circuit_params();
+        let arch: Architecture = serde_json::from_value(serde_json::json!({
+            "architecture": []
+        }))
+        .unwrap();
+        let wandb: WANDB = serde_json::from_value(serde_json::json!({
+            "w_and_b": []
+        }))
+        .unwrap();
 
-    OnnxContext::set_all(arch, params.clone(), Some(wandb));
+        OnnxContext::set_all(arch, params.clone(), Some(wandb));
 
-    let retrieved_params = OnnxContext::get_params().expect("params must be retrievable after set");
-    assert_eq!(retrieved_params.scale_base, params.scale_base);
+        let retrieved_params =
+            OnnxContext::get_params().expect("params must be retrievable after set");
+        assert_eq!(retrieved_params.scale_base, params.scale_base);
 
-    let retrieved_arch =
-        OnnxContext::get_architecture().expect("architecture must be retrievable after set");
-    assert!(retrieved_arch.architecture.is_empty());
+        let retrieved_arch =
+            OnnxContext::get_architecture().expect("architecture must be retrievable after set");
+        assert!(retrieved_arch.architecture.is_empty());
+    })
+    .join()
+    .expect("onnx_context thread must not panic");
 }
 
 #[test]
 fn read_circuit_msgpack_rejects_missing_file() {
-    let path = std::env::temp_dir().join("sn2_contract_nonexistent_circuit.msgpack");
-    let result = read_circuit_msgpack(path.to_str().unwrap());
-    assert_run_error(result);
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("absent.msgpack");
+    let err = assert_run_error(read_circuit_msgpack(path.to_str().unwrap()));
+    assert!(
+        matches!(err, RunError::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound),
+        "expected RunError::Io(NotFound), got {err:?}"
+    );
 }
 
 #[test]
@@ -271,9 +280,13 @@ fn witness_bn254_from_f64_rejects_garbage() {
 
 #[test]
 fn compile_bn254_rejects_nonexistent_path() {
-    let path = std::env::temp_dir().join("sn2_contract_nonexistent_circuit_dir");
-    let result = compile_bn254(path.to_str().unwrap(), false, None);
-    assert_run_error(result);
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("absent_circuit");
+    let err = assert_run_error(compile_bn254(path.to_str().unwrap(), false, None));
+    assert!(
+        matches!(err, RunError::ConfigureCircuit(_)),
+        "expected RunError::ConfigureCircuit, got {err:?}"
+    );
 }
 
 #[test]
