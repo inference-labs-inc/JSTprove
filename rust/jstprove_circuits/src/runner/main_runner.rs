@@ -195,7 +195,7 @@ where
     write_circuit_bundle(
         msgpack_path
             .to_str()
-            .ok_or_else(|| RunError::Json("invalid msgpack path".into()))?,
+            .ok_or_else(|| RunError::Deserialize("invalid msgpack path".into()))?,
         &bundle,
         compress,
     )
@@ -1435,16 +1435,16 @@ where
     let witness_solver = load_witness_solver_from_bytes::<C>(&req.witness_solver)?;
     let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
 
-    let input_json: Value = rmp_serde::from_slice(&req.inputs)
+    let input_value: Value = rmp_serde::from_slice(&req.inputs)
         .map_err(|e| RunError::Deserialize(format!("input msgpack: {e:?}")))?;
-    let output_json: Value = rmp_serde::from_slice(&req.outputs)
+    let output_value: Value = rmp_serde::from_slice(&req.outputs)
         .map_err(|e| RunError::Deserialize(format!("output msgpack: {e:?}")))?;
 
-    let output_data = flatten_value_to_i64(&output_json);
+    let output_data = flatten_value_to_i64(&output_value);
 
     let assignment = CircuitDefaultType::default();
     let assignment = io_reader
-        .apply_values(input_json, output_json, assignment)
+        .apply_values(input_value, output_value, assignment)
         .map_err(|e| RunError::Witness(format!("apply_values: {e:?}")))?;
 
     let witness = solve_and_validate_witness(

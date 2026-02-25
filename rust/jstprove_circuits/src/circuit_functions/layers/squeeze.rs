@@ -80,14 +80,11 @@ impl SqueezeLayer {
         let rank = input_shape.len();
 
         // axes omitted => remove all dims of size 1
-        if axes.is_none() {
+        let Some(axes_ref) = axes else {
             let shape: Vec<usize> = input_shape.iter().copied().filter(|&d| d != 1).collect();
-            // ONNX allows 0-D output if everything is squeezed
-            // ndarray supports IxDyn(&[])
             return Ok(shape);
-        }
+        };
 
-        let axes_ref = axes.expect("axes is Some here");
         let axes_u = self.normalize_axes(axes_ref.as_slice(), rank)?;
 
         let axes_set: HashSet<usize> = axes_u.iter().copied().collect();
