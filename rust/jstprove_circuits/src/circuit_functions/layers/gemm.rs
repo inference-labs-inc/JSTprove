@@ -4,9 +4,7 @@
 //! circuit-level execution of an ONNX `Gemm` node using ExpanderCompilerCollection.
 //!
 //! ## ONNX semantics (conceptual)
-//! ONNX defines GEMM as
-//!
-//!     Y = alpha * A * B + beta * C
+//! ONNX defines GEMM as `Y = alpha * A * B + beta * C`
 //!
 //! with optional transpose flags `transA`, `transB` applied to `A`, `B` prior to
 //! multiplication, and with `C` typically used as a bias term (potentially
