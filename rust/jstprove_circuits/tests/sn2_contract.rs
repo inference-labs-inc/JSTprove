@@ -97,7 +97,7 @@ fn witness_request_msgpack_roundtrip() {
         metadata: Some(sample_circuit_params()),
     };
 
-    let packed = rmp_serde::to_vec(&original).expect("msgpack serialize WitnessRequest");
+    let packed = rmp_serde::to_vec_named(&original).expect("msgpack serialize WitnessRequest");
     let restored: WitnessRequest =
         rmp_serde::from_slice(&packed).expect("msgpack deserialize WitnessRequest");
 
@@ -105,7 +105,17 @@ fn witness_request_msgpack_roundtrip() {
     assert_eq!(restored.witness_solver, original.witness_solver);
     assert_eq!(restored.inputs, original.inputs);
     assert_eq!(restored.outputs, original.outputs);
-    assert!(restored.metadata.is_some());
+
+    let meta = restored.metadata.expect("metadata must survive roundtrip");
+    let orig_meta = original.metadata.unwrap();
+    assert_eq!(meta.scale_base, orig_meta.scale_base);
+    assert_eq!(meta.scale_exponent, orig_meta.scale_exponent);
+    assert_eq!(meta.inputs.len(), orig_meta.inputs.len());
+    assert_eq!(meta.outputs.len(), orig_meta.outputs.len());
+    assert_eq!(meta.inputs[0].name, orig_meta.inputs[0].name);
+    assert_eq!(meta.inputs[0].shape, orig_meta.inputs[0].shape);
+    assert_eq!(meta.outputs[0].name, orig_meta.outputs[0].name);
+    assert_eq!(meta.outputs[0].shape, orig_meta.outputs[0].shape);
 }
 
 #[test]
@@ -116,7 +126,7 @@ fn compiled_circuit_msgpack_roundtrip() {
         metadata: Some(sample_circuit_params()),
     };
 
-    let packed = rmp_serde::to_vec(&original).expect("msgpack serialize CompiledCircuit");
+    let packed = rmp_serde::to_vec_named(&original).expect("msgpack serialize CompiledCircuit");
     let restored: CompiledCircuit =
         rmp_serde::from_slice(&packed).expect("msgpack deserialize CompiledCircuit");
 
@@ -215,11 +225,11 @@ fn onnx_context_set_and_get() {
         let arch: Architecture = serde_json::from_value(serde_json::json!({
             "architecture": []
         }))
-        .unwrap();
+        .expect("parse empty Architecture from JSON");
         let wandb: WANDB = serde_json::from_value(serde_json::json!({
             "w_and_b": []
         }))
-        .unwrap();
+        .expect("parse empty WANDB from JSON");
 
         OnnxContext::set_all(arch, params.clone(), Some(wandb));
 
@@ -372,14 +382,36 @@ fn compiled_circuit_field_names_stable() {
         metadata: None,
     };
 
+    let expected_fields = ["circuit", "witness_solver", "metadata"];
+
+    let packed = rmp_serde::to_vec_named(&cc).expect("named msgpack serialize");
+    let msgpack_val: rmpv::Value =
+        rmp_serde::from_slice(&packed).expect("decode named msgpack into rmpv::Value");
+    let msgpack_map: &Vec<(rmpv::Value, rmpv::Value)> = msgpack_val
+        .as_map()
+        .expect("named msgpack must decode as map");
+    let msgpack_keys: Vec<&str> = msgpack_map
+        .iter()
+        .map(|(k, _)| k.as_str().expect("msgpack key must be string"))
+        .collect();
+    for field in &expected_fields {
+        assert!(
+            msgpack_keys.contains(field),
+            "CompiledCircuit msgpack missing expected field: {field}"
+        );
+    }
+    assert_eq!(
+        msgpack_keys.len(),
+        expected_fields.len(),
+        "CompiledCircuit msgpack contains unexpected fields"
+    );
+
     let val = serde_json::to_value(&cc).expect("json serialize");
     let obj = val.as_object().expect("must be object");
-
-    let expected_fields = ["circuit", "witness_solver", "metadata"];
     for field in &expected_fields {
         assert!(
             obj.contains_key(*field),
-            "CompiledCircuit missing expected field: {field}"
+            "CompiledCircuit JSON missing expected field: {field}"
         );
     }
     assert_eq!(obj.len(), expected_fields.len());
