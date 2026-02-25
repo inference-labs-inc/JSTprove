@@ -13,6 +13,10 @@ use jstprove_circuits::runner::main_runner::read_circuit_msgpack;
 use jstprove_circuits::runner::schema::{CompiledCircuit, WitnessRequest};
 use jstprove_circuits::runner::verify_extract::VerifiedOutput;
 
+fn assert_run_error<T: std::fmt::Debug>(result: Result<T, RunError>) -> RunError {
+    result.expect_err("expected RunError")
+}
+
 fn sample_circuit_params() -> CircuitParams {
     serde_json::from_value(serde_json::json!({
         "scale_base": 10,
@@ -64,28 +68,25 @@ fn verify_and_extract_bn254_rejects_garbage() {
     let result =
         verify_and_extract_bn254(&garbage_circuit, &garbage_witness, &garbage_proof, 2, None);
 
-    assert!(
-        result.is_err(),
-        "garbage data must produce RunError, not Ok"
-    );
+    assert_run_error(result);
 }
 
 #[test]
 fn verify_and_extract_bn254_rejects_empty() {
     let result = verify_and_extract_bn254(&[], &[], &[], 0, None);
-    assert!(result.is_err(), "empty data must produce RunError, not Ok");
+    assert_run_error(result);
 }
 
 #[test]
 fn prove_bn254_rejects_garbage() {
     let result = prove_bn254(&[0xDE, 0xAD], &[0xBE, 0xEF], false);
-    assert!(result.is_err(), "prove_bn254 must reject garbage bytes");
+    assert_run_error(result);
 }
 
 #[test]
 fn verify_bn254_rejects_garbage() {
     let result = verify_bn254(&[0xDE, 0xAD], &[0xBE, 0xEF], &[0xCA, 0xFE]);
-    assert!(result.is_err(), "verify_bn254 must reject garbage bytes");
+    assert_run_error(result);
 }
 
 #[test]
@@ -235,8 +236,9 @@ fn onnx_context_set_and_get() {
 
 #[test]
 fn read_circuit_msgpack_rejects_missing_file() {
-    let result = read_circuit_msgpack("/nonexistent/path/to/circuit.msgpack");
-    assert!(result.is_err());
+    let path = std::env::temp_dir().join("sn2_contract_nonexistent_circuit.msgpack");
+    let result = read_circuit_msgpack(path.to_str().unwrap());
+    assert_run_error(result);
 }
 
 #[test]
@@ -250,10 +252,7 @@ fn witness_bn254_rejects_garbage() {
     };
 
     let result = witness_bn254(&req, false);
-    assert!(
-        result.is_err(),
-        "witness_bn254 must reject garbage circuit bytes"
-    );
+    assert_run_error(result);
 }
 
 #[test]
@@ -267,19 +266,14 @@ fn witness_bn254_from_f64_rejects_garbage() {
         &[],
         false,
     );
-    assert!(
-        result.is_err(),
-        "witness_bn254_from_f64 must reject garbage circuit bytes"
-    );
+    assert_run_error(result);
 }
 
 #[test]
 fn compile_bn254_rejects_nonexistent_path() {
-    let result = compile_bn254("/nonexistent/circuit/path", false, None);
-    assert!(
-        result.is_err(),
-        "compile_bn254 must reject nonexistent path"
-    );
+    let path = std::env::temp_dir().join("sn2_contract_nonexistent_circuit_dir");
+    let result = compile_bn254(path.to_str().unwrap(), false, None);
+    assert_run_error(result);
 }
 
 #[test]
