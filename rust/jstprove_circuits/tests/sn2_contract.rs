@@ -286,13 +286,58 @@ fn witness_bn254_from_f64_rejects_garbage() {
 
 #[test]
 fn compile_bn254_rejects_nonexistent_path() {
-    let dir = tempfile::tempdir().expect("create temp dir");
-    let path = dir.path().join("absent_circuit");
-    let err = assert_run_error(compile_bn254(&path.to_string_lossy(), false, None));
-    assert!(
-        matches!(err, RunError::ConfigureCircuit(_)),
-        "expected RunError::ConfigureCircuit, got {err:?}"
-    );
+    std::thread::spawn(|| {
+        let params = sample_circuit_params();
+        let arch: Architecture = serde_json::from_value(serde_json::json!({
+            "architecture": [{
+                "id": 0,
+                "name": "layer_0",
+                "op_type": "Gemm",
+                "inputs": ["input_0", "weight_0", "bias_0"],
+                "outputs": ["output_0"],
+                "shape": {"output_0": [1, 2]},
+                "tensor": null,
+                "params": {"alpha": 1.0, "beta": 1.0, "transA": 0, "transB": 0},
+                "opset_version_number": 13
+            }]
+        }))
+        .expect("parse Architecture");
+        let wandb: WANDB = serde_json::from_value(serde_json::json!({
+            "w_and_b": [{
+                "id": 0,
+                "name": "weight_0",
+                "op_type": "Initializer",
+                "inputs": [],
+                "outputs": ["weight_0"],
+                "shape": {"weight_0": [3, 2]},
+                "tensor": {"value": [[1, 2], [3, 4], [5, 6]]},
+                "params": null,
+                "opset_version_number": 0
+            }, {
+                "id": 1,
+                "name": "bias_0",
+                "op_type": "Initializer",
+                "inputs": [],
+                "outputs": ["bias_0"],
+                "shape": {"bias_0": [2]},
+                "tensor": {"value": [0, 0]},
+                "params": null,
+                "opset_version_number": 0
+            }]
+        }))
+        .expect("parse WANDB");
+        OnnxContext::set_all(arch, params, Some(wandb));
+
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let path = dir.path().join("nonexistent_subdir").join("circuit");
+        let err = assert_run_error(compile_bn254(&path.to_string_lossy(), false, None));
+        assert!(
+            matches!(err, RunError::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound),
+            "expected RunError::Io(NotFound), got {err:?}"
+        );
+    })
+    .join()
+    .expect("compile_bn254 thread must not panic");
 }
 
 #[test]
