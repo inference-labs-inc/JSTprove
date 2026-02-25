@@ -2078,6 +2078,24 @@ pub fn get_args() -> clap::ArgMatches {
 mod tests {
     use super::*;
 
+    struct TempFile(PathBuf);
+
+    impl TempFile {
+        fn new(name: &str) -> Self {
+            Self(std::env::temp_dir().join(name))
+        }
+
+        fn path(&self) -> &str {
+            self.0.to_str().unwrap()
+        }
+    }
+
+    impl Drop for TempFile {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
     #[test]
     fn maybe_compress_roundtrip() {
         let original = b"hello world, this is a test payload for zstd compression".to_vec();
@@ -2098,41 +2116,38 @@ mod tests {
 
     #[test]
     fn write_read_bundle_uncompressed() {
+        let tmp = TempFile::new("jstprove_test_uncompressed.msgpack");
         let bundle = CompiledCircuit {
             circuit: vec![1, 2, 3, 4],
             witness_solver: vec![5, 6, 7, 8],
             metadata: None,
         };
-        let dir = std::env::temp_dir().join("jstprove_test_uncompressed.msgpack");
-        let path = dir.to_str().unwrap();
-        write_circuit_bundle(path, &bundle, false).unwrap();
-        let loaded = read_circuit_msgpack(path).unwrap();
+        write_circuit_bundle(tmp.path(), &bundle, false).unwrap();
+        let loaded = read_circuit_msgpack(tmp.path()).unwrap();
         assert_eq!(loaded.circuit, bundle.circuit);
         assert_eq!(loaded.witness_solver, bundle.witness_solver);
         assert!(loaded.metadata.is_none());
-        let _ = std::fs::remove_file(path);
     }
 
     #[test]
     fn write_read_bundle_compressed() {
+        let tmp = TempFile::new("jstprove_test_compressed.msgpack");
         let bundle = CompiledCircuit {
             circuit: vec![10; 1024],
             witness_solver: vec![20; 512],
             metadata: None,
         };
-        let dir = std::env::temp_dir().join("jstprove_test_compressed.msgpack");
-        let path = dir.to_str().unwrap();
-        write_circuit_bundle(path, &bundle, true).unwrap();
-        let raw = std::fs::read(path).unwrap();
+        write_circuit_bundle(tmp.path(), &bundle, true).unwrap();
+        let raw = std::fs::read(tmp.path()).unwrap();
         assert_eq!(&raw[..4], &ZSTD_MAGIC);
-        let loaded = read_circuit_msgpack(path).unwrap();
+        let loaded = read_circuit_msgpack(tmp.path()).unwrap();
         assert_eq!(loaded.circuit, bundle.circuit);
         assert_eq!(loaded.witness_solver, bundle.witness_solver);
-        let _ = std::fs::remove_file(path);
     }
 
     #[test]
     fn write_read_bundle_with_metadata() {
+        let tmp = TempFile::new("jstprove_test_metadata.msgpack");
         let meta: CircuitParams = serde_json::from_str(
             r#"{
                 "scale_base": 2,
@@ -2148,17 +2163,14 @@ mod tests {
             witness_solver: vec![0xBB; 64],
             metadata: Some(meta),
         };
-        let dir = std::env::temp_dir().join("jstprove_test_metadata.msgpack");
-        let path = dir.to_str().unwrap();
-        write_circuit_bundle(path, &bundle, true).unwrap();
-        let loaded = read_circuit_msgpack(path).unwrap();
+        write_circuit_bundle(tmp.path(), &bundle, true).unwrap();
+        let loaded = read_circuit_msgpack(tmp.path()).unwrap();
         assert_eq!(loaded.circuit, bundle.circuit);
         assert_eq!(loaded.witness_solver, bundle.witness_solver);
         let m = loaded.metadata.unwrap();
         assert_eq!(m.scale_base, 2);
         assert_eq!(m.scale_exponent, 18);
         assert!(m.rescale_config.contains_key("conv1"));
-        let _ = std::fs::remove_file(path);
     }
 
     #[test]
@@ -2175,29 +2187,27 @@ mod tests {
 
     #[test]
     fn auto_reader_plain_data() {
-        let dir = std::env::temp_dir().join("jstprove_test_plain_reader.bin");
+        let tmp = TempFile::new("jstprove_test_plain_reader.bin");
         let data = b"raw binary content here";
-        std::fs::write(&dir, data).unwrap();
-        let file = std::fs::File::open(&dir).unwrap();
+        std::fs::write(tmp.path(), data).unwrap();
+        let file = std::fs::File::open(tmp.path()).unwrap();
         let mut reader = auto_reader(file).unwrap();
         let mut buf = Vec::new();
         std::io::Read::read_to_end(&mut reader, &mut buf).unwrap();
         assert_eq!(buf, data);
-        let _ = std::fs::remove_file(&dir);
     }
 
     #[test]
     fn auto_reader_zstd_data() {
-        let dir = std::env::temp_dir().join("jstprove_test_zstd_reader.bin");
+        let tmp = TempFile::new("jstprove_test_zstd_reader.bin");
         let original = b"some data to compress for auto_reader test";
         let compressed =
             zstd::encode_all(Cursor::new(original.as_slice()), ZSTD_COMPRESSION_LEVEL).unwrap();
-        std::fs::write(&dir, &compressed).unwrap();
-        let file = std::fs::File::open(&dir).unwrap();
+        std::fs::write(tmp.path(), &compressed).unwrap();
+        let file = std::fs::File::open(tmp.path()).unwrap();
         let mut reader = auto_reader(file).unwrap();
         let mut buf = Vec::new();
         std::io::Read::read_to_end(&mut reader, &mut buf).unwrap();
         assert_eq!(buf, original);
-        let _ = std::fs::remove_file(&dir);
     }
 }
