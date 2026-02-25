@@ -96,23 +96,17 @@ impl ShiftRangeContext {
 /// # High-level idea
 ///
 /// Each input `x_i` is a field element (a `Variable` in `F_p`) that we *interpret*
-/// as encoding a signed integer in the range:
-///
-///     x_i in [-S, 2^s - 1]
-///
+/// as encoding a signed integer in the range
+/// `x_i in [-S, 2^s - 1]`
 /// where S = 2^s is provided by `shift_ctx.offset`.
 ///
 /// To stay inside a nonnegative interval, we shift each value:
+/// `x_i_sh = x_i + S`.
 ///
-///     x_i_sh = x_i + S
-///
-/// Under the assumption that the field modulus p satisfies:
-///
-///     p > 2^(s+1) - 1
-///
-/// this shift does not wrap modulo p, and the values lie in:
-///
-///     x_i_sh in [0, 2^(s+1) - 1].
+/// Under the assumption that the field modulus p satisfies
+/// `p > 2^(s+1) - 1`,
+/// this shift does not wrap modulo p, and the values lie in
+/// `x_i_sh in [0, 2^(s+1) - 1]`.
 ///
 /// We then:
 ///
@@ -231,13 +225,10 @@ pub fn constrained_max<C: Config, Builder: RootAPI<C>>(
 /// # High-level idea
 ///
 /// This is the min-analogue of `constrained_max`, using the same offset-shift
-/// strategy. Again, we interpret each `x_i` as encoding a signed integer in:
-///
-///     x_i in [-S, 2^s - 1]
-///
+/// strategy. Again, we interpret each `x_i` as encoding a signed integer in
+/// `x_i in [-S, 2^s - 1]`
 /// with S = 2^s given by `context.offset`. We shift to nonnegative space:
-///
-///     x_i_sh = x_i + S in [0, 2^(s+1) - 1]
+/// `x_i_sh = x_i + S in [0, 2^(s+1) - 1]`
 ///
 /// assuming p > 2^(s+1) - 1.
 ///
@@ -366,9 +357,8 @@ pub fn constrained_min<C: Config, Builder: RootAPI<C>>(
 /// # How it works
 ///
 /// Each of `x`, `lower`, and `upper` (if present) is treated as encoding a
-/// signed integer in the same range:
-///
-///     [-S, 2^s - 1],  with  S = 2^s  from `range_ctx`.
+/// signed integer in the same range
+/// `[-S, 2^s - 1]` with `S = 2^s` from `range_ctx`.
 ///
 /// The underlying `constrained_max` / `constrained_min` gadgets:
 ///

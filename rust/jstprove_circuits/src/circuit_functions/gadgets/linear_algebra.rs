@@ -423,13 +423,10 @@ pub fn unconstrained_matrix_multiplication<C: Config, Builder: RootAPI<C>>(
 ///
 /// ## Soundness (standard Freivalds guarantee)
 /// If `A * B != C` and `x` is sampled uniformly at random from `F^n`, then for a
-/// single repetition:
-///
-///     Pr[u = w] ≤ 1 / |F|.
+/// single repetition: `Pr[u = w] ≤ 1 / |F|`.
 ///
 /// With `k = num_repetitions` independent repetitions, the soundness error is at most
-///
-///     (1 / |F|)^k.
+/// `(1 / |F|)^k`.
 ///
 /// **Important:** This guarantee relies on how `x` is generated. The challenges must be
 /// prover-unbiased (i.e., not chosen adversarially after seeing `A, B, C`) and should be

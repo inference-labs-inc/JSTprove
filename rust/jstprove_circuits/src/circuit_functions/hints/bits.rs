@@ -36,10 +36,10 @@ use crate::circuit_functions::{CircuitError, utils::UtilsError};
 ///
 /// After `n_bits` iterations, the result is:
 ///
-///     bits[0] = least significant bit of input
-///     bits[1] = next bit
-///     ...
-///     bits[n_bits - 1] = most significant of the extracted bits
+/// - `bits[0]` = least significant bit of input
+/// - `bits[1]` = next bit
+/// - ...
+/// - `bits[n_bits - 1]` = most significant of the extracted bits
 ///
 /// This helper mirrors a CPU right-shift loop, but none of the bits are enforced
 /// to be boolean and no reconstruction constraint is added. If soundness is
@@ -66,11 +66,8 @@ use crate::circuit_functions::{CircuitError, utils::UtilsError};
 ///
 /// # Example
 ///
-/// For `input = 43` (binary `101011`) and `n_bits = 4`, the function returns:
-///
-///     [1, 1, 0, 1]
-///
-/// corresponding to the 4 least significant bits `1011` in little-endian form.
+/// For `input = 43` (binary `101011`) and `n_bits = 4`, the function returns
+/// `[1, 1, 0, 1]`, corresponding to the 4 least significant bits `1011` in little-endian form.
 pub fn unconstrained_to_bits<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input: Variable,
