@@ -32,7 +32,7 @@ fn sample_circuit_params() -> CircuitParams {
 fn verified_output_json_roundtrip() {
     let original = VerifiedOutput {
         valid: true,
-        inputs: vec![1.0, 2.5, -3.14],
+        inputs: vec![1.0, 2.5, -std::f64::consts::PI],
         outputs: vec![0.99, -0.01],
         scale_base: 10,
         scale_exponent: 3,
@@ -332,6 +332,11 @@ fn witness_request_field_names_stable() {
             "WitnessRequest missing expected field: {field}"
         );
     }
+    assert_eq!(
+        obj.len(),
+        expected_fields.len(),
+        "WitnessRequest contains unexpected fields"
+    );
 }
 
 #[test]
