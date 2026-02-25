@@ -1,7 +1,3 @@
-#![allow(unused)]
-
-use std::collections::HashMap;
-
 use jstprove_circuits::circuit_functions::utils::onnx_model::{Architecture, CircuitParams, WANDB};
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
 use jstprove_circuits::onnx::{
@@ -243,7 +239,7 @@ fn onnx_context_set_and_get() {
 fn read_circuit_msgpack_rejects_missing_file() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let path = dir.path().join("absent.msgpack");
-    let err = assert_run_error(read_circuit_msgpack(path.to_str().unwrap()));
+    let err = assert_run_error(read_circuit_msgpack(&path.to_string_lossy()));
     assert!(
         matches!(err, RunError::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound),
         "expected RunError::Io(NotFound), got {err:?}"
@@ -282,7 +278,7 @@ fn witness_bn254_from_f64_rejects_garbage() {
 fn compile_bn254_rejects_nonexistent_path() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let path = dir.path().join("absent_circuit");
-    let err = assert_run_error(compile_bn254(path.to_str().unwrap(), false, None));
+    let err = assert_run_error(compile_bn254(&path.to_string_lossy(), false, None));
     assert!(
         matches!(err, RunError::ConfigureCircuit(_)),
         "expected RunError::ConfigureCircuit, got {err:?}"
