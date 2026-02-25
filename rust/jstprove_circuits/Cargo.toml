@@ -35,6 +35,7 @@ remainder = ["dep:jstprove-remainder"]
 
 [dev-dependencies]
 sha2 = "0.10.8"
+rmpv = { version = "1", features = ["with-serde"] }
 
 [dependencies.serde]
 version = "1.0"

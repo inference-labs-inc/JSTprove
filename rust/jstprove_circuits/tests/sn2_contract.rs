@@ -322,20 +322,42 @@ fn witness_request_field_names_stable() {
     };
 
     let packed = rmp_serde::to_vec_named(&req).expect("named msgpack serialize");
-    let val: serde_json::Value = serde_json::to_value(&req).expect("json serialize");
-    let obj = val.as_object().expect("must be object");
+
+    let msgpack_val: rmpv::Value =
+        rmp_serde::from_slice(&packed).expect("decode named msgpack into rmpv::Value");
+    let msgpack_map: &Vec<(rmpv::Value, rmpv::Value)> = msgpack_val
+        .as_map()
+        .expect("named msgpack must decode as map");
+    let msgpack_keys: Vec<&str> = msgpack_map
+        .iter()
+        .map(|(k, _)| k.as_str().expect("msgpack key must be string"))
+        .collect();
 
     let expected_fields = ["circuit", "witness_solver", "inputs", "outputs", "metadata"];
     for field in &expected_fields {
         assert!(
+            msgpack_keys.contains(field),
+            "WitnessRequest msgpack missing expected field: {field}"
+        );
+    }
+    assert_eq!(
+        msgpack_keys.len(),
+        expected_fields.len(),
+        "WitnessRequest msgpack contains unexpected fields"
+    );
+
+    let val: serde_json::Value = serde_json::to_value(&req).expect("json serialize");
+    let obj = val.as_object().expect("must be object");
+    for field in &expected_fields {
+        assert!(
             obj.contains_key(*field),
-            "WitnessRequest missing expected field: {field}"
+            "WitnessRequest JSON missing expected field: {field}"
         );
     }
     assert_eq!(
         obj.len(),
         expected_fields.len(),
-        "WitnessRequest contains unexpected fields"
+        "WitnessRequest JSON contains unexpected fields"
     );
 }
 
