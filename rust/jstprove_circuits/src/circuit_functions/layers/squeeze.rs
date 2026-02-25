@@ -9,6 +9,7 @@ use crate::circuit_functions::{
     utils::{
         constants::{AXES, INPUT},
         onnx_model::{extract_params_and_expected_shape, get_input_name, get_param},
+        value_array::map_get,
     },
 };
 
@@ -163,9 +164,14 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SqueezeLayer {
         // axes may be missing (axes omitted semantics)
         // When present, parse_attributes on Python side should serialize it as a list.
         // `get_param` will error if missing, so we only call it if the key exists.
-        let axes: Option<Vec<i64>> = match params.get(AXES) {
-            Some(_) => Some(get_param(&layer.name, AXES, &params)?),
-            None => None,
+        let axes: Option<Vec<i64>> = if let rmpv::Value::Map(ref entries) = params {
+            if map_get(entries, AXES).is_some() {
+                Some(get_param(&layer.name, AXES, &params)?)
+            } else {
+                None
+            }
+        } else {
+            None
         };
 
         let squeeze = Self {

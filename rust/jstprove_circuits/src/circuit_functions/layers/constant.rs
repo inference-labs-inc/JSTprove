@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 use ndarray::{ArrayD, IxDyn};
-use serde_json::Value;
+use rmpv::Value;
 
 use crate::circuit_functions::{
     CircuitError,

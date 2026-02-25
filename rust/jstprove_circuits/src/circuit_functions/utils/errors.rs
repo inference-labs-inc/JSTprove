@@ -13,7 +13,7 @@ pub enum UtilsError {
         layer: String,
         param: String,
         #[source]
-        source: serde_json::Error,
+        source: rmpv::ext::Error,
     },
 
     #[error("Cannot convert variable of type '{initial_var_type}' to '{converted_var_type}'")]
@@ -32,7 +32,7 @@ pub enum UtilsError {
     ValueTooLarge { value: usize, max: u128 },
 
     #[error("Expected number, but got {value}")]
-    InvalidNumber { value: serde_json::Value },
+    InvalidNumber { value: rmpv::Value },
 
     #[error("Graph error: {0}")]
     GraphPatternError(#[from] PatternError),

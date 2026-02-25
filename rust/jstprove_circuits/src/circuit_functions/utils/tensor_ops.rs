@@ -1,10 +1,9 @@
 /// Standard library imports
 use std::{collections::HashMap, hash::BuildHasher, ops::Neg};
 
-/// External crate imports
 use ethnum::U256;
 use ndarray::{ArrayD, IxDyn, Zip};
-use serde_json::Value;
+use rmpv::Value;
 
 /// `ExpanderCompilerCollection` and proving framework imports
 use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
@@ -82,9 +81,33 @@ pub fn load_array_constants_or_get_inputs<C: Config, Builder: RootAPI<C>, S: Bui
 
 fn flatten_recursive(value: &Value, out: &mut Vec<i64>) -> Result<(), UtilsError> {
     match value {
-        Value::Number(n) => {
+        Value::Integer(n) => {
             if let Some(i) = n.as_i64() {
                 out.push(i);
+                Ok(())
+            } else {
+                Err(UtilsError::InvalidNumber {
+                    value: value.clone(),
+                })
+            }
+        }
+        Value::F64(f) =>
+        {
+            #[allow(clippy::cast_possible_truncation)]
+            if f.is_finite() {
+                out.push(*f as i64);
+                Ok(())
+            } else {
+                Err(UtilsError::InvalidNumber {
+                    value: value.clone(),
+                })
+            }
+        }
+        Value::F32(f) =>
+        {
+            #[allow(clippy::cast_possible_truncation)]
+            if f.is_finite() {
+                out.push(*f as i64);
                 Ok(())
             } else {
                 Err(UtilsError::InvalidNumber {
@@ -104,61 +127,23 @@ fn flatten_recursive(value: &Value, out: &mut Vec<i64>) -> Result<(), UtilsError
     }
 }
 
-/// Converts a JSON value into an n-dimensional array of circuit field elements.
-///
-/// This utility is used to transform structured JSON input (e.g., nested arrays)
-/// into an [`ndarray::ArrayD`] of [`CircuitField`] values, suitable for use
-/// in circuit assignments.
+/// Converts an `rmpv::Value` into an n-dimensional array of circuit field elements.
 ///
 /// The transformation proceeds in four steps:
-/// 1. Flattening – The JSON tree is recursively flattened into a flat `Vec<i64>`.
+/// 1. Flattening – The value tree is recursively flattened into a flat `Vec<i64>`.
 /// 2. Shape preparation – The provided `input_shape` is used to define the
 ///    dimensions of the array. If the shape is empty, a dummy dimension of size 1 is added.
 /// 3. Array construction – An [`ndarray::ArrayD<i64>`] is built from the flattened values
-///    using the target shape. Errors are raised if the length of the flat vector
-///    does not match the product of the shape dimensions.
+///    using the target shape.
 /// 4. Field conversion – Each integer is mapped into the circuit’s native field type
 ///    via [`convert_val_to_field_element`].
-///
-/// # Type Parameters
-///
-/// - `C` – A [`Config`] implementation that defines the underlying field configuration.
-///
-/// # Arguments
-///
-/// - `input` – A [`serde_json::Value`] containing the input data (expected to be an array
-///   or nested arrays of integers).
-/// - `input_shape` – The expected shape of the input tensor, given as a slice of dimension sizes.
-///
-/// # Returns
-///
-/// An [`ndarray::ArrayD`] of type [`CircuitField<C>`] matching the specified shape and
-/// containing the converted field elements.
 ///
 /// # Errors
 ///
 /// Returns a [`UtilsError`] if:
-/// - The JSON cannot be flattened into a list of integers.
+/// - The value cannot be flattened into a list of integers.
 /// - The flattened input length does not match the expected shape.
 /// - The shape itself is invalid for constructing an [`ndarray::ArrayD`].
-///
-/// # Examples
-///
-/// ```ignore
-/// use serde_json::json;
-///
-/// // JSON input: 2D array
-/// let value = json!([[1, 2], [3, 4]]);
-/// let shape = &[2, 2];
-///
-/// let arr = get_nd_circuit_inputs::<MyConfig>(&value, shape)?;
-/// assert_eq!(arr.shape(), &[2, 2]);
-/// ```
-///
-/// # Notes
-///
-/// - If `input_shape` is empty, a single dimension of length 1 will be used.
-/// - All integers are first read as `i64` before conversion into the circuit field.
 ///
 pub fn get_nd_circuit_inputs<C: Config>(
     input: &Value,

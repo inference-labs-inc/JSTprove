@@ -2,8 +2,8 @@ use crate::runner::errors::RunError;
 use expander_compiler::frontend::Config;
 use expander_compiler::frontend::internal::DumpLoadTwoVariables;
 use expander_compiler::gkr_engine::{FieldEngine, GKREngine};
+use rmpv::Value;
 use serde::de::DeserializeOwned;
-use serde_json::Value;
 use std::io::Read;
 
 /// Implement `io_reader` to read inputs and outputs of the circuit.
@@ -15,12 +15,12 @@ where
         + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
         + Clone,
 {
-    /// Reads and deserializes a JSON file into a strongly typed struct.
+    /// Reads and deserializes a msgpack file into a strongly typed struct.
     ///
     /// This helper function:
     /// - Opens the file at `file_path`.
-    /// - Reads its contents into a string.
-    /// - Uses [`serde_json`] to deserialize the string into the target type `I`.
+    /// - Reads its contents into bytes.
+    /// - Uses [`rmp_serde`] to deserialize the bytes into the target type `I`.
     /// - Converts any I/O or deserialization failures into [`RunError`].
     ///
     /// # Type Parameters
@@ -29,58 +29,48 @@ where
     ///
     /// # Arguments
     ///
-    /// - `file_path` – Path to the JSON file to read.
+    /// - `file_path` – Path to the msgpack file to read.
     ///
     /// # Returns
     ///
-    /// An instance of type `I` populated from the JSON contents.
+    /// An instance of type `I` populated from the msgpack contents.
     ///
     /// # Errors
     ///
     /// Returns a [`RunError`] if:
     /// - The file cannot be opened or read (`RunError::Io`).
-    /// - The JSON cannot be parsed into the expected type (`RunError::Json`).
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// let inputs: InputData = read_data_from_json("inputs.json")?;
-    /// let outputs: OutputData = read_data_from_json("outputs.json")?;
-    /// ```
-    fn read_data_from_json<I>(file_path: &str) -> Result<I, RunError>
+    /// - The msgpack cannot be parsed into the expected type (`RunError::Deserialize`).
+    fn read_data_from_msgpack<I>(file_path: &str) -> Result<I, RunError>
     where
         I: DeserializeOwned,
     {
-        // Read the JSON file into a string
         let mut file = std::fs::File::open(file_path).map_err(|e| RunError::Io {
             source: e,
             path: file_path.into(),
         })?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)
-            .map_err(|e| RunError::Io {
-                source: e,
-                path: file_path.into(),
-            })?;
-        // Deserialize the JSON into the InputData struct
-        serde_json::from_str(&contents).map_err(|e| RunError::Json(format!("{e:?}")))
+        let mut contents = Vec::new();
+        file.read_to_end(&mut contents).map_err(|e| RunError::Io {
+            source: e,
+            path: file_path.into(),
+        })?;
+        rmp_serde::from_slice(&contents).map_err(|e| RunError::Deserialize(format!("{e:?}")))
     }
-    /// Reads circuit inputs from a JSON file and applies them to a circuit assignment.
+    /// Reads circuit inputs from a msgpack file and applies them to a circuit assignment.
     ///
     /// # Arguments
     ///
-    /// - `file_path` – Path to a JSON file containing input values.
+    /// - `file_path` – Path to a msgpack file containing input values.
     /// - `assignment` – The circuit assignment to populate.
     ///
     /// # Returns
     ///
-    /// A new [`Circuit`] with its inputs populated from the JSON file.
+    /// A new [`Circuit`] with its inputs populated from the msgpack file.
     ///
     /// # Errors
     ///
     /// Returns a [`RunError`] if:
     /// - The file cannot be read (`RunError::Io`)
-    /// - The JSON cannot be parsed (`RunError::Json`)
+    /// - The msgpack cannot be parsed (`RunError::Deserialize`)
     /// - The input shape does not match the expected architecture
     /// - The array cannot be flattened into 1-D
     ///
@@ -89,22 +79,22 @@ where
         file_path: &str,
         assignment: CircuitType,
     ) -> Result<CircuitType, RunError>;
-    /// Reads circuit outputs from a JSON file and applies them to a circuit assignment.
+    /// Reads circuit outputs from a msgpack file and applies them to a circuit assignment.
     ///
     /// # Arguments
     ///
-    /// - `file_path` – Path to a JSON file containing expected output values.
+    /// - `file_path` – Path to a msgpack file containing expected output values.
     /// - `assignment` – The circuit assignment to populate.
     ///
     /// # Returns
     ///
-    /// A new [`Circuit`] with its outputs populated from the JSON file.
+    /// A new [`Circuit`] with its outputs populated from the msgpack file.
     ///
     /// # Errors
     ///
     /// Returns a [`RunError`] if:
     /// - The file cannot be read (`RunError::Io`)
-    /// - The JSON cannot be parsed (`RunError::Json`)
+    /// - The msgpack cannot be parsed (`RunError::Deserialize`)
     /// - The output shape does not match the expected architecture
     /// - The array cannot be flattened into 1-D
     ///
@@ -113,7 +103,7 @@ where
         file_path: &str,
         assignment: CircuitType,
     ) -> Result<CircuitType, RunError>;
-    /// Applies inline JSON input/output values to a circuit assignment.
+    /// Applies inline msgpack input/output values to a circuit assignment.
     ///
     /// # Errors
     ///
