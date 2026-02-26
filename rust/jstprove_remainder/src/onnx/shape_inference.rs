@@ -244,23 +244,32 @@ fn infer_gemm(
         .map(|v| v != 0)
         .unwrap_or(false);
 
-    if a_shape.len() < 2 {
+    if a_shape.len() != 2 {
         bail!(
-            "layer {}: Gemm input A rank {} < 2",
+            "layer {}: Gemm input A rank {} != 2",
             layer.name,
             a_shape.len()
         );
     }
-    if b_shape.len() < 2 {
+    if b_shape.len() != 2 {
         bail!(
-            "layer {}: Gemm input B rank {} < 2",
+            "layer {}: Gemm input B rank {} != 2",
             layer.name,
             b_shape.len()
         );
     }
 
     let m = if trans_a { a_shape[1] } else { a_shape[0] };
+    let k_a = if trans_a { a_shape[0] } else { a_shape[1] };
+    let k_b = if trans_b { b_shape[1] } else { b_shape[0] };
     let n = if trans_b { b_shape[0] } else { b_shape[1] };
+
+    if k_a != k_b {
+        bail!(
+            "layer {}: Gemm inner dimension mismatch: K_a={k_a} K_b={k_b}",
+            layer.name
+        );
+    }
 
     let out_shape = vec![m, n];
     Ok(layer
@@ -419,22 +428,33 @@ fn infer_reshape(
         );
     };
 
+    let allowzero = layer
+        .get_int_attr("allowzero")
+        .map(|v| v != 0)
+        .unwrap_or(false);
+
     let mut minus_one_idx: Option<usize> = None;
     let mut known_product: usize = 1;
     let mut minus_one_count: usize = 0;
+    let mut has_zero = false;
     for (i, &d) in target_shape.iter().enumerate() {
         if d == -1 {
             minus_one_count += 1;
             minus_one_idx = Some(i);
         } else if d == 0 {
-            if i >= input_shape.len() {
-                bail!(
-                    "layer {}: Reshape d=0 at index {i} exceeds input rank {}",
-                    layer.name,
-                    input_shape.len()
-                );
+            has_zero = true;
+            if allowzero {
+                known_product = 0;
+            } else {
+                if i >= input_shape.len() {
+                    bail!(
+                        "layer {}: Reshape d=0 at index {i} exceeds input rank {}",
+                        layer.name,
+                        input_shape.len()
+                    );
+                }
+                known_product *= input_shape[i];
             }
-            known_product *= input_shape[i];
         } else if d < -1 {
             bail!(
                 "layer {}: Reshape invalid dimension value {d} at index {i}",
@@ -452,6 +472,13 @@ fn infer_reshape(
         );
     }
 
+    if allowzero && has_zero && minus_one_count > 0 {
+        bail!(
+            "layer {}: Reshape allowzero=1 with both 0 and -1 dims is invalid",
+            layer.name
+        );
+    }
+
     let mut out_shape: Vec<usize> = target_shape
         .iter()
         .enumerate()
@@ -459,7 +486,11 @@ fn infer_reshape(
             if d == -1 {
                 0
             } else if d == 0 {
-                input_shape[i]
+                if allowzero {
+                    0
+                } else {
+                    input_shape[i]
+                }
             } else {
                 d as usize
             }
@@ -509,8 +540,8 @@ fn infer_flatten(
         raw_axis as usize
     };
 
-    let dim0: usize = input_shape[..axis].iter().product::<usize>().max(1);
-    let dim1: usize = input_shape[axis..].iter().product::<usize>().max(1);
+    let dim0: usize = input_shape[..axis].iter().product();
+    let dim1: usize = input_shape[axis..].iter().product();
 
     let out_shape = vec![dim0, dim1];
     Ok(layer
