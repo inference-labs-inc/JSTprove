@@ -5,9 +5,10 @@
 
 /// External crate imports
 use circuit_std_rs::logup::LogUpRangeProofTable;
+use ethnum::U256;
 
 /// `ExpanderCompilerCollection` imports
-use expander_compiler::frontend::{Config, RootAPI, Variable};
+use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
 
 /// Internal crate imports
 use crate::circuit_functions::CircuitError;
@@ -37,13 +38,17 @@ use crate::circuit_functions::hints::unconstrained_to_bits;
 /// implied integer. Callers typically assert value == recon separately to
 /// enforce consistency.
 ///
+/// Supports bitstrings up to 256 bits (bit indices 0..=255, since the
+/// maximum power-of-two exponent representable in `U256` is 255). Callers
+/// are responsible for ensuring that the reconstructed value fits within
+/// the circuit field modulus.
+///
 /// # Arguments
 /// - api: mutable reference to a circuit builder implementing RootAPI<C>.
 /// - least_significant_bits: slice [b_0, ..., b_{n-1}].
 ///
 /// # Errors
-/// - UtilsError::ValueTooLarge if index i cannot fit into a u32.
-/// - UtilsError::ValueTooLarge if computing 2^i overflows a u32.
+/// - UtilsError::ValueTooLarge if the bitstring length exceeds 256.
 ///
 /// # Returns
 /// A Variable encoding sum_{i} b_i * 2^i.
@@ -57,24 +62,22 @@ pub fn constrained_reconstruct_from_bits<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     least_significant_bits: &[Variable],
 ) -> Result<Variable, CircuitError> {
-    // Start with 0 and accumulate ∑ bᵢ·2ⁱ as we iterate
+    if least_significant_bits.len() > 256 {
+        return Err(UtilsError::ValueTooLarge {
+            value: least_significant_bits.len(),
+            max: 256,
+        }
+        .into());
+    }
+
     let mut reconstructed = api.constant(0u32);
 
     for (i, &bit) in least_significant_bits.iter().enumerate() {
-        // Enforce bᵢ ∈ {0, 1} via b(b − 1) = 0
         api.assert_is_bool(bit);
-        // Compute bᵢ · 2ⁱ
 
-        let weight = 1u32
-            .checked_shl(u32::try_from(i).map_err(|_| UtilsError::ValueTooLarge {
-                value: i,
-                max: u128::from(u32::MAX),
-            })?)
-            .ok_or(UtilsError::ValueTooLarge {
-                value: i,
-                max: u128::from(u32::MAX),
-            })?;
-        let weight_const = api.constant(weight);
+        #[allow(clippy::cast_possible_truncation)]
+        let weight = U256::ONE << (i as u32);
+        let weight_const = api.constant(CircuitField::<C>::from_u256(weight));
         let term = api.mul(weight_const, bit);
         reconstructed = api.add(reconstructed, term);
     }

@@ -83,8 +83,21 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
         let context = RescalingContext::new(api, k, s)?;
 
         let mut div_cache: HashMap<u32, Variable> = HashMap::new();
-        let mut shift_cache: HashMap<u32, Variable> = HashMap::new();
-        let mut scaled_shift_cache: HashMap<u64, Variable> = HashMap::new();
+        let mut scaled_shift_cache: HashMap<U256, Variable> = HashMap::new();
+
+        let shift_exp_u32 = u32::try_from(context.shift_exponent).map_err(|_| {
+            RescaleError::ShiftExponentTooLargeError {
+                exp: context.shift_exponent,
+                type_name: "u32",
+            }
+        })?;
+        let shift_native =
+            1u64.checked_shl(shift_exp_u32)
+                .ok_or(RescaleError::ShiftExponentTooLargeError {
+                    exp: context.shift_exponent,
+                    type_name: "u64",
+                })?;
+        let shift_var = api.constant(CircuitField::<C>::from_u256(U256::from(shift_native)));
 
         let result: Result<Vec<Variable>, CircuitError> = a_input
             .iter()
@@ -103,28 +116,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
 
                 let remainder_bits = div_u32.trailing_zeros() as usize;
 
-                let shift_amount = u32::try_from(context.shift_exponent).map_err(|_| {
-                    RescaleError::ShiftExponentTooLargeError {
-                        exp: context.shift_exponent,
-                        type_name: "u32",
-                    }
-                })?;
-
-                let shift_ = 1u32.checked_shl(shift_amount).ok_or(
-                    RescaleError::ShiftExponentTooLargeError {
-                        exp: shift_amount as usize,
-                        type_name: "u32",
-                    },
-                )?;
-
-                let shift = *shift_cache
-                    .entry(shift_)
-                    .or_insert_with(|| api.constant(shift_));
-
-                let scaled_shift_ = u64::from(shift_) * u64::from(div_u32);
-                let scaled_shift = *scaled_shift_cache.entry(scaled_shift_).or_insert_with(|| {
-                    api.constant(CircuitField::<C>::from_u256(U256::from(scaled_shift_)))
-                });
+                let scaled_shift_u256 = U256::from(shift_native) * U256::from(div_u32);
+                let scaled_shift =
+                    *scaled_shift_cache
+                        .entry(scaled_shift_u256)
+                        .or_insert_with(|| {
+                            api.constant(CircuitField::<C>::from_u256(scaled_shift_u256))
+                        });
 
                 let out = div_pos_integer_pow2_constant(
                     api,
@@ -134,7 +132,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
                     scaled_shift,
                     remainder_bits,
                     context.shift_exponent,
-                    shift,
+                    shift_var,
                 )?;
                 Ok(out)
             })
