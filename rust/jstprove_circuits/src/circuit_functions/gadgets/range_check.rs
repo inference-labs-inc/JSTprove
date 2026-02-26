@@ -38,9 +38,10 @@ use crate::circuit_functions::hints::unconstrained_to_bits;
 /// implied integer. Callers typically assert value == recon separately to
 /// enforce consistency.
 ///
-/// Supports bitstrings up to 255 bits (the maximum power-of-two exponent
-/// representable in `U256`). Callers are responsible for ensuring that the
-/// reconstructed value fits within the circuit field modulus.
+/// Supports bitstrings up to 256 bits (bit indices 0..=255, since the
+/// maximum power-of-two exponent representable in `U256` is 255). Callers
+/// are responsible for ensuring that the reconstructed value fits within
+/// the circuit field modulus.
 ///
 /// # Arguments
 /// - api: mutable reference to a circuit builder implementing RootAPI<C>.
