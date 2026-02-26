@@ -158,10 +158,23 @@ pub fn apply_input_data<C: Config>(
 ) -> Result<Circuit<CircuitField<C>>, RunError> {
     init_circuit_fields::<C>(&mut assignment, params);
 
-    let input_dims: &[usize] = &[params.effective_input_dims()];
+    let expected_size = params.effective_input_dims();
+    let input_dims: &[usize] = &[expected_size];
 
     let arr: ArrayD<CircuitField<C>> = get_nd_circuit_inputs::<C>(&data.input, input_dims)
-        .map_err(|e| RunError::Json(format!("Invalid input shape: {e}")))?;
+        .map_err(|e| {
+            let shapes: Vec<_> = params
+                .inputs
+                .iter()
+                .filter(|io| !io.shape.is_empty())
+                .map(|io| format!("{}: {:?}", io.name, io.shape))
+                .collect();
+            RunError::Json(format!(
+                "input size mismatch: model expects {} elements (shapes: [{}]) — {e}",
+                expected_size,
+                shapes.join(", "),
+            ))
+        })?;
 
     let flat: Vec<CircuitField<C>> = arr
         .into_dimensionality::<Ix1>()
