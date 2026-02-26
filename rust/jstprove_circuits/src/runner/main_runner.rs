@@ -30,107 +30,30 @@ use crate::runner::schema::{
 use crate::runner::version::jstprove_artifact_version;
 use expander_compiler::expander_binary::executor;
 
-const ZSTD_COMPRESSION_LEVEL: i32 = 3;
-const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
-
 pub(crate) fn auto_decompress_bytes(data: &[u8]) -> Result<Cow<[u8]>, RunError> {
-    if data.len() >= 4 && data[..4] == ZSTD_MAGIC {
-        zstd::decode_all(Cursor::new(data))
-            .map(Cow::Owned)
-            .map_err(|e| RunError::Deserialize(format!("zstd decompress: {e}")))
-    } else {
-        Ok(Cow::Borrowed(data))
-    }
+    jstprove_io::auto_decompress_bytes(data)
+        .map_err(|e| RunError::Deserialize(format!("zstd decompress: {e}")))
 }
 
 fn maybe_compress_bytes(data: Vec<u8>, compress: bool) -> Result<Vec<u8>, RunError> {
-    if compress {
-        zstd::encode_all(Cursor::new(&data), ZSTD_COMPRESSION_LEVEL)
-            .map_err(|e| RunError::Serialize(format!("zstd compress: {e}")))
-    } else {
-        Ok(data)
-    }
+    jstprove_io::maybe_compress_bytes(data, compress)
+        .map_err(|e| RunError::Serialize(format!("zstd compress: {e}")))
 }
 
 fn write_msgpack_stdout<T: Serialize>(value: &T) -> Result<(), RunError> {
-    let stdout = std::io::stdout();
-    let mut lock = stdout.lock();
-    value
-        .serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
-        .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
-    std::io::Write::flush(&mut lock).map_err(|e| RunError::Io {
-        source: e,
-        path: "stdout".into(),
-    })?;
-    Ok(())
+    jstprove_io::write_msgpack_stdout(value).map_err(|e| RunError::Serialize(format!("{e:#}")))
 }
 
-enum MaybeCompressed {
-    Compressed(zstd::stream::write::Encoder<'static, std::io::BufWriter<std::fs::File>>),
-    Plain(std::io::BufWriter<std::fs::File>),
-}
-
-impl std::io::Write for MaybeCompressed {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        match self {
-            Self::Compressed(enc) => enc.write(buf),
-            Self::Plain(w) => w.write(buf),
-        }
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        match self {
-            Self::Compressed(enc) => enc.flush(),
-            Self::Plain(w) => w.flush(),
-        }
-    }
-}
-
-impl MaybeCompressed {
-    fn finish(self) -> Result<(), RunError> {
-        use std::io::Write;
-        match self {
-            Self::Compressed(enc) => {
-                enc.finish()
-                    .map_err(|e| RunError::Serialize(format!("zstd finish: {e:?}")))?;
-                Ok(())
-            }
-            Self::Plain(mut w) => w
-                .flush()
-                .map_err(|e| RunError::Serialize(format!("flush: {e:?}"))),
-        }
-    }
-}
-
-fn compressed_writer(file: std::fs::File, compress: bool) -> Result<MaybeCompressed, RunError> {
-    if compress {
-        let enc = zstd::stream::write::Encoder::new(
-            std::io::BufWriter::new(file),
-            ZSTD_COMPRESSION_LEVEL,
-        )
-        .map_err(|e| RunError::Serialize(format!("zstd encoder: {e:?}")))?;
-        Ok(MaybeCompressed::Compressed(enc))
-    } else {
-        Ok(MaybeCompressed::Plain(std::io::BufWriter::new(file)))
-    }
+fn compressed_writer(
+    file: std::fs::File,
+    compress: bool,
+) -> Result<jstprove_io::MaybeCompressed, RunError> {
+    jstprove_io::compressed_writer(file, compress)
+        .map_err(|e| RunError::Serialize(format!("zstd encoder: {e:#}")))
 }
 
 fn auto_reader(file: std::fs::File) -> Result<Box<dyn std::io::Read>, RunError> {
-    use std::io::Read;
-
-    let mut buf = std::io::BufReader::new(file);
-    let mut magic = [0u8; 4];
-    let n = buf
-        .read(&mut magic)
-        .map_err(|e| RunError::Deserialize(format!("reading magic: {e:?}")))?;
-    let chain = std::io::Cursor::new(magic[..n].to_vec()).chain(buf);
-    if n == 4 && magic == ZSTD_MAGIC {
-        Ok(Box::new(zstd::stream::read::Decoder::new(chain).map_err(
-            |e| RunError::Deserialize(format!("zstd decoder: {e:?}")),
-        )?))
-    } else {
-        Ok(Box::new(chain))
-    }
+    jstprove_io::auto_reader(file).map_err(|e| RunError::Deserialize(format!("auto reader: {e:#}")))
 }
 
 #[cfg(feature = "peak-mem")]
@@ -628,7 +551,9 @@ fn prove_core<C: Config>(
     proof_bytes
         .serialize_into(&mut writer)
         .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
-    writer.finish()?;
+    writer
+        .finish()
+        .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
 
     Ok(())
 }
@@ -752,7 +677,9 @@ where
     witness
         .serialize_into(&mut writer)
         .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
-    writer.finish()?;
+    writer
+        .finish()
+        .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
 
     Ok(())
 }
@@ -907,7 +834,11 @@ where
                 if let Err(e) = witness
                     .serialize_into(&mut writer)
                     .map_err(|e| RunError::Serialize(format!("{e:?}")))
-                    .and_then(|()| writer.finish())
+                    .and_then(|()| {
+                        writer
+                            .finish()
+                            .map_err(|e| RunError::Serialize(format!("{e:?}")))
+                    })
                 {
                     failed += 1;
                     let msg = format!("witness serialize: {e:?}");
@@ -1318,21 +1249,22 @@ fn write_circuit_bundle(
     bundle: &CompiledCircuit,
     compress: bool,
 ) -> Result<(), RunError> {
-    let file = std::fs::File::create(path).map_err(|e| RunError::Io {
-        source: e,
-        path: path.into(),
-    })?;
-    let mut writer = compressed_writer(file, compress)?;
-    let ser_err = bundle
-        .serialize(&mut rmp_serde::Serializer::new(&mut writer).with_struct_map())
-        .map_err(|e| RunError::Serialize(format!("msgpack: {e:?}")))
-        .err();
-    let finish_err = writer.finish().err();
-    if let Some(e) = ser_err.or(finish_err) {
+    jstprove_io::serialize_to_file(bundle, Path::new(path), compress).map_err(|e| {
         let _ = std::fs::remove_file(path);
-        return Err(e);
-    }
+        jstprove_io_to_run_error(e, path, true)
+    })?;
     Ok(())
+}
+
+fn jstprove_io_to_run_error(e: jstprove_io::Error, path: &str, is_write: bool) -> RunError {
+    match e.downcast::<std::io::Error>() {
+        Ok(io_err) => RunError::Io {
+            source: io_err,
+            path: path.to_string(),
+        },
+        Err(e) if is_write => RunError::Serialize(format!("{e:#}")),
+        Err(e) => RunError::Deserialize(format!("{e:#}")),
+    }
 }
 
 /// Reads a compiled circuit bundle from a msgpack file.
@@ -1340,13 +1272,8 @@ fn write_circuit_bundle(
 /// # Errors
 /// Returns `RunError` if file I/O or deserialization fails.
 pub fn read_circuit_msgpack(path: &str) -> Result<CompiledCircuit, RunError> {
-    let file = std::fs::File::open(path).map_err(|e| RunError::Io {
-        source: e,
-        path: path.into(),
-    })?;
-    let reader = auto_reader(file)?;
-    rmp_serde::decode::from_read(reader)
-        .map_err(|e| RunError::Deserialize(format!("msgpack: {e:?}")))
+    jstprove_io::deserialize_from_file(Path::new(path))
+        .map_err(|e| jstprove_io_to_run_error(e, path, false))
 }
 
 #[must_use]
@@ -2131,6 +2058,7 @@ pub fn get_args() -> clap::ArgMatches {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jstprove_io::{ENVELOPE_MAGIC, ZSTD_COMPRESSION_LEVEL, ZSTD_MAGIC};
 
     struct TempFile(PathBuf);
 
@@ -2195,7 +2123,7 @@ mod tests {
         };
         write_circuit_bundle(tmp.path(), &bundle, true).unwrap();
         let raw = std::fs::read(tmp.path()).unwrap();
-        assert_eq!(&raw[..4], &ZSTD_MAGIC);
+        assert_eq!(&raw[..4], &ENVELOPE_MAGIC);
         let loaded = read_circuit_msgpack(tmp.path()).unwrap();
         assert_eq!(loaded.circuit, bundle.circuit);
         assert_eq!(loaded.witness_solver, bundle.witness_solver);

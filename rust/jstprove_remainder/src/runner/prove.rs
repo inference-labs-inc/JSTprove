@@ -13,9 +13,6 @@ use crate::padding::num_vars_for;
 use crate::runner::circuit_builder;
 use crate::util::i64_to_fr;
 
-use super::serialization;
-use super::version::ArtifactVersion;
-
 pub fn run(
     model_path: &Path,
     witness_path: &Path,
@@ -44,7 +41,7 @@ pub fn run(
     let mut proof = generate_proof(&model, &witness_data.shreds)?;
     proof.observed_n_bits = witness_data.observed_n_bits;
 
-    let size = serialization::serialize_to_file(&proof, output_path, compress)?;
+    let size = jstprove_io::serialize_to_file(&proof, output_path, compress)?;
     tracing::info!(
         "proof written to {} ({} bytes)",
         output_path.display(),
@@ -117,7 +114,7 @@ pub fn generate_proof(
         transcript: proof_transcript,
         expected_output,
         observed_n_bits: HashMap::new(),
-        version: Some(super::version::jstprove_artifact_version()),
+        version: Some(jstprove_io::version::current()),
     })
 }
 
@@ -129,11 +126,11 @@ pub struct SerializableProof {
     #[serde(default)]
     pub observed_n_bits: HashMap<String, usize>,
     #[serde(default)]
-    pub version: Option<ArtifactVersion>,
+    pub version: Option<jstprove_io::ArtifactVersion>,
 }
 
 pub fn load_proof(path: &Path) -> Result<SerializableProof> {
-    serialization::deserialize_from_file(path)
+    jstprove_io::deserialize_from_file(path)
 }
 
 fn prove_and_get_transcript(

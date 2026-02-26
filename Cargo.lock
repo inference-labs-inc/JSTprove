@@ -371,6 +371,7 @@ checksum = "246a225cc6131e9ee4f24619af0f19d67761fff15d7ccc22e42b80846e69449a"
 dependencies = [
  "num-traits",
  "rand 0.8.5",
+ "rayon",
 ]
 
 [[package]]
@@ -2193,28 +2194,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "jstprove-io"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crc32fast",
+ "rmp-serde",
+ "serde",
+ "zstd",
+]
+
+[[package]]
 name = "jstprove-remainder"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bincode",
  "clap",
+ "criterion",
  "frontend",
  "hyrax",
  "itertools 0.14.0",
+ "jstprove-io",
  "ligero",
  "ndarray 0.15.6",
  "prost",
  "prost-build",
  "rayon",
  "remainder",
- "rmp-serde",
  "rmpv",
  "serde",
  "shared-types",
  "thiserror 2.0.18",
  "tracing",
  "tracing-subscriber",
- "zstd",
 ]
 
 [[package]]
@@ -2229,6 +2242,7 @@ dependencies = [
  "ethnum",
  "expander_compiler",
  "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
+ "jstprove-io",
  "jstprove-remainder",
  "lazy_static",
  "ndarray 0.16.1",

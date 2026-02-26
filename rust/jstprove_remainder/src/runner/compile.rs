@@ -6,8 +6,6 @@ use crate::onnx::graph::LayerGraph;
 use crate::onnx::parser;
 use crate::onnx::quantizer::{self, QuantizedModel, ScaleConfig};
 
-use super::serialization;
-
 pub fn run(model_path: &Path, output_path: &Path, compress: bool) -> Result<()> {
     tracing::info!("parsing ONNX model: {}", model_path.display());
     let parsed = parser::parse_onnx(model_path)?;
@@ -25,7 +23,7 @@ pub fn run(model_path: &Path, output_path: &Path, compress: bool) -> Result<()> 
         quantized.n_bits_config.len()
     );
 
-    let size = serialization::serialize_to_file(&quantized, output_path, compress)?;
+    let size = jstprove_io::serialize_to_file(&quantized, output_path, compress)?;
     tracing::info!(
         "model written to {} ({} bytes)",
         output_path.display(),
@@ -35,5 +33,5 @@ pub fn run(model_path: &Path, output_path: &Path, compress: bool) -> Result<()> 
 }
 
 pub fn load_model(path: &Path) -> Result<QuantizedModel> {
-    serialization::deserialize_from_file(path)
+    jstprove_io::deserialize_from_file(path)
 }

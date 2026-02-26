@@ -27,6 +27,7 @@ rmp-serde = "1.3"
 serde_bytes = "0.11"
 num-bigint = "0.4"
 num-traits = "0.2"
+jstprove-io = { path = "../jstprove_io" }
 jstprove-remainder = { path = "../jstprove_remainder", optional = true }
 
 [features]
