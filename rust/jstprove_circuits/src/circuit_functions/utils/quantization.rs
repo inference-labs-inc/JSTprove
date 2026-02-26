@@ -45,7 +45,9 @@ use ndarray::ArrayD;
 use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
 
 use crate::circuit_functions::{
+    CircuitError,
     gadgets::euclidean_division::div_pos_integer_pow2_constant,
+    layers::{LayerError, LayerKind},
     utils::{
         UtilsError,
         errors::{ArrayConversionError, RescaleError},
@@ -319,4 +321,57 @@ pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
 
     let rescaled_data = results?;
     Ok(ArrayD::from_shape_vec(shape, rescaled_data).map_err(ArrayConversionError::ShapeError)?)
+}
+
+pub struct MaybeRescaleParams {
+    pub is_rescale: bool,
+    pub scaling: u64,
+    pub n_bits: usize,
+    pub is_relu: bool,
+    pub layer_kind: LayerKind,
+    pub layer_name: String,
+}
+
+/// Conditionally rescale an array when `params.is_rescale` is true.
+///
+/// Converts `scaling` (u64) to a `usize` scaling exponent, derives the shift
+/// exponent as `n_bits - 1`, and delegates to [`rescale_array`].  Returns the
+/// input unchanged when `is_rescale` is false.
+///
+/// # Errors
+///
+/// Returns [`LayerError::Other`] if `scaling` cannot be represented as `usize`.
+/// Returns [`LayerError::InvalidParameterValue`] if `n_bits` is zero.
+/// Propagates errors from [`rescale_array`].
+pub fn maybe_rescale<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    result: ArrayD<Variable>,
+    params: &MaybeRescaleParams,
+) -> Result<ArrayD<Variable>, CircuitError> {
+    if !params.is_rescale {
+        return Ok(result);
+    }
+
+    let scaling_exponent = usize::try_from(params.scaling).map_err(|_| LayerError::Other {
+        layer: params.layer_kind.clone(),
+        msg: "Cannot convert scaling to usize".to_string(),
+    })?;
+    let shift_exponent =
+        params
+            .n_bits
+            .checked_sub(1)
+            .ok_or_else(|| LayerError::InvalidParameterValue {
+                layer: params.layer_kind.clone(),
+                layer_name: params.layer_name.clone(),
+                param_name: "n_bits".to_string(),
+                value: params.n_bits.to_string(),
+            })?;
+
+    Ok(rescale_array(
+        api,
+        result,
+        scaling_exponent,
+        shift_exponent,
+        params.is_relu,
+    )?)
 }

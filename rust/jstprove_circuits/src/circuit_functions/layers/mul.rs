@@ -8,13 +8,13 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::gadgets::linear_algebra::matrix_hadamard_product;
 use crate::circuit_functions::utils::onnx_model::get_optional_w_or_b;
-use crate::circuit_functions::utils::quantization::rescale_array;
+use crate::circuit_functions::utils::quantization::{MaybeRescaleParams, maybe_rescale};
 use crate::circuit_functions::utils::tensor_ops::{
     broadcast_two_arrays, load_array_constants_or_get_inputs,
 };
 use crate::circuit_functions::{
     CircuitError,
-    layers::{LayerError, LayerKind, layer_ops::LayerOp},
+    layers::{LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT, graph_pattern_matching::PatternRegistry, onnx_model::get_input_name,
     },
@@ -63,29 +63,20 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MulLayer {
 
         let (a_bc, b_bc) = broadcast_two_arrays(&a_input, &b_input)?;
 
-        // Matrix Hadamard product with optional rescaling
         let result = matrix_hadamard_product(api, &a_bc, b_bc, LayerKind::Mul)?;
-        if self.is_rescale {
-            let k = usize::try_from(self.scaling).map_err(|_| LayerError::Other {
-                layer: LayerKind::Mul,
-                msg: "Cannot convert scaling to usize".to_string(),
-            })?;
-            let s = self.v_plus_one.checked_sub(1).ok_or_else(|| {
-                LayerError::InvalidParameterValue {
-                    layer: LayerKind::Mul,
-                    layer_name: self.name.clone(),
-                    param_name: "v_plus_one".to_string(),
-                    value: self.v_plus_one.to_string(),
-                }
-            })?;
-            let out_array =
-                rescale_array(api, result, k, s, is_relu).map_err(|e| LayerError::Other {
-                    layer: LayerKind::Mul,
-                    msg: format!("Rescale failed: {e}"),
-                })?;
-            return Ok((self.outputs.clone(), out_array));
-        }
-        Ok((self.outputs.clone(), result))
+        let out = maybe_rescale(
+            api,
+            result,
+            &MaybeRescaleParams {
+                is_rescale: self.is_rescale,
+                scaling: self.scaling,
+                n_bits: self.v_plus_one,
+                is_relu,
+                layer_kind: LayerKind::Mul,
+                layer_name: self.name.clone(),
+            },
+        )?;
+        Ok((self.outputs.clone(), out))
     }
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,

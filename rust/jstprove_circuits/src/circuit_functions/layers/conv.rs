@@ -24,7 +24,10 @@ use crate::circuit_functions::{
 
 use crate::circuit_functions::{
     layers::layer_ops::LayerOp,
-    utils::{quantization::rescale_array, tensor_ops::load_array_constants_or_get_inputs},
+    utils::{
+        quantization::{MaybeRescaleParams, maybe_rescale},
+        tensor_ops::load_array_constants_or_get_inputs,
+    },
 };
 
 // -------- Struct --------
@@ -619,30 +622,16 @@ pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(
 
     let out = conv_shape_4(api, input_arr, &conv_params, weights, bias)?;
 
-    if quantization_params.quantized {
-        let scaling_exponent =
-            usize::try_from(quantization_params.scaling).map_err(|_| LayerError::Other {
-                layer: LayerKind::Conv,
-                msg: "Cannot convert scaling to usize".to_string(),
-            })?;
-        let shift_exponent = quantization_params
-            .v_plus_one
-            .checked_sub(1)
-            .ok_or_else(|| LayerError::InvalidParameterValue {
-                layer: LayerKind::Conv,
-                layer_name: "Conv".into(),
-                param_name: "v_plus_one".into(),
-                value: quantization_params.v_plus_one.to_string(),
-            })?;
-        let rescaled = rescale_array(
-            api,
-            out,
-            scaling_exponent,
-            shift_exponent,
-            quantization_params.is_relu,
-        )?;
-        Ok(rescaled)
-    } else {
-        Ok(out)
-    }
+    maybe_rescale(
+        api,
+        out,
+        &MaybeRescaleParams {
+            is_rescale: quantization_params.quantized,
+            scaling: quantization_params.scaling,
+            n_bits: quantization_params.v_plus_one,
+            is_relu: quantization_params.is_relu,
+            layer_kind: LayerKind::Conv,
+            layer_name: "Conv".into(),
+        },
+    )
 }

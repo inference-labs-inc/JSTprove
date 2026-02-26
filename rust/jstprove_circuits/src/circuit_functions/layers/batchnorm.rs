@@ -14,7 +14,7 @@ use crate::circuit_functions::{
         constants::INPUT,
         graph_pattern_matching::PatternRegistry,
         onnx_model::{get_input_name, get_w_or_b},
-        quantization::rescale_array,
+        quantization::{MaybeRescaleParams, maybe_rescale},
         tensor_ops::load_array_constants_or_get_inputs,
     },
 };
@@ -81,27 +81,19 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
         let (a_add_bc, b_add_bc) = broadcast_two_arrays(&mul_out, &add_input)?;
         let result = matrix_addition(api, &a_add_bc, b_add_bc, LayerKind::Batchnorm)?;
 
-        if self.is_rescale {
-            let k = usize::try_from(self.scaling).map_err(|_| LayerError::Other {
-                layer: LayerKind::Batchnorm,
-                msg: "Cannot convert scaling to usize".to_string(),
-            })?;
-            let s = self.v_plus_one.checked_sub(1).ok_or_else(|| {
-                LayerError::InvalidParameterValue {
-                    layer: LayerKind::Batchnorm,
-                    layer_name: self.name.clone(),
-                    param_name: "v_plus_one".to_string(),
-                    value: self.v_plus_one.to_string(),
-                }
-            })?;
-            let out_array =
-                rescale_array(api, result, k, s, is_relu).map_err(|e| LayerError::Other {
-                    layer: LayerKind::Batchnorm,
-                    msg: format!("Rescale failed: {e}"),
-                })?;
-            return Ok((self.outputs.clone(), out_array));
-        }
-        Ok((self.outputs.clone(), result))
+        let out = maybe_rescale(
+            api,
+            result,
+            &MaybeRescaleParams {
+                is_rescale: self.is_rescale,
+                scaling: self.scaling,
+                n_bits: self.v_plus_one,
+                is_relu,
+                layer_kind: LayerKind::Batchnorm,
+                layer_name: self.name.clone(),
+            },
+        )?;
+        Ok((self.outputs.clone(), out))
     }
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
