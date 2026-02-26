@@ -13,7 +13,7 @@ use crate::circuit_functions::utils::tensor_ops::{
 };
 use crate::circuit_functions::{
     CircuitError,
-    layers::{LayerError, LayerKind, layer_ops::LayerOp},
+    layers::{LayerKind, layer_ops::LayerOp},
     utils::{constants::INPUT, onnx_model::get_input_name},
 };
 
@@ -65,20 +65,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AddLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let a_name = layer
-            .inputs
-            .first()
-            .ok_or_else(|| LayerError::MissingInput {
-                layer: LayerKind::Add,
-                name: "input A".to_string(),
-            })?;
-        let b_name = layer
-            .inputs
-            .get(1)
-            .ok_or_else(|| LayerError::MissingInput {
-                layer: LayerKind::Add,
-                name: "input B".to_string(),
-            })?;
+        let a_name = get_input_name(&layer.inputs, 0, LayerKind::Add, INPUT)?;
+        let b_name = get_input_name(&layer.inputs, 1, LayerKind::Add, INPUT)?;
         let initializer_a = get_optional_w_or_b(layer_context, a_name)?;
         let initializer_b = get_optional_w_or_b(layer_context, b_name)?;
 
