@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use super::parser::{AttrValue, ParsedModel, TensorData};
 
@@ -17,6 +17,7 @@ pub enum OpType {
     BatchNormalization,
     Max,
     Min,
+    Cast,
     Clip,
     Reshape,
     Flatten,
@@ -39,6 +40,7 @@ impl OpType {
             "BatchNormalization" | "Int64BatchNormalization" => Ok(Self::BatchNormalization),
             "Max" | "Int64Max" => Ok(Self::Max),
             "Min" | "Int64Min" => Ok(Self::Min),
+            "Cast" => Ok(Self::Cast),
             "Clip" | "Int64Clip" => Ok(Self::Clip),
             "Reshape" => Ok(Self::Reshape),
             "Flatten" => Ok(Self::Flatten),
@@ -52,7 +54,7 @@ impl OpType {
     pub fn is_shape_only(&self) -> bool {
         matches!(
             self,
-            Self::Reshape | Self::Flatten | Self::Squeeze | Self::Unsqueeze
+            Self::Cast | Self::Reshape | Self::Flatten | Self::Squeeze | Self::Unsqueeze
         )
     }
 

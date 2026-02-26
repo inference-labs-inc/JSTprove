@@ -427,7 +427,7 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
             let m_in = get_input_bound(0);
             Ok(m_in)
         }
-        OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
+        OpType::Cast | OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
             let m_in = get_input_bound(0);
             Ok(m_in)
         }

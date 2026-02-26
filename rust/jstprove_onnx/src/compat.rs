@@ -9,6 +9,7 @@ use super::{ModelProto, TensorProto};
 
 const SUPPORTED_OPS: &[&str] = &[
     "Add",
+    "Cast",
     "Clip",
     "BatchNormalization",
     "Div",
