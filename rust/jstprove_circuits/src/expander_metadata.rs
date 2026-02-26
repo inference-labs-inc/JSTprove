@@ -30,7 +30,7 @@ pub fn generate_from_onnx(onnx_path: &Path) -> Result<ExpanderMetadata> {
 
     let circuit_params = build_circuit_params(&parsed, &quantized, &config);
     let architecture = build_architecture(&parsed, &quantized, &shapes, opset_version);
-    let wandb = build_wandb(&quantized, &shapes);
+    let wandb = build_wandb(&quantized, &shapes).context("building weight/bias data")?;
 
     Ok(ExpanderMetadata {
         circuit_params,
@@ -133,7 +133,10 @@ fn build_architecture(
     }
 }
 
-fn build_wandb(quantized: &QuantizedModel, all_shapes: &HashMap<String, Vec<usize>>) -> WANDB {
+fn build_wandb(
+    quantized: &QuantizedModel,
+    all_shapes: &HashMap<String, Vec<usize>>,
+) -> Result<WANDB> {
     let mut layers = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let mut id = 0;
@@ -147,7 +150,8 @@ fn build_wandb(quantized: &QuantizedModel, all_shapes: &HashMap<String, Vec<usiz
 
             let shape = td.shape();
             let tensor_data = td.as_i64_vec();
-            let tensor_value = nest_flat_data(&tensor_data, &shape);
+            let tensor_value = nest_flat_data(&tensor_data, &shape)
+                .with_context(|| format!("nesting tensor '{name}'"))?;
 
             let mut shape_map = HashMap::new();
             let resolved_shape = all_shapes.get(name).cloned().unwrap_or(shape);
@@ -168,7 +172,7 @@ fn build_wandb(quantized: &QuantizedModel, all_shapes: &HashMap<String, Vec<usiz
         }
     }
 
-    WANDB { w_and_b: layers }
+    Ok(WANDB { w_and_b: layers })
 }
 
 fn collect_layer_shapes(
@@ -254,24 +258,31 @@ fn attach_constant_inputs(
     }
 }
 
-fn nest_flat_data(data: &[i64], shape: &[usize]) -> Value {
-    if shape.is_empty() || shape.iter().product::<usize>() == 0 {
-        return Value::Array(data.iter().map(|&v| Value::from(v)).collect());
+fn nest_flat_data(data: &[i64], shape: &[usize]) -> Result<Value> {
+    let expected: usize = shape.iter().product();
+    if !shape.is_empty() && expected != data.len() {
+        anyhow::bail!(
+            "nest_flat_data: shape product {expected} != data length {}",
+            data.len()
+        );
+    }
+    if shape.is_empty() || expected == 0 {
+        return Ok(Value::Array(data.iter().map(|&v| Value::from(v)).collect()));
     }
     if shape.len() == 1 {
-        let len = shape[0].min(data.len());
-        return Value::Array(data[..len].iter().map(|&v| Value::from(v)).collect());
+        return Ok(Value::Array(
+            data[..shape[0]].iter().map(|&v| Value::from(v)).collect(),
+        ));
     }
     let stride: usize = shape[1..].iter().product();
-    Value::Array(
-        (0..shape[0])
-            .map(|i| {
-                let start = (i * stride).min(data.len());
-                let end = ((i + 1) * stride).min(data.len());
-                nest_flat_data(&data[start..end], &shape[1..])
-            })
-            .collect(),
-    )
+    let nested: Vec<Value> = (0..shape[0])
+        .map(|i| {
+            let start = i * stride;
+            let end = start + stride;
+            nest_flat_data(&data[start..end], &shape[1..])
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(Value::Array(nested))
 }
 
 fn attr_value_to_msgpack(val: &AttrValue) -> Value {
@@ -298,10 +309,12 @@ mod tests {
 
     #[test]
     fn lenet_metadata_generation() {
-        let model_path = Path::new("models/lenet.onnx");
+        let model_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
         if !model_path.exists() {
             return;
         }
+        let model_path = model_path.as_path();
 
         let metadata = generate_from_onnx(model_path).unwrap();
 

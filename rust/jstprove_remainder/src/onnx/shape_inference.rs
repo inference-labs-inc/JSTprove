@@ -35,12 +35,13 @@ pub fn infer_all_shapes(
         }
     }
 
+    let mut constant_tensors: HashMap<String, TensorData> = HashMap::new();
     for node in &model.nodes {
         if node.op_type == "Constant" {
             if let Some(AttrValue::Tensor(td)) = node.attributes.get("value") {
-                let shape = td.shape();
                 if let Some(out) = node.outputs.first() {
-                    shapes.insert(out.clone(), shape);
+                    shapes.insert(out.clone(), td.shape());
+                    constant_tensors.insert(out.clone(), td.clone());
                 }
             }
             continue;
@@ -48,7 +49,8 @@ pub fn infer_all_shapes(
     }
 
     for layer in graph.iter_topo() {
-        let output_shapes = infer_layer_output_shape(layer, &shapes, &model.initializers)?;
+        let output_shapes =
+            infer_layer_output_shape(layer, &shapes, &model.initializers, &constant_tensors)?;
         for (name, shape) in output_shapes {
             shapes.insert(name, shape);
         }
@@ -61,10 +63,23 @@ fn get_shape<'a>(shapes: &'a HashMap<String, Vec<usize>>, name: &str) -> Option<
     shapes.get(name)
 }
 
+fn nonneg_to_usize(vals: &[i64], attr: &str, layer_name: &str) -> Result<Vec<usize>> {
+    vals.iter()
+        .enumerate()
+        .map(|(i, &d)| {
+            if d < 0 {
+                bail!("layer {layer_name}: {attr}[{i}] is negative ({d})");
+            }
+            Ok(d as usize)
+        })
+        .collect()
+}
+
 fn infer_layer_output_shape(
     layer: &LayerNode,
     shapes: &HashMap<String, Vec<usize>>,
     initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
 ) -> Result<Vec<(String, Vec<usize>)>> {
     let input_shape = layer.inputs.first().and_then(|n| get_shape(shapes, n));
 
@@ -78,7 +93,7 @@ fn infer_layer_output_shape(
         OpType::MaxPool => infer_maxpool(layer, input_shape),
         OpType::Add | OpType::Sub => infer_broadcast_binary(layer, shapes),
         OpType::Mul => infer_broadcast_binary(layer, shapes),
-        OpType::Reshape => infer_reshape(layer, input_shape, initializers),
+        OpType::Reshape => infer_reshape(layer, input_shape, initializers, constant_tensors),
         OpType::Flatten => infer_flatten(layer, input_shape),
         OpType::Squeeze => infer_squeeze(layer, input_shape),
         OpType::Unsqueeze => infer_unsqueeze(layer, input_shape),
@@ -116,31 +131,31 @@ fn infer_conv(
         .and_then(|n| get_shape(shapes, n))
         .ok_or_else(|| anyhow::anyhow!("layer {}: Conv missing weight shape", layer.name))?;
 
-    let kernel_shape = layer
-        .get_ints_attr("kernel_shape")
-        .map(|v| v.iter().map(|&d| d as usize).collect::<Vec<_>>())
-        .unwrap_or_else(|| {
-            if weight_shape.len() >= 4 {
-                weight_shape[2..].to_vec()
-            } else {
-                vec![1]
-            }
-        });
+    let kernel_shape = if let Some(v) = layer.get_ints_attr("kernel_shape") {
+        nonneg_to_usize(v, "kernel_shape", &layer.name)?
+    } else if weight_shape.len() >= 4 {
+        weight_shape[2..].to_vec()
+    } else {
+        vec![1]
+    };
 
-    let strides = layer
-        .get_ints_attr("strides")
-        .map(|v| v.iter().map(|&d| d as usize).collect::<Vec<_>>())
-        .unwrap_or_else(|| vec![1; kernel_shape.len()]);
+    let strides = if let Some(v) = layer.get_ints_attr("strides") {
+        nonneg_to_usize(v, "strides", &layer.name)?
+    } else {
+        vec![1; kernel_shape.len()]
+    };
 
-    let pads = layer
-        .get_ints_attr("pads")
-        .map(|v| v.iter().map(|&d| d as usize).collect::<Vec<_>>())
-        .unwrap_or_else(|| vec![0; kernel_shape.len() * 2]);
+    let pads = if let Some(v) = layer.get_ints_attr("pads") {
+        nonneg_to_usize(v, "pads", &layer.name)?
+    } else {
+        vec![0; kernel_shape.len() * 2]
+    };
 
-    let dilations = layer
-        .get_ints_attr("dilations")
-        .map(|v| v.iter().map(|&d| d as usize).collect::<Vec<_>>())
-        .unwrap_or_else(|| vec![1; kernel_shape.len()]);
+    let dilations = if let Some(v) = layer.get_ints_attr("dilations") {
+        nonneg_to_usize(v, "dilations", &layer.name)?
+    } else {
+        vec![1; kernel_shape.len()]
+    };
 
     let c_out = weight_shape[0];
     let spatial_dims = kernel_shape.len();
@@ -170,14 +185,20 @@ fn infer_conv(
         let in_dim = input_shape[2 + i];
         let pad = pads[i] + pads[spatial_dims + i];
         let effective_kernel = (kernel_shape[i] - 1) * dilations[i] + 1;
-        let numerator = in_dim + pad;
+        let padded = in_dim + pad;
         if strides[i] == 0 {
             bail!(
                 "layer {}: Conv stride is zero at spatial dim {i}",
                 layer.name
             );
         }
-        let out_dim = numerator.saturating_sub(effective_kernel) / strides[i] + 1;
+        if padded < effective_kernel {
+            bail!(
+                "layer {}: Conv padded input {padded} < effective kernel {effective_kernel} at spatial dim {i}",
+                layer.name
+            );
+        }
+        let out_dim = (padded - effective_kernel) / strides[i] + 1;
         out_shape.push(out_dim);
     }
 
@@ -239,20 +260,22 @@ fn infer_maxpool(
     let input_shape = input_shape
         .ok_or_else(|| anyhow::anyhow!("layer {}: MaxPool missing input shape", layer.name))?;
 
-    let kernel_shape = layer
+    let kernel_raw = layer
         .get_ints_attr("kernel_shape")
         .ok_or_else(|| anyhow::anyhow!("layer {}: MaxPool missing kernel_shape", layer.name))?;
-    let kernel: Vec<usize> = kernel_shape.iter().map(|&d| d as usize).collect();
+    let kernel = nonneg_to_usize(kernel_raw, "kernel_shape", &layer.name)?;
 
-    let strides = layer
-        .get_ints_attr("strides")
-        .map(|v| v.iter().map(|&d| d as usize).collect::<Vec<_>>())
-        .unwrap_or_else(|| vec![1; kernel.len()]);
+    let strides = if let Some(v) = layer.get_ints_attr("strides") {
+        nonneg_to_usize(v, "strides", &layer.name)?
+    } else {
+        vec![1; kernel.len()]
+    };
 
-    let pads = layer
-        .get_ints_attr("pads")
-        .map(|v| v.iter().map(|&d| d as usize).collect::<Vec<_>>())
-        .unwrap_or_else(|| vec![0; kernel.len() * 2]);
+    let pads = if let Some(v) = layer.get_ints_attr("pads") {
+        nonneg_to_usize(v, "pads", &layer.name)?
+    } else {
+        vec![0; kernel.len() * 2]
+    };
 
     let spatial_dims = kernel.len();
 
@@ -276,14 +299,21 @@ fn infer_maxpool(
     for i in 0..spatial_dims {
         let in_dim = input_shape[2 + i];
         let pad = pads[i] + pads[spatial_dims + i];
-        let total = in_dim + pad;
+        let padded = in_dim + pad;
         if strides[i] == 0 {
             bail!(
                 "layer {}: MaxPool stride is zero at spatial dim {i}",
                 layer.name
             );
         }
-        let out_dim = total.saturating_sub(kernel[i]) / strides[i] + 1;
+        if padded < kernel[i] {
+            bail!(
+                "layer {}: MaxPool padded input {padded} < kernel {k} at spatial dim {i}",
+                layer.name,
+                k = kernel[i]
+            );
+        }
+        let out_dim = (padded - kernel[i]) / strides[i] + 1;
         out_shape.push(out_dim);
     }
 
@@ -348,15 +378,18 @@ fn infer_reshape(
     layer: &LayerNode,
     input_shape: Option<&Vec<usize>>,
     initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
 ) -> Result<Vec<(String, Vec<usize>)>> {
     let input_shape = input_shape
         .ok_or_else(|| anyhow::anyhow!("layer {}: Reshape missing input shape", layer.name))?;
     let input_size: usize = input_shape.iter().product();
 
-    let shape_data = layer
-        .inputs
-        .get(1)
-        .and_then(|name| initializers.get(name).map(|td| td.as_i64_vec()));
+    let shape_data = layer.inputs.get(1).and_then(|name| {
+        initializers
+            .get(name)
+            .or_else(|| constant_tensors.get(name))
+            .map(|td| td.as_i64_vec())
+    });
 
     let target_shape = if let Some(shape_vals) = shape_data {
         shape_vals
@@ -475,16 +508,27 @@ fn infer_squeeze(
         input_shape.iter().copied().filter(|&d| d != 1).collect()
     } else {
         let rank = input_shape.len() as i64;
+        let mut seen = std::collections::HashSet::new();
         let normalized: Vec<usize> = axes
             .iter()
             .map(|&a| {
-                if a < 0 {
+                if a < -rank || a >= rank {
+                    bail!(
+                        "layer {}: Squeeze axis {a} out of range for rank {rank}",
+                        layer.name
+                    );
+                }
+                let n = if a < 0 {
                     (a + rank) as usize
                 } else {
                     a as usize
+                };
+                if !seen.insert(n) {
+                    bail!("layer {}: Squeeze duplicate axis {n}", layer.name);
                 }
+                Ok(n)
             })
-            .collect();
+            .collect::<Result<Vec<_>>>()?;
         input_shape
             .iter()
             .enumerate()
@@ -513,16 +557,24 @@ fn infer_unsqueeze(
         .unwrap_or_default();
 
     let new_rank = input_shape.len() + axes.len();
+    let r = new_rank as i64;
+    let mut seen = std::collections::HashSet::new();
     let normalized: Vec<usize> = axes
         .iter()
         .map(|&a| {
-            if a < 0 {
-                (a + new_rank as i64) as usize
-            } else {
-                a as usize
+            if a < -r || a >= r {
+                bail!(
+                    "layer {}: Unsqueeze axis {a} out of range for new rank {new_rank}",
+                    layer.name
+                );
             }
+            let n = if a < 0 { (a + r) as usize } else { a as usize };
+            if !seen.insert(n) {
+                bail!("layer {}: Unsqueeze duplicate axis {n}", layer.name);
+            }
+            Ok(n)
         })
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
 
     let mut out_shape = Vec::with_capacity(new_rank);
     let mut input_idx = 0;
