@@ -1,20 +1,18 @@
-/// Standard library imports
 use std::collections::HashMap;
 
 use ndarray::ArrayD;
+use rmpv::Value;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::circuit_functions::layers::LayerError;
 use crate::circuit_functions::layers::LayerKind;
 use crate::circuit_functions::utils::UtilsError;
 use crate::circuit_functions::utils::build_layers::BuildLayerContext;
 use crate::circuit_functions::utils::constants::VALUE;
-use crate::circuit_functions::utils::json_array::FromJsonNumber;
-/// Internal crate imports
-use crate::circuit_functions::utils::json_array::value_to_arrayd;
 use crate::circuit_functions::utils::onnx_types::{ONNXIO, ONNXLayer};
+use crate::circuit_functions::utils::value_array::FromMsgpackValue;
+use crate::circuit_functions::utils::value_array::{map_get, value_to_arrayd};
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct Architecture {
@@ -123,7 +121,7 @@ pub struct OutputData {
 /// - [`UtilsError::MissingTensor`] if the tensor is not found or missing its `value` field.
 /// - [`UtilsError::ArrayConversionError`] if the tensor JSON cannot be converted to an `ArrayD<I>`.
 pub fn get_w_or_b<
-    I: DeserializeOwned + Clone + FromJsonNumber + 'static,
+    I: DeserializeOwned + Clone + FromMsgpackValue + 'static,
     S: ::std::hash::BuildHasher,
 >(
     w_and_b_map: &HashMap<String, ONNXLayer, S>,
@@ -138,15 +136,14 @@ pub fn get_w_or_b<
         .clone();
 
     match weights_tensor_option {
-        Some(tensor_json) => {
-            let inner_value = match &tensor_json {
-                Value::Object(map) if map.contains_key(VALUE) => map
-                    .get(VALUE)
+        Some(tensor_val) => {
+            let inner_value = match &tensor_val {
+                Value::Map(entries) if map_get(entries, VALUE).is_some() => map_get(entries, VALUE)
                     .cloned()
                     .ok_or_else(|| UtilsError::MissingTensor {
                         tensor: weights_input.clone(),
                     })?,
-                _ => tensor_json.clone(),
+                _ => tensor_val.clone(),
             };
 
             eprintln!(
@@ -154,13 +151,14 @@ pub fn get_w_or_b<
                 weights_input,
                 match &inner_value {
                     Value::Array(_) => "Array",
-                    Value::Object(_) => "Object",
-                    Value::Number(_) => "Number",
+                    Value::Map(_) => "Map",
+                    Value::Integer(_) => "Integer",
+                    Value::F32(_) | Value::F64(_) => "Float",
                     Value::String(_) => "String",
                     _ => "Other",
                 }
             );
-            value_to_arrayd(inner_value).map_err(UtilsError::ArrayConversionError)
+            value_to_arrayd(&inner_value).map_err(UtilsError::ArrayConversionError)
         }
         None => Err(UtilsError::MissingTensor {
             tensor: weights_input.clone(),
@@ -281,14 +279,16 @@ pub fn get_param<I: DeserializeOwned>(
     param_name: &str,
     params: &Value,
 ) -> Result<I, UtilsError> {
-    let param_value = params
-        .get(param_name)
-        .ok_or_else(|| UtilsError::MissingParam {
-            layer: layer_name.to_string(),
-            param: param_name.to_string(),
-        })?;
+    let param_value = match params {
+        Value::Map(entries) => map_get(entries, param_name),
+        _ => None,
+    }
+    .ok_or_else(|| UtilsError::MissingParam {
+        layer: layer_name.to_string(),
+        param: param_name.to_string(),
+    })?;
 
-    serde_json::from_value(param_value.clone()).map_err(|source| UtilsError::ParseError {
+    rmpv::ext::from_value(param_value.clone()).map_err(|source| UtilsError::ParseError {
         layer: layer_name.to_string(),
         param: param_name.to_string(),
         source,
@@ -342,9 +342,13 @@ pub fn get_param_or_default<I: DeserializeOwned + Clone>(
     params: &Value,
     default: Option<&I>,
 ) -> Result<I, UtilsError> {
-    match params.get(param_name) {
+    let found = match params {
+        Value::Map(entries) => map_get(entries, param_name).cloned(),
+        _ => None,
+    };
+    match found {
         Some(param_value) => {
-            serde_json::from_value(param_value.clone()).map_err(|source| UtilsError::ParseError {
+            rmpv::ext::from_value(param_value).map_err(|source| UtilsError::ParseError {
                 layer: layer_name.to_string(),
                 param: param_name.to_string(),
                 source,
@@ -502,8 +506,8 @@ mod tests {
         let params: CircuitParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.backend, Backend::Remainder);
         assert!(params.backend.is_remainder());
-        let serialized = serde_json::to_string(&params).unwrap();
-        let round_tripped: CircuitParams = serde_json::from_str(&serialized).unwrap();
+        let bytes = rmp_serde::to_vec_named(&params).unwrap();
+        let round_tripped: CircuitParams = rmp_serde::from_slice(&bytes).unwrap();
         assert_eq!(round_tripped.backend, Backend::Remainder);
     }
 

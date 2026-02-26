@@ -16,8 +16,8 @@ use expander_compiler::serdes::ExpSerde;
 use io_reader::IOReader;
 #[cfg(feature = "peak-mem")]
 use peakmem_alloc::{INSTRUMENTED_SYSTEM, PeakMemAlloc, PeakMemAllocTrait};
+use rmpv::Value;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::circuit_functions::hints::build_logup_hint_registry;
 use crate::circuit_functions::utils::onnx_model::CircuitParams;
@@ -27,6 +27,7 @@ use crate::runner::schema::{
     CompiledCircuit, ProofBundle, ProveRequest, VerifyRequest, VerifyResponse, WitnessBundle,
     WitnessRequest,
 };
+use crate::runner::version::jstprove_artifact_version;
 use expander_compiler::expander_binary::executor;
 
 const ZSTD_COMPRESSION_LEVEL: i32 = 3;
@@ -49,6 +50,19 @@ fn maybe_compress_bytes(data: Vec<u8>, compress: bool) -> Result<Vec<u8>, RunErr
     } else {
         Ok(data)
     }
+}
+
+fn write_msgpack_stdout<T: Serialize>(value: &T) -> Result<(), RunError> {
+    let stdout = std::io::stdout();
+    let mut lock = stdout.lock();
+    value
+        .serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
+        .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
+    std::io::Write::flush(&mut lock).map_err(|e| RunError::Io {
+        source: e,
+        path: "stdout".into(),
+    })?;
+    Ok(())
 }
 
 enum MaybeCompressed {
@@ -165,6 +179,7 @@ where
         circuit: circuit_buf,
         witness_solver: ws_buf,
         metadata,
+        version: Some(jstprove_artifact_version()),
     })
 }
 
@@ -191,9 +206,9 @@ where
     let bundle = compile_to_bundle::<C, CircuitType>(metadata)?;
     let msgpack_path = Path::new(circuit_path).with_extension("msgpack");
     write_circuit_bundle(
-        msgpack_path
-            .to_str()
-            .ok_or_else(|| RunError::Json("invalid msgpack path".into()))?,
+        msgpack_path.to_str().ok_or_else(|| {
+            RunError::Unsupported("msgpack output path is not valid UTF-8".into())
+        })?,
         &bundle,
         compress,
     )
@@ -391,8 +406,8 @@ where
 ///
 /// - `circuit_path` – Path to the serialized circuit file.
 /// - `io_reader` – The I/O reader used to load inputs and outputs.
-/// - `input_path` – Path to the JSON input file.
-/// - `output_path` – Path to the JSON output file.
+/// - `input_path` – Path to the msgpack-encoded input file.
+/// - `output_path` – Path to the msgpack-encoded output file.
 /// - `witness_path` – Path to the witness file.
 /// - `proof_path` – Path to the proof file.
 ///
@@ -503,11 +518,12 @@ fn check_batch_result(operation: &str, result: &BatchResult) -> Result<(), CliEr
 }
 
 fn load_manifest<T: serde::de::DeserializeOwned>(path: &str) -> Result<BatchManifest<T>, RunError> {
-    let content = std::fs::read_to_string(path).map_err(|e| RunError::Io {
+    let file = std::fs::File::open(path).map_err(|e| RunError::Io {
         source: e,
         path: path.into(),
     })?;
-    serde_json::from_str(&content).map_err(|e| RunError::Json(format!("{e:?}")))
+    let reader = auto_reader(file)?;
+    rmp_serde::from_read(reader).map_err(|e| RunError::Deserialize(format!("{e:?}")))
 }
 
 fn load_layered_circuit<C: Config>(path: &str) -> Result<Circuit<C, NormalInputType>, RunError> {
@@ -526,11 +542,10 @@ fn load_layered_circuit<C: Config>(path: &str) -> Result<Circuit<C, NormalInputT
             .map_err(|e| RunError::Deserialize(format!("{e:?}")));
     }
     let msgpack_path = p.with_extension("msgpack");
-    let bundle = read_circuit_msgpack(
-        msgpack_path
-            .to_str()
-            .ok_or_else(|| RunError::Deserialize("invalid msgpack path".into()))?,
-    )?;
+    let bundle =
+        read_circuit_msgpack(msgpack_path.to_str().ok_or_else(|| {
+            RunError::Unsupported("msgpack output path is not valid UTF-8".into())
+        })?)?;
     load_circuit_from_bytes::<C>(&bundle.circuit)
 }
 
@@ -564,11 +579,9 @@ fn load_circuit_and_solver<C: Config>(
     }
     let msgpack_path = p.with_extension("msgpack");
     if msgpack_path.exists() {
-        let bundle = read_circuit_msgpack(
-            msgpack_path
-                .to_str()
-                .ok_or_else(|| RunError::Deserialize("invalid msgpack path".into()))?,
-        )?;
+        let bundle = read_circuit_msgpack(msgpack_path.to_str().ok_or_else(|| {
+            RunError::Unsupported("msgpack output path is not valid UTF-8".into())
+        })?)?;
         let circuit = load_circuit_from_bytes::<C>(&bundle.circuit)?;
         let solver = load_witness_solver_from_bytes::<C>(&bundle.witness_solver)?;
         return Ok((circuit, solver));
@@ -842,7 +855,7 @@ where
 
     let stdin = std::io::stdin();
     let manifest: BatchManifest<PipeWitnessJob> =
-        serde_json::from_reader(stdin.lock()).map_err(|e| RunError::Json(format!("{e:?}")))?;
+        rmp_serde::from_read(stdin.lock()).map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
 
     let job_count = manifest.jobs.len();
     eprintln!("Loaded circuit and witness solver. Processing {job_count} piped jobs.");
@@ -918,10 +931,7 @@ where
         failed,
         errors,
     };
-    let stdout = std::io::stdout();
-    serde_json::to_writer(stdout.lock(), &result)
-        .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
-    println!();
+    write_msgpack_stdout(&result)?;
 
     Ok(result)
 }
@@ -944,7 +954,7 @@ where
 
     let stdin = std::io::stdin();
     let manifest: BatchManifest<ProveJob> =
-        serde_json::from_reader(stdin.lock()).map_err(|e| RunError::Json(format!("{e:?}")))?;
+        rmp_serde::from_read(stdin.lock()).map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
 
     let job_count = manifest.jobs.len();
     eprintln!("Loaded circuit. Processing {job_count} piped prove jobs.");
@@ -973,10 +983,7 @@ where
         failed,
         errors,
     };
-    let stdout = std::io::stdout();
-    serde_json::to_writer(stdout.lock(), &result)
-        .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
-    println!();
+    write_msgpack_stdout(&result)?;
 
     Ok(result)
 }
@@ -1057,7 +1064,7 @@ where
 
     let stdin = std::io::stdin();
     let manifest: BatchManifest<PipeVerifyJob> =
-        serde_json::from_reader(stdin.lock()).map_err(|e| RunError::Json(format!("{e:?}")))?;
+        rmp_serde::from_read(stdin.lock()).map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
 
     let job_count = manifest.jobs.len();
     eprintln!("Loaded circuit. Processing {job_count} piped verify jobs.");
@@ -1089,10 +1096,7 @@ where
         failed,
         errors,
     };
-    let stdout = std::io::stdout();
-    serde_json::to_writer(stdout.lock(), &result)
-        .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
-    println!();
+    write_msgpack_stdout(&result)?;
 
     Ok(result)
 }
@@ -1365,13 +1369,11 @@ pub fn msgpack_prove_stdin<C: Config>(compress: bool) -> Result<(), RunError> {
 
     let proof = prove_from_bytes::<C>(&req.circuit, &req.witness, compress)?;
 
-    let resp = ProofBundle { proof };
-    let stdout = std::io::stdout();
-    let mut lock = stdout.lock();
-    resp.serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
-        .map_err(|e| RunError::Serialize(format!("msgpack stdout: {e:?}")))?;
-    std::io::Write::flush(&mut lock)
-        .map_err(|e| RunError::Serialize(format!("msgpack stdout flush: {e:?}")))?;
+    let resp = ProofBundle {
+        proof,
+        version: Some(jstprove_artifact_version()),
+    };
+    write_msgpack_stdout(&resp)?;
 
     Ok(())
 }
@@ -1388,12 +1390,7 @@ pub fn msgpack_verify_stdin<C: Config>() -> Result<(), RunError> {
     let valid = verify_from_bytes::<C>(&req.circuit, &req.witness, &req.proof)?;
 
     let resp = VerifyResponse { valid, error: None };
-    let stdout = std::io::stdout();
-    let mut lock = stdout.lock();
-    resp.serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
-        .map_err(|e| RunError::Serialize(format!("msgpack stdout: {e:?}")))?;
-    std::io::Write::flush(&mut lock)
-        .map_err(|e| RunError::Serialize(format!("msgpack stdout flush: {e:?}")))?;
+    write_msgpack_stdout(&resp)?;
 
     Ok(())
 }
@@ -1415,16 +1412,16 @@ where
     let witness_solver = load_witness_solver_from_bytes::<C>(&req.witness_solver)?;
     let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
 
-    let input_json: Value = serde_json::from_slice(&req.inputs)
-        .map_err(|e| RunError::Deserialize(format!("input json: {e:?}")))?;
-    let output_json: Value = serde_json::from_slice(&req.outputs)
-        .map_err(|e| RunError::Deserialize(format!("output json: {e:?}")))?;
+    let input_value: Value = rmp_serde::from_slice(&req.inputs)
+        .map_err(|e| RunError::Deserialize(format!("input msgpack: {e:?}")))?;
+    let output_value: Value = rmp_serde::from_slice(&req.outputs)
+        .map_err(|e| RunError::Deserialize(format!("output msgpack: {e:?}")))?;
 
-    let output_data = flatten_json_to_i64(&output_json);
+    let output_data = flatten_value_to_i64(&output_value);
 
     let assignment = CircuitDefaultType::default();
     let assignment = io_reader
-        .apply_values(input_json, output_json, assignment)
+        .apply_values(input_value, output_value, assignment)
         .map_err(|e| RunError::Witness(format!("apply_values: {e:?}")))?;
 
     let witness = solve_and_validate_witness(
@@ -1443,32 +1440,63 @@ where
         } else {
             Some(output_data)
         },
+        version: Some(jstprove_artifact_version()),
     })
 }
 
+fn split_trailing_number(s: &str) -> (&str, Option<u64>) {
+    let pos = s.rfind(|c: char| !c.is_ascii_digit()).map_or(0, |i| i + 1);
+    if pos < s.len() {
+        (&s[..pos], s[pos..].parse::<u64>().ok())
+    } else {
+        (s, None)
+    }
+}
+
+fn natural_key_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    let (a_prefix, a_num) = split_trailing_number(a);
+    let (b_prefix, b_num) = split_trailing_number(b);
+    a_prefix
+        .cmp(b_prefix)
+        .then_with(|| a_num.cmp(&b_num))
+        .then_with(|| a.cmp(b))
+}
+
 #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
-fn flatten_json_to_i64(val: &Value) -> Vec<i64> {
+fn flatten_value_to_i64(val: &Value) -> Vec<i64> {
     match val {
-        Value::Array(arr) => arr.iter().flat_map(flatten_json_to_i64).collect(),
-        Value::Number(n) => {
+        Value::Array(arr) => arr.iter().flat_map(flatten_value_to_i64).collect(),
+        Value::Integer(n) => {
             if let Some(i) = n.as_i64() {
                 vec![i]
-            } else if let Some(f) = n.as_f64() {
-                if f.is_finite() && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
-                    vec![f as i64]
-                } else {
-                    vec![]
-                }
             } else {
                 vec![]
             }
         }
-        Value::Object(map) => {
-            let mut keys: Vec<&String> = map.keys().collect();
-            keys.sort();
-            keys.into_iter()
-                .filter_map(|k| map.get(k))
-                .flat_map(flatten_json_to_i64)
+        Value::F64(f) => {
+            if f.is_finite() && *f >= i64::MIN as f64 && *f < 9_223_372_036_854_775_808.0_f64 {
+                vec![*f as i64]
+            } else {
+                vec![]
+            }
+        }
+        Value::F32(f) => {
+            let d = f64::from(*f);
+            if f.is_finite() && d >= i64::MIN as f64 && d < 9_223_372_036_854_775_808.0_f64 {
+                vec![d as i64]
+            } else {
+                vec![]
+            }
+        }
+        Value::Map(entries) => {
+            let mut pairs: Vec<_> = entries
+                .iter()
+                .filter_map(|(k, v)| k.as_str().map(|s| (s.to_string(), v)))
+                .collect();
+            pairs.sort_by(|(a, _), (b, _)| natural_key_cmp(a, b));
+            pairs
+                .into_iter()
+                .flat_map(|(_, v)| flatten_value_to_i64(v))
                 .collect()
         }
         _ => vec![],
@@ -1495,12 +1523,7 @@ where
 
     let resp = witness_from_request::<C, I, CircuitDefaultType>(&req, io_reader, compress)?;
 
-    let stdout = std::io::stdout();
-    let mut lock = stdout.lock();
-    resp.serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
-        .map_err(|e| RunError::Serialize(format!("msgpack stdout: {e:?}")))?;
-    std::io::Write::flush(&mut lock)
-        .map_err(|e| RunError::Serialize(format!("msgpack stdout flush: {e:?}")))?;
+    write_msgpack_stdout(&resp)?;
 
     Ok(())
 }
@@ -1527,7 +1550,10 @@ pub fn msgpack_prove_file<C: Config>(
 
     let proof = prove_from_bytes::<C>(&circuit_bundle.circuit, &witness_bundle.witness, compress)?;
 
-    let resp = ProofBundle { proof };
+    let resp = ProofBundle {
+        proof,
+        version: Some(jstprove_artifact_version()),
+    };
     let file = std::fs::File::create(proof_path).map_err(|e| RunError::Io {
         source: e,
         path: proof_path.into(),
@@ -2030,21 +2056,21 @@ pub fn get_args() -> clap::ArgMatches {
         )
         .arg(
             Arg::new("arch")
-                .help("Path to the ONNX generic circuit architecture JSON")
+                .help("Path to the ONNX generic circuit architecture (msgpack)")
                 .required(false)
                 .long("arch")
                 .short('a'),
         )
         .arg(
             Arg::new("wandb")
-                .help("Path to the ONNX generic circuit W&B JSON")
+                .help("Path to the ONNX generic circuit W&B (msgpack)")
                 .required(false)
                 .long("wandb")
                 .short('b'),
         )
         .arg(
             Arg::new("manifest")
-                .help("Path to batch manifest JSON file")
+                .help("Path to batch manifest (msgpack)")
                 .required(false)
                 .long("manifest")
                 .short('f'),
@@ -2121,6 +2147,7 @@ mod tests {
             circuit: vec![1, 2, 3, 4],
             witness_solver: vec![5, 6, 7, 8],
             metadata: None,
+            version: None,
         };
         write_circuit_bundle(tmp.path(), &bundle, false).unwrap();
         let loaded = read_circuit_msgpack(tmp.path()).unwrap();
@@ -2136,6 +2163,7 @@ mod tests {
             circuit: vec![10; 1024],
             witness_solver: vec![20; 512],
             metadata: None,
+            version: None,
         };
         write_circuit_bundle(tmp.path(), &bundle, true).unwrap();
         let raw = std::fs::read(tmp.path()).unwrap();
@@ -2162,6 +2190,7 @@ mod tests {
             circuit: vec![0xAA; 64],
             witness_solver: vec![0xBB; 64],
             metadata: Some(meta),
+            version: None,
         };
         write_circuit_bundle(tmp.path(), &bundle, true).unwrap();
         let loaded = read_circuit_msgpack(tmp.path()).unwrap();
@@ -2209,5 +2238,36 @@ mod tests {
         let mut buf = Vec::new();
         std::io::Read::read_to_end(&mut reader, &mut buf).unwrap();
         assert_eq!(buf, original);
+    }
+
+    #[test]
+    fn natural_key_cmp_sorts_numeric_suffixes() {
+        let mut keys = vec![
+            "output_10",
+            "output_2",
+            "output_0",
+            "output_1",
+            "other",
+            "output_20",
+        ];
+        keys.sort_by(|a, b| natural_key_cmp(a, b));
+        assert_eq!(
+            keys,
+            vec![
+                "other",
+                "output_0",
+                "output_1",
+                "output_2",
+                "output_10",
+                "output_20"
+            ]
+        );
+    }
+
+    #[test]
+    fn natural_key_cmp_tie_breaker_for_distinct_numerically_equal_keys() {
+        let mut keys = vec!["output_1", "output_01"];
+        keys.sort_by(|a, b| natural_key_cmp(a, b));
+        assert_eq!(keys, vec!["output_01", "output_1"]);
     }
 }

@@ -9,6 +9,7 @@ use crate::circuit_functions::{
     utils::{
         constants::{AXES, INPUT},
         onnx_model::{extract_params_and_expected_shape, get_input_name, get_param},
+        value_array::map_get,
     },
 };
 
@@ -79,14 +80,11 @@ impl SqueezeLayer {
         let rank = input_shape.len();
 
         // axes omitted => remove all dims of size 1
-        if axes.is_none() {
+        let Some(axes_ref) = axes else {
             let shape: Vec<usize> = input_shape.iter().copied().filter(|&d| d != 1).collect();
-            // ONNX allows 0-D output if everything is squeezed
-            // ndarray supports IxDyn(&[])
             return Ok(shape);
-        }
+        };
 
-        let axes_ref = axes.expect("axes is Some here");
         let axes_u = self.normalize_axes(axes_ref.as_slice(), rank)?;
 
         let axes_set: HashSet<usize> = axes_u.iter().copied().collect();
@@ -163,9 +161,23 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SqueezeLayer {
         // axes may be missing (axes omitted semantics)
         // When present, parse_attributes on Python side should serialize it as a list.
         // `get_param` will error if missing, so we only call it if the key exists.
-        let axes: Option<Vec<i64>> = match params.get(AXES) {
-            Some(_) => Some(get_param(&layer.name, AXES, &params)?),
-            None => None,
+        let axes: Option<Vec<i64>> = if let rmpv::Value::Map(ref entries) = params {
+            if map_get(entries, AXES).is_some() {
+                Some(get_param(&layer.name, AXES, &params)?)
+            } else {
+                None
+            }
+        } else if params.is_nil() {
+            None
+        } else {
+            return Err(LayerError::Other {
+                layer: LayerKind::Squeeze,
+                msg: format!(
+                    "invalid params container for layer {}: expected Map or Nil",
+                    layer.name
+                ),
+            }
+            .into());
         };
 
         let squeeze = Self {

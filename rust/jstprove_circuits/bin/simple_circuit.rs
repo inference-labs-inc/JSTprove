@@ -54,8 +54,9 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
         file_path: &str,
         mut assignment: Circuit<CircuitField<C>>,
     ) -> Result<Circuit<CircuitField<C>>, RunError> {
-        let data: InputData =
-            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<InputData>(file_path)?;
+        let data: InputData = <FileReader as IOReader<Circuit<_>, C>>::read_data_from_msgpack::<
+            InputData,
+        >(file_path)?;
 
         // Assign inputs to assignment
         assignment.input_a = CircuitField::<C>::from(data.value_a);
@@ -71,8 +72,9 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
         file_path: &str,
         mut assignment: Circuit<CircuitField<C>>,
     ) -> Result<Circuit<CircuitField<C>>, RunError> {
-        let data: OutputData =
-            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<OutputData>(file_path)?;
+        let data: OutputData = <FileReader as IOReader<Circuit<_>, C>>::read_data_from_msgpack::<
+            OutputData,
+        >(file_path)?;
 
         // Assign inputs to assignment
         assignment.output = CircuitField::<C>::from(data.output);

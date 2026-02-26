@@ -7,7 +7,7 @@ resolver = "2"
 exclude = ["ExpanderCompilerCollection", "rust/jstprove_remainder", "rust/jstprove_pyo3", ".claude"]
 
 [workspace.dependencies]
-serde_json = "1.0"
+rmpv = { version = "1", features = ["with-serde"] }
 peakmem-alloc = "0.3.0"
 csv = "1.1"
 ark-std = "0.4.0"

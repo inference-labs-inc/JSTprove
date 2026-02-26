@@ -11,7 +11,7 @@ clap.workspace = true
 ethnum.workspace = true
 halo2curves.workspace = true
 tiny-keccak.workspace = true
-serde_json = "1.0"
+rmpv.workspace = true
 peakmem-alloc = { version = "0.3.0", optional = true }
 expander_compiler.workspace = true
 lazy_static = "1.4"
@@ -35,8 +35,13 @@ remainder = ["dep:jstprove-remainder"]
 
 [dev-dependencies]
 sha2 = "0.10.8"
-rmpv = { version = "1", features = ["with-serde"] }
+serde_json = "1.0"
 tempfile = "3"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "serialization"
+harness = false
 
 [dependencies.serde]
 version = "1.0"

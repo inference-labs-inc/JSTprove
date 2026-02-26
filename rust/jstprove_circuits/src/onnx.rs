@@ -197,15 +197,15 @@ pub fn apply_output_data<C: Config>(
 }
 
 fn apply_values_common<C: Config>(
-    input: serde_json::Value,
-    output: serde_json::Value,
+    input: rmpv::Value,
+    output: rmpv::Value,
     assignment: Circuit<CircuitField<C>>,
     params: &CircuitParams,
 ) -> Result<Circuit<CircuitField<C>>, RunError> {
     let input_data: InputData =
-        serde_json::from_value(input).map_err(|e| RunError::Json(format!("{e}")))?;
+        rmpv::ext::from_value(input).map_err(|e| RunError::Json(format!("{e}")))?;
     let output_data: OutputData =
-        serde_json::from_value(output).map_err(|e| RunError::Json(format!("{e}")))?;
+        rmpv::ext::from_value(output).map_err(|e| RunError::Json(format!("{e}")))?;
     let assignment = apply_input_data::<C>(&input_data, assignment, params)?;
     apply_output_data::<C>(&output_data, assignment, params)
 }
@@ -216,8 +216,9 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
         file_path: &str,
         assignment: Circuit<CircuitField<C>>,
     ) -> Result<Circuit<CircuitField<C>>, RunError> {
-        let data: InputData =
-            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<InputData>(file_path)?;
+        let data: InputData = <FileReader as IOReader<Circuit<_>, C>>::read_data_from_msgpack::<
+            InputData,
+        >(file_path)?;
         let params = OnnxContext::get_params()?;
         apply_input_data::<C>(&data, assignment, &params)
     }
@@ -227,16 +228,17 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for FileReader {
         file_path: &str,
         assignment: Circuit<CircuitField<C>>,
     ) -> Result<Circuit<CircuitField<C>>, RunError> {
-        let data: OutputData =
-            <FileReader as IOReader<Circuit<_>, C>>::read_data_from_json::<OutputData>(file_path)?;
+        let data: OutputData = <FileReader as IOReader<Circuit<_>, C>>::read_data_from_msgpack::<
+            OutputData,
+        >(file_path)?;
         let params = OnnxContext::get_params()?;
         apply_output_data::<C>(&data, assignment, &params)
     }
 
     fn apply_values(
         &mut self,
-        input: serde_json::Value,
-        output: serde_json::Value,
+        input: rmpv::Value,
+        output: rmpv::Value,
         assignment: Circuit<CircuitField<C>>,
     ) -> Result<Circuit<CircuitField<C>>, RunError> {
         let params = OnnxContext::get_params()?;
@@ -283,8 +285,8 @@ impl<C: Config> IOReader<Circuit<CircuitField<C>>, C> for ValueReader {
 
     fn apply_values(
         &mut self,
-        input: serde_json::Value,
-        output: serde_json::Value,
+        input: rmpv::Value,
+        output: rmpv::Value,
         assignment: Circuit<CircuitField<C>>,
     ) -> Result<Circuit<CircuitField<C>>, RunError> {
         let owned;
@@ -439,6 +441,7 @@ fn witness_from_f64<C: Config>(
     Ok(WitnessBundle {
         witness: witness_bytes,
         output_data: None,
+        version: Some(crate::runner::version::jstprove_artifact_version()),
     })
 }
 
