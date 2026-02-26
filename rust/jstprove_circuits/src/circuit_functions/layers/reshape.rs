@@ -8,7 +8,7 @@ use crate::circuit_functions::{
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::{INPUT, INPUT_SHAPE},
-        onnx_model::{extract_params_and_expected_shape, get_input_name, get_param_or_default},
+        onnx_model::{extract_params, get_input_name, get_param_or_default},
         shaping::infer_reshape_shape,
     },
 };
@@ -58,11 +58,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
         let shape_name = get_input_name(&layer.inputs, 1, LayerKind::Reshape, INPUT_SHAPE)?;
-        let (params, _) = extract_params_and_expected_shape(layer_context, layer).map_err(|e| {
-            LayerError::Other {
-                layer: LayerKind::Reshape,
-                msg: format!("extract_params_and_expected_shape failed: {e}"),
-            }
+        let params = extract_params(layer).map_err(|e| LayerError::Other {
+            layer: LayerKind::Reshape,
+            msg: format!("extract_params failed: {e}"),
         })?;
         let output_shape = layer_context.shapes_map.get(&layer.outputs.clone()[0]);
         let output_shape_isize: Option<Vec<isize>> = output_shape.map(|v| {

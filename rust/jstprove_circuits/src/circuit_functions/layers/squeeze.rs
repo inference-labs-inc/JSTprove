@@ -8,7 +8,7 @@ use crate::circuit_functions::{
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::{AXES, INPUT},
-        onnx_model::{extract_params_and_expected_shape, get_input_name, get_param},
+        onnx_model::{extract_params, get_input_name, get_param},
         value_array::map_get,
     },
 };
@@ -148,13 +148,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SqueezeLayer {
         _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
         _is_rescale: bool,
         _index: usize,
-        layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
+        _layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let (params, _) = extract_params_and_expected_shape(layer_context, layer).map_err(|e| {
-            LayerError::Other {
-                layer: LayerKind::Squeeze,
-                msg: format!("extract_params_and_expected_shape failed: {e}"),
-            }
+        let params = extract_params(layer).map_err(|e| LayerError::Other {
+            layer: LayerKind::Squeeze,
+            msg: format!("extract_params failed: {e}"),
         })?;
 
         // axes may be missing (axes omitted semantics)

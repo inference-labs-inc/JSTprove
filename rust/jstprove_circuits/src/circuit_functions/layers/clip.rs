@@ -250,16 +250,21 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let initializer_x = get_optional_w_or_b(layer_context, &layer.inputs[0])?;
-        let initializer_min = if layer.inputs.len() > 1 {
-            get_optional_w_or_b(layer_context, &layer.inputs[1])?
-        } else {
-            None
+        let x_name = layer
+            .inputs
+            .first()
+            .ok_or_else(|| LayerError::MissingInput {
+                layer: LayerKind::Clip,
+                name: "input X".to_string(),
+            })?;
+        let initializer_x = get_optional_w_or_b(layer_context, x_name)?;
+        let initializer_min = match layer.inputs.get(1) {
+            Some(name) => get_optional_w_or_b(layer_context, name)?,
+            None => None,
         };
-        let initializer_max = if layer.inputs.len() > 2 {
-            get_optional_w_or_b(layer_context, &layer.inputs[2])?
-        } else {
-            None
+        let initializer_max = match layer.inputs.get(2) {
+            Some(name) => get_optional_w_or_b(layer_context, name)?,
+            None => None,
         };
 
         // Match Max/Min/MaxPool: use n_bits - 1 as shift exponent.

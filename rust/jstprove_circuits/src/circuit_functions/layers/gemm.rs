@@ -53,9 +53,7 @@ use crate::circuit_functions::{
     utils::{
         constants::{ALPHA, BETA, INPUT, TRANS_A, TRANS_B},
         graph_pattern_matching::PatternRegistry,
-        onnx_model::{
-            extract_params_and_expected_shape, get_input_name, get_param_or_default, get_w_or_b,
-        },
+        onnx_model::{extract_params, get_input_name, get_param_or_default, get_w_or_b},
         quantization::rescale_array,
         shaping::check_and_apply_transpose_array,
         tensor_ops::load_array_constants_or_get_inputs,
@@ -191,11 +189,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let (params, _) = extract_params_and_expected_shape(layer_context, layer).map_err(|e| {
-            LayerError::Other {
-                layer: LayerKind::Gemm,
-                msg: format!("extract_params_and_expected_shape failed: {e}"),
-            }
+        let params = extract_params(layer).map_err(|e| LayerError::Other {
+            layer: LayerKind::Gemm,
+            msg: format!("extract_params failed: {e}"),
         })?;
         let freivalds_reps = circuit_params.freivalds_reps;
         if freivalds_reps == 0 {

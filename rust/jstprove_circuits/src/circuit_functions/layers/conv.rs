@@ -17,10 +17,7 @@ use crate::circuit_functions::{
         UtilsError,
         constants::{BIAS, DILATION, GROUP, INPUT, KERNEL_SHAPE, PADS, STRIDES, WEIGHTS},
         graph_pattern_matching::PatternRegistry,
-        onnx_model::{
-            extract_params_and_expected_shape, get_input_name, get_param, get_param_or_default,
-            get_w_or_b,
-        },
+        onnx_model::{extract_params, get_input_name, get_param, get_param_or_default, get_w_or_b},
         typecasting::{AsI32, AsUsize, UsizeAsU32, i32_to_usize},
     },
 };
@@ -114,11 +111,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let (params, _) = extract_params_and_expected_shape(layer_context, layer).map_err(|e| {
-            LayerError::Other {
-                layer: LayerKind::Conv,
-                msg: format!("extract_params_and_expected_shape failed: {e}"),
-            }
+        let params = extract_params(layer).map_err(|e| LayerError::Other {
+            layer: LayerKind::Conv,
+            msg: format!("extract_params failed: {e}"),
         })?;
         let w_name = get_input_name(&layer.inputs, 1, LayerKind::Conv, WEIGHTS)?;
         let b_name = get_input_name(&layer.inputs, 2, LayerKind::Conv, BIAS)?;

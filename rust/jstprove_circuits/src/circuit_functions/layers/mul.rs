@@ -95,8 +95,22 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MulLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let initializer_a = get_optional_w_or_b(layer_context, &layer.inputs[0])?;
-        let initializer_b = get_optional_w_or_b(layer_context, &layer.inputs[1])?;
+        let a_name = layer
+            .inputs
+            .first()
+            .ok_or_else(|| LayerError::MissingInput {
+                layer: LayerKind::Mul,
+                name: "input A".to_string(),
+            })?;
+        let b_name = layer
+            .inputs
+            .get(1)
+            .ok_or_else(|| LayerError::MissingInput {
+                layer: LayerKind::Mul,
+                name: "input B".to_string(),
+            })?;
+        let initializer_a = get_optional_w_or_b(layer_context, a_name)?;
+        let initializer_b = get_optional_w_or_b(layer_context, b_name)?;
 
         let mul = Self {
             name: layer.name.clone(),

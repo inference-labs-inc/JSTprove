@@ -249,6 +249,24 @@ pub fn extract_params_and_expected_shape(
     Ok((params, expected_shape))
 }
 
+/// Extracts only the deserialized parameters from an ONNX layer, without
+/// looking up the expected input shape from the shapes map.
+///
+/// # Errors
+/// Returns `LayerError::MissingParameter` when the layer carries no params.
+pub fn extract_params(
+    layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
+) -> Result<Value, LayerError> {
+    let kind: LayerKind = layer.try_into()?;
+    layer
+        .params
+        .clone()
+        .ok_or_else(|| LayerError::MissingParameter {
+            layer: kind,
+            param: "params".to_string(),
+        })
+}
+
 /// Retrieves a required parameter from a JSON `Value`.
 ///
 /// # Arguments
