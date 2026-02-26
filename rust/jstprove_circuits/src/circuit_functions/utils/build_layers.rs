@@ -16,7 +16,7 @@ const DEFAULT_N_BITS: usize = 64;
 
 type BoxedDynLayer<C, B> = Box<dyn LayerOp<C, B>>;
 pub struct BuildLayerContext<'a> {
-    pub w_and_b_map: &'a HashMap<String, ONNXLayer>,
+    pub w_and_b_map: &'a HashMap<String, &'a ONNXLayer>,
     pub shapes_map: &'a HashMap<String, Vec<usize>>,
     pub n_bits_config: &'a HashMap<String, usize>,
     pub default_n_bits: usize,
@@ -58,10 +58,10 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
 ) -> Result<Vec<Box<dyn LayerOp<C, Builder>>>, BuildError> {
     let mut layers: Vec<BoxedDynLayer<C, Builder>> = vec![];
 
-    let w_and_b_map: HashMap<String, ONNXLayer> = w_and_b
+    let w_and_b_map: HashMap<String, &ONNXLayer> = w_and_b
         .w_and_b
         .iter()
-        .map(|layer| (layer.name.clone(), layer.clone()))
+        .map(|layer| (layer.name.clone(), layer))
         .collect();
 
     let mut skip_next_layer: HashMap<String, bool> = HashMap::new();

@@ -124,7 +124,7 @@ pub fn get_w_or_b<
     I: DeserializeOwned + Clone + FromMsgpackValue + 'static,
     S: ::std::hash::BuildHasher,
 >(
-    w_and_b_map: &HashMap<String, ONNXLayer, S>,
+    w_and_b_map: &HashMap<String, &ONNXLayer, S>,
     weights_input: &String,
 ) -> Result<ArrayD<I>, UtilsError> {
     let weights_tensor_option = w_and_b_map

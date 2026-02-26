@@ -11,7 +11,7 @@ use crate::circuit_functions::utils::tensor_ops::{
 };
 use crate::circuit_functions::{
     CircuitError,
-    layers::{LayerKind, layer_ops::LayerOp},
+    layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{constants::INPUT, onnx_model::get_input_name},
 };
 
@@ -54,7 +54,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BinaryArithLayer {
         let result = match self.kind {
             LayerKind::Add => matrix_addition(api, &a_bc, b_bc, LayerKind::Add)?,
             LayerKind::Sub => matrix_subtraction(api, &a_bc, b_bc, LayerKind::Sub)?,
-            _ => unreachable!("BinaryArithLayer only supports Add and Sub"),
+            ref kind => {
+                return Err(LayerError::UnsupportedConfig {
+                    layer: kind.clone(),
+                    msg: "BinaryArithLayer only supports Add and Sub".into(),
+                }
+                .into());
+            }
         };
         Ok((self.outputs.clone(), result))
     }
@@ -67,12 +73,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BinaryArithLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let a_name = get_input_name(&layer.inputs, 0, LayerKind::Add, INPUT)?;
-        let b_name = get_input_name(&layer.inputs, 1, LayerKind::Add, INPUT)?;
+        let kind = LayerKind::try_from(layer.op_type.as_str())?;
+
+        let a_name = get_input_name(&layer.inputs, 0, kind.clone(), INPUT)?;
+        let b_name = get_input_name(&layer.inputs, 1, kind.clone(), INPUT)?;
         let initializer_a = get_optional_w_or_b(layer_context, a_name)?;
         let initializer_b = get_optional_w_or_b(layer_context, b_name)?;
-
-        let kind = LayerKind::try_from(layer.op_type.as_str())?;
 
         Ok(Box::new(Self {
             kind,

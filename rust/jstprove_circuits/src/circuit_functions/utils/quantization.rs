@@ -332,23 +332,39 @@ pub struct MaybeRescaleParams {
     pub layer_name: String,
 }
 
-/// Conditionally rescale an array when `params.is_rescale` is true.
+/// Conditionally rescale an array when `params.is_rescale` is true, and
+/// optionally apply ReLU when `params.is_relu` is true.
 ///
-/// Converts `scaling` (u64) to a `usize` scaling exponent, derives the shift
-/// exponent as `n_bits - 1`, and delegates to [`rescale_array`].  Returns the
-/// input unchanged when `is_rescale` is false.
+/// When both `is_rescale` and `is_relu` are true, rescaling and ReLU are
+/// fused into a single pass (via [`rescale_array`]).  When only `is_relu`
+/// is true (rescaling disabled), a standalone `max(x, 0)` pass is applied
+/// so that fused layer+ReLU patterns (e.g. Conv+ReLU) still honour the
+/// activation even when rescaling is turned off.
 ///
 /// # Errors
 ///
-/// Returns [`LayerError::Other`] if `scaling` cannot be represented as `usize`.
+/// Returns [`LayerError::Other`] if `scaling_exponent` cannot be represented as `usize`.
 /// Returns [`LayerError::InvalidParameterValue`] if `n_bits` is zero.
-/// Propagates errors from [`rescale_array`].
+/// Propagates errors from [`rescale_array`] or the standalone ReLU gadgets.
 pub fn maybe_rescale<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     result: ArrayD<Variable>,
     params: &MaybeRescaleParams,
 ) -> Result<ArrayD<Variable>, CircuitError> {
     if !params.is_rescale {
+        if params.is_relu {
+            let shift_exponent =
+                params
+                    .n_bits
+                    .checked_sub(1)
+                    .ok_or_else(|| LayerError::InvalidParameterValue {
+                        layer: params.layer_kind.clone(),
+                        layer_name: params.layer_name.clone(),
+                        param_name: "n_bits".to_string(),
+                        value: params.n_bits.to_string(),
+                    })?;
+            return standalone_relu_array::<C, Builder>(api, result, shift_exponent);
+        }
         return Ok(result);
     }
 
@@ -375,4 +391,27 @@ pub fn maybe_rescale<C: Config, Builder: RootAPI<C>>(
         shift_exponent,
         params.is_relu,
     )?)
+}
+
+fn standalone_relu_array<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    array: ArrayD<Variable>,
+    shift_exponent: usize,
+) -> Result<ArrayD<Variable>, CircuitError> {
+    let shift_ctx = ShiftRangeContext::new::<C, Builder>(api, shift_exponent)?;
+    let mut logup_ctx = LogupRangeCheckContext::new_default();
+    logup_ctx.init::<C, Builder>(api);
+
+    let zero = api.constant(0);
+    let shape = array.shape().to_vec();
+
+    let results: Result<Vec<Variable>, CircuitError> = array
+        .into_iter()
+        .map(|x| constrained_max::<C, Builder>(api, &shift_ctx, &mut logup_ctx, &[x, zero]))
+        .collect();
+
+    logup_ctx.finalize::<C, Builder>(api);
+
+    let data = results?;
+    Ok(ArrayD::from_shape_vec(shape, data).map_err(ArrayConversionError::ShapeError)?)
 }

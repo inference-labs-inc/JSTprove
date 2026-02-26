@@ -84,7 +84,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BinaryCompareLayer 
                 LayerKind::Min => {
                     constrained_min(api, &shift_ctx, &mut logup_ctx, &[*a_val, *b_val])?
                 }
-                _ => unreachable!("BinaryCompareLayer only supports Max and Min"),
+                ref kind => {
+                    return Err(LayerError::UnsupportedConfig {
+                        layer: kind.clone(),
+                        msg: "BinaryCompareLayer only supports Max and Min".into(),
+                    }
+                    .into());
+                }
             };
             out_storage.push(result_var);
         }

@@ -504,4 +504,46 @@ mod tests {
     fn reshape_explicit_product_mismatch() {
         assert!(infer_reshape_shape(12, &[3, 3]).is_err());
     }
+
+    #[test]
+    fn normalize_axes_negative_indices() {
+        let result = normalize_axes(&[-1, -2], 3, &LayerKind::Squeeze, "test").unwrap();
+        assert_eq!(result, vec![1, 2]);
+    }
+
+    #[test]
+    fn normalize_axes_positive_indices() {
+        let result = normalize_axes(&[2, 0], 4, &LayerKind::Squeeze, "test").unwrap();
+        assert_eq!(result, vec![0, 2]);
+    }
+
+    #[test]
+    fn normalize_axes_duplicate_after_normalization() {
+        let err = normalize_axes(&[-1, 2], 3, &LayerKind::Squeeze, "test");
+        assert!(err.is_err());
+        let msg = format!("{}", err.unwrap_err());
+        assert!(msg.contains("duplicate"));
+    }
+
+    #[test]
+    fn normalize_axes_out_of_range_positive() {
+        let err = normalize_axes(&[5], 3, &LayerKind::Squeeze, "test");
+        assert!(err.is_err());
+        let msg = format!("{}", err.unwrap_err());
+        assert!(msg.contains("out of range"));
+    }
+
+    #[test]
+    fn normalize_axes_out_of_range_negative() {
+        let err = normalize_axes(&[-4], 3, &LayerKind::Squeeze, "test");
+        assert!(err.is_err());
+        let msg = format!("{}", err.unwrap_err());
+        assert!(msg.contains("out of range"));
+    }
+
+    #[test]
+    fn normalize_axes_empty() {
+        let result = normalize_axes(&[], 3, &LayerKind::Squeeze, "test").unwrap();
+        assert!(result.is_empty());
+    }
 }
