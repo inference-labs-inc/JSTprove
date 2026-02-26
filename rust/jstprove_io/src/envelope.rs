@@ -45,7 +45,10 @@ pub fn parse_header(buf: &[u8]) -> Result<EnvelopeHeader> {
 }
 
 pub fn verify_crc(payload: &[u8], expected: u32) -> Result<()> {
-    let actual = crc32c::crc32c(payload);
+    verify_crc_computed(crc32c::crc32c(payload), expected)
+}
+
+pub fn verify_crc_computed(actual: u32, expected: u32) -> Result<()> {
     if actual != expected {
         bail!("CRC mismatch: expected {expected:#010x}, got {actual:#010x}");
     }
