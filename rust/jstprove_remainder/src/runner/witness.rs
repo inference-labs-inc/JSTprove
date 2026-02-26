@@ -63,15 +63,23 @@ pub fn run(model_path: &Path, input_path: &Path, output_path: &Path, compress: b
 }
 
 pub fn load_and_quantize_input(input_path: &Path, alpha: i64) -> Result<Vec<i64>> {
-    let input_json: serde_json::Value = serde_json::from_reader(std::fs::File::open(input_path)?)?;
-    quantize_input_json(&input_json, alpha)
+    let raw = std::fs::read(input_path)?;
+    let input_value: rmpv::Value = rmp_serde::from_slice(&raw)?;
+    quantize_input_value(&input_value, alpha)
 }
 
-pub fn quantize_input_json(input_json: &serde_json::Value, alpha: i64) -> Result<Vec<i64>> {
-    let raw_input: Vec<f64> = input_json
-        .get("input")
+fn get_map_field<'a>(map: &'a rmpv::Value, key: &str) -> Option<&'a rmpv::Value> {
+    map.as_map().and_then(|m| {
+        m.iter()
+            .find(|(k, _)| k.as_str() == Some(key))
+            .map(|(_, v)| v)
+    })
+}
+
+pub fn quantize_input_value(input_value: &rmpv::Value, alpha: i64) -> Result<Vec<i64>> {
+    let raw_input: Vec<f64> = get_map_field(input_value, "input")
         .and_then(|v| v.as_array())
-        .ok_or_else(|| anyhow::anyhow!("input JSON must have an \"input\" array field"))?
+        .ok_or_else(|| anyhow::anyhow!("input msgpack must have an \"input\" array field"))?
         .iter()
         .enumerate()
         .map(|(i, v)| {

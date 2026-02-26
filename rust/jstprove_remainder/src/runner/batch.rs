@@ -40,7 +40,7 @@ pub fn run_batch_witness(
 ) -> Result<BatchResult> {
     let model = super::compile::load_model(model_path)?;
     let manifest: BatchManifest<WitnessJob> =
-        serde_json::from_reader(std::fs::File::open(manifest_path)?)?;
+        rmp_serde::from_read(std::fs::File::open(manifest_path)?)?;
 
     let mut result = BatchResult {
         succeeded: 0,
@@ -62,7 +62,7 @@ pub fn run_batch_witness(
         }
     }
 
-    print_batch_result(&result);
+    super::serialization::write_msgpack_stdout(&result)?;
     Ok(result)
 }
 
@@ -73,7 +73,7 @@ pub fn run_batch_prove(
 ) -> Result<BatchResult> {
     let model = super::compile::load_model(model_path)?;
     let manifest: BatchManifest<ProveJob> =
-        serde_json::from_reader(std::fs::File::open(manifest_path)?)?;
+        rmp_serde::from_read(std::fs::File::open(manifest_path)?)?;
 
     let mut result = BatchResult {
         succeeded: 0,
@@ -94,14 +94,14 @@ pub fn run_batch_prove(
         }
     }
 
-    print_batch_result(&result);
+    super::serialization::write_msgpack_stdout(&result)?;
     Ok(result)
 }
 
 pub fn run_batch_verify(model_path: &Path, manifest_path: &Path) -> Result<BatchResult> {
     let model = super::compile::load_model(model_path)?;
     let manifest: BatchManifest<VerifyJob> =
-        serde_json::from_reader(std::fs::File::open(manifest_path)?)?;
+        rmp_serde::from_read(std::fs::File::open(manifest_path)?)?;
 
     let mut result = BatchResult {
         succeeded: 0,
@@ -122,7 +122,7 @@ pub fn run_batch_verify(model_path: &Path, manifest_path: &Path) -> Result<Batch
         }
     }
 
-    print_batch_result(&result);
+    super::serialization::write_msgpack_stdout(&result)?;
     Ok(result)
 }
 
@@ -162,9 +162,4 @@ fn process_verify_job(
     let mut model = model.clone();
     model.apply_observed_n_bits(&proof.observed_n_bits);
     super::verify::verify_with_model(&model, &proof, &quantized_input)
-}
-
-fn print_batch_result(result: &BatchResult) {
-    let json = serde_json::to_string(result).unwrap_or_default();
-    println!("{}", json);
 }

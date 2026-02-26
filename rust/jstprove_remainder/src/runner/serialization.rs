@@ -9,7 +9,7 @@ pub fn serialize_to_file<T: Serialize>(
     path: &std::path::Path,
     compress: bool,
 ) -> Result<usize> {
-    let serialized = bincode::serialize(value)?;
+    let serialized = rmp_serde::to_vec_named(value)?;
     let bytes = if compress {
         zstd::encode_all(serialized.as_slice(), ZSTD_COMPRESSION_LEVEL)?
     } else {
@@ -26,6 +26,15 @@ pub fn deserialize_from_file<T: DeserializeOwned>(path: &std::path::Path) -> Res
     } else {
         raw
     };
-    let value: T = bincode::deserialize(&decompressed)?;
+    let value: T = rmp_serde::from_slice(&decompressed)?;
     Ok(value)
+}
+
+pub fn write_msgpack_stdout<T: Serialize>(value: &T) -> Result<()> {
+    let stdout = std::io::stdout();
+    let mut lock = stdout.lock();
+    value
+        .serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
+        .map_err(|e| anyhow::anyhow!("msgpack stdout serialization failed: {e}"))?;
+    Ok(())
 }

@@ -1787,15 +1787,43 @@ fn dispatch_remainder(
             )
             .into());
         }
-        "msgpack_prove"
-        | "msgpack_prove_stdin"
-        | "msgpack_verify"
-        | "msgpack_verify_stdin"
-        | "msgpack_witness_stdin" => {
-            return Err(RunError::Unsupported(
-                "msgpack piped operations not supported for Remainder backend".into(),
+        "msgpack_prove" => {
+            let model_path = get_model_or_circuit(matches)?;
+            let witness_path = get_arg(matches, "witness")?;
+            let proof_path = get_arg(matches, "proof")?;
+            jstprove_remainder::runner::prove::run(
+                Path::new(&model_path),
+                Path::new(&witness_path),
+                Path::new(&proof_path),
+                compress,
             )
-            .into());
+            .map_err(|e| RunError::Prove(format!("{e:#}")))?;
+        }
+        "msgpack_verify" => {
+            let model_path = get_model_or_circuit(matches)?;
+            let proof_path = get_arg(matches, "proof")?;
+            let input_path = get_arg(matches, "input")?;
+            jstprove_remainder::runner::verify::run(
+                Path::new(&model_path),
+                Path::new(&proof_path),
+                Path::new(&input_path),
+            )
+            .map_err(|e| RunError::Verify(format!("{e:#}")))?;
+        }
+        "msgpack_prove_stdin" => {
+            let model_path = get_model_or_circuit(matches)?;
+            jstprove_remainder::runner::pipe::run_pipe_prove(Path::new(&model_path), compress)
+                .map_err(|e| RunError::Prove(format!("{e:#}")))?;
+        }
+        "msgpack_verify_stdin" => {
+            let model_path = get_model_or_circuit(matches)?;
+            jstprove_remainder::runner::pipe::run_pipe_verify(Path::new(&model_path))
+                .map_err(|e| RunError::Verify(format!("{e:#}")))?;
+        }
+        "msgpack_witness_stdin" => {
+            let model_path = get_model_or_circuit(matches)?;
+            jstprove_remainder::runner::pipe::run_pipe_witness(Path::new(&model_path), compress)
+                .map_err(|e| RunError::Witness(format!("{e:#}")))?;
         }
         _ => return Err(CliError::UnknownCommand(command.to_string())),
     }
