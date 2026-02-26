@@ -79,14 +79,19 @@ pub fn auto_reader(file: std::fs::File) -> Result<Box<dyn Read>> {
 
     let mut reader = BufReader::new(file);
     let mut magic = [0u8; 4];
-
-    match reader.read_exact(&mut magic) {
-        Ok(()) => {}
-        Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-            let chain: Box<dyn Read> = Box::new(io::Cursor::new(magic).chain(reader));
-            return Ok(chain);
+    let mut total = 0;
+    while total < 4 {
+        match reader.read(&mut magic[total..]) {
+            Ok(0) => break,
+            Ok(n) => total += n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(e.into()),
         }
-        Err(e) => return Err(e.into()),
+    }
+
+    if total < 4 {
+        let prefix = magic[..total].to_vec();
+        return Ok(Box::new(io::Cursor::new(prefix).chain(reader)));
     }
 
     if magic == ZSTD_MAGIC {

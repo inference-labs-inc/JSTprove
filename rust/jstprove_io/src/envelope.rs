@@ -12,7 +12,7 @@ pub struct EnvelopeHeader {
 }
 
 pub fn write_envelope(payload: &[u8], compressed: bool) -> Vec<u8> {
-    let crc = crc32fast::hash(payload);
+    let crc = crc32c::crc32c(payload);
     let flags: u32 = if compressed { FLAG_ZSTD } else { 0 };
 
     let mut out = Vec::with_capacity(ENVELOPE_HEADER_LEN + payload.len());
@@ -45,7 +45,7 @@ pub fn parse_header(buf: &[u8]) -> Result<EnvelopeHeader> {
 }
 
 pub fn verify_crc(payload: &[u8], expected: u32) -> Result<()> {
-    let actual = crc32fast::hash(payload);
+    let actual = crc32c::crc32c(payload);
     if actual != expected {
         bail!("CRC mismatch: expected {expected:#010x}, got {actual:#010x}");
     }

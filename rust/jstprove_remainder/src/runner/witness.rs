@@ -14,6 +14,7 @@ use crate::runner::circuit_builder::{
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct WitnessData {
     pub shreds: HashMap<String, Vec<i64>>,
+    #[serde(default)]
     pub observed_n_bits: HashMap<String, usize>,
 }
 

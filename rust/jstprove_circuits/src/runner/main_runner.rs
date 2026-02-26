@@ -1249,9 +1249,17 @@ fn write_circuit_bundle(
     bundle: &CompiledCircuit,
     compress: bool,
 ) -> Result<(), RunError> {
-    jstprove_io::serialize_to_file(bundle, Path::new(path), compress).map_err(|e| {
-        let _ = std::fs::remove_file(path);
+    let tmp_path = format!("{path}.tmp");
+    jstprove_io::serialize_to_file(bundle, Path::new(&tmp_path), compress).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
         jstprove_io_to_run_error(e, path, true)
+    })?;
+    std::fs::rename(&tmp_path, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        RunError::Io {
+            source: e,
+            path: path.to_string(),
+        }
     })?;
     Ok(())
 }

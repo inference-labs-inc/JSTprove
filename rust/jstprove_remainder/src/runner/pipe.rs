@@ -1,3 +1,4 @@
+use std::io::BufReader;
 use std::path::Path;
 
 use anyhow::Result;
@@ -6,7 +7,8 @@ use super::batch::{BatchManifest, BatchResult, ProveJob, VerifyJob, WitnessJob};
 
 pub fn run_pipe_witness(model_path: &Path, compress: bool) -> Result<()> {
     let model = super::compile::load_model(model_path)?;
-    let manifest: BatchManifest<WitnessJob> = jstprove_io::read_msgpack_stdin()?;
+    let manifest: BatchManifest<WitnessJob> =
+        jstprove_io::read_msgpack_reader(BufReader::new(std::io::stdin()))?;
 
     let alpha = model.scale_config.alpha;
     let mut result = BatchResult {
@@ -31,7 +33,8 @@ pub fn run_pipe_witness(model_path: &Path, compress: bool) -> Result<()> {
 
 pub fn run_pipe_prove(model_path: &Path, compress: bool) -> Result<()> {
     let model = super::compile::load_model(model_path)?;
-    let manifest: BatchManifest<ProveJob> = jstprove_io::read_msgpack_stdin()?;
+    let manifest: BatchManifest<ProveJob> =
+        jstprove_io::read_msgpack_reader(BufReader::new(std::io::stdin()))?;
 
     let mut result = BatchResult {
         succeeded: 0,
@@ -55,7 +58,8 @@ pub fn run_pipe_prove(model_path: &Path, compress: bool) -> Result<()> {
 
 pub fn run_pipe_verify(model_path: &Path) -> Result<()> {
     let model = super::compile::load_model(model_path)?;
-    let manifest: BatchManifest<VerifyJob> = jstprove_io::read_msgpack_stdin()?;
+    let manifest: BatchManifest<VerifyJob> =
+        jstprove_io::read_msgpack_reader(BufReader::new(std::io::stdin()))?;
 
     let mut result = BatchResult {
         succeeded: 0,

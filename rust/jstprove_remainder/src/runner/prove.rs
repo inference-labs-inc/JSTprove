@@ -50,6 +50,7 @@ pub fn run(
     Ok(())
 }
 
+#[allow(clippy::implicit_hasher)]
 pub fn generate_proof(
     model: &crate::onnx::quantizer::QuantizedModel,
     witness: &HashMap<String, Vec<i64>>,

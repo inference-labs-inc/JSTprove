@@ -50,7 +50,7 @@ pub fn run_batch_witness(
 
     for (idx, job) in manifest.jobs.iter().enumerate() {
         tracing::info!("batch witness job {}/{}", idx + 1, manifest.jobs.len());
-        match process_witness_job(&model, &job, alpha, compress) {
+        match process_witness_job(&model, job, alpha, compress) {
             Ok(()) => result.succeeded += 1,
             Err(e) => {
                 let msg = format!("{:#}", e);
@@ -81,7 +81,7 @@ pub fn run_batch_prove(
 
     for (idx, job) in manifest.jobs.iter().enumerate() {
         tracing::info!("batch prove job {}/{}", idx + 1, manifest.jobs.len());
-        match process_prove_job(&model, &job, compress) {
+        match process_prove_job(&model, job, compress) {
             Ok(()) => result.succeeded += 1,
             Err(e) => {
                 let msg = format!("{:#}", e);
@@ -108,7 +108,7 @@ pub fn run_batch_verify(model_path: &Path, manifest_path: &Path) -> Result<Batch
 
     for (idx, job) in manifest.jobs.iter().enumerate() {
         tracing::info!("batch verify job {}/{}", idx + 1, manifest.jobs.len());
-        match process_verify_job(&model, &job) {
+        match process_verify_job(&model, job) {
             Ok(()) => result.succeeded += 1,
             Err(e) => {
                 let msg = format!("{:#}", e);

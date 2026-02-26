@@ -49,6 +49,12 @@ pub fn deserialize_from_bytes<T: DeserializeOwned>(data: &[u8]) -> Result<T> {
                     header.payload_len
                 )
             })?;
+            let remaining = data.len().saturating_sub(ENVELOPE_HEADER_LEN);
+            if remaining < len {
+                anyhow::bail!(
+                    "truncated envelope: declared payload {len} bytes but only {remaining} available"
+                );
+            }
             let payload = &data[ENVELOPE_HEADER_LEN..][..len];
             envelope::verify_crc(payload, header.crc32)?;
             let msgpack = if header.compressed {
@@ -82,9 +88,11 @@ pub fn write_msgpack_stdout<T: Serialize>(value: &T) -> Result<()> {
 }
 
 pub fn read_msgpack_stdin<T: DeserializeOwned>() -> Result<T> {
-    let mut buf = Vec::new();
-    std::io::stdin().read_to_end(&mut buf)?;
-    Ok(rmp_serde::from_slice(&buf)?)
+    read_msgpack_reader(std::io::BufReader::new(std::io::stdin()))
+}
+
+pub fn read_msgpack_reader<T: DeserializeOwned>(reader: impl Read) -> Result<T> {
+    Ok(rmp_serde::from_read(reader)?)
 }
 
 #[cfg(test)]
