@@ -68,30 +68,32 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
 
         // 2. Optional min / max inputs.
         //    We only attempt to read them if the ONNX node actually has those inputs.
-        let min_input = if self.inputs.len() > 1 {
-            let min_name = get_input_name(&self.inputs, 1, LayerKind::Clip, INPUT)?;
-            Some(load_array_constants_or_get_inputs(
-                api,
-                input,
-                min_name,
-                &self.initializer_min,
-                LayerKind::Clip,
-            )?)
-        } else {
-            None
+        let min_input = match self.inputs.get(1).filter(|n| !n.is_empty()) {
+            Some(_) => {
+                let min_name = get_input_name(&self.inputs, 1, LayerKind::Clip, INPUT)?;
+                Some(load_array_constants_or_get_inputs(
+                    api,
+                    input,
+                    min_name,
+                    &self.initializer_min,
+                    LayerKind::Clip,
+                )?)
+            }
+            None => None,
         };
 
-        let max_input = if self.inputs.len() > 2 {
-            let max_name = get_input_name(&self.inputs, 2, LayerKind::Clip, INPUT)?;
-            Some(load_array_constants_or_get_inputs(
-                api,
-                input,
-                max_name,
-                &self.initializer_max,
-                LayerKind::Clip,
-            )?)
-        } else {
-            None
+        let max_input = match self.inputs.get(2).filter(|n| !n.is_empty()) {
+            Some(_) => {
+                let max_name = get_input_name(&self.inputs, 2, LayerKind::Clip, INPUT)?;
+                Some(load_array_constants_or_get_inputs(
+                    api,
+                    input,
+                    max_name,
+                    &self.initializer_max,
+                    LayerKind::Clip,
+                )?)
+            }
+            None => None,
         };
 
         // Fast path: if both bounds are missing, Clip is the identity.
@@ -258,11 +260,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
                 name: "input X".to_string(),
             })?;
         let initializer_x = get_optional_w_or_b(layer_context, x_name)?;
-        let initializer_min = match layer.inputs.get(1) {
+        let initializer_min = match layer.inputs.get(1).filter(|n| !n.is_empty()) {
             Some(name) => get_optional_w_or_b(layer_context, name)?,
             None => None,
         };
-        let initializer_max = match layer.inputs.get(2) {
+        let initializer_max = match layer.inputs.get(2).filter(|n| !n.is_empty()) {
             Some(name) => get_optional_w_or_b(layer_context, name)?,
             None => None,
         };
