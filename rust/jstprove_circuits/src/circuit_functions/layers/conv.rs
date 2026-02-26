@@ -24,7 +24,10 @@ use crate::circuit_functions::{
 
 use crate::circuit_functions::{
     layers::layer_ops::LayerOp,
-    utils::{quantization::rescale_array, tensor_ops::load_array_constants_or_get_inputs},
+    utils::{
+        quantization::{MaybeRescaleParams, maybe_rescale},
+        tensor_ops::load_array_constants_or_get_inputs,
+    },
 };
 
 // -------- Struct --------
@@ -121,13 +124,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         let (weights, bias) = if layer_context.weights_as_inputs {
             (None, None)
         } else {
-            let w = get_w_or_b(&layer_context.w_and_b_map, w_name).map_err(|e| {
+            let w = get_w_or_b(layer_context.w_and_b_map, w_name).map_err(|e| {
                 LayerError::MissingParameter {
                     layer: LayerKind::Conv,
                     param: format!("weights (W), requested={w_name}: {e}"),
                 }
             })?;
-            let b = get_w_or_b(&layer_context.w_and_b_map, b_name).map_err(|e| {
+            let b = get_w_or_b(layer_context.w_and_b_map, b_name).map_err(|e| {
                 LayerError::MissingParameter {
                     layer: LayerKind::Conv,
                     param: format!("bias (B), requested={b_name}: {e}"),
@@ -361,10 +364,6 @@ fn get_u(input: &[u32], idx: usize, what: &str) -> Result<usize, CircuitError> {
     })
 }
 
-fn have_matching_shapes(x: &ArrayD<Variable>, y: &ArrayD<Variable>) -> bool {
-    x.shape() == y.shape()
-}
-
 fn validate_conv_params(params: &Conv2DParams) -> Result<(), CircuitError> {
     if params.pads.len() < 4 {
         return Err(LayerError::InvalidParameterValue {
@@ -480,10 +479,7 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
     for n in 0..s_n {
         for nw in 0..weights.shape()[0] {
             for c in 0..s_c {
-                let w = weights
-                    .slice(s![nw..=nw, c..=c, .., ..])
-                    .into_dyn()
-                    .to_owned();
+                let w = weights.slice(s![nw..=nw, c..=c, .., ..]).into_dyn();
 
                 for io in (bh..eh as i32).step_by(stride_h as usize) {
                     let hr = ((io - bh) / stride_h.as_i32()?).as_usize()?;
@@ -503,17 +499,12 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
                         let iw1 = i32_to_usize(max(0, j + ow))?;
                         let iw2 = i32_to_usize(min(j + ow + kw, s_w))?;
 
-                        let n_usize = n;
-
                         let img = input_arr
-                            .slice(s![n_usize..=n_usize, c..=c, i_height1..i_height2, iw1..iw2])
-                            .into_dyn()
-                            .to_owned();
+                            .slice(s![n..=n, c..=c, i_height1..i_height2, iw1..iw2])
+                            .into_dyn();
 
-                        if have_matching_shapes(&img, &w) {
-                            // TODO check if bias is empty
-                            let s = flatten_and_perform_dot(api, &img, &w)?;
-
+                        if img.shape() == w.shape() {
+                            let s = flatten_and_perform_dot(api, &img, &w.view());
                             res[[n, nw, hr, wr]] = api.add(s, res[[n, nw, hr, wr]]);
                         } else {
                             let j_height1 = i32_to_usize(max(-oh - i, 0))?;
@@ -523,10 +514,9 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
                             let j_width2 = i32_to_usize(min(kw, kw + s_w - (j + ow + kw as i32)))?;
                             let w_ = w
                                 .slice(s![0..1, 0..1, j_height1..j_height2, j_width1..j_width2])
-                                .into_dyn()
-                                .to_owned();
+                                .into_dyn();
 
-                            if !have_matching_shapes(&w_.clone(), &img) {
+                            if w_.shape() != img.shape() {
                                 return Err(LayerError::InvalidShape {
                                     layer: LayerKind::Conv,
                                     msg: format!(
@@ -539,8 +529,7 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
                                 }
                                 .into());
                             }
-                            // TODO check if bias is empty
-                            let s = flatten_and_perform_dot(api, &img, &w_)?;
+                            let s = flatten_and_perform_dot(api, &img, &w_);
                             res[[n, nw, hr, wr]] = api.add(s, res[[n, nw, hr, wr]]);
                         }
                     }
@@ -551,33 +540,17 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
     Ok(res)
 }
 
-/// Flatten vector and perform dot product
 fn flatten_and_perform_dot<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
-    img: &ArrayD<Variable>,
-    w_: &ArrayD<Variable>,
-) -> Result<Variable, CircuitError> {
-    let flattened_img: ArrayD<&Variable> =
-        ArrayD::from_shape_vec(ndarray::IxDyn(&[img.len()]), img.iter().collect()).map_err(
-            |e| LayerError::InvalidShape {
-                layer: LayerKind::Conv,
-                msg: format!("Failed to flatten img: {e}"),
-            },
-        )?;
-    let flattened_w_: ArrayD<&Variable> =
-        ArrayD::from_shape_vec(ndarray::IxDyn(&[w_.len()]), w_.iter().collect()).map_err(|e| {
-            LayerError::InvalidShape {
-                layer: LayerKind::Conv,
-                msg: format!("Failed to flatten weights: {e}"),
-            }
-        })?;
-
+    img: &ndarray::ArrayViewD<'_, Variable>,
+    w_: &ndarray::ArrayViewD<'_, Variable>,
+) -> Variable {
     let mut sum = api.constant(0);
-    for (a, b) in flattened_img.iter().zip(flattened_w_.iter()) {
+    for (a, b) in img.iter().zip(w_.iter()) {
         let prod = api.mul(*a, *b);
         sum = api.add(sum, prod);
     }
-    Ok(sum)
+    sum
 }
 
 /// Executes a 4D convolution operation with optional quantization and `ReLU`.
@@ -619,30 +592,16 @@ pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(
 
     let out = conv_shape_4(api, input_arr, &conv_params, weights, bias)?;
 
-    if quantization_params.quantized {
-        let scaling_exponent =
-            usize::try_from(quantization_params.scaling).map_err(|_| LayerError::Other {
-                layer: LayerKind::Conv,
-                msg: "Cannot convert scaling to usize".to_string(),
-            })?;
-        let shift_exponent = quantization_params
-            .v_plus_one
-            .checked_sub(1)
-            .ok_or_else(|| LayerError::InvalidParameterValue {
-                layer: LayerKind::Conv,
-                layer_name: "Conv".into(),
-                param_name: "v_plus_one".into(),
-                value: quantization_params.v_plus_one.to_string(),
-            })?;
-        let rescaled = rescale_array(
-            api,
-            out,
-            scaling_exponent,
-            shift_exponent,
-            quantization_params.is_relu,
-        )?;
-        Ok(rescaled)
-    } else {
-        Ok(out)
-    }
+    maybe_rescale(
+        api,
+        out,
+        &MaybeRescaleParams {
+            is_rescale: quantization_params.quantized,
+            scaling_exponent: quantization_params.scaling,
+            n_bits: quantization_params.v_plus_one,
+            is_relu: quantization_params.is_relu,
+            layer_kind: LayerKind::Conv,
+            layer_name: "Conv".into(),
+        },
+    )
 }

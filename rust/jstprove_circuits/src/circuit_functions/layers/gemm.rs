@@ -54,7 +54,7 @@ use crate::circuit_functions::{
         constants::{ALPHA, BETA, INPUT, TRANS_A, TRANS_B},
         graph_pattern_matching::PatternRegistry,
         onnx_model::{extract_params, get_input_name, get_param_or_default, get_w_or_b},
-        quantization::rescale_array,
+        quantization::{MaybeRescaleParams, maybe_rescale},
         shaping::check_and_apply_transpose_array,
         tensor_ops::load_array_constants_or_get_inputs,
     },
@@ -155,29 +155,18 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         // Add bias (constrained) on top of the core product.
         let result = matrix_addition(api, &core_product, bias_array, LayerKind::Gemm)?;
 
-        // Optional rescaling (quantized fixed-point).
-        let mut out_array = result.into_dyn();
-        if self.is_rescale {
-            let k = usize::try_from(self.scaling).map_err(|_| LayerError::Other {
-                layer: LayerKind::Gemm,
-                msg: "Cannot convert scaling to usize".to_string(),
-            })?;
-            let s = self.source_scale_exponent.checked_sub(1).ok_or_else(|| {
-                LayerError::InvalidParameterValue {
-                    layer: LayerKind::Gemm,
-                    layer_name: self.name.clone(),
-                    param_name: "source_scale_exponent".to_string(),
-                    value: self.source_scale_exponent.to_string(),
-                }
-            })?;
-
-            out_array =
-                rescale_array(api, out_array, k, s, is_relu).map_err(|e| LayerError::Other {
-                    layer: LayerKind::Gemm,
-                    msg: format!("Rescale failed: {e}"),
-                })?;
-        }
-
+        let out_array = maybe_rescale(
+            api,
+            result.into_dyn(),
+            &MaybeRescaleParams {
+                is_rescale: self.is_rescale,
+                scaling_exponent: self.scaling,
+                n_bits: self.source_scale_exponent,
+                is_relu,
+                layer_kind: LayerKind::Gemm,
+                layer_name: self.name.clone(),
+            },
+        )?;
         Ok((self.outputs.clone(), out_array))
     }
 
@@ -211,8 +200,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             (None, None)
         } else {
             (
-                Some(get_w_or_b(&layer_context.w_and_b_map, w_name)?),
-                Some(get_w_or_b(&layer_context.w_and_b_map, b_name)?),
+                Some(get_w_or_b(layer_context.w_and_b_map, w_name)?),
+                Some(get_w_or_b(layer_context.w_and_b_map, b_name)?),
             )
         };
 

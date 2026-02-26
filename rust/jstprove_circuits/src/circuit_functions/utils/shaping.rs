@@ -1,14 +1,70 @@
-/// Standard library imports
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-/// External crate imports
 use ndarray::{Array2, ArrayD, IxDyn};
 
-/// Internal crate imports
 use crate::circuit_functions::{
+    CircuitError,
     layers::{LayerError, LayerKind},
-    utils::{UtilsError, errors::ArrayConversionError, onnx_types::ONNXIO},
+    utils::{UtilsError, constants::AXES, errors::ArrayConversionError, onnx_types::ONNXIO},
 };
+
+/// Resolves negative ONNX axis indices, validates bounds, and deduplicates.
+///
+/// # Errors
+/// Returns [`LayerError::InvalidParameterValue`] if any axis is out of range,
+/// cannot be converted to `usize`, or appears more than once.
+pub fn normalize_axes(
+    axes: &[i64],
+    rank: usize,
+    layer_kind: &LayerKind,
+    layer_name: &str,
+) -> Result<Vec<usize>, CircuitError> {
+    let rank_i64 = i64::try_from(rank).map_err(|_| LayerError::InvalidParameterValue {
+        layer: layer_kind.clone(),
+        layer_name: layer_name.to_string(),
+        param_name: AXES.into(),
+        value: format!("rank {rank} cannot be represented as i64"),
+    })?;
+
+    let mut out: Vec<usize> = Vec::with_capacity(axes.len());
+    let mut seen: HashSet<usize> = HashSet::new();
+
+    for &a in axes {
+        let ax_i64 = if a < 0 { a + rank_i64 } else { a };
+
+        if ax_i64 < 0 || ax_i64 >= rank_i64 {
+            return Err(LayerError::InvalidParameterValue {
+                layer: layer_kind.clone(),
+                layer_name: layer_name.to_string(),
+                param_name: AXES.into(),
+                value: format!("axis {a} out of range for rank {rank}"),
+            }
+            .into());
+        }
+
+        let ax = usize::try_from(ax_i64).map_err(|_| LayerError::InvalidParameterValue {
+            layer: layer_kind.clone(),
+            layer_name: layer_name.to_string(),
+            param_name: AXES.into(),
+            value: format!("axis {a} is not a valid usize index after normalization"),
+        })?;
+
+        if !seen.insert(ax) {
+            return Err(LayerError::InvalidParameterValue {
+                layer: layer_kind.clone(),
+                layer_name: layer_name.to_string(),
+                param_name: AXES.into(),
+                value: format!("duplicate axis {ax} in axes={axes:?}"),
+            }
+            .into());
+        }
+
+        out.push(ax);
+    }
+
+    out.sort_unstable();
+    Ok(out)
+}
 
 /// Flattens an N-dimensional array into a 2D array along a specified axis.
 ///
@@ -447,5 +503,47 @@ mod tests {
     #[test]
     fn reshape_explicit_product_mismatch() {
         assert!(infer_reshape_shape(12, &[3, 3]).is_err());
+    }
+
+    #[test]
+    fn normalize_axes_negative_indices() {
+        let result = normalize_axes(&[-1, -2], 3, &LayerKind::Squeeze, "test").unwrap();
+        assert_eq!(result, vec![1, 2]);
+    }
+
+    #[test]
+    fn normalize_axes_positive_indices() {
+        let result = normalize_axes(&[2, 0], 4, &LayerKind::Squeeze, "test").unwrap();
+        assert_eq!(result, vec![0, 2]);
+    }
+
+    #[test]
+    fn normalize_axes_duplicate_after_normalization() {
+        let err = normalize_axes(&[-1, 2], 3, &LayerKind::Squeeze, "test");
+        assert!(err.is_err());
+        let msg = format!("{}", err.unwrap_err());
+        assert!(msg.contains("duplicate"));
+    }
+
+    #[test]
+    fn normalize_axes_out_of_range_positive() {
+        let err = normalize_axes(&[5], 3, &LayerKind::Squeeze, "test");
+        assert!(err.is_err());
+        let msg = format!("{}", err.unwrap_err());
+        assert!(msg.contains("out of range"));
+    }
+
+    #[test]
+    fn normalize_axes_out_of_range_negative() {
+        let err = normalize_axes(&[-4], 3, &LayerKind::Squeeze, "test");
+        assert!(err.is_err());
+        let msg = format!("{}", err.unwrap_err());
+        assert!(msg.contains("out of range"));
+    }
+
+    #[test]
+    fn normalize_axes_empty() {
+        let result = normalize_axes(&[], 3, &LayerKind::Squeeze, "test").unwrap();
+        assert!(result.is_empty());
     }
 }

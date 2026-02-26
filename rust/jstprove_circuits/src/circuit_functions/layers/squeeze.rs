@@ -9,6 +9,7 @@ use crate::circuit_functions::{
     utils::{
         constants::{AXES, INPUT},
         onnx_model::{extract_params, get_input_name, get_param},
+        shaping::normalize_axes,
         value_array::map_get,
     },
 };
@@ -22,54 +23,6 @@ pub struct SqueezeLayer {
 }
 
 impl SqueezeLayer {
-    fn normalize_axes(&self, axes: &[i64], rank: usize) -> Result<Vec<usize>, CircuitError> {
-        let rank_i64 = i64::try_from(rank).map_err(|_| LayerError::InvalidParameterValue {
-            layer: LayerKind::Squeeze,
-            layer_name: self.name.clone(),
-            param_name: AXES.into(),
-            value: format!("rank {rank} cannot be represented as i64"),
-        })?;
-
-        let mut out: Vec<usize> = Vec::with_capacity(axes.len());
-        let mut seen: HashSet<usize> = HashSet::new();
-
-        for &a in axes {
-            let ax_i64 = if a < 0 { a + rank_i64 } else { a };
-
-            if ax_i64 < 0 || ax_i64 >= rank_i64 {
-                return Err(LayerError::InvalidParameterValue {
-                    layer: LayerKind::Squeeze,
-                    layer_name: self.name.clone(),
-                    param_name: AXES.into(),
-                    value: format!("axis {a} out of range for rank {rank}"),
-                }
-                .into());
-            }
-
-            let ax = usize::try_from(ax_i64).map_err(|_| LayerError::InvalidParameterValue {
-                layer: LayerKind::Squeeze,
-                layer_name: self.name.clone(),
-                param_name: AXES.into(),
-                value: format!("axis {a} is not a valid usize index after normalization"),
-            })?;
-
-            if !seen.insert(ax) {
-                return Err(LayerError::InvalidParameterValue {
-                    layer: LayerKind::Squeeze,
-                    layer_name: self.name.clone(),
-                    param_name: AXES.into(),
-                    value: format!("duplicate axis {ax} in axes={axes:?}"),
-                }
-                .into());
-            }
-
-            out.push(ax);
-        }
-
-        out.sort_unstable();
-        Ok(out)
-    }
-
     fn squeezed_shape(
         &self,
         input_shape: &[usize],
@@ -83,7 +36,7 @@ impl SqueezeLayer {
             return Ok(shape);
         };
 
-        let axes_u = self.normalize_axes(axes_ref.as_slice(), rank)?;
+        let axes_u = normalize_axes(axes_ref.as_slice(), rank, &LayerKind::Squeeze, &self.name)?;
 
         let axes_set: HashSet<usize> = axes_u.iter().copied().collect();
 

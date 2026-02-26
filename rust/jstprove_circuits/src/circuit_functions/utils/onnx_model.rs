@@ -124,7 +124,7 @@ pub fn get_w_or_b<
     I: DeserializeOwned + Clone + FromMsgpackValue + 'static,
     S: ::std::hash::BuildHasher,
 >(
-    w_and_b_map: &HashMap<String, ONNXLayer, S>,
+    w_and_b_map: &HashMap<String, &ONNXLayer, S>,
     weights_input: &String,
 ) -> Result<ArrayD<I>, UtilsError> {
     let weights_tensor_option = w_and_b_map
@@ -174,7 +174,7 @@ pub fn get_optional_w_or_b(
     layer_context: &BuildLayerContext,
     input: &std::string::String,
 ) -> Result<Option<ArrayD<i64>>, UtilsError> {
-    match get_w_or_b(&layer_context.w_and_b_map, input) {
+    match get_w_or_b(layer_context.w_and_b_map, input) {
         Ok(arr) => Ok(Some(arr.into_dyn())),
         Err(UtilsError::MissingTensor { .. }) => Ok(None), // initializer genuinely missing
         Err(e) => Err(e),                                  // propogates other error

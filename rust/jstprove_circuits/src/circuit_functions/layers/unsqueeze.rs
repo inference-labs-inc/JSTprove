@@ -9,6 +9,7 @@ use crate::circuit_functions::{
     utils::{
         constants::{AXES, INPUT},
         onnx_model::{extract_params, get_input_name, get_param},
+        shaping::normalize_axes,
     },
 };
 
@@ -21,60 +22,11 @@ pub struct UnsqueezeLayer {
 }
 
 impl UnsqueezeLayer {
-    fn normalize_axes(&self, rank_out: usize) -> Result<Vec<usize>, CircuitError> {
-        let mut out: Vec<usize> = Vec::with_capacity(self.axes.len());
-        let mut seen: HashSet<usize> = HashSet::new();
-
-        for &a in &self.axes {
-            let rank_i64 =
-                i64::try_from(rank_out).map_err(|_| LayerError::InvalidParameterValue {
-                    layer: LayerKind::Unsqueeze,
-                    layer_name: self.name.clone(),
-                    param_name: AXES.into(),
-                    value: format!("rank {rank_out} cannot be represented as i64"),
-                })?;
-
-            let ax_i64 = if a < 0 { a + rank_i64 } else { a };
-
-            if ax_i64 < 0 || ax_i64 >= rank_i64 {
-                return Err(LayerError::InvalidParameterValue {
-                    layer: LayerKind::Unsqueeze,
-                    layer_name: self.name.clone(),
-                    param_name: AXES.into(),
-                    value: format!("axis {a} out of range for rank {rank_out}"),
-                }
-                .into());
-            }
-
-            let ax = usize::try_from(ax_i64).map_err(|_| LayerError::InvalidParameterValue {
-                layer: LayerKind::Unsqueeze,
-                layer_name: self.name.clone(),
-                param_name: AXES.into(),
-                value: format!("axis {a} is not a valid usize index after normalization"),
-            })?;
-
-            if !seen.insert(ax) {
-                return Err(LayerError::InvalidParameterValue {
-                    layer: LayerKind::Unsqueeze,
-                    layer_name: self.name.clone(),
-                    param_name: AXES.into(),
-                    value: format!("duplicate axis {ax} in axes={:?}", self.axes),
-                }
-                .into());
-            }
-
-            out.push(ax);
-        }
-
-        out.sort_unstable();
-        Ok(out)
-    }
-
     fn unsqueezed_shape(&self, input_shape: &[usize]) -> Result<Vec<usize>, CircuitError> {
         let rank_in = input_shape.len();
         let rank_out = rank_in + self.axes.len();
 
-        let axes_u = self.normalize_axes(rank_out)?;
+        let axes_u = normalize_axes(&self.axes, rank_out, &LayerKind::Unsqueeze, &self.name)?;
         let axes_set: HashSet<usize> = axes_u.iter().copied().collect();
 
         let mut out_shape: Vec<usize> = Vec::with_capacity(rank_out);
