@@ -150,7 +150,8 @@ fn infer_conv(
         let in_dim = input_shape[2 + i];
         let pad = pads[i] + pads[spatial_dims + i];
         let effective_kernel = (kernel_shape[i] - 1) * dilations[i] + 1;
-        let out_dim = (in_dim + pad - effective_kernel) / strides[i] + 1;
+        let numerator = in_dim + pad;
+        let out_dim = numerator.saturating_sub(effective_kernel) / strides[i] + 1;
         out_shape.push(out_dim);
     }
 
@@ -232,7 +233,8 @@ fn infer_maxpool(
     for i in 0..spatial_dims {
         let in_dim = input_shape[2 + i];
         let pad = pads[i] + pads[spatial_dims + i];
-        let out_dim = (in_dim + pad - kernel[i]) / strides[i] + 1;
+        let total = in_dim + pad;
+        let out_dim = total.saturating_sub(kernel[i]) / strides[i] + 1;
         out_shape.push(out_dim);
     }
 
@@ -243,7 +245,7 @@ fn infer_maxpool(
         .collect())
 }
 
-fn broadcast_shapes(a: &[usize], b: &[usize]) -> Vec<usize> {
+fn broadcast_shapes(a: &[usize], b: &[usize]) -> Result<Vec<usize>> {
     let max_rank = a.len().max(b.len());
     let mut result = Vec::with_capacity(max_rank);
 
@@ -258,9 +260,17 @@ fn broadcast_shapes(a: &[usize], b: &[usize]) -> Vec<usize> {
         } else {
             b[i - (max_rank - b.len())]
         };
-        result.push(da.max(db));
+        if da == db {
+            result.push(da);
+        } else if da == 1 {
+            result.push(db);
+        } else if db == 1 {
+            result.push(da);
+        } else {
+            bail!("incompatible broadcast dimensions at axis {i}: {da} vs {db}");
+        }
     }
-    result
+    Ok(result)
 }
 
 fn infer_broadcast_binary(
@@ -271,7 +281,9 @@ fn infer_broadcast_binary(
     let b = layer.inputs.get(1).and_then(|n| get_shape(shapes, n));
 
     let out_shape = match (a, b) {
-        (Some(sa), Some(sb)) => broadcast_shapes(sa, sb),
+        (Some(sa), Some(sb)) => {
+            broadcast_shapes(sa, sb).map_err(|e| anyhow::anyhow!("layer {}: {e}", layer.name))?
+        }
         (Some(s), None) | (None, Some(s)) => s.clone(),
         (None, None) => bail!("layer {}: binary op has no input shapes", layer.name),
     };
@@ -297,14 +309,7 @@ fn infer_reshape(
         initializers
             .get(name)
             .map(|td| td.as_i64_vec())
-            .or_else(|| {
-                get_shape(shapes, name).map(|_s| {
-                    initializers
-                        .get(name)
-                        .map(|td| td.as_i64_vec())
-                        .unwrap_or_default()
-                })
-            })
+            .or_else(|| get_shape(shapes, name).map(|s| s.iter().map(|&d| d as i64).collect()))
     });
 
     let target_shape = if let Some(shape_vals) = shape_data {
@@ -320,8 +325,10 @@ fn infer_reshape(
 
     let mut minus_one_idx: Option<usize> = None;
     let mut known_product: usize = 1;
+    let mut minus_one_count: usize = 0;
     for (i, &d) in target_shape.iter().enumerate() {
         if d == -1 {
+            minus_one_count += 1;
             minus_one_idx = Some(i);
         } else if d == 0 {
             let dim = input_shape.get(i).copied().unwrap_or(1);
@@ -329,6 +336,13 @@ fn infer_reshape(
         } else {
             known_product *= d as usize;
         }
+    }
+
+    if minus_one_count > 1 {
+        bail!(
+            "layer {}: Reshape target shape has multiple -1 dimensions ({minus_one_count})",
+            layer.name
+        );
     }
 
     let mut out_shape: Vec<usize> = target_shape
@@ -346,9 +360,13 @@ fn infer_reshape(
         .collect();
 
     if let Some(idx) = minus_one_idx {
-        if known_product > 0 {
-            out_shape[idx] = input_size / known_product;
+        if known_product == 0 || input_size % known_product != 0 {
+            bail!(
+                "layer {}: Reshape incompatible sizes: input_size={input_size} known_product={known_product}",
+                layer.name
+            );
         }
+        out_shape[idx] = input_size / known_product;
     }
 
     Ok(layer
@@ -468,16 +486,27 @@ mod tests {
 
     #[test]
     fn broadcast_same_rank() {
-        assert_eq!(broadcast_shapes(&[1, 3, 1], &[2, 1, 4]), vec![2, 3, 4]);
+        assert_eq!(
+            broadcast_shapes(&[1, 3, 1], &[2, 1, 4]).unwrap(),
+            vec![2, 3, 4]
+        );
     }
 
     #[test]
     fn broadcast_different_rank() {
-        assert_eq!(broadcast_shapes(&[3, 1], &[1, 2, 1, 4]), vec![1, 2, 3, 4]);
+        assert_eq!(
+            broadcast_shapes(&[3, 1], &[1, 2, 1, 4]).unwrap(),
+            vec![1, 2, 3, 4]
+        );
     }
 
     #[test]
     fn broadcast_scalar() {
-        assert_eq!(broadcast_shapes(&[], &[2, 3]), vec![2, 3]);
+        assert_eq!(broadcast_shapes(&[], &[2, 3]).unwrap(), vec![2, 3]);
+    }
+
+    #[test]
+    fn broadcast_incompatible() {
+        assert!(broadcast_shapes(&[2, 3], &[2, 4]).is_err());
     }
 }

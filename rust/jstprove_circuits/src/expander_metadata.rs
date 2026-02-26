@@ -150,10 +150,8 @@ fn build_wandb(quantized: &QuantizedModel, all_shapes: &HashMap<String, Vec<usiz
             let tensor_value = nest_flat_data(&tensor_data, &shape);
 
             let mut shape_map = HashMap::new();
-            shape_map.insert(name.clone(), shape.clone());
-            if let Some(s) = all_shapes.get(name) {
-                shape_map.insert(name.clone(), s.clone());
-            }
+            let resolved_shape = all_shapes.get(name).cloned().unwrap_or(shape);
+            shape_map.insert(name.clone(), resolved_shape);
 
             layers.push(ONNXLayer {
                 id,

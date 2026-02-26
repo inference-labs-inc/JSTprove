@@ -128,6 +128,11 @@ fn main() {
         }
     }
 
+    if has_onnx && is_remainder {
+        eprintln!("Error: --onnx cannot be used with the remainder backend.");
+        std::process::exit(1);
+    }
+
     #[cfg(feature = "remainder")]
     if has_onnx && !is_remainder {
         let onnx_path_str = get_arg(&matches, "onnx").unwrap();
