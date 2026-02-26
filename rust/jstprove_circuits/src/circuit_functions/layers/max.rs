@@ -18,8 +18,7 @@ use crate::circuit_functions::{
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
-        graph_pattern_matching::PatternRegistry,
-        onnx_model::{extract_params_and_expected_shape, get_input_name, get_optional_w_or_b},
+        onnx_model::{get_input_name, get_optional_w_or_b},
         tensor_ops::{broadcast_two_arrays, load_array_constants_or_get_inputs},
     },
 };
@@ -30,17 +29,12 @@ use crate::circuit_functions::gadgets::{
 
 // -------- Struct --------
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct MaxLayer {
-    name: String,
-    optimization_pattern: PatternRegistry,
-    input_shape: Vec<usize>,
     inputs: Vec<String>,
     outputs: Vec<String>,
     initializer_a: Option<ArrayD<i64>>,
     initializer_b: Option<ArrayD<i64>>,
-    /// s such that range for signed fixed-point values is roughly [-2^s, 2^s - 1]
     shift_exponent: usize,
 }
 
@@ -132,19 +126,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxLayer {
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
-        optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
+        _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
         _is_rescale: bool,
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        // The same helper used by AddLayer to infer expected shapes
-        let (_params, expected_shape) = extract_params_and_expected_shape(layer_context, layer)
-            .map_err(|e| LayerError::Other {
-                layer: LayerKind::Max,
-                msg: format!("extract_params_and_expected_shape failed: {e}"),
-            })?;
-
-        // Optional initializers for A and B (same pattern as AddLayer)
         let a_input_name = layer
             .inputs
             .first()
@@ -173,9 +159,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxLayer {
             })?;
 
         let max_layer = Self {
-            name: layer.name.clone(),
-            optimization_pattern,
-            input_shape: expected_shape.clone(),
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
             initializer_a,

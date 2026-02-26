@@ -66,18 +66,15 @@ use crate::circuit_functions::{
 // STRUCT: GemmLayer
 // -----------------------------------------------------------------------------
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct GemmLayer {
     name: String,
-    index: usize,
     weights: Option<ArrayD<i64>>,
     bias: Option<ArrayD<i64>>,
     is_rescale: bool,
     source_scale_exponent: usize,
     optimization_pattern: PatternRegistry,
     scaling: u64,
-    input_shape: Vec<usize>,
     alpha: f32,
     beta: f32,
     transa: usize,
@@ -191,14 +188,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
         optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
         is_rescale: bool,
-        index: usize,
+        _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer)
-            .map_err(|e| LayerError::Other {
+        let (params, _) = extract_params_and_expected_shape(layer_context, layer).map_err(|e| {
+            LayerError::Other {
                 layer: LayerKind::Gemm,
                 msg: format!("extract_params_and_expected_shape failed: {e}"),
-            })?;
+            }
+        })?;
         let freivalds_reps = circuit_params.freivalds_reps;
         if freivalds_reps == 0 {
             return Err(LayerError::InvalidParameterValue {
@@ -224,14 +222,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
 
         let gemm = Self {
             name: layer.name.clone(),
-            index,
             weights,
             bias,
             is_rescale,
             source_scale_exponent: layer_context.n_bits_for(&layer.name),
             optimization_pattern,
             scaling: circuit_params.scale_exponent.into(),
-            input_shape: expected_shape.clone(),
             alpha: get_param_or_default(&layer.name, ALPHA, &params, Some(&1.0))?,
             beta: get_param_or_default(&layer.name, BETA, &params, Some(&1.0))?,
             transa: get_param_or_default(&layer.name, TRANS_A, &params, Some(&0))?,

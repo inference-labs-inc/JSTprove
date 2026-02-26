@@ -16,20 +16,14 @@ use crate::circuit_functions::{
     CircuitError,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
-        constants::INPUT,
-        graph_pattern_matching::PatternRegistry,
-        onnx_model::{extract_params_and_expected_shape, get_input_name},
+        constants::INPUT, graph_pattern_matching::PatternRegistry, onnx_model::get_input_name,
     },
 };
 
-// -------- Struct --------
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct MulLayer {
     name: String,
-    // weights: ArrayD<i64>, //This should be an optional field
     optimization_pattern: PatternRegistry,
-    input_shape: Vec<usize>,
     inputs: Vec<String>,
     outputs: Vec<String>,
     initializer_a: Option<ArrayD<i64>>,
@@ -101,19 +95,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MulLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let (_params, expected_shape) = extract_params_and_expected_shape(layer_context, layer)
-            .map_err(|e| LayerError::Other {
-                layer: LayerKind::Mul,
-                msg: format!("extract_params_and_expected_shape failed: {e}"),
-            })?;
-
         let initializer_a = get_optional_w_or_b(layer_context, &layer.inputs[0])?;
         let initializer_b = get_optional_w_or_b(layer_context, &layer.inputs[1])?;
 
         let mul = Self {
             name: layer.name.clone(),
             optimization_pattern,
-            input_shape: expected_shape.clone(),
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
             initializer_a,

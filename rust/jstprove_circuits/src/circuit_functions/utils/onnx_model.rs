@@ -146,18 +146,6 @@ pub fn get_w_or_b<
                 _ => tensor_val.clone(),
             };
 
-            eprintln!(
-                "Attempting to parse tensor for '{}': type = {}",
-                weights_input,
-                match &inner_value {
-                    Value::Array(_) => "Array",
-                    Value::Map(_) => "Map",
-                    Value::Integer(_) => "Integer",
-                    Value::F32(_) | Value::F64(_) => "Float",
-                    Value::String(_) => "String",
-                    _ => "Other",
-                }
-            );
             value_to_arrayd(&inner_value).map_err(UtilsError::ArrayConversionError)
         }
         None => Err(UtilsError::MissingTensor {

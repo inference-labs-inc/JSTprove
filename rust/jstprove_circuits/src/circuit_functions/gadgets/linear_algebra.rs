@@ -26,57 +26,6 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 use crate::circuit_functions::layers::{LayerError, LayerKind};
 
 // -----------------------------------------------------------------------------
-// FUNCTION: dot
-// -----------------------------------------------------------------------------
-//
-// Computes the dot product of two 1D ArrayD<&Variable> views using circuit
-// constraints.
-//
-// Arguments:
-//   - api: circuit builder
-//   - vector_a: first input vector
-//   - vector_b: second input vector (must have the same shape)
-//
-// Returns:
-//   - Ok(Variable) holding the dot product
-//   - Err(LayerError) if shapes are incompatible or not 1D
-//
-// The implementation is a simple sum over k of (a[k] * b[k]).
-/// # Errors
-/// Returns `LayerError::InvalidShape` if the inputs are not 1D vectors or their lengths differ.
-#[allow(dead_code)]
-pub fn dot<C: Config, Builder: RootAPI<C>>(
-    api: &mut Builder,
-    vector_a: &ArrayD<&Variable>,
-    vector_b: &ArrayD<&Variable>,
-    layer_type: LayerKind,
-) -> Result<Variable, LayerError> {
-    if vector_a.shape() != vector_b.shape() {
-        return Err(LayerError::InvalidShape {
-            layer: layer_type,
-            msg: format!(
-                "Dot product requires two vectors of the same length. Got {:?}, {:?}",
-                vector_a.shape(),
-                vector_b.shape()
-            ),
-        });
-    }
-    if vector_a.ndim() != 1 {
-        return Err(LayerError::InvalidShape {
-            layer: layer_type,
-            msg: format!("Dot product requires 1D vectors. Got {}", vector_a.ndim()),
-        });
-    }
-
-    let mut row_col_product: Variable = api.constant(0);
-    for k in 0..vector_a.len() {
-        let element_product = api.mul(vector_a[k], vector_b[k]);
-        row_col_product = api.add(row_col_product, element_product);
-    }
-    Ok(row_col_product)
-}
-
-// -----------------------------------------------------------------------------
 // FUNCTION: matrix_addition
 // -----------------------------------------------------------------------------
 //

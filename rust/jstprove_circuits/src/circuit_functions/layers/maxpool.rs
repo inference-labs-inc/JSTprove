@@ -30,11 +30,8 @@ use crate::circuit_functions::gadgets::{
     LogupRangeCheckContext, ShiftRangeContext, constrained_max,
 };
 
-// -------- Struct --------
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct MaxPoolLayer {
-    name: String,
     kernel_shape: Vec<usize>,
     strides: Vec<usize>,
     dilation: Vec<usize>,
@@ -112,7 +109,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
         let default_strides: Vec<usize> = vec![1; spatial_rank];
 
         let maxpool = Self {
-            name: layer.name.clone(),
             kernel_shape,
             strides: get_param_or_default(&layer.name, STRIDES, &params, Some(&default_strides))?,
             dilation: get_param_or_default(

@@ -5,14 +5,7 @@ use crate::circuit_functions::utils::{PatternError, onnx_types::ONNXLayer};
 use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, EnumIter};
 
-/*
-
-Pattern matching of layers
-
-*/
-
 type PatternMatchResult = Result<Option<(PatternRegistry, Vec<String>, Vec<String>)>, PatternError>;
-// type PatternMatchResult = Result<Option<(GraphPattern, Vec<String>, Vec<String>)>, PatternError>;
 /// Attempts to optimize a sequence of layers by skipping redundant ones.
 ///
 /// Examines the provided `optimization_match` for consistent patterns and validates
@@ -65,9 +58,6 @@ pub fn optimization_skip_layers(
 
                 let first_layer = layers.first().cloned().ok_or(PatternError::EmptyMatch)?;
 
-                // Assert outputs match
-                eprintln!("{:?}", first_layer.outputs);
-                eprintln!("{outputs:?}");
                 if !first_layer.outputs.iter().all(|o| outputs.contains(o)) {
                     return Err(PatternError::OutputMismatch {
                         expected: outputs.to_owned(),
@@ -301,9 +291,6 @@ impl PatternMatcher {
         &self,
         layers: &[ONNXLayer],
     ) -> Result<HashMap<std::string::String, Vec<OptimizationMatch>>, PatternError> {
-        use std::time::SystemTime;
-        let now = SystemTime::now();
-
         let mut all_matches: HashMap<String, Vec<OptimizationMatch>> = HashMap::new();
 
         for pat_enum in PatternRegistry::iter() {
@@ -324,21 +311,6 @@ impl PatternMatcher {
                     });
             }
         }
-        eprintln!("{all_matches:?}");
-
-        match now.elapsed() {
-            Ok(elapsed) => eprintln!(
-                "Model pattern match took: {} nano seconds",
-                elapsed.as_nanos()
-            ),
-            Err(e) => eprintln!("Error calculating time: {e:?}"),
-        }
         Ok(all_matches)
     }
 }
-
-/*
-
-Pattern matching of layers
-
-*/
