@@ -1249,7 +1249,14 @@ fn write_circuit_bundle(
     bundle: &CompiledCircuit,
     compress: bool,
 ) -> Result<(), RunError> {
-    let tmp_path = format!("{path}.tmp");
+    let tmp_path = format!(
+        "{path}.tmp.{}.{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
     jstprove_io::serialize_to_file(bundle, Path::new(&tmp_path), compress).map_err(|e| {
         let _ = std::fs::remove_file(&tmp_path);
         jstprove_io_to_run_error(e, path, true)
