@@ -2,6 +2,8 @@ use jstprove_circuits::circuit_functions::utils::onnx_model::{
     Architecture, Backend, CircuitParams, WANDB,
 };
 
+#[cfg(feature = "remainder")]
+use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::FileReader;
 use jstprove_circuits::runner::main_runner::{
     get_arg, get_args, handle_args, try_load_metadata_from_circuit,
@@ -114,6 +116,7 @@ fn main() {
 
     let has_meta = matches.get_one::<String>("meta").is_some();
     let has_arch = matches.get_one::<String>("arch").is_some();
+    let has_onnx = matches.get_one::<String>("onnx").is_some();
 
     if !is_remainder && !cli_backend_explicit {
         if let Some(circuit_path) = matches.get_one::<String>("circuit_path") {
@@ -125,12 +128,33 @@ fn main() {
         }
     }
 
-    if !is_remainder && needs_full && (!has_meta || !has_arch) {
-        eprintln!("Error: command '{cmd_type}' requires --meta and --arch arguments.");
+    #[cfg(feature = "remainder")]
+    if has_onnx && !is_remainder {
+        let onnx_path_str = get_arg(&matches, "onnx").unwrap();
+        let onnx_path = std::path::Path::new(&onnx_path_str);
+        match expander_metadata::generate_from_onnx(onnx_path) {
+            Ok(meta) => {
+                OnnxContext::set_all(meta.architecture, meta.circuit_params, Some(meta.wandb));
+            }
+            Err(e) => {
+                eprintln!("Error: ONNX metadata generation failed: {e:#}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    #[cfg(not(feature = "remainder"))]
+    if has_onnx {
+        eprintln!("Error: --onnx requires the 'remainder' feature to be enabled.");
         std::process::exit(1);
     }
 
-    if !is_remainder {
+    if !is_remainder && needs_full && !has_onnx && (!has_meta || !has_arch) {
+        eprintln!("Error: command '{cmd_type}' requires --onnx or --meta and --arch arguments.");
+        std::process::exit(1);
+    }
+
+    if !is_remainder && !has_onnx {
         if has_meta {
             set_onnx_context(&matches, needs_full);
             if let Ok(params) = OnnxContext::get_params() {

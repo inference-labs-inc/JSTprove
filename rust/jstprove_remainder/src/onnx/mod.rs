@@ -3,6 +3,7 @@ pub mod graph;
 pub mod ops;
 pub mod parser;
 pub mod quantizer;
+pub mod shape_inference;
 
 #[allow(clippy::all, clippy::pedantic)]
 #[allow(non_camel_case_types)]

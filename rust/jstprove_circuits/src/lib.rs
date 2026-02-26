@@ -28,6 +28,8 @@
 #![feature(min_specialization)]
 
 pub mod circuit_functions;
+#[cfg(feature = "remainder")]
+pub mod expander_metadata;
 pub mod io;
 pub mod onnx;
 pub mod runner;

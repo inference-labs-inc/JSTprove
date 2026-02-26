@@ -64,10 +64,13 @@ pub fn quantize_model(mut graph: LayerGraph, config: &ScaleConfig) -> Result<Qua
         if layer.op_type == OpType::BatchNormalization {
             fold_batchnorm_params(layer)?;
         }
-        quantize_layer_weights(layer, alpha)?;
     }
 
     let n_bits_config = compute_bounds(&graph, config)?;
+
+    for layer in &mut graph.layers {
+        quantize_layer_weights(layer, alpha)?;
+    }
 
     for layer in &mut graph.layers {
         layer.n_bits = n_bits_config.get(&layer.name).copied();
@@ -218,44 +221,33 @@ fn compute_bounds(graph: &LayerGraph, config: &ScaleConfig) -> Result<HashMap<St
     let mut n_bits_config = HashMap::new();
 
     for name in &graph.input_names {
-        bounds.insert(name.clone(), alpha as f64);
+        bounds.insert(name.clone(), 1.0);
     }
 
     for layer in graph.iter_topo() {
-        let bound = compute_layer_bound(layer, &bounds, alpha)?;
+        let bound = compute_layer_bound(layer, &bounds)?;
 
-        let stored_bound = if layer.needs_rescale || is_range_check_op(layer.op_type) {
+        if layer.needs_rescale || is_range_check_op(layer.op_type) {
             let n_bits = compute_n_bits(alpha, bound);
             n_bits_config.insert(layer.name.clone(), n_bits);
-            if layer.needs_rescale {
-                bound / alpha as f64
-            } else {
-                bound
-            }
-        } else {
-            bound
-        };
+        }
 
         for out_name in &layer.outputs {
-            bounds.insert(out_name.clone(), stored_bound);
+            bounds.insert(out_name.clone(), bound);
         }
     }
 
     Ok(n_bits_config)
 }
 
-fn compute_layer_bound(
-    layer: &LayerNode,
-    prev_bounds: &HashMap<String, f64>,
-    alpha: i64,
-) -> Result<f64> {
+fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) -> Result<f64> {
     let get_input_bound = |idx: usize| -> f64 {
         layer
             .inputs
             .get(idx)
             .and_then(|name| prev_bounds.get(name))
             .copied()
-            .unwrap_or(alpha as f64)
+            .unwrap_or(1.0)
     };
 
     let get_bias_bound = |input_idx: usize| -> f64 {
@@ -264,8 +256,8 @@ fn compute_layer_bound(
             .get(input_idx)
             .and_then(|name| layer.weights.get(name))
             .map(|b| {
-                let vals = b.as_i64_vec();
-                vals.iter().map(|v| v.unsigned_abs()).max().unwrap_or(0) as f64
+                let vals = b.as_f64_vec();
+                vals.iter().map(|v| v.abs()).fold(0.0_f64, f64::max)
             })
             .unwrap_or(0.0)
     };
@@ -285,7 +277,7 @@ fn compute_layer_bound(
                 name,
             )
         })?;
-        let vals = w.as_i64_vec();
+        let vals = w.as_f64_vec();
         anyhow::ensure!(
             out_channels > 0 && !vals.is_empty(),
             "layer {}: weight tensor '{}' has out_channels={} vals.len()={}",
@@ -306,8 +298,8 @@ fn compute_layer_bound(
             .map(|oc| {
                 vals[oc * per_channel..(oc + 1) * per_channel]
                     .iter()
-                    .map(|v| v.unsigned_abs())
-                    .sum::<u64>() as f64
+                    .map(|v| v.abs())
+                    .sum::<f64>()
             })
             .fold(0.0_f64, f64::max))
     };
@@ -360,7 +352,7 @@ fn compute_layer_bound(
             let weight_l1 = if trans_b {
                 max_output_channel_l1(1, n_out)?
             } else {
-                let vals = w.as_i64_vec();
+                let vals = w.as_f64_vec();
                 if d.len() >= 2 {
                     let (rows, cols) = (d[0], d[1]);
                     anyhow::ensure!(
@@ -369,14 +361,10 @@ fn compute_layer_bound(
                         layer.name, vals.len(), rows, cols, rows * cols,
                     );
                     (0..cols)
-                        .map(|c| {
-                            (0..rows)
-                                .map(|r| vals[r * cols + c].unsigned_abs())
-                                .sum::<u64>() as f64
-                        })
+                        .map(|c| (0..rows).map(|r| vals[r * cols + c].abs()).sum::<f64>())
                         .fold(0.0_f64, f64::max)
                 } else {
-                    vals.iter().map(|v| v.unsigned_abs()).sum::<u64>() as f64
+                    vals.iter().map(|v| v.abs()).sum::<f64>()
                 }
             };
             let bias_bound = get_bias_bound(2);
@@ -389,8 +377,8 @@ fn compute_layer_bound(
                 .get(1)
                 .and_then(|name| layer.weights.get(name))
                 .map(|w| {
-                    let vals = w.as_i64_vec();
-                    vals.iter().map(|v| v.unsigned_abs()).max().unwrap_or(0) as f64
+                    let vals = w.as_f64_vec();
+                    vals.iter().map(|v| v.abs()).fold(0.0_f64, f64::max)
                 })
                 .unwrap_or(1.0);
             let bias_bound = get_bias_bound(2);
@@ -422,7 +410,7 @@ fn compute_layer_bound(
             let m_in = get_input_bound(0);
             Ok(m_in)
         }
-        OpType::Constant => Ok(alpha as f64),
+        OpType::Constant => Ok(1.0),
     }
 }
 
