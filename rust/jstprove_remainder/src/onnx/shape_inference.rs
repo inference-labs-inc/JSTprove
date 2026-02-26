@@ -30,7 +30,7 @@ pub fn infer_all_shapes(
             .iter()
             .map(|&d| if d <= 0 { 1 } else { d as usize })
             .collect();
-        if !shape.is_empty() && shape.iter().all(|&d| d > 0) {
+        if !shape.is_empty() {
             shapes.insert(io.name.clone(), shape);
         }
     }
@@ -698,5 +698,133 @@ mod tests {
     #[test]
     fn broadcast_incompatible() {
         assert!(broadcast_shapes(&[2, 3], &[2, 4]).is_err());
+    }
+
+    fn make_layer(
+        op_type: OpType,
+        inputs: Vec<&str>,
+        outputs: Vec<&str>,
+        attrs: HashMap<String, AttrValue>,
+    ) -> LayerNode {
+        LayerNode {
+            id: 0,
+            name: "test_layer".to_string(),
+            op_type,
+            inputs: inputs.into_iter().map(String::from).collect(),
+            outputs: outputs.into_iter().map(String::from).collect(),
+            weights: HashMap::new(),
+            attributes: attrs,
+            output_shape: vec![],
+            needs_rescale: false,
+            n_bits: None,
+        }
+    }
+
+    #[test]
+    fn conv_1d_kernel_from_weights() {
+        let mut shapes = HashMap::new();
+        shapes.insert("x".to_string(), vec![1, 3, 10]);
+        shapes.insert("w".to_string(), vec![8, 3, 3]);
+        let layer = make_layer(OpType::Conv, vec!["x", "w"], vec!["y"], HashMap::new());
+        let result = infer_conv(&layer, &shapes).unwrap();
+        assert_eq!(result[0].1, vec![1, 8, 8]);
+    }
+
+    #[test]
+    fn conv_1d_with_padding() {
+        let mut shapes = HashMap::new();
+        shapes.insert("x".to_string(), vec![1, 1, 5]);
+        shapes.insert("w".to_string(), vec![1, 1, 3]);
+        let mut attrs = HashMap::new();
+        attrs.insert("pads".to_string(), AttrValue::Ints(vec![1, 1]));
+        let layer = make_layer(OpType::Conv, vec!["x", "w"], vec!["y"], attrs);
+        let result = infer_conv(&layer, &shapes).unwrap();
+        assert_eq!(result[0].1, vec![1, 1, 5]);
+    }
+
+    #[test]
+    fn reshape_allowzero_literal() {
+        let input_shape = vec![0, 3, 4];
+        let mut attrs = HashMap::new();
+        attrs.insert("allowzero".to_string(), AttrValue::Int(1));
+        let layer = make_layer(OpType::Reshape, vec!["x", "shape"], vec!["y"], attrs);
+        let inits = HashMap::new();
+        let mut consts = HashMap::new();
+        consts.insert(
+            "shape".to_string(),
+            TensorData {
+                name: "shape".to_string(),
+                dims: vec![2],
+                data_type: 7,
+                float_data: vec![],
+                int_data: vec![0, 12],
+            },
+        );
+        let result = infer_reshape(&layer, Some(&input_shape), &inits, &consts).unwrap();
+        assert_eq!(result[0].1, vec![0, 12]);
+    }
+
+    #[test]
+    fn reshape_allowzero_with_minus_one_rejected() {
+        let input_shape = vec![2, 3];
+        let mut attrs = HashMap::new();
+        attrs.insert("allowzero".to_string(), AttrValue::Int(1));
+        let layer = make_layer(OpType::Reshape, vec!["x", "shape"], vec!["y"], attrs);
+        let inits = HashMap::new();
+        let mut consts = HashMap::new();
+        consts.insert(
+            "shape".to_string(),
+            TensorData {
+                name: "shape".to_string(),
+                dims: vec![2],
+                data_type: 7,
+                float_data: vec![],
+                int_data: vec![0, -1],
+            },
+        );
+        assert!(infer_reshape(&layer, Some(&input_shape), &inits, &consts).is_err());
+    }
+
+    #[test]
+    fn flatten_axis_zero() {
+        let input_shape = vec![2, 3, 4];
+        let layer = make_layer(OpType::Flatten, vec!["x"], vec!["y"], HashMap::new());
+        let mut attrs = HashMap::new();
+        attrs.insert("axis".to_string(), AttrValue::Int(0));
+        let layer = LayerNode {
+            attributes: attrs,
+            ..layer
+        };
+        let result = infer_flatten(&layer, Some(&input_shape)).unwrap();
+        assert_eq!(result[0].1, vec![1, 24]);
+    }
+
+    #[test]
+    fn flatten_axis_eq_rank() {
+        let input_shape = vec![2, 3, 4];
+        let mut attrs = HashMap::new();
+        attrs.insert("axis".to_string(), AttrValue::Int(3));
+        let layer = make_layer(OpType::Flatten, vec!["x"], vec!["y"], attrs);
+        let result = infer_flatten(&layer, Some(&input_shape)).unwrap();
+        assert_eq!(result[0].1, vec![24, 1]);
+    }
+
+    #[test]
+    fn flatten_negative_axis() {
+        let input_shape = vec![2, 3, 4];
+        let mut attrs = HashMap::new();
+        attrs.insert("axis".to_string(), AttrValue::Int(-1));
+        let layer = make_layer(OpType::Flatten, vec!["x"], vec!["y"], attrs);
+        let result = infer_flatten(&layer, Some(&input_shape)).unwrap();
+        assert_eq!(result[0].1, vec![6, 4]);
+    }
+
+    #[test]
+    fn flatten_axis_out_of_range() {
+        let input_shape = vec![2, 3];
+        let mut attrs = HashMap::new();
+        attrs.insert("axis".to_string(), AttrValue::Int(5));
+        let layer = make_layer(OpType::Flatten, vec!["x"], vec!["y"], attrs);
+        assert!(infer_flatten(&layer, Some(&input_shape)).is_err());
     }
 }
