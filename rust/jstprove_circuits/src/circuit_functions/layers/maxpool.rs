@@ -455,13 +455,13 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
 
                     for h in (hstart..hend).step_by(dilation_h) {
                         let h_usize = match usize::try_from(h) {
-                            Ok(val) if h < 0 || val < height => val,
+                            Ok(val) if val < height => val,
                             _ => continue,
                         };
 
                         for w in (wstart..wend).step_by(dilation_w) {
                             let w_usize = match usize::try_from(w) {
-                                Ok(val) if w < 0 || val < width => val,
+                                Ok(val) if val < width => val,
                                 _ => continue,
                             };
 
