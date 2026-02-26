@@ -2214,6 +2214,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "jstprove-onnx"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "prost",
+ "prost-build",
+ "serde",
+ "tempfile",
+]
+
+[[package]]
 name = "jstprove-remainder"
 version = "0.1.0"
 dependencies = [
@@ -2225,10 +2236,9 @@ dependencies = [
  "hyrax",
  "itertools 0.14.0",
  "jstprove-io",
+ "jstprove-onnx",
  "ligero",
  "ndarray 0.15.6",
- "prost",
- "prost-build",
  "rayon",
  "remainder",
  "rmp-serde",
@@ -2255,6 +2265,7 @@ dependencies = [
  "expander_compiler",
  "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
  "jstprove-io",
+ "jstprove-onnx",
  "jstprove-remainder",
  "lazy_static",
  "ndarray 0.16.1",

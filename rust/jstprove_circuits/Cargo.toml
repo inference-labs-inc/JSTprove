@@ -28,12 +28,13 @@ serde_bytes = "0.11"
 num-bigint = "0.4"
 num-traits = "0.2"
 jstprove-io = { path = "../jstprove_io" }
+jstprove-onnx = { path = "../jstprove_onnx" }
 jstprove-remainder = { path = "../jstprove_remainder", optional = true }
-anyhow = { version = "1", optional = true }
+anyhow = "1"
 
 [features]
 peak-mem = ["peakmem-alloc"]
-remainder = ["dep:jstprove-remainder", "dep:anyhow"]
+remainder = ["dep:jstprove-remainder"]
 
 [dev-dependencies]
 sha2 = "0.10.8"

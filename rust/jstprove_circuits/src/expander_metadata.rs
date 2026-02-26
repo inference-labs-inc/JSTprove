@@ -4,10 +4,10 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use rmpv::Value;
 
-use jstprove_remainder::onnx::graph::{LayerGraph, LayerNode, OpType};
-use jstprove_remainder::onnx::parser::{self, AttrValue, ParsedModel};
-use jstprove_remainder::onnx::quantizer::{self, QuantizedModel, ScaleConfig};
-use jstprove_remainder::onnx::shape_inference;
+use jstprove_onnx::graph::{LayerGraph, LayerNode, OpType};
+use jstprove_onnx::parser::{self, AttrValue, ParsedModel};
+use jstprove_onnx::quantizer::{self, QuantizedModel, ScaleConfig};
+use jstprove_onnx::shape_inference;
 
 use crate::circuit_functions::utils::onnx_model::{Architecture, Backend, CircuitParams, WANDB};
 use crate::circuit_functions::utils::onnx_types::{ONNXIO, ONNXLayer};
