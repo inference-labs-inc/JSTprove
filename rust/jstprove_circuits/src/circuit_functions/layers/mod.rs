@@ -1,6 +1,7 @@
 pub mod batchnorm;
 pub mod binary_arith;
 pub mod binary_compare;
+pub mod cast;
 pub mod clip;
 pub mod constant;
 pub mod conv;
