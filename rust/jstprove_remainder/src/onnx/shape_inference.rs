@@ -234,16 +234,23 @@ fn infer_gemm(
         .map(|v| v != 0)
         .unwrap_or(false);
 
-    let m = if trans_a {
-        a_shape.get(1).copied().unwrap_or(1)
-    } else {
-        a_shape.first().copied().unwrap_or(1)
-    };
-    let n = if trans_b {
-        b_shape.first().copied().unwrap_or(1)
-    } else {
-        b_shape.get(1).copied().unwrap_or(1)
-    };
+    if a_shape.len() < 2 {
+        bail!(
+            "layer {}: Gemm input A rank {} < 2",
+            layer.name,
+            a_shape.len()
+        );
+    }
+    if b_shape.len() < 2 {
+        bail!(
+            "layer {}: Gemm input B rank {} < 2",
+            layer.name,
+            b_shape.len()
+        );
+    }
+
+    let m = if trans_a { a_shape[1] } else { a_shape[0] };
+    let n = if trans_b { b_shape[0] } else { b_shape[1] };
 
     let out_shape = vec![m, n];
     Ok(layer
@@ -596,13 +603,21 @@ fn infer_unsqueeze(
         })
         .collect::<Result<Vec<_>>>()?;
 
+    debug_assert_eq!(
+        new_rank - normalized.len(),
+        input_shape.len(),
+        "Unsqueeze: non-axis positions {} != input rank {}",
+        new_rank - normalized.len(),
+        input_shape.len()
+    );
+
     let mut out_shape = Vec::with_capacity(new_rank);
     let mut input_idx = 0;
     for i in 0..new_rank {
         if normalized.contains(&i) {
             out_shape.push(1);
         } else {
-            out_shape.push(input_shape.get(input_idx).copied().unwrap_or(1));
+            out_shape.push(input_shape[input_idx]);
             input_idx += 1;
         }
     }
