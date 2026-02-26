@@ -191,6 +191,9 @@ fn infer_conv(
     for i in 0..spatial_dims {
         let in_dim = input_shape[2 + i];
         let pad = pads[i] + pads[spatial_dims + i];
+        if kernel_shape[i] == 0 {
+            bail!("layer {}: Conv kernel_shape[{i}] is zero", layer.name);
+        }
         let effective_kernel = (kernel_shape[i] - 1) * dilations[i] + 1;
         let padded = in_dim + pad;
         if strides[i] == 0 {
@@ -621,7 +624,7 @@ fn infer_unsqueeze(
     let mut out_shape = Vec::with_capacity(new_rank);
     let mut input_idx = 0;
     for i in 0..new_rank {
-        if normalized.contains(&i) {
+        if seen.contains(&i) {
             out_shape.push(1);
         } else {
             out_shape.push(input_shape[input_idx]);
