@@ -69,7 +69,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MulLayer {
             result,
             &MaybeRescaleParams {
                 is_rescale: self.is_rescale,
-                scaling: self.scaling,
+                scaling_exponent: self.scaling,
                 n_bits: self.v_plus_one,
                 is_relu,
                 layer_kind: LayerKind::Mul,

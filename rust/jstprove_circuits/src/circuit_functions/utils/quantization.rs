@@ -325,7 +325,7 @@ pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
 
 pub struct MaybeRescaleParams {
     pub is_rescale: bool,
-    pub scaling: u64,
+    pub scaling_exponent: u64,
     pub n_bits: usize,
     pub is_relu: bool,
     pub layer_kind: LayerKind,
@@ -352,10 +352,11 @@ pub fn maybe_rescale<C: Config, Builder: RootAPI<C>>(
         return Ok(result);
     }
 
-    let scaling_exponent = usize::try_from(params.scaling).map_err(|_| LayerError::Other {
-        layer: params.layer_kind.clone(),
-        msg: "Cannot convert scaling to usize".to_string(),
-    })?;
+    let scaling_exponent =
+        usize::try_from(params.scaling_exponent).map_err(|_| LayerError::Other {
+            layer: params.layer_kind.clone(),
+            msg: "Cannot convert scaling to usize".to_string(),
+        })?;
     let shift_exponent =
         params
             .n_bits

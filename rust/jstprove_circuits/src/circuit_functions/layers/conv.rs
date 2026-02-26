@@ -597,7 +597,7 @@ pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(
         out,
         &MaybeRescaleParams {
             is_rescale: quantization_params.quantized,
-            scaling: quantization_params.scaling,
+            scaling_exponent: quantization_params.scaling,
             n_bits: quantization_params.v_plus_one,
             is_relu: quantization_params.is_relu,
             layer_kind: LayerKind::Conv,

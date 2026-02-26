@@ -109,10 +109,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BinaryCompareLayer 
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let initializer_a = get_optional_w_or_b(layer_context, &layer.inputs[0])?;
-        let initializer_b = get_optional_w_or_b(layer_context, &layer.inputs[1])?;
-
         let kind = LayerKind::try_from(layer.op_type.as_str())?;
+
+        let a_name = get_input_name(&layer.inputs, 0, kind.clone(), INPUT)?;
+        let b_name = get_input_name(&layer.inputs, 1, kind.clone(), INPUT)?;
+        let initializer_a = get_optional_w_or_b(layer_context, a_name)?;
+        let initializer_b = get_optional_w_or_b(layer_context, b_name)?;
 
         let shift_exponent = layer_context
             .n_bits_for(&layer.name)
