@@ -108,9 +108,9 @@ where
 
 /// Compiles a circuit and writes a single msgpack bundle.
 ///
-/// The output path is derived from `circuit_path` with the extension
-/// replaced by `.msgpack`. When `compress` is true the bundle is
-/// zstd-compressed; otherwise it is written as raw msgpack.
+/// The bundle is written directly to `circuit_path`. When `compress` is
+/// true the output is zstd-compressed; otherwise it is written as raw
+/// msgpack.
 ///
 /// # Errors
 ///
@@ -127,14 +127,7 @@ where
     GLOBAL.reset_peak_memory();
 
     let bundle = compile_to_bundle::<C, CircuitType>(metadata)?;
-    let msgpack_path = Path::new(circuit_path).with_extension("msgpack");
-    write_circuit_bundle(
-        msgpack_path.to_str().ok_or_else(|| {
-            RunError::Unsupported("msgpack output path is not valid UTF-8".into())
-        })?,
-        &bundle,
-        compress,
-    )
+    write_circuit_bundle(circuit_path, &bundle, compress)
 }
 
 /// Generates a witness for a circuit from provided inputs and outputs, then writes it to disk.
@@ -1293,11 +1286,11 @@ pub fn read_circuit_msgpack(path: &str) -> Result<CompiledCircuit, RunError> {
 
 #[must_use]
 pub fn try_load_metadata_from_circuit(circuit_path: &str) -> Option<CircuitParams> {
-    let msgpack_path = Path::new(circuit_path).with_extension("msgpack");
-    if !msgpack_path.exists() {
+    let p = Path::new(circuit_path);
+    if !p.exists() {
         return None;
     }
-    read_circuit_msgpack(msgpack_path.to_str()?).ok()?.metadata
+    read_circuit_msgpack(circuit_path).ok()?.metadata
 }
 
 /// Reads a prove request from stdin and writes the proof to stdout via msgpack.
