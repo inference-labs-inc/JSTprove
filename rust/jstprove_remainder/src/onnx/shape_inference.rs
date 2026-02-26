@@ -157,6 +157,13 @@ fn infer_conv(
         vec![1; kernel_shape.len()]
     };
 
+    if weight_shape.len() < 2 {
+        bail!(
+            "layer {}: Conv weight rank {} < 2",
+            layer.name,
+            weight_shape.len()
+        );
+    }
     let c_out = weight_shape[0];
     let spatial_dims = kernel_shape.len();
 
@@ -559,7 +566,7 @@ fn infer_squeeze(
         input_shape
             .iter()
             .enumerate()
-            .filter(|(i, _)| !normalized.contains(i))
+            .filter(|(i, _)| !seen.contains(i))
             .map(|(_, &d)| d)
             .collect()
     };
