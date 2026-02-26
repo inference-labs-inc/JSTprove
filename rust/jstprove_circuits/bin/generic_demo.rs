@@ -16,10 +16,10 @@ fn load_wandb(matches: &clap::ArgMatches) -> Result<Option<WANDB>, String> {
     let Ok(wandb_file_path) = get_arg(matches, "wandb") else {
         return Ok(None);
     };
-    let wandb_file = std::fs::read_to_string(&wandb_file_path)
+    let wandb_bytes = std::fs::read(&wandb_file_path)
         .map_err(|e| format!("Failed to read W&B file '{wandb_file_path}': {e}"))?;
-    let wandb: WANDB = serde_json::from_str(&wandb_file)
-        .map_err(|e| format!("Invalid W&B JSON in '{wandb_file_path}': {e}"))?;
+    let wandb: WANDB = rmp_serde::from_slice(&wandb_bytes)
+        .map_err(|e| format!("Invalid W&B msgpack in '{wandb_file_path}': {e}"))?;
     Ok(Some(wandb))
 }
 
@@ -28,11 +28,8 @@ fn load_metadata(path: &str) -> CircuitParams {
         eprintln!("Error: failed to read metadata file '{path}': {e}");
         std::process::exit(1);
     });
-    if let Ok(params) = serde_json::from_slice::<CircuitParams>(&bytes) {
-        return params;
-    }
-    rmp_serde::decode::from_slice(&bytes).unwrap_or_else(|e| {
-        eprintln!("Error: failed to parse metadata '{path}' as JSON or msgpack: {e}");
+    rmp_serde::from_slice::<CircuitParams>(&bytes).unwrap_or_else(|e| {
+        eprintln!("Error: failed to parse metadata '{path}' as msgpack: {e}");
         std::process::exit(1);
     })
 }
@@ -61,10 +58,14 @@ fn set_onnx_context(matches: &clap::ArgMatches, needs_full: bool) {
 
     if needs_full {
         let arch_file_path = get_arg(matches, "arch").unwrap();
-        let arch_file =
-            std::fs::read_to_string(&arch_file_path).expect("Failed to read architecture file");
-        let arch: Architecture =
-            serde_json::from_str(&arch_file).expect("Invalid architecture JSON");
+        let arch_bytes = std::fs::read(&arch_file_path).unwrap_or_else(|e| {
+            eprintln!("Error: failed to read architecture file '{arch_file_path}': {e}");
+            std::process::exit(1);
+        });
+        let arch: Architecture = rmp_serde::from_slice(&arch_bytes).unwrap_or_else(|e| {
+            eprintln!("Error: invalid architecture msgpack in '{arch_file_path}': {e}");
+            std::process::exit(1);
+        });
         OnnxContext::set_all(arch, params, wandb);
     } else {
         OnnxContext::set_params(params);

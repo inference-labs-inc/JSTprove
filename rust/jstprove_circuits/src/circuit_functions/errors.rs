@@ -13,8 +13,8 @@ pub enum CircuitError {
     #[error(transparent)]
     UtilsError(#[from] UtilsError),
 
-    #[error("Failed to parse weights JSON: {0}")]
-    InvalidWeightsFormat(#[from] serde_json::Error),
+    #[error("Failed to parse weights: {0}")]
+    InvalidWeightsFormat(#[from] rmpv::ext::Error),
 
     #[error("Architecture definition is empty")]
     EmptyArchitecture,
