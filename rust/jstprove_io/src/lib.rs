@@ -17,7 +17,7 @@ pub use version::ArtifactVersion;
 
 pub type Error = anyhow::Error;
 
-use std::io::{Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::path::Path;
 
 use anyhow::Result;
@@ -73,8 +73,54 @@ pub fn deserialize_from_bytes<T: DeserializeOwned>(data: &[u8]) -> Result<T> {
 }
 
 pub fn deserialize_from_file<T: DeserializeOwned>(path: &Path) -> Result<T> {
-    let data = std::fs::read(path)?;
-    deserialize_from_bytes(&data)
+    let file = std::fs::File::open(path)?;
+    let mut reader = BufReader::new(file);
+    let mut header_buf = [0u8; ENVELOPE_HEADER_LEN];
+    reader.read_exact(&mut header_buf)?;
+
+    match envelope::detect_format(&header_buf) {
+        DetectedFormat::Envelope => {
+            let header = envelope::parse_header(&header_buf)?;
+            let crc_state = std::rc::Rc::new(std::cell::Cell::new(0u32));
+            let crc_reader = Crc32cReader {
+                inner: reader.take(header.payload_len),
+                crc: std::rc::Rc::clone(&crc_state),
+            };
+            let result = if header.compressed {
+                let decoder = zstd::stream::read::Decoder::new(crc_reader)?;
+                rmp_serde::from_read(BufReader::new(decoder))?
+            } else {
+                rmp_serde::from_read(BufReader::new(crc_reader))?
+            };
+            envelope::verify_crc_computed(crc_state.get(), header.crc32)?;
+            Ok(result)
+        }
+        DetectedFormat::LegacyZstd => {
+            let chain = std::io::Cursor::new(header_buf).chain(reader);
+            let decoder = zstd::stream::read::Decoder::new(chain)?;
+            Ok(rmp_serde::from_read(BufReader::new(decoder))?)
+        }
+        DetectedFormat::RawMsgpack => {
+            let chain = std::io::Cursor::new(header_buf).chain(reader);
+            Ok(rmp_serde::from_read(chain)?)
+        }
+    }
+}
+
+struct Crc32cReader<R> {
+    inner: R,
+    crc: std::rc::Rc<std::cell::Cell<u32>>,
+}
+
+impl<R: Read> Read for Crc32cReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        if n > 0 {
+            self.crc
+                .set(crc32c::crc32c_append(self.crc.get(), &buf[..n]));
+        }
+        Ok(n)
+    }
 }
 
 pub fn write_msgpack_stdout<T: Serialize>(value: &T) -> Result<()> {
@@ -169,6 +215,56 @@ mod tests {
             format!("{:#}", result.unwrap_err()).contains("CRC"),
             "error should mention CRC"
         );
+    }
+
+    #[test]
+    fn file_crc_corruption_detected() {
+        let original = sample_payload();
+        let dir = std::env::temp_dir().join("jstprove_io_crc_file_test");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let path = dir.join("corrupted.bin");
+        let mut bytes = serialize_to_bytes(&original, false).unwrap();
+        let last = bytes.len() - 1;
+        bytes[last] ^= 0xFF;
+        std::fs::write(&path, &bytes).unwrap();
+
+        let result = deserialize_from_file::<TestPayload>(&path);
+        assert!(
+            result.is_err(),
+            "corrupted file must produce an error (parse or CRC)"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn file_silent_corruption_caught_by_crc() {
+        let dir = std::env::temp_dir().join("jstprove_io_silent_crc_test");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let path = dir.join("silent_corrupt.bin");
+        let original = TestPayload {
+            name: "testA".into(),
+            values: vec![100],
+            metadata: HashMap::new(),
+        };
+        let mut bytes = serialize_to_bytes(&original, false).unwrap();
+        let name_offset = bytes
+            .windows(5)
+            .position(|w| w == b"testA")
+            .expect("find testA in payload");
+        bytes[name_offset] = b'B';
+        std::fs::write(&path, &bytes).unwrap();
+
+        let result = deserialize_from_file::<TestPayload>(&path);
+        assert!(result.is_err());
+        assert!(
+            format!("{:#}", result.unwrap_err()).contains("CRC"),
+            "silent data corruption must be caught by CRC"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
