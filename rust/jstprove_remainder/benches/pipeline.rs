@@ -82,23 +82,10 @@ fn main() {
         fmt_bytes(proof_size)
     );
 
-    let compiled_for_verify = compiled_path.clone();
-    let proof_for_verify = proof_path.clone();
-    let input_for_verify = input_path.clone();
     let t = Instant::now();
-    let verify_result = std::panic::catch_unwind(move || {
-        jstprove_remainder::runner::verify::run(
-            &compiled_for_verify,
-            &proof_for_verify,
-            &input_for_verify,
-        )
-    });
+    jstprove_remainder::runner::verify::run(&compiled_path, &proof_path, &input_path).unwrap();
     let verify_ms = t.elapsed().as_secs_f64() * 1000.0;
-    match verify_result {
-        Ok(Ok(())) => println!("verify:  {:>10}", fmt_duration(verify_ms)),
-        Ok(Err(e)) => println!("verify:  FAILED ({e:#})"),
-        Err(_) => println!("verify:  PANICKED (circuit hash mismatch in Remainder_CE)"),
-    }
+    println!("verify:  {:>10}", fmt_duration(verify_ms));
 
     let total_ms = compile_ms + witness_ms + prove_ms + verify_ms;
     println!("{}", "-".repeat(50));

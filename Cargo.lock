@@ -1314,7 +1314,7 @@ dependencies = [
 [[package]]
 name = "frontend"
 version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Remainder_CE.git?rev=868c354b#868c354bc95a2ed8e82f4af3f9dfd7d8b94b1d1f"
+source = "git+https://github.com/inference-labs-inc/Remainder_CE.git?rev=06a5f406#06a5f406b3854004f071ef3f5c67bcc4c5462106"
 dependencies = [
  "anyhow",
  "ark-serialize 0.5.0",
@@ -1920,7 +1920,7 @@ dependencies = [
 [[package]]
 name = "hyrax"
 version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Remainder_CE.git?rev=868c354b#868c354bc95a2ed8e82f4af3f9dfd7d8b94b1d1f"
+source = "git+https://github.com/inference-labs-inc/Remainder_CE.git?rev=06a5f406#06a5f406b3854004f071ef3f5c67bcc4c5462106"
 dependencies = [
  "anyhow",
  "ark-std 0.5.0",
@@ -2311,7 +2311,7 @@ checksum = "6800badb6cb2082ffd7b6a67e6125bb39f18782f793520caee8cb8846be06112"
 [[package]]
 name = "ligero"
 version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Remainder_CE.git?rev=868c354b#868c354bc95a2ed8e82f4af3f9dfd7d8b94b1d1f"
+source = "git+https://github.com/inference-labs-inc/Remainder_CE.git?rev=06a5f406#06a5f406b3854004f071ef3f5c67bcc4c5462106"
 dependencies = [
  "ark-bn254",
  "ark-ff 0.5.0",
@@ -3300,7 +3300,7 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 [[package]]
 name = "remainder"
 version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Remainder_CE.git?rev=868c354b#868c354bc95a2ed8e82f4af3f9dfd7d8b94b1d1f"
+source = "git+https://github.com/inference-labs-inc/Remainder_CE.git?rev=06a5f406#06a5f406b3854004f071ef3f5c67bcc4c5462106"
 dependencies = [
  "anyhow",
  "approx",
@@ -3325,7 +3325,6 @@ dependencies = [
  "num",
  "num-bigint",
  "num-traits",
- "once_cell",
  "parking_lot",
  "paste",
  "pretty_env_logger",
@@ -3690,7 +3689,7 @@ dependencies = [
 [[package]]
 name = "shared-types"
 version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/Remainder_CE.git?rev=868c354b#868c354bc95a2ed8e82f4af3f9dfd7d8b94b1d1f"
+source = "git+https://github.com/inference-labs-inc/Remainder_CE.git?rev=06a5f406#06a5f406b3854004f071ef3f5c67bcc4c5462106"
 dependencies = [
  "anyhow",
  "ark-std 0.5.0",
