@@ -35,8 +35,12 @@ fn fmt_duration(ms: f64) -> String {
 }
 
 fn main() {
-    let model_path = Path::new("models/lenet.onnx");
-    assert!(model_path.exists(), "models/lenet.onnx not found");
+    let model_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("models/lenet.onnx");
+    assert!(
+        model_path.exists(),
+        "lenet.onnx not found at {}",
+        model_path.display()
+    );
 
     let tmp = tempfile::TempDir::new().unwrap();
     let compiled_path = tmp.path().join("compiled.bin");
@@ -51,7 +55,7 @@ fn main() {
     println!("{}", "-".repeat(50));
 
     let t = Instant::now();
-    jstprove_remainder::runner::compile::run(model_path, &compiled_path, false).unwrap();
+    jstprove_remainder::runner::compile::run(&model_path, &compiled_path, false).unwrap();
     let compile_ms = t.elapsed().as_secs_f64() * 1000.0;
     let compiled_size = std::fs::metadata(&compiled_path).unwrap().len();
     println!(
