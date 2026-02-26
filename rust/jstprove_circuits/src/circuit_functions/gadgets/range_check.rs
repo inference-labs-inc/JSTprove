@@ -48,7 +48,7 @@ use crate::circuit_functions::hints::unconstrained_to_bits;
 /// - least_significant_bits: slice [b_0, ..., b_{n-1}].
 ///
 /// # Errors
-/// - UtilsError::ValueTooLarge if index i exceeds 255.
+/// - UtilsError::ValueTooLarge if the bitstring length exceeds 256.
 ///
 /// # Returns
 /// A Variable encoding sum_{i} b_i * 2^i.
@@ -62,17 +62,21 @@ pub fn constrained_reconstruct_from_bits<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     least_significant_bits: &[Variable],
 ) -> Result<Variable, CircuitError> {
+    if least_significant_bits.len() > 256 {
+        return Err(UtilsError::ValueTooLarge {
+            value: least_significant_bits.len(),
+            max: 256,
+        }
+        .into());
+    }
+
     let mut reconstructed = api.constant(0u32);
 
     for (i, &bit) in least_significant_bits.iter().enumerate() {
         api.assert_is_bool(bit);
 
-        let i_u32 =
-            u32::try_from(i).map_err(|_| UtilsError::ValueTooLarge { value: i, max: 255 })?;
-        if i_u32 > 255 {
-            return Err(UtilsError::ValueTooLarge { value: i, max: 255 }.into());
-        }
-        let weight = U256::ONE << i_u32;
+        #[allow(clippy::cast_possible_truncation)]
+        let weight = U256::ONE << (i as u32);
         let weight_const = api.constant(CircuitField::<C>::from_u256(weight));
         let term = api.mul(weight_const, bit);
         reconstructed = api.add(reconstructed, term);
