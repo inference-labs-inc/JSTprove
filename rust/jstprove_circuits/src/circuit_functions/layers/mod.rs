@@ -1,5 +1,5 @@
-pub mod add;
 pub mod batchnorm;
+pub mod binary_arith;
 pub mod clip;
 pub mod constant;
 pub mod conv;
@@ -16,7 +16,6 @@ pub mod mul;
 pub mod relu;
 pub mod reshape;
 pub mod squeeze;
-pub mod sub;
 pub mod unsqueeze;
 
 pub use errors::LayerError;

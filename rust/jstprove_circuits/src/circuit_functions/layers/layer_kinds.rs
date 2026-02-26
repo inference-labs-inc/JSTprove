@@ -1,23 +1,23 @@
+use crate::circuit_functions::CircuitError;
 use crate::circuit_functions::layers::LayerError;
 use crate::circuit_functions::layers::batchnorm::BatchnormLayer;
+use crate::circuit_functions::layers::binary_arith::BinaryArithLayer;
 use crate::circuit_functions::layers::div::DivLayer;
 use crate::circuit_functions::layers::layer_ops::LayerOp;
+use crate::circuit_functions::layers::max::MaxLayer;
+use crate::circuit_functions::layers::min::MinLayer;
 use crate::circuit_functions::layers::mul::MulLayer;
-use crate::circuit_functions::layers::sub::SubLayer;
 use crate::circuit_functions::utils::build_layers::BuildLayerContext;
 use crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry;
 use crate::circuit_functions::utils::onnx_model::CircuitParams;
 use crate::circuit_functions::utils::onnx_types::ONNXLayer;
-use crate::circuit_functions::{CircuitError, layers::add::AddLayer};
 
 use crate::circuit_functions::layers::clip::ClipLayer;
 use crate::circuit_functions::layers::constant::ConstantLayer;
 use crate::circuit_functions::layers::conv::ConvLayer;
 use crate::circuit_functions::layers::flatten::FlattenLayer;
 use crate::circuit_functions::layers::gemm::GemmLayer;
-use crate::circuit_functions::layers::max::MaxLayer;
 use crate::circuit_functions::layers::maxpool::MaxPoolLayer;
-use crate::circuit_functions::layers::min::MinLayer;
 use crate::circuit_functions::layers::relu::ReluLayer;
 use crate::circuit_functions::layers::reshape::ReshapeLayer;
 use crate::circuit_functions::layers::squeeze::SqueezeLayer;
@@ -133,11 +133,11 @@ When defining new layers, make sure to activate them by placing the new layer in
 */
 
 define_layers! {
-    Add       => { name: "Add", builder: AddLayer::build },
+    Add       => { name: "Add", builder: BinaryArithLayer::build },
     Clip      => { name: "Clip", builder: ClipLayer::build },
     Batchnorm => { name: "BatchNormalization", builder: BatchnormLayer::build },
     Div       => { name: "Div", builder: DivLayer::build },
-    Sub       => { name: "Sub", builder: SubLayer::build },
+    Sub       => { name: "Sub", builder: BinaryArithLayer::build },
     Mul       => { name: "Mul", builder: MulLayer::build },
     Constant  => { name: "Constant", builder: ConstantLayer::build },
     Conv      => { name: "Conv", builder: ConvLayer::build },
