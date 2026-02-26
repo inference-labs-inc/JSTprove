@@ -21,12 +21,9 @@ use crate::circuit_functions::{
 /// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
-// -------- Struct --------
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct BatchnormLayer {
     name: String,
-    index: usize,
     weights: Option<ArrayD<i64>>,
     bias: Option<ArrayD<i64>>,
     is_rescale: bool,
@@ -111,7 +108,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
         circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
         optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
         is_rescale: bool,
-        index: usize,
+        _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
         let (weights, bias) = if layer_context.weights_as_inputs {
@@ -131,13 +128,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
 
         let batchnorm = Self {
             name: layer.name.clone(),
-            index,
             weights,
             bias,
             is_rescale,
             v_plus_one: layer_context.n_bits_for(&layer.name),
             optimization_pattern,
-            scaling: circuit_params.scale_exponent.into(), // TODO: Becomes scaling_in?
+            scaling: circuit_params.scale_exponent.into(),
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
         };

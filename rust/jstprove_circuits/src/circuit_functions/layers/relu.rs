@@ -10,28 +10,17 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 use crate::circuit_functions::{
     CircuitError,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
-    utils::{
-        ArrayConversionError,
-        constants::INPUT,
-        onnx_model::{extract_params_and_expected_shape, get_input_name},
-    },
+    utils::{ArrayConversionError, constants::INPUT, onnx_model::get_input_name},
 };
 
 use crate::circuit_functions::gadgets::{
     LogupRangeCheckContext, ShiftRangeContext, constrained_max,
 };
 
-// -------- Struct --------
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct ReluLayer {
-    name: String,
-    index: usize,
-    input_shape: Vec<usize>,
     inputs: Vec<String>,
     outputs: Vec<String>,
-    /// Total bit-width of the signed fixed-point representation.
-    /// We assume signed range [-2^(n_bits-1), 2^(n_bits-1) - 1].
     n_bits: usize,
 }
 
@@ -68,19 +57,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
         _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
         _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
         _is_rescale: bool,
-        index: usize,
+        _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let (_params, expected_shape) = extract_params_and_expected_shape(layer_context, layer)
-            .map_err(|e| LayerError::Other {
-                layer: LayerKind::ReLU,
-                msg: format!("extract_params_and_expected_shape failed: {e}"),
-            })?;
-
         let relu = Self {
-            name: layer.name.clone(),
-            index,
-            input_shape: expected_shape.clone(),
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
             n_bits: layer_context.n_bits_for(&layer.name),

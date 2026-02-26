@@ -7,7 +7,7 @@ members = [
 ]
 
 resolver = "2"
-exclude = ["ExpanderCompilerCollection", "rust/jstprove_pyo3", ".claude"]
+exclude = ["rust/jstprove_pyo3", ".claude"]
 
 [workspace.dependencies]
 rmpv = { version = "1", features = ["with-serde"] }

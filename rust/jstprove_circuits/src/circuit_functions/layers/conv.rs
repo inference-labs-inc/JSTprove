@@ -17,10 +17,7 @@ use crate::circuit_functions::{
         UtilsError,
         constants::{BIAS, DILATION, GROUP, INPUT, KERNEL_SHAPE, PADS, STRIDES, WEIGHTS},
         graph_pattern_matching::PatternRegistry,
-        onnx_model::{
-            extract_params_and_expected_shape, get_input_name, get_param, get_param_or_default,
-            get_w_or_b,
-        },
+        onnx_model::{extract_params, get_input_name, get_param, get_param_or_default, get_w_or_b},
         typecasting::{AsI32, AsUsize, UsizeAsU32, i32_to_usize},
     },
 };
@@ -33,10 +30,7 @@ use crate::circuit_functions::{
 // -------- Struct --------
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct ConvLayer {
-    name: String,
-    index: usize,
     weights: Option<ArrayD<i64>>,
     bias: Option<ArrayD<i64>>,
     strides: Vec<u32>,
@@ -44,7 +38,6 @@ pub struct ConvLayer {
     group: Vec<u32>,
     dilation: Vec<u32>,
     pads: Vec<u32>,
-    input_shape: Vec<usize>,
     scaling: u64,
     optimization_pattern: PatternRegistry,
     v_plus_one: usize,
@@ -115,14 +108,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
         optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
         is_rescale: bool,
-        index: usize,
+        _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer)
-            .map_err(|e| LayerError::Other {
-                layer: LayerKind::Conv,
-                msg: format!("extract_params_and_expected_shape failed: {e}"),
-            })?;
+        let params = extract_params(layer).map_err(|e| LayerError::Other {
+            layer: LayerKind::Conv,
+            msg: format!("extract_params failed: {e}"),
+        })?;
         let w_name = get_input_name(&layer.inputs, 1, LayerKind::Conv, WEIGHTS)?;
         let b_name = get_input_name(&layer.inputs, 2, LayerKind::Conv, BIAS)?;
 
@@ -150,8 +142,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         let default_pads: Vec<u32> = vec![0; 2 * spatial_rank];
 
         let conv = Self {
-            name: layer.name.clone(),
-            index,
             weights,
             bias,
             strides: get_param(&layer.name, STRIDES, &params)?,
@@ -159,7 +149,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             group: vec![get_param_or_default(&layer.name, GROUP, &params, Some(&1))?],
             dilation: get_param(&layer.name, DILATION, &params)?,
             pads: get_param_or_default(&layer.name, PADS, &params, Some(&default_pads))?,
-            input_shape: expected_shape.clone(),
             scaling: circuit_params.scale_exponent.into(),
             optimization_pattern,
             v_plus_one: layer_context.n_bits_for(&layer.name),

@@ -8,16 +8,14 @@ use crate::circuit_functions::{
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::{AXES, INPUT},
-        onnx_model::{extract_params_and_expected_shape, get_input_name, get_param},
+        onnx_model::{extract_params, get_input_name, get_param},
     },
 };
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct UnsqueezeLayer {
     name: String,
-    axes: Vec<i64>, // Unsqueeze requires axes
-    input_shape: Vec<usize>,
+    axes: Vec<i64>,
     inputs: Vec<String>,
     outputs: Vec<String>,
 }
@@ -150,13 +148,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for UnsqueezeLayer {
         _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
         _is_rescale: bool,
         _index: usize,
-        layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
+        _layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let (params, expected_shape) = extract_params_and_expected_shape(layer_context, layer)
-            .map_err(|e| LayerError::Other {
-                layer: LayerKind::Unsqueeze,
-                msg: format!("extract_params_and_expected_shape failed: {e}"),
-            })?;
+        let params = extract_params(layer).map_err(|e| LayerError::Other {
+            layer: LayerKind::Unsqueeze,
+            msg: format!("extract_params failed: {e}"),
+        })?;
 
         // Unsqueeze requires axes.
         let axes: Vec<i64> = get_param(&layer.name, AXES, &params)?;
@@ -164,7 +161,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for UnsqueezeLayer {
         let unsqueeze = Self {
             name: layer.name.clone(),
             axes,
-            input_shape: expected_shape.clone(),
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
         };

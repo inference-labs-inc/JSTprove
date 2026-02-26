@@ -26,8 +26,7 @@ use crate::circuit_functions::{
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
-        graph_pattern_matching::PatternRegistry,
-        onnx_model::{extract_params_and_expected_shape, get_input_name, get_optional_w_or_b},
+        onnx_model::{get_input_name, get_optional_w_or_b},
         tensor_ops::{broadcast_two_arrays, load_array_constants_or_get_inputs},
     },
 };
@@ -38,21 +37,13 @@ use crate::circuit_functions::gadgets::{
 
 // -------- Struct --------
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct ClipLayer {
-    name: String,
-    optimization_pattern: PatternRegistry,
-    input_shape: Vec<usize>,
     inputs: Vec<String>,
     outputs: Vec<String>,
-
-    /// Optional initializers for X, min, max (may be scalars or tensors).
     initializer_x: Option<ArrayD<i64>>,
     initializer_min: Option<ArrayD<i64>>,
     initializer_max: Option<ArrayD<i64>>,
-
-    /// s such that signed range is approximately [-2^s, 2^s - 1]
     shift_exponent: usize,
 }
 
@@ -77,30 +68,32 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
 
         // 2. Optional min / max inputs.
         //    We only attempt to read them if the ONNX node actually has those inputs.
-        let min_input = if self.inputs.len() > 1 {
-            let min_name = get_input_name(&self.inputs, 1, LayerKind::Clip, INPUT)?;
-            Some(load_array_constants_or_get_inputs(
-                api,
-                input,
-                min_name,
-                &self.initializer_min,
-                LayerKind::Clip,
-            )?)
-        } else {
-            None
+        let min_input = match self.inputs.get(1).filter(|n| !n.is_empty()) {
+            Some(_) => {
+                let min_name = get_input_name(&self.inputs, 1, LayerKind::Clip, INPUT)?;
+                Some(load_array_constants_or_get_inputs(
+                    api,
+                    input,
+                    min_name,
+                    &self.initializer_min,
+                    LayerKind::Clip,
+                )?)
+            }
+            None => None,
         };
 
-        let max_input = if self.inputs.len() > 2 {
-            let max_name = get_input_name(&self.inputs, 2, LayerKind::Clip, INPUT)?;
-            Some(load_array_constants_or_get_inputs(
-                api,
-                input,
-                max_name,
-                &self.initializer_max,
-                LayerKind::Clip,
-            )?)
-        } else {
-            None
+        let max_input = match self.inputs.get(2).filter(|n| !n.is_empty()) {
+            Some(_) => {
+                let max_name = get_input_name(&self.inputs, 2, LayerKind::Clip, INPUT)?;
+                Some(load_array_constants_or_get_inputs(
+                    api,
+                    input,
+                    max_name,
+                    &self.initializer_max,
+                    LayerKind::Clip,
+                )?)
+            }
+            None => None,
         };
 
         // Fast path: if both bounds are missing, Clip is the identity.
@@ -254,29 +247,26 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
-        optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
+        _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
         _is_rescale: bool,
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        // Same helper used by Add/Max/Min to infer expected shape.
-        let (_params, expected_shape) = extract_params_and_expected_shape(layer_context, layer)
-            .map_err(|e| LayerError::Other {
+        let x_name = layer
+            .inputs
+            .first()
+            .ok_or_else(|| LayerError::MissingInput {
                 layer: LayerKind::Clip,
-                msg: format!("extract_params_and_expected_shape failed: {e}"),
+                name: "input X".to_string(),
             })?;
-
-        // Optional initializers for X, min, max.
-        let initializer_x = get_optional_w_or_b(layer_context, &layer.inputs[0])?;
-        let initializer_min = if layer.inputs.len() > 1 {
-            get_optional_w_or_b(layer_context, &layer.inputs[1])?
-        } else {
-            None
+        let initializer_x = get_optional_w_or_b(layer_context, x_name)?;
+        let initializer_min = match layer.inputs.get(1).filter(|n| !n.is_empty()) {
+            Some(name) => get_optional_w_or_b(layer_context, name)?,
+            None => None,
         };
-        let initializer_max = if layer.inputs.len() > 2 {
-            get_optional_w_or_b(layer_context, &layer.inputs[2])?
-        } else {
-            None
+        let initializer_max = match layer.inputs.get(2).filter(|n| !n.is_empty()) {
+            Some(name) => get_optional_w_or_b(layer_context, name)?,
+            None => None,
         };
 
         // Match Max/Min/MaxPool: use n_bits - 1 as shift exponent.
@@ -289,9 +279,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
             })?;
 
         let clip_layer = Self {
-            name: layer.name.clone(),
-            optimization_pattern,
-            input_shape: expected_shape.clone(),
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
             initializer_x,

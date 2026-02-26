@@ -13,22 +13,12 @@ use crate::circuit_functions::utils::tensor_ops::{
 };
 use crate::circuit_functions::{
     CircuitError,
-    layers::{LayerError, LayerKind, layer_ops::LayerOp},
-    utils::{
-        constants::INPUT,
-        graph_pattern_matching::PatternRegistry,
-        onnx_model::{extract_params_and_expected_shape, get_input_name},
-    },
+    layers::{LayerKind, layer_ops::LayerOp},
+    utils::{constants::INPUT, onnx_model::get_input_name},
 };
 
-// -------- Struct --------
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct SubLayer {
-    name: String,
-    // weights: ArrayD<i64>, //This should be an optional field
-    optimization_pattern: PatternRegistry,
-    input_shape: Vec<usize>,
     inputs: Vec<String>,
     outputs: Vec<String>,
     initializer_a: Option<ArrayD<i64>>,
@@ -71,24 +61,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SubLayer {
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
-        optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
+        _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
         _is_rescale: bool,
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let (_params, expected_shape) = extract_params_and_expected_shape(layer_context, layer)
-            .map_err(|e| LayerError::Other {
-                layer: LayerKind::Sub,
-                msg: format!("extract_params_and_expected_shape failed: {e}"),
-            })?;
-
-        let initializer_a = get_optional_w_or_b(layer_context, &layer.inputs[0])?;
-        let initializer_b = get_optional_w_or_b(layer_context, &layer.inputs[1])?;
+        let a_name = get_input_name(&layer.inputs, 0, LayerKind::Sub, INPUT)?;
+        let b_name = get_input_name(&layer.inputs, 1, LayerKind::Sub, INPUT)?;
+        let initializer_a = get_optional_w_or_b(layer_context, a_name)?;
+        let initializer_b = get_optional_w_or_b(layer_context, b_name)?;
 
         let sub = Self {
-            name: layer.name.clone(),
-            optimization_pattern,
-            input_shape: expected_shape.clone(),
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
             initializer_a,

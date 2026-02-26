@@ -146,18 +146,6 @@ pub fn get_w_or_b<
                 _ => tensor_val.clone(),
             };
 
-            eprintln!(
-                "Attempting to parse tensor for '{}': type = {}",
-                weights_input,
-                match &inner_value {
-                    Value::Array(_) => "Array",
-                    Value::Map(_) => "Map",
-                    Value::Integer(_) => "Integer",
-                    Value::F32(_) | Value::F64(_) => "Float",
-                    Value::String(_) => "String",
-                    _ => "Other",
-                }
-            );
             value_to_arrayd(&inner_value).map_err(UtilsError::ArrayConversionError)
         }
         None => Err(UtilsError::MissingTensor {
@@ -259,6 +247,24 @@ pub fn extract_params_and_expected_shape(
         .clone();
 
     Ok((params, expected_shape))
+}
+
+/// Extracts only the deserialized parameters from an ONNX layer, without
+/// looking up the expected input shape from the shapes map.
+///
+/// # Errors
+/// Returns `LayerError::MissingParameter` when the layer carries no params.
+pub fn extract_params(
+    layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
+) -> Result<Value, LayerError> {
+    let kind: LayerKind = layer.try_into()?;
+    layer
+        .params
+        .clone()
+        .ok_or_else(|| LayerError::MissingParameter {
+            layer: kind,
+            param: "params".to_string(),
+        })
 }
 
 /// Retrieves a required parameter from a JSON `Value`.
