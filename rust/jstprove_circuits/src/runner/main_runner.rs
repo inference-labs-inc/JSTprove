@@ -52,6 +52,19 @@ fn maybe_compress_bytes(data: Vec<u8>, compress: bool) -> Result<Vec<u8>, RunErr
     }
 }
 
+fn write_msgpack_stdout<T: Serialize>(value: &T) -> Result<(), RunError> {
+    let stdout = std::io::stdout();
+    let mut lock = stdout.lock();
+    value
+        .serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
+        .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
+    std::io::Write::flush(&mut lock).map_err(|e| RunError::Io {
+        source: e,
+        path: "stdout".into(),
+    })?;
+    Ok(())
+}
+
 enum MaybeCompressed {
     Compressed(zstd::stream::write::Encoder<'static, std::io::BufWriter<std::fs::File>>),
     Plain(std::io::BufWriter<std::fs::File>),
@@ -193,9 +206,9 @@ where
     let bundle = compile_to_bundle::<C, CircuitType>(metadata)?;
     let msgpack_path = Path::new(circuit_path).with_extension("msgpack");
     write_circuit_bundle(
-        msgpack_path
-            .to_str()
-            .ok_or_else(|| RunError::Deserialize("invalid msgpack path".into()))?,
+        msgpack_path.to_str().ok_or_else(|| {
+            RunError::Unsupported("msgpack output path is not valid UTF-8".into())
+        })?,
         &bundle,
         compress,
     )
@@ -529,11 +542,10 @@ fn load_layered_circuit<C: Config>(path: &str) -> Result<Circuit<C, NormalInputT
             .map_err(|e| RunError::Deserialize(format!("{e:?}")));
     }
     let msgpack_path = p.with_extension("msgpack");
-    let bundle = read_circuit_msgpack(
-        msgpack_path
-            .to_str()
-            .ok_or_else(|| RunError::Deserialize("invalid msgpack path".into()))?,
-    )?;
+    let bundle =
+        read_circuit_msgpack(msgpack_path.to_str().ok_or_else(|| {
+            RunError::Unsupported("msgpack output path is not valid UTF-8".into())
+        })?)?;
     load_circuit_from_bytes::<C>(&bundle.circuit)
 }
 
@@ -567,11 +579,9 @@ fn load_circuit_and_solver<C: Config>(
     }
     let msgpack_path = p.with_extension("msgpack");
     if msgpack_path.exists() {
-        let bundle = read_circuit_msgpack(
-            msgpack_path
-                .to_str()
-                .ok_or_else(|| RunError::Deserialize("invalid msgpack path".into()))?,
-        )?;
+        let bundle = read_circuit_msgpack(msgpack_path.to_str().ok_or_else(|| {
+            RunError::Unsupported("msgpack output path is not valid UTF-8".into())
+        })?)?;
         let circuit = load_circuit_from_bytes::<C>(&bundle.circuit)?;
         let solver = load_witness_solver_from_bytes::<C>(&bundle.witness_solver)?;
         return Ok((circuit, solver));
@@ -921,15 +931,7 @@ where
         failed,
         errors,
     };
-    let stdout = std::io::stdout();
-    let mut lock = stdout.lock();
-    result
-        .serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
-        .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
-    std::io::Write::flush(&mut lock).map_err(|e| RunError::Io {
-        source: e,
-        path: "stdout".into(),
-    })?;
+    write_msgpack_stdout(&result)?;
 
     Ok(result)
 }
@@ -981,15 +983,7 @@ where
         failed,
         errors,
     };
-    let stdout = std::io::stdout();
-    let mut lock = stdout.lock();
-    result
-        .serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
-        .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
-    std::io::Write::flush(&mut lock).map_err(|e| RunError::Io {
-        source: e,
-        path: "stdout".into(),
-    })?;
+    write_msgpack_stdout(&result)?;
 
     Ok(result)
 }
@@ -1102,15 +1096,7 @@ where
         failed,
         errors,
     };
-    let stdout = std::io::stdout();
-    let mut lock = stdout.lock();
-    result
-        .serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
-        .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
-    std::io::Write::flush(&mut lock).map_err(|e| RunError::Io {
-        source: e,
-        path: "stdout".into(),
-    })?;
+    write_msgpack_stdout(&result)?;
 
     Ok(result)
 }
@@ -1387,12 +1373,7 @@ pub fn msgpack_prove_stdin<C: Config>(compress: bool) -> Result<(), RunError> {
         proof,
         version: Some(jstprove_artifact_version()),
     };
-    let stdout = std::io::stdout();
-    let mut lock = stdout.lock();
-    resp.serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
-        .map_err(|e| RunError::Serialize(format!("msgpack stdout: {e:?}")))?;
-    std::io::Write::flush(&mut lock)
-        .map_err(|e| RunError::Serialize(format!("msgpack stdout flush: {e:?}")))?;
+    write_msgpack_stdout(&resp)?;
 
     Ok(())
 }
@@ -1409,12 +1390,7 @@ pub fn msgpack_verify_stdin<C: Config>() -> Result<(), RunError> {
     let valid = verify_from_bytes::<C>(&req.circuit, &req.witness, &req.proof)?;
 
     let resp = VerifyResponse { valid, error: None };
-    let stdout = std::io::stdout();
-    let mut lock = stdout.lock();
-    resp.serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
-        .map_err(|e| RunError::Serialize(format!("msgpack stdout: {e:?}")))?;
-    std::io::Write::flush(&mut lock)
-        .map_err(|e| RunError::Serialize(format!("msgpack stdout flush: {e:?}")))?;
+    write_msgpack_stdout(&resp)?;
 
     Ok(())
 }
@@ -1547,12 +1523,7 @@ where
 
     let resp = witness_from_request::<C, I, CircuitDefaultType>(&req, io_reader, compress)?;
 
-    let stdout = std::io::stdout();
-    let mut lock = stdout.lock();
-    resp.serialize(&mut rmp_serde::Serializer::new(&mut lock).with_struct_map())
-        .map_err(|e| RunError::Serialize(format!("msgpack stdout: {e:?}")))?;
-    std::io::Write::flush(&mut lock)
-        .map_err(|e| RunError::Serialize(format!("msgpack stdout flush: {e:?}")))?;
+    write_msgpack_stdout(&resp)?;
 
     Ok(())
 }
