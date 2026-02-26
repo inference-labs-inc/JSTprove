@@ -7,7 +7,7 @@ pub struct ArtifactVersion {
 }
 
 #[must_use]
-pub fn jstprove_artifact_version() -> ArtifactVersion {
+pub fn current() -> ArtifactVersion {
     ArtifactVersion {
         crate_version: env!("CARGO_PKG_VERSION").to_string(),
         git_rev: env!("JSTPROVE_GIT_REV").to_string(),

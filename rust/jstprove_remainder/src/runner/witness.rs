@@ -11,11 +11,10 @@ use crate::runner::circuit_builder::{
     delta_table_nv, pad_matrix, pad_to_size, transpose_matrix, SpatialInfo,
 };
 
-use super::serialization;
-
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct WitnessData {
     pub shreds: HashMap<String, Vec<i64>>,
+    #[serde(default)]
     pub observed_n_bits: HashMap<String, usize>,
 }
 
@@ -51,7 +50,7 @@ pub fn run(model_path: &Path, input_path: &Path, output_path: &Path, compress: b
     tracing::info!("computing witness for {} layers", model.graph.layers.len());
     let witness_data = compute_witness(&model, &quantized_input)?;
 
-    let size = serialization::serialize_to_file(&witness_data, output_path, compress)?;
+    let size = jstprove_io::serialize_to_file(&witness_data, output_path, compress)?;
     tracing::info!(
         "witness written to {} ({} shreds, {} observed_n_bits, {} bytes)",
         output_path.display(),
@@ -64,7 +63,7 @@ pub fn run(model_path: &Path, input_path: &Path, output_path: &Path, compress: b
 
 pub fn load_and_quantize_input(input_path: &Path, alpha: i64) -> Result<Vec<i64>> {
     let raw = std::fs::read(input_path)?;
-    let input_value: rmpv::Value = rmp_serde::from_slice(&raw)?;
+    let input_value: rmpv::Value = jstprove_io::deserialize_from_bytes(&raw)?;
     quantize_input_value(&input_value, alpha)
 }
 
@@ -95,7 +94,7 @@ pub fn quantize_input_value(input_value: &rmpv::Value, alpha: i64) -> Result<Vec
 }
 
 pub fn load_witness(path: &Path) -> Result<WitnessData> {
-    serialization::deserialize_from_file(path)
+    jstprove_io::deserialize_from_file(path)
 }
 
 pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Result<WitnessData> {

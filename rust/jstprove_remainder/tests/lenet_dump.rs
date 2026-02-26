@@ -37,12 +37,7 @@ fn test_dump_lenet_structure() {
     let graph = LayerGraph::from_parsed(&parsed).unwrap();
     println!("=== Topo order ===");
     for layer in graph.iter_topo() {
-        println!(
-            "  [{}] {} ({})",
-            layer.id,
-            layer.name,
-            format!("{:?}", layer.op_type)
-        );
+        println!("  [{}] {} ({:?})", layer.id, layer.name, layer.op_type);
         println!("    inputs: {:?}", layer.inputs);
         println!("    outputs: {:?}", layer.outputs);
         println!(
