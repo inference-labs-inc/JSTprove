@@ -259,12 +259,17 @@ fn nest_flat_data(data: &[i64], shape: &[usize]) -> Value {
         return Value::Array(data.iter().map(|&v| Value::from(v)).collect());
     }
     if shape.len() == 1 {
-        return Value::Array(data.iter().map(|&v| Value::from(v)).collect());
+        let len = shape[0].min(data.len());
+        return Value::Array(data[..len].iter().map(|&v| Value::from(v)).collect());
     }
     let stride: usize = shape[1..].iter().product();
     Value::Array(
         (0..shape[0])
-            .map(|i| nest_flat_data(&data[i * stride..(i + 1) * stride], &shape[1..]))
+            .map(|i| {
+                let start = (i * stride).min(data.len());
+                let end = ((i + 1) * stride).min(data.len());
+                nest_flat_data(&data[start..end], &shape[1..])
+            })
             .collect(),
     )
 }

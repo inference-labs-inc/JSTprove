@@ -133,6 +133,11 @@ fn main() {
         std::process::exit(1);
     }
 
+    if has_onnx && (has_meta || has_arch) {
+        eprintln!("Error: --onnx cannot be combined with --meta or --arch.");
+        std::process::exit(1);
+    }
+
     #[cfg(feature = "remainder")]
     if has_onnx && !is_remainder {
         let onnx_path_str = get_arg(&matches, "onnx").unwrap();

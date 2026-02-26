@@ -78,7 +78,7 @@ fn infer_layer_output_shape(
         OpType::MaxPool => infer_maxpool(layer, input_shape),
         OpType::Add | OpType::Sub => infer_broadcast_binary(layer, shapes),
         OpType::Mul => infer_broadcast_binary(layer, shapes),
-        OpType::Reshape => infer_reshape(layer, input_shape, initializers, shapes),
+        OpType::Reshape => infer_reshape(layer, input_shape, initializers),
         OpType::Flatten => infer_flatten(layer, input_shape),
         OpType::Squeeze => infer_squeeze(layer, input_shape),
         OpType::Unsqueeze => infer_unsqueeze(layer, input_shape),
@@ -145,12 +145,38 @@ fn infer_conv(
     let c_out = weight_shape[0];
     let spatial_dims = kernel_shape.len();
 
+    if input_shape.len() < 2 + spatial_dims {
+        bail!(
+            "layer {}: Conv input rank {} too small for {spatial_dims} spatial dims",
+            layer.name,
+            input_shape.len()
+        );
+    }
+    if pads.len() < 2 * spatial_dims
+        || dilations.len() < spatial_dims
+        || strides.len() < spatial_dims
+    {
+        bail!(
+            "layer {}: Conv attribute length mismatch: pads={} dilations={} strides={} spatial_dims={spatial_dims}",
+            layer.name,
+            pads.len(),
+            dilations.len(),
+            strides.len()
+        );
+    }
+
     let mut out_shape = vec![input_shape[0], c_out];
     for i in 0..spatial_dims {
         let in_dim = input_shape[2 + i];
         let pad = pads[i] + pads[spatial_dims + i];
         let effective_kernel = (kernel_shape[i] - 1) * dilations[i] + 1;
         let numerator = in_dim + pad;
+        if strides[i] == 0 {
+            bail!(
+                "layer {}: Conv stride is zero at spatial dim {i}",
+                layer.name
+            );
+        }
         let out_dim = numerator.saturating_sub(effective_kernel) / strides[i] + 1;
         out_shape.push(out_dim);
     }
@@ -229,11 +255,34 @@ fn infer_maxpool(
         .unwrap_or_else(|| vec![0; kernel.len() * 2]);
 
     let spatial_dims = kernel.len();
+
+    if input_shape.len() < 2 + spatial_dims {
+        bail!(
+            "layer {}: MaxPool input rank {} too small for {spatial_dims} spatial dims",
+            layer.name,
+            input_shape.len()
+        );
+    }
+    if pads.len() < 2 * spatial_dims || strides.len() < spatial_dims {
+        bail!(
+            "layer {}: MaxPool attribute length mismatch: pads={} strides={} spatial_dims={spatial_dims}",
+            layer.name,
+            pads.len(),
+            strides.len()
+        );
+    }
+
     let mut out_shape = vec![input_shape[0], input_shape[1]];
     for i in 0..spatial_dims {
         let in_dim = input_shape[2 + i];
         let pad = pads[i] + pads[spatial_dims + i];
         let total = in_dim + pad;
+        if strides[i] == 0 {
+            bail!(
+                "layer {}: MaxPool stride is zero at spatial dim {i}",
+                layer.name
+            );
+        }
         let out_dim = total.saturating_sub(kernel[i]) / strides[i] + 1;
         out_shape.push(out_dim);
     }
@@ -299,18 +348,15 @@ fn infer_reshape(
     layer: &LayerNode,
     input_shape: Option<&Vec<usize>>,
     initializers: &HashMap<String, TensorData>,
-    shapes: &HashMap<String, Vec<usize>>,
 ) -> Result<Vec<(String, Vec<usize>)>> {
     let input_shape = input_shape
         .ok_or_else(|| anyhow::anyhow!("layer {}: Reshape missing input shape", layer.name))?;
     let input_size: usize = input_shape.iter().product();
 
-    let shape_data = layer.inputs.get(1).and_then(|name| {
-        initializers
-            .get(name)
-            .map(|td| td.as_i64_vec())
-            .or_else(|| get_shape(shapes, name).map(|s| s.iter().map(|&d| d as i64).collect()))
-    });
+    let shape_data = layer
+        .inputs
+        .get(1)
+        .and_then(|name| initializers.get(name).map(|td| td.as_i64_vec()));
 
     let target_shape = if let Some(shape_vals) = shape_data {
         shape_vals
@@ -333,6 +379,11 @@ fn infer_reshape(
         } else if d == 0 {
             let dim = input_shape.get(i).copied().unwrap_or(1);
             known_product *= dim;
+        } else if d < -1 {
+            bail!(
+                "layer {}: Reshape invalid dimension value {d} at index {i}",
+                layer.name
+            );
         } else {
             known_product *= d as usize;
         }
@@ -367,6 +418,11 @@ fn infer_reshape(
             );
         }
         out_shape[idx] = input_size / known_product;
+    } else if input_size != known_product {
+        bail!(
+            "layer {}: Reshape element count mismatch: input_size={input_size} target_product={known_product}",
+            layer.name
+        );
     }
 
     Ok(layer
@@ -383,8 +439,14 @@ fn infer_flatten(
     let input_shape = input_shape
         .ok_or_else(|| anyhow::anyhow!("layer {}: Flatten missing input shape", layer.name))?;
 
-    let axis = layer.get_int_attr("axis").unwrap_or(1) as usize;
-    let axis = axis.min(input_shape.len());
+    let raw_axis = layer.get_int_attr("axis").unwrap_or(1);
+    let rank = input_shape.len() as i64;
+    let axis = if raw_axis < 0 {
+        (raw_axis + rank).max(0) as usize
+    } else {
+        raw_axis as usize
+    }
+    .min(input_shape.len());
 
     let dim0: usize = input_shape[..axis].iter().product::<usize>().max(1);
     let dim1: usize = input_shape[axis..].iter().product::<usize>().max(1);
