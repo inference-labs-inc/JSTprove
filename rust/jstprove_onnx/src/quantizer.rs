@@ -389,7 +389,7 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
             let m_b = get_input_bound(1);
             Ok(m_a * m_b)
         }
-        OpType::Add | OpType::Sub => {
+        OpType::Div | OpType::Add | OpType::Sub => {
             let m_a = get_input_bound(0);
             let m_b = get_input_bound(1);
             Ok(m_a + m_b)

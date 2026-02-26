@@ -199,6 +199,7 @@ fn collect_layer_shapes(
 fn op_type_to_string(op: OpType) -> String {
     match op {
         OpType::Add => "Add",
+        OpType::Div => "Div",
         OpType::Sub => "Sub",
         OpType::Mul => "Mul",
         OpType::Gemm => "Gemm",

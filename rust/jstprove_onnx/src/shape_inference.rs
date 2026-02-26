@@ -91,7 +91,7 @@ fn infer_layer_output_shape(
             passthrough_shape(layer, input_shape)
         }
         OpType::MaxPool => infer_maxpool(layer, input_shape),
-        OpType::Add | OpType::Sub => infer_broadcast_binary(layer, shapes),
+        OpType::Add | OpType::Sub | OpType::Div => infer_broadcast_binary(layer, shapes),
         OpType::Mul => infer_broadcast_binary(layer, shapes),
         OpType::Reshape => infer_reshape(layer, input_shape, initializers, constant_tensors),
         OpType::Flatten => infer_flatten(layer, input_shape),

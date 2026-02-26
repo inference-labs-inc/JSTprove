@@ -72,17 +72,7 @@ macro_rules! define_layers {
         // FromStr / TryFrom impls
         // --------------------------
         impl LayerKind {
-            // pub fn from_str(s: &str) -> Result<Self, LayerError> {
-            //     match s {
-            //         $(
-            //             $name => Ok(LayerKind::$variant),
-            //             $(
-            //                 $( $alias => Ok(LayerKind::$variant), )*
-            //             )?
-            //         )*
-            //         other => Err(LayerError::UnknownOp { op_type: other.to_string() }),
-            //     }
-            // }
+            pub const SUPPORTED_OP_NAMES: &[&str] = &[ $( $name, )* ];
 
             #[must_use] pub fn builder<C: Config, Builder: RootAPI<C>>(
                 &self
