@@ -108,11 +108,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
         } else {
             (
                 Some(get_w_or_b(
-                    &layer_context.w_and_b_map,
+                    layer_context.w_and_b_map,
                     get_input_name(&layer.inputs, 1, LayerKind::Batchnorm, "weights")?,
                 )?),
                 Some(get_w_or_b(
-                    &layer_context.w_and_b_map,
+                    layer_context.w_and_b_map,
                     get_input_name(&layer.inputs, 2, LayerKind::Batchnorm, "bias")?,
                 )?),
             )

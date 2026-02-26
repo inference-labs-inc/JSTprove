@@ -200,8 +200,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             (None, None)
         } else {
             (
-                Some(get_w_or_b(&layer_context.w_and_b_map, w_name)?),
-                Some(get_w_or_b(&layer_context.w_and_b_map, b_name)?),
+                Some(get_w_or_b(layer_context.w_and_b_map, w_name)?),
+                Some(get_w_or_b(layer_context.w_and_b_map, b_name)?),
             )
         };
 

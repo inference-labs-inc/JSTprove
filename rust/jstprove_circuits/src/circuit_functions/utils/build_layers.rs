@@ -15,15 +15,15 @@ use expander_compiler::frontend::{Config, RootAPI};
 const DEFAULT_N_BITS: usize = 64;
 
 type BoxedDynLayer<C, B> = Box<dyn LayerOp<C, B>>;
-pub struct BuildLayerContext {
-    pub w_and_b_map: HashMap<String, ONNXLayer>,
-    pub shapes_map: HashMap<String, Vec<usize>>,
-    pub n_bits_config: HashMap<String, usize>,
+pub struct BuildLayerContext<'a> {
+    pub w_and_b_map: &'a HashMap<String, ONNXLayer>,
+    pub shapes_map: &'a HashMap<String, Vec<usize>>,
+    pub n_bits_config: &'a HashMap<String, usize>,
     pub default_n_bits: usize,
     pub weights_as_inputs: bool,
 }
 
-impl BuildLayerContext {
+impl BuildLayerContext<'_> {
     #[must_use]
     pub fn n_bits_for(&self, layer_name: &str) -> usize {
         self.n_bits_config
@@ -60,9 +60,8 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
 
     let w_and_b_map: HashMap<String, ONNXLayer> = w_and_b
         .w_and_b
-        .clone()
-        .into_iter()
-        .map(|layer| (layer.name.clone(), layer))
+        .iter()
+        .map(|layer| (layer.name.clone(), layer.clone()))
         .collect();
 
     let mut skip_next_layer: HashMap<String, bool> = HashMap::new();
@@ -73,9 +72,9 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
         collect_all_shapes(&architecture.architecture, inputs);
 
     let layer_context = BuildLayerContext {
-        w_and_b_map: w_and_b_map.clone(),
-        shapes_map: shapes_map.clone(),
-        n_bits_config: circuit_params.n_bits_config.clone(),
+        w_and_b_map: &w_and_b_map,
+        shapes_map: &shapes_map,
+        n_bits_config: &circuit_params.n_bits_config,
         default_n_bits: DEFAULT_N_BITS,
         weights_as_inputs: circuit_params.weights_as_inputs,
     };
