@@ -7,6 +7,7 @@ use super::parser::{AttrValue, ParsedModel, TensorData};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum OpType {
     Add,
+    Div,
     Sub,
     Mul,
     Gemm,
@@ -28,6 +29,7 @@ impl OpType {
     pub fn from_str(s: &str) -> Result<Self> {
         match s {
             "Add" => Ok(Self::Add),
+            "Div" => Ok(Self::Div),
             "Sub" => Ok(Self::Sub),
             "Mul" => Ok(Self::Mul),
             "Gemm" | "Int64Gemm" => Ok(Self::Gemm),

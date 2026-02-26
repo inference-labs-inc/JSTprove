@@ -199,6 +199,7 @@ fn collect_layer_shapes(
 fn op_type_to_string(op: OpType) -> String {
     match op {
         OpType::Add => "Add",
+        OpType::Div => "Div",
         OpType::Sub => "Sub",
         OpType::Mul => "Mul",
         OpType::Gemm => "Gemm",
@@ -347,6 +348,7 @@ mod tests {
         assert_eq!(op_type_to_string(OpType::Gemm), "Gemm");
         assert_eq!(op_type_to_string(OpType::Relu), "ReLU");
         assert_eq!(op_type_to_string(OpType::Add), "Add");
+        assert_eq!(op_type_to_string(OpType::Div), "Div");
         assert_eq!(op_type_to_string(OpType::Reshape), "Reshape");
     }
 }

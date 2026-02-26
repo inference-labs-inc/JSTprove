@@ -32,6 +32,9 @@ pub mod circuit_functions;
 pub mod expander_metadata;
 pub mod io;
 pub mod onnx;
+pub mod proof_system;
 pub mod runner;
 
+pub use circuit_functions::layers::LayerKind;
+pub use proof_system::ProofSystem;
 pub use runner::version::{ArtifactVersion, jstprove_artifact_version};
