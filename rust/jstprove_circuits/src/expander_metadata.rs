@@ -348,6 +348,7 @@ mod tests {
         assert_eq!(op_type_to_string(OpType::Gemm), "Gemm");
         assert_eq!(op_type_to_string(OpType::Relu), "ReLU");
         assert_eq!(op_type_to_string(OpType::Add), "Add");
+        assert_eq!(op_type_to_string(OpType::Div), "Div");
         assert_eq!(op_type_to_string(OpType::Reshape), "Reshape");
     }
 }

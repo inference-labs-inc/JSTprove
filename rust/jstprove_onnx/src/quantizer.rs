@@ -389,10 +389,31 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
             let m_b = get_input_bound(1);
             Ok(m_a * m_b)
         }
-        OpType::Div | OpType::Add | OpType::Sub => {
+        OpType::Add | OpType::Sub => {
             let m_a = get_input_bound(0);
             let m_b = get_input_bound(1);
             Ok(m_a + m_b)
+        }
+        OpType::Div => {
+            let m_a = get_input_bound(0);
+            let min_abs_b = layer
+                .inputs
+                .get(1)
+                .and_then(|name| layer.weights.get(name))
+                .map(|w| {
+                    w.as_f64_vec()
+                        .iter()
+                        .map(|v| v.abs())
+                        .filter(|&v| v > 0.0)
+                        .fold(f64::INFINITY, f64::min)
+                })
+                .filter(|&v| v.is_finite() && v > 0.0)
+                .unwrap_or(0.0);
+            if min_abs_b == 0.0 {
+                Ok(m_a * get_input_bound(1).max(1.0))
+            } else {
+                Ok(m_a / min_abs_b)
+            }
         }
         OpType::Relu => {
             let m_in = get_input_bound(0);

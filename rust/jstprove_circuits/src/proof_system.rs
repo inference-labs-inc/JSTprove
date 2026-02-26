@@ -40,13 +40,24 @@ impl std::fmt::Display for ProofSystem {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ProofSystemParseError(String);
+
+impl std::fmt::Display for ProofSystemParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown proof system: {}", self.0)
+    }
+}
+
+impl std::error::Error for ProofSystemParseError {}
+
 impl std::str::FromStr for ProofSystem {
-    type Err = String;
+    type Err = ProofSystemParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_ascii_lowercase().as_str() {
             "expander" => Ok(Self::Expander),
             "remainder" => Ok(Self::Remainder),
-            other => Err(format!("unknown proof system: {other}")),
+            other => Err(ProofSystemParseError(other.to_string())),
         }
     }
 }
