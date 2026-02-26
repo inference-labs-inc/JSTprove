@@ -396,10 +396,8 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
         }
         OpType::Div => {
             let m_a = get_input_bound(0);
-            let min_abs_b = layer
-                .inputs
-                .get(1)
-                .and_then(|name| layer.weights.get(name))
+            let denom_weight = layer.inputs.get(1).and_then(|name| layer.weights.get(name));
+            let min_abs_b = denom_weight
                 .map(|w| {
                     w.as_f64_vec()
                         .iter()
@@ -407,12 +405,14 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
                         .filter(|&v| v > 0.0)
                         .fold(f64::INFINITY, f64::min)
                 })
-                .filter(|&v| v.is_finite() && v > 0.0)
-                .unwrap_or(0.0);
-            if min_abs_b == 0.0 {
-                Ok(m_a * get_input_bound(1).max(1.0))
-            } else {
-                Ok(m_a / min_abs_b)
+                .filter(|&v| v.is_finite() && v > 0.0);
+            match min_abs_b {
+                Some(b) => Ok(m_a / b),
+                None => anyhow::bail!(
+                    "layer {}: Div denominator is not a constant initializer or contains zero; \
+                     cannot compute a safe bound",
+                    layer.name,
+                ),
             }
         }
         OpType::Relu => {
