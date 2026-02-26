@@ -133,7 +133,7 @@ fn infer_conv(
 
     let kernel_shape = if let Some(v) = layer.get_ints_attr("kernel_shape") {
         nonneg_to_usize(v, "kernel_shape", &layer.name)?
-    } else if weight_shape.len() >= 4 {
+    } else if weight_shape.len() >= 3 {
         weight_shape[2..].to_vec()
     } else {
         vec![1]
@@ -410,8 +410,14 @@ fn infer_reshape(
             minus_one_count += 1;
             minus_one_idx = Some(i);
         } else if d == 0 {
-            let dim = input_shape.get(i).copied().unwrap_or(1);
-            known_product *= dim;
+            if i >= input_shape.len() {
+                bail!(
+                    "layer {}: Reshape d=0 at index {i} exceeds input rank {}",
+                    layer.name,
+                    input_shape.len()
+                );
+            }
+            known_product *= input_shape[i];
         } else if d < -1 {
             bail!(
                 "layer {}: Reshape invalid dimension value {d} at index {i}",
@@ -436,7 +442,7 @@ fn infer_reshape(
             if d == -1 {
                 0
             } else if d == 0 {
-                input_shape.get(i).copied().unwrap_or(1)
+                input_shape[i]
             } else {
                 d as usize
             }
@@ -474,12 +480,17 @@ fn infer_flatten(
 
     let raw_axis = layer.get_int_attr("axis").unwrap_or(1);
     let rank = input_shape.len() as i64;
+    if raw_axis < -rank || raw_axis > rank {
+        bail!(
+            "layer {}: Flatten axis {raw_axis} out of range for rank {rank}",
+            layer.name
+        );
+    }
     let axis = if raw_axis < 0 {
-        (raw_axis + rank).max(0) as usize
+        (raw_axis + rank) as usize
     } else {
         raw_axis as usize
-    }
-    .min(input_shape.len());
+    };
 
     let dim0: usize = input_shape[..axis].iter().product::<usize>().max(1);
     let dim1: usize = input_shape[axis..].iter().product::<usize>().max(1);
@@ -529,6 +540,15 @@ fn infer_squeeze(
                 Ok(n)
             })
             .collect::<Result<Vec<_>>>()?;
+        for &n in &normalized {
+            if input_shape[n] != 1 {
+                bail!(
+                    "layer {}: Squeeze axis {n} has dimension {} (expected 1)",
+                    layer.name,
+                    input_shape[n]
+                );
+            }
+        }
         input_shape
             .iter()
             .enumerate()
