@@ -36,6 +36,7 @@ parallel = [
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 bincode = "1.3"
+rmp-serde = "1.3"
 
 [[bin]]
 name = "jstprove-remainder"

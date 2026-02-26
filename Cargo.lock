@@ -2231,6 +2231,7 @@ dependencies = [
  "prost-build",
  "rayon",
  "remainder",
+ "rmp-serde",
  "rmpv",
  "serde",
  "shared-types",
