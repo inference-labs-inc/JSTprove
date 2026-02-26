@@ -19,7 +19,7 @@ pub fn infer_all_shapes(
         let shape: Vec<usize> = io
             .shape
             .iter()
-            .map(|&d| if d <= 0 { 1 } else { d as usize })
+            .map(|&d| if d < 0 { 1 } else { d as usize })
             .collect();
         shapes.insert(io.name.clone(), shape);
     }
@@ -28,7 +28,7 @@ pub fn infer_all_shapes(
         let shape: Vec<usize> = io
             .shape
             .iter()
-            .map(|&d| if d <= 0 { 1 } else { d as usize })
+            .map(|&d| if d < 0 { 1 } else { d as usize })
             .collect();
         if !shape.is_empty() {
             shapes.insert(io.name.clone(), shape);
@@ -290,6 +290,11 @@ fn infer_maxpool(
         .get_ints_attr("kernel_shape")
         .ok_or_else(|| anyhow::anyhow!("layer {}: MaxPool missing kernel_shape", layer.name))?;
     let kernel = nonneg_to_usize(kernel_raw, "kernel_shape", &layer.name)?;
+    for (i, &k) in kernel.iter().enumerate() {
+        if k == 0 {
+            bail!("layer {}: MaxPool kernel_shape[{i}] is zero", layer.name);
+        }
+    }
 
     let strides = if let Some(v) = layer.get_ints_attr("strides") {
         nonneg_to_usize(v, "strides", &layer.name)?
@@ -826,5 +831,32 @@ mod tests {
         attrs.insert("axis".to_string(), AttrValue::Int(5));
         let layer = make_layer(OpType::Flatten, vec!["x"], vec!["y"], attrs);
         assert!(infer_flatten(&layer, Some(&input_shape)).is_err());
+    }
+
+    #[test]
+    fn gemm_inner_dim_mismatch() {
+        let mut shapes = HashMap::new();
+        shapes.insert("a".to_string(), vec![3, 4]);
+        shapes.insert("b".to_string(), vec![5, 6]);
+        let layer = make_layer(OpType::Gemm, vec!["a", "b"], vec!["y"], HashMap::new());
+        assert!(infer_gemm(&layer, &shapes).is_err());
+    }
+
+    #[test]
+    fn squeeze_rejects_non_one_dim() {
+        let input_shape = vec![2, 3, 1];
+        let mut attrs = HashMap::new();
+        attrs.insert("axes".to_string(), AttrValue::Ints(vec![1]));
+        let layer = make_layer(OpType::Squeeze, vec!["x"], vec!["y"], attrs);
+        assert!(infer_squeeze(&layer, Some(&input_shape)).is_err());
+    }
+
+    #[test]
+    fn unsqueeze_rejects_duplicate_axes() {
+        let input_shape = vec![2, 3];
+        let mut attrs = HashMap::new();
+        attrs.insert("axes".to_string(), AttrValue::Ints(vec![0, 0]));
+        let layer = make_layer(OpType::Unsqueeze, vec!["x"], vec!["y"], attrs);
+        assert!(infer_unsqueeze(&layer, Some(&input_shape)).is_err());
     }
 }
