@@ -11,6 +11,30 @@ use crate::runner::circuit_builder::{
     delta_table_nv, pad_matrix, pad_to_size, transpose_matrix, SpatialInfo,
 };
 
+fn validate_input_size(model: &QuantizedModel, input_name: &str, input_len: usize) -> Result<()> {
+    if let Some(expected_shape) = model.graph.input_shapes.get(input_name) {
+        let expected_size = expected_shape
+            .iter()
+            .try_fold(1usize, |acc, &d| acc.checked_mul(d))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "input shape overflow for '{}': dimensions {:?} exceed usize",
+                    input_name,
+                    expected_shape,
+                )
+            })?;
+        anyhow::ensure!(
+            input_len == expected_size,
+            "input size mismatch for '{}': model expects shape {:?} ({} elements) but received {} elements",
+            input_name,
+            expected_shape,
+            expected_size,
+            input_len,
+        );
+    }
+    Ok(())
+}
+
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct WitnessData {
     pub shreds: HashMap<String, Vec<i64>>,
@@ -126,18 +150,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
         .clone();
 
     let input_size = quantized_input.len();
-
-    if let Some(expected_shape) = model.graph.input_shapes.get(&input_name) {
-        let expected_size: usize = expected_shape.iter().product();
-        anyhow::ensure!(
-            input_size == expected_size,
-            "input size mismatch for '{}': model expects shape {:?} ({} elements) but received {} elements",
-            input_name,
-            expected_shape,
-            expected_size,
-            input_size,
-        );
-    }
+    validate_input_size(model, &input_name, input_size)?;
 
     let input_padded_size = next_power_of_two(input_size);
     let input_padded = pad_to_size(quantized_input, input_padded_size);
@@ -1218,17 +1231,7 @@ pub fn prepare_public_shreds(
         .ok_or_else(|| anyhow::anyhow!("model has no input names defined"))?
         .clone();
 
-    if let Some(expected_shape) = model.graph.input_shapes.get(&input_name) {
-        let expected_size: usize = expected_shape.iter().product();
-        anyhow::ensure!(
-            quantized_input.len() == expected_size,
-            "input size mismatch for '{}': model expects shape {:?} ({} elements) but received {} elements",
-            input_name,
-            expected_shape,
-            expected_size,
-            quantized_input.len(),
-        );
-    }
+    validate_input_size(model, &input_name, quantized_input.len())?;
 
     let input_padded_size = next_power_of_two(quantized_input.len());
     shreds.insert(
