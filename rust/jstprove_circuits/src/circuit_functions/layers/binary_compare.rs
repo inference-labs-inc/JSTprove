@@ -1,20 +1,12 @@
-//! Elementwise Min layer over int64 fixed-point tensors.
-//!
-//! This layer wraps the `constrained_min` gadget to:
-//! - enforce that each output is the minimum of the broadcasted inputs, and
-//! - reuse LogUp-based range checks across all comparisons.
-
 use std::collections::HashMap;
 
-/// External crate imports
 use ndarray::ArrayD;
 
-/// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
-/// Internal crate imports
 use crate::circuit_functions::{
     CircuitError,
+    gadgets::{LogupRangeCheckContext, ShiftRangeContext, constrained_max, constrained_min},
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
@@ -23,14 +15,9 @@ use crate::circuit_functions::{
     },
 };
 
-use crate::circuit_functions::gadgets::{
-    LogupRangeCheckContext, ShiftRangeContext, constrained_min,
-};
-
-// -------- Struct --------
-
 #[derive(Debug)]
-pub struct MinLayer {
+pub struct BinaryCompareLayer {
+    kind: LayerKind,
     inputs: Vec<String>,
     outputs: Vec<String>,
     initializer_a: Option<ArrayD<i64>>,
@@ -38,25 +25,21 @@ pub struct MinLayer {
     shift_exponent: usize,
 }
 
-// -------- Implementation --------
-
-impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MinLayer {
+impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BinaryCompareLayer {
     fn apply(
         &self,
         api: &mut Builder,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
-        // 1. Resolve input names (mirrors AddLayer)
-        let a_name = get_input_name(&self.inputs, 0, LayerKind::Min, INPUT)?;
-        let b_name = get_input_name(&self.inputs, 1, LayerKind::Min, INPUT)?;
+        let a_name = get_input_name(&self.inputs, 0, self.kind.clone(), INPUT)?;
+        let b_name = get_input_name(&self.inputs, 1, self.kind.clone(), INPUT)?;
 
-        // 2. Load either constants (initializers) or runtime inputs
         let a_input = load_array_constants_or_get_inputs(
             api,
             input,
             a_name,
             &self.initializer_a,
-            LayerKind::Min,
+            self.kind.clone(),
         )?;
 
         let b_input = load_array_constants_or_get_inputs(
@@ -64,36 +47,24 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MinLayer {
             input,
             b_name,
             &self.initializer_b,
-            LayerKind::Min,
+            self.kind.clone(),
         )?;
 
-        // 3. Broadcast inputs to a common shape (same helper as AddLayer)
         let (a_bc, b_bc) = broadcast_two_arrays(&a_input, &b_input)?;
 
-        // 4. Prepare shift context
         let shift_ctx =
             ShiftRangeContext::new(api, self.shift_exponent).map_err(|e| LayerError::Other {
-                layer: LayerKind::Min,
-                msg: format!("MinLayer: ShiftRangeContext::new failed: {e}"),
+                layer: self.kind.clone(),
+                msg: format!("ShiftRangeContext::new failed: {e}"),
             })?;
 
-        // Shared LogUp range-check context for this Min layer
         let mut logup_ctx = LogupRangeCheckContext::new_default();
         logup_ctx.init::<C, Builder>(api);
 
-        // 5. Elementwise min: for each position, z = min(a, b)
-        //
-        // We use `constrained_min` with a 2-element slice [a, b], which:
-        //   - shifts both by 2^s,
-        //   - uses `unconstrained_min` to pick the min of the shifted values,
-        //   - shifts back and asserts correctness via LogUp-based range checks
-        //     and a product = 0 constraint.
-        //
-        // At this point, `a_bc` and `b_bc` have identical shapes.
         let shape = a_bc.shape().to_vec();
         if a_bc.len() != b_bc.len() {
             return Err(LayerError::InvalidShape {
-                layer: LayerKind::Min,
+                layer: self.kind.clone(),
                 msg: format!(
                     "broadcast_two_arrays returned arrays of different sizes: {:?} vs {:?}",
                     a_bc.shape(),
@@ -106,18 +77,24 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MinLayer {
         let mut out_storage = Vec::with_capacity(a_bc.len());
 
         for (a_val, b_val) in a_bc.iter().zip(b_bc.iter()) {
-            // Constrained pairwise min using existing gadget + shared LogUp context
-            let min_var = constrained_min(api, &shift_ctx, &mut logup_ctx, &[*a_val, *b_val])?;
-            out_storage.push(min_var);
+            let result_var = match self.kind {
+                LayerKind::Max => {
+                    constrained_max(api, &shift_ctx, &mut logup_ctx, &[*a_val, *b_val])?
+                }
+                LayerKind::Min => {
+                    constrained_min(api, &shift_ctx, &mut logup_ctx, &[*a_val, *b_val])?
+                }
+                _ => unreachable!("BinaryCompareLayer only supports Max and Min"),
+            };
+            out_storage.push(result_var);
         }
 
-        // Finalize LogUp constraints for this layer
         logup_ctx.finalize::<C, Builder>(api);
 
         let result = ArrayD::from_shape_vec(shape.clone(), out_storage).map_err(|_| {
             LayerError::InvalidShape {
-                layer: LayerKind::Min,
-                msg: format!("MinLayer: cannot reshape result into shape {shape:?}"),
+                layer: self.kind.clone(),
+                msg: format!("cannot reshape result into shape {shape:?}"),
             }
         })?;
 
@@ -132,41 +109,26 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MinLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        let a_input_name = layer
-            .inputs
-            .first()
-            .ok_or_else(|| LayerError::MissingInput {
-                layer: LayerKind::Min,
-                name: "input A".to_string(),
-            })?;
-        let b_input_name = layer
-            .inputs
-            .get(1)
-            .ok_or_else(|| LayerError::MissingInput {
-                layer: LayerKind::Min,
-                name: "input B".to_string(),
-            })?;
+        let initializer_a = get_optional_w_or_b(layer_context, &layer.inputs[0])?;
+        let initializer_b = get_optional_w_or_b(layer_context, &layer.inputs[1])?;
 
-        let initializer_a = get_optional_w_or_b(layer_context, a_input_name)?;
-        let initializer_b = get_optional_w_or_b(layer_context, b_input_name)?;
+        let kind = LayerKind::try_from(layer.op_type.as_str())?;
 
-        // Match MaxPool’s choice: use n_bits - 1 as the shift exponent
         let shift_exponent = layer_context
             .n_bits_for(&layer.name)
             .checked_sub(1)
             .ok_or_else(|| LayerError::Other {
-                layer: LayerKind::Min,
+                layer: kind.clone(),
                 msg: "n_bits too small to derive shift_exponent".to_string(),
             })?;
 
-        let min_layer = Self {
+        Ok(Box::new(Self {
+            kind,
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
             initializer_a,
             initializer_b,
             shift_exponent,
-        };
-
-        Ok(Box::new(min_layer))
+        }))
     }
 }

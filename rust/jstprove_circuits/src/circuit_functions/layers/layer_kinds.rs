@@ -2,10 +2,9 @@ use crate::circuit_functions::CircuitError;
 use crate::circuit_functions::layers::LayerError;
 use crate::circuit_functions::layers::batchnorm::BatchnormLayer;
 use crate::circuit_functions::layers::binary_arith::BinaryArithLayer;
+use crate::circuit_functions::layers::binary_compare::BinaryCompareLayer;
 use crate::circuit_functions::layers::div::DivLayer;
 use crate::circuit_functions::layers::layer_ops::LayerOp;
-use crate::circuit_functions::layers::max::MaxLayer;
-use crate::circuit_functions::layers::min::MinLayer;
 use crate::circuit_functions::layers::mul::MulLayer;
 use crate::circuit_functions::utils::build_layers::BuildLayerContext;
 use crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry;
@@ -144,8 +143,8 @@ define_layers! {
     Flatten   => { name: "Flatten", builder: FlattenLayer::build },
     Gemm      => { name: "Gemm", builder: GemmLayer::build },
     MaxPool   => { name: "MaxPool", builder: MaxPoolLayer::build },
-    Max       => { name: "Max", builder: MaxLayer::build },
-    Min       => { name: "Min", builder: MinLayer::build },
+    Max       => { name: "Max", builder: BinaryCompareLayer::build },
+    Min       => { name: "Min", builder: BinaryCompareLayer::build },
     ReLU      => { name: "ReLU", builder: ReluLayer::build, aliases: ["Relu"] },
     Reshape   => { name: "Reshape", builder: ReshapeLayer::build },
     Squeeze   => { name: "Squeeze", builder: SqueezeLayer::build },
