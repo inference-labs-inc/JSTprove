@@ -2,6 +2,7 @@
 members = [
     "rust/jstprove_circuits",
     "rust/jstprove_io",
+    "rust/jstprove_onnx",
     "rust/jstprove_remainder",
 ]
 

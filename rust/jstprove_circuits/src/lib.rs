@@ -28,7 +28,7 @@
 #![feature(min_specialization)]
 
 pub mod circuit_functions;
-#[cfg(feature = "remainder")]
+#[allow(clippy::pedantic)]
 pub mod expander_metadata;
 pub mod io;
 pub mod onnx;
