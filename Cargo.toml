@@ -1,10 +1,12 @@
 [workspace]
 members = [
     "rust/jstprove_circuits",
+    "rust/jstprove_io",
+    "rust/jstprove_remainder",
 ]
 
 resolver = "2"
-exclude = ["ExpanderCompilerCollection", "rust/jstprove_remainder", "rust/jstprove_pyo3", ".claude"]
+exclude = ["ExpanderCompilerCollection", "rust/jstprove_pyo3", ".claude"]
 
 [workspace.dependencies]
 rmpv = { version = "1", features = ["with-serde"] }

@@ -371,6 +371,7 @@ checksum = "246a225cc6131e9ee4f24619af0f19d67761fff15d7ccc22e42b80846e69449a"
 dependencies = [
  "num-traits",
  "rand 0.8.5",
+ "rayon",
 ]
 
 [[package]]
@@ -862,6 +863,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "crc32c"
+version = "0.6.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a47af21622d091a8f0fb295b88bc886ac74efcc613efc19f5d0b21de5c89e47"
+dependencies = [
+ "rustc_version",
 ]
 
 [[package]]
@@ -2193,14 +2203,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "jstprove-io"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crc32c",
+ "rmp-serde",
+ "serde",
+ "zstd",
+]
+
+[[package]]
 name = "jstprove-remainder"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bincode",
  "clap",
+ "criterion",
  "frontend",
  "hyrax",
  "itertools 0.14.0",
+ "jstprove-io",
  "ligero",
  "ndarray 0.15.6",
  "prost",
@@ -2214,7 +2238,6 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "tracing-subscriber",
- "zstd",
 ]
 
 [[package]]
@@ -2229,6 +2252,7 @@ dependencies = [
  "ethnum",
  "expander_compiler",
  "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
+ "jstprove-io",
  "jstprove-remainder",
  "lazy_static",
  "ndarray 0.16.1",

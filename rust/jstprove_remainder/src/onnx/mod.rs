@@ -4,7 +4,7 @@ pub mod ops;
 pub mod parser;
 pub mod quantizer;
 
-#[allow(clippy::all)]
+#[allow(clippy::all, clippy::pedantic)]
 #[allow(non_camel_case_types)]
 mod onnx_ml {
     include!(concat!(env!("OUT_DIR"), "/onnx.rs"));

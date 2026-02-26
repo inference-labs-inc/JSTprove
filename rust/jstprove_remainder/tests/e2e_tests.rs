@@ -1,3 +1,11 @@
+#![allow(clippy::pedantic)]
+#![allow(
+    clippy::identity_op,
+    clippy::manual_memcpy,
+    clippy::needless_range_loop,
+    clippy::useless_vec
+)]
+
 use frontend::abstract_expr::AbstractExpression;
 use frontend::layouter::builder::{CircuitBuilder, LayerVisibility};
 use jstprove_remainder::runner::witness::compute_multiplicities;

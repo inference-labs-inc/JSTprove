@@ -1,21 +1,14 @@
-use std::io::{self, Read};
+use std::io::BufReader;
 use std::path::Path;
 
 use anyhow::Result;
-use serde::Deserialize;
 
 use super::batch::{BatchManifest, BatchResult, ProveJob, VerifyJob, WitnessJob};
 
-fn read_stdin_msgpack<T: for<'de> Deserialize<'de>>() -> Result<T> {
-    let mut buf = Vec::new();
-    io::stdin().read_to_end(&mut buf)?;
-    let value: T = rmp_serde::from_slice(&buf)?;
-    Ok(value)
-}
-
 pub fn run_pipe_witness(model_path: &Path, compress: bool) -> Result<()> {
     let model = super::compile::load_model(model_path)?;
-    let manifest: BatchManifest<WitnessJob> = read_stdin_msgpack()?;
+    let manifest: BatchManifest<WitnessJob> =
+        jstprove_io::read_msgpack_reader(BufReader::new(std::io::stdin()))?;
 
     let alpha = model.scale_config.alpha;
     let mut result = BatchResult {
@@ -34,13 +27,14 @@ pub fn run_pipe_witness(model_path: &Path, compress: bool) -> Result<()> {
         }
     }
 
-    super::serialization::write_msgpack_stdout(&result)?;
+    jstprove_io::write_msgpack_stdout(&result)?;
     Ok(())
 }
 
 pub fn run_pipe_prove(model_path: &Path, compress: bool) -> Result<()> {
     let model = super::compile::load_model(model_path)?;
-    let manifest: BatchManifest<ProveJob> = read_stdin_msgpack()?;
+    let manifest: BatchManifest<ProveJob> =
+        jstprove_io::read_msgpack_reader(BufReader::new(std::io::stdin()))?;
 
     let mut result = BatchResult {
         succeeded: 0,
@@ -58,13 +52,14 @@ pub fn run_pipe_prove(model_path: &Path, compress: bool) -> Result<()> {
         }
     }
 
-    super::serialization::write_msgpack_stdout(&result)?;
+    jstprove_io::write_msgpack_stdout(&result)?;
     Ok(())
 }
 
 pub fn run_pipe_verify(model_path: &Path) -> Result<()> {
     let model = super::compile::load_model(model_path)?;
-    let manifest: BatchManifest<VerifyJob> = read_stdin_msgpack()?;
+    let manifest: BatchManifest<VerifyJob> =
+        jstprove_io::read_msgpack_reader(BufReader::new(std::io::stdin()))?;
 
     let mut result = BatchResult {
         succeeded: 0,
@@ -82,7 +77,7 @@ pub fn run_pipe_verify(model_path: &Path) -> Result<()> {
         }
     }
 
-    super::serialization::write_msgpack_stdout(&result)?;
+    jstprove_io::write_msgpack_stdout(&result)?;
     Ok(())
 }
 
@@ -94,7 +89,7 @@ fn process_pipe_witness_job(
 ) -> Result<()> {
     let quantized_input = super::witness::load_and_quantize_input(Path::new(&job.input), alpha)?;
     let witness = super::witness::compute_witness(model, &quantized_input)?;
-    super::serialization::serialize_to_file(&witness, Path::new(&job.output), compress)?;
+    jstprove_io::serialize_to_file(&witness, Path::new(&job.output), compress)?;
     Ok(())
 }
 
@@ -108,7 +103,7 @@ fn process_pipe_prove_job(
     model.apply_observed_n_bits(&witness_data.observed_n_bits);
     let mut proof = super::prove::generate_proof(&model, &witness_data.shreds)?;
     proof.observed_n_bits = witness_data.observed_n_bits;
-    super::serialization::serialize_to_file(&proof, Path::new(&job.proof), compress)?;
+    jstprove_io::serialize_to_file(&proof, Path::new(&job.proof), compress)?;
     Ok(())
 }
 
