@@ -2197,7 +2197,6 @@ name = "jstprove-remainder"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bincode",
  "clap",
  "frontend",
  "hyrax",
@@ -2208,8 +2207,9 @@ dependencies = [
  "prost-build",
  "rayon",
  "remainder",
+ "rmp-serde",
+ "rmpv",
  "serde",
- "serde_json",
  "shared-types",
  "thiserror 2.0.18",
  "tracing",

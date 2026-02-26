@@ -6,21 +6,16 @@ use serde::Deserialize;
 
 use super::batch::{BatchManifest, BatchResult, ProveJob, VerifyJob, WitnessJob};
 
-fn read_stdin_json<T: for<'de> Deserialize<'de>>() -> Result<T> {
-    let mut buf = String::new();
-    io::stdin().read_to_string(&mut buf)?;
-    let value: T = serde_json::from_str(&buf)?;
+fn read_stdin_msgpack<T: for<'de> Deserialize<'de>>() -> Result<T> {
+    let mut buf = Vec::new();
+    io::stdin().read_to_end(&mut buf)?;
+    let value: T = rmp_serde::from_slice(&buf)?;
     Ok(value)
-}
-
-fn print_result(result: &BatchResult) {
-    let json = serde_json::to_string(result).unwrap_or_default();
-    println!("{}", json);
 }
 
 pub fn run_pipe_witness(model_path: &Path, compress: bool) -> Result<()> {
     let model = super::compile::load_model(model_path)?;
-    let manifest: BatchManifest<WitnessJob> = read_stdin_json()?;
+    let manifest: BatchManifest<WitnessJob> = read_stdin_msgpack()?;
 
     let alpha = model.scale_config.alpha;
     let mut result = BatchResult {
@@ -39,13 +34,13 @@ pub fn run_pipe_witness(model_path: &Path, compress: bool) -> Result<()> {
         }
     }
 
-    print_result(&result);
+    super::serialization::write_msgpack_stdout(&result)?;
     Ok(())
 }
 
 pub fn run_pipe_prove(model_path: &Path, compress: bool) -> Result<()> {
     let model = super::compile::load_model(model_path)?;
-    let manifest: BatchManifest<ProveJob> = read_stdin_json()?;
+    let manifest: BatchManifest<ProveJob> = read_stdin_msgpack()?;
 
     let mut result = BatchResult {
         succeeded: 0,
@@ -63,13 +58,13 @@ pub fn run_pipe_prove(model_path: &Path, compress: bool) -> Result<()> {
         }
     }
 
-    print_result(&result);
+    super::serialization::write_msgpack_stdout(&result)?;
     Ok(())
 }
 
 pub fn run_pipe_verify(model_path: &Path) -> Result<()> {
     let model = super::compile::load_model(model_path)?;
-    let manifest: BatchManifest<VerifyJob> = read_stdin_json()?;
+    let manifest: BatchManifest<VerifyJob> = read_stdin_msgpack()?;
 
     let mut result = BatchResult {
         succeeded: 0,
@@ -87,7 +82,7 @@ pub fn run_pipe_verify(model_path: &Path) -> Result<()> {
         }
     }
 
-    print_result(&result);
+    super::serialization::write_msgpack_stdout(&result)?;
     Ok(())
 }
 

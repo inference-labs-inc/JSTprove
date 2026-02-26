@@ -14,6 +14,7 @@ use crate::runner::circuit_builder;
 use crate::util::i64_to_fr;
 
 use super::serialization;
+use super::version::ArtifactVersion;
 
 pub fn run(
     model_path: &Path,
@@ -116,6 +117,7 @@ pub fn generate_proof(
         transcript: proof_transcript,
         expected_output,
         observed_n_bits: HashMap::new(),
+        version: Some(super::version::jstprove_artifact_version()),
     })
 }
 
@@ -126,6 +128,8 @@ pub struct SerializableProof {
     pub expected_output: Vec<i64>,
     #[serde(default)]
     pub observed_n_bits: HashMap<String, usize>,
+    #[serde(default)]
+    pub version: Option<ArtifactVersion>,
 }
 
 pub fn load_proof(path: &Path) -> Result<SerializableProof> {
