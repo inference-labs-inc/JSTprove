@@ -1621,6 +1621,7 @@ fn get_model_or_circuit(matches: &clap::ArgMatches) -> Result<String, CliError> 
 }
 
 #[cfg(feature = "remainder")]
+#[allow(clippy::too_many_lines)]
 fn dispatch_remainder(
     matches: &clap::ArgMatches,
     command: &str,
