@@ -2244,6 +2244,7 @@ dependencies = [
 name = "jstprove_circuits"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "ark-std 0.4.0",
  "chrono",
  "circuit-std-rs",

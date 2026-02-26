@@ -2060,6 +2060,12 @@ pub fn get_args() -> clap::ArgMatches {
                 .required(false)
                 .long("model"),
         )
+        .arg(
+            Arg::new("onnx")
+                .help("Path to ONNX model (generates metadata automatically)")
+                .required(false)
+                .long("onnx"),
+        )
         .get_matches();
     matches
 }
