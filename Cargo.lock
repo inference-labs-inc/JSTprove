@@ -2203,6 +2203,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "jstprove-direct-builder"
+version = "0.1.0"
+dependencies = [
+ "arith",
+ "ethnum",
+ "expander_compiler",
+ "gkr_engine",
+]
+
+[[package]]
 name = "jstprove-io"
 version = "0.1.0"
 dependencies = [
@@ -2256,6 +2266,7 @@ name = "jstprove_circuits"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "arith",
  "ark-std 0.4.0",
  "chrono",
  "circuit-std-rs",
@@ -2264,10 +2275,12 @@ dependencies = [
  "ethnum",
  "expander_compiler",
  "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
+ "jstprove-direct-builder",
  "jstprove-io",
  "jstprove-onnx",
  "jstprove-remainder",
  "lazy_static",
+ "libc",
  "ndarray 0.16.1",
  "num-bigint",
  "num-traits",

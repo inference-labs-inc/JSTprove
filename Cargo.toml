@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "rust/jstprove_circuits",
+    "rust/jstprove_direct_builder",
     "rust/jstprove_io",
     "rust/jstprove_onnx",
     "rust/jstprove_remainder",

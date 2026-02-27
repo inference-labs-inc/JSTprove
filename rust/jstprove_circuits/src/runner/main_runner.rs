@@ -1920,26 +1920,52 @@ where
             )?;
         }
         "msgpack_compile" => {
+            if matches.get_flag("fast_compile") {
+                return Err(RunError::Compile(
+                    "--fast-compile merges compile+witness+prove into one step. \
+                     Use `msgpack_prove --fast-compile` instead."
+                        .into(),
+                )
+                .into());
+            }
             let circuit_path = get_arg(matches, "circuit_path")?;
             write_circuit_msgpack::<C, CircuitType>(&circuit_path, compress, metadata)?;
             eprintln!("Compiled to {circuit_path}");
         }
         "msgpack_prove" => {
-            let circuit_path = get_arg(matches, "circuit_path")?;
-            let witness_path = get_arg(matches, "witness")?;
-            let proof_path = get_arg(matches, "proof")?;
-            msgpack_prove_file::<C>(&circuit_path, &witness_path, &proof_path, compress)?;
-            eprintln!("Proved to {proof_path}");
+            if matches.get_flag("fast_compile") {
+                let input_path = get_arg(matches, "input")?;
+                let proof_path = get_arg(matches, "proof")?;
+                crate::onnx::fast_compile_prove(&input_path, &proof_path, compress)?;
+                eprintln!("Proved to {proof_path}");
+            } else {
+                let circuit_path = get_arg(matches, "circuit_path")?;
+                let witness_path = get_arg(matches, "witness")?;
+                let proof_path = get_arg(matches, "proof")?;
+                msgpack_prove_file::<C>(&circuit_path, &witness_path, &proof_path, compress)?;
+                eprintln!("Proved to {proof_path}");
+            }
         }
         "msgpack_verify" => {
-            let circuit_path = get_arg(matches, "circuit_path")?;
-            let witness_path = get_arg(matches, "witness")?;
-            let proof_path = get_arg(matches, "proof")?;
-            let valid = msgpack_verify_file::<C>(&circuit_path, &witness_path, &proof_path)?;
-            if valid {
-                eprintln!("Verified");
+            if matches.get_flag("fast_compile") {
+                let input_path = get_arg(matches, "input")?;
+                let proof_path = get_arg(matches, "proof")?;
+                let valid = crate::onnx::fast_compile_verify(&input_path, &proof_path)?;
+                if valid {
+                    eprintln!("Verified");
+                } else {
+                    return Err(RunError::Verify("verification failed".into()).into());
+                }
             } else {
-                return Err(RunError::Verify("verification failed".into()).into());
+                let circuit_path = get_arg(matches, "circuit_path")?;
+                let witness_path = get_arg(matches, "witness")?;
+                let proof_path = get_arg(matches, "proof")?;
+                let valid = msgpack_verify_file::<C>(&circuit_path, &witness_path, &proof_path)?;
+                if valid {
+                    eprintln!("Verified");
+                } else {
+                    return Err(RunError::Verify("verification failed".into()).into());
+                }
             }
         }
         "msgpack_prove_stdin" => {
@@ -2065,6 +2091,13 @@ pub fn get_args() -> clap::ArgMatches {
                 .help("Path to ONNX model (generates metadata automatically)")
                 .required(false)
                 .long("onnx"),
+        )
+        .arg(
+            Arg::new("fast_compile")
+                .help("Use DirectBuilder for ~6x faster compile at the cost of ~2x slower prove/verify")
+                .required(false)
+                .long("fast-compile")
+                .action(clap::ArgAction::SetTrue),
         )
         .get_matches();
     matches
