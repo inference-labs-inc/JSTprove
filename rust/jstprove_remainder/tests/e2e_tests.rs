@@ -67,7 +67,7 @@ fn test_matmul_prove_verify() {
     let diff = builder.add_sector(computed_c - expected_c);
     builder.set_output(&diff);
 
-    let mut circuit = builder.build_with_layer_combination().unwrap();
+    let mut circuit = builder.build_without_layer_combination().unwrap();
 
     circuit.set_input("A", a_mle);
     circuit.set_input("B", b_mle);
@@ -148,7 +148,7 @@ fn test_gemm_with_bias_and_rescale() {
     let output_check = builder.add_sector(quotient_node.expr() - expected_node.expr());
     builder.set_output(&output_check);
 
-    let mut circuit = builder.build_with_layer_combination().unwrap();
+    let mut circuit = builder.build_without_layer_combination().unwrap();
 
     circuit.set_input("Input", input_mle);
     circuit.set_input("Weights", weights_mle);
@@ -183,7 +183,7 @@ fn test_elementwise_add_prove_verify() {
     let diff = builder.add_sector(sum - expected_node);
     builder.set_output(&diff);
 
-    let mut circuit = builder.build_with_layer_combination().unwrap();
+    let mut circuit = builder.build_without_layer_combination().unwrap();
 
     circuit.set_input("A", a_mle);
     circuit.set_input("B", b_mle);
@@ -221,7 +221,7 @@ fn test_logup_range_check() {
     let lookup_table = builder.add_lookup_table(&table, &fs_node);
     let _constraint = builder.add_lookup_constraint(&lookup_table, &witness, &mults);
 
-    let mut prover_circuit = builder.build().unwrap();
+    let mut prover_circuit = builder.build_without_layer_combination().unwrap();
     let mut verifier_circuit = prover_circuit.clone();
 
     prover_circuit.set_input("Table", table_mle.clone());
@@ -260,7 +260,7 @@ fn test_matmul_full_prove_verify_roundtrip() {
     let diff = builder.add_sector(computed_c - expected_c);
     builder.set_output(&diff);
 
-    let mut prover_circuit = builder.build_with_layer_combination().unwrap();
+    let mut prover_circuit = builder.build_without_layer_combination().unwrap();
     let mut verifier_circuit = prover_circuit.clone();
 
     prover_circuit.set_input("A", a_mle.clone());
@@ -385,7 +385,7 @@ fn test_multi_layer_gemm_relu_prove_verify() {
     let out_check = builder.add_sector(fc2_q_node.expr() - expected_node.expr());
     builder.set_output(&out_check);
 
-    let mut prover_circuit = builder.build_with_layer_combination().unwrap();
+    let mut prover_circuit = builder.build_without_layer_combination().unwrap();
     let mut verifier_circuit = prover_circuit.clone();
 
     prover_circuit.set_input("input", MultilinearExtension::new(to_fr_vec(&input)));
@@ -687,7 +687,7 @@ fn test_lenet_fc_prove_verify() {
     let out_chk = builder.add_sector(fc3_q_node.expr() - expected_node.expr());
     builder.set_output(&out_chk);
 
-    let mut prover_circuit = builder.build_with_layer_combination().unwrap();
+    let mut prover_circuit = builder.build_without_layer_combination().unwrap();
     let mut verifier_circuit = prover_circuit.clone();
 
     macro_rules! set_input {
@@ -839,7 +839,7 @@ fn test_conv2d_prove_verify() {
     let out_chk = builder.add_sector(q_node.expr() - expected_node.expr());
     builder.set_output(&out_chk);
 
-    let mut prover_circuit = builder.build_with_layer_combination().unwrap();
+    let mut prover_circuit = builder.build_without_layer_combination().unwrap();
     let mut verifier_circuit = prover_circuit.clone();
 
     let input_padded = pad_to_size(&input, 1 << input_vars);
@@ -952,7 +952,7 @@ fn test_maxpool_prove_verify() {
     let out_chk = builder.add_sector(max_node.expr() - expected_node.expr());
     builder.set_output(&out_chk);
 
-    let mut prover_circuit = builder.build_with_layer_combination().unwrap();
+    let mut prover_circuit = builder.build_without_layer_combination().unwrap();
     let mut verifier_circuit = prover_circuit.clone();
 
     prover_circuit.set_input("input", MultilinearExtension::new(to_fr_vec(&input)));
@@ -1171,7 +1171,7 @@ fn test_conv_relu_maxpool_pipeline() {
     let oc = builder.add_sector(pmax_node.expr() - expected_node.expr());
     builder.set_output(&oc);
 
-    let mut prover_circuit = builder.build_with_layer_combination().unwrap();
+    let mut prover_circuit = builder.build_without_layer_combination().unwrap();
     let mut verifier_circuit = prover_circuit.clone();
 
     let input_padded = pad_to_size(&input, 1 << input_vars);
@@ -1397,7 +1397,7 @@ fn test_lenet_conv1_prove_verify() {
     let oc = builder.add_sector(pmn.expr() - en.expr());
     builder.set_output(&oc);
 
-    let mut prover_circuit = builder.build_with_layer_combination().unwrap();
+    let mut prover_circuit = builder.build_without_layer_combination().unwrap();
     let mut verifier_circuit = prover_circuit.clone();
 
     let input_padded = pad_to_size(&input, input_size);
@@ -1568,7 +1568,7 @@ fn test_conv2d_with_padding_prove_verify() {
     let out_chk = builder.add_sector(q_node.expr() - expected_node.expr());
     builder.set_output(&out_chk);
 
-    let mut prover_circuit = builder.build_with_layer_combination().unwrap();
+    let mut prover_circuit = builder.build_without_layer_combination().unwrap();
     let mut verifier_circuit = prover_circuit.clone();
 
     let input_padded = pad_to_size(&input, 1 << input_vars);
@@ -1694,7 +1694,7 @@ fn test_batchnorm_prove_verify() {
     let out_chk = builder.add_sector(q_node.expr() - expected_node.expr());
     builder.set_output(&out_chk);
 
-    let mut prover_circuit = builder.build_with_layer_combination().unwrap();
+    let mut prover_circuit = builder.build_without_layer_combination().unwrap();
     let mut verifier_circuit = prover_circuit.clone();
 
     prover_circuit.set_input("input", MultilinearExtension::new(to_fr_vec(&input_padded)));
@@ -1748,7 +1748,7 @@ fn test_addsub_prove_verify() {
     let out_chk = builder.add_sector(diff_node.expr() - expected_node.expr());
     builder.set_output(&out_chk);
 
-    let mut prover_circuit = builder.build_with_layer_combination().unwrap();
+    let mut prover_circuit = builder.build_without_layer_combination().unwrap();
     let mut verifier_circuit = prover_circuit.clone();
 
     prover_circuit.set_input("a", MultilinearExtension::new(to_fr_vec(&a)));
@@ -1822,7 +1822,7 @@ fn test_rescale_with_logup() {
     let lookup = builder.add_lookup_table(&table_node, &fs);
     builder.add_lookup_constraint(&lookup, &r_node, &mults_node);
 
-    let mut prover_circuit = builder.build_with_layer_combination().unwrap();
+    let mut prover_circuit = builder.build_without_layer_combination().unwrap();
     let mut verifier_circuit = prover_circuit.clone();
 
     prover_circuit.set_input("input", MultilinearExtension::new(to_fr_vec(&input)));
@@ -1901,7 +1901,7 @@ fn test_relu_with_logup() {
     builder.add_lookup_constraint(&lookup, &di_node, &di_mults_node);
     builder.add_lookup_constraint(&lookup, &dz_node, &dz_mults_node);
 
-    let mut prover_circuit = builder.build_with_layer_combination().unwrap();
+    let mut prover_circuit = builder.build_without_layer_combination().unwrap();
     let mut verifier_circuit = prover_circuit.clone();
 
     prover_circuit.set_input("input", MultilinearExtension::new(to_fr_vec(&input)));
@@ -2035,7 +2035,7 @@ fn test_gemm_relu_gemm_with_logup() {
     builder.add_lookup_constraint(&delta_lookup, &di_node, &di_mults_node);
     builder.add_lookup_constraint(&delta_lookup, &dz_node, &dz_mults_node);
 
-    let mut prover_circuit = builder.build_with_layer_combination().unwrap();
+    let mut prover_circuit = builder.build_without_layer_combination().unwrap();
     let mut verifier_circuit = prover_circuit.clone();
 
     prover_circuit.set_input("input", MultilinearExtension::new(to_fr_vec(&input)));

@@ -135,6 +135,8 @@ impl<C: Config> DirectBuilder<C> {
             .var_locations
             .push(VarLocation { layer: 0, index: 0 });
         builder.witness_values.push(CircuitField::<C>::zero());
+        builder.input_layer_next_index = 1;
+        builder.layers[0].next_output_index = 1;
 
         for &val in input_values {
             let idx = builder.alloc_input_slot();
@@ -1635,7 +1637,7 @@ mod tests {
 
         let (mut circuit, mut witness) = builder.finalize();
 
-        witness[0] = BN254Field::from(999u32);
+        witness[1] = BN254Field::from(999u32);
 
         type Simd = <<BN254Config as GKREngine>::FieldConfig
             as expander_compiler::gkr_engine::FieldEngine>::SimdCircuitField;

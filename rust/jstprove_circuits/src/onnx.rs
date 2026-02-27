@@ -618,6 +618,14 @@ pub fn compile_and_witness_bn254_direct(
         }
     }
 
+    let expected_total = params.effective_input_dims();
+    if input_arr_vals.len() != expected_total {
+        return Err(RunError::Witness(format!(
+            "input dimension mismatch: expected {expected_total}, got {}",
+            input_arr_vals.len()
+        )));
+    }
+
     Ok(direct_build_from_fields(params, &input_arr_vals))
 }
 
@@ -643,9 +651,13 @@ pub fn prove_bn254_direct(
 ) -> Result<Vec<u8>, RunError> {
     type Simd = <<BN254Config as GKREngine>::FieldConfig as expander_compiler::gkr_engine::FieldEngine>::SimdCircuitField;
     let pack_size = <Simd as SimdField>::PACK_SIZE;
+    let mut buf = vec![CircuitField::<BN254Config>::zero(); pack_size];
     circuit.layers[0].input_vals = witness_private
         .iter()
-        .map(|&v| Simd::pack(&vec![v; pack_size]))
+        .map(|&v| {
+            buf.fill(v);
+            Simd::pack(&buf)
+        })
         .collect();
     circuit.evaluate();
     let mpi_config = MPIConfig::prover_new();
@@ -662,9 +674,13 @@ pub fn verify_bn254_direct(
 ) -> Result<bool, RunError> {
     type Simd = <<BN254Config as GKREngine>::FieldConfig as expander_compiler::gkr_engine::FieldEngine>::SimdCircuitField;
     let pack_size = <Simd as SimdField>::PACK_SIZE;
+    let mut buf = vec![CircuitField::<BN254Config>::zero(); pack_size];
     circuit.layers[0].input_vals = witness_private
         .iter()
-        .map(|&v| Simd::pack(&vec![v; pack_size]))
+        .map(|&v| {
+            buf.fill(v);
+            Simd::pack(&buf)
+        })
         .collect();
     let (proof, claimed_v) =
         executor::load_proof_and_claimed_v::<ChallengeField<BN254Config>>(proof_bytes)

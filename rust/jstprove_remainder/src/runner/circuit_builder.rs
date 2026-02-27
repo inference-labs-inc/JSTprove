@@ -82,6 +82,8 @@ pub fn delta_table_nv(layer_n_bits: usize, exponent: usize) -> usize {
     layer_n_bits.saturating_sub(exponent).max(1)
 }
 
+pub const RANGE_CHECK_CHUNK_BITS: usize = 9;
+
 pub fn compute_range_check_plan(model: &QuantizedModel) -> Result<BTreeMap<usize, Vec<String>>> {
     let exponent = model.scale_config.exponent as usize;
     let mut plan: BTreeMap<usize, Vec<String>> = BTreeMap::new();
@@ -89,16 +91,54 @@ pub fn compute_range_check_plan(model: &QuantizedModel) -> Result<BTreeMap<usize
     for layer in model.graph.iter_topo() {
         match layer.op_type {
             OpType::Gemm | OpType::Conv | OpType::BatchNormalization => {
-                plan.entry(exponent)
-                    .or_default()
-                    .push(format!("{}_r", layer.name));
+                if exponent <= RANGE_CHECK_CHUNK_BITS {
+                    plan.entry(exponent)
+                        .or_default()
+                        .push(format!("{}_r", layer.name));
+                } else {
+                    anyhow::ensure!(
+                        exponent <= 2 * RANGE_CHECK_CHUNK_BITS,
+                        "layer {} exponent {} exceeds two-chunk range-check capacity (max {} bits)",
+                        layer.name,
+                        exponent,
+                        2 * RANGE_CHECK_CHUNK_BITS
+                    );
+                    plan.entry(RANGE_CHECK_CHUNK_BITS)
+                        .or_default()
+                        .push(format!("{}_r_c0", layer.name));
+                    plan.entry(exponent - RANGE_CHECK_CHUNK_BITS)
+                        .or_default()
+                        .push(format!("{}_r_c1", layer.name));
+                }
             }
             OpType::Relu => {
                 if let Some(n_bits) = layer.n_bits {
                     let dnv = delta_table_nv(n_bits, exponent);
-                    let entry = plan.entry(dnv).or_default();
-                    entry.push(format!("{}_di", layer.name));
-                    entry.push(format!("{}_dz", layer.name));
+                    if dnv > RANGE_CHECK_CHUNK_BITS {
+                        anyhow::ensure!(
+                            dnv <= 2 * RANGE_CHECK_CHUNK_BITS,
+                            "Relu layer {} delta nv {} exceeds two-chunk range-check capacity (max {} bits)",
+                            layer.name,
+                            dnv,
+                            2 * RANGE_CHECK_CHUNK_BITS
+                        );
+                        plan.entry(RANGE_CHECK_CHUNK_BITS)
+                            .or_default()
+                            .push(format!("{}_di_c0", layer.name));
+                        plan.entry(RANGE_CHECK_CHUNK_BITS)
+                            .or_default()
+                            .push(format!("{}_dz_c0", layer.name));
+                        plan.entry(dnv - RANGE_CHECK_CHUNK_BITS)
+                            .or_default()
+                            .push(format!("{}_di_c1", layer.name));
+                        plan.entry(dnv - RANGE_CHECK_CHUNK_BITS)
+                            .or_default()
+                            .push(format!("{}_dz_c1", layer.name));
+                    } else {
+                        let entry = plan.entry(dnv).or_default();
+                        entry.push(format!("{}_di", layer.name));
+                        entry.push(format!("{}_dz", layer.name));
+                    }
                 }
             }
             OpType::MaxPool => {
@@ -130,9 +170,27 @@ pub fn compute_range_check_plan(model: &QuantizedModel) -> Result<BTreeMap<usize
                                 kernel_shape[1]
                             )
                         })?;
-                    let entry = plan.entry(dnv).or_default();
-                    for i in 0..window_size {
-                        entry.push(format!("{}_d{}", layer.name, i));
+                    if dnv > RANGE_CHECK_CHUNK_BITS {
+                        anyhow::ensure!(
+                            dnv <= 2 * RANGE_CHECK_CHUNK_BITS,
+                            "MaxPool layer {} delta nv {} exceeds two-chunk range-check capacity (max {} bits)",
+                            layer.name,
+                            dnv,
+                            2 * RANGE_CHECK_CHUNK_BITS
+                        );
+                        for i in 0..window_size {
+                            plan.entry(RANGE_CHECK_CHUNK_BITS)
+                                .or_default()
+                                .push(format!("{}_d{}_c0", layer.name, i));
+                            plan.entry(dnv - RANGE_CHECK_CHUNK_BITS)
+                                .or_default()
+                                .push(format!("{}_d{}_c1", layer.name, i));
+                        }
+                    } else {
+                        let entry = plan.entry(dnv).or_default();
+                        for i in 0..window_size {
+                            entry.push(format!("{}_d{}", layer.name, i));
+                        }
                     }
                 }
             }
@@ -372,6 +430,53 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
     if !range_checks.is_empty() {
         let fs_node = builder.add_fiat_shamir_challenge_node(1);
 
+        let range_checks = {
+            let mut out: Vec<RangeCheckRequest> = Vec::with_capacity(range_checks.len());
+            for rc in range_checks {
+                if rc.table_nv <= RANGE_CHECK_CHUNK_BITS {
+                    out.push(rc);
+                    continue;
+                }
+                let lo_name = format!("{}_c0", rc.shred_name);
+                let hi_name = format!("{}_c1", rc.shred_name);
+                let lo_node = builder.add_input_shred(&lo_name, rc.node_nv, &committed);
+                let hi_node = builder.add_input_shred(&hi_name, rc.node_nv, &committed);
+                manifest.insert(
+                    lo_name.clone(),
+                    ShredEntry {
+                        num_vars: rc.node_nv,
+                        visibility: Visibility::Committed,
+                    },
+                );
+                manifest.insert(
+                    hi_name.clone(),
+                    ShredEntry {
+                        num_vars: rc.node_nv,
+                        visibility: Visibility::Committed,
+                    },
+                );
+                let chunk_scale = i64_to_fr(1i64 << RANGE_CHECK_CHUNK_BITS);
+                let decomp = builder.add_sector(
+                    lo_node.expr() + AbstractExpression::scaled(hi_node.expr(), chunk_scale)
+                        - rc.node.expr(),
+                );
+                builder.set_output(&decomp);
+                out.push(RangeCheckRequest {
+                    shred_name: lo_name,
+                    node: lo_node,
+                    table_nv: RANGE_CHECK_CHUNK_BITS,
+                    node_nv: rc.node_nv,
+                });
+                out.push(RangeCheckRequest {
+                    shred_name: hi_name,
+                    node: hi_node,
+                    table_nv: rc.table_nv - RANGE_CHECK_CHUNK_BITS,
+                    node_nv: rc.node_nv,
+                });
+            }
+            out
+        };
+
         let mut checks_by_key: BTreeMap<(usize, usize), Vec<RangeCheckRequest>> = BTreeMap::new();
         for rc in range_checks {
             checks_by_key
@@ -447,7 +552,7 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
         }
     }
 
-    let circuit = builder.build_with_layer_combination()?;
+    let circuit = builder.build_without_layer_combination()?;
 
     Ok(BuildResult { circuit, manifest })
 }
