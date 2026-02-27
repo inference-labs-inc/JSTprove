@@ -4,6 +4,7 @@
     clippy::must_use_candidate
 )]
 
+pub mod bundle;
 pub mod compress;
 pub mod envelope;
 pub mod version;
