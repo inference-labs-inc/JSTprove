@@ -1,6 +1,6 @@
 # Developer Notes
 
-Internal notes for contributors working on JSTprove (Python + Rust).
+Internal notes for contributors working on JSTprove.
 
 > For environment setup, pre-commit, formatting policy, and PR workflow, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
@@ -9,81 +9,55 @@ Internal notes for contributors working on JSTprove (Python + Rust).
 ## Repo layout
 
 ```
-
 .
-├─ python/                    # CLI and pipeline
-│  └─ frontend/cli.py         # JSTprove CLI entrypoint
-├─ python/testing/            # unit/integration tests
-│  └─ core/tests/             # CLI tests, etc.
-└─ rust/
-   └─ jstprove_circuits/     # Rust crate: circuits + runner
-
-````
+├─ pysrc/
+│  └─ jstprove/
+│     └─ __init__.py            # PyO3 bindings: Circuit, WitnessResult, BatchResult
+├─ rust/
+│  ├─ jstprove_circuits/        # Layer circuits, runner, CLI (jstprove binary)
+│  ├─ jstprove_io/              # Serialization: msgpack envelope, zstd compression
+│  ├─ jstprove_onnx/            # ONNX parsing utilities
+│  ├─ jstprove_remainder/       # Remainder backend circuits + CLI (jstprove-remainder binary)
+│  └─ jstprove_pyo3/            # PyO3 bridge (excluded from workspace)
+├─ docs/
+├─ hooks/
+├─ Cargo.toml                   # Workspace root
+└─ pyproject.toml                # Maturin-based Python build
+```
 
 ---
 
 ## Rust binaries
 
-- Main runner: `onnx_generic_circuit`
-- Simple demo: `simple_circuit`
+- `jstprove` -- Expander backend CLI (from `jstprove_circuits`)
+- `jstprove-remainder` -- Remainder backend CLI (from `jstprove_remainder`)
+- `simple_circuit` -- minimal demo circuit
 
-You can build them manually if needed:
+Build from repo root:
 
 ```bash
-# from repo root
 cargo build --release
-# or explicitly (if not using a workspace root):
-cargo build --release --manifest-path rust/jstprove_circuits/Cargo.toml
-````
+```
 
-These must be built manually if you are making changes to the rust side of the codebase, without the entire codebase package updating.
-
-Artifacts typically appear under `./target/release/`.
-
-> The CLI **compile** step will (re)build the runner automatically when needed.
+Artifacts appear under `./target/release/`.
 
 ---
 
-## Python tests
+## Python package
 
-Before running tests, make sure to install test dependencies:
-
-```bash
-uv sync --group test
-```
-
-* **Unit** CLI tests **mock** `base_testing` (fast; no heavy Rust).
-* Integration/E2E for heavy models live elsewhere; use `simple_circuit` or small ONNX models for smoke tests.
-
-Examples:
+The Python package is a thin PyO3 binding layer with no pip dependencies. It is built with [maturin](https://www.maturin.rs/):
 
 ```bash
-# run unit + integration markers from repo root
-uv run pytest --unit --integration
-
-# run e2e tests.
-Place model to be run in python/models/models_onnx/<model_name>.onnx
-uv run pytest --e2e --<model_name>
+maturin develop --release
 ```
 
----
-
-## Useful environment variables
-
-Suppress the ASCII banner in non-interactive runs:
-
-```bash
-export JSTPROVE_NO_BANNER=1
-```
+The only Python source file is `pysrc/jstprove/__init__.py`, which re-exports `Circuit`, `WitnessResult`, and `BatchResult` from the native extension.
 
 ---
 
 ## Notes & conventions
 
-* The CLI uses **GenericModelONNX** by default (no circuit class/name flags).
-* Paths are **explicit** (no inference).
-* Keep artifacts from the **same compile** together: `circuit.txt` + `quantized.onnx`.
-  If the ONNX changes, **re-run compile**.
-* Run commands from the **repo root** so `./target/release/*` is resolvable.
-
-```
+- The circuit type used by the Expander backend is `Circuit`.
+- Paths are **explicit** (no inference).
+- Keep artifacts from the **same compile** together. If the ONNX model changes, **re-run compile**.
+- Run commands from the **repo root** so `./target/release/*` is resolvable.

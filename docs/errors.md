@@ -1,7 +1,6 @@
 # Errors Guide
-_For Python frontend + Rust backend codebase_
 
-This document begins by explaining the errors raised by the Rust backend. Each section explains what the error means and the context in which it typically arises.
+This document explains the errors raised by the Rust backend. Each section explains what the error means and the context in which it typically arises.
 
 ---
 
@@ -92,121 +91,45 @@ High-level errors related to the entire circuit or architecture definition.
 |-------|---------|
 | **Layer** | Propagated `LayerError`. Indicates a problem inside a specific layer. |
 | **UtilsError** | Propagated `UtilsError`. See the utils section for details. |
-| **InvalidWeightsFormat** | The weights file could not be parsed as valid JSON or did not match expected schema. |
+| **InvalidWeightsFormat** | The weights data could not be parsed as valid msgpack (`rmpv::ext::Error`). |
 | **EmptyArchitecture** | No layers were provided in the architecture definition. |
 | **GraphPatternError / ArrayConversionError / RescaleError / BuildError** | Errors bubbled up from subsystems (graph, array, scaling, build). |
+| **OnnxContext** | The ONNX context (parameters, architecture, or W&B) was not initialized or is invalid. |
 | **Other** | A catch-all for miscellaneous circuit-level issues. |
 
 ---
 
-## 8. CLI & Runtime Errors (`CliError`, `RunError`)
-These are errors surfaced when interacting via the **command-line interface** or when executing circuits.
+## 8. CLI Errors (`CliError`)
+Errors surfaced when interacting via the command-line interface.
 
 | Error | Meaning |
 |-------|---------|
 | **MissingArgument** | A required CLI argument was omitted. |
 | **UnknownCommand** | An unrecognized CLI command was issued. |
 | **Io** | A file or I/O operation failed (missing file, permissions, etc.). |
+| **RunError** | Propagated `RunError` from runtime execution. |
+| **Other** | Miscellaneous CLI errors. |
+
+## 9. Runtime Errors (`RunError`)
+Errors from circuit execution at runtime.
+
+| Error | Meaning |
+|-------|---------|
+| **Io** | A file or I/O operation failed, includes the path that was being accessed. |
 | **Json** | A JSON deserialization error occurred at runtime, often due to malformed input. |
 | **Compile** | Circuit compilation failed. |
-| **Serialize / Deserialize** | Errors in serializing or deserializing types. |
+| **Serialize** | Serialization of an artifact failed. |
+| **Deserialize** | Deserialization of an artifact failed. |
 | **Witness** | Witness generation failed. |
-| **Prove / Verify** | Proof generation or verification failed. |
-| **Other** | Miscellaneous runtime errors. |
-
----
-
-# Python Errors
-
-## 1. CLI Errors (`CLIError`)
-
-High-level errors raised when interacting via Python CLI utilities.
-
-| Error      | Meaning |
-|------------|---------|
-| **CLIError** | Base exception for CLI-related errors. Indicates improper arguments, bad commands, or other user-facing CLI issues. Also wrapping verious other errors called through the cli.|
-
----
-
-## 2. Circuit Definition & Configuration Errors (`CircuitError` and subclasses)
-
-Errors related to **circuit definition, validation, and configuration**.
-
-| Error | Meaning |
-|-------|---------|
-| **CircuitError** | Base class for all circuit-related errors. Usually wraps a human-readable message and optional structured details. |
-| **CircuitConfigurationError** | Raised when the base circuit class is misconfigured (e.g., missing or invalid attributes such as input shape or scaling factor). Provides a list of missing attributes if known. |
-| **CircuitInputError** | Raised when input validation fails. |
-| **CircuitRunError** | Raised when a high-level circuit operation (compile, prove, verify, etc.) fails. |
-| **CircuitFileError** | Raised when file-related circuit operations (read, write, access) fail. |
-| **CircuitProcessingError** | Raised when data processing operations fail (e.g., scaling, reshaping, tensor manipulation). |
-
----
-
-## 3. Quantization Errors (`QuantizationError` and subclasses)
-
-Errors raised during **model quantization** — typically when converting or preparing ONNX models for backend execution.
-
-| Error | Meaning |
-|-------|---------|
-| **QuantizationError** | Base class for all quantization errors. Always includes a generic JSTprove support message plus a specific description of the issue. |
-| **InvalidParamError** | Raised when a node contains invalid or unsupported parameters during quantization. |
-| **UnsupportedOpError** | Raised when an unsupported ONNX operation is encountered during quantization. Suggests reviewing supported layers. |
-| **MissingHandlerError** | Raised when no registered handler exists for a particular operator type during quantization. |
-| **InitializerNotFoundError** | Raised when a required initializer (typically weight or bias tensor) for a node is missing from the initializer map. |
-| **HandlerImplementationError** | Raised when a quantization handler does not conform to the expected interface (e.g., missing `quantize` method, wrong return type). |
-| **InvalidGraphError** | Raised when the ONNX graph is malformed or missing critical information. |
-| **InvalidConfigError** | Raised when the quantization configuration itself is invalid or unsupported (e.g., bad scaling parameters or global settings). |
-
----
-
-## 4. Model Conversion Errors (`ModelConversionError` and subclasses)
-
-Errors raised while **loading, saving, analyzing, or converting** models (usually ONNX).
-
-| Error | Meaning |
-|-------|---------|
-| **ModelConversionError** | Base class for all model conversion errors. Includes the model type and optional context. |
-| **ModelLoadError** | Raised when an ONNX model cannot be loaded (e.g., file missing, corrupted, or incompatible). |
-| **ModelSaveError** | Raised when saving a model to disk fails. |
-| **InferenceError** | Raised when ONNX Runtime inference fails. May include the model path and reason. |
-| **LayerAnalysisError** | Raised when analyzing layers of a model fails (e.g., unsupported layer format or corrupt metadata). |
-| **IOInfoExtractionError** | Raised when extracting input/output tensor info from a model fails. |
-| **InvalidModelError** | Raised when the ONNX model fails validation (`onnx.checker`) or other structural checks. |
-| **SerializationError** | Raised when model data (e.g., tensors) cannot be serialized to the required format. |
-
----
-
-## 5. Circuit Execution Errors (`CircuitExecutionError` and subclasses)
-
-Errors raised during **runtime execution** of the circuit (proof generation, caching, system calls).
-
-| Error | Meaning |
-|-------|---------|
-| **CircuitExecutionError** | Base exception for circuit execution-related errors. |
-| **MissingFileError** | Raised when a required file cannot be found. Provides optional path. |
-| **FileCacheError** | Raised when reading or writing cached output fails. Provides optional path. |
-| **ProofBackendError** | Raised when a backend (interfacing with proving system) command fails. Includes command, exit code, stdout, and stderr for debugging. |
-| **ProofSystemNotImplementedError** | Raised when a requested proof system is not implemented. |
-
----
-
-## 6. Circuit Utility Errors (`CircuitUtilsError` and subclasses)
-
-Errors from **utility functions** used in circuit construction, file parsing, or tensor manipulation.
-
-| Error | Meaning |
-|-------|---------|
-| **CircuitUtilsError** | Base class for layer utility errors. |
-| **InputFileError** | Raised when reading an input file fails. Includes file path and cause if known. |
-| **MissingCircuitAttributeError** | Raised when a required attribute is missing or not set in a circuit definition. |
-| **ShapeMismatchError** | Raised when attempting to reshape tensors into incompatible shapes. Includes expected and actual shapes. |
+| **Prove** | Proof generation failed. |
+| **Verify** | Proof verification failed. |
+| **Unsupported** | The requested operation is not supported. |
+| **ConfigureCircuit** | Error configuring the circuit from ONNX context. |
 
 ---
 
 ## Debugging Strategy
-1. **Identify the error enum** – this indicates which subsystem failed (utils, layers, circuit, CLI, etc.).
-2. **Inspect the detailed message** – most errors embed the specific layer, param, or input name.
-3. **Trace frontend → backend inputs** – many errors originate from mismatched JSON schemas or invalid data passed in from Python.
-4. **Check for shape and type mismatches** – tensor dimension issues are among the most common failures.
-5. **Review logs** – backend logs will often reveal deeper stack traces that explain propagation of errors.
+1. **Identify the error enum** -- this indicates which subsystem failed (utils, layers, circuit, CLI, etc.).
+2. **Inspect the detailed message** -- most errors embed the specific layer, param, or input name.
+3. **Check for shape and type mismatches** -- tensor dimension issues are among the most common failures.
+4. **Review logs** -- backend logs will often reveal deeper stack traces that explain propagation of errors.

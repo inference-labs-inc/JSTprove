@@ -6,17 +6,16 @@ Common issues and quick fixes.
 
 ## Runner not found
 
-- Run commands from the **repo root** so `./target/release/*` is visible.
-- Re-run **compile** (it will build the runner automatically if needed).
-
+- Run commands from the **repo root** so `./target/release/jstprove` and `./target/release/jstprove-remainder` are visible.
+- Ensure you have run `cargo build --release`.
 
 ---
 
 ## Shape or "out of bounds" errors during witness
 
-- Ensure your `--input-path` matches the model's input **shape**.
-- Re-run **compile** after changing the model (to refresh circuit + quantization).
-- Make sure **witness** and **verify** both use the **same `quantized.onnx`** produced by the last compile.
+- Ensure your `--input` matches the model's input **shape**.
+- Re-run **compile** after changing the model (to refresh the compiled circuit).
+- Make sure **witness** and **verify** both use the **same compiled circuit** produced by the last compile.
 
 ---
 
@@ -36,6 +35,5 @@ Common issues and quick fixes.
 
 ## General tips
 
-- Keep artifacts from the **same compile** together: `circuit.txt` + `quantized.onnx`.
-- If anything looks mismatched, re-run **compile → witness → prove → verify** end-to-end.
-- Set `JSTPROVE_NO_BANNER=1` or use `--no-banner` for quiet logs in CI.
+- Keep artifacts from the **same compile** together (compiled circuit + witness + proof).
+- If anything looks mismatched, re-run **compile -> witness -> prove -> verify** end-to-end.

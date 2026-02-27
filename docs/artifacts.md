@@ -1,62 +1,62 @@
 # Artifacts
 
-This page describes the files JSTprove reads/writes during the pipeline.
+This page describes the files JSTprove reads and writes during the pipeline.
 
 ---
 
-## Files you'll typically see
+## Serialization format
 
-- **Circuit** — `circuit.txt`
-  Compiled Expander circuit description.
-  _Produced by:_ `compile`
+All artifacts are serialized as **msgpack** wrapped in a jstprove envelope (`JST\x01` magic, 20-byte header). The envelope contains:
 
-- **Quantized model** — `quantized.onnx`
-  ONNX model with integerized ops (used by witness/verify to hydrate shapes).
-  _Produced by:_ `compile`
+| Field | Size | Description |
+|-------|------|-------------|
+| Magic | 4 bytes | `JST\x01` |
+| Flags | 4 bytes (LE u32) | Bit 0: zstd compressed |
+| Payload length | 8 bytes (LE u64) | Length of the payload after the header |
+| CRC32c | 4 bytes (LE u32) | CRC32c checksum of the payload |
 
-- **Inputs** — your input JSON (you provide it)
-  During witness/verify the CLI also creates a local `*_reshaped.json` (next to your CWD) after scaling/reshaping.
-  _Consumed by:_ `witness`, `verify`
-
-- **Outputs** — `output.json`
-  Model outputs (integer domain) computed from the quantized model.
-  _Produced by:_ `witness` (and used by `verify`)
-
-- **Witness** — `witness.bin`
-  Private inputs / auxiliary data for proving.
-  _Produced by:_ `witness` (consumed by `prove`, `verify`)
-
-- **Proof** — `proof.bin`
-  Zero-knowledge proof blob.
-  _Produced by:_ `prove` (checked by `verify`)
+The payload is msgpack data, optionally zstd-compressed (controlled by the `--no-compress` flag). Legacy formats (bare zstd or raw msgpack without envelope) are also accepted on read.
 
 ---
 
-## Typical layout
+## Expander backend artifacts
 
-You control all paths; the CLI **does not** infer directories.
+**`CompiledCircuit`** (msgpack) -- produced by `msgpack_compile` or `run_compile_circuit`.
 
-```
+| Field | Type | Description |
+|-------|------|-------------|
+| `circuit` | bytes | Serialized Expander layered circuit |
+| `witness_solver` | bytes | Serialized Expander witness solver |
+| `metadata` | optional `CircuitParams` | ONNX model parameters (scale, inputs, outputs, etc.) |
+| `version` | optional `ArtifactVersion` | Artifact version tag |
 
-artifacts/
-lenet/
-circuit.txt
-quantized.onnx
-output.json
-witness.bin
-proof.bin
-models/
-inputs/
-lenet_input.json
+**`WitnessBundle`** (msgpack) -- produced by witness commands.
 
-```
+| Field | Type | Description |
+|-------|------|-------------|
+| `witness` | bytes | Serialized Expander witness |
+| `output_data` | optional `Vec<i64>` | Model output values |
+| `version` | optional `ArtifactVersion` | Artifact version tag |
 
-> Note: `*_reshaped.json` is generated in your current working directory during witness/verify. It’s a convenience file reflecting the scaled/reshaped inputs actually fed into the circuit.
+**`ProofBundle`** (msgpack) -- produced by prove commands.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `proof` | bytes | Serialized proof |
+| `version` | optional `ArtifactVersion` | Artifact version tag |
+
+---
+
+## Remainder backend artifacts
+
+**`QuantizedModel`** (msgpack) -- produced by `jstprove-remainder compile`. Contains the quantized ONNX graph and scale configuration.
+
+Witness and proof artifacts for the remainder backend also use msgpack serialization with the same envelope format.
 
 ---
 
 ## Tips
 
-- Keep artifacts from the **same compile** together (circuit + quantized ONNX) to avoid shape/version mismatches.
+- Keep artifacts from the **same compile** together (compiled circuit + witness + proof) to avoid version mismatches.
 - If you change the ONNX model, **re-run compile** before witness/prove/verify.
-- Store inputs/outputs under versioned folders if you need reproducibility.
+- Pass `--no-compress` to disable zstd compression if you need to inspect raw msgpack payloads.
