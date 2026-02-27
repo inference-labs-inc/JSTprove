@@ -1512,6 +1512,147 @@ mod tests {
     }
 
     #[test]
+    fn test_to_binary_small() {
+        let val = BN254Field::from(42u32);
+        let hint_registry = HintRegistry::new();
+        let mut b = DirectBuilder::<BN254Config>::new(&[val], hint_registry);
+        let x = Variable::from(1);
+        let bits = b.to_binary(x, 8);
+        let reconstructed = b.from_binary(&bits);
+        let diff = b.sub(x, reconstructed);
+        b.assert_is_zero(diff);
+        b.set_outputs(vec![reconstructed]);
+        let (mut circuit, witness) = b.finalize();
+        assert!(prove_verify_direct(&mut circuit, &witness));
+    }
+
+    #[test]
+    fn test_to_binary_large_value() {
+        let large =
+            BN254Field::from_u256(ethnum::U256::from(1u128 << 100) + ethnum::U256::from(7u64));
+        let hint_registry = HintRegistry::new();
+        let mut b = DirectBuilder::<BN254Config>::new(&[large], hint_registry);
+        let x = Variable::from(1);
+        let bits = b.to_binary(x, 253);
+        let reconstructed = b.from_binary(&bits);
+        let diff = b.sub(x, reconstructed);
+        b.assert_is_zero(diff);
+        b.set_outputs(vec![reconstructed]);
+        let (mut circuit, witness) = b.finalize();
+        assert!(prove_verify_direct(&mut circuit, &witness));
+    }
+
+    #[test]
+    fn test_gt_basic_cases() {
+        let a = BN254Field::from(10u32);
+        let b_val = BN254Field::from(5u32);
+        let hint_registry = HintRegistry::new();
+        let mut b = DirectBuilder::<BN254Config>::new(&[a, b_val], hint_registry);
+        let va = Variable::from(1);
+        let vb = Variable::from(2);
+
+        let gt_result = b.gt(va, vb);
+        let expected_one = b.constant(BN254Field::one());
+        let diff = b.sub(gt_result, expected_one);
+        b.assert_is_zero(diff);
+
+        b.set_outputs(vec![gt_result]);
+        let (mut circuit, witness) = b.finalize();
+        assert!(prove_verify_direct(&mut circuit, &witness));
+    }
+
+    #[test]
+    fn test_gt_equal_values() {
+        let a = BN254Field::from(7u32);
+        let hint_registry = HintRegistry::new();
+        let mut b = DirectBuilder::<BN254Config>::new(&[a, a], hint_registry);
+        let va = Variable::from(1);
+        let vb = Variable::from(2);
+
+        let gt_result = b.gt(va, vb);
+        let expected_zero = b.constant(BN254Field::zero());
+        let diff = b.sub(gt_result, expected_zero);
+        b.assert_is_zero(diff);
+
+        b.set_outputs(vec![gt_result]);
+        let (mut circuit, witness) = b.finalize();
+        assert!(prove_verify_direct(&mut circuit, &witness));
+    }
+
+    #[test]
+    fn test_gt_lesser_value() {
+        let a = BN254Field::from(3u32);
+        let b_val = BN254Field::from(10u32);
+        let hint_registry = HintRegistry::new();
+        let mut b = DirectBuilder::<BN254Config>::new(&[a, b_val], hint_registry);
+        let va = Variable::from(1);
+        let vb = Variable::from(2);
+
+        let gt_result = b.gt(va, vb);
+        let expected_zero = b.constant(BN254Field::zero());
+        let diff = b.sub(gt_result, expected_zero);
+        b.assert_is_zero(diff);
+
+        b.set_outputs(vec![gt_result]);
+        let (mut circuit, witness) = b.finalize();
+        assert!(prove_verify_direct(&mut circuit, &witness));
+    }
+
+    #[test]
+    fn test_div_basic() {
+        let a = BN254Field::from(15u32);
+        let b_val = BN254Field::from(3u32);
+        let hint_registry = HintRegistry::new();
+        let mut b = DirectBuilder::<BN254Config>::new(&[a, b_val], hint_registry);
+        let va = Variable::from(1);
+        let vb = Variable::from(2);
+
+        let quotient = b.div(va, vb, false);
+        let expected = b.constant(BN254Field::from(5u32));
+        let diff = b.sub(quotient, expected);
+        b.assert_is_zero(diff);
+
+        b.set_outputs(vec![quotient]);
+        let (mut circuit, witness) = b.finalize();
+        assert!(prove_verify_direct(&mut circuit, &witness));
+    }
+
+    #[test]
+    fn test_wrong_witness_rejected() {
+        let a = BN254Field::from(3u32);
+        let b_val = BN254Field::from(5u32);
+
+        let hint_registry = HintRegistry::new();
+        let mut builder = DirectBuilder::<BN254Config>::new(&[a, b_val], hint_registry);
+
+        let va = Variable::from(1);
+        let vb = Variable::from(2);
+        let prod = builder.mul(va, vb);
+        let expected = builder.constant(BN254Field::from(15u32));
+        let diff = builder.sub(prod, expected);
+        builder.assert_is_zero(diff);
+        builder.set_outputs(vec![prod]);
+
+        let (mut circuit, mut witness) = builder.finalize();
+
+        witness[0] = BN254Field::from(999u32);
+
+        type Simd = <<BN254Config as GKREngine>::FieldConfig
+            as expander_compiler::gkr_engine::FieldEngine>::SimdCircuitField;
+        let ps = <Simd as SimdField>::PACK_SIZE;
+        circuit.layers[0].input_vals = witness.iter().map(|&v| Simd::pack(&vec![v; ps])).collect();
+        circuit.evaluate();
+
+        let output = &circuit.layers.last().unwrap().output_vals;
+        let n_zeros = circuit.expected_num_output_zeros;
+        let has_nonzero = output[..n_zeros].iter().any(|v| !v.is_zero());
+        assert!(
+            has_nonzero,
+            "corrupted witness should produce non-zero outputs but all were zero"
+        );
+    }
+
+    #[test]
     fn test_add_mul_prove_verify() {
         let t0 = std::time::Instant::now();
         let a = BN254Field::from(3u32);

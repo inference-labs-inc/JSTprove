@@ -63,15 +63,16 @@ fn main() {
     println!("model: lenet.onnx\n{}", "=".repeat(55));
 
     println!("\n--- DirectBuilder ---");
-    let _rss0 = rss_bytes();
+    let rss0 = rss_bytes();
     let t = Instant::now();
     let (mut circ, wit) = compile_and_witness_bn254_direct(&params, &activations, &[]).unwrap();
     let dt = t.elapsed().as_secs_f64() * 1000.0;
     let rss1 = rss_bytes();
     println!(
-        "compile+witness: {:>10}  peak RSS: {:.1} MiB",
+        "compile+witness: {:>10}  peak RSS: {:.1} MiB (delta: {:.1} MiB)",
         fmt(dt),
-        rss1 as f64 / 1048576.0
+        rss1 as f64 / 1048576.0,
+        (rss1.saturating_sub(rss0)) as f64 / 1048576.0
     );
 
     let t = Instant::now();
