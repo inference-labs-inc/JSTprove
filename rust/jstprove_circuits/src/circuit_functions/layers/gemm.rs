@@ -389,3 +389,57 @@ fn should_use_freivalds(ell: usize, m: usize, n: usize, reps: usize) -> bool {
 
     cost_f < cost_full
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn freivalds_zero_reps_always_false() {
+        assert!(!should_use_freivalds(100, 200, 50, 0));
+        assert!(!should_use_freivalds(1, 1, 1, 0));
+    }
+
+    #[test]
+    fn freivalds_small_matrix_prefers_direct() {
+        // 2x2x2, reps=1: cost_full=12, cost_f=18 → direct wins
+        assert!(!should_use_freivalds(2, 2, 2, 1));
+        // 1x1x1, reps=1: cost_full=1, cost_f=3 → direct wins
+        assert!(!should_use_freivalds(1, 1, 1, 1));
+        // 2x3x4, reps=1: cost_full=40, cost_f=45 → direct wins
+        assert!(!should_use_freivalds(2, 3, 4, 1));
+    }
+
+    #[test]
+    fn freivalds_large_matrix_few_reps_prefers_freivalds() {
+        // 10x20x15, reps=1: cost_full=5850, cost_f=1260 → Freivalds wins
+        assert!(should_use_freivalds(10, 20, 15, 1));
+        // 100x200x50, reps=1: cost_full=1995000, cost_f=69600 → Freivalds wins
+        assert!(should_use_freivalds(100, 200, 50, 1));
+    }
+
+    #[test]
+    fn freivalds_large_matrix_many_reps_reverts_to_direct() {
+        // 100x100x100, reps=40: cost_full=1990000, cost_f=2388000 → direct wins
+        assert!(!should_use_freivalds(100, 100, 100, 40));
+    }
+
+    #[test]
+    fn check_alpha_beta_one_passes() {
+        assert!(check_alpha_beta(1.0, "alpha", LayerKind::Gemm, "l1").is_ok());
+    }
+
+    #[test]
+    fn check_alpha_beta_near_one_within_tolerance_passes() {
+        // |1e-7| < 1e-6 → ok
+        assert!(check_alpha_beta(1.0 + 1e-7_f32, "alpha", LayerKind::Gemm, "l1").is_ok());
+    }
+
+    #[test]
+    fn check_alpha_beta_outside_tolerance_fails() {
+        assert!(check_alpha_beta(0.0, "alpha", LayerKind::Gemm, "l1").is_err());
+        assert!(check_alpha_beta(2.0, "beta", LayerKind::Gemm, "l1").is_err());
+        // |2e-6| > 1e-6 → err
+        assert!(check_alpha_beta(1.0 + 2e-6_f32, "alpha", LayerKind::Gemm, "l1").is_err());
+    }
+}

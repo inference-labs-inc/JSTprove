@@ -140,3 +140,92 @@ define_layers! {
     Squeeze   => { name: "Squeeze", builder: SqueezeLayer::build },
     Unsqueeze => { name: "Unsqueeze", builder: UnsqueezeLayer::build },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_canonical_op_names() {
+        let ops = [
+            "Add",
+            "Sub",
+            "Mul",
+            "Div",
+            "Conv",
+            "Gemm",
+            "Flatten",
+            "Reshape",
+            "MaxPool",
+            "Clip",
+            "Squeeze",
+            "Unsqueeze",
+            "BatchNormalization",
+            "Constant",
+            "Max",
+            "Min",
+            "ReLU",
+        ];
+        for name in ops {
+            assert!(
+                LayerKind::try_from(name).is_ok(),
+                "expected Ok for op {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_relu_alias() {
+        let kind = LayerKind::try_from("Relu").unwrap();
+        assert!(matches!(kind, LayerKind::ReLU));
+    }
+
+    #[test]
+    fn parse_unknown_op_returns_error() {
+        let err = LayerKind::try_from("Unknown");
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn display_matches_canonical_name() {
+        assert_eq!(LayerKind::Add.to_string(), "Add");
+        assert_eq!(LayerKind::Batchnorm.to_string(), "BatchNormalization");
+        assert_eq!(LayerKind::ReLU.to_string(), "ReLU");
+        assert_eq!(LayerKind::Gemm.to_string(), "Gemm");
+    }
+
+    #[test]
+    fn parse_from_string_owned() {
+        let kind = LayerKind::try_from("Gemm".to_string()).unwrap();
+        assert!(matches!(kind, LayerKind::Gemm));
+    }
+
+    #[test]
+    fn supported_op_names_contains_all_canonical() {
+        let expected = [
+            "Add",
+            "Sub",
+            "Mul",
+            "Div",
+            "Conv",
+            "Gemm",
+            "Flatten",
+            "Reshape",
+            "MaxPool",
+            "Clip",
+            "Squeeze",
+            "Unsqueeze",
+            "BatchNormalization",
+            "Constant",
+            "Max",
+            "Min",
+            "ReLU",
+        ];
+        for name in expected {
+            assert!(
+                LayerKind::SUPPORTED_OP_NAMES.contains(&name),
+                "expected {name} in SUPPORTED_OP_NAMES"
+            );
+        }
+    }
+}
