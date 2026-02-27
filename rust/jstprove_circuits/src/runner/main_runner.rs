@@ -1262,24 +1262,43 @@ fn write_circuit_bundle(
     )
     .map_err(|e| jstprove_io_to_run_error(e, path, true))?;
     let dest = Path::new(path);
-    if dest.is_dir() {
-        std::fs::remove_dir_all(dest).map_err(|e| RunError::Io {
-            source: e,
-            path: path.to_string(),
-        })?;
-    } else if dest.is_file() {
-        std::fs::remove_file(dest).map_err(|e| RunError::Io {
-            source: e,
-            path: path.to_string(),
+    let backup_dir = format!(
+        "{path}.bak.{}.{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
+    let backup_path = Path::new(&backup_dir);
+    let has_backup = dest.exists();
+    if has_backup {
+        std::fs::rename(dest, backup_path).map_err(|e| {
+            let _ = std::fs::remove_dir_all(tmp_path);
+            RunError::Io {
+                source: e,
+                path: path.to_string(),
+            }
         })?;
     }
-    std::fs::rename(tmp_path, dest).map_err(|e| {
+    if let Err(e) = std::fs::rename(tmp_path, dest) {
         let _ = std::fs::remove_dir_all(tmp_path);
-        RunError::Io {
+        if has_backup {
+            if let Err(restore_err) = std::fs::rename(backup_path, dest) {
+                return Err(RunError::Io {
+                    source: restore_err,
+                    path: path.to_string(),
+                });
+            }
+        }
+        return Err(RunError::Io {
             source: e,
             path: path.to_string(),
-        }
-    })?;
+        });
+    }
+    if has_backup {
+        let _ = std::fs::remove_dir_all(backup_path);
+    }
     Ok(())
 }
 
