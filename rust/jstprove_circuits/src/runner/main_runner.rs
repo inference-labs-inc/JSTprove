@@ -1299,7 +1299,14 @@ fn write_circuit_bundle(
         });
     }
     if has_backup {
-        let _ = std::fs::remove_dir_all(backup_path);
+        let result = if backup_path.is_dir() {
+            std::fs::remove_dir_all(backup_path)
+        } else {
+            std::fs::remove_file(backup_path)
+        };
+        if let Err(e) = result {
+            eprintln!("warning: failed to remove backup {backup_dir}: {e}");
+        }
     }
     Ok(())
 }
