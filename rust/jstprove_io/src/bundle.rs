@@ -83,8 +83,13 @@ fn write_blob(path: impl AsRef<Path>, data: &[u8], compress: bool) -> Result<()>
 
 fn read_blob(path: impl AsRef<Path>) -> Result<Vec<u8>> {
     let file = std::fs::File::open(path.as_ref())?;
+    let capacity = file
+        .metadata()
+        .ok()
+        .and_then(|m| usize::try_from(m.len()).ok())
+        .unwrap_or(0);
     let mut reader = auto_reader(file)?;
-    let mut buf = Vec::new();
+    let mut buf = Vec::with_capacity(capacity);
     reader.read_to_end(&mut buf)?;
     Ok(buf)
 }
