@@ -1,5 +1,7 @@
 use ndarray::{Array1, ArrayD, ArrayView1, Axis, Ix1, IxDyn, concatenate};
 
+use std::io::Cursor;
+
 use arith::SimdField;
 use expander_compiler::expander_binary::executor;
 use expander_compiler::expander_circuit;
@@ -8,6 +10,7 @@ use expander_compiler::frontend::{
     declare_circuit,
 };
 use expander_compiler::gkr_engine::{GKREngine, MPIConfig};
+use expander_compiler::serdes::ExpSerde;
 use jstprove_direct_builder::DirectBuilder;
 
 use crate::circuit_functions::CircuitError;
@@ -492,12 +495,126 @@ pub fn compile_bn254(
     circuit_path: &str,
     compress: bool,
     metadata: Option<CircuitParams>,
+    fast_compile: bool,
 ) -> Result<(), RunError> {
-    crate::runner::main_runner::run_compile_and_serialize::<BN254Config, Circuit<Variable>>(
-        circuit_path,
-        compress,
-        metadata,
-    )
+    if fast_compile {
+        let params = match metadata {
+            Some(p) => p,
+            None => OnnxContext::get_params()?,
+        };
+        compile_bn254_direct_to_path(circuit_path, compress, &params)
+    } else {
+        crate::runner::main_runner::run_compile_and_serialize::<BN254Config, Circuit<Variable>>(
+            circuit_path,
+            compress,
+            metadata,
+        )
+    }
+}
+
+/// # Errors
+/// Returns `RunError` on DirectBuilder compilation or serialization failure.
+pub fn compile_bn254_direct_to_path(
+    circuit_path: &str,
+    compress: bool,
+    params: &CircuitParams,
+) -> Result<(), RunError> {
+    use crate::proof_system::ProofSystem;
+    use crate::runner::schema::CompiledCircuit;
+    use crate::runner::version::jstprove_artifact_version;
+
+    let n = params.effective_input_dims();
+    let dummy_inputs = vec![CircuitField::<BN254Config>::zero(); n];
+    let (circuit, _) = direct_build_from_fields(params, &dummy_inputs);
+
+    let mut circuit_buf = Vec::new();
+    circuit
+        .serialize_into(&mut circuit_buf)
+        .map_err(|e| RunError::Serialize(format!("direct circuit: {e:?}")))?;
+
+    let mut params_direct = params.clone();
+    params_direct.proof_system = ProofSystem::DirectBuilder;
+
+    let bundle = CompiledCircuit {
+        circuit: circuit_buf,
+        witness_solver: vec![],
+        metadata: Some(params_direct),
+        version: Some(jstprove_artifact_version()),
+    };
+    crate::runner::main_runner::write_circuit_bundle(circuit_path, &bundle, compress)
+}
+
+/// # Errors
+/// Returns `RunError` on witness generation failure.
+pub fn witness_bn254_from_f64_direct(
+    params: &CircuitParams,
+    activations: &[f64],
+    initializers: &[(Vec<f64>, Vec<usize>)],
+    compress: bool,
+) -> Result<WitnessBundle, RunError> {
+    use crate::runner::version::jstprove_artifact_version;
+
+    let (_, witness_private) = compile_and_witness_bn254_direct(params, activations, initializers)?;
+
+    let mut buf = Vec::new();
+    witness_private
+        .serialize_into(&mut buf)
+        .map_err(|e| RunError::Serialize(format!("direct witness: {e:?}")))?;
+    let witness_bytes = jstprove_io::maybe_compress_bytes(buf, compress)
+        .map_err(|e| RunError::Serialize(format!("zstd compress: {e}")))?;
+
+    Ok(WitnessBundle {
+        witness: witness_bytes,
+        output_data: None,
+        version: Some(jstprove_artifact_version()),
+    })
+}
+
+/// # Errors
+/// Returns `RunError` on proof generation failure.
+pub fn prove_bn254_direct_circuit(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    compress: bool,
+) -> Result<Vec<u8>, RunError> {
+    use crate::runner::main_runner::auto_decompress_bytes;
+
+    let circuit_data = auto_decompress_bytes(circuit_bytes)?;
+    let mut circuit =
+        expander_circuit::Circuit::<FC<BN254Config>>::deserialize_from(Cursor::new(&*circuit_data))
+            .map_err(|e| RunError::Deserialize(format!("direct circuit: {e:?}")))?;
+
+    let witness_data = auto_decompress_bytes(witness_bytes)?;
+    let witness_private =
+        Vec::<CircuitField<BN254Config>>::deserialize_from(Cursor::new(&*witness_data))
+            .map_err(|e| RunError::Deserialize(format!("direct witness: {e:?}")))?;
+
+    let proof = prove_bn254_direct(&mut circuit, &witness_private)?;
+    jstprove_io::maybe_compress_bytes(proof, compress)
+        .map_err(|e| RunError::Serialize(format!("zstd compress: {e}")))
+}
+
+/// # Errors
+/// Returns `RunError` on verification failure.
+pub fn verify_bn254_direct_circuit(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+) -> Result<bool, RunError> {
+    use crate::runner::main_runner::auto_decompress_bytes;
+
+    let circuit_data = auto_decompress_bytes(circuit_bytes)?;
+    let mut circuit =
+        expander_circuit::Circuit::<FC<BN254Config>>::deserialize_from(Cursor::new(&*circuit_data))
+            .map_err(|e| RunError::Deserialize(format!("direct circuit: {e:?}")))?;
+
+    let witness_data = auto_decompress_bytes(witness_bytes)?;
+    let witness_private =
+        Vec::<CircuitField<BN254Config>>::deserialize_from(Cursor::new(&*witness_data))
+            .map_err(|e| RunError::Deserialize(format!("direct witness: {e:?}")))?;
+
+    let proof_data = auto_decompress_bytes(proof_bytes)?;
+    verify_bn254_direct(&mut circuit, &witness_private, &proof_data)
 }
 
 /// # Errors

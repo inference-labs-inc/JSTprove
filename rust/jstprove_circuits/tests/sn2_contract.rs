@@ -331,7 +331,7 @@ fn compile_bn254_rejects_nonexistent_path() {
 
         let dir = tempfile::tempdir().expect("create temp dir");
         let path = dir.path().join("nonexistent_subdir").join("circuit");
-        let err = assert_run_error(compile_bn254(&path.to_string_lossy(), false, None));
+        let err = assert_run_error(compile_bn254(&path.to_string_lossy(), false, None, false));
         assert!(
             matches!(err, RunError::Io { ref source, .. } if source.kind() == std::io::ErrorKind::NotFound),
             "expected RunError::Io(NotFound), got {err:?}"

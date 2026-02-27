@@ -1238,7 +1238,7 @@ where
     write_circuit_bundle(path, &bundle, compress)
 }
 
-fn write_circuit_bundle(
+pub(crate) fn write_circuit_bundle(
     path: &str,
     bundle: &CompiledCircuit,
     compress: bool,
@@ -1798,16 +1798,17 @@ where
             )?;
         }
         "msgpack_compile" => {
-            if matches.get_flag("fast_compile") {
-                return Err(RunError::Compile(
-                    "--fast-compile merges compile+witness+prove into one step. \
-                     Use `msgpack_prove --fast-compile` instead."
-                        .into(),
-                )
-                .into());
-            }
             let circuit_path = get_arg(matches, "circuit_path")?;
-            write_circuit_msgpack::<C, CircuitType>(&circuit_path, compress, metadata)?;
+            if matches.get_flag("fast_compile") {
+                let params = metadata.ok_or_else(|| {
+                    RunError::Compile(
+                        "--fast-compile requires metadata (--meta or circuit params)".into(),
+                    )
+                })?;
+                crate::onnx::compile_bn254_direct_to_path(&circuit_path, compress, &params)?;
+            } else {
+                write_circuit_msgpack::<C, CircuitType>(&circuit_path, compress, metadata)?;
+            }
             eprintln!("Compiled to {circuit_path}");
         }
         "msgpack_prove" => {

@@ -8,6 +8,7 @@ pub enum ProofSystem {
     #[default]
     Expander,
     Remainder,
+    DirectBuilder,
 }
 
 impl ProofSystem {
@@ -17,9 +18,14 @@ impl ProofSystem {
     }
 
     #[must_use]
+    pub fn is_direct_builder(&self) -> bool {
+        matches!(self, Self::DirectBuilder)
+    }
+
+    #[must_use]
     pub fn supported_ops(&self) -> &'static [&'static str] {
         match self {
-            Self::Expander => LayerKind::SUPPORTED_OP_NAMES,
+            Self::Expander | Self::DirectBuilder => LayerKind::SUPPORTED_OP_NAMES,
             Self::Remainder => Self::REMAINDER_OPS,
         }
     }
@@ -44,6 +50,7 @@ impl std::fmt::Display for ProofSystem {
         match self {
             Self::Expander => write!(f, "expander"),
             Self::Remainder => write!(f, "remainder"),
+            Self::DirectBuilder => write!(f, "directbuilder"),
         }
     }
 }
@@ -65,6 +72,7 @@ impl std::str::FromStr for ProofSystem {
         match s.to_ascii_lowercase().as_str() {
             "expander" => Ok(Self::Expander),
             "remainder" => Ok(Self::Remainder),
+            "directbuilder" => Ok(Self::DirectBuilder),
             other => Err(ProofSystemParseError(other.to_string())),
         }
     }
