@@ -1637,7 +1637,7 @@ mod tests {
 
         let (mut circuit, mut witness) = builder.finalize();
 
-        witness[0] = BN254Field::from(999u32);
+        witness[1] = BN254Field::from(999u32);
 
         type Simd = <<BN254Config as GKREngine>::FieldConfig
             as expander_compiler::gkr_engine::FieldEngine>::SimdCircuitField;

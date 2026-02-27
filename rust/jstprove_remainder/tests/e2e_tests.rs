@@ -221,7 +221,7 @@ fn test_logup_range_check() {
     let lookup_table = builder.add_lookup_table(&table, &fs_node);
     let _constraint = builder.add_lookup_constraint(&lookup_table, &witness, &mults);
 
-    let mut prover_circuit = builder.build().unwrap();
+    let mut prover_circuit = builder.build_without_layer_combination().unwrap();
     let mut verifier_circuit = prover_circuit.clone();
 
     prover_circuit.set_input("Table", table_mle.clone());

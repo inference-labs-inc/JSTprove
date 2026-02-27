@@ -31,7 +31,7 @@ pub fn write_bundle<M: Serialize>(
     version: Option<ArtifactVersion>,
     compress: bool,
 ) -> Result<()> {
-    std::fs::create_dir_all(dir)?;
+    std::fs::create_dir(dir)?;
 
     write_blob(dir.join(CIRCUIT_FILENAME), circuit, compress)?;
     write_blob(dir.join(WITNESS_SOLVER_FILENAME), witness_solver, compress)?;
@@ -60,6 +60,10 @@ pub fn read_bundle<M: DeserializeOwned>(dir: &Path) -> Result<BundleBlobs<M>> {
         metadata: manifest.metadata,
         version: manifest.version,
     })
+}
+
+pub fn read_circuit_blob(dir: &Path) -> Result<Vec<u8>> {
+    read_blob(dir.join(CIRCUIT_FILENAME))
 }
 
 pub fn read_bundle_metadata<M: DeserializeOwned>(

@@ -438,8 +438,9 @@ fn load_manifest<T: serde::de::DeserializeOwned>(path: &str) -> Result<BatchMani
 fn load_layered_circuit<C: Config>(path: &str) -> Result<Circuit<C, NormalInputType>, RunError> {
     let p = Path::new(path);
     if p.is_dir() {
-        let bundle = read_circuit_bundle(path)?;
-        return load_circuit_from_bytes::<C>(&bundle.circuit);
+        let bytes = jstprove_io::bundle::read_circuit_blob(p)
+            .map_err(|e| jstprove_io_to_run_error(e, path, false))?;
+        return load_circuit_from_bytes::<C>(&bytes);
     }
     if p.exists() {
         let file = std::fs::File::open(path).map_err(|e| RunError::Io {
@@ -452,12 +453,12 @@ fn load_layered_circuit<C: Config>(path: &str) -> Result<Circuit<C, NormalInputT
     }
     let bundle_path = p.with_extension("bundle");
     if bundle_path.is_dir() {
-        let bundle = read_circuit_bundle(
-            bundle_path
-                .to_str()
-                .ok_or_else(|| RunError::Unsupported("bundle path is not valid UTF-8".into()))?,
-        )?;
-        return load_circuit_from_bytes::<C>(&bundle.circuit);
+        let bundle_str = bundle_path
+            .to_str()
+            .ok_or_else(|| RunError::Unsupported("bundle path is not valid UTF-8".into()))?;
+        let bytes = jstprove_io::bundle::read_circuit_blob(&bundle_path)
+            .map_err(|e| jstprove_io_to_run_error(e, bundle_str, false))?;
+        return load_circuit_from_bytes::<C>(&bytes);
     }
     Err(RunError::Io {
         source: std::io::Error::new(std::io::ErrorKind::NotFound, "no circuit bundle found"),
@@ -2184,23 +2185,20 @@ mod tests {
         assert_eq!(result.as_ref(), &data[..]);
     }
 
-    struct TempDir(PathBuf);
+    struct TempDir {
+        _dir: tempfile::TempDir,
+        bundle: PathBuf,
+    }
 
     impl TempDir {
-        fn new(name: &str) -> Self {
-            let p = std::env::temp_dir().join(name);
-            let _ = std::fs::remove_dir_all(&p);
-            Self(p)
+        fn new(suffix: &str) -> Self {
+            let dir = tempfile::TempDir::new().unwrap();
+            let bundle = dir.path().join(suffix);
+            Self { _dir: dir, bundle }
         }
 
         fn path(&self) -> &str {
-            self.0.to_str().unwrap()
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
+            self.bundle.to_str().unwrap()
         }
     }
 

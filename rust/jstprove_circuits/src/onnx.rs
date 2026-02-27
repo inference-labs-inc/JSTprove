@@ -618,10 +618,10 @@ pub fn compile_and_witness_bn254_direct(
         }
     }
 
-    let expected = params.effective_input_dims();
-    if input_arr_vals.len() != expected {
+    let expected_total = params.effective_input_dims();
+    if input_arr_vals.len() != expected_total {
         return Err(RunError::Witness(format!(
-            "input dimension mismatch: expected {expected}, got {}",
+            "input dimension mismatch: expected {expected_total}, got {}",
             input_arr_vals.len()
         )));
     }

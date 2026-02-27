@@ -96,6 +96,13 @@ pub fn compute_range_check_plan(model: &QuantizedModel) -> Result<BTreeMap<usize
                         .or_default()
                         .push(format!("{}_r", layer.name));
                 } else {
+                    anyhow::ensure!(
+                        exponent <= 2 * RANGE_CHECK_CHUNK_BITS,
+                        "layer {} exponent {} exceeds two-chunk range-check capacity (max {} bits)",
+                        layer.name,
+                        exponent,
+                        2 * RANGE_CHECK_CHUNK_BITS
+                    );
                     plan.entry(RANGE_CHECK_CHUNK_BITS)
                         .or_default()
                         .push(format!("{}_r_c0", layer.name));
@@ -108,6 +115,13 @@ pub fn compute_range_check_plan(model: &QuantizedModel) -> Result<BTreeMap<usize
                 if let Some(n_bits) = layer.n_bits {
                     let dnv = delta_table_nv(n_bits, exponent);
                     if dnv > RANGE_CHECK_CHUNK_BITS {
+                        anyhow::ensure!(
+                            dnv <= 2 * RANGE_CHECK_CHUNK_BITS,
+                            "Relu layer {} delta nv {} exceeds two-chunk range-check capacity (max {} bits)",
+                            layer.name,
+                            dnv,
+                            2 * RANGE_CHECK_CHUNK_BITS
+                        );
                         plan.entry(RANGE_CHECK_CHUNK_BITS)
                             .or_default()
                             .push(format!("{}_di_c0", layer.name));
@@ -157,6 +171,13 @@ pub fn compute_range_check_plan(model: &QuantizedModel) -> Result<BTreeMap<usize
                             )
                         })?;
                     if dnv > RANGE_CHECK_CHUNK_BITS {
+                        anyhow::ensure!(
+                            dnv <= 2 * RANGE_CHECK_CHUNK_BITS,
+                            "MaxPool layer {} delta nv {} exceeds two-chunk range-check capacity (max {} bits)",
+                            layer.name,
+                            dnv,
+                            2 * RANGE_CHECK_CHUNK_BITS
+                        );
                         for i in 0..window_size {
                             plan.entry(RANGE_CHECK_CHUNK_BITS)
                                 .or_default()
