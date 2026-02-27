@@ -50,7 +50,7 @@ name = "serialization"
 harness = false
 
 [[bench]]
-name = "pipeline"
+name = "pipeline_ecc"
 harness = false
 
 [dependencies.serde]

@@ -45,5 +45,5 @@ name = "serialization"
 harness = false
 
 [[bench]]
-name = "pipeline"
+name = "pipeline_remainder"
 harness = false

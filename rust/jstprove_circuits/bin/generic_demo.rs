@@ -110,9 +110,14 @@ fn main() {
             .is_some_and(|b| b == "remainder");
     let mut is_remainder = cli_is_remainder;
 
+    let fast_compile = matches.get_flag("fast_compile");
+    let fast_compile_cmd =
+        fast_compile && (cmd_type == "msgpack_prove" || cmd_type == "msgpack_verify");
+
     let needs_meta = ONNX_META_COMMANDS.contains(&cmd_type.as_str())
-        || ONNX_FULL_COMMANDS.contains(&cmd_type.as_str());
-    let needs_full = ONNX_FULL_COMMANDS.contains(&cmd_type.as_str());
+        || ONNX_FULL_COMMANDS.contains(&cmd_type.as_str())
+        || fast_compile_cmd;
+    let needs_full = ONNX_FULL_COMMANDS.contains(&cmd_type.as_str()) || fast_compile_cmd;
 
     let has_meta = matches.get_one::<String>("meta").is_some();
     let has_arch = matches.get_one::<String>("arch").is_some();

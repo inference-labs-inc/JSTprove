@@ -1,0 +1,11 @@
+[package]
+name = "jstprove-direct-builder"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+expander_compiler.workspace = true
+arith = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.3.1" }
+
+[dev-dependencies]
+gkr_engine = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.3.1" }
