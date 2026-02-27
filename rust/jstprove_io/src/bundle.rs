@@ -106,7 +106,7 @@ mod tests {
     #[test]
     fn roundtrip_uncompressed() {
         let tmp = TempDir::new().unwrap();
-        let dir = tmp.path();
+        let dir = tmp.path().join("bundle");
 
         let circuit = vec![1u8, 2, 3, 4, 5];
         let ws = vec![10u8, 20, 30];
@@ -131,7 +131,7 @@ mod tests {
     #[test]
     fn roundtrip_compressed() {
         let tmp = TempDir::new().unwrap();
-        let dir = tmp.path();
+        let dir = tmp.path().join("bundle");
 
         let circuit = vec![0xAA; 4096];
         let ws = vec![0xBB; 2048];
@@ -158,7 +158,7 @@ mod tests {
     #[test]
     fn metadata_only_read() {
         let tmp = TempDir::new().unwrap();
-        let dir = tmp.path();
+        let dir = tmp.path().join("bundle");
 
         let mut vals = HashMap::new();
         vals.insert("layer_count".into(), 42);
