@@ -14,6 +14,14 @@ use super::errors::RunError;
 use super::main_runner::auto_decompress_bytes;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtractedOutput {
+    pub inputs: Vec<f64>,
+    pub outputs: Vec<f64>,
+    pub scale_base: u64,
+    pub scale_exponent: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerifiedOutput {
     pub valid: bool,
     pub inputs: Vec<f64>,
@@ -201,14 +209,11 @@ fn parse_public_inputs_from_witness_bytes(
     Ok((modulus, public_inputs))
 }
 
-/// # Errors
-/// Returns `RunError` on deserialization or extraction failure.
-pub fn extract_outputs_from_witness(
-    witness_bytes: &[u8],
+fn extract_outputs_common(
+    witness_data: &[u8],
     num_model_inputs: usize,
-) -> Result<VerifiedOutput, RunError> {
-    let witness_data = auto_decompress_bytes(witness_bytes)?;
-    let (modulus, public_inputs) = parse_public_inputs_from_witness_bytes(&witness_data)?;
+) -> Result<ExtractedOutput, RunError> {
+    let (modulus, public_inputs) = parse_public_inputs_from_witness_bytes(witness_data)?;
 
     let min_public = num_model_inputs
         .checked_add(2)
@@ -240,13 +245,22 @@ pub fn extract_outputs_from_witness(
     let inputs = descale_outputs(&signed_inputs, scale_base, scale_exponent)?;
     let outputs = descale_outputs(&signed_outputs, scale_base, scale_exponent)?;
 
-    Ok(VerifiedOutput {
-        valid: true,
+    Ok(ExtractedOutput {
         inputs,
         outputs,
         scale_base,
         scale_exponent,
     })
+}
+
+/// # Errors
+/// Returns `RunError` on deserialization or extraction failure.
+pub fn extract_outputs_from_witness(
+    witness_bytes: &[u8],
+    num_model_inputs: usize,
+) -> Result<ExtractedOutput, RunError> {
+    let witness_data = auto_decompress_bytes(witness_bytes)?;
+    extract_outputs_common(&witness_data, num_model_inputs)
 }
 
 /// # Errors
@@ -292,25 +306,7 @@ pub fn verify_and_extract_from_bytes<C: Config>(
         });
     }
 
-    let (modulus, public_inputs) = parse_public_inputs_from_witness_bytes(&witness_data)?;
-
-    let min_public = num_inputs
-        .checked_add(2)
-        .ok_or_else(|| RunError::Deserialize("num_inputs overflows usize".into()))?;
-    if public_inputs.len() < min_public {
-        return Err(RunError::Deserialize(format!(
-            "expected at least {} public inputs (num_inputs={} + 2 scale params), got {}",
-            min_public,
-            num_inputs,
-            public_inputs.len()
-        )));
-    }
-
-    let scale_base = biguint_to_u64(&public_inputs[public_inputs.len() - 2])?;
-    let scale_exponent = biguint_to_u64(&public_inputs[public_inputs.len() - 1])?;
-
-    let raw_model_inputs = &public_inputs[..num_inputs];
-    let raw_model_outputs = &public_inputs[num_inputs..public_inputs.len() - 2];
+    let extracted = extract_outputs_common(&witness_data, num_inputs)?;
 
     if let Some(expected) = expected_inputs {
         if expected.len() != num_inputs {
@@ -320,7 +316,14 @@ pub fn verify_and_extract_from_bytes<C: Config>(
                 num_inputs
             )));
         }
-        let expected_field = scale_to_field(expected, scale_base, scale_exponent, &modulus)?;
+        let (modulus, public_inputs) = parse_public_inputs_from_witness_bytes(&witness_data)?;
+        let raw_model_inputs = &public_inputs[..num_inputs];
+        let expected_field = scale_to_field(
+            expected,
+            extracted.scale_base,
+            extracted.scale_exponent,
+            &modulus,
+        )?;
         if !compare_field_values(&expected_field, raw_model_inputs, &modulus, 1) {
             return Err(RunError::Verify(
                 "input verification failed: expected inputs do not match witness".into(),
@@ -328,23 +331,11 @@ pub fn verify_and_extract_from_bytes<C: Config>(
         }
     }
 
-    let signed_inputs: Vec<BigInt> = raw_model_inputs
-        .iter()
-        .map(|v| from_field_repr(v, &modulus))
-        .collect();
-    let signed_outputs: Vec<BigInt> = raw_model_outputs
-        .iter()
-        .map(|v| from_field_repr(v, &modulus))
-        .collect();
-
-    let inputs = descale_outputs(&signed_inputs, scale_base, scale_exponent)?;
-    let outputs = descale_outputs(&signed_outputs, scale_base, scale_exponent)?;
-
     Ok(VerifiedOutput {
         valid,
-        inputs,
-        outputs,
-        scale_base,
-        scale_exponent,
+        inputs: extracted.inputs,
+        outputs: extracted.outputs,
+        scale_base: extracted.scale_base,
+        scale_exponent: extracted.scale_exponent,
     })
 }

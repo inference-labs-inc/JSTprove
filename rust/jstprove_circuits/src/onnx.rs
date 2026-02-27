@@ -22,7 +22,7 @@ use crate::runner::main_runner::{
 };
 use crate::runner::schema::{WitnessBundle, WitnessRequest};
 use crate::runner::verify_extract::{
-    VerifiedOutput, extract_outputs_from_witness, verify_and_extract_from_bytes,
+    ExtractedOutput, VerifiedOutput, extract_outputs_from_witness, verify_and_extract_from_bytes,
 };
 
 declare_circuit!(Circuit {
@@ -499,7 +499,7 @@ pub fn compile_bn254(
 pub fn extract_outputs_bn254(
     witness_bytes: &[u8],
     num_model_inputs: usize,
-) -> Result<VerifiedOutput, RunError> {
+) -> Result<ExtractedOutput, RunError> {
     extract_outputs_from_witness(witness_bytes, num_model_inputs)
 }
 
