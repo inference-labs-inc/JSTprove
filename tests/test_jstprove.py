@@ -322,6 +322,8 @@ def test_python_thread_not_starved_during_rust_calls(tmp_path):
     t.start()
     time.sleep(0.01)
 
+    baseline = counter[0]
+
     for _ in range(50):
         try:
             circuit.generate_witness(
@@ -334,7 +336,7 @@ def test_python_thread_not_starved_during_rust_calls(tmp_path):
     stop.set()
     t.join(timeout=2.0)
 
-    assert counter[0] > 0, (
-        "background Python thread never advanced — GIL was not released "
-        "between Rust calls"
+    assert counter[0] > baseline, (
+        "background Python thread made no progress during Rust calls — "
+        "GIL was not released between calls"
     )
