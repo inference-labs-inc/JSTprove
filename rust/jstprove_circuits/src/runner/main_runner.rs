@@ -106,14 +106,7 @@ where
     })
 }
 
-/// Compiles a circuit and writes a single msgpack bundle.
-///
-/// The bundle is written directly to `circuit_path`. When `compress` is
-/// true the output is zstd-compressed; otherwise it is written as raw
-/// msgpack.
-///
 /// # Errors
-///
 /// Returns a [`RunError`] on compilation, serialization, or file I/O failure.
 pub fn run_compile_and_serialize<C: Config, CircuitType>(
     circuit_path: &str,
@@ -444,8 +437,8 @@ fn load_manifest<T: serde::de::DeserializeOwned>(path: &str) -> Result<BatchMani
 
 fn load_layered_circuit<C: Config>(path: &str) -> Result<Circuit<C, NormalInputType>, RunError> {
     let p = Path::new(path);
-    if p.extension().and_then(|e| e.to_str()) == Some("msgpack") {
-        let bundle = read_circuit_msgpack(path)?;
+    if p.is_dir() {
+        let bundle = read_circuit_bundle(path)?;
         return load_circuit_from_bytes::<C>(&bundle.circuit);
     }
     if p.exists() {
@@ -457,20 +450,27 @@ fn load_layered_circuit<C: Config>(path: &str) -> Result<Circuit<C, NormalInputT
         return Circuit::<C, NormalInputType>::deserialize_from(reader)
             .map_err(|e| RunError::Deserialize(format!("{e:?}")));
     }
-    let msgpack_path = p.with_extension("msgpack");
-    let bundle =
-        read_circuit_msgpack(msgpack_path.to_str().ok_or_else(|| {
-            RunError::Unsupported("msgpack output path is not valid UTF-8".into())
-        })?)?;
-    load_circuit_from_bytes::<C>(&bundle.circuit)
+    let bundle_path = p.with_extension("bundle");
+    if bundle_path.is_dir() {
+        let bundle = read_circuit_bundle(
+            bundle_path
+                .to_str()
+                .ok_or_else(|| RunError::Unsupported("bundle path is not valid UTF-8".into()))?,
+        )?;
+        return load_circuit_from_bytes::<C>(&bundle.circuit);
+    }
+    Err(RunError::Io {
+        source: std::io::Error::new(std::io::ErrorKind::NotFound, "no circuit bundle found"),
+        path: path.into(),
+    })
 }
 
 fn load_circuit_and_solver<C: Config>(
     circuit_path: &str,
 ) -> Result<(Circuit<C, NormalInputType>, WitnessSolver<C>), RunError> {
     let p = Path::new(circuit_path);
-    if p.extension().and_then(|e| e.to_str()) == Some("msgpack") {
-        let bundle = read_circuit_msgpack(circuit_path)?;
+    if p.is_dir() {
+        let bundle = read_circuit_bundle(circuit_path)?;
         let circuit = load_circuit_from_bytes::<C>(&bundle.circuit)?;
         let solver = load_witness_solver_from_bytes::<C>(&bundle.witness_solver)?;
         return Ok((circuit, solver));
@@ -493,11 +493,13 @@ fn load_circuit_and_solver<C: Config>(
             .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
         return Ok((circuit, solver));
     }
-    let msgpack_path = p.with_extension("msgpack");
-    if msgpack_path.exists() {
-        let bundle = read_circuit_msgpack(msgpack_path.to_str().ok_or_else(|| {
-            RunError::Unsupported("msgpack output path is not valid UTF-8".into())
-        })?)?;
+    let bundle_path = p.with_extension("bundle");
+    if bundle_path.is_dir() {
+        let bundle = read_circuit_bundle(
+            bundle_path
+                .to_str()
+                .ok_or_else(|| RunError::Unsupported("bundle path is not valid UTF-8".into()))?,
+        )?;
         let circuit = load_circuit_from_bytes::<C>(&bundle.circuit)?;
         let solver = load_witness_solver_from_bytes::<C>(&bundle.witness_solver)?;
         return Ok((circuit, solver));
@@ -505,7 +507,7 @@ fn load_circuit_and_solver<C: Config>(
     Err(RunError::Io {
         source: std::io::Error::new(
             std::io::ErrorKind::NotFound,
-            "no witness solver file or msgpack bundle found",
+            "no witness solver file or bundle found",
         ),
         path: circuit_path.into(),
     })
@@ -1221,8 +1223,6 @@ pub fn verify_from_bytes<C: Config>(
     ))
 }
 
-/// Compiles a circuit and writes it to a msgpack file.
-///
 /// # Errors
 /// Returns `RunError` if compilation, serialization, or file I/O fails.
 pub fn write_circuit_msgpack<C: Config, CircuitType>(
@@ -1242,7 +1242,7 @@ fn write_circuit_bundle(
     bundle: &CompiledCircuit,
     compress: bool,
 ) -> Result<(), RunError> {
-    let tmp_path = format!(
+    let tmp_dir = format!(
         "{path}.tmp.{}.{}",
         std::process::id(),
         std::time::SystemTime::now()
@@ -1250,12 +1250,28 @@ fn write_circuit_bundle(
             .unwrap_or_default()
             .as_nanos()
     );
-    jstprove_io::serialize_to_file(bundle, Path::new(&tmp_path), compress).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp_path);
+    let tmp_path = Path::new(&tmp_dir);
+    jstprove_io::bundle::write_bundle(
+        tmp_path,
+        &bundle.circuit,
+        &bundle.witness_solver,
+        bundle.metadata.clone(),
+        bundle.version.clone(),
+        compress,
+    )
+    .map_err(|e| {
+        let _ = std::fs::remove_dir_all(tmp_path);
         jstprove_io_to_run_error(e, path, true)
     })?;
-    std::fs::rename(&tmp_path, path).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp_path);
+    let dest = Path::new(path);
+    if dest.exists() {
+        std::fs::remove_dir_all(dest).map_err(|e| RunError::Io {
+            source: e,
+            path: path.to_string(),
+        })?;
+    }
+    std::fs::rename(tmp_path, dest).map_err(|e| {
+        let _ = std::fs::remove_dir_all(tmp_path);
         RunError::Io {
             source: e,
             path: path.to_string(),
@@ -1275,13 +1291,23 @@ fn jstprove_io_to_run_error(e: jstprove_io::Error, path: &str, is_write: bool) -
     }
 }
 
-/// Reads a compiled circuit bundle from a msgpack file.
-///
+/// # Errors
+/// Returns `RunError` if file I/O or deserialization fails.
+pub fn read_circuit_bundle(path: &str) -> Result<CompiledCircuit, RunError> {
+    let blobs = jstprove_io::bundle::read_bundle::<CircuitParams>(Path::new(path))
+        .map_err(|e| jstprove_io_to_run_error(e, path, false))?;
+    Ok(CompiledCircuit {
+        circuit: blobs.circuit,
+        witness_solver: blobs.witness_solver,
+        metadata: blobs.metadata,
+        version: blobs.version,
+    })
+}
+
 /// # Errors
 /// Returns `RunError` if file I/O or deserialization fails.
 pub fn read_circuit_msgpack(path: &str) -> Result<CompiledCircuit, RunError> {
-    jstprove_io::deserialize_from_file(Path::new(path))
-        .map_err(|e| jstprove_io_to_run_error(e, path, false))
+    read_circuit_bundle(path)
 }
 
 #[must_use]
@@ -1290,7 +1316,8 @@ pub fn try_load_metadata_from_circuit(circuit_path: &str) -> Option<CircuitParam
     if !p.exists() {
         return None;
     }
-    read_circuit_msgpack(circuit_path).ok()?.metadata
+    let (metadata, _) = jstprove_io::bundle::read_bundle_metadata::<CircuitParams>(p).ok()?;
+    metadata
 }
 
 /// Reads a prove request from stdin and writes the proof to stdout via msgpack.
@@ -2106,7 +2133,7 @@ pub fn get_args() -> clap::ArgMatches {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use jstprove_io::{ENVELOPE_MAGIC, ZSTD_COMPRESSION_LEVEL, ZSTD_MAGIC};
+    use jstprove_io::{ZSTD_COMPRESSION_LEVEL, ZSTD_MAGIC};
 
     struct TempFile(PathBuf);
 
@@ -2144,9 +2171,29 @@ mod tests {
         assert_eq!(result.as_ref(), &data[..]);
     }
 
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let p = std::env::temp_dir().join(name);
+            let _ = std::fs::remove_dir_all(&p);
+            Self(p)
+        }
+
+        fn path(&self) -> &str {
+            self.0.to_str().unwrap()
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     #[test]
     fn write_read_bundle_uncompressed() {
-        let tmp = TempFile::new("jstprove_test_uncompressed.msgpack");
+        let tmp = TempDir::new("jstprove_test_uncompressed.bundle");
         let bundle = CompiledCircuit {
             circuit: vec![1, 2, 3, 4],
             witness_solver: vec![5, 6, 7, 8],
@@ -2154,7 +2201,8 @@ mod tests {
             version: None,
         };
         write_circuit_bundle(tmp.path(), &bundle, false).unwrap();
-        let loaded = read_circuit_msgpack(tmp.path()).unwrap();
+        assert!(Path::new(tmp.path()).is_dir());
+        let loaded = read_circuit_bundle(tmp.path()).unwrap();
         assert_eq!(loaded.circuit, bundle.circuit);
         assert_eq!(loaded.witness_solver, bundle.witness_solver);
         assert!(loaded.metadata.is_none());
@@ -2162,7 +2210,7 @@ mod tests {
 
     #[test]
     fn write_read_bundle_compressed() {
-        let tmp = TempFile::new("jstprove_test_compressed.msgpack");
+        let tmp = TempDir::new("jstprove_test_compressed.bundle");
         let bundle = CompiledCircuit {
             circuit: vec![10; 1024],
             witness_solver: vec![20; 512],
@@ -2170,16 +2218,15 @@ mod tests {
             version: None,
         };
         write_circuit_bundle(tmp.path(), &bundle, true).unwrap();
-        let raw = std::fs::read(tmp.path()).unwrap();
-        assert_eq!(&raw[..4], &ENVELOPE_MAGIC);
-        let loaded = read_circuit_msgpack(tmp.path()).unwrap();
+        assert!(Path::new(tmp.path()).is_dir());
+        let loaded = read_circuit_bundle(tmp.path()).unwrap();
         assert_eq!(loaded.circuit, bundle.circuit);
         assert_eq!(loaded.witness_solver, bundle.witness_solver);
     }
 
     #[test]
     fn write_read_bundle_with_metadata() {
-        let tmp = TempFile::new("jstprove_test_metadata.msgpack");
+        let tmp = TempDir::new("jstprove_test_metadata.bundle");
         let meta: CircuitParams = serde_json::from_str(
             r#"{
                 "scale_base": 2,
@@ -2197,7 +2244,7 @@ mod tests {
             version: None,
         };
         write_circuit_bundle(tmp.path(), &bundle, true).unwrap();
-        let loaded = read_circuit_msgpack(tmp.path()).unwrap();
+        let loaded = read_circuit_bundle(tmp.path()).unwrap();
         assert_eq!(loaded.circuit, bundle.circuit);
         assert_eq!(loaded.witness_solver, bundle.witness_solver);
         let m = loaded.metadata.unwrap();
