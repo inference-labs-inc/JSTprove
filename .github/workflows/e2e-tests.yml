@@ -111,27 +111,25 @@ jobs:
       - name: Run Rust e2e tests (Expander + Remainder)
         run: cargo test --release -p jstprove_circuits --features remainder
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
 
       - name: Cache Python virtualenv
         uses: actions/cache@v5
         with:
           path: .venv
-          key: ${{ runner.os }}-pyo3-venv-maturin1.12-py3.12-${{ hashFiles('rust/jstprove_pyo3/**', 'pysrc/**') }}
+          key: ${{ runner.os }}-uv-py3.12-maturin1.12-${{ hashFiles('**/Cargo.lock', 'rust/jstprove_pyo3/**', 'pysrc/**', 'pyproject.toml') }}
           restore-keys: |
-            ${{ runner.os }}-pyo3-venv-maturin1.12-py3.12-
+            ${{ runner.os }}-uv-py3.12-maturin1.12-
 
-      - name: Install maturin and build bindings
+      - name: Build bindings and install dev dependencies
         run: |
-          python -m venv .venv
-          source .venv/bin/activate
-          pip install maturin==1.12.*
-          maturin develop --release
+          uv venv --python 3.12
+          uv pip install maturin==1.12.* pytest
+          uv run maturin develop --release
 
       - name: Verify PyO3 bindings
-        run: |
-          source .venv/bin/activate
-          python -c "from jstprove import Circuit; print('PyO3 bindings OK')"
+        run: uv run python -c "from jstprove import Circuit; print('PyO3 bindings OK')"
+
+      - name: Run Python binding tests
+        run: uv run pytest tests/ -v

@@ -34,12 +34,12 @@ struct Circuit {
 #[pymethods]
 impl Circuit {
     #[staticmethod]
-    fn compile(model_path: &str, output_path: &str) -> PyResult<Circuit> {
-        jstprove_remainder::runner::compile::run(
-            Path::new(model_path),
-            Path::new(output_path),
-            true,
-        )
+    fn compile(py: Python<'_>, model_path: &str, output_path: &str) -> PyResult<Circuit> {
+        let model = model_path.to_string();
+        let out = output_path.to_string();
+        py.allow_threads(move || {
+            jstprove_remainder::runner::compile::run(Path::new(&model), Path::new(&out), true)
+        })
         .map_err(anyhow_to_pyerr)?;
         Ok(Circuit {
             model_path: output_path.to_string(),
@@ -55,15 +55,21 @@ impl Circuit {
 
     fn generate_witness(
         &self,
+        py: Python<'_>,
         input_path: &str,
         witness_path: &str,
     ) -> PyResult<WitnessResult> {
-        jstprove_remainder::runner::witness::run(
-            Path::new(&self.model_path),
-            Path::new(input_path),
-            Path::new(witness_path),
-            true,
-        )
+        let model = self.model_path.clone();
+        let input = input_path.to_string();
+        let witness = witness_path.to_string();
+        py.allow_threads(move || {
+            jstprove_remainder::runner::witness::run(
+                Path::new(&model),
+                Path::new(&input),
+                Path::new(&witness),
+                true,
+            )
+        })
         .map_err(anyhow_to_pyerr)?;
         Ok(WitnessResult {
             witness_path: witness_path.to_string(),
@@ -73,43 +79,61 @@ impl Circuit {
 
     fn prove(
         &self,
+        py: Python<'_>,
         witness_path: &str,
         proof_path: &str,
     ) -> PyResult<String> {
-        jstprove_remainder::runner::prove::run(
-            Path::new(&self.model_path),
-            Path::new(witness_path),
-            Path::new(proof_path),
-            true,
-        )
+        let model = self.model_path.clone();
+        let witness = witness_path.to_string();
+        let proof = proof_path.to_string();
+        py.allow_threads(move || {
+            jstprove_remainder::runner::prove::run(
+                Path::new(&model),
+                Path::new(&witness),
+                Path::new(&proof),
+                true,
+            )
+        })
         .map_err(anyhow_to_pyerr)?;
         Ok(proof_path.to_string())
     }
 
     fn verify(
         &self,
+        py: Python<'_>,
         proof_path: &str,
         input_path: &str,
     ) -> PyResult<bool> {
-        jstprove_remainder::runner::verify::run(
-            Path::new(&self.model_path),
-            Path::new(proof_path),
-            Path::new(input_path),
-        )
+        let model = self.model_path.clone();
+        let proof = proof_path.to_string();
+        let input = input_path.to_string();
+        py.allow_threads(move || {
+            jstprove_remainder::runner::verify::run(
+                Path::new(&model),
+                Path::new(&proof),
+                Path::new(&input),
+            )
+        })
         .map_err(anyhow_to_pyerr)?;
         Ok(true)
     }
 
     fn generate_witness_batch(
         &self,
+        py: Python<'_>,
         manifest_path: &str,
     ) -> PyResult<BatchResult> {
-        let r = jstprove_remainder::runner::batch::run_batch_witness(
-            Path::new(&self.model_path),
-            Path::new(manifest_path),
-            true,
-        )
-        .map_err(anyhow_to_pyerr)?;
+        let model = self.model_path.clone();
+        let manifest = manifest_path.to_string();
+        let r = py
+            .allow_threads(move || {
+                jstprove_remainder::runner::batch::run_batch_witness(
+                    Path::new(&model),
+                    Path::new(&manifest),
+                    true,
+                )
+            })
+            .map_err(anyhow_to_pyerr)?;
         Ok(BatchResult {
             succeeded: r.succeeded,
             failed: r.failed,
@@ -117,16 +141,18 @@ impl Circuit {
         })
     }
 
-    fn prove_batch(
-        &self,
-        manifest_path: &str,
-    ) -> PyResult<BatchResult> {
-        let r = jstprove_remainder::runner::batch::run_batch_prove(
-            Path::new(&self.model_path),
-            Path::new(manifest_path),
-            true,
-        )
-        .map_err(anyhow_to_pyerr)?;
+    fn prove_batch(&self, py: Python<'_>, manifest_path: &str) -> PyResult<BatchResult> {
+        let model = self.model_path.clone();
+        let manifest = manifest_path.to_string();
+        let r = py
+            .allow_threads(move || {
+                jstprove_remainder::runner::batch::run_batch_prove(
+                    Path::new(&model),
+                    Path::new(&manifest),
+                    true,
+                )
+            })
+            .map_err(anyhow_to_pyerr)?;
         Ok(BatchResult {
             succeeded: r.succeeded,
             failed: r.failed,
@@ -134,15 +160,17 @@ impl Circuit {
         })
     }
 
-    fn verify_batch(
-        &self,
-        manifest_path: &str,
-    ) -> PyResult<BatchResult> {
-        let r = jstprove_remainder::runner::batch::run_batch_verify(
-            Path::new(&self.model_path),
-            Path::new(manifest_path),
-        )
-        .map_err(anyhow_to_pyerr)?;
+    fn verify_batch(&self, py: Python<'_>, manifest_path: &str) -> PyResult<BatchResult> {
+        let model = self.model_path.clone();
+        let manifest = manifest_path.to_string();
+        let r = py
+            .allow_threads(move || {
+                jstprove_remainder::runner::batch::run_batch_verify(
+                    Path::new(&model),
+                    Path::new(&manifest),
+                )
+            })
+            .map_err(anyhow_to_pyerr)?;
         Ok(BatchResult {
             succeeded: r.succeeded,
             failed: r.failed,
@@ -151,8 +179,11 @@ impl Circuit {
     }
 
     #[staticmethod]
-    fn is_compatible(model_path: &str) -> PyResult<(bool, Vec<String>)> {
-        match jstprove_remainder::onnx::compat::is_compatible(Path::new(model_path)) {
+    fn is_compatible(py: Python<'_>, model_path: &str) -> PyResult<(bool, Vec<String>)> {
+        let path = model_path.to_string();
+        let result =
+            py.allow_threads(move || jstprove_remainder::onnx::compat::is_compatible(Path::new(&path)));
+        match result {
             Ok((compatible, issues)) => Ok((compatible, issues)),
             Err(e) => Ok((false, vec![format!("{:#}", e)])),
         }
