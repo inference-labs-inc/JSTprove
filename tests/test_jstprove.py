@@ -320,8 +320,6 @@ def test_python_thread_not_starved_during_rust_calls(tmp_path):
 
     t = threading.Thread(target=count, daemon=True)
     t.start()
-    time.sleep(0.01)
-
     baseline = counter[0]
 
     for _ in range(50):
