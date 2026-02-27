@@ -14,11 +14,11 @@ git clone https://github.com/inference-labs-inc/JSTprove.git
 cd JSTprove
 ```
 
-2. **Install dependencies with UV**:
+2. **Build the Rust workspace and Python bindings**:
 
 ```bash
-uv sync --dev
-uv pip install -e .
+cargo build --release
+maturin develop --release
 ```
 
 ---
@@ -29,7 +29,9 @@ uv pip install -e .
 git config core.hooksPath hooks/
 ```
 
-This points git at the tracked `hooks/` directory. The pre-commit hook automatically formats staged files (black, ruff, cargo fmt), re-stages them, then runs linters and checks (clippy, trailing whitespace, etc.).
+This points git at the tracked `hooks/` directory. The pre-commit hook runs:
+- **pre-commit-hooks**: end-of-file-fixer, trailing-whitespace, check-yaml, check-toml, check-added-large-files, detect-private-key
+- **pre-commit-rust**: cargo fmt, clippy
 
 ---
 
@@ -38,8 +40,10 @@ This points git at the tracked `hooks/` directory. The pre-commit hook automatic
 You can check all files in the repository at any time:
 
 ```bash
-uv run pre-commit run --all-files
+pre-commit run --all-files
 ```
+
+> `pre-commit` is not a project dependency. Install it separately (e.g., `pipx install pre-commit` or `brew install pre-commit`).
 
 This is useful before pushing changes to catch any formatting issues early.
 
@@ -76,5 +80,5 @@ The pre-commit hook will automatically format and re-stage your files. If a lint
 ## **6. Formatting & newline policy**
 
 - **Rust files**: All `.rs` files should be formatted using `cargo fmt`.
-- **Python files**: All `.py` files must have a trailing newline at EOF.
+- **All files**: Must have a trailing newline at EOF (enforced by pre-commit hooks).
 - Pre-commit hooks enforce this automatically locally and in CI.

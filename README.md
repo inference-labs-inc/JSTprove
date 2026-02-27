@@ -21,14 +21,12 @@
 [![Website](https://img.shields.io/badge/Website-Visit%20Us-ff7139?style=flat-square&logo=firefox-browser)](https://inferencelabs.com)
 [![White paper](https://img.shields.io/badge/Whitepaper-Read-lightgrey?style=flat-square&logo=read-the-docs)](https://doi.org/10.48550/arXiv.2510.21024)
 
-Zero-knowledge proofs of ML inference on **ONNX** models — powered by [Polyhedra Network’s **Expander**](https://github.com/PolyhedraZK/Expander) (GKR/sum-check prover) and [**Expander Compiler Collection (ECC)**](https://github.com/PolyhedraZK/ExpanderCompilerCollection).
+Zero-knowledge proofs of ML inference on **ONNX** models — powered by [Polyhedra Network’s **Expander**](https://github.com/PolyhedraZK/Expander) (GKR/sum-check prover) and [**Expander Compiler Collection (ECC)**](https://github.com/inference-labs-inc/ecc).
 
-* 🎯 **You bring ONNX** → we quantize, compile to a circuit, generate a witness, prove, and verify — via a simple CLI.
-* ✅ Supported ops (current): **Conv2D**, **GEMM/MatMul (FC)**, **ReLU**, **MaxPool2D**, **Add**, **Mul**, **Sub**, **BatchNorm**.
-* 🧰 CLI details: see **[docs/cli.md](docs/cli.md)**
+Supported ops (current): **Add**, **BatchNormalization**, **Clip**, **Constant**, **Conv**, **Div**, **Flatten**, **Gemm**, **Max**, **MaxPool**, **Min**, **Mul**, **ReLU**, **Reshape**, **Squeeze**, **Sub**, **Unsqueeze**. CLI details: see **[docs/cli.md](docs/cli.md)**.
 
-👉 Just want to see it in action? Jump to [Quickstart (LeNet demo)](#quickstart-lenet-demo).<br>
-👉 Curious about how it works under the hood? Check out the [white paper](https://doi.org/10.48550/arXiv.2510.21024).
+Just want to see it in action? Jump to [Quickstart (LeNet demo)](#quickstart-lenet-demo).
+Curious about how it works under the hood? Check out the [white paper](https://doi.org/10.48550/arXiv.2510.21024).
 
 ---
 
@@ -43,10 +41,9 @@ Zero-knowledge proofs of ML inference on **ONNX** models — powered by [Polyhed
   - [0) Requirements](#0-requirements)
   - [1) System packages](#1-system-packages)
   - [2) Rust toolchain](#2-rust-toolchain)
-  - [3) Clone JSTprove & set up Python](#3-clone-jstprove--set-up-python)
-  - [4) Install & verify Expander (before building JSTprove)](#4-install--verify-expander-before-building-jstprove)
-  - [5) Build the JSTprove runner (optional; the CLI can build on demand)](#5-build-the-jstprove-runner-optional-the-cli-can-build-on-demand)
-  - [6) Try the CLI](#6-try-the-cli)
+  - [3) Clone JSTprove](#3-clone-jstprove)
+  - [4) Build the JSTprove binaries](#4-build-the-jstprove-binaries)
+  - [5) Verify the build](#5-verify-the-build)
 - [Quickstart (LeNet demo)](#quickstart-lenet-demo)
 - [CLI reference](#cli-reference)
 - [Troubleshooting](#troubleshooting)
@@ -63,23 +60,21 @@ You provide an **ONNX** model and inputs; JSTprove handles **quantization**, **c
 
 ### High-level architecture
 
-* **Python pipeline:** Converts **ONNX → quantized ONNX**, prepares I/O, drives the Rust runner, exposes the **CLI**.
-* **Rust crate:** `rust/jstprove_circuits` implements layer circuits (Conv2D, ReLU, MaxPool2D, GEMM/FC, BatchNorm) and a runner.
-* **Circuit frontend:** [ECC](https://github.com/PolyhedraZK/ExpanderCompilerCollection) Rust API for arithmetic circuits.
+* **Python package:** Thin PyO3 bindings exposing `Circuit`, `WitnessResult`, and `BatchResult` from Rust.
+* **Rust workspace:** Four crates (`jstprove_circuits`, `jstprove_io`, `jstprove_onnx`, `jstprove_remainder`) plus `jstprove_pyo3` (excluded from workspace). Two CLI binaries: `jstprove` (Expander backend) and `jstprove-remainder` (Remainder backend).
+* **Circuit frontend:** [ECC](https://github.com/inference-labs-inc/ecc) Rust API for arithmetic circuits.
 * **Prover backend:** [Expander](https://github.com/PolyhedraZK/Expander) (GKR/sum-check prover/verification).
 
 ```
-ONNX model ─► Quantizer (Py) ─► Circuit via ECC (Rust) ─► Witness (Rust) ─► Proof (Rust) ─► Verify (Rust)
+ONNX model ─► Circuit via ECC (Rust) ─► Witness (Rust) ─► Proof (Rust) ─► Verify (Rust)
 ```
 
 ### Design principles
 
 - **User-friendly frontend to Expander:** A thin, practical, circuit-based layer that makes Expander/ECC easy to use from a simple CLI — no circuit classes, no path inference, predictable artifacts.
-- **Explicit & reproducible:** You pass exact paths; we emit concrete artifacts (circuit, quantized ONNX, witness, proof). No hidden discovery or heuristics.
-- **Clear separation:** Python orchestrates the pipeline and I/O; Rust implements the circuits and invokes Expander/ECC.
+- **Explicit & reproducible:** You pass exact paths; we emit concrete artifacts (compiled circuit, witness, proof). No hidden discovery or heuristics.
 - **Quantization that's simple & faithful:** We scale tensors, **round to integers**, run the model, and (where needed) **rescale** outputs back. Scaling keeps arithmetic cheap while remaining close to the original FP behavior.
 - **Small, fast circuits when possible:** Where safe, we fuse common patterns (e.g., **Linear + ReLU**, **Conv + ReLU**) into streamlined circuit fragments to reduce constraints.
-- **Deterministic debugging:** We prefer loud failures and inspectable intermediates (e.g., `*_reshaped.json`) over implicit magic.
 
 ---
 
@@ -97,7 +92,7 @@ uv tool install JSTprove
 
 #### Verify installation
 ```bash
-jst --help
+jstprove --help
 ```
 
 > **Prerequisite**: OpenMPI must be installed on the host:
@@ -124,7 +119,7 @@ uv tool install /path/to/JSTprove-*.whl
 
 ### 0) Requirements
 
-- **Python**: >=3.12
+- **Python**: >=3.9
 - **UV**: Fast Python package manager ([install UV](https://docs.astral.sh/uv/getting-started/installation/))
 
 > Note: UV will automatically install and manage the correct Python version for you.
@@ -133,7 +128,7 @@ uv tool install /path/to/JSTprove-*.whl
 
 ### 1) System packages
 
-> Run commands from the **repo root** so the runner binary path (e.g., `./target/release/onnx_generic_circuit`) resolves.
+> Run commands from the **repo root** so the runner binary path (e.g., `./target/release/jstprove`) resolves.
 
 #### Ubuntu/Debian
 ```bash
@@ -179,92 +174,35 @@ rustup toolchain install nightly
 
 ---
 
-### 3) Clone JSTprove & set up Python
+### 3) Clone JSTprove
 
 ```bash
 git clone https://github.com/inference-labs-inc/JSTprove.git
 cd JSTprove
-
-# Install dependencies with UV (automatically creates and manages virtual environment)
-uv sync
 ```
 
-> If `uv` was just installed, you may need to **restart your terminal** before running `uv sync`.
+> The Python package has no pip-installable dependencies. It is built with [maturin](https://www.maturin.rs/) from the PyO3 crate (`maturin develop --release`).
 
 ---
 
-### 4) Install & verify **Expander** (before building JSTprove)
-
-JSTprove relies on Polyhedra Network’s **Expander** (prover) and **Expander Compiler Collection (ECC)** crates.
-For a clean environment, install Expander and run its self-checks first.
-To keep paths simple (and to match our scripts), **clone Expander as a subfolder of this repo**:
+### 4) Build the JSTprove binaries
 
 ```bash
-# From the JSTprove repo root
-git clone https://github.com/PolyhedraZK/Expander.git
-cd Expander
-
-git fetch
-git checkout af1b7473bc858d250e481d6bb7db98a1ee6b7fc5
-
-
-# Build (uses the toolchain you configured with rustup)
 cargo build --release
 ```
 
-**Verify Expander:** follow the “Correctness Test” (or equivalent) in the Expander README.
-If you’re unsure, a quick smoke test is often:
-
-```bash
-cargo test --release
-```
-
-> Refer to the Expander README for the authoritative verification command(s), which may change over time.
-
-> **Why inside the repo?** Our example commands and helper scripts assume `./Expander` as the manifest path. Keeping Expander elsewhere can lead to `manifest path 'Expander/Cargo.toml' does not exist` errors unless you always pass absolute paths.
-
-*(You do **not** need to clone ECC separately unless you plan to override Cargo git sources; Cargo will fetch ECC automatically when building JSTprove.)*
+> Cargo will automatically fetch the ECC dependency from `https://github.com/inference-labs-inc/ecc`. No local clone of Expander or ECC is needed.
 
 ---
 
-### 5) Build the JSTprove runner (optional; the CLI can build on demand)
+### 5) Verify the build
 
 ```bash
-# Make sure you're back in the JSTprove repo root (not in Expander).
-# If you just followed Step 3, run:
-cd ../JSTprove
-
-# Then build:
-cargo build --release
+./target/release/jstprove --help
+./target/release/jstprove-remainder --help
 ```
 
-> The CLI `compile` step will **(re)build** the runner automatically when needed, so this step is just a sanity check.
-
----
-
-### 6) Install and try the CLI
-
-**Option A: Install in virtual environment (for development)**
-```bash
-# Install as editable package in venv
-uv pip install -e .
-
-# Try the CLI (with venv activated)
-jst --help
-```
-
-**Option B: Install globally (for regular use)**
-```bash
-# Install as global tool
-uv tool install .
-
-# Try the CLI (available globally)
-jst --help
-```
-
-> ⏳ Note: The first time you run this command it may take a little while due to Python/Rust imports and initialization. This is normal—subsequent runs will be faster.
-
-You can now follow the **Quickstart** commands (compile → witness → prove → verify).
+You can now follow the **Quickstart** commands (compile -> witness -> prove -> verify).
 
 </details>
 
@@ -274,51 +212,48 @@ You can now follow the **Quickstart** commands (compile → witness → prove �
 
 Demo paths:
 
-* ONNX: `python/models/models_onnx/lenet.onnx`
-* Input JSON: `python/models/inputs/lenet_input.json`
+* ONNX model: `rust/jstprove_remainder/models/lenet.onnx`
 * Artifacts: `artifacts/lenet/*`
 
-> ⏳ Note: The commands below may take a little longer _the first time_ they are run, as dependencies and binaries are initialized. After that, runtime reflects the actual computation (e.g., compiling circuits, generating witnesses, or proving), which can still be intensive depending on the model.
-
-1. **Compile** → circuit + **quantized ONNX**
+1. **Compile** (using the Expander backend) -- produces a `CompiledCircuit` msgpack bundle
 
 ```bash
-jst compile \
-  -m python/models/models_onnx/lenet.onnx \
-  -c artifacts/lenet/circuit.txt
+jstprove msgpack_compile \
+  --onnx rust/jstprove_remainder/models/lenet.onnx \
+  -c artifacts/lenet/circuit.msgpack
 ```
 
-2. **Witness** → reshape/scale inputs, run model, write witness + outputs
+2. **Witness** -- generate witness from compiled circuit + inputs/outputs
 
 ```bash
-jst witness \
-  -c artifacts/lenet/circuit.txt \
-  -i python/models/inputs/lenet_input.json \
+jstprove run_gen_witness \
+  -c artifacts/lenet/circuit.msgpack \
+  -i artifacts/lenet/input.json \
   -o artifacts/lenet/output.json \
-  -w artifacts/lenet/witness.bin
+  -w artifacts/lenet/witness.msgpack
 ```
 
-3. **Prove** → witness → proof
+3. **Prove** -- witness -> proof
 
 ```bash
-jst prove \
-  -c artifacts/lenet/circuit.txt \
-  -w artifacts/lenet/witness.bin \
-  -p artifacts/lenet/proof.bin
+jstprove run_prove_witness \
+  -c artifacts/lenet/circuit.msgpack \
+  -w artifacts/lenet/witness.msgpack \
+  -p artifacts/lenet/proof.msgpack
 ```
 
-4. **Verify** → check the proof (needs quantized ONNX for input shapes)
+4. **Verify** -- check the proof
 
 ```bash
-jst verify \
-  -c artifacts/lenet/circuit.txt \
-  -i python/models/inputs/lenet_input.json \
+jstprove run_gen_verify \
+  -c artifacts/lenet/circuit.msgpack \
+  -i artifacts/lenet/input.json \
   -o artifacts/lenet/output.json \
-  -w artifacts/lenet/witness.bin \
-  -p artifacts/lenet/proof.bin
+  -w artifacts/lenet/witness.msgpack \
+  -p artifacts/lenet/proof.msgpack
 ```
 
-If it prints **Verified**, you're done 🎉
+If it prints **Verified**, you're done.
 
 ---
 
@@ -363,4 +298,4 @@ We gratefully acknowledge [**Polyhedra Network**](https://polyhedra.network/) fo
 
 * [**Expander**](https://github.com/PolyhedraZK/Expander) — the GKR/sumcheck proving system we build on.
 
-* [**Expander Compiler Collection (ECC)**]() — the circuit frontend used to construct arithmetic circuits for ML layers.
+* [**Expander Compiler Collection (ECC)**](https://github.com/inference-labs-inc/ecc) — the circuit frontend used to construct arithmetic circuits for ML layers.

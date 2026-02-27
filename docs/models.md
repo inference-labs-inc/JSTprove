@@ -6,18 +6,20 @@ This page explains what kinds of models JSTprove supports and how they're handle
 
 ## Supported operators (current)
 
-- **Linear:** Fully Connected / **GEMM**, **MatMul**, **Add**, **Sub**, **Mul**
-- **Convolution:** **Conv2D**
-- **Activation:** **ReLU**
-- **Pooling:** **MaxPool2D**
-- **Shaping / graph ops:** **Flatten**, **Reshape**, **Constant**
-- **Normalization:** **BatchNorm**
+- **Arithmetic:** **Add**, **Div**, **Mul**, **Sub**
+- **Comparison:** **Max**, **Min**
+- **Convolution:** **Conv**
+- **Activation:** **Clip**, **ReLU**
+- **Pooling:** **MaxPool**
+- **Linear:** **Gemm**
+- **Shaping / graph ops:** **Constant**, **Flatten**, **Reshape**, **Squeeze**, **Unsqueeze**
+- **Normalization:** **BatchNormalization**
 
 ---
 
 ## ONNX expectations
 
-- Export models with ops limited to **Conv2D**, **GEMM/MatMul**, **MaxPool2D**, **ReLU**, **Add**, **Sub**, **Mul**, **BatchNorm**.
+- Export models with ops limited to the supported operators listed above.
 
 ---
 
@@ -66,5 +68,5 @@ This page explains what kinds of models JSTprove supports and how they're handle
 ## Best practices
 
 - Use **one** ONNX model per compile. If you change the model, **re-run compile** to refresh the circuit and quantization.
-- Keep a consistent set of artifacts: `circuit.txt`, `quantized.onnx`, `input.json`, `output.json`, `witness.bin`, `proof.bin`.
+- Keep a consistent set of artifacts from the same compile run (compiled circuit, witness, proof).
 - For large CNNs, start with a small batch size and small inputs to validate the pipeline before scaling up.
