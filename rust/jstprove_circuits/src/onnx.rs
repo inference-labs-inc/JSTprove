@@ -61,12 +61,7 @@ impl Circuit<Variable> {
         api: &mut Builder,
     ) -> Result<(), CircuitError> {
         let params = OnnxContext::get_params()?;
-        let architecture = OnnxContext::get_architecture()?;
-        let w_and_b = if params.weights_as_inputs {
-            WANDB { w_and_b: vec![] }
-        } else {
-            OnnxContext::get_wandb()?
-        };
+        let (architecture, w_and_b) = get_architecture_and_wandb(&params)?;
         self.try_define_impl::<C, Builder>(api, &params, &architecture, &w_and_b)
     }
 
@@ -534,12 +529,7 @@ pub fn compile_bn254_direct_to_path(
     use crate::runner::schema::CompiledCircuit;
     use crate::runner::version::jstprove_artifact_version;
 
-    let architecture = OnnxContext::get_architecture()?;
-    let wandb = if params.weights_as_inputs {
-        WANDB { w_and_b: vec![] }
-    } else {
-        OnnxContext::get_wandb()?
-    };
+    let (architecture, wandb) = get_architecture_and_wandb(params)?;
 
     let n = params.effective_input_dims();
     let dummy_inputs = vec![CircuitField::<BN254Config>::zero(); n];
@@ -659,6 +649,23 @@ fn deserialize_direct_witness(bytes: &[u8]) -> Result<Vec<CircuitField<BN254Conf
         .map_err(|e| RunError::Deserialize(format!("direct witness: {e:?}")))
 }
 
+fn log_fast_compile_info() {
+    tracing::info!("Compiling circuit with DirectBuilder (bypasses ECC IR pipeline)");
+    tracing::info!("Tradeoff: ~6x faster total, ~2x slower prove/verify vs standard compile");
+}
+
+fn get_architecture_and_wandb(
+    params: &CircuitParams,
+) -> Result<(Architecture, WANDB), crate::io::io_reader::onnx_context::OnnxContextError> {
+    let architecture = OnnxContext::get_architecture()?;
+    let wandb = if params.weights_as_inputs {
+        WANDB { w_and_b: vec![] }
+    } else {
+        OnnxContext::get_wandb()?
+    };
+    Ok((architecture, wandb))
+}
+
 type FC<C> = <C as GKREngine>::FieldConfig;
 type DirectBuildResult = (
     expander_circuit::Circuit<FC<BN254Config>>,
@@ -764,12 +771,7 @@ pub fn compile_and_witness_bn254_direct(
         )));
     }
 
-    let architecture = OnnxContext::get_architecture()?;
-    let wandb = if params.weights_as_inputs {
-        WANDB { w_and_b: vec![] }
-    } else {
-        OnnxContext::get_wandb()?
-    };
+    let (architecture, wandb) = get_architecture_and_wandb(params)?;
     direct_build_from_fields(params, &architecture, &wandb, &input_arr_vals)
 }
 
@@ -785,12 +787,7 @@ pub fn compile_and_witness_bn254_from_fields(
             input_arr_vals.len()
         )));
     }
-    let architecture = OnnxContext::get_architecture()?;
-    let wandb = if params.weights_as_inputs {
-        WANDB { w_and_b: vec![] }
-    } else {
-        OnnxContext::get_wandb()?
-    };
+    let (architecture, wandb) = get_architecture_and_wandb(params)?;
     direct_build_from_fields(params, &architecture, &wandb, input_arr_vals)
 }
 
@@ -875,10 +872,7 @@ pub fn fast_compile_prove(
     let params = OnnxContext::get_params()?;
     let input_arr_vals = read_activations_from_file(input_path)?;
 
-    eprintln!("[fast-compile] Compiling circuit with DirectBuilder (bypasses ECC IR pipeline)");
-    eprintln!(
-        "[fast-compile] Tradeoff: ~6x faster total, ~2x slower prove/verify vs standard compile"
-    );
+    log_fast_compile_info();
 
     let (mut circuit, witness) = compile_and_witness_bn254_from_fields(&params, &input_arr_vals)?;
     let proof = prove_bn254_direct(&mut circuit, &witness)?;
@@ -889,15 +883,24 @@ pub fn fast_compile_prove(
         proof,
         version: Some(jstprove_artifact_version()),
     };
-    let file = std::fs::File::create(proof_path).map_err(|e| RunError::Io {
+    let proof_dir = std::path::Path::new(proof_path)
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let mut tmp = tempfile::NamedTempFile::new_in(proof_dir).map_err(|e| RunError::Io {
         source: e,
         path: proof_path.into(),
     })?;
-    let mut writer = std::io::BufWriter::new(file);
-    resp.serialize(&mut rmp_serde::Serializer::new(&mut writer).with_struct_map())
-        .map_err(|e| RunError::Serialize(format!("proof msgpack: {e:?}")))?;
-    std::io::Write::flush(&mut writer).map_err(|e| RunError::Io {
-        source: e,
+    {
+        let mut writer = std::io::BufWriter::new(tmp.as_file_mut());
+        resp.serialize(&mut rmp_serde::Serializer::new(&mut writer).with_struct_map())
+            .map_err(|e| RunError::Serialize(format!("proof msgpack: {e:?}")))?;
+        std::io::Write::flush(&mut writer).map_err(|e| RunError::Io {
+            source: e,
+            path: proof_path.into(),
+        })?;
+    }
+    tmp.persist(proof_path).map_err(|e| RunError::Io {
+        source: e.error,
         path: proof_path.into(),
     })?;
 
@@ -913,10 +916,7 @@ pub fn fast_compile_verify(input_path: &str, proof_path: &str) -> Result<bool, R
     let params = OnnxContext::get_params()?;
     let input_arr_vals = read_activations_from_file(input_path)?;
 
-    eprintln!("[fast-compile] Compiling circuit with DirectBuilder (bypasses ECC IR pipeline)");
-    eprintln!(
-        "[fast-compile] Tradeoff: ~6x faster total, ~2x slower prove/verify vs standard compile"
-    );
+    log_fast_compile_info();
 
     let (mut circuit, witness) = compile_and_witness_bn254_from_fields(&params, &input_arr_vals)?;
 
