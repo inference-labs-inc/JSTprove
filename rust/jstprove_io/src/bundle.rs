@@ -1,5 +1,5 @@
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use serde::{de::DeserializeOwned, Serialize};
@@ -10,6 +10,42 @@ use crate::version::ArtifactVersion;
 const CIRCUIT_FILENAME: &str = "circuit.bin";
 const WITNESS_SOLVER_FILENAME: &str = "witness_solver.bin";
 const MANIFEST_FILENAME: &str = "manifest.msgpack";
+
+struct WriteGuard {
+    paths: Vec<PathBuf>,
+    committed: bool,
+}
+
+impl WriteGuard {
+    fn new() -> Self {
+        Self {
+            paths: vec![],
+            committed: false,
+        }
+    }
+
+    fn track(&mut self, p: PathBuf) {
+        self.paths.push(p);
+    }
+
+    fn commit(mut self) {
+        self.committed = true;
+    }
+}
+
+impl Drop for WriteGuard {
+    fn drop(&mut self) {
+        if !self.committed {
+            for p in self.paths.iter().rev() {
+                if p.is_dir() {
+                    let _ = std::fs::remove_dir(p);
+                } else {
+                    let _ = std::fs::remove_file(p);
+                }
+            }
+        }
+    }
+}
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(bound(
@@ -31,18 +67,18 @@ pub fn write_bundle<M: Serialize>(
     version: Option<ArtifactVersion>,
     compress: bool,
 ) -> Result<()> {
+    let mut guard = WriteGuard::new();
     std::fs::create_dir(dir)?;
-    let result = (|| -> Result<()> {
-        write_blob(dir.join(CIRCUIT_FILENAME), circuit, compress)?;
-        write_blob(dir.join(WITNESS_SOLVER_FILENAME), witness_solver, compress)?;
-        let manifest = BundleManifest { metadata, version };
-        crate::serialize_to_file(&manifest, &dir.join(MANIFEST_FILENAME), false)?;
-        Ok(())
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_dir_all(dir);
-    }
-    result
+    guard.track(dir.to_owned());
+    write_blob(dir.join(CIRCUIT_FILENAME), circuit, compress)?;
+    guard.track(dir.join(CIRCUIT_FILENAME));
+    write_blob(dir.join(WITNESS_SOLVER_FILENAME), witness_solver, compress)?;
+    guard.track(dir.join(WITNESS_SOLVER_FILENAME));
+    let manifest = BundleManifest { metadata, version };
+    crate::serialize_to_file(&manifest, &dir.join(MANIFEST_FILENAME), false)?;
+    guard.track(dir.join(MANIFEST_FILENAME));
+    guard.commit();
+    Ok(())
 }
 
 pub struct BundleBlobs<M> {
