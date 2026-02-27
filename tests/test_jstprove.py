@@ -9,6 +9,8 @@ without requiring compiled model files. They cover:
 - Thread safety and GIL-release correctness
 """
 
+from __future__ import annotations
+
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -283,9 +285,10 @@ def test_thread_pool_executor_dispatches_all_workers(tmp_path):
                 str(tmp_path / f"in_{idx}.msgpack"),
                 str(tmp_path / f"out_{idx}.msgpack"),
             )
-            return None
         except RuntimeError as e:
             return e
+        else:
+            return None
 
     with ThreadPoolExecutor(max_workers=N) as pool:
         futures = [pool.submit(worker, i) for i in range(N)]
