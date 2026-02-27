@@ -209,10 +209,16 @@ fn parse_public_inputs_from_witness_bytes(
     Ok((modulus, public_inputs))
 }
 
+struct ExtractionContext {
+    extracted: ExtractedOutput,
+    modulus: BigUint,
+    raw_public_inputs: Vec<BigUint>,
+}
+
 fn extract_outputs_common(
     witness_data: &[u8],
     num_model_inputs: usize,
-) -> Result<ExtractedOutput, RunError> {
+) -> Result<ExtractionContext, RunError> {
     let (modulus, public_inputs) = parse_public_inputs_from_witness_bytes(witness_data)?;
 
     let min_public = num_model_inputs
@@ -245,11 +251,15 @@ fn extract_outputs_common(
     let inputs = descale_outputs(&signed_inputs, scale_base, scale_exponent)?;
     let outputs = descale_outputs(&signed_outputs, scale_base, scale_exponent)?;
 
-    Ok(ExtractedOutput {
-        inputs,
-        outputs,
-        scale_base,
-        scale_exponent,
+    Ok(ExtractionContext {
+        extracted: ExtractedOutput {
+            inputs,
+            outputs,
+            scale_base,
+            scale_exponent,
+        },
+        modulus,
+        raw_public_inputs: public_inputs,
     })
 }
 
@@ -260,7 +270,7 @@ pub fn extract_outputs_from_witness(
     num_model_inputs: usize,
 ) -> Result<ExtractedOutput, RunError> {
     let witness_data = auto_decompress_bytes(witness_bytes)?;
-    extract_outputs_common(&witness_data, num_model_inputs)
+    extract_outputs_common(&witness_data, num_model_inputs).map(|ctx| ctx.extracted)
 }
 
 /// # Errors
@@ -306,7 +316,7 @@ pub fn verify_and_extract_from_bytes<C: Config>(
         });
     }
 
-    let extracted = extract_outputs_common(&witness_data, num_inputs)?;
+    let ctx = extract_outputs_common(&witness_data, num_inputs)?;
 
     if let Some(expected) = expected_inputs {
         if expected.len() != num_inputs {
@@ -316,15 +326,14 @@ pub fn verify_and_extract_from_bytes<C: Config>(
                 num_inputs
             )));
         }
-        let (modulus, public_inputs) = parse_public_inputs_from_witness_bytes(&witness_data)?;
-        let raw_model_inputs = &public_inputs[..num_inputs];
+        let raw_model_inputs = &ctx.raw_public_inputs[..num_inputs];
         let expected_field = scale_to_field(
             expected,
-            extracted.scale_base,
-            extracted.scale_exponent,
-            &modulus,
+            ctx.extracted.scale_base,
+            ctx.extracted.scale_exponent,
+            &ctx.modulus,
         )?;
-        if !compare_field_values(&expected_field, raw_model_inputs, &modulus, 1) {
+        if !compare_field_values(&expected_field, raw_model_inputs, &ctx.modulus, 1) {
             return Err(RunError::Verify(
                 "input verification failed: expected inputs do not match witness".into(),
             ));
@@ -333,9 +342,9 @@ pub fn verify_and_extract_from_bytes<C: Config>(
 
     Ok(VerifiedOutput {
         valid,
-        inputs: extracted.inputs,
-        outputs: extracted.outputs,
-        scale_base: extracted.scale_base,
-        scale_exponent: extracted.scale_exponent,
+        inputs: ctx.extracted.inputs,
+        outputs: ctx.extracted.outputs,
+        scale_base: ctx.extracted.scale_base,
+        scale_exponent: ctx.extracted.scale_exponent,
     })
 }
