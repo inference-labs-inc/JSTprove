@@ -9,8 +9,9 @@ use jstprove_onnx::parser::{self, AttrValue, ParsedModel};
 use jstprove_onnx::quantizer::{self, QuantizedModel, ScaleConfig};
 use jstprove_onnx::shape_inference;
 
-use crate::circuit_functions::utils::onnx_model::{Architecture, Backend, CircuitParams, WANDB};
+use crate::circuit_functions::utils::onnx_model::{Architecture, CircuitParams, WANDB};
 use crate::circuit_functions::utils::onnx_types::{ONNXIO, ONNXLayer};
+use crate::proof_system::ProofSystem;
 
 pub struct ExpanderMetadata {
     pub circuit_params: CircuitParams,
@@ -93,7 +94,7 @@ fn build_circuit_params(
         freivalds_reps: 1,
         n_bits_config: quantized.n_bits_config.clone(),
         weights_as_inputs: false,
-        backend: Backend::Expander,
+        proof_system: ProofSystem::Expander,
     }
 }
 
@@ -321,7 +322,7 @@ mod tests {
 
         assert_eq!(metadata.circuit_params.scale_base, 2);
         assert_eq!(metadata.circuit_params.scale_exponent, 18);
-        assert_eq!(metadata.circuit_params.backend, Backend::Expander);
+        assert_eq!(metadata.circuit_params.proof_system, ProofSystem::Expander);
         assert!(!metadata.circuit_params.weights_as_inputs);
         assert!(!metadata.circuit_params.inputs.is_empty());
         assert!(!metadata.circuit_params.outputs.is_empty());

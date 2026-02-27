@@ -13,6 +13,7 @@ use crate::circuit_functions::utils::constants::VALUE;
 use crate::circuit_functions::utils::onnx_types::{ONNXIO, ONNXLayer};
 use crate::circuit_functions::utils::value_array::FromMsgpackValue;
 use crate::circuit_functions::utils::value_array::{map_get, value_to_arrayd};
+use crate::proof_system::ProofSystem;
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct Architecture {
@@ -22,21 +23,6 @@ pub struct Architecture {
 #[derive(Deserialize, Clone, Debug)]
 pub struct WANDB {
     pub w_and_b: Vec<ONNXLayer>,
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum Backend {
-    #[default]
-    Expander,
-    Remainder,
-}
-
-impl Backend {
-    #[must_use]
-    pub fn is_remainder(&self) -> bool {
-        matches!(self, Self::Remainder)
-    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -52,8 +38,8 @@ pub struct CircuitParams {
     pub n_bits_config: HashMap<String, usize>,
     #[serde(default)]
     pub weights_as_inputs: bool,
-    #[serde(default)]
-    pub backend: Backend,
+    #[serde(default, rename = "backend")]
+    pub proof_system: ProofSystem,
 }
 
 impl CircuitParams {
@@ -496,7 +482,7 @@ mod tests {
             "outputs": []
         }"#;
         let params: CircuitParams = serde_json::from_str(json).unwrap();
-        assert_eq!(params.backend, Backend::Expander);
+        assert_eq!(params.proof_system, ProofSystem::Expander);
     }
 
     #[test]
@@ -510,11 +496,11 @@ mod tests {
             "backend": "remainder"
         }"#;
         let params: CircuitParams = serde_json::from_str(json).unwrap();
-        assert_eq!(params.backend, Backend::Remainder);
-        assert!(params.backend.is_remainder());
+        assert_eq!(params.proof_system, ProofSystem::Remainder);
+        assert!(params.proof_system.is_remainder());
         let bytes = rmp_serde::to_vec_named(&params).unwrap();
         let round_tripped: CircuitParams = rmp_serde::from_slice(&bytes).unwrap();
-        assert_eq!(round_tripped.backend, Backend::Remainder);
+        assert_eq!(round_tripped.proof_system, ProofSystem::Remainder);
     }
 
     #[test]
@@ -528,8 +514,8 @@ mod tests {
             "backend": "expander"
         }"#;
         let params: CircuitParams = serde_json::from_str(json).unwrap();
-        assert_eq!(params.backend, Backend::Expander);
-        assert!(!params.backend.is_remainder());
+        assert_eq!(params.proof_system, ProofSystem::Expander);
+        assert!(!params.proof_system.is_remainder());
     }
 
     #[test]
