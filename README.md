@@ -65,7 +65,7 @@ You provide an **ONNX** model and inputs; JSTprove handles **quantization**, **c
 * **Circuit frontend:** [ECC](https://github.com/inference-labs-inc/ecc) Rust API for arithmetic circuits.
 * **Prover backend:** [Expander](https://github.com/PolyhedraZK/Expander) (GKR/sum-check prover/verification).
 
-```
+```text
 ONNX model ─► Circuit via ECC (Rust) ─► Witness (Rust) ─► Proof (Rust) ─► Verify (Rust)
 ```
 

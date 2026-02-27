@@ -31,7 +31,7 @@ jstprove <command> [options]
 | `--no-compress` | | Disable zstd compression for output files |
 | `--backend` | | Proving backend: `expander` (default) or `remainder` |
 | `--model` | | Path to quantized ONNX model (Remainder backend) |
-| `--onnx` | | Path to ONNX model (generates metadata automatically; requires `remainder` feature) |
+| `--onnx` | | Path to ONNX model (generates metadata automatically; requires the Cargo feature `remainder`, e.g. `cargo build --features remainder`) |
 
 ### Commands
 
