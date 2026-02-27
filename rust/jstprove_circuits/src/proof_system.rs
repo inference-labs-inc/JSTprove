@@ -92,4 +92,30 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn direct_builder_roundtrip_display_parse() {
+        let ps = ProofSystem::DirectBuilder;
+        let s = ps.to_string();
+        assert_eq!(s, "directbuilder");
+        let parsed: ProofSystem = s.parse().unwrap();
+        assert!(parsed.is_direct_builder());
+    }
+
+    #[test]
+    fn direct_builder_is_not_remainder() {
+        assert!(!ProofSystem::DirectBuilder.is_remainder());
+    }
+
+    #[test]
+    fn direct_builder_supported_ops_match_expander() {
+        let expander = ProofSystem::Expander.supported_ops();
+        let direct = ProofSystem::DirectBuilder.supported_ops();
+        assert_eq!(expander, direct);
+    }
+
+    #[test]
+    fn parse_unknown_variant_errors() {
+        assert!("unknown".parse::<ProofSystem>().is_err());
+    }
 }
