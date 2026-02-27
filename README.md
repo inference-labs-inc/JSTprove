@@ -95,10 +95,6 @@ uv tool install JSTprove
 jstprove --help
 ```
 
-> **Prerequisite**: OpenMPI must be installed on the host:
-> - **Ubuntu/Debian**: `sudo apt-get install -y openmpi-bin openmpi-common`
-> - **Fedora/RHEL**: `sudo dnf install openmpi`
-
 ### Installing from GitHub Release
 
 Download the appropriate wheel for your platform from the [latest release](https://github.com/Inference-Labs-Inc/jstprove/releases/latest):
@@ -133,13 +129,13 @@ uv tool install /path/to/JSTprove-*.whl
 #### Ubuntu/Debian
 ```bash
 sudo apt-get update && sudo apt-get install -y \
-  libopenmpi-dev openmpi-bin pkg-config libclang-dev clang
+  pkg-config libclang-dev clang
 ```
 
 #### macOS
 
 ```bash
-brew install open-mpi llvm
+brew install llvm
 ```
 
 ---
