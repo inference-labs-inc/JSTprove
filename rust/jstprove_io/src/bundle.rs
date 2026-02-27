@@ -17,8 +17,6 @@ const MANIFEST_FILENAME: &str = "manifest.msgpack";
     deserialize = "M: serde::de::DeserializeOwned"
 ))]
 pub struct BundleManifest<M> {
-    pub circuit_compressed: bool,
-    pub witness_solver_compressed: bool,
     #[serde(default)]
     pub metadata: Option<M>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -38,12 +36,7 @@ pub fn write_bundle<M: Serialize>(
     write_blob(dir.join(CIRCUIT_FILENAME), circuit, compress)?;
     write_blob(dir.join(WITNESS_SOLVER_FILENAME), witness_solver, compress)?;
 
-    let manifest = BundleManifest {
-        circuit_compressed: compress,
-        witness_solver_compressed: compress,
-        metadata,
-        version,
-    };
+    let manifest = BundleManifest { metadata, version };
     crate::serialize_to_file(&manifest, &dir.join(MANIFEST_FILENAME), false)?;
     Ok(())
 }
@@ -94,8 +87,11 @@ fn read_blob(path: impl AsRef<Path>) -> Result<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::collections::HashMap;
+
+    use tempfile::TempDir;
+
+    use super::*;
 
     #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
     struct TestMeta {
@@ -103,14 +99,10 @@ mod tests {
         values: HashMap<String, usize>,
     }
 
-    fn temp_bundle_dir(name: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("jstprove_bundle_test_{name}"))
-    }
-
     #[test]
     fn roundtrip_uncompressed() {
-        let dir = temp_bundle_dir("uncompressed");
-        let _ = std::fs::remove_dir_all(&dir);
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
 
         let circuit = vec![1u8, 2, 3, 4, 5];
         let ws = vec![10u8, 20, 30];
@@ -119,30 +111,28 @@ mod tests {
             values: HashMap::new(),
         };
 
-        write_bundle(&dir, &circuit, &ws, Some(meta.clone()), None, false).unwrap();
+        write_bundle(dir, &circuit, &ws, Some(meta.clone()), None, false).unwrap();
 
         assert!(dir.join(CIRCUIT_FILENAME).exists());
         assert!(dir.join(WITNESS_SOLVER_FILENAME).exists());
         assert!(dir.join(MANIFEST_FILENAME).exists());
 
-        let b: BundleBlobs<TestMeta> = read_bundle(&dir).unwrap();
+        let b: BundleBlobs<TestMeta> = read_bundle(dir).unwrap();
         assert_eq!(b.circuit, circuit);
         assert_eq!(b.witness_solver, ws);
         assert_eq!(b.metadata.unwrap(), meta);
         assert!(b.version.is_none());
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn roundtrip_compressed() {
-        let dir = temp_bundle_dir("compressed");
-        let _ = std::fs::remove_dir_all(&dir);
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
 
         let circuit = vec![0xAA; 4096];
         let ws = vec![0xBB; 2048];
 
-        write_bundle::<TestMeta>(&dir, &circuit, &ws, None, None, true).unwrap();
+        write_bundle::<TestMeta>(dir, &circuit, &ws, None, None, true).unwrap();
 
         let raw_circuit = std::fs::read(dir.join(CIRCUIT_FILENAME)).unwrap();
         assert_eq!(
@@ -155,18 +145,16 @@ mod tests {
             "compressed should be smaller"
         );
 
-        let b: BundleBlobs<TestMeta> = read_bundle(&dir).unwrap();
+        let b: BundleBlobs<TestMeta> = read_bundle(dir).unwrap();
         assert_eq!(b.circuit, circuit);
         assert_eq!(b.witness_solver, ws);
         assert!(b.metadata.is_none());
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn metadata_only_read() {
-        let dir = temp_bundle_dir("metadata_only");
-        let _ = std::fs::remove_dir_all(&dir);
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
 
         let mut vals = HashMap::new();
         vals.insert("layer_count".into(), 42);
@@ -175,11 +163,9 @@ mod tests {
             values: vals,
         };
 
-        write_bundle(&dir, &[0; 64], &[0; 32], Some(meta.clone()), None, true).unwrap();
+        write_bundle(dir, &[0; 64], &[0; 32], Some(meta.clone()), None, true).unwrap();
 
-        let (m, _) = read_bundle_metadata::<TestMeta>(&dir).unwrap();
+        let (m, _) = read_bundle_metadata::<TestMeta>(dir).unwrap();
         assert_eq!(m.unwrap(), meta);
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

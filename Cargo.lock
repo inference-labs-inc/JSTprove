@@ -2220,6 +2220,7 @@ dependencies = [
  "crc32c",
  "rmp-serde",
  "serde",
+ "tempfile",
  "zstd",
 ]
 
