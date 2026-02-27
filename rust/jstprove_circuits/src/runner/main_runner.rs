@@ -1260,10 +1260,7 @@ fn write_circuit_bundle(
         bundle.version.clone(),
         compress,
     )
-    .map_err(|e| {
-        let _ = std::fs::remove_dir_all(tmp_path);
-        jstprove_io_to_run_error(e, path, true)
-    })?;
+    .map_err(|e| jstprove_io_to_run_error(e, path, true))?;
     let dest = Path::new(path);
     if dest.is_dir() {
         std::fs::remove_dir_all(dest).map_err(|e| RunError::Io {
