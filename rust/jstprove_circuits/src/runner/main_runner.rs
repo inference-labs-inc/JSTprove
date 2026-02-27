@@ -1264,8 +1264,13 @@ fn write_circuit_bundle(
         jstprove_io_to_run_error(e, path, true)
     })?;
     let dest = Path::new(path);
-    if dest.exists() {
+    if dest.is_dir() {
         std::fs::remove_dir_all(dest).map_err(|e| RunError::Io {
+            source: e,
+            path: path.to_string(),
+        })?;
+    } else if dest.is_file() {
+        std::fs::remove_file(dest).map_err(|e| RunError::Io {
             source: e,
             path: path.to_string(),
         })?;
@@ -1313,10 +1318,18 @@ pub fn read_circuit_msgpack(path: &str) -> Result<CompiledCircuit, RunError> {
 #[must_use]
 pub fn try_load_metadata_from_circuit(circuit_path: &str) -> Option<CircuitParams> {
     let p = Path::new(circuit_path);
-    if !p.exists() {
-        return None;
-    }
-    let (metadata, _) = jstprove_io::bundle::read_bundle_metadata::<CircuitParams>(p).ok()?;
+    let effective = if p.exists() {
+        p.to_owned()
+    } else {
+        let fallback = p.with_extension("bundle");
+        if fallback.exists() {
+            fallback
+        } else {
+            return None;
+        }
+    };
+    let (metadata, _) =
+        jstprove_io::bundle::read_bundle_metadata::<CircuitParams>(&effective).ok()?;
     metadata
 }
 

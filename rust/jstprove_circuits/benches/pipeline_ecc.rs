@@ -42,7 +42,7 @@ fn main() {
     );
 
     let tmp = tempfile::TempDir::new().unwrap();
-    let circuit_path = tmp.path().join("circuit.msgpack");
+    let circuit_path = tmp.path().join("circuit.bundle");
     let circuit_path_str = circuit_path.to_str().unwrap();
 
     let metadata = expander_metadata::generate_from_onnx(&model_path).unwrap();

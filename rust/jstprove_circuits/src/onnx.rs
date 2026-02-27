@@ -618,6 +618,14 @@ pub fn compile_and_witness_bn254_direct(
         }
     }
 
+    let expected = params.effective_input_dims();
+    if input_arr_vals.len() != expected {
+        return Err(RunError::Witness(format!(
+            "input dimension mismatch: expected {expected}, got {}",
+            input_arr_vals.len()
+        )));
+    }
+
     Ok(direct_build_from_fields(params, &input_arr_vals))
 }
 

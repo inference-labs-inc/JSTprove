@@ -8,7 +8,7 @@ use crate::onnx::graph::OpType;
 use crate::onnx::quantizer::QuantizedModel;
 use crate::padding::{next_power_of_two, num_vars_for};
 use crate::runner::circuit_builder::{
-    delta_table_nv, pad_matrix, pad_to_size, transpose_matrix, SpatialInfo,
+    delta_table_nv, pad_matrix, pad_to_size, transpose_matrix, SpatialInfo, RANGE_CHECK_CHUNK_BITS,
 };
 
 fn validate_input_size(model: &QuantizedModel, input_name: &str, input_len: usize) -> Result<()> {
@@ -287,10 +287,27 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     r_max,
                     rescale_table_size
                 );
-                shreds.insert(
-                    format!("{}_r_mults", layer.name),
-                    compute_multiplicities(&remainders, rescale_table_size)?,
-                );
+                if exponent > RANGE_CHECK_CHUNK_BITS {
+                    let chunk_scale = 1i64 << RANGE_CHECK_CHUNK_BITS;
+                    let chunk_table_size = 1usize << RANGE_CHECK_CHUNK_BITS;
+                    let r_c0: Vec<i64> = remainders.iter().map(|&r| r % chunk_scale).collect();
+                    let r_c1: Vec<i64> = remainders.iter().map(|&r| r / chunk_scale).collect();
+                    shreds.insert(format!("{}_r_c0", layer.name), r_c0.clone());
+                    shreds.insert(format!("{}_r_c1", layer.name), r_c1.clone());
+                    shreds.insert(
+                        format!("{}_r_c0_mults", layer.name),
+                        compute_multiplicities(&r_c0, chunk_table_size)?,
+                    );
+                    shreds.insert(
+                        format!("{}_r_c1_mults", layer.name),
+                        compute_multiplicities(&r_c1, chunk_table_size)?,
+                    );
+                } else {
+                    shreds.insert(
+                        format!("{}_r_mults", layer.name),
+                        compute_multiplicities(&remainders, rescale_table_size)?,
+                    );
+                }
 
                 for out in &layer.outputs {
                     tensors.insert(out.clone(), quotients.clone());
@@ -509,10 +526,27 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     r_max,
                     rescale_table_size
                 );
-                shreds.insert(
-                    format!("{}_r_mults", layer.name),
-                    compute_multiplicities(&remainders, rescale_table_size)?,
-                );
+                if exponent > RANGE_CHECK_CHUNK_BITS {
+                    let chunk_scale = 1i64 << RANGE_CHECK_CHUNK_BITS;
+                    let chunk_table_size = 1usize << RANGE_CHECK_CHUNK_BITS;
+                    let r_c0: Vec<i64> = remainders.iter().map(|&r| r % chunk_scale).collect();
+                    let r_c1: Vec<i64> = remainders.iter().map(|&r| r / chunk_scale).collect();
+                    shreds.insert(format!("{}_r_c0", layer.name), r_c0.clone());
+                    shreds.insert(format!("{}_r_c1", layer.name), r_c1.clone());
+                    shreds.insert(
+                        format!("{}_r_c0_mults", layer.name),
+                        compute_multiplicities(&r_c0, chunk_table_size)?,
+                    );
+                    shreds.insert(
+                        format!("{}_r_c1_mults", layer.name),
+                        compute_multiplicities(&r_c1, chunk_table_size)?,
+                    );
+                } else {
+                    shreds.insert(
+                        format!("{}_r_mults", layer.name),
+                        compute_multiplicities(&remainders, rescale_table_size)?,
+                    );
+                }
 
                 for out in &layer.outputs {
                     tensors.insert(out.clone(), quotients.clone());
@@ -578,14 +612,46 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                         dz_max
                     );
                     observed_n_bits.insert(layer.name.clone(), obs_n_bits);
-                    shreds.insert(
-                        format!("{}_di_mults", layer.name),
-                        compute_multiplicities(&delta_input, delta_table_size)?,
-                    );
-                    shreds.insert(
-                        format!("{}_dz_mults", layer.name),
-                        compute_multiplicities(&delta_zero, delta_table_size)?,
-                    );
+                    if dnv > RANGE_CHECK_CHUNK_BITS {
+                        let chunk_scale = 1i64 << RANGE_CHECK_CHUNK_BITS;
+                        let chunk_table_size = 1usize << RANGE_CHECK_CHUNK_BITS;
+                        let hi_table_size = 1usize << (dnv - RANGE_CHECK_CHUNK_BITS);
+                        let di_c0: Vec<i64> =
+                            delta_input.iter().map(|&d| d % chunk_scale).collect();
+                        let di_c1: Vec<i64> =
+                            delta_input.iter().map(|&d| d / chunk_scale).collect();
+                        let dz_c0: Vec<i64> = delta_zero.iter().map(|&d| d % chunk_scale).collect();
+                        let dz_c1: Vec<i64> = delta_zero.iter().map(|&d| d / chunk_scale).collect();
+                        shreds.insert(format!("{}_di_c0", layer.name), di_c0.clone());
+                        shreds.insert(format!("{}_di_c1", layer.name), di_c1.clone());
+                        shreds.insert(format!("{}_dz_c0", layer.name), dz_c0.clone());
+                        shreds.insert(format!("{}_dz_c1", layer.name), dz_c1.clone());
+                        shreds.insert(
+                            format!("{}_di_c0_mults", layer.name),
+                            compute_multiplicities(&di_c0, chunk_table_size)?,
+                        );
+                        shreds.insert(
+                            format!("{}_di_c1_mults", layer.name),
+                            compute_multiplicities(&di_c1, hi_table_size)?,
+                        );
+                        shreds.insert(
+                            format!("{}_dz_c0_mults", layer.name),
+                            compute_multiplicities(&dz_c0, chunk_table_size)?,
+                        );
+                        shreds.insert(
+                            format!("{}_dz_c1_mults", layer.name),
+                            compute_multiplicities(&dz_c1, hi_table_size)?,
+                        );
+                    } else {
+                        shreds.insert(
+                            format!("{}_di_mults", layer.name),
+                            compute_multiplicities(&delta_input, delta_table_size)?,
+                        );
+                        shreds.insert(
+                            format!("{}_dz_mults", layer.name),
+                            compute_multiplicities(&delta_zero, delta_table_size)?,
+                        );
+                    }
                 }
 
                 let layout = tensor_layouts.get(input_tensor_name).cloned();
@@ -753,11 +819,31 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                         max_delta
                     );
                     observed_n_bits.insert(layer.name.clone(), obs_n_bits);
-                    for i in 0..window_size {
-                        shreds.insert(
-                            format!("{}_d{}_mults", layer.name, i),
-                            compute_multiplicities(&deltas[i], dt_size)?,
-                        );
+                    if dnv > RANGE_CHECK_CHUNK_BITS {
+                        let chunk_scale = 1i64 << RANGE_CHECK_CHUNK_BITS;
+                        let chunk_table_size = 1usize << RANGE_CHECK_CHUNK_BITS;
+                        let hi_table_size = 1usize << (dnv - RANGE_CHECK_CHUNK_BITS);
+                        for i in 0..window_size {
+                            let c0: Vec<i64> = deltas[i].iter().map(|&d| d % chunk_scale).collect();
+                            let c1: Vec<i64> = deltas[i].iter().map(|&d| d / chunk_scale).collect();
+                            shreds.insert(format!("{}_d{}_c0", layer.name, i), c0.clone());
+                            shreds.insert(format!("{}_d{}_c1", layer.name, i), c1.clone());
+                            shreds.insert(
+                                format!("{}_d{}_c0_mults", layer.name, i),
+                                compute_multiplicities(&c0, chunk_table_size)?,
+                            );
+                            shreds.insert(
+                                format!("{}_d{}_c1_mults", layer.name, i),
+                                compute_multiplicities(&c1, hi_table_size)?,
+                            );
+                        }
+                    } else {
+                        for i in 0..window_size {
+                            shreds.insert(
+                                format!("{}_d{}_mults", layer.name, i),
+                                compute_multiplicities(&deltas[i], dt_size)?,
+                            );
+                        }
                     }
                 }
 
@@ -920,10 +1006,27 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     r_max,
                     rescale_table_size
                 );
-                shreds.insert(
-                    format!("{}_r_mults", layer.name),
-                    compute_multiplicities(&remainders, rescale_table_size)?,
-                );
+                if exponent > RANGE_CHECK_CHUNK_BITS {
+                    let chunk_scale = 1i64 << RANGE_CHECK_CHUNK_BITS;
+                    let chunk_table_size = 1usize << RANGE_CHECK_CHUNK_BITS;
+                    let r_c0: Vec<i64> = remainders.iter().map(|&r| r % chunk_scale).collect();
+                    let r_c1: Vec<i64> = remainders.iter().map(|&r| r / chunk_scale).collect();
+                    shreds.insert(format!("{}_r_c0", layer.name), r_c0.clone());
+                    shreds.insert(format!("{}_r_c1", layer.name), r_c1.clone());
+                    shreds.insert(
+                        format!("{}_r_c0_mults", layer.name),
+                        compute_multiplicities(&r_c0, chunk_table_size)?,
+                    );
+                    shreds.insert(
+                        format!("{}_r_c1_mults", layer.name),
+                        compute_multiplicities(&r_c1, chunk_table_size)?,
+                    );
+                } else {
+                    shreds.insert(
+                        format!("{}_r_mults", layer.name),
+                        compute_multiplicities(&remainders, rescale_table_size)?,
+                    );
+                }
 
                 for out in &layer.outputs {
                     tensors.insert(out.clone(), quotients.clone());
@@ -1110,17 +1213,41 @@ fn compute_range_check_plan_with_overrides(
     for layer in model.graph.iter_topo() {
         match layer.op_type {
             OpType::Gemm | OpType::Conv | OpType::BatchNormalization => {
-                plan.entry(exponent)
-                    .or_default()
-                    .push(format!("{}_r", layer.name));
+                if exponent <= RANGE_CHECK_CHUNK_BITS {
+                    plan.entry(exponent)
+                        .or_default()
+                        .push(format!("{}_r", layer.name));
+                } else {
+                    plan.entry(RANGE_CHECK_CHUNK_BITS)
+                        .or_default()
+                        .push(format!("{}_r_c0", layer.name));
+                    plan.entry(exponent - RANGE_CHECK_CHUNK_BITS)
+                        .or_default()
+                        .push(format!("{}_r_c1", layer.name));
+                }
             }
             OpType::Relu => {
                 let n_bits = observed_n_bits.get(&layer.name).copied().or(layer.n_bits);
                 if let Some(n_bits) = n_bits {
                     let dnv = delta_table_nv(n_bits, exponent);
-                    let entry = plan.entry(dnv).or_default();
-                    entry.push(format!("{}_di", layer.name));
-                    entry.push(format!("{}_dz", layer.name));
+                    if dnv > RANGE_CHECK_CHUNK_BITS {
+                        plan.entry(RANGE_CHECK_CHUNK_BITS)
+                            .or_default()
+                            .push(format!("{}_di_c0", layer.name));
+                        plan.entry(RANGE_CHECK_CHUNK_BITS)
+                            .or_default()
+                            .push(format!("{}_dz_c0", layer.name));
+                        plan.entry(dnv - RANGE_CHECK_CHUNK_BITS)
+                            .or_default()
+                            .push(format!("{}_di_c1", layer.name));
+                        plan.entry(dnv - RANGE_CHECK_CHUNK_BITS)
+                            .or_default()
+                            .push(format!("{}_dz_c1", layer.name));
+                    } else {
+                        let entry = plan.entry(dnv).or_default();
+                        entry.push(format!("{}_di", layer.name));
+                        entry.push(format!("{}_dz", layer.name));
+                    }
                 }
             }
             OpType::MaxPool => {
@@ -1153,9 +1280,20 @@ fn compute_range_check_plan_with_overrides(
                                 kernel_shape[1]
                             )
                         })?;
-                    let entry = plan.entry(dnv).or_default();
-                    for i in 0..window_size {
-                        entry.push(format!("{}_d{}", layer.name, i));
+                    if dnv > RANGE_CHECK_CHUNK_BITS {
+                        for i in 0..window_size {
+                            plan.entry(RANGE_CHECK_CHUNK_BITS)
+                                .or_default()
+                                .push(format!("{}_d{}_c0", layer.name, i));
+                            plan.entry(dnv - RANGE_CHECK_CHUNK_BITS)
+                                .or_default()
+                                .push(format!("{}_d{}_c1", layer.name, i));
+                        }
+                    } else {
+                        let entry = plan.entry(dnv).or_default();
+                        for i in 0..window_size {
+                            entry.push(format!("{}_d{}", layer.name, i));
+                        }
                     }
                 }
             }
