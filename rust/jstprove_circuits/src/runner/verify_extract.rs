@@ -202,6 +202,54 @@ fn parse_public_inputs_from_witness_bytes(
 }
 
 /// # Errors
+/// Returns `RunError` on deserialization or extraction failure.
+pub fn extract_outputs_from_witness(
+    witness_bytes: &[u8],
+    num_model_inputs: usize,
+) -> Result<VerifiedOutput, RunError> {
+    let witness_data = auto_decompress_bytes(witness_bytes)?;
+    let (modulus, public_inputs) = parse_public_inputs_from_witness_bytes(&witness_data)?;
+
+    let min_public = num_model_inputs
+        .checked_add(2)
+        .ok_or_else(|| RunError::Deserialize("num_model_inputs overflows usize".into()))?;
+    if public_inputs.len() < min_public {
+        return Err(RunError::Deserialize(format!(
+            "expected at least {} public inputs (num_model_inputs={} + 2 scale params), got {}",
+            min_public,
+            num_model_inputs,
+            public_inputs.len()
+        )));
+    }
+
+    let scale_base = biguint_to_u64(&public_inputs[public_inputs.len() - 2])?;
+    let scale_exponent = biguint_to_u64(&public_inputs[public_inputs.len() - 1])?;
+
+    let raw_model_inputs = &public_inputs[..num_model_inputs];
+    let raw_model_outputs = &public_inputs[num_model_inputs..public_inputs.len() - 2];
+
+    let signed_inputs: Vec<BigInt> = raw_model_inputs
+        .iter()
+        .map(|v| from_field_repr(v, &modulus))
+        .collect();
+    let signed_outputs: Vec<BigInt> = raw_model_outputs
+        .iter()
+        .map(|v| from_field_repr(v, &modulus))
+        .collect();
+
+    let inputs = descale_outputs(&signed_inputs, scale_base, scale_exponent)?;
+    let outputs = descale_outputs(&signed_outputs, scale_base, scale_exponent)?;
+
+    Ok(VerifiedOutput {
+        valid: true,
+        inputs,
+        outputs,
+        scale_base,
+        scale_exponent,
+    })
+}
+
+/// # Errors
 /// Returns `RunError` on deserialization, verification, or extraction failure.
 pub fn verify_and_extract_from_bytes<C: Config>(
     circuit_bytes: &[u8],

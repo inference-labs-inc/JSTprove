@@ -21,7 +21,9 @@ use crate::runner::main_runner::{
     serialize_witness, verify_from_bytes, witness_from_request,
 };
 use crate::runner::schema::{WitnessBundle, WitnessRequest};
-use crate::runner::verify_extract::{VerifiedOutput, verify_and_extract_from_bytes};
+use crate::runner::verify_extract::{
+    VerifiedOutput, extract_outputs_from_witness, verify_and_extract_from_bytes,
+};
 
 declare_circuit!(Circuit {
     input_arr: [PublicVariable],
@@ -490,6 +492,15 @@ pub fn compile_bn254(
         compress,
         metadata,
     )
+}
+
+/// # Errors
+/// Returns `RunError` on deserialization or extraction failure.
+pub fn extract_outputs_bn254(
+    witness_bytes: &[u8],
+    num_model_inputs: usize,
+) -> Result<VerifiedOutput, RunError> {
+    extract_outputs_from_witness(witness_bytes, num_model_inputs)
 }
 
 /// # Errors
