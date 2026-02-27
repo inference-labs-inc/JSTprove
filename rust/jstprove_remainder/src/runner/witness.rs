@@ -300,7 +300,10 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     );
                     shreds.insert(
                         format!("{}_r_c1_mults", layer.name),
-                        compute_multiplicities(&r_c1, chunk_table_size)?,
+                        compute_multiplicities(
+                            &r_c1,
+                            1usize << (exponent - RANGE_CHECK_CHUNK_BITS),
+                        )?,
                     );
                 } else {
                     shreds.insert(
@@ -539,7 +542,10 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     );
                     shreds.insert(
                         format!("{}_r_c1_mults", layer.name),
-                        compute_multiplicities(&r_c1, chunk_table_size)?,
+                        compute_multiplicities(
+                            &r_c1,
+                            1usize << (exponent - RANGE_CHECK_CHUNK_BITS),
+                        )?,
                     );
                 } else {
                     shreds.insert(
@@ -1019,7 +1025,10 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     );
                     shreds.insert(
                         format!("{}_r_c1_mults", layer.name),
-                        compute_multiplicities(&r_c1, chunk_table_size)?,
+                        compute_multiplicities(
+                            &r_c1,
+                            1usize << (exponent - RANGE_CHECK_CHUNK_BITS),
+                        )?,
                     );
                 } else {
                     shreds.insert(

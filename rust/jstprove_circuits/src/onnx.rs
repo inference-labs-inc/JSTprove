@@ -651,9 +651,13 @@ pub fn prove_bn254_direct(
 ) -> Result<Vec<u8>, RunError> {
     type Simd = <<BN254Config as GKREngine>::FieldConfig as expander_compiler::gkr_engine::FieldEngine>::SimdCircuitField;
     let pack_size = <Simd as SimdField>::PACK_SIZE;
+    let mut buf = vec![CircuitField::<BN254Config>::zero(); pack_size];
     circuit.layers[0].input_vals = witness_private
         .iter()
-        .map(|&v| Simd::pack(&vec![v; pack_size]))
+        .map(|&v| {
+            buf.fill(v);
+            Simd::pack(&buf)
+        })
         .collect();
     circuit.evaluate();
     let mpi_config = MPIConfig::prover_new();
@@ -670,9 +674,13 @@ pub fn verify_bn254_direct(
 ) -> Result<bool, RunError> {
     type Simd = <<BN254Config as GKREngine>::FieldConfig as expander_compiler::gkr_engine::FieldEngine>::SimdCircuitField;
     let pack_size = <Simd as SimdField>::PACK_SIZE;
+    let mut buf = vec![CircuitField::<BN254Config>::zero(); pack_size];
     circuit.layers[0].input_vals = witness_private
         .iter()
-        .map(|&v| Simd::pack(&vec![v; pack_size]))
+        .map(|&v| {
+            buf.fill(v);
+            Simd::pack(&buf)
+        })
         .collect();
     let (proof, claimed_v) =
         executor::load_proof_and_claimed_v::<ChallengeField<BN254Config>>(proof_bytes)
