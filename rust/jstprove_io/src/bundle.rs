@@ -24,8 +24,22 @@ impl WriteGuard {
         }
     }
 
-    fn track(&mut self, p: PathBuf) {
-        self.paths.push(p);
+    fn create_dir(&mut self, p: &Path) -> Result<()> {
+        std::fs::create_dir(p)?;
+        self.paths.push(p.to_owned());
+        Ok(())
+    }
+
+    fn write_blob(&mut self, path: PathBuf, data: &[u8], compress: bool) -> Result<()> {
+        write_blob(&path, data, compress)?;
+        self.paths.push(path);
+        Ok(())
+    }
+
+    fn serialize_to_file<T: Serialize>(&mut self, val: &T, path: PathBuf) -> Result<()> {
+        crate::serialize_to_file(val, &path, false)?;
+        self.paths.push(path);
+        Ok(())
     }
 
     fn commit(mut self) {
@@ -68,15 +82,11 @@ pub fn write_bundle<M: Serialize>(
     compress: bool,
 ) -> Result<()> {
     let mut guard = WriteGuard::new();
-    std::fs::create_dir(dir)?;
-    guard.track(dir.to_owned());
-    write_blob(dir.join(CIRCUIT_FILENAME), circuit, compress)?;
-    guard.track(dir.join(CIRCUIT_FILENAME));
-    write_blob(dir.join(WITNESS_SOLVER_FILENAME), witness_solver, compress)?;
-    guard.track(dir.join(WITNESS_SOLVER_FILENAME));
+    guard.create_dir(dir)?;
+    guard.write_blob(dir.join(CIRCUIT_FILENAME), circuit, compress)?;
+    guard.write_blob(dir.join(WITNESS_SOLVER_FILENAME), witness_solver, compress)?;
     let manifest = BundleManifest { metadata, version };
-    crate::serialize_to_file(&manifest, &dir.join(MANIFEST_FILENAME), false)?;
-    guard.track(dir.join(MANIFEST_FILENAME));
+    guard.serialize_to_file(&manifest, dir.join(MANIFEST_FILENAME))?;
     guard.commit();
     Ok(())
 }
