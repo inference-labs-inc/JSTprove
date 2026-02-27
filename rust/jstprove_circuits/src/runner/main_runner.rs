@@ -1286,7 +1286,9 @@ fn write_circuit_bundle(
         if has_backup {
             if let Err(restore_err) = std::fs::rename(backup_path, dest) {
                 return Err(RunError::Io {
-                    source: restore_err,
+                    source: std::io::Error::other(format!(
+                        "rename failed: {e}; backup restore also failed: {restore_err}"
+                    )),
                     path: path.to_string(),
                 });
             }
