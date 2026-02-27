@@ -115,13 +115,13 @@ mod tests {
             values: HashMap::new(),
         };
 
-        write_bundle(dir, &circuit, &ws, Some(meta.clone()), None, false).unwrap();
+        write_bundle(&dir, &circuit, &ws, Some(meta.clone()), None, false).unwrap();
 
         assert!(dir.join(CIRCUIT_FILENAME).exists());
         assert!(dir.join(WITNESS_SOLVER_FILENAME).exists());
         assert!(dir.join(MANIFEST_FILENAME).exists());
 
-        let b: BundleBlobs<TestMeta> = read_bundle(dir).unwrap();
+        let b: BundleBlobs<TestMeta> = read_bundle(&dir).unwrap();
         assert_eq!(b.circuit, circuit);
         assert_eq!(b.witness_solver, ws);
         assert_eq!(b.metadata.unwrap(), meta);
@@ -136,7 +136,7 @@ mod tests {
         let circuit = vec![0xAA; 4096];
         let ws = vec![0xBB; 2048];
 
-        write_bundle::<TestMeta>(dir, &circuit, &ws, None, None, true).unwrap();
+        write_bundle::<TestMeta>(&dir, &circuit, &ws, None, None, true).unwrap();
 
         let raw_circuit = std::fs::read(dir.join(CIRCUIT_FILENAME)).unwrap();
         assert_eq!(
@@ -149,7 +149,7 @@ mod tests {
             "compressed should be smaller"
         );
 
-        let b: BundleBlobs<TestMeta> = read_bundle(dir).unwrap();
+        let b: BundleBlobs<TestMeta> = read_bundle(&dir).unwrap();
         assert_eq!(b.circuit, circuit);
         assert_eq!(b.witness_solver, ws);
         assert!(b.metadata.is_none());
@@ -167,9 +167,9 @@ mod tests {
             values: vals,
         };
 
-        write_bundle(dir, &[0; 64], &[0; 32], Some(meta.clone()), None, true).unwrap();
+        write_bundle(&dir, &[0; 64], &[0; 32], Some(meta.clone()), None, true).unwrap();
 
-        let (m, _) = read_bundle_metadata::<TestMeta>(dir).unwrap();
-        assert_eq!(m.unwrap(), meta);
+        let (m, _) = read_bundle_metadata::<TestMeta>(&dir).unwrap();
+        assert_eq!(m, Some(meta));
     }
 }
