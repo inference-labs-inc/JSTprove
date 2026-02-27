@@ -32,13 +32,17 @@ pub fn write_bundle<M: Serialize>(
     compress: bool,
 ) -> Result<()> {
     std::fs::create_dir(dir)?;
-
-    write_blob(dir.join(CIRCUIT_FILENAME), circuit, compress)?;
-    write_blob(dir.join(WITNESS_SOLVER_FILENAME), witness_solver, compress)?;
-
-    let manifest = BundleManifest { metadata, version };
-    crate::serialize_to_file(&manifest, &dir.join(MANIFEST_FILENAME), false)?;
-    Ok(())
+    let result = (|| -> Result<()> {
+        write_blob(dir.join(CIRCUIT_FILENAME), circuit, compress)?;
+        write_blob(dir.join(WITNESS_SOLVER_FILENAME), witness_solver, compress)?;
+        let manifest = BundleManifest { metadata, version };
+        crate::serialize_to_file(&manifest, &dir.join(MANIFEST_FILENAME), false)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+    result
 }
 
 pub struct BundleBlobs<M> {
@@ -174,7 +178,8 @@ mod tests {
 
         write_bundle(&dir, &[0; 64], &[0; 32], Some(meta.clone()), None, true).unwrap();
 
-        let (m, _) = read_bundle_metadata::<TestMeta>(&dir).unwrap();
+        let (m, version) = read_bundle_metadata::<TestMeta>(&dir).unwrap();
         assert_eq!(m, Some(meta));
+        assert!(version.is_none());
     }
 }
