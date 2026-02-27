@@ -115,7 +115,7 @@ def test_batch_result_exposes_errors():
 
 
 def test_is_compatible_nonexistent_file_returns_false():
-    compatible, issues = Circuit.is_compatible("/does/not/exist/model.onnx")
+    compatible, _ = Circuit.is_compatible("/does/not/exist/model.onnx")
     assert compatible is False
 
 
@@ -243,7 +243,7 @@ def test_concurrent_generate_witness_calls_complete_without_deadlock(tmp_path):
     assert not t1.is_alive(), "thread 1 did not complete — possible GIL deadlock"
     assert not t2.is_alive(), "thread 2 did not complete — possible GIL deadlock"
     assert isinstance(errors[0], RuntimeError), "thread 1 should have raised RuntimeError"
-    assert isinstance(errors[1], RuntimeError), "thread 1 should have raised RuntimeError"
+    assert isinstance(errors[1], RuntimeError), "thread 2 should have raised RuntimeError"
 
 
 def test_concurrent_is_compatible_calls_return_independent_results(tmp_path):
