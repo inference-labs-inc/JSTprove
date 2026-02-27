@@ -185,8 +185,8 @@ fn determine_broadcast_shape(a: &[usize], b: &[usize]) -> Result<Vec<usize>, Cir
     let mut result = vec![0; rank];
 
     for i in 0..rank {
-        let a_dim = *a.get(a.len() - 1 - i).unwrap_or(&1);
-        let b_dim = *b.get(b.len() - 1 - i).unwrap_or(&1);
+        let a_dim = a.len().checked_sub(1 + i).map_or(1, |idx| a[idx]);
+        let b_dim = b.len().checked_sub(1 + i).map_or(1, |idx| b[idx]);
 
         if a_dim == b_dim || a_dim == 1 || b_dim == 1 {
             result[rank - 1 - i] = usize::max(a_dim, b_dim);
@@ -290,4 +290,87 @@ pub fn reshape_channel_vector_for_broadcast(
         .map_err(|_| CircuitError::Other(format!("Cannot reshape vector to {shape:?}")))?;
 
     Ok(reshaped.to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use expander_compiler::frontend::Variable;
+
+    fn var_array(shape: &[usize]) -> ArrayD<Variable> {
+        ArrayD::from_elem(IxDyn(shape), Variable::default())
+    }
+
+    #[test]
+    fn broadcast_identical_shapes() {
+        let a = var_array(&[2, 3]);
+        let b = var_array(&[2, 3]);
+        let (a_bc, b_bc) = broadcast_two_arrays(&a, &b).unwrap();
+        assert_eq!(a_bc.shape(), &[2, 3]);
+        assert_eq!(b_bc.shape(), &[2, 3]);
+    }
+
+    #[test]
+    fn broadcast_unit_dim_expands() {
+        let a = var_array(&[2, 1, 4]);
+        let b = var_array(&[2, 3, 4]);
+        let (a_bc, b_bc) = broadcast_two_arrays(&a, &b).unwrap();
+        assert_eq!(a_bc.shape(), &[2, 3, 4]);
+        assert_eq!(b_bc.shape(), &[2, 3, 4]);
+    }
+
+    #[test]
+    fn broadcast_scalar_to_tensor() {
+        let a = var_array(&[1]);
+        let b = var_array(&[3, 4]);
+        let (a_bc, b_bc) = broadcast_two_arrays(&a, &b).unwrap();
+        assert_eq!(a_bc.shape(), &[3, 4]);
+        assert_eq!(b_bc.shape(), &[3, 4]);
+    }
+
+    #[test]
+    fn broadcast_extend_rank() {
+        let a = var_array(&[4]);
+        let b = var_array(&[2, 4]);
+        let (a_bc, b_bc) = broadcast_two_arrays(&a, &b).unwrap();
+        assert_eq!(a_bc.shape(), &[2, 4]);
+        assert_eq!(b_bc.shape(), &[2, 4]);
+    }
+
+    #[test]
+    fn broadcast_incompatible_dims_errors() {
+        let a = var_array(&[2, 3]);
+        let b = var_array(&[2, 4]);
+        assert!(broadcast_two_arrays(&a, &b).is_err());
+    }
+
+    #[test]
+    fn reshape_channel_vector_2d_target() {
+        let vec = var_array(&[3]);
+        let target = var_array(&[2, 3]);
+        let out = reshape_channel_vector_for_broadcast(&vec, &target).unwrap();
+        assert_eq!(out.shape(), &[3]);
+    }
+
+    #[test]
+    fn reshape_channel_vector_4d_target() {
+        let vec = var_array(&[8]);
+        let target = var_array(&[1, 8, 4, 4]);
+        let out = reshape_channel_vector_for_broadcast(&vec, &target).unwrap();
+        assert_eq!(out.shape(), &[8, 1, 1]);
+    }
+
+    #[test]
+    fn reshape_channel_vector_non_1d_errors() {
+        let vec = var_array(&[2, 3]);
+        let target = var_array(&[1, 3, 4, 4]);
+        assert!(reshape_channel_vector_for_broadcast(&vec, &target).is_err());
+    }
+
+    #[test]
+    fn reshape_channel_vector_channel_mismatch_errors() {
+        let vec = var_array(&[5]);
+        let target = var_array(&[1, 8, 4, 4]);
+        assert!(reshape_channel_vector_for_broadcast(&vec, &target).is_err());
+    }
 }

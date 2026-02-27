@@ -140,3 +140,73 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SqueezeLayer {
         Ok(Box::new(squeeze))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn layer(axes: Option<Vec<i64>>) -> SqueezeLayer {
+        SqueezeLayer {
+            name: "test".to_string(),
+            axes,
+            inputs: vec![],
+            outputs: vec![],
+        }
+    }
+
+    #[test]
+    fn squeeze_no_axes_removes_all_unit_dims() {
+        let l = layer(None);
+        assert_eq!(l.squeezed_shape(&[1, 3, 1, 4], None).unwrap(), vec![3, 4]);
+    }
+
+    #[test]
+    fn squeeze_no_axes_no_unit_dims_unchanged() {
+        let l = layer(None);
+        assert_eq!(l.squeezed_shape(&[2, 3, 4], None).unwrap(), vec![2, 3, 4]);
+    }
+
+    #[test]
+    fn squeeze_explicit_axes_removes_specified_dims() {
+        let axes = vec![0i64, 2];
+        let l = layer(Some(axes.clone()));
+        assert_eq!(
+            l.squeezed_shape(&[1, 3, 1, 4], Some(&axes)).unwrap(),
+            vec![3, 4]
+        );
+    }
+
+    #[test]
+    fn squeeze_explicit_single_axis() {
+        let axes = vec![0i64];
+        let l = layer(Some(axes.clone()));
+        assert_eq!(
+            l.squeezed_shape(&[1, 3, 2, 4], Some(&axes)).unwrap(),
+            vec![3, 2, 4]
+        );
+    }
+
+    #[test]
+    fn squeeze_axis_on_nonunit_dim_errors() {
+        let axes = vec![1i64];
+        let l = layer(Some(axes.clone()));
+        assert!(l.squeezed_shape(&[1, 3, 1, 4], Some(&axes)).is_err());
+    }
+
+    #[test]
+    fn squeeze_negative_axis_resolves_correctly() {
+        let axes = vec![-1i64];
+        let l = layer(Some(axes.clone()));
+        assert_eq!(
+            l.squeezed_shape(&[3, 2, 1], Some(&axes)).unwrap(),
+            vec![3, 2]
+        );
+    }
+
+    #[test]
+    fn squeeze_empty_shape_no_axes_returns_empty() {
+        let l = layer(None);
+        let result = l.squeezed_shape(&[], None).unwrap();
+        assert!(result.is_empty());
+    }
+}
