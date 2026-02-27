@@ -2207,6 +2207,7 @@ name = "jstprove-direct-builder"
 version = "0.1.0"
 dependencies = [
  "arith",
+ "ethnum",
  "expander_compiler",
  "gkr_engine",
 ]

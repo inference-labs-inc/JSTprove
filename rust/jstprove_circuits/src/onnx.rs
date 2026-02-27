@@ -584,7 +584,17 @@ pub fn compile_and_witness_bn254_direct(
 ) -> Result<DirectBuildResult, RunError> {
     let alpha = (f64::from(params.scale_base)).powi(params.scale_exponent as i32);
     let alpha_sq = alpha * alpha;
-    let num_activation_entries = params.inputs.len() - initializers.len();
+    let num_activation_entries = params
+        .inputs
+        .len()
+        .checked_sub(initializers.len())
+        .ok_or_else(|| {
+            RunError::Witness(format!(
+                "initializers count ({}) exceeds params.inputs count ({})",
+                initializers.len(),
+                params.inputs.len()
+            ))
+        })?;
     let expected: usize = params.inputs[..num_activation_entries]
         .iter()
         .map(|io| io.shape.iter().product::<usize>())
@@ -616,6 +626,13 @@ pub fn compile_and_witness_bn254_from_fields(
     params: &CircuitParams,
     input_arr_vals: &[CircuitField<BN254Config>],
 ) -> Result<DirectBuildResult, RunError> {
+    let expected = params.effective_input_dims();
+    if input_arr_vals.len() != expected {
+        return Err(RunError::Witness(format!(
+            "input field elements length mismatch: expected {expected}, got {}",
+            input_arr_vals.len()
+        )));
+    }
     Ok(direct_build_from_fields(params, input_arr_vals))
 }
 

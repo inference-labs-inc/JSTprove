@@ -19,9 +19,16 @@ fn fmt(ms: f64) -> String {
 
 fn rss_bytes() -> u64 {
     let mut u = std::mem::MaybeUninit::<libc::rusage>::uninit();
-    unsafe {
-        libc::getrusage(libc::RUSAGE_SELF, u.as_mut_ptr());
-        u.assume_init().ru_maxrss as u64
+    let ret = unsafe { libc::getrusage(libc::RUSAGE_SELF, u.as_mut_ptr()) };
+    if ret != 0 {
+        return 0;
+    }
+    let usage = unsafe { u.assume_init() };
+    let maxrss = usage.ru_maxrss as u64;
+    if cfg!(target_os = "linux") {
+        maxrss * 1024
+    } else {
+        maxrss
     }
 }
 

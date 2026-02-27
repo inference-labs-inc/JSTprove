@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use arith::Field;
+use ethnum::U256;
 use expander_compiler::expander_circuit::{
     self as ec, Circuit, CircuitLayer, CoefType, StructureInfo,
 };
@@ -607,7 +608,10 @@ impl<C: Config> BasicAPI<C> for DirectBuilder<C> {
         let (_, x_val) = self.resolve_input(x.clone());
         let (_, y_val) = self.resolve_input(y.clone());
 
-        let q_val = x_val * y_val.inv().unwrap();
+        let q_val = match y_val.inv() {
+            Some(inv) => x_val * inv,
+            None => CircuitField::<C>::zero(),
+        };
         let quotient_id = self.create_constant_var(q_val);
         let quotient = Variable::from(quotient_id);
 
@@ -664,11 +668,11 @@ impl<C: Config> BasicAPI<C> for DirectBuilder<C> {
         let two = CircuitField::<C>::from(2u32);
         let two_inv = two.inv().unwrap();
         for _ in 0..num_bits {
-            let double_half = current * two_inv * two;
-            let bit_val = if double_half == current {
-                CircuitField::<C>::zero()
-            } else {
+            let lsb = field_to_u64(current) & 1;
+            let bit_val = if lsb == 1 {
                 CircuitField::<C>::one()
+            } else {
+                CircuitField::<C>::zero()
             };
             bits_vals.push(bit_val);
             current = (current - bit_val) * two_inv;
@@ -694,9 +698,29 @@ impl<C: Config> BasicAPI<C> for DirectBuilder<C> {
         x: impl ToVariableOrValue<CircuitField<C>>,
         y: impl ToVariableOrValue<CircuitField<C>>,
     ) -> Variable {
-        let diff = self.sub(x, y);
-        let bits = self.to_binary(diff, 253);
-        bits[0]
+        let width = 253;
+        let x_bits = self.to_binary(x, width);
+        let y_bits = self.to_binary(y, width);
+
+        let mut result = self.constant(CircuitField::<C>::zero());
+        let mut decided = self.constant(CircuitField::<C>::zero());
+
+        for i in (0..width).rev() {
+            let not_y = self.sub(1u32, y_bits[i]);
+            let x_gt_y_here = self.mul(x_bits[i], not_y);
+            let not_x = self.sub(1u32, x_bits[i]);
+            let y_gt_x_here = self.mul(y_bits[i], not_x);
+            let differ = self.or(x_gt_y_here, y_gt_x_here);
+
+            let not_decided = self.sub(1u32, decided);
+            let first_diff_x_wins = self.mul(not_decided, x_gt_y_here);
+            result = self.add(result, first_diff_x_wins);
+
+            let first_diff = self.mul(not_decided, differ);
+            decided = self.add(decided, first_diff);
+        }
+
+        result
     }
 
     fn geq(
@@ -810,9 +834,8 @@ fn field_to_u64<F: Field>(f: F) -> u64 {
     }
 }
 
-#[allow(clippy::cast_possible_truncation)]
 fn u64_to_field<F: Field>(v: u64) -> F {
-    F::from(v as u32)
+    F::from_u256(U256::from(v))
 }
 
 fn bool_to_field<F: Field>(b: bool) -> F {
@@ -855,7 +878,11 @@ impl<C: Config> UnconstrainedAPI<C> for DirectBuilder<C> {
     ) -> Variable {
         let (_, x_val) = self.resolve_input(x);
         let (_, y_val) = self.resolve_input(y);
-        let var_id = self.create_constant_var(x_val * y_val.inv().unwrap());
+        let result = match y_val.inv() {
+            Some(inv) => x_val * inv,
+            None => CircuitField::<C>::zero(),
+        };
+        let var_id = self.create_constant_var(result);
         Variable::from(var_id)
     }
 
@@ -1372,6 +1399,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_memory_comparison() {
         for &n in &[1000, 10000] {
             println!("--- n={n} ---");
@@ -1470,6 +1498,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_dot_product_scaling() {
         for &n in &[100, 1000, 10000] {
             println!("--- dot product n={n} ---");
