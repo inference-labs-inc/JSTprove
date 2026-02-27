@@ -1,8 +1,6 @@
-use jstprove_circuits::circuit_functions::utils::onnx_model::{
-    Architecture, Backend, CircuitParams, WANDB,
-};
+use jstprove_circuits::circuit_functions::utils::onnx_model::{Architecture, CircuitParams, WANDB};
 
-#[cfg(feature = "remainder")]
+use jstprove_circuits::ProofSystem;
 use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::FileReader;
 use jstprove_circuits::runner::main_runner::{
@@ -126,7 +124,7 @@ fn main() {
     if !is_remainder && !cli_backend_explicit {
         if let Some(circuit_path) = matches.get_one::<String>("circuit_path") {
             if let Some(params) = try_load_metadata_from_circuit(circuit_path) {
-                if params.backend.is_remainder() {
+                if params.proof_system.is_remainder() {
                     is_remainder = true;
                 }
             }
@@ -143,7 +141,6 @@ fn main() {
         std::process::exit(1);
     }
 
-    #[cfg(feature = "remainder")]
     if has_onnx && !is_remainder {
         let onnx_path_str = get_arg(&matches, "onnx").unwrap();
         let onnx_path = std::path::Path::new(&onnx_path_str);
@@ -158,12 +155,6 @@ fn main() {
         }
     }
 
-    #[cfg(not(feature = "remainder"))]
-    if has_onnx {
-        eprintln!("Error: --onnx requires the 'remainder' feature to be enabled.");
-        std::process::exit(1);
-    }
-
     if !is_remainder && needs_full && !has_onnx && (!has_meta || !has_arch) {
         eprintln!("Error: command '{cmd_type}' requires --onnx or --meta and --arch arguments.");
         std::process::exit(1);
@@ -173,7 +164,7 @@ fn main() {
         if has_meta {
             set_onnx_context(&matches, needs_full);
             if let Ok(params) = OnnxContext::get_params() {
-                if params.backend.is_remainder() {
+                if params.proof_system.is_remainder() {
                     if cli_backend_explicit {
                         eprintln!(
                             "Error: command '{cmd_type}' --backend conflicts with metadata (backend: remainder)."
@@ -188,7 +179,7 @@ fn main() {
                 .get_one::<String>("circuit_path")
                 .expect("command requires --meta or -c with bundled metadata");
             if let Some(params) = try_load_metadata_from_circuit(circuit_path) {
-                if params.backend.is_remainder() {
+                if params.proof_system.is_remainder() {
                     if cli_backend_explicit {
                         eprintln!(
                             "Error: command '{cmd_type}' --backend conflicts with metadata (backend: remainder)."
@@ -233,7 +224,7 @@ fn main() {
             freivalds_reps: 1,
             n_bits_config: std::collections::HashMap::new(),
             weights_as_inputs: false,
-            backend: Backend::Remainder,
+            proof_system: ProofSystem::Remainder,
         })
     } else {
         OnnxContext::get_params().ok()

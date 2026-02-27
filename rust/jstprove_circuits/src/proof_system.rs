@@ -1,13 +1,21 @@
 use crate::circuit_functions::layers::LayerKind;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum ProofSystem {
+    #[default]
     Expander,
     Remainder,
 }
 
 impl ProofSystem {
+    #[must_use]
+    pub fn is_remainder(&self) -> bool {
+        matches!(self, Self::Remainder)
+    }
+
     #[must_use]
     pub fn supported_ops(&self) -> &'static [&'static str] {
         match self {
