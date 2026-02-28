@@ -62,7 +62,7 @@ fn ecc_pipeline_lenet_prove_verify() {
     let circuit_path = tmp.path().join("circuit.msgpack");
     let circuit_path_str = circuit_path.to_str().unwrap();
 
-    compile_bn254(circuit_path_str, false, Some(params.clone())).unwrap();
+    compile_bn254(circuit_path_str, false, Some(params.clone()), false).unwrap();
     let bundle = read_circuit_msgpack(circuit_path_str).unwrap();
 
     let wb = witness_bn254_from_f64(
@@ -96,7 +96,7 @@ fn cross_validate_ecc_vs_direct_builder() {
     let circuit_path = tmp.path().join("circuit.msgpack");
     let circuit_path_str = circuit_path.to_str().unwrap();
 
-    compile_bn254(circuit_path_str, false, Some(params.clone())).unwrap();
+    compile_bn254(circuit_path_str, false, Some(params.clone()), false).unwrap();
     let bundle = read_circuit_msgpack(circuit_path_str).unwrap();
 
     let wb = witness_bn254_from_f64(

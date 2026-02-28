@@ -85,7 +85,7 @@ fn main() {
 
     println!("\n--- ECC IR pipeline ---");
     let t = Instant::now();
-    compile_bn254(circuit_path_str, false, Some(params.clone())).unwrap();
+    compile_bn254(circuit_path_str, false, Some(params.clone()), false).unwrap();
     println!("compile: {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
 
     let bundle = read_circuit_msgpack(circuit_path_str).unwrap();

@@ -124,7 +124,7 @@ jobs:
 
       - name: Build bindings and install dev dependencies
         run: |
-          uv venv --python 3.12
+          uv venv --python 3.12 --clear
           uv pip install maturin==1.12.* pytest
           uv run maturin develop --release
 

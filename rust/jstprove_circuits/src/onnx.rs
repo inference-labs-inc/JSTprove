@@ -1,5 +1,7 @@
 use ndarray::{Array1, ArrayD, ArrayView1, Axis, Ix1, IxDyn, concatenate};
 
+use std::io::Cursor;
+
 use arith::SimdField;
 use expander_compiler::expander_binary::executor;
 use expander_compiler::expander_circuit;
@@ -8,13 +10,16 @@ use expander_compiler::frontend::{
     declare_circuit,
 };
 use expander_compiler::gkr_engine::{GKREngine, MPIConfig};
+use expander_compiler::serdes::ExpSerde;
 use jstprove_direct_builder::DirectBuilder;
 
 use crate::circuit_functions::CircuitError;
 use crate::circuit_functions::hints::build_logup_hint_registry;
 use crate::circuit_functions::utils::ArrayConversionError;
 use crate::circuit_functions::utils::build_layers::build_layers;
-use crate::circuit_functions::utils::onnx_model::{CircuitParams, InputData, OutputData, WANDB};
+use crate::circuit_functions::utils::onnx_model::{
+    Architecture, CircuitParams, InputData, OutputData, WANDB,
+};
 use crate::circuit_functions::utils::shaping::get_inputs;
 use crate::circuit_functions::utils::tensor_ops::{
     convert_val_to_field_element, get_nd_circuit_inputs,
@@ -56,20 +61,24 @@ impl Circuit<Variable> {
         api: &mut Builder,
     ) -> Result<(), CircuitError> {
         let params = OnnxContext::get_params()?;
-        let architecture = OnnxContext::get_architecture()?;
-        let w_and_b = if params.weights_as_inputs {
-            WANDB { w_and_b: vec![] }
-        } else {
-            OnnxContext::get_wandb()?
-        };
+        let (architecture, w_and_b) = get_architecture_and_wandb(&params)?;
+        self.try_define_impl::<C, Builder>(api, &params, &architecture, &w_and_b)
+    }
 
+    fn try_define_impl<C: Config, Builder: RootAPI<C>>(
+        &self,
+        api: &mut Builder,
+        params: &CircuitParams,
+        architecture: &Architecture,
+        w_and_b: &WANDB,
+    ) -> Result<(), CircuitError> {
         if architecture.architecture.is_empty() {
             return Err(CircuitError::EmptyArchitecture);
         }
 
         let mut out = get_inputs(&self.input_arr, &params.inputs)?;
 
-        let layers = build_layers::<C, Builder>(&params, &architecture, &w_and_b)?;
+        let layers = build_layers::<C, Builder>(params, architecture, w_and_b)?;
 
         for layer in &layers {
             let (keys, value) = layer.apply(api, &out)?;
@@ -492,12 +501,111 @@ pub fn compile_bn254(
     circuit_path: &str,
     compress: bool,
     metadata: Option<CircuitParams>,
+    fast_compile: bool,
 ) -> Result<(), RunError> {
-    crate::runner::main_runner::run_compile_and_serialize::<BN254Config, Circuit<Variable>>(
-        circuit_path,
-        compress,
-        metadata,
-    )
+    if fast_compile {
+        let params = match metadata {
+            Some(p) => p,
+            None => OnnxContext::get_params()?,
+        };
+        compile_bn254_direct_to_path(circuit_path, compress, &params)
+    } else {
+        crate::runner::main_runner::run_compile_and_serialize::<BN254Config, Circuit<Variable>>(
+            circuit_path,
+            compress,
+            metadata,
+        )
+    }
+}
+
+/// # Errors
+/// Returns `RunError` on DirectBuilder compilation or serialization failure.
+pub fn compile_bn254_direct_to_path(
+    circuit_path: &str,
+    compress: bool,
+    params: &CircuitParams,
+) -> Result<(), RunError> {
+    use crate::proof_system::ProofSystem;
+    use crate::runner::schema::CompiledCircuit;
+    use crate::runner::version::jstprove_artifact_version;
+
+    log_fast_compile_info();
+
+    let (architecture, wandb) = get_architecture_and_wandb(params)?;
+
+    let n = params.effective_input_dims();
+    let dummy_inputs = vec![CircuitField::<BN254Config>::zero(); n];
+    let (circuit, _) = direct_build_from_fields(params, &architecture, &wandb, &dummy_inputs)?;
+
+    let mut circuit_buf = Vec::new();
+    circuit
+        .serialize_into(&mut circuit_buf)
+        .map_err(|e| RunError::Serialize(format!("direct circuit: {e:?}")))?;
+
+    let mut params_direct = params.clone();
+    params_direct.proof_system = ProofSystem::DirectBuilder;
+
+    let bundle = CompiledCircuit {
+        circuit: circuit_buf,
+        witness_solver: vec![],
+        metadata: Some(params_direct),
+        version: Some(jstprove_artifact_version()),
+    };
+    crate::runner::main_runner::write_circuit_bundle(circuit_path, &bundle, compress)
+}
+
+/// # Errors
+/// Returns `RunError` on witness generation failure.
+pub fn witness_bn254_from_f64_direct(
+    params: &CircuitParams,
+    activations: &[f64],
+    initializers: &[(Vec<f64>, Vec<usize>)],
+    compress: bool,
+) -> Result<WitnessBundle, RunError> {
+    use crate::runner::version::jstprove_artifact_version;
+
+    let (_, witness_private) = compile_and_witness_bn254_direct(params, activations, initializers)?;
+
+    let mut buf = Vec::new();
+    witness_private
+        .serialize_into(&mut buf)
+        .map_err(|e| RunError::Serialize(format!("direct witness: {e:?}")))?;
+    let witness_bytes = jstprove_io::maybe_compress_bytes(buf, compress)
+        .map_err(|e| RunError::Serialize(format!("zstd compress: {e}")))?;
+
+    Ok(WitnessBundle {
+        witness: witness_bytes,
+        output_data: None,
+        version: Some(jstprove_artifact_version()),
+    })
+}
+
+/// # Errors
+/// Returns `RunError` on proof generation failure.
+pub fn prove_bn254_direct_circuit(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    compress: bool,
+) -> Result<Vec<u8>, RunError> {
+    let mut circuit = deserialize_direct_circuit(circuit_bytes)?;
+    let witness_private = deserialize_direct_witness(witness_bytes)?;
+    let proof = prove_bn254_direct(&mut circuit, &witness_private)?;
+    jstprove_io::maybe_compress_bytes(proof, compress)
+        .map_err(|e| RunError::Serialize(format!("zstd compress: {e}")))
+}
+
+/// # Errors
+/// Returns `RunError` on verification failure.
+pub fn verify_bn254_direct_circuit(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+) -> Result<bool, RunError> {
+    use crate::runner::main_runner::auto_decompress_bytes;
+    let mut circuit = deserialize_direct_circuit(circuit_bytes)?;
+    let witness_private = deserialize_direct_witness(witness_bytes)?;
+    let proof_data = auto_decompress_bytes(proof_bytes)?;
+    verify_bn254_direct(&mut circuit, &witness_private, &proof_data)
 }
 
 /// # Errors
@@ -527,6 +635,39 @@ pub fn verify_and_extract_bn254(
     )
 }
 
+fn deserialize_direct_circuit(
+    bytes: &[u8],
+) -> Result<expander_circuit::Circuit<FC<BN254Config>>, RunError> {
+    use crate::runner::main_runner::auto_decompress_bytes;
+    let data = auto_decompress_bytes(bytes)?;
+    expander_circuit::Circuit::<FC<BN254Config>>::deserialize_from(Cursor::new(&*data))
+        .map_err(|e| RunError::Deserialize(format!("direct circuit: {e:?}")))
+}
+
+fn deserialize_direct_witness(bytes: &[u8]) -> Result<Vec<CircuitField<BN254Config>>, RunError> {
+    use crate::runner::main_runner::auto_decompress_bytes;
+    let data = auto_decompress_bytes(bytes)?;
+    Vec::<CircuitField<BN254Config>>::deserialize_from(Cursor::new(&*data))
+        .map_err(|e| RunError::Deserialize(format!("direct witness: {e:?}")))
+}
+
+fn log_fast_compile_info() {
+    tracing::info!("Compiling circuit with DirectBuilder (bypasses ECC IR pipeline)");
+    tracing::info!("Tradeoff: ~6x faster total, ~2x slower prove/verify vs standard compile");
+}
+
+fn get_architecture_and_wandb(
+    params: &CircuitParams,
+) -> Result<(Architecture, WANDB), crate::io::io_reader::onnx_context::OnnxContextError> {
+    let architecture = OnnxContext::get_architecture()?;
+    let wandb = if params.weights_as_inputs {
+        WANDB { w_and_b: vec![] }
+    } else {
+        OnnxContext::get_wandb()?
+    };
+    Ok((architecture, wandb))
+}
+
 type FC<C> = <C as GKREngine>::FieldConfig;
 type DirectBuildResult = (
     expander_circuit::Circuit<FC<BN254Config>>,
@@ -535,8 +676,10 @@ type DirectBuildResult = (
 
 fn direct_build_from_fields(
     params: &CircuitParams,
+    architecture: &Architecture,
+    wandb: &WANDB,
     input_arr_vals: &[CircuitField<BN254Config>],
-) -> DirectBuildResult {
+) -> Result<DirectBuildResult, RunError> {
     let num_outputs = params.effective_output_dims();
     let hint_registry = build_logup_hint_registry::<CircuitField<BN254Config>>();
 
@@ -567,13 +710,17 @@ fn direct_build_from_fields(
     let (probe_vals, probe_circuit) = build(&dummy_outputs);
     let hint_reg_probe = build_logup_hint_registry::<CircuitField<BN254Config>>();
     let mut probe_builder = DirectBuilder::<BN254Config>::new(&probe_vals, hint_reg_probe);
-    probe_circuit.define(&mut probe_builder);
+    probe_circuit
+        .try_define_impl::<BN254Config, _>(&mut probe_builder, params, architecture, wandb)
+        .map_err(|e| RunError::Compile(format!("circuit definition (probe): {e}")))?;
     let computed_outputs = probe_builder.output_witness_values();
 
     let (final_vals, final_circuit) = build(&computed_outputs);
     let mut builder = DirectBuilder::<BN254Config>::new(&final_vals, hint_registry);
-    final_circuit.define(&mut builder);
-    builder.finalize()
+    final_circuit
+        .try_define_impl::<BN254Config, _>(&mut builder, params, architecture, wandb)
+        .map_err(|e| RunError::Compile(format!("circuit definition: {e}")))?;
+    Ok(builder.finalize())
 }
 
 #[allow(clippy::missing_errors_doc, clippy::cast_possible_wrap)]
@@ -626,7 +773,8 @@ pub fn compile_and_witness_bn254_direct(
         )));
     }
 
-    Ok(direct_build_from_fields(params, &input_arr_vals))
+    let (architecture, wandb) = get_architecture_and_wandb(params)?;
+    direct_build_from_fields(params, &architecture, &wandb, &input_arr_vals)
 }
 
 #[allow(clippy::missing_errors_doc)]
@@ -641,7 +789,8 @@ pub fn compile_and_witness_bn254_from_fields(
             input_arr_vals.len()
         )));
     }
-    Ok(direct_build_from_fields(params, input_arr_vals))
+    let (architecture, wandb) = get_architecture_and_wandb(params)?;
+    direct_build_from_fields(params, &architecture, &wandb, input_arr_vals)
 }
 
 #[allow(clippy::missing_errors_doc)]
@@ -725,10 +874,7 @@ pub fn fast_compile_prove(
     let params = OnnxContext::get_params()?;
     let input_arr_vals = read_activations_from_file(input_path)?;
 
-    eprintln!("[fast-compile] Compiling circuit with DirectBuilder (bypasses ECC IR pipeline)");
-    eprintln!(
-        "[fast-compile] Tradeoff: ~6x faster total, ~2x slower prove/verify vs standard compile"
-    );
+    log_fast_compile_info();
 
     let (mut circuit, witness) = compile_and_witness_bn254_from_fields(&params, &input_arr_vals)?;
     let proof = prove_bn254_direct(&mut circuit, &witness)?;
@@ -739,15 +885,25 @@ pub fn fast_compile_prove(
         proof,
         version: Some(jstprove_artifact_version()),
     };
-    let file = std::fs::File::create(proof_path).map_err(|e| RunError::Io {
+    let proof_dir = std::path::Path::new(proof_path)
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let mut tmp = tempfile::NamedTempFile::new_in(proof_dir).map_err(|e| RunError::Io {
         source: e,
         path: proof_path.into(),
     })?;
-    let mut writer = std::io::BufWriter::new(file);
-    resp.serialize(&mut rmp_serde::Serializer::new(&mut writer).with_struct_map())
-        .map_err(|e| RunError::Serialize(format!("proof msgpack: {e:?}")))?;
-    std::io::Write::flush(&mut writer).map_err(|e| RunError::Io {
-        source: e,
+    {
+        let mut writer = std::io::BufWriter::new(tmp.as_file_mut());
+        resp.serialize(&mut rmp_serde::Serializer::new(&mut writer).with_struct_map())
+            .map_err(|e| RunError::Serialize(format!("proof msgpack: {e:?}")))?;
+        std::io::Write::flush(&mut writer).map_err(|e| RunError::Io {
+            source: e,
+            path: proof_path.into(),
+        })?;
+    }
+    tmp.persist(proof_path).map_err(|e| RunError::Io {
+        source: e.error,
         path: proof_path.into(),
     })?;
 
@@ -763,10 +919,7 @@ pub fn fast_compile_verify(input_path: &str, proof_path: &str) -> Result<bool, R
     let params = OnnxContext::get_params()?;
     let input_arr_vals = read_activations_from_file(input_path)?;
 
-    eprintln!("[fast-compile] Compiling circuit with DirectBuilder (bypasses ECC IR pipeline)");
-    eprintln!(
-        "[fast-compile] Tradeoff: ~6x faster total, ~2x slower prove/verify vs standard compile"
-    );
+    log_fast_compile_info();
 
     let (mut circuit, witness) = compile_and_witness_bn254_from_fields(&params, &input_arr_vals)?;
 
