@@ -98,6 +98,7 @@ fn infer_layer_output_shape(
         OpType::Squeeze => infer_squeeze(layer, input_shape),
         OpType::Unsqueeze => infer_unsqueeze(layer, input_shape),
         OpType::Constant => Ok(vec![]),
+        OpType::Cast => passthrough_shape(layer, input_shape),
     }
 }
 
