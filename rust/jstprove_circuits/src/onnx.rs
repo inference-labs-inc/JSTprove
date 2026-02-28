@@ -887,6 +887,7 @@ pub fn fast_compile_prove(
     };
     let proof_dir = std::path::Path::new(proof_path)
         .parent()
+        .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| std::path::Path::new("."));
     let mut tmp = tempfile::NamedTempFile::new_in(proof_dir).map_err(|e| RunError::Io {
         source: e,
