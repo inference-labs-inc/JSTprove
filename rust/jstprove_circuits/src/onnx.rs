@@ -529,6 +529,8 @@ pub fn compile_bn254_direct_to_path(
     use crate::runner::schema::CompiledCircuit;
     use crate::runner::version::jstprove_artifact_version;
 
+    log_fast_compile_info();
+
     let (architecture, wandb) = get_architecture_and_wandb(params)?;
 
     let n = params.effective_input_dims();
