@@ -194,6 +194,35 @@ fn test_elementwise_add_prove_verify() {
 }
 
 #[test]
+fn test_cast_passthrough_prove_verify() {
+    // Cast is a no-op in the ZK circuit: the quantiser has already resolved
+    // types, so field elements pass through unchanged.  Prove that the
+    // identity constraint  output - input = 0  is satisfied under the GKR
+    // prover, using a mix of positive and negative quantised values.
+    let data: Vec<i64> = vec![1, -2, 3, -4, 5, -6, 7, -8];
+    let num_vars = 3; // 2^3 = 8 elements
+
+    let input_mle = MultilinearExtension::new(data.iter().map(|&v| i64_to_fr(v)).collect());
+    let expected_mle = MultilinearExtension::new(data.iter().map(|&v| i64_to_fr(v)).collect());
+
+    let mut builder = CircuitBuilder::<Fr>::new();
+    let public = builder.add_input_layer("Public", LayerVisibility::Public);
+    let input_node = builder.add_input_shred("Input", num_vars, &public);
+    let expected_node = builder.add_input_shred("Expected", num_vars, &public);
+
+    // Cast is identity: output == input, so this sector must be zero.
+    let diff = builder.add_sector(input_node.expr() - expected_node.expr());
+    builder.set_output(&diff);
+
+    let mut circuit = builder.build_with_layer_combination().unwrap();
+    circuit.set_input("Input", input_mle);
+    circuit.set_input("Expected", expected_mle);
+
+    let provable = circuit.gen_provable_circuit().unwrap();
+    test_circuit_with_runtime_optimized_config(&provable);
+}
+
+#[test]
 fn test_logup_range_check() {
     let table_num_vars: usize = 4;
     let witness_num_vars: usize = 3;
