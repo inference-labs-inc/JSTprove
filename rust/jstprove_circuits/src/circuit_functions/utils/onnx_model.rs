@@ -314,6 +314,11 @@ pub fn get_input_name<'a>(
         })
 }
 
+#[must_use]
+pub fn get_optional_input_name(inputs: &[String], index: usize) -> Option<&String> {
+    inputs.get(index).filter(|s| !s.is_empty())
+}
+
 /// Retrieves a parameter from a JSON `Value`, returning a provided default if missing.
 ///
 /// # Arguments
