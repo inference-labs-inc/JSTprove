@@ -15,9 +15,12 @@ use crate::circuit_functions::{
     layers::{LayerError, LayerKind},
     utils::{
         UtilsError,
-        constants::{BIAS, DILATION, GROUP, INPUT, KERNEL_SHAPE, PADS, STRIDES, WEIGHTS},
+        constants::{DILATION, GROUP, INPUT, KERNEL_SHAPE, PADS, STRIDES, WEIGHTS},
         graph_pattern_matching::PatternRegistry,
-        onnx_model::{extract_params, get_input_name, get_param, get_param_or_default, get_w_or_b},
+        onnx_model::{
+            extract_params, get_input_name, get_optional_input_name, get_param,
+            get_param_or_default, get_w_or_b,
+        },
         typecasting::{AsI32, AsUsize, UsizeAsU32, i32_to_usize},
     },
 };
@@ -72,9 +75,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         let weights =
             load_array_constants_or_get_inputs(api, input, w_name, &self.weights, LayerKind::Conv)?;
 
-        let b_name = get_input_name(&self.inputs, 2, LayerKind::Conv, BIAS)?;
-        let bias =
-            load_array_constants_or_get_inputs(api, input, b_name, &self.bias, LayerKind::Conv)?;
+        let bias = match get_optional_input_name(&self.inputs, 2) {
+            Some(b_name) => {
+                load_array_constants_or_get_inputs(api, input, b_name, &self.bias, LayerKind::Conv)?
+            }
+            None => ArrayD::from_shape_vec(ndarray::IxDyn(&[0]), vec![]).expect("empty bias"),
+        };
 
         let in_shape = layer_input
             .shape()
@@ -119,7 +125,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             msg: format!("extract_params failed: {e}"),
         })?;
         let w_name = get_input_name(&layer.inputs, 1, LayerKind::Conv, WEIGHTS)?;
-        let b_name = get_input_name(&layer.inputs, 2, LayerKind::Conv, BIAS)?;
+        let b_name = get_optional_input_name(&layer.inputs, 2);
 
         let (weights, bias) = if layer_context.weights_as_inputs {
             (None, None)
@@ -130,13 +136,16 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
                     param: format!("weights (W), requested={w_name}: {e}"),
                 }
             })?;
-            let b = get_w_or_b(layer_context.w_and_b_map, b_name).map_err(|e| {
-                LayerError::MissingParameter {
-                    layer: LayerKind::Conv,
-                    param: format!("bias (B), requested={b_name}: {e}"),
-                }
-            })?;
-            (Some(w), Some(b))
+            let b = match b_name {
+                Some(name) => Some(get_w_or_b(layer_context.w_and_b_map, name).map_err(|e| {
+                    LayerError::MissingParameter {
+                        layer: LayerKind::Conv,
+                        param: format!("bias (B), requested={name}: {e}"),
+                    }
+                })?),
+                None => None,
+            };
+            (Some(w), b)
         };
 
         let kernel_shape: Vec<u32> = get_param(&layer.name, KERNEL_SHAPE, &params)?;
