@@ -431,6 +431,11 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
             let m_in = get_input_bound(0);
             Ok(m_in)
         }
+        // exp(x) is monotonically increasing; max output is exp(max_input).
+        OpType::Exp => {
+            let m_in = get_input_bound(0);
+            Ok(m_in.exp())
+        }
         OpType::Constant => Ok(1.0),
     }
 }
@@ -438,7 +443,12 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
 fn is_range_check_op(op: OpType) -> bool {
     matches!(
         op,
-        OpType::Relu | OpType::MaxPool | OpType::Max | OpType::Min | OpType::Clip
+        OpType::Relu
+            | OpType::MaxPool
+            | OpType::Max
+            | OpType::Min
+            | OpType::Clip
+            | OpType::Exp
     )
 }
 

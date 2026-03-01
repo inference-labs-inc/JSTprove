@@ -13,6 +13,7 @@ use crate::circuit_functions::utils::onnx_model::CircuitParams;
 use crate::circuit_functions::utils::onnx_types::ONNXLayer;
 
 use crate::circuit_functions::layers::clip::ClipLayer;
+use crate::circuit_functions::layers::exp::ExpLayer;
 use crate::circuit_functions::layers::constant::ConstantLayer;
 use crate::circuit_functions::layers::conv::ConvLayer;
 use crate::circuit_functions::layers::flatten::FlattenLayer;
@@ -128,6 +129,7 @@ define_layers! {
     Clip      => { name: "Clip", builder: ClipLayer::build },
     Batchnorm => { name: "BatchNormalization", builder: BatchnormLayer::build },
     Div       => { name: "Div", builder: DivLayer::build },
+    Exp       => { name: "Exp", builder: ExpLayer::build },
     Sub       => { name: "Sub", builder: BinaryArithLayer::build },
     Mul       => { name: "Mul", builder: MulLayer::build },
     Constant  => { name: "Constant", builder: ConstantLayer::build },
@@ -154,6 +156,7 @@ mod tests {
             "Sub",
             "Mul",
             "Div",
+            "Exp",
             "Conv",
             "Gemm",
             "Flatten",
@@ -192,6 +195,7 @@ mod tests {
     fn display_matches_canonical_name() {
         assert_eq!(LayerKind::Add.to_string(), "Add");
         assert_eq!(LayerKind::Batchnorm.to_string(), "BatchNormalization");
+        assert_eq!(LayerKind::Exp.to_string(), "Exp");
         assert_eq!(LayerKind::ReLU.to_string(), "ReLU");
         assert_eq!(LayerKind::Gemm.to_string(), "Gemm");
     }
@@ -209,6 +213,7 @@ mod tests {
             "Sub",
             "Mul",
             "Div",
+            "Exp",
             "Conv",
             "Gemm",
             "Flatten",
