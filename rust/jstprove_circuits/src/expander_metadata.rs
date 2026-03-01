@@ -217,6 +217,7 @@ fn op_type_to_string(op: OpType) -> String {
         OpType::Unsqueeze => "Unsqueeze",
         OpType::Constant => "Constant",
         OpType::Cast => "Cast",
+        OpType::Exp => "Exp",
     }
     .to_string()
 }
