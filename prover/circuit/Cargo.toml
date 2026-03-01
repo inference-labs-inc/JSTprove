@@ -1,0 +1,23 @@
+[package]
+name = "circuit"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arith.workspace = true
+gkr_engine.workspace = true
+gkr_hashers.workspace = true
+serdes.workspace = true
+transcript.workspace = true
+
+ark-std.workspace = true
+bytes.workspace = true
+ethnum.workspace = true
+log.workspace = true
+rand.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+config_macros.workspace = true
+poly_commit.workspace = true
+mersenne31.workspace = true

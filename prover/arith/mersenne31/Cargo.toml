@@ -1,0 +1,28 @@
+[package]
+name = "mersenne31"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arith.workspace = true
+gkr_hashers.workspace = true
+serdes.workspace = true
+
+ark-std.workspace = true
+halo2curves.workspace = true
+log.workspace = true
+rand.workspace = true
+thiserror.workspace = true
+ethnum.workspace = true
+
+raw-cpuid.workspace = true
+cfg-if.workspace = true
+
+
+[dev-dependencies]
+tynm.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "m31"
+harness = false

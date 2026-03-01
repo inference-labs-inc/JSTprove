@@ -1,0 +1,25 @@
+[package]
+name = "config_macros"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+gkr_engine.workspace = true
+gkr_hashers.workspace = true
+poly_commit.workspace = true
+transcript.workspace = true
+
+syn.workspace = true
+quote.workspace = true
+proc-macro2.workspace = true
+
+[dev-dependencies]
+gf2.workspace = true
+mersenne31.workspace = true
+goldilocks.workspace = true
+babybear.workspace = true
+
+halo2curves.workspace = true
+
+[lib]
+proc-macro=true

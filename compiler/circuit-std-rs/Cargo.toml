@@ -1,0 +1,31 @@
+[package]
+name = "circuit-std-rs"
+version.workspace = true
+edition.workspace = true
+
+
+[dependencies]
+expander_compiler.workspace = true
+
+arith.workspace = true
+ark-bls12-381.workspace = true
+ark-ec.workspace = true
+ark-ff.workspace = true
+ark-std.workspace = true
+big-int.workspace = true
+gkr_hashers.workspace = true
+expander_circuit.workspace = true
+gf2.workspace = true
+gkr.workspace = true
+halo2curves.workspace = true
+mersenne31.workspace = true
+num-bigint.workspace = true
+num-traits.workspace = true
+rand.workspace = true
+serdes.workspace = true
+sha2.workspace = true
+tiny-keccak.workspace = true
+ethnum.workspace = true
+
+[dev-dependencies]
+ark-serialize.workspace = true

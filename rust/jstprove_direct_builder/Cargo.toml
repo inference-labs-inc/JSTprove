@@ -5,8 +5,8 @@ edition = "2024"
 
 [dependencies]
 expander_compiler.workspace = true
-arith = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.3.1" }
+arith.workspace = true
 ethnum.workspace = true
 
 [dev-dependencies]
-gkr_engine = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.3.1" }
+gkr_engine.workspace = true

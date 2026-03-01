@@ -1,0 +1,94 @@
+[package]
+name = "expander_compiler"
+version.workspace = true
+edition.workspace = true
+
+
+[dependencies]
+arith.workspace = true
+ark-std.workspace = true
+axum.workspace = true
+babybear.workspace = true
+chrono.workspace = true
+clap.workspace = true
+crosslayer_prototype.workspace = true
+macros = { path = "./macros" }
+ethnum.workspace = true
+expander_binary.workspace = true
+expander_circuit.workspace = true
+expander_transcript.workspace = true
+expander_utils.workspace = true
+gf2.workspace = true
+gkr.workspace = true
+gkr_engine.workspace = true
+gkr_hashers.workspace = true
+goldilocks.workspace = true
+halo2curves.workspace = true
+mersenne31.workspace = true
+num_cpus.workspace = true
+poly_commit.workspace = true
+polynomials.workspace = true
+rand.workspace = true
+rayon.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serdes.workspace = true
+serde_json.workspace = true
+sumcheck.workspace = true
+shared_memory.workspace = true
+tiny-keccak.workspace = true
+tokio.workspace = true
+once_cell.workspace = true
+
+[dev-dependencies]
+rayon.workspace = true
+sha2.workspace = true
+
+[features]
+default = []
+profile = ["expander_utils/profile"]
+zkcuda_profile = []
+
+[[bin]]
+name = "trivial_circuit"
+path = "bin/trivial_circuit.rs"
+
+[[bin]]
+name = "expander_server"
+path = "src/zkcuda/proving_system/expander_parallelized/server_bin.rs"
+
+[[bin]]
+name = "expander_server_pcs_defered"
+path = "src/zkcuda/proving_system/expander_pcs_defered/server_bin.rs"
+
+[[bin]]
+name = "expander_server_no_oversubscribe"
+path = "src/zkcuda/proving_system/expander_no_oversubscribe/server_bin.rs"
+
+[[bin]]
+name = "zkcuda_matmul"
+path = "bin/zkcuda_bench/zkcuda_matmul.rs"
+
+[[bin]]
+name = "zkcuda_matmul_pcs_defered"
+path = "bin/zkcuda_bench/zkcuda_matmul_pcs_defered.rs"
+
+[[bin]]
+name = "zkcuda_matmul_no_oversubscribe"
+path = "bin/zkcuda_bench/zkcuda_matmul_no_oversubscribe.rs"
+
+[[bin]]
+name = "zkcuda_setup"
+path = "bin/zkcuda_integration/setup.rs"
+
+[[bin]]
+name = "zkcuda_prove"
+path = "bin/zkcuda_integration/prove.rs"
+
+[[bin]]
+name = "zkcuda_verify"
+path = "bin/zkcuda_integration/verify.rs"
+
+[[bin]]
+name = "zkcuda_cleanup"
+path = "bin/zkcuda_integration/cleanup.rs"

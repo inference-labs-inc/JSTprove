@@ -1,0 +1,19 @@
+[package]
+name = "transcript"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arith.workspace = true
+gkr_hashers.workspace = true
+gkr_engine.workspace = true
+serdes.workspace = true
+
+sha2.workspace = true
+tiny-keccak.workspace = true
+
+[dev-dependencies]
+mersenne31.workspace = true
+
+[features]
+recursion = []

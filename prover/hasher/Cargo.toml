@@ -1,0 +1,13 @@
+[package]
+name = "gkr_hashers"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arith.workspace = true
+serdes.workspace = true
+
+
+halo2curves.workspace = true
+sha2.workspace = true
+tiny-keccak.workspace = true

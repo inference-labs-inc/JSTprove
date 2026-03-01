@@ -1,0 +1,27 @@
+[package]
+name = "gf2"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arith.workspace = true
+serdes.workspace = true
+
+ark-std.workspace = true
+halo2curves.workspace = true
+log.workspace = true
+rand.workspace = true
+thiserror.workspace = true
+ethnum.workspace = true
+
+raw-cpuid.workspace = true
+cfg-if.workspace = true
+
+
+[dev-dependencies]
+tynm.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "gf2"
+harness = false

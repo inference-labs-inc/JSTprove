@@ -1,0 +1,21 @@
+[package]
+name = "gf2_128"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arith.workspace = true
+gf2.workspace = true
+serdes.workspace = true
+
+ark-std.workspace = true
+ethnum.workspace = true
+rand.workspace = true
+
+[dev-dependencies]
+tynm.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "gf2_128"
+harness = false

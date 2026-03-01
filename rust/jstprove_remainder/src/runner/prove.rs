@@ -64,7 +64,7 @@ pub fn generate_proof(
     let input_size = witness
         .get(&input_name)
         .map(|v| v.len())
-        .ok_or_else(|| anyhow::anyhow!("witness missing input shred '{}'", input_name))?;
+        .ok_or_else(|| anyhow::anyhow!("witness missing input shred '{input_name}'"))?;
 
     tracing::info!("building circuit");
     let build_result = circuit_builder::build_circuit(model, input_size)?;
@@ -156,7 +156,7 @@ fn prove_internal(
             global_prover_circuit_description_hash_type(),
             &mut transcript_writer,
         )
-        .map_err(|e| anyhow::anyhow!("proof generation failed: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("proof generation failed: {e}"))?;
 
     let transcript = transcript_writer.get_transcript();
     Ok((proof_config, transcript))
