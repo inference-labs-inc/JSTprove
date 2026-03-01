@@ -1,0 +1,31 @@
+[package]
+name = "arith"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ark-std.workspace = true
+criterion.workspace = true
+ethnum.workspace = true
+itertools.workspace = true
+halo2curves.workspace = true
+log.workspace = true
+rand.workspace = true
+tynm.workspace = true
+
+serdes.workspace = true
+
+[features]
+halo2_asm = [ "halo2curves/asm" ]
+
+[[bench]]
+name = "fr"
+harness = false
+
+[[bench]]
+name = "fft"
+harness = false
+
+[[bench]]
+name = "utils"
+harness = false

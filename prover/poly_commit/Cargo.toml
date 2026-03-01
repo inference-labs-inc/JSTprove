@@ -1,0 +1,55 @@
+[package]
+name = "poly_commit"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arith.workspace = true
+gf2.workspace = true
+gkr_engine.workspace = true
+polynomials.workspace = true
+serdes.workspace = true
+transcript.workspace = true
+tree.workspace = true
+utils.workspace = true
+sumcheck.workspace = true
+
+ethnum.workspace = true
+ark-std.workspace = true
+derivative.workspace = true
+halo2curves.workspace = true
+itertools.workspace = true
+rand.workspace = true
+rayon.workspace = true
+transpose.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+gf2_128.workspace = true
+mersenne31.workspace = true
+goldilocks.workspace = true
+gkr_hashers.workspace = true
+
+tynm.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "orion"
+harness = false
+
+[[bench]]
+name = "hyrax"
+harness = false
+
+[[bench]]
+name = "kzg"
+harness = false
+
+[[bench]]
+name = "pcs_all"
+harness = false
+
+[features]
+default = [ ]
+# default = [ "profile" ]
+profile = [ "utils/profile" ]

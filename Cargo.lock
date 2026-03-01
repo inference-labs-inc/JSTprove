@@ -117,8 +117,7 @@ dependencies = [
 
 [[package]]
 name = "arith"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
 dependencies = [
  "ark-std 0.4.0",
  "criterion",
@@ -466,11 +465,11 @@ dependencies = [
 
 [[package]]
 name = "babybear"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
 dependencies = [
  "arith",
  "ark-std 0.4.0",
+ "criterion",
  "ethnum",
  "rand 0.8.5",
  "serdes",
@@ -510,8 +509,7 @@ dependencies = [
 
 [[package]]
 name = "bin"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
 dependencies = [
  "arith",
  "babybear",
@@ -715,31 +713,33 @@ dependencies = [
 
 [[package]]
 name = "circuit"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
 dependencies = [
  "arith",
  "ark-std 0.4.0",
  "bytes",
+ "config_macros",
  "ethnum",
  "gkr_engine",
  "gkr_hashers",
  "log",
+ "mersenne31",
+ "poly_commit",
  "rand 0.8.5",
  "serdes",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "transcript",
 ]
 
 [[package]]
 name = "circuit-std-rs"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/ecc?rev=f858279#f858279483c5dfd8fed31a57097b55ccbd417e61"
+version = "0.4.0"
 dependencies = [
  "arith",
  "ark-bls12-381",
  "ark-ec 0.4.2",
  "ark-ff 0.4.2",
+ "ark-serialize 0.4.2",
  "ark-std 0.4.0",
  "big-int",
  "circuit",
@@ -805,12 +805,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
 
 [[package]]
-name = "config_macros"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+name = "colored"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
+ "lazy_static",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "config_macros"
+version = "0.4.0"
+dependencies = [
+ "babybear",
+ "gf2",
  "gkr_engine",
  "gkr_hashers",
+ "goldilocks",
+ "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
+ "mersenne31",
  "poly_commit",
  "proc-macro2",
  "quote",
@@ -946,8 +960,7 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
 name = "crosslayer_prototype"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
 dependencies = [
  "arith",
  "env_logger 0.11.9",
@@ -959,7 +972,7 @@ dependencies = [
  "rand 0.8.5",
  "serdes",
  "sumcheck",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "transcript",
 ]
 
@@ -1186,8 +1199,7 @@ checksum = "ca81e6b4777c89fd810c25a4be2b1bd93ea034fbe58e6a75216a34c6b82c539b"
 
 [[package]]
 name = "expander_compiler"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/ecc?rev=f858279#f858279483c5dfd8fed31a57097b55ccbd417e61"
+version = "0.4.0"
 dependencies = [
  "arith",
  "ark-std 0.4.0",
@@ -1217,6 +1229,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serdes",
+ "sha2",
  "shared_memory",
  "sumcheck",
  "tiny-keccak",
@@ -1451,44 +1464,46 @@ dependencies = [
 
 [[package]]
 name = "gf2"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
 dependencies = [
  "arith",
  "ark-std 0.4.0",
  "cfg-if",
+ "criterion",
  "ethnum",
  "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
  "log",
  "rand 0.8.5",
  "raw-cpuid",
  "serdes",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
+ "tynm",
 ]
 
 [[package]]
 name = "gf2_128"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
 dependencies = [
  "arith",
  "ark-std 0.4.0",
+ "criterion",
  "ethnum",
  "gf2",
  "rand 0.8.5",
  "serdes",
+ "tynm",
 ]
 
 [[package]]
 name = "gkr"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
 dependencies = [
  "arith",
  "ark-std 0.4.0",
  "babybear",
  "circuit",
  "config_macros",
+ "criterion",
  "env_logger 0.11.9",
  "ethnum",
  "gf2",
@@ -1506,17 +1521,17 @@ dependencies = [
  "serdes",
  "sha2",
  "sumcheck",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "transcript",
  "utils",
 ]
 
 [[package]]
 name = "gkr_engine"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
 dependencies = [
  "arith",
+ "ark-std 0.4.0",
  "babybear",
  "gf2",
  "gf2_128",
@@ -1526,13 +1541,12 @@ dependencies = [
  "polynomials",
  "rand 0.8.5",
  "serdes",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "gkr_hashers"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
 dependencies = [
  "arith",
  "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
@@ -1543,11 +1557,11 @@ dependencies = [
 
 [[package]]
 name = "goldilocks"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
 dependencies = [
  "arith",
  "ark-std 0.4.0",
+ "criterion",
  "ethnum",
  "rand 0.8.5",
  "serdes",
@@ -2392,8 +2406,7 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
 name = "macros"
-version = "0.1.0"
-source = "git+https://github.com/inference-labs-inc/ecc?rev=f858279#f858279483c5dfd8fed31a57097b55ccbd417e61"
+version = "0.4.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2454,12 +2467,12 @@ dependencies = [
 
 [[package]]
 name = "mersenne31"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
 dependencies = [
  "arith",
  "ark-std 0.4.0",
  "cfg-if",
+ "criterion",
  "ethnum",
  "gkr_hashers",
  "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
@@ -2467,7 +2480,8 @@ dependencies = [
  "rand 0.8.5",
  "raw-cpuid",
  "serdes",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
+ "tynm",
 ]
 
 [[package]]
@@ -2979,33 +2993,37 @@ dependencies = [
 
 [[package]]
 name = "poly_commit"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
 dependencies = [
  "arith",
  "ark-std 0.4.0",
+ "criterion",
  "derivative",
  "ethnum",
  "gf2",
+ "gf2_128",
  "gkr_engine",
+ "gkr_hashers",
+ "goldilocks",
  "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
  "itertools 0.13.0",
+ "mersenne31",
  "polynomials",
  "rand 0.8.5",
  "rayon",
  "serdes",
  "sumcheck",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "transcript",
  "transpose",
  "tree",
+ "tynm",
  "utils",
 ]
 
 [[package]]
 name = "polynomials"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
 dependencies = [
  "arith",
  "ark-std 0.4.0",
@@ -3627,19 +3645,18 @@ dependencies = [
 
 [[package]]
 name = "serdes"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
 dependencies = [
  "ethnum",
  "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
+ "rand 0.8.5",
  "serdes_derive",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "serdes_derive"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3863,10 +3880,10 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "sumcheck"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
 dependencies = [
  "arith",
+ "ark-std 0.4.0",
  "circuit",
  "env_logger 0.11.9",
  "gkr_engine",
@@ -4206,12 +4223,12 @@ dependencies = [
 
 [[package]]
 name = "transcript"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
 dependencies = [
  "arith",
  "gkr_engine",
  "gkr_hashers",
+ "mersenne31",
  "serdes",
  "sha2",
  "tiny-keccak",
@@ -4229,13 +4246,16 @@ dependencies = [
 
 [[package]]
 name = "tree"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
 dependencies = [
  "arith",
  "ark-std 0.4.0",
+ "criterion",
+ "gf2",
+ "gf2_128",
  "serdes",
  "tiny-keccak",
+ "tynm",
 ]
 
 [[package]]
@@ -4344,8 +4364,10 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "utils"
-version = "0.3.0"
-source = "git+https://github.com/inference-labs-inc/Expander?tag=v0.3.1#860b9f44d4dfd9c872caeb855da1609bbb37eed2"
+version = "0.4.0"
+dependencies = [
+ "colored",
+]
 
 [[package]]
 name = "valuable"

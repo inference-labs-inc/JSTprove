@@ -1,0 +1,19 @@
+[package]
+name = "crosslayer_prototype"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arith.workspace = true
+gkr_engine.workspace = true
+gkr_hashers.workspace = true
+polynomials.workspace = true
+sumcheck.workspace = true
+serdes.workspace = true
+transcript.workspace = true
+
+env_logger.workspace = true
+ethnum.workspace = true
+log.workspace = true
+rand.workspace = true
+thiserror.workspace = true

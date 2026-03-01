@@ -1,0 +1,47 @@
+[package]
+name = "gkr"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arith.workspace = true
+babybear.workspace = true
+config_macros.workspace = true
+circuit.workspace = true
+gf2.workspace = true
+gf2_128.workspace = true
+gkr_engine.workspace = true
+gkr_hashers.workspace = true
+goldilocks.workspace = true
+mersenne31.workspace = true
+poly_commit.workspace = true
+polynomials.workspace = true
+serdes.workspace = true
+sumcheck.workspace = true
+transcript.workspace = true
+utils.workspace = true
+
+ark-std.workspace = true
+env_logger.workspace = true
+ethnum.workspace = true
+halo2curves.workspace = true
+log.workspace = true
+rand.workspace = true
+rayon.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+
+[features]
+default = []
+# default = [ "grinding" ]
+grinding = [ ]
+recursion = [ "transcript/recursion" ]
+profile = [ "utils/profile", "sumcheck/profile" ]
+
+[[bench]]
+name = "gkr-hashes"
+harness = false
+path = "benches/gkr_hashes.rs"

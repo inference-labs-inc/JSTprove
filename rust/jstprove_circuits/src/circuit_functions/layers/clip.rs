@@ -136,31 +136,31 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
 
         // At this point, x_bc has the final shape. Any existing min/max must
         // have shapes compatible with x_bc.
-        if let Some(ref min_bc) = min_bc_opt {
-            if min_bc.shape() != x_bc.shape() {
-                return Err(LayerError::InvalidShape {
-                    layer: LayerKind::Clip,
-                    msg: format!(
-                        "ClipLayer: min shape {:?} not broadcastable to X shape {:?}",
-                        min_bc.shape(),
-                        x_bc.shape()
-                    ),
-                }
-                .into());
+        if let Some(ref min_bc) = min_bc_opt
+            && min_bc.shape() != x_bc.shape()
+        {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::Clip,
+                msg: format!(
+                    "ClipLayer: min shape {:?} not broadcastable to X shape {:?}",
+                    min_bc.shape(),
+                    x_bc.shape()
+                ),
             }
+            .into());
         }
-        if let Some(ref max_bc) = max_bc_opt {
-            if max_bc.shape() != x_bc.shape() {
-                return Err(LayerError::InvalidShape {
-                    layer: LayerKind::Clip,
-                    msg: format!(
-                        "ClipLayer: max shape {:?} not broadcastable to X shape {:?}",
-                        max_bc.shape(),
-                        x_bc.shape()
-                    ),
-                }
-                .into());
+        if let Some(ref max_bc) = max_bc_opt
+            && max_bc.shape() != x_bc.shape()
+        {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::Clip,
+                msg: format!(
+                    "ClipLayer: max shape {:?} not broadcastable to X shape {:?}",
+                    max_bc.shape(),
+                    x_bc.shape()
+                ),
             }
+            .into());
         }
 
         let shape = x_bc.shape().to_vec();

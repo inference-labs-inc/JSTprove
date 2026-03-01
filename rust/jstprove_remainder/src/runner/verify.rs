@@ -67,7 +67,7 @@ pub fn verify_with_model(
         if entry.visibility == Visibility::Public {
             let values = public_shreds
                 .get(name)
-                .ok_or_else(|| anyhow::anyhow!("missing public input '{}'", name))?;
+                .ok_or_else(|| anyhow::anyhow!("missing public input '{name}'"))?;
             let mle = MultilinearExtension::new(values.iter().map(|&v| i64_to_fr(v)).collect());
             circuit.set_input(name, mle);
         }
@@ -89,7 +89,7 @@ pub fn verify_with_model(
         &proof.proof_config
     );
 
-    result.map_err(|e| anyhow::anyhow!("verification failed: {}", e))
+    result.map_err(|e| anyhow::anyhow!("verification failed: {e}"))
 }
 
 fn verify_internal(
@@ -103,5 +103,5 @@ fn verify_internal(
             transcript,
             proof_config,
         )
-        .map_err(|e| anyhow::anyhow!("{}", e))
+        .map_err(|e| anyhow::anyhow!("{e}"))
 }

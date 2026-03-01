@@ -1,0 +1,25 @@
+[package]
+name = "sumcheck"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arith.workspace = true
+circuit.workspace = true
+gkr_engine.workspace = true
+gkr_hashers.workspace = true
+polynomials.workspace = true
+serdes.workspace = true
+transcript.workspace = true
+utils.workspace = true
+
+env_logger.workspace = true
+log.workspace = true
+rayon.workspace = true
+
+[dev-dependencies]
+ark-std.workspace = true
+
+
+[features]
+profile = [ "utils/profile" ]

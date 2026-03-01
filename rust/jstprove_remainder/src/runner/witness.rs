@@ -18,18 +18,12 @@ fn validate_input_size(model: &QuantizedModel, input_name: &str, input_len: usiz
             .try_fold(1usize, |acc, &d| acc.checked_mul(d))
             .ok_or_else(|| {
                 anyhow::anyhow!(
-                    "input shape overflow for '{}': dimensions {:?} exceed usize",
-                    input_name,
-                    expected_shape,
+                    "input shape overflow for '{input_name}': dimensions {expected_shape:?} exceed usize",
                 )
             })?;
         anyhow::ensure!(
             input_len == expected_size,
-            "input size mismatch for '{}': model expects shape {:?} ({} elements) but received {} elements",
-            input_name,
-            expected_shape,
-            expected_size,
-            input_len,
+            "input size mismatch for '{input_name}': model expects shape {expected_shape:?} ({expected_size} elements) but received {input_len} elements",
         );
     }
     Ok(())
@@ -47,10 +41,7 @@ pub fn compute_multiplicities(values: &[i64], table_size: usize) -> Result<Vec<i
     for (i, &v) in values.iter().enumerate() {
         anyhow::ensure!(
             v >= 0 && (v as usize) < table_size,
-            "range check: value at index {} is {} which is outside table range [0, {})",
-            i,
-            v,
-            table_size
+            "range check: value at index {i} is {v} which is outside table range [0, {table_size})"
         );
         mults[v as usize] += 1;
     }
@@ -107,7 +98,7 @@ pub fn quantize_input_value(input_value: &rmpv::Value, alpha: i64) -> Result<Vec
         .enumerate()
         .map(|(i, v)| {
             v.as_f64()
-                .ok_or_else(|| anyhow::anyhow!("input[{}] is not a number: {}", i, v))
+                .ok_or_else(|| anyhow::anyhow!("input[{i}] is not a number: {v}"))
         })
         .collect::<Result<Vec<f64>>>()?;
 
@@ -1153,7 +1144,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
 
     let final_output = tensors
         .get(declared_output)
-        .ok_or_else(|| anyhow::anyhow!("declared output '{}' not computed", declared_output))?;
+        .ok_or_else(|| anyhow::anyhow!("declared output '{declared_output}' not computed"))?;
     shreds.insert("expected_output".to_string(), final_output.clone());
 
     let rc_plan = compute_range_check_plan_with_overrides(model, &observed_n_bits)?;
@@ -1168,7 +1159,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 .get(name)
                 .map(|s| num_vars_for(s.len()))
                 .ok_or_else(|| {
-                    anyhow::anyhow!("range check shred '{}' not found in witness shreds", name)
+                    anyhow::anyhow!("range check shred '{name}' not found in witness shreds")
                 })?;
             by_nv.entry(nv).or_default().push(name.clone());
         }
@@ -1183,10 +1174,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
     for (&(table_nv, node_nv), shred_names) in &grouped {
         anyhow::ensure!(
             table_nv < 63,
-            "table_nv {} is too large for range table construction",
-            table_nv
+            "table_nv {table_nv} is too large for range table construction"
         );
-        let table_shred_name = format!("range_table_{}", table_nv);
+        let table_shred_name = format!("range_table_{table_nv}");
         if !shreds.contains_key(&table_shred_name) {
             let table_data: Vec<i64> = (0..(1i64 << table_nv)).collect();
             shreds.insert(table_shred_name, table_data);
@@ -1197,10 +1187,10 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
         let dummy_count = target_count - real_count;
         let dummy_size = 1usize << node_nv;
         for i in 0..dummy_count {
-            let dummy_name = format!("range_dummy_t{}_n{}_{}", table_nv, node_nv, i);
+            let dummy_name = format!("range_dummy_t{table_nv}_n{node_nv}_{i}");
             let dummy_data = vec![0i64; dummy_size];
             let dummy_mults = compute_multiplicities(&dummy_data, 1 << table_nv)?;
-            shreds.insert(format!("{}_mults", dummy_name), dummy_mults);
+            shreds.insert(format!("{dummy_name}_mults"), dummy_mults);
             shreds.insert(dummy_name, dummy_data);
         }
     }
@@ -1321,11 +1311,7 @@ fn padded_matmul(
     b_cols: usize,
 ) -> anyhow::Result<Vec<i64>> {
     let alloc_size = a_rows.checked_mul(b_cols).ok_or_else(|| {
-        anyhow::anyhow!(
-            "padded_matmul: a_rows * b_cols overflow: {}x{}",
-            a_rows,
-            b_cols
-        )
+        anyhow::anyhow!("padded_matmul: a_rows * b_cols overflow: {a_rows}x{b_cols}")
     })?;
     let mut out = vec![0i64; alloc_size];
     for i in 0..a_rows {
@@ -1940,10 +1926,9 @@ pub fn prepare_public_shreds(
     for (&table_nv, _) in &rc_plan {
         anyhow::ensure!(
             table_nv < 63,
-            "table_nv {} is too large for range table construction",
-            table_nv
+            "table_nv {table_nv} is too large for range table construction"
         );
-        let table_shred_name = format!("range_table_{}", table_nv);
+        let table_shred_name = format!("range_table_{table_nv}");
         if !shreds.contains_key(&table_shred_name) {
             let table_data: Vec<i64> = (0..(1i64 << table_nv)).collect();
             shreds.insert(table_shred_name, table_data);

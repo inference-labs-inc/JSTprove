@@ -1,0 +1,14 @@
+[package]
+name = "serdes"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+halo2curves.workspace = true
+ethnum.workspace = true
+
+serdes_derive.workspace = true
+
+[dev-dependencies]
+rand.workspace = true

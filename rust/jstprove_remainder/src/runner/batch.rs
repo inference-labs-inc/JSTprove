@@ -53,7 +53,7 @@ pub fn run_batch_witness(
         match process_witness_job(&model, job, alpha, compress) {
             Ok(()) => result.succeeded += 1,
             Err(e) => {
-                let msg = format!("{:#}", e);
+                let msg = format!("{e:#}");
                 tracing::error!("job {} failed: {}", idx, msg);
                 result.errors.push((idx, msg));
                 result.failed += 1;
@@ -84,7 +84,7 @@ pub fn run_batch_prove(
         match process_prove_job(&model, job, compress) {
             Ok(()) => result.succeeded += 1,
             Err(e) => {
-                let msg = format!("{:#}", e);
+                let msg = format!("{e:#}");
                 tracing::error!("job {} failed: {}", idx, msg);
                 result.errors.push((idx, msg));
                 result.failed += 1;
@@ -111,7 +111,7 @@ pub fn run_batch_verify(model_path: &Path, manifest_path: &Path) -> Result<Batch
         match process_verify_job(&model, job) {
             Ok(()) => result.succeeded += 1,
             Err(e) => {
-                let msg = format!("{:#}", e);
+                let msg = format!("{e:#}");
                 tracing::error!("job {} failed: {}", idx, msg);
                 result.errors.push((idx, msg));
                 result.failed += 1;

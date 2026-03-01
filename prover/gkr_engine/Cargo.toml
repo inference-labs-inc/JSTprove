@@ -1,0 +1,26 @@
+[package]
+name = "gkr_engine"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arith.workspace = true
+babybear.workspace = true
+gf2.workspace = true
+gf2_128.workspace = true
+goldilocks.workspace = true
+mersenne31.workspace = true
+polynomials.workspace = true
+serdes.workspace = true
+
+thiserror.workspace = true
+rand.workspace = true
+itertools.workspace = true
+
+[dev-dependencies]
+ark-std.workspace = true
+
+[features]
+default = []
+recursion = []
+# grinding = [ "grinding" ]

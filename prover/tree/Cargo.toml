@@ -1,0 +1,22 @@
+[package]
+name = "tree"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arith.workspace = true
+serdes.workspace = true
+
+ark-std.workspace = true
+tiny-keccak.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+tynm.workspace = true
+
+gf2.workspace = true
+gf2_128.workspace = true
+
+[[bench]]
+name = "tree"
+harness = false

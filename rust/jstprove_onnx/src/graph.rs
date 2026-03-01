@@ -45,7 +45,7 @@ impl OpType {
             "Squeeze" => Ok(Self::Squeeze),
             "Unsqueeze" => Ok(Self::Unsqueeze),
             "Constant" => Ok(Self::Constant),
-            other => bail!("unsupported ONNX op: {}", other),
+            other => bail!("unsupported ONNX op: {other}"),
         }
     }
 

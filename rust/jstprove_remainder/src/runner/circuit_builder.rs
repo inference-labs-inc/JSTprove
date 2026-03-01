@@ -403,10 +403,7 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
         .get(declared_output)
         .copied()
         .ok_or_else(|| {
-            anyhow::anyhow!(
-                "declared output '{}' not found in tensor_num_vars",
-                declared_output
-            )
+            anyhow::anyhow!("declared output '{declared_output}' not found in tensor_num_vars")
         })?;
     let expected_name = "expected_output".to_string();
     let expected_node = builder.add_input_shred(&expected_name, output_vars, &public);
@@ -419,10 +416,7 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
     );
 
     let output_node = tensor_nodes.get(declared_output).ok_or_else(|| {
-        anyhow::anyhow!(
-            "declared output '{}' not found in tensor_nodes",
-            declared_output
-        )
+        anyhow::anyhow!("declared output '{declared_output}' not found in tensor_nodes")
     })?;
     let out_check = builder.add_sector(output_node.expr() - expected_node.expr());
     builder.set_output(&out_check);
@@ -488,7 +482,7 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
         let mut table_nodes: HashMap<usize, NodeRef<Fr>> = HashMap::new();
         for &(table_nv, _) in checks_by_key.keys() {
             if !table_nodes.contains_key(&table_nv) {
-                let table_shred_name = format!("range_table_{}", table_nv);
+                let table_shred_name = format!("range_table_{table_nv}");
                 let table_node = builder.add_input_shred(&table_shred_name, table_nv, &public);
                 manifest.insert(
                     table_shred_name,
@@ -512,7 +506,7 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
             let dummy_count = target_count - real_count;
 
             for i in 0..dummy_count {
-                let dummy_name = format!("range_dummy_t{}_n{}_{}", table_nv, node_nv, i);
+                let dummy_name = format!("range_dummy_t{table_nv}_n{node_nv}_{i}");
                 let dummy_node = builder.add_input_shred(&dummy_name, *node_nv, &committed);
                 manifest.insert(
                     dummy_name.clone(),
@@ -522,7 +516,7 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                     },
                 );
 
-                let dummy_mults_name = format!("{}_mults", dummy_name);
+                let dummy_mults_name = format!("{dummy_name}_mults");
                 let dummy_mults_node =
                     builder.add_input_shred(&dummy_mults_name, *table_nv, &committed);
                 manifest.insert(
@@ -1414,11 +1408,7 @@ pub fn pad_matrix(
     pad_cols: usize,
 ) -> anyhow::Result<Vec<i64>> {
     let expected = orig_rows.checked_mul(orig_cols).ok_or_else(|| {
-        anyhow::anyhow!(
-            "pad_matrix: orig_rows * orig_cols overflow: {}x{}",
-            orig_rows,
-            orig_cols
-        )
+        anyhow::anyhow!("pad_matrix: orig_rows * orig_cols overflow: {orig_rows}x{orig_cols}")
     })?;
     anyhow::ensure!(
         data.len() >= expected,
@@ -1430,18 +1420,10 @@ pub fn pad_matrix(
     );
     anyhow::ensure!(
         orig_rows <= pad_rows && orig_cols <= pad_cols,
-        "pad_matrix: orig {}x{} exceeds target {}x{}",
-        orig_rows,
-        orig_cols,
-        pad_rows,
-        pad_cols
+        "pad_matrix: orig {orig_rows}x{orig_cols} exceeds target {pad_rows}x{pad_cols}"
     );
     let alloc_size = pad_rows.checked_mul(pad_cols).ok_or_else(|| {
-        anyhow::anyhow!(
-            "pad_matrix: pad_rows * pad_cols overflow: {}x{}",
-            pad_rows,
-            pad_cols
-        )
+        anyhow::anyhow!("pad_matrix: pad_rows * pad_cols overflow: {pad_rows}x{pad_cols}")
     })?;
     let mut out = vec![0i64; alloc_size];
     for r in 0..orig_rows {

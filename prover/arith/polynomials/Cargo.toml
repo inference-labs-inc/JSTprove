@@ -1,0 +1,18 @@
+[package]
+name = "polynomials"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arith.workspace = true
+serdes.workspace = true
+
+ark-std.workspace = true
+criterion.workspace = true
+halo2curves.workspace = true
+rand.workspace = true
+itertools.workspace = true
+
+[[bench]]
+name = "mle_eval"
+harness = false

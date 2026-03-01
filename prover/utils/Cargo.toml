@@ -1,0 +1,11 @@
+[package]
+name = "utils"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+colored = { version = "2.0.0", default-features = false, optional = true}
+
+[features]
+default = []
+profile = [ "dep:colored" ]

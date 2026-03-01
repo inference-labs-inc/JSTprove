@@ -1,0 +1,19 @@
+[package]
+name = "goldilocks"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arith.workspace = true
+serdes.workspace = true
+
+ark-std.workspace = true
+ethnum.workspace = true
+rand.workspace = true
+
+[[bench]]
+name = "goldilocks"
+harness = false
+
+[dev-dependencies]
+criterion.workspace = true
