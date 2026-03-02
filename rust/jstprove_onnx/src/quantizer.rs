@@ -436,6 +436,8 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
             let m_in = get_input_bound(0);
             Ok(m_in.exp())
         }
+        // softmax outputs are in [0, 1] in the real domain.
+        OpType::Softmax => Ok(1.0),
         OpType::Constant => Ok(1.0),
     }
 }
@@ -449,6 +451,7 @@ fn is_range_check_op(op: OpType) -> bool {
             | OpType::Min
             | OpType::Clip
             | OpType::Exp
+            | OpType::Softmax
     )
 }
 

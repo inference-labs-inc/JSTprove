@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 
 use super::parser::{AttrValue, ParsedModel, TensorData};
 
@@ -25,6 +25,7 @@ pub enum OpType {
     Squeeze,
     Unsqueeze,
     Constant,
+    Softmax,
 }
 
 impl OpType {
@@ -49,6 +50,7 @@ impl OpType {
             "Squeeze" => Ok(Self::Squeeze),
             "Unsqueeze" => Ok(Self::Unsqueeze),
             "Constant" => Ok(Self::Constant),
+            "Softmax" => Ok(Self::Softmax),
             other => bail!("unsupported ONNX op: {other}"),
         }
     }
