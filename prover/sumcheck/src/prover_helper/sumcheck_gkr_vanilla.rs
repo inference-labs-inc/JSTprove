@@ -387,7 +387,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
         if std::mem::size_of::<F::Field>() != BN254_ELEM_SIZE {
             return false;
         }
-        if self.input_var_num < 14 {
+        if self.input_var_num < 18 {
             return false;
         }
         if !crate::metal_sumcheck::metal_available() {
@@ -568,7 +568,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
         if std::mem::size_of::<F::Field>() != BN254_ELEM_SIZE {
             return false;
         }
-        if self.input_var_num < 14 {
+        if self.input_var_num < 18 {
             return false;
         }
         if !crate::metal_sumcheck::metal_available() {
