@@ -585,7 +585,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
             let Some(ctx) = ctx_ref.as_mut() else {
                 return false;
             };
-            if ctx.pool.max_input_size() < total {
+            if ctx.pool.max_input_size() < total || ctx.pool.max_input_size() < output_size {
                 return false;
             }
 
