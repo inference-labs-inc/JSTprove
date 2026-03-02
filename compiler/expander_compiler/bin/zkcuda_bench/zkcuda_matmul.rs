@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::all)]
 #![allow(clippy::needless_range_loop)]
 #![allow(clippy::ptr_arg)]
 

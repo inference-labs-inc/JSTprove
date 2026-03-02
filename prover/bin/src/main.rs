@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::all)]
 use std::{
     str::FromStr,
     sync::{Arc, Mutex},

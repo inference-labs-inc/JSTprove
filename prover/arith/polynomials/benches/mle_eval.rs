@@ -1,4 +1,4 @@
-// this module benchmarks the performance of different field operations
+#![allow(clippy::all)]
 
 use std::ops::Range;
 

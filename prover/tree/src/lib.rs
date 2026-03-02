@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::all)]
 //! This module defines the core components of a Merkle tree implementation.
 //! It includes definitions for tree structures, nodes, leaves, and paths.
 

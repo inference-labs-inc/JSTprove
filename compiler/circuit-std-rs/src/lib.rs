@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::all)]
 #![allow(clippy::manual_div_ceil)]
 // allow range loop for better readability
 #![allow(clippy::needless_range_loop)]

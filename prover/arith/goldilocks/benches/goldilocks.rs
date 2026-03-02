@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 use arith::{bench_ext_field, bench_field};
 use criterion::{criterion_group, criterion_main, Criterion};
 use goldilocks::{Goldilocks, GoldilocksExt2, GoldilocksExt2x8, Goldilocksx8};

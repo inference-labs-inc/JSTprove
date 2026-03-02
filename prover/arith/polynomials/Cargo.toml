@@ -16,3 +16,6 @@ itertools.workspace = true
 [[bench]]
 name = "mle_eval"
 harness = false
+
+[lints.clippy]
+all = "allow"

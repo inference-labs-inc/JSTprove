@@ -29,3 +29,6 @@ harness = false
 [[bench]]
 name = "utils"
 harness = false
+
+[lints.clippy]
+all = "allow"

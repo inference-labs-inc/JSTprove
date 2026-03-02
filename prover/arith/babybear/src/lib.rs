@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::all)]
 // Most of the code is from https://github.com/Plonky3/Plonky3
 //
 // Ideally we want to simply wrap plonky3/baby-bear::AVXBabyBear

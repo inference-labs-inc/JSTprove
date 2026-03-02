@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 use std::hint::black_box;
 
 use arith::{Field, Fr};

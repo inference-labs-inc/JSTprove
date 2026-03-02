@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 use arith::{bench_ext_field, bench_field};
 use babybear::{BabyBear, BabyBearExt3, BabyBearExt3x16, BabyBearx16};
 use criterion::{criterion_group, criterion_main, Criterion};

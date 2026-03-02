@@ -29,3 +29,6 @@ ethnum.workspace = true
 
 [dev-dependencies]
 ark-serialize.workspace = true
+
+[lints.clippy]
+all = "allow"

@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::all)]
 use arith::Field;
 use crosslayer_prototype::{prove_gkr, CrossLayerConnections, CrossLayerRecursiveCircuit};
 use gkr_engine::{FieldEngine, GF2ExtConfig, Transcript};

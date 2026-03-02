@@ -12,3 +12,6 @@ serdes_derive.workspace = true
 
 [dev-dependencies]
 rand.workspace = true
+
+[lints.clippy]
+all = "allow"

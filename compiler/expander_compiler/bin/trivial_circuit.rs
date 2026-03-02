@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::all)]
 //! This module generate a trivial GKR layered circuit for test purpose.
 //! Arguments:
 //! - field: field identifier

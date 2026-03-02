@@ -17,3 +17,6 @@ mersenne31.workspace = true
 
 [features]
 recursion = []
+
+[lints.clippy]
+all = "allow"

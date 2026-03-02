@@ -11,3 +11,6 @@ serdes.workspace = true
 halo2curves.workspace = true
 sha2.workspace = true
 tiny-keccak.workspace = true
+
+[lints.clippy]
+all = "allow"

@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 use arith::bench_field;
 use criterion::{criterion_group, criterion_main, Criterion};
 use gf2::GF2;

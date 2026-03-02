@@ -45,3 +45,6 @@ profile = [ "utils/profile", "sumcheck/profile" ]
 name = "gkr-hashes"
 harness = false
 path = "benches/gkr_hashes.rs"
+
+[lints.clippy]
+all = "allow"

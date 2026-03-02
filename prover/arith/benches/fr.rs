@@ -1,4 +1,4 @@
-// this module benchmarks the performance of different field operations
+#![allow(clippy::all)]
 
 use arith::bench_field;
 use criterion::{criterion_group, criterion_main, Criterion};

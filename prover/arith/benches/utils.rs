@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 use arith::bit_reverse;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 

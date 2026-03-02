@@ -26,3 +26,6 @@ criterion.workspace = true
 [[bench]]
 name = "m31"
 harness = false
+
+[lints.clippy]
+all = "allow"

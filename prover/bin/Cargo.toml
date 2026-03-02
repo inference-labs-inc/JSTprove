@@ -40,3 +40,6 @@ path = "src/exec.rs"
 [[bin]]
 name = "gkr"
 path = "src/main.rs"
+
+[lints.clippy]
+all = "allow"

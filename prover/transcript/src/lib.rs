@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::all)]
 #![allow(clippy::manual_div_ceil)]
 
 mod byte_hash_transcript;

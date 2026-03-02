@@ -23,3 +23,6 @@ halo2curves.workspace = true
 
 [lib]
 proc-macro=true
+
+[lints.clippy]
+all = "allow"

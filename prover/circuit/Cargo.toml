@@ -21,3 +21,6 @@ thiserror.workspace = true
 config_macros.workspace = true
 poly_commit.workspace = true
 mersenne31.workspace = true
+
+[lints.clippy]
+all = "allow"

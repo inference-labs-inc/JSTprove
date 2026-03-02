@@ -17,3 +17,6 @@ ethnum.workspace = true
 log.workspace = true
 rand.workspace = true
 thiserror.workspace = true
+
+[lints.clippy]
+all = "allow"

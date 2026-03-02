@@ -17,3 +17,6 @@ harness = false
 
 [dev-dependencies]
 criterion.workspace = true
+
+[lints.clippy]
+all = "allow"

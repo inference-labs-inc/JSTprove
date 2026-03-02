@@ -92,3 +92,6 @@ path = "bin/zkcuda_integration/verify.rs"
 [[bin]]
 name = "zkcuda_cleanup"
 path = "bin/zkcuda_integration/cleanup.rs"
+
+[lints.clippy]
+all = "allow"

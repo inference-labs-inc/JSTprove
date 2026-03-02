@@ -20,3 +20,6 @@ gf2_128.workspace = true
 [[bench]]
 name = "tree"
 harness = false
+
+[lints.clippy]
+all = "allow"

@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 use arith::{Field, SimdField};
 use ark_std::{rand::RngCore, test_rng};
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};

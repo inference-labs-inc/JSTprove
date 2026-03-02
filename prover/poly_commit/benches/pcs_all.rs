@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 use arith::{ExtensionField, Field, Fr};
 use ark_std::test_rng;
 use criterion::black_box;

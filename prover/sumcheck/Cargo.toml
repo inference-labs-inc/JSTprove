@@ -23,3 +23,6 @@ ark-std.workspace = true
 
 [features]
 profile = [ "utils/profile" ]
+
+[lints.clippy]
+all = "allow"

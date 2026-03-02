@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 use arith::{bench_ext_field, bench_fft, bench_field};
 use criterion::{criterion_group, criterion_main, Criterion};
 use mersenne31::{M31Ext3, M31Ext3x16, M31Ext6, M31x16, M31};

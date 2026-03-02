@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::all)]
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{

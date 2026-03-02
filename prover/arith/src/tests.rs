@@ -15,6 +15,7 @@ mod field;
 
 #[cfg(target_arch = "x86_64")]
 #[test]
+#[allow(clippy::missing_transmute_annotations)]
 fn test_mm256_const_init() {
     use std::arch::x86_64::*;
     use std::mem::transmute;
@@ -31,6 +32,7 @@ fn test_mm256_const_init() {
 
 #[cfg(target_arch = "aarch64")]
 #[test]
+#[allow(clippy::missing_transmute_annotations)]
 fn test_uint32x4_const_init() {
     use std::arch::aarch64::*;
     use std::mem::transmute;

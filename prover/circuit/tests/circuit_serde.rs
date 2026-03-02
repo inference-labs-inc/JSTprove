@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 use circuit::Circuit;
 use config_macros::declare_gkr_config;
 use gkr_engine::{

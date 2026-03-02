@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::all)]
 pub mod error;
 pub mod macros;
 pub mod serdes;

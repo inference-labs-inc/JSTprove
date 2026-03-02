@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::all)]
 mod circuit_def;
 use circuit_def::gen_computation_graph_and_witness;
 use expander_compiler::{

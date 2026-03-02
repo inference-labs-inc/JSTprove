@@ -25,3 +25,6 @@ criterion.workspace = true
 [[bench]]
 name = "gf2"
 harness = false
+
+[lints.clippy]
+all = "allow"

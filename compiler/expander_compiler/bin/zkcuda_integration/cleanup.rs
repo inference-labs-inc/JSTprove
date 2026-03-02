@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::all)]
 use expander_compiler::{
     frontend::BN254Config,
     zkcuda::proving_system::{

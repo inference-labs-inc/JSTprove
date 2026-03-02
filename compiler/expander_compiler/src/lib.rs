@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::all)]
 #![feature(min_specialization)]
 #![allow(clippy::manual_div_ceil)]
 

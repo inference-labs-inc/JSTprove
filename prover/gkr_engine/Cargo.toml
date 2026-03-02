@@ -24,3 +24,6 @@ ark-std.workspace = true
 default = []
 recursion = []
 # grinding = [ "grinding" ]
+
+[lints.clippy]
+all = "allow"

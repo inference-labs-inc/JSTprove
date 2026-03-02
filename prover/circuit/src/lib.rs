@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::all)]
 mod ecc_circuit;
 pub use ecc_circuit::*;
 

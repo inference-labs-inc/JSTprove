@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::all)]
 #![allow(unused)]
 mod zkcuda_matmul;
 use expander_compiler::{

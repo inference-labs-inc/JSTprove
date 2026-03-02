@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic)]
+#![allow(clippy::pedantic, clippy::all)]
 //! Development environment setup
 //! Download precomputed circuit and witness files.
 //! (Those files can be generated and double checked with `ExpanderCompilerCollection`)
