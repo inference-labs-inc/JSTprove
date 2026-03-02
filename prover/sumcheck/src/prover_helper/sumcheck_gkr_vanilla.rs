@@ -376,9 +376,15 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
 }
 
 #[cfg(all(target_os = "macos", feature = "metal"))]
+enum MetalRoundTarget {
+    Rx,
+    Ry,
+}
+
+#[cfg(all(target_os = "macos", feature = "metal"))]
 impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
     fn challenge_to_limbs(v: &[F::ChallengeField]) -> Vec<[u64; 4]> {
-        assert_eq!(
+        debug_assert_eq!(
             std::mem::size_of::<F::ChallengeField>(),
             32,
             "ChallengeField must be 32 bytes for [u64; 4] transmute"
@@ -397,7 +403,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
         phase2_coef: Option<F::ChallengeField>,
         transcript: &mut T,
         mpi_config: &impl MPIEngine,
-        push_to: &str,
+        target: MetalRoundTarget,
     ) {
         use metal_accel::{metal_fold_all, metal_poly_eval, BN254_ELEM_SIZE};
 
@@ -407,6 +413,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
 
         for var_idx in 0..input_var_num {
             let eval_size = 1usize << (input_var_num - var_idx - 1);
+            let eval_size_u32: u32 = eval_size.try_into().expect("eval_size exceeds u32::MAX");
 
             let f_src = if f_ping {
                 &ctx.pool.v_evals
@@ -431,7 +438,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
                 ge_src,
                 &ctx.pool.block_results,
                 &ctx.pool.output,
-                eval_size as u32,
+                eval_size_u32,
             );
 
             let p0: F::Field = unsafe { std::mem::transmute_copy(&raw_evals[0]) };
@@ -457,9 +464,9 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
 
             let r =
                 crate::utils::transcript_io::<F::ChallengeField, T>(mpi_config, &evals, transcript);
-            match push_to {
-                "rx" => self.rx.push(r),
-                _ => self.ry.push(r),
+            match target {
+                MetalRoundTarget::Rx => self.rx.push(r),
+                MetalRoundTarget::Ry => self.ry.push(r),
             }
 
             let r_limbs: [u64; 4] = unsafe { std::mem::transmute_copy(&r) };
@@ -490,7 +497,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
                 ge_src,
                 ge_dst,
                 &ctx.pool.challenge,
-                eval_size as u32,
+                eval_size_u32,
             );
 
             f_ping = !f_ping;
@@ -562,6 +569,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
         if self.layer.input_vals.len() < total
             || self.sp.hg_evals.len() < total
             || self.sp.gate_exists_5.len() < total
+            || self.sp.eq_evals_at_rz0.len() < output_size
         {
             return false;
         }
@@ -576,7 +584,9 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
                 return false;
             }
 
-            assert_eq!(self.challenge.rz_1.is_none(), self.alpha.is_none());
+            if self.challenge.rz_1.is_none() != self.alpha.is_none() {
+                return false;
+            }
 
             if self.is_output_layer || self.challenge.rz_1.is_none() {
                 let rz0_limbs = Self::challenge_to_limbs(&self.challenge.rz_0);
@@ -598,6 +608,9 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
                     );
                 }
             } else {
+                if self.sp.eq_evals_at_rx.len() < output_size {
+                    return false;
+                }
                 let alpha = self.alpha.unwrap();
                 let alpha_limbs: [u64; 4] = unsafe { std::mem::transmute_copy(&alpha) };
                 let rz1_limbs = Self::challenge_to_limbs(self.challenge.rz_1.as_ref().unwrap());
@@ -668,7 +681,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
                 None,
                 transcript,
                 mpi_config,
-                "rx",
+                MetalRoundTarget::Rx,
             );
             true
         })
@@ -704,6 +717,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
         if self.layer.input_vals.len() < total
             || self.sp.hg_evals.len() < total
             || self.sp.gate_exists_5.len() < total
+            || self.sp.eq_evals_at_rx.len() < total
         {
             return false;
         }
@@ -802,7 +816,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
                 Some(phase2_coef),
                 transcript,
                 mpi_config,
-                "ry",
+                MetalRoundTarget::Ry,
             );
             true
         })
