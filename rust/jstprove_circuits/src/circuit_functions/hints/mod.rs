@@ -6,6 +6,9 @@ pub use bits::unconstrained_to_bits;
 pub mod exp;
 pub use exp::exp_hint;
 
+pub mod sigmoid;
+pub use sigmoid::sigmoid_hint;
+
 pub mod softmax;
 pub use softmax::softmax_hint;
 
@@ -26,6 +29,7 @@ pub fn build_logup_hint_registry<F: CompilerField>() -> HintRegistry<F> {
     registry.register("myhint.querycountbykeyhint", query_count_by_key_hint::<F>);
     registry.register("myhint.rangeproofhint", rangeproof_hint::<F>);
     registry.register(exp::EXP_HINT_KEY, exp_hint::<F>);
+    registry.register(sigmoid::SIGMOID_HINT_KEY, sigmoid_hint::<F>);
     registry.register(softmax::SOFTMAX_HINT_KEY, softmax_hint::<F>);
 
     registry

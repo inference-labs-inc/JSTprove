@@ -26,6 +26,7 @@ pub enum OpType {
     Unsqueeze,
     Constant,
     Softmax,
+    Sigmoid,
 }
 
 impl OpType {
@@ -51,6 +52,7 @@ impl OpType {
             "Unsqueeze" => Ok(Self::Unsqueeze),
             "Constant" => Ok(Self::Constant),
             "Softmax" => Ok(Self::Softmax),
+            "Sigmoid" => Ok(Self::Sigmoid),
             other => bail!("unsupported ONNX op: {other}"),
         }
     }

@@ -21,6 +21,7 @@ use crate::circuit_functions::layers::gemm::GemmLayer;
 use crate::circuit_functions::layers::maxpool::MaxPoolLayer;
 use crate::circuit_functions::layers::relu::ReluLayer;
 use crate::circuit_functions::layers::reshape::ReshapeLayer;
+use crate::circuit_functions::layers::sigmoid::SigmoidLayer;
 use crate::circuit_functions::layers::softmax::SoftmaxLayer;
 use crate::circuit_functions::layers::squeeze::SqueezeLayer;
 use crate::circuit_functions::layers::unsqueeze::UnsqueezeLayer;
@@ -142,6 +143,7 @@ define_layers! {
     Min       => { name: "Min", builder: BinaryCompareLayer::build },
     ReLU      => { name: "ReLU", builder: ReluLayer::build, aliases: ["Relu"] },
     Reshape   => { name: "Reshape", builder: ReshapeLayer::build },
+    Sigmoid   => { name: "Sigmoid", builder: SigmoidLayer::build },
     Softmax   => { name: "Softmax", builder: SoftmaxLayer::build },
     Squeeze   => { name: "Squeeze", builder: SqueezeLayer::build },
     Unsqueeze => { name: "Unsqueeze", builder: UnsqueezeLayer::build },
@@ -165,6 +167,7 @@ mod tests {
             "Reshape",
             "MaxPool",
             "Clip",
+            "Sigmoid",
             "Softmax",
             "Squeeze",
             "Unsqueeze",
@@ -223,6 +226,7 @@ mod tests {
             "Reshape",
             "MaxPool",
             "Clip",
+            "Sigmoid",
             "Softmax",
             "Squeeze",
             "Unsqueeze",
