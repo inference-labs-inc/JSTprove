@@ -595,6 +595,9 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
 
             if self.is_output_layer || self.challenge.rz_1.is_none() {
                 let rz0_limbs = Self::challenge_to_limbs(&self.challenge.rz_0);
+                if rz0_limbs.len() >= 63 {
+                    return false;
+                }
                 let one_limbs: [u64; 4] =
                     unsafe { std::mem::transmute_copy(&F::ChallengeField::ONE) };
                 metal_eq_eval_at(
@@ -619,6 +622,9 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
                 let alpha = self.alpha.unwrap();
                 let alpha_limbs: [u64; 4] = unsafe { std::mem::transmute_copy(&alpha) };
                 let rz1_limbs = Self::challenge_to_limbs(self.challenge.rz_1.as_ref().unwrap());
+                if rz1_limbs.len() >= 63 || rz1_limbs.len() != self.challenge.rz_0.len() {
+                    return false;
+                }
                 metal_eq_eval_at(
                     &ctx.accel,
                     &rz1_limbs,
@@ -766,8 +772,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
             }
 
             let rx_limbs = Self::challenge_to_limbs(&self.rx);
-            let eq_rx_len = 1usize << rx_limbs.len();
-            if eq_rx_len != total {
+            if rx_limbs.len() != input_var_num || rx_limbs.len() >= 63 {
                 return false;
             }
             let one_limbs: [u64; 4] = unsafe { std::mem::transmute_copy(&F::ChallengeField::ONE) };
