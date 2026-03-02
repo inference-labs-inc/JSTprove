@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  RUST_NIGHTLY: nightly-2025-05-17
+  RUST_NIGHTLY: nightly-2025-03-27
 
 jobs:
   formatting-and-linting:
