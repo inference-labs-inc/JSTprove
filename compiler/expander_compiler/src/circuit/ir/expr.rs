@@ -1,7 +1,8 @@
 use std::{
     fmt,
+    hash::{Hash, Hasher},
     io::{Read, Write},
-    ops::{Deref, DerefMut},
+    ops::Deref,
 };
 
 use serdes::{ExpSerde, SerdeResult};
@@ -203,9 +204,49 @@ impl<C: Config> fmt::Display for Term<C> {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone)]
 pub struct Expression<C: Config> {
     terms: Vec<Term<C>>,
+    hash_cache: u64,
+}
+
+fn hash_terms<C: Config>(terms: &[Term<C>]) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    terms.hash(&mut hasher);
+    hasher.finish()
+}
+
+impl<C: Config> Expression<C> {
+    fn with_terms(terms: Vec<Term<C>>) -> Self {
+        let hash_cache = hash_terms(&terms);
+        Expression { terms, hash_cache }
+    }
+}
+
+impl<C: Config> Hash for Expression<C> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.hash_cache.hash(state);
+    }
+}
+
+impl<C: Config> PartialEq for Expression<C> {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash_cache == other.hash_cache && self.terms == other.terms
+    }
+}
+
+impl<C: Config> Eq for Expression<C> {}
+
+impl<C: Config> PartialOrd for Expression<C> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<C: Config> Ord for Expression<C> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.terms.cmp(&other.terms)
+    }
 }
 
 impl<C: Config> Deref for Expression<C> {
@@ -215,17 +256,9 @@ impl<C: Config> Deref for Expression<C> {
     }
 }
 
-impl<C: Config> DerefMut for Expression<C> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.terms
-    }
-}
-
 impl<C: Config> Default for Expression<C> {
     fn default() -> Self {
-        Expression {
-            terms: vec![Term::default()],
-        }
+        Self::with_terms(vec![Term::default()])
     }
 }
 
@@ -262,27 +295,19 @@ fn compress_identical_terms<C: Config>(terms: &mut Vec<Term<C>>) {
 
 impl<C: Config> Expression<C> {
     pub fn new_const(value: CircuitField<C>) -> Self {
-        Expression {
-            terms: vec![Term::new_const(value)],
-        }
+        Self::with_terms(vec![Term::new_const(value)])
     }
     pub fn new_linear(value: CircuitField<C>, index: usize) -> Self {
-        Expression {
-            terms: vec![Term::new_linear(value, index)],
-        }
+        Self::with_terms(vec![Term::new_linear(value, index)])
     }
     pub fn new_quad(value: CircuitField<C>, index1: usize, index2: usize) -> Self {
-        Expression {
-            terms: vec![Term::new_quad(value, index1, index2)],
-        }
+        Self::with_terms(vec![Term::new_quad(value, index1, index2)])
     }
     pub fn new_custom(value: CircuitField<C>, gate_type: usize, inputs: Vec<usize>) -> Self {
-        Expression {
-            terms: vec![Term {
-                coef: value,
-                vars: VarSpec::Custom { gate_type, inputs },
-            }],
-        }
+        Self::with_terms(vec![Term {
+            coef: value,
+            vars: VarSpec::Custom { gate_type, inputs },
+        }])
     }
     pub fn from_terms(mut terms: Vec<Term<C>>) -> Self {
         for term in terms.iter_mut() {
@@ -290,7 +315,7 @@ impl<C: Config> Expression<C> {
         }
         terms.sort();
         compress_identical_terms(&mut terms);
-        Expression { terms }
+        Self::with_terms(terms)
     }
     pub fn from_terms_sorted(mut terms: Vec<Term<C>>) -> Self {
         if terms.is_empty() {
@@ -300,10 +325,13 @@ impl<C: Config> Expression<C> {
             assert!(term.is_normalized());
         }
         assert!(terms.windows(2).all(|w| w[0].vars < w[1].vars));
-        Expression { terms }
+        Self::with_terms(terms)
     }
     pub fn invalid() -> Self {
-        Expression { terms: vec![] }
+        Expression {
+            terms: vec![],
+            hash_cache: 0,
+        }
     }
     pub fn get_vars<R: std::iter::FromIterator<usize>>(&self) -> R {
         self.iter()
@@ -324,7 +352,7 @@ impl<C: Config> Expression<C> {
                 vars: term.vars.replace_vars(&f),
             })
             .collect();
-        Expression { terms }
+        Self::with_terms(terms)
     }
     pub fn degree(&self) -> usize {
         let mut has_linear = false;

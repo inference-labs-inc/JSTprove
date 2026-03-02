@@ -3,10 +3,7 @@ use std::time::Instant;
 
 use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
-use jstprove_circuits::onnx::{
-    compile_and_witness_bn254_direct, compile_bn254, prove_bn254, prove_bn254_direct, verify_bn254,
-    verify_bn254_direct, witness_bn254_from_f64,
-};
+use jstprove_circuits::onnx::{compile_bn254, prove_bn254, verify_bn254, witness_bn254_from_f64};
 use jstprove_circuits::runner::main_runner::read_circuit_msgpack;
 
 fn fmt(ms: f64) -> String {
@@ -62,30 +59,9 @@ fn main() {
 
     println!("model: lenet.onnx\n{}", "=".repeat(55));
 
-    println!("\n--- DirectBuilder ---");
-    let rss0 = rss_bytes();
-    let t = Instant::now();
-    let (mut circ, wit) = compile_and_witness_bn254_direct(&params, &activations, &[]).unwrap();
-    let dt = t.elapsed().as_secs_f64() * 1000.0;
-    let rss1 = rss_bytes();
-    println!(
-        "compile+witness: {:>10}  peak RSS: {:.1} MiB (delta: {:.1} MiB)",
-        fmt(dt),
-        rss1 as f64 / 1048576.0,
-        (rss1.saturating_sub(rss0)) as f64 / 1048576.0
-    );
-
-    let t = Instant::now();
-    let proof2 = prove_bn254_direct(&mut circ, &wit).unwrap();
-    println!("prove:   {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
-
-    let t = Instant::now();
-    assert!(verify_bn254_direct(&mut circ, &wit, &proof2).unwrap());
-    println!("verify:  {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
-
     println!("\n--- ECC IR pipeline ---");
     let t = Instant::now();
-    compile_bn254(circuit_path_str, false, Some(params.clone()), false).unwrap();
+    compile_bn254(circuit_path_str, false, Some(params.clone())).unwrap();
     println!("compile: {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
 
     let bundle = read_circuit_msgpack(circuit_path_str).unwrap();
@@ -101,8 +77,8 @@ fn main() {
     .unwrap();
     println!("witness: {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
 
-    let rss2 = rss_bytes();
-    println!("peak RSS after ECC: {:.1} MiB", rss2 as f64 / 1048576.0);
+    let rss = rss_bytes();
+    println!("peak RSS: {:.1} MiB", rss as f64 / 1048576.0);
 
     let t = Instant::now();
     let proof = prove_bn254(&bundle.circuit, &wb.witness, false).unwrap();

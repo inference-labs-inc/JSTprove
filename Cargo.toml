@@ -27,7 +27,6 @@ members = [
     "compiler/expander_compiler/macros",
     "compiler/circuit-std-rs",
     "rust/jstprove_circuits",
-    "rust/jstprove_direct_builder",
     "rust/jstprove_io",
     "rust/jstprove_onnx",
     "rust/jstprove_remainder",

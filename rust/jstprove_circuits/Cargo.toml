@@ -30,7 +30,6 @@ num-traits = "0.2"
 jstprove-io = { path = "../jstprove_io" }
 jstprove-onnx = { path = "../jstprove_onnx" }
 jstprove-remainder = { path = "../jstprove_remainder", optional = true }
-jstprove-direct-builder = { path = "../jstprove_direct_builder" }
 arith.workspace = true
 tempfile = "3"
 tracing = "0.1"
