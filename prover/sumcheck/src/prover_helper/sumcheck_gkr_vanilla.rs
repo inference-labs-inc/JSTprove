@@ -394,6 +394,47 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
             .collect()
     }
 
+    fn process_poly_eval_result<T: Transcript>(
+        &mut self,
+        raw_evals: &[[u64; 4]; 3],
+        eq_simd: &[F::ChallengeField],
+        eq_mpi: &[F::ChallengeField],
+        phase2_coef: Option<F::ChallengeField>,
+        transcript: &mut T,
+        mpi_config: &impl MPIEngine,
+        target: &MetalRoundTarget,
+    ) -> Option<[u64; 4]> {
+        let p0: F::Field = unsafe { std::mem::transmute_copy(&raw_evals[0]) };
+        let p1: F::Field = unsafe { std::mem::transmute_copy(&raw_evals[1]) };
+        let p2_raw: F::Field = unsafe { std::mem::transmute_copy(&raw_evals[2]) };
+        let p2 = p1.mul_by_6() + p0.mul_by_3() - p2_raw.double();
+
+        let evals_arr = [p0, p1, p2];
+        let local_vals: Vec<F::ChallengeField> = evals_arr
+            .iter()
+            .map(|p| unpack_and_combine(p, eq_simd))
+            .collect();
+        let Ok(mut evals): Result<[F::ChallengeField; 3], _> =
+            mpi_config.coef_combine_vec(&local_vals, eq_mpi).try_into()
+        else {
+            return None;
+        };
+
+        if let Some(coef) = phase2_coef {
+            evals[0] = evals[0] * coef;
+            evals[1] = evals[1] * coef;
+            evals[2] = evals[2] * coef;
+        }
+
+        let r = crate::utils::transcript_io::<F::ChallengeField, T>(mpi_config, &evals, transcript);
+        match target {
+            MetalRoundTarget::Rx => self.rx.push(r),
+            MetalRoundTarget::Ry => self.ry.push(r),
+        }
+
+        Some(unsafe { std::mem::transmute_copy(&r) })
+    }
+
     fn metal_fold_loop<T: Transcript>(
         &mut self,
         ctx: &crate::metal_sumcheck::MetalSumcheckCtx,
@@ -405,17 +446,50 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
         mpi_config: &impl MPIEngine,
         target: MetalRoundTarget,
     ) -> bool {
-        use metal_accel::{metal_fold_all, metal_poly_eval, BN254_ELEM_SIZE};
+        use metal_accel::{
+            metal_fold_all, metal_fold_and_poly_eval, metal_poly_eval, BN254_ELEM_SIZE,
+        };
+
+        if input_var_num == 0 {
+            return true;
+        }
 
         let mut f_ping = true;
         let mut hg_ping = true;
         let mut ge_ping = true;
+
+        let Ok(first_eval_size_u32) = u32::try_from(1usize << (input_var_num - 1)) else {
+            return false;
+        };
+
+        let mut raw_evals = metal_poly_eval(
+            &ctx.accel,
+            &ctx.pool.v_evals,
+            &ctx.pool.hg_evals,
+            &ctx.pool.gate_exists,
+            &ctx.pool.block_results,
+            &ctx.pool.output,
+            first_eval_size_u32,
+        );
 
         for var_idx in 0..input_var_num {
             let eval_size = 1usize << (input_var_num - var_idx - 1);
             let Ok(eval_size_u32) = u32::try_from(eval_size) else {
                 return false;
             };
+
+            let Some(r_limbs) = self.process_poly_eval_result(
+                &raw_evals,
+                eq_simd,
+                eq_mpi,
+                phase2_coef,
+                transcript,
+                mpi_config,
+                &target,
+            ) else {
+                return false;
+            };
+            ctx.pool.write_challenge(&r_limbs);
 
             let f_src = if f_ping {
                 &ctx.pool.v_evals
@@ -432,49 +506,6 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
             } else {
                 &ctx.pool.fold_ge_scratch
             };
-
-            let raw_evals = metal_poly_eval(
-                &ctx.accel,
-                f_src,
-                hg_src,
-                ge_src,
-                &ctx.pool.block_results,
-                &ctx.pool.output,
-                eval_size_u32,
-            );
-
-            let p0: F::Field = unsafe { std::mem::transmute_copy(&raw_evals[0]) };
-            let p1: F::Field = unsafe { std::mem::transmute_copy(&raw_evals[1]) };
-            let p2_raw: F::Field = unsafe { std::mem::transmute_copy(&raw_evals[2]) };
-            let p2 = p1.mul_by_6() + p0.mul_by_3() - p2_raw.double();
-
-            let evals_arr = [p0, p1, p2];
-            let local_vals: Vec<F::ChallengeField> = evals_arr
-                .iter()
-                .map(|p| unpack_and_combine(p, eq_simd))
-                .collect();
-            let Ok(mut evals): Result<[F::ChallengeField; 3], _> =
-                mpi_config.coef_combine_vec(&local_vals, eq_mpi).try_into()
-            else {
-                return false;
-            };
-
-            if let Some(coef) = phase2_coef {
-                evals[0] = evals[0] * coef;
-                evals[1] = evals[1] * coef;
-                evals[2] = evals[2] * coef;
-            }
-
-            let r =
-                crate::utils::transcript_io::<F::ChallengeField, T>(mpi_config, &evals, transcript);
-            match target {
-                MetalRoundTarget::Rx => self.rx.push(r),
-                MetalRoundTarget::Ry => self.ry.push(r),
-            }
-
-            let r_limbs: [u64; 4] = unsafe { std::mem::transmute_copy(&r) };
-            ctx.pool.write_challenge(&r_limbs);
-
             let f_dst = if f_ping {
                 &ctx.pool.fold_scratch
             } else {
@@ -491,21 +522,62 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
                 &ctx.pool.gate_exists
             };
 
-            metal_fold_all(
-                &ctx.accel,
-                f_src,
-                f_dst,
-                hg_src,
-                hg_dst,
-                ge_src,
-                ge_dst,
-                &ctx.pool.challenge,
-                eval_size_u32,
-            );
-
             f_ping = !f_ping;
             hg_ping = !hg_ping;
             ge_ping = !ge_ping;
+
+            if var_idx < input_var_num - 1 {
+                let next_eval_size = 1usize << (input_var_num - var_idx - 2);
+                let Ok(next_eval_size_u32) = u32::try_from(next_eval_size) else {
+                    return false;
+                };
+
+                let next_f_src = if f_ping {
+                    &ctx.pool.v_evals
+                } else {
+                    &ctx.pool.fold_scratch
+                };
+                let next_hg_src = if hg_ping {
+                    &ctx.pool.hg_evals
+                } else {
+                    &ctx.pool.hg_fold_scratch
+                };
+                let next_ge_src = if ge_ping {
+                    &ctx.pool.gate_exists
+                } else {
+                    &ctx.pool.fold_ge_scratch
+                };
+
+                raw_evals = metal_fold_and_poly_eval(
+                    &ctx.accel,
+                    f_src,
+                    f_dst,
+                    hg_src,
+                    hg_dst,
+                    ge_src,
+                    ge_dst,
+                    &ctx.pool.challenge,
+                    eval_size_u32,
+                    next_f_src,
+                    next_hg_src,
+                    next_ge_src,
+                    &ctx.pool.block_results,
+                    &ctx.pool.output,
+                    next_eval_size_u32,
+                );
+            } else {
+                metal_fold_all(
+                    &ctx.accel,
+                    f_src,
+                    f_dst,
+                    hg_src,
+                    hg_dst,
+                    ge_src,
+                    ge_dst,
+                    &ctx.pool.challenge,
+                    eval_size_u32,
+                );
+            }
         }
 
         let f_final = if f_ping {

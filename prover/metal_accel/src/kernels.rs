@@ -254,6 +254,91 @@ pub fn metal_fold_all(
     cmd_buffer.wait_until_completed();
 }
 
+pub fn metal_fold_and_poly_eval(
+    accel: &MetalAccelerator,
+    bk_f_in: &metal::BufferRef,
+    bk_f_out: &metal::BufferRef,
+    bk_hg_in: &metal::BufferRef,
+    bk_hg_out: &metal::BufferRef,
+    gate_exists_in: &metal::BufferRef,
+    gate_exists_out: &metal::BufferRef,
+    challenge: &metal::BufferRef,
+    fold_eval_size: u32,
+    pe_bk_f: &metal::BufferRef,
+    pe_bk_hg: &metal::BufferRef,
+    pe_gate_exists: &metal::BufferRef,
+    block_results: &metal::BufferRef,
+    output: &metal::BufferRef,
+    pe_eval_size: u32,
+) -> [[u64; 4]; 3] {
+    let cmd_buffer = accel.queue.new_command_buffer();
+
+    let fold_eval_const = write_u32_constant(&accel.device, fold_eval_size);
+    {
+        let encoder = cmd_buffer.new_compute_command_encoder();
+        let tg_size = THREADGROUP_SIZE.min(fold_eval_size as u64);
+        let grid = MTLSize::new(fold_eval_size as u64, 1, 1);
+        let tg = MTLSize::new(tg_size, 1, 1);
+
+        encoder.set_compute_pipeline_state(accel.pipeline("fold_f"));
+        encoder.set_buffer(0, Some(bk_f_in), 0);
+        encoder.set_buffer(1, Some(bk_f_out), 0);
+        encoder.set_buffer(2, Some(challenge), 0);
+        encoder.set_buffer(3, Some(&fold_eval_const), 0);
+        encoder.dispatch_threads(grid, tg);
+
+        encoder.set_compute_pipeline_state(accel.pipeline("fold_hg"));
+        encoder.set_buffer(0, Some(bk_hg_in), 0);
+        encoder.set_buffer(1, Some(bk_hg_out), 0);
+        encoder.set_buffer(2, Some(gate_exists_in), 0);
+        encoder.set_buffer(3, Some(gate_exists_out), 0);
+        encoder.set_buffer(4, Some(challenge), 0);
+        encoder.set_buffer(5, Some(&fold_eval_const), 0);
+        encoder.dispatch_threads(grid, tg);
+
+        encoder.end_encoding();
+    }
+
+    let num_threadgroups = ((pe_eval_size as u64) + THREADGROUP_SIZE - 1) / THREADGROUP_SIZE;
+    let total_threads = num_threadgroups * THREADGROUP_SIZE;
+    let pe_eval_const = write_u32_constant(&accel.device, pe_eval_size);
+    let nb_const = write_u32_constant(&accel.device, num_threadgroups as u32);
+
+    {
+        let pipeline = accel.pipeline("poly_eval_kernel");
+        let encoder = cmd_buffer.new_compute_command_encoder();
+        encoder.set_compute_pipeline_state(pipeline);
+        encoder.set_buffer(0, Some(pe_bk_f), 0);
+        encoder.set_buffer(1, Some(pe_bk_hg), 0);
+        encoder.set_buffer(2, Some(pe_gate_exists), 0);
+        encoder.set_buffer(3, Some(block_results), 0);
+        encoder.set_buffer(4, Some(&pe_eval_const), 0);
+        let grid = MTLSize::new(total_threads, 1, 1);
+        let tg = MTLSize::new(THREADGROUP_SIZE, 1, 1);
+        encoder.dispatch_threads(grid, tg);
+        encoder.end_encoding();
+    }
+
+    {
+        let reduce_pipeline = accel.pipeline("reduce_blocks");
+        let encoder = cmd_buffer.new_compute_command_encoder();
+        encoder.set_compute_pipeline_state(reduce_pipeline);
+        encoder.set_buffer(0, Some(block_results), 0);
+        encoder.set_buffer(1, Some(output), 0);
+        encoder.set_buffer(2, Some(&nb_const), 0);
+        let tg = MTLSize::new(THREADGROUP_SIZE, 1, 1);
+        let reduce_grid = MTLSize::new(THREADGROUP_SIZE, 1, 1);
+        encoder.dispatch_threads(reduce_grid, tg);
+        encoder.end_encoding();
+    }
+
+    cmd_buffer.commit();
+    cmd_buffer.wait_until_completed();
+
+    let ptr = output.contents() as *const [u64; 4];
+    unsafe { [*ptr, *ptr.add(1), *ptr.add(2)] }
+}
+
 pub fn metal_fold_f(
     accel: &MetalAccelerator,
     bk_f_in: &metal::BufferRef,
