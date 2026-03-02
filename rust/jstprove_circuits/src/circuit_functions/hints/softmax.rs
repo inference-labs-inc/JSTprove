@@ -84,10 +84,7 @@ pub fn softmax_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<()
         .collect();
 
     // Numerically stable softmax: subtract max before computing exp.
-    let max_x = xs_f64
-        .iter()
-        .cloned()
-        .fold(f64::NEG_INFINITY, f64::max);
+    let max_x = xs_f64.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
     let exps: Vec<f64> = xs_f64.iter().map(|&x| (x - max_x).exp()).collect();
     let sum_exp: f64 = exps.iter().sum();
 

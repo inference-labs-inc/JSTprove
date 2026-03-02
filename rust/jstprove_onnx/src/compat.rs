@@ -29,6 +29,7 @@ const SUPPORTED_OPS: &[&str] = &[
     "Exp",
     "Softmax",
     "Sigmoid",
+    "Tile",
 ];
 
 pub fn is_compatible(path: &Path) -> Result<(bool, Vec<String>)> {

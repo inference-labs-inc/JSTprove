@@ -220,6 +220,7 @@ fn op_type_to_string(op: OpType) -> String {
         OpType::Exp => "Exp",
         OpType::Sigmoid => "Sigmoid",
         OpType::Softmax => "Softmax",
+        OpType::Tile => "Tile",
     }
     .to_string()
 }

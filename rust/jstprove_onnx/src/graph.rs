@@ -27,6 +27,7 @@ pub enum OpType {
     Constant,
     Softmax,
     Sigmoid,
+    Tile,
 }
 
 impl OpType {
@@ -53,6 +54,7 @@ impl OpType {
             "Constant" => Ok(Self::Constant),
             "Softmax" => Ok(Self::Softmax),
             "Sigmoid" => Ok(Self::Sigmoid),
+            "Tile" => Ok(Self::Tile),
             other => bail!("unsupported ONNX op: {other}"),
         }
     }
@@ -60,7 +62,12 @@ impl OpType {
     pub fn is_shape_only(&self) -> bool {
         matches!(
             self,
-            Self::Cast | Self::Reshape | Self::Flatten | Self::Squeeze | Self::Unsqueeze
+            Self::Cast
+                | Self::Reshape
+                | Self::Flatten
+                | Self::Squeeze
+                | Self::Unsqueeze
+                | Self::Tile
         )
     }
 
