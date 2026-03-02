@@ -39,15 +39,13 @@ pub fn sumcheck_prove_gkr_layer<F: FieldEngine, T: Transcript>(
     helper.prepare_simd();
     helper.prepare_mpi();
 
-    // gkr phase 1 over variable x
-    helper.prepare_x_vals();
-
     #[cfg(all(target_os = "macos", feature = "metal"))]
     let used_metal_x = helper.try_metal_xy_rounds(transcript, mpi_config);
     #[cfg(not(all(target_os = "macos", feature = "metal")))]
     let used_metal_x = false;
 
     if !used_metal_x {
+        helper.prepare_x_vals();
         for i_var in 0..helper.input_var_num {
             let evals = helper.poly_evals_at_rx(i_var, SUMCHECK_GKR_DEGREE, mpi_config);
             let r = transcript_io::<F::ChallengeField, T>(mpi_config, &evals, transcript);
@@ -78,14 +76,13 @@ pub fn sumcheck_prove_gkr_layer<F: FieldEngine, T: Transcript>(
     // gkr phase 2 over variable y
     let mut vy_claim = None;
     if !layer.structure_info.skip_sumcheck_phase_two {
-        helper.prepare_y_vals(mpi_config);
-
         #[cfg(all(target_os = "macos", feature = "metal"))]
         let used_metal_y = helper.try_metal_ry_rounds(transcript, mpi_config);
         #[cfg(not(all(target_os = "macos", feature = "metal")))]
         let used_metal_y = false;
 
         if !used_metal_y {
+            helper.prepare_y_vals(mpi_config);
             for i_var in 0..helper.input_var_num {
                 let evals = helper.poly_evals_at_ry(i_var, SUMCHECK_GKR_DEGREE, mpi_config);
                 let r = transcript_io::<F::ChallengeField, T>(mpi_config, &evals, transcript);

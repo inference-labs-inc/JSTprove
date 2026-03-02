@@ -24,7 +24,13 @@ pub struct MetalAccelerator {
 
 impl MetalAccelerator {
     pub fn new() -> Option<Self> {
-        let device = Device::system_default()?;
+        let device = match Device::system_default() {
+            Some(d) => d,
+            None => {
+                eprintln!("Metal: no system default device");
+                return None;
+            }
+        };
         let queue = device.new_command_queue();
 
         let opts = CompileOptions::new();
@@ -32,7 +38,7 @@ impl MetalAccelerator {
         let library = match device.new_library_with_source(SHADER_SOURCE, &opts) {
             Ok(lib) => lib,
             Err(e) => {
-                log::error!("Metal shader compilation failed: {e}");
+                eprintln!("Metal shader compilation failed: {e}");
                 return None;
             }
         };
@@ -40,8 +46,7 @@ impl MetalAccelerator {
         let kernel_names = &[
             "build_eq_step",
             "cross_prod_eq",
-            "accumulate_mul_gates",
-            "accumulate_add_gates",
+            "vec_add",
             "poly_eval_kernel",
             "reduce_blocks",
             "fold_f",
@@ -53,14 +58,14 @@ impl MetalAccelerator {
             let func = match library.get_function(name, None) {
                 Ok(f) => f,
                 Err(e) => {
-                    log::error!("Metal function '{name}' not found: {e}");
+                    eprintln!("Metal function '{name}' not found: {e}");
                     return None;
                 }
             };
             let pipeline = match device.new_compute_pipeline_state_with_function(&func) {
                 Ok(p) => p,
                 Err(e) => {
-                    log::error!("Pipeline creation failed for '{name}': {e}");
+                    eprintln!("Pipeline creation failed for '{name}': {e}");
                     return None;
                 }
             };
