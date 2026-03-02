@@ -56,7 +56,13 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Run workspace tests
-        run: cargo test --workspace --lib --tests --bins
+        run: >
+          cargo test
+          -p jstprove_circuits
+          -p jstprove-direct-builder
+          -p jstprove-io
+          -p jstprove-onnx
+          --lib --tests --bins
 
       - name: Run remainder unit tests
         run: cargo test --manifest-path rust/jstprove_remainder/Cargo.toml --lib
