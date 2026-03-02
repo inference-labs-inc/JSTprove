@@ -2,7 +2,7 @@ use metal::{CompileOptions, ComputePipelineState, Device, MTLSize};
 use std::collections::HashMap;
 
 const SHADER_SOURCE: &str = concat!(
-    include_str!("../shaders/field_goldilocks.metal"),
+    include_str!("../shaders/field_bn254.metal"),
     "\n",
     include_str!("../shaders/eq_eval.metal"),
     "\n",

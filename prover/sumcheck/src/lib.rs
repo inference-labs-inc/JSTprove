@@ -15,3 +15,6 @@ pub use scratch_pad::{ProverScratchPad, VerifierScratchPad};
 
 mod utils;
 pub use utils::*;
+
+#[cfg(all(target_os = "macos", feature = "metal"))]
+pub mod metal_sumcheck;

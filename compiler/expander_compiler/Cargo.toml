@@ -48,6 +48,7 @@ sha2.workspace = true
 default = []
 profile = ["expander_utils/profile"]
 zkcuda_profile = []
+metal = ["gkr/metal"]
 
 [[bin]]
 name = "trivial_circuit"

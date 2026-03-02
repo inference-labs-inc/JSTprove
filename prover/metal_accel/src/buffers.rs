@@ -1,6 +1,9 @@
 use metal::{Buffer, Device, MTLResourceOptions};
 
+pub const BN254_ELEM_SIZE: usize = 4 * std::mem::size_of::<u64>();
+
 pub struct MetalBufferPool {
+    max_input_size: usize,
     pub hg_evals: Buffer,
     pub v_evals: Buffer,
     pub eq_evals_rz0: Buffer,
@@ -22,17 +25,16 @@ const SHARED: MTLResourceOptions = MTLResourceOptions::StorageModeShared;
 
 impl MetalBufferPool {
     pub fn new(device: &Device, max_input_size: usize) -> Self {
-        let elem_size = std::mem::size_of::<u64>();
         let max_bytes = max_input_size
-            .checked_mul(elem_size)
-            .expect("max_input_size * elem_size overflows usize");
+            .checked_mul(BN254_ELEM_SIZE)
+            .expect("max_input_size * BN254_ELEM_SIZE overflows usize");
         let half_size = (max_input_size as f64).sqrt().ceil() as usize;
         let half_size = half_size
             .checked_add(1)
             .expect("half_size + 1 overflows usize");
         let half_bytes = half_size
-            .checked_mul(elem_size)
-            .expect("half_size * elem_size overflows usize");
+            .checked_mul(BN254_ELEM_SIZE)
+            .expect("half_size * BN254_ELEM_SIZE overflows usize");
         let max_blocks = max_input_size
             .checked_add(255)
             .expect("max_input_size + 255 overflows usize")
@@ -42,6 +44,7 @@ impl MetalBufferPool {
             .expect("max_input_size * 4 overflows usize");
 
         MetalBufferPool {
+            max_input_size,
             hg_evals: device.new_buffer(max_bytes as u64, SHARED),
             v_evals: device.new_buffer(max_bytes as u64, SHARED),
             eq_evals_rz0: device.new_buffer(max_bytes as u64, SHARED),
@@ -52,12 +55,23 @@ impl MetalBufferPool {
             hg_locks: device.new_buffer(ge_bytes as u64, SHARED),
             mul_gates: None,
             add_gates: None,
-            block_results: device.new_buffer((max_blocks * 3 * elem_size) as u64, SHARED),
-            output: device.new_buffer((3 * elem_size) as u64, SHARED),
-            challenge: device.new_buffer(elem_size as u64, SHARED),
+            block_results: device.new_buffer(
+                (max_blocks
+                    .checked_mul(3)
+                    .expect("max_blocks * 3 overflows")
+                    .checked_mul(BN254_ELEM_SIZE)
+                    .expect("max_blocks * 3 * BN254_ELEM_SIZE overflows")) as u64,
+                SHARED,
+            ),
+            output: device.new_buffer((3 * BN254_ELEM_SIZE) as u64, SHARED),
+            challenge: device.new_buffer(BN254_ELEM_SIZE as u64, SHARED),
             fold_scratch: device.new_buffer(max_bytes as u64, SHARED),
             fold_ge_scratch: device.new_buffer(ge_bytes as u64, SHARED),
         }
+    }
+
+    pub fn max_input_size(&self) -> usize {
+        self.max_input_size
     }
 
     pub fn upload_mul_gates(&mut self, device: &Device, data: &[u8]) {
@@ -70,15 +84,15 @@ impl MetalBufferPool {
         self.add_gates = Some(buf);
     }
 
-    pub fn write_challenge(&self, val: u64) {
-        let ptr = self.challenge.contents() as *mut u64;
+    pub fn write_challenge(&self, val: &[u64; 4]) {
+        let ptr = self.challenge.contents() as *mut [u64; 4];
         unsafe {
-            *ptr = val;
+            *ptr = *val;
         }
     }
 
-    pub fn read_output(&self) -> [u64; 3] {
-        let ptr = self.output.contents() as *const u64;
+    pub fn read_output(&self) -> [[u64; 4]; 3] {
+        let ptr = self.output.contents() as *const [u64; 4];
         unsafe { [*ptr, *ptr.add(1), *ptr.add(2)] }
     }
 

@@ -1,7 +1,15 @@
 use metal::{Buffer, MTLSize};
 
+use crate::buffers::BN254_ELEM_SIZE;
 use crate::device::MetalAccelerator;
 use crate::device::THREADGROUP_SIZE;
+
+pub const BN254_R: [u64; 4] = [
+    0xac96341c4ffffffb,
+    0x36fc76959f60cd29,
+    0x666ea36f7879462e,
+    0x0e0a77c19a07df2f,
+];
 
 fn write_u32_constant(device: &metal::Device, val: u32) -> Buffer {
     let buf = device.new_buffer(4, metal::MTLResourceOptions::StorageModeShared);
@@ -14,8 +22,8 @@ fn write_u32_constant(device: &metal::Device, val: u32) -> Buffer {
 
 pub fn metal_eq_eval_at(
     accel: &MetalAccelerator,
-    r: &[u64],
-    mul_factor: u64,
+    r: &[[u64; 4]],
+    mul_factor: &[u64; 4],
     eq_first_half: &metal::BufferRef,
     eq_second_half: &metal::BufferRef,
     eq_evals: &metal::BufferRef,
@@ -31,7 +39,7 @@ pub fn metal_eq_eval_at(
     let r_second = &r[first_half_bits..];
 
     build_eq_half(accel, r_first, mul_factor, eq_first_half);
-    build_eq_half(accel, r_second, 1, eq_second_half);
+    build_eq_half(accel, r_second, &BN254_R, eq_second_half);
 
     let total = 1u64 << r.len();
     let bits_const = write_u32_constant(&accel.device, first_half_bits as u32);
@@ -42,27 +50,33 @@ pub fn metal_eq_eval_at(
     );
 }
 
-fn build_eq_half(accel: &MetalAccelerator, r: &[u64], mul_factor: u64, eq_buf: &metal::BufferRef) {
+fn build_eq_half(
+    accel: &MetalAccelerator,
+    r: &[[u64; 4]],
+    mul_factor: &[u64; 4],
+    eq_buf: &metal::BufferRef,
+) {
     assert!(
         r.len() < 32,
         "r.len() ({}) must be < 32 to avoid u32 shift overflow",
         r.len()
     );
 
-    let ptr = eq_buf.contents() as *mut u64;
+    let ptr = eq_buf.contents() as *mut [u64; 4];
     unsafe {
-        *ptr = mul_factor;
+        *ptr = *mul_factor;
     }
 
-    let r_buf = accel
-        .device
-        .new_buffer(8, metal::MTLResourceOptions::StorageModeShared);
+    let r_buf = accel.device.new_buffer(
+        BN254_ELEM_SIZE as u64,
+        metal::MTLResourceOptions::StorageModeShared,
+    );
 
     let mut cur_eval_num = 1u32;
-    for &r_i in r {
-        let r_ptr = r_buf.contents() as *mut u64;
+    for r_i in r {
+        let r_ptr = r_buf.contents() as *mut [u64; 4];
         unsafe {
-            *r_ptr = r_i;
+            *r_ptr = *r_i;
         }
 
         let cur_buf = write_u32_constant(&accel.device, cur_eval_num);
@@ -150,7 +164,7 @@ pub fn metal_poly_eval(
     block_results: &metal::BufferRef,
     output: &metal::BufferRef,
     eval_size: u32,
-) -> [u64; 3] {
+) -> [[u64; 4]; 3] {
     let num_threadgroups = ((eval_size as u64) + THREADGROUP_SIZE - 1) / THREADGROUP_SIZE;
     let total_threads = num_threadgroups * THREADGROUP_SIZE;
 
@@ -188,7 +202,7 @@ pub fn metal_poly_eval(
     cmd_buffer2.commit();
     cmd_buffer2.wait_until_completed();
 
-    let ptr = output.contents() as *const u64;
+    let ptr = output.contents() as *const [u64; 4];
     unsafe { [*ptr, *ptr.add(1), *ptr.add(2)] }
 }
 
