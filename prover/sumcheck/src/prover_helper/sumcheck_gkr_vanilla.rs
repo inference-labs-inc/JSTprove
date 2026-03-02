@@ -453,10 +453,11 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
                 .iter()
                 .map(|p| unpack_and_combine(p, eq_simd))
                 .collect();
-            let mut evals: [F::ChallengeField; 3] = mpi_config
-                .coef_combine_vec(&local_vals, eq_mpi)
-                .try_into()
-                .unwrap();
+            let Ok(mut evals): Result<[F::ChallengeField; 3], _> =
+                mpi_config.coef_combine_vec(&local_vals, eq_mpi).try_into()
+            else {
+                return false;
+            };
 
             if let Some(coef) = phase2_coef {
                 evals[0] = evals[0] * coef;
