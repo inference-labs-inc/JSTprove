@@ -17,6 +17,7 @@ venv/
 # IDE/editor folders
 .vscode/
 .idea/
+.cargo/
 
 # Compiled and cache files
 __pycache__/
