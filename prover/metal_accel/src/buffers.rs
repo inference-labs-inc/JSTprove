@@ -8,11 +8,14 @@ pub struct MetalBufferPool {
     pub eq_first_half: Buffer,
     pub eq_second_half: Buffer,
     pub gate_exists: Buffer,
+    pub hg_locks: Buffer,
     pub mul_gates: Option<Buffer>,
     pub add_gates: Option<Buffer>,
     pub block_results: Buffer,
     pub output: Buffer,
     pub challenge: Buffer,
+    pub fold_scratch: Buffer,
+    pub fold_ge_scratch: Buffer,
 }
 
 const SHARED: MTLResourceOptions = MTLResourceOptions::StorageModeShared;
@@ -20,10 +23,23 @@ const SHARED: MTLResourceOptions = MTLResourceOptions::StorageModeShared;
 impl MetalBufferPool {
     pub fn new(device: &Device, max_input_size: usize) -> Self {
         let elem_size = std::mem::size_of::<u64>();
-        let max_bytes = max_input_size * elem_size;
-        let half_size = (max_input_size as f64).sqrt().ceil() as usize + 1;
-        let half_bytes = half_size * elem_size;
-        let max_blocks = (max_input_size + 255) / 256;
+        let max_bytes = max_input_size
+            .checked_mul(elem_size)
+            .expect("max_input_size * elem_size overflows usize");
+        let half_size = (max_input_size as f64).sqrt().ceil() as usize;
+        let half_size = half_size
+            .checked_add(1)
+            .expect("half_size + 1 overflows usize");
+        let half_bytes = half_size
+            .checked_mul(elem_size)
+            .expect("half_size * elem_size overflows usize");
+        let max_blocks = max_input_size
+            .checked_add(255)
+            .expect("max_input_size + 255 overflows usize")
+            / 256;
+        let ge_bytes = max_input_size
+            .checked_mul(4)
+            .expect("max_input_size * 4 overflows usize");
 
         MetalBufferPool {
             hg_evals: device.new_buffer(max_bytes as u64, SHARED),
@@ -32,12 +48,15 @@ impl MetalBufferPool {
             eq_evals_rx: device.new_buffer(max_bytes as u64, SHARED),
             eq_first_half: device.new_buffer(half_bytes as u64, SHARED),
             eq_second_half: device.new_buffer(half_bytes as u64, SHARED),
-            gate_exists: device.new_buffer((max_input_size * 4) as u64, SHARED),
+            gate_exists: device.new_buffer(ge_bytes as u64, SHARED),
+            hg_locks: device.new_buffer(ge_bytes as u64, SHARED),
             mul_gates: None,
             add_gates: None,
             block_results: device.new_buffer((max_blocks * 3 * elem_size) as u64, SHARED),
             output: device.new_buffer((3 * elem_size) as u64, SHARED),
             challenge: device.new_buffer(elem_size as u64, SHARED),
+            fold_scratch: device.new_buffer(max_bytes as u64, SHARED),
+            fold_ge_scratch: device.new_buffer(ge_bytes as u64, SHARED),
         }
     }
 
@@ -64,7 +83,16 @@ impl MetalBufferPool {
     }
 
     pub fn zero_buffer(buf: &Buffer, num_bytes: usize) {
+        let buf_len = buf.length() as usize;
+        assert!(
+            num_bytes <= buf_len,
+            "zero_buffer: num_bytes ({num_bytes}) exceeds buffer length ({buf_len})"
+        );
         let ptr = buf.contents() as *mut u8;
+        assert!(
+            !ptr.is_null(),
+            "zero_buffer: buffer contents pointer is null"
+        );
         unsafe {
             std::ptr::write_bytes(ptr, 0, num_bytes);
         }

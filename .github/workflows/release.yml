@@ -117,7 +117,7 @@ jobs:
           sed -i '' '1,/^version = /{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/;}' rust/jstprove_circuits/Cargo.toml
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2025-03-27
 

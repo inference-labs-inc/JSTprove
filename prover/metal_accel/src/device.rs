@@ -28,6 +28,7 @@ impl MetalAccelerator {
         let queue = device.new_command_queue();
 
         let opts = CompileOptions::new();
+        opts.set_language_version(metal::MTLLanguageVersion::V3_0);
         let library = match device.new_library_with_source(SHADER_SOURCE, &opts) {
             Ok(lib) => lib,
             Err(e) => {
@@ -49,12 +50,20 @@ impl MetalAccelerator {
 
         let mut pipelines = HashMap::new();
         for &name in kernel_names {
-            let func = library
-                .get_function(name, None)
-                .unwrap_or_else(|e| panic!("Metal function '{name}' not found: {e}"));
-            let pipeline = device
-                .new_compute_pipeline_state_with_function(&func)
-                .unwrap_or_else(|e| panic!("Pipeline creation failed for '{name}': {e}"));
+            let func = match library.get_function(name, None) {
+                Ok(f) => f,
+                Err(e) => {
+                    log::error!("Metal function '{name}' not found: {e}");
+                    return None;
+                }
+            };
+            let pipeline = match device.new_compute_pipeline_state_with_function(&func) {
+                Ok(p) => p,
+                Err(e) => {
+                    log::error!("Pipeline creation failed for '{name}': {e}");
+                    return None;
+                }
+            };
             pipelines.insert(name, pipeline);
         }
 
@@ -75,6 +84,10 @@ impl MetalAccelerator {
         Device::system_default().is_some()
     }
 
+    pub fn device(&self) -> &Device {
+        &self.device
+    }
+
     pub(crate) fn pipeline(&self, name: &str) -> &ComputePipelineState {
         self.pipelines
             .get(name)
@@ -87,6 +100,9 @@ impl MetalAccelerator {
         total_threads: u64,
         buffers: &[&metal::BufferRef],
     ) {
+        if total_threads == 0 {
+            return;
+        }
         let pipeline = self.pipeline(pipeline_name);
         let cmd_buffer = self.queue.new_command_buffer();
         let encoder = cmd_buffer.new_compute_command_encoder();

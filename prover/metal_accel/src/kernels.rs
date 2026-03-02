@@ -1,6 +1,7 @@
 use metal::{Buffer, MTLSize};
 
-use crate::device::{MetalAccelerator, THREADGROUP_SIZE};
+use crate::device::MetalAccelerator;
+use crate::device::THREADGROUP_SIZE;
 
 fn write_u32_constant(device: &metal::Device, val: u32) -> Buffer {
     let buf = device.new_buffer(4, metal::MTLResourceOptions::StorageModeShared);
@@ -19,6 +20,12 @@ pub fn metal_eq_eval_at(
     eq_second_half: &metal::BufferRef,
     eq_evals: &metal::BufferRef,
 ) {
+    assert!(
+        r.len() < 64,
+        "r.len() ({}) must be < 64 to avoid shift overflow",
+        r.len()
+    );
+
     let first_half_bits = r.len() / 2;
     let r_first = &r[0..first_half_bits];
     let r_second = &r[first_half_bits..];
@@ -36,6 +43,12 @@ pub fn metal_eq_eval_at(
 }
 
 fn build_eq_half(accel: &MetalAccelerator, r: &[u64], mul_factor: u64, eq_buf: &metal::BufferRef) {
+    assert!(
+        r.len() < 32,
+        "r.len() ({}) must be < 32 to avoid u32 shift overflow",
+        r.len()
+    );
+
     let ptr = eq_buf.contents() as *mut u64;
     unsafe {
         *ptr = mul_factor;
@@ -58,7 +71,9 @@ fn build_eq_half(accel: &MetalAccelerator, r: &[u64], mul_factor: u64, eq_buf: &
             cur_eval_num as u64,
             &[eq_buf, &r_buf, &cur_buf],
         );
-        cur_eval_num <<= 1;
+        cur_eval_num = cur_eval_num
+            .checked_shl(1)
+            .expect("cur_eval_num overflow in build_eq_half");
     }
 }
 
@@ -85,6 +100,7 @@ pub fn metal_accumulate_mul_gates(
     input_vals: &metal::BufferRef,
     gates: &metal::BufferRef,
     gate_exists: &metal::BufferRef,
+    hg_locks: &metal::BufferRef,
     num_gates: u32,
 ) {
     if num_gates == 0 {
@@ -94,7 +110,15 @@ pub fn metal_accumulate_mul_gates(
     accel.dispatch_1d(
         "accumulate_mul_gates",
         num_gates as u64,
-        &[hg_vals, eq_evals, input_vals, gates, gate_exists, &n_const],
+        &[
+            hg_vals,
+            eq_evals,
+            input_vals,
+            gates,
+            gate_exists,
+            hg_locks,
+            &n_const,
+        ],
     );
 }
 
@@ -104,6 +128,7 @@ pub fn metal_accumulate_add_gates(
     eq_evals: &metal::BufferRef,
     gates: &metal::BufferRef,
     gate_exists: &metal::BufferRef,
+    hg_locks: &metal::BufferRef,
     num_gates: u32,
 ) {
     if num_gates == 0 {
@@ -113,7 +138,7 @@ pub fn metal_accumulate_add_gates(
     accel.dispatch_1d(
         "accumulate_add_gates",
         num_gates as u64,
-        &[hg_vals, eq_evals, gates, gate_exists, &n_const],
+        &[hg_vals, eq_evals, gates, gate_exists, hg_locks, &n_const],
     );
 }
 
@@ -169,18 +194,25 @@ pub fn metal_poly_eval(
 
 pub fn metal_fold_f(
     accel: &MetalAccelerator,
-    bk_f: &metal::BufferRef,
+    bk_f_in: &metal::BufferRef,
+    bk_f_out: &metal::BufferRef,
     challenge: &metal::BufferRef,
     eval_size: u32,
 ) {
     let eval_const = write_u32_constant(&accel.device, eval_size);
-    accel.dispatch_1d("fold_f", eval_size as u64, &[bk_f, challenge, &eval_const]);
+    accel.dispatch_1d(
+        "fold_f",
+        eval_size as u64,
+        &[bk_f_in, bk_f_out, challenge, &eval_const],
+    );
 }
 
 pub fn metal_fold_hg(
     accel: &MetalAccelerator,
-    bk_hg: &metal::BufferRef,
-    gate_exists: &metal::BufferRef,
+    bk_hg_in: &metal::BufferRef,
+    bk_hg_out: &metal::BufferRef,
+    gate_exists_in: &metal::BufferRef,
+    gate_exists_out: &metal::BufferRef,
     challenge: &metal::BufferRef,
     eval_size: u32,
 ) {
@@ -188,6 +220,13 @@ pub fn metal_fold_hg(
     accel.dispatch_1d(
         "fold_hg",
         eval_size as u64,
-        &[bk_hg, gate_exists, challenge, &eval_const],
+        &[
+            bk_hg_in,
+            bk_hg_out,
+            gate_exists_in,
+            gate_exists_out,
+            challenge,
+            &eval_const,
+        ],
     );
 }

@@ -1,8 +1,3 @@
-#include <metal_stdlib>
-using namespace metal;
-
-#include "field_goldilocks.metal"
-
 // Build EQ polynomial half: eq_evals[0..2^r_len] for a given r vector.
 // This kernel handles one "doubling step" of the build_eq_x_r_with_buf algorithm.
 // Each step k doubles the number of live entries from 2^k to 2^(k+1).
