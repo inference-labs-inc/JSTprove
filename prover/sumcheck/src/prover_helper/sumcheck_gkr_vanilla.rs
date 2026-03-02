@@ -550,19 +550,21 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
         }
 
         let input_var_num = self.input_var_num;
-        let total = 1usize
-            .checked_shl(input_var_num as u32)
-            .expect("input_var_num overflows usize shift");
-        let total_bytes = total
-            .checked_mul(BN254_ELEM_SIZE)
-            .expect("total * BN254_ELEM_SIZE overflows usize");
-        let output_size = 1usize
-            .checked_shl(self.challenge.rz_0.len() as u32)
-            .expect("rz_0.len() overflows usize shift");
-        assert!(self.layer.input_vals.len() >= total);
-        assert!(self.sp.hg_evals.len() >= total);
-        assert!(self.sp.gate_exists_5.len() >= total);
-        let _ = total_bytes;
+        let Some(total) = 1usize.checked_shl(input_var_num as u32) else {
+            return false;
+        };
+        if total.checked_mul(BN254_ELEM_SIZE).is_none() {
+            return false;
+        }
+        let Some(output_size) = 1usize.checked_shl(self.challenge.rz_0.len() as u32) else {
+            return false;
+        };
+        if self.layer.input_vals.len() < total
+            || self.sp.hg_evals.len() < total
+            || self.sp.gate_exists_5.len() < total
+        {
+            return false;
+        }
 
         let eq_simd = self.sp.eq_evals_at_r_simd0.clone();
         let eq_mpi = self.sp.eq_evals_at_r_mpi0.clone();
@@ -570,12 +572,9 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
         crate::metal_sumcheck::METAL_CTX.with(|cell| {
             let mut ctx_ref = cell.borrow_mut();
             let ctx = ctx_ref.as_mut().unwrap();
-            assert!(
-                ctx.pool.max_input_size() >= total,
-                "Metal buffer pool too small: {} < {}",
-                ctx.pool.max_input_size(),
-                total
-            );
+            if ctx.pool.max_input_size() < total {
+                return false;
+            }
 
             assert_eq!(self.challenge.rz_1.is_none(), self.alpha.is_none());
 
@@ -671,9 +670,8 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
                 mpi_config,
                 "rx",
             );
-        });
-
-        true
+            true
+        })
     }
 
     pub(crate) fn try_metal_ry_rounds<T: Transcript>(
@@ -697,16 +695,18 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
         }
 
         let input_var_num = self.input_var_num;
-        let total = 1usize
-            .checked_shl(input_var_num as u32)
-            .expect("input_var_num overflows usize shift");
-        let total_bytes = total
-            .checked_mul(BN254_ELEM_SIZE)
-            .expect("total * BN254_ELEM_SIZE overflows usize");
-        assert!(self.layer.input_vals.len() >= total);
-        assert!(self.sp.hg_evals.len() >= total);
-        assert!(self.sp.gate_exists_5.len() >= total);
-        let _ = total_bytes;
+        let Some(total) = 1usize.checked_shl(input_var_num as u32) else {
+            return false;
+        };
+        if total.checked_mul(BN254_ELEM_SIZE).is_none() {
+            return false;
+        }
+        if self.layer.input_vals.len() < total
+            || self.sp.hg_evals.len() < total
+            || self.sp.gate_exists_5.len() < total
+        {
+            return false;
+        }
 
         let mut v_rx_rsimd_rw = self.sp.mpi_var_v_evals[0];
         mpi_config.root_broadcast_f(&mut v_rx_rsimd_rw);
@@ -738,12 +738,9 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
         crate::metal_sumcheck::METAL_CTX.with(|cell| {
             let mut ctx_ref = cell.borrow_mut();
             let ctx = ctx_ref.as_mut().unwrap();
-            assert!(
-                ctx.pool.max_input_size() >= total,
-                "Metal buffer pool too small: {} < {}",
-                ctx.pool.max_input_size(),
-                total
-            );
+            if ctx.pool.max_input_size() < total {
+                return false;
+            }
 
             let rx_limbs = Self::challenge_to_limbs(&self.rx);
             let one_limbs: [u64; 4] = unsafe { std::mem::transmute_copy(&F::ChallengeField::ONE) };
@@ -807,8 +804,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
                 mpi_config,
                 "ry",
             );
-        });
-
-        true
+            true
+        })
     }
 }
