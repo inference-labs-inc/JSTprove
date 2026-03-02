@@ -13,9 +13,9 @@ use crate::circuit_functions::utils::onnx_model::CircuitParams;
 use crate::circuit_functions::utils::onnx_types::ONNXLayer;
 
 use crate::circuit_functions::layers::clip::ClipLayer;
-use crate::circuit_functions::layers::exp::ExpLayer;
 use crate::circuit_functions::layers::constant::ConstantLayer;
 use crate::circuit_functions::layers::conv::ConvLayer;
+use crate::circuit_functions::layers::exp::ExpLayer;
 use crate::circuit_functions::layers::flatten::FlattenLayer;
 use crate::circuit_functions::layers::gemm::GemmLayer;
 use crate::circuit_functions::layers::maxpool::MaxPoolLayer;
@@ -24,6 +24,7 @@ use crate::circuit_functions::layers::reshape::ReshapeLayer;
 use crate::circuit_functions::layers::sigmoid::SigmoidLayer;
 use crate::circuit_functions::layers::softmax::SoftmaxLayer;
 use crate::circuit_functions::layers::squeeze::SqueezeLayer;
+use crate::circuit_functions::layers::tile::TileLayer;
 use crate::circuit_functions::layers::unsqueeze::UnsqueezeLayer;
 
 use expander_compiler::frontend::{Config, RootAPI};
@@ -146,6 +147,7 @@ define_layers! {
     Sigmoid   => { name: "Sigmoid", builder: SigmoidLayer::build },
     Softmax   => { name: "Softmax", builder: SoftmaxLayer::build },
     Squeeze   => { name: "Squeeze", builder: SqueezeLayer::build },
+    Tile      => { name: "Tile", builder: TileLayer::build },
     Unsqueeze => { name: "Unsqueeze", builder: UnsqueezeLayer::build },
 }
 
@@ -170,6 +172,7 @@ mod tests {
             "Sigmoid",
             "Softmax",
             "Squeeze",
+            "Tile",
             "Unsqueeze",
             "BatchNormalization",
             "Constant",
@@ -229,6 +232,7 @@ mod tests {
             "Sigmoid",
             "Softmax",
             "Squeeze",
+            "Tile",
             "Unsqueeze",
             "BatchNormalization",
             "Constant",

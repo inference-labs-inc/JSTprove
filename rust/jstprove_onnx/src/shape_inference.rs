@@ -101,6 +101,7 @@ fn infer_layer_output_shape(
         OpType::Cast | OpType::Exp | OpType::Softmax | OpType::Sigmoid => {
             passthrough_shape(layer, input_shape)
         }
+        OpType::Tile => infer_tile(layer, input_shape, initializers, constant_tensors),
     }
 }
 
@@ -670,6 +671,62 @@ fn infer_unsqueeze(
             input_idx += 1;
         }
     }
+
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
+}
+
+fn infer_tile(
+    layer: &LayerNode,
+    input_shape: Option<&Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let input_shape = input_shape
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Tile missing input shape", layer.name))?;
+
+    let repeats_data = layer
+        .inputs
+        .get(1)
+        .and_then(|name| {
+            initializers
+                .get(name)
+                .or_else(|| constant_tensors.get(name))
+                .map(|td| td.as_i64_vec())
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "layer {}: Tile repeats tensor not found in initializers or Constant nodes",
+                layer.name
+            )
+        })?;
+
+    if repeats_data.len() != input_shape.len() {
+        bail!(
+            "layer {}: Tile repeats length {} != input rank {}",
+            layer.name,
+            repeats_data.len(),
+            input_shape.len()
+        );
+    }
+
+    let out_shape: Vec<usize> = input_shape
+        .iter()
+        .zip(repeats_data.iter())
+        .enumerate()
+        .map(|(i, (&d, &r))| {
+            if r < 1 {
+                bail!(
+                    "layer {}: Tile repeat[{i}] = {r} is less than 1",
+                    layer.name
+                );
+            }
+            Ok(d * r as usize)
+        })
+        .collect::<Result<Vec<_>>>()?;
 
     Ok(layer
         .outputs

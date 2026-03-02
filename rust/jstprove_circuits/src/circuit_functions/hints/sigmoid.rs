@@ -165,7 +165,10 @@ mod tests {
         for &x_real in &[-10.0f64, -1.0, 0.0, 1.0, 10.0] {
             let x_q = (x_real * scale as f64).round() as i64;
             let result = run_hint(x_q, scale);
-            assert!(result >= 0, "sigmoid output should be non-negative, got {result}");
+            assert!(
+                result >= 0,
+                "sigmoid output should be non-negative, got {result}"
+            );
         }
     }
 
