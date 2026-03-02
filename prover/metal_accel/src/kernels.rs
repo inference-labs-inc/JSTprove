@@ -1,0 +1,193 @@
+use metal::{Buffer, MTLSize};
+
+use crate::device::{MetalAccelerator, THREADGROUP_SIZE};
+
+fn write_u32_constant(device: &metal::Device, val: u32) -> Buffer {
+    let buf = device.new_buffer(4, metal::MTLResourceOptions::StorageModeShared);
+    let ptr = buf.contents() as *mut u32;
+    unsafe {
+        *ptr = val;
+    }
+    buf
+}
+
+pub fn metal_eq_eval_at(
+    accel: &MetalAccelerator,
+    r: &[u64],
+    mul_factor: u64,
+    eq_first_half: &metal::BufferRef,
+    eq_second_half: &metal::BufferRef,
+    eq_evals: &metal::BufferRef,
+) {
+    let first_half_bits = r.len() / 2;
+    let r_first = &r[0..first_half_bits];
+    let r_second = &r[first_half_bits..];
+
+    build_eq_half(accel, r_first, mul_factor, eq_first_half);
+    build_eq_half(accel, r_second, 1, eq_second_half);
+
+    let total = 1u64 << r.len();
+    let bits_const = write_u32_constant(&accel.device, first_half_bits as u32);
+    accel.dispatch_1d(
+        "cross_prod_eq",
+        total,
+        &[eq_evals, eq_first_half, eq_second_half, &bits_const],
+    );
+}
+
+fn build_eq_half(accel: &MetalAccelerator, r: &[u64], mul_factor: u64, eq_buf: &metal::BufferRef) {
+    let ptr = eq_buf.contents() as *mut u64;
+    unsafe {
+        *ptr = mul_factor;
+    }
+
+    let r_buf = accel
+        .device
+        .new_buffer(8, metal::MTLResourceOptions::StorageModeShared);
+
+    let mut cur_eval_num = 1u32;
+    for &r_i in r {
+        let r_ptr = r_buf.contents() as *mut u64;
+        unsafe {
+            *r_ptr = r_i;
+        }
+
+        let cur_buf = write_u32_constant(&accel.device, cur_eval_num);
+        accel.dispatch_1d(
+            "build_eq_step",
+            cur_eval_num as u64,
+            &[eq_buf, &r_buf, &cur_buf],
+        );
+        cur_eval_num <<= 1;
+    }
+}
+
+pub fn metal_cross_prod_eq(
+    accel: &MetalAccelerator,
+    eq_evals: &metal::BufferRef,
+    first_half: &metal::BufferRef,
+    second_half: &metal::BufferRef,
+    first_half_bits: u32,
+    total: u64,
+) {
+    let bits_const = write_u32_constant(&accel.device, first_half_bits);
+    accel.dispatch_1d(
+        "cross_prod_eq",
+        total,
+        &[eq_evals, first_half, second_half, &bits_const],
+    );
+}
+
+pub fn metal_accumulate_mul_gates(
+    accel: &MetalAccelerator,
+    hg_vals: &metal::BufferRef,
+    eq_evals: &metal::BufferRef,
+    input_vals: &metal::BufferRef,
+    gates: &metal::BufferRef,
+    gate_exists: &metal::BufferRef,
+    num_gates: u32,
+) {
+    if num_gates == 0 {
+        return;
+    }
+    let n_const = write_u32_constant(&accel.device, num_gates);
+    accel.dispatch_1d(
+        "accumulate_mul_gates",
+        num_gates as u64,
+        &[hg_vals, eq_evals, input_vals, gates, gate_exists, &n_const],
+    );
+}
+
+pub fn metal_accumulate_add_gates(
+    accel: &MetalAccelerator,
+    hg_vals: &metal::BufferRef,
+    eq_evals: &metal::BufferRef,
+    gates: &metal::BufferRef,
+    gate_exists: &metal::BufferRef,
+    num_gates: u32,
+) {
+    if num_gates == 0 {
+        return;
+    }
+    let n_const = write_u32_constant(&accel.device, num_gates);
+    accel.dispatch_1d(
+        "accumulate_add_gates",
+        num_gates as u64,
+        &[hg_vals, eq_evals, gates, gate_exists, &n_const],
+    );
+}
+
+pub fn metal_poly_eval(
+    accel: &MetalAccelerator,
+    bk_f: &metal::BufferRef,
+    bk_hg: &metal::BufferRef,
+    gate_exists: &metal::BufferRef,
+    block_results: &metal::BufferRef,
+    output: &metal::BufferRef,
+    eval_size: u32,
+) -> [u64; 3] {
+    let num_threadgroups = ((eval_size as u64) + THREADGROUP_SIZE - 1) / THREADGROUP_SIZE;
+    let total_threads = num_threadgroups * THREADGROUP_SIZE;
+
+    let eval_const = write_u32_constant(&accel.device, eval_size);
+
+    let pipeline = accel.pipeline("poly_eval_kernel");
+    let cmd_buffer = accel.queue.new_command_buffer();
+    let encoder = cmd_buffer.new_compute_command_encoder();
+    encoder.set_compute_pipeline_state(pipeline);
+    encoder.set_buffer(0, Some(bk_f), 0);
+    encoder.set_buffer(1, Some(bk_hg), 0);
+    encoder.set_buffer(2, Some(gate_exists), 0);
+    encoder.set_buffer(3, Some(block_results), 0);
+    encoder.set_buffer(4, Some(&eval_const), 0);
+
+    let grid = MTLSize::new(total_threads, 1, 1);
+    let tg = MTLSize::new(THREADGROUP_SIZE, 1, 1);
+    encoder.dispatch_threads(grid, tg);
+    encoder.end_encoding();
+    cmd_buffer.commit();
+    cmd_buffer.wait_until_completed();
+
+    let nb_const = write_u32_constant(&accel.device, num_threadgroups as u32);
+    let reduce_pipeline = accel.pipeline("reduce_blocks");
+    let cmd_buffer2 = accel.queue.new_command_buffer();
+    let encoder2 = cmd_buffer2.new_compute_command_encoder();
+    encoder2.set_compute_pipeline_state(reduce_pipeline);
+    encoder2.set_buffer(0, Some(block_results), 0);
+    encoder2.set_buffer(1, Some(output), 0);
+    encoder2.set_buffer(2, Some(&nb_const), 0);
+
+    let reduce_grid = MTLSize::new(THREADGROUP_SIZE, 1, 1);
+    encoder2.dispatch_threads(reduce_grid, tg);
+    encoder2.end_encoding();
+    cmd_buffer2.commit();
+    cmd_buffer2.wait_until_completed();
+
+    let ptr = output.contents() as *const u64;
+    unsafe { [*ptr, *ptr.add(1), *ptr.add(2)] }
+}
+
+pub fn metal_fold_f(
+    accel: &MetalAccelerator,
+    bk_f: &metal::BufferRef,
+    challenge: &metal::BufferRef,
+    eval_size: u32,
+) {
+    let eval_const = write_u32_constant(&accel.device, eval_size);
+    accel.dispatch_1d("fold_f", eval_size as u64, &[bk_f, challenge, &eval_const]);
+}
+
+pub fn metal_fold_hg(
+    accel: &MetalAccelerator,
+    bk_hg: &metal::BufferRef,
+    gate_exists: &metal::BufferRef,
+    challenge: &metal::BufferRef,
+    eval_size: u32,
+) {
+    let eval_const = write_u32_constant(&accel.device, eval_size);
+    accel.dispatch_1d(
+        "fold_hg",
+        eval_size as u64,
+        &[bk_hg, gate_exists, challenge, &eval_const],
+    );
+}
