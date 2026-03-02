@@ -26,6 +26,8 @@ const SUPPORTED_OPS: &[&str] = &[
     "Conv",
     "Squeeze",
     "Unsqueeze",
+    "Exp",
+    "Softmax",
 ];
 
 pub fn is_compatible(path: &Path) -> Result<(bool, Vec<String>)> {
