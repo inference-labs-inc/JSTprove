@@ -1,0 +1,15 @@
+[package]
+name = "macros"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn.workspace = true
+quote.workspace = true
+proc-macro2.workspace = true
+
+[lints.clippy]
+all = "allow"

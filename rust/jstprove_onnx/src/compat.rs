@@ -97,7 +97,7 @@ pub fn add_zero_bias_to_conv(path: &Path, output_path: &Path) -> Result<()> {
             .clone()
             .or_else(|| node.output.first().cloned())
             .unwrap_or_else(|| weight_name.clone());
-        let bias_name = format!("{}_zero_bias", node_id);
+        let bias_name = format!("{node_id}_zero_bias");
 
         let data_type = weight_init.and_then(|i| i.data_type).unwrap_or(1);
         let raw_data = match DataType::try_from(data_type) {

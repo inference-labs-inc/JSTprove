@@ -1,0 +1,15 @@
+# IDE
+.idea
+.vscode
+
+# CMake
+.cmake
+CMakeCache.txt
+CMakeFiles
+cmake_install.cmake
+*.bin
+Testing
+
+# Artifact
+*.log
+*.csv

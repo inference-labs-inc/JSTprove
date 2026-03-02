@@ -121,7 +121,7 @@ fn extract_tensor_data(tensor: &TensorProto) -> Result<TensorData> {
                     int_data.push(i64::from_le_bytes(chunk.try_into().unwrap()));
                 }
             }
-            other => bail!("unsupported tensor data type in raw_data: {:?}", other),
+            other => bail!("unsupported tensor data type in raw_data: {other:?}"),
         }
     } else {
         float_data.extend(tensor.float_data.iter().map(|f| *f as f64));
@@ -142,7 +142,7 @@ fn extract_tensor_data(tensor: &TensorProto) -> Result<TensorData> {
 fn parse_nodes(graph: &GraphProto) -> Result<Vec<ParsedNode>> {
     let mut result = Vec::new();
     for (idx, node) in graph.node.iter().enumerate() {
-        let name = node.name.clone().unwrap_or_else(|| format!("node_{}", idx));
+        let name = node.name.clone().unwrap_or_else(|| format!("node_{idx}"));
         let op_type = node.op_type.clone().unwrap_or_default();
         let domain = node.domain.clone().unwrap_or_default();
 

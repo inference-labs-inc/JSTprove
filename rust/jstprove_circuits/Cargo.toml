@@ -31,7 +31,7 @@ jstprove-io = { path = "../jstprove_io" }
 jstprove-onnx = { path = "../jstprove_onnx" }
 jstprove-remainder = { path = "../jstprove_remainder", optional = true }
 jstprove-direct-builder = { path = "../jstprove_direct_builder" }
-arith = { git = "https://github.com/inference-labs-inc/Expander", tag = "v0.3.1" }
+arith.workspace = true
 tempfile = "3"
 tracing = "0.1"
 anyhow = "1"

@@ -1,35 +1,129 @@
 [workspace]
+resolver = "2"
 members = [
+    "prover/arith",
+    "prover/arith/babybear",
+    "prover/arith/gf2",
+    "prover/arith/gf2_128",
+    "prover/arith/goldilocks",
+    "prover/arith/mersenne31",
+    "prover/arith/polynomials",
+    "prover/bin",
+    "prover/circuit",
+    "prover/config_macros",
+    "prover/crosslayer_prototype",
+    "prover/gkr",
+    "prover/gkr_engine",
+    "prover/hasher",
+    "prover/poly_commit",
+    "prover/serdes",
+    "prover/serdes_derive",
+    "prover/sumcheck",
+    "prover/transcript",
+    "prover/tree",
+    "prover/utils",
+    "compiler/expander_compiler",
+    "compiler/expander_compiler/macros",
+    "compiler/circuit-std-rs",
     "rust/jstprove_circuits",
     "rust/jstprove_direct_builder",
     "rust/jstprove_io",
     "rust/jstprove_onnx",
     "rust/jstprove_remainder",
 ]
-
-resolver = "2"
 exclude = ["rust/jstprove_pyo3", ".claude"]
 
-[workspace.dependencies]
-rmpv = { version = "1", features = ["with-serde"] }
-peakmem-alloc = "0.3.0"
-csv = "1.1"
-ark-std = "0.4.0"
-rand = "0.8.5"
-chrono = "0.4"
-clap = { version = "4.1", features = ["derive"] }
-ethnum = "1.5.0"
-tiny-keccak = { version = "2.0", features = ["keccak"] }
-halo2curves = { git = "https://github.com/PolyhedraZK/halo2curves", default-features = false, features = ["bits"] }
+[workspace.package]
+version = "0.4.0"
+edition = "2021"
 
-# ECC from inference-labs-inc
-expander_compiler = { git = "https://github.com/inference-labs-inc/ecc", rev = "f858279" }
-circuit-std-rs = { git = "https://github.com/inference-labs-inc/ecc", rev = "f858279" }
-thiserror = "2.0.15"
-strum = "0.27.2"
-strum_macros = "0.27.2"
+[workspace.dependencies]
+# --- internal: prover crates ---
+arith = { path = "prover/arith" }
+babybear = { path = "prover/arith/babybear" }
+gf2 = { path = "prover/arith/gf2" }
+gf2_128 = { path = "prover/arith/gf2_128" }
+goldilocks = { path = "prover/arith/goldilocks" }
+mersenne31 = { path = "prover/arith/mersenne31" }
+polynomials = { path = "prover/arith/polynomials" }
+config_macros = { path = "prover/config_macros" }
+crosslayer_prototype = { path = "prover/crosslayer_prototype" }
+gkr = { path = "prover/gkr" }
+gkr_engine = { path = "prover/gkr_engine" }
+gkr_hashers = { path = "prover/hasher" }
+poly_commit = { path = "prover/poly_commit" }
+serdes = { path = "prover/serdes" }
+serdes_derive = { path = "prover/serdes_derive" }
+sumcheck = { path = "prover/sumcheck" }
+tree = { path = "prover/tree" }
+
+# dual aliases: original names for prover crates, aliased names for compiler crates
+circuit = { path = "prover/circuit" }
+expander_circuit = { path = "prover/circuit", package = "circuit" }
+transcript = { path = "prover/transcript" }
+expander_transcript = { path = "prover/transcript", package = "transcript" }
+utils = { path = "prover/utils" }
+expander_utils = { path = "prover/utils", package = "utils" }
+expander_binary = { path = "prover/bin", package = "bin" }
+
+# --- internal: compiler crates ---
+expander_compiler = { path = "compiler/expander_compiler" }
+circuit-std-rs = { path = "compiler/circuit-std-rs" }
+
+# --- external ---
+ark-bls12-381 = "0.4.0"
+ark-bn254 = "0.4.0"
+ark-ec = "0.4.0"
+ark-ff = "0.4.0"
+ark-serialize = "0.4.0"
+ark-std = "0.4.0"
+axum = "0.7"
+big-int = "7.0.0"
+bytes = "1.6.0"
+cfg-if = "1.0"
+chrono = "0.4.39"
+clap = { version = "4.5", features = ["derive"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+csv = "1.1"
+derivative = "2.2.0"
+env_logger = "0.11.3"
+ethnum = "1.5.0"
+halo2curves = { git = "https://github.com/PolyhedraZK/halo2curves", default-features = false, features = ["bits"] }
+itertools = "0.13.0"
+log = "0.4"
+ndarray = { version = "0.16.1", features = ["serde"] }
+num-bigint = "0.4.6"
+num-traits = "0.2.19"
+num_cpus = "1.16.0"
 once_cell = "1.21.3"
 openssl = { version = "0.10", features = ["vendored"] }
-ndarray = { version = "0.16.1", features = ["serde"] }
+peakmem-alloc = "0.3.0"
+proc-macro2 = "1.0"
+quote = "1.0"
+rand = "0.8.5"
+rand_chacha = "0.3.1"
+raw-cpuid = "11.1.0"
+rayon = "1.10.0"
+reqwest = { version = "0.11", features = ["json"] }
+rmpv = { version = "1", features = ["with-serde"] }
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10.8"
+shared_memory = "0.12.4"
+strum = "0.27.2"
+strum_macros = "0.27.2"
+syn = "2.0"
+thiserror = "2.0.15"
+tiny-keccak = { version = "2.0.2", features = ["sha3", "keccak"] }
+tokio = { version = "1.38.0", features = ["full"] }
+transpose = "0.2.3"
+tynm = "0.1.6"
+warp = "0.3.7"
+zerocopy = "0.8.26"
 zstd = "0.13.3"
+
+[profile.test]
+opt-level = 3
+
+[profile.dev]
+opt-level = 3

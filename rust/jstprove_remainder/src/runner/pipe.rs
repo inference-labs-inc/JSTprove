@@ -21,7 +21,7 @@ pub fn run_pipe_witness(model_path: &Path, compress: bool) -> Result<()> {
         match process_pipe_witness_job(&model, job, alpha, compress) {
             Ok(()) => result.succeeded += 1,
             Err(e) => {
-                result.errors.push((idx, format!("{:#}", e)));
+                result.errors.push((idx, format!("{e:#}")));
                 result.failed += 1;
             }
         }
@@ -46,7 +46,7 @@ pub fn run_pipe_prove(model_path: &Path, compress: bool) -> Result<()> {
         match process_pipe_prove_job(&model, job, compress) {
             Ok(()) => result.succeeded += 1,
             Err(e) => {
-                result.errors.push((idx, format!("{:#}", e)));
+                result.errors.push((idx, format!("{e:#}")));
                 result.failed += 1;
             }
         }
@@ -71,7 +71,7 @@ pub fn run_pipe_verify(model_path: &Path) -> Result<()> {
         match process_pipe_verify_job(&model, job) {
             Ok(()) => result.succeeded += 1,
             Err(e) => {
-                result.errors.push((idx, format!("{:#}", e)));
+                result.errors.push((idx, format!("{e:#}")));
                 result.failed += 1;
             }
         }

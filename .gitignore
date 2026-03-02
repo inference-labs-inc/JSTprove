@@ -17,6 +17,7 @@ venv/
 # IDE/editor folders
 .vscode/
 .idea/
+.cargo/
 
 # Compiled and cache files
 __pycache__/
@@ -26,8 +27,8 @@ __pycache__/
 *.ipynb_checkpoints/
 *.cfg
 /lib/
-bin/
-share/
+/bin/
+/share/
 report
 **.egg-info
 
@@ -61,7 +62,7 @@ python/core/lib/*.dylib
 !rust/jstprove_remainder/models/*.onnx
 
 # Proving System
-Expander/
+/Expander/
 
 # Gas Town (added by gt)
 .runtime/
