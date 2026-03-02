@@ -28,7 +28,6 @@ pub fn init_metal_ctx(max_input_size: usize) {
             };
             let pool = MetalBufferPool::new(accel.device(), max_input_size);
             *ctx = Some(MetalSumcheckCtx { accel, pool });
-            log::info!("Metal sumcheck initialized (max_input_size={max_input_size})");
         }
     });
 }

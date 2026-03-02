@@ -14,6 +14,16 @@ kernel void build_eq_step(
     eq_evals[tid] = bn254_sub(orig, prod);
 }
 
+kernel void vec_add(
+    device BN254Fr* dst [[buffer(0)]],
+    device const BN254Fr* src [[buffer(1)]],
+    constant uint32_t& count [[buffer(2)]],
+    uint tid [[thread_position_in_grid]]
+) {
+    if (tid >= count) return;
+    dst[tid] = bn254_add(dst[tid], src[tid]);
+}
+
 // Cross product of two half-evaluations into the full eq_evals array.
 kernel void cross_prod_eq(
     device BN254Fr* eq_evals [[buffer(0)]],

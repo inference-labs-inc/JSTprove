@@ -11,13 +11,11 @@ pub struct MetalBufferPool {
     pub eq_first_half: Buffer,
     pub eq_second_half: Buffer,
     pub gate_exists: Buffer,
-    pub hg_locks: Buffer,
-    pub mul_gates: Option<Buffer>,
-    pub add_gates: Option<Buffer>,
     pub block_results: Buffer,
     pub output: Buffer,
     pub challenge: Buffer,
     pub fold_scratch: Buffer,
+    pub hg_fold_scratch: Buffer,
     pub fold_ge_scratch: Buffer,
 }
 
@@ -55,9 +53,6 @@ impl MetalBufferPool {
             eq_first_half: device.new_buffer(half_bytes as u64, SHARED),
             eq_second_half: device.new_buffer(half_bytes as u64, SHARED),
             gate_exists: device.new_buffer(ge_bytes as u64, SHARED),
-            hg_locks: device.new_buffer(ge_bytes as u64, SHARED),
-            mul_gates: None,
-            add_gates: None,
             block_results: device.new_buffer(
                 (max_blocks
                     .checked_mul(3)
@@ -69,22 +64,13 @@ impl MetalBufferPool {
             output: device.new_buffer((3 * BN254_ELEM_SIZE) as u64, SHARED),
             challenge: device.new_buffer(BN254_ELEM_SIZE as u64, SHARED),
             fold_scratch: device.new_buffer(max_bytes as u64, SHARED),
+            hg_fold_scratch: device.new_buffer(max_bytes as u64, SHARED),
             fold_ge_scratch: device.new_buffer(ge_bytes as u64, SHARED),
         }
     }
 
     pub fn max_input_size(&self) -> usize {
         self.max_input_size
-    }
-
-    pub fn upload_mul_gates(&mut self, device: &Device, data: &[u8]) {
-        let buf = device.new_buffer_with_data(data.as_ptr() as *const _, data.len() as u64, SHARED);
-        self.mul_gates = Some(buf);
-    }
-
-    pub fn upload_add_gates(&mut self, device: &Device, data: &[u8]) {
-        let buf = device.new_buffer_with_data(data.as_ptr() as *const _, data.len() as u64, SHARED);
-        self.add_gates = Some(buf);
     }
 
     pub fn write_challenge(&self, val: &[u64; 4]) {
