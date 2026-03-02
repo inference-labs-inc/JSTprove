@@ -20,7 +20,7 @@ inline void bn254_locked_add(
     uint idx,
     BN254Fr addend
 ) {
-    while (atomic_exchange_explicit(&locks[idx], 1u, memory_order_relaxed) != 0u) {}
+    while (atomic_exchange_explicit(&locks[idx], 1u, memory_order_acquire) != 0u) {}
     BN254Fr old_val;
     old_val.v[0] = target[idx * 4];
     old_val.v[1] = target[idx * 4 + 1];
@@ -31,7 +31,7 @@ inline void bn254_locked_add(
     target[idx * 4 + 1] = new_val.v[1];
     target[idx * 4 + 2] = new_val.v[2];
     target[idx * 4 + 3] = new_val.v[3];
-    atomic_store_explicit(&locks[idx], 0u, memory_order_relaxed);
+    atomic_store_explicit(&locks[idx], 0u, memory_order_release);
 }
 
 kernel void accumulate_mul_gates(

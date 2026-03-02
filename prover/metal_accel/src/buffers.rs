@@ -28,10 +28,13 @@ impl MetalBufferPool {
         let max_bytes = max_input_size
             .checked_mul(BN254_ELEM_SIZE)
             .expect("max_input_size * BN254_ELEM_SIZE overflows usize");
-        let half_size = (max_input_size as f64).sqrt().ceil() as usize;
-        let half_size = half_size
-            .checked_add(1)
-            .expect("half_size + 1 overflows usize");
+        let log_n = if max_input_size <= 1 {
+            0usize
+        } else {
+            usize::BITS as usize - (max_input_size - 1).leading_zeros() as usize
+        };
+        let half_bits = (log_n + 1) / 2;
+        let half_size = 1usize << half_bits;
         let half_bytes = half_size
             .checked_mul(BN254_ELEM_SIZE)
             .expect("half_size * BN254_ELEM_SIZE overflows usize");
