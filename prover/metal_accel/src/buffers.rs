@@ -100,6 +100,9 @@ impl MetalBufferPool {
     }
 
     pub fn zero_buffer(buf: &Buffer, num_bytes: usize) {
+        if num_bytes == 0 {
+            return;
+        }
         let buf_len = buf.length() as usize;
         assert!(
             num_bytes <= buf_len,
