@@ -22,6 +22,7 @@ members = [
     "prover/transcript",
     "prover/tree",
     "prover/utils",
+    "prover/metal_accel",
     "compiler/expander_compiler",
     "compiler/expander_compiler/macros",
     "compiler/circuit-std-rs",
@@ -55,6 +56,7 @@ poly_commit = { path = "prover/poly_commit" }
 serdes = { path = "prover/serdes" }
 serdes_derive = { path = "prover/serdes_derive" }
 sumcheck = { path = "prover/sumcheck" }
+metal_accel = { path = "prover/metal_accel" }
 tree = { path = "prover/tree" }
 
 # dual aliases: original names for prover crates, aliased names for compiler crates

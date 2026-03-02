@@ -39,6 +39,7 @@ anyhow = "1"
 [features]
 peak-mem = ["peakmem-alloc"]
 remainder = ["dep:jstprove-remainder"]
+metal = ["expander_compiler/metal"]
 
 [dev-dependencies]
 sha2 = "0.10.8"

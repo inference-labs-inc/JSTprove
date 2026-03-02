@@ -81,6 +81,9 @@ impl<Cfg: GKREngine> Prover<Cfg> {
             max_num_output_var,
             self.mpi_config.world_size(),
         );
+
+        #[cfg(all(target_os = "macos", feature = "metal"))]
+        sumcheck::metal_sumcheck::init_metal_ctx(1 << max_num_input_var);
     }
 
     pub fn prove(

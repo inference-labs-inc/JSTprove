@@ -1,0 +1,16 @@
+[package]
+name = "metal_accel"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+metal = "0.29"
+objc = "0.2"
+block = "0.1"
+log.workspace = true
+
+[dev-dependencies]
+halo2curves.workspace = true
+
+[lints.clippy]
+all = "allow"

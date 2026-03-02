@@ -21,8 +21,12 @@ rayon.workspace = true
 ark-std.workspace = true
 
 
+[target.'cfg(target_os = "macos")'.dependencies]
+metal_accel = { workspace = true, optional = true }
+
 [features]
 profile = [ "utils/profile" ]
+metal = ["metal_accel"]
 
 [lints.clippy]
 all = "allow"

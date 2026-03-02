@@ -33,7 +33,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_NIGHTLY }}
           components: rustfmt, clippy
@@ -63,7 +63,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run cargo clippy (workspace)
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features --exclude metal_accel -- -D warnings
 
       - name: Run cargo clippy (jstprove-remainder)
         run: cargo clippy --manifest-path rust/jstprove_remainder/Cargo.toml --all-targets --all-features
@@ -80,7 +80,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_NIGHTLY }}
 

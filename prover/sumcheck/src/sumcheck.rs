@@ -41,11 +41,19 @@ pub fn sumcheck_prove_gkr_layer<F: FieldEngine, T: Transcript>(
 
     // gkr phase 1 over variable x
     helper.prepare_x_vals();
-    for i_var in 0..helper.input_var_num {
-        let evals = helper.poly_evals_at_rx(i_var, SUMCHECK_GKR_DEGREE, mpi_config);
-        let r = transcript_io::<F::ChallengeField, T>(mpi_config, &evals, transcript);
-        helper.receive_rx(i_var, r);
-        log::trace!("x i_var={i_var} evals: {evals:?} r: {r:?}");
+
+    #[cfg(all(target_os = "macos", feature = "metal"))]
+    let used_metal_x = helper.try_metal_xy_rounds(transcript, mpi_config);
+    #[cfg(not(all(target_os = "macos", feature = "metal")))]
+    let used_metal_x = false;
+
+    if !used_metal_x {
+        for i_var in 0..helper.input_var_num {
+            let evals = helper.poly_evals_at_rx(i_var, SUMCHECK_GKR_DEGREE, mpi_config);
+            let r = transcript_io::<F::ChallengeField, T>(mpi_config, &evals, transcript);
+            helper.receive_rx(i_var, r);
+            log::trace!("x i_var={i_var} evals: {evals:?} r: {r:?}");
+        }
     }
 
     helper.prepare_simd_var_vals();
@@ -71,10 +79,18 @@ pub fn sumcheck_prove_gkr_layer<F: FieldEngine, T: Transcript>(
     let mut vy_claim = None;
     if !layer.structure_info.skip_sumcheck_phase_two {
         helper.prepare_y_vals(mpi_config);
-        for i_var in 0..helper.input_var_num {
-            let evals = helper.poly_evals_at_ry(i_var, SUMCHECK_GKR_DEGREE, mpi_config);
-            let r = transcript_io::<F::ChallengeField, T>(mpi_config, &evals, transcript);
-            helper.receive_ry(i_var, r);
+
+        #[cfg(all(target_os = "macos", feature = "metal"))]
+        let used_metal_y = helper.try_metal_ry_rounds(transcript, mpi_config);
+        #[cfg(not(all(target_os = "macos", feature = "metal")))]
+        let used_metal_y = false;
+
+        if !used_metal_y {
+            for i_var in 0..helper.input_var_num {
+                let evals = helper.poly_evals_at_ry(i_var, SUMCHECK_GKR_DEGREE, mpi_config);
+                let r = transcript_io::<F::ChallengeField, T>(mpi_config, &evals, transcript);
+                helper.receive_ry(i_var, r);
+            }
         }
         vy_claim = Some(helper.vy_claim(mpi_config));
         transcript.append_field_element(&vy_claim.unwrap());
