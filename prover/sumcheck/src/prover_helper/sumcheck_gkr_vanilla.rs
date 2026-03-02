@@ -404,7 +404,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
         transcript: &mut T,
         mpi_config: &impl MPIEngine,
         target: MetalRoundTarget,
-    ) {
+    ) -> bool {
         use metal_accel::{metal_fold_all, metal_poly_eval, BN254_ELEM_SIZE};
 
         let mut f_ping = true;
@@ -413,7 +413,9 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
 
         for var_idx in 0..input_var_num {
             let eval_size = 1usize << (input_var_num - var_idx - 1);
-            let eval_size_u32: u32 = eval_size.try_into().expect("eval_size exceeds u32::MAX");
+            let Ok(eval_size_u32) = u32::try_from(eval_size) else {
+                return false;
+            };
 
             let f_src = if f_ping {
                 &ctx.pool.v_evals
@@ -534,6 +536,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
             );
             self.sp.gate_exists_5[0] = *(ge_final.contents() as *const u32) != 0;
         }
+        true
     }
 
     pub(crate) fn try_metal_xy_rounds<T: Transcript>(
@@ -579,7 +582,9 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
 
         crate::metal_sumcheck::METAL_CTX.with(|cell| {
             let mut ctx_ref = cell.borrow_mut();
-            let ctx = ctx_ref.as_mut().unwrap();
+            let Some(ctx) = ctx_ref.as_mut() else {
+                return false;
+            };
             if ctx.pool.max_input_size() < total {
                 return false;
             }
@@ -673,7 +678,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
                 }
             }
 
-            self.metal_fold_loop(
+            if !self.metal_fold_loop(
                 ctx,
                 input_var_num,
                 &eq_simd,
@@ -682,7 +687,9 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
                 transcript,
                 mpi_config,
                 MetalRoundTarget::Rx,
-            );
+            ) {
+                return false;
+            }
             true
         })
     }
@@ -751,12 +758,18 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
 
         crate::metal_sumcheck::METAL_CTX.with(|cell| {
             let mut ctx_ref = cell.borrow_mut();
-            let ctx = ctx_ref.as_mut().unwrap();
+            let Some(ctx) = ctx_ref.as_mut() else {
+                return false;
+            };
             if ctx.pool.max_input_size() < total {
                 return false;
             }
 
             let rx_limbs = Self::challenge_to_limbs(&self.rx);
+            let eq_rx_len = 1usize << rx_limbs.len();
+            if eq_rx_len != total {
+                return false;
+            }
             let one_limbs: [u64; 4] = unsafe { std::mem::transmute_copy(&F::ChallengeField::ONE) };
             metal_eq_eval_at(
                 &ctx.accel,
@@ -808,7 +821,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
                 }
             }
 
-            self.metal_fold_loop(
+            if !self.metal_fold_loop(
                 ctx,
                 input_var_num,
                 &eq_simd,
@@ -817,7 +830,9 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
                 transcript,
                 mpi_config,
                 MetalRoundTarget::Ry,
-            );
+            ) {
+                return false;
+            }
             true
         })
     }
