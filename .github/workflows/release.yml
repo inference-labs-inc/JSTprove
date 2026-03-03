@@ -77,14 +77,14 @@ jobs:
 
       - name: Test wheel installation
         run: |
-          uv pip install --system target/wheels/*.whl
+          uv pip install --system rust/jstprove_pyo3/target/wheels/*.whl
           python3 -c "from jstprove import Circuit; print('PyO3 bindings OK')"
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v6
         with:
           name: wheel-ubuntu-x86_64
-          path: ./target/wheels/*.whl
+          path: ./rust/jstprove_pyo3/target/wheels/*.whl
 
   build-macos:
     if: >-
@@ -156,14 +156,14 @@ jobs:
 
       - name: Test wheel installation
         run: |
-          uv pip install --system target/wheels/*.whl
+          uv pip install --system rust/jstprove_pyo3/target/wheels/*.whl
           python3 -c "from jstprove import Circuit; print('PyO3 bindings OK')"
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v6
         with:
           name: wheel-macos-aarch64
-          path: ./target/wheels/*.whl
+          path: ./rust/jstprove_pyo3/target/wheels/*.whl
 
   publish:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
