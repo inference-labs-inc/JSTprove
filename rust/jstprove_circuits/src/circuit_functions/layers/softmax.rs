@@ -133,6 +133,18 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
         // Finalise the shared LogUp table (emits the consistency constraint).
         logup_ctx.finalize::<C, Builder>(api);
 
+        // Guard: Softmax must produce exactly one output tensor.
+        if self.outputs.len() != 1 {
+            return Err(LayerError::MissingParameter {
+                layer: LayerKind::Softmax,
+                param: format!(
+                    "output Y: expected exactly 1 output, got {}",
+                    self.outputs.len()
+                ),
+            }
+            .into());
+        }
+
         Ok((self.outputs.clone(), out_array))
     }
 
@@ -153,10 +165,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
                 name: "input X".to_string(),
             })?;
 
-        if layer.outputs.is_empty() {
+        if layer.outputs.len() != 1 {
             return Err(LayerError::MissingParameter {
                 layer: LayerKind::Softmax,
-                param: "output".to_string(),
+                param: format!(
+                    "output Y: expected exactly 1 output, got {}",
+                    layer.outputs.len()
+                ),
             }
             .into());
         }

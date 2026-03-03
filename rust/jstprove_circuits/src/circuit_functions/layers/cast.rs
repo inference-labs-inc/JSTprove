@@ -12,13 +12,34 @@ use crate::circuit_functions::{
     },
 };
 
-#[allow(dead_code)]
+/// ONNX TensorProto.DataType codes that are safe no-ops in the ZK circuit.
+///
+/// Every value in this pipeline is quantised to INT64 field elements before the
+/// circuit is built; a Cast to any integer type therefore preserves the
+/// bit-pattern as-is in the circuit domain and requires no constraint.
+///
+/// Float/bool/string targets are NOT in the allowlist: encountering one most
+/// likely indicates a quantisation error in the upstream model.
+const NOOP_CAST_TYPES: &[i64] = &[
+    2,  // UINT8
+    3,  // INT8
+    5,  // INT16
+    6,  // INT32
+    7,  // INT64
+    12, // UINT32
+    13, // UINT64
+];
+
+fn is_noop_cast(to_type: i64) -> bool {
+    NOOP_CAST_TYPES.contains(&to_type)
+}
+
 #[derive(Debug)]
 pub struct CastLayer {
     name: String,
     inputs: Vec<String>,
     outputs: Vec<String>,
-    to_type: i64, // ONNX TensorProto.DataType code; stored for debug/validation
+    to_type: i64, // validated ONNX TensorProto.DataType code
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for CastLayer {
@@ -27,9 +48,25 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for CastLayer {
         _api: &mut Builder,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
+        // Guard: reject any to_type that is not a proven no-op integer target.
+        // build() already validates this, but apply() enforces it at the point
+        // where the passthrough result is actually produced so unexpected types
+        // can never silently become identity casts.
+        if !is_noop_cast(self.to_type) {
+            return Err(LayerError::Other {
+                layer: LayerKind::Cast,
+                msg: format!(
+                    "{}: Cast to ONNX DataType {} is not supported in the ZK circuit; \
+                    only integer targets {:?} are proven no-ops",
+                    self.name, self.to_type, NOOP_CAST_TYPES
+                ),
+            }
+            .into());
+        }
+
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Cast, INPUT)?;
         let layer_input = input
-            .get(&input_name.clone())
+            .get(input_name)
             .ok_or_else(|| LayerError::MissingInput {
                 layer: LayerKind::Cast,
                 name: input_name.clone(),
@@ -61,12 +98,14 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for CastLayer {
                 msg: format!("failed to read 'to' attribute: {e}"),
             })?;
 
-        // Validate that to_type is a known ONNX TensorProto.DataType code (1–16).
-        if !(1..=16).contains(&to_type) {
+        // Reject unsupported Cast targets at build time so they never reach apply().
+        if !is_noop_cast(to_type) {
             return Err(LayerError::Other {
                 layer: LayerKind::Cast,
                 msg: format!(
-                    "Cast 'to' attribute {to_type} is not a valid ONNX DataType code (expected 1–16)"
+                    "{}: Cast to ONNX DataType {to_type} is not supported in the ZK circuit; \
+                    only integer targets {:?} are proven no-ops",
+                    layer.name, NOOP_CAST_TYPES
                 ),
             }
             .into());

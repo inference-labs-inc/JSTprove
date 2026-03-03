@@ -1000,7 +1000,11 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     }
                 }
             }
-            OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
+            OpType::Cast
+            | OpType::Reshape
+            | OpType::Flatten
+            | OpType::Squeeze
+            | OpType::Unsqueeze => {
                 let input_tensor_name = layer
                     .inputs
                     .first()
@@ -1671,7 +1675,11 @@ pub fn prepare_public_shreds(
                     }
                 }
             }
-            OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
+            OpType::Cast
+            | OpType::Reshape
+            | OpType::Flatten
+            | OpType::Squeeze
+            | OpType::Unsqueeze => {
                 let input_tensor_name = layer
                     .inputs
                     .first()

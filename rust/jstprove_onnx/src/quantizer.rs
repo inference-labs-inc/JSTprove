@@ -437,15 +437,17 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
             Ok(m_in)
         }
         // exp(x) is monotonically increasing; max output is exp(max_input).
-        // Guard against non-finite results: very large inputs can overflow f64.
         OpType::Exp => {
             let m_in = get_input_bound(0);
-            let result = m_in.exp();
-            Ok(if result.is_finite() {
-                result
-            } else {
-                f64::from(i32::MAX) // large but finite; prevents overflow in n_bits computation
-            })
+            let bound = m_in.exp();
+            if !bound.is_finite() {
+                anyhow::bail!(
+                    "layer {}: Exp input bound {m_in} produces a non-finite exp result; \
+                     the model's activation range is too large to quantise safely",
+                    layer.name
+                );
+            }
+            Ok(bound)
         }
         // softmax / sigmoid outputs are in [0, 1] in the real domain.
         OpType::Softmax | OpType::Sigmoid => Ok(1.0),
