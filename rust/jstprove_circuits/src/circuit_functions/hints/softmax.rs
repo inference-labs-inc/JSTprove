@@ -38,16 +38,18 @@ pub const SOFTMAX_HINT_KEY: &str = "jstprove.softmax_hint";
 /// - `outputs[i]`: `round(softmax(x_real)[i] * scale)`, clamped to
 ///   `[0, i64::MAX]`, stored as a field element.
 ///
-/// # Panics
-/// Does not panic; out-of-range inputs are clamped.
+/// # Errors
+/// Returns [`Error::UserError`] when `inputs.len() != outputs.len() + 1`.
+/// Out-of-range values are clamped, never an error.
 pub fn softmax_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Error> {
     let n = outputs.len();
-    debug_assert!(
-        inputs.len() == n + 1,
-        "softmax_hint: expected {} inputs (n={n} elements + 1 scale), got {}",
-        n + 1,
-        inputs.len()
-    );
+    if inputs.len() != n + 1 {
+        return Err(Error::UserError(format!(
+            "softmax_hint: expected {} inputs (n={n} elements + 1 scale), got {}",
+            n + 1,
+            inputs.len()
+        )));
+    }
 
     let p_half = F::MODULUS / 2;
 
@@ -137,6 +139,17 @@ mod tests {
             .iter()
             .map(|o| o.to_u256().as_u64() as i64)
             .collect()
+    }
+
+    #[test]
+    fn softmax_hint_wrong_input_count_returns_error() {
+        // 2 outputs → expects 3 inputs; give 2 → error
+        let mut outputs = [F::zero(); 2];
+        let too_few: Vec<F> = vec![F::zero(); 2]; // missing scale
+        assert!(softmax_hint::<F>(&too_few, &mut outputs).is_err());
+        // 4 inputs for 2 outputs → error
+        let too_many: Vec<F> = vec![F::zero(); 4];
+        assert!(softmax_hint::<F>(&too_many, &mut outputs).is_err());
     }
 
     #[test]
