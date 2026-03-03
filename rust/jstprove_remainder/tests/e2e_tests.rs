@@ -195,30 +195,95 @@ fn test_elementwise_add_prove_verify() {
 
 #[test]
 fn test_cast_passthrough_prove_verify() {
-    // Cast is a no-op in the ZK circuit: the quantiser has already resolved
-    // types, so field elements pass through unchanged.  Prove that the
-    // identity constraint  output - input = 0  is satisfied under the GKR
-    // prover, using a mix of positive and negative quantised values.
-    let data: Vec<i64> = vec![1, -2, 3, -4, 5, -6, 7, -8];
-    let num_vars = 3; // 2^3 = 8 elements
+    use jstprove_remainder::onnx::graph::{LayerGraph, LayerNode, OpType};
+    use jstprove_remainder::onnx::parser::AttrValue;
+    use jstprove_remainder::onnx::quantizer::{QuantizedModel, ScaleConfig};
+    use jstprove_remainder::runner::witness::compute_witness;
+    use std::collections::HashMap;
 
-    let input_mle = MultilinearExtension::new(data.iter().map(|&v| i64_to_fr(v)).collect());
-    let expected_mle = MultilinearExtension::new(data.iter().map(|&v| i64_to_fr(v)).collect());
+    // Input: 4 quantised integers; 4 = 2^2, already a power of two (no padding).
+    let input_data: Vec<i64> = vec![1, -2, 3, -4];
 
+    // Build a minimal LayerGraph:  "x" → Cast(to=INT64) → "y".
+    let cast_layer = LayerNode {
+        id: 0,
+        name: "cast_0".to_string(),
+        op_type: OpType::Cast,
+        inputs: vec!["x".to_string()],
+        outputs: vec!["y".to_string()],
+        weights: HashMap::new(),
+        attributes: {
+            let mut m = HashMap::new();
+            // ONNX TensorProto.DataType 7 == INT64 — a no-op integer cast.
+            m.insert("to".to_string(), AttrValue::Int(7));
+            m
+        },
+        output_shape: vec![4],
+        needs_rescale: false,
+        n_bits: None,
+    };
+
+    let mut input_shapes = HashMap::new();
+    input_shapes.insert("x".to_string(), vec![4]);
+
+    let graph = LayerGraph {
+        layers: vec![cast_layer],
+        input_names: vec!["x".to_string()],
+        output_names: vec!["y".to_string()],
+        topo_order: vec![0],
+        input_shapes,
+    };
+
+    let model = QuantizedModel {
+        graph,
+        scale_config: ScaleConfig::default(),
+        n_bits_config: HashMap::new(),
+    };
+
+    // compute_witness runs the Cast passthrough: tensors["y"] = tensors["x"].
+    // For a Cast-only model the produced shreds are:
+    //   "x"               → input_data (padded to power of two)
+    //   "expected_output" → same values (Cast is an identity in the ZK circuit)
+    let witness = compute_witness(&model, &input_data).expect("compute_witness failed");
+
+    // Verify that compute_witness produced the two expected shreds and that the
+    // Cast layer correctly passed the input through unchanged.
+    assert!(
+        witness.shreds.contains_key("x"),
+        "witness missing 'x' shred"
+    );
+    assert!(
+        witness.shreds.contains_key("expected_output"),
+        "witness missing 'expected_output' shred"
+    );
+    assert_eq!(
+        witness.shreds["x"], witness.shreds["expected_output"],
+        "Cast passthrough: output must equal input"
+    );
+
+    // Build the verification circuit:  x - expected_output = 0.
+    // (A Cast-only model has no committed inputs — no rescale quotients and no
+    // range-check multiplicity shreds — so we build the circuit directly with
+    // CircuitBuilder rather than going through build_circuit, which always
+    // registers a committed input layer and would fail with an empty one.)
+    let input_nv = 2usize; // 4 elements = 2^2
     let mut builder = CircuitBuilder::<Fr>::new();
     let public = builder.add_input_layer("Public", LayerVisibility::Public);
-    let input_node = builder.add_input_shred("Input", num_vars, &public);
-    let expected_node = builder.add_input_shred("Expected", num_vars, &public);
-
-    // Cast is identity: output == input, so this sector must be zero.
+    let input_node = builder.add_input_shred("x", input_nv, &public);
+    let expected_node = builder.add_input_shred("expected_output", input_nv, &public);
     let diff = builder.add_sector(input_node.expr() - expected_node.expr());
     builder.set_output(&diff);
-
     let mut circuit = builder.build_with_layer_combination().unwrap();
-    circuit.set_input("Input", input_mle);
-    circuit.set_input("Expected", expected_mle);
 
-    let provable = circuit.gen_provable_circuit().unwrap();
+    // Feed the witness shreds into the circuit.
+    for (name, values) in &witness.shreds {
+        let mle = MultilinearExtension::new(values.iter().map(|&v| i64_to_fr(v)).collect());
+        circuit.set_input(name, mle);
+    }
+
+    let provable = circuit
+        .gen_provable_circuit()
+        .expect("gen_provable_circuit failed");
     test_circuit_with_runtime_optimized_config(&provable);
 }
 

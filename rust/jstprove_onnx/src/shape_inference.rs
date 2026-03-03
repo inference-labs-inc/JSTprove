@@ -724,7 +724,13 @@ fn infer_tile(
                     layer.name
                 );
             }
-            d.checked_mul(r as usize).ok_or_else(|| {
+            let repeat_usize = usize::try_from(r).map_err(|_| {
+                anyhow::anyhow!(
+                    "layer {}: Tile repeat[{i}] = {r} cannot be converted to usize",
+                    layer.name
+                )
+            })?;
+            d.checked_mul(repeat_usize).ok_or_else(|| {
                 anyhow::anyhow!(
                     "layer {}: Tile output size overflow at axis {i}: {d} * {r}",
                     layer.name

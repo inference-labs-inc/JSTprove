@@ -358,7 +358,11 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                     &mut range_checks,
                 )?;
             }
-            OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
+            OpType::Cast
+            | OpType::Reshape
+            | OpType::Flatten
+            | OpType::Squeeze
+            | OpType::Unsqueeze => {
                 let input_name = layer
                     .inputs
                     .first()
