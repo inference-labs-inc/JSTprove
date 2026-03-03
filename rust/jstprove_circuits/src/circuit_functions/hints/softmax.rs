@@ -77,6 +77,11 @@ pub fn softmax_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<()
 
     // Decode scale (always positive, fits in u64).
     let scale_u64 = inputs[n].to_u256().as_u64();
+    if scale_u64 == 0 {
+        return Err(Error::UserError(
+            "softmax_hint: scale is zero; cannot de-quantise input".to_string(),
+        ));
+    }
     let scale_f64 = scale_u64 as f64;
 
     // Convert quantised inputs to real-valued f64.
@@ -150,6 +155,14 @@ mod tests {
         // 4 inputs for 2 outputs → error
         let too_many: Vec<F> = vec![F::zero(); 4];
         assert!(softmax_hint::<F>(&too_many, &mut outputs).is_err());
+    }
+
+    #[test]
+    fn softmax_hint_zero_scale_returns_error() {
+        // 2 outputs → expects 3 inputs: [x_0, x_1, scale]; scale = 0
+        let mut outputs = [F::zero(); 2];
+        let inputs = vec![F::zero(), F::zero(), F::zero()]; // scale = 0
+        assert!(softmax_hint::<F>(&inputs, &mut outputs).is_err());
     }
 
     #[test]

@@ -100,7 +100,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SigmoidLayer {
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
         // Sigmoid has exactly one data input and no weights.
-        let _x_name = layer
+        layer
             .inputs
             .first()
             .ok_or_else(|| LayerError::MissingInput {

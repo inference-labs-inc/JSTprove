@@ -16,15 +16,14 @@
 // planned future extension.
 //
 // # Axis handling
-// The current implementation treats the entire flattened input tensor as a
-// single softmax reduction (equivalent to axis=-1 on a 1-D tensor). This
-// covers the most common use case: softmax applied to a 1-D logit vector after
-// Flatten/Reshape. Multi-axis batched softmax is a future extension.
+// Softmax is applied independently along the specified axis (default -1, i.e.
+// the last axis, matching ONNX opset ≥ 13 semantics). The hint is called once
+// per lane along that axis, so batched inputs are handled correctly.
 
 use std::collections::HashMap;
 
 use ethnum::U256;
-use ndarray::{ArrayD, IxDyn};
+use ndarray::{ArrayD, Axis, IxDyn};
 
 use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
 
@@ -33,7 +32,10 @@ use crate::circuit_functions::{
     gadgets::range_check::LogupRangeCheckContext,
     hints::softmax::SOFTMAX_HINT_KEY,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
-    utils::{constants::INPUT, onnx_model::get_input_name},
+    utils::{
+        constants::{AXIS, INPUT},
+        onnx_model::{extract_params, get_input_name, get_param_or_default},
+    },
 };
 
 // -------- Struct --------
@@ -46,6 +48,8 @@ pub struct SoftmaxLayer {
     n_bits: usize,
     /// Scaling factor `2^scale_exponent`, baked into the hint call.
     scaling: u64,
+    /// Softmax axis (may be negative; -1 means the last axis).
+    axis: i64,
 }
 
 // -------- Implementation --------
@@ -64,39 +68,72 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
         })?;
 
         let shape = x_input.shape().to_vec();
-        let n = shape.iter().product::<usize>();
+        let rank = shape.len();
+
+        // Normalise the axis: negative values count from the end.
+        let axis = if self.axis < 0 {
+            let a = rank as i64 + self.axis;
+            if a < 0 {
+                return Err(LayerError::InvalidShape {
+                    layer: LayerKind::Softmax,
+                    msg: format!("axis {} out of range for tensor rank {rank}", self.axis),
+                }
+                .into());
+            }
+            a as usize
+        } else {
+            let a = self.axis as usize;
+            if a >= rank {
+                return Err(LayerError::InvalidShape {
+                    layer: LayerKind::Softmax,
+                    msg: format!("axis {} out of range for tensor rank {rank}", self.axis),
+                }
+                .into());
+            }
+            a
+        };
+
+        // Number of elements along the softmax axis.
+        let n = shape[axis];
 
         // Build a constant variable for the scaling factor, shared across the call.
         let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
 
-        // Collect all input variables, then append the scale constant.
-        // Hint layout: inputs = [x_0, x_1, ..., x_{n-1}, scale], outputs = n elements.
-        let mut hint_inputs: Vec<Variable> = x_input.iter().copied().collect();
-        hint_inputs.push(scale_var);
-
-        // 1. Compute softmax(x) in native f64 via the hint; get n output variables.
-        let hint_out = api.new_hint(SOFTMAX_HINT_KEY, &hint_inputs, n);
-
-        // 2. Bound each output to [0, 2^n_bits) via a shared LogUp range check.
+        // Shared LogUp context for all range checks in this layer.
         let mut logup_ctx = LogupRangeCheckContext::new_default();
         logup_ctx.init::<C, Builder>(api);
-
         let n_bits = self.n_bits;
-        for &y in &hint_out {
-            logup_ctx.range_check::<C, Builder>(api, y, n_bits)?;
+
+        // Pre-allocate the output array with a zero placeholder; each element
+        // will be overwritten by the corresponding hint output below.
+        let zero_var = api.constant(CircuitField::<C>::from_u256(U256::from(0u64)));
+        let mut out_array = ArrayD::from_elem(IxDyn(&shape), zero_var);
+
+        // Iterate over corresponding input and output lanes simultaneously.
+        // `lanes(Axis(axis))` / `lanes_mut(Axis(axis))` both visit slices in the
+        // same C-order over all other axes, so zip() pairs them correctly.
+        // Writing directly into out_array lanes avoids any index-ordering issues.
+        let input_lanes: Vec<_> = x_input.lanes(Axis(axis)).into_iter().collect();
+        for (in_lane, mut out_lane) in input_lanes
+            .into_iter()
+            .zip(out_array.lanes_mut(Axis(axis)).into_iter())
+        {
+            // Hint layout: [x_0, ..., x_{n-1}, scale] → n outputs.
+            let mut hint_inputs: Vec<Variable> = in_lane.iter().copied().collect();
+            hint_inputs.push(scale_var);
+
+            let hint_out = api.new_hint(SOFTMAX_HINT_KEY, &hint_inputs, n);
+
+            for (out_elem, &y) in out_lane.iter_mut().zip(hint_out.iter()) {
+                logup_ctx.range_check::<C, Builder>(api, y, n_bits)?;
+                *out_elem = y;
+            }
         }
 
         // Finalise the shared LogUp table (emits the consistency constraint).
         logup_ctx.finalize::<C, Builder>(api);
 
-        let result = ArrayD::from_shape_vec(IxDyn(&shape), hint_out).map_err(|_| {
-            LayerError::InvalidShape {
-                layer: LayerKind::Softmax,
-                msg: format!("SoftmaxLayer: cannot reshape result into shape {shape:?}"),
-            }
-        })?;
-
-        Ok((self.outputs.clone(), result))
+        Ok((self.outputs.clone(), out_array))
     }
 
     fn build(
@@ -108,13 +145,21 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
         // Softmax has exactly one data input and no weights.
-        let _x_name = layer
+        layer
             .inputs
             .first()
             .ok_or_else(|| LayerError::MissingInput {
                 layer: LayerKind::Softmax,
                 name: "input X".to_string(),
             })?;
+
+        if layer.outputs.is_empty() {
+            return Err(LayerError::MissingParameter {
+                layer: LayerKind::Softmax,
+                param: "output".to_string(),
+            }
+            .into());
+        }
 
         let n_bits = layer_context.n_bits_for(&layer.name);
 
@@ -129,11 +174,28 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
                 ),
             })?;
 
+        // Read the axis attribute.
+        // ONNX opset ≥13 defaults to -1 (last axis); opset <13 defaults to 1.
+        let default_axis: i64 = if layer.opset_version_number >= 13 {
+            -1
+        } else {
+            1
+        };
+        let axis: i64 = match extract_params(layer).ok() {
+            Some(params) => get_param_or_default(&layer.name, AXIS, &params, Some(&default_axis))
+                .map_err(|e| LayerError::Other {
+                layer: LayerKind::Softmax,
+                msg: format!("failed to read 'axis' attribute: {e}"),
+            })?,
+            None => default_axis,
+        };
+
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
             n_bits,
             scaling,
+            axis,
         }))
     }
 }
