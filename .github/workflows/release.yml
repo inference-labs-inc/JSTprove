@@ -23,15 +23,21 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          dnf install -y pkgconf-pkg-config perl-IPC-Cmd perl-Time-Piece clang-devel
+          dnf install -y pkgconf-pkg-config perl-IPC-Cmd perl-Time-Piece clang-devel protobuf-compiler
+          echo "/opt/python/cp312-cp312/bin" >> $GITHUB_PATH
 
       - name: Install Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly-2025-03-27
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
       - name: Install maturin
-        run: pip3 install maturin
+        run: uv tool install maturin
 
       - name: Extract version
         id: get_version
@@ -71,7 +77,7 @@ jobs:
 
       - name: Test wheel installation
         run: |
-          pip3 install target/wheels/*.whl
+          uv pip install --system target/wheels/*.whl
           python3 -c "from jstprove import Circuit; print('PyO3 bindings OK')"
 
       - name: Upload wheel artifact
@@ -96,8 +102,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install system dependencies
+        run: brew install protobuf
+
       - name: Install maturin
-        run: pip3 install maturin
+        run: uv tool install maturin
 
       - name: Extract version
         id: get_version
@@ -144,7 +156,7 @@ jobs:
 
       - name: Test wheel installation
         run: |
-          pip3 install target/wheels/*.whl
+          uv pip install --system target/wheels/*.whl
           python3 -c "from jstprove import Circuit; print('PyO3 bindings OK')"
 
       - name: Upload wheel artifact
