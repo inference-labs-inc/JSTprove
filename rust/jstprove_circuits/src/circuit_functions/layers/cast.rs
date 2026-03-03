@@ -56,10 +56,21 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for CastLayer {
         })?;
 
         let to_type: i64 =
-            get_param(&layer.name, "to", &params).map_err(|_| LayerError::MissingParameter {
+            get_param(&layer.name, "to", &params).map_err(|e| LayerError::Other {
                 layer: LayerKind::Cast,
-                param: "to".to_string(),
+                msg: format!("failed to read 'to' attribute: {e}"),
             })?;
+
+        // Validate that to_type is a known ONNX TensorProto.DataType code (1–16).
+        if !(1..=16).contains(&to_type) {
+            return Err(LayerError::Other {
+                layer: LayerKind::Cast,
+                msg: format!(
+                    "Cast 'to' attribute {to_type} is not a valid ONNX DataType code (expected 1–16)"
+                ),
+            }
+            .into());
+        }
 
         Ok(Box::new(Self {
             name: layer.name.clone(),

@@ -78,6 +78,11 @@ pub fn exp_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Er
     // Decode scale as u64 (always positive, fits in u64 for practical scales)
     let scale_u256 = inputs[1].to_u256();
     let scale_u64: u64 = scale_u256.as_u64();
+    if scale_u64 == 0 {
+        return Err(Error::UserError(
+            "exp_hint: scale is zero; cannot de-quantise input".to_string(),
+        ));
+    }
     let scale_f64 = scale_u64 as f64;
 
     // Compute exp in f64 on the real-valued (de-quantised) input
@@ -177,6 +182,13 @@ mod tests {
         assert!(exp_hint::<F>(&inputs, &mut []).is_err());
         // 2 outputs instead of 1
         let mut outputs = [F::zero(); 2];
+        assert!(exp_hint::<F>(&inputs, &mut outputs).is_err());
+    }
+
+    #[test]
+    fn exp_hint_zero_scale_returns_error() {
+        let inputs = [F::zero(), F::zero()]; // scale = 0
+        let mut outputs = [F::zero()];
         assert!(exp_hint::<F>(&inputs, &mut outputs).is_err());
     }
 

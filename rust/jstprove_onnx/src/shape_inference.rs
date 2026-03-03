@@ -724,7 +724,12 @@ fn infer_tile(
                     layer.name
                 );
             }
-            Ok(d * r as usize)
+            d.checked_mul(r as usize).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "layer {}: Tile output size overflow at axis {i}: {d} * {r}",
+                    layer.name
+                )
+            })
         })
         .collect::<Result<Vec<_>>>()?;
 

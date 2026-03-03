@@ -76,6 +76,11 @@ pub fn sigmoid_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<()
 
     // Decode scale as u64 (always positive, fits in u64 for practical scales)
     let scale_u64 = inputs[1].to_u256().as_u64();
+    if scale_u64 == 0 {
+        return Err(Error::UserError(
+            "sigmoid_hint: scale is zero; cannot de-quantise input".to_string(),
+        ));
+    }
     let scale_f64 = scale_u64 as f64;
 
     // Compute sigmoid in f64 on the real-valued (de-quantised) input.
@@ -187,6 +192,13 @@ mod tests {
             (result - expected).abs() <= 1,
             "got {result}, expected ~{expected}"
         );
+    }
+
+    #[test]
+    fn sigmoid_hint_zero_scale_returns_error() {
+        let inputs = [F::zero(), F::zero()]; // scale = 0
+        let mut outputs = [F::zero()];
+        assert!(sigmoid_hint::<F>(&inputs, &mut outputs).is_err());
     }
 
     #[test]

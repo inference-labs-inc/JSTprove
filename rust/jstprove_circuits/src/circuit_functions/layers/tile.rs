@@ -114,6 +114,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TileLayer {
 
         let mut repeats = Vec::with_capacity(input_shape.len());
         for (ax, (&out, &inp)) in output_shape.iter().zip(input_shape.iter()).enumerate() {
+            if out == 0 {
+                return Err(LayerError::InvalidShape {
+                    layer: LayerKind::Tile,
+                    msg: format!("output dim at axis {ax} is zero"),
+                }
+                .into());
+            }
             if inp == 0 {
                 return Err(LayerError::InvalidShape {
                     layer: LayerKind::Tile,

@@ -159,6 +159,7 @@ mod tests {
     fn parse_canonical_op_names() {
         let ops = [
             "Add",
+            "Cast",
             "Sub",
             "Mul",
             "Div",
@@ -219,6 +220,7 @@ mod tests {
     fn supported_op_names_contains_all_canonical() {
         let expected = [
             "Add",
+            "Cast",
             "Sub",
             "Mul",
             "Div",
