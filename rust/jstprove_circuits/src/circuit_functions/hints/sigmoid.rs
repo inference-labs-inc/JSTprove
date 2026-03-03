@@ -34,9 +34,23 @@ pub const SIGMOID_HINT_KEY: &str = "jstprove.sigmoid_hint";
 ///   `[0, i64::MAX]`, stored as a field element.
 ///   `sigmoid(x) = 1 / (1 + exp(-x))`
 ///
-/// # Panics
-/// Does not panic; out-of-range inputs are clamped.
+/// # Errors
+/// Returns [`Error::UserError`] when `inputs.len() != 2` or `outputs.len() != 1`.
+/// Out-of-range values are clamped, never an error.
 pub fn sigmoid_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Error> {
+    if inputs.len() != 2 {
+        return Err(Error::UserError(format!(
+            "sigmoid_hint: expected 2 inputs (x_q, scale), got {}",
+            inputs.len()
+        )));
+    }
+    if outputs.len() != 1 {
+        return Err(Error::UserError(format!(
+            "sigmoid_hint: expected 1 output, got {}",
+            outputs.len()
+        )));
+    }
+
     // Decode x_q from field element using two's complement convention:
     // values >= p/2 represent negative integers.
     let p_half = F::MODULUS / 2;
@@ -105,6 +119,22 @@ mod tests {
         let mut outputs = [F::zero()];
         sigmoid_hint::<F>(&inputs, &mut outputs).unwrap();
         outputs[0].to_u256().as_u64() as i64
+    }
+
+    #[test]
+    fn sigmoid_hint_wrong_input_count_returns_error() {
+        let mut outputs = [F::zero()];
+        assert!(sigmoid_hint::<F>(&[], &mut outputs).is_err());
+        assert!(sigmoid_hint::<F>(&[F::zero()], &mut outputs).is_err());
+        assert!(sigmoid_hint::<F>(&[F::zero(); 3], &mut outputs).is_err());
+    }
+
+    #[test]
+    fn sigmoid_hint_wrong_output_count_returns_error() {
+        let inputs = [F::zero(), F::from_u256(U256::from(256u64))];
+        assert!(sigmoid_hint::<F>(&inputs, &mut []).is_err());
+        let mut outputs = [F::zero(); 2];
+        assert!(sigmoid_hint::<F>(&inputs, &mut outputs).is_err());
     }
 
     #[test]

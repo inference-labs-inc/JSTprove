@@ -34,9 +34,23 @@ pub const EXP_HINT_KEY: &str = "jstprove.exp_hint";
 /// - `outputs[0]`: `round(exp(x_q / scale) * scale)`, clamped to
 ///   `[0, i64::MAX]`, stored as a field element.
 ///
-/// # Panics
-/// Does not panic; out-of-range inputs are clamped.
+/// # Errors
+/// Returns [`Error::UserError`] when `inputs.len() != 2` or `outputs.len() != 1`.
+/// Out-of-range values are clamped, never an error.
 pub fn exp_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Error> {
+    if inputs.len() != 2 {
+        return Err(Error::UserError(format!(
+            "exp_hint: expected 2 inputs (x_q, scale), got {}",
+            inputs.len()
+        )));
+    }
+    if outputs.len() != 1 {
+        return Err(Error::UserError(format!(
+            "exp_hint: expected 1 output, got {}",
+            outputs.len()
+        )));
+    }
+
     // Decode x_q from field element using two's complement convention:
     // values >= p/2 represent negative integers.
     let p_half = F::MODULUS / 2;
@@ -143,6 +157,27 @@ mod tests {
             (result - expected).abs() <= 1,
             "got {result}, expected ~{expected}"
         );
+    }
+
+    #[test]
+    fn exp_hint_wrong_input_count_returns_error() {
+        let mut outputs = [F::zero()];
+        // 0 inputs instead of 2
+        assert!(exp_hint::<F>(&[], &mut outputs).is_err());
+        // 1 input instead of 2
+        assert!(exp_hint::<F>(&[F::zero()], &mut outputs).is_err());
+        // 3 inputs instead of 2
+        assert!(exp_hint::<F>(&[F::zero(); 3], &mut outputs).is_err());
+    }
+
+    #[test]
+    fn exp_hint_wrong_output_count_returns_error() {
+        let inputs = [F::zero(), F::from_u256(U256::from(256u64))];
+        // 0 outputs instead of 1
+        assert!(exp_hint::<F>(&inputs, &mut []).is_err());
+        // 2 outputs instead of 1
+        let mut outputs = [F::zero(); 2];
+        assert!(exp_hint::<F>(&inputs, &mut outputs).is_err());
     }
 
     #[test]
