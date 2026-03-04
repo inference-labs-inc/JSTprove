@@ -15,17 +15,23 @@ use crate::circuit_functions::{
 /// ONNX TensorProto.DataType codes that are safe no-ops in the ZK circuit.
 ///
 /// Every value in this pipeline is quantised to INT64 field elements before the
-/// circuit is built; a Cast to any integer type therefore preserves the
-/// bit-pattern as-is in the circuit domain and requires no constraint.
+/// circuit is built; field elements carry no type information, so a Cast to any
+/// numeric type is an identity in the circuit domain and requires no constraint.
 ///
-/// Float/bool/string targets are NOT in the allowlist: encountering one most
-/// likely indicates a quantisation error in the upstream model.
+/// FLOAT and DOUBLE are included because models commonly insert a Cast to
+/// promote float32 inputs to float64 precision before transcendental ops
+/// (Exp, Softmax, Sigmoid); after quantisation that cast is a no-op.
+///
+/// BOOL (9) and STRING (8) are excluded: a Cast that produces a boolean or
+/// string almost certainly means the model was not quantised correctly.
 const NOOP_CAST_TYPES: &[i64] = &[
+    1,  // FLOAT
     2,  // UINT8
     3,  // INT8
     5,  // INT16
     6,  // INT32
     7,  // INT64
+    11, // DOUBLE
     12, // UINT32
     13, // UINT64
 ];

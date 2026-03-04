@@ -189,13 +189,26 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
                 ),
             })?;
 
+        // Reject opset < 13: apply() uses per-axis lanes semantics (opset ≥ 13).
+        // Opset < 13 requires 2D-coercion semantics (flatten to 2D then apply
+        // softmax along axis 1) which is not yet implemented; accepting such
+        // models would silently produce incorrect outputs.
+        if layer.opset_version_number < 13 {
+            return Err(LayerError::Other {
+                layer: LayerKind::Softmax,
+                msg: format!(
+                    "opset {} is not supported: apply() uses per-axis lanes semantics \
+                    (opset ≥ 13 only); 2D coercion required by opset < 13 is not yet \
+                    implemented",
+                    layer.opset_version_number
+                ),
+            }
+            .into());
+        }
+
         // Read the axis attribute.
-        // ONNX opset ≥13 defaults to -1 (last axis); opset <13 defaults to 1.
-        let default_axis: i64 = if layer.opset_version_number >= 13 {
-            -1
-        } else {
-            1
-        };
+        // ONNX opset ≥13 defaults to -1 (last axis).
+        let default_axis: i64 = -1;
         let axis: i64 = match extract_params(layer).ok() {
             Some(params) => get_param_or_default(&layer.name, AXIS, &params, Some(&default_axis))
                 .map_err(|e| LayerError::Other {
