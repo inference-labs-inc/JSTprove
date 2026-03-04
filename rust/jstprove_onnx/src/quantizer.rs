@@ -228,6 +228,19 @@ fn compute_bounds(graph: &LayerGraph, config: &ScaleConfig) -> Result<HashMap<St
         let bound = compute_layer_bound(layer, &bounds)?;
 
         if layer.needs_rescale || is_range_check_op(layer.op_type) {
+            // Guard: compute_n_bits computes (alpha as f64 * bound).log2().
+            // If alpha * bound overflows f64 to +Inf, log2 returns +Inf and
+            // the subsequent `as usize` saturates, producing an incorrect n_bits.
+            // Catch this before it propagates.
+            let safe_max = f64::MAX / (alpha as f64);
+            if bound > safe_max {
+                anyhow::bail!(
+                    "layer {}: activation bound {bound:.3e} exceeds safe maximum {safe_max:.3e} \
+                    (alpha={alpha} * bound overflows f64 in n_bits sizing); \
+                    the model's activation range is too large to quantise safely",
+                    layer.name
+                );
+            }
             let n_bits = compute_n_bits(alpha, bound);
             n_bits_config.insert(layer.name.clone(), n_bits);
         }
