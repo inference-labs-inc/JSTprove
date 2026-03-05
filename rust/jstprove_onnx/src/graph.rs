@@ -29,6 +29,7 @@ pub enum OpType {
     Sigmoid,
     Tile,
     Gather,
+    LayerNormalization,
 }
 
 impl OpType {
@@ -57,6 +58,7 @@ impl OpType {
             "Sigmoid" => Ok(Self::Sigmoid),
             "Tile" => Ok(Self::Tile),
             "Gather" => Ok(Self::Gather),
+            "LayerNormalization" => Ok(Self::LayerNormalization),
             other => bail!("unsupported ONNX op: {other}"),
         }
     }

@@ -12,6 +12,7 @@ pub mod flatten;
 pub mod gather;
 pub mod gemm;
 mod layer_kinds;
+pub mod layer_norm;
 pub mod layer_ops;
 pub mod maxpool;
 pub mod mul;

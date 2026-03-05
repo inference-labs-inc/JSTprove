@@ -15,6 +15,9 @@ pub use sigmoid::sigmoid_hint;
 pub mod softmax;
 pub use softmax::softmax_hint;
 
+pub mod layer_norm;
+pub use layer_norm::layer_norm_hint;
+
 pub mod max_min_clip;
 pub use max_min_clip::{unconstrained_clip, unconstrained_max, unconstrained_min};
 
@@ -60,6 +63,7 @@ pub fn build_logup_hint_registry<F: CompilerField>() -> HintRegistry<F> {
     registry.register(exp::EXP_HINT_KEY, exp_hint::<F>);
     registry.register(sigmoid::SIGMOID_HINT_KEY, sigmoid_hint::<F>);
     registry.register(softmax::SOFTMAX_HINT_KEY, softmax_hint::<F>);
+    registry.register(layer_norm::LAYER_NORM_HINT_KEY, layer_norm_hint::<F>);
 
     registry
 }

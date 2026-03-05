@@ -31,6 +31,7 @@ const SUPPORTED_OPS: &[&str] = &[
     "Sigmoid",
     "Tile",
     "Gather",
+    "LayerNormalization",
 ];
 
 pub fn is_compatible(path: &Path) -> Result<(bool, Vec<String>)> {

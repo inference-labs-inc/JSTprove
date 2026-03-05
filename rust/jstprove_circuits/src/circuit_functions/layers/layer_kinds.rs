@@ -19,6 +19,7 @@ use crate::circuit_functions::layers::exp::ExpLayer;
 use crate::circuit_functions::layers::flatten::FlattenLayer;
 use crate::circuit_functions::layers::gather::GatherLayer;
 use crate::circuit_functions::layers::gemm::GemmLayer;
+use crate::circuit_functions::layers::layer_norm::LayerNormLayer;
 use crate::circuit_functions::layers::maxpool::MaxPoolLayer;
 use crate::circuit_functions::layers::relu::ReluLayer;
 use crate::circuit_functions::layers::reshape::ReshapeLayer;
@@ -141,6 +142,7 @@ define_layers! {
     Flatten   => { name: "Flatten", builder: FlattenLayer::build },
     Gather    => { name: "Gather", builder: GatherLayer::build },
     Gemm      => { name: "Gemm", builder: GemmLayer::build },
+    LayerNormalization => { name: "LayerNormalization", builder: LayerNormLayer::build },
     MaxPool   => { name: "MaxPool", builder: MaxPoolLayer::build },
     Max       => { name: "Max", builder: BinaryCompareLayer::build },
     Min       => { name: "Min", builder: BinaryCompareLayer::build },
@@ -170,6 +172,7 @@ mod tests {
             "Gather",
             "Gemm",
             "Flatten",
+            "LayerNormalization",
             "Reshape",
             "MaxPool",
             "Clip",
@@ -232,6 +235,7 @@ mod tests {
             "Gather",
             "Gemm",
             "Flatten",
+            "LayerNormalization",
             "Reshape",
             "MaxPool",
             "Clip",
