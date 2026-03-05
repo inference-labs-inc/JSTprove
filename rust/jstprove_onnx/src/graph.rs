@@ -62,7 +62,7 @@ impl OpType {
     pub fn is_shape_only(&self) -> bool {
         matches!(
             self,
-            Self::Cast | Self::Reshape | Self::Flatten | Self::Squeeze | Self::Unsqueeze
+            Self::Reshape | Self::Flatten | Self::Squeeze | Self::Unsqueeze
         )
     }
 

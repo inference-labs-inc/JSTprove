@@ -1,5 +1,8 @@
 //! Hint infrastructure: LogUp hints + unconstrained arithmetic helpers.
 
+use ethnum::U256;
+use expander_compiler::field::FieldArith;
+
 pub mod bits;
 pub use bits::unconstrained_to_bits;
 
@@ -19,6 +22,32 @@ pub use max_min_clip::{unconstrained_clip, unconstrained_max, unconstrained_min}
 use circuit_std_rs::logup::{query_count_by_key_hint, query_count_hint, rangeproof_hint};
 use expander_compiler::field::Field as CompilerField;
 use expander_compiler::hints::registry::HintRegistry;
+
+#[allow(
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_truncation
+)]
+pub fn field_to_i64<F: FieldArith>(x: F) -> i64 {
+    let p_half = F::MODULUS / 2;
+    let xu = x.to_u256();
+    if xu > p_half {
+        let neg_magnitude = F::MODULUS - xu;
+        let max_i64 = U256::from(i64::MAX as u64);
+        if neg_magnitude > max_i64 {
+            i64::MIN
+        } else {
+            -(neg_magnitude.as_u64() as i64)
+        }
+    } else {
+        let max_i64 = U256::from(i64::MAX as u64);
+        if xu > max_i64 {
+            i64::MAX
+        } else {
+            xu.as_u64() as i64
+        }
+    }
+}
 
 /// Build a HintRegistry with all LogUp-related hints registered.
 /// These names MUST match the identifiers used by new_hint(...).

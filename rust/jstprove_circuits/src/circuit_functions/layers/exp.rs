@@ -67,7 +67,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ExpLayer {
         let n_bits = self.n_bits;
         let mut out_storage: Vec<Variable> = Vec::with_capacity(x_input.len());
 
-        for &x in x_input.iter() {
+        for &x in x_input {
             // 1. Compute exp(x_q / scale) * scale via the native-f64 hint.
             //    new_hint returns Vec<Variable>; index 0 is our result.
             let hint_out = api.new_hint(EXP_HINT_KEY, &[x, scale_var], 1);
