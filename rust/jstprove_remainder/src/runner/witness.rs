@@ -1136,6 +1136,81 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     }
                 }
             }
+            OpType::Gather => {
+                let data_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("Gather {} has no data input", layer.name))?;
+                let indices_name = layer.inputs.get(1).ok_or_else(|| {
+                    anyhow::anyhow!("Gather {} has no indices input", layer.name)
+                })?;
+
+                let data_flat = tensors
+                    .get(data_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Gather {} data '{}' not computed",
+                            layer.name,
+                            data_name
+                        )
+                    })?
+                    .clone();
+
+                let indices_td =
+                    layer.weights.get(indices_name).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Gather {} indices '{}' not found in weights; \
+                            only constant (initializer) indices are supported",
+                            layer.name,
+                            indices_name
+                        )
+                    })?;
+                let indices = indices_td.as_i64_vec();
+
+                let axis = layer.get_int_attr("axis").unwrap_or(0);
+                anyhow::ensure!(
+                    axis == 0,
+                    "Gather {}: only axis=0 is supported in the Remainder backend (got axis={})",
+                    layer.name,
+                    axis
+                );
+
+                let output_total: usize = layer.output_shape.iter().product();
+                let slice_size = if indices.is_empty() {
+                    0
+                } else {
+                    output_total / indices.len()
+                };
+
+                let mut result: Vec<i64> = Vec::with_capacity(output_total);
+                for &idx in &indices {
+                    let idx = usize::try_from(idx).map_err(|_| {
+                        anyhow::anyhow!(
+                            "Gather {}: negative index {} is not supported",
+                            layer.name,
+                            idx
+                        )
+                    })?;
+                    let start = idx * slice_size;
+                    let end = start + slice_size;
+                    anyhow::ensure!(
+                        end <= data_flat.len(),
+                        "Gather {}: index {} out of bounds (data size {})",
+                        layer.name,
+                        idx,
+                        data_flat.len()
+                    );
+                    result.extend_from_slice(&data_flat[start..end]);
+                }
+
+                let padded = pad_to_size(&result, next_power_of_two(output_total));
+                let gather_out_name = format!("{}_out", layer.name);
+                shreds.insert(gather_out_name, padded.clone());
+
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                }
+            }
             other => {
                 bail!(
                     "witness: unsupported op type {:?} in layer {}",
@@ -1912,6 +1987,16 @@ pub fn prepare_public_shreds(
                     if let Some(ref layout) = layout {
                         tensor_layouts.insert(out_name.clone(), layout.clone());
                     }
+                }
+            }
+            OpType::Gather => {
+                // The gather output is a committed shred whose values are computed
+                // by the prover (compute_witness). Here we only track the output
+                // size so that downstream ops can derive their own sizes correctly.
+                let out_total: usize = layer.output_shape.iter().product();
+                let sz = next_power_of_two(out_total);
+                for out_name in &layer.outputs {
+                    tensor_sizes.insert(out_name.clone(), sz);
                 }
             }
             other => {

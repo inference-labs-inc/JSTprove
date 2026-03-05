@@ -102,6 +102,7 @@ fn infer_layer_output_shape(
             passthrough_shape(layer, input_shape)
         }
         OpType::Tile => infer_tile(layer, input_shape, initializers, constant_tensors),
+        OpType::Gather => infer_gather(layer, shapes, initializers, constant_tensors),
     }
 }
 
@@ -738,6 +739,87 @@ fn infer_tile(
             })
         })
         .collect::<Result<Vec<_>>>()?;
+
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
+}
+
+fn infer_gather(
+    layer: &LayerNode,
+    shapes: &HashMap<String, Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let data_name = layer
+        .inputs
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Gather missing data input", layer.name))?;
+
+    let indices_name = layer
+        .inputs
+        .get(1)
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Gather missing indices input", layer.name))?;
+
+    let data_shape = get_shape(shapes, data_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "layer {}: Gather missing shape for data input '{data_name}'",
+            layer.name
+        )
+    })?;
+
+    let indices_shape = get_shape(shapes, indices_name)
+        .cloned()
+        .or_else(|| {
+            initializers
+                .get(indices_name)
+                .or_else(|| constant_tensors.get(indices_name))
+                .map(|td| td.shape())
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "layer {}: Gather missing shape for indices input '{indices_name}'",
+                layer.name
+            )
+        })?;
+
+    let rank = data_shape.len();
+    anyhow::ensure!(
+        rank > 0,
+        "layer {}: Gather data input must have rank >= 1",
+        layer.name
+    );
+
+    let raw_axis = layer.get_int_attr("axis").unwrap_or(0);
+    let axis = if raw_axis < 0 {
+        let a = rank as i64 + raw_axis;
+        anyhow::ensure!(
+            a >= 0,
+            "layer {}: Gather axis {} out of range for data rank {}",
+            layer.name,
+            raw_axis,
+            rank
+        );
+        a as usize
+    } else {
+        let a = raw_axis as usize;
+        anyhow::ensure!(
+            a < rank,
+            "layer {}: Gather axis {} out of range for data rank {}",
+            layer.name,
+            raw_axis,
+            rank
+        );
+        a
+    };
+
+    // output_shape = data_shape[:axis] + indices_shape + data_shape[axis+1:]
+    let mut out_shape = Vec::with_capacity(rank - 1 + indices_shape.len());
+    out_shape.extend_from_slice(&data_shape[..axis]);
+    out_shape.extend_from_slice(&indices_shape);
+    out_shape.extend_from_slice(&data_shape[axis + 1..]);
 
     Ok(layer
         .outputs
