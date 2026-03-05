@@ -22,6 +22,12 @@ pub fn get_scale_plan(op: OpType) -> HashMap<usize, usize> {
             m.insert(2, 2);
             m
         }
+        OpType::LayerNormalization => {
+            let mut m = HashMap::new();
+            m.insert(1, 1); // Scale/gamma quantised at α¹
+            m.insert(2, 2); // B/beta quantised at α²
+            m
+        }
         _ => HashMap::new(),
     }
 }

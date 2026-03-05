@@ -466,6 +466,22 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
         // softmax / sigmoid outputs are in [0, 1] in the real domain.
         OpType::Softmax | OpType::Sigmoid => Ok(1.0),
         OpType::Constant => Ok(1.0),
+        OpType::LayerNormalization => {
+            // Conservative bound: max|γ| * m_in + max|β|.
+            // gamma (input[1]) is in float units at this point; bias_bound(2) is max|β_f|.
+            let m_in = get_input_bound(0);
+            let max_gamma = layer
+                .inputs
+                .get(1)
+                .and_then(|name| layer.weights.get(name))
+                .map(|w| {
+                    let vals = w.as_f64_vec();
+                    vals.iter().map(|v| v.abs()).fold(0.0_f64, f64::max)
+                })
+                .unwrap_or(1.0);
+            let max_beta = get_bias_bound(2);
+            Ok(max_gamma * m_in + max_beta)
+        }
     }
 }
 

@@ -31,7 +31,7 @@ use crate::circuit_functions::{
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
-        onnx_model::{get_input_name, get_w_or_b, extract_params, get_param_or_default},
+        onnx_model::{extract_params, get_input_name, get_param_or_default, get_w_or_b},
     },
 };
 
@@ -58,10 +58,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherLayer {
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let data_name = get_input_name(&self.inputs, 0, LayerKind::Gather, INPUT)?;
-        let data = input.get(data_name).ok_or_else(|| LayerError::MissingInput {
-            layer: LayerKind::Gather,
-            name: data_name.to_string(),
-        })?;
+        let data = input
+            .get(data_name)
+            .ok_or_else(|| LayerError::MissingInput {
+                layer: LayerKind::Gather,
+                name: data_name.to_string(),
+            })?;
 
         let data_shape = data.shape();
         let axis = self.axis;
@@ -122,9 +124,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherLayer {
                 if idx >= d_axis {
                     return Err(LayerError::InvalidShape {
                         layer: LayerKind::Gather,
-                        msg: format!(
-                            "index {idx} out of bounds for axis {axis} of size {d_axis}"
-                        ),
+                        msg: format!("index {idx} out of bounds for axis {axis} of size {d_axis}"),
                     }
                     .into());
                 }
@@ -184,14 +184,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherLayer {
 
         // Read axis attribute (ONNX default = 0).
         let raw_axis: i64 = match extract_params(layer).ok() {
-            Some(params) => {
-                get_param_or_default(&layer.name, "axis", &params, Some(&0i64)).map_err(
-                    |e| LayerError::Other {
-                        layer: LayerKind::Gather,
-                        msg: format!("failed to read 'axis' attribute: {e}"),
-                    },
-                )?
-            }
+            Some(params) => get_param_or_default(&layer.name, "axis", &params, Some(&0i64))
+                .map_err(|e| LayerError::Other {
+                    layer: LayerKind::Gather,
+                    msg: format!("failed to read 'axis' attribute: {e}"),
+                })?,
             None => 0,
         };
 
@@ -199,14 +196,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherLayer {
         // output_shape and the indices tensor shape.
         let indices_name = &layer.inputs[1];
         let indices_array: ndarray::ArrayD<i64> =
-            get_w_or_b(layer_context.w_and_b_map, indices_name).map_err(|e| {
-                LayerError::Other {
-                    layer: LayerKind::Gather,
-                    msg: format!(
-                        "failed to read indices tensor '{indices_name}': {e}; \
+            get_w_or_b(layer_context.w_and_b_map, indices_name).map_err(|e| LayerError::Other {
+                layer: LayerKind::Gather,
+                msg: format!(
+                    "failed to read indices tensor '{indices_name}': {e}; \
                         Gather requires constant (initializer) indices"
-                    ),
-                }
+                ),
             })?;
 
         let indices_rank = indices_array.ndim();
@@ -218,10 +213,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherLayer {
             if a < 0 {
                 return Err(LayerError::InvalidShape {
                     layer: LayerKind::Gather,
-                    msg: format!(
-                        "axis {} out of range for data rank {}",
-                        raw_axis, data_rank
-                    ),
+                    msg: format!("axis {} out of range for data rank {}", raw_axis, data_rank),
                 }
                 .into());
             }
@@ -231,10 +223,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherLayer {
             if a >= data_rank {
                 return Err(LayerError::InvalidShape {
                     layer: LayerKind::Gather,
-                    msg: format!(
-                        "axis {} out of range for data rank {}",
-                        raw_axis, data_rank
-                    ),
+                    msg: format!("axis {} out of range for data rank {}", raw_axis, data_rank),
                 }
                 .into());
             }
@@ -281,18 +270,15 @@ mod tests {
 
         // Row 2 = [50, 60], row 0 = [10, 20] → output [[50,60],[10,20]]
         let expected: Vec<i64> = vec![50, 60, 10, 20];
-        let out_arr = ArrayD::from_shape_vec(IxDyn(&layer.output_shape), expected.clone())
-            .expect("shape ok");
+        let out_arr =
+            ArrayD::from_shape_vec(IxDyn(&layer.output_shape), expected.clone()).expect("shape ok");
 
         // Convert data to Variable (use i64 as proxy to avoid needing a real
         // circuit builder in this unit test).
         //
         // Because Variable is a circuit type, we test the indexing logic
         // directly by running the gather on the flat slice instead.
-        let flat: Vec<i64> = data_arr
-            .as_slice()
-            .expect("contiguous")
-            .to_vec();
+        let flat: Vec<i64> = data_arr.as_slice().expect("contiguous").to_vec();
 
         let d_axis = 3usize;
         let slice_size = 2usize;

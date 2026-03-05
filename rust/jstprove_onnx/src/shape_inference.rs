@@ -98,9 +98,11 @@ fn infer_layer_output_shape(
         OpType::Squeeze => infer_squeeze(layer, input_shape),
         OpType::Unsqueeze => infer_unsqueeze(layer, input_shape),
         OpType::Constant => Ok(vec![]),
-        OpType::Cast | OpType::Exp | OpType::Softmax | OpType::Sigmoid => {
-            passthrough_shape(layer, input_shape)
-        }
+        OpType::Cast
+        | OpType::Exp
+        | OpType::Softmax
+        | OpType::Sigmoid
+        | OpType::LayerNormalization => passthrough_shape(layer, input_shape),
         OpType::Tile => infer_tile(layer, input_shape, initializers, constant_tensors),
         OpType::Gather => infer_gather(layer, shapes, initializers, constant_tensors),
     }

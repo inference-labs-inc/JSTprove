@@ -415,6 +415,26 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                     tensor_num_vars.insert(out.clone(), out_nv);
                 }
             }
+            OpType::LayerNormalization => {
+                // LayerNorm is computed outside the GKR circuit (via a hint) and
+                // supplied as a committed shred named "{layer.name}_out".
+                // Output shape equals input shape (passthrough shape).
+                let out_total: usize = layer.output_shape.iter().product();
+                let out_nv = num_vars_for(out_total);
+                let ln_out_name = format!("{}_out", layer.name);
+                let node = builder.add_input_shred(&ln_out_name, out_nv, &committed);
+                manifest.insert(
+                    ln_out_name,
+                    ShredEntry {
+                        num_vars: out_nv,
+                        visibility: Visibility::Committed,
+                    },
+                );
+                for out in &layer.outputs {
+                    tensor_nodes.insert(out.clone(), node.clone());
+                    tensor_num_vars.insert(out.clone(), out_nv);
+                }
+            }
             other => {
                 bail!(
                     "circuit builder: unsupported op type {:?} in layer {}",

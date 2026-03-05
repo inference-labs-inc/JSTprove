@@ -1136,35 +1136,150 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     }
                 }
             }
+            OpType::LayerNormalization => {
+                let x_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("LayerNorm {} has no input", layer.name))?;
+                let gamma_name = layer.inputs.get(1).ok_or_else(|| {
+                    anyhow::anyhow!("LayerNorm {} missing gamma input", layer.name)
+                })?;
+
+                let x_data = tensors
+                    .get(x_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("LayerNorm {} input '{}' not computed", layer.name, x_name)
+                    })?
+                    .clone();
+
+                let gamma_td = layer.weights.get(gamma_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "LayerNorm {} gamma '{}' not found in weights",
+                        layer.name,
+                        gamma_name
+                    )
+                })?;
+                let gamma = gamma_td.as_i64_vec();
+
+                let beta: Vec<i64> = if let Some(beta_name) = layer.inputs.get(2) {
+                    let beta_td = layer.weights.get(beta_name).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "LayerNorm {} beta '{}' not found in weights",
+                            layer.name,
+                            beta_name
+                        )
+                    })?;
+                    beta_td.as_i64_vec()
+                } else {
+                    vec![0i64; gamma.len()]
+                };
+
+                let raw_axis = layer.get_int_attr("axis").unwrap_or(-1);
+                let output_shape = &layer.output_shape;
+                let rank = output_shape.len();
+                let axis = if raw_axis < 0 {
+                    let a = rank as i64 + raw_axis;
+                    anyhow::ensure!(
+                        a >= 0,
+                        "LayerNorm {}: axis {} out of range for rank {}",
+                        layer.name,
+                        raw_axis,
+                        rank
+                    );
+                    a as usize
+                } else {
+                    let a = raw_axis as usize;
+                    anyhow::ensure!(
+                        a < rank,
+                        "LayerNorm {}: axis {} out of range for rank {}",
+                        layer.name,
+                        raw_axis,
+                        rank
+                    );
+                    a
+                };
+
+                let outer_size: usize = output_shape[..axis].iter().product();
+                let lane_size: usize = output_shape[axis..].iter().product();
+                let total_size = outer_size * lane_size;
+
+                anyhow::ensure!(
+                    gamma.len() == lane_size,
+                    "LayerNorm {}: gamma len {} != lane_size {}",
+                    layer.name,
+                    gamma.len(),
+                    lane_size
+                );
+                anyhow::ensure!(
+                    beta.len() == lane_size,
+                    "LayerNorm {}: beta len {} != lane_size {}",
+                    layer.name,
+                    beta.len(),
+                    lane_size
+                );
+
+                let scale_f64 = alpha as f64;
+                let scale_sq = scale_f64 * scale_f64;
+                const LN_EPSILON: f64 = 1e-5;
+
+                let gamma_f64: Vec<f64> = gamma.iter().map(|&g| g as f64 / scale_f64).collect();
+                let beta_f64: Vec<f64> = beta.iter().map(|&b| b as f64 / scale_sq).collect();
+
+                let mut result: Vec<i64> = Vec::with_capacity(total_size);
+
+                for outer_i in 0..outer_size {
+                    let start = outer_i * lane_size;
+                    let lane: Vec<f64> = x_data[start..start + lane_size]
+                        .iter()
+                        .map(|&v| v as f64 / scale_f64)
+                        .collect();
+
+                    let mean: f64 = lane.iter().sum::<f64>() / lane_size as f64;
+                    let var: f64 =
+                        lane.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / lane_size as f64;
+                    let inv_std = 1.0 / (var + LN_EPSILON).sqrt();
+
+                    for i in 0..lane_size {
+                        let normalized = (lane[i] - mean) * inv_std;
+                        let y_f = normalized * gamma_f64[i] + beta_f64[i];
+                        let y_q = (y_f * scale_f64).round() as i64;
+                        result.push(y_q);
+                    }
+                }
+
+                let padded = pad_to_size(&result, next_power_of_two(total_size));
+                let ln_out_name = format!("{}_out", layer.name);
+                shreds.insert(ln_out_name, padded.clone());
+
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                }
+            }
             OpType::Gather => {
                 let data_name = layer
                     .inputs
                     .first()
                     .ok_or_else(|| anyhow::anyhow!("Gather {} has no data input", layer.name))?;
-                let indices_name = layer.inputs.get(1).ok_or_else(|| {
-                    anyhow::anyhow!("Gather {} has no indices input", layer.name)
-                })?;
+                let indices_name = layer
+                    .inputs
+                    .get(1)
+                    .ok_or_else(|| anyhow::anyhow!("Gather {} has no indices input", layer.name))?;
 
                 let data_flat = tensors
                     .get(data_name)
                     .ok_or_else(|| {
-                        anyhow::anyhow!(
-                            "Gather {} data '{}' not computed",
-                            layer.name,
-                            data_name
-                        )
+                        anyhow::anyhow!("Gather {} data '{}' not computed", layer.name, data_name)
                     })?
                     .clone();
 
-                let indices_td =
-                    layer.weights.get(indices_name).ok_or_else(|| {
-                        anyhow::anyhow!(
-                            "Gather {} indices '{}' not found in weights; \
+                let indices_td = layer.weights.get(indices_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Gather {} indices '{}' not found in weights; \
                             only constant (initializer) indices are supported",
-                            layer.name,
-                            indices_name
-                        )
-                    })?;
+                        layer.name,
+                        indices_name
+                    )
+                })?;
                 let indices = indices_td.as_i64_vec();
 
                 let axis = layer.get_int_attr("axis").unwrap_or(0);
@@ -1993,6 +2108,15 @@ pub fn prepare_public_shreds(
                 // The gather output is a committed shred whose values are computed
                 // by the prover (compute_witness). Here we only track the output
                 // size so that downstream ops can derive their own sizes correctly.
+                let out_total: usize = layer.output_shape.iter().product();
+                let sz = next_power_of_two(out_total);
+                for out_name in &layer.outputs {
+                    tensor_sizes.insert(out_name.clone(), sz);
+                }
+            }
+            OpType::LayerNormalization => {
+                // LayerNorm output is a committed shred computed by the prover.
+                // Output shape is the same as the input shape (passthrough shape).
                 let out_total: usize = layer.output_shape.iter().product();
                 let sz = next_power_of_two(out_total);
                 for out_name in &layer.outputs {
