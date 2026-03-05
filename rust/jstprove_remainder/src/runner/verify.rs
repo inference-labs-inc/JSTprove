@@ -61,9 +61,25 @@ pub fn verify_with_model(
     )?;
 
     let build_result = circuit_builder::build_circuit(model, input_padded_size)?;
-    let mut circuit = build_result.circuit;
 
-    for (name, entry) in &build_result.manifest {
+    verify_with_circuit(
+        build_result.circuit,
+        &build_result.manifest,
+        proof,
+        &public_shreds,
+    )
+}
+
+pub struct PreparedVerifiable {
+    verifiable: remainder::verifiable_circuit::VerifiableCircuit<Fr>,
+}
+
+pub fn prepare_for_verifying(
+    mut circuit: frontend::layouter::builder::Circuit<Fr>,
+    manifest: &circuit_builder::ShredManifest,
+    public_shreds: &std::collections::HashMap<String, Vec<i64>>,
+) -> Result<PreparedVerifiable> {
+    for (name, entry) in manifest {
         if entry.visibility == Visibility::Public {
             let values = public_shreds
                 .get(name)
@@ -74,7 +90,13 @@ pub fn verify_with_model(
     }
 
     let verifiable = circuit.gen_verifiable_circuit()?;
+    Ok(PreparedVerifiable { verifiable })
+}
 
+pub fn verify_prepared(
+    prepared: PreparedVerifiable,
+    proof: &super::prove::SerializableProof,
+) -> Result<()> {
     let mut transcript_reader =
         TranscriptReader::<Fr, PoseidonSponge<Fr>>::new(proof.transcript.clone());
 
@@ -84,12 +106,22 @@ pub fn verify_with_model(
     let result: std::result::Result<(), _> = perform_function_under_verifier_config!(
         verify_internal,
         &verifier_config,
-        &verifiable,
+        &prepared.verifiable,
         &mut transcript_reader,
         &proof.proof_config
     );
 
     result.map_err(|e| anyhow::anyhow!("verification failed: {e}"))
+}
+
+pub fn verify_with_circuit(
+    circuit: frontend::layouter::builder::Circuit<Fr>,
+    manifest: &circuit_builder::ShredManifest,
+    proof: &super::prove::SerializableProof,
+    public_shreds: &std::collections::HashMap<String, Vec<i64>>,
+) -> Result<()> {
+    let prepared = prepare_for_verifying(circuit, manifest, public_shreds)?;
+    verify_prepared(prepared, proof)
 }
 
 fn verify_internal(

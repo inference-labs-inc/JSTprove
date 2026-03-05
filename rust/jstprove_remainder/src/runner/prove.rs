@@ -68,10 +68,22 @@ pub fn generate_proof(
 
     tracing::info!("building circuit");
     let build_result = circuit_builder::build_circuit(model, input_size)?;
-    let mut circuit = build_result.circuit;
 
-    tracing::info!("validating witness completeness against manifest");
-    for (name, entry) in &build_result.manifest {
+    generate_proof_from_circuit(build_result.circuit, &build_result.manifest, witness)
+}
+
+pub struct PreparedProvable {
+    provable: remainder::provable_circuit::ProvableCircuit<Fr>,
+    expected_output: Vec<i64>,
+}
+
+#[allow(clippy::implicit_hasher)]
+pub fn prepare_for_proving(
+    mut circuit: frontend::layouter::builder::Circuit<Fr>,
+    manifest: &circuit_builder::ShredManifest,
+    witness: &HashMap<String, Vec<i64>>,
+) -> Result<PreparedProvable> {
+    for (name, entry) in manifest {
         match witness.get(name) {
             None => anyhow::bail!("witness missing shred '{}' ({:?})", name, entry.visibility),
             Some(values) => {
@@ -89,34 +101,45 @@ pub fn generate_proof(
             }
         }
     }
-    tracing::info!(
-        "witness validation passed ({} shreds verified)",
-        build_result.manifest.len()
-    );
 
-    tracing::info!("setting {} witness shreds on circuit", witness.len());
     for (name, values) in witness {
         let mle = MultilinearExtension::new(values.iter().map(|&v| i64_to_fr(v)).collect());
         circuit.set_input(name, mle);
     }
 
-    tracing::info!("generating proof");
     let provable = circuit.gen_provable_circuit()?;
-
-    let (proof_config, proof_transcript) = prove_and_get_transcript(&provable)?;
 
     let expected_output = witness
         .get("expected_output")
         .ok_or_else(|| anyhow::anyhow!("witness missing expected_output shred"))?
         .clone();
 
+    Ok(PreparedProvable {
+        provable,
+        expected_output,
+    })
+}
+
+pub fn prove_prepared(prepared: PreparedProvable) -> Result<SerializableProof> {
+    let (proof_config, proof_transcript) = prove_and_get_transcript(&prepared.provable)?;
+
     Ok(SerializableProof {
         proof_config,
         transcript: proof_transcript,
-        expected_output,
+        expected_output: prepared.expected_output,
         observed_n_bits: HashMap::new(),
         version: Some(jstprove_io::version::current()),
     })
+}
+
+#[allow(clippy::implicit_hasher)]
+pub fn generate_proof_from_circuit(
+    circuit: frontend::layouter::builder::Circuit<Fr>,
+    manifest: &circuit_builder::ShredManifest,
+    witness: &HashMap<String, Vec<i64>>,
+) -> Result<SerializableProof> {
+    let prepared = prepare_for_proving(circuit, manifest, witness)?;
+    prove_prepared(prepared)
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

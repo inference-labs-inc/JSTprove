@@ -56,6 +56,11 @@ harness = false
 name = "pipeline_ecc"
 harness = false
 
+[[bench]]
+name = "pipeline_comparison"
+harness = false
+required-features = ["remainder"]
+
 [dependencies.serde]
 version = "1.0"
 features = [ "derive",]
