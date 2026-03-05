@@ -28,6 +28,7 @@ pub enum OpType {
     Softmax,
     Sigmoid,
     Tile,
+    Gather,
 }
 
 impl OpType {
@@ -55,6 +56,7 @@ impl OpType {
             "Softmax" => Ok(Self::Softmax),
             "Sigmoid" => Ok(Self::Sigmoid),
             "Tile" => Ok(Self::Tile),
+            "Gather" => Ok(Self::Gather),
             other => bail!("unsupported ONNX op: {other}"),
         }
     }
