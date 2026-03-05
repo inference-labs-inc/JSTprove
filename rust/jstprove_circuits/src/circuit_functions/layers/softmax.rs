@@ -55,12 +55,16 @@ pub struct SoftmaxLayer {
 // -------- Implementation --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
+    #[allow(
+        clippy::cast_possible_wrap,
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation
+    )]
     fn apply(
         &self,
         api: &mut Builder,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
-        // Resolve the single input tensor (Softmax has no initializer weights).
         let x_name = get_input_name(&self.inputs, 0, LayerKind::Softmax, INPUT)?;
         let x_input = input.get(x_name).ok_or_else(|| LayerError::MissingInput {
             layer: LayerKind::Softmax,
@@ -70,7 +74,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
         let shape = x_input.shape().to_vec();
         let rank = shape.len();
 
-        // Normalise the axis: negative values count from the end.
         let axis = if self.axis < 0 {
             let a = rank as i64 + self.axis;
             if a < 0 {
@@ -206,16 +209,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
             .into());
         }
 
-        // Read the axis attribute.
-        // ONNX opset ≥13 defaults to -1 (last axis).
         let default_axis: i64 = -1;
-        let axis: i64 = match extract_params(layer).ok() {
-            Some(params) => get_param_or_default(&layer.name, AXIS, &params, Some(&default_axis))
+        let axis: i64 = match extract_params(layer) {
+            Ok(params) => get_param_or_default(&layer.name, AXIS, &params, Some(&default_axis))
                 .map_err(|e| LayerError::Other {
-                layer: LayerKind::Softmax,
-                msg: format!("failed to read 'axis' attribute: {e}"),
-            })?,
-            None => default_axis,
+                    layer: LayerKind::Softmax,
+                    msg: format!("failed to read 'axis' attribute: {e}"),
+                })?,
+            Err(LayerError::MissingParameter { .. }) => default_axis,
+            Err(e) => return Err(e.into()),
         };
 
         Ok(Box::new(Self {

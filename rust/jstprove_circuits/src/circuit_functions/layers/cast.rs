@@ -28,12 +28,15 @@ const NOOP_CAST_TYPES: &[i64] = &[
     1,  // FLOAT
     2,  // UINT8
     3,  // INT8
+    4,  // UINT16
     5,  // INT16
     6,  // INT32
     7,  // INT64
+    10, // FLOAT16
     11, // DOUBLE
     12, // UINT32
     13, // UINT64
+    16, // BFLOAT16
 ];
 
 fn is_noop_cast(to_type: i64) -> bool {

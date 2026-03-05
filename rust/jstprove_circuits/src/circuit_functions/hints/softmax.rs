@@ -23,6 +23,8 @@ use ethnum::U256;
 use expander_compiler::field::FieldArith;
 use expander_compiler::utils::error::Error;
 
+use super::field_to_i64;
+
 /// Hint key used to register and look up this function.
 pub const SOFTMAX_HINT_KEY: &str = "jstprove.softmax_hint";
 
@@ -41,6 +43,12 @@ pub const SOFTMAX_HINT_KEY: &str = "jstprove.softmax_hint";
 /// # Errors
 /// Returns [`Error::UserError`] when `inputs.len() != outputs.len() + 1`.
 /// Out-of-range values are clamped, never an error.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::similar_names
+)]
 pub fn softmax_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Error> {
     let n = outputs.len();
     if inputs.len() != n + 1 {
@@ -51,31 +59,6 @@ pub fn softmax_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<()
         )));
     }
 
-    let p_half = F::MODULUS / 2;
-
-    // Decode a field element as a signed i64 using two's-complement convention.
-    let decode_i64 = |x: F| -> i64 {
-        let xu = x.to_u256();
-        if xu > p_half {
-            // Negative: -(p - xu)
-            let neg_magnitude = F::MODULUS - xu;
-            let max_i64 = U256::from(i64::MAX as u64);
-            if neg_magnitude > max_i64 {
-                i64::MIN
-            } else {
-                -(neg_magnitude.as_u64() as i64)
-            }
-        } else {
-            let max_i64 = U256::from(i64::MAX as u64);
-            if xu > max_i64 {
-                i64::MAX
-            } else {
-                xu.as_u64() as i64
-            }
-        }
-    };
-
-    // Decode scale (always positive, fits in u64).
     let scale_u64 = inputs[n].to_u256().as_u64();
     if scale_u64 == 0 {
         return Err(Error::UserError(
@@ -84,14 +67,13 @@ pub fn softmax_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<()
     }
     let scale_f64 = scale_u64 as f64;
 
-    // Convert quantised inputs to real-valued f64.
     let xs_f64: Vec<f64> = inputs[..n]
         .iter()
-        .map(|&x| decode_i64(x) as f64 / scale_f64)
+        .map(|&x| field_to_i64(x) as f64 / scale_f64)
         .collect();
 
     // Numerically stable softmax: subtract max before computing exp.
-    let max_x = xs_f64.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let max_x = xs_f64.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let exps: Vec<f64> = xs_f64.iter().map(|&x| (x - max_x).exp()).collect();
     let sum_exp: f64 = exps.iter().sum();
 

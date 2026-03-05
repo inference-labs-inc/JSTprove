@@ -17,6 +17,8 @@ use ethnum::U256;
 use expander_compiler::field::FieldArith;
 use expander_compiler::utils::error::Error;
 
+use super::field_to_i64;
+
 /// Hint key used to register and look up this function.
 pub const SIGMOID_HINT_KEY: &str = "jstprove.sigmoid_hint";
 
@@ -37,6 +39,12 @@ pub const SIGMOID_HINT_KEY: &str = "jstprove.sigmoid_hint";
 /// # Errors
 /// Returns [`Error::UserError`] when `inputs.len() != 2` or `outputs.len() != 1`.
 /// Out-of-range values are clamped, never an error.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::similar_names
+)]
 pub fn sigmoid_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Error> {
     if inputs.len() != 2 {
         return Err(Error::UserError(format!(
@@ -51,28 +59,7 @@ pub fn sigmoid_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<()
         )));
     }
 
-    // Decode x_q from field element using two's complement convention:
-    // values >= p/2 represent negative integers.
-    let p_half = F::MODULUS / 2;
-    let x_u256 = inputs[0].to_u256();
-    let x_i64: i64 = if x_u256 > p_half {
-        // Negative: -(p - x_u256)
-        let neg_magnitude = F::MODULUS - x_u256;
-        let max_i64 = U256::from(i64::MAX as u64);
-        if neg_magnitude > max_i64 {
-            i64::MIN
-        } else {
-            -(neg_magnitude.as_u64() as i64)
-        }
-    } else {
-        // Non-negative: fit into i64 (clamp if unexpectedly large)
-        let max_i64 = U256::from(i64::MAX as u64);
-        if x_u256 > max_i64 {
-            i64::MAX
-        } else {
-            x_u256.as_u64() as i64
-        }
-    };
+    let x_i64 = field_to_i64(inputs[0]);
 
     // Decode scale as u64 (always positive, fits in u64 for practical scales)
     let scale_u64 = inputs[1].to_u256().as_u64();
