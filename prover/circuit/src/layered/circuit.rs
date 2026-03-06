@@ -81,25 +81,41 @@ impl<C: FieldEngine> CircuitLayer<C> {
     }
 
     #[inline]
-    pub fn identify_rnd_coefs(&mut self, rnd_coefs: &mut Vec<*mut C::CircuitField>) {
-        for gate in &mut self.mul {
+    pub fn identify_rnd_coefs(&self, layer_idx: usize, rnd_coefs: &mut Vec<RndCoefIdx>) {
+        for (i, gate) in self.mul.iter().enumerate() {
             if gate.coef_type == CoefType::Random {
-                rnd_coefs.push(&mut gate.coef);
+                rnd_coefs.push(RndCoefIdx {
+                    layer: layer_idx,
+                    kind: GateKind::Mul,
+                    gate: i,
+                });
             }
         }
-        for gate in &mut self.add {
+        for (i, gate) in self.add.iter().enumerate() {
             if gate.coef_type == CoefType::Random {
-                rnd_coefs.push(&mut gate.coef);
+                rnd_coefs.push(RndCoefIdx {
+                    layer: layer_idx,
+                    kind: GateKind::Add,
+                    gate: i,
+                });
             }
         }
-        for gate in &mut self.const_ {
+        for (i, gate) in self.const_.iter().enumerate() {
             if gate.coef_type == CoefType::Random {
-                rnd_coefs.push(&mut gate.coef);
+                rnd_coefs.push(RndCoefIdx {
+                    layer: layer_idx,
+                    kind: GateKind::Const,
+                    gate: i,
+                });
             }
         }
-        for gate in &mut self.uni {
+        for (i, gate) in self.uni.iter().enumerate() {
             if gate.coef_type == CoefType::Random {
-                rnd_coefs.push(&mut gate.coef);
+                rnd_coefs.push(RndCoefIdx {
+                    layer: layer_idx,
+                    kind: GateKind::Uni,
+                    gate: i,
+                });
             }
         }
     }
@@ -110,35 +126,15 @@ impl<C: FieldEngine> CircuitLayer<C> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Circuit<C: FieldEngine> {
     pub layers: Vec<CircuitLayer<C>>,
     pub public_input: Vec<C::SimdCircuitField>,
     pub expected_num_output_zeros: usize,
 
     pub rnd_coefs_identified: bool,
-    pub rnd_coefs: Vec<*mut C::CircuitField>,
+    pub rnd_coefs: Vec<RndCoefIdx>,
 }
-
-impl<C: FieldEngine> Clone for Circuit<C> {
-    fn clone(&self) -> Circuit<C> {
-        let mut ret = Circuit::<C> {
-            layers: self.layers.clone(),
-            public_input: self.public_input.clone(),
-            expected_num_output_zeros: self.expected_num_output_zeros,
-
-            rnd_coefs_identified: false,
-            rnd_coefs: vec![],
-        };
-
-        if self.rnd_coefs_identified {
-            ret.identify_rnd_coefs();
-        }
-        ret
-    }
-}
-
-unsafe impl<C> Send for Circuit<C> where C: FieldEngine {}
 
 impl<C: FieldEngine> Circuit<C> {
     pub fn load_circuit(filename: &str) -> Self {
@@ -353,8 +349,8 @@ impl<C: FieldEngine> Circuit<C> {
 
     pub fn identify_rnd_coefs(&mut self) {
         self.rnd_coefs.clear();
-        for layer in &mut self.layers {
-            layer.identify_rnd_coefs(&mut self.rnd_coefs);
+        for (layer_idx, layer) in self.layers.iter().enumerate() {
+            layer.identify_rnd_coefs(layer_idx, &mut self.rnd_coefs);
         }
         self.rnd_coefs_identified = true;
     }
@@ -363,10 +359,15 @@ impl<C: FieldEngine> Circuit<C> {
         assert!(self.rnd_coefs_identified);
         let sampled_circuit_fs =
             transcript.generate_field_elements::<C::CircuitField>(self.rnd_coefs.len());
-        self.rnd_coefs
-            .iter()
-            .zip(sampled_circuit_fs.iter())
-            .for_each(|(&r, sr)| unsafe { *r = *sr });
+        for (idx, val) in self.rnd_coefs.iter().zip(sampled_circuit_fs.iter()) {
+            let layer = &mut self.layers[idx.layer];
+            match idx.kind {
+                GateKind::Mul => layer.mul[idx.gate].coef = *val,
+                GateKind::Add => layer.add[idx.gate].coef = *val,
+                GateKind::Const => layer.const_[idx.gate].coef = *val,
+                GateKind::Uni => layer.uni[idx.gate].coef = *val,
+            }
+        }
     }
 
     pub fn identify_structure_info(&mut self) {
@@ -396,5 +397,9 @@ impl<C: FieldEngine> Circuit<C> {
         input_relay_layer.structure_info.skip_sumcheck_phase_two = true;
 
         self.layers.insert(0, input_relay_layer);
+
+        for idx in &mut self.rnd_coefs {
+            idx.layer += 1;
+        }
     }
 }

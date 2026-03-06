@@ -8,6 +8,21 @@ pub enum CoefType {
     PublicInput(usize),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum GateKind {
+    Mul,
+    Add,
+    Const,
+    Uni,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RndCoefIdx {
+    pub layer: usize,
+    pub kind: GateKind,
+    pub gate: usize,
+}
+
 #[derive(Debug, Clone)]
 pub struct Gate<C: FieldEngine, const INPUT_NUM: usize> {
     pub i_ids: [usize; INPUT_NUM],
@@ -22,6 +37,4 @@ pub type GateAdd<C> = Gate<C, 1>;
 pub type GateUni<C> = Gate<C, 1>;
 pub type GateConst<C> = Gate<C, 0>;
 
-// If I Simply add derive(Copy) to the Gate struct, the compiler does not seem to recognize it
-// for the type aliases. Explicitly state it here.
 impl<C: FieldEngine, const INPUT_NUM: usize> Copy for Gate<C, INPUT_NUM> {}
