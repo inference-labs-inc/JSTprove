@@ -328,10 +328,7 @@ impl<C: Config> Expression<C> {
         Self::with_terms(terms)
     }
     pub fn invalid() -> Self {
-        Expression {
-            terms: vec![],
-            hash_cache: 0,
-        }
+        Self::with_terms(vec![])
     }
     pub fn get_vars<R: std::iter::FromIterator<usize>>(&self) -> R {
         self.iter()
