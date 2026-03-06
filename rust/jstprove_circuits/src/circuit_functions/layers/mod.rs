@@ -19,6 +19,7 @@ pub mod maxpool;
 pub mod mul;
 pub mod relu;
 pub mod reshape;
+pub mod resize;
 pub mod sigmoid;
 pub mod softmax;
 pub mod squeeze;

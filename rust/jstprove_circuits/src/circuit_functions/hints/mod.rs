@@ -24,6 +24,9 @@ pub use layer_norm::layer_norm_hint;
 pub mod max_min_clip;
 pub use max_min_clip::{unconstrained_clip, unconstrained_max, unconstrained_min};
 
+pub mod resize;
+pub use resize::resize_hint;
+
 /// LogUp hint registration
 use circuit_std_rs::logup::{query_count_by_key_hint, query_count_hint, rangeproof_hint};
 use expander_compiler::field::Field as CompilerField;
@@ -68,6 +71,7 @@ pub fn build_logup_hint_registry<F: CompilerField>() -> HintRegistry<F> {
     registry.register(softmax::SOFTMAX_HINT_KEY, softmax_hint::<F>);
     registry.register(layer_norm::LAYER_NORM_HINT_KEY, layer_norm_hint::<F>);
     registry.register(gelu::GELU_HINT_KEY, gelu_hint::<F>);
+    registry.register(resize::RESIZE_HINT_KEY, resize_hint::<F>);
 
     registry
 }

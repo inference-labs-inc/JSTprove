@@ -32,6 +32,7 @@ const SUPPORTED_OPS: &[&str] = &[
     "Tile",
     "Gather",
     "LayerNormalization",
+    "Resize",
 ];
 
 pub fn is_compatible(path: &Path) -> Result<(bool, Vec<String>)> {

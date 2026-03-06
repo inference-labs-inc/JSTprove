@@ -435,6 +435,25 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                     tensor_num_vars.insert(out.clone(), out_nv);
                 }
             }
+            OpType::Resize => {
+                // Resize output is a committed shred computed by the prover
+                // (compute_witness). Named "{layer.name}_out".
+                let out_total: usize = layer.output_shape.iter().product();
+                let out_nv = num_vars_for(out_total);
+                let resize_out_name = format!("{}_out", layer.name);
+                let node = builder.add_input_shred(&resize_out_name, out_nv, &committed);
+                manifest.insert(
+                    resize_out_name,
+                    ShredEntry {
+                        num_vars: out_nv,
+                        visibility: Visibility::Committed,
+                    },
+                );
+                for out in &layer.outputs {
+                    tensor_nodes.insert(out.clone(), node.clone());
+                    tensor_num_vars.insert(out.clone(), out_nv);
+                }
+            }
             other => {
                 bail!(
                     "circuit builder: unsupported op type {:?} in layer {}",

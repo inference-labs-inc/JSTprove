@@ -106,6 +106,7 @@ fn infer_layer_output_shape(
         | OpType::LayerNormalization => passthrough_shape(layer, input_shape),
         OpType::Tile => infer_tile(layer, input_shape, initializers, constant_tensors),
         OpType::Gather => infer_gather(layer, shapes, initializers, constant_tensors),
+        OpType::Resize => infer_resize(layer, input_shape, initializers, constant_tensors),
     }
 }
 
@@ -829,6 +830,78 @@ fn infer_gather(
         .iter()
         .map(|o| (o.clone(), out_shape.clone()))
         .collect())
+}
+
+fn infer_resize(
+    layer: &LayerNode,
+    input_shape: Option<&Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let input_shape = input_shape
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Resize missing input shape", layer.name))?;
+
+    let rank = input_shape.len();
+
+    let lookup = |name: &str| -> Option<&TensorData> {
+        initializers
+            .get(name)
+            .or_else(|| constant_tensors.get(name))
+    };
+
+    // Prefer sizes (input[3]) which directly specifies output dimensions.
+    if let Some(sizes_name) = layer.inputs.get(3).filter(|n| !n.is_empty()) {
+        if let Some(td) = lookup(sizes_name) {
+            let sizes = td.as_i64_vec();
+            if sizes.len() == rank {
+                let out_shape: Vec<usize> = sizes
+                    .iter()
+                    .map(|&s| {
+                        if s < 0 {
+                            bail!("layer {}: Resize sizes[i] = {s} is negative", layer.name);
+                        }
+                        Ok(s as usize)
+                    })
+                    .collect::<Result<_>>()?;
+                return Ok(layer
+                    .outputs
+                    .iter()
+                    .map(|o| (o.clone(), out_shape.clone()))
+                    .collect());
+            }
+        }
+    }
+
+    // Fall back to scales (input[2]).
+    if let Some(scales_name) = layer.inputs.get(2).filter(|n| !n.is_empty()) {
+        if let Some(td) = lookup(scales_name) {
+            let scales = &td.float_data;
+            if scales.len() == rank {
+                let out_shape: Vec<usize> = input_shape
+                    .iter()
+                    .zip(scales.iter())
+                    .enumerate()
+                    .map(|(i, (&d, &s))| {
+                        if s <= 0.0 {
+                            bail!("layer {}: Resize scales[{i}] = {s} must be > 0", layer.name);
+                        }
+                        Ok((d as f64 * s).floor() as usize)
+                    })
+                    .collect::<Result<_>>()?;
+                return Ok(layer
+                    .outputs
+                    .iter()
+                    .map(|o| (o.clone(), out_shape.clone()))
+                    .collect());
+            }
+        }
+    }
+
+    bail!(
+        "layer {}: Resize cannot determine output shape — neither sizes (input[3]) \
+        nor scales (input[2]) are available as compile-time constants",
+        layer.name
+    )
 }
 
 #[cfg(test)]
