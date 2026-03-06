@@ -34,7 +34,7 @@ use crate::runner::main_runner::{
 use crate::runner::schema::{WitnessBundle, WitnessRequest};
 use crate::runner::verify_extract::{
     ExtractedOutput, VerifiedOutput, extract_outputs_from_witness, verify_and_extract_from_bytes,
-    verify_and_extract_with_layered,
+    verify_and_extract_with_flat, verify_and_extract_with_layered,
 };
 
 declare_circuit!(Circuit {
@@ -658,6 +658,31 @@ pub fn verify_and_extract_bn254_with_layered(
 ) -> Result<VerifiedOutput, RunError> {
     verify_and_extract_with_layered::<BN254Config>(
         layered_circuit,
+        witness_bytes,
+        proof_bytes,
+        num_inputs,
+        expected_inputs,
+    )
+}
+
+pub type FlatCircuitBN254 = expander_circuit::Circuit<FC<BN254Config>>;
+
+#[must_use]
+pub fn flatten_circuit_bn254(layered: &LayeredCircuitBN254) -> FlatCircuitBN254 {
+    layered.export_to_expander_flatten()
+}
+
+/// # Errors
+/// Returns `RunError` on verification or output extraction failure.
+pub fn verify_and_extract_bn254_with_flat(
+    circuit: &mut FlatCircuitBN254,
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+    num_inputs: usize,
+    expected_inputs: Option<&[f64]>,
+) -> Result<VerifiedOutput, RunError> {
+    verify_and_extract_with_flat::<BN254Config>(
+        circuit,
         witness_bytes,
         proof_bytes,
         num_inputs,
