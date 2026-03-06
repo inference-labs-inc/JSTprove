@@ -5,7 +5,7 @@ mod common;
 pub use common::*;
 
 mod gkr_vanilla;
-pub use gkr_vanilla::gkr_verify;
+pub use gkr_vanilla::{gkr_verify, gkr_verify_ref};
 
 mod gkr_square;
 pub use gkr_square::gkr_square_verify;

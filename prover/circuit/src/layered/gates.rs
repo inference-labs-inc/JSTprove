@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+
+use arith::Field;
 use gkr_engine::FieldEngine;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -8,7 +11,7 @@ pub enum CoefType {
     PublicInput(usize),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum GateKind {
     Mul,
     Add,
@@ -38,3 +41,14 @@ pub type GateUni<C> = Gate<C, 1>;
 pub type GateConst<C> = Gate<C, 0>;
 
 impl<C: FieldEngine, const INPUT_NUM: usize> Copy for Gate<C, INPUT_NUM> {}
+
+pub struct RndCoefMap<F: Field> {
+    pub map: HashMap<(usize, GateKind, usize), F>,
+}
+
+impl<F: Field> RndCoefMap<F> {
+    #[inline]
+    pub fn get(&self, layer: usize, kind: GateKind, gate: usize) -> Option<F> {
+        self.map.get(&(layer, kind, gate)).copied()
+    }
+}

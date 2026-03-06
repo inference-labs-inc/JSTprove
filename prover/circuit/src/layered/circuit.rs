@@ -370,6 +370,21 @@ impl<C: FieldEngine> Circuit<C> {
         }
     }
 
+    pub fn sample_rnd_coef_map<T: Transcript>(
+        &self,
+        transcript: &mut T,
+    ) -> RndCoefMap<C::CircuitField> {
+        assert!(self.rnd_coefs_identified);
+        let values = transcript.generate_field_elements::<C::CircuitField>(self.rnd_coefs.len());
+        let map = self
+            .rnd_coefs
+            .iter()
+            .zip(values)
+            .map(|(idx, val)| ((idx.layer, idx.kind, idx.gate), val))
+            .collect();
+        RndCoefMap { map }
+    }
+
     pub fn identify_structure_info(&mut self) {
         for layer in &mut self.layers {
             layer.identify_structure_info();
