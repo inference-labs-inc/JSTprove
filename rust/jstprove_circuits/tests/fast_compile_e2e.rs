@@ -3,8 +3,8 @@ use std::path::Path;
 use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
 use jstprove_circuits::onnx::{
-    compile_bn254, deserialize_circuit_bn254, prove_bn254,
-    verify_and_extract_bn254_with_layered, verify_bn254, witness_bn254_from_f64,
+    compile_bn254, deserialize_circuit_bn254, prove_bn254, verify_and_extract_bn254_with_layered,
+    verify_bn254, witness_bn254_from_f64,
 };
 use jstprove_circuits::runner::main_runner::read_circuit_msgpack;
 
@@ -65,7 +65,6 @@ fn ecc_pipeline_lenet_prove_verify() {
     let proof = prove_bn254(&bundle.circuit, &wb.witness, false).unwrap();
     assert!(verify_bn254(&bundle.circuit, &wb.witness, &proof).unwrap());
 }
-
 
 #[test]
 fn layered_circuit_handle_reused_across_verify_calls() {
