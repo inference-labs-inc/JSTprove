@@ -242,7 +242,7 @@ impl<F: FieldEngine> GKRVerifierHelper<F> {
                     let coef = if cst_gate.coef_type == CoefType::Random {
                         rnd_map
                             .get(layer_idx, GateKind::Const, gate_idx)
-                            .unwrap_or(cst_gate.coef)
+                            .expect("missing sampled random coefficient for const gate")
                     } else {
                         cst_gate.coef
                     };
@@ -267,7 +267,7 @@ impl<F: FieldEngine> GKRVerifierHelper<F> {
             let coef = if add_gate.coef_type == CoefType::Random {
                 rnd_map
                     .get(layer_idx, GateKind::Add, gate_idx)
-                    .unwrap_or(add_gate.coef)
+                    .expect("missing sampled random coefficient for add gate")
             } else {
                 add_gate.coef
             };
@@ -288,7 +288,7 @@ impl<F: FieldEngine> GKRVerifierHelper<F> {
             let coef = if mul_gate.coef_type == CoefType::Random {
                 rnd_map
                     .get(layer_idx, GateKind::Mul, gate_idx)
-                    .unwrap_or(mul_gate.coef)
+                    .expect("missing sampled random coefficient for mul gate")
             } else {
                 mul_gate.coef
             };
@@ -312,7 +312,7 @@ impl<F: FieldEngine> GKRVerifierHelper<F> {
                 let coef = if gate.coef_type == CoefType::Random {
                     rnd_map
                         .get(layer_idx, GateKind::Uni, gate_idx)
-                        .unwrap_or(gate.coef)
+                        .expect("missing sampled random coefficient for uni gate")
                 } else {
                     gate.coef
                 };
@@ -335,7 +335,7 @@ impl<F: FieldEngine> GKRVerifierHelper<F> {
                 let coef = if gate.coef_type == CoefType::Random {
                     rnd_map
                         .get(layer_idx, GateKind::Uni, gate_idx)
-                        .unwrap_or(gate.coef)
+                        .expect("missing sampled random coefficient for uni gate")
                 } else {
                     gate.coef
                 };
