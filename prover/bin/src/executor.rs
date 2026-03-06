@@ -166,6 +166,7 @@ pub fn verify<Cfg: GKREngine>(
 
 pub fn verify_ref<Cfg: GKREngine>(
     circuit: &Circuit<Cfg::FieldConfig>,
+    public_input: &[<Cfg::FieldConfig as FieldEngine>::SimdCircuitField],
     mpi_config: MPIConfig,
     proof: &Proof,
     claimed_v: &<<Cfg as GKREngine>::FieldConfig as FieldEngine>::ChallengeField,
@@ -175,10 +176,9 @@ pub fn verify_ref<Cfg: GKREngine>(
         Cfg::PCSConfig,
     >(circuit.log_input_size(), &mpi_config);
     let verifier = Verifier::<Cfg>::new(mpi_config);
-    let public_input = circuit.public_input.clone();
     verifier.verify_ref(
         circuit,
-        &public_input,
+        public_input,
         claimed_v,
         &pcs_params,
         &pcs_verification_key,
