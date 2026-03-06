@@ -107,6 +107,7 @@ fn infer_layer_output_shape(
         OpType::Tile => infer_tile(layer, input_shape, initializers, constant_tensors),
         OpType::Gather => infer_gather(layer, shapes, initializers, constant_tensors),
         OpType::Resize => infer_resize(layer, input_shape, initializers, constant_tensors),
+        OpType::GridSample => infer_gridsample(layer, shapes),
     }
 }
 
@@ -902,6 +903,60 @@ fn infer_resize(
         nor scales (input[2]) are available as compile-time constants",
         layer.name
     )
+}
+
+/// Infer output shape for the ONNX `GridSample` operator.
+///
+/// Inputs: X [N, C, H_in, W_in], grid [N, H_out, W_out, 2]
+/// Output: [N, C, H_out, W_out]
+fn infer_gridsample(
+    layer: &LayerNode,
+    shapes: &HashMap<String, Vec<usize>>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let x_name = layer
+        .inputs
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("layer {}: GridSample missing X input", layer.name))?;
+    let grid_name = layer
+        .inputs
+        .get(1)
+        .ok_or_else(|| anyhow::anyhow!("layer {}: GridSample missing grid input", layer.name))?;
+
+    let x_shape = get_shape(shapes, x_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "layer {}: GridSample missing shape for X '{x_name}'",
+            layer.name
+        )
+    })?;
+    let grid_shape = get_shape(shapes, grid_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "layer {}: GridSample missing shape for grid '{grid_name}'",
+            layer.name
+        )
+    })?;
+
+    if x_shape.len() != 4 {
+        bail!(
+            "layer {}: GridSample X must be 4-D [N,C,H,W], got {}D",
+            layer.name,
+            x_shape.len()
+        );
+    }
+    if grid_shape.len() != 4 || grid_shape[3] != 2 {
+        bail!(
+            "layer {}: GridSample grid must be [N,H_out,W_out,2], got {:?}",
+            layer.name,
+            grid_shape
+        );
+    }
+
+    // Output: [N, C, H_out, W_out]
+    let out_shape = vec![x_shape[0], x_shape[1], grid_shape[1], grid_shape[2]];
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
 }
 
 #[cfg(test)]

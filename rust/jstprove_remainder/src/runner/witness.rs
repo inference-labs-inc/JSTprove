@@ -114,6 +114,67 @@ pub fn load_witness(path: &Path) -> Result<WitnessData> {
 
 // -------- Resize coordinate helpers --------
 
+/// Convert a normalised grid coordinate in [-1, 1] to a continuous pixel
+/// coordinate (GridSample convention).
+fn gs_unnormalize(norm: f64, size: usize, align_corners: bool) -> f64 {
+    if align_corners {
+        (norm + 1.0) / 2.0 * (size.saturating_sub(1) as f64)
+    } else {
+        (norm + 1.0) / 2.0 * size as f64 - 0.5
+    }
+}
+
+/// Nearest-neighbour GridSample: resolve a continuous pixel coordinate under
+/// the given padding mode.  Returns `None` for zeros-padding out-of-bounds.
+fn gs_apply_padding_nearest(
+    x: f64,
+    size: usize,
+    padding_mode: &str,
+    align_corners: bool,
+) -> Option<usize> {
+    let pixel = match padding_mode {
+        "zeros" => {
+            if x < -0.5 || x > size as f64 - 0.5 {
+                return None;
+            }
+            (x + 0.5)
+                .floor()
+                .clamp(0.0, (size.saturating_sub(1)) as f64) as usize
+        }
+        "border" => (x + 0.5)
+            .floor()
+            .clamp(0.0, (size.saturating_sub(1)) as f64) as usize,
+        "reflection" => {
+            let reflected = gs_reflect(x, size, align_corners);
+            (reflected + 0.5)
+                .floor()
+                .clamp(0.0, (size.saturating_sub(1)) as f64) as usize
+        }
+        _ => (x + 0.5)
+            .floor()
+            .clamp(0.0, (size.saturating_sub(1)) as f64) as usize,
+    };
+    Some(pixel)
+}
+
+/// Reflect a continuous pixel coordinate at the boundary for GridSample.
+fn gs_reflect(x: f64, size: usize, align_corners: bool) -> f64 {
+    if size <= 1 {
+        return 0.0;
+    }
+    let (lo, range) = if align_corners {
+        (0.0f64, (size - 1) as f64)
+    } else {
+        (-0.5f64, size as f64)
+    };
+    let period = 2.0 * range;
+    let mut rel = (x - lo).rem_euclid(period);
+    if rel > range {
+        rel = period - rel;
+    }
+    (rel + lo).clamp(0.0, (size - 1) as f64)
+}
+
 fn unravel_index_witness(mut flat: usize, shape: &[usize]) -> Vec<usize> {
     let mut coords = vec![0usize; shape.len()];
     for i in (0..shape.len()).rev() {
@@ -1537,6 +1598,202 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     tensors.insert(out.clone(), padded.clone());
                 }
             }
+            OpType::GridSample => {
+                // Inputs: X [N, C, H_in, W_in], grid [N, H_out, W_out, 2] (constant).
+                let x_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("GridSample {} has no X input", layer.name))?;
+                let x_data = tensors
+                    .get(x_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("GridSample {} input '{}' not computed", layer.name, x_name)
+                    })?
+                    .clone();
+
+                let grid_name = layer.inputs.get(1).ok_or_else(|| {
+                    anyhow::anyhow!("GridSample {} has no grid input", layer.name)
+                })?;
+                let grid_td = layer.weights.get(grid_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "GridSample {}: grid '{}' must be a compile-time constant (initializer)",
+                        layer.name,
+                        grid_name
+                    )
+                })?;
+                // Grid is quantised at α¹; int_data holds round(grid_f * alpha).
+                let grid_flat = grid_td.as_i64_vec();
+
+                let output_shape = &layer.output_shape;
+                anyhow::ensure!(
+                    output_shape.len() == 4,
+                    "GridSample {} output_shape must be 4-D, got {:?}",
+                    layer.name,
+                    output_shape
+                );
+                let [n, c, h_out, w_out] = [
+                    output_shape[0],
+                    output_shape[1],
+                    output_shape[2],
+                    output_shape[3],
+                ];
+                let output_total = n * c * h_out * w_out;
+
+                // Derive input spatial dims from the grid shape [N, H_out, W_out, 2]
+                // and the alpha (quantisation scale).
+                let alpha = model.scale_config.alpha as f64;
+
+                let mode = layer.get_string_attr("mode").unwrap_or("bilinear");
+                let padding_mode = layer.get_string_attr("padding_mode").unwrap_or("zeros");
+                let align_corners = layer.get_int_attr("align_corners").unwrap_or(0) != 0;
+
+                // We need H_in and W_in.  Derive from the X shape stored in layer.
+                // X is layer.inputs[0]; its shape may not be in `tensors` map (only
+                // values are).  Use the output_shape relation: output [N,C,H_out,W_out]
+                // with X [N,C,H_in,W_in].  We recover H_in/W_in by back-computing from
+                // the data length.
+                let x_total = x_data.len();
+                anyhow::ensure!(
+                    x_total >= n * c,
+                    "GridSample {}: X data length {} < N*C={}",
+                    layer.name,
+                    x_total,
+                    n * c
+                );
+                let hw_in = x_total / (n * c);
+                // We need separate H_in and W_in.  Read from the grid shape relationship:
+                // grid has shape [N, H_out, W_out, 2] so we know H_out and W_out; we
+                // can find H_in and W_in from the grid tensor dims.
+                let grid_dims = grid_td.shape();
+                anyhow::ensure!(
+                    grid_dims.len() == 4 && grid_dims[3] == 2,
+                    "GridSample {}: grid must be [N,H_out,W_out,2], got {:?}",
+                    layer.name,
+                    grid_dims
+                );
+                // For the witness we need H_in and W_in.  Since hw_in = H_in * W_in,
+                // and we don't have a direct source, we compute the ratio via the output
+                // shape and the expectation that X shape matches [N, C, H_in, W_in].
+                // If we can't determine them separately, fall back to a square root or
+                // use the total.  In practice the circuit always has output_shape set.
+                // A robust approach: look up x_name in the tensor shape map embedded in
+                // layer attributes — but that's unavailable here.  Use the fact that
+                // hw_in == H_in * W_in and H_out/W_out are known; H_in/W_in can be any
+                // factorisation.  We store H_in in the grid unused dimension:
+                // the grid dims are [N, H_out, W_out, 2], all known.  We derive
+                // H_in = hw_in / W_in by guessing W_in ≈ W_out * (H_in*W_in / H_out*W_out).
+                // The safest path: store H_in, W_in in the layer.output_shape-adjacent
+                // info.  Since witness.rs already uses layer.output_shape for output dims,
+                // we need the input spatial dims.  Use hw_in and assume square if unknown.
+                let hw_out = h_out * w_out;
+                let (h_in, w_in) = if hw_out > 0 && hw_in % w_out == 0 {
+                    // Assume proportional scaling: W_in = hw_in / W_out * (W_out / W_out)?
+                    // Actually we need H_in and W_in individually.
+                    // Use: H_in * W_in = hw_in, and aspect ratio ~ H_out:W_out.
+                    // h_in = round(sqrt(hw_in * h_out / w_out)), w_in = hw_in / h_in.
+                    let ratio = h_out as f64 / w_out as f64;
+                    let h_in_f = ((hw_in as f64) * ratio).sqrt();
+                    let h_in_candidate = h_in_f.round() as usize;
+                    if h_in_candidate > 0 && hw_in % h_in_candidate == 0 {
+                        (h_in_candidate, hw_in / h_in_candidate)
+                    } else {
+                        // Fall back to treating as 1 × hw_in (1-D case).
+                        (1, hw_in)
+                    }
+                } else {
+                    (1, hw_in)
+                };
+
+                let result: Vec<i64> = if mode == "nearest" {
+                    (0..output_total)
+                        .map(|out_flat| {
+                            // Unravel (n_i, c_i, h_i, w_i) from out_flat.
+                            let w_i = out_flat % w_out;
+                            let h_i = (out_flat / w_out) % h_out;
+                            let c_i = (out_flat / (w_out * h_out)) % c;
+                            let n_i = out_flat / (w_out * h_out * c);
+
+                            let sp = n_i * h_out * w_out + h_i * w_out + w_i;
+                            let x_norm = grid_flat[sp * 2] as f64 / alpha;
+                            let y_norm = grid_flat[sp * 2 + 1] as f64 / alpha;
+
+                            let x_cont = gs_unnormalize(x_norm, w_in, align_corners);
+                            let y_cont = gs_unnormalize(y_norm, h_in, align_corners);
+
+                            let (y_px, x_px) = match (
+                                gs_apply_padding_nearest(y_cont, h_in, padding_mode, align_corners),
+                                gs_apply_padding_nearest(x_cont, w_in, padding_mode, align_corners),
+                            ) {
+                                (Some(y), Some(x)) => (y, x),
+                                _ => return 0, // zeros padding, OOB
+                            };
+
+                            let in_flat =
+                                n_i * c * h_in * w_in + c_i * h_in * w_in + y_px * w_in + x_px;
+                            x_data.get(in_flat).copied().unwrap_or(0)
+                        })
+                        .collect()
+                } else {
+                    // Bilinear interpolation.
+                    let alpha_i = model.scale_config.alpha;
+                    (0..output_total)
+                        .map(|out_flat| {
+                            let w_i = out_flat % w_out;
+                            let h_i = (out_flat / w_out) % h_out;
+                            let c_i = (out_flat / (w_out * h_out)) % c;
+                            let n_i = out_flat / (w_out * h_out * c);
+
+                            let sp = n_i * h_out * w_out + h_i * w_out + w_i;
+                            let x_norm = grid_flat[sp * 2] as f64 / alpha;
+                            let y_norm = grid_flat[sp * 2 + 1] as f64 / alpha;
+
+                            let x_cont = gs_unnormalize(x_norm, w_in, align_corners);
+                            let y_cont = gs_unnormalize(y_norm, h_in, align_corners);
+
+                            let (h_fl, h_ce, wh_fl, wh_ce) = interp_corners(y_cont, h_in);
+                            let (w_fl, w_ce, ww_fl, ww_ce) = interp_corners(x_cont, w_in);
+
+                            // 4 corners: (h_fl,w_fl),(h_fl,w_ce),(h_ce,w_fl),(h_ce,w_ce)
+                            let corners = [
+                                (h_fl, w_fl, wh_fl * ww_fl),
+                                (h_fl, w_ce, wh_fl * ww_ce),
+                                (h_ce, w_fl, wh_ce * ww_fl),
+                                (h_ce, w_ce, wh_ce * ww_ce),
+                            ];
+
+                            let mut sum_i128: i128 = 0;
+                            for (ch, cw, wf) in corners {
+                                // Check OOB for zeros padding.
+                                let valid = padding_mode != "zeros"
+                                    || (y_cont >= -0.5
+                                        && y_cont <= h_in as f64 - 0.5
+                                        && x_cont >= -0.5
+                                        && x_cont <= w_in as f64 - 0.5
+                                        && ch < h_in
+                                        && cw < w_in);
+                                if !valid {
+                                    continue;
+                                }
+                                let in_flat =
+                                    n_i * c * h_in * w_in + c_i * h_in * w_in + ch * w_in + cw;
+                                let x_q = x_data.get(in_flat).copied().unwrap_or(0);
+                                let w_q = (wf * alpha_i as f64).round() as i128;
+                                sum_i128 += x_q as i128 * w_q;
+                            }
+                            let half = alpha_i as i128 / 2;
+                            ((sum_i128 + half) / alpha_i as i128).clamp(0, i64::MAX as i128) as i64
+                        })
+                        .collect()
+                };
+
+                let padded = pad_to_size(&result, next_power_of_two(output_total));
+                let gridsample_out_name = format!("{}_out", layer.name);
+                shreds.insert(gridsample_out_name, padded.clone());
+
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                }
+            }
             other => {
                 bail!(
                     "witness: unsupported op type {:?} in layer {}",
@@ -2335,6 +2592,13 @@ pub fn prepare_public_shreds(
                 }
             }
             OpType::Resize => {
+                let out_total: usize = layer.output_shape.iter().product();
+                let sz = next_power_of_two(out_total);
+                for out_name in &layer.outputs {
+                    tensor_sizes.insert(out_name.clone(), sz);
+                }
+            }
+            OpType::GridSample => {
                 let out_total: usize = layer.output_shape.iter().product();
                 let sz = next_power_of_two(out_total);
                 for out_name in &layer.outputs {

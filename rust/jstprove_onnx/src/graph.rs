@@ -32,6 +32,7 @@ pub enum OpType {
     Gather,
     LayerNormalization,
     Resize,
+    GridSample,
 }
 
 impl OpType {
@@ -63,6 +64,7 @@ impl OpType {
             "Gather" => Ok(Self::Gather),
             "LayerNormalization" => Ok(Self::LayerNormalization),
             "Resize" => Ok(Self::Resize),
+            "GridSample" => Ok(Self::GridSample),
             other => bail!("unsupported ONNX op: {other}"),
         }
     }
