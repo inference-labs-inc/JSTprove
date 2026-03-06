@@ -18,6 +18,7 @@ use crate::circuit_functions::layers::conv::ConvLayer;
 use crate::circuit_functions::layers::exp::ExpLayer;
 use crate::circuit_functions::layers::flatten::FlattenLayer;
 use crate::circuit_functions::layers::gather::GatherLayer;
+use crate::circuit_functions::layers::gelu::GeluLayer;
 use crate::circuit_functions::layers::gemm::GemmLayer;
 use crate::circuit_functions::layers::layer_norm::LayerNormLayer;
 use crate::circuit_functions::layers::maxpool::MaxPoolLayer;
@@ -141,6 +142,7 @@ define_layers! {
     Conv      => { name: "Conv", builder: ConvLayer::build },
     Flatten   => { name: "Flatten", builder: FlattenLayer::build },
     Gather    => { name: "Gather", builder: GatherLayer::build },
+    Gelu      => { name: "Gelu", builder: GeluLayer::build },
     Gemm      => { name: "Gemm", builder: GemmLayer::build },
     LayerNormalization => { name: "LayerNormalization", builder: LayerNormLayer::build },
     MaxPool   => { name: "MaxPool", builder: MaxPoolLayer::build },

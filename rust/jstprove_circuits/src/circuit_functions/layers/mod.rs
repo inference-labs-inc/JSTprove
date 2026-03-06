@@ -10,6 +10,7 @@ mod errors;
 pub mod exp;
 pub mod flatten;
 pub mod gather;
+pub mod gelu;
 pub mod gemm;
 mod layer_kinds;
 pub mod layer_norm;

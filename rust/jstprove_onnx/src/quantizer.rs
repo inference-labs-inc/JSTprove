@@ -463,8 +463,9 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
             }
             Ok(bound)
         }
-        // softmax / sigmoid outputs are in [0, 1] in the real domain.
-        OpType::Softmax | OpType::Sigmoid => Ok(1.0),
+        // softmax / sigmoid / gelu outputs are in [0, 1] (softmax/sigmoid) or roughly [-0.17, inf) (gelu).
+        // For simplicity, we use 1.0 as the bound for the activation functions.
+        OpType::Softmax | OpType::Sigmoid | OpType::Gelu => Ok(1.0),
         OpType::Constant => Ok(1.0),
         OpType::LayerNormalization => {
             // Conservative bound: max|γ| * m_in + max|β|.
@@ -496,6 +497,7 @@ fn is_range_check_op(op: OpType) -> bool {
             | OpType::Exp
             | OpType::Softmax
             | OpType::Sigmoid
+            | OpType::Gelu
     )
 }
 

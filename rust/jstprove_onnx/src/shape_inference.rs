@@ -102,6 +102,7 @@ fn infer_layer_output_shape(
         | OpType::Exp
         | OpType::Softmax
         | OpType::Sigmoid
+        | OpType::Gelu
         | OpType::LayerNormalization => passthrough_shape(layer, input_shape),
         OpType::Tile => infer_tile(layer, input_shape, initializers, constant_tensors),
         OpType::Gather => infer_gather(layer, shapes, initializers, constant_tensors),
