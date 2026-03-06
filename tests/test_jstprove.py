@@ -12,6 +12,7 @@ without requiring compiled model files. They cover:
 from __future__ import annotations
 
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pytest
@@ -322,6 +323,7 @@ def test_python_thread_not_starved_during_rust_calls(tmp_path):
 
     t = threading.Thread(target=count, daemon=True)
     t.start()
+    time.sleep(0.01)
     baseline = counter[0]
 
     for _ in range(50):
@@ -332,6 +334,7 @@ def test_python_thread_not_starved_during_rust_calls(tmp_path):
             )
         except RuntimeError:
             pass
+        time.sleep(0)
 
     stop.set()
     t.join(timeout=2.0)
