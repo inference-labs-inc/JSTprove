@@ -12,6 +12,7 @@ pub mod flatten;
 pub mod gather;
 pub mod gelu;
 pub mod gemm;
+pub mod gridsample;
 mod layer_kinds;
 pub mod layer_norm;
 pub mod layer_ops;

@@ -20,6 +20,7 @@ use crate::circuit_functions::layers::flatten::FlattenLayer;
 use crate::circuit_functions::layers::gather::GatherLayer;
 use crate::circuit_functions::layers::gelu::GeluLayer;
 use crate::circuit_functions::layers::gemm::GemmLayer;
+use crate::circuit_functions::layers::gridsample::GridSampleLayer;
 use crate::circuit_functions::layers::layer_norm::LayerNormLayer;
 use crate::circuit_functions::layers::maxpool::MaxPoolLayer;
 use crate::circuit_functions::layers::relu::ReluLayer;
@@ -142,8 +143,9 @@ define_layers! {
     Constant  => { name: "Constant", builder: ConstantLayer::build },
     Conv      => { name: "Conv", builder: ConvLayer::build },
     Flatten   => { name: "Flatten", builder: FlattenLayer::build },
-    Gather    => { name: "Gather", builder: GatherLayer::build },
-    Gelu      => { name: "Gelu", builder: GeluLayer::build },
+    Gather     => { name: "Gather",     builder: GatherLayer::build },
+    Gelu       => { name: "Gelu",       builder: GeluLayer::build },
+    GridSample => { name: "GridSample", builder: GridSampleLayer::build },
     Gemm      => { name: "Gemm", builder: GemmLayer::build },
     LayerNormalization => { name: "LayerNormalization", builder: LayerNormLayer::build },
     MaxPool   => { name: "MaxPool", builder: MaxPoolLayer::build },
@@ -191,6 +193,7 @@ mod tests {
             "Min",
             "ReLU",
             "Resize",
+            "GridSample",
         ];
         for name in ops {
             assert!(
@@ -255,6 +258,7 @@ mod tests {
             "Min",
             "ReLU",
             "Resize",
+            "GridSample",
         ];
         for name in expected {
             assert!(

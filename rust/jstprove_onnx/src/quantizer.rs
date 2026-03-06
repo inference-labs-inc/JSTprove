@@ -447,7 +447,8 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
         | OpType::Unsqueeze
         | OpType::Tile
         | OpType::Gather
-        | OpType::Resize => {
+        | OpType::Resize
+        | OpType::GridSample => {
             let m_in = get_input_bound(0);
             Ok(m_in)
         }
@@ -500,6 +501,7 @@ fn is_range_check_op(op: OpType) -> bool {
             | OpType::Sigmoid
             | OpType::Gelu
             | OpType::Resize
+            | OpType::GridSample
     )
 }
 
