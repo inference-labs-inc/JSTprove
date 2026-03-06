@@ -55,9 +55,9 @@ jobs:
             target
             rust/jstprove_remainder/target
             rust/jstprove_pyo3/target
-          key: ${{ runner.os }}-lint-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-lint-cargo-
+            ${{ runner.os }}-cargo-
 
       - name: Run cargo fmt check
         run: cargo fmt --all -- --check
@@ -101,9 +101,9 @@ jobs:
             target
             rust/jstprove_remainder/target
             rust/jstprove_pyo3/target
-          key: ${{ runner.os }}-e2e-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-e2e-cargo-
+            ${{ runner.os }}-cargo-
 
       - name: Run Rust e2e tests (Remainder)
         run: cargo test --release --manifest-path rust/jstprove_remainder/Cargo.toml

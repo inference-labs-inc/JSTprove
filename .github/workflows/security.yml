@@ -14,6 +14,10 @@ on:
       - "**/Cargo.toml"
       - "**/Cargo.lock"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   rust-audit:
     name: Rust Security Audit
@@ -22,12 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7
+      - uses: rustsec/audit-check@v2
         with:
-          toolchain: stable
-
-      - name: Install and run cargo-audit
-        run: |
-          cargo install cargo-audit --locked
-          cargo audit --ignore RUSTSEC-2025-0134
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ignore: RUSTSEC-2025-0134
