@@ -77,9 +77,6 @@ fn main() {
     .unwrap();
     println!("witness: {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
 
-    let rss = rss_bytes();
-    println!("peak RSS: {:.1} MiB", rss as f64 / 1048576.0);
-
     let t = Instant::now();
     let proof = prove_bn254(&bundle.circuit, &wb.witness, false).unwrap();
     println!("prove:   {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
@@ -87,4 +84,7 @@ fn main() {
     let t = Instant::now();
     assert!(verify_bn254(&bundle.circuit, &wb.witness, &proof).unwrap());
     println!("verify:  {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+
+    let rss = rss_bytes();
+    println!("peak RSS: {:.1} MiB", rss as f64 / 1048576.0);
 }
