@@ -24,6 +24,7 @@ use crate::circuit_functions::layers::layer_norm::LayerNormLayer;
 use crate::circuit_functions::layers::maxpool::MaxPoolLayer;
 use crate::circuit_functions::layers::relu::ReluLayer;
 use crate::circuit_functions::layers::reshape::ReshapeLayer;
+use crate::circuit_functions::layers::resize::ResizeLayer;
 use crate::circuit_functions::layers::sigmoid::SigmoidLayer;
 use crate::circuit_functions::layers::softmax::SoftmaxLayer;
 use crate::circuit_functions::layers::squeeze::SqueezeLayer;
@@ -150,6 +151,7 @@ define_layers! {
     Min       => { name: "Min", builder: BinaryCompareLayer::build },
     ReLU      => { name: "ReLU", builder: ReluLayer::build, aliases: ["Relu"] },
     Reshape   => { name: "Reshape", builder: ReshapeLayer::build },
+    Resize    => { name: "Resize", builder: ResizeLayer::build },
     Sigmoid   => { name: "Sigmoid", builder: SigmoidLayer::build },
     Softmax   => { name: "Softmax", builder: SoftmaxLayer::build },
     Squeeze   => { name: "Squeeze", builder: SqueezeLayer::build },
@@ -188,6 +190,7 @@ mod tests {
             "Max",
             "Min",
             "ReLU",
+            "Resize",
         ];
         for name in ops {
             assert!(
@@ -251,6 +254,7 @@ mod tests {
             "Max",
             "Min",
             "ReLU",
+            "Resize",
         ];
         for name in expected {
             assert!(

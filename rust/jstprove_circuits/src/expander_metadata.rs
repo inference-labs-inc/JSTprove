@@ -224,6 +224,7 @@ fn op_type_to_string(op: OpType) -> String {
         OpType::Tile => "Tile",
         OpType::Gather => "Gather",
         OpType::LayerNormalization => "LayerNormalization",
+        OpType::Resize => "Resize",
     }
     .to_string()
 }

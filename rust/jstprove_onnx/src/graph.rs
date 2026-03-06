@@ -31,6 +31,7 @@ pub enum OpType {
     Tile,
     Gather,
     LayerNormalization,
+    Resize,
 }
 
 impl OpType {
@@ -61,6 +62,7 @@ impl OpType {
             "Tile" => Ok(Self::Tile),
             "Gather" => Ok(Self::Gather),
             "LayerNormalization" => Ok(Self::LayerNormalization),
+            "Resize" => Ok(Self::Resize),
             other => bail!("unsupported ONNX op: {other}"),
         }
     }
@@ -198,6 +200,13 @@ impl LayerNode {
     pub fn get_float_attr(&self, name: &str) -> Option<f32> {
         match self.attributes.get(name)? {
             AttrValue::Float(v) => Some(*v),
+            _ => None,
+        }
+    }
+
+    pub fn get_string_attr(&self, name: &str) -> Option<&str> {
+        match self.attributes.get(name)? {
+            AttrValue::String(s) => Some(s.as_str()),
             _ => None,
         }
     }
