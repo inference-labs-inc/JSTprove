@@ -26,6 +26,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --vers 0.22.0 --no-default-features
+
       - uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
