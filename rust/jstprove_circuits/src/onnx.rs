@@ -34,6 +34,7 @@ use crate::runner::main_runner::{
 use crate::runner::schema::{WitnessBundle, WitnessRequest};
 use crate::runner::verify_extract::{
     ExtractedOutput, VerifiedOutput, extract_outputs_from_witness, verify_and_extract_from_bytes,
+    verify_and_extract_with_layered,
 };
 
 declare_circuit!(Circuit {
@@ -628,6 +629,35 @@ pub fn verify_and_extract_bn254(
 ) -> Result<VerifiedOutput, RunError> {
     verify_and_extract_from_bytes::<BN254Config>(
         circuit_bytes,
+        witness_bytes,
+        proof_bytes,
+        num_inputs,
+        expected_inputs,
+    )
+}
+
+pub type LayeredCircuitBN254 = expander_compiler::circuit::layered::Circuit<
+    BN254Config,
+    expander_compiler::circuit::layered::NormalInputType,
+>;
+
+/// # Errors
+/// Returns `RunError` on decompression or deserialization failure.
+pub fn deserialize_circuit_bn254(circuit_bytes: &[u8]) -> Result<LayeredCircuitBN254, RunError> {
+    crate::runner::main_runner::load_circuit_from_bytes::<BN254Config>(circuit_bytes)
+}
+
+/// # Errors
+/// Returns `RunError` on verification or output extraction failure.
+pub fn verify_and_extract_bn254_with_layered(
+    layered_circuit: &LayeredCircuitBN254,
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+    num_inputs: usize,
+    expected_inputs: Option<&[f64]>,
+) -> Result<VerifiedOutput, RunError> {
+    verify_and_extract_with_layered::<BN254Config>(
+        layered_circuit,
         witness_bytes,
         proof_bytes,
         num_inputs,

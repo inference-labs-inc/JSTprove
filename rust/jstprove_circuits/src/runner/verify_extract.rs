@@ -289,6 +289,30 @@ pub fn verify_and_extract_from_bytes<C: Config>(
         )
         .map_err(|e| RunError::Deserialize(format!("circuit: {e:?}")))?;
 
+    verify_and_extract_with_layered::<C>(
+        &layered_circuit,
+        witness_bytes,
+        proof_bytes,
+        num_inputs,
+        expected_inputs,
+    )
+}
+
+/// Verify and extract using a pre-deserialized layered circuit.
+///
+/// Accepts a reference to an already-deserialized layered circuit, skipping
+/// decompression and deserialization of circuit bytes. The circuit is flattened
+/// to an expander circuit per call (required because verification mutates it).
+///
+/// # Errors
+/// Returns `RunError` on verification or extraction failure.
+pub fn verify_and_extract_with_layered<C: Config>(
+    layered_circuit: &expander_compiler::circuit::layered::Circuit<C, NormalInputType>,
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+    num_inputs: usize,
+    expected_inputs: Option<&[f64]>,
+) -> Result<VerifiedOutput, RunError> {
     let mut expander_circuit = layered_circuit.export_to_expander_flatten();
 
     let witness_data = auto_decompress_bytes(witness_bytes)?;
