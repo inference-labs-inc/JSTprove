@@ -450,13 +450,17 @@ pub fn verify_and_extract_with_flat_ref<C: Config>(
     expected_inputs: Option<&[f64]>,
 ) -> Result<VerifiedOutput, RunError> {
     let witness_data = auto_decompress_bytes(witness_bytes)?;
+    let witness = Witness::<C>::deserialize_from(Cursor::new(&*witness_data))
+        .map_err(|e| RunError::Deserialize(format!("witness: {e:?}")))?;
+    let (_, simd_public_input) = witness.to_simd();
 
     let proof_data = auto_decompress_bytes(proof_bytes)?;
     let (proof, claimed_v) = executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_data)
         .map_err(|e| RunError::Deserialize(format!("proof: {e:?}")))?;
 
     let mpi_config = MPIConfig::verifier_new(1);
-    let valid = executor::verify_ref::<C>(circuit, mpi_config, &proof, &claimed_v);
+    let valid =
+        executor::verify_ref::<C>(circuit, &simd_public_input, mpi_config, &proof, &claimed_v);
 
     if !valid {
         return Ok(VerifiedOutput {
