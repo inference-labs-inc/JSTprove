@@ -342,13 +342,23 @@ impl<C: Config> Expression<C> {
             .collect()
     }
     pub fn replace_vars<F: Fn(usize) -> usize>(&self, f: F) -> Self {
-        let terms = self
+        let mut terms: Vec<Term<C>> = self
             .iter()
             .map(|term| Term {
                 coef: term.coef,
                 vars: term.vars.replace_vars(&f),
             })
             .collect();
+        if terms
+            .iter()
+            .any(|term| matches!(term.vars, VarSpec::RandomLinear(_)))
+        {
+            for term in terms.iter_mut() {
+                term.normalize();
+            }
+            terms.sort();
+            return Self::with_terms(terms);
+        }
         Self::from_terms(terms)
     }
     pub fn degree(&self) -> usize {
