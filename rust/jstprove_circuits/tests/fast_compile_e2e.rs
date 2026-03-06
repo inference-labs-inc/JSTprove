@@ -220,4 +220,22 @@ fn layered_circuit_handle_reused_across_verify_calls() {
     assert_eq!(result1.outputs, result2.outputs);
     assert_eq!(result1.scale_base, result2.scale_base);
     assert_eq!(result1.scale_exponent, result2.scale_exponent);
+
+    let activations2: Vec<f64> = activations.iter().map(|&v| v + 0.01).collect();
+    let wb2 = witness_bn254_from_f64(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations2,
+        &[],
+        false,
+    )
+    .unwrap();
+    let proof2 = prove_bn254(&bundle.circuit, &wb2.witness, false).unwrap();
+
+    let result3 =
+        verify_and_extract_bn254_with_layered(&layered, &wb2.witness, &proof2, num_inputs, None)
+            .unwrap();
+    assert!(result3.valid);
+    assert_ne!(result3.outputs, result1.outputs);
 }
