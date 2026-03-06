@@ -5,8 +5,9 @@ use arith::Field;
 use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
 use jstprove_circuits::onnx::{
-    compile_and_witness_bn254_direct, compile_bn254, fast_compile_prove, fast_compile_verify,
-    prove_bn254, prove_bn254_direct, verify_bn254, verify_bn254_direct, witness_bn254_from_f64,
+    compile_and_witness_bn254_direct, compile_bn254, deserialize_circuit_bn254, fast_compile_prove,
+    fast_compile_verify, prove_bn254, prove_bn254_direct, verify_and_extract_bn254_with_layered,
+    verify_bn254, verify_bn254_direct, witness_bn254_from_f64,
 };
 use jstprove_circuits::runner::main_runner::read_circuit_msgpack;
 
@@ -178,4 +179,45 @@ fn fast_compile_prove_verify_file_roundtrip() {
     let valid =
         fast_compile_verify(input_path.to_str().unwrap(), proof_path.to_str().unwrap()).unwrap();
     assert!(valid, "fast-compile verify failed on LeNet");
+}
+
+#[test]
+fn layered_circuit_handle_reused_across_verify_calls() {
+    let params = setup_onnx_context();
+    let activations = dummy_activations(&params);
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let circuit_path = tmp.path().join("circuit.msgpack");
+    let circuit_path_str = circuit_path.to_str().unwrap();
+
+    compile_bn254(circuit_path_str, false, Some(params.clone()), false).unwrap();
+    let bundle = read_circuit_msgpack(circuit_path_str).unwrap();
+
+    let wb = witness_bn254_from_f64(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations,
+        &[],
+        false,
+    )
+    .unwrap();
+
+    let proof = prove_bn254(&bundle.circuit, &wb.witness, false).unwrap();
+    let layered = deserialize_circuit_bn254(&bundle.circuit).unwrap();
+    let num_inputs = params.effective_input_dims();
+
+    let result1 =
+        verify_and_extract_bn254_with_layered(&layered, &wb.witness, &proof, num_inputs, None)
+            .unwrap();
+    assert!(result1.valid);
+
+    let result2 =
+        verify_and_extract_bn254_with_layered(&layered, &wb.witness, &proof, num_inputs, None)
+            .unwrap();
+    assert!(result2.valid);
+
+    assert_eq!(result1.outputs, result2.outputs);
+    assert_eq!(result1.scale_base, result2.scale_base);
+    assert_eq!(result1.scale_exponent, result2.scale_exponent);
 }
