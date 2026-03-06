@@ -439,3 +439,64 @@ pub fn verify_and_extract_with_flat<C: Config>(
         scale_exponent: ctx.extracted.scale_exponent,
     })
 }
+
+/// # Errors
+/// Returns `RunError` on verification or extraction failure.
+pub fn verify_and_extract_with_flat_ref<C: Config>(
+    circuit: &expander_compiler::expander_circuit::Circuit<C::FieldConfig>,
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+    num_inputs: usize,
+    expected_inputs: Option<&[f64]>,
+) -> Result<VerifiedOutput, RunError> {
+    let witness_data = auto_decompress_bytes(witness_bytes)?;
+
+    let proof_data = auto_decompress_bytes(proof_bytes)?;
+    let (proof, claimed_v) = executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_data)
+        .map_err(|e| RunError::Deserialize(format!("proof: {e:?}")))?;
+
+    let mpi_config = MPIConfig::verifier_new(1);
+    let valid = executor::verify_ref::<C>(circuit, mpi_config, &proof, &claimed_v);
+
+    if !valid {
+        return Ok(VerifiedOutput {
+            valid: false,
+            inputs: vec![],
+            outputs: vec![],
+            scale_base: 0,
+            scale_exponent: 0,
+        });
+    }
+
+    let ctx = extract_outputs_common(&witness_data, num_inputs)?;
+
+    if let Some(expected) = expected_inputs {
+        if expected.len() != num_inputs {
+            return Err(RunError::Verify(format!(
+                "expected_inputs length {} does not match num_inputs {}",
+                expected.len(),
+                num_inputs
+            )));
+        }
+        let raw_model_inputs = &ctx.raw_public_inputs[..num_inputs];
+        let expected_field = scale_to_field(
+            expected,
+            ctx.extracted.scale_base,
+            ctx.extracted.scale_exponent,
+            &ctx.modulus,
+        )?;
+        if !compare_field_values(&expected_field, raw_model_inputs, &ctx.modulus, 1) {
+            return Err(RunError::Verify(
+                "input verification failed: expected inputs do not match witness".into(),
+            ));
+        }
+    }
+
+    Ok(VerifiedOutput {
+        valid,
+        inputs: ctx.extracted.inputs,
+        outputs: ctx.extracted.outputs,
+        scale_base: ctx.extracted.scale_base,
+        scale_exponent: ctx.extracted.scale_exponent,
+    })
+}

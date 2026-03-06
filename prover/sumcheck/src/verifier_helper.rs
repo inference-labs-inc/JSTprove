@@ -1,5 +1,5 @@
 use arith::{ExtensionField, Field};
-use circuit::{CircuitLayer, CoefType, GateAdd, GateConst, GateMul, GateUni};
+use circuit::{CircuitLayer, CoefType, GateAdd, GateConst, GateKind, GateMul, GateUni, RndCoefMap};
 use gkr_engine::{ExpanderDualVarChallenge, FieldEngine, FieldType};
 use polynomials::EqPolynomial;
 
@@ -200,6 +200,146 @@ impl<F: FieldEngine> GKRVerifierHelper<F> {
             // Gates of type 12345 represent a pow5 gate
             if gate.gate_type == 12345 {
                 v += sp.eq_evals_at_rz0[gate.o_id] * sp.eq_evals_at_rx[gate.i_ids[0]] * gate.coef;
+            }
+        }
+        v * sp.eq_r_simd_r_simd_xy * sp.eq_r_mpi_r_mpi_xy
+    }
+
+    #[inline(always)]
+    pub fn eval_cst_ref(
+        cst_gates: &[GateConst<F>],
+        public_input: &[F::SimdCircuitField],
+        sp: &VerifierScratchPad<F>,
+        layer_idx: usize,
+        rnd_map: &RndCoefMap<F::CircuitField>,
+    ) -> F::ChallengeField {
+        let mut v = F::ChallengeField::zero();
+
+        let mpi_world_size = sp.eq_evals_at_r_mpi.len();
+        let local_input_size = public_input.len() / mpi_world_size;
+
+        for (gate_idx, cst_gate) in cst_gates.iter().enumerate() {
+            let tmp = match cst_gate.coef_type {
+                CoefType::PublicInput(input_idx) => {
+                    let mut input = vec![];
+                    for i in 0..mpi_world_size {
+                        input.push(public_input[i * local_input_size + input_idx]);
+                    }
+
+                    let input_mpi_combined: F::Field = input
+                        .iter()
+                        .zip(&sp.eq_evals_at_r_mpi)
+                        .map(|(v, c)| *c * *v)
+                        .sum();
+
+                    sp.eq_evals_at_rz0[cst_gate.o_id]
+                        * unpack_and_combine::<F::Field>(
+                            &input_mpi_combined,
+                            &sp.eq_evals_at_r_simd,
+                        )
+                }
+                _ => {
+                    let coef = if cst_gate.coef_type == CoefType::Random {
+                        rnd_map
+                            .get(layer_idx, GateKind::Const, gate_idx)
+                            .expect("missing sampled random coefficient for const gate")
+                    } else {
+                        cst_gate.coef
+                    };
+                    sp.eq_evals_at_rz0[cst_gate.o_id] * coef
+                }
+            };
+            v += tmp;
+        }
+
+        v
+    }
+
+    #[inline(always)]
+    pub fn eval_add_ref(
+        add_gates: &[GateAdd<F>],
+        sp: &VerifierScratchPad<F>,
+        layer_idx: usize,
+        rnd_map: &RndCoefMap<F::CircuitField>,
+    ) -> F::ChallengeField {
+        let mut v = F::ChallengeField::zero();
+        for (gate_idx, add_gate) in add_gates.iter().enumerate() {
+            let coef = if add_gate.coef_type == CoefType::Random {
+                rnd_map
+                    .get(layer_idx, GateKind::Add, gate_idx)
+                    .expect("missing sampled random coefficient for add gate")
+            } else {
+                add_gate.coef
+            };
+            v += sp.eq_evals_at_rz0[add_gate.o_id] * sp.eq_evals_at_rx[add_gate.i_ids[0]] * coef;
+        }
+        v * sp.eq_r_simd_r_simd_xy * sp.eq_r_mpi_r_mpi_xy
+    }
+
+    #[inline(always)]
+    pub fn eval_mul_ref(
+        mul_gates: &[GateMul<F>],
+        sp: &VerifierScratchPad<F>,
+        layer_idx: usize,
+        rnd_map: &RndCoefMap<F::CircuitField>,
+    ) -> F::ChallengeField {
+        let mut v = F::ChallengeField::zero();
+        for (gate_idx, mul_gate) in mul_gates.iter().enumerate() {
+            let coef = if mul_gate.coef_type == CoefType::Random {
+                rnd_map
+                    .get(layer_idx, GateKind::Mul, gate_idx)
+                    .expect("missing sampled random coefficient for mul gate")
+            } else {
+                mul_gate.coef
+            };
+            let tmp =
+                sp.eq_evals_at_rx[mul_gate.i_ids[0]] * sp.eq_evals_at_ry[mul_gate.i_ids[1]] * coef;
+            v += sp.eq_evals_at_rz0[mul_gate.o_id] * tmp;
+        }
+        v * sp.eq_r_simd_r_simd_xy * sp.eq_r_mpi_r_mpi_xy
+    }
+
+    #[inline(always)]
+    pub fn eval_pow_1_ref(
+        gates: &[GateUni<F>],
+        sp: &VerifierScratchPad<F>,
+        layer_idx: usize,
+        rnd_map: &RndCoefMap<F::CircuitField>,
+    ) -> F::ChallengeField {
+        let mut v = F::ChallengeField::zero();
+        for (gate_idx, gate) in gates.iter().enumerate() {
+            if gate.gate_type == 12346 {
+                let coef = if gate.coef_type == CoefType::Random {
+                    rnd_map
+                        .get(layer_idx, GateKind::Uni, gate_idx)
+                        .expect("missing sampled random coefficient for uni gate")
+                } else {
+                    gate.coef
+                };
+                v += sp.eq_evals_at_rz0[gate.o_id] * sp.eq_evals_at_rx[gate.i_ids[0]] * coef;
+            }
+        }
+        v * sp.eq_r_simd_r_simd_xy * sp.eq_r_mpi_r_mpi_xy
+    }
+
+    #[inline(always)]
+    pub fn eval_pow_5_ref(
+        gates: &[GateUni<F>],
+        sp: &VerifierScratchPad<F>,
+        layer_idx: usize,
+        rnd_map: &RndCoefMap<F::CircuitField>,
+    ) -> F::ChallengeField {
+        let mut v = F::ChallengeField::zero();
+        for (gate_idx, gate) in gates.iter().enumerate() {
+            if gate.gate_type == 12345 {
+                let coef = if gate.coef_type == CoefType::Random {
+                    rnd_map
+                        .get(layer_idx, GateKind::Uni, gate_idx)
+                        .expect("missing sampled random coefficient for uni gate")
+                } else {
+                    gate.coef
+                };
+                v += sp.eq_evals_at_rz0[gate.o_id] * sp.eq_evals_at_rx[gate.i_ids[0]] * coef;
             }
         }
         v * sp.eq_r_simd_r_simd_xy * sp.eq_r_mpi_r_mpi_xy

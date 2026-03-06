@@ -148,7 +148,6 @@ pub fn verify<Cfg: GKREngine>(
     proof: &Proof,
     claimed_v: &<<Cfg as GKREngine>::FieldConfig as FieldEngine>::ChallengeField,
 ) -> bool {
-    // TODO: Read PCS setup from files
     let (pcs_params, _, pcs_verification_key, _) = expander_pcs_init_testing_only::<
         Cfg::FieldConfig,
         Cfg::PCSConfig,
@@ -156,6 +155,28 @@ pub fn verify<Cfg: GKREngine>(
     let verifier = Verifier::<Cfg>::new(mpi_config);
     let public_input = circuit.public_input.clone();
     verifier.verify(
+        circuit,
+        &public_input,
+        claimed_v,
+        &pcs_params,
+        &pcs_verification_key,
+        proof,
+    )
+}
+
+pub fn verify_ref<Cfg: GKREngine>(
+    circuit: &Circuit<Cfg::FieldConfig>,
+    mpi_config: MPIConfig,
+    proof: &Proof,
+    claimed_v: &<<Cfg as GKREngine>::FieldConfig as FieldEngine>::ChallengeField,
+) -> bool {
+    let (pcs_params, _, pcs_verification_key, _) = expander_pcs_init_testing_only::<
+        Cfg::FieldConfig,
+        Cfg::PCSConfig,
+    >(circuit.log_input_size(), &mpi_config);
+    let verifier = Verifier::<Cfg>::new(mpi_config);
+    let public_input = circuit.public_input.clone();
+    verifier.verify_ref(
         circuit,
         &public_input,
         claimed_v,
