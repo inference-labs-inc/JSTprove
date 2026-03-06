@@ -23,7 +23,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Install system dependencies
         run: |
@@ -36,7 +36,7 @@ jobs:
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@0ca8f610542aa7f4acaf39e65cf4eb3c35091883 # v7
 
       - name: Install maturin
         run: uv tool install maturin
@@ -62,7 +62,7 @@ jobs:
         run: rustup target add x86_64-unknown-linux-gnu
 
       - name: Cache Rust dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5
         with:
           path: |
             ~/.cargo/registry
@@ -83,7 +83,7 @@ jobs:
           python3 -c "from jstprove import Circuit; print('PyO3 bindings OK')"
 
       - name: Upload wheel artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: wheel-ubuntu-x86_64
           path: ./rust/jstprove_pyo3/target/wheels/*.whl
@@ -97,15 +97,15 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@0ca8f610542aa7f4acaf39e65cf4eb3c35091883 # v7
 
       - name: Install system dependencies
         run: brew install protobuf
@@ -131,7 +131,7 @@ jobs:
           sed -i '' '1,/^version = /{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/;}' rust/jstprove_circuits/Cargo.toml
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # master
         with:
           toolchain: nightly-2025-03-27
 
@@ -139,7 +139,7 @@ jobs:
         run: rustup target add aarch64-apple-darwin
 
       - name: Cache Rust dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5
         with:
           path: |
             ~/.cargo/registry
@@ -162,7 +162,7 @@ jobs:
           python3 -c "from jstprove import Circuit; print('PyO3 bindings OK')"
 
       - name: Upload wheel artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: wheel-macos-aarch64
           path: ./rust/jstprove_pyo3/target/wheels/*.whl
@@ -177,7 +177,7 @@ jobs:
       id-token: write
     steps:
       - name: Download all wheels
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           pattern: wheel-*
           merge-multiple: true
@@ -191,13 +191,13 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release with wheels
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
           name: Release ${{ steps.get_version.outputs.version }}
           files: ./dist/*.whl
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@0ca8f610542aa7f4acaf39e65cf4eb3c35091883 # v7
 
       - name: Publish to PyPI
         run: uv publish ./dist/*

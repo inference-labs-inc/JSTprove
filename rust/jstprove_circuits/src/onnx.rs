@@ -1,17 +1,10 @@
 use ndarray::{Array1, ArrayD, ArrayView1, Axis, Ix1, IxDyn, concatenate};
 
-use std::io::Cursor;
-
-use arith::SimdField;
-use expander_compiler::expander_binary::executor;
 use expander_compiler::expander_circuit;
 use expander_compiler::frontend::{
-    BN254Config, ChallengeField, CircuitField, Config, Define, FieldArith, RootAPI, Variable,
-    declare_circuit,
+    BN254Config, CircuitField, Config, Define, FieldArith, RootAPI, Variable, declare_circuit,
 };
-use expander_compiler::gkr_engine::{GKREngine, MPIConfig};
-use expander_compiler::serdes::ExpSerde;
-use jstprove_direct_builder::DirectBuilder;
+use expander_compiler::gkr_engine::GKREngine;
 
 use crate::circuit_functions::CircuitError;
 use crate::circuit_functions::hints::build_logup_hint_registry;
@@ -503,111 +496,12 @@ pub fn compile_bn254(
     circuit_path: &str,
     compress: bool,
     metadata: Option<CircuitParams>,
-    fast_compile: bool,
 ) -> Result<(), RunError> {
-    if fast_compile {
-        let params = match metadata {
-            Some(p) => p,
-            None => OnnxContext::get_params()?,
-        };
-        compile_bn254_direct_to_path(circuit_path, compress, &params)
-    } else {
-        crate::runner::main_runner::run_compile_and_serialize::<BN254Config, Circuit<Variable>>(
-            circuit_path,
-            compress,
-            metadata,
-        )
-    }
-}
-
-/// # Errors
-/// Returns `RunError` on DirectBuilder compilation or serialization failure.
-pub fn compile_bn254_direct_to_path(
-    circuit_path: &str,
-    compress: bool,
-    params: &CircuitParams,
-) -> Result<(), RunError> {
-    use crate::proof_system::ProofSystem;
-    use crate::runner::schema::CompiledCircuit;
-    use crate::runner::version::jstprove_artifact_version;
-
-    log_fast_compile_info();
-
-    let (architecture, wandb) = get_architecture_and_wandb(params)?;
-
-    let n = params.effective_input_dims();
-    let dummy_inputs = vec![CircuitField::<BN254Config>::zero(); n];
-    let (circuit, _) = direct_build_from_fields(params, &architecture, &wandb, &dummy_inputs)?;
-
-    let mut circuit_buf = Vec::new();
-    circuit
-        .serialize_into(&mut circuit_buf)
-        .map_err(|e| RunError::Serialize(format!("direct circuit: {e:?}")))?;
-
-    let mut params_direct = params.clone();
-    params_direct.proof_system = ProofSystem::DirectBuilder;
-
-    let bundle = CompiledCircuit {
-        circuit: circuit_buf,
-        witness_solver: vec![],
-        metadata: Some(params_direct),
-        version: Some(jstprove_artifact_version()),
-    };
-    crate::runner::main_runner::write_circuit_bundle(circuit_path, &bundle, compress)
-}
-
-/// # Errors
-/// Returns `RunError` on witness generation failure.
-pub fn witness_bn254_from_f64_direct(
-    params: &CircuitParams,
-    activations: &[f64],
-    initializers: &[(Vec<f64>, Vec<usize>)],
-    compress: bool,
-) -> Result<WitnessBundle, RunError> {
-    use crate::runner::version::jstprove_artifact_version;
-
-    let (_, witness_private) = compile_and_witness_bn254_direct(params, activations, initializers)?;
-
-    let mut buf = Vec::new();
-    witness_private
-        .serialize_into(&mut buf)
-        .map_err(|e| RunError::Serialize(format!("direct witness: {e:?}")))?;
-    let witness_bytes = jstprove_io::maybe_compress_bytes(buf, compress)
-        .map_err(|e| RunError::Serialize(format!("zstd compress: {e}")))?;
-
-    Ok(WitnessBundle {
-        witness: witness_bytes,
-        output_data: None,
-        version: Some(jstprove_artifact_version()),
-    })
-}
-
-/// # Errors
-/// Returns `RunError` on proof generation failure.
-pub fn prove_bn254_direct_circuit(
-    circuit_bytes: &[u8],
-    witness_bytes: &[u8],
-    compress: bool,
-) -> Result<Vec<u8>, RunError> {
-    let mut circuit = deserialize_direct_circuit(circuit_bytes)?;
-    let witness_private = deserialize_direct_witness(witness_bytes)?;
-    let proof = prove_bn254_direct(&mut circuit, &witness_private)?;
-    jstprove_io::maybe_compress_bytes(proof, compress)
-        .map_err(|e| RunError::Serialize(format!("zstd compress: {e}")))
-}
-
-/// # Errors
-/// Returns `RunError` on verification failure.
-pub fn verify_bn254_direct_circuit(
-    circuit_bytes: &[u8],
-    witness_bytes: &[u8],
-    proof_bytes: &[u8],
-) -> Result<bool, RunError> {
-    use crate::runner::main_runner::auto_decompress_bytes;
-    let mut circuit = deserialize_direct_circuit(circuit_bytes)?;
-    let witness_private = deserialize_direct_witness(witness_bytes)?;
-    let proof_data = auto_decompress_bytes(proof_bytes)?;
-    verify_bn254_direct(&mut circuit, &witness_private, &proof_data)
+    crate::runner::main_runner::run_compile_and_serialize::<BN254Config, Circuit<Variable>>(
+        circuit_path,
+        compress,
+        metadata,
+    )
 }
 
 /// # Errors
@@ -666,6 +560,8 @@ pub fn verify_and_extract_bn254_with_layered(
     )
 }
 
+type FC<C> = <C as GKREngine>::FieldConfig;
+
 pub type FlatCircuitBN254 = expander_circuit::Circuit<FC<BN254Config>>;
 
 #[must_use]
@@ -709,27 +605,6 @@ pub fn verify_and_extract_bn254_with_flat_ref(
     )
 }
 
-fn deserialize_direct_circuit(
-    bytes: &[u8],
-) -> Result<expander_circuit::Circuit<FC<BN254Config>>, RunError> {
-    use crate::runner::main_runner::auto_decompress_bytes;
-    let data = auto_decompress_bytes(bytes)?;
-    expander_circuit::Circuit::<FC<BN254Config>>::deserialize_from(Cursor::new(&*data))
-        .map_err(|e| RunError::Deserialize(format!("direct circuit: {e:?}")))
-}
-
-fn deserialize_direct_witness(bytes: &[u8]) -> Result<Vec<CircuitField<BN254Config>>, RunError> {
-    use crate::runner::main_runner::auto_decompress_bytes;
-    let data = auto_decompress_bytes(bytes)?;
-    Vec::<CircuitField<BN254Config>>::deserialize_from(Cursor::new(&*data))
-        .map_err(|e| RunError::Deserialize(format!("direct witness: {e:?}")))
-}
-
-fn log_fast_compile_info() {
-    tracing::info!("Compiling circuit with DirectBuilder (bypasses ECC IR pipeline)");
-    tracing::info!("Tradeoff: ~6x faster total, ~2x slower prove/verify vs standard compile");
-}
-
 fn get_architecture_and_wandb(
     params: &CircuitParams,
 ) -> Result<(Architecture, WANDB), crate::io::io_reader::onnx_context::OnnxContextError> {
@@ -740,272 +615,4 @@ fn get_architecture_and_wandb(
         OnnxContext::get_wandb()?
     };
     Ok((architecture, wandb))
-}
-
-type FC<C> = <C as GKREngine>::FieldConfig;
-type DirectBuildResult = (
-    expander_circuit::Circuit<FC<BN254Config>>,
-    Vec<CircuitField<BN254Config>>,
-);
-
-fn direct_build_from_fields(
-    params: &CircuitParams,
-    architecture: &Architecture,
-    wandb: &WANDB,
-    input_arr_vals: &[CircuitField<BN254Config>],
-) -> Result<DirectBuildResult, RunError> {
-    let num_outputs = params.effective_output_dims();
-    let hint_registry = build_logup_hint_registry::<CircuitField<BN254Config>>();
-
-    let build = |output_vals: &[CircuitField<BN254Config>]| {
-        let mut all: Vec<CircuitField<BN254Config>> =
-            Vec::with_capacity(input_arr_vals.len() + num_outputs + 4);
-        all.extend_from_slice(input_arr_vals);
-        all.extend_from_slice(output_vals);
-        all.push(CircuitField::<BN254Config>::from(1u32));
-        all.push(CircuitField::<BN254Config>::from(1u32));
-        all.push(CircuitField::<BN254Config>::from(params.scale_base));
-        all.push(CircuitField::<BN254Config>::from(params.scale_exponent));
-        let n = input_arr_vals.len();
-        let circuit_struct = Circuit {
-            input_arr: (1..=n).map(Variable::from).collect(),
-            outputs: (n + 1..=n + num_outputs).map(Variable::from).collect(),
-            dummy: [
-                Variable::from(n + num_outputs + 1),
-                Variable::from(n + num_outputs + 2),
-            ],
-            scale_base: [Variable::from(n + num_outputs + 3)],
-            scale_exponent: [Variable::from(n + num_outputs + 4)],
-        };
-        (all, circuit_struct)
-    };
-
-    let dummy_outputs = vec![CircuitField::<BN254Config>::zero(); num_outputs];
-    let (probe_vals, probe_circuit) = build(&dummy_outputs);
-    let hint_reg_probe = build_logup_hint_registry::<CircuitField<BN254Config>>();
-    let mut probe_builder = DirectBuilder::<BN254Config>::new(&probe_vals, hint_reg_probe);
-    probe_circuit
-        .try_define_impl::<BN254Config, _>(&mut probe_builder, params, architecture, wandb)
-        .map_err(|e| RunError::Compile(format!("circuit definition (probe): {e}")))?;
-    let computed_outputs = probe_builder.output_witness_values();
-
-    let (final_vals, final_circuit) = build(&computed_outputs);
-    let mut builder = DirectBuilder::<BN254Config>::new(&final_vals, hint_registry);
-    final_circuit
-        .try_define_impl::<BN254Config, _>(&mut builder, params, architecture, wandb)
-        .map_err(|e| RunError::Compile(format!("circuit definition: {e}")))?;
-    Ok(builder.finalize())
-}
-
-#[allow(clippy::missing_errors_doc, clippy::cast_possible_wrap)]
-pub fn compile_and_witness_bn254_direct(
-    params: &CircuitParams,
-    activations: &[f64],
-    initializers: &[(Vec<f64>, Vec<usize>)],
-) -> Result<DirectBuildResult, RunError> {
-    let alpha = (f64::from(params.scale_base)).powi(params.scale_exponent as i32);
-    let alpha_sq = alpha * alpha;
-    let num_activation_entries = params
-        .inputs
-        .len()
-        .checked_sub(initializers.len())
-        .ok_or_else(|| {
-            RunError::Witness(format!(
-                "initializers count ({}) exceeds params.inputs count ({})",
-                initializers.len(),
-                params.inputs.len()
-            ))
-        })?;
-    let expected: usize = params.inputs[..num_activation_entries]
-        .iter()
-        .map(|io| io.shape.iter().product::<usize>())
-        .sum();
-    if activations.len() != expected {
-        return Err(RunError::Witness(format!(
-            "activation length mismatch: expected {expected}, got {}",
-            activations.len()
-        )));
-    }
-    let mut input_arr_vals: Vec<CircuitField<BN254Config>> =
-        Vec::with_capacity(params.effective_input_dims());
-    for &v in activations {
-        input_arr_vals.push(quantize_f64_to_field::<BN254Config>(v, alpha));
-    }
-    for (idx, (values, _shape)) in initializers.iter().enumerate() {
-        let io = &params.inputs[num_activation_entries + idx];
-        let scale = if io.shape.len() == 1 { alpha_sq } else { alpha };
-        for &v in values {
-            input_arr_vals.push(quantize_f64_to_field::<BN254Config>(v, scale));
-        }
-    }
-
-    let expected_total = params.effective_input_dims();
-    if input_arr_vals.len() != expected_total {
-        return Err(RunError::Witness(format!(
-            "input dimension mismatch: expected {expected_total}, got {}",
-            input_arr_vals.len()
-        )));
-    }
-
-    let (architecture, wandb) = get_architecture_and_wandb(params)?;
-    direct_build_from_fields(params, &architecture, &wandb, &input_arr_vals)
-}
-
-#[allow(clippy::missing_errors_doc)]
-pub fn compile_and_witness_bn254_from_fields(
-    params: &CircuitParams,
-    input_arr_vals: &[CircuitField<BN254Config>],
-) -> Result<DirectBuildResult, RunError> {
-    let expected = params.effective_input_dims();
-    if input_arr_vals.len() != expected {
-        return Err(RunError::Witness(format!(
-            "input field elements length mismatch: expected {expected}, got {}",
-            input_arr_vals.len()
-        )));
-    }
-    let (architecture, wandb) = get_architecture_and_wandb(params)?;
-    direct_build_from_fields(params, &architecture, &wandb, input_arr_vals)
-}
-
-#[allow(clippy::missing_errors_doc)]
-pub fn prove_bn254_direct(
-    circuit: &mut expander_circuit::Circuit<FC<BN254Config>>,
-    witness_private: &[CircuitField<BN254Config>],
-) -> Result<Vec<u8>, RunError> {
-    type Simd = <<BN254Config as GKREngine>::FieldConfig as expander_compiler::gkr_engine::FieldEngine>::SimdCircuitField;
-    let pack_size = <Simd as SimdField>::PACK_SIZE;
-    let mut buf = vec![CircuitField::<BN254Config>::zero(); pack_size];
-    circuit.layers[0].input_vals = witness_private
-        .iter()
-        .map(|&v| {
-            buf.fill(v);
-            Simd::pack(&buf)
-        })
-        .collect();
-    circuit.evaluate();
-    let mpi_config = MPIConfig::prover_new();
-    let (claimed_v, proof) = executor::prove::<BN254Config>(circuit, mpi_config);
-    executor::dump_proof_and_claimed_v(&proof, &claimed_v)
-        .map_err(|e| RunError::Serialize(format!("proof: {e:?}")))
-}
-
-#[allow(clippy::missing_errors_doc)]
-pub fn verify_bn254_direct(
-    circuit: &mut expander_circuit::Circuit<FC<BN254Config>>,
-    witness_private: &[CircuitField<BN254Config>],
-    proof_bytes: &[u8],
-) -> Result<bool, RunError> {
-    type Simd = <<BN254Config as GKREngine>::FieldConfig as expander_compiler::gkr_engine::FieldEngine>::SimdCircuitField;
-    let pack_size = <Simd as SimdField>::PACK_SIZE;
-    let mut buf = vec![CircuitField::<BN254Config>::zero(); pack_size];
-    circuit.layers[0].input_vals = witness_private
-        .iter()
-        .map(|&v| {
-            buf.fill(v);
-            Simd::pack(&buf)
-        })
-        .collect();
-    let (proof, claimed_v) =
-        executor::load_proof_and_claimed_v::<ChallengeField<BN254Config>>(proof_bytes)
-            .map_err(|e| RunError::Deserialize(format!("proof: {e:?}")))?;
-    let mpi_config = MPIConfig::verifier_new(1);
-    Ok(executor::verify::<BN254Config>(
-        circuit, mpi_config, &proof, &claimed_v,
-    ))
-}
-
-fn read_activations_from_file(
-    input_path: &str,
-) -> Result<Vec<CircuitField<BN254Config>>, RunError> {
-    use crate::circuit_functions::utils::onnx_model::InputData;
-    use crate::circuit_functions::utils::tensor_ops::get_nd_circuit_inputs;
-    use crate::io::io_reader::onnx_context::OnnxContext;
-
-    let params = OnnxContext::get_params()?;
-    let input_bytes = std::fs::read(input_path).map_err(|e| RunError::Io {
-        source: e,
-        path: input_path.into(),
-    })?;
-    let input_data: InputData = rmp_serde::from_slice(&input_bytes)
-        .map_err(|e| RunError::Deserialize(format!("input msgpack: {e:?}")))?;
-    let expected_size = params.effective_input_dims();
-    let arr = get_nd_circuit_inputs::<BN254Config>(&input_data.input, &[expected_size])
-        .map_err(|e| RunError::Witness(format!("input extraction: {e}")))?;
-    Ok(arr.into_iter().collect())
-}
-
-#[allow(clippy::missing_errors_doc)]
-pub fn fast_compile_prove(
-    input_path: &str,
-    proof_path: &str,
-    compress: bool,
-) -> Result<(), RunError> {
-    use crate::io::io_reader::onnx_context::OnnxContext;
-    use crate::runner::schema::ProofBundle;
-    use crate::runner::version::jstprove_artifact_version;
-    use serde::Serialize;
-
-    let params = OnnxContext::get_params()?;
-    let input_arr_vals = read_activations_from_file(input_path)?;
-
-    log_fast_compile_info();
-
-    let (mut circuit, witness) = compile_and_witness_bn254_from_fields(&params, &input_arr_vals)?;
-    let proof = prove_bn254_direct(&mut circuit, &witness)?;
-    let proof = jstprove_io::maybe_compress_bytes(proof, compress)
-        .map_err(|e| RunError::Serialize(format!("zstd compress: {e}")))?;
-
-    let resp = ProofBundle {
-        proof,
-        version: Some(jstprove_artifact_version()),
-    };
-    let proof_dir = std::path::Path::new(proof_path)
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or_else(|| std::path::Path::new("."));
-    let mut tmp = tempfile::NamedTempFile::new_in(proof_dir).map_err(|e| RunError::Io {
-        source: e,
-        path: proof_path.into(),
-    })?;
-    {
-        let mut writer = std::io::BufWriter::new(tmp.as_file_mut());
-        resp.serialize(&mut rmp_serde::Serializer::new(&mut writer).with_struct_map())
-            .map_err(|e| RunError::Serialize(format!("proof msgpack: {e:?}")))?;
-        std::io::Write::flush(&mut writer).map_err(|e| RunError::Io {
-            source: e,
-            path: proof_path.into(),
-        })?;
-    }
-    tmp.persist(proof_path).map_err(|e| RunError::Io {
-        source: e.error,
-        path: proof_path.into(),
-    })?;
-
-    Ok(())
-}
-
-#[allow(clippy::missing_errors_doc)]
-pub fn fast_compile_verify(input_path: &str, proof_path: &str) -> Result<bool, RunError> {
-    use crate::io::io_reader::onnx_context::OnnxContext;
-    use crate::runner::main_runner::auto_decompress_bytes;
-    use crate::runner::schema::ProofBundle;
-
-    let params = OnnxContext::get_params()?;
-    let input_arr_vals = read_activations_from_file(input_path)?;
-
-    log_fast_compile_info();
-
-    let (mut circuit, witness) = compile_and_witness_bn254_from_fields(&params, &input_arr_vals)?;
-
-    let proof_bundle: ProofBundle = {
-        let file = std::fs::File::open(proof_path).map_err(|e| RunError::Io {
-            source: e,
-            path: proof_path.into(),
-        })?;
-        rmp_serde::decode::from_read(std::io::BufReader::new(file))
-            .map_err(|e| RunError::Deserialize(format!("proof msgpack: {e:?}")))?
-    };
-
-    let proof_data = auto_decompress_bytes(&proof_bundle.proof)?;
-    verify_bn254_direct(&mut circuit, &witness, &proof_data)
 }

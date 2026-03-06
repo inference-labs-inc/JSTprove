@@ -1,0 +1,126 @@
+use std::path::Path;
+
+use jstprove_circuits::expander_metadata;
+use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
+use jstprove_circuits::onnx::{
+    compile_bn254, deserialize_circuit_bn254, prove_bn254, verify_and_extract_bn254_with_layered,
+    verify_bn254, witness_bn254_from_f64,
+};
+use jstprove_circuits::runner::main_runner::read_circuit_msgpack;
+
+fn lenet_model_path() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx")
+}
+
+fn setup_onnx_context() -> jstprove_circuits::circuit_functions::utils::onnx_model::CircuitParams {
+    let model_path = lenet_model_path();
+    assert!(
+        model_path.exists(),
+        "lenet.onnx not found at {}",
+        model_path.display()
+    );
+    let metadata = expander_metadata::generate_from_onnx(&model_path).unwrap();
+    let params = metadata.circuit_params.clone();
+    OnnxContext::set_all(
+        metadata.architecture,
+        metadata.circuit_params,
+        Some(metadata.wandb),
+    );
+    params
+}
+
+fn dummy_activations(
+    params: &jstprove_circuits::circuit_functions::utils::onnx_model::CircuitParams,
+) -> Vec<f64> {
+    let num_act: usize = params
+        .inputs
+        .iter()
+        .map(|io| io.shape.iter().product::<usize>())
+        .sum();
+    (0..num_act).map(|i| i as f64 / num_act as f64).collect()
+}
+
+#[test]
+fn ecc_pipeline_lenet_prove_verify() {
+    let params = setup_onnx_context();
+    let activations = dummy_activations(&params);
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let circuit_path = tmp.path().join("circuit.msgpack");
+    let circuit_path_str = circuit_path.to_str().unwrap();
+
+    compile_bn254(circuit_path_str, false, Some(params.clone())).unwrap();
+    let bundle = read_circuit_msgpack(circuit_path_str).unwrap();
+
+    let wb = witness_bn254_from_f64(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations,
+        &[],
+        false,
+    )
+    .unwrap();
+
+    let proof = prove_bn254(&bundle.circuit, &wb.witness, false).unwrap();
+    assert!(verify_bn254(&bundle.circuit, &wb.witness, &proof).unwrap());
+}
+
+#[test]
+fn layered_circuit_handle_reused_across_verify_calls() {
+    let params = setup_onnx_context();
+    let activations = dummy_activations(&params);
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let circuit_path = tmp.path().join("circuit.msgpack");
+    let circuit_path_str = circuit_path.to_str().unwrap();
+
+    compile_bn254(circuit_path_str, false, Some(params.clone())).unwrap();
+    let bundle = read_circuit_msgpack(circuit_path_str).unwrap();
+
+    let wb = witness_bn254_from_f64(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations,
+        &[],
+        false,
+    )
+    .unwrap();
+
+    let proof = prove_bn254(&bundle.circuit, &wb.witness, false).unwrap();
+    let layered = deserialize_circuit_bn254(&bundle.circuit).unwrap();
+    let num_inputs = params.effective_input_dims();
+
+    let result1 =
+        verify_and_extract_bn254_with_layered(&layered, &wb.witness, &proof, num_inputs, None)
+            .unwrap();
+    assert!(result1.valid);
+
+    let result2 =
+        verify_and_extract_bn254_with_layered(&layered, &wb.witness, &proof, num_inputs, None)
+            .unwrap();
+    assert!(result2.valid);
+
+    assert_eq!(result1.outputs, result2.outputs);
+    assert_eq!(result1.scale_base, result2.scale_base);
+    assert_eq!(result1.scale_exponent, result2.scale_exponent);
+
+    let activations2: Vec<f64> = activations.iter().map(|&v| v + 0.01).collect();
+    let wb2 = witness_bn254_from_f64(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations2,
+        &[],
+        false,
+    )
+    .unwrap();
+    let proof2 = prove_bn254(&bundle.circuit, &wb2.witness, false).unwrap();
+
+    let result3 =
+        verify_and_extract_bn254_with_layered(&layered, &wb2.witness, &proof2, num_inputs, None)
+            .unwrap();
+    assert!(result3.valid);
+    assert_ne!(result3.outputs, result1.outputs);
+}
