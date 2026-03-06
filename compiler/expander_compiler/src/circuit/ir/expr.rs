@@ -357,6 +357,22 @@ impl<C: Config> Expression<C> {
                 term.normalize();
             }
             terms.sort();
+            terms.dedup_by(|b, a| {
+                if a.vars == b.vars {
+                    if !matches!(a.vars, VarSpec::RandomLinear(_)) {
+                        a.coef += b.coef;
+                    }
+                    true
+                } else {
+                    false
+                }
+            });
+            terms.retain(|term| {
+                matches!(term.vars, VarSpec::RandomLinear(_)) || !term.coef.is_zero()
+            });
+            if terms.is_empty() {
+                terms.push(Term::default());
+            }
             return Self::with_terms(terms);
         }
         Self::from_terms(terms)
