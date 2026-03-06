@@ -352,7 +352,7 @@ impl<C: Config> Expression<C> {
                 vars: term.vars.replace_vars(&f),
             })
             .collect();
-        Self::with_terms(terms)
+        Self::from_terms(terms)
     }
     pub fn degree(&self) -> usize {
         let mut has_linear = false;
