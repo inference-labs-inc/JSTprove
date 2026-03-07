@@ -3,8 +3,9 @@ use std::path::Path;
 use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
 use jstprove_circuits::onnx::{
-    compile_bn254, deserialize_circuit_bn254, prove_bn254, verify_and_extract_bn254_with_layered,
-    verify_bn254, witness_bn254_from_f64,
+    compile_bn254, deserialize_circuit_bn254, flatten_circuit_bn254, prove_bn254,
+    verify_and_extract_bn254_with_flat_ref, verify_and_extract_bn254_with_layered, verify_bn254,
+    witness_bn254_from_f64,
 };
 use jstprove_circuits::runner::main_runner::read_circuit_msgpack;
 
@@ -123,4 +124,137 @@ fn layered_circuit_handle_reused_across_verify_calls() {
             .unwrap();
     assert!(result3.valid);
     assert_ne!(result3.outputs, result1.outputs);
+}
+
+#[test]
+fn flat_ref_verify_matches_layered_verify() {
+    let params = setup_onnx_context();
+    let activations = dummy_activations(&params);
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let circuit_path = tmp.path().join("circuit.msgpack");
+    let circuit_path_str = circuit_path.to_str().unwrap();
+
+    compile_bn254(circuit_path_str, false, Some(params.clone())).unwrap();
+    let bundle = read_circuit_msgpack(circuit_path_str).unwrap();
+
+    let wb = witness_bn254_from_f64(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations,
+        &[],
+        false,
+    )
+    .unwrap();
+
+    let proof = prove_bn254(&bundle.circuit, &wb.witness, false).unwrap();
+    let layered = deserialize_circuit_bn254(&bundle.circuit).unwrap();
+    let num_inputs = params.effective_input_dims();
+
+    let layered_result =
+        verify_and_extract_bn254_with_layered(&layered, &wb.witness, &proof, num_inputs, None)
+            .unwrap();
+    assert!(layered_result.valid);
+
+    let flat = flatten_circuit_bn254(&layered);
+    let ref_result =
+        verify_and_extract_bn254_with_flat_ref(&flat, &wb.witness, &proof, num_inputs, None)
+            .unwrap();
+    assert!(ref_result.valid);
+
+    assert_eq!(layered_result.outputs, ref_result.outputs);
+    assert_eq!(layered_result.scale_base, ref_result.scale_base);
+    assert_eq!(layered_result.scale_exponent, ref_result.scale_exponent);
+}
+
+#[test]
+fn flat_ref_verify_reused_across_calls() {
+    let params = setup_onnx_context();
+    let activations = dummy_activations(&params);
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let circuit_path = tmp.path().join("circuit.msgpack");
+    let circuit_path_str = circuit_path.to_str().unwrap();
+
+    compile_bn254(circuit_path_str, false, Some(params.clone())).unwrap();
+    let bundle = read_circuit_msgpack(circuit_path_str).unwrap();
+    let layered = deserialize_circuit_bn254(&bundle.circuit).unwrap();
+    let flat = flatten_circuit_bn254(&layered);
+    let num_inputs = params.effective_input_dims();
+
+    let wb1 = witness_bn254_from_f64(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations,
+        &[],
+        false,
+    )
+    .unwrap();
+    let proof1 = prove_bn254(&bundle.circuit, &wb1.witness, false).unwrap();
+
+    let r1 = verify_and_extract_bn254_with_flat_ref(&flat, &wb1.witness, &proof1, num_inputs, None)
+        .unwrap();
+    assert!(r1.valid);
+
+    let r2 = verify_and_extract_bn254_with_flat_ref(&flat, &wb1.witness, &proof1, num_inputs, None)
+        .unwrap();
+    assert!(r2.valid);
+    assert_eq!(r1.outputs, r2.outputs);
+
+    let activations2: Vec<f64> = activations.iter().map(|&v| v + 0.01).collect();
+    let wb2 = witness_bn254_from_f64(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations2,
+        &[],
+        false,
+    )
+    .unwrap();
+    let proof2 = prove_bn254(&bundle.circuit, &wb2.witness, false).unwrap();
+
+    let r3 = verify_and_extract_bn254_with_flat_ref(&flat, &wb2.witness, &proof2, num_inputs, None)
+        .unwrap();
+    assert!(r3.valid);
+    assert_ne!(r1.outputs, r3.outputs);
+}
+
+#[test]
+fn flat_ref_verify_compressed_witness() {
+    let params = setup_onnx_context();
+    let activations = dummy_activations(&params);
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let circuit_path = tmp.path().join("circuit.msgpack");
+    let circuit_path_str = circuit_path.to_str().unwrap();
+
+    compile_bn254(circuit_path_str, false, Some(params.clone())).unwrap();
+    let bundle = read_circuit_msgpack(circuit_path_str).unwrap();
+    let layered = deserialize_circuit_bn254(&bundle.circuit).unwrap();
+    let flat = flatten_circuit_bn254(&layered);
+    let num_inputs = params.effective_input_dims();
+
+    let wb = witness_bn254_from_f64(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations,
+        &[],
+        true,
+    )
+    .unwrap();
+    let proof = prove_bn254(&bundle.circuit, &wb.witness, true).unwrap();
+
+    let ref_result =
+        verify_and_extract_bn254_with_flat_ref(&flat, &wb.witness, &proof, num_inputs, None)
+            .unwrap();
+    assert!(ref_result.valid);
+
+    let layered_result =
+        verify_and_extract_bn254_with_layered(&layered, &wb.witness, &proof, num_inputs, None)
+            .unwrap();
+    assert!(layered_result.valid);
+    assert_eq!(ref_result.outputs, layered_result.outputs);
 }
