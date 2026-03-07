@@ -40,24 +40,24 @@ fn bench_roundtrip<T: Serialize + for<'de> Deserialize<'de>>(
     name: &str,
     value: &T,
 ) {
-    let bincode_bytes = bincode::serialize(value).unwrap();
+    let bitcode_bytes = bitcode::serialize(value).unwrap();
     let msgpack_bytes = rmp_serde::to_vec_named(value).unwrap();
 
     let group_name = format!(
-        "{name} (bincode={}, msgpack={})",
-        bincode_bytes.len(),
+        "{name} (bitcode={}, msgpack={})",
+        bitcode_bytes.len(),
         msgpack_bytes.len()
     );
     let mut group = c.benchmark_group(&group_name);
 
-    group.bench_function("bincode_serialize", |b| {
-        b.iter(|| bincode::serialize(black_box(value)).unwrap());
+    group.bench_function("bitcode_serialize", |b| {
+        b.iter(|| bitcode::serialize(black_box(value)).unwrap());
     });
     group.bench_function("msgpack_serialize", |b| {
         b.iter(|| rmp_serde::to_vec_named(black_box(value)).unwrap());
     });
-    group.bench_function("bincode_deserialize", |b| {
-        b.iter(|| bincode::deserialize::<T>(black_box(&bincode_bytes)).unwrap());
+    group.bench_function("bitcode_deserialize", |b| {
+        b.iter(|| bitcode::deserialize::<T>(black_box(&bitcode_bytes)).unwrap());
     });
     group.bench_function("msgpack_deserialize", |b| {
         b.iter(|| rmp_serde::from_slice::<T>(black_box(&msgpack_bytes)).unwrap());
