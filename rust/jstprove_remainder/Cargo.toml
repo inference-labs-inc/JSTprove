@@ -32,17 +32,12 @@ parallel = [
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
-bitcode = { version = "0.6", features = ["serde"] }
 rmp-serde = "1.3"
 tempfile = "3"
 
 [[bin]]
 name = "jstprove-remainder"
 path = "src/main.rs"
-
-[[bench]]
-name = "serialization"
-harness = false
 
 [[bench]]
 name = "pipeline_remainder"
