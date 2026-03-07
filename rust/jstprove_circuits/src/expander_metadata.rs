@@ -216,6 +216,16 @@ fn op_type_to_string(op: OpType) -> String {
         OpType::Squeeze => "Squeeze",
         OpType::Unsqueeze => "Unsqueeze",
         OpType::Constant => "Constant",
+        OpType::Cast => "Cast",
+        OpType::Exp => "Exp",
+        OpType::Sigmoid => "Sigmoid",
+        OpType::Gelu => "Gelu",
+        OpType::Softmax => "Softmax",
+        OpType::Tile => "Tile",
+        OpType::Gather => "Gather",
+        OpType::LayerNormalization => "LayerNormalization",
+        OpType::Resize => "Resize",
+        OpType::GridSample => "GridSample",
     }
     .to_string()
 }

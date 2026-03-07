@@ -17,12 +17,22 @@ pub enum OpType {
     BatchNormalization,
     Max,
     Min,
+    Cast,
     Clip,
+    Exp,
     Reshape,
     Flatten,
     Squeeze,
     Unsqueeze,
     Constant,
+    Softmax,
+    Sigmoid,
+    Gelu,
+    Tile,
+    Gather,
+    LayerNormalization,
+    Resize,
+    GridSample,
 }
 
 impl OpType {
@@ -39,12 +49,22 @@ impl OpType {
             "BatchNormalization" | "Int64BatchNormalization" => Ok(Self::BatchNormalization),
             "Max" | "Int64Max" => Ok(Self::Max),
             "Min" | "Int64Min" => Ok(Self::Min),
+            "Cast" => Ok(Self::Cast),
             "Clip" | "Int64Clip" => Ok(Self::Clip),
+            "Exp" => Ok(Self::Exp),
             "Reshape" => Ok(Self::Reshape),
             "Flatten" => Ok(Self::Flatten),
             "Squeeze" => Ok(Self::Squeeze),
             "Unsqueeze" => Ok(Self::Unsqueeze),
             "Constant" => Ok(Self::Constant),
+            "Softmax" => Ok(Self::Softmax),
+            "Sigmoid" => Ok(Self::Sigmoid),
+            "Gelu" => Ok(Self::Gelu),
+            "Tile" => Ok(Self::Tile),
+            "Gather" => Ok(Self::Gather),
+            "LayerNormalization" => Ok(Self::LayerNormalization),
+            "Resize" => Ok(Self::Resize),
+            "GridSample" => Ok(Self::GridSample),
             other => bail!("unsupported ONNX op: {other}"),
         }
     }
@@ -182,6 +202,13 @@ impl LayerNode {
     pub fn get_float_attr(&self, name: &str) -> Option<f32> {
         match self.attributes.get(name)? {
             AttrValue::Float(v) => Some(*v),
+            _ => None,
+        }
+    }
+
+    pub fn get_string_attr(&self, name: &str) -> Option<&str> {
+        match self.attributes.get(name)? {
+            AttrValue::String(s) => Some(s.as_str()),
             _ => None,
         }
     }

@@ -3,6 +3,7 @@ use crate::circuit_functions::layers::LayerError;
 use crate::circuit_functions::layers::batchnorm::BatchnormLayer;
 use crate::circuit_functions::layers::binary_arith::BinaryArithLayer;
 use crate::circuit_functions::layers::binary_compare::BinaryCompareLayer;
+use crate::circuit_functions::layers::cast::CastLayer;
 use crate::circuit_functions::layers::div::DivLayer;
 use crate::circuit_functions::layers::layer_ops::LayerOp;
 use crate::circuit_functions::layers::mul::MulLayer;
@@ -14,12 +15,21 @@ use crate::circuit_functions::utils::onnx_types::ONNXLayer;
 use crate::circuit_functions::layers::clip::ClipLayer;
 use crate::circuit_functions::layers::constant::ConstantLayer;
 use crate::circuit_functions::layers::conv::ConvLayer;
+use crate::circuit_functions::layers::exp::ExpLayer;
 use crate::circuit_functions::layers::flatten::FlattenLayer;
+use crate::circuit_functions::layers::gather::GatherLayer;
+use crate::circuit_functions::layers::gelu::GeluLayer;
 use crate::circuit_functions::layers::gemm::GemmLayer;
+use crate::circuit_functions::layers::gridsample::GridSampleLayer;
+use crate::circuit_functions::layers::layer_norm::LayerNormLayer;
 use crate::circuit_functions::layers::maxpool::MaxPoolLayer;
 use crate::circuit_functions::layers::relu::ReluLayer;
 use crate::circuit_functions::layers::reshape::ReshapeLayer;
+use crate::circuit_functions::layers::resize::ResizeLayer;
+use crate::circuit_functions::layers::sigmoid::SigmoidLayer;
+use crate::circuit_functions::layers::softmax::SoftmaxLayer;
 use crate::circuit_functions::layers::squeeze::SqueezeLayer;
+use crate::circuit_functions::layers::tile::TileLayer;
 use crate::circuit_functions::layers::unsqueeze::UnsqueezeLayer;
 
 use expander_compiler::frontend::{Config, RootAPI};
@@ -123,21 +133,31 @@ When defining new layers, make sure to activate them by placing the new layer in
 
 define_layers! {
     Add       => { name: "Add", builder: BinaryArithLayer::build },
+    Cast      => { name: "Cast", builder: CastLayer::build },
     Clip      => { name: "Clip", builder: ClipLayer::build },
     Batchnorm => { name: "BatchNormalization", builder: BatchnormLayer::build },
     Div       => { name: "Div", builder: DivLayer::build },
+    Exp       => { name: "Exp", builder: ExpLayer::build },
     Sub       => { name: "Sub", builder: BinaryArithLayer::build },
     Mul       => { name: "Mul", builder: MulLayer::build },
     Constant  => { name: "Constant", builder: ConstantLayer::build },
     Conv      => { name: "Conv", builder: ConvLayer::build },
     Flatten   => { name: "Flatten", builder: FlattenLayer::build },
+    Gather     => { name: "Gather",     builder: GatherLayer::build },
+    Gelu       => { name: "Gelu",       builder: GeluLayer::build },
+    GridSample => { name: "GridSample", builder: GridSampleLayer::build },
     Gemm      => { name: "Gemm", builder: GemmLayer::build },
+    LayerNormalization => { name: "LayerNormalization", builder: LayerNormLayer::build },
     MaxPool   => { name: "MaxPool", builder: MaxPoolLayer::build },
     Max       => { name: "Max", builder: BinaryCompareLayer::build },
     Min       => { name: "Min", builder: BinaryCompareLayer::build },
     ReLU      => { name: "ReLU", builder: ReluLayer::build, aliases: ["Relu"] },
     Reshape   => { name: "Reshape", builder: ReshapeLayer::build },
+    Resize    => { name: "Resize", builder: ResizeLayer::build },
+    Sigmoid   => { name: "Sigmoid", builder: SigmoidLayer::build },
+    Softmax   => { name: "Softmax", builder: SoftmaxLayer::build },
     Squeeze   => { name: "Squeeze", builder: SqueezeLayer::build },
+    Tile      => { name: "Tile", builder: TileLayer::build },
     Unsqueeze => { name: "Unsqueeze", builder: UnsqueezeLayer::build },
 }
 
@@ -149,22 +169,31 @@ mod tests {
     fn parse_canonical_op_names() {
         let ops = [
             "Add",
+            "Cast",
             "Sub",
             "Mul",
             "Div",
+            "Exp",
             "Conv",
+            "Gather",
             "Gemm",
             "Flatten",
+            "LayerNormalization",
             "Reshape",
             "MaxPool",
             "Clip",
+            "Sigmoid",
+            "Softmax",
             "Squeeze",
+            "Tile",
             "Unsqueeze",
             "BatchNormalization",
             "Constant",
             "Max",
             "Min",
             "ReLU",
+            "Resize",
+            "GridSample",
         ];
         for name in ops {
             assert!(
@@ -190,6 +219,7 @@ mod tests {
     fn display_matches_canonical_name() {
         assert_eq!(LayerKind::Add.to_string(), "Add");
         assert_eq!(LayerKind::Batchnorm.to_string(), "BatchNormalization");
+        assert_eq!(LayerKind::Exp.to_string(), "Exp");
         assert_eq!(LayerKind::ReLU.to_string(), "ReLU");
         assert_eq!(LayerKind::Gemm.to_string(), "Gemm");
     }
@@ -204,22 +234,31 @@ mod tests {
     fn supported_op_names_contains_all_canonical() {
         let expected = [
             "Add",
+            "Cast",
             "Sub",
             "Mul",
             "Div",
+            "Exp",
             "Conv",
+            "Gather",
             "Gemm",
             "Flatten",
+            "LayerNormalization",
             "Reshape",
             "MaxPool",
             "Clip",
+            "Sigmoid",
+            "Softmax",
             "Squeeze",
+            "Tile",
             "Unsqueeze",
             "BatchNormalization",
             "Constant",
             "Max",
             "Min",
             "ReLU",
+            "Resize",
+            "GridSample",
         ];
         for name in expected {
             assert!(

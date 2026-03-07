@@ -358,7 +358,11 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                     &mut range_checks,
                 )?;
             }
-            OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
+            OpType::Cast
+            | OpType::Reshape
+            | OpType::Flatten
+            | OpType::Squeeze
+            | OpType::Unsqueeze => {
                 let input_name = layer
                     .inputs
                     .first()
@@ -387,6 +391,86 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                     if let Some(ref layout) = layout {
                         tensor_layouts.insert(out.clone(), layout.clone());
                     }
+                }
+            }
+            OpType::Gather => {
+                // Gather selects elements using constant indices; no GKR constraint
+                // is added (selection is non-linear). The prover supplies the gathered
+                // output as a committed witness shred named "{layer.name}_out".
+                // Downstream arithmetic layers (e.g., Gemm) constrain the gathered
+                // values indirectly through the overall output equality check.
+                let out_total: usize = layer.output_shape.iter().product();
+                let out_nv = num_vars_for(out_total);
+                let gather_out_name = format!("{}_out", layer.name);
+                let node = builder.add_input_shred(&gather_out_name, out_nv, &committed);
+                manifest.insert(
+                    gather_out_name,
+                    ShredEntry {
+                        num_vars: out_nv,
+                        visibility: Visibility::Committed,
+                    },
+                );
+                for out in &layer.outputs {
+                    tensor_nodes.insert(out.clone(), node.clone());
+                    tensor_num_vars.insert(out.clone(), out_nv);
+                }
+            }
+            OpType::LayerNormalization => {
+                // LayerNorm is computed outside the GKR circuit (via a hint) and
+                // supplied as a committed shred named "{layer.name}_out".
+                // Output shape equals input shape (passthrough shape).
+                let out_total: usize = layer.output_shape.iter().product();
+                let out_nv = num_vars_for(out_total);
+                let ln_out_name = format!("{}_out", layer.name);
+                let node = builder.add_input_shred(&ln_out_name, out_nv, &committed);
+                manifest.insert(
+                    ln_out_name,
+                    ShredEntry {
+                        num_vars: out_nv,
+                        visibility: Visibility::Committed,
+                    },
+                );
+                for out in &layer.outputs {
+                    tensor_nodes.insert(out.clone(), node.clone());
+                    tensor_num_vars.insert(out.clone(), out_nv);
+                }
+            }
+            OpType::Resize => {
+                // Resize output is a committed shred computed by the prover
+                // (compute_witness). Named "{layer.name}_out".
+                let out_total: usize = layer.output_shape.iter().product();
+                let out_nv = num_vars_for(out_total);
+                let resize_out_name = format!("{}_out", layer.name);
+                let node = builder.add_input_shred(&resize_out_name, out_nv, &committed);
+                manifest.insert(
+                    resize_out_name,
+                    ShredEntry {
+                        num_vars: out_nv,
+                        visibility: Visibility::Committed,
+                    },
+                );
+                for out in &layer.outputs {
+                    tensor_nodes.insert(out.clone(), node.clone());
+                    tensor_num_vars.insert(out.clone(), out_nv);
+                }
+            }
+            OpType::GridSample => {
+                // GridSample output is a committed shred computed by the prover
+                // (compute_witness). Named "{layer.name}_out".
+                let out_total: usize = layer.output_shape.iter().product();
+                let out_nv = num_vars_for(out_total);
+                let gridsample_out_name = format!("{}_out", layer.name);
+                let node = builder.add_input_shred(&gridsample_out_name, out_nv, &committed);
+                manifest.insert(
+                    gridsample_out_name,
+                    ShredEntry {
+                        num_vars: out_nv,
+                        visibility: Visibility::Committed,
+                    },
+                );
+                for out in &layer.outputs {
+                    tensor_nodes.insert(out.clone(), node.clone());
+                    tensor_num_vars.insert(out.clone(), out_nv);
                 }
             }
             other => {

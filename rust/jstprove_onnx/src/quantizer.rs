@@ -228,6 +228,19 @@ fn compute_bounds(graph: &LayerGraph, config: &ScaleConfig) -> Result<HashMap<St
         let bound = compute_layer_bound(layer, &bounds)?;
 
         if layer.needs_rescale || is_range_check_op(layer.op_type) {
+            // Guard: compute_n_bits computes (alpha as f64 * bound).log2().
+            // If alpha * bound overflows f64 to +Inf, log2 returns +Inf and
+            // the subsequent `as usize` saturates, producing an incorrect n_bits.
+            // Catch this before it propagates.
+            let safe_max = f64::MAX / (alpha as f64);
+            if bound > safe_max {
+                anyhow::bail!(
+                    "layer {}: activation bound {bound:.3e} exceeds safe maximum {safe_max:.3e} \
+                    (alpha={alpha} * bound overflows f64 in n_bits sizing); \
+                    the model's activation range is too large to quantise safely",
+                    layer.name
+                );
+            }
             let n_bits = compute_n_bits(alpha, bound);
             n_bits_config.insert(layer.name.clone(), n_bits);
         }
@@ -427,18 +440,68 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
             let m_in = get_input_bound(0);
             Ok(m_in)
         }
-        OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
+        OpType::Cast
+        | OpType::Reshape
+        | OpType::Flatten
+        | OpType::Squeeze
+        | OpType::Unsqueeze
+        | OpType::Tile
+        | OpType::Gather
+        | OpType::Resize
+        | OpType::GridSample => {
             let m_in = get_input_bound(0);
             Ok(m_in)
         }
+        // exp(x) is monotonically increasing; max output is exp(max_input).
+        OpType::Exp => {
+            let m_in = get_input_bound(0);
+            let bound = m_in.exp();
+            if !bound.is_finite() {
+                anyhow::bail!(
+                    "layer {}: Exp input bound {m_in} produces a non-finite exp result; \
+                     the model's activation range is too large to quantise safely",
+                    layer.name
+                );
+            }
+            Ok(bound)
+        }
+        // softmax / sigmoid / gelu outputs are in [0, 1] (softmax/sigmoid) or roughly [-0.17, inf) (gelu).
+        // For simplicity, we use 1.0 as the bound for the activation functions.
+        OpType::Softmax | OpType::Sigmoid | OpType::Gelu => Ok(1.0),
         OpType::Constant => Ok(1.0),
+        OpType::LayerNormalization => {
+            // Conservative bound: max|γ| * m_in + max|β|.
+            // gamma (input[1]) is in float units at this point; bias_bound(2) is max|β_f|.
+            let m_in = get_input_bound(0);
+            let max_gamma = layer
+                .inputs
+                .get(1)
+                .and_then(|name| layer.weights.get(name))
+                .map(|w| {
+                    let vals = w.as_f64_vec();
+                    vals.iter().map(|v| v.abs()).fold(0.0_f64, f64::max)
+                })
+                .unwrap_or(1.0);
+            let max_beta = get_bias_bound(2);
+            Ok(max_gamma * m_in + max_beta)
+        }
     }
 }
 
 fn is_range_check_op(op: OpType) -> bool {
     matches!(
         op,
-        OpType::Relu | OpType::MaxPool | OpType::Max | OpType::Min | OpType::Clip
+        OpType::Relu
+            | OpType::MaxPool
+            | OpType::Max
+            | OpType::Min
+            | OpType::Clip
+            | OpType::Exp
+            | OpType::Softmax
+            | OpType::Sigmoid
+            | OpType::Gelu
+            | OpType::Resize
+            | OpType::GridSample
     )
 }
 

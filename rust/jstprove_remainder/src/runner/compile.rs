@@ -5,6 +5,7 @@ use anyhow::Result;
 use crate::onnx::graph::LayerGraph;
 use crate::onnx::parser;
 use crate::onnx::quantizer::{self, QuantizedModel, ScaleConfig};
+use crate::onnx::shape_inference;
 
 pub fn run(model_path: &Path, output_path: &Path, compress: bool) -> Result<()> {
     tracing::info!("parsing ONNX model: {}", model_path.display());
@@ -15,7 +16,17 @@ pub fn run(model_path: &Path, output_path: &Path, compress: bool) -> Result<()> 
 
     tracing::info!("quantizing model (scale=2^18)");
     let config = ScaleConfig::default();
-    let quantized = quantizer::quantize_model(graph, &config)?;
+    let mut quantized = quantizer::quantize_model(graph, &config)?;
+
+    tracing::info!("inferring tensor shapes");
+    let shapes = shape_inference::infer_all_shapes(&parsed, &quantized.graph)?;
+    for layer in &mut quantized.graph.layers {
+        if let Some(out_name) = layer.outputs.first() {
+            if let Some(shape) = shapes.get(out_name) {
+                layer.output_shape = shape.clone();
+            }
+        }
+    }
 
     tracing::info!(
         "quantized {} layers, {} n_bits entries",
