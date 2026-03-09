@@ -34,6 +34,7 @@ const SUPPORTED_OPS: &[&str] = &[
     "LayerNormalization",
     "Resize",
     "GridSample",
+    "Transpose",
 ];
 
 pub fn is_compatible(path: &Path) -> Result<(bool, Vec<String>)> {

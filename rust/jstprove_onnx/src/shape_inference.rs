@@ -108,6 +108,7 @@ fn infer_layer_output_shape(
         OpType::Gather => infer_gather(layer, shapes, initializers, constant_tensors),
         OpType::Resize => infer_resize(layer, input_shape, initializers, constant_tensors),
         OpType::GridSample => infer_gridsample(layer, shapes),
+        OpType::Transpose => infer_transpose(layer, shapes),
     }
 }
 
@@ -952,6 +953,65 @@ fn infer_gridsample(
 
     // Output: [N, C, H_out, W_out]
     let out_shape = vec![x_shape[0], x_shape[1], grid_shape[1], grid_shape[2]];
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
+}
+
+/// Infer output shape for the ONNX `Transpose` operator.
+///
+/// If `perm` is provided it must be a permutation of `[0, rank)`.
+/// If absent, the axes are reversed (numpy default).
+fn infer_transpose(
+    layer: &LayerNode,
+    shapes: &HashMap<String, Vec<usize>>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let input_name = layer
+        .inputs
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Transpose missing input", layer.name))?;
+    let input_shape = get_shape(shapes, input_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "layer {}: Transpose missing shape for input '{input_name}'",
+            layer.name
+        )
+    })?;
+
+    let rank = input_shape.len();
+    let perm: Vec<usize> = if let Some(raw) = layer.get_ints_attr("perm") {
+        raw.iter()
+            .enumerate()
+            .map(|(i, &a)| {
+                let n = if a < 0 {
+                    rank as i64 + a
+                } else {
+                    a
+                };
+                if n < 0 || n as usize >= rank {
+                    bail!(
+                        "layer {}: Transpose perm[{i}]={a} out of range for rank {rank}",
+                        layer.name
+                    );
+                }
+                Ok(n as usize)
+            })
+            .collect::<Result<Vec<_>>>()?
+    } else {
+        (0..rank).rev().collect()
+    };
+
+    if perm.len() != rank {
+        bail!(
+            "layer {}: Transpose perm length {} != input rank {}",
+            layer.name,
+            perm.len(),
+            rank
+        );
+    }
+
+    let out_shape: Vec<usize> = perm.iter().map(|&p| input_shape[p]).collect();
     Ok(layer
         .outputs
         .iter()

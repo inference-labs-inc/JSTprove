@@ -30,6 +30,7 @@ use crate::circuit_functions::layers::sigmoid::SigmoidLayer;
 use crate::circuit_functions::layers::softmax::SoftmaxLayer;
 use crate::circuit_functions::layers::squeeze::SqueezeLayer;
 use crate::circuit_functions::layers::tile::TileLayer;
+use crate::circuit_functions::layers::transpose::TransposeLayer;
 use crate::circuit_functions::layers::unsqueeze::UnsqueezeLayer;
 
 use expander_compiler::frontend::{Config, RootAPI};
@@ -157,7 +158,8 @@ define_layers! {
     Sigmoid   => { name: "Sigmoid", builder: SigmoidLayer::build },
     Softmax   => { name: "Softmax", builder: SoftmaxLayer::build },
     Squeeze   => { name: "Squeeze", builder: SqueezeLayer::build },
-    Tile      => { name: "Tile", builder: TileLayer::build },
+    Tile      => { name: "Tile",      builder: TileLayer::build },
+    Transpose => { name: "Transpose", builder: TransposeLayer::build },
     Unsqueeze => { name: "Unsqueeze", builder: UnsqueezeLayer::build },
 }
 
@@ -194,6 +196,7 @@ mod tests {
             "ReLU",
             "Resize",
             "GridSample",
+            "Transpose",
         ];
         for name in ops {
             assert!(
@@ -259,6 +262,7 @@ mod tests {
             "ReLU",
             "Resize",
             "GridSample",
+            "Transpose",
         ];
         for name in expected {
             assert!(
