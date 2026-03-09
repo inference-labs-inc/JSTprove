@@ -448,7 +448,8 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
         | OpType::Tile
         | OpType::Gather
         | OpType::Resize
-        | OpType::GridSample => {
+        | OpType::GridSample
+        | OpType::Transpose => {
             let m_in = get_input_bound(0);
             Ok(m_in)
         }

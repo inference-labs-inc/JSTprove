@@ -25,6 +25,7 @@ pub mod sigmoid;
 pub mod softmax;
 pub mod squeeze;
 pub mod tile;
+pub mod transpose;
 pub mod unsqueeze;
 
 pub use errors::LayerError;

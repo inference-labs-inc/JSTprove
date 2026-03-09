@@ -33,6 +33,7 @@ pub enum OpType {
     LayerNormalization,
     Resize,
     GridSample,
+    Transpose,
 }
 
 impl OpType {
@@ -65,6 +66,7 @@ impl OpType {
             "LayerNormalization" => Ok(Self::LayerNormalization),
             "Resize" => Ok(Self::Resize),
             "GridSample" => Ok(Self::GridSample),
+            "Transpose" => Ok(Self::Transpose),
             other => bail!("unsupported ONNX op: {other}"),
         }
     }

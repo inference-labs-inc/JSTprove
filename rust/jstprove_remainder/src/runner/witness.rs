@@ -1685,6 +1685,74 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     tensors.insert(out.clone(), padded.clone());
                 }
             }
+            OpType::Transpose => {
+                // Transpose reorders elements according to the `perm` attribute.
+                // Like Resize (nearest) this is a structural operation computed
+                // by the prover and supplied as a committed shred.
+                let input_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("Transpose {} has no input", layer.name))?;
+                let input_data = tensors
+                    .get(input_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Transpose {} input '{}' not computed",
+                            layer.name,
+                            input_name
+                        )
+                    })?
+                    .clone();
+
+                let output_shape = &layer.output_shape;
+                let output_total: usize = output_shape.iter().product();
+
+                // Recover input shape from the output shape + perm.
+                // perm[i] = axis of the input that maps to output axis i.
+                let rank = output_shape.len();
+                let perm: Vec<usize> = if let Some(raw) = layer.get_ints_attr("perm") {
+                    raw.iter()
+                        .map(|&a| {
+                            let n = if a < 0 { rank as i64 + a } else { a } as usize;
+                            n
+                        })
+                        .collect()
+                } else {
+                    (0..rank).rev().collect()
+                };
+
+                // Reconstruct input_shape: input_shape[perm[i]] = output_shape[i]
+                let mut input_shape = vec![0usize; rank];
+                for (i, &p) in perm.iter().enumerate() {
+                    input_shape[p] = output_shape[i];
+                }
+
+                // Build inverse permutation: inv_perm[p] = i  (output axis i came from input axis p).
+                let mut inv_perm = vec![0usize; rank];
+                for (i, &p) in perm.iter().enumerate() {
+                    inv_perm[p] = i;
+                }
+
+                let result: Vec<i64> = (0..output_total)
+                    .map(|out_flat| {
+                        let out_coords = unravel_index_witness(out_flat, output_shape);
+                        // in_coords[p] = out_coords[inv_perm[p]]
+                        let in_coords: Vec<usize> = (0..rank)
+                            .map(|p| out_coords[inv_perm[p]])
+                            .collect();
+                        let in_flat = ravel_index_witness(&in_coords, &input_shape);
+                        input_data.get(in_flat).copied().unwrap_or(0)
+                    })
+                    .collect();
+
+                let padded = pad_to_size(&result, next_power_of_two(output_total));
+                let transpose_out_name = format!("{}_out", layer.name);
+                shreds.insert(transpose_out_name, padded.clone());
+
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                }
+            }
             other => {
                 bail!(
                     "witness: unsupported op type {:?} in layer {}",
@@ -2388,6 +2456,13 @@ pub fn prepare_public_shreds(
                 }
             }
             OpType::GridSample => {
+                let out_total: usize = layer.output_shape.iter().product();
+                let sz = next_power_of_two(out_total);
+                for out_name in &layer.outputs {
+                    tensor_sizes.insert(out_name.clone(), sz);
+                }
+            }
+            OpType::Transpose => {
                 let out_total: usize = layer.output_shape.iter().product();
                 let sz = next_power_of_two(out_total);
                 for out_name in &layer.outputs {
