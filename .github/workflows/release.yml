@@ -1,9 +1,8 @@
-name: Build and Publish to PyPI
+name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -12,192 +11,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-linux:
-    if: >-
-      github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'test-build')
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    container:
-      image: quay.io/pypa/manylinux_2_28_x86_64
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - name: Install system dependencies
-        run: |
-          dnf install -y pkgconf-pkg-config perl-IPC-Cmd perl-Time-Piece clang-devel protobuf-compiler
-          echo "/opt/python/cp312-cp312/bin" >> $GITHUB_PATH
-
-      - name: Install Rust
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly-2025-03-27
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@0ca8f610542aa7f4acaf39e65cf4eb3c35091883 # v7
-
-      - name: Install maturin
-        run: uv tool install maturin
-
-      - name: Extract version
-        id: get_version
-        shell: bash
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/v}
-          else
-            VERSION=$(grep -m1 '^version' pyproject.toml | sed 's/.*"\(.*\)".*/\1/')
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Update versions
-        run: |
-          sed -i '0,/^version = ".*"/{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/}' pyproject.toml
-          sed -i '0,/^version = ".*"/{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/}' rust/jstprove_pyo3/Cargo.toml
-          sed -i '0,/^version = ".*"/{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/}' rust/jstprove_circuits/Cargo.toml
-
-      - name: Install Rust target
-        run: rustup target add x86_64-unknown-linux-gnu
-
-      - name: Cache Rust dependencies
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-            rust/jstprove_pyo3/target
-            rust/jstprove_remainder/target
-          key: manylinux-2-28-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            manylinux-2-28-cargo-
-
-      - name: Build wheel
-        run: maturin build --release --target x86_64-unknown-linux-gnu --manylinux 2_28
-
-      - name: Test wheel installation
-        run: |
-          uv pip install --system rust/jstprove_pyo3/target/wheels/*.whl
-          python3 -c "from jstprove import Circuit; print('PyO3 bindings OK')"
-
-      - name: Upload wheel artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: wheel-ubuntu-x86_64
-          path: ./rust/jstprove_pyo3/target/wheels/*.whl
-
-  build-macos:
-    if: >-
-      github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'test-build')
-    runs-on: macos-latest
-    timeout-minutes: 60
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
-        with:
-          python-version: "3.12"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@0ca8f610542aa7f4acaf39e65cf4eb3c35091883 # v7
-
-      - name: Install system dependencies
-        run: brew install protobuf
-
-      - name: Install maturin
-        run: uv tool install maturin
-
-      - name: Extract version
-        id: get_version
-        shell: bash
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/v}
-          else
-            VERSION=$(grep -m1 '^version' pyproject.toml | sed 's/.*"\(.*\)".*/\1/')
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Update versions
-        run: |
-          sed -i '' '1,/^version = /{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/;}' pyproject.toml
-          sed -i '' '1,/^version = /{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/;}' rust/jstprove_pyo3/Cargo.toml
-          sed -i '' '1,/^version = /{s/^version = ".*"/version = "${{ steps.get_version.outputs.version }}"/;}' rust/jstprove_circuits/Cargo.toml
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # master
-        with:
-          toolchain: nightly-2025-03-27
-
-      - name: Install Rust target
-        run: rustup target add aarch64-apple-darwin
-
-      - name: Cache Rust dependencies
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-            rust/jstprove_pyo3/target
-            rust/jstprove_remainder/target
-          key: macos-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            macos-cargo-
-
-      - name: Build wheel
-        run: maturin build --release --target aarch64-apple-darwin
-        env:
-          MACOSX_DEPLOYMENT_TARGET: "11.0"
-
-      - name: Test wheel installation
-        run: |
-          uv pip install --system rust/jstprove_pyo3/target/wheels/*.whl
-          python3 -c "from jstprove import Circuit; print('PyO3 bindings OK')"
-
-      - name: Upload wheel artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: wheel-macos-aarch64
-          path: ./rust/jstprove_pyo3/target/wheels/*.whl
-
-  publish:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [build-linux, build-macos]
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  release:
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'test-build')) ||
+      github.event_name == 'workflow_dispatch'
+    uses: inference-labs-inc/release/.github/workflows/publish-release.yml@main
+    with:
+      version: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '0.0.0-dev' }}
+      rust-toolchain: nightly-2025-03-27
+      version-files: |
+        pyproject.toml
+        rust/jstprove_pyo3/Cargo.toml
+        rust/jstprove_circuits/Cargo.toml
+      test-import: "from jstprove import Circuit"
+      system-deps-linux: "pkgconf-pkg-config perl-IPC-Cmd perl-Time-Piece clang-devel protobuf-compiler"
+      system-deps-macos: "protobuf"
+      publish: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+    secrets: inherit
     permissions:
       contents: write
       id-token: write
-    steps:
-      - name: Download all wheels
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
-        with:
-          pattern: wheel-*
-          merge-multiple: true
-          path: ./dist
-
-      - name: Extract version from tag
-        id: get_version
-        shell: bash
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Create GitHub Release with wheels
-        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
-        with:
-          name: Release ${{ steps.get_version.outputs.version }}
-          files: ./dist/*.whl
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@0ca8f610542aa7f4acaf39e65cf4eb3c35091883 # v7
-
-      - name: Publish to PyPI
-        run: uv publish ./dist/*
+      attestations: write
