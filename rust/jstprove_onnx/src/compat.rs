@@ -36,6 +36,7 @@ const SUPPORTED_OPS: &[&str] = &[
     "GridSample",
     "Transpose",
     "Concat",
+    "Slice",
 ];
 
 pub fn is_compatible(path: &Path) -> Result<(bool, Vec<String>)> {

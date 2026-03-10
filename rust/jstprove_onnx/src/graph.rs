@@ -35,6 +35,7 @@ pub enum OpType {
     GridSample,
     Transpose,
     Concat,
+    Slice,
 }
 
 impl OpType {
@@ -69,6 +70,7 @@ impl OpType {
             "GridSample" => Ok(Self::GridSample),
             "Transpose" => Ok(Self::Transpose),
             "Concat" => Ok(Self::Concat),
+            "Slice" => Ok(Self::Slice),
             other => bail!("unsupported ONNX op: {other}"),
         }
     }

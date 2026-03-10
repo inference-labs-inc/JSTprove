@@ -110,6 +110,7 @@ fn infer_layer_output_shape(
         OpType::GridSample => infer_gridsample(layer, shapes),
         OpType::Transpose => infer_transpose(layer, shapes),
         OpType::Concat => infer_concat(layer, shapes),
+        OpType::Slice => infer_slice(layer, input_shape, initializers, constant_tensors),
     }
 }
 
@@ -1071,6 +1072,127 @@ fn infer_concat(
             );
         }
         out_shape[axis] += s[axis];
+    }
+
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
+}
+
+/// Infer output shape for the ONNX `Slice` operator (opset >= 10).
+///
+/// Extracts a sub-tensor by selecting ranges `[start, end)` with an optional
+/// `step` along each specified axis.  All of `starts`, `ends`, `axes`, and
+/// `steps` must be compile-time constants (initializers or Constant nodes).
+fn infer_slice(
+    layer: &LayerNode,
+    input_shape: Option<&Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let input_shape = input_shape
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Slice missing input shape", layer.name))?;
+    let rank = input_shape.len();
+
+    // Helper: look up a required i64 tensor from initializers or constant nodes.
+    let get_i64 = |name: &str| -> Option<Vec<i64>> {
+        initializers
+            .get(name)
+            .or_else(|| constant_tensors.get(name))
+            .map(|td| td.as_i64_vec())
+    };
+
+    // starts — required, input[1]
+    let starts_name = layer
+        .inputs
+        .get(1)
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Slice missing starts input", layer.name))?;
+    let starts = get_i64(starts_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "layer {}: Slice starts '{}' not found; must be a compile-time constant",
+            layer.name,
+            starts_name
+        )
+    })?;
+
+    // ends — required, input[2]
+    let ends_name = layer
+        .inputs
+        .get(2)
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Slice missing ends input", layer.name))?;
+    let ends = get_i64(ends_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "layer {}: Slice ends '{}' not found; must be a compile-time constant",
+            layer.name,
+            ends_name
+        )
+    })?;
+
+    // axes — optional, input[3]; default is [0, 1, ..., len(starts)-1]
+    let axes: Vec<i64> = layer
+        .inputs
+        .get(3)
+        .filter(|n| !n.is_empty())
+        .and_then(|n| get_i64(n))
+        .unwrap_or_else(|| (0..starts.len() as i64).collect());
+
+    // steps — optional, input[4]; default is all 1s
+    let steps: Vec<i64> = layer
+        .inputs
+        .get(4)
+        .filter(|n| !n.is_empty())
+        .and_then(|n| get_i64(n))
+        .unwrap_or_else(|| vec![1i64; starts.len()]);
+
+    let mut out_shape = input_shape.clone();
+    for (i, &axis_raw) in axes.iter().enumerate() {
+        let axis = if axis_raw < 0 {
+            let a = rank as i64 + axis_raw;
+            if a < 0 {
+                bail!(
+                    "layer {}: Slice axis {} out of range for rank {}",
+                    layer.name,
+                    axis_raw,
+                    rank
+                );
+            }
+            a as usize
+        } else {
+            axis_raw as usize
+        };
+
+        if axis >= rank {
+            bail!(
+                "layer {}: Slice axis {} out of range for rank {}",
+                layer.name,
+                axis_raw,
+                rank
+            );
+        }
+
+        let dim = input_shape[axis] as i64;
+
+        let start = {
+            let s = starts.get(i).copied().unwrap_or(0);
+            let s = if s < 0 { dim + s } else { s };
+            s.clamp(0, dim) as usize
+        };
+
+        let end = {
+            let e = ends.get(i).copied().unwrap_or(dim);
+            let e = if e < 0 { dim + e } else { e };
+            e.clamp(0, dim) as usize
+        };
+
+        let step = steps.get(i).copied().unwrap_or(1).max(1) as usize;
+
+        out_shape[axis] = if start < end {
+            (end - start + step - 1) / step
+        } else {
+            0
+        };
     }
 
     Ok(layer

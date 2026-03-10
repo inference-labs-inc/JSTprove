@@ -23,6 +23,7 @@ pub mod relu;
 pub mod reshape;
 pub mod resize;
 pub mod sigmoid;
+pub mod slice;
 pub mod softmax;
 pub mod squeeze;
 pub mod tile;
