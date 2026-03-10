@@ -116,15 +116,21 @@ impl<'a, C: Config> SplitContext<'a, C> {
                     new_var_layers.push(1);
                 }
                 Instruction::InternalVariable { expr } => {
+                    // Compute layer from original vars BEFORE replace_vars, because
+                    // replace_vars (via from_terms) can cancel/drop terms in fields
+                    // with small characteristic (e.g. GF2: x+x=0), causing get_vars()
+                    // to return fewer variables and underestimating the layer.
+                    // compute_output_layers uses original expr.get_vars() too, so we
+                    // must stay consistent with it here.
+                    let orig_vars: Vec<usize> = expr.get_vars();
                     let expr = expr.replace_vars(|x| var_new_id[x]);
-                    let expr_vars: Vec<usize> = expr.get_vars();
                     new_insns.push(Instruction::InternalVariable { expr });
                     var_max += 1;
                     var_new_id.push(var_max);
                     new_var_layers.push(
-                        expr_vars
+                        orig_vars
                             .iter()
-                            .map(|x| new_var_layers[*x])
+                            .map(|x| new_var_layers[var_new_id[*x]])
                             .max()
                             .unwrap_or(0)
                             + 1,
