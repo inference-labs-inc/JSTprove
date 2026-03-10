@@ -1861,6 +1861,126 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     tensors.insert(out.clone(), padded.clone());
                 }
             }
+            OpType::Slice => {
+                // Slice extracts a sub-tensor — purely structural, committed shred.
+                let input_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("Slice {} has no data input", layer.name))?;
+                let input_data = tensors
+                    .get(input_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Slice {} input '{}' not computed", layer.name, input_name)
+                    })?
+                    .clone();
+
+                // Resolve input shape from the producing layer.
+                let input_shape: Vec<usize> = model
+                    .graph
+                    .layers
+                    .iter()
+                    .find(|l| l.outputs.first().map(String::as_str) == Some(input_name.as_str()))
+                    .map(|l| l.output_shape.clone())
+                    .or_else(|| model.graph.input_shapes.get(input_name).cloned())
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Slice {} cannot determine input shape for '{}'",
+                            layer.name,
+                            input_name
+                        )
+                    })?;
+
+                let output_shape = &layer.output_shape;
+                let output_total: usize = output_shape.iter().product();
+                let rank = input_shape.len();
+
+                // Read starts (required, input[1]).
+                let starts_name = layer
+                    .inputs
+                    .get(1)
+                    .ok_or_else(|| anyhow::anyhow!("Slice {} missing starts input", layer.name))?;
+                let starts = layer
+                    .weights
+                    .get(starts_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Slice {} starts '{}' not found in weights",
+                            layer.name,
+                            starts_name
+                        )
+                    })?
+                    .as_i64_vec();
+
+                // Read ends (required, input[2]).
+                let ends_name = layer
+                    .inputs
+                    .get(2)
+                    .ok_or_else(|| anyhow::anyhow!("Slice {} missing ends input", layer.name))?;
+                let _ends = layer
+                    .weights
+                    .get(ends_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Slice {} ends '{}' not found in weights",
+                            layer.name,
+                            ends_name
+                        )
+                    })?
+                    .as_i64_vec();
+
+                // Read axes (optional, input[3]).
+                let axes: Vec<i64> = layer
+                    .inputs
+                    .get(3)
+                    .filter(|n| !n.is_empty())
+                    .and_then(|n| layer.weights.get(n))
+                    .map(|td| td.as_i64_vec())
+                    .unwrap_or_else(|| (0..starts.len() as i64).collect());
+
+                // Read steps (optional, input[4]).
+                let steps: Vec<i64> = layer
+                    .inputs
+                    .get(4)
+                    .filter(|n| !n.is_empty())
+                    .and_then(|n| layer.weights.get(n))
+                    .map(|td| td.as_i64_vec())
+                    .unwrap_or_else(|| vec![1i64; starts.len()]);
+
+                // Build per-axis start/step.
+                let mut axis_start = vec![0usize; rank];
+                let mut axis_step = vec![1usize; rank];
+                for (i, &ax_raw) in axes.iter().enumerate() {
+                    let ax = if ax_raw < 0 {
+                        (rank as i64 + ax_raw) as usize
+                    } else {
+                        ax_raw as usize
+                    };
+                    let dim = input_shape[ax] as i64;
+                    let s = starts.get(i).copied().unwrap_or(0);
+                    let s = if s < 0 { dim + s } else { s };
+                    axis_start[ax] = s.clamp(0, dim) as usize;
+                    axis_step[ax] = steps.get(i).copied().unwrap_or(1).max(1) as usize;
+                }
+
+                let result: Vec<i64> = (0..output_total)
+                    .map(|out_flat| {
+                        let out_coords = unravel_index_witness(out_flat, output_shape);
+                        let in_coords: Vec<usize> = (0..rank)
+                            .map(|ax| axis_start[ax] + out_coords[ax] * axis_step[ax])
+                            .collect();
+                        let in_flat = ravel_index_witness(&in_coords, &input_shape);
+                        input_data.get(in_flat).copied().unwrap_or(0)
+                    })
+                    .collect();
+
+                let padded = pad_to_size(&result, next_power_of_two(output_total));
+                let slice_out_name = format!("{}_out", layer.name);
+                shreds.insert(slice_out_name, padded.clone());
+
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                }
+            }
             OpType::Concat => {
                 // Concat joins inputs along axis — purely structural, committed shred.
                 let output_shape = &layer.output_shape;
@@ -2756,6 +2876,13 @@ pub fn prepare_public_shreds(
                 }
             }
             OpType::Concat => {
+                let out_total: usize = layer.output_shape.iter().product();
+                let sz = next_power_of_two(out_total);
+                for out_name in &layer.outputs {
+                    tensor_sizes.insert(out_name.clone(), sz);
+                }
+            }
+            OpType::Slice => {
                 let out_total: usize = layer.output_shape.iter().product();
                 let sz = next_power_of_two(out_total);
                 for out_name in &layer.outputs {
