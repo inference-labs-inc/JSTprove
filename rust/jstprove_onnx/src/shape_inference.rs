@@ -109,6 +109,7 @@ fn infer_layer_output_shape(
         OpType::Resize => infer_resize(layer, input_shape, initializers, constant_tensors),
         OpType::GridSample => infer_gridsample(layer, shapes),
         OpType::Transpose => infer_transpose(layer, shapes),
+        OpType::Concat => infer_concat(layer, shapes),
     }
 }
 
@@ -984,11 +985,7 @@ fn infer_transpose(
         raw.iter()
             .enumerate()
             .map(|(i, &a)| {
-                let n = if a < 0 {
-                    rank as i64 + a
-                } else {
-                    a
-                };
+                let n = if a < 0 { rank as i64 + a } else { a };
                 if n < 0 || n as usize >= rank {
                     bail!(
                         "layer {}: Transpose perm[{i}]={a} out of range for rank {rank}",
@@ -1012,6 +1009,70 @@ fn infer_transpose(
     }
 
     let out_shape: Vec<usize> = perm.iter().map(|&p| input_shape[p]).collect();
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
+}
+
+/// Infer output shape for the ONNX `Concat` operator.
+///
+/// All inputs must have the same rank. The output shape matches the inputs on
+/// every axis except `axis`, where the output dimension equals the sum of all
+/// input dimensions.
+fn infer_concat(
+    layer: &LayerNode,
+    shapes: &HashMap<String, Vec<usize>>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let first_name = layer
+        .inputs
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Concat has no inputs", layer.name))?;
+    let first_shape = get_shape(shapes, first_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "layer {}: Concat missing shape for first input '{first_name}'",
+            layer.name
+        )
+    })?;
+    let rank = first_shape.len();
+
+    let raw_axis = layer.get_int_attr("axis").unwrap_or(0);
+    let axis = if raw_axis < 0 {
+        let a = rank as i64 + raw_axis;
+        if a < 0 {
+            bail!(
+                "layer {}: Concat axis {raw_axis} out of range for rank {rank}",
+                layer.name
+            );
+        }
+        a as usize
+    } else {
+        raw_axis as usize
+    };
+
+    if axis >= rank {
+        bail!("layer {}: Concat axis {axis} >= rank {rank}", layer.name);
+    }
+
+    let mut out_shape = first_shape.clone();
+    for name in layer.inputs.iter().skip(1) {
+        let s = get_shape(shapes, name).ok_or_else(|| {
+            anyhow::anyhow!(
+                "layer {}: Concat missing shape for input '{name}'",
+                layer.name
+            )
+        })?;
+        if s.len() != rank {
+            bail!(
+                "layer {}: Concat input rank mismatch: {} vs {rank}",
+                layer.name,
+                s.len()
+            );
+        }
+        out_shape[axis] += s[axis];
+    }
+
     Ok(layer
         .outputs
         .iter()

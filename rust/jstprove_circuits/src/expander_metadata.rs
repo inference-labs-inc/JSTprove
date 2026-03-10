@@ -227,6 +227,7 @@ fn op_type_to_string(op: OpType) -> String {
         OpType::Resize => "Resize",
         OpType::GridSample => "GridSample",
         OpType::Transpose => "Transpose",
+        OpType::Concat => "Concat",
     }
     .to_string()
 }
