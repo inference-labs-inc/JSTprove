@@ -113,18 +113,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TransposeLayer {
         })?;
 
         // Structural passthrough: select elements by the precomputed index map.
-        let out_flat: Vec<Variable> = self
-            .index_map
-            .iter()
-            .map(|&idx| data_flat[idx])
-            .collect();
+        let out_flat: Vec<Variable> = self.index_map.iter().map(|&idx| data_flat[idx]).collect();
 
-        let out_array = ArrayD::from_shape_vec(IxDyn(&self.output_shape), out_flat).map_err(
-            |e| LayerError::InvalidShape {
-                layer: LayerKind::Transpose,
-                msg: format!("transpose output reshape failed: {e}"),
-            },
-        )?;
+        let out_array =
+            ArrayD::from_shape_vec(IxDyn(&self.output_shape), out_flat).map_err(|e| {
+                LayerError::InvalidShape {
+                    layer: LayerKind::Transpose,
+                    msg: format!("transpose output reshape failed: {e}"),
+                }
+            })?;
 
         Ok((self.outputs.clone(), out_array))
     }
@@ -178,9 +175,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TransposeLayer {
         let default_perm: Vec<i64> = (0..rank).rev().map(|i| i as i64).collect();
         let perm_raw: Vec<i64> = params
             .as_ref()
-            .and_then(|p| {
-                get_param_or_default(&layer.name, "perm", p, Some(&default_perm)).ok()
-            })
+            .and_then(|p| get_param_or_default(&layer.name, "perm", p, Some(&default_perm)).ok())
             .unwrap_or(default_perm);
 
         let perm: Vec<usize> = perm_raw

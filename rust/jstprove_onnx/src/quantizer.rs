@@ -449,7 +449,8 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
         | OpType::Gather
         | OpType::Resize
         | OpType::GridSample
-        | OpType::Transpose => {
+        | OpType::Transpose
+        | OpType::Concat => {
             let m_in = get_input_bound(0);
             Ok(m_in)
         }
@@ -460,7 +461,7 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
             if !bound.is_finite() {
                 anyhow::bail!(
                     "layer {}: Exp input bound {m_in} produces a non-finite exp result; \
-                     the model's activation range is too large to quantise safely",
+                    the model's activation range is too large to quantise safely",
                     layer.name
                 );
             }

@@ -3,6 +3,7 @@ pub mod binary_arith;
 pub mod binary_compare;
 pub mod cast;
 pub mod clip;
+pub mod concat;
 pub mod constant;
 pub mod conv;
 pub mod div;

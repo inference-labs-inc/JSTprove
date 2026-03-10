@@ -4,6 +4,7 @@ use crate::circuit_functions::layers::batchnorm::BatchnormLayer;
 use crate::circuit_functions::layers::binary_arith::BinaryArithLayer;
 use crate::circuit_functions::layers::binary_compare::BinaryCompareLayer;
 use crate::circuit_functions::layers::cast::CastLayer;
+use crate::circuit_functions::layers::concat::ConcatLayer;
 use crate::circuit_functions::layers::div::DivLayer;
 use crate::circuit_functions::layers::layer_ops::LayerOp;
 use crate::circuit_functions::layers::mul::MulLayer;
@@ -135,6 +136,7 @@ When defining new layers, make sure to activate them by placing the new layer in
 define_layers! {
     Add       => { name: "Add", builder: BinaryArithLayer::build },
     Cast      => { name: "Cast", builder: CastLayer::build },
+    Concat    => { name: "Concat", builder: ConcatLayer::build },
     Clip      => { name: "Clip", builder: ClipLayer::build },
     Batchnorm => { name: "BatchNormalization", builder: BatchnormLayer::build },
     Div       => { name: "Div", builder: DivLayer::build },
@@ -172,6 +174,7 @@ mod tests {
         let ops = [
             "Add",
             "Cast",
+            "Concat",
             "Sub",
             "Mul",
             "Div",
@@ -238,6 +241,7 @@ mod tests {
         let expected = [
             "Add",
             "Cast",
+            "Concat",
             "Sub",
             "Mul",
             "Div",

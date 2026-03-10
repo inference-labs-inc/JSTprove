@@ -1737,9 +1737,8 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     .map(|out_flat| {
                         let out_coords = unravel_index_witness(out_flat, output_shape);
                         // in_coords[p] = out_coords[inv_perm[p]]
-                        let in_coords: Vec<usize> = (0..rank)
-                            .map(|p| out_coords[inv_perm[p]])
-                            .collect();
+                        let in_coords: Vec<usize> =
+                            (0..rank).map(|p| out_coords[inv_perm[p]]).collect();
                         let in_flat = ravel_index_witness(&in_coords, &input_shape);
                         input_data.get(in_flat).copied().unwrap_or(0)
                     })
@@ -1748,6 +1747,82 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let padded = pad_to_size(&result, next_power_of_two(output_total));
                 let transpose_out_name = format!("{}_out", layer.name);
                 shreds.insert(transpose_out_name, padded.clone());
+
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                }
+            }
+            OpType::Concat => {
+                // Concat joins inputs along axis — purely structural, committed shred.
+                let output_shape = &layer.output_shape;
+                let output_total: usize = output_shape.iter().product();
+                let rank = output_shape.len();
+
+                let raw_axis = layer.get_int_attr("axis").unwrap_or(0);
+                let axis = if raw_axis < 0 {
+                    (rank as i64 + raw_axis) as usize
+                } else {
+                    raw_axis as usize
+                };
+
+                // Collect input data and shapes.
+                // Each input's actual shape is resolved by finding the producing layer
+                // in the graph (compile.rs stores the first-output shape in layer.output_shape).
+                let mut input_datas: Vec<Vec<i64>> = Vec::new();
+                let mut input_shapes: Vec<Vec<usize>> = Vec::new();
+
+                for input_name in &layer.inputs {
+                    let data = tensors
+                        .get(input_name)
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "Concat {} input '{}' not computed",
+                                layer.name,
+                                input_name
+                            )
+                        })?
+                        .clone();
+
+                    // Resolve actual shape from the producing layer's recorded output_shape.
+                    let in_shape = model
+                        .graph
+                        .layers
+                        .iter()
+                        .find(|l| {
+                            l.outputs.first().map(String::as_str) == Some(input_name.as_str())
+                        })
+                        .map(|l| l.output_shape.clone())
+                        .unwrap_or_else(|| output_shape.clone());
+
+                    input_shapes.push(in_shape);
+                    input_datas.push(data);
+                }
+
+                // Build cumulative axis offsets.
+                let mut axis_offsets = vec![0usize; input_shapes.len() + 1];
+                for (i, s) in input_shapes.iter().enumerate() {
+                    axis_offsets[i + 1] = axis_offsets[i] + s.get(axis).copied().unwrap_or(0);
+                }
+
+                let result: Vec<i64> = (0..output_total)
+                    .map(|out_flat| {
+                        let out_coords = unravel_index_witness(out_flat, output_shape);
+                        let ax_coord = out_coords[axis];
+                        let input_idx = axis_offsets
+                            .partition_point(|&o| o <= ax_coord)
+                            .saturating_sub(1)
+                            .min(input_datas.len() - 1);
+                        let local_ax = ax_coord - axis_offsets[input_idx];
+                        let mut in_coords = out_coords.clone();
+                        in_coords[axis] = local_ax;
+                        let in_flat = ravel_index_witness(&in_coords, &input_shapes[input_idx]);
+                        input_datas[input_idx].get(in_flat).copied().unwrap_or(0)
+                    })
+                    .collect();
+
+                let padded = pad_to_size(&result, next_power_of_two(output_total));
+                let concat_out_name = format!("{}_out", layer.name);
+                shreds.insert(concat_out_name, padded.clone());
 
                 for out in &layer.outputs {
                     tensors.insert(out.clone(), padded.clone());
@@ -2463,6 +2538,13 @@ pub fn prepare_public_shreds(
                 }
             }
             OpType::Transpose => {
+                let out_total: usize = layer.output_shape.iter().product();
+                let sz = next_power_of_two(out_total);
+                for out_name in &layer.outputs {
+                    tensor_sizes.insert(out_name.clone(), sz);
+                }
+            }
+            OpType::Concat => {
                 let out_total: usize = layer.output_shape.iter().product();
                 let sz = next_power_of_two(out_total);
                 for out_name in &layer.outputs {

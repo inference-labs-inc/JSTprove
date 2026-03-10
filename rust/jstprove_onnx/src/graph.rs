@@ -34,6 +34,7 @@ pub enum OpType {
     Resize,
     GridSample,
     Transpose,
+    Concat,
 }
 
 impl OpType {
@@ -67,6 +68,7 @@ impl OpType {
             "Resize" => Ok(Self::Resize),
             "GridSample" => Ok(Self::GridSample),
             "Transpose" => Ok(Self::Transpose),
+            "Concat" => Ok(Self::Concat),
             other => bail!("unsupported ONNX op: {other}"),
         }
     }
