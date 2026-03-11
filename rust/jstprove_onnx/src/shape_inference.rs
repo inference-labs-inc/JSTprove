@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::{bail, Result};
 
@@ -98,6 +98,20 @@ fn infer_layer_output_shape(
         OpType::Squeeze => infer_squeeze(layer, input_shape),
         OpType::Unsqueeze => infer_unsqueeze(layer, input_shape),
         OpType::Constant => Ok(vec![]),
+        OpType::Cast
+        | OpType::Exp
+        | OpType::Softmax
+        | OpType::Sigmoid
+        | OpType::Gelu
+        | OpType::LayerNormalization => passthrough_shape(layer, input_shape),
+        OpType::Tile => infer_tile(layer, input_shape, initializers, constant_tensors),
+        OpType::Gather => infer_gather(layer, shapes, initializers, constant_tensors),
+        OpType::Resize => infer_resize(layer, input_shape, initializers, constant_tensors),
+        OpType::GridSample => infer_gridsample(layer, shapes),
+        OpType::Transpose => infer_transpose(layer, shapes),
+        OpType::Concat => infer_concat(layer, shapes),
+        OpType::Slice => infer_slice(layer, input_shape, initializers, constant_tensors),
+        OpType::TopK => infer_topk(layer, input_shape, initializers, constant_tensors),
     }
 }
 
@@ -673,6 +687,672 @@ fn infer_unsqueeze(
         .iter()
         .map(|o| (o.clone(), out_shape.clone()))
         .collect())
+}
+
+fn infer_tile(
+    layer: &LayerNode,
+    input_shape: Option<&Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let input_shape = input_shape
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Tile missing input shape", layer.name))?;
+
+    let repeats_data = layer
+        .inputs
+        .get(1)
+        .and_then(|name| {
+            initializers
+                .get(name)
+                .or_else(|| constant_tensors.get(name))
+                .map(|td| td.as_i64_vec())
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "layer {}: Tile repeats tensor not found in initializers or Constant nodes",
+                layer.name
+            )
+        })?;
+
+    if repeats_data.len() != input_shape.len() {
+        bail!(
+            "layer {}: Tile repeats length {} != input rank {}",
+            layer.name,
+            repeats_data.len(),
+            input_shape.len()
+        );
+    }
+
+    let out_shape: Vec<usize> = input_shape
+        .iter()
+        .zip(repeats_data.iter())
+        .enumerate()
+        .map(|(i, (&d, &r))| {
+            if r < 1 {
+                bail!(
+                    "layer {}: Tile repeat[{i}] = {r} is less than 1",
+                    layer.name
+                );
+            }
+            let repeat_usize = usize::try_from(r).map_err(|_| {
+                anyhow::anyhow!(
+                    "layer {}: Tile repeat[{i}] = {r} cannot be converted to usize",
+                    layer.name
+                )
+            })?;
+            d.checked_mul(repeat_usize).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "layer {}: Tile output size overflow at axis {i}: {d} * {r}",
+                    layer.name
+                )
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
+}
+
+fn infer_gather(
+    layer: &LayerNode,
+    shapes: &HashMap<String, Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let data_name = layer
+        .inputs
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Gather missing data input", layer.name))?;
+
+    let indices_name = layer
+        .inputs
+        .get(1)
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Gather missing indices input", layer.name))?;
+
+    let data_shape = get_shape(shapes, data_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "layer {}: Gather missing shape for data input '{data_name}'",
+            layer.name
+        )
+    })?;
+
+    let indices_shape = get_shape(shapes, indices_name)
+        .cloned()
+        .or_else(|| {
+            initializers
+                .get(indices_name)
+                .or_else(|| constant_tensors.get(indices_name))
+                .map(|td| td.shape())
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "layer {}: Gather missing shape for indices input '{indices_name}'",
+                layer.name
+            )
+        })?;
+
+    let rank = data_shape.len();
+    anyhow::ensure!(
+        rank > 0,
+        "layer {}: Gather data input must have rank >= 1",
+        layer.name
+    );
+
+    let raw_axis = layer.get_int_attr("axis").unwrap_or(0);
+    let axis = if raw_axis < 0 {
+        let a = rank as i64 + raw_axis;
+        anyhow::ensure!(
+            a >= 0,
+            "layer {}: Gather axis {} out of range for data rank {}",
+            layer.name,
+            raw_axis,
+            rank
+        );
+        a as usize
+    } else {
+        let a = raw_axis as usize;
+        anyhow::ensure!(
+            a < rank,
+            "layer {}: Gather axis {} out of range for data rank {}",
+            layer.name,
+            raw_axis,
+            rank
+        );
+        a
+    };
+
+    // output_shape = data_shape[:axis] + indices_shape + data_shape[axis+1:]
+    let mut out_shape = Vec::with_capacity(rank - 1 + indices_shape.len());
+    out_shape.extend_from_slice(&data_shape[..axis]);
+    out_shape.extend_from_slice(&indices_shape);
+    out_shape.extend_from_slice(&data_shape[axis + 1..]);
+
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
+}
+
+fn infer_resize(
+    layer: &LayerNode,
+    input_shape: Option<&Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let input_shape = input_shape
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Resize missing input shape", layer.name))?;
+
+    let rank = input_shape.len();
+
+    let lookup = |name: &str| -> Option<&TensorData> {
+        initializers
+            .get(name)
+            .or_else(|| constant_tensors.get(name))
+    };
+
+    // Prefer sizes (input[3]) which directly specifies output dimensions.
+    if let Some(sizes_name) = layer.inputs.get(3).filter(|n| !n.is_empty()) {
+        if let Some(td) = lookup(sizes_name) {
+            let sizes = td.as_i64_vec();
+            if sizes.len() == rank {
+                let out_shape: Vec<usize> = sizes
+                    .iter()
+                    .map(|&s| {
+                        if s < 0 {
+                            bail!("layer {}: Resize sizes[i] = {s} is negative", layer.name);
+                        }
+                        Ok(s as usize)
+                    })
+                    .collect::<Result<_>>()?;
+                return Ok(layer
+                    .outputs
+                    .iter()
+                    .map(|o| (o.clone(), out_shape.clone()))
+                    .collect());
+            }
+        }
+    }
+
+    // Fall back to scales (input[2]).
+    if let Some(scales_name) = layer.inputs.get(2).filter(|n| !n.is_empty()) {
+        if let Some(td) = lookup(scales_name) {
+            let scales = &td.float_data;
+            if scales.len() == rank {
+                let out_shape: Vec<usize> = input_shape
+                    .iter()
+                    .zip(scales.iter())
+                    .enumerate()
+                    .map(|(i, (&d, &s))| {
+                        if s <= 0.0 {
+                            bail!("layer {}: Resize scales[{i}] = {s} must be > 0", layer.name);
+                        }
+                        Ok((d as f64 * s).floor() as usize)
+                    })
+                    .collect::<Result<_>>()?;
+                return Ok(layer
+                    .outputs
+                    .iter()
+                    .map(|o| (o.clone(), out_shape.clone()))
+                    .collect());
+            }
+        }
+    }
+
+    bail!(
+        "layer {}: Resize cannot determine output shape — neither sizes (input[3]) \
+        nor scales (input[2]) are available as compile-time constants",
+        layer.name
+    )
+}
+
+/// Infer output shape for the ONNX `GridSample` operator.
+///
+/// Inputs: X [N, C, H_in, W_in], grid [N, H_out, W_out, 2]
+/// Output: [N, C, H_out, W_out]
+fn infer_gridsample(
+    layer: &LayerNode,
+    shapes: &HashMap<String, Vec<usize>>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let x_name = layer
+        .inputs
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("layer {}: GridSample missing X input", layer.name))?;
+    let grid_name = layer
+        .inputs
+        .get(1)
+        .ok_or_else(|| anyhow::anyhow!("layer {}: GridSample missing grid input", layer.name))?;
+
+    let x_shape = get_shape(shapes, x_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "layer {}: GridSample missing shape for X '{x_name}'",
+            layer.name
+        )
+    })?;
+    let grid_shape = get_shape(shapes, grid_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "layer {}: GridSample missing shape for grid '{grid_name}'",
+            layer.name
+        )
+    })?;
+
+    if x_shape.len() != 4 {
+        bail!(
+            "layer {}: GridSample X must be 4-D [N,C,H,W], got {}D",
+            layer.name,
+            x_shape.len()
+        );
+    }
+    if grid_shape.len() != 4 || grid_shape[3] != 2 {
+        bail!(
+            "layer {}: GridSample grid must be [N,H_out,W_out,2], got {:?}",
+            layer.name,
+            grid_shape
+        );
+    }
+
+    if grid_shape[0] != x_shape[0] {
+        bail!(
+            "layer {}: GridSample batch size mismatch: X batch = {}, grid batch = {}",
+            layer.name,
+            x_shape[0],
+            grid_shape[0]
+        );
+    }
+
+    // Output: [N, C, H_out, W_out]
+    let out_shape = vec![x_shape[0], x_shape[1], grid_shape[1], grid_shape[2]];
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
+}
+
+/// Infer output shape for the ONNX `Transpose` operator.
+///
+/// If `perm` is provided it must be a permutation of `[0, rank)`.
+/// If absent, the axes are reversed (numpy default).
+fn infer_transpose(
+    layer: &LayerNode,
+    shapes: &HashMap<String, Vec<usize>>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let input_name = layer
+        .inputs
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Transpose missing input", layer.name))?;
+    let input_shape = get_shape(shapes, input_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "layer {}: Transpose missing shape for input '{input_name}'",
+            layer.name
+        )
+    })?;
+
+    let rank = input_shape.len();
+    let perm: Vec<usize> = if let Some(raw) = layer.get_ints_attr("perm") {
+        raw.iter()
+            .enumerate()
+            .map(|(i, &a)| {
+                let n = if a < 0 { rank as i64 + a } else { a };
+                if n < 0 || n as usize >= rank {
+                    bail!(
+                        "layer {}: Transpose perm[{i}]={a} out of range for rank {rank}",
+                        layer.name
+                    );
+                }
+                Ok(n as usize)
+            })
+            .collect::<Result<Vec<_>>>()?
+    } else {
+        (0..rank).rev().collect()
+    };
+
+    if perm.len() != rank {
+        bail!(
+            "layer {}: Transpose perm length {} != input rank {}",
+            layer.name,
+            perm.len(),
+            rank
+        );
+    }
+
+    let mut seen = HashSet::with_capacity(perm.len());
+    for &p in &perm {
+        if !seen.insert(p) {
+            bail!(
+                "layer {}: Transpose perm contains duplicate axis {}",
+                layer.name,
+                p
+            );
+        }
+    }
+
+    let out_shape: Vec<usize> = perm.iter().map(|&p| input_shape[p]).collect();
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
+}
+
+/// Infer output shape for the ONNX `Concat` operator.
+///
+/// All inputs must have the same rank. The output shape matches the inputs on
+/// every axis except `axis`, where the output dimension equals the sum of all
+/// input dimensions.
+fn infer_concat(
+    layer: &LayerNode,
+    shapes: &HashMap<String, Vec<usize>>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let first_name = layer
+        .inputs
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Concat has no inputs", layer.name))?;
+    let first_shape = get_shape(shapes, first_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "layer {}: Concat missing shape for first input '{first_name}'",
+            layer.name
+        )
+    })?;
+    let rank = first_shape.len();
+
+    let raw_axis = layer.get_int_attr("axis").unwrap_or(0);
+    let axis = if raw_axis < 0 {
+        let a = rank as i64 + raw_axis;
+        if a < 0 {
+            bail!(
+                "layer {}: Concat axis {raw_axis} out of range for rank {rank}",
+                layer.name
+            );
+        }
+        a as usize
+    } else {
+        raw_axis as usize
+    };
+
+    if axis >= rank {
+        bail!("layer {}: Concat axis {axis} >= rank {rank}", layer.name);
+    }
+
+    let mut out_shape = first_shape.clone();
+    for name in layer.inputs.iter().skip(1) {
+        let s = get_shape(shapes, name).ok_or_else(|| {
+            anyhow::anyhow!(
+                "layer {}: Concat missing shape for input '{name}'",
+                layer.name
+            )
+        })?;
+        if s.len() != rank {
+            bail!(
+                "layer {}: Concat input rank mismatch: {} vs {rank}",
+                layer.name,
+                s.len()
+            );
+        }
+
+        for i in 0..rank {
+            if i == axis {
+                continue;
+            }
+            if s[i] != first_shape[i] {
+                bail!(
+                    "layer {}: Concat non-axis dimension mismatch for input '{}': axis {} has {} vs {} in first input",
+                    layer.name,
+                    name,
+                    i,
+                    s[i],
+                    first_shape[i]
+                );
+            }
+        }
+        out_shape[axis] = out_shape[axis].checked_add(s[axis]).ok_or_else(|| {
+            anyhow::anyhow!(
+                "layer {}: Concat axis {} size overflow for input '{}': {} + {}",
+                layer.name,
+                axis,
+                name,
+                out_shape[axis],
+                s[axis]
+            )
+        })?;
+    }
+
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
+}
+
+/// Infer output shape for the ONNX `Slice` operator (opset >= 10).
+///
+/// Extracts a sub-tensor by selecting ranges `[start, end)` with an optional
+/// `step` along each specified axis.  All of `starts`, `ends`, `axes`, and
+/// `steps` must be compile-time constants (initializers or Constant nodes).
+fn infer_slice(
+    layer: &LayerNode,
+    input_shape: Option<&Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let input_shape = input_shape
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Slice missing input shape", layer.name))?;
+    let rank = input_shape.len();
+
+    // Helper: look up a required i64 tensor from initializers or constant nodes.
+    let get_i64 = |name: &str| -> Option<Vec<i64>> {
+        initializers
+            .get(name)
+            .or_else(|| constant_tensors.get(name))
+            .map(|td| td.as_i64_vec())
+    };
+
+    // starts — required, input[1]
+    let starts_name = layer
+        .inputs
+        .get(1)
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Slice missing starts input", layer.name))?;
+    let starts = get_i64(starts_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "layer {}: Slice starts '{}' not found; must be a compile-time constant",
+            layer.name,
+            starts_name
+        )
+    })?;
+
+    // ends — required, input[2]
+    let ends_name = layer
+        .inputs
+        .get(2)
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Slice missing ends input", layer.name))?;
+    let ends = get_i64(ends_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "layer {}: Slice ends '{}' not found; must be a compile-time constant",
+            layer.name,
+            ends_name
+        )
+    })?;
+
+    // axes — optional, input[3]; default is [0, 1, ..., len(starts)-1]
+    let axes: Vec<i64> = layer
+        .inputs
+        .get(3)
+        .filter(|n| !n.is_empty())
+        .and_then(|n| get_i64(n))
+        .unwrap_or_else(|| (0..starts.len() as i64).collect());
+
+    // steps — optional, input[4]; default is all 1s
+    let steps: Vec<i64> = layer
+        .inputs
+        .get(4)
+        .filter(|n| !n.is_empty())
+        .and_then(|n| get_i64(n))
+        .unwrap_or_else(|| vec![1i64; starts.len()]);
+
+    let mut out_shape = input_shape.clone();
+    for (i, &axis_raw) in axes.iter().enumerate() {
+        let axis = if axis_raw < 0 {
+            let a = rank as i64 + axis_raw;
+            if a < 0 {
+                bail!(
+                    "layer {}: Slice axis {} out of range for rank {}",
+                    layer.name,
+                    axis_raw,
+                    rank
+                );
+            }
+            a as usize
+        } else {
+            axis_raw as usize
+        };
+
+        if axis >= rank {
+            bail!(
+                "layer {}: Slice axis {} out of range for rank {}",
+                layer.name,
+                axis_raw,
+                rank
+            );
+        }
+
+        let dim = input_shape[axis] as i64;
+
+        let start = {
+            let s = starts.get(i).copied().unwrap_or(0);
+            let s = if s < 0 { dim + s } else { s };
+            s.clamp(0, dim) as usize
+        };
+
+        let end = {
+            let e = ends.get(i).copied().unwrap_or(dim);
+            let e = if e < 0 { dim + e } else { e };
+            e.clamp(0, dim) as usize
+        };
+
+        let step = steps.get(i).copied().unwrap_or(1);
+        if step <= 0 {
+            bail!(
+                "layer {}: Slice step must be positive for axis {}, got {}",
+                layer.name,
+                axis,
+                step
+            );
+        }
+        let step = step as usize;
+
+        out_shape[axis] = if start < end {
+            (end - start).div_ceil(step)
+        } else {
+            0
+        };
+    }
+
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
+}
+
+/// Infer output shapes for the ONNX `TopK` operator (opset ≥ 10).
+///
+/// Inputs: data (input[0]), K (input[1] — must be a compile-time constant).
+/// Attributes: `axis` (default −1), `largest` (default 1), `sorted` (default 1).
+/// Both outputs (Values at output[0], Indices at output[1]) share the same shape:
+/// `input_shape` with the `axis` dimension replaced by K.
+fn infer_topk(
+    layer: &LayerNode,
+    input_shape: Option<&Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let input_shape = input_shape
+        .ok_or_else(|| anyhow::anyhow!("layer {}: TopK missing input shape", layer.name))?;
+    let rank = input_shape.len();
+
+    let axis_raw = layer.get_int_attr("axis").unwrap_or(-1);
+    let axis = if axis_raw < 0 {
+        let a = rank as i64 + axis_raw;
+        if a < 0 {
+            bail!(
+                "layer {}: TopK axis {} out of range for rank {}",
+                layer.name,
+                axis_raw,
+                rank
+            );
+        }
+        a as usize
+    } else {
+        let a = axis_raw as usize;
+        if a >= rank {
+            bail!(
+                "layer {}: TopK axis {} out of range for rank {}",
+                layer.name,
+                axis_raw,
+                rank
+            );
+        }
+        a
+    };
+
+    let largest = layer.get_int_attr("largest").unwrap_or(1);
+    if largest != 1 {
+        bail!(
+            "layer {}: TopK only supports largest=1, got largest={}",
+            layer.name,
+            largest
+        );
+    }
+
+    // K is input[1]: must be a compile-time constant initializer or Constant node.
+    let k_name = layer
+        .inputs
+        .get(1)
+        .ok_or_else(|| anyhow::anyhow!("layer {}: TopK missing K input at index 1", layer.name))?;
+    let k_td = initializers
+        .get(k_name)
+        .or_else(|| constant_tensors.get(k_name))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "layer {}: TopK K tensor '{}' not found in initializers; \
+                 K must be a compile-time constant",
+                layer.name,
+                k_name
+            )
+        })?;
+    let k = k_td.as_i64_vec().first().copied().ok_or_else(|| {
+        anyhow::anyhow!("layer {}: TopK K tensor '{}' is empty", layer.name, k_name)
+    })?;
+    if k <= 0 {
+        bail!("layer {}: TopK K must be positive, got {}", layer.name, k);
+    }
+    let k = k as usize;
+    if k > input_shape[axis] {
+        bail!(
+            "layer {}: TopK K={} exceeds axis dimension {} on axis {}",
+            layer.name,
+            k,
+            input_shape[axis],
+            axis
+        );
+    }
+
+    let mut out_shape = input_shape.clone();
+    out_shape[axis] = k;
+
+    // TopK has two outputs: Values (output[0]) and Indices (output[1]).
+    // Both share the same shape.
+    let mut results = Vec::new();
+    if let Some(name) = layer.outputs.first() {
+        results.push((name.clone(), out_shape.clone()));
+    }
+    if let Some(name) = layer.outputs.get(1) {
+        results.push((name.clone(), out_shape.clone()));
+    }
+    Ok(results)
 }
 
 #[cfg(test)]

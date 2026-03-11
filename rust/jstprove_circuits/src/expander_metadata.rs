@@ -216,6 +216,20 @@ fn op_type_to_string(op: OpType) -> String {
         OpType::Squeeze => "Squeeze",
         OpType::Unsqueeze => "Unsqueeze",
         OpType::Constant => "Constant",
+        OpType::Cast => "Cast",
+        OpType::Exp => "Exp",
+        OpType::Sigmoid => "Sigmoid",
+        OpType::Gelu => "Gelu",
+        OpType::Softmax => "Softmax",
+        OpType::Tile => "Tile",
+        OpType::Gather => "Gather",
+        OpType::LayerNormalization => "LayerNormalization",
+        OpType::Resize => "Resize",
+        OpType::GridSample => "GridSample",
+        OpType::Transpose => "Transpose",
+        OpType::Concat => "Concat",
+        OpType::Slice => "Slice",
+        OpType::TopK => "TopK",
     }
     .to_string()
 }
@@ -351,5 +365,6 @@ mod tests {
         assert_eq!(op_type_to_string(OpType::Add), "Add");
         assert_eq!(op_type_to_string(OpType::Div), "Div");
         assert_eq!(op_type_to_string(OpType::Reshape), "Reshape");
+        assert_eq!(op_type_to_string(OpType::TopK), "TopK");
     }
 }
