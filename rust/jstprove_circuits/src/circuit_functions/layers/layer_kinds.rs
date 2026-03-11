@@ -32,6 +32,7 @@ use crate::circuit_functions::layers::slice::SliceLayer;
 use crate::circuit_functions::layers::softmax::SoftmaxLayer;
 use crate::circuit_functions::layers::squeeze::SqueezeLayer;
 use crate::circuit_functions::layers::tile::TileLayer;
+use crate::circuit_functions::layers::topk::TopKLayer;
 use crate::circuit_functions::layers::transpose::TransposeLayer;
 use crate::circuit_functions::layers::unsqueeze::UnsqueezeLayer;
 
@@ -163,6 +164,7 @@ define_layers! {
     Squeeze   => { name: "Squeeze", builder: SqueezeLayer::build },
     Slice     => { name: "Slice",     builder: SliceLayer::build },
     Tile      => { name: "Tile",      builder: TileLayer::build },
+    TopK      => { name: "TopK",      builder: TopKLayer::build },
     Transpose => { name: "Transpose", builder: TransposeLayer::build },
     Unsqueeze => { name: "Unsqueeze", builder: UnsqueezeLayer::build },
 }
@@ -193,6 +195,7 @@ mod tests {
             "Softmax",
             "Squeeze",
             "Tile",
+            "TopK",
             "Unsqueeze",
             "BatchNormalization",
             "Constant",
@@ -261,6 +264,7 @@ mod tests {
             "Softmax",
             "Squeeze",
             "Tile",
+            "TopK",
             "Unsqueeze",
             "BatchNormalization",
             "Constant",

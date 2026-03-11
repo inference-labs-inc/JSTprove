@@ -36,6 +36,7 @@ pub enum OpType {
     Transpose,
     Concat,
     Slice,
+    TopK,
 }
 
 impl OpType {
@@ -71,6 +72,7 @@ impl OpType {
             "Transpose" => Ok(Self::Transpose),
             "Concat" => Ok(Self::Concat),
             "Slice" => Ok(Self::Slice),
+            "TopK" => Ok(Self::TopK),
             other => bail!("unsupported ONNX op: {other}"),
         }
     }

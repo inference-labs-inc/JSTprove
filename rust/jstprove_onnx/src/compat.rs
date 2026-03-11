@@ -37,6 +37,7 @@ const SUPPORTED_OPS: &[&str] = &[
     "Transpose",
     "Concat",
     "Slice",
+    "TopK",
 ];
 
 pub fn is_compatible(path: &Path) -> Result<(bool, Vec<String>)> {

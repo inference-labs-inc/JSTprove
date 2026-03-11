@@ -229,6 +229,7 @@ fn op_type_to_string(op: OpType) -> String {
         OpType::Transpose => "Transpose",
         OpType::Concat => "Concat",
         OpType::Slice => "Slice",
+        OpType::TopK => "TopK",
     }
     .to_string()
 }
@@ -364,5 +365,6 @@ mod tests {
         assert_eq!(op_type_to_string(OpType::Add), "Add");
         assert_eq!(op_type_to_string(OpType::Div), "Div");
         assert_eq!(op_type_to_string(OpType::Reshape), "Reshape");
+        assert_eq!(op_type_to_string(OpType::TopK), "TopK");
     }
 }
