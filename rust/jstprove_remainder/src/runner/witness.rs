@@ -1197,7 +1197,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     .ok_or_else(|| anyhow::anyhow!("Exp {} has no input", layer.name))?;
                 let input_data = tensors
                     .get(input_name)
-                    .ok_or_else(|| anyhow::anyhow!("Exp {} input '{}' not computed", layer.name, input_name))?
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Exp {} input '{}' not computed", layer.name, input_name)
+                    })?
                     .clone();
 
                 let output_total: usize = layer.output_shape.iter().product();
@@ -1213,7 +1215,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     .map(|i| {
                         let x = input_data[i] as f64 / alpha as f64;
                         let y = x.exp();
-                        (y * alpha as f64).round().clamp(i64::MIN as f64, i64::MAX as f64) as i64
+                        (y * alpha as f64)
+                            .round()
+                            .clamp(i64::MIN as f64, i64::MAX as f64) as i64
                     })
                     .collect();
 
@@ -1237,7 +1241,11 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let input_data = tensors
                     .get(input_name)
                     .ok_or_else(|| {
-                        anyhow::anyhow!("Sigmoid {} input '{}' not computed", layer.name, input_name)
+                        anyhow::anyhow!(
+                            "Sigmoid {} input '{}' not computed",
+                            layer.name,
+                            input_name
+                        )
                     })?
                     .clone();
 
@@ -1254,7 +1262,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     .map(|i| {
                         let x = input_data[i] as f64 / alpha as f64;
                         let y = 1.0 / (1.0 + (-x).exp());
-                        (y * alpha as f64).round().clamp(i64::MIN as f64, i64::MAX as f64) as i64
+                        (y * alpha as f64)
+                            .round()
+                            .clamp(i64::MIN as f64, i64::MAX as f64) as i64
                     })
                     .collect();
 
@@ -1277,7 +1287,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     .ok_or_else(|| anyhow::anyhow!("Gelu {} has no input", layer.name))?;
                 let input_data = tensors
                     .get(input_name)
-                    .ok_or_else(|| anyhow::anyhow!("Gelu {} input '{}' not computed", layer.name, input_name))?
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Gelu {} input '{}' not computed", layer.name, input_name)
+                    })?
                     .clone();
 
                 let output_total: usize = layer.output_shape.iter().product();
@@ -1294,7 +1306,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                         let x = input_data[i] as f64 / alpha as f64;
                         let inner = 0.797_884_560_8 * (x + 0.044_715 * x * x * x);
                         let y = 0.5 * x * (1.0 + inner.tanh());
-                        (y * alpha as f64).round().clamp(i64::MIN as f64, i64::MAX as f64) as i64
+                        (y * alpha as f64)
+                            .round()
+                            .clamp(i64::MIN as f64, i64::MAX as f64) as i64
                     })
                     .collect();
 
@@ -1317,7 +1331,13 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     .ok_or_else(|| anyhow::anyhow!("Softmax {} has no input", layer.name))?;
                 let input_data = tensors
                     .get(input_name)
-                    .ok_or_else(|| anyhow::anyhow!("Softmax {} input '{}' not computed", layer.name, input_name))?
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Softmax {} input '{}' not computed",
+                            layer.name,
+                            input_name
+                        )
+                    })?
                     .clone();
 
                 let input_shape = tensor_shape_for(input_name).ok_or_else(|| {
@@ -1408,10 +1428,16 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
 
                 let input_data = tensors
                     .get(input_name)
-                    .ok_or_else(|| anyhow::anyhow!("Tile {} input '{}' not computed", layer.name, input_name))?
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Tile {} input '{}' not computed", layer.name, input_name)
+                    })?
                     .clone();
                 let input_shape = tensor_shape_for(input_name).ok_or_else(|| {
-                    anyhow::anyhow!("Tile {} cannot resolve shape for input '{}'", layer.name, input_name)
+                    anyhow::anyhow!(
+                        "Tile {} cannot resolve shape for input '{}'",
+                        layer.name,
+                        input_name
+                    )
                 })?;
                 let repeats = layer
                     .weights
@@ -1443,7 +1469,11 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                             .enumerate()
                             .map(|(d, &c)| {
                                 let dim = input_shape[d];
-                                if dim == 0 { 0 } else { c % dim }
+                                if dim == 0 {
+                                    0
+                                } else {
+                                    c % dim
+                                }
                             })
                             .collect();
                         let in_flat = ravel_index_witness(&in_coords, &input_shape);
@@ -1475,21 +1505,34 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
 
                 let input_data = tensors
                     .get(input_name)
-                    .ok_or_else(|| anyhow::anyhow!("TopK {} input '{}' not computed", layer.name, input_name))?
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("TopK {} input '{}' not computed", layer.name, input_name)
+                    })?
                     .clone();
                 let input_shape = tensor_shape_for(input_name).ok_or_else(|| {
-                    anyhow::anyhow!("TopK {} cannot resolve shape for input '{}'", layer.name, input_name)
+                    anyhow::anyhow!(
+                        "TopK {} cannot resolve shape for input '{}'",
+                        layer.name,
+                        input_name
+                    )
                 })?;
 
                 let k_vec = layer
                     .weights
                     .get(k_name)
-                    .ok_or_else(|| anyhow::anyhow!("TopK {} K '{}' not found in weights", layer.name, k_name))?
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("TopK {} K '{}' not found in weights", layer.name, k_name)
+                    })?
                     .as_i64_vec();
-                let k_raw = *k_vec
-                    .first()
-                    .ok_or_else(|| anyhow::anyhow!("TopK {} K tensor '{}' is empty", layer.name, k_name))?;
-                anyhow::ensure!(k_raw > 0, "TopK {} requires K > 0, got {}", layer.name, k_raw);
+                let k_raw = *k_vec.first().ok_or_else(|| {
+                    anyhow::anyhow!("TopK {} K tensor '{}' is empty", layer.name, k_name)
+                })?;
+                anyhow::ensure!(
+                    k_raw > 0,
+                    "TopK {} requires K > 0, got {}",
+                    layer.name,
+                    k_raw
+                );
                 let k = k_raw as usize;
 
                 let rank = input_shape.len();
