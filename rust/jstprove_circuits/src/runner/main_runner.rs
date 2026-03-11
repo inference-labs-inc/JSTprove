@@ -628,12 +628,15 @@ where
         .clone_from(&simd_input);
     expander_circuit.public_input.clone_from(&simd_public_input);
 
-    for (i, pv) in public_vars.iter().enumerate() {
-        if expander_circuit.public_input[i] != (*pv).into() {
-            return Err(RunError::Verify(
-                "inputs/outputs don't match the witness".into(),
-            ));
-        }
+    if public_vars.len() != expander_circuit.public_input.len()
+        || public_vars
+            .iter()
+            .zip(&expander_circuit.public_input)
+            .any(|(pv, actual)| *actual != (*pv).into())
+    {
+        return Err(RunError::Verify(
+            "inputs/outputs don't match the witness".into(),
+        ));
     }
 
     let file = std::fs::File::open(proof_path).map_err(|e| RunError::Io {
@@ -953,11 +956,12 @@ where
     circuit.layers[0].input_vals.clone_from(&simd_input);
     circuit.public_input.clone_from(&simd_public_input);
 
-    let mismatch = public_vars
-        .iter()
-        .enumerate()
-        .any(|(i, pv)| circuit.public_input[i] != (*pv).into());
-    if mismatch {
+    if public_vars.len() != circuit.public_input.len()
+        || public_vars
+            .iter()
+            .zip(&circuit.public_input)
+            .any(|(pv, actual)| *actual != (*pv).into())
+    {
         return Err("inputs/outputs don't match the witness".into());
     }
 

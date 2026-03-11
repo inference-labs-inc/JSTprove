@@ -46,8 +46,8 @@ impl GemmParams {
         })?;
         let w_shape = weight_data.shape();
         ensure!(
-            w_shape.len() >= 2,
-            "Gemm {} weight has {} dims, need >= 2",
+            w_shape.len() == 2,
+            "Gemm {} weight has {} dims, need exactly 2",
             layer.name,
             w_shape.len()
         );
@@ -116,8 +116,8 @@ impl ConvParams {
 
         let w_shape = weight_data.shape();
         ensure!(
-            w_shape.len() >= 4,
-            "Conv {} weight has {} dims, need >= 4",
+            w_shape.len() == 4,
+            "Conv {} weight has {} dims, need exactly 4",
             layer.name,
             w_shape.len()
         );
@@ -125,6 +125,14 @@ impl ConvParams {
         let c_in = w_shape[1];
         let kh = w_shape[2];
         let kw = w_shape[3];
+
+        let group = layer.get_int_attr("group").unwrap_or(1) as usize;
+        ensure!(
+            group == 1,
+            "Conv {}: grouped convolutions (group={}) are not supported",
+            layer.name,
+            group
+        );
 
         ensure!(
             input_ch == c_in,
