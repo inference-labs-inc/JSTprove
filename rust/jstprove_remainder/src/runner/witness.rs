@@ -317,6 +317,23 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
     let declared_output = &model.graph.output_names[0];
     let rescale_table_size = 1usize << model.scale_config.exponent;
 
+    let tensor_shape_for = |tensor_name: &str| -> Option<Vec<usize>> {
+        if let Some(shape) = model.graph.input_shapes.get(tensor_name) {
+            if shape.len() == 3 {
+                let mut with_batch = vec![1usize];
+                with_batch.extend(shape.iter().copied());
+                return Some(with_batch);
+            }
+            return Some(shape.clone());
+        }
+        model
+            .graph
+            .layers
+            .iter()
+            .find(|l| l.outputs.iter().any(|o| o == tensor_name))
+            .map(|l| l.output_shape.clone())
+    };
+
     for layer in model.graph.iter_topo() {
         match layer.op_type {
             OpType::Gemm => {
@@ -1487,33 +1504,45 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let output_shape = &layer.output_shape;
                 let output_total: usize = output_shape.iter().product();
 
-                // Derive input shape from scales (input[2]) stored as initializer.
-                let scales_name = layer.inputs.get(2).filter(|n| !n.is_empty());
-                let input_shape: Vec<usize> = if let Some(name) = scales_name {
-                    if let Some(td) = layer.weights.get(name) {
-                        let scales = &td.float_data;
-                        if scales.len() == output_shape.len() {
-                            output_shape
-                                .iter()
-                                .zip(scales.iter())
-                                .map(|(&od, &s)| {
-                                    if s > 0.0 {
-                                        (od as f64 / s).round() as usize
-                                    } else {
-                                        od
-                                    }
-                                })
-                                .collect()
-                        } else {
-                            // Scale tensor length mismatch; pass through unchanged.
-                            output_shape.clone()
-                        }
-                    } else {
-                        output_shape.clone()
-                    }
-                } else {
-                    output_shape.clone()
-                };
+                let input_shape = tensor_shape_for(input_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Resize {}: unable to resolve producer/input shape for '{}'",
+                        layer.name,
+                        input_name
+                    )
+                })?;
+                anyhow::ensure!(
+                    input_shape.len() == output_shape.len(),
+                    "Resize {}: input shape rank {} does not match output rank {} (input_shape={:?}, output_shape={:?})",
+                    layer.name,
+                    input_shape.len(),
+                    output_shape.len(),
+                    input_shape,
+                    output_shape
+                );
+
+                let scales_name = layer.inputs.get(2).filter(|n| !n.is_empty()).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Resize {}: missing scales input (input[2]); cannot validate resize parameters",
+                        layer.name
+                    )
+                })?;
+                let scales_td = layer.weights.get(scales_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Resize {}: scales tensor '{}' not found in layer weights",
+                        layer.name,
+                        scales_name
+                    )
+                })?;
+                let scales = &scales_td.float_data;
+                anyhow::ensure!(
+                    scales.len() == output_shape.len(),
+                    "Resize {}: scales tensor '{}' length {} != output rank {}",
+                    layer.name,
+                    scales_name,
+                    scales.len(),
+                    output_shape.len()
+                );
 
                 let mode = layer.get_string_attr("mode").unwrap_or("nearest");
                 let coord_mode = layer
@@ -1585,7 +1614,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                             }
                             let half = alpha as i128 / 2;
                             let y = (sum_i128 + half) / alpha as i128;
-                            y.clamp(0, i64::MAX as i128) as i64
+                            y.clamp(i64::MIN as i128, i64::MAX as i128) as i64
                         })
                         .collect()
                 };
@@ -1639,31 +1668,38 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 ];
                 let output_total = n * c * h_out * w_out;
 
-                // Derive input spatial dims from the grid shape [N, H_out, W_out, 2]
-                // and the alpha (quantisation scale).
                 let alpha = model.scale_config.alpha as f64;
 
                 let mode = layer.get_string_attr("mode").unwrap_or("bilinear");
                 let padding_mode = layer.get_string_attr("padding_mode").unwrap_or("zeros");
                 let align_corners = layer.get_int_attr("align_corners").unwrap_or(0) != 0;
 
-                // We need H_in and W_in.  Derive from the X shape stored in layer.
-                // X is layer.inputs[0]; its shape may not be in `tensors` map (only
-                // values are).  Use the output_shape relation: output [N,C,H_out,W_out]
-                // with X [N,C,H_in,W_in].  We recover H_in/W_in by back-computing from
-                // the data length.
-                let x_total = x_data.len();
+                let x_shape = tensor_shape_for(x_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "GridSample {}: unable to resolve shape for input '{}'",
+                        layer.name,
+                        x_name
+                    )
+                })?;
                 anyhow::ensure!(
-                    x_total >= n * c,
-                    "GridSample {}: X data length {} < N*C={}",
+                    x_shape.len() == 4,
+                    "GridSample {}: input '{}' shape must be 4-D [N,C,H,W], got {:?}",
                     layer.name,
-                    x_total,
-                    n * c
+                    x_name,
+                    x_shape
                 );
-                let hw_in = x_total / (n * c);
-                // We need separate H_in and W_in.  Read from the grid shape relationship:
-                // grid has shape [N, H_out, W_out, 2] so we know H_out and W_out; we
-                // can find H_in and W_in from the grid tensor dims.
+                let n_in = x_shape[0];
+                let c_in = x_shape[1];
+                let h_in = x_shape[2];
+                let w_in = x_shape[3];
+                anyhow::ensure!(
+                    n_in == n && c_in == c,
+                    "GridSample {}: output shape {:?} is inconsistent with input shape {:?}",
+                    layer.name,
+                    output_shape,
+                    x_shape
+                );
+
                 let grid_dims = grid_td.shape();
                 anyhow::ensure!(
                     grid_dims.len() == 4 && grid_dims[3] == 2,
@@ -1671,38 +1707,6 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     layer.name,
                     grid_dims
                 );
-                // For the witness we need H_in and W_in.  Since hw_in = H_in * W_in,
-                // and we don't have a direct source, we compute the ratio via the output
-                // shape and the expectation that X shape matches [N, C, H_in, W_in].
-                // If we can't determine them separately, fall back to a square root or
-                // use the total.  In practice the circuit always has output_shape set.
-                // A robust approach: look up x_name in the tensor shape map embedded in
-                // layer attributes — but that's unavailable here.  Use the fact that
-                // hw_in == H_in * W_in and H_out/W_out are known; H_in/W_in can be any
-                // factorisation.  We store H_in in the grid unused dimension:
-                // the grid dims are [N, H_out, W_out, 2], all known.  We derive
-                // H_in = hw_in / W_in by guessing W_in ≈ W_out * (H_in*W_in / H_out*W_out).
-                // The safest path: store H_in, W_in in the layer.output_shape-adjacent
-                // info.  Since witness.rs already uses layer.output_shape for output dims,
-                // we need the input spatial dims.  Use hw_in and assume square if unknown.
-                let hw_out = h_out * w_out;
-                let (h_in, w_in) = if hw_out > 0 && hw_in % w_out == 0 {
-                    // Assume proportional scaling: W_in = hw_in / W_out * (W_out / W_out)?
-                    // Actually we need H_in and W_in individually.
-                    // Use: H_in * W_in = hw_in, and aspect ratio ~ H_out:W_out.
-                    // h_in = round(sqrt(hw_in * h_out / w_out)), w_in = hw_in / h_in.
-                    let ratio = h_out as f64 / w_out as f64;
-                    let h_in_f = ((hw_in as f64) * ratio).sqrt();
-                    let h_in_candidate = h_in_f.round() as usize;
-                    if h_in_candidate > 0 && hw_in % h_in_candidate == 0 {
-                        (h_in_candidate, hw_in / h_in_candidate)
-                    } else {
-                        // Fall back to treating as 1 × hw_in (1-D case).
-                        (1, hw_in)
-                    }
-                } else {
-                    (1, hw_in)
-                };
 
                 let result: Vec<i64> = if mode == "nearest" {
                     (0..output_total)
@@ -1781,7 +1785,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                                 sum_i128 += x_q as i128 * w_q;
                             }
                             let half = alpha_i as i128 / 2;
-                            ((sum_i128 + half) / alpha_i as i128).clamp(0, i64::MAX as i128) as i64
+                            ((sum_i128 + half) / alpha_i as i128)
+                                .clamp(i64::MIN as i128, i64::MAX as i128)
+                                as i64
                         })
                         .collect()
                 };

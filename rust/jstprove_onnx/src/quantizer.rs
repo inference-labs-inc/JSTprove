@@ -450,10 +450,16 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
         | OpType::Resize
         | OpType::GridSample
         | OpType::Transpose
-        | OpType::Concat
         | OpType::Slice => {
             let m_in = get_input_bound(0);
             Ok(m_in)
+        }
+        OpType::Concat => {
+            let mut max_bound = 0.0_f64;
+            for i in 0..layer.inputs.len() {
+                max_bound = max_bound.max(get_input_bound(i));
+            }
+            Ok(max_bound)
         }
         // TopK selects K values from the input along an axis — output bound ≤ input bound.
         OpType::TopK => {
@@ -473,9 +479,13 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
             }
             Ok(bound)
         }
-        // softmax / sigmoid / gelu outputs are in [0, 1] (softmax/sigmoid) or roughly [-0.17, inf) (gelu).
-        // For simplicity, we use 1.0 as the bound for the activation functions.
-        OpType::Softmax | OpType::Sigmoid | OpType::Gelu => Ok(1.0),
+        // softmax / sigmoid outputs are in [0, 1].
+        OpType::Softmax | OpType::Sigmoid => Ok(1.0),
+        // GELU is not capped at 1.0; conservatively propagate input bound.
+        OpType::Gelu => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
         OpType::Constant => Ok(1.0),
         OpType::LayerNormalization => {
             // Conservative bound: max|γ| * m_in + max|β|.

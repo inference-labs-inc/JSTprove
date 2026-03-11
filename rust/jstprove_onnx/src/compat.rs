@@ -29,6 +29,7 @@ const SUPPORTED_OPS: &[&str] = &[
     "Exp",
     "Softmax",
     "Sigmoid",
+    "Gelu",
     "Tile",
     "Gather",
     "LayerNormalization",

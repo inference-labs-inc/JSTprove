@@ -78,6 +78,36 @@ impl SpatialInfo {
     }
 }
 
+fn layout_from_output_shape(
+    output_shape: &[usize],
+    input_layout: Option<&SpatialInfo>,
+) -> Option<SpatialInfo> {
+    let chw = if output_shape.len() == 3 {
+        output_shape
+    } else if output_shape.len() == 4 {
+        &output_shape[1..]
+    } else {
+        return None;
+    };
+
+    match input_layout {
+        Some(SpatialInfo::HWC { .. }) => {
+            let c = chw[0];
+            Some(SpatialInfo::HWC {
+                h: chw[1],
+                w: chw[2],
+                c,
+                stride_c: next_power_of_two(c),
+            })
+        }
+        _ => Some(SpatialInfo::CHW {
+            c: chw[0],
+            h: chw[1],
+            w: chw[2],
+        }),
+    }
+}
+
 pub fn delta_table_nv(layer_n_bits: usize, exponent: usize) -> usize {
     layer_n_bits.saturating_sub(exponent).max(1)
 }
@@ -403,6 +433,8 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 let out_nv = num_vars_for(out_total);
                 let gather_out_name = format!("{}_out", layer.name);
                 let node = builder.add_input_shred(&gather_out_name, out_nv, &committed);
+                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
+                let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
                 manifest.insert(
                     gather_out_name,
                     ShredEntry {
@@ -413,6 +445,9 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 for out in &layer.outputs {
                     tensor_nodes.insert(out.clone(), node.clone());
                     tensor_num_vars.insert(out.clone(), out_nv);
+                    if let Some(layout) = &output_layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
                 }
             }
             OpType::LayerNormalization => {
@@ -423,6 +458,8 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 let out_nv = num_vars_for(out_total);
                 let ln_out_name = format!("{}_out", layer.name);
                 let node = builder.add_input_shred(&ln_out_name, out_nv, &committed);
+                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
+                let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
                 manifest.insert(
                     ln_out_name,
                     ShredEntry {
@@ -433,6 +470,9 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 for out in &layer.outputs {
                     tensor_nodes.insert(out.clone(), node.clone());
                     tensor_num_vars.insert(out.clone(), out_nv);
+                    if let Some(layout) = &output_layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
                 }
             }
             OpType::Resize => {
@@ -442,6 +482,8 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 let out_nv = num_vars_for(out_total);
                 let resize_out_name = format!("{}_out", layer.name);
                 let node = builder.add_input_shred(&resize_out_name, out_nv, &committed);
+                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
+                let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
                 manifest.insert(
                     resize_out_name,
                     ShredEntry {
@@ -452,6 +494,9 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 for out in &layer.outputs {
                     tensor_nodes.insert(out.clone(), node.clone());
                     tensor_num_vars.insert(out.clone(), out_nv);
+                    if let Some(layout) = &output_layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
                 }
             }
             OpType::GridSample => {
@@ -461,6 +506,8 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 let out_nv = num_vars_for(out_total);
                 let gridsample_out_name = format!("{}_out", layer.name);
                 let node = builder.add_input_shred(&gridsample_out_name, out_nv, &committed);
+                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
+                let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
                 manifest.insert(
                     gridsample_out_name,
                     ShredEntry {
@@ -471,6 +518,9 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 for out in &layer.outputs {
                     tensor_nodes.insert(out.clone(), node.clone());
                     tensor_num_vars.insert(out.clone(), out_nv);
+                    if let Some(layout) = &output_layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
                 }
             }
             OpType::Transpose => {
@@ -480,6 +530,8 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 let out_nv = num_vars_for(out_total);
                 let transpose_out_name = format!("{}_out", layer.name);
                 let node = builder.add_input_shred(&transpose_out_name, out_nv, &committed);
+                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
+                let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
                 manifest.insert(
                     transpose_out_name,
                     ShredEntry {
@@ -490,6 +542,9 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 for out in &layer.outputs {
                     tensor_nodes.insert(out.clone(), node.clone());
                     tensor_num_vars.insert(out.clone(), out_nv);
+                    if let Some(layout) = &output_layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
                 }
             }
             OpType::Concat => {
@@ -499,6 +554,8 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 let out_nv = num_vars_for(out_total);
                 let concat_out_name = format!("{}_out", layer.name);
                 let node = builder.add_input_shred(&concat_out_name, out_nv, &committed);
+                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
+                let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
                 manifest.insert(
                     concat_out_name,
                     ShredEntry {
@@ -509,6 +566,9 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 for out in &layer.outputs {
                     tensor_nodes.insert(out.clone(), node.clone());
                     tensor_num_vars.insert(out.clone(), out_nv);
+                    if let Some(layout) = &output_layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
                 }
             }
             OpType::Slice => {
@@ -518,6 +578,8 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 let out_nv = num_vars_for(out_total);
                 let slice_out_name = format!("{}_out", layer.name);
                 let node = builder.add_input_shred(&slice_out_name, out_nv, &committed);
+                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
+                let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
                 manifest.insert(
                     slice_out_name,
                     ShredEntry {
@@ -528,6 +590,9 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 for out in &layer.outputs {
                     tensor_nodes.insert(out.clone(), node.clone());
                     tensor_num_vars.insert(out.clone(), out_nv);
+                    if let Some(layout) = &output_layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
                 }
             }
             other => {

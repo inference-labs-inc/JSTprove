@@ -68,41 +68,75 @@ fn ravel(coords: &[usize], shape: &[usize]) -> usize {
 /// `index_map[out_flat] = in_flat` maps every output position back to the
 /// corresponding input position given the slice parameters.
 fn build_index_map(
+    layer_name: &str,
     input_shape: &[usize],
     starts: &[i64],
     _ends: &[i64],
     axes: &[i64],
     steps: &[i64],
     output_shape: &[usize],
-) -> Vec<usize> {
+) -> Result<Vec<usize>, LayerError> {
     let rank = input_shape.len();
     let total_out: usize = output_shape.iter().product();
 
-    // Per-axis slice start and step (resolved to non-negative usizes).
-    let mut axis_start = vec![0usize; rank];
-    let mut axis_step = vec![1usize; rank];
+    // Per-axis slice start and step. Steps may be negative (reverse slices).
+    let mut axis_start = vec![0isize; rank];
+    let mut axis_step = vec![1isize; rank];
     for (i, &axis_raw) in axes.iter().enumerate() {
-        let axis = if axis_raw < 0 {
-            (rank as i64 + axis_raw) as usize
+        let axis_norm = if axis_raw < 0 {
+            rank as i64 + axis_raw
         } else {
-            axis_raw as usize
+            axis_raw
         };
+        if axis_norm < 0 || axis_norm >= rank as i64 {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::Slice,
+                msg: format!(
+                    "layer {layer_name}: Slice axis {} out of range for rank {}",
+                    axis_raw, rank
+                ),
+            });
+        }
+        let axis = axis_norm as usize;
+
         let dim = input_shape[axis] as i64;
         let s = starts.get(i).copied().unwrap_or(0);
         let s = if s < 0 { dim + s } else { s };
-        axis_start[axis] = s.clamp(0, dim) as usize;
-        axis_step[axis] = steps.get(i).copied().unwrap_or(1).max(1) as usize;
+        axis_start[axis] = s.clamp(0, dim) as isize;
+
+        let step = steps.get(i).copied().unwrap_or(1);
+        if step == 0 {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::Slice,
+                msg: format!(
+                    "layer {layer_name}: Slice step cannot be zero for axis {}",
+                    axis
+                ),
+            });
+        }
+        axis_step[axis] = step as isize;
     }
 
     let mut index_map = Vec::with_capacity(total_out);
     for out_flat in 0..total_out {
         let out_coords = unravel(out_flat, output_shape);
-        let in_coords: Vec<usize> = (0..rank)
-            .map(|ax| axis_start[ax] + out_coords[ax] * axis_step[ax])
-            .collect();
+        let mut in_coords: Vec<usize> = Vec::with_capacity(rank);
+        for ax in 0..rank {
+            let coord = axis_start[ax] + out_coords[ax] as isize * axis_step[ax];
+            if coord < 0 || coord >= input_shape[ax] as isize {
+                return Err(LayerError::InvalidShape {
+                    layer: LayerKind::Slice,
+                    msg: format!(
+                        "layer {layer_name}: Slice computed index {} out of bounds for axis {} with dim {}",
+                        coord, ax, input_shape[ax]
+                    ),
+                });
+            }
+            in_coords.push(coord as usize);
+        }
         index_map.push(ravel(&in_coords, input_shape));
     }
-    index_map
+    Ok(index_map)
 }
 
 // -------- Implementation --------
@@ -180,20 +214,68 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SliceLayer {
             })?
             .clone();
 
-        // Helper: read a required i64 weight tensor.
+        // Helper: parse an i64 vector from a MsgPack value.
+        let parse_i64_vec = |v: &rmpv::Value| -> Option<Vec<i64>> {
+            match v {
+                rmpv::Value::Array(xs) => xs
+                    .iter()
+                    .map(|x| {
+                        if let rmpv::Value::Integer(i) = x {
+                            i.as_i64()
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+                rmpv::Value::Integer(i) => i.as_i64().map(|x| vec![x]),
+                _ => None,
+            }
+        };
+
+        // Helper: read a required i64 tensor, first from initializers and then
+        // from layer.params constant-node injection.
         let read_i64 = |name: &String, field: &str| -> Result<Vec<i64>, CircuitError> {
-            let arr: ndarray::ArrayD<i64> =
-                get_w_or_b(layer_context.w_and_b_map, name).map_err(|e| LayerError::Other {
-                    layer: LayerKind::Slice,
-                    msg: format!("failed to read {field} tensor '{name}': {e}"),
-                })?;
-            Ok(arr
-                .as_slice()
-                .ok_or_else(|| LayerError::Other {
-                    layer: LayerKind::Slice,
-                    msg: format!("{field} tensor '{name}' is not contiguous"),
-                })?
-                .to_vec())
+            if let Ok(arr) = get_w_or_b(layer_context.w_and_b_map, name) {
+                return Ok(arr
+                    .as_slice()
+                    .ok_or_else(|| LayerError::Other {
+                        layer: LayerKind::Slice,
+                        msg: format!("{field} tensor '{name}' is not contiguous"),
+                    })?
+                    .to_vec());
+            }
+
+            if let Some(rmpv::Value::Map(entries)) = layer.params.as_ref() {
+                let value = entries.iter().find_map(|(k, v)| {
+                    if let rmpv::Value::String(s) = k {
+                        if s.as_str() == Some(name.as_str()) {
+                            return Some(v);
+                        }
+                    }
+                    None
+                });
+
+                if let Some(v) = value {
+                    if let Some(parsed) = parse_i64_vec(v) {
+                        return Ok(parsed);
+                    }
+                    return Err(LayerError::Other {
+                        layer: LayerKind::Slice,
+                        msg: format!(
+                            "failed to parse {field} tensor '{name}' from layer params as i64 list"
+                        ),
+                    }
+                    .into());
+                }
+            }
+
+            Err(LayerError::Other {
+                layer: LayerKind::Slice,
+                msg: format!(
+                    "failed to read {field} tensor '{name}' from initializers or layer params"
+                ),
+            }
+            .into())
         };
 
         // starts — required, input[1]
@@ -234,7 +316,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SliceLayer {
             .transpose()?
             .unwrap_or_else(|| vec![1i64; starts.len()]);
 
-        let index_map = build_index_map(&input_shape, &starts, &ends, &axes, &steps, &output_shape);
+        let index_map = build_index_map(
+            &layer.name,
+            &input_shape,
+            &starts,
+            &ends,
+            &axes,
+            &steps,
+            &output_shape,
+        )?;
 
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),
@@ -252,14 +342,14 @@ mod tests {
     #[test]
     fn index_map_1d_basic() {
         // Shape [10], slice [2:7] → shape [5], elements at 2,3,4,5,6
-        let map = build_index_map(&[10], &[2], &[7], &[0], &[1], &[5]);
+        let map = build_index_map("t", &[10], &[2], &[7], &[0], &[1], &[5]).unwrap();
         assert_eq!(map, vec![2, 3, 4, 5, 6]);
     }
 
     #[test]
     fn index_map_1d_step2() {
         // Shape [8], slice [0:8:2] → shape [4], elements at 0,2,4,6
-        let map = build_index_map(&[8], &[0], &[8], &[0], &[2], &[4]);
+        let map = build_index_map("t", &[8], &[0], &[8], &[0], &[2], &[4]).unwrap();
         assert_eq!(map, vec![0, 2, 4, 6]);
     }
 
@@ -267,14 +357,15 @@ mod tests {
     fn index_map_2d_axis1() {
         // Shape [3, 4], slice axis=1 [1:3] → shape [3, 2]
         // Row 0: cols 1,2 → flat 1,2 ; Row 1: 5,6 ; Row 2: 9,10
-        let map = build_index_map(&[3, 4], &[1], &[3], &[1], &[1], &[3, 2]);
+        let map = build_index_map("t", &[3, 4], &[1], &[3], &[1], &[1], &[3, 2]).unwrap();
         assert_eq!(map, vec![1, 2, 5, 6, 9, 10]);
     }
 
     #[test]
     fn index_map_identity() {
         // Full slice is identity
-        let map = build_index_map(&[2, 3], &[0, 0], &[2, 3], &[0, 1], &[1, 1], &[2, 3]);
+        let map =
+            build_index_map("t", &[2, 3], &[0, 0], &[2, 3], &[0, 1], &[1, 1], &[2, 3]).unwrap();
         let expected: Vec<usize> = (0..6).collect();
         assert_eq!(map, expected);
     }
@@ -282,7 +373,7 @@ mod tests {
     #[test]
     fn index_map_negative_start() {
         // Shape [5], slice [-3:] → elements 2,3,4 → shape [3]
-        let map = build_index_map(&[5], &[-3], &[5], &[0], &[1], &[3]);
+        let map = build_index_map("t", &[5], &[-3], &[5], &[0], &[1], &[3]).unwrap();
         assert_eq!(map, vec![2, 3, 4]);
     }
 }
