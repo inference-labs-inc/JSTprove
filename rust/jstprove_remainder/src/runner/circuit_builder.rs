@@ -91,13 +91,16 @@ fn layout_from_output_shape(
     };
 
     match input_layout {
-        Some(SpatialInfo::HWC { .. }) => {
+        Some(SpatialInfo::HWC {
+            stride_c: existing_stride_c,
+            ..
+        }) => {
             let c = chw[0];
             Some(SpatialInfo::HWC {
                 h: chw[1],
                 w: chw[2],
                 c,
-                stride_c: next_power_of_two(c),
+                stride_c: *existing_stride_c,
             })
         }
         _ => Some(SpatialInfo::CHW {
@@ -389,54 +392,27 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 )?;
             }
             OpType::Exp | OpType::Softmax | OpType::Sigmoid | OpType::Gelu | OpType::Tile => {
-                // These ops are computed by the prover and provided as committed
-                // witness shreds.
-                let out_total: usize = layer.output_shape.iter().product();
-                let out_nv = num_vars_for(out_total);
-                let out_name = format!("{}_out", layer.name);
-                let node = builder.add_input_shred(&out_name, out_nv, &committed);
-                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
-                let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
-                manifest.insert(
-                    out_name,
-                    ShredEntry {
-                        num_vars: out_nv,
-                        visibility: Visibility::Committed,
-                    },
+                anyhow::bail!(
+                    "circuit builder: {:?} op in layer '{}' is not yet constrained in the \
+                     Remainder backend; refusing to add unconstrained committed shred",
+                    layer.op_type,
+                    layer.name
                 );
-                for out in &layer.outputs {
-                    tensor_nodes.insert(out.clone(), node.clone());
-                    tensor_num_vars.insert(out.clone(), out_nv);
-                    if let Some(layout) = &output_layout {
-                        tensor_layouts.insert(out.clone(), layout.clone());
-                    }
-                }
             }
             OpType::TopK => {
-                // TopK values are supplied by the prover as a committed shred.
-                // Indices are intentionally not registered in this backend.
-                let out_total: usize = layer.output_shape.iter().product();
-                let out_nv = num_vars_for(out_total);
-                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
-                let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
-
-                let values_shred_name = format!("{}_out", layer.name);
-                let values_node = builder.add_input_shred(&values_shred_name, out_nv, &committed);
-                manifest.insert(
-                    values_shred_name,
-                    ShredEntry {
-                        num_vars: out_nv,
-                        visibility: Visibility::Committed,
-                    },
-                );
-
-                if let Some(values_out) = layer.outputs.first() {
-                    tensor_nodes.insert(values_out.clone(), values_node.clone());
-                    tensor_num_vars.insert(values_out.clone(), out_nv);
-                    if let Some(layout) = &output_layout {
-                        tensor_layouts.insert(values_out.clone(), layout.clone());
-                    }
+                if layer.outputs.len() > 1 {
+                    anyhow::bail!(
+                        "TopK layer '{}': indices output is not supported by the Remainder \
+                         backend (found {} outputs); only the values output is allowed",
+                        layer.name,
+                        layer.outputs.len()
+                    );
                 }
+                anyhow::bail!(
+                    "circuit builder: TopK op in layer '{}' is not yet constrained in the \
+                     Remainder backend; refusing to add unconstrained committed shred",
+                    layer.name
+                );
             }
             OpType::Cast
             | OpType::Reshape
@@ -479,12 +455,28 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 // output as a committed witness shred named "{layer.name}_out".
                 // Downstream arithmetic layers (e.g., Gemm) constrain the gathered
                 // values indirectly through the overall output equality check.
-                let axis = layer.get_int_attr("axis").unwrap_or(0);
+                let axis_raw = layer.get_int_attr("axis").unwrap_or(0);
+                // Normalize negative axis: recover data_rank from output_rank and indices_rank.
+                let normalized_axis = if axis_raw < 0 {
+                    let output_rank = layer.output_shape.len();
+                    let indices_rank = layer
+                        .inputs
+                        .get(1)
+                        .and_then(|n| layer.weights.get(n))
+                        .map(|td| td.shape().len())
+                        .unwrap_or(0);
+                    let data_rank = (output_rank + 1).saturating_sub(indices_rank);
+                    axis_raw + data_rank as i64
+                } else {
+                    axis_raw
+                };
                 anyhow::ensure!(
-                    axis == 0,
-                    "Gather {}: only axis=0 is supported in the Remainder backend (got axis={})",
+                    normalized_axis == 0,
+                    "Gather {}: only axis=0 is supported in the Remainder backend \
+                     (got axis={}, normalized={})",
                     layer.name,
-                    axis
+                    axis_raw,
+                    normalized_axis
                 );
 
                 let out_total: usize = layer.output_shape.iter().product();
