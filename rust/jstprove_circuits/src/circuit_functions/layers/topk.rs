@@ -230,18 +230,23 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
                 })?
             }
         };
-        let k = k_arr
-            .as_slice()
-            .ok_or_else(|| LayerError::Other {
+        let k = {
+            let slice = k_arr.as_slice().ok_or_else(|| LayerError::Other {
                 layer: LayerKind::TopK,
                 msg: format!("K tensor '{k_name}' is not contiguous"),
-            })?
-            .first()
-            .copied()
-            .ok_or_else(|| LayerError::Other {
-                layer: LayerKind::TopK,
-                msg: format!("K tensor '{k_name}' is empty"),
             })?;
+            if slice.len() != 1 {
+                return Err(LayerError::Other {
+                    layer: LayerKind::TopK,
+                    msg: format!(
+                        "K tensor '{k_name}' must be a scalar; found {} elements",
+                        slice.len()
+                    ),
+                }
+                .into());
+            }
+            slice[0]
+        };
 
         if k <= 0 {
             return Err(LayerError::Other {
@@ -347,16 +352,31 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
             .into());
         }
 
-        // Output shape: same as input but with axis dimension = K.
-        let values_output_name_for_shape = values_output_name.clone();
+        // Compute expected output shape: same as input but with axis dimension = K.
+        let expected_output_shape: Vec<usize> = input_shape
+            .iter()
+            .enumerate()
+            .map(|(i, &d)| if i == axis { k } else { d })
+            .collect();
         let output_shape = layer_context
             .shapes_map
-            .get(values_output_name_for_shape.as_str())
+            .get(values_output_name.as_str())
             .ok_or_else(|| LayerError::InvalidShape {
                 layer: LayerKind::TopK,
                 msg: format!("missing output shape for '{values_output_name}'"),
             })?
             .clone();
+        if output_shape != expected_output_shape {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::TopK,
+                msg: format!(
+                    "output shape {:?} from shapes_map does not match expected {:?} \
+                     (input {:?}, axis {}, k {})",
+                    output_shape, expected_output_shape, input_shape, axis, k
+                ),
+            }
+            .into());
+        }
 
         let n_bits = layer_context.n_bits_for(&layer.name);
         let scaling: u64 = 1u64
