@@ -1827,10 +1827,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let rank = output_shape.len();
                 let perm: Vec<usize> = if let Some(raw) = layer.get_ints_attr("perm") {
                     raw.iter()
-                        .map(|&a| {
-                            let n = if a < 0 { rank as i64 + a } else { a } as usize;
-                            n
-                        })
+                        .map(|&a| if a < 0 { rank as i64 + a } else { a } as usize)
                         .collect()
                 } else {
                     (0..rank).rev().collect()
