@@ -410,8 +410,8 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 }
             }
             OpType::TopK => {
-                // TopK values and indices are supplied by the prover as committed
-                // shreds. Values are mapped to output[0], indices to output[1] when present.
+                // TopK values are supplied by the prover as a committed shred.
+                // Indices are intentionally not registered in this backend.
                 let out_total: usize = layer.output_shape.iter().product();
                 let out_nv = num_vars_for(out_total);
                 let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
@@ -432,24 +432,6 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                     tensor_num_vars.insert(values_out.clone(), out_nv);
                     if let Some(layout) = &output_layout {
                         tensor_layouts.insert(values_out.clone(), layout.clone());
-                    }
-                }
-
-                if let Some(indices_out) = layer.outputs.get(1) {
-                    let indices_shred_name = format!("{}_indices_out", layer.name);
-                    let indices_node =
-                        builder.add_input_shred(&indices_shred_name, out_nv, &committed);
-                    manifest.insert(
-                        indices_shred_name,
-                        ShredEntry {
-                            num_vars: out_nv,
-                            visibility: Visibility::Committed,
-                        },
-                    );
-                    tensor_nodes.insert(indices_out.clone(), indices_node);
-                    tensor_num_vars.insert(indices_out.clone(), out_nv);
-                    if let Some(layout) = &output_layout {
-                        tensor_layouts.insert(indices_out.clone(), layout.clone());
                     }
                 }
             }
@@ -603,8 +585,6 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 let out_nv = num_vars_for(out_total);
                 let transpose_out_name = format!("{}_out", layer.name);
                 let node = builder.add_input_shred(&transpose_out_name, out_nv, &committed);
-                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
-                let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
                 manifest.insert(
                     transpose_out_name,
                     ShredEntry {
@@ -615,9 +595,8 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 for out in &layer.outputs {
                     tensor_nodes.insert(out.clone(), node.clone());
                     tensor_num_vars.insert(out.clone(), out_nv);
-                    if let Some(layout) = &output_layout {
-                        tensor_layouts.insert(out.clone(), layout.clone());
-                    }
+                    // Do not fabricate spatial layout for Transpose by assuming CHW/HWC mapping.
+                    tensor_layouts.remove(out);
                 }
             }
             OpType::Concat => {
