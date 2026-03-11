@@ -10,12 +10,9 @@
 //    which sorts and returns the K largest values in descending order.
 //    No circuit constraint is added by this step.
 //
-// 2. **Range check**: each of the K output values is passed through a LogUp
-//    range check that bounds it to `[0, 2^n_bits)`, ensuring the result stays
-//    within the quantised range. Values below zero are not produced because
-//    TopK selects from the input whose values are all non-negative after
-//    quantisation (they come from activation functions with non-negative
-//    outputs).
+// 2. **Output wiring**: hint outputs are forwarded directly as TopK values.
+//    Values are kept in signed field encoding (including `p - |x|` for
+//    negatives), matching the representation used by the rest of the circuit.
 //
 // # Outputs
 // TopK has two ONNX outputs: Values (output[0]) and Indices (output[1]).
@@ -43,7 +40,6 @@ use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Var
 
 use crate::circuit_functions::{
     CircuitError,
-    gadgets::range_check::LogupRangeCheckContext,
     hints::topk::TOPK_HINT_KEY,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
@@ -65,7 +61,7 @@ pub struct TopKLayer {
     k: usize,
     /// Output shape of the Values tensor.
     output_shape: Vec<usize>,
-    /// n_bits for the LogUp range check on each output value.
+    /// n_bits metadata kept for compatibility with layer configuration.
     n_bits: usize,
     /// Scaling factor `2^scale_exponent`, passed to the hint.
     scaling: u64,
@@ -101,9 +97,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
         }
 
         let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
-        let mut logup_ctx = LogupRangeCheckContext::new_default();
-        logup_ctx.init::<C, Builder>(api);
-        let n_bits = self.n_bits;
+        let _n_bits = self.n_bits;
 
         let zero_var = api.constant(CircuitField::<C>::from_u256(U256::from(0u64)));
         let mut out_array = ArrayD::from_elem(IxDyn(&self.output_shape), zero_var);
@@ -122,12 +116,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
             let hint_out = api.new_hint(TOPK_HINT_KEY, &hint_inputs, self.k);
 
             for (out_elem, &y) in out_lane.iter_mut().zip(hint_out.iter()) {
-                logup_ctx.range_check::<C, Builder>(api, y, n_bits)?;
                 *out_elem = y;
             }
         }
-
-        logup_ctx.finalize::<C, Builder>(api);
 
         // Only register the Values output. Indices output is not available in
         // the Expander backend.
@@ -161,7 +152,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
             })?
             .clone();
 
-        // Read K from input[1] (must be a compile-time constant initializer).
+        // Read K from input[1]. It may come from initializers or from
+        // layer.params constant-node injection.
         let k_name = layer
             .inputs
             .get(1)
@@ -169,11 +161,56 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
                 layer: LayerKind::TopK,
                 param: "K input".to_string(),
             })?;
-        let k_arr: ndarray::ArrayD<i64> =
-            get_w_or_b(layer_context.w_and_b_map, k_name).map_err(|e| LayerError::Other {
-                layer: LayerKind::TopK,
-                msg: format!("failed to read K tensor '{k_name}': {e}"),
-            })?;
+
+        let parse_i64_vec = |v: &rmpv::Value| -> Option<Vec<i64>> {
+            match v {
+                rmpv::Value::Array(xs) => xs
+                    .iter()
+                    .map(|x| {
+                        if let rmpv::Value::Integer(i) = x {
+                            i.as_i64()
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+                rmpv::Value::Integer(i) => i.as_i64().map(|x| vec![x]),
+                _ => None,
+            }
+        };
+
+        let k_arr: ndarray::ArrayD<i64> = match get_w_or_b(layer_context.w_and_b_map, k_name) {
+            Ok(arr) => arr,
+            Err(init_err) => {
+                let k_from_params = layer.params.as_ref().and_then(|p| {
+                    if let rmpv::Value::Map(entries) = p {
+                        entries.iter().find_map(|(key, value)| {
+                            if let rmpv::Value::String(s) = key {
+                                if s.as_str() == Some(k_name.as_str()) {
+                                    return parse_i64_vec(value).and_then(|vals| {
+                                        ndarray::ArrayD::from_shape_vec(
+                                            ndarray::IxDyn(&[vals.len()]),
+                                            vals,
+                                        )
+                                        .ok()
+                                    });
+                                }
+                            }
+                            None
+                        })
+                    } else {
+                        None
+                    }
+                });
+
+                k_from_params.ok_or_else(|| LayerError::Other {
+                    layer: LayerKind::TopK,
+                    msg: format!(
+                        "failed to read K tensor '{k_name}' from initializers or layer params: {init_err}"
+                    ),
+                })?
+            }
+        };
         let k = k_arr
             .as_slice()
             .ok_or_else(|| LayerError::Other {
