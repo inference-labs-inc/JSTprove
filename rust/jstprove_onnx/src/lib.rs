@@ -7,6 +7,7 @@
 
 pub mod compat;
 pub mod graph;
+pub mod layer_params;
 pub mod ops;
 pub mod parser;
 pub mod quantizer;

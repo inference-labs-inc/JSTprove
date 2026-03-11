@@ -426,6 +426,37 @@ fn check_batch_result(operation: &str, result: &BatchResult) -> Result<(), CliEr
     Ok(())
 }
 
+fn run_batch_loop<J>(
+    operation: &str,
+    jobs: Vec<J>,
+    mut execute: impl FnMut(usize, J) -> Result<String, String>,
+) -> BatchResult {
+    let job_count = jobs.len();
+    let mut succeeded = 0usize;
+    let mut failed = 0usize;
+    let mut errors: Vec<(usize, String)> = Vec::new();
+
+    for (idx, job) in jobs.into_iter().enumerate() {
+        match execute(idx, job) {
+            Ok(msg) => {
+                succeeded += 1;
+                println!("[{}/{}] {operation}: {msg}", idx + 1, job_count);
+            }
+            Err(msg) => {
+                failed += 1;
+                eprintln!("[{}/{}] FAILED: {msg}", idx + 1, job_count);
+                errors.push((idx, msg));
+            }
+        }
+    }
+
+    BatchResult {
+        succeeded,
+        failed,
+        errors,
+    }
+}
+
 fn load_manifest<T: serde::de::DeserializeOwned>(path: &str) -> Result<BatchManifest<T>, RunError> {
     let file = std::fs::File::open(path).map_err(|e| RunError::Io {
         source: e,
@@ -435,30 +466,26 @@ fn load_manifest<T: serde::de::DeserializeOwned>(path: &str) -> Result<BatchMani
     rmp_serde::from_read(reader).map_err(|e| RunError::Deserialize(format!("{e:?}")))
 }
 
-fn load_layered_circuit<C: Config>(path: &str) -> Result<Circuit<C, NormalInputType>, RunError> {
+enum ResolvedCircuitPath {
+    BundleDir(String),
+    LegacyFile(String),
+}
+
+fn resolve_circuit_path(path: &str) -> Result<ResolvedCircuitPath, RunError> {
     let p = Path::new(path);
     if p.is_dir() {
-        let bytes = jstprove_io::bundle::read_circuit_blob(p)
-            .map_err(|e| jstprove_io_to_run_error(e, path, false))?;
-        return load_circuit_from_bytes::<C>(&bytes);
+        return Ok(ResolvedCircuitPath::BundleDir(path.to_string()));
     }
     if p.exists() {
-        let file = std::fs::File::open(path).map_err(|e| RunError::Io {
-            source: e,
-            path: path.into(),
-        })?;
-        let reader = auto_reader(file)?;
-        return Circuit::<C, NormalInputType>::deserialize_from(reader)
-            .map_err(|e| RunError::Deserialize(format!("{e:?}")));
+        return Ok(ResolvedCircuitPath::LegacyFile(path.to_string()));
     }
     let bundle_path = p.with_extension("bundle");
     if bundle_path.is_dir() {
-        let bundle_str = bundle_path
+        let s = bundle_path
             .to_str()
-            .ok_or_else(|| RunError::Unsupported("bundle path is not valid UTF-8".into()))?;
-        let bytes = jstprove_io::bundle::read_circuit_blob(&bundle_path)
-            .map_err(|e| jstprove_io_to_run_error(e, bundle_str, false))?;
-        return load_circuit_from_bytes::<C>(&bytes);
+            .ok_or_else(|| RunError::Unsupported("bundle path is not valid UTF-8".into()))?
+            .to_string();
+        return Ok(ResolvedCircuitPath::BundleDir(s));
     }
     Err(RunError::Io {
         source: std::io::Error::new(std::io::ErrorKind::NotFound, "no circuit bundle found"),
@@ -466,52 +493,63 @@ fn load_layered_circuit<C: Config>(path: &str) -> Result<Circuit<C, NormalInputT
     })
 }
 
+fn load_layered_circuit<C: Config>(path: &str) -> Result<Circuit<C, NormalInputType>, RunError> {
+    match resolve_circuit_path(path)? {
+        ResolvedCircuitPath::BundleDir(dir) => {
+            let bytes = jstprove_io::bundle::read_circuit_blob(Path::new(&dir))
+                .map_err(|e| jstprove_io_to_run_error(e, &dir, false))?;
+            load_circuit_from_bytes::<C>(&bytes)
+        }
+        ResolvedCircuitPath::LegacyFile(file) => {
+            let f = std::fs::File::open(&file).map_err(|e| RunError::Io {
+                source: e,
+                path: file,
+            })?;
+            let reader = auto_reader(f)?;
+            Circuit::<C, NormalInputType>::deserialize_from(reader)
+                .map_err(|e| RunError::Deserialize(format!("{e:?}")))
+        }
+    }
+}
+
 fn load_circuit_and_solver<C: Config>(
     circuit_path: &str,
 ) -> Result<(Circuit<C, NormalInputType>, WitnessSolver<C>), RunError> {
-    let p = Path::new(circuit_path);
-    if p.is_dir() {
-        let bundle = read_circuit_bundle(circuit_path)?;
-        let circuit = load_circuit_from_bytes::<C>(&bundle.circuit)?;
-        let solver = load_witness_solver_from_bytes::<C>(&bundle.witness_solver)?;
-        return Ok((circuit, solver));
+    match resolve_circuit_path(circuit_path)? {
+        ResolvedCircuitPath::BundleDir(dir) => {
+            let bundle = read_circuit_bundle(&dir)?;
+            let circuit = load_circuit_from_bytes::<C>(&bundle.circuit)?;
+            let solver = load_witness_solver_from_bytes::<C>(&bundle.witness_solver)?;
+            Ok((circuit, solver))
+        }
+        ResolvedCircuitPath::LegacyFile(file) => {
+            let witness_file = get_witness_solver_path(&file);
+            if !witness_file.exists() {
+                return Err(RunError::Io {
+                    source: std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        "no witness solver file or bundle found",
+                    ),
+                    path: circuit_path.into(),
+                });
+            }
+            let f = std::fs::File::open(&file).map_err(|e| RunError::Io {
+                source: e,
+                path: file,
+            })?;
+            let reader = auto_reader(f)?;
+            let circuit = Circuit::<C, NormalInputType>::deserialize_from(reader)
+                .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+            let f = std::fs::File::open(&witness_file).map_err(|e| RunError::Io {
+                source: e,
+                path: witness_file.display().to_string(),
+            })?;
+            let reader = auto_reader(f)?;
+            let solver = WitnessSolver::<C>::deserialize_from(reader)
+                .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+            Ok((circuit, solver))
+        }
     }
-    let witness_file = get_witness_solver_path(circuit_path);
-    if p.exists() && witness_file.exists() {
-        let file = std::fs::File::open(circuit_path).map_err(|e| RunError::Io {
-            source: e,
-            path: circuit_path.into(),
-        })?;
-        let reader = auto_reader(file)?;
-        let circuit = Circuit::<C, NormalInputType>::deserialize_from(reader)
-            .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
-        let file = std::fs::File::open(&witness_file).map_err(|e| RunError::Io {
-            source: e,
-            path: witness_file.display().to_string(),
-        })?;
-        let reader = auto_reader(file)?;
-        let solver = WitnessSolver::<C>::deserialize_from(reader)
-            .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
-        return Ok((circuit, solver));
-    }
-    let bundle_path = p.with_extension("bundle");
-    if bundle_path.is_dir() {
-        let bundle = read_circuit_bundle(
-            bundle_path
-                .to_str()
-                .ok_or_else(|| RunError::Unsupported("bundle path is not valid UTF-8".into()))?,
-        )?;
-        let circuit = load_circuit_from_bytes::<C>(&bundle.circuit)?;
-        let solver = load_witness_solver_from_bytes::<C>(&bundle.witness_solver)?;
-        return Ok((circuit, solver));
-    }
-    Err(RunError::Io {
-        source: std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "no witness solver file or bundle found",
-        ),
-        path: circuit_path.into(),
-    })
 }
 
 fn prove_core<C: Config>(
@@ -590,10 +628,8 @@ where
         .clone_from(&simd_input);
     expander_circuit.public_input.clone_from(&simd_public_input);
 
-    for (i, _) in public_vars.iter().enumerate() {
-        let x = format!("{:?}", public_vars[i]);
-        let y = format!("{:?}", expander_circuit.public_input[i]);
-        if x != y {
+    for (i, pv) in public_vars.iter().enumerate() {
+        if expander_circuit.public_input[i] != (*pv).into() {
             return Err(RunError::Verify(
                 "inputs/outputs don't match the witness".into(),
             ));
@@ -704,57 +740,27 @@ where
     let job_count = manifest.jobs.len();
     println!("Loaded circuit and witness solver. Processing {job_count} jobs.");
 
-    let mut succeeded = 0usize;
-    let mut failed = 0usize;
-    let mut errors: Vec<(usize, String)> = Vec::new();
-
-    for (idx, job) in manifest.jobs.into_iter().enumerate() {
+    Ok(run_batch_loop("witness", manifest.jobs, |_idx, job| {
         let mut io_reader = io_reader_factory();
         let assignment = CircuitDefaultType::default();
-        let assignment = match io_reader.read_inputs(&job.input, assignment) {
-            Ok(a) => a,
-            Err(e) => {
-                failed += 1;
-                eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
-                errors.push((idx, e.to_string()));
-                continue;
-            }
-        };
-        let assignment = match io_reader.read_outputs(&job.output, assignment) {
-            Ok(a) => a,
-            Err(e) => {
-                failed += 1;
-                eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
-                errors.push((idx, e.to_string()));
-                continue;
-            }
-        };
+        let assignment = io_reader
+            .read_inputs(&job.input, assignment)
+            .map_err(|e| e.to_string())?;
+        let assignment = io_reader
+            .read_outputs(&job.output, assignment)
+            .map_err(|e| e.to_string())?;
 
-        match witness_core::<C, CircuitDefaultType>(
+        witness_core::<C, CircuitDefaultType>(
             &witness_solver,
             &layered_circuit,
             &hint_registry,
             &assignment,
             &job.witness,
             compress,
-        ) {
-            Ok(()) => {
-                succeeded += 1;
-                println!("[{}/{}] witness: {}", idx + 1, job_count, job.witness);
-            }
-            Err(e) => {
-                failed += 1;
-                eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
-                errors.push((idx, e.to_string()));
-            }
-        }
-    }
-
-    Ok(BatchResult {
-        succeeded,
-        failed,
-        errors,
-    })
+        )
+        .map(|()| job.witness.clone())
+        .map_err(|e| e.to_string())
+    }))
 }
 
 /// Generates witnesses for multiple inputs via stdin/stdout piping.
@@ -950,7 +956,7 @@ where
     let mismatch = public_vars
         .iter()
         .enumerate()
-        .any(|(i, _)| format!("{:?}", public_vars[i]) != format!("{:?}", circuit.public_input[i]));
+        .any(|(i, pv)| circuit.public_input[i] != (*pv).into());
     if mismatch {
         return Err("inputs/outputs don't match the witness".into());
     }
@@ -1049,30 +1055,12 @@ where
     let job_count = manifest.jobs.len();
     println!("Loaded circuit. Processing {job_count} prove jobs.");
 
-    let mut succeeded = 0usize;
-    let mut failed = 0usize;
-    let mut errors: Vec<(usize, String)> = Vec::new();
-
-    for (idx, job) in manifest.jobs.into_iter().enumerate() {
+    Ok(run_batch_loop("proof", manifest.jobs, |_idx, job| {
         let mut circuit = layered_circuit.export_to_expander_flatten();
-        match prove_core::<C>(&mut circuit, &job.witness, &job.proof, compress) {
-            Ok(()) => {
-                succeeded += 1;
-                println!("[{}/{}] proof: {}", idx + 1, job_count, job.proof);
-            }
-            Err(e) => {
-                failed += 1;
-                eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
-                errors.push((idx, e.to_string()));
-            }
-        }
-    }
-
-    Ok(BatchResult {
-        succeeded,
-        failed,
-        errors,
-    })
+        prove_core::<C>(&mut circuit, &job.witness, &job.proof, compress)
+            .map(|()| job.proof.clone())
+            .map_err(|e| e.to_string())
+    }))
 }
 
 /// Verifies multiple proofs sequentially.
@@ -1097,38 +1085,20 @@ where
     let job_count = manifest.jobs.len();
     println!("Loaded circuit. Processing {job_count} verify jobs.");
 
-    let mut succeeded = 0usize;
-    let mut failed = 0usize;
-    let mut errors: Vec<(usize, String)> = Vec::new();
-
-    for (idx, job) in manifest.jobs.into_iter().enumerate() {
+    Ok(run_batch_loop("verified", manifest.jobs, |_idx, job| {
         let mut circuit = layered_circuit.export_to_expander_flatten();
         let mut io_reader = io_reader_factory();
-        match verify_core::<C, I, CircuitDefaultType>(
+        verify_core::<C, I, CircuitDefaultType>(
             &mut circuit,
             &mut io_reader,
             &job.input,
             &job.output,
             &job.witness,
             &job.proof,
-        ) {
-            Ok(()) => {
-                succeeded += 1;
-                println!("[{}/{}] verified: {}", idx + 1, job_count, job.proof);
-            }
-            Err(e) => {
-                failed += 1;
-                eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
-                errors.push((idx, e.to_string()));
-            }
-        }
-    }
-
-    Ok(BatchResult {
-        succeeded,
-        failed,
-        errors,
-    })
+        )
+        .map(|()| job.proof.clone())
+        .map_err(|e| e.to_string())
+    }))
 }
 
 /// # Errors
