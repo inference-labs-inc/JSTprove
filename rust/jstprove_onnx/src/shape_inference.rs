@@ -1108,7 +1108,16 @@ fn infer_concat(
                 );
             }
         }
-        out_shape[axis] += s[axis];
+        out_shape[axis] = out_shape[axis].checked_add(s[axis]).ok_or_else(|| {
+            anyhow::anyhow!(
+                "layer {}: Concat axis {} size overflow for input '{}': {} + {}",
+                layer.name,
+                axis,
+                name,
+                out_shape[axis],
+                s[axis]
+            )
+        })?;
     }
 
     Ok(layer

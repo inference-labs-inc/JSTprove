@@ -85,7 +85,11 @@ pub fn topk_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), E
             F::from_u256(U256::from(val as u64))
         } else {
             // Negative: encode as p - |val| (two's complement mod p).
-            let mag = U256::from((-val) as u64);
+            let mag = if val == i64::MIN {
+                U256::from(1u128) << 63
+            } else {
+                U256::from((-val) as u64)
+            };
             F::from_u256(F::MODULUS - mag)
         };
     }
@@ -105,7 +109,11 @@ mod tests {
         if n >= 0 {
             F::from_u256(U256::from(n as u64))
         } else {
-            let mag = U256::from((-n) as u64);
+            let mag = if n == i64::MIN {
+                U256::from(1u128) << 63
+            } else {
+                U256::from((-n) as u64)
+            };
             F::from_u256(F::MODULUS - mag)
         }
     }

@@ -388,6 +388,74 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                     &mut range_checks,
                 )?;
             }
+            OpType::Exp | OpType::Softmax | OpType::Sigmoid | OpType::Gelu | OpType::Tile => {
+                // These ops are computed by the prover and provided as committed
+                // witness shreds.
+                let out_total: usize = layer.output_shape.iter().product();
+                let out_nv = num_vars_for(out_total);
+                let out_name = format!("{}_out", layer.name);
+                let node = builder.add_input_shred(&out_name, out_nv, &committed);
+                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
+                let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
+                manifest.insert(
+                    out_name,
+                    ShredEntry {
+                        num_vars: out_nv,
+                        visibility: Visibility::Committed,
+                    },
+                );
+                for out in &layer.outputs {
+                    tensor_nodes.insert(out.clone(), node.clone());
+                    tensor_num_vars.insert(out.clone(), out_nv);
+                    if let Some(layout) = &output_layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
+                }
+            }
+            OpType::TopK => {
+                // TopK values and indices are supplied by the prover as committed
+                // shreds. Values are mapped to output[0], indices to output[1] when present.
+                let out_total: usize = layer.output_shape.iter().product();
+                let out_nv = num_vars_for(out_total);
+                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
+                let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
+
+                let values_shred_name = format!("{}_out", layer.name);
+                let values_node = builder.add_input_shred(&values_shred_name, out_nv, &committed);
+                manifest.insert(
+                    values_shred_name,
+                    ShredEntry {
+                        num_vars: out_nv,
+                        visibility: Visibility::Committed,
+                    },
+                );
+
+                if let Some(values_out) = layer.outputs.first() {
+                    tensor_nodes.insert(values_out.clone(), values_node.clone());
+                    tensor_num_vars.insert(values_out.clone(), out_nv);
+                    if let Some(layout) = &output_layout {
+                        tensor_layouts.insert(values_out.clone(), layout.clone());
+                    }
+                }
+
+                if let Some(indices_out) = layer.outputs.get(1) {
+                    let indices_shred_name = format!("{}_indices_out", layer.name);
+                    let indices_node =
+                        builder.add_input_shred(&indices_shred_name, out_nv, &committed);
+                    manifest.insert(
+                        indices_shred_name,
+                        ShredEntry {
+                            num_vars: out_nv,
+                            visibility: Visibility::Committed,
+                        },
+                    );
+                    tensor_nodes.insert(indices_out.clone(), indices_node);
+                    tensor_num_vars.insert(indices_out.clone(), out_nv);
+                    if let Some(layout) = &output_layout {
+                        tensor_layouts.insert(indices_out.clone(), layout.clone());
+                    }
+                }
+            }
             OpType::Cast
             | OpType::Reshape
             | OpType::Flatten
@@ -429,6 +497,14 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 // output as a committed witness shred named "{layer.name}_out".
                 // Downstream arithmetic layers (e.g., Gemm) constrain the gathered
                 // values indirectly through the overall output equality check.
+                let axis = layer.get_int_attr("axis").unwrap_or(0);
+                anyhow::ensure!(
+                    axis == 0,
+                    "Gather {}: only axis=0 is supported in the Remainder backend (got axis={})",
+                    layer.name,
+                    axis
+                );
+
                 let out_total: usize = layer.output_shape.iter().product();
                 let out_nv = num_vars_for(out_total);
                 let gather_out_name = format!("{}_out", layer.name);
