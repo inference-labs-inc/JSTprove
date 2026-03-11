@@ -256,6 +256,102 @@ fn interp_corners(x: f64, in_size: usize) -> (usize, usize, f64, f64) {
     (f, c, 1.0 - frac, frac)
 }
 
+fn layout_from_output_shape_runtime(
+    output_shape: &[usize],
+    input_layout: Option<&SpatialInfo>,
+) -> Option<SpatialInfo> {
+    let chw = if output_shape.len() == 3 {
+        output_shape
+    } else if output_shape.len() == 4 {
+        &output_shape[1..]
+    } else {
+        return None;
+    };
+
+    match input_layout {
+        Some(SpatialInfo::HWC { .. }) => {
+            let c = chw[0];
+            Some(SpatialInfo::HWC {
+                h: chw[1],
+                w: chw[2],
+                c,
+                stride_c: next_power_of_two(c),
+            })
+        }
+        _ => Some(SpatialInfo::CHW {
+            c: chw[0],
+            h: chw[1],
+            w: chw[2],
+        }),
+    }
+}
+
+fn transpose_layout_runtime(
+    input_layout: Option<&SpatialInfo>,
+    perm: &[usize],
+    output_shape: &[usize],
+) -> Option<SpatialInfo> {
+    let layout = input_layout?;
+
+    if output_shape.len() == 3 && perm.len() == 3 {
+        match layout {
+            SpatialInfo::CHW { c, h, w } => {
+                let in_dims = [*c, *h, *w];
+                if perm.iter().any(|&p| p >= 3) {
+                    return None;
+                }
+                let out_dims = [in_dims[perm[0]], in_dims[perm[1]], in_dims[perm[2]]];
+                Some(SpatialInfo::CHW {
+                    c: out_dims[0],
+                    h: out_dims[1],
+                    w: out_dims[2],
+                })
+            }
+            SpatialInfo::HWC { h, w, c, .. } => {
+                let in_dims = [*h, *w, *c];
+                if perm.iter().any(|&p| p >= 3) {
+                    return None;
+                }
+                let out_dims = [in_dims[perm[0]], in_dims[perm[1]], in_dims[perm[2]]];
+                Some(SpatialInfo::HWC {
+                    h: out_dims[0],
+                    w: out_dims[1],
+                    c: out_dims[2],
+                    stride_c: next_power_of_two(out_dims[2]),
+                })
+            }
+        }
+    } else if output_shape.len() == 4 && perm.len() == 4 {
+        let find_out_axis = |src_axis: usize| perm.iter().position(|&p| p == src_axis);
+        match layout {
+            SpatialInfo::CHW { .. } => {
+                let oc = find_out_axis(1)?;
+                let oh = find_out_axis(2)?;
+                let ow = find_out_axis(3)?;
+                Some(SpatialInfo::CHW {
+                    c: output_shape[oc],
+                    h: output_shape[oh],
+                    w: output_shape[ow],
+                })
+            }
+            SpatialInfo::HWC { .. } => {
+                let oh = find_out_axis(1)?;
+                let ow = find_out_axis(2)?;
+                let oc = find_out_axis(3)?;
+                let c = output_shape[oc];
+                Some(SpatialInfo::HWC {
+                    h: output_shape[oh],
+                    w: output_shape[ow],
+                    c,
+                    stride_c: next_power_of_two(c),
+                })
+            }
+        }
+    } else {
+        None
+    }
+}
+
 // -------- End Resize helpers --------
 
 pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Result<WitnessData> {
@@ -1708,6 +1804,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
 
                 if let Some(values_out) = layer.outputs.first() {
                     tensors.insert(values_out.clone(), padded_values.clone());
+                    if let Some(layout) = tensor_layouts.get(input_name).cloned() {
+                        tensor_layouts.insert(values_out.clone(), layout);
+                    }
                 }
 
                 if let Some(indices_out) = layer.outputs.get(1) {
@@ -1715,6 +1814,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     let indices_shred = format!("{}_indices_out", layer.name);
                     shreds.insert(indices_shred, padded_indices.clone());
                     tensors.insert(indices_out.clone(), padded_indices);
+                    if let Some(layout) = tensor_layouts.get(input_name).cloned() {
+                        tensor_layouts.insert(indices_out.clone(), layout);
+                    }
                 }
             }
             OpType::LayerNormalization => {
@@ -1832,8 +1934,13 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let ln_out_name = format!("{}_out", layer.name);
                 shreds.insert(ln_out_name, padded.clone());
 
+                let layout = tensor_layouts.get(x_name).cloned();
+
                 for out in &layer.outputs {
                     tensors.insert(out.clone(), padded.clone());
+                    if let Some(ref layout) = layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
                 }
             }
             OpType::Gather => {
@@ -1939,28 +2046,66 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     output_shape
                 );
 
-                let scales_name = layer.inputs.get(2).filter(|n| !n.is_empty()).ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "Resize {}: missing scales input (input[2]); cannot validate resize parameters",
-                        layer.name
-                    )
-                })?;
-                let scales_td = layer.weights.get(scales_name).ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "Resize {}: scales tensor '{}' not found in layer weights",
+                if let Some(sizes_name) = layer.inputs.get(3).filter(|n| !n.is_empty()) {
+                    let sizes_td = layer.weights.get(sizes_name).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Resize {}: sizes tensor '{}' not found in layer weights",
+                            layer.name,
+                            sizes_name
+                        )
+                    })?;
+                    let sizes = sizes_td.as_i64_vec();
+                    anyhow::ensure!(
+                        sizes.len() == output_shape.len(),
+                        "Resize {}: sizes tensor '{}' length {} != output rank {}",
                         layer.name,
-                        scales_name
-                    )
-                })?;
-                let scales = &scales_td.float_data;
-                anyhow::ensure!(
-                    scales.len() == output_shape.len(),
-                    "Resize {}: scales tensor '{}' length {} != output rank {}",
-                    layer.name,
-                    scales_name,
-                    scales.len(),
-                    output_shape.len()
-                );
+                        sizes_name,
+                        sizes.len(),
+                        output_shape.len()
+                    );
+                    for (i, (&sz, &out_d)) in sizes.iter().zip(output_shape.iter()).enumerate() {
+                        anyhow::ensure!(
+                            sz >= 0,
+                            "Resize {}: sizes tensor '{}' has negative dimension {} at axis {}",
+                            layer.name,
+                            sizes_name,
+                            sz,
+                            i
+                        );
+                        anyhow::ensure!(
+                            sz as usize == out_d,
+                            "Resize {}: sizes tensor '{}' axis {} mismatch: {} vs output {}",
+                            layer.name,
+                            sizes_name,
+                            i,
+                            sz,
+                            out_d
+                        );
+                    }
+                } else {
+                    let scales_name = layer.inputs.get(2).filter(|n| !n.is_empty()).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Resize {}: missing scales input (input[2]); cannot validate resize parameters",
+                            layer.name
+                        )
+                    })?;
+                    let scales_td = layer.weights.get(scales_name).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Resize {}: scales tensor '{}' not found in layer weights",
+                            layer.name,
+                            scales_name
+                        )
+                    })?;
+                    let scales = &scales_td.float_data;
+                    anyhow::ensure!(
+                        scales.len() == output_shape.len(),
+                        "Resize {}: scales tensor '{}' length {} != output rank {}",
+                        layer.name,
+                        scales_name,
+                        scales.len(),
+                        output_shape.len()
+                    );
+                }
 
                 let mode = layer.get_string_attr("mode").unwrap_or("nearest");
                 let coord_mode = layer
@@ -2041,8 +2186,14 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let resize_out_name = format!("{}_out", layer.name);
                 shreds.insert(resize_out_name, padded.clone());
 
+                let input_layout = tensor_layouts.get(input_name);
+                let output_layout = layout_from_output_shape_runtime(output_shape, input_layout);
+
                 for out in &layer.outputs {
                     tensors.insert(out.clone(), padded.clone());
+                    if let Some(ref layout) = output_layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
                 }
             }
             OpType::GridSample => {
@@ -2172,8 +2323,17 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                             let x_cont = gs_unnormalize(x_norm, w_in, align_corners);
                             let y_cont = gs_unnormalize(y_norm, h_in, align_corners);
 
-                            let (h_fl, h_ce, wh_fl, wh_ce) = interp_corners(y_cont, h_in);
-                            let (w_fl, w_ce, ww_fl, ww_ce) = interp_corners(x_cont, w_in);
+                            let (x_adj, y_adj) = if padding_mode == "reflection" {
+                                (
+                                    gs_reflect(x_cont, w_in, align_corners),
+                                    gs_reflect(y_cont, h_in, align_corners),
+                                )
+                            } else {
+                                (x_cont, y_cont)
+                            };
+
+                            let (h_fl, h_ce, wh_fl, wh_ce) = interp_corners(y_adj, h_in);
+                            let (w_fl, w_ce, ww_fl, ww_ce) = interp_corners(x_adj, w_in);
 
                             // 4 corners: (h_fl,w_fl),(h_fl,w_ce),(h_ce,w_fl),(h_ce,w_ce)
                             let corners = [
@@ -2187,10 +2347,10 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                             for (ch, cw, wf) in corners {
                                 // Check OOB for zeros padding.
                                 let valid = padding_mode != "zeros"
-                                    || (y_cont >= -0.5
-                                        && y_cont <= h_in as f64 - 0.5
-                                        && x_cont >= -0.5
-                                        && x_cont <= w_in as f64 - 0.5
+                                    || (y_adj >= -0.5
+                                        && y_adj <= h_in as f64 - 0.5
+                                        && x_adj >= -0.5
+                                        && x_adj <= w_in as f64 - 0.5
                                         && ch < h_in
                                         && cw < w_in);
                                 if !valid {
@@ -2214,8 +2374,14 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let gridsample_out_name = format!("{}_out", layer.name);
                 shreds.insert(gridsample_out_name, padded.clone());
 
+                let input_layout = tensor_layouts.get(x_name);
+                let output_layout = layout_from_output_shape_runtime(output_shape, input_layout);
+
                 for out in &layer.outputs {
                     tensors.insert(out.clone(), padded.clone());
+                    if let Some(ref layout) = output_layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
                 }
             }
             OpType::Transpose => {
@@ -2278,8 +2444,16 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let transpose_out_name = format!("{}_out", layer.name);
                 shreds.insert(transpose_out_name, padded.clone());
 
+                let input_layout = tensor_layouts.get(input_name);
+                let output_layout = transpose_layout_runtime(input_layout, &perm, output_shape);
+
                 for out in &layer.outputs {
                     tensors.insert(out.clone(), padded.clone());
+                    if let Some(ref layout) = output_layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    } else {
+                        tensor_layouts.remove(out);
+                    }
                 }
             }
             OpType::Slice => {
@@ -2408,8 +2582,14 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 let slice_out_name = format!("{}_out", layer.name);
                 shreds.insert(slice_out_name, padded.clone());
 
+                let input_layout = tensor_layouts.get(input_name);
+                let output_layout = layout_from_output_shape_runtime(output_shape, input_layout);
+
                 for out in &layer.outputs {
                     tensors.insert(out.clone(), padded.clone());
+                    if let Some(ref layout) = output_layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
                 }
             }
             OpType::Concat => {
@@ -2494,6 +2674,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
 
                 for out in &layer.outputs {
                     tensors.insert(out.clone(), padded.clone());
+                    tensor_layouts.remove(out);
                 }
             }
             other => {
@@ -3267,6 +3448,27 @@ pub fn prepare_public_shreds(
                         )
                     })?;
                 let layout = tensor_layouts.get(input_tensor_name).cloned();
+                for out_name in &layer.outputs {
+                    tensor_sizes.insert(out_name.clone(), sz);
+                    if let Some(ref layout) = layout {
+                        tensor_layouts.insert(out_name.clone(), layout.clone());
+                    }
+                }
+            }
+            OpType::Exp
+            | OpType::Sigmoid
+            | OpType::Gelu
+            | OpType::Softmax
+            | OpType::Tile
+            | OpType::TopK => {
+                let out_total: usize = layer.output_shape.iter().product();
+                let sz = next_power_of_two(out_total);
+
+                let input_name = layer.inputs.first().ok_or_else(|| {
+                    anyhow::anyhow!("{:?} {} has no input", layer.op_type, layer.name)
+                })?;
+                let layout = tensor_layouts.get(input_name).cloned();
+
                 for out_name in &layer.outputs {
                     tensor_sizes.insert(out_name.clone(), sz);
                     if let Some(ref layout) = layout {

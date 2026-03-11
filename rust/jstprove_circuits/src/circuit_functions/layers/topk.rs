@@ -40,6 +40,7 @@ use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Var
 
 use crate::circuit_functions::{
     CircuitError,
+    gadgets::{LogupRangeCheckContext, ShiftRangeContext},
     hints::topk::TOPK_HINT_KEY,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
@@ -97,7 +98,16 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
         }
 
         let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
-        let _n_bits = self.n_bits;
+        let n_bits = self.n_bits;
+        let shift_exponent = n_bits.saturating_sub(1);
+        let shift_ctx = ShiftRangeContext::new::<C, Builder>(api, shift_exponent).map_err(|e| {
+            LayerError::Other {
+                layer: LayerKind::TopK,
+                msg: format!("ShiftRangeContext::new failed for TopK: {e}"),
+            }
+        })?;
+        let mut logup_ctx = LogupRangeCheckContext::new_default();
+        logup_ctx.init::<C, Builder>(api);
 
         let zero_var = api.constant(CircuitField::<C>::from_u256(U256::from(0u64)));
         let mut out_array = ArrayD::from_elem(IxDyn(&self.output_shape), zero_var);
@@ -116,9 +126,18 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
             let hint_out = api.new_hint(TOPK_HINT_KEY, &hint_inputs, self.k);
 
             for (out_elem, &y) in out_lane.iter_mut().zip(hint_out.iter()) {
+                let y_shifted = api.add(y, shift_ctx.offset);
+                logup_ctx
+                    .range_check::<C, Builder>(api, y_shifted, n_bits)
+                    .map_err(|e| LayerError::Other {
+                        layer: LayerKind::TopK,
+                        msg: format!("signed TopK range check failed: {e}"),
+                    })?;
                 *out_elem = y;
             }
         }
+
+        logup_ctx.finalize::<C, Builder>(api);
 
         // Only register the Values output. Indices output is not available in
         // the Expander backend.
