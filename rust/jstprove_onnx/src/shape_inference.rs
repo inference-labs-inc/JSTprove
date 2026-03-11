@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::{bail, Result};
 
@@ -954,6 +954,15 @@ fn infer_gridsample(
         );
     }
 
+    if grid_shape[0] != x_shape[0] {
+        bail!(
+            "layer {}: GridSample batch size mismatch: X batch = {}, grid batch = {}",
+            layer.name,
+            x_shape[0],
+            grid_shape[0]
+        );
+    }
+
     // Output: [N, C, H_out, W_out]
     let out_shape = vec![x_shape[0], x_shape[1], grid_shape[1], grid_shape[2]];
     Ok(layer
@@ -1008,6 +1017,17 @@ fn infer_transpose(
             perm.len(),
             rank
         );
+    }
+
+    let mut seen = HashSet::with_capacity(perm.len());
+    for &p in &perm {
+        if !seen.insert(p) {
+            bail!(
+                "layer {}: Transpose perm contains duplicate axis {}",
+                layer.name,
+                p
+            );
+        }
     }
 
     let out_shape: Vec<usize> = perm.iter().map(|&p| input_shape[p]).collect();
@@ -1071,6 +1091,22 @@ fn infer_concat(
                 layer.name,
                 s.len()
             );
+        }
+
+        for i in 0..rank {
+            if i == axis {
+                continue;
+            }
+            if s[i] != first_shape[i] {
+                bail!(
+                    "layer {}: Concat non-axis dimension mismatch for input '{}': axis {} has {} vs {} in first input",
+                    layer.name,
+                    name,
+                    i,
+                    s[i],
+                    first_shape[i]
+                );
+            }
         }
         out_shape[axis] += s[axis];
     }
@@ -1187,10 +1223,19 @@ fn infer_slice(
             e.clamp(0, dim) as usize
         };
 
-        let step = steps.get(i).copied().unwrap_or(1).max(1) as usize;
+        let step = steps.get(i).copied().unwrap_or(1);
+        if step <= 0 {
+            bail!(
+                "layer {}: Slice step must be positive for axis {}, got {}",
+                layer.name,
+                axis,
+                step
+            );
+        }
+        let step = step as usize;
 
         out_shape[axis] = if start < end {
-            (end - start + step - 1) / step
+            (end - start).div_ceil(step)
         } else {
             0
         };
