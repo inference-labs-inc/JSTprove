@@ -455,6 +455,11 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
             let m_in = get_input_bound(0);
             Ok(m_in)
         }
+        // TopK selects K values from the input along an axis — output bound ≤ input bound.
+        OpType::TopK => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
         // exp(x) is monotonically increasing; max output is exp(max_input).
         OpType::Exp => {
             let m_in = get_input_bound(0);
@@ -505,6 +510,7 @@ fn is_range_check_op(op: OpType) -> bool {
             | OpType::Gelu
             | OpType::Resize
             | OpType::GridSample
+            | OpType::TopK
     )
 }
 

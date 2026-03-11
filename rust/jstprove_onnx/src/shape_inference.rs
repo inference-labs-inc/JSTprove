@@ -111,6 +111,7 @@ fn infer_layer_output_shape(
         OpType::Transpose => infer_transpose(layer, shapes),
         OpType::Concat => infer_concat(layer, shapes),
         OpType::Slice => infer_slice(layer, input_shape, initializers, constant_tensors),
+        OpType::TopK => infer_topk(layer, input_shape, initializers, constant_tensors),
     }
 }
 
@@ -1200,6 +1201,104 @@ fn infer_slice(
         .iter()
         .map(|o| (o.clone(), out_shape.clone()))
         .collect())
+}
+
+/// Infer output shapes for the ONNX `TopK` operator (opset ≥ 10).
+///
+/// Inputs: data (input[0]), K (input[1] — must be a compile-time constant).
+/// Attributes: `axis` (default −1), `largest` (default 1), `sorted` (default 1).
+/// Both outputs (Values at output[0], Indices at output[1]) share the same shape:
+/// `input_shape` with the `axis` dimension replaced by K.
+fn infer_topk(
+    layer: &LayerNode,
+    input_shape: Option<&Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let input_shape = input_shape
+        .ok_or_else(|| anyhow::anyhow!("layer {}: TopK missing input shape", layer.name))?;
+    let rank = input_shape.len();
+
+    let axis_raw = layer.get_int_attr("axis").unwrap_or(-1);
+    let axis = if axis_raw < 0 {
+        let a = rank as i64 + axis_raw;
+        if a < 0 {
+            bail!(
+                "layer {}: TopK axis {} out of range for rank {}",
+                layer.name,
+                axis_raw,
+                rank
+            );
+        }
+        a as usize
+    } else {
+        let a = axis_raw as usize;
+        if a >= rank {
+            bail!(
+                "layer {}: TopK axis {} out of range for rank {}",
+                layer.name,
+                axis_raw,
+                rank
+            );
+        }
+        a
+    };
+
+    let largest = layer.get_int_attr("largest").unwrap_or(1);
+    if largest != 1 {
+        bail!(
+            "layer {}: TopK only supports largest=1, got largest={}",
+            layer.name,
+            largest
+        );
+    }
+
+    // K is input[1]: must be a compile-time constant initializer or Constant node.
+    let k_name = layer
+        .inputs
+        .get(1)
+        .ok_or_else(|| anyhow::anyhow!("layer {}: TopK missing K input at index 1", layer.name))?;
+    let k_td = initializers
+        .get(k_name)
+        .or_else(|| constant_tensors.get(k_name))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "layer {}: TopK K tensor '{}' not found in initializers; \
+                 K must be a compile-time constant",
+                layer.name,
+                k_name
+            )
+        })?;
+    let k = k_td.as_i64_vec().first().copied().ok_or_else(|| {
+        anyhow::anyhow!("layer {}: TopK K tensor '{}' is empty", layer.name, k_name)
+    })?;
+    if k <= 0 {
+        bail!("layer {}: TopK K must be positive, got {}", layer.name, k);
+    }
+    let k = k as usize;
+    if k > input_shape[axis] {
+        bail!(
+            "layer {}: TopK K={} exceeds axis dimension {} on axis {}",
+            layer.name,
+            k,
+            input_shape[axis],
+            axis
+        );
+    }
+
+    let mut out_shape = input_shape.clone();
+    out_shape[axis] = k;
+
+    // TopK has two outputs: Values (output[0]) and Indices (output[1]).
+    // Both share the same shape.
+    let mut results = Vec::new();
+    if let Some(name) = layer.outputs.first() {
+        results.push((name.clone(), out_shape.clone()));
+    }
+    if let Some(name) = layer.outputs.get(1) {
+        results.push((name.clone(), out_shape.clone()));
+    }
+    Ok(results)
 }
 
 #[cfg(test)]

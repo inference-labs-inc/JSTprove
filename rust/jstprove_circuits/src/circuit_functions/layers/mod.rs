@@ -27,6 +27,7 @@ pub mod slice;
 pub mod softmax;
 pub mod squeeze;
 pub mod tile;
+pub mod topk;
 pub mod transpose;
 pub mod unsqueeze;
 
