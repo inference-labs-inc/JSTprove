@@ -148,15 +148,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         };
 
         let freivalds_reps = circuit_params.freivalds_reps;
-        if freivalds_reps == 0 {
-            return Err(LayerError::InvalidParameterValue {
-                layer: LayerKind::Conv,
-                layer_name: layer.name.clone(),
-                param_name: "freivalds_reps".to_string(),
-                value: freivalds_reps.to_string(),
-            }
-            .into());
-        }
 
         let kernel_shape: Vec<u32> = get_param(&layer.name, KERNEL_SHAPE, &params)?;
         let spatial_rank = kernel_shape.len();
