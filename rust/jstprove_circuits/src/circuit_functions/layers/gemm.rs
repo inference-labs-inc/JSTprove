@@ -254,7 +254,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
 ///   - inputs are not 2D,
 ///   - inner dimensions do not match,
 ///   - freivalds_reps is zero when Freivalds is selected.
-fn compute_core_product<C: Config, Builder: RootAPI<C>>(
+pub(crate) fn compute_core_product<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input_array: &ndarray::Array2<Variable>,
     weights_array: &ndarray::Array2<Variable>,
@@ -349,7 +349,7 @@ fn check_alpha_beta(
 //       use Freivalds  <=>  cost_f < cost_full
 //
 // All internal arithmetic is promoted to u128 to reduce overflow risk.
-fn should_use_freivalds(ell: usize, m: usize, n: usize, reps: usize) -> bool {
+pub(crate) fn should_use_freivalds(ell: usize, m: usize, n: usize, reps: usize) -> bool {
     // reps == 0 must never allow Freivalds, otherwise core_product can be left unconstrained.
     if reps == 0 {
         return false;

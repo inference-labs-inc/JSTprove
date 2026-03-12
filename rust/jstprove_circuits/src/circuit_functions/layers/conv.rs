@@ -1,13 +1,10 @@
-/// Standard library imports
 use std::{
     cmp::{max, min},
     collections::HashMap,
 };
 
-/// External crate imports
-use ndarray::{ArrayD, s};
+use ndarray::{Array2, ArrayD, IxDyn, s};
 
-/// `ExpanderCompilerCollection` imports
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::{
@@ -26,7 +23,7 @@ use crate::circuit_functions::{
 };
 
 use crate::circuit_functions::{
-    layers::layer_ops::LayerOp,
+    layers::{gemm::compute_core_product, layer_ops::LayerOp},
     utils::{
         quantization::{MaybeRescaleParams, maybe_rescale},
         tensor_ops::load_array_constants_or_get_inputs,
@@ -50,6 +47,7 @@ pub struct ConvLayer {
     is_rescale: bool,
     inputs: Vec<String>,
     outputs: Vec<String>,
+    freivalds_reps: usize,
 }
 
 // -------- Implementations --------
@@ -107,6 +105,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
                 v_plus_one: self.v_plus_one,
                 is_relu,
             },
+            self.freivalds_reps,
         )?;
 
         Ok((self.outputs.clone(), out))
@@ -148,6 +147,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             (Some(w), b)
         };
 
+        let freivalds_reps = circuit_params.freivalds_reps;
+        if freivalds_reps == 0 {
+            return Err(LayerError::InvalidParameterValue {
+                layer: LayerKind::Conv,
+                layer_name: layer.name.clone(),
+                param_name: "freivalds_reps".to_string(),
+                value: freivalds_reps.to_string(),
+            }
+            .into());
+        }
+
         let kernel_shape: Vec<u32> = get_param(&layer.name, KERNEL_SHAPE, &params)?;
         let spatial_rank = kernel_shape.len();
 
@@ -167,6 +177,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             is_rescale,
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
+            freivalds_reps,
         };
         Ok(Box::new(conv))
     }
@@ -395,25 +406,208 @@ fn validate_conv_params(params: &Conv2DParams) -> Result<(), CircuitError> {
     Ok(())
 }
 
-/// Performs the core 4D convolution computation.
-///
-/// Iterates over the batch, channels, height, and width dimensions, slices the input
-/// and weight tensors, performs dot products, and accumulates the results.
-///
-/// # Arguments
-/// - `api`: Mutable reference to the circuit builder api.
-/// - `input_arr`: NCHW input tensor.
-/// - `conv_params`: Convolution parameters including kernel, pads, strides, etc.
-/// - `weights`: Convolution weights tensor.
-/// - `bias`: Convolution bias tensor.
-///
-/// # Returns
-/// A 4D tensor containing the convolution output.
-///
+struct Im2colDims {
+    s_c: usize,
+    kh: usize,
+    kw: usize,
+    spatial_out: usize,
+}
+
+fn conv_im2col_dims(conv_params: &Conv2DParams) -> Result<Im2colDims, CircuitError> {
+    let s_c = get_u(&conv_params.input_shape, 1, "input_shape[1]")?;
+    let s_h = get_u(&conv_params.input_shape, 2, "input_shape[2]")?;
+    let s_w = get_u(&conv_params.input_shape, 3, "input_shape[3]")?;
+    let kh = get_u(&conv_params.kernel_shape, 0, "kernel_shape[0]")?;
+    let kw = get_u(&conv_params.kernel_shape, 1, "kernel_shape[1]")?;
+    let stride_h = get_u(&conv_params.strides, 0, "strides[0]")?;
+    let stride_w = get_u(&conv_params.strides, 1, "strides[1]")?;
+    let pad_0 = get_u(&conv_params.pads, 0, "pads[0]")?;
+    let pad_1 = get_u(&conv_params.pads, 1, "pads[1]")?;
+    let pad_2 = get_u(&conv_params.pads, 2, "pads[2]")?;
+    let pad_3 = get_u(&conv_params.pads, 3, "pads[3]")?;
+    let h_out = ((s_h + pad_0 + pad_2).saturating_sub(kh) / stride_h) + 1;
+    let w_out = ((s_w + pad_1 + pad_3).saturating_sub(kw) / stride_w) + 1;
+    Ok(Im2colDims {
+        s_c,
+        kh,
+        kw,
+        spatial_out: h_out * w_out,
+    })
+}
+
+fn should_use_im2col_freivalds(
+    conv_params: &Conv2DParams,
+    num_output_channels: usize,
+    freivalds_reps: usize,
+) -> bool {
+    use super::gemm::should_use_freivalds;
+
+    if freivalds_reps == 0 {
+        return false;
+    }
+    if let Ok(dims) = conv_im2col_dims(conv_params) {
+        let ell = num_output_channels;
+        let m = dims.s_c * dims.kh * dims.kw;
+        let n = dims.spatial_out;
+        should_use_freivalds(ell, m, n, freivalds_reps)
+    } else {
+        false
+    }
+}
+
+fn im2col_extract_columns<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    input_arr: &ArrayD<Variable>,
+    conv_params: &Conv2DParams,
+    batch_idx: usize,
+) -> Result<Array2<Variable>, CircuitError> {
+    let s_c = get_u(&conv_params.input_shape, 1, "input_shape[1]")?;
+    let s_h = get_u(&conv_params.input_shape, 2, "input_shape[2]")?;
+    let s_w = get_u(&conv_params.input_shape, 3, "input_shape[3]")?;
+    let kh = get_u(&conv_params.kernel_shape, 0, "kernel_shape[0]")?;
+    let kw = get_u(&conv_params.kernel_shape, 1, "kernel_shape[1]")?;
+    let stride_h = get_u(&conv_params.strides, 0, "strides[0]")?;
+    let stride_w = get_u(&conv_params.strides, 1, "strides[1]")?;
+    let pad_top = get_u(&conv_params.pads, 0, "pads[0]")?;
+    let pad_left = get_u(&conv_params.pads, 1, "pads[1]")?;
+    let pad_bottom = get_u(&conv_params.pads, 2, "pads[2]")?;
+    let pad_right = get_u(&conv_params.pads, 3, "pads[3]")?;
+
+    let h_out = ((s_h + pad_top + pad_bottom).saturating_sub(kh) / stride_h) + 1;
+    let w_out = ((s_w + pad_left + pad_right).saturating_sub(kw) / stride_w) + 1;
+
+    let col_height = s_c * kh * kw;
+    let col_width = h_out * w_out;
+    let zero = api.constant(0);
+    let mut columns = Array2::from_elem((col_height, col_width), zero);
+
+    for oh in 0..h_out {
+        for ow_idx in 0..w_out {
+            let col_idx = oh * w_out + ow_idx;
+            let h_start = oh * stride_h;
+            let w_start = ow_idx * stride_w;
+
+            for c in 0..s_c {
+                for kh_idx in 0..kh {
+                    for kw_idx in 0..kw {
+                        let row_idx = c * kh * kw + kh_idx * kw + kw_idx;
+                        let h_abs = h_start + kh_idx;
+                        let w_abs = w_start + kw_idx;
+
+                        if h_abs >= pad_top
+                            && h_abs < pad_top + s_h
+                            && w_abs >= pad_left
+                            && w_abs < pad_left + s_w
+                        {
+                            columns[[row_idx, col_idx]] =
+                                input_arr[[batch_idx, c, h_abs - pad_top, w_abs - pad_left]];
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(columns)
+}
+
+fn reshape_weights_for_im2col<C: Config, Builder: RootAPI<C>>(
+    _api: &mut Builder,
+    weights: &ArrayD<Variable>,
+) -> Result<Array2<Variable>, CircuitError> {
+    let w_shape = weights.shape();
+    if w_shape.len() != 4 {
+        return Err(LayerError::InvalidShape {
+            layer: LayerKind::Conv,
+            msg: format!("weights must be 4D for im2col, got {w_shape:?}"),
+        }
+        .into());
+    }
+    let m = w_shape[0];
+    let col_height = w_shape[1] * w_shape[2] * w_shape[3];
+    let flat: Vec<Variable> = weights.iter().copied().collect();
+    Array2::from_shape_vec((m, col_height), flat).map_err(|_| {
+        LayerError::InvalidShape {
+            layer: LayerKind::Conv,
+            msg: format!("reshape weights ({m}, {col_height}) from {w_shape:?}"),
+        }
+        .into()
+    })
+}
+
+fn conv_im2col<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    input_arr: &ArrayD<Variable>,
+    conv_params: &Conv2DParams,
+    weights: &ArrayD<Variable>,
+    bias: &ArrayD<Variable>,
+    freivalds_reps: usize,
+) -> Result<ArrayD<Variable>, CircuitError> {
+    validate_conv_params(conv_params)?;
+    let s_n = get_u(&conv_params.input_shape, 0, "input_shape[0]")?;
+    let s_h = get_u(&conv_params.input_shape, 2, "input_shape[2]")?;
+    let s_w = get_u(&conv_params.input_shape, 3, "input_shape[3]")?;
+    let kh = get_u(&conv_params.kernel_shape, 0, "kernel_shape[0]")?;
+    let kw = get_u(&conv_params.kernel_shape, 1, "kernel_shape[1]")?;
+    let stride_h = get_u(&conv_params.strides, 0, "strides[0]")?;
+    let stride_w = get_u(&conv_params.strides, 1, "strides[1]")?;
+    let pad_top = get_u(&conv_params.pads, 0, "pads[0]")?;
+    let pad_bottom = get_u(&conv_params.pads, 2, "pads[2]")?;
+    let pad_left = get_u(&conv_params.pads, 1, "pads[1]")?;
+    let pad_right = get_u(&conv_params.pads, 3, "pads[3]")?;
+
+    let h_out = ((s_h + pad_top + pad_bottom).saturating_sub(kh) / stride_h) + 1;
+    let w_out = ((s_w + pad_left + pad_right).saturating_sub(kw) / stride_w) + 1;
+    let m = weights.shape()[0];
+
+    let w_2d = reshape_weights_for_im2col(api, weights)?;
+
+    let zero = api.constant(0);
+    let mut res = ArrayD::from_elem(IxDyn(&[s_n, m, h_out, w_out]), zero);
+
+    if !bias.is_empty() {
+        if bias.shape()[0] != m {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::Conv,
+                msg: format!("bias length {} != output channels {m}", bias.shape()[0]),
+            }
+            .into());
+        }
+        for n in 0..s_n {
+            for f in 0..m {
+                for h in 0..h_out {
+                    for w in 0..w_out {
+                        res[[n, f, h, w]] = bias[[f]];
+                    }
+                }
+            }
+        }
+    }
+
+    for n in 0..s_n {
+        let columns = im2col_extract_columns(api, input_arr, conv_params, n)?;
+        let product = compute_core_product(api, &w_2d, &columns, LayerKind::Conv, freivalds_reps)?;
+        let product_2d = product.into_dimensionality::<ndarray::Ix2>().map_err(|_| {
+            LayerError::InvalidShape {
+                layer: LayerKind::Conv,
+                msg: "im2col product must be 2D".into(),
+            }
+        })?;
+
+        for f in 0..m {
+            for spatial in 0..(h_out * w_out) {
+                let h = spatial / w_out;
+                let w = spatial % w_out;
+                res[[n, f, h, w]] = api.add(res[[n, f, h, w]], product_2d[[f, spatial]]);
+            }
+        }
+    }
+
+    Ok(res)
+}
+
 /// # Errors
-/// - [`LayerError::InvalidShape`] if any tensor slice dimensions are incompatible.
-/// - [`LayerError::InvalidParameterValue`] if convolution parameters are invalid (e.g., stride = 0).
-/// - [`CircuitError`] other errors that propograte internally.
+/// Returns `CircuitError` on invalid shapes or parameter values.
 #[allow(clippy::too_many_lines)]
 pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
@@ -428,7 +622,6 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
     let s_h = get_u(&conv_params.input_shape, 2, "input_shape[2]")?;
     let s_w = get_u(&conv_params.input_shape, 3, "input_shape[3]")?;
 
-    // # M, C_group, kH, kW = W.shape
     let kh = get_u(&conv_params.kernel_shape, 0, "kernel_shape[0]")?;
     let kw = get_u(&conv_params.kernel_shape, 1, "kernel_shape[1]")?;
 
@@ -562,28 +755,8 @@ fn flatten_and_perform_dot<C: Config, Builder: RootAPI<C>>(
     sum
 }
 
-/// Executes a 4D convolution operation with optional quantization and `ReLU`.
-///
-/// Applies convolution over the input array using the given weights and bias,
-/// respecting the convolution parameters. If quantization is enabled, the output
-/// is rescaled according to the quantization parameters.
-///
-/// # Arguments
-/// - `api`: Mutable reference to the circuit builder api.
-/// - `input_arr`: Input tensor.
-/// - `weights`: Convolution weights tensor.
-/// - `bias`: Convolution bias tensor.
-/// - `conv_params`: Convolution parameters such as kernel size, strides, pads, etc.
-/// - `quantization_params`: Quantization and activation parameters.
-///
-/// # Returns
-/// A 4D tensor containing the result of the convolution (and rescaling if applied).
-///
 /// # Errors
-/// - [`LayerError::InvalidShape`] if the input or weight shapes are incompatible.
-/// - [`LayerError::UnsupportedConfig`] if group > 1 or unsupported dilation is used.
-/// - [`LayerError::Other`] if scaling cannot be converted to `usize`.
-/// - [`CircuitError`] other errors that propogate through.
+/// Returns `CircuitError` on invalid shapes, unsupported config, or scaling errors.
 pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input_arr: &ArrayD<Variable>,
@@ -591,6 +764,7 @@ pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(
     bias: &ArrayD<Variable>,
     conv_params: &Conv2DParams,
     quantization_params: &ConvQuantizationParams,
+    freivalds_reps: usize,
 ) -> Result<ArrayD<Variable>, CircuitError> {
     let conv_params = set_default_params(conv_params)?;
     not_yet_implemented_conv(
@@ -599,7 +773,11 @@ pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(
         &conv_params.dilations,
     )?;
 
-    let out = conv_shape_4(api, input_arr, &conv_params, weights, bias)?;
+    let out = if should_use_im2col_freivalds(&conv_params, weights.shape()[0], freivalds_reps) {
+        conv_im2col(api, input_arr, &conv_params, weights, bias, freivalds_reps)?
+    } else {
+        conv_shape_4(api, input_arr, &conv_params, weights, bias)?
+    };
 
     maybe_rescale(
         api,
@@ -613,4 +791,79 @@ pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(
             layer_name: "Conv".into(),
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_conv_params(
+        n: u32,
+        c: u32,
+        h: u32,
+        w: u32,
+        kh: u32,
+        kw: u32,
+        stride: u32,
+        pad: u32,
+    ) -> Conv2DParams {
+        Conv2DParams {
+            dilations: vec![1, 1],
+            kernel_shape: vec![kh, kw],
+            pads: vec![pad, pad, pad, pad],
+            strides: vec![stride, stride],
+            input_shape: vec![n, c, h, w],
+            groups: vec![1],
+        }
+    }
+
+    #[test]
+    fn im2col_freivalds_selected_for_lenet_conv1() {
+        let params = make_conv_params(1, 3, 32, 32, 5, 5, 1, 0);
+        assert!(should_use_im2col_freivalds(&params, 6, 1));
+    }
+
+    #[test]
+    fn im2col_freivalds_selected_for_lenet_conv2() {
+        let params = make_conv_params(1, 6, 14, 14, 5, 5, 1, 0);
+        assert!(should_use_im2col_freivalds(&params, 16, 1));
+    }
+
+    #[test]
+    fn im2col_freivalds_selected_for_resnet_conv() {
+        let params = make_conv_params(1, 64, 56, 56, 3, 3, 1, 1);
+        assert!(should_use_im2col_freivalds(&params, 64, 1));
+    }
+
+    #[test]
+    fn im2col_not_selected_for_tiny_conv() {
+        let params = make_conv_params(1, 1, 3, 3, 2, 2, 1, 0);
+        assert!(!should_use_im2col_freivalds(&params, 1, 1));
+    }
+
+    #[test]
+    fn im2col_not_selected_with_zero_reps() {
+        let params = make_conv_params(1, 64, 56, 56, 3, 3, 1, 1);
+        assert!(!should_use_im2col_freivalds(&params, 64, 0));
+    }
+
+    #[test]
+    fn im2col_cost_ratio_resnet_conv3x3_64ch() {
+        use super::super::gemm::should_use_freivalds;
+        let m_out = 64;
+        let c_in = 64;
+        let kh = 3;
+        let kw = 3;
+        let h_out = 56;
+        let w_out = 56;
+        let ell = m_out;
+        let m = c_in * kh * kw;
+        let n = h_out * w_out;
+        assert!(should_use_freivalds(ell, m, n, 1));
+        let cost_full = 2 * ell * m * n - ell * n;
+        let s = ell * m + ell * n + m * n;
+        let d = 2 * s - (m + 2 * ell);
+        let ratio = cost_full as f64 / d as f64;
+        assert!(ratio > 50.0, "expected >50x reduction, got {ratio:.1}x");
+    }
 }
