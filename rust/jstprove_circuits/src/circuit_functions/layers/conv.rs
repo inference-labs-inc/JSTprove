@@ -421,6 +421,15 @@ fn conv_im2col_dims(conv_params: &Conv2DParams) -> Result<Im2colDims, CircuitErr
     let kw = get_u(&conv_params.kernel_shape, 1, "kernel_shape[1]")?;
     let stride_h = get_u(&conv_params.strides, 0, "strides[0]")?;
     let stride_w = get_u(&conv_params.strides, 1, "strides[1]")?;
+    if stride_h == 0 || stride_w == 0 {
+        return Err(LayerError::InvalidParameterValue {
+            layer: LayerKind::Conv,
+            layer_name: "Conv".into(),
+            param_name: "strides".into(),
+            value: format!("strides must be > 0, got [{stride_h}, {stride_w}]"),
+        }
+        .into());
+    }
     let pad_0 = get_u(&conv_params.pads, 0, "pads[0]")?;
     let pad_1 = get_u(&conv_params.pads, 1, "pads[1]")?;
     let pad_2 = get_u(&conv_params.pads, 2, "pads[2]")?;
@@ -514,12 +523,26 @@ fn im2col_extract_columns<C: Config, Builder: RootAPI<C>>(
 fn reshape_weights_for_im2col<C: Config, Builder: RootAPI<C>>(
     _api: &mut Builder,
     weights: &ArrayD<Variable>,
+    expected_inner: [usize; 3],
 ) -> Result<Array2<Variable>, CircuitError> {
     let w_shape = weights.shape();
     if w_shape.len() != 4 {
         return Err(LayerError::InvalidShape {
             layer: LayerKind::Conv,
             msg: format!("weights must be 4D for im2col, got {w_shape:?}"),
+        }
+        .into());
+    }
+    if w_shape[1] != expected_inner[0]
+        || w_shape[2] != expected_inner[1]
+        || w_shape[3] != expected_inner[2]
+    {
+        return Err(LayerError::InvalidShape {
+            layer: LayerKind::Conv,
+            msg: format!(
+                "weights shape {w_shape:?} does not match expected [M, {}, {}, {}]",
+                expected_inner[0], expected_inner[1], expected_inner[2]
+            ),
         }
         .into());
     }
@@ -560,7 +583,8 @@ fn conv_im2col<C: Config, Builder: RootAPI<C>>(
     let w_out = ((s_w + pad_left + pad_right).saturating_sub(kw) / stride_w) + 1;
     let m = weights.shape()[0];
 
-    let w_2d = reshape_weights_for_im2col(api, weights)?;
+    let s_c = get_u(&conv_params.input_shape, 1, "input_shape[1]")?;
+    let w_2d = reshape_weights_for_im2col(api, weights, [s_c, kh, kw])?;
 
     let zero = api.constant(0);
     let mut res = ArrayD::from_elem(IxDyn(&[s_n, m, h_out, w_out]), zero);
