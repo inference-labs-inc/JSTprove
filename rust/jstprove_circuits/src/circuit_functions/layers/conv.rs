@@ -798,52 +798,48 @@ mod tests {
     use super::*;
 
     fn make_conv_params(
-        n: u32,
-        c: u32,
-        h: u32,
-        w: u32,
-        kh: u32,
-        kw: u32,
+        input_shape: [u32; 4],
+        kernel: [u32; 2],
         stride: u32,
         pad: u32,
     ) -> Conv2DParams {
         Conv2DParams {
             dilations: vec![1, 1],
-            kernel_shape: vec![kh, kw],
+            kernel_shape: vec![kernel[0], kernel[1]],
             pads: vec![pad, pad, pad, pad],
             strides: vec![stride, stride],
-            input_shape: vec![n, c, h, w],
+            input_shape: input_shape.to_vec(),
             groups: vec![1],
         }
     }
 
     #[test]
     fn im2col_freivalds_selected_for_lenet_conv1() {
-        let params = make_conv_params(1, 3, 32, 32, 5, 5, 1, 0);
+        let params = make_conv_params([1, 3, 32, 32], [5, 5], 1, 0);
         assert!(should_use_im2col_freivalds(&params, 6, 1));
     }
 
     #[test]
     fn im2col_freivalds_selected_for_lenet_conv2() {
-        let params = make_conv_params(1, 6, 14, 14, 5, 5, 1, 0);
+        let params = make_conv_params([1, 6, 14, 14], [5, 5], 1, 0);
         assert!(should_use_im2col_freivalds(&params, 16, 1));
     }
 
     #[test]
     fn im2col_freivalds_selected_for_resnet_conv() {
-        let params = make_conv_params(1, 64, 56, 56, 3, 3, 1, 1);
+        let params = make_conv_params([1, 64, 56, 56], [3, 3], 1, 1);
         assert!(should_use_im2col_freivalds(&params, 64, 1));
     }
 
     #[test]
     fn im2col_not_selected_for_tiny_conv() {
-        let params = make_conv_params(1, 1, 3, 3, 2, 2, 1, 0);
+        let params = make_conv_params([1, 1, 3, 3], [2, 2], 1, 0);
         assert!(!should_use_im2col_freivalds(&params, 1, 1));
     }
 
     #[test]
     fn im2col_not_selected_with_zero_reps() {
-        let params = make_conv_params(1, 64, 56, 56, 3, 3, 1, 1);
+        let params = make_conv_params([1, 64, 56, 56], [3, 3], 1, 1);
         assert!(!should_use_im2col_freivalds(&params, 64, 0));
     }
 
