@@ -171,6 +171,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
             })?
             .clone();
 
+        // output[1] = Indices — not registered in the Expander backend.
+        // Models that only use the values output work fine; if a downstream
+        // layer actually consumes the indices tensor it will fail with a
+        // clear missing-tensor error at that point.
+
         // Read K from input[1]. It may come from initializers or from
         // layer.params constant-node injection.
         let k_name = layer

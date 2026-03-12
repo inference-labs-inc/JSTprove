@@ -452,6 +452,19 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 // output as a committed witness shred named "{layer.name}_out".
                 // Downstream arithmetic layers (e.g., Gemm) constrain the gathered
                 // values indirectly through the overall output equality check.
+
+                // Require constant (initializer) indices; dynamic indices are not supported.
+                anyhow::ensure!(
+                    layer
+                        .inputs
+                        .get(1)
+                        .and_then(|n| layer.weights.get(n))
+                        .is_some(),
+                    "Gather {}: indices must be a constant initializer; \
+                    dynamic indices are not supported in the Remainder backend",
+                    layer.name
+                );
+
                 let axis_raw = layer.get_int_attr("axis").unwrap_or(0);
                 // Normalize negative axis: recover data_rank from output_rank and indices_rank.
                 let normalized_axis = if axis_raw < 0 {
