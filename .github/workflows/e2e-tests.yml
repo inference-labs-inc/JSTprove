@@ -111,6 +111,9 @@ jobs:
       - name: Run Rust unit tests (Expander + Remainder)
         run: cargo test --release -p jstprove_circuits --features remainder --lib --bins
 
+      - name: Run Rust contract tests (Expander + Remainder)
+        run: cargo test --release -p jstprove_circuits --features remainder --test sn2_contract
+
       - name: Run Rust e2e tests (Expander + Remainder)
         run: cargo test --release -p jstprove_circuits --features remainder --test ecc_pipeline_e2e -- --test-threads=1
 
