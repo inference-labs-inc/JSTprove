@@ -243,8 +243,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
 /// # Errors
 /// Returns a LayerError if:
 ///   - inputs are not 2D,
-///   - inner dimensions do not match,
-///   - freivalds_reps is zero when Freivalds is selected.
+///   - inner dimensions do not match.
 pub(crate) fn compute_core_product<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input_array: &ndarray::Array2<Variable>,
