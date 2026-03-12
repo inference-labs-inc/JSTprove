@@ -269,13 +269,16 @@ fn layout_from_output_shape_runtime(
     };
 
     match input_layout {
-        Some(SpatialInfo::HWC { .. }) => {
+        Some(SpatialInfo::HWC {
+            stride_c: existing_stride_c,
+            ..
+        }) => {
             let c = chw[0];
             Some(SpatialInfo::HWC {
                 h: chw[1],
                 w: chw[2],
                 c,
-                stride_c: next_power_of_two(c),
+                stride_c: *existing_stride_c,
             })
         }
         _ => Some(SpatialInfo::CHW {
@@ -1393,8 +1396,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 }
             }
             OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
-                // Shape-changing ops: data is reinterpreted in-place but the spatial
-                // layout must be recomputed from the new output_shape, not inherited.
+                // Shape-changing ops: data is reinterpreted in-place. Derive the output
+                // spatial layout from the new output_shape while preserving the input
+                // format (CHW vs HWC) so downstream ops use the correct stride.
                 let input_tensor_name = layer
                     .inputs
                     .first()
@@ -1409,7 +1413,9 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                         )
                     })?
                     .clone();
-                let new_layout = layout_from_output_shape_runtime(&layer.output_shape, None);
+                let input_layout = tensor_layouts.get(input_tensor_name);
+                let new_layout =
+                    layout_from_output_shape_runtime(&layer.output_shape, input_layout);
                 for out in &layer.outputs {
                     tensors.insert(out.clone(), data.clone());
                     match &new_layout {
@@ -2009,11 +2015,22 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                 })?;
                 let indices = indices_td.as_i64_vec();
 
-                let axis = layer.get_int_attr("axis").unwrap_or(0);
+                let axis_raw = layer.get_int_attr("axis").unwrap_or(0);
+                // Normalize negative axis the same way build_circuit does.
+                let axis = if axis_raw < 0 {
+                    let output_rank = layer.output_shape.len();
+                    let indices_rank = indices_td.shape().len();
+                    let data_rank = (output_rank + 1).saturating_sub(indices_rank);
+                    axis_raw + data_rank as i64
+                } else {
+                    axis_raw
+                };
                 anyhow::ensure!(
                     axis == 0,
-                    "Gather {}: only axis=0 is supported in the Remainder backend (got axis={})",
+                    "Gather {}: only axis=0 is supported in the Remainder backend \
+                     (got axis={}, normalized={})",
                     layer.name,
+                    axis_raw,
                     axis
                 );
 
