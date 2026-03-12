@@ -10,6 +10,7 @@ pub mod circuit_builder;
 pub mod compile;
 pub mod pipe;
 pub mod prove;
+pub mod range_checks;
 pub mod verify;
 #[allow(
     clippy::for_kv_map,

@@ -7,8 +7,9 @@ use crate::gadgets::rescale;
 use crate::onnx::graph::OpType;
 use crate::onnx::quantizer::QuantizedModel;
 use crate::padding::{next_power_of_two, num_vars_for};
-use crate::runner::circuit_builder::{
-    delta_table_nv, pad_matrix, pad_to_size, transpose_matrix, SpatialInfo, RANGE_CHECK_CHUNK_BITS,
+use crate::runner::circuit_builder::{pad_matrix, pad_to_size, transpose_matrix, SpatialInfo};
+use crate::runner::range_checks::{
+    compute_range_check_plan, delta_table_nv, split_and_insert_range_shreds,
 };
 
 fn validate_input_size(model: &QuantizedModel, input_name: &str, input_len: usize) -> Result<()> {
@@ -36,17 +37,7 @@ pub struct WitnessData {
     pub observed_n_bits: HashMap<String, usize>,
 }
 
-pub fn compute_multiplicities(values: &[i64], table_size: usize) -> Result<Vec<i64>> {
-    let mut mults = vec![0i64; table_size];
-    for (i, &v) in values.iter().enumerate() {
-        anyhow::ensure!(
-            v >= 0 && (v as usize) < table_size,
-            "range check: value at index {i} is {v} which is outside table range [0, {table_size})"
-        );
-        mults[v as usize] += 1;
-    }
-    Ok(mults)
-}
+pub use crate::runner::range_checks::compute_multiplicities;
 
 fn observed_n_bits_for_delta(max_val: u64, exponent: usize) -> usize {
     if max_val == 0 {
@@ -278,30 +269,12 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     r_max,
                     rescale_table_size
                 );
-                if exponent > RANGE_CHECK_CHUNK_BITS {
-                    let chunk_scale = 1i64 << RANGE_CHECK_CHUNK_BITS;
-                    let chunk_table_size = 1usize << RANGE_CHECK_CHUNK_BITS;
-                    let r_c0: Vec<i64> = remainders.iter().map(|&r| r % chunk_scale).collect();
-                    let r_c1: Vec<i64> = remainders.iter().map(|&r| r / chunk_scale).collect();
-                    shreds.insert(format!("{}_r_c0", layer.name), r_c0.clone());
-                    shreds.insert(format!("{}_r_c1", layer.name), r_c1.clone());
-                    shreds.insert(
-                        format!("{}_r_c0_mults", layer.name),
-                        compute_multiplicities(&r_c0, chunk_table_size)?,
-                    );
-                    shreds.insert(
-                        format!("{}_r_c1_mults", layer.name),
-                        compute_multiplicities(
-                            &r_c1,
-                            1usize << (exponent - RANGE_CHECK_CHUNK_BITS),
-                        )?,
-                    );
-                } else {
-                    shreds.insert(
-                        format!("{}_r_mults", layer.name),
-                        compute_multiplicities(&remainders, rescale_table_size)?,
-                    );
-                }
+                split_and_insert_range_shreds(
+                    &mut shreds,
+                    &format!("{}_r", layer.name),
+                    &remainders,
+                    exponent,
+                )?;
 
                 for out in &layer.outputs {
                     tensors.insert(out.clone(), quotients.clone());
@@ -520,30 +493,12 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     r_max,
                     rescale_table_size
                 );
-                if exponent > RANGE_CHECK_CHUNK_BITS {
-                    let chunk_scale = 1i64 << RANGE_CHECK_CHUNK_BITS;
-                    let chunk_table_size = 1usize << RANGE_CHECK_CHUNK_BITS;
-                    let r_c0: Vec<i64> = remainders.iter().map(|&r| r % chunk_scale).collect();
-                    let r_c1: Vec<i64> = remainders.iter().map(|&r| r / chunk_scale).collect();
-                    shreds.insert(format!("{}_r_c0", layer.name), r_c0.clone());
-                    shreds.insert(format!("{}_r_c1", layer.name), r_c1.clone());
-                    shreds.insert(
-                        format!("{}_r_c0_mults", layer.name),
-                        compute_multiplicities(&r_c0, chunk_table_size)?,
-                    );
-                    shreds.insert(
-                        format!("{}_r_c1_mults", layer.name),
-                        compute_multiplicities(
-                            &r_c1,
-                            1usize << (exponent - RANGE_CHECK_CHUNK_BITS),
-                        )?,
-                    );
-                } else {
-                    shreds.insert(
-                        format!("{}_r_mults", layer.name),
-                        compute_multiplicities(&remainders, rescale_table_size)?,
-                    );
-                }
+                split_and_insert_range_shreds(
+                    &mut shreds,
+                    &format!("{}_r", layer.name),
+                    &remainders,
+                    exponent,
+                )?;
 
                 for out in &layer.outputs {
                     tensors.insert(out.clone(), quotients.clone());
@@ -609,46 +564,18 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                         dz_max
                     );
                     observed_n_bits.insert(layer.name.clone(), obs_n_bits);
-                    if dnv > RANGE_CHECK_CHUNK_BITS {
-                        let chunk_scale = 1i64 << RANGE_CHECK_CHUNK_BITS;
-                        let chunk_table_size = 1usize << RANGE_CHECK_CHUNK_BITS;
-                        let hi_table_size = 1usize << (dnv - RANGE_CHECK_CHUNK_BITS);
-                        let di_c0: Vec<i64> =
-                            delta_input.iter().map(|&d| d % chunk_scale).collect();
-                        let di_c1: Vec<i64> =
-                            delta_input.iter().map(|&d| d / chunk_scale).collect();
-                        let dz_c0: Vec<i64> = delta_zero.iter().map(|&d| d % chunk_scale).collect();
-                        let dz_c1: Vec<i64> = delta_zero.iter().map(|&d| d / chunk_scale).collect();
-                        shreds.insert(format!("{}_di_c0", layer.name), di_c0.clone());
-                        shreds.insert(format!("{}_di_c1", layer.name), di_c1.clone());
-                        shreds.insert(format!("{}_dz_c0", layer.name), dz_c0.clone());
-                        shreds.insert(format!("{}_dz_c1", layer.name), dz_c1.clone());
-                        shreds.insert(
-                            format!("{}_di_c0_mults", layer.name),
-                            compute_multiplicities(&di_c0, chunk_table_size)?,
-                        );
-                        shreds.insert(
-                            format!("{}_di_c1_mults", layer.name),
-                            compute_multiplicities(&di_c1, hi_table_size)?,
-                        );
-                        shreds.insert(
-                            format!("{}_dz_c0_mults", layer.name),
-                            compute_multiplicities(&dz_c0, chunk_table_size)?,
-                        );
-                        shreds.insert(
-                            format!("{}_dz_c1_mults", layer.name),
-                            compute_multiplicities(&dz_c1, hi_table_size)?,
-                        );
-                    } else {
-                        shreds.insert(
-                            format!("{}_di_mults", layer.name),
-                            compute_multiplicities(&delta_input, delta_table_size)?,
-                        );
-                        shreds.insert(
-                            format!("{}_dz_mults", layer.name),
-                            compute_multiplicities(&delta_zero, delta_table_size)?,
-                        );
-                    }
+                    split_and_insert_range_shreds(
+                        &mut shreds,
+                        &format!("{}_di", layer.name),
+                        &delta_input,
+                        dnv,
+                    )?;
+                    split_and_insert_range_shreds(
+                        &mut shreds,
+                        &format!("{}_dz", layer.name),
+                        &delta_zero,
+                        dnv,
+                    )?;
                 }
 
                 let layout = tensor_layouts.get(input_tensor_name).cloned();
@@ -816,31 +743,13 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                         max_delta
                     );
                     observed_n_bits.insert(layer.name.clone(), obs_n_bits);
-                    if dnv > RANGE_CHECK_CHUNK_BITS {
-                        let chunk_scale = 1i64 << RANGE_CHECK_CHUNK_BITS;
-                        let chunk_table_size = 1usize << RANGE_CHECK_CHUNK_BITS;
-                        let hi_table_size = 1usize << (dnv - RANGE_CHECK_CHUNK_BITS);
-                        for i in 0..window_size {
-                            let c0: Vec<i64> = deltas[i].iter().map(|&d| d % chunk_scale).collect();
-                            let c1: Vec<i64> = deltas[i].iter().map(|&d| d / chunk_scale).collect();
-                            shreds.insert(format!("{}_d{}_c0", layer.name, i), c0.clone());
-                            shreds.insert(format!("{}_d{}_c1", layer.name, i), c1.clone());
-                            shreds.insert(
-                                format!("{}_d{}_c0_mults", layer.name, i),
-                                compute_multiplicities(&c0, chunk_table_size)?,
-                            );
-                            shreds.insert(
-                                format!("{}_d{}_c1_mults", layer.name, i),
-                                compute_multiplicities(&c1, hi_table_size)?,
-                            );
-                        }
-                    } else {
-                        for i in 0..window_size {
-                            shreds.insert(
-                                format!("{}_d{}_mults", layer.name, i),
-                                compute_multiplicities(&deltas[i], dt_size)?,
-                            );
-                        }
+                    for i in 0..window_size {
+                        split_and_insert_range_shreds(
+                            &mut shreds,
+                            &format!("{}_d{}", layer.name, i),
+                            &deltas[i],
+                            dnv,
+                        )?;
                     }
                 }
 
@@ -1003,30 +912,12 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     r_max,
                     rescale_table_size
                 );
-                if exponent > RANGE_CHECK_CHUNK_BITS {
-                    let chunk_scale = 1i64 << RANGE_CHECK_CHUNK_BITS;
-                    let chunk_table_size = 1usize << RANGE_CHECK_CHUNK_BITS;
-                    let r_c0: Vec<i64> = remainders.iter().map(|&r| r % chunk_scale).collect();
-                    let r_c1: Vec<i64> = remainders.iter().map(|&r| r / chunk_scale).collect();
-                    shreds.insert(format!("{}_r_c0", layer.name), r_c0.clone());
-                    shreds.insert(format!("{}_r_c1", layer.name), r_c1.clone());
-                    shreds.insert(
-                        format!("{}_r_c0_mults", layer.name),
-                        compute_multiplicities(&r_c0, chunk_table_size)?,
-                    );
-                    shreds.insert(
-                        format!("{}_r_c1_mults", layer.name),
-                        compute_multiplicities(
-                            &r_c1,
-                            1usize << (exponent - RANGE_CHECK_CHUNK_BITS),
-                        )?,
-                    );
-                } else {
-                    shreds.insert(
-                        format!("{}_r_mults", layer.name),
-                        compute_multiplicities(&remainders, rescale_table_size)?,
-                    );
-                }
+                split_and_insert_range_shreds(
+                    &mut shreds,
+                    &format!("{}_r", layer.name),
+                    &remainders,
+                    exponent,
+                )?;
 
                 for out in &layer.outputs {
                     tensors.insert(out.clone(), quotients.clone());
@@ -1147,7 +1038,7 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
         .ok_or_else(|| anyhow::anyhow!("declared output '{declared_output}' not computed"))?;
     shreds.insert("expected_output".to_string(), final_output.clone());
 
-    let rc_plan = compute_range_check_plan_with_overrides(model, &observed_n_bits)?;
+    let rc_plan = compute_range_check_plan(model, Some(&observed_n_bits))?;
 
     let mut grouped: std::collections::BTreeMap<(usize, usize), Vec<String>> =
         std::collections::BTreeMap::new();
@@ -1199,108 +1090,6 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
         shreds,
         observed_n_bits,
     })
-}
-
-fn compute_range_check_plan_with_overrides(
-    model: &QuantizedModel,
-    observed_n_bits: &HashMap<String, usize>,
-) -> Result<std::collections::BTreeMap<usize, Vec<String>>> {
-    let exponent = model.scale_config.exponent as usize;
-    let mut plan: std::collections::BTreeMap<usize, Vec<String>> =
-        std::collections::BTreeMap::new();
-
-    for layer in model.graph.iter_topo() {
-        match layer.op_type {
-            OpType::Gemm | OpType::Conv | OpType::BatchNormalization => {
-                if exponent <= RANGE_CHECK_CHUNK_BITS {
-                    plan.entry(exponent)
-                        .or_default()
-                        .push(format!("{}_r", layer.name));
-                } else {
-                    plan.entry(RANGE_CHECK_CHUNK_BITS)
-                        .or_default()
-                        .push(format!("{}_r_c0", layer.name));
-                    plan.entry(exponent - RANGE_CHECK_CHUNK_BITS)
-                        .or_default()
-                        .push(format!("{}_r_c1", layer.name));
-                }
-            }
-            OpType::Relu => {
-                let n_bits = observed_n_bits.get(&layer.name).copied().or(layer.n_bits);
-                if let Some(n_bits) = n_bits {
-                    let dnv = delta_table_nv(n_bits, exponent);
-                    if dnv > RANGE_CHECK_CHUNK_BITS {
-                        plan.entry(RANGE_CHECK_CHUNK_BITS)
-                            .or_default()
-                            .push(format!("{}_di_c0", layer.name));
-                        plan.entry(RANGE_CHECK_CHUNK_BITS)
-                            .or_default()
-                            .push(format!("{}_dz_c0", layer.name));
-                        plan.entry(dnv - RANGE_CHECK_CHUNK_BITS)
-                            .or_default()
-                            .push(format!("{}_di_c1", layer.name));
-                        plan.entry(dnv - RANGE_CHECK_CHUNK_BITS)
-                            .or_default()
-                            .push(format!("{}_dz_c1", layer.name));
-                    } else {
-                        let entry = plan.entry(dnv).or_default();
-                        entry.push(format!("{}_di", layer.name));
-                        entry.push(format!("{}_dz", layer.name));
-                    }
-                }
-            }
-            OpType::MaxPool => {
-                let n_bits = observed_n_bits.get(&layer.name).copied().or(layer.n_bits);
-                if let Some(n_bits) = n_bits {
-                    let dnv = delta_table_nv(n_bits, exponent);
-                    let kernel_shape = layer.get_ints_attr("kernel_shape").ok_or_else(|| {
-                        anyhow::anyhow!("MaxPool {} missing kernel_shape attribute", layer.name)
-                    })?;
-                    anyhow::ensure!(
-                        kernel_shape.len() == 2,
-                        "MaxPool {} requires exactly 2D kernel_shape, got {} dims",
-                        layer.name,
-                        kernel_shape.len()
-                    );
-                    anyhow::ensure!(
-                        kernel_shape[0] > 0 && kernel_shape[1] > 0,
-                        "MaxPool {} kernel_shape values must be positive, got [{}, {}]",
-                        layer.name,
-                        kernel_shape[0],
-                        kernel_shape[1]
-                    );
-                    let window_size = (kernel_shape[0] as usize)
-                        .checked_mul(kernel_shape[1] as usize)
-                        .ok_or_else(|| {
-                            anyhow::anyhow!(
-                                "MaxPool {} kernel window_size overflow: {} * {}",
-                                layer.name,
-                                kernel_shape[0],
-                                kernel_shape[1]
-                            )
-                        })?;
-                    if dnv > RANGE_CHECK_CHUNK_BITS {
-                        for i in 0..window_size {
-                            plan.entry(RANGE_CHECK_CHUNK_BITS)
-                                .or_default()
-                                .push(format!("{}_d{}_c0", layer.name, i));
-                            plan.entry(dnv - RANGE_CHECK_CHUNK_BITS)
-                                .or_default()
-                                .push(format!("{}_d{}_c1", layer.name, i));
-                        }
-                    } else {
-                        let entry = plan.entry(dnv).or_default();
-                        for i in 0..window_size {
-                            entry.push(format!("{}_d{}", layer.name, i));
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    Ok(plan)
 }
 
 fn padded_matmul(
@@ -1922,7 +1711,7 @@ pub fn prepare_public_shreds(
         pad_to_size(expected_output, out_padded_size),
     );
 
-    let rc_plan = compute_range_check_plan_with_overrides(model, observed_n_bits)?;
+    let rc_plan = compute_range_check_plan(model, Some(observed_n_bits))?;
     for (&table_nv, _) in &rc_plan {
         anyhow::ensure!(
             table_nv < 63,

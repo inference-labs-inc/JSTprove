@@ -10,6 +10,7 @@ use shared_types::Fr;
 use crate::onnx::graph::OpType;
 use crate::onnx::quantizer::{QuantizedModel, ScaleConfig};
 use crate::padding::{next_power_of_two, num_vars_for};
+use crate::runner::range_checks::{self, RANGE_CHECK_CHUNK_BITS};
 use crate::util::i64_to_fr;
 
 struct RangeCheckRequest {
@@ -78,128 +79,7 @@ impl SpatialInfo {
     }
 }
 
-pub fn delta_table_nv(layer_n_bits: usize, exponent: usize) -> usize {
-    layer_n_bits.saturating_sub(exponent).max(1)
-}
-
-pub const RANGE_CHECK_CHUNK_BITS: usize = 9;
-
-pub fn compute_range_check_plan(model: &QuantizedModel) -> Result<BTreeMap<usize, Vec<String>>> {
-    let exponent = model.scale_config.exponent as usize;
-    let mut plan: BTreeMap<usize, Vec<String>> = BTreeMap::new();
-
-    for layer in model.graph.iter_topo() {
-        match layer.op_type {
-            OpType::Gemm | OpType::Conv | OpType::BatchNormalization => {
-                if exponent <= RANGE_CHECK_CHUNK_BITS {
-                    plan.entry(exponent)
-                        .or_default()
-                        .push(format!("{}_r", layer.name));
-                } else {
-                    anyhow::ensure!(
-                        exponent <= 2 * RANGE_CHECK_CHUNK_BITS,
-                        "layer {} exponent {} exceeds two-chunk range-check capacity (max {} bits)",
-                        layer.name,
-                        exponent,
-                        2 * RANGE_CHECK_CHUNK_BITS
-                    );
-                    plan.entry(RANGE_CHECK_CHUNK_BITS)
-                        .or_default()
-                        .push(format!("{}_r_c0", layer.name));
-                    plan.entry(exponent - RANGE_CHECK_CHUNK_BITS)
-                        .or_default()
-                        .push(format!("{}_r_c1", layer.name));
-                }
-            }
-            OpType::Relu => {
-                if let Some(n_bits) = layer.n_bits {
-                    let dnv = delta_table_nv(n_bits, exponent);
-                    if dnv > RANGE_CHECK_CHUNK_BITS {
-                        anyhow::ensure!(
-                            dnv <= 2 * RANGE_CHECK_CHUNK_BITS,
-                            "Relu layer {} delta nv {} exceeds two-chunk range-check capacity (max {} bits)",
-                            layer.name,
-                            dnv,
-                            2 * RANGE_CHECK_CHUNK_BITS
-                        );
-                        plan.entry(RANGE_CHECK_CHUNK_BITS)
-                            .or_default()
-                            .push(format!("{}_di_c0", layer.name));
-                        plan.entry(RANGE_CHECK_CHUNK_BITS)
-                            .or_default()
-                            .push(format!("{}_dz_c0", layer.name));
-                        plan.entry(dnv - RANGE_CHECK_CHUNK_BITS)
-                            .or_default()
-                            .push(format!("{}_di_c1", layer.name));
-                        plan.entry(dnv - RANGE_CHECK_CHUNK_BITS)
-                            .or_default()
-                            .push(format!("{}_dz_c1", layer.name));
-                    } else {
-                        let entry = plan.entry(dnv).or_default();
-                        entry.push(format!("{}_di", layer.name));
-                        entry.push(format!("{}_dz", layer.name));
-                    }
-                }
-            }
-            OpType::MaxPool => {
-                if let Some(n_bits) = layer.n_bits {
-                    let dnv = delta_table_nv(n_bits, exponent);
-                    let kernel_shape = layer.get_ints_attr("kernel_shape").ok_or_else(|| {
-                        anyhow::anyhow!("MaxPool {} missing kernel_shape attribute", layer.name)
-                    })?;
-                    anyhow::ensure!(
-                        kernel_shape.len() == 2,
-                        "MaxPool {} requires exactly 2D kernel_shape, got {} dims",
-                        layer.name,
-                        kernel_shape.len()
-                    );
-                    anyhow::ensure!(
-                        kernel_shape[0] > 0 && kernel_shape[1] > 0,
-                        "MaxPool {} kernel_shape values must be positive, got [{}, {}]",
-                        layer.name,
-                        kernel_shape[0],
-                        kernel_shape[1]
-                    );
-                    let window_size = (kernel_shape[0] as usize)
-                        .checked_mul(kernel_shape[1] as usize)
-                        .ok_or_else(|| {
-                            anyhow::anyhow!(
-                                "MaxPool {} kernel_shape overflow: {} * {}",
-                                layer.name,
-                                kernel_shape[0],
-                                kernel_shape[1]
-                            )
-                        })?;
-                    if dnv > RANGE_CHECK_CHUNK_BITS {
-                        anyhow::ensure!(
-                            dnv <= 2 * RANGE_CHECK_CHUNK_BITS,
-                            "MaxPool layer {} delta nv {} exceeds two-chunk range-check capacity (max {} bits)",
-                            layer.name,
-                            dnv,
-                            2 * RANGE_CHECK_CHUNK_BITS
-                        );
-                        for i in 0..window_size {
-                            plan.entry(RANGE_CHECK_CHUNK_BITS)
-                                .or_default()
-                                .push(format!("{}_d{}_c0", layer.name, i));
-                            plan.entry(dnv - RANGE_CHECK_CHUNK_BITS)
-                                .or_default()
-                                .push(format!("{}_d{}_c1", layer.name, i));
-                        }
-                    } else {
-                        let entry = plan.entry(dnv).or_default();
-                        for i in 0..window_size {
-                            entry.push(format!("{}_d{}", layer.name, i));
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    Ok(plan)
-}
+pub use range_checks::delta_table_nv;
 
 pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildResult> {
     let mut manifest = ShredManifest::new();
