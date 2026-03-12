@@ -143,10 +143,19 @@ impl ConvParams {
         );
 
         let pads = layer.get_ints_attr("pads");
-        let pad_top = pads.and_then(|p| p.first().copied()).unwrap_or(0) as usize;
-        let pad_left = pads.and_then(|p| p.get(1).copied()).unwrap_or(0) as usize;
-        let pad_bottom = pads.and_then(|p| p.get(2).copied()).unwrap_or(0) as usize;
-        let pad_right = pads.and_then(|p| p.get(3).copied()).unwrap_or(0) as usize;
+        let pad_values: [i64; 4] = [
+            pads.and_then(|p| p.first().copied()).unwrap_or(0),
+            pads.and_then(|p| p.get(1).copied()).unwrap_or(0),
+            pads.and_then(|p| p.get(2).copied()).unwrap_or(0),
+            pads.and_then(|p| p.get(3).copied()).unwrap_or(0),
+        ];
+        ensure!(
+            pad_values.iter().all(|&v| v >= 0),
+            "Conv {}: negative pad values {:?}",
+            layer.name,
+            pad_values
+        );
+        let [pad_top, pad_left, pad_bottom, pad_right] = pad_values.map(|v| v as usize);
 
         let strides = layer.get_ints_attr("strides");
         let raw_stride_h = strides.and_then(|s| s.first().copied()).unwrap_or(1);
@@ -267,6 +276,16 @@ impl MaxPoolParams {
         );
         let stride_h = raw_stride_h as usize;
         let stride_w = raw_stride_w as usize;
+
+        let has_padding = layer
+            .get_ints_attr("pads")
+            .map(|p| p.iter().any(|&v| v != 0))
+            .unwrap_or(false);
+        ensure!(
+            !has_padding,
+            "MaxPool {}: padded max pooling is not supported",
+            layer.name
+        );
 
         ensure!(
             in_h >= pool_h && in_w >= pool_w,
