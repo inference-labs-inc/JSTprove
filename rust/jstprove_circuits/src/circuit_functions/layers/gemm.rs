@@ -183,15 +183,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             msg: format!("extract_params failed: {e}"),
         })?;
         let freivalds_reps = circuit_params.freivalds_reps;
-        if freivalds_reps == 0 {
-            return Err(LayerError::InvalidParameterValue {
-                layer: LayerKind::Gemm,
-                layer_name: layer.name.clone(),
-                param_name: "freivalds_reps".to_string(),
-                value: freivalds_reps.to_string(),
-            }
-            .into());
-        }
 
         let w_name = get_input_name(&layer.inputs, 1, LayerKind::Gemm, "weights")?;
         let b_name = get_input_name(&layer.inputs, 2, LayerKind::Gemm, "bias")?;
