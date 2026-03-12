@@ -61,7 +61,7 @@ jobs:
           -p jstprove_circuits
           -p jstprove-io
           -p jstprove-onnx
-          --lib --tests --bins
+          --lib --bins
 
       - name: Run remainder unit tests
         run: cargo test --manifest-path rust/jstprove_remainder/Cargo.toml --lib

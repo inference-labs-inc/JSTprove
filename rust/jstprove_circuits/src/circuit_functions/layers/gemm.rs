@@ -183,15 +183,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             msg: format!("extract_params failed: {e}"),
         })?;
         let freivalds_reps = circuit_params.freivalds_reps;
-        if freivalds_reps == 0 {
-            return Err(LayerError::InvalidParameterValue {
-                layer: LayerKind::Gemm,
-                layer_name: layer.name.clone(),
-                param_name: "freivalds_reps".to_string(),
-                value: freivalds_reps.to_string(),
-            }
-            .into());
-        }
 
         let w_name = get_input_name(&layer.inputs, 1, LayerKind::Gemm, "weights")?;
         let b_name = get_input_name(&layer.inputs, 2, LayerKind::Gemm, "bias")?;
@@ -252,9 +243,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
 /// # Errors
 /// Returns a LayerError if:
 ///   - inputs are not 2D,
-///   - inner dimensions do not match,
-///   - freivalds_reps is zero when Freivalds is selected.
-fn compute_core_product<C: Config, Builder: RootAPI<C>>(
+///   - inner dimensions do not match.
+pub(crate) fn compute_core_product<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     input_array: &ndarray::Array2<Variable>,
     weights_array: &ndarray::Array2<Variable>,
@@ -349,7 +339,7 @@ fn check_alpha_beta(
 //       use Freivalds  <=>  cost_f < cost_full
 //
 // All internal arithmetic is promoted to u128 to reduce overflow risk.
-fn should_use_freivalds(ell: usize, m: usize, n: usize, reps: usize) -> bool {
+pub(crate) fn should_use_freivalds(ell: usize, m: usize, n: usize, reps: usize) -> bool {
     // reps == 0 must never allow Freivalds, otherwise core_product can be left unconstrained.
     if reps == 0 {
         return false;
