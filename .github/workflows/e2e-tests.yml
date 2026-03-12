@@ -108,8 +108,11 @@ jobs:
       - name: Run Rust e2e tests (Remainder)
         run: cargo test --release --manifest-path rust/jstprove_remainder/Cargo.toml
 
+      - name: Run Rust unit tests (Expander + Remainder)
+        run: cargo test --release -p jstprove_circuits --features remainder --lib --bins
+
       - name: Run Rust e2e tests (Expander + Remainder)
-        run: cargo test --release -p jstprove_circuits --features remainder
+        run: cargo test --release -p jstprove_circuits --features remainder --test ecc_pipeline_e2e -- --test-threads=1
 
       - name: Install uv
         uses: astral-sh/setup-uv@0ca8f610542aa7f4acaf39e65cf4eb3c35091883 # v7
