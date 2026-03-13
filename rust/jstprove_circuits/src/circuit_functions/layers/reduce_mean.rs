@@ -18,23 +18,21 @@
 
 use std::collections::HashMap;
 
-use ethnum::U256;
-use ndarray::{ArrayD, IxDyn};
+use ndarray::ArrayD;
 
-use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
+use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::{
     CircuitError,
-    hints::reduce_mean::REDUCE_MEAN_HINT_KEY,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
-    utils::{
-        constants::INPUT,
-        onnx_model::{get_input_name, get_w_or_b},
-    },
+    utils::onnx_model::get_w_or_b,
 };
 
 // -------- Struct --------
 
+// Fields populated by `build` are kept for when a sound mean constraint is
+// eventually implemented. `apply` always returns an error in the meantime.
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct ReduceMeanLayer {
     inputs: Vec<String>,
@@ -42,110 +40,35 @@ pub struct ReduceMeanLayer {
     /// Axes to reduce over (sorted, non-negative, within rank).
     axes: Vec<usize>,
     /// If true, keep the reduced dimensions as size 1 in the output.
-    #[allow(dead_code)]
     keepdims: bool,
-    /// Input shape (needed to build lane iterators at apply time).
+    /// Input shape.
     input_shape: Vec<usize>,
     /// Output shape.
     output_shape: Vec<usize>,
-    /// Scaling factor passed to the hint (not used in the mean computation itself).
+    /// Scaling factor `2^scale_exponent`.
     scaling: u64,
 }
 
 // -------- Implementation --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     fn apply(
         &self,
-        api: &mut Builder,
-        input: &HashMap<String, ArrayD<Variable>>,
+        _api: &mut Builder,
+        _input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
-        let x_name = get_input_name(&self.inputs, 0, LayerKind::ReduceMean, INPUT)?;
-        let x_input = input.get(x_name).ok_or_else(|| LayerError::MissingInput {
+        // ReduceMean is not soundly implementable via hint alone: the hint
+        // produces an unconstrained output that a malicious prover can set to
+        // any value. Full soundness requires a verifiable mean constraint
+        // (e.g., sum check + range proof), which is not yet implemented.
+        Err(LayerError::Other {
             layer: LayerKind::ReduceMean,
-            name: x_name.to_string(),
-        })?;
-
-        let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
-
-        let in_shape = &self.input_shape;
-        let rank = in_shape.len();
-
-        // Compute the "outer" shape (non-reduced dims) and the "lane" shape (reduced dims).
-        let outer_shape: Vec<usize> = (0..rank)
-            .filter(|i| !self.axes.contains(i))
-            .map(|i| in_shape[i])
-            .collect();
-        let lane_shape: Vec<usize> = self.axes.iter().map(|&a| in_shape[a]).collect();
-
-        let outer_total: usize = outer_shape.iter().product::<usize>().max(1);
-        let lane_size: usize = lane_shape.iter().product::<usize>().max(1);
-
-        // Helper: unravel a flat index in a given shape.
-        let unravel = |mut flat: usize, shape: &[usize]| -> Vec<usize> {
-            let mut coords = vec![0usize; shape.len()];
-            for i in (0..shape.len()).rev() {
-                coords[i] = flat % shape[i];
-                flat /= shape[i];
-            }
-            coords
-        };
-        let ravel = |coords: &[usize], shape: &[usize]| -> usize {
-            let mut idx = 0usize;
-            let mut stride = 1usize;
-            for i in (0..shape.len()).rev() {
-                idx += coords[i] * stride;
-                stride *= shape[i];
-            }
-            idx
-        };
-
-        // Non-reduced axis indices (for rebuilding full input coordinate from outer coord).
-        let outer_axes: Vec<usize> = (0..rank).filter(|i| !self.axes.contains(i)).collect();
-
-        let mut out_flat: Vec<Variable> = Vec::with_capacity(outer_total);
-
-        for outer_flat in 0..outer_total {
-            let outer_coords = unravel(outer_flat, &outer_shape);
-
-            // Collect the lane: all combinations of reduced-axis coordinates.
-            let mut hint_inputs: Vec<Variable> = Vec::with_capacity(lane_size + 1);
-            for lane_flat in 0..lane_size {
-                let lane_coords = unravel(lane_flat, &lane_shape);
-                // Build full input coordinate.
-                let mut in_coords = vec![0usize; rank];
-                for (oi, &ax) in outer_axes.iter().enumerate() {
-                    in_coords[ax] = outer_coords[oi];
-                }
-                for (li, &ax) in self.axes.iter().enumerate() {
-                    in_coords[ax] = lane_coords[li];
-                }
-                let in_idx = ravel(&in_coords, in_shape);
-                hint_inputs.push(
-                    x_input.as_slice().ok_or_else(|| LayerError::InvalidShape {
-                        layer: LayerKind::ReduceMean,
-                        msg: "input array is not contiguous".to_string(),
-                    })?[in_idx],
-                );
-            }
-            hint_inputs.push(scale_var);
-
-            let hint_out = api.new_hint(REDUCE_MEAN_HINT_KEY, &hint_inputs, 1);
-            out_flat.push(hint_out[0]);
+            msg: "ReduceMean is not yet supported in the Expander backend: soundly \
+                  proving the mean relation requires constraints that are not yet \
+                  implemented."
+                .to_string(),
         }
-
-        let result = ArrayD::from_shape_vec(IxDyn(&self.output_shape), out_flat).map_err(|_| {
-            LayerError::InvalidShape {
-                layer: LayerKind::ReduceMean,
-                msg: format!(
-                    "cannot reshape ReduceMean result into {:?}",
-                    self.output_shape
-                ),
-            }
-        })?;
-
-        Ok((self.outputs.clone(), result))
+        .into())
     }
 
     #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
@@ -276,6 +199,30 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
                 None => (0..rank).collect(),
             }
         };
+
+        // Validate that the output shape from shapes_map matches what the
+        // axes+keepdims combination implies from the input shape.
+        let expected_output_shape: Vec<usize> = if keepdims {
+            (0..rank)
+                .map(|i| if axes.contains(&i) { 1 } else { input_shape[i] })
+                .collect()
+        } else {
+            (0..rank)
+                .filter(|i| !axes.contains(i))
+                .map(|i| input_shape[i])
+                .collect()
+        };
+        if output_shape != expected_output_shape {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::ReduceMean,
+                msg: format!(
+                    "output shape {output_shape:?} from shapes_map does not match \
+                     expected {expected_output_shape:?} \
+                     (input={input_shape:?}, axes={axes:?}, keepdims={keepdims})"
+                ),
+            }
+            .into());
+        }
 
         let scaling: u64 = 1u64
             .checked_shl(circuit_params.scale_exponent)

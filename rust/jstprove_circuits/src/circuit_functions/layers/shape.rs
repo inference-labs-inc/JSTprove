@@ -72,6 +72,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ShapeLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
+        if layer.outputs.len() != 1 {
+            return Err(LayerError::Other {
+                layer: LayerKind::Shape,
+                msg: format!(
+                    "Shape node must have exactly 1 output, got {}",
+                    layer.outputs.len()
+                ),
+            }
+            .into());
+        }
+
         let input_name = layer
             .inputs
             .first()

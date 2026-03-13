@@ -98,12 +98,24 @@ fn infer_layer_output_shape(
         OpType::Squeeze => infer_squeeze(layer, input_shape),
         OpType::Unsqueeze => infer_unsqueeze(layer, input_shape),
         OpType::Constant => Ok(vec![]),
-        OpType::Cast
-        | OpType::Exp
-        | OpType::Softmax
-        | OpType::Sigmoid
-        | OpType::Gelu
-        | OpType::LayerNormalization => passthrough_shape(layer, input_shape),
+        OpType::Cast | OpType::Exp | OpType::Softmax | OpType::Sigmoid | OpType::Gelu => {
+            passthrough_shape(layer, input_shape)
+        }
+        OpType::LayerNormalization => {
+            // Output[0] = Y: same shape as input.
+            // Output[1] = Mean, Output[2] = InvStdDev: reduced shapes that
+            // depend on the normalization axis. These are rare in practice and
+            // would require axis-aware shape inference. Reject the multi-output
+            // form rather than propagating incorrect shapes.
+            if layer.outputs.len() > 1 {
+                bail!(
+                    "layer {}: LayerNormalization with more than one output (Mean/InvStdDev) \
+                     is not supported by shape inference; use a single output (Y only)",
+                    layer.name
+                );
+            }
+            passthrough_shape(layer, input_shape)
+        }
         OpType::Tile => infer_tile(layer, input_shape, initializers, constant_tensors),
         OpType::Gather => infer_gather(layer, shapes, initializers, constant_tensors),
         OpType::Resize => infer_resize(layer, input_shape, initializers, constant_tensors),
@@ -1327,9 +1339,16 @@ fn infer_topk(
                 k_name
             )
         })?;
-    let k = k_td.as_i64_vec().first().copied().ok_or_else(|| {
-        anyhow::anyhow!("layer {}: TopK K tensor '{}' is empty", layer.name, k_name)
-    })?;
+    let k_vec = k_td.as_i64_vec();
+    if k_vec.len() != 1 {
+        bail!(
+            "layer {}: TopK K tensor '{}' must be a scalar (1 element), got {} elements",
+            layer.name,
+            k_name,
+            k_vec.len()
+        );
+    }
+    let k = k_vec[0];
     if k <= 0 {
         bail!("layer {}: TopK K must be positive, got {}", layer.name, k);
     }

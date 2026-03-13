@@ -122,6 +122,50 @@ pub fn delta_table_nv(layer_n_bits: usize, exponent: usize) -> usize {
     layer_n_bits.saturating_sub(exponent).max(1)
 }
 
+/// Register a committed shred for a layer whose output is computed entirely by
+/// the prover (structural or hint-based ops). The shred is named
+/// `"{layer.name}_out"` and is sized to fit `layer.output_shape`.
+///
+/// When `preserve_layout` is `true` the first-input spatial layout (if any) is
+/// propagated to every output tensor. When `false` the layout is cleared for
+/// every output (used for Transpose, where the axis reorder invalidates the
+/// existing CHW/HWC mapping).
+fn add_committed_passthrough(
+    builder: &mut CircuitBuilder<Fr>,
+    committed: &frontend::layouter::builder::InputLayerNodeRef<Fr>,
+    layer: &crate::onnx::graph::LayerNode,
+    tensor_nodes: &mut HashMap<String, NodeRef<Fr>>,
+    tensor_num_vars: &mut HashMap<String, usize>,
+    tensor_layouts: &mut HashMap<String, SpatialInfo>,
+    manifest: &mut ShredManifest,
+    preserve_layout: bool,
+) {
+    let out_total: usize = layer.output_shape.iter().product();
+    let out_nv = num_vars_for(out_total);
+    let shred_name = format!("{}_out", layer.name);
+    let node = builder.add_input_shred(&shred_name, out_nv, committed);
+    let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
+    let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
+    manifest.insert(
+        shred_name,
+        ShredEntry {
+            num_vars: out_nv,
+            visibility: Visibility::Committed,
+        },
+    );
+    for out in &layer.outputs {
+        tensor_nodes.insert(out.clone(), node.clone());
+        tensor_num_vars.insert(out.clone(), out_nv);
+        if preserve_layout {
+            if let Some(layout) = &output_layout {
+                tensor_layouts.insert(out.clone(), layout.clone());
+            }
+        } else {
+            tensor_layouts.remove(out);
+        }
+    }
+}
+
 pub const RANGE_CHECK_CHUNK_BITS: usize = 9;
 
 pub fn compute_range_check_plan(model: &QuantizedModel) -> Result<BTreeMap<usize, Vec<String>>> {
@@ -529,146 +573,85 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 }
             }
             OpType::LayerNormalization => {
-                // LayerNorm is computed outside the GKR circuit (via a hint) and
-                // supplied as a committed shred named "{layer.name}_out".
-                // Output shape equals input shape (passthrough shape).
-                let out_total: usize = layer.output_shape.iter().product();
-                let out_nv = num_vars_for(out_total);
-                let ln_out_name = format!("{}_out", layer.name);
-                let node = builder.add_input_shred(&ln_out_name, out_nv, &committed);
-                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
-                let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
-                manifest.insert(
-                    ln_out_name,
-                    ShredEntry {
-                        num_vars: out_nv,
-                        visibility: Visibility::Committed,
-                    },
+                // LayerNorm is computed outside the GKR circuit (via a hint)
+                // and supplied as a committed shred named "{layer.name}_out".
+                add_committed_passthrough(
+                    &mut builder,
+                    &committed,
+                    layer,
+                    &mut tensor_nodes,
+                    &mut tensor_num_vars,
+                    &mut tensor_layouts,
+                    &mut manifest,
+                    true,
                 );
-                for out in &layer.outputs {
-                    tensor_nodes.insert(out.clone(), node.clone());
-                    tensor_num_vars.insert(out.clone(), out_nv);
-                    if let Some(layout) = &output_layout {
-                        tensor_layouts.insert(out.clone(), layout.clone());
-                    }
-                }
             }
             OpType::Resize => {
-                // Resize output is a committed shred computed by the prover
-                // (compute_witness). Named "{layer.name}_out".
-                let out_total: usize = layer.output_shape.iter().product();
-                let out_nv = num_vars_for(out_total);
-                let resize_out_name = format!("{}_out", layer.name);
-                let node = builder.add_input_shred(&resize_out_name, out_nv, &committed);
-                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
-                let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
-                manifest.insert(
-                    resize_out_name,
-                    ShredEntry {
-                        num_vars: out_nv,
-                        visibility: Visibility::Committed,
-                    },
+                // Resize output is a committed shred computed by the prover.
+                add_committed_passthrough(
+                    &mut builder,
+                    &committed,
+                    layer,
+                    &mut tensor_nodes,
+                    &mut tensor_num_vars,
+                    &mut tensor_layouts,
+                    &mut manifest,
+                    true,
                 );
-                for out in &layer.outputs {
-                    tensor_nodes.insert(out.clone(), node.clone());
-                    tensor_num_vars.insert(out.clone(), out_nv);
-                    if let Some(layout) = &output_layout {
-                        tensor_layouts.insert(out.clone(), layout.clone());
-                    }
-                }
             }
             OpType::GridSample => {
-                // GridSample output is a committed shred computed by the prover
-                // (compute_witness). Named "{layer.name}_out".
-                let out_total: usize = layer.output_shape.iter().product();
-                let out_nv = num_vars_for(out_total);
-                let gridsample_out_name = format!("{}_out", layer.name);
-                let node = builder.add_input_shred(&gridsample_out_name, out_nv, &committed);
-                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
-                let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
-                manifest.insert(
-                    gridsample_out_name,
-                    ShredEntry {
-                        num_vars: out_nv,
-                        visibility: Visibility::Committed,
-                    },
+                // GridSample output is a committed shred computed by the prover.
+                add_committed_passthrough(
+                    &mut builder,
+                    &committed,
+                    layer,
+                    &mut tensor_nodes,
+                    &mut tensor_num_vars,
+                    &mut tensor_layouts,
+                    &mut manifest,
+                    true,
                 );
-                for out in &layer.outputs {
-                    tensor_nodes.insert(out.clone(), node.clone());
-                    tensor_num_vars.insert(out.clone(), out_nv);
-                    if let Some(layout) = &output_layout {
-                        tensor_layouts.insert(out.clone(), layout.clone());
-                    }
-                }
             }
             OpType::Transpose => {
-                // Transpose output is a committed shred computed by the prover
-                // (compute_witness). Named "{layer.name}_out".
-                let out_total: usize = layer.output_shape.iter().product();
-                let out_nv = num_vars_for(out_total);
-                let transpose_out_name = format!("{}_out", layer.name);
-                let node = builder.add_input_shred(&transpose_out_name, out_nv, &committed);
-                manifest.insert(
-                    transpose_out_name,
-                    ShredEntry {
-                        num_vars: out_nv,
-                        visibility: Visibility::Committed,
-                    },
+                // Transpose output is a committed shred. The axis reorder
+                // invalidates the existing spatial layout, so preserve_layout=false
+                // clears it for every output.
+                add_committed_passthrough(
+                    &mut builder,
+                    &committed,
+                    layer,
+                    &mut tensor_nodes,
+                    &mut tensor_num_vars,
+                    &mut tensor_layouts,
+                    &mut manifest,
+                    false,
                 );
-                for out in &layer.outputs {
-                    tensor_nodes.insert(out.clone(), node.clone());
-                    tensor_num_vars.insert(out.clone(), out_nv);
-                    // Do not fabricate spatial layout for Transpose by assuming CHW/HWC mapping.
-                    tensor_layouts.remove(out);
-                }
             }
             OpType::Concat => {
-                // Concat output is a committed shred computed by the prover
-                // (compute_witness). Named "{layer.name}_out".
-                let out_total: usize = layer.output_shape.iter().product();
-                let out_nv = num_vars_for(out_total);
-                let concat_out_name = format!("{}_out", layer.name);
-                let node = builder.add_input_shred(&concat_out_name, out_nv, &committed);
-                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
-                let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
-                manifest.insert(
-                    concat_out_name,
-                    ShredEntry {
-                        num_vars: out_nv,
-                        visibility: Visibility::Committed,
-                    },
+                // Concat output is a committed shred computed by the prover.
+                add_committed_passthrough(
+                    &mut builder,
+                    &committed,
+                    layer,
+                    &mut tensor_nodes,
+                    &mut tensor_num_vars,
+                    &mut tensor_layouts,
+                    &mut manifest,
+                    true,
                 );
-                for out in &layer.outputs {
-                    tensor_nodes.insert(out.clone(), node.clone());
-                    tensor_num_vars.insert(out.clone(), out_nv);
-                    if let Some(layout) = &output_layout {
-                        tensor_layouts.insert(out.clone(), layout.clone());
-                    }
-                }
             }
             OpType::Slice => {
-                // Slice output is a committed shred computed by the prover
-                // (compute_witness). Named "{layer.name}_out".
-                let out_total: usize = layer.output_shape.iter().product();
-                let out_nv = num_vars_for(out_total);
-                let slice_out_name = format!("{}_out", layer.name);
-                let node = builder.add_input_shred(&slice_out_name, out_nv, &committed);
-                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
-                let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
-                manifest.insert(
-                    slice_out_name,
-                    ShredEntry {
-                        num_vars: out_nv,
-                        visibility: Visibility::Committed,
-                    },
+                // Slice output is a committed shred computed by the prover.
+                add_committed_passthrough(
+                    &mut builder,
+                    &committed,
+                    layer,
+                    &mut tensor_nodes,
+                    &mut tensor_num_vars,
+                    &mut tensor_layouts,
+                    &mut manifest,
+                    true,
                 );
-                for out in &layer.outputs {
-                    tensor_nodes.insert(out.clone(), node.clone());
-                    tensor_num_vars.insert(out.clone(), out_nv);
-                    if let Some(layout) = &output_layout {
-                        tensor_layouts.insert(out.clone(), layout.clone());
-                    }
-                }
             }
             other => {
                 bail!(
