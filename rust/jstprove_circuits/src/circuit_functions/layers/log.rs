@@ -1,38 +1,34 @@
 // Elementwise ONNX `Log` layer for int64 fixed-point tensors.
 //
 // # ZK approach
-// 1. **Hint**: `api.new_hint("jstprove.log_hint", &[x, scale], 1)` computes
-//    `round(log(x_q / scale) * scale)` in native f64 and returns it as a
-//    field element. No circuit constraint is added by this step.
-// 2. **No range check**: Log outputs can be negative (for real inputs < 1),
-//    so we do not apply a LogUp range check (which only supports non-negative
-//    values). The output is unconstrained beyond being a valid field element.
+// Log(x) = ln(x) is a transcendental function. A sound implementation requires
+// a lookup-table constraint (log-lookup). Until that is available, `apply`
+// refuses to execute and returns an error, following the same fail-closed
+// policy as TopKLayer.
 //
-// # Soundness caveat
-// The output is NOT constrained. A malicious prover can substitute any value.
-// Full lookup-table soundness is a future improvement.
+// # Current status
+// **Not supported** in the Expander backend. `apply` always returns an error.
 
 use std::collections::HashMap;
 
-use ethnum::U256;
-use ndarray::{ArrayD, IxDyn};
+use ndarray::ArrayD;
 
-use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
+use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::{
     CircuitError,
-    hints::log::LOG_HINT_KEY,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
-    utils::{constants::INPUT, onnx_model::get_input_name},
 };
 
 // -------- Struct --------
 
+// Fields populated by `build` are kept for when a sound log-lookup constraint
+// is eventually implemented. `apply` always returns an error in the meantime.
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct LogLayer {
     inputs: Vec<String>,
     outputs: Vec<String>,
-    /// Scaling factor `2^scale_exponent`, baked into the hint call.
     scaling: u64,
 }
 
@@ -41,34 +37,20 @@ pub struct LogLayer {
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LogLayer {
     fn apply(
         &self,
-        api: &mut Builder,
-        input: &HashMap<String, ArrayD<Variable>>,
+        _api: &mut Builder,
+        _input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
-        let x_name = get_input_name(&self.inputs, 0, LayerKind::Log, INPUT)?;
-        let x_input = input.get(x_name).ok_or_else(|| LayerError::MissingInput {
+        // Log is not soundly implementable via hint alone: the hint produces an
+        // unconstrained output that a malicious prover can set to any value.
+        // Full soundness requires a log-lookup table, which is not yet implemented.
+        Err(LayerError::Other {
             layer: LayerKind::Log,
-            name: x_name.to_string(),
-        })?;
-
-        let shape = x_input.shape().to_vec();
-        let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
-
-        let mut out_storage: Vec<Variable> = Vec::with_capacity(x_input.len());
-        for &x in x_input.iter() {
-            // Compute log(x_q / scale) * scale via the native-f64 hint.
-            // No range check because Log outputs can be negative.
-            let hint_out = api.new_hint(LOG_HINT_KEY, &[x, scale_var], 1);
-            out_storage.push(hint_out[0]);
+            msg: "Log is not yet supported in the Expander backend: soundly proving \
+                  the log relation requires a lookup-table constraint that is not \
+                  yet implemented."
+                .to_string(),
         }
-
-        let result = ArrayD::from_shape_vec(IxDyn(&shape), out_storage).map_err(|_| {
-            LayerError::InvalidShape {
-                layer: LayerKind::Log,
-                msg: format!("LogLayer: cannot reshape result into {shape:?}"),
-            }
-        })?;
-
-        Ok((self.outputs.clone(), result))
+        .into())
     }
 
     fn build(
@@ -107,10 +89,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LogLayer {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::circuit_functions::hints::log::log_hint;
     use ethnum::U256;
-    use expander_compiler::field::BN254Fr;
+    use expander_compiler::field::{BN254Fr, FieldArith};
 
     type F = BN254Fr;
 

@@ -363,12 +363,47 @@ mod tests {
 
     #[test]
     fn op_type_string_conversion() {
-        assert_eq!(op_type_to_string(OpType::Conv), "Conv");
-        assert_eq!(op_type_to_string(OpType::Gemm), "Gemm");
-        assert_eq!(op_type_to_string(OpType::Relu), "ReLU");
+        // Every OpType variant must round-trip through op_type_to_string.
         assert_eq!(op_type_to_string(OpType::Add), "Add");
         assert_eq!(op_type_to_string(OpType::Div), "Div");
+        assert_eq!(op_type_to_string(OpType::Sub), "Sub");
+        assert_eq!(op_type_to_string(OpType::Mul), "Mul");
+        assert_eq!(op_type_to_string(OpType::Gemm), "Gemm");
+        assert_eq!(op_type_to_string(OpType::Conv), "Conv");
+        assert_eq!(op_type_to_string(OpType::Relu), "ReLU");
+        assert_eq!(op_type_to_string(OpType::MaxPool), "MaxPool");
+        assert_eq!(
+            op_type_to_string(OpType::BatchNormalization),
+            "BatchNormalization"
+        );
+        assert_eq!(op_type_to_string(OpType::Max), "Max");
+        assert_eq!(op_type_to_string(OpType::Min), "Min");
+        assert_eq!(op_type_to_string(OpType::Clip), "Clip");
         assert_eq!(op_type_to_string(OpType::Reshape), "Reshape");
+        assert_eq!(op_type_to_string(OpType::Flatten), "Flatten");
+        assert_eq!(op_type_to_string(OpType::Squeeze), "Squeeze");
+        assert_eq!(op_type_to_string(OpType::Unsqueeze), "Unsqueeze");
+        assert_eq!(op_type_to_string(OpType::Constant), "Constant");
+        assert_eq!(op_type_to_string(OpType::Cast), "Cast");
+        assert_eq!(op_type_to_string(OpType::Exp), "Exp");
+        assert_eq!(op_type_to_string(OpType::Sigmoid), "Sigmoid");
+        assert_eq!(op_type_to_string(OpType::Gelu), "Gelu");
+        assert_eq!(op_type_to_string(OpType::Softmax), "Softmax");
+        assert_eq!(op_type_to_string(OpType::Tile), "Tile");
+        assert_eq!(op_type_to_string(OpType::Gather), "Gather");
+        assert_eq!(
+            op_type_to_string(OpType::LayerNormalization),
+            "LayerNormalization"
+        );
+        assert_eq!(op_type_to_string(OpType::Resize), "Resize");
+        assert_eq!(op_type_to_string(OpType::GridSample), "GridSample");
+        assert_eq!(op_type_to_string(OpType::Transpose), "Transpose");
+        assert_eq!(op_type_to_string(OpType::Concat), "Concat");
+        assert_eq!(op_type_to_string(OpType::Slice), "Slice");
         assert_eq!(op_type_to_string(OpType::TopK), "TopK");
+        assert_eq!(op_type_to_string(OpType::Shape), "Shape");
+        assert_eq!(op_type_to_string(OpType::Log), "Log");
+        assert_eq!(op_type_to_string(OpType::Expand), "Expand");
+        assert_eq!(op_type_to_string(OpType::ReduceMean), "ReduceMean");
     }
 }

@@ -224,8 +224,10 @@ fn compute_bounds(graph: &LayerGraph, config: &ScaleConfig) -> Result<HashMap<St
         bounds.insert(name.clone(), 1.0);
     }
 
+    let alpha_f64 = alpha as f64;
+
     for layer in graph.iter_topo() {
-        let bound = compute_layer_bound(layer, &bounds)?;
+        let bound = compute_layer_bound(layer, &bounds, alpha_f64)?;
 
         if layer.needs_rescale || is_range_check_op(layer.op_type) {
             // Guard: compute_n_bits computes (alpha as f64 * bound).log2().
@@ -245,15 +247,32 @@ fn compute_bounds(graph: &LayerGraph, config: &ScaleConfig) -> Result<HashMap<St
             n_bits_config.insert(layer.name.clone(), n_bits);
         }
 
-        for out_name in &layer.outputs {
-            bounds.insert(out_name.clone(), bound);
+        // TopK output[0] = values (bound = m_in), output[1] = indices
+        // (range [0, axis_len − 1], not quantised floats). Use a conservative
+        // index bound of 1.0 so downstream ops do not inflate their n_bits
+        // based on the values bound.
+        if layer.op_type == OpType::TopK {
+            if let Some(values_name) = layer.outputs.first() {
+                bounds.insert(values_name.clone(), bound);
+            }
+            if let Some(indices_name) = layer.outputs.get(1) {
+                bounds.insert(indices_name.clone(), 1.0_f64);
+            }
+        } else {
+            for out_name in &layer.outputs {
+                bounds.insert(out_name.clone(), bound);
+            }
         }
     }
 
     Ok(n_bits_config)
 }
 
-fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) -> Result<f64> {
+fn compute_layer_bound(
+    layer: &LayerNode,
+    prev_bounds: &HashMap<String, f64>,
+    alpha_f64: f64,
+) -> Result<f64> {
     let get_input_bound = |idx: usize| -> f64 {
         layer
             .inputs
@@ -468,10 +487,14 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
         }
         // Shape outputs raw dimension integers (not quantized floats); bound is irrelevant.
         OpType::Shape => Ok(1.0),
-        // Log output can be negative; bound propagation is conservative.
+        // Log output can be negative (for real values < 1). The output of
+        // log(x_q / α) * α for small positive inputs can be as large as
+        // |ln(α)| * α in the negative direction. We conservatively bound the
+        // magnitude as max(m_in, ln(α)) so downstream n_bits calculations
+        // are large enough to represent the actual output range.
         OpType::Log => {
             let m_in = get_input_bound(0);
-            Ok(m_in)
+            Ok(m_in.max(alpha_f64.ln()))
         }
         // Expand is a broadcast passthrough — output bound equals input bound.
         OpType::Expand => {
@@ -505,9 +528,16 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
         }
         OpType::Constant => Ok(1.0),
         OpType::LayerNormalization => {
-            // Conservative bound: max|γ| * m_in + max|β|.
-            // gamma (input[1]) is in float units at this point; bias_bound(2) is max|β_f|.
+            // After normalization the per-element output is bounded by roughly
+            // max|γ| * (x − μ) / σ + max|β|. In the worst case (two values
+            // symmetrically around the mean) the normalised value is bounded
+            // by 2 * m_in / sqrt(ε), where ε is the LayerNorm epsilon.
+            // We use that as a conservative normalization bound so that the
+            // final n_bits calculation covers the actual output range.
             let m_in = get_input_bound(0);
+            let epsilon = layer.get_float_attr("epsilon").unwrap_or(1e-5_f32) as f64;
+            let epsilon = epsilon.max(1e-12); // guard against 0
+            let normalization_bound = 2.0 * m_in / epsilon.sqrt();
             let max_gamma = layer
                 .inputs
                 .get(1)
@@ -518,7 +548,7 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
                 })
                 .unwrap_or(1.0);
             let max_beta = get_bias_bound(2);
-            Ok(max_gamma * m_in + max_beta)
+            Ok(max_gamma * normalization_bound + max_beta)
         }
     }
 }
