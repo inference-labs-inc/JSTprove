@@ -466,6 +466,23 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
             let m_in = get_input_bound(0);
             Ok(m_in)
         }
+        // Shape outputs raw dimension integers (not quantized floats); bound is irrelevant.
+        OpType::Shape => Ok(1.0),
+        // Log output can be negative; bound propagation is conservative.
+        OpType::Log => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
+        // Expand is a broadcast passthrough — output bound equals input bound.
+        OpType::Expand => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
+        // ReduceMean: mean ≤ max input.
+        OpType::ReduceMean => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
         // exp(x) is monotonically increasing; max output is exp(max_input).
         OpType::Exp => {
             let m_in = get_input_bound(0);

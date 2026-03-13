@@ -37,6 +37,10 @@ pub enum OpType {
     Concat,
     Slice,
     TopK,
+    Shape,
+    Log,
+    Expand,
+    ReduceMean,
 }
 
 impl OpType {
@@ -73,6 +77,10 @@ impl OpType {
             "Concat" => Ok(Self::Concat),
             "Slice" => Ok(Self::Slice),
             "TopK" => Ok(Self::TopK),
+            "Shape" => Ok(Self::Shape),
+            "Log" => Ok(Self::Log),
+            "Expand" => Ok(Self::Expand),
+            "ReduceMean" => Ok(Self::ReduceMean),
             other => bail!("unsupported ONNX op: {other}"),
         }
     }

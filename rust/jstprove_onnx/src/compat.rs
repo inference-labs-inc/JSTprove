@@ -39,6 +39,10 @@ const SUPPORTED_OPS: &[&str] = &[
     "Concat",
     "Slice",
     "TopK",
+    "Shape",
+    "Log",
+    "Expand",
+    "ReduceMean",
 ];
 
 pub fn is_compatible(path: &Path) -> Result<(bool, Vec<String>)> {

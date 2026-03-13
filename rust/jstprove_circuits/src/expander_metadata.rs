@@ -230,6 +230,10 @@ fn op_type_to_string(op: OpType) -> String {
         OpType::Concat => "Concat",
         OpType::Slice => "Slice",
         OpType::TopK => "TopK",
+        OpType::Shape => "Shape",
+        OpType::Log => "Log",
+        OpType::Expand => "Expand",
+        OpType::ReduceMean => "ReduceMean",
     }
     .to_string()
 }
