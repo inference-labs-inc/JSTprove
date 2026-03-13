@@ -17,16 +17,20 @@ use crate::circuit_functions::layers::clip::ClipLayer;
 use crate::circuit_functions::layers::constant::ConstantLayer;
 use crate::circuit_functions::layers::conv::ConvLayer;
 use crate::circuit_functions::layers::exp::ExpLayer;
+use crate::circuit_functions::layers::expand::ExpandLayer;
 use crate::circuit_functions::layers::flatten::FlattenLayer;
 use crate::circuit_functions::layers::gather::GatherLayer;
 use crate::circuit_functions::layers::gelu::GeluLayer;
 use crate::circuit_functions::layers::gemm::GemmLayer;
 use crate::circuit_functions::layers::gridsample::GridSampleLayer;
 use crate::circuit_functions::layers::layer_norm::LayerNormLayer;
+use crate::circuit_functions::layers::log::LogLayer;
 use crate::circuit_functions::layers::maxpool::MaxPoolLayer;
+use crate::circuit_functions::layers::reduce_mean::ReduceMeanLayer;
 use crate::circuit_functions::layers::relu::ReluLayer;
 use crate::circuit_functions::layers::reshape::ReshapeLayer;
 use crate::circuit_functions::layers::resize::ResizeLayer;
+use crate::circuit_functions::layers::shape::ShapeLayer;
 use crate::circuit_functions::layers::sigmoid::SigmoidLayer;
 use crate::circuit_functions::layers::slice::SliceLayer;
 use crate::circuit_functions::layers::softmax::SoftmaxLayer;
@@ -167,6 +171,10 @@ define_layers! {
     TopK      => { name: "TopK",      builder: TopKLayer::build },
     Transpose => { name: "Transpose", builder: TransposeLayer::build },
     Unsqueeze => { name: "Unsqueeze", builder: UnsqueezeLayer::build },
+    Expand    => { name: "Expand",     builder: ExpandLayer::build },
+    Log       => { name: "Log",        builder: LogLayer::build },
+    ReduceMean => { name: "ReduceMean", builder: ReduceMeanLayer::build },
+    Shape     => { name: "Shape",      builder: ShapeLayer::build },
 }
 
 #[cfg(test)]
@@ -207,6 +215,10 @@ mod tests {
             "GridSample",
             "Slice",
             "Transpose",
+            "Expand",
+            "Log",
+            "ReduceMean",
+            "Shape",
         ];
         for name in ops {
             assert!(
@@ -277,6 +289,10 @@ mod tests {
             "GridSample",
             "Slice",
             "Transpose",
+            "Expand",
+            "Log",
+            "ReduceMean",
+            "Shape",
         ];
         for name in expected {
             assert!(

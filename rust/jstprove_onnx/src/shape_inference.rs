@@ -112,6 +112,10 @@ fn infer_layer_output_shape(
         OpType::Concat => infer_concat(layer, shapes),
         OpType::Slice => infer_slice(layer, input_shape, initializers, constant_tensors),
         OpType::TopK => infer_topk(layer, input_shape, initializers, constant_tensors),
+        OpType::Log => passthrough_shape(layer, input_shape),
+        OpType::Expand => infer_expand(layer, shapes, initializers, constant_tensors),
+        OpType::Shape => infer_shape_op(layer, input_shape),
+        OpType::ReduceMean => infer_reduce(layer, input_shape, initializers, constant_tensors),
     }
 }
 
@@ -1353,6 +1357,172 @@ fn infer_topk(
         results.push((name.clone(), out_shape.clone()));
     }
     Ok(results)
+}
+
+fn infer_shape_op(
+    layer: &LayerNode,
+    input_shape: Option<&Vec<usize>>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let input_shape = input_shape
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Shape missing input shape", layer.name))?;
+    let rank = input_shape.len() as i64;
+    let start_raw = layer.get_int_attr("start").unwrap_or(0);
+    let end_raw = layer.get_int_attr("end").unwrap_or(rank);
+    let start = if start_raw < 0 {
+        (rank + start_raw).max(0) as usize
+    } else {
+        (start_raw as usize).min(input_shape.len())
+    };
+    let end = if end_raw < 0 {
+        (rank + end_raw).max(0) as usize
+    } else {
+        (end_raw as usize).min(input_shape.len())
+    };
+    let len = end.saturating_sub(start);
+    let output_shape = vec![len];
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), output_shape.clone()))
+        .collect())
+}
+
+fn infer_expand(
+    layer: &LayerNode,
+    shapes: &HashMap<String, Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let shape_name = layer
+        .inputs
+        .get(1)
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Expand missing shape input", layer.name))?;
+
+    // Target shape must be a compile-time constant (initializer or Constant node).
+    let shape_td = initializers
+        .get(shape_name)
+        .or_else(|| constant_tensors.get(shape_name))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "layer {}: Expand shape input '{}' is not a compile-time constant (initializer or Constant node)",
+                layer.name,
+                shape_name
+            )
+        })?;
+
+    let target_shape: Vec<usize> = shape_td
+        .as_i64_vec()
+        .iter()
+        .enumerate()
+        .map(|(i, &d)| {
+            if d < 0 {
+                bail!("layer {}: Expand shape[{i}] is negative ({d})", layer.name);
+            }
+            Ok(d as usize)
+        })
+        .collect::<Result<Vec<usize>>>()?;
+
+    // Validate broadcast compatibility with input shape.
+    if let Some(input_shape) = layer.inputs.first().and_then(|n| get_shape(shapes, n)) {
+        let in_rank = input_shape.len();
+        let out_rank = target_shape.len();
+        if in_rank > out_rank {
+            bail!(
+                "layer {}: Expand input rank {} > target shape rank {} (cannot broadcast)",
+                layer.name,
+                in_rank,
+                out_rank
+            );
+        }
+        // Check broadcast compatibility from the right.
+        let pad = out_rank - in_rank;
+        for (i, &out_d) in target_shape.iter().enumerate() {
+            if i < pad {
+                continue; // prepended dim — input treated as size 1
+            }
+            let in_d = input_shape[i - pad];
+            if in_d != 1 && in_d != out_d {
+                bail!(
+                    "layer {}: Expand broadcast mismatch at dim {i}: input {} != target {}",
+                    layer.name,
+                    in_d,
+                    out_d
+                );
+            }
+        }
+    }
+
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), target_shape.clone()))
+        .collect())
+}
+
+fn infer_reduce(
+    layer: &LayerNode,
+    input_shape: Option<&Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let input_shape = input_shape
+        .ok_or_else(|| anyhow::anyhow!("layer {}: ReduceMean missing input shape", layer.name))?;
+    let rank = input_shape.len();
+    let keepdims = layer.get_int_attr("keepdims").unwrap_or(1) != 0;
+
+    // axes: from input[1] (opset 18+) → attribute (opset ≤ 17) → all axes.
+    let axes_from_input: Option<Vec<i64>> = layer
+        .inputs
+        .get(1)
+        .and_then(|name| {
+            initializers
+                .get(name)
+                .or_else(|| constant_tensors.get(name))
+        })
+        .map(|td| td.as_i64_vec());
+
+    let axes: Vec<usize> = if let Some(raw_axes) = axes_from_input
+        .as_deref()
+        .or_else(|| layer.get_ints_attr("axes"))
+    {
+        raw_axes
+            .iter()
+            .map(|&a| {
+                let a = if a < 0 { a + rank as i64 } else { a };
+                if a < 0 || a as usize >= rank {
+                    bail!(
+                        "layer {}: ReduceMean axis {} out of range for rank {}",
+                        layer.name,
+                        a,
+                        rank
+                    );
+                }
+                Ok(a as usize)
+            })
+            .collect::<Result<Vec<usize>>>()?
+    } else {
+        (0..rank).collect()
+    };
+
+    let output_shape: Vec<usize> = if keepdims {
+        input_shape
+            .iter()
+            .enumerate()
+            .map(|(i, &d)| if axes.contains(&i) { 1 } else { d })
+            .collect()
+    } else {
+        input_shape
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &d)| if axes.contains(&i) { None } else { Some(d) })
+            .collect()
+    };
+
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), output_shape.clone()))
+        .collect())
 }
 
 #[cfg(test)]

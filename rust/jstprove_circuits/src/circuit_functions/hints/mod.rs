@@ -33,6 +33,12 @@ pub use resize::resize_hint;
 pub mod topk;
 pub use topk::topk_hint;
 
+pub mod log;
+pub use log::log_hint;
+
+pub mod reduce_mean;
+pub use reduce_mean::reduce_mean_hint;
+
 /// LogUp hint registration
 use circuit_std_rs::logup::{query_count_by_key_hint, query_count_hint, rangeproof_hint};
 use expander_compiler::field::Field as CompilerField;
@@ -80,6 +86,8 @@ pub fn build_logup_hint_registry<F: CompilerField>() -> HintRegistry<F> {
     registry.register(gridsample::GRIDSAMPLE_HINT_KEY, gridsample_hint::<F>);
     registry.register(resize::RESIZE_HINT_KEY, resize_hint::<F>);
     registry.register(topk::TOPK_HINT_KEY, topk_hint::<F>);
+    registry.register(log::LOG_HINT_KEY, log_hint::<F>);
+    registry.register(reduce_mean::REDUCE_MEAN_HINT_KEY, reduce_mean_hint::<F>);
 
     registry
 }

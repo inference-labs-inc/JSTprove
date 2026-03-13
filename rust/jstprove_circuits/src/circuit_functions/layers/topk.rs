@@ -3,24 +3,18 @@
 // # ZK approach
 // TopK selects the K largest (or smallest) values along a specified axis.
 // Because comparison and sorting cannot be expressed as low-degree polynomials
-// over a finite field, a hint is used:
+// over a finite field, a sound implementation requires a full sorting/permutation
+// circuit. A hint-only approach (hint + range check) only proves outputs are in
+// range, NOT that they are the actual top-K values — this is unsound.
 //
-// 1. **Hint**: for each lane of n values along the axis, call
-//    `api.new_hint("jstprove.topk_hint", &[x_0, ..., x_{n-1}, scale], K)`
-//    which sorts and returns the K largest values in descending order.
-//    No circuit constraint is added by this step.
-//
-// 2. **Output wiring**: hint outputs are forwarded directly as TopK values.
-//    Values are kept in signed field encoding (including `p - |x|` for
-//    negatives), matching the representation used by the rest of the circuit.
+// # Current status
+// TopK is **not supported** in the Expander backend. `apply` returns an error
+// immediately. Use the Remainder backend or remove TopK from the model.
 //
 // # Outputs
 // TopK has two ONNX outputs: Values (output[0]) and Indices (output[1]).
-// This implementation registers only the **Values** output in the circuit's
-// tensor map. The Indices output is intentionally omitted; if a downstream
-// layer requires it, a clear "missing tensor" error is produced at build time.
-// Full indices support would require a permutation argument or a sorting
-// network and is planned as a future extension.
+// The Indices output is intentionally omitted; if a downstream layer requires
+// it, a clear "missing tensor" error is produced at build time.
 //
 // # Supported attributes
 // - `axis`    (default −1): axis along which top-K is selected.
@@ -33,115 +27,52 @@
 
 use std::collections::HashMap;
 
-use ethnum::U256;
-use ndarray::{ArrayD, Axis, IxDyn};
+use ndarray::ArrayD;
 
-use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
+use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::{
     CircuitError,
-    gadgets::{LogupRangeCheckContext, ShiftRangeContext},
-    hints::topk::TOPK_HINT_KEY,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
-    utils::{
-        constants::INPUT,
-        onnx_model::{get_input_name, get_w_or_b},
-    },
+    utils::onnx_model::get_w_or_b,
 };
 
 // -------- Struct --------
 
+// Fields are populated during `build` but never read by `apply` (which always
+// returns an error). Kept so `build` can be reused when a sorting circuit is
+// eventually implemented.
+#[allow(dead_code)]
 pub struct TopKLayer {
     inputs: Vec<String>,
-    /// Only the Values output name is registered; Indices is stored but not
-    /// inserted into the circuit tensor map.
     values_output_name: String,
-    /// Resolved (non-negative) axis.
     axis: usize,
-    /// Number of values to select per lane.
     k: usize,
-    /// Output shape of the Values tensor.
     output_shape: Vec<usize>,
-    /// n_bits metadata kept for compatibility with layer configuration.
     n_bits: usize,
-    /// Scaling factor `2^scale_exponent`, passed to the hint.
     scaling: u64,
 }
 
 // -------- Implementation --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
-    #[allow(
-        clippy::cast_possible_wrap,
-        clippy::cast_sign_loss,
-        clippy::cast_possible_truncation
-    )]
     fn apply(
         &self,
-        api: &mut Builder,
-        input: &HashMap<String, ArrayD<Variable>>,
+        _api: &mut Builder,
+        _input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
-        let x_name = get_input_name(&self.inputs, 0, LayerKind::TopK, INPUT)?;
-        let x_input = input.get(x_name).ok_or_else(|| LayerError::MissingInput {
+        // TopK is not soundly implementable via hint alone: a hint + range check
+        // only proves that outputs are in range, NOT that they are the actual
+        // top-K values of the input. Full soundness requires a sorting circuit
+        // with permutation constraints, which is not yet implemented.
+        Err(LayerError::Other {
             layer: LayerKind::TopK,
-            name: x_name.to_string(),
-        })?;
-
-        let in_shape = x_input.shape().to_vec();
-        let rank = in_shape.len();
-        if self.axis >= rank {
-            return Err(LayerError::InvalidShape {
-                layer: LayerKind::TopK,
-                msg: format!("axis {} out of range for rank {rank}", self.axis),
-            }
-            .into());
+            msg: "TopK is not yet supported in the Expander backend: soundly proving \
+                  top-K selection requires a sorting/permutation circuit that is not \
+                  yet implemented. Use the Remainder backend or remove TopK from the model."
+                .to_string(),
         }
-
-        let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
-        let n_bits = self.n_bits;
-        let shift_exponent = n_bits.saturating_sub(1);
-        let shift_ctx = ShiftRangeContext::new::<C, Builder>(api, shift_exponent).map_err(|e| {
-            LayerError::Other {
-                layer: LayerKind::TopK,
-                msg: format!("ShiftRangeContext::new failed for TopK: {e}"),
-            }
-        })?;
-        let mut logup_ctx = LogupRangeCheckContext::new_default();
-        logup_ctx.init::<C, Builder>(api);
-
-        let zero_var = api.constant(CircuitField::<C>::from_u256(U256::from(0u64)));
-        let mut out_array = ArrayD::from_elem(IxDyn(&self.output_shape), zero_var);
-
-        // Iterate over lanes along the axis.  Both input and output have the
-        // same rank; the output axis dimension is K while the input's is n.
-        let input_lanes: Vec<_> = x_input.lanes(Axis(self.axis)).into_iter().collect();
-        for (in_lane, mut out_lane) in input_lanes
-            .into_iter()
-            .zip(out_array.lanes_mut(Axis(self.axis)).into_iter())
-        {
-            // Hint layout: [x_0, ..., x_{n-1}, scale] → K outputs.
-            let mut hint_inputs: Vec<Variable> = in_lane.iter().copied().collect();
-            hint_inputs.push(scale_var);
-
-            let hint_out = api.new_hint(TOPK_HINT_KEY, &hint_inputs, self.k);
-
-            for (out_elem, &y) in out_lane.iter_mut().zip(hint_out.iter()) {
-                let y_shifted = api.add(y, shift_ctx.offset);
-                logup_ctx
-                    .range_check::<C, Builder>(api, y_shifted, n_bits)
-                    .map_err(|e| LayerError::Other {
-                        layer: LayerKind::TopK,
-                        msg: format!("signed TopK range check failed: {e}"),
-                    })?;
-                *out_elem = y;
-            }
-        }
-
-        logup_ctx.finalize::<C, Builder>(api);
-
-        // Only register the Values output. Indices output is not available in
-        // the Expander backend.
-        Ok((vec![self.values_output_name.clone()], out_array))
+        .into())
     }
 
     fn build(

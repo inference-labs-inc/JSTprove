@@ -96,11 +96,18 @@ fn layout_from_output_shape(
             ..
         }) => {
             let c = chw[0];
+            // Keep the existing stride only when it is wide enough to hold all
+            // channels; if the output has more channels, fall back to tight packing.
+            let stride_c = if c <= *existing_stride_c {
+                *existing_stride_c
+            } else {
+                c
+            };
             Some(SpatialInfo::HWC {
                 h: chw[1],
                 w: chw[2],
                 c,
-                stride_c: *existing_stride_c,
+                stride_c,
             })
         }
         _ => Some(SpatialInfo::CHW {
@@ -394,7 +401,7 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
             OpType::Exp | OpType::Softmax | OpType::Sigmoid | OpType::Gelu | OpType::Tile => {
                 anyhow::bail!(
                     "circuit builder: {:?} op in layer '{}' is not yet constrained in the \
-                     Remainder backend; refusing to add unconstrained committed shred",
+                    Remainder backend; refusing to add unconstrained committed shred",
                     layer.op_type,
                     layer.name
                 );
@@ -403,14 +410,22 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 if layer.outputs.len() > 1 {
                     anyhow::bail!(
                         "TopK layer '{}': indices output is not supported by the Remainder \
-                         backend (found {} outputs); only the values output is allowed",
+                        backend (found {} outputs); only the values output is allowed",
                         layer.name,
                         layer.outputs.len()
                     );
                 }
                 anyhow::bail!(
                     "circuit builder: TopK op in layer '{}' is not yet constrained in the \
-                     Remainder backend; refusing to add unconstrained committed shred",
+                    Remainder backend; refusing to add unconstrained committed shred",
+                    layer.name
+                );
+            }
+            OpType::Shape | OpType::Log | OpType::Expand | OpType::ReduceMean => {
+                anyhow::bail!(
+                    "circuit builder: {:?} op in layer '{}' is not yet constrained in the \
+                    Remainder backend; refusing to add unconstrained committed shred",
+                    layer.op_type,
                     layer.name
                 );
             }
@@ -486,7 +501,7 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                 anyhow::ensure!(
                     normalized_axis == 0,
                     "Gather {}: only axis=0 is supported in the Remainder backend \
-                     (got axis={}, normalized={})",
+                    (got axis={}, normalized={})",
                     layer.name,
                     axis_raw,
                     normalized_axis
