@@ -150,8 +150,10 @@ pub fn range_check_pow2_unsigned<C: Config, Builder: RootAPI<C>>(
 /// 2^{chunk_bits}. Increasing chunk_bits reduces the number of digits but
 /// increases table size.
 ///
-/// The default of 4 yields a 16-row table and is a practical middle ground.
-pub const DEFAULT_LOGUP_CHUNK_BITS: usize = 4;
+/// A width of 10 yields a 1024-row table and reduces digits per 64-bit
+/// range check from 16 (at chunk=4) to 7, cutting per-element
+/// constraint cost at the expense of a larger finalization tree.
+pub const DEFAULT_LOGUP_CHUNK_BITS: usize = 10;
 
 // -----------------------------------------------------------------------------
 // STRUCT: LogupRangeCheckContext
