@@ -46,7 +46,7 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 use crate::circuit_functions::{
     CircuitError,
     gadgets::linear_algebra::{
-        freivalds_verify_matrix_product, matrix_addition, matrix_multiplication,
+        freivalds_verify_matrix_product, matrix_addition, strassen_matrix_multiplication,
         unconstrained_matrix_multiplication,
     },
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
@@ -294,7 +294,7 @@ fn compute_core_product<C: Config, Builder: RootAPI<C>>(
 
         Ok(core_dyn)
     } else {
-        matrix_multiplication(
+        strassen_matrix_multiplication(
             api,
             input_array.clone().into_dyn(),
             weights_array.clone().into_dyn(),
