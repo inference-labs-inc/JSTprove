@@ -47,7 +47,8 @@ use crate::circuit_functions::{
     CircuitError,
     gadgets::linear_algebra::{
         freivalds_verify_matrix_product, matrix_addition, matrix_multiplication,
-        unconstrained_matrix_multiplication,
+        matrix_multiplication_with_constants, unconstrained_matrix_multiplication,
+        unconstrained_matrix_multiplication_with_constants,
     },
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
@@ -144,12 +145,26 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         check_alpha_beta(self.alpha, ALPHA, LayerKind::Gemm, &self.name)?;
         check_alpha_beta(self.beta, BETA, LayerKind::Gemm, &self.name)?;
 
+        let raw_weights_transposed = self.weights.as_ref().map(|w| {
+            let w2 = w
+                .clone()
+                .into_dimensionality::<Ix2>()
+                .expect("raw weights must be 2D");
+            let w2t = if self.transb == 1 {
+                w2.reversed_axes()
+            } else {
+                w2
+            };
+            w2t.into_dyn()
+        });
+
         let core_product = compute_core_product(
             api,
             &input_array,
             &weights_array,
             LayerKind::Gemm,
             self.freivalds_reps,
+            raw_weights_transposed.as_ref(),
         )?;
 
         // Add bias (constrained) on top of the core product.
@@ -260,6 +275,7 @@ fn compute_core_product<C: Config, Builder: RootAPI<C>>(
     weights_array: &ndarray::Array2<Variable>,
     layer_kind: LayerKind,
     freivalds_reps: usize,
+    raw_weights: Option<&ArrayD<i64>>,
 ) -> Result<ArrayD<Variable>, CircuitError> {
     let (ell, m) = input_array.dim();
     let (m2, n) = weights_array.dim();
@@ -276,12 +292,21 @@ fn compute_core_product<C: Config, Builder: RootAPI<C>>(
     let use_freivalds = should_use_freivalds(ell, m, n, freivalds_reps);
 
     if use_freivalds {
-        let core_dyn = unconstrained_matrix_multiplication(
-            api,
-            input_array.clone().into_dyn(),
-            weights_array.clone().into_dyn(),
-            layer_kind.clone(),
-        )?;
+        let core_dyn = match raw_weights {
+            Some(rw) => unconstrained_matrix_multiplication_with_constants(
+                api,
+                input_array.clone().into_dyn(),
+                weights_array.clone().into_dyn(),
+                rw,
+                layer_kind.clone(),
+            )?,
+            None => unconstrained_matrix_multiplication(
+                api,
+                input_array.clone().into_dyn(),
+                weights_array.clone().into_dyn(),
+                layer_kind.clone(),
+            )?,
+        };
 
         freivalds_verify_matrix_product(
             api,
@@ -294,13 +319,23 @@ fn compute_core_product<C: Config, Builder: RootAPI<C>>(
 
         Ok(core_dyn)
     } else {
-        matrix_multiplication(
-            api,
-            input_array.clone().into_dyn(),
-            weights_array.clone().into_dyn(),
-            layer_kind,
-        )
-        .map_err(Into::into)
+        match raw_weights {
+            Some(rw) => matrix_multiplication_with_constants(
+                api,
+                input_array.clone().into_dyn(),
+                weights_array.clone().into_dyn(),
+                rw,
+                layer_kind,
+            )
+            .map_err(Into::into),
+            None => matrix_multiplication(
+                api,
+                input_array.clone().into_dyn(),
+                weights_array.clone().into_dyn(),
+                layer_kind,
+            )
+            .map_err(Into::into),
+        }
     }
 }
 

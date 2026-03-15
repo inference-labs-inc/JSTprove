@@ -286,6 +286,72 @@ pub fn matrix_multiplication<C: Config, Builder: RootAPI<C>>(
     Ok(result.into_dyn())
 }
 
+/// # Errors
+/// Returns `LayerError` if inputs are not 2D or inner dimensions do not match.
+pub fn matrix_multiplication_with_constants<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    matrix_a: ArrayD<Variable>,
+    matrix_b: ArrayD<Variable>,
+    raw_b: &ArrayD<i64>,
+    layer_type: LayerKind,
+) -> Result<ArrayD<Variable>, LayerError> {
+    let a = matrix_a
+        .into_dimensionality::<Ix2>()
+        .map_err(|_| LayerError::InvalidShape {
+            layer: layer_type.clone(),
+            msg: "matrix_a must be 2D".to_string(),
+        })?;
+    let b = matrix_b
+        .into_dimensionality::<Ix2>()
+        .map_err(|_| LayerError::InvalidShape {
+            layer: layer_type.clone(),
+            msg: "matrix_b must be 2D".to_string(),
+        })?;
+    let rb = raw_b
+        .clone()
+        .into_dimensionality::<Ix2>()
+        .map_err(|_| LayerError::InvalidShape {
+            layer: layer_type.clone(),
+            msg: "raw_b must be 2D".to_string(),
+        })?;
+
+    let (dim_m, dim_n) = a.dim();
+    let (dim_n2, dim_p) = b.dim();
+    if dim_n != dim_n2 {
+        return Err(LayerError::ShapeMismatch {
+            layer: layer_type,
+            expected: vec![dim_n],
+            got: vec![dim_n2],
+            var_name: "a_dim[1] != b_dim[0]".to_string(),
+        });
+    }
+
+    let mut result = Array2::default((dim_m, dim_p));
+
+    for i in 0..dim_m {
+        for j in 0..dim_p {
+            let mut acc = api.constant(0);
+            for k in 0..dim_n {
+                let raw = rb[(k, j)];
+                if raw == 0 {
+                    continue;
+                }
+                if raw == 1 {
+                    acc = api.add(acc, a[(i, k)]);
+                } else if raw == -1 {
+                    acc = api.sub(acc, a[(i, k)]);
+                } else {
+                    let mul = api.mul(a[(i, k)], b[(k, j)]);
+                    acc = api.add(acc, mul);
+                }
+            }
+            result[(i, j)] = acc;
+        }
+    }
+
+    Ok(result.into_dyn())
+}
+
 // ............................................................................
 // FUNCTION: unconstrained_matrix_multiplication
 // ............................................................................
@@ -343,6 +409,70 @@ pub fn unconstrained_matrix_multiplication<C: Config, Builder: RootAPI<C>>(
             for k in 0..dim_n {
                 let mul = api.unconstrained_mul(a[(i, k)], b[(k, j)]);
                 acc = api.unconstrained_add(acc, mul);
+            }
+            result[(i, j)] = acc;
+        }
+    }
+
+    Ok(result.into_dyn())
+}
+
+/// # Errors
+/// Returns `LayerError` if inputs are not 2D or inner dimensions do not match.
+pub fn unconstrained_matrix_multiplication_with_constants<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    matrix_a: ArrayD<Variable>,
+    matrix_b: ArrayD<Variable>,
+    raw_b: &ArrayD<i64>,
+    layer_type: LayerKind,
+) -> Result<ArrayD<Variable>, LayerError> {
+    let a = matrix_a
+        .into_dimensionality::<Ix2>()
+        .map_err(|_| LayerError::InvalidShape {
+            layer: layer_type.clone(),
+            msg: "matrix_a must be 2D".to_string(),
+        })?;
+    let b = matrix_b
+        .into_dimensionality::<Ix2>()
+        .map_err(|_| LayerError::InvalidShape {
+            layer: layer_type.clone(),
+            msg: "matrix_b must be 2D".to_string(),
+        })?;
+    let rb = raw_b
+        .clone()
+        .into_dimensionality::<Ix2>()
+        .map_err(|_| LayerError::InvalidShape {
+            layer: layer_type.clone(),
+            msg: "raw_b must be 2D".to_string(),
+        })?;
+
+    let (dim_m, dim_n) = a.dim();
+    let (dim_n2, dim_p) = b.dim();
+    if dim_n != dim_n2 {
+        return Err(LayerError::ShapeMismatch {
+            layer: layer_type,
+            expected: vec![dim_n],
+            got: vec![dim_n2],
+            var_name: "a_dim[1] != b_dim[0]".to_string(),
+        });
+    }
+
+    let mut result = Array2::default((dim_m, dim_p));
+
+    for i in 0..dim_m {
+        for j in 0..dim_p {
+            let mut acc = api.constant(0);
+            for k in 0..dim_n {
+                let raw = rb[(k, j)];
+                if raw == 0 {
+                    continue;
+                }
+                if raw == 1 {
+                    acc = api.unconstrained_add(acc, a[(i, k)]);
+                } else {
+                    let mul = api.unconstrained_mul(a[(i, k)], b[(k, j)]);
+                    acc = api.unconstrained_add(acc, mul);
+                }
             }
             result[(i, j)] = acc;
         }

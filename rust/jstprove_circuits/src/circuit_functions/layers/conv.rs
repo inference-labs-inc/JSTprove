@@ -107,6 +107,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
                 v_plus_one: self.v_plus_one,
                 is_relu,
             },
+            self.weights.as_ref(),
         )?;
 
         Ok((self.outputs.clone(), out))
@@ -421,6 +422,7 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
     conv_params: &Conv2DParams,
     weights: &ArrayD<Variable>,
     bias: &ArrayD<Variable>,
+    raw_weights: Option<&ArrayD<i64>>,
 ) -> Result<ArrayD<Variable>, CircuitError> {
     validate_conv_params(conv_params)?;
     let s_n = get_u(&conv_params.input_shape, 0, "input_shape[0]")?;
@@ -489,6 +491,8 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
         for nw in 0..weights.shape()[0] {
             for c in 0..s_c {
                 let w = weights.slice(s![nw..=nw, c..=c, .., ..]).into_dyn();
+                let rw_slice =
+                    raw_weights.map(|rw| rw.slice(s![nw..=nw, c..=c, .., ..]).into_dyn());
 
                 for io in (bh..eh as i32).step_by(stride_h as usize) {
                     let hr = ((io - bh) / stride_h.as_i32()?).as_usize()?;
@@ -513,7 +517,11 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
                             .into_dyn();
 
                         if img.shape() == w.shape() {
-                            let s = flatten_and_perform_dot(api, &img, &w.view());
+                            let rw_vec = rw_slice
+                                .as_ref()
+                                .map(|rw| rw.iter().copied().collect::<Vec<_>>());
+                            let s =
+                                flatten_and_perform_dot(api, &img, &w.view(), rw_vec.as_deref());
                             res[[n, nw, hr, wr]] = api.add(s, res[[n, nw, hr, wr]]);
                         } else {
                             let j_height1 = i32_to_usize(max(-oh - i, 0))?;
@@ -538,7 +546,14 @@ pub fn conv_shape_4<C: Config, Builder: RootAPI<C>>(
                                 }
                                 .into());
                             }
-                            let s = flatten_and_perform_dot(api, &img, &w_);
+                            let rw_sub = rw_slice.as_ref().map(|rw| {
+                                let sub = rw
+                                    .slice(s![0..1, 0..1, j_height1..j_height2, j_width1..j_width2])
+                                    .into_dyn();
+                                sub.iter().copied().collect::<Vec<_>>()
+                            });
+                            let rw_ref = rw_sub.as_deref();
+                            let s = flatten_and_perform_dot(api, &img, &w_, rw_ref);
                             res[[n, nw, hr, wr]] = api.add(s, res[[n, nw, hr, wr]]);
                         }
                     }
@@ -553,11 +568,32 @@ fn flatten_and_perform_dot<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     img: &ndarray::ArrayViewD<'_, Variable>,
     w_: &ndarray::ArrayViewD<'_, Variable>,
+    raw_weights: Option<&[i64]>,
 ) -> Variable {
     let mut sum = api.constant(0);
-    for (a, b) in img.iter().zip(w_.iter()) {
-        let prod = api.mul(*a, *b);
-        sum = api.add(sum, prod);
+    match raw_weights {
+        Some(rw) => {
+            for (idx, (a, b)) in img.iter().zip(w_.iter()).enumerate() {
+                let raw = rw.get(idx).copied().unwrap_or(i64::MIN);
+                if raw == 0 {
+                    continue;
+                }
+                if raw == 1 {
+                    sum = api.add(sum, *a);
+                } else if raw == -1 {
+                    sum = api.sub(sum, *a);
+                } else {
+                    let prod = api.mul(*a, *b);
+                    sum = api.add(sum, prod);
+                }
+            }
+        }
+        None => {
+            for (a, b) in img.iter().zip(w_.iter()) {
+                let prod = api.mul(*a, *b);
+                sum = api.add(sum, prod);
+            }
+        }
     }
     sum
 }
@@ -591,6 +627,7 @@ pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(
     bias: &ArrayD<Variable>,
     conv_params: &Conv2DParams,
     quantization_params: &ConvQuantizationParams,
+    raw_weights: Option<&ArrayD<i64>>,
 ) -> Result<ArrayD<Variable>, CircuitError> {
     let conv_params = set_default_params(conv_params)?;
     not_yet_implemented_conv(
@@ -599,7 +636,7 @@ pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(
         &conv_params.dilations,
     )?;
 
-    let out = conv_shape_4(api, input_arr, &conv_params, weights, bias)?;
+    let out = conv_shape_4(api, input_arr, &conv_params, weights, bias, raw_weights)?;
 
     maybe_rescale(
         api,
