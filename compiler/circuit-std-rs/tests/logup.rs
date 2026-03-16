@@ -63,6 +63,73 @@ fn rangeproof_logup_test() {
     assert_eq!(output, vec![true]);
 }
 
+declare_circuit!(OnechunkOutOfRangeCircuit {
+    _placeholder: Variable
+});
+impl Define<M31Config> for OnechunkOutOfRangeCircuit<Variable> {
+    fn define<Builder: RootAPI<M31Config>>(&self, builder: &mut Builder) {
+        let mut table = LogUpRangeProofTable::new(8);
+        table.initial(builder);
+        let key = builder.constant(8u32);
+        table.rangeproof_onechunk(builder, key, 3);
+        table.final_check(builder);
+    }
+}
+
+#[test]
+#[should_panic]
+fn rangeproof_onechunk_rejects_out_of_range() {
+    let mut hint_registry = HintRegistry::<M31>::new();
+    hint_registry.register("myhint.querycounthint", query_count_hint);
+    let compile_result = compile(
+        &OnechunkOutOfRangeCircuit::default(),
+        CompileOptions::default(),
+    )
+    .unwrap();
+    let assignment = OnechunkOutOfRangeCircuit {
+        _placeholder: M31::from(0),
+    };
+    let witness = compile_result
+        .witness_solver
+        .solve_witness_with_hints(&assignment, &mut hint_registry)
+        .unwrap();
+    let output = compile_result.layered_circuit.run(&witness);
+    assert_eq!(output, vec![true]);
+}
+
+declare_circuit!(OnechunkInRangeCircuit {
+    _placeholder: Variable
+});
+impl Define<M31Config> for OnechunkInRangeCircuit<Variable> {
+    fn define<Builder: RootAPI<M31Config>>(&self, builder: &mut Builder) {
+        let mut table = LogUpRangeProofTable::new(8);
+        table.initial(builder);
+        let key = builder.constant(7u32);
+        table.rangeproof_onechunk(builder, key, 3);
+        table.final_check(builder);
+    }
+}
+
+#[test]
+fn rangeproof_onechunk_accepts_in_range() {
+    let mut hint_registry = HintRegistry::<M31>::new();
+    hint_registry.register("myhint.querycounthint", query_count_hint);
+    let compile_result = compile(
+        &OnechunkInRangeCircuit::default(),
+        CompileOptions::default(),
+    )
+    .unwrap();
+    let assignment = OnechunkInRangeCircuit {
+        _placeholder: M31::from(0),
+    };
+    let witness = compile_result
+        .witness_solver
+        .solve_witness_with_hints(&assignment, &mut hint_registry)
+        .unwrap();
+    let output = compile_result.layered_circuit.run(&witness);
+    assert_eq!(output, vec![true]);
+}
+
 declare_circuit!(RangeproofCircuit {
     place_holder: Variable
 });

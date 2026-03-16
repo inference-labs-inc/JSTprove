@@ -426,8 +426,11 @@ impl LogUpRangeProofTable {
             let rem = n % self.rangeproof_bits;
             let shift = self.rangeproof_bits - rem;
             let constant = (1 << shift) - 1;
-            let mut mul_factor = 0;
+            let mut mul_factor: u128 = 1;
             mul_factor <<= n;
+            let mul_factor_u256 = U256::new(mul_factor);
+            let mul_factor_var = CircuitField::<C>::from_u256(mul_factor_u256);
+            let mul_factor = builder.constant(mul_factor_var);
             let a_shift = builder.mul(constant, mul_factor);
             new_a = builder.add(a, a_shift);
         }
