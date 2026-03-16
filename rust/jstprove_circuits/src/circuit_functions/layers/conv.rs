@@ -176,12 +176,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
 }
 
 pub struct Conv2DParams {
-    dilations: Vec<u32>,
-    kernel_shape: Vec<u32>,
-    pads: Vec<u32>,
-    strides: Vec<u32>,
-    input_shape: Vec<u32>,
-    groups: Vec<u32>,
+    pub dilations: Vec<u32>,
+    pub kernel_shape: Vec<u32>,
+    pub pads: Vec<u32>,
+    pub strides: Vec<u32>,
+    pub input_shape: Vec<u32>,
+    pub groups: Vec<u32>,
 }
 
 pub struct ConvQuantizationParams {

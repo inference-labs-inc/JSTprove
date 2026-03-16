@@ -55,6 +55,10 @@ harness = false
 name = "pipeline_ecc"
 harness = false
 
+[[bench]]
+name = "winograd_conv"
+harness = false
+
 [dependencies.serde]
 version = "1.0"
 features = [ "derive",]
