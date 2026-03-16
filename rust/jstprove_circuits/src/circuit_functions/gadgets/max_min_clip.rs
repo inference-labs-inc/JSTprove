@@ -11,10 +11,8 @@ use crate::circuit_functions::hints::{unconstrained_max, unconstrained_min};
 
 /// Shift parameters for signed-range max/min gadgets.
 pub struct ShiftRangeContext {
-    /// The exponent s such that S = 2^s.
-    pub shift_exponent: usize,
-    /// The offset S = 2^s, lifted as a circuit constant.
-    pub offset: Variable,
+    pub(crate) shift_exponent: usize,
+    pub(crate) offset: Variable,
 }
 
 impl ShiftRangeContext {

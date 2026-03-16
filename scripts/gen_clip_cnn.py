@@ -4,7 +4,7 @@ import numpy as np
 import onnx
 import torch
 import torch.nn as nn
-from onnx import TensorProto, numpy_helper
+from onnx import numpy_helper
 
 
 class ClipCNN(nn.Module):
@@ -46,6 +46,7 @@ def inline_constants(model_path):
 
     del model.graph.node[:]
     model.graph.node.extend(keep_nodes)
+    onnx.checker.check_model(model)
     onnx.save(model, model_path)
 
 
