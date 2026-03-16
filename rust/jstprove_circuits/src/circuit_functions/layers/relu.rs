@@ -30,6 +30,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
     fn apply(
         &self,
         api: &mut Builder,
+        logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let input_name = get_input_name(&self.inputs, 0, LayerKind::ReLU, INPUT)?;
@@ -47,7 +48,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
             .checked_sub(1)
             .ok_or_else(|| CircuitError::Other("ReLU: n_bits must be at least 1".to_string()))?;
 
-        let out = relu_array::<C, Builder>(api, &layer_input, shift_exponent)?;
+        let out = relu_array::<C, Builder>(api, logup_ctx, &layer_input, shift_exponent)?;
 
         Ok((self.outputs.clone(), out))
     }
@@ -98,23 +99,16 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
 ///   back into the input array’s dimensions.
 pub fn relu_array<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
+    logup_ctx: &mut LogupRangeCheckContext,
     array: &ArrayD<Variable>,
     shift_exponent: usize,
 ) -> Result<ArrayD<Variable>, CircuitError> {
-    // Shared shift context S = 2^s.
     let shift_ctx = ShiftRangeContext::new::<C, Builder>(api, shift_exponent)?;
-
-    // Shared LogUp range-check context for all elements in this layer.
-    let mut logup_ctx = LogupRangeCheckContext::new_default();
-    logup_ctx.init::<C, Builder>(api);
 
     let flat_results: Result<Vec<_>, CircuitError> = array
         .iter()
-        .map(|x| constrained_relu::<C, Builder>(api, &shift_ctx, &mut logup_ctx, *x))
+        .map(|x| constrained_relu::<C, Builder>(api, &shift_ctx, logup_ctx, *x))
         .collect();
-
-    // Single final LogUp consistency check for the whole layer.
-    logup_ctx.finalize::<C, Builder>(api);
 
     let out = ArrayD::from_shape_vec(array.raw_dim(), flat_results?)
         .map_err(ArrayConversionError::ShapeError)?;

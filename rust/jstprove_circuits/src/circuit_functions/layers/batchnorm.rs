@@ -9,6 +9,7 @@ use crate::circuit_functions::utils::tensor_ops::{
 };
 use crate::circuit_functions::{
     CircuitError,
+    gadgets::LogupRangeCheckContext,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
@@ -39,6 +40,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
     fn apply(
         &self,
         api: &mut Builder,
+        logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         // TODO can add bias check as an optional step.
@@ -83,6 +85,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
 
         let out = maybe_rescale(
             api,
+            logup_ctx,
             result,
             &MaybeRescaleParams {
                 is_rescale: self.is_rescale,

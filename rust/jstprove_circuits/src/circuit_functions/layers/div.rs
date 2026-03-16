@@ -32,6 +32,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
     fn apply(
         &self,
         api: &mut Builder,
+        logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let a_name = get_input_name(&self.inputs, 0, LayerKind::Div, INPUT)?;
@@ -63,9 +64,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
                 var_name: "divisor".to_string(),
             })?
             .to_owned();
-
-        let mut logup_ctx = LogupRangeCheckContext::new_default();
-        logup_ctx.init::<C, Builder>(api);
 
         validate_divisors(&broadcasted_divisors)?;
         let k = usize::try_from(self.scaling).map_err(|_| LayerError::Other {
@@ -126,7 +124,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
 
                 let out = div_pos_integer_pow2_constant(
                     api,
-                    &mut logup_ctx,
+                    logup_ctx,
                     dividend,
                     div,
                     scaled_shift,
@@ -138,8 +136,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
             })
             .collect();
         let result = result?;
-
-        logup_ctx.finalize::<C, Builder>(api);
 
         let output = ArrayD::from_shape_vec(IxDyn(&a_shape), result).map_err(|_| {
             LayerError::InvalidShape {

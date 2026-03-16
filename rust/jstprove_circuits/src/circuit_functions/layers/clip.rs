@@ -54,6 +54,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
     fn apply(
         &self,
         api: &mut Builder,
+        logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         // 1. Resolve required input X
@@ -173,10 +174,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
                 msg: format!("ShiftRangeContext::new failed: {e}"),
             })?;
 
-        // Shared LogUp context for all range checks in this Clip layer
-        let mut logup_ctx = LogupRangeCheckContext::new_default();
-        logup_ctx.init::<C, Builder>(api);
-
         // 5. Elementwise clip using constrained_clip
         let mut out_storage = Vec::with_capacity(total_len);
 
@@ -184,34 +181,21 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
             (None, None) => {
                 // This case should have early-returned, but keep for completeness.
                 for &x_val in &x_bc {
-                    let clipped =
-                        constrained_clip(api, &range_ctx, &mut logup_ctx, x_val, None, None)?;
+                    let clipped = constrained_clip(api, &range_ctx, logup_ctx, x_val, None, None)?;
                     out_storage.push(clipped);
                 }
             }
             (Some(min_bc), None) => {
                 for (x_val, min_val) in x_bc.iter().zip(min_bc.iter()) {
-                    let clipped = constrained_clip(
-                        api,
-                        &range_ctx,
-                        &mut logup_ctx,
-                        *x_val,
-                        Some(*min_val),
-                        None,
-                    )?;
+                    let clipped =
+                        constrained_clip(api, &range_ctx, logup_ctx, *x_val, Some(*min_val), None)?;
                     out_storage.push(clipped);
                 }
             }
             (None, Some(max_bc)) => {
                 for (x_val, max_val) in x_bc.iter().zip(max_bc.iter()) {
-                    let clipped = constrained_clip(
-                        api,
-                        &range_ctx,
-                        &mut logup_ctx,
-                        *x_val,
-                        None,
-                        Some(*max_val),
-                    )?;
+                    let clipped =
+                        constrained_clip(api, &range_ctx, logup_ctx, *x_val, None, Some(*max_val))?;
                     out_storage.push(clipped);
                 }
             }
@@ -221,7 +205,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
                     let clipped = constrained_clip(
                         api,
                         &range_ctx,
-                        &mut logup_ctx,
+                        logup_ctx,
                         *x_val,
                         Some(*min_val),
                         Some(*max_val),
@@ -230,9 +214,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
                 }
             }
         }
-
-        // Finalize LogUp lookup constraints for this layer
-        logup_ctx.finalize::<C, Builder>(api);
 
         let result = ArrayD::from_shape_vec(shape.clone(), out_storage).map_err(|_| {
             LayerError::InvalidShape {

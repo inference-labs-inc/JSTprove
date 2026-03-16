@@ -29,6 +29,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BinaryCompareLayer 
     fn apply(
         &self,
         api: &mut Builder,
+        logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let a_name = get_input_name(&self.inputs, 0, self.kind.clone(), INPUT)?;
@@ -58,9 +59,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BinaryCompareLayer 
                 msg: format!("ShiftRangeContext::new failed: {e}"),
             })?;
 
-        let mut logup_ctx = LogupRangeCheckContext::new_default();
-        logup_ctx.init::<C, Builder>(api);
-
         let shape = a_bc.shape().to_vec();
         if a_bc.len() != b_bc.len() {
             return Err(LayerError::InvalidShape {
@@ -78,12 +76,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BinaryCompareLayer 
 
         for (a_val, b_val) in a_bc.iter().zip(b_bc.iter()) {
             let result_var = match self.kind {
-                LayerKind::Max => {
-                    constrained_max(api, &shift_ctx, &mut logup_ctx, &[*a_val, *b_val])?
-                }
-                LayerKind::Min => {
-                    constrained_min(api, &shift_ctx, &mut logup_ctx, &[*a_val, *b_val])?
-                }
+                LayerKind::Max => constrained_max(api, &shift_ctx, logup_ctx, &[*a_val, *b_val])?,
+                LayerKind::Min => constrained_min(api, &shift_ctx, logup_ctx, &[*a_val, *b_val])?,
                 ref kind => {
                     return Err(LayerError::UnsupportedConfig {
                         layer: kind.clone(),
@@ -94,8 +88,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BinaryCompareLayer 
             };
             out_storage.push(result_var);
         }
-
-        logup_ctx.finalize::<C, Builder>(api);
 
         let result = ArrayD::from_shape_vec(shape.clone(), out_storage).map_err(|_| {
             LayerError::InvalidShape {

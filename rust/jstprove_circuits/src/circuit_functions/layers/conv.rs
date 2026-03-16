@@ -26,6 +26,7 @@ use crate::circuit_functions::{
 };
 
 use crate::circuit_functions::{
+    gadgets::LogupRangeCheckContext,
     layers::layer_ops::LayerOp,
     utils::{
         quantization::{MaybeRescaleParams, maybe_rescale},
@@ -58,6 +59,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
     fn apply(
         &self,
         api: &mut Builder,
+        logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let is_relu = matches!(self.optimization_pattern, PatternRegistry::ConvRelu);
@@ -90,6 +92,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
 
         let out = conv_4d_run(
             api,
+            logup_ctx,
             &layer_input,
             &weights,
             &bias,
@@ -586,6 +589,7 @@ fn flatten_and_perform_dot<C: Config, Builder: RootAPI<C>>(
 /// - [`CircuitError`] other errors that propogate through.
 pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
+    logup_ctx: &mut LogupRangeCheckContext,
     input_arr: &ArrayD<Variable>,
     weights: &ArrayD<Variable>,
     bias: &ArrayD<Variable>,
@@ -603,6 +607,7 @@ pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(
 
     maybe_rescale(
         api,
+        logup_ctx,
         out,
         &MaybeRescaleParams {
             is_rescale: quantization_params.quantized,

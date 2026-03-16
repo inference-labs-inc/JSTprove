@@ -7,6 +7,7 @@ use expander_compiler::frontend::{
 use expander_compiler::gkr_engine::GKREngine;
 
 use crate::circuit_functions::CircuitError;
+use crate::circuit_functions::gadgets::LogupRangeCheckContext;
 use crate::circuit_functions::hints::build_logup_hint_registry;
 use crate::circuit_functions::utils::ArrayConversionError;
 use crate::circuit_functions::utils::build_layers::build_layers;
@@ -75,12 +76,17 @@ impl Circuit<Variable> {
 
         let layers = build_layers::<C, Builder>(params, architecture, w_and_b)?;
 
+        let mut logup_ctx = LogupRangeCheckContext::new_default();
+        logup_ctx.init::<C, Builder>(api);
+
         for layer in &layers {
-            let (keys, value) = layer.apply(api, &out)?;
+            let (keys, value) = layer.apply(api, &mut logup_ctx, &out)?;
             for key in keys {
                 out.insert(key, value.clone());
             }
         }
+
+        logup_ctx.finalize::<C, Builder>(api);
 
         if params.outputs.is_empty() {
             return Err(CircuitError::Other(
