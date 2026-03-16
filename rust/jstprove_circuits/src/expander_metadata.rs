@@ -20,6 +20,13 @@ pub struct ExpanderMetadata {
 }
 
 pub fn generate_from_onnx(onnx_path: &Path) -> Result<ExpanderMetadata> {
+    generate_from_onnx_with_options(onnx_path, false)
+}
+
+pub fn generate_from_onnx_with_options(
+    onnx_path: &Path,
+    weights_as_inputs: bool,
+) -> Result<ExpanderMetadata> {
     let parsed = parser::parse_onnx(onnx_path).context("parsing ONNX model")?;
     let graph = LayerGraph::from_parsed(&parsed).context("building layer graph")?;
     let config = ScaleConfig::default();
@@ -29,7 +36,7 @@ pub fn generate_from_onnx(onnx_path: &Path) -> Result<ExpanderMetadata> {
 
     let opset_version = parsed.opset_version as i16;
 
-    let circuit_params = build_circuit_params(&parsed, &quantized, &config);
+    let circuit_params = build_circuit_params(&parsed, &quantized, &config, weights_as_inputs);
     let architecture = build_architecture(&parsed, &quantized, &shapes, opset_version);
     let wandb = build_wandb(&quantized, &shapes).context("building weight/bias data")?;
 
@@ -44,6 +51,7 @@ fn build_circuit_params(
     parsed: &ParsedModel,
     quantized: &QuantizedModel,
     config: &ScaleConfig,
+    weights_as_inputs: bool,
 ) -> CircuitParams {
     let initializer_names: std::collections::HashSet<&str> =
         parsed.initializers.keys().map(String::as_str).collect();
@@ -93,7 +101,7 @@ fn build_circuit_params(
         outputs,
         freivalds_reps: 1,
         n_bits_config: quantized.n_bits_config.clone(),
-        weights_as_inputs: false,
+        weights_as_inputs,
         proof_system: ProofSystem::Expander,
     }
 }
@@ -341,6 +349,23 @@ mod tests {
             assert!(wb.tensor.is_some());
             assert!(!wb.shape.is_empty());
         }
+    }
+
+    #[test]
+    fn lenet_metadata_generation_weights_as_inputs() {
+        let model_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
+        if !model_path.exists() {
+            return;
+        }
+
+        let metadata = generate_from_onnx_with_options(model_path.as_path(), true).unwrap();
+
+        assert!(metadata.circuit_params.weights_as_inputs);
+        assert_eq!(metadata.circuit_params.scale_base, 2);
+        assert_eq!(metadata.circuit_params.scale_exponent, 18);
+        assert!(!metadata.circuit_params.inputs.is_empty());
+        assert!(!metadata.circuit_params.outputs.is_empty());
     }
 
     #[test]
