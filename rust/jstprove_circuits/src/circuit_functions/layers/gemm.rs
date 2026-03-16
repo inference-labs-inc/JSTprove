@@ -144,12 +144,24 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         check_alpha_beta(self.alpha, ALPHA, LayerKind::Gemm, &self.name)?;
         check_alpha_beta(self.beta, BETA, LayerKind::Gemm, &self.name)?;
 
+        let raw_weights_2d = self.weights.as_ref().map(|w| {
+            let mut w2d = w
+                .clone()
+                .into_dimensionality::<Ix2>()
+                .expect("weights must be 2D");
+            if self.transb != 0 {
+                w2d = w2d.t().to_owned();
+            }
+            w2d.into_dyn()
+        });
+
         let core_product = compute_core_product(
             api,
             &input_array,
             &weights_array,
             LayerKind::Gemm,
             self.freivalds_reps,
+            raw_weights_2d.as_ref(),
         )?;
 
         // Add bias (constrained) on top of the core product.
@@ -260,6 +272,7 @@ fn compute_core_product<C: Config, Builder: RootAPI<C>>(
     weights_array: &ndarray::Array2<Variable>,
     layer_kind: LayerKind,
     freivalds_reps: usize,
+    raw_weights: Option<&ArrayD<i64>>,
 ) -> Result<ArrayD<Variable>, CircuitError> {
     let (ell, m) = input_array.dim();
     let (m2, n) = weights_array.dim();
@@ -299,6 +312,7 @@ fn compute_core_product<C: Config, Builder: RootAPI<C>>(
             input_array.clone().into_dyn(),
             weights_array.clone().into_dyn(),
             layer_kind,
+            raw_weights,
         )
         .map_err(Into::into)
     }

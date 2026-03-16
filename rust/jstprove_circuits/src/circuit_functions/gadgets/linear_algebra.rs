@@ -240,11 +240,15 @@ where
 /// # Errors
 /// Returns `LayerError::InvalidShape` if either input is not 2D.
 /// Returns `LayerError::ShapeMismatch` if A.cols != B.rows.
+///
+/// # Panics
+/// Panics if `raw_b` is `Some` but not 2-dimensional.
 pub fn matrix_multiplication<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     matrix_a: ArrayD<Variable>,
     matrix_b: ArrayD<Variable>,
     layer_type: LayerKind,
+    raw_b: Option<&ArrayD<i64>>,
 ) -> Result<ArrayD<Variable>, LayerError> {
     let a = matrix_a
         .into_dimensionality::<Ix2>()
@@ -270,12 +274,32 @@ pub fn matrix_multiplication<C: Config, Builder: RootAPI<C>>(
         });
     }
 
+    let rb = raw_b.map(|r| {
+        r.clone()
+            .into_dimensionality::<Ix2>()
+            .expect("raw_b must be 2D")
+    });
+
     let mut result = Array2::default((dim_m, dim_p));
 
     for i in 0..dim_m {
         for j in 0..dim_p {
             let mut acc = api.constant(0);
             for k in 0..dim_n {
+                if let Some(ref raw) = rb {
+                    let wval = raw[(k, j)];
+                    if wval == 0 {
+                        continue;
+                    }
+                    if wval == 1 {
+                        acc = api.add(acc, a[(i, k)]);
+                        continue;
+                    }
+                    if wval == -1 {
+                        acc = api.sub(acc, a[(i, k)]);
+                        continue;
+                    }
+                }
                 let mul = api.mul(a[(i, k)], b[(k, j)]);
                 acc = api.add(acc, mul);
             }
