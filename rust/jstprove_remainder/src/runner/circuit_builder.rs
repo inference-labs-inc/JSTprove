@@ -139,12 +139,18 @@ fn add_committed_passthrough(
     manifest: &mut ShredManifest,
     preserve_layout: bool,
 ) {
-    let out_total: usize = layer.output_shape.iter().product();
-    let out_nv = num_vars_for(out_total);
-    let shred_name = format!("{}_out", layer.name);
-    let node = builder.add_input_shred(&shred_name, out_nv, committed);
     let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
     let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
+    // Derive allocation size from the chosen layout: HWC with stride_c > c uses
+    // H*W*stride_c slots (the max index is (H*W-1)*stride_c + (C-1)), not the
+    // dense H*W*C.  For all other layouts the dense product is correct.
+    let out_capacity: usize = match &output_layout {
+        Some(SpatialInfo::HWC { h, w, stride_c, .. }) => h * w * stride_c,
+        _ => layer.output_shape.iter().product(),
+    };
+    let out_nv = num_vars_for(out_capacity);
+    let shred_name = format!("{}_out", layer.name);
+    let node = builder.add_input_shred(&shred_name, out_nv, committed);
     manifest.insert(
         shred_name,
         ShredEntry {
@@ -548,12 +554,15 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                     normalized_axis
                 );
 
-                let out_total: usize = layer.output_shape.iter().product();
-                let out_nv = num_vars_for(out_total);
-                let gather_out_name = format!("{}_out", layer.name);
-                let node = builder.add_input_shred(&gather_out_name, out_nv, &committed);
                 let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
                 let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
+                let out_capacity: usize = match &output_layout {
+                    Some(SpatialInfo::HWC { h, w, stride_c, .. }) => h * w * stride_c,
+                    _ => layer.output_shape.iter().product(),
+                };
+                let out_nv = num_vars_for(out_capacity);
+                let gather_out_name = format!("{}_out", layer.name);
+                let node = builder.add_input_shred(&gather_out_name, out_nv, &committed);
                 manifest.insert(
                     gather_out_name,
                     ShredEntry {
