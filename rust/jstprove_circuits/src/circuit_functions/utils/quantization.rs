@@ -278,6 +278,7 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
 /// # Arguments
 ///
 /// - `api`: mutable reference to the circuit builder.
+/// - `logup_ctx`: shared [`LogupRangeCheckContext`] used for all range checks.
 /// - `array`: tensor (any shape) of `Variable`s to be rescaled.
 /// - `scaling_exponent`: `kappa` such that `alpha = 2^kappa`.
 /// - `shift_exponent`: `s` such that `S = 2^s`.
