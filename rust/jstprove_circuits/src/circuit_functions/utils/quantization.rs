@@ -269,7 +269,7 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
 /// - Constructs a [`RescalingContext`] with:
 ///   - `scaling_exponent` `kappa` such that `alpha = 2^kappa`.
 ///   - `shift_exponent` `s` such that `S = 2^s`.
-/// - Constructs a shared [`LogupRangeCheckContext`] used for **all** range checks
+/// - Uses the provided [`LogupRangeCheckContext`] for **all** range checks
 ///   (both remainder and quotient range proofs, plus any `constrained_max` calls
 ///   used to implement `ReLU`).
 /// - Flattens the input array, applies [`rescale`] to each element, and rebuilds

@@ -87,6 +87,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReluLayer {
 ///
 /// # Arguments
 /// - `api`: Mutable reference to the circuit builder api.
+/// - `logup_ctx`: Shared cross-layer LogUp range-check context.
 /// - `array`: Multi-dimensional array of input variables.
 /// - `shift_exponent`: Bit exponent `s`, defining the signed range `[-2^s, 2^s - 1]`.
 ///

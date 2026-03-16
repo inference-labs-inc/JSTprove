@@ -573,6 +573,7 @@ fn flatten_and_perform_dot<C: Config, Builder: RootAPI<C>>(
 ///
 /// # Arguments
 /// - `api`: Mutable reference to the circuit builder api.
+/// - `logup_ctx`: Shared cross-layer LogUp range-check context.
 /// - `input_arr`: Input tensor.
 /// - `weights`: Convolution weights tensor.
 /// - `bias`: Convolution bias tensor.
