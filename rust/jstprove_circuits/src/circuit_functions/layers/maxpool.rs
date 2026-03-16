@@ -374,20 +374,11 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
     params: &PoolingParams,
 ) -> Result<ArrayD<Variable>, CircuitError> {
     let global_pooling = false;
-    let batch = x_shape[0];
-    let channels = x_shape[1];
-    let height = x_shape[2];
 
     let kernel_shape = &params.kernel_shape;
     let strides = &params.strides;
     let dilation = &params.dilation;
     let new_pads = &params.new_pads;
-
-    let width = if kernel_shape.len() > 1 {
-        x_shape[3]
-    } else {
-        1
-    };
 
     if x_shape.len() < 3 {
         return Err(LayerError::InvalidShape {
@@ -403,6 +394,15 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
         }
         .into());
     }
+
+    let batch = x_shape[0];
+    let channels = x_shape[1];
+    let height = x_shape[2];
+    let width = if kernel_shape.len() > 1 {
+        x_shape[3]
+    } else {
+        1
+    };
 
     let pooled_height = output_spatial_shape[0];
     let pooled_width = if kernel_shape.len() > 1 {
