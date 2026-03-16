@@ -545,7 +545,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
         transcript: &mut T,
         mpi_config: &impl MPIEngine,
     ) -> bool {
-        use metal_accel::{metal_eq_eval_at, BN254_ELEM_SIZE};
+        use metal_accel::{metal_eq_eval_at, BN254_ELEM_SIZE, GPU_DISPATCH_THRESHOLD};
 
         if std::mem::size_of::<F::Field>() != BN254_ELEM_SIZE {
             return false;
@@ -556,7 +556,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
         if !crate::metal_sumcheck::metal_available() {
             return false;
         }
-        if self.input_var_num < 12 {
+        if (1usize << self.input_var_num) < GPU_DISPATCH_THRESHOLD {
             return false;
         }
 
@@ -706,7 +706,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
         transcript: &mut T,
         mpi_config: &impl MPIEngine,
     ) -> bool {
-        use metal_accel::{metal_eq_eval_at, BN254_ELEM_SIZE};
+        use metal_accel::{metal_eq_eval_at, BN254_ELEM_SIZE, GPU_DISPATCH_THRESHOLD};
 
         if std::mem::size_of::<F::Field>() != BN254_ELEM_SIZE {
             return false;
@@ -717,7 +717,7 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
         if !crate::metal_sumcheck::metal_available() {
             return false;
         }
-        if self.input_var_num < 12 {
+        if (1usize << self.input_var_num) < GPU_DISPATCH_THRESHOLD {
             return false;
         }
 

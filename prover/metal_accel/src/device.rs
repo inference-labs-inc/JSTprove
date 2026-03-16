@@ -14,7 +14,7 @@ const SHADER_SOURCE: &str = concat!(
 );
 
 pub const THREADGROUP_SIZE: u64 = 256;
-pub const GPU_DISPATCH_THRESHOLD: usize = 1 << 12;
+pub const GPU_DISPATCH_THRESHOLD: usize = 1 << 18;
 
 pub struct MetalAccelerator {
     pub(crate) device: Device,
