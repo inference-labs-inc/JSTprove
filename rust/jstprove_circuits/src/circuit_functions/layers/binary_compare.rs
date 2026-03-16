@@ -6,7 +6,7 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::{
     CircuitError,
-    gadgets::{LogupRangeCheckContext, ShiftRangeContext, constrained_max, constrained_min},
+    gadgets::{LogupRangeCheckContext, ShiftRangeContext, constrained_max_2, constrained_min_2},
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
@@ -76,8 +76,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BinaryCompareLayer 
 
         for (a_val, b_val) in a_bc.iter().zip(b_bc.iter()) {
             let result_var = match self.kind {
-                LayerKind::Max => constrained_max(api, &shift_ctx, logup_ctx, &[*a_val, *b_val])?,
-                LayerKind::Min => constrained_min(api, &shift_ctx, logup_ctx, &[*a_val, *b_val])?,
+                LayerKind::Max => constrained_max_2(api, &shift_ctx, logup_ctx, *a_val, *b_val)?,
+                LayerKind::Min => constrained_min_2(api, &shift_ctx, logup_ctx, *a_val, *b_val)?,
                 ref kind => {
                     return Err(LayerError::UnsupportedConfig {
                         layer: kind.clone(),
