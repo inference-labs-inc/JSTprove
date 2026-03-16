@@ -236,12 +236,11 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
     )?;
 
     if apply_relu {
-        let shift_ctx = ShiftRangeContext::new(api, context.shift_exponent).map_err(|e| {
-            RescaleError::BitDecompositionError {
+        let shift_ctx = ShiftRangeContext::new(api, LayerKind::ReLU, context.shift_exponent)
+            .map_err(|e| RescaleError::BitDecompositionError {
                 var_name: format!("ShiftRangeContext::new in ReLU: {e}"),
                 n_bits: context.shift_exponent + 1,
-            }
-        })?;
+            })?;
 
         let relu_q =
             constrained_relu::<C, Builder>(api, &shift_ctx, logup_ctx, quotient).map_err(|e| {
@@ -395,7 +394,7 @@ fn standalone_relu_array<C: Config, Builder: RootAPI<C>>(
     array: ArrayD<Variable>,
     shift_exponent: usize,
 ) -> Result<ArrayD<Variable>, CircuitError> {
-    let shift_ctx = ShiftRangeContext::new::<C, Builder>(api, shift_exponent)?;
+    let shift_ctx = ShiftRangeContext::new::<C, Builder>(api, LayerKind::ReLU, shift_exponent)?;
 
     let shape = array.shape().to_vec();
 

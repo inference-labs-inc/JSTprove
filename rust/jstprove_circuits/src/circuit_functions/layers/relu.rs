@@ -104,7 +104,7 @@ pub fn relu_array<C: Config, Builder: RootAPI<C>>(
     array: &ArrayD<Variable>,
     shift_exponent: usize,
 ) -> Result<ArrayD<Variable>, CircuitError> {
-    let shift_ctx = ShiftRangeContext::new::<C, Builder>(api, shift_exponent)?;
+    let shift_ctx = ShiftRangeContext::new::<C, Builder>(api, LayerKind::ReLU, shift_exponent)?;
 
     let flat_results: Result<Vec<_>, CircuitError> = array
         .iter()

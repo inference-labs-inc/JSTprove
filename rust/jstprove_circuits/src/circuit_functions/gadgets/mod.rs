@@ -8,7 +8,8 @@ pub mod max_min_clip;
 pub mod range_check;
 
 pub use max_min_clip::{
-    ShiftRangeContext, constrained_clip, constrained_max, constrained_min, constrained_relu,
+    ShiftRangeContext, constrained_clip, constrained_max, constrained_max_2, constrained_min,
+    constrained_min_2, constrained_relu,
 };
 pub use range_check::{
     DEFAULT_LOGUP_CHUNK_BITS, LogupRangeCheckContext, constrained_reconstruct_from_bits,

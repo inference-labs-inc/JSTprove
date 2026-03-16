@@ -38,3 +38,54 @@ pub enum LayerError {
     #[error("Other error in {layer}: {msg}")]
     Other { layer: LayerKind, msg: String },
 }
+
+impl LayerError {
+    #[must_use]
+    pub fn with_layer(self, new_layer: LayerKind) -> Self {
+        match self {
+            Self::MissingInput { name, .. } => Self::MissingInput {
+                layer: new_layer,
+                name,
+            },
+            Self::ShapeMismatch {
+                expected,
+                got,
+                var_name,
+                ..
+            } => Self::ShapeMismatch {
+                layer: new_layer,
+                expected,
+                got,
+                var_name,
+            },
+            Self::MissingParameter { param, .. } => Self::MissingParameter {
+                layer: new_layer,
+                param,
+            },
+            Self::InvalidParameterValue {
+                layer_name,
+                param_name,
+                value,
+                ..
+            } => Self::InvalidParameterValue {
+                layer: new_layer,
+                layer_name,
+                param_name,
+                value,
+            },
+            Self::UnsupportedConfig { msg, .. } => Self::UnsupportedConfig {
+                layer: new_layer,
+                msg,
+            },
+            Self::InvalidShape { msg, .. } => Self::InvalidShape {
+                layer: new_layer,
+                msg,
+            },
+            Self::UnknownOp { op_type } => Self::UnknownOp { op_type },
+            Self::Other { msg, .. } => Self::Other {
+                layer: new_layer,
+                msg,
+            },
+        }
+    }
+}
