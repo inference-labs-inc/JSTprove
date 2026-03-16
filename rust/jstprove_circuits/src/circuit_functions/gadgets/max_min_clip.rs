@@ -308,14 +308,21 @@ pub fn constrained_clip<C: Config, Builder: RootAPI<C>>(
         return Ok(x);
     }
 
+    let remap = |e: CircuitError| -> CircuitError {
+        match e {
+            CircuitError::Layer(le) => CircuitError::Layer(le.with_layer(LayerKind::Clip)),
+            other => other,
+        }
+    };
+
     let mut cur = if let Some(a) = lower {
-        constrained_max_2(api, range_ctx, logup_ctx, x, a)?
+        constrained_max_2(api, range_ctx, logup_ctx, x, a).map_err(remap)?
     } else {
         x
     };
 
     if let Some(b) = upper {
-        cur = constrained_min_2(api, range_ctx, logup_ctx, cur, b)?;
+        cur = constrained_min_2(api, range_ctx, logup_ctx, cur, b).map_err(remap)?;
     }
 
     Ok(cur)
