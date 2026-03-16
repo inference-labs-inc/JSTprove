@@ -14,7 +14,7 @@ use crate::circuit_functions::{
 };
 
 use crate::circuit_functions::gadgets::{
-    LogupRangeCheckContext, ShiftRangeContext, constrained_max,
+    LogupRangeCheckContext, ShiftRangeContext, constrained_relu,
 };
 
 #[derive(Debug)]
@@ -108,14 +108,9 @@ pub fn relu_array<C: Config, Builder: RootAPI<C>>(
     let mut logup_ctx = LogupRangeCheckContext::new_default();
     logup_ctx.init::<C, Builder>(api);
 
-    let zero = api.constant(0);
-
     let flat_results: Result<Vec<_>, CircuitError> = array
         .iter()
-        .map(|x| {
-            // ReLU(x) = max(x, 0)
-            constrained_max::<C, Builder>(api, &shift_ctx, &mut logup_ctx, &[*x, zero])
-        })
+        .map(|x| constrained_relu::<C, Builder>(api, &shift_ctx, &mut logup_ctx, *x))
         .collect();
 
     // Single final LogUp consistency check for the whole layer.

@@ -216,6 +216,91 @@ pub fn constrained_max<C: Config, Builder: RootAPI<C>>(
 }
 
 // -----------------------------------------------------------------------------
+// FUNCTION: constrained_relu
+// -----------------------------------------------------------------------------
+
+/// Enforces `ReLU(x) = max(x, 0)` using a single `LogUp` range check instead
+/// of the two required by the general `constrained_max` path.
+///
+/// # High-level idea
+///
+/// We introduce an unconstrained boolean selector `b` indicating whether
+/// `x >= 0`, and define:
+///
+/// ```text
+///     result = b * x
+///     abs_x  = 2 * result - x = (2b - 1) * x
+/// ```
+///
+/// When `b` is set honestly:
+/// - If `x >= 0`: `b = 1`, `result = x`, `abs_x = x`.
+/// - If `x < 0`:  `b = 0`, `result = 0`, `abs_x = -x`.
+///
+/// In both cases `abs_x = |x|`, which lies in `[0, 2^(s+1) - 1]` for any
+/// `x` in the signed range `[-S, S - 1]` with `S = 2^s`.
+///
+/// A dishonest prover setting `b` to the wrong value produces `abs_x = -|x|`,
+/// which is a large field element that fails the range check.
+///
+/// The three constraints are:
+/// 1. `b` is boolean: `b * (b - 1) = 0` (degree-2, essentially free).
+/// 2. `result = b * x` (one multiplication gate).
+/// 3. `abs_x = 2 * result - x` is in `[0, 2^(s+1) - 1]` (one `LogUp` range check).
+///
+/// # Assumptions
+/// - `x` encodes a signed integer in `[-S, S - 1]` with `S = 2^s`.
+/// - The field modulus `p > 2^(s+1) - 1`.
+/// - `logup_ctx` is initialized and will be finalized by the caller.
+///
+/// # Arguments
+/// - `api`: circuit builder.
+/// - `shift_ctx`: precomputed shift parameters (`s` and `S = 2^s`), used only
+///   for the shift exponent and the `S` constant needed by the unconstrained
+///   comparison.
+/// - `logup_ctx`: shared `LogUp` range-check context.
+/// - `x`: the input variable.
+///
+/// # Errors
+/// - Returns `LayerError::InvalidParameterValue` if `shift_exponent + 1` overflows.
+/// - Propagates any `LogUp` errors.
+///
+/// # Returns
+/// A `Variable` equal to `max(x, 0)`.
+pub fn constrained_relu<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    shift_ctx: &ShiftRangeContext,
+    logup_ctx: &mut LogupRangeCheckContext,
+    x: Variable,
+) -> Result<Variable, CircuitError> {
+    let n_bits = shift_ctx.shift_exponent.checked_add(1).ok_or_else(|| {
+        LayerError::InvalidParameterValue {
+            layer: LayerKind::ReLU,
+            layer_name: "ShiftRangeContext".to_string(),
+            param_name: "shift_exponent".to_string(),
+            value: shift_ctx.shift_exponent.to_string(),
+        }
+    })?;
+
+    let x_shifted = api.add(x, shift_ctx.offset);
+    let b = api.unconstrained_greater_eq(x_shifted, shift_ctx.offset);
+    api.assert_is_bool(b);
+
+    let result = api.mul(b, x);
+
+    let two_result = api.add(result, result);
+    let abs_x = api.sub(two_result, x);
+
+    logup_ctx
+        .range_check::<C, Builder>(api, abs_x, n_bits)
+        .map_err(|e| LayerError::Other {
+            layer: LayerKind::ReLU,
+            msg: format!("constrained_relu LogUp range check failed: {e}"),
+        })?;
+
+    Ok(result)
+}
+
+// -----------------------------------------------------------------------------
 // FUNCTION: constrained_min
 // -----------------------------------------------------------------------------
 
