@@ -1,8 +1,16 @@
-// Per-threadgroup partial sums for the 3-point polynomial evaluation.
-// Computes: p0 = sum hg[2i]*f[2i], p1 = sum hg[2i+1]*f[2i+1],
-//           p2 = sum (hg[2i]+hg[2i+1])*(f[2i]+f[2i+1])
-
 constant uint THREADGROUP_SIZE = 256;
+
+inline BN254Fr simd_reduce_add(BN254Fr val) {
+    for (uint offset = 16; offset > 0; offset >>= 1) {
+        BN254Fr other;
+        other.v[0] = simd_shuffle_down(val.v[0], offset);
+        other.v[1] = simd_shuffle_down(val.v[1], offset);
+        other.v[2] = simd_shuffle_down(val.v[2], offset);
+        other.v[3] = simd_shuffle_down(val.v[3], offset);
+        val = bn254_add(val, other);
+    }
+    return val;
+}
 
 kernel void poly_eval_kernel(
     device const BN254Fr* bk_f [[buffer(0)]],
@@ -41,7 +49,7 @@ kernel void poly_eval_kernel(
     shared_p2[lid] = local_p2;
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    for (uint stride = THREADGROUP_SIZE / 2; stride > 0; stride >>= 1) {
+    for (uint stride = THREADGROUP_SIZE / 2; stride >= 32; stride >>= 1) {
         if (lid < stride) {
             shared_p0[lid] = bn254_add(shared_p0[lid], shared_p0[lid + stride]);
             shared_p1[lid] = bn254_add(shared_p1[lid], shared_p1[lid + stride]);
@@ -50,10 +58,20 @@ kernel void poly_eval_kernel(
         threadgroup_barrier(mem_flags::mem_threadgroup);
     }
 
-    if (lid == 0) {
-        block_results[gid * 3 + 0] = shared_p0[0];
-        block_results[gid * 3 + 1] = shared_p1[0];
-        block_results[gid * 3 + 2] = shared_p2[0];
+    if (lid < 32) {
+        BN254Fr p0 = shared_p0[lid];
+        BN254Fr p1 = shared_p1[lid];
+        BN254Fr p2 = shared_p2[lid];
+
+        p0 = simd_reduce_add(p0);
+        p1 = simd_reduce_add(p1);
+        p2 = simd_reduce_add(p2);
+
+        if (lid == 0) {
+            block_results[gid * 3 + 0] = p0;
+            block_results[gid * 3 + 1] = p1;
+            block_results[gid * 3 + 2] = p2;
+        }
     }
 }
 
@@ -82,7 +100,7 @@ kernel void reduce_blocks(
     shared_p2[lid] = acc2;
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    for (uint stride = THREADGROUP_SIZE / 2; stride > 0; stride >>= 1) {
+    for (uint stride = THREADGROUP_SIZE / 2; stride >= 32; stride >>= 1) {
         if (lid < stride) {
             shared_p0[lid] = bn254_add(shared_p0[lid], shared_p0[lid + stride]);
             shared_p1[lid] = bn254_add(shared_p1[lid], shared_p1[lid + stride]);
@@ -91,9 +109,19 @@ kernel void reduce_blocks(
         threadgroup_barrier(mem_flags::mem_threadgroup);
     }
 
-    if (lid == 0) {
-        output[0] = shared_p0[0];
-        output[1] = shared_p1[0];
-        output[2] = shared_p2[0];
+    if (lid < 32) {
+        BN254Fr p0 = shared_p0[lid];
+        BN254Fr p1 = shared_p1[lid];
+        BN254Fr p2 = shared_p2[lid];
+
+        p0 = simd_reduce_add(p0);
+        p1 = simd_reduce_add(p1);
+        p2 = simd_reduce_add(p2);
+
+        if (lid == 0) {
+            output[0] = p0;
+            output[1] = p1;
+            output[2] = p2;
+        }
     }
 }
