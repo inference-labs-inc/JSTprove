@@ -169,9 +169,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ClipLayer {
 
         // 4. Prepare Max/Min assertion context (same signed-range assumptions as Max/Min/MaxPool).
         let range_ctx =
-            ShiftRangeContext::new(api, self.shift_exponent).map_err(|e| LayerError::Other {
-                layer: LayerKind::Clip,
-                msg: format!("ShiftRangeContext::new failed: {e}"),
+            ShiftRangeContext::new(api, LayerKind::Clip, self.shift_exponent).map_err(|e| {
+                LayerError::Other {
+                    layer: LayerKind::Clip,
+                    msg: format!("ShiftRangeContext::new failed: {e}"),
+                }
             })?;
 
         // 5. Elementwise clip using constrained_clip

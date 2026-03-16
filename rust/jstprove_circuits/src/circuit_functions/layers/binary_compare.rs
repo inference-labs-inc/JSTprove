@@ -53,8 +53,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BinaryCompareLayer 
 
         let (a_bc, b_bc) = broadcast_two_arrays(&a_input, &b_input)?;
 
-        let shift_ctx =
-            ShiftRangeContext::new(api, self.shift_exponent).map_err(|e| LayerError::Other {
+        let shift_ctx = ShiftRangeContext::new(api, self.kind.clone(), self.shift_exponent)
+            .map_err(|e| LayerError::Other {
                 layer: self.kind.clone(),
                 msg: format!("ShiftRangeContext::new failed: {e}"),
             })?;

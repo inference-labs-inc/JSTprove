@@ -20,17 +20,18 @@ impl ShiftRangeContext {
     /// Returns `LayerError` if `shift_exponent` overflows `u32` or `2^s` overflows `u64`.
     pub fn new<C: Config, Builder: RootAPI<C>>(
         api: &mut Builder,
+        layer: LayerKind,
         shift_exponent: usize,
     ) -> Result<Self, LayerError> {
         let offset_: u64 = 1u64
             .checked_shl(
                 u32::try_from(shift_exponent).map_err(|_| LayerError::Other {
-                    layer: LayerKind::MaxPool,
+                    layer: layer.clone(),
                     msg: format!("Shift exponent {shift_exponent} is too large for type: u32"),
                 })?,
             )
             .ok_or_else(|| LayerError::InvalidParameterValue {
-                layer: LayerKind::MaxPool,
+                layer,
                 layer_name: "ShiftRangeContext".to_string(),
                 param_name: "shift_exponent".to_string(),
                 value: shift_exponent.to_string(),

@@ -34,9 +34,13 @@ def inline_constants(model_path):
     for node in model.graph.node:
         if node.op_type == "Constant":
             name = node.output[0]
-            for attr in node.attribute:
-                if attr.name == "value":
-                    const_map[name] = numpy_helper.to_array(attr.t)
+            value_attr = next(
+                (a for a in node.attribute if a.name == "value"), None
+            )
+            if value_attr is not None and value_attr.HasField("t"):
+                const_map[name] = numpy_helper.to_array(value_attr.t)
+            else:
+                keep_nodes.append(node)
         else:
             keep_nodes.append(node)
 
