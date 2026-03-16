@@ -48,6 +48,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
     fn apply(
         &self,
         api: &mut Builder,
+        logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let input_name = get_input_name(&self.inputs, 0, LayerKind::MaxPool, INPUT)?;
@@ -80,6 +81,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MaxPoolLayer {
 
         let output = maxpooling_2d::<C, Builder>(
             api,
+            logup_ctx,
             &layer_input,
             &self.input_shape,
             self.shift_exponent,
@@ -364,6 +366,7 @@ pub fn reshape_4d(flat: &[Variable], dims: [usize; 4]) -> Result<ArrayD<Variable
 /// - [`CircuitError`] if `unconstrained_max` or `constrained_max` fails within the circuit.
 pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
+    logup_ctx: &mut LogupRangeCheckContext,
     x: &ArrayD<Variable>,
     x_shape: &[usize],
     shift_exponent: usize,
@@ -371,20 +374,11 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
     params: &PoolingParams,
 ) -> Result<ArrayD<Variable>, CircuitError> {
     let global_pooling = false;
-    let batch = x_shape[0];
-    let channels = x_shape[1];
-    let height = x_shape[2];
 
     let kernel_shape = &params.kernel_shape;
     let strides = &params.strides;
     let dilation = &params.dilation;
     let new_pads = &params.new_pads;
-
-    let width = if kernel_shape.len() > 1 {
-        x_shape[3]
-    } else {
-        1
-    };
 
     if x_shape.len() < 3 {
         return Err(LayerError::InvalidShape {
@@ -400,6 +394,15 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
         }
         .into());
     }
+
+    let batch = x_shape[0];
+    let channels = x_shape[1];
+    let height = x_shape[2];
+    let width = if kernel_shape.len() > 1 {
+        x_shape[3]
+    } else {
+        1
+    };
 
     let pooled_height = output_spatial_shape[0];
     let pooled_width = if kernel_shape.len() > 1 {
@@ -433,9 +436,6 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
 
     let context = ShiftRangeContext::new(api, shift_exponent)?;
 
-    let mut logup_ctx = LogupRangeCheckContext::new_default();
-    logup_ctx.init::<C, Builder>(api);
-
     for n in 0..batch {
         for c in 0..channels {
             for ph in 0..pooled_height {
@@ -467,14 +467,12 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
                     }
 
                     if !values.is_empty() {
-                        let max = constrained_max(api, &context, &mut logup_ctx, &values)?;
+                        let max = constrained_max(api, &context, logup_ctx, &values)?;
                         y[[n, c, ph, pw]] = max;
                     }
                 }
             }
         }
     }
-    // Commit LogUp constraints once
-    logup_ctx.finalize::<C, Builder>(api);
     Ok(y.into_dyn())
 }

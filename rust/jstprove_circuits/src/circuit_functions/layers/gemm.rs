@@ -45,6 +45,7 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 /// Internal crate imports
 use crate::circuit_functions::{
     CircuitError,
+    gadgets::LogupRangeCheckContext,
     gadgets::linear_algebra::{
         freivalds_verify_matrix_product, matrix_addition, matrix_multiplication,
         unconstrained_matrix_multiplication,
@@ -90,6 +91,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
     fn apply(
         &self,
         api: &mut Builder,
+        logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let is_relu = matches!(self.optimization_pattern, PatternRegistry::GemmRelu);
@@ -157,6 +159,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
 
         let out_array = maybe_rescale(
             api,
+            logup_ctx,
             result.into_dyn(),
             &MaybeRescaleParams {
                 is_rescale: self.is_rescale,

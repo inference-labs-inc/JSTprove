@@ -4,6 +4,7 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 use ndarray::ArrayD;
 
 use crate::circuit_functions::CircuitError;
+use crate::circuit_functions::gadgets::LogupRangeCheckContext;
 use crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry;
 use crate::circuit_functions::utils::onnx_model::CircuitParams;
 use crate::circuit_functions::utils::onnx_types::ONNXLayer;
@@ -14,6 +15,7 @@ pub trait LayerOp<C: Config, Builder: RootAPI<C>> {
     ///
     /// # Arguments
     /// - `api`: Mutable reference to the circuit builder.
+    /// - `logup_ctx`: Shared cross-layer LogUp range-check context.
     /// - `input`: Mapping from input names to inputs of
     ///   the layer.
     ///
@@ -30,6 +32,7 @@ pub trait LayerOp<C: Config, Builder: RootAPI<C>> {
     fn apply(
         &self,
         api: &mut Builder,
+        logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError>;
     /// Instantiated by each layer op.

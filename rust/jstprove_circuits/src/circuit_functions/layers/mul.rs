@@ -14,6 +14,7 @@ use crate::circuit_functions::utils::tensor_ops::{
 };
 use crate::circuit_functions::{
     CircuitError,
+    gadgets::LogupRangeCheckContext,
     layers::{LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT, graph_pattern_matching::PatternRegistry, onnx_model::get_input_name,
@@ -39,6 +40,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MulLayer {
     fn apply(
         &self,
         api: &mut Builder,
+        logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let is_relu = matches!(self.optimization_pattern, PatternRegistry::MulRelu);
@@ -66,6 +68,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MulLayer {
         let result = matrix_hadamard_product(api, &a_bc, b_bc, LayerKind::Mul)?;
         let out = maybe_rescale(
             api,
+            logup_ctx,
             result,
             &MaybeRescaleParams {
                 is_rescale: self.is_rescale,

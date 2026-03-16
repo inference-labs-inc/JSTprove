@@ -269,7 +269,7 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
 /// - Constructs a [`RescalingContext`] with:
 ///   - `scaling_exponent` `kappa` such that `alpha = 2^kappa`.
 ///   - `shift_exponent` `s` such that `S = 2^s`.
-/// - Constructs a shared [`LogupRangeCheckContext`] used for **all** range checks
+/// - Uses the provided [`LogupRangeCheckContext`] for **all** range checks
 ///   (both remainder and quotient range proofs, plus any `constrained_max` calls
 ///   used to implement `ReLU`).
 /// - Flattens the input array, applies [`rescale`] to each element, and rebuilds
@@ -278,6 +278,7 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
 /// # Arguments
 ///
 /// - `api`: mutable reference to the circuit builder.
+/// - `logup_ctx`: shared [`LogupRangeCheckContext`] used for all range checks.
 /// - `array`: tensor (any shape) of `Variable`s to be rescaled.
 /// - `scaling_exponent`: `kappa` such that `alpha = 2^kappa`.
 /// - `shift_exponent`: `s` such that `S = 2^s`.
@@ -298,6 +299,7 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
 ///   exponent shifts overflow).
 pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
+    logup_ctx: &mut LogupRangeCheckContext,
     array: ArrayD<Variable>,
     scaling_exponent: usize,
     shift_exponent: usize,
@@ -305,19 +307,11 @@ pub fn rescale_array<C: Config, Builder: RootAPI<C>>(
 ) -> Result<ArrayD<Variable>, UtilsError> {
     let context = RescalingContext::new(api, scaling_exponent, shift_exponent)?;
 
-    // Shared LogUp table for all range checks in this rescale pass
-    let mut logup_ctx = LogupRangeCheckContext::new_default();
-    logup_ctx.init::<C, Builder>(api);
-
-    // Convert to Vec, map with error handling, then back to ArrayD
     let shape = array.shape().to_vec();
     let results: Result<Vec<Variable>, RescaleError> = array
         .into_iter()
-        .map(|x| rescale::<C, Builder>(api, &context, &mut logup_ctx, x, apply_relu))
+        .map(|x| rescale::<C, Builder>(api, &context, logup_ctx, x, apply_relu))
         .collect();
-
-    // Single final LogUp consistency check for all queries
-    logup_ctx.finalize::<C, Builder>(api);
 
     let rescaled_data = results?;
     Ok(ArrayD::from_shape_vec(shape, rescaled_data).map_err(ArrayConversionError::ShapeError)?)
@@ -348,6 +342,7 @@ pub struct MaybeRescaleParams {
 /// Propagates errors from [`rescale_array`] or the standalone ReLU gadgets.
 pub fn maybe_rescale<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
+    logup_ctx: &mut LogupRangeCheckContext,
     result: ArrayD<Variable>,
     params: &MaybeRescaleParams,
 ) -> Result<ArrayD<Variable>, CircuitError> {
@@ -363,7 +358,7 @@ pub fn maybe_rescale<C: Config, Builder: RootAPI<C>>(
                         param_name: "n_bits".to_string(),
                         value: params.n_bits.to_string(),
                     })?;
-            return standalone_relu_array::<C, Builder>(api, result, shift_exponent);
+            return standalone_relu_array::<C, Builder>(api, logup_ctx, result, shift_exponent);
         }
         return Ok(result);
     }
@@ -386,6 +381,7 @@ pub fn maybe_rescale<C: Config, Builder: RootAPI<C>>(
 
     Ok(rescale_array(
         api,
+        logup_ctx,
         result,
         scaling_exponent,
         shift_exponent,
@@ -395,21 +391,18 @@ pub fn maybe_rescale<C: Config, Builder: RootAPI<C>>(
 
 fn standalone_relu_array<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
+    logup_ctx: &mut LogupRangeCheckContext,
     array: ArrayD<Variable>,
     shift_exponent: usize,
 ) -> Result<ArrayD<Variable>, CircuitError> {
     let shift_ctx = ShiftRangeContext::new::<C, Builder>(api, shift_exponent)?;
-    let mut logup_ctx = LogupRangeCheckContext::new_default();
-    logup_ctx.init::<C, Builder>(api);
 
     let shape = array.shape().to_vec();
 
     let results: Result<Vec<Variable>, CircuitError> = array
         .into_iter()
-        .map(|x| constrained_relu::<C, Builder>(api, &shift_ctx, &mut logup_ctx, x))
+        .map(|x| constrained_relu::<C, Builder>(api, &shift_ctx, logup_ctx, x))
         .collect();
-
-    logup_ctx.finalize::<C, Builder>(api);
 
     let data = results?;
     Ok(ArrayD::from_shape_vec(shape, data).map_err(ArrayConversionError::ShapeError)?)

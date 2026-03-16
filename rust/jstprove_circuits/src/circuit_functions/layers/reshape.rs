@@ -25,6 +25,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReshapeLayer {
     fn apply(
         &self,
         _api: &mut Builder,
+        _logup_ctx: &mut crate::circuit_functions::gadgets::LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let reshape_shape = self.shape.clone();
