@@ -56,7 +56,7 @@ use crate::circuit_functions::{
 
 // Internal modules: LogUp-based range-check helper + max gadget
 use crate::circuit_functions::gadgets::{
-    LogupRangeCheckContext, ShiftRangeContext, constrained_max,
+    LogupRangeCheckContext, ShiftRangeContext, constrained_relu,
 };
 
 // -----------------------------------------------------------------------------
@@ -234,9 +234,7 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
         context.shift,
     )?;
 
-    // Step 7: If ReLU is applied, enforce ReLU(q) = max(q, 0) via constrained_max
     if apply_relu {
-        // Build shift context for the max gadget (same `s` as in RescalingContext)
         let shift_ctx = ShiftRangeContext::new(api, context.shift_exponent).map_err(|e| {
             RescaleError::BitDecompositionError {
                 var_name: format!("ShiftRangeContext::new in ReLU: {e}"),
@@ -244,12 +242,13 @@ pub fn rescale<C: Config, Builder: RootAPI<C>>(
             }
         })?;
 
-        let zero = api.constant(0);
-        let relu_q = constrained_max::<C, Builder>(api, &shift_ctx, logup_ctx, &[quotient, zero])
-            .map_err(|e| RescaleError::BitDecompositionError {
-            var_name: format!("ReLU via constrained_max failed: {e}"),
-            n_bits: context.shift_exponent + 1,
-        })?;
+        let relu_q =
+            constrained_relu::<C, Builder>(api, &shift_ctx, logup_ctx, quotient).map_err(|e| {
+                RescaleError::BitDecompositionError {
+                    var_name: format!("constrained_relu failed: {e}"),
+                    n_bits: context.shift_exponent + 1,
+                }
+            })?;
 
         Ok(relu_q)
     } else {
@@ -402,12 +401,11 @@ fn standalone_relu_array<C: Config, Builder: RootAPI<C>>(
     let mut logup_ctx = LogupRangeCheckContext::new_default();
     logup_ctx.init::<C, Builder>(api);
 
-    let zero = api.constant(0);
     let shape = array.shape().to_vec();
 
     let results: Result<Vec<Variable>, CircuitError> = array
         .into_iter()
-        .map(|x| constrained_max::<C, Builder>(api, &shift_ctx, &mut logup_ctx, &[x, zero]))
+        .map(|x| constrained_relu::<C, Builder>(api, &shift_ctx, &mut logup_ctx, x))
         .collect();
 
     logup_ctx.finalize::<C, Builder>(api);
