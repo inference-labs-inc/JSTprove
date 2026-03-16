@@ -30,11 +30,14 @@ fn rss_bytes() -> u64 {
 }
 
 fn main() {
-    let model_path =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
+    let model_name = std::env::var("MODEL").unwrap_or_else(|_| "lenet".to_string());
+    let model_file = format!("{model_name}.onnx");
+    let model_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../jstprove_remainder/models")
+        .join(&model_file);
     assert!(
         model_path.exists(),
-        "lenet.onnx not found at {}",
+        "{model_file} not found at {}",
         model_path.display()
     );
 
@@ -57,7 +60,7 @@ fn main() {
         .sum();
     let activations: Vec<f64> = (0..num_act).map(|i| i as f64 / num_act as f64).collect();
 
-    println!("model: lenet.onnx\n{}", "=".repeat(55));
+    println!("model: {model_file}\n{}", "=".repeat(55));
 
     println!("\n--- ECC IR pipeline ---");
     let t = Instant::now();
