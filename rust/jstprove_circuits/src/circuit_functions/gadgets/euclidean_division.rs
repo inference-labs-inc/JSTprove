@@ -81,7 +81,7 @@ pub fn div_pos_integer_pow2_constant<C: Config, Builder: RootAPI<C>>(
 ///
 /// Returns [`RescaleError`] if any `LogUp` range check or overflow guard fails.
 #[allow(clippy::too_many_arguments)]
-pub fn div_pos_integer_pow2_constant_inner<C: Config, Builder: RootAPI<C>>(
+pub(crate) fn div_pos_integer_pow2_constant_inner<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     logup_ctx: &mut LogupRangeCheckContext,
     dividend: Variable,

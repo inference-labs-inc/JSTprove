@@ -1,6 +1,8 @@
+import os
+
 import torch
 import torch.nn as nn
-import os
+
 
 class ResBlock(nn.Module):
     def __init__(self, channels):
@@ -16,6 +18,7 @@ class ResBlock(nn.Module):
         out = out + residual
         out = self.relu(out)
         return out
+
 
 class MiniResNet(nn.Module):
     def __init__(self):
@@ -39,28 +42,37 @@ class MiniResNet(nn.Module):
         x = self.fc(x)
         return x
 
-model = MiniResNet()
-model.eval()
 
-dummy = torch.randn(1, 1, 28, 28)
+def main():
+    torch.manual_seed(0)
 
-out_path = os.path.join(
-    os.path.dirname(__file__),
-    "..",
-    "rust",
-    "jstprove_remainder",
-    "models",
-    "mini_resnet.onnx",
-)
+    model = MiniResNet()
+    model.eval()
 
-torch.onnx.export(
-    model,
-    dummy,
-    out_path,
-    opset_version=17,
-    input_names=["input"],
-    output_names=["output"],
-    dynamo=False,
-)
+    dummy = torch.randn(1, 1, 28, 28)
 
-print(f"Exported to {out_path}")
+    out_path = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "rust",
+        "jstprove_remainder",
+        "models",
+        "mini_resnet.onnx",
+    )
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+
+    torch.onnx.export(
+        model,
+        dummy,
+        out_path,
+        opset_version=17,
+        input_names=["input"],
+        output_names=["output"],
+        dynamo=False,
+    )
+
+    print(f"Exported to {out_path}")
+
+
+if __name__ == "__main__":
+    main()
