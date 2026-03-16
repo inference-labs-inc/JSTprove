@@ -20,6 +20,7 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::{
     CircuitError,
+    gadgets::LogupRangeCheckContext,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
@@ -71,7 +72,7 @@ fn build_index_map(
     layer_name: &str,
     input_shape: &[usize],
     starts: &[i64],
-    _ends: &[i64],
+    ends: &[i64],
     axes: &[i64],
     steps: &[i64],
     output_shape: &[usize],
@@ -115,6 +116,36 @@ fn build_index_map(
             });
         }
         axis_step[axis] = step as isize;
+
+        // Validate that the end value is consistent with output_shape[axis].
+        let e = ends.get(i).copied().unwrap_or(dim);
+        let e_norm = if e < 0 { e + dim } else { e };
+        let e_norm = e_norm.clamp(0, dim);
+        let s_norm = axis_start[axis] as i64;
+        let expected_len: usize = if step > 0 {
+            if e_norm > s_norm {
+                ((e_norm - s_norm) as usize).div_ceil(step as usize)
+            } else {
+                0
+            }
+        } else {
+            // Negative step: count down from s_norm to e_norm (exclusive).
+            if s_norm > e_norm {
+                ((s_norm - e_norm) as usize).div_ceil((-step) as usize)
+            } else {
+                0
+            }
+        };
+        if expected_len != output_shape[axis] {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::Slice,
+                msg: format!(
+                    "layer {layer_name}: Slice axis {axis} computed length {expected_len} \
+                     does not match output_shape[{axis}] = {}",
+                    output_shape[axis]
+                ),
+            });
+        }
     }
 
     let mut index_map = Vec::with_capacity(total_out);
@@ -145,6 +176,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SliceLayer {
     fn apply(
         &self,
         _api: &mut Builder,
+        _logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let x_name = get_input_name(&self.inputs, 0, LayerKind::Slice, INPUT)?;
@@ -375,5 +407,12 @@ mod tests {
         // Shape [5], slice [-3:] → elements 2,3,4 → shape [3]
         let map = build_index_map("t", &[5], &[-3], &[5], &[0], &[1], &[3]).unwrap();
         assert_eq!(map, vec![2, 3, 4]);
+    }
+
+    #[test]
+    fn index_map_negative_step() {
+        // Shape [5], slice [4:0:-1] → elements 4,3,2,1 → shape [4]
+        let map = build_index_map("t", &[5], &[4], &[0], &[0], &[-1], &[4]).unwrap();
+        assert_eq!(map, vec![4, 3, 2, 1]);
     }
 }

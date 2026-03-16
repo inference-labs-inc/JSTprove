@@ -25,9 +25,13 @@ use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Var
 
 use crate::circuit_functions::{
     CircuitError,
+    gadgets::LogupRangeCheckContext,
     hints::gelu::GELU_HINT_KEY,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
-    utils::{constants::INPUT, onnx_model::get_input_name},
+    utils::{
+        constants::INPUT,
+        onnx_model::{extract_params, get_input_name, get_param_or_default},
+    },
 };
 
 // -------- Struct --------
@@ -46,6 +50,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GeluLayer {
     fn apply(
         &self,
         api: &mut Builder,
+        _logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         // Resolve the single input tensor (no initializer — GELU has no weights).
@@ -97,6 +102,32 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GeluLayer {
                 layer: LayerKind::Gelu,
                 name: "input X".to_string(),
             })?;
+
+        // Validate the `approximate` attribute. Only the tanh approximation is
+        // implemented; the exact (erf-based) GELU requires a lookup table that is
+        // not yet available. Reject at build time so callers are not silently
+        // given the tanh result when they requested exact mode.
+        let params = extract_params(layer).ok();
+        let default_approximate = "none".to_string();
+        let approximate: String = params
+            .as_ref()
+            .and_then(|p| {
+                get_param_or_default(&layer.name, "approximate", p, Some(&default_approximate)).ok()
+            })
+            .unwrap_or(default_approximate);
+
+        if approximate != "tanh" {
+            return Err(LayerError::Other {
+                layer: LayerKind::Gelu,
+                msg: format!(
+                    "Gelu approximate='{}' is not supported in the Expander backend: \
+                     only approximate='tanh' is implemented. The exact (erf-based) Gelu \
+                     requires a lookup-table constraint that is not yet available.",
+                    approximate
+                ),
+            }
+            .into());
+        }
 
         let scaling: u64 = 1u64
             .checked_shl(circuit_params.scale_exponent)

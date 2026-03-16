@@ -52,7 +52,7 @@ impl OpType {
             "Mul" => Ok(Self::Mul),
             "Gemm" | "Int64Gemm" => Ok(Self::Gemm),
             "Conv" | "Int64Conv" => Ok(Self::Conv),
-            "Relu" | "Int64Relu" => Ok(Self::Relu),
+            "Relu" | "ReLU" | "Int64Relu" => Ok(Self::Relu),
             "MaxPool" | "Int64MaxPool" => Ok(Self::MaxPool),
             "BatchNormalization" | "Int64BatchNormalization" => Ok(Self::BatchNormalization),
             "Max" | "Int64Max" => Ok(Self::Max),

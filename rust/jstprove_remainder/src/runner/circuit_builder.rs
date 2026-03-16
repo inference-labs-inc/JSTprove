@@ -141,12 +141,19 @@ fn add_committed_passthrough(
 ) {
     let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
     let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
-    // Derive allocation size from the chosen layout: HWC with stride_c > c uses
-    // H*W*stride_c slots (the max index is (H*W-1)*stride_c + (C-1)), not the
-    // dense H*W*C.  For all other layouts the dense product is correct.
-    let out_capacity: usize = match &output_layout {
-        Some(SpatialInfo::HWC { h, w, stride_c, .. }) => h * w * stride_c,
-        _ => layer.output_shape.iter().product(),
+    // Derive allocation size from the chosen layout.  When preserve_layout is
+    // false the caller intentionally clears the spatial layout, so use the
+    // dense product of output_shape to avoid leaking stride_c padding into
+    // out_nv for ops like Transpose.  When preserve_layout is true, respect
+    // HWC stride_c so that H*W*stride_c slots are allocated, not the dense
+    // H*W*C count (which would undercount by the stride gap).
+    let out_capacity: usize = if preserve_layout {
+        match &output_layout {
+            Some(SpatialInfo::HWC { h, w, stride_c, .. }) => h * w * stride_c,
+            _ => layer.output_shape.iter().product(),
+        }
+    } else {
+        layer.output_shape.iter().product()
     };
     let out_nv = num_vars_for(out_capacity);
     let shred_name = format!("{}_out", layer.name);

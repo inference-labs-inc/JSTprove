@@ -16,6 +16,7 @@ use ndarray::{ArrayD, Axis};
 
 use crate::circuit_functions::{
     CircuitError,
+    gadgets::LogupRangeCheckContext,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::onnx_model::get_param_or_default,
 };
@@ -34,6 +35,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConcatLayer {
     fn apply(
         &self,
         _api: &mut Builder,
+        _logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         // Collect all input arrays (duplicates allowed — same name used twice).

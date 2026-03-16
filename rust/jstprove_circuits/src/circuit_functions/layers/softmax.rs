@@ -63,6 +63,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
     fn apply(
         &self,
         api: &mut Builder,
+        logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let x_name = get_input_name(&self.inputs, 0, LayerKind::Softmax, INPUT)?;
@@ -102,9 +103,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
         // Build a constant variable for the scaling factor, shared across the call.
         let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
 
-        // Shared LogUp context for all range checks in this layer.
-        let mut logup_ctx = LogupRangeCheckContext::new_default();
-        logup_ctx.init::<C, Builder>(api);
         let n_bits = self.n_bits;
 
         // Pre-allocate the output array with a zero placeholder; each element
@@ -129,12 +127,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
 
             for (out_elem, &y) in out_lane.iter_mut().zip(hint_out.iter()) {
                 logup_ctx.range_check::<C, Builder>(api, y, n_bits)?;
+                // Also bound y from above by scale_var: range-check (scale_var - y),
+                // which must be in [0, 2^n_bits) for the constraint y <= scale_var to hold.
+                let diff = api.sub(scale_var, y);
+                logup_ctx.range_check::<C, Builder>(api, diff, n_bits)?;
                 *out_elem = y;
             }
         }
-
-        // Finalise the shared LogUp table (emits the consistency constraint).
-        logup_ctx.finalize::<C, Builder>(api);
 
         // Guard: Softmax must produce exactly one output tensor.
         if self.outputs.len() != 1 {

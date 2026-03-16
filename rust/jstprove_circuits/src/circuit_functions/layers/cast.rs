@@ -5,6 +5,7 @@ use ndarray::ArrayD;
 
 use crate::circuit_functions::{
     CircuitError,
+    gadgets::LogupRangeCheckContext,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
@@ -55,6 +56,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for CastLayer {
     fn apply(
         &self,
         _api: &mut Builder,
+        _logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         // Guard: reject any to_type that is not a proven no-op integer target.

@@ -31,6 +31,7 @@ use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Var
 
 use crate::circuit_functions::{
     CircuitError,
+    gadgets::LogupRangeCheckContext,
     hints::layer_norm::LAYER_NORM_HINT_KEY,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
@@ -61,8 +62,21 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
     fn apply(
         &self,
         api: &mut Builder,
+        _logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
+        // Guard: exactly one output tensor (fail fast before any computation).
+        if self.outputs.len() != 1 {
+            return Err(LayerError::MissingParameter {
+                layer: LayerKind::LayerNormalization,
+                param: format!(
+                    "output Y: expected exactly 1 output, got {}",
+                    self.outputs.len()
+                ),
+            }
+            .into());
+        }
+
         let x_name = get_input_name(&self.inputs, 0, LayerKind::LayerNormalization, INPUT)?;
         let x_input = input.get(x_name).ok_or_else(|| LayerError::MissingInput {
             layer: LayerKind::LayerNormalization,
@@ -186,18 +200,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
                 msg: "output array is not contiguous".to_string(),
             })?;
         out_flat_ref.copy_from_slice(&flat_output);
-
-        // Guard: exactly one output tensor.
-        if self.outputs.len() != 1 {
-            return Err(LayerError::MissingParameter {
-                layer: LayerKind::LayerNormalization,
-                param: format!(
-                    "output Y: expected exactly 1 output, got {}",
-                    self.outputs.len()
-                ),
-            }
-            .into());
-        }
 
         Ok((self.outputs.clone(), out_array))
     }

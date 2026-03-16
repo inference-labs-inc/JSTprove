@@ -1192,21 +1192,54 @@ fn infer_slice(
         )
     })?;
 
+    // Validate that starts and ends have the same length.
+    if starts.len() != ends.len() {
+        bail!(
+            "layer {}: Slice starts and ends must have the same length (starts={}, ends={})",
+            layer.name,
+            starts.len(),
+            ends.len()
+        );
+    }
+
     // axes — optional, input[3]; default is [0, 1, ..., len(starts)-1]
-    let axes: Vec<i64> = layer
+    let axes_from_input: Option<Vec<i64>> = layer
         .inputs
         .get(3)
         .filter(|n| !n.is_empty())
-        .and_then(|n| get_i64(n))
-        .unwrap_or_else(|| (0..starts.len() as i64).collect());
+        .and_then(|n| get_i64(n));
 
     // steps — optional, input[4]; default is all 1s
-    let steps: Vec<i64> = layer
+    let steps_from_input: Option<Vec<i64>> = layer
         .inputs
         .get(4)
         .filter(|n| !n.is_empty())
-        .and_then(|n| get_i64(n))
-        .unwrap_or_else(|| vec![1i64; starts.len()]);
+        .and_then(|n| get_i64(n));
+
+    // Validate lengths when axes/steps are explicitly provided.
+    if let Some(ref ax) = axes_from_input {
+        if ax.len() != starts.len() {
+            bail!(
+                "layer {}: Slice axes length must match starts length (axes={}, starts={})",
+                layer.name,
+                ax.len(),
+                starts.len()
+            );
+        }
+    }
+    if let Some(ref st) = steps_from_input {
+        if st.len() != starts.len() {
+            bail!(
+                "layer {}: Slice steps length must match starts length (steps={}, starts={})",
+                layer.name,
+                st.len(),
+                starts.len()
+            );
+        }
+    }
+
+    let axes: Vec<i64> = axes_from_input.unwrap_or_else(|| (0..starts.len() as i64).collect());
+    let steps: Vec<i64> = steps_from_input.unwrap_or_else(|| vec![1i64; starts.len()]);
 
     let mut out_shape = input_shape.clone();
     for (i, &axis_raw) in axes.iter().enumerate() {
@@ -1490,15 +1523,30 @@ fn infer_reduce(
     let keepdims = layer.get_int_attr("keepdims").unwrap_or(1) != 0;
 
     // axes: from input[1] (opset 18+) → attribute (opset ≤ 17) → all axes.
-    let axes_from_input: Option<Vec<i64>> = layer
+    // If input[1] is present but is not a compile-time constant, bail: dynamic
+    // axes are not representable at shape-inference time.
+    let axes_input_name: Option<&str> = layer
         .inputs
         .get(1)
+        .filter(|n| !n.is_empty())
+        .map(|n| n.as_str());
+
+    let axes_from_input: Option<Vec<i64>> = axes_input_name
         .and_then(|name| {
             initializers
                 .get(name)
                 .or_else(|| constant_tensors.get(name))
         })
         .map(|td| td.as_i64_vec());
+
+    if axes_input_name.is_some() && axes_from_input.is_none() {
+        bail!(
+            "layer {}: ReduceMean has a dynamic axes input ('{}') that is not a \
+             compile-time constant; dynamic axes are not supported in shape inference",
+            layer.name,
+            axes_input_name.unwrap_or("")
+        );
+    }
 
     let axes: Vec<usize> = if let Some(raw_axes) = axes_from_input
         .as_deref()

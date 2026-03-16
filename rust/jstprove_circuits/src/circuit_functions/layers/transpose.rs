@@ -12,7 +12,7 @@
 // circuit evaluation time `apply()` simply selects from the input by index —
 // no hint, no range check.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ndarray::{ArrayD, IxDyn};
 
@@ -20,6 +20,7 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::{
     CircuitError,
+    gadgets::LogupRangeCheckContext,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
@@ -99,6 +100,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TransposeLayer {
     fn apply(
         &self,
         _api: &mut Builder,
+        _logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let x_name = get_input_name(&self.inputs, 0, LayerKind::Transpose, INPUT)?;
@@ -197,6 +199,33 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TransposeLayer {
             return Err(LayerError::Other {
                 layer: LayerKind::Transpose,
                 msg: format!("perm length {} != input rank {rank}", perm.len()),
+            }
+            .into());
+        }
+
+        // Validate that perm is a true permutation (no duplicate indices).
+        let unique: HashSet<usize> = perm.iter().copied().collect();
+        if unique.len() != perm.len() {
+            return Err(LayerError::Other {
+                layer: LayerKind::Transpose,
+                msg: format!(
+                    "layer '{}': perm {:?} contains duplicate indices and is not a valid permutation",
+                    layer.name, perm
+                ),
+            }
+            .into());
+        }
+
+        // Validate that applying perm to input_shape produces the expected output_shape.
+        let expected_output_shape: Vec<usize> = perm.iter().map(|&p| input_shape[p]).collect();
+        if expected_output_shape != output_shape {
+            return Err(LayerError::Other {
+                layer: LayerKind::Transpose,
+                msg: format!(
+                    "layer '{}': applying perm {:?} to input shape {:?} gives {:?} \
+                     but output shape is {:?}",
+                    layer.name, perm, input_shape, expected_output_shape, output_shape
+                ),
             }
             .into());
         }

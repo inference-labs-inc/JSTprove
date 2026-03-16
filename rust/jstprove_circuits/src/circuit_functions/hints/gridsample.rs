@@ -82,7 +82,7 @@ pub fn gridsample_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result
         sum_i128 += x_i64 as i128 * w_u64 as i128;
     }
 
-    // y_q = round(sum / scale), clamped to [0, i64::MAX].
+    // y_q = round(sum / scale), clamped to [i64::MIN, i64::MAX].
     let scale_i128 = scale_u64 as i128;
     let half = scale_i128 / 2;
     let y_q: i64 = if sum_i128 >= 0 {
@@ -93,11 +93,22 @@ pub fn gridsample_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result
             rounded as i64
         }
     } else {
-        // Negative sum — clamp to 0 (grid-sampled activations are non-negative).
-        0
+        // Negative sum — compute signed rounding (symmetric half-away-from-zero).
+        let rounded = (sum_i128 - half) / scale_i128;
+        if rounded < i64::MIN as i128 {
+            i64::MIN
+        } else {
+            rounded as i64
+        }
     };
 
-    outputs[0] = F::from_u256(U256::from(y_q as u64));
+    // Encode result as field element (two's complement for negatives).
+    outputs[0] = if y_q >= 0 {
+        F::from_u256(U256::from(y_q as u64))
+    } else {
+        let mag = U256::from(y_q.unsigned_abs());
+        F::from_u256(F::MODULUS - mag)
+    };
     Ok(())
 }
 

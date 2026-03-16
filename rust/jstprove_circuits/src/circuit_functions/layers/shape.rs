@@ -21,6 +21,7 @@ use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Var
 
 use crate::circuit_functions::{
     CircuitError,
+    gadgets::LogupRangeCheckContext,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
 };
 
@@ -41,6 +42,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ShapeLayer {
     fn apply(
         &self,
         api: &mut Builder,
+        _logup_ctx: &mut LogupRangeCheckContext,
         _input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         // Emit each selected dimension as a circuit constant.

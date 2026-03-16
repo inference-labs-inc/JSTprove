@@ -28,6 +28,7 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::{
     CircuitError,
+    gadgets::LogupRangeCheckContext,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
@@ -55,6 +56,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherLayer {
     fn apply(
         &self,
         _api: &mut Builder,
+        _logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let data_name = get_input_name(&self.inputs, 0, LayerKind::Gather, INPUT)?;
@@ -117,18 +119,30 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherLayer {
 
         for outer_i in 0..outer_size {
             for &idx in &self.indices {
-                let idx = usize::try_from(idx).map_err(|_| LayerError::InvalidShape {
-                    layer: LayerKind::Gather,
-                    msg: format!("negative index {idx} is not supported"),
-                })?;
-                if idx >= d_axis {
+                // Normalise ONNX-style negative indices: -1 → last element, etc.
+                let normalized: usize = if idx < 0 {
+                    let n = idx + d_axis as i64;
+                    if n < 0 {
+                        return Err(LayerError::InvalidShape {
+                            layer: LayerKind::Gather,
+                            msg: format!(
+                                "negative index {idx} out of bounds for axis {axis} of size {d_axis}"
+                            ),
+                        }
+                        .into());
+                    }
+                    n as usize
+                } else {
+                    idx as usize
+                };
+                if normalized >= d_axis {
                     return Err(LayerError::InvalidShape {
                         layer: LayerKind::Gather,
                         msg: format!("index {idx} out of bounds for axis {axis} of size {d_axis}"),
                     }
                     .into());
                 }
-                let data_start = outer_i * data_axis_stride + idx * slice_size;
+                let data_start = outer_i * data_axis_stride + normalized * slice_size;
                 out_flat.extend_from_slice(&data_flat[data_start..data_start + slice_size]);
             }
         }

@@ -46,6 +46,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SigmoidLayer {
     fn apply(
         &self,
         api: &mut Builder,
+        logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         // Resolve the single input tensor (no initializer — Sigmoid has no weights).
@@ -60,10 +61,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SigmoidLayer {
         // Build a constant variable for the scaling factor, shared across elements.
         let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
 
-        // Shared LogUp context for all range checks in this layer.
-        let mut logup_ctx = LogupRangeCheckContext::new_default();
-        logup_ctx.init::<C, Builder>(api);
-
         let n_bits = self.n_bits;
         let mut out_storage: Vec<Variable> = Vec::with_capacity(x_input.len());
 
@@ -77,9 +74,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SigmoidLayer {
 
             out_storage.push(y);
         }
-
-        // Finalise the shared LogUp table (emits the consistency constraint).
-        logup_ctx.finalize::<C, Builder>(api);
 
         let result = ArrayD::from_shape_vec(IxDyn(&shape), out_storage).map_err(|_| {
             LayerError::InvalidShape {

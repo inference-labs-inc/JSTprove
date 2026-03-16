@@ -17,6 +17,7 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::{
     CircuitError,
+    gadgets::LogupRangeCheckContext,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
 };
 
@@ -38,6 +39,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LogLayer {
     fn apply(
         &self,
         _api: &mut Builder,
+        _logup_ctx: &mut LogupRangeCheckContext,
         _input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         // Log is not soundly implementable via hint alone: the hint produces an
@@ -54,36 +56,26 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LogLayer {
     }
 
     fn build(
-        layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
-        circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
+        _layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
+        _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
         _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
         _is_rescale: bool,
         _index: usize,
         _layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        layer
-            .inputs
-            .first()
-            .ok_or_else(|| LayerError::MissingInput {
-                layer: LayerKind::Log,
-                name: "input X".to_string(),
-            })?;
-
-        let scaling: u64 = 1u64
-            .checked_shl(circuit_params.scale_exponent)
-            .ok_or_else(|| LayerError::Other {
-                layer: LayerKind::Log,
-                msg: format!(
-                    "scale_exponent {} is too large to shift u64",
-                    circuit_params.scale_exponent
-                ),
-            })?;
-
-        Ok(Box::new(Self {
-            inputs: layer.inputs.clone(),
-            outputs: layer.outputs.clone(),
-            scaling,
-        }))
+        // Reject Log at build time: a sound implementation requires a signed-range /
+        // domain constraint (log-lookup table) that is not yet implemented. Allowing
+        // build() to succeed would create an unconstrained witness with no integrity
+        // guarantee. Fail closed here so callers cannot accidentally include Log in
+        // any circuit until proper constraints are added.
+        Err(LayerError::Other {
+            layer: LayerKind::Log,
+            msg: "Log is not supported in the Expander backend: build() is rejected \
+                  until a signed-range/domain constraint (log-lookup table) is \
+                  implemented. Remove Log from the model."
+                .to_string(),
+        }
+        .into())
     }
 }
 

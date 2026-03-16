@@ -33,6 +33,7 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::{
     CircuitError,
+    gadgets::LogupRangeCheckContext,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::onnx_model::get_w_or_b,
 };
@@ -59,6 +60,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
     fn apply(
         &self,
         _api: &mut Builder,
+        _logup_ctx: &mut LogupRangeCheckContext,
         _input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         // TopK is not soundly implementable via hint alone: a hint + range check
@@ -67,9 +69,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
         // with permutation constraints, which is not yet implemented.
         Err(LayerError::Other {
             layer: LayerKind::TopK,
-            msg: "TopK is not yet supported in the Expander backend: soundly proving \
+            msg: "TopK is not yet supported in any backend: soundly proving \
                   top-K selection requires a sorting/permutation circuit that is not \
-                  yet implemented. Use the Remainder backend or remove TopK from the model."
+                  yet implemented. Remove TopK from the model or await a backend that \
+                  implements sorting/permutation circuits."
                 .to_string(),
         }
         .into())

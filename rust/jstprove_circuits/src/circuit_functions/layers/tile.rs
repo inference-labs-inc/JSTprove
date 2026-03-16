@@ -5,6 +5,7 @@ use ndarray::{ArrayD, Axis};
 
 use crate::circuit_functions::{
     CircuitError,
+    gadgets::LogupRangeCheckContext,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::constants::INPUT,
     utils::onnx_model::get_input_name,
@@ -22,6 +23,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TileLayer {
     fn apply(
         &self,
         _api: &mut Builder,
+        _logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Tile, INPUT)?;

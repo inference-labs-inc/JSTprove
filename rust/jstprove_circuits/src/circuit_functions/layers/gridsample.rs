@@ -243,22 +243,12 @@ fn build_bilinear_per_output(
                     let mut weights_q = Vec::with_capacity(4);
 
                     for (i, &(ch, cw)) in corners_hw.iter().enumerate() {
-                        // For "zeros" padding, check if the unnormalized corner is OOB.
-                        let y_corner =
-                            h_f as f64 + if i >= 2 { h_c as f64 - h_f as f64 } else { 0.0 };
-                        let x_corner = w_f as f64
-                            + if i % 2 == 1 {
-                                w_c as f64 - w_f as f64
-                            } else {
-                                0.0
-                            };
-
+                        // For "zeros" padding, check if the unnormalized grid coordinate
+                        // is OOB. bilinear_corners_1d already clamps h_f/h_c/w_f/w_c to
+                        // valid ranges, so the per-corner bounds checks are redundant.
                         let in_bounds = if padding_mode == "zeros" {
                             apply_padding_f(y_in, h_in, "zeros", align_corners).is_some()
                                 && apply_padding_f(x_in, w_in, "zeros", align_corners).is_some()
-                                // Also check each corner individually.
-                                && y_corner >= 0.0 && y_corner < h_in as f64
-                                && x_corner >= 0.0 && x_corner < w_in as f64
                         } else {
                             true
                         };
@@ -292,6 +282,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GridSampleLayer {
     fn apply(
         &self,
         api: &mut Builder,
+        logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let x_name = get_input_name(&self.inputs, 0, LayerKind::GridSample, INPUT)?;
@@ -325,9 +316,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GridSampleLayer {
             } => {
                 let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(*scaling)));
 
-                let mut logup_ctx = LogupRangeCheckContext::new_default();
-                logup_ctx.init::<C, Builder>(api);
-
                 let mut out_vars = Vec::with_capacity(per_output.len());
                 for spec in per_output {
                     // Build hint inputs: [x_corners..., w_corners..., scale]
@@ -359,7 +347,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GridSampleLayer {
                     out_vars.push(y);
                 }
 
-                logup_ctx.finalize::<C, Builder>(api);
                 out_vars
             }
         };

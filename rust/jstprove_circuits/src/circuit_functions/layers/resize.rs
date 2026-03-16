@@ -102,7 +102,13 @@ fn output_to_input_coord(out_idx: usize, in_size: usize, out_size: usize, mode: 
 }
 
 /// Apply nearest-neighbour rounding to a continuous coordinate.
-fn apply_nearest_rounding(x: f64, in_size: usize, nearest_mode: &str) -> usize {
+fn apply_nearest_rounding(x: f64, in_size: usize, nearest_mode: &str) -> Result<usize, LayerError> {
+    if in_size == 0 {
+        return Err(LayerError::InvalidShape {
+            layer: LayerKind::Resize,
+            msg: "apply_nearest_rounding: source axis has size 0".to_string(),
+        });
+    }
     let idx: i64 = match nearest_mode {
         "round_prefer_floor" => {
             let floor = x.floor();
@@ -124,19 +130,25 @@ fn apply_nearest_rounding(x: f64, in_size: usize, nearest_mode: &str) -> usize {
         "ceil" => x.ceil() as i64,
         _ => x.floor() as i64,
     };
-    idx.clamp(0, in_size as i64 - 1) as usize
+    Ok(idx.clamp(0, in_size as i64 - 1) as usize)
 }
 
 /// Return (floor_idx, ceil_idx, weight_floor, weight_ceil) for a continuous
 /// coordinate `x` into a dimension of size `in_size`.
-fn linear_corners(x: f64, in_size: usize) -> (usize, usize, f64, f64) {
+fn linear_corners(x: f64, in_size: usize) -> Result<(usize, usize, f64, f64), LayerError> {
+    if in_size == 0 {
+        return Err(LayerError::InvalidShape {
+            layer: LayerKind::Resize,
+            msg: "linear_corners: source axis has size 0".to_string(),
+        });
+    }
     let x_clamped = x.clamp(0.0, (in_size.saturating_sub(1)) as f64);
     let floor_f = x_clamped.floor();
     let ceil_f = x_clamped.ceil();
     let floor_idx = floor_f as usize;
     let ceil_idx = (ceil_f as usize).min(in_size - 1);
     let frac = x_clamped - floor_f;
-    (floor_idx, ceil_idx, 1.0 - frac, frac)
+    Ok((floor_idx, ceil_idx, 1.0 - frac, frac))
 }
 
 /// Convert a flat index to per-dimension coordinates (C-order / row-major).
@@ -169,7 +181,7 @@ fn build_nearest_index_map(
     output_shape: &[usize],
     coord_mode: &str,
     nearest_mode: &str,
-) -> Vec<usize> {
+) -> Result<Vec<usize>, LayerError> {
     let total_out: usize = output_shape.iter().product();
     let rank = output_shape.len();
     let mut index_map = Vec::with_capacity(total_out);
@@ -180,12 +192,12 @@ fn build_nearest_index_map(
         for d in 0..rank {
             let x =
                 output_to_input_coord(out_coords[d], input_shape[d], output_shape[d], coord_mode);
-            in_coords[d] = apply_nearest_rounding(x, input_shape[d], nearest_mode);
+            in_coords[d] = apply_nearest_rounding(x, input_shape[d], nearest_mode)?;
         }
         index_map.push(ravel_index(&in_coords, input_shape));
     }
 
-    index_map
+    Ok(index_map)
 }
 
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -194,7 +206,7 @@ fn build_linear_per_output(
     output_shape: &[usize],
     coord_mode: &str,
     scaling: u64,
-) -> Vec<LinearOutputSpec> {
+) -> Result<Vec<LinearOutputSpec>, LayerError> {
     let rank = output_shape.len();
     // Dimensions where the size changes — these require interpolation.
     let resize_dims: Vec<usize> = (0..rank)
@@ -219,7 +231,7 @@ fn build_linear_per_output(
                 );
                 linear_corners(x, input_shape[d])
             })
-            .collect();
+            .collect::<Result<Vec<_>, LayerError>>()?;
 
         let mut corner_flat_indices = Vec::with_capacity(n_corners);
         let mut corner_weights_f = Vec::with_capacity(n_corners);
@@ -252,7 +264,7 @@ fn build_linear_per_output(
         });
     }
 
-    per_output
+    Ok(per_output)
 }
 
 // -------- Implementation --------
@@ -261,6 +273,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ResizeLayer {
     fn apply(
         &self,
         api: &mut Builder,
+        logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let x_name = get_input_name(&self.inputs, 0, LayerKind::Resize, INPUT)?;
@@ -288,9 +301,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ResizeLayer {
                 scaling,
             } => {
                 let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(*scaling)));
-
-                let mut logup_ctx = LogupRangeCheckContext::new_default();
-                logup_ctx.init::<C, Builder>(api);
 
                 let mut out_vars = Vec::with_capacity(per_output.len());
                 for spec in per_output {
@@ -323,7 +333,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ResizeLayer {
                     out_vars.push(y);
                 }
 
-                logup_ctx.finalize::<C, Builder>(api);
                 out_vars
             }
         };
@@ -427,6 +436,49 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ResizeLayer {
             })
             .unwrap_or(default_nearest);
 
+        // Validate attribute values against the allowed ONNX sets.
+        const VALID_MODES: &[&str] = &["nearest", "linear", "bilinear", "trilinear", "cubic"];
+        if !VALID_MODES.contains(&mode.as_str()) {
+            return Err(LayerError::Other {
+                layer: LayerKind::Resize,
+                msg: format!(
+                    "layer '{}': Resize mode '{}' is not in the allowed set {:?}",
+                    layer.name, mode, VALID_MODES
+                ),
+            }
+            .into());
+        }
+        const VALID_COORD_MODES: &[&str] = &[
+            "half_pixel",
+            "asymmetric",
+            "align_corners",
+            "pytorch_half_pixel",
+            "tf_half_pixel_for_nn",
+        ];
+        if !VALID_COORD_MODES.contains(&coord_mode.as_str()) {
+            return Err(LayerError::Other {
+                layer: LayerKind::Resize,
+                msg: format!(
+                    "layer '{}': Resize coordinate_transformation_mode '{}' is not in \
+                     the allowed set {:?}",
+                    layer.name, coord_mode, VALID_COORD_MODES
+                ),
+            }
+            .into());
+        }
+        const VALID_NEAREST_MODES: &[&str] =
+            &["round_prefer_floor", "round_prefer_ceil", "floor", "ceil"];
+        if !VALID_NEAREST_MODES.contains(&nearest_mode.as_str()) {
+            return Err(LayerError::Other {
+                layer: LayerKind::Resize,
+                msg: format!(
+                    "layer '{}': Resize nearest_mode '{}' is not in the allowed set {:?}",
+                    layer.name, nearest_mode, VALID_NEAREST_MODES
+                ),
+            }
+            .into());
+        }
+
         if mode == "cubic" {
             return Err(LayerError::Other {
                 layer: LayerKind::Resize,
@@ -447,7 +499,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ResizeLayer {
                     })?;
             let n_bits = layer_context.n_bits_for(&layer.name);
             let per_output =
-                build_linear_per_output(&input_shape, &output_shape, &coord_mode, scaling);
+                build_linear_per_output(&input_shape, &output_shape, &coord_mode, scaling)?;
             ResizeInterp::Linear {
                 per_output,
                 n_bits,
@@ -456,7 +508,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ResizeLayer {
         } else {
             // Default: nearest neighbour.
             let index_map =
-                build_nearest_index_map(&input_shape, &output_shape, &coord_mode, &nearest_mode);
+                build_nearest_index_map(&input_shape, &output_shape, &coord_mode, &nearest_mode)?;
             ResizeInterp::Nearest { index_map }
         };
 

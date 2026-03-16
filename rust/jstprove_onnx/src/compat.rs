@@ -38,9 +38,7 @@ const SUPPORTED_OPS: &[&str] = &[
     "Transpose",
     "Concat",
     "Slice",
-    "TopK",
     "Shape",
-    "Log",
     "Expand",
     "ReduceMean",
 ];
