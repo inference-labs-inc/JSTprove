@@ -23,6 +23,34 @@ pub fn generate_from_onnx(onnx_path: &Path) -> Result<ExpanderMetadata> {
     generate_from_onnx_with_options(onnx_path, false)
 }
 
+/// # Errors
+/// Returns an error if ONNX parsing, quantization, or shape inference fails.
+pub fn generate_from_onnx_for_field(onnx_path: &Path, n_bits: u32) -> Result<ExpanderMetadata> {
+    let exponent = n_bits / 2 - 2;
+    let parsed = parser::parse_onnx(onnx_path).context("parsing ONNX model")?;
+    let graph = LayerGraph::from_parsed(&parsed).context("building layer graph")?;
+    let config = ScaleConfig {
+        base: quantizer::DEFAULT_SCALE_BASE,
+        exponent,
+        alpha: (quantizer::DEFAULT_SCALE_BASE as i64).pow(exponent),
+    };
+    let quantized = quantizer::quantize_model(graph, &config).context("quantizing model")?;
+    let shapes = shape_inference::infer_all_shapes(&parsed, &quantized.graph)
+        .context("inferring tensor shapes")?;
+
+    let opset_version = parsed.opset_version as i16;
+
+    let circuit_params = build_circuit_params(&parsed, &quantized, &config, false);
+    let architecture = build_architecture(&parsed, &quantized, &shapes, opset_version);
+    let wandb = build_wandb(&quantized, &shapes).context("building weight/bias data")?;
+
+    Ok(ExpanderMetadata {
+        circuit_params,
+        architecture,
+        wandb,
+    })
+}
+
 pub fn generate_from_onnx_with_options(
     onnx_path: &Path,
     weights_as_inputs: bool,

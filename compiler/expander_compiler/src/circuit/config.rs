@@ -1,8 +1,9 @@
 use std::{fmt::Debug, hash::Hash};
 
 pub use gkr::{
-    BN254ConfigSha2Raw, BabyBearx16ConfigSha2Raw, GF2ExtConfigSha2Raw, Goldilocksx1ConfigSha2Raw,
-    Goldilocksx8ConfigSha2Raw, M31x16ConfigSha2RawVanilla,
+    BN254ConfigSha2Raw, BabyBearx16ConfigSha2Raw, GF2ExtConfigSha2Raw,
+    Goldilocksx1ConfigSha2Basefold, Goldilocksx1ConfigSha2Raw, Goldilocksx8ConfigSha2Raw,
+    M31x16ConfigSha2RawVanilla,
 };
 use gkr_engine::{FieldEngine, GKREngine};
 
@@ -67,4 +68,16 @@ impl Config for Goldilocksx8Config {
 
 impl Config for BabyBearConfig {
     const CONFIG_ID: usize = 5;
+}
+
+pub type Goldilocksx1RawConfig = Goldilocksx1ConfigSha2Raw;
+
+impl Config for Goldilocksx1RawConfig {
+    const CONFIG_ID: usize = 6;
+}
+
+pub type GoldilocksBasefoldConfig = Goldilocksx1ConfigSha2Basefold;
+
+impl Config for GoldilocksBasefoldConfig {
+    const CONFIG_ID: usize = 8;
 }
