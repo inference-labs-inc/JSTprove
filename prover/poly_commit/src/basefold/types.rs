@@ -3,7 +3,8 @@ use ethnum::U256;
 use serdes::{ExpSerde, SerdeResult};
 use tree::{Node, Path};
 
-pub const BASEFOLD_NUM_QUERIES: usize = 80;
+pub const BASEFOLD_NUM_QUERIES: usize = 100;
+pub const RATE_LOG: usize = 1;
 
 #[derive(Clone, Debug, Default)]
 pub struct BasefoldSRS;
@@ -48,8 +49,32 @@ impl ExpSerde for BasefoldCommitment {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct SumcheckRoundMessage<F: ExtensionField> {
+    pub eval_at_1: F,
+    pub eval_at_2: F,
+}
+
+impl<F: ExtensionField> ExpSerde for SumcheckRoundMessage<F> {
+    fn serialize_into<W: std::io::Write>(&self, mut writer: W) -> SerdeResult<()> {
+        self.eval_at_1.serialize_into(&mut writer)?;
+        self.eval_at_2.serialize_into(&mut writer)?;
+        Ok(())
+    }
+
+    fn deserialize_from<R: std::io::Read>(mut reader: R) -> SerdeResult<Self> {
+        let eval_at_1 = F::deserialize_from(&mut reader)?;
+        let eval_at_2 = F::deserialize_from(&mut reader)?;
+        Ok(Self {
+            eval_at_1,
+            eval_at_2,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct BasefoldOpening<F: ExtensionField> {
     pub round_commitments: Vec<Node>,
+    pub sumcheck_messages: Vec<SumcheckRoundMessage<F>>,
     pub final_poly: Vec<F>,
     pub query_proofs: Vec<FriQueryProof<F>>,
 }
@@ -60,6 +85,12 @@ impl<F: ExtensionField> ExpSerde for BasefoldOpening<F> {
         len.serialize_into(&mut writer)?;
         for node in &self.round_commitments {
             node.serialize_into(&mut writer)?;
+        }
+
+        let slen = U256::from(self.sumcheck_messages.len() as u64);
+        slen.serialize_into(&mut writer)?;
+        for msg in &self.sumcheck_messages {
+            msg.serialize_into(&mut writer)?;
         }
 
         let flen = U256::from(self.final_poly.len() as u64);
@@ -84,6 +115,12 @@ impl<F: ExtensionField> ExpSerde for BasefoldOpening<F> {
             round_commitments.push(Node::deserialize_from(&mut reader)?);
         }
 
+        let slen = U256::deserialize_from(&mut reader)?.as_usize();
+        let mut sumcheck_messages = Vec::with_capacity(slen);
+        for _ in 0..slen {
+            sumcheck_messages.push(SumcheckRoundMessage::deserialize_from(&mut reader)?);
+        }
+
         let flen = U256::deserialize_from(&mut reader)?.as_usize();
         let mut final_poly = Vec::with_capacity(flen);
         for _ in 0..flen {
@@ -98,6 +135,7 @@ impl<F: ExtensionField> ExpSerde for BasefoldOpening<F> {
 
         Ok(Self {
             round_commitments,
+            sumcheck_messages,
             final_poly,
             query_proofs,
         })

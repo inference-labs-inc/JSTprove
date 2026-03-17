@@ -70,7 +70,7 @@ where
         let base_evals: Vec<C::CircuitField> =
             evals.iter().flat_map(|simd| simd.unpack()).collect();
 
-        let (commitment, _tree) = basefold_commit(&base_evals);
+        let (commitment, _tree, _codeword) = basefold_commit(&base_evals);
         Some(commitment)
     }
 
@@ -103,12 +103,13 @@ where
         let base_evals: Vec<C::CircuitField> =
             evals.iter().flat_map(|simd| simd.unpack()).collect();
 
-        let (_commitment, tree) = basefold_commit(&base_evals);
+        let (_commitment, tree, codeword) = basefold_commit(&base_evals);
 
         let xs = effective_point.local_xs();
 
         let opening = basefold_open::<C::CircuitField, C::ChallengeField>(
             &base_evals,
+            &codeword,
             &tree,
             *params,
             &xs,
