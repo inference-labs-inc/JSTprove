@@ -3,10 +3,11 @@ use std::path::Path;
 use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
 use jstprove_circuits::onnx::{
-    compile_bn254, compile_goldilocks, deserialize_circuit_bn254, flatten_circuit_bn254,
-    prove_bn254, prove_goldilocks, verify_and_extract_bn254_with_flat_ref,
-    verify_and_extract_bn254_with_layered, verify_bn254, verify_goldilocks, witness_bn254_from_f64,
-    witness_goldilocks_from_f64,
+    compile_bn254, compile_goldilocks, compile_goldilocks_orion, deserialize_circuit_bn254,
+    flatten_circuit_bn254, prove_bn254, prove_goldilocks, prove_goldilocks_orion,
+    verify_and_extract_bn254_with_flat_ref, verify_and_extract_bn254_with_layered, verify_bn254,
+    verify_goldilocks, verify_goldilocks_orion, witness_bn254_from_f64,
+    witness_goldilocks_from_f64, witness_goldilocks_orion_from_f64,
 };
 use jstprove_circuits::runner::main_runner::read_circuit_msgpack;
 
@@ -284,4 +285,30 @@ fn goldilocks_pipeline_lenet_prove_verify() {
 
     let proof = prove_goldilocks(&bundle.circuit, &wb.witness, false).unwrap();
     assert!(verify_goldilocks(&bundle.circuit, &wb.witness, &proof).unwrap());
+}
+
+#[test]
+fn goldilocks_orion_pipeline_lenet_prove_verify() {
+    let params = setup_onnx_context();
+    let activations = dummy_activations(&params);
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let circuit_path = tmp.path().join("circuit_orion.msgpack");
+    let circuit_path_str = circuit_path.to_str().unwrap();
+
+    compile_goldilocks_orion(circuit_path_str, false, Some(params.clone())).unwrap();
+    let bundle = read_circuit_msgpack(circuit_path_str).unwrap();
+
+    let wb = witness_goldilocks_orion_from_f64(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations,
+        &[],
+        false,
+    )
+    .unwrap();
+
+    let proof = prove_goldilocks_orion(&bundle.circuit, &wb.witness, false).unwrap();
+    assert!(verify_goldilocks_orion(&bundle.circuit, &wb.witness, &proof).unwrap());
 }

@@ -4,8 +4,9 @@ use std::time::Instant;
 use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
 use jstprove_circuits::onnx::{
-    compile_bn254, compile_goldilocks, prove_bn254, prove_goldilocks, verify_bn254,
-    verify_goldilocks, witness_bn254_from_f64, witness_goldilocks_from_f64,
+    compile_bn254, compile_goldilocks, compile_goldilocks_orion, prove_bn254, prove_goldilocks,
+    prove_goldilocks_orion, verify_bn254, verify_goldilocks, verify_goldilocks_orion,
+    witness_bn254_from_f64, witness_goldilocks_from_f64, witness_goldilocks_orion_from_f64,
 };
 use jstprove_circuits::runner::main_runner::read_circuit_msgpack;
 
@@ -86,6 +87,10 @@ fn main() {
     let t = Instant::now();
     let proof = prove_bn254(&bundle.circuit, &wb.witness, false).unwrap();
     println!("prove:   {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+    println!(
+        "proof:   {:>10}",
+        format!("{:.1} KiB", proof.len() as f64 / 1024.0)
+    );
 
     let t = Instant::now();
     assert!(verify_bn254(&bundle.circuit, &wb.witness, &proof).unwrap());
@@ -118,6 +123,10 @@ fn main() {
     let t = Instant::now();
     let gl_proof = prove_goldilocks(&gl_bundle.circuit, &gl_wb.witness, false).unwrap();
     println!("prove:   {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+    println!(
+        "proof:   {:>10}",
+        format!("{:.1} KiB", gl_proof.len() as f64 / 1024.0)
+    );
 
     let t = Instant::now();
     assert!(verify_goldilocks(&gl_bundle.circuit, &gl_wb.witness, &gl_proof).unwrap());
@@ -125,4 +134,43 @@ fn main() {
 
     let rss_gl = rss_bytes();
     println!("peak RSS: {:.1} MiB", rss_gl as f64 / 1048576.0);
+
+    let orion_circuit_path = tmp.path().join("circuit_orion.bundle");
+    let orion_circuit_path_str = orion_circuit_path.to_str().unwrap();
+
+    println!("\n--- Goldilocks Orion PCS pipeline ---");
+    let t = Instant::now();
+    compile_goldilocks_orion(orion_circuit_path_str, false, Some(params.clone())).unwrap();
+    println!("compile: {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+
+    let orion_bundle = read_circuit_msgpack(orion_circuit_path_str).unwrap();
+    let t = Instant::now();
+    let orion_wb = witness_goldilocks_orion_from_f64(
+        &orion_bundle.circuit,
+        &orion_bundle.witness_solver,
+        &params,
+        &activations,
+        &[],
+        false,
+    )
+    .unwrap();
+    println!("witness: {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+
+    let t = Instant::now();
+    let orion_proof =
+        prove_goldilocks_orion(&orion_bundle.circuit, &orion_wb.witness, false).unwrap();
+    println!("prove:   {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+    println!(
+        "proof:   {:>10}",
+        format!("{:.1} KiB", orion_proof.len() as f64 / 1024.0)
+    );
+
+    let t = Instant::now();
+    assert!(
+        verify_goldilocks_orion(&orion_bundle.circuit, &orion_wb.witness, &orion_proof).unwrap()
+    );
+    println!("verify:  {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+
+    let rss_orion = rss_bytes();
+    println!("peak RSS: {:.1} MiB", rss_orion as f64 / 1048576.0);
 }
