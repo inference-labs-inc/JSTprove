@@ -43,7 +43,7 @@ where
     EvalF: ExtensionField<BaseField = F> + FFTField,
 {
     let num_vars = commitment.num_vars;
-    if eval_point.len() != num_vars {
+    if eval_point.len() != num_vars || num_vars == 0 {
         return false;
     }
 
@@ -52,7 +52,7 @@ where
     }
 
     let committed_rounds = opening.round_commitments.len();
-    if committed_rounds > num_vars {
+    if committed_rounds >= num_vars {
         return false;
     }
 
@@ -65,11 +65,14 @@ where
             return false;
         }
     }
-    if committed_rounds < num_vars {
-        let next_folded_size = 1usize << (codeword_log - 1 - committed_rounds);
-        if next_folded_size >= min_elems {
-            return false;
-        }
+    let next_folded_size = 1usize << (codeword_log - 1 - committed_rounds);
+    if next_folded_size >= min_elems {
+        return false;
+    }
+
+    let expected_final_poly_len = 1usize << (codeword_log - 1 - committed_rounds);
+    if opening.final_poly.len() != expected_final_poly_len {
+        return false;
     }
 
     let mut challenges = Vec::with_capacity(num_vars);
@@ -177,20 +180,21 @@ where
         let even_offset = even_idx % base_elems_per_leaf;
         let odd_offset = odd_idx % base_elems_per_leaf;
 
-        let left: EvalF = EvalF::from(extract_base_from_leaf::<F>(
-            &qp.initial_leaf_proof.leaf.data,
-            even_offset,
-        ));
+        let left: EvalF =
+            match extract_base_from_leaf::<F>(&qp.initial_leaf_proof.leaf.data, even_offset) {
+                Some(v) => EvalF::from(v),
+                None => return false,
+            };
         let right: EvalF = if odd_leaf_idx == even_leaf_idx {
-            EvalF::from(extract_base_from_leaf::<F>(
-                &qp.initial_leaf_proof.leaf.data,
-                odd_offset,
-            ))
+            match extract_base_from_leaf::<F>(&qp.initial_leaf_proof.leaf.data, odd_offset) {
+                Some(v) => EvalF::from(v),
+                None => return false,
+            }
         } else {
-            EvalF::from(extract_base_from_leaf::<F>(
-                &qp.initial_sibling_proof.leaf.data,
-                odd_offset,
-            ))
+            match extract_base_from_leaf::<F>(&qp.initial_sibling_proof.leaf.data, odd_offset) {
+                Some(v) => EvalF::from(v),
+                None => return false,
+            }
         };
 
         let level = codeword_log - 1;
@@ -200,11 +204,7 @@ where
         let mut result_idx = query_idx / 2;
 
         if committed_rounds == 0 {
-            if result_idx < opening.final_poly.len() {
-                if opening.final_poly[result_idx] != current_val {
-                    return false;
-                }
-            } else {
+            if opening.final_poly[result_idx] != current_val {
                 return false;
             }
         }
@@ -235,45 +235,48 @@ where
                 return false;
             }
 
-            if round + 1 <= committed_rounds {
-                if !rp.sibling_proof.verify(&opening.round_commitments[round]) {
-                    return false;
-                }
+            let pair_even = (result_idx / 2) * 2;
+            let pair_odd = pair_even + 1;
 
-                if !verify_leaf_values::<EvalF>(&rp.sibling_proof.leaf.data, &rp.sibling_values) {
-                    return false;
-                }
+            let partner_leaf = pair_odd / ext_elems_per_leaf;
 
-                let pair_even = (result_idx / 2) * 2;
-                let pair_odd = pair_even + 1;
+            if !rp.sibling_proof.verify(&opening.round_commitments[round]) {
+                return false;
+            }
 
-                let lo_val = if result_idx == pair_even {
-                    rp.leaf_values[pair_even % ext_elems_per_leaf]
-                } else {
-                    rp.sibling_values[pair_even % ext_elems_per_leaf]
-                };
-                let hi_val = if result_idx == pair_even {
-                    if pair_odd / ext_elems_per_leaf == result_leaf {
-                        rp.leaf_values[pair_odd % ext_elems_per_leaf]
-                    } else {
-                        rp.sibling_values[pair_odd % ext_elems_per_leaf]
-                    }
-                } else {
+            if rp.sibling_proof.index != partner_leaf {
+                return false;
+            }
+
+            if !verify_leaf_values::<EvalF>(&rp.sibling_proof.leaf.data, &rp.sibling_values) {
+                return false;
+            }
+
+            let lo_val = if result_idx == pair_even {
+                rp.leaf_values[pair_even % ext_elems_per_leaf]
+            } else {
+                rp.sibling_values[pair_even % ext_elems_per_leaf]
+            };
+            let hi_val = if result_idx == pair_even {
+                if partner_leaf == result_leaf {
                     rp.leaf_values[pair_odd % ext_elems_per_leaf]
-                };
+                } else {
+                    rp.sibling_values[pair_odd % ext_elems_per_leaf]
+                }
+            } else {
+                rp.leaf_values[pair_odd % ext_elems_per_leaf]
+            };
 
-                let next_level = codeword_log - 2 - round;
-                let next_pair_idx = pair_even / 2;
-                let next_twiddle = verifier_folding_coeff::<F>(next_level, next_pair_idx);
-                current_val =
-                    codeword_fold_single(lo_val, hi_val, challenges[round + 1], next_twiddle);
+            let next_level = codeword_log - 2 - round;
+            let next_pair_idx = pair_even / 2;
+            let next_twiddle = verifier_folding_coeff::<F>(next_level, next_pair_idx);
+            current_val = codeword_fold_single(lo_val, hi_val, challenges[round + 1], next_twiddle);
 
-                result_idx /= 2;
+            result_idx /= 2;
 
-                if round + 1 == committed_rounds && result_idx < opening.final_poly.len() {
-                    if opening.final_poly[result_idx] != current_val {
-                        return false;
-                    }
+            if round + 1 == committed_rounds {
+                if opening.final_poly[result_idx] != current_val {
+                    return false;
                 }
             }
         }
@@ -282,10 +285,13 @@ where
     true
 }
 
-fn extract_base_from_leaf<F: Field>(leaf_data: &[u8], offset: usize) -> F {
+fn extract_base_from_leaf<F: Field>(leaf_data: &[u8], offset: usize) -> Option<F> {
     let start = offset * F::SIZE;
     let end = start + F::SIZE;
-    F::deserialize_from(&leaf_data[start..end]).unwrap()
+    if end > leaf_data.len() {
+        return None;
+    }
+    F::deserialize_from(&leaf_data[start..end]).ok()
 }
 
 fn verify_leaf_values<EvalF: Field>(leaf_data: &[u8], values: &[EvalF]) -> bool {
@@ -296,7 +302,13 @@ fn verify_leaf_values<EvalF: Field>(leaf_data: &[u8], values: &[EvalF]) -> bool 
     for (i, v) in values.iter().enumerate() {
         let start = i * EvalF::SIZE;
         let end = start + EvalF::SIZE;
-        let deserialized = EvalF::deserialize_from(&leaf_data[start..end]).unwrap();
+        if end > leaf_data.len() {
+            return false;
+        }
+        let deserialized = match EvalF::deserialize_from(&leaf_data[start..end]) {
+            Ok(val) => val,
+            Err(_) => return false,
+        };
         if deserialized != *v {
             return false;
         }
