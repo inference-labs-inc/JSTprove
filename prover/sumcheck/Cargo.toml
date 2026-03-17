@@ -19,7 +19,9 @@ rayon.workspace = true
 
 [dev-dependencies]
 ark-std.workspace = true
-
+criterion.workspace = true
+mersenne31.workspace = true
+rand.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 metal_accel = { workspace = true, optional = true }
@@ -27,6 +29,10 @@ metal_accel = { workspace = true, optional = true }
 [features]
 profile = [ "utils/profile" ]
 metal = ["metal_accel"]
+
+[[bench]]
+name = "simd_gate_poly_eval"
+harness = false
 
 [lints.clippy]
 all = "allow"
