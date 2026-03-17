@@ -63,6 +63,26 @@ fn rangeproof_logup_test() {
     assert_eq!(output, vec![true]);
 }
 
+declare_circuit!(EmptyQueryCircuit { a: Variable });
+impl Define<BN254Config> for EmptyQueryCircuit<Variable> {
+    fn define<Builder: RootAPI<BN254Config>>(&self, builder: &mut Builder) {
+        let mut table = LogUpRangeProofTable::new(8);
+        table.initial(builder);
+        table.final_check(builder);
+        let one = builder.constant(1);
+        builder.assert_is_equal(self.a, one);
+    }
+}
+
+#[test]
+fn final_check_with_no_queries_compiles() {
+    let compile_result = compile(&EmptyQueryCircuit::default(), CompileOptions::default());
+    match &compile_result {
+        Ok(_) => {}
+        Err(e) => panic!("compile failed: {e:?}"),
+    }
+}
+
 declare_circuit!(OnechunkOutOfRangeCircuit {
     _placeholder: Variable
 });
