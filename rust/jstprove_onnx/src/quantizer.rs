@@ -13,8 +13,6 @@ pub const N_BITS_GOLDILOCKS: u32 = 31;
 pub const N_BITS_BN254: u32 = 64;
 pub const N_BITS_GOLDILOCKS: u32 = 31;
 
-const ACCUMULATION_MARGIN: u32 = 2;
-
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ScaleConfig {
     pub base: u64,
@@ -43,21 +41,43 @@ impl ScaleConfig {
         }
     }
 
-    pub fn for_field(n_bits: u32) -> Self {
-        let exponent = n_bits / 2 - ACCUMULATION_MARGIN;
-        Self::new(DEFAULT_SCALE_BASE, exponent)
+    #[must_use]
+    pub fn exponent_for_digits(target_digits: u32) -> u32 {
+        (f64::from(target_digits) * std::f64::consts::LOG2_10).ceil() as u32
     }
 
-    pub fn adaptive(n_bits: u32, max_bound: f64) -> Self {
+    #[must_use]
+    pub fn max_safe_exponent(n_bits: u32, max_bound: f64) -> u32 {
         let log2_accum = if max_bound > 1.0 {
             max_bound.log2().ceil() as u32
         } else {
             0
         };
-        let available = n_bits.saturating_sub(log2_accum + 1);
-        let exponent = available / 2;
-        let exponent = exponent.max(4);
-        Self::new(DEFAULT_SCALE_BASE, exponent)
+        n_bits.saturating_sub(log2_accum) / 2
+    }
+
+    #[must_use]
+    pub fn max_safe_digits(n_bits: u32, max_bound: f64) -> u32 {
+        let max_exp = Self::max_safe_exponent(n_bits, max_bound);
+        (f64::from(max_exp) / std::f64::consts::LOG2_10).floor() as u32
+    }
+
+    pub fn for_precision(target_digits: u32, n_bits: u32, max_bound: f64) -> Result<Self> {
+        let exponent = Self::exponent_for_digits(target_digits);
+        let max_exp = Self::max_safe_exponent(n_bits, max_bound);
+        let max_digits = Self::max_safe_digits(n_bits, max_bound);
+        anyhow::ensure!(
+            exponent <= max_exp,
+            "requested {} decimal digits requires exponent={}, but field n_bits={} \
+             with max accumulation {:.2} only supports exponent up to {} ({} digits)",
+            target_digits,
+            exponent,
+            n_bits,
+            max_bound,
+            max_exp,
+            max_digits,
+        );
+        Ok(Self::new(DEFAULT_SCALE_BASE, exponent))
     }
 }
 
@@ -81,10 +101,15 @@ impl QuantizedModel {
 }
 
 /// # Errors
-/// Returns an error if ONNX graph analysis or quantization fails.
-pub fn quantize_model_adaptive(graph: LayerGraph, n_bits: u32) -> Result<QuantizedModel> {
+/// Returns an error if the requested precision exceeds the field capacity,
+/// or if ONNX graph analysis or quantization fails.
+pub fn quantize_model_for_precision(
+    graph: LayerGraph,
+    target_digits: u32,
+    n_bits: u32,
+) -> Result<QuantizedModel> {
     let max_bound = compute_max_bound(&graph)?;
-    let config = ScaleConfig::adaptive(n_bits, max_bound);
+    let config = ScaleConfig::for_precision(target_digits, n_bits, max_bound)?;
     quantize_model(graph, &config)
 }
 

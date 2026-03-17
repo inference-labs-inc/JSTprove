@@ -20,7 +20,7 @@ pub struct ExpanderMetadata {
 }
 
 pub fn generate_from_onnx(onnx_path: &Path) -> Result<ExpanderMetadata> {
-    generate_from_onnx_with_all_options(onnx_path, false, None)
+    generate_from_onnx_with_all_options(onnx_path, false, None, None)
 }
 
 /// # Errors
@@ -55,28 +55,40 @@ pub fn generate_from_onnx_with_options(
     onnx_path: &Path,
     weights_as_inputs: bool,
 ) -> Result<ExpanderMetadata> {
-    generate_from_onnx_with_all_options(onnx_path, weights_as_inputs, None)
+    generate_from_onnx_with_all_options(onnx_path, weights_as_inputs, None, None)
 }
 
 /// # Errors
-/// Returns an error if ONNX parsing, quantization, or shape inference fails.
-pub fn generate_from_onnx_for_field(onnx_path: &Path, n_bits: u32) -> Result<ExpanderMetadata> {
-    generate_from_onnx_with_all_options(onnx_path, false, Some(n_bits))
+/// Returns an error if ONNX parsing, quantization, or shape inference fails,
+/// or if the requested precision exceeds the field's capacity.
+pub fn generate_from_onnx_for_field(
+    onnx_path: &Path,
+    n_bits: u32,
+    target_precision: Option<u32>,
+) -> Result<ExpanderMetadata> {
+    generate_from_onnx_with_all_options(onnx_path, false, Some(n_bits), target_precision)
 }
 
 fn generate_from_onnx_with_all_options(
     onnx_path: &Path,
     weights_as_inputs: bool,
     n_bits: Option<u32>,
+    target_precision: Option<u32>,
 ) -> Result<ExpanderMetadata> {
     let parsed = parser::parse_onnx(onnx_path).context("parsing ONNX model")?;
     let graph = LayerGraph::from_parsed(&parsed).context("building layer graph")?;
 
-    let quantized = match n_bits {
-        Some(nb) => {
-            quantizer::quantize_model_adaptive(graph, nb).context("adaptive quantization")?
+    let quantized = match (n_bits, target_precision) {
+        (Some(nb), Some(digits)) => quantizer::quantize_model_for_precision(graph, digits, nb)
+            .context("precision-targeted quantization")?,
+        (Some(nb), None) => {
+            let max_bound = quantizer::compute_max_bound(&graph)?;
+            let max_exp = ScaleConfig::max_safe_exponent(nb, max_bound);
+            let exponent = quantizer::DEFAULT_SCALE_EXPONENT.min(max_exp);
+            let config = ScaleConfig::new(quantizer::DEFAULT_SCALE_BASE, exponent);
+            quantizer::quantize_model(graph, &config).context("field-aware quantization")?
         }
-        None => {
+        _ => {
             let config = ScaleConfig::default();
             quantizer::quantize_model(graph, &config).context("quantizing model")?
         }
@@ -421,7 +433,7 @@ mod tests {
     }
 
     #[test]
-    fn lenet_metadata_generation_for_field_bn254() {
+    fn bn254_default_exponent_is_18() {
         let model_path =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
         if !model_path.exists() {
@@ -431,18 +443,58 @@ mod tests {
         let metadata = generate_from_onnx_for_field(
             model_path.as_path(),
             jstprove_onnx::quantizer::N_BITS_BN254,
+            None,
         )
         .unwrap();
 
         assert_eq!(metadata.circuit_params.scale_base, 2);
-        assert!(metadata.circuit_params.scale_exponent > 0);
-        assert!(metadata.circuit_params.scale_exponent <= 32);
+        assert_eq!(metadata.circuit_params.scale_exponent, 18);
         assert!(!metadata.circuit_params.n_bits_config.is_empty());
         assert!(!metadata.circuit_params.rescale_config.is_empty());
     }
 
     #[test]
-    fn lenet_metadata_generation_for_field_goldilocks() {
+    fn bn254_5_digit_precision() {
+        let model_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
+        if !model_path.exists() {
+            return;
+        }
+
+        let metadata = generate_from_onnx_for_field(
+            model_path.as_path(),
+            jstprove_onnx::quantizer::N_BITS_BN254,
+            Some(5),
+        )
+        .unwrap();
+
+        assert_eq!(metadata.circuit_params.scale_base, 2);
+        let expected_exp = ScaleConfig::exponent_for_digits(5);
+        assert_eq!(metadata.circuit_params.scale_exponent, expected_exp);
+    }
+
+    #[test]
+    fn bn254_8_digit_precision() {
+        let model_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
+        if !model_path.exists() {
+            return;
+        }
+
+        let metadata = generate_from_onnx_for_field(
+            model_path.as_path(),
+            jstprove_onnx::quantizer::N_BITS_BN254,
+            Some(8),
+        )
+        .unwrap();
+
+        assert_eq!(metadata.circuit_params.scale_base, 2);
+        let expected_exp = ScaleConfig::exponent_for_digits(8);
+        assert_eq!(metadata.circuit_params.scale_exponent, expected_exp);
+    }
+
+    #[test]
+    fn goldilocks_default_exponent_capped() {
         let model_path =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
         if !model_path.exists() {
@@ -452,12 +504,35 @@ mod tests {
         let metadata = generate_from_onnx_for_field(
             model_path.as_path(),
             jstprove_onnx::quantizer::N_BITS_GOLDILOCKS,
+            None,
         )
         .unwrap();
 
         assert_eq!(metadata.circuit_params.scale_base, 2);
         assert!(metadata.circuit_params.scale_exponent <= 15);
         assert!(!metadata.circuit_params.n_bits_config.is_empty());
+    }
+
+    #[test]
+    fn precision_exceeds_goldilocks_capacity() {
+        let model_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
+        if !model_path.exists() {
+            return;
+        }
+
+        let result = generate_from_onnx_for_field(
+            model_path.as_path(),
+            jstprove_onnx::quantizer::N_BITS_GOLDILOCKS,
+            Some(9),
+        );
+
+        assert!(result.is_err());
+        let msg = result.err().expect("expected an error").to_string();
+        assert!(
+            msg.contains("decimal digits"),
+            "error should mention decimal digits: {msg}"
+        );
     }
 
     #[test]

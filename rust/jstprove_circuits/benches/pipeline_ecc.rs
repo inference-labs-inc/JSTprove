@@ -34,9 +34,18 @@ fn rss_bytes() -> u64 {
     }
 }
 
-fn run_bn254_pipeline(model_path: &Path, label: &str, n_bits: Option<u32>, activations: &[f64]) {
+fn run_bn254_pipeline(
+    model_path: &Path,
+    label: &str,
+    n_bits: Option<u32>,
+    target_precision: Option<u32>,
+    activations: &[f64],
+) {
     let metadata = match n_bits {
-        Some(nb) => expander_metadata::generate_from_onnx_for_field(model_path, nb).unwrap(),
+        Some(nb) => {
+            expander_metadata::generate_from_onnx_for_field(model_path, nb, target_precision)
+                .unwrap()
+        }
         None => expander_metadata::generate_from_onnx(model_path).unwrap(),
     };
     let params = metadata.circuit_params.clone();
@@ -94,7 +103,8 @@ fn run_bn254_pipeline(model_path: &Path, label: &str, n_bits: Option<u32>, activ
 
 fn run_goldilocks_pipeline(model_path: &Path, activations: &[f64]) {
     let metadata =
-        expander_metadata::generate_from_onnx_for_field(model_path, N_BITS_GOLDILOCKS).unwrap();
+        expander_metadata::generate_from_onnx_for_field(model_path, N_BITS_GOLDILOCKS, None)
+            .unwrap();
     let params = metadata.circuit_params.clone();
     OnnxContext::set_all(
         metadata.architecture,
@@ -103,7 +113,7 @@ fn run_goldilocks_pipeline(model_path: &Path, activations: &[f64]) {
     );
 
     println!(
-        "\n--- Goldilocks adaptive (exponent={}) ---",
+        "\n--- Goldilocks default (exponent={}) ---",
         params.scale_exponent
     );
 
@@ -214,7 +224,8 @@ fn main() {
     println!("peak RSS: {:.1} MiB", rss_bytes() as f64 / 1048576.0);
 
     let metadata_gl =
-        expander_metadata::generate_from_onnx_for_field(&model_path, N_BITS_GOLDILOCKS).unwrap();
+        expander_metadata::generate_from_onnx_for_field(&model_path, N_BITS_GOLDILOCKS, None)
+            .unwrap();
     let params_gl = metadata_gl.circuit_params.clone();
     OnnxContext::set_all(
         metadata_gl.architecture,
@@ -290,6 +301,20 @@ fn main() {
     println!("verify:  {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
     println!("peak RSS: {:.1} MiB", rss_bytes() as f64 / 1048576.0);
 
-    run_bn254_pipeline(&model_path, "adaptive", Some(N_BITS_BN254), &activations);
+    run_bn254_pipeline(&model_path, "default", None, None, &activations);
+    run_bn254_pipeline(
+        &model_path,
+        "5-digit precision",
+        Some(N_BITS_BN254),
+        Some(5),
+        &activations,
+    );
+    run_bn254_pipeline(
+        &model_path,
+        "8-digit precision",
+        Some(N_BITS_BN254),
+        Some(8),
+        &activations,
+    );
     run_goldilocks_pipeline(&model_path, &activations);
 }

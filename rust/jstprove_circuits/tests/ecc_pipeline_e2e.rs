@@ -271,7 +271,8 @@ fn setup_onnx_context_goldilocks()
         model_path.display()
     );
     let metadata =
-        expander_metadata::generate_from_onnx_for_field(&model_path, N_BITS_GOLDILOCKS).unwrap();
+        expander_metadata::generate_from_onnx_for_field(&model_path, N_BITS_GOLDILOCKS, None)
+            .unwrap();
     let params = metadata.circuit_params.clone();
     OnnxContext::set_all(
         metadata.architecture,
