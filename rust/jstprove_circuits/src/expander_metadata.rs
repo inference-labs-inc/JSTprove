@@ -528,7 +528,7 @@ mod tests {
         );
 
         assert!(result.is_err());
-        let msg = result.err().expect("expected an error").to_string();
+        let msg = format!("{:#}", result.err().expect("expected an error"));
         assert!(
             msg.contains("decimal digits"),
             "error should mention decimal digits: {msg}"
