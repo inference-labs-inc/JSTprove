@@ -113,7 +113,7 @@ pub fn gelu_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), E
         F::from_u256(U256::from(y_q as u64))
     } else {
         // Negative: encode as p - |y_q|
-        let mag = U256::from((-y_q) as u64);
+        let mag = U256::from(y_q.unsigned_abs());
         F::from_u256(F::MODULUS - mag)
     };
     Ok(())
@@ -130,7 +130,7 @@ mod tests {
         if n >= 0 {
             F::from_u256(U256::from(n as u64))
         } else {
-            let mag = U256::from((-n) as u64);
+            let mag = U256::from(n.unsigned_abs());
             F::from_u256(F::MODULUS - mag)
         }
     }

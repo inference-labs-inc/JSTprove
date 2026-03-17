@@ -109,6 +109,22 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ExpandLayer {
                 msg: format!("missing input shape for '{input_name}'"),
             })?;
 
+        // Verify the shape tensor (inputs[1]) is known at compile time.
+        let shape_tensor_name = &layer.inputs[1];
+        if !layer_context
+            .shapes_map
+            .contains_key(shape_tensor_name.as_str())
+        {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::Expand,
+                msg: format!(
+                    "shape tensor '{shape_tensor_name}' not found in shapes_map; \
+                     Expand requires a compile-time constant shape input"
+                ),
+            }
+            .into());
+        }
+
         let output_shape = layer_context
             .shapes_map
             .get(output_name.as_str())

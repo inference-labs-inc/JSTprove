@@ -158,9 +158,13 @@ mod macos {
             "MISMATCH"
         };
 
-        let speedup = cpu_us as f64 / metal_us as f64;
+        let speedup_str = if metal_us == 0 {
+            "   N/A".to_string()
+        } else {
+            format!("{:>6.2}x", cpu_us as f64 / metal_us as f64)
+        };
         println!(
-            "  eq_eval  2^{log_n:>2} ({n:>8}):  CPU {cpu_us:>8}us  Metal {metal_us:>8}us  {speedup:>6.2}x  [{match_str}]"
+            "  eq_eval  2^{log_n:>2} ({n:>8}):  CPU {cpu_us:>8}us  Metal {metal_us:>8}us  {speedup_str}  [{match_str}]"
         );
     }
 
@@ -223,9 +227,13 @@ mod macos {
             eprintln!("    GPU: {:?}", gpu_result);
             "MISMATCH"
         };
-        let speedup = cpu_us as f64 / metal_us as f64;
+        let speedup_str = if metal_us == 0 {
+            "   N/A".to_string()
+        } else {
+            format!("{:>6.2}x", cpu_us as f64 / metal_us as f64)
+        };
         println!(
-            "  poly_eval 2^{log_n:>2} ({n:>8}):  CPU {cpu_us:>8}us  Metal {metal_us:>8}us  {speedup:>6.2}x  [{match_str}]"
+            "  poly_eval 2^{log_n:>2} ({n:>8}):  CPU {cpu_us:>8}us  Metal {metal_us:>8}us  {speedup_str}  [{match_str}]"
         );
     }
 
@@ -296,9 +304,13 @@ mod macos {
             "MISMATCH"
         };
 
-        let speedup = cpu_us as f64 / metal_us as f64;
+        let speedup_str = if metal_us == 0 {
+            "   N/A".to_string()
+        } else {
+            format!("{:>6.2}x", cpu_us as f64 / metal_us as f64)
+        };
         println!(
-            "  fold    2^{log_n:>2} ({n:>8}):  CPU {cpu_us:>8}us  Metal {metal_us:>8}us  {speedup:>6.2}x  [{match_str}]"
+            "  fold    2^{log_n:>2} ({n:>8}):  CPU {cpu_us:>8}us  Metal {metal_us:>8}us  {speedup_str}  [{match_str}]"
         );
     }
 

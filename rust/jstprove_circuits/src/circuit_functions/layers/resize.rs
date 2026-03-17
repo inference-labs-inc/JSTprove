@@ -316,12 +316,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ResizeLayer {
                         .weights_q
                         .iter()
                         .map(|&w| {
-                            let fv = if w >= 0 {
-                                CircuitField::<C>::from_u256(U256::from(w as u64))
-                            } else {
-                                let mag = U256::from(w.unsigned_abs());
-                                CircuitField::<C>::from_u256(CircuitField::<C>::MODULUS - mag)
-                            };
+                            // Bilinear weights are derived from `(w_real * scale).round()` where
+                            // w_real ∈ [0, 1], so weights_q is always non-negative.
+                            debug_assert!(w >= 0, "bilinear weight must be non-negative, got {w}");
+                            let fv = CircuitField::<C>::from_u256(U256::from(w as u64));
                             api.constant(fv)
                         })
                         .collect();

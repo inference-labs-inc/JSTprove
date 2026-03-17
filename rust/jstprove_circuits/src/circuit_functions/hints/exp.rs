@@ -103,7 +103,7 @@ mod tests {
             F::from_u256(U256::from(n as u64))
         } else {
             // Encode negative as p + n
-            let mag = U256::from((-n) as u64);
+            let mag = U256::from(n.unsigned_abs());
             F::from_u256(F::MODULUS - mag)
         }
     }

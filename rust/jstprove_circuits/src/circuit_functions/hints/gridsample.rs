@@ -18,8 +18,11 @@
 // where n = (inputs.len() - 1) / 2 (always 4 for standard bilinear).
 //
 // # Soundness caveat
-// The hint computes the interpolation outside the circuit; the circuit
-// constrains the output via a LogUp range check (non-negative and bounded).
+// The hint computes the interpolation outside the circuit. Because bilinear
+// weighted sums of signed pixel values can be negative, the output is a signed
+// field element (two's complement mod p). The circuit currently applies a
+// non-negative LogUp range check, so honest negative outputs are unprovable
+// (liveness gap — full signed constraint is a planned future fix).
 
 use ethnum::U256;
 use expander_compiler::field::FieldArith;
@@ -41,7 +44,8 @@ pub const GRIDSAMPLE_HINT_KEY: &str = "jstprove.gridsample_hint";
 ///
 /// # Output (length = 1)
 /// - `outputs[0]`: `round(sum(x_i_q * w_i_q) / scale)`, clamped to
-///   `[0, i64::MAX]`, stored as a field element.
+///   `[i64::MIN, i64::MAX]`, stored as a signed field element (two's complement
+///   mod p: negative values encoded as `p - |y_q|`).
 ///
 /// # Errors
 /// Returns [`Error::UserError`] when input/output lengths are invalid or the
@@ -132,7 +136,7 @@ mod tests {
             if x >= 0 {
                 inputs.push(field_pos(x as u64));
             } else {
-                let mag = U256::from((-x) as u64);
+                let mag = U256::from(x.unsigned_abs());
                 inputs.push(F::from_u256(F::MODULUS - mag));
             }
         }

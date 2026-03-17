@@ -120,7 +120,7 @@ mod tests {
             if x >= 0 {
                 inputs.push(field_pos(x as u64));
             } else {
-                let mag = U256::from((-x) as u64);
+                let mag = U256::from(x.unsigned_abs());
                 inputs.push(F::from_u256(F::MODULUS - mag));
             }
         }
