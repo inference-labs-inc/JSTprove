@@ -22,3 +22,6 @@ pub mod kzg;
 pub use kzg::*;
 
 pub mod batching;
+
+pub mod basefold;
+pub use basefold::BasefoldPCSForGKR;

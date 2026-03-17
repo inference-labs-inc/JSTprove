@@ -8,6 +8,7 @@ use super::parser::TensorData;
 
 pub const DEFAULT_SCALE_BASE: u64 = 2;
 pub const DEFAULT_SCALE_EXPONENT: u32 = 18;
+pub const N_BITS_GOLDILOCKS: u32 = 31;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ScaleConfig {

@@ -3,12 +3,14 @@ use std::path::Path;
 use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
 use jstprove_circuits::onnx::{
-    compile_bn254, compile_goldilocks, deserialize_circuit_bn254, flatten_circuit_bn254,
-    prove_bn254, prove_goldilocks, verify_and_extract_bn254_with_flat_ref,
-    verify_and_extract_bn254_with_layered, verify_bn254, verify_goldilocks, witness_bn254_from_f64,
-    witness_goldilocks_from_f64,
+    compile_bn254, compile_goldilocks, compile_goldilocks_basefold, deserialize_circuit_bn254,
+    flatten_circuit_bn254, prove_bn254, prove_goldilocks, prove_goldilocks_basefold,
+    verify_and_extract_bn254_with_flat_ref, verify_and_extract_bn254_with_layered, verify_bn254,
+    verify_goldilocks, verify_goldilocks_basefold, witness_bn254_from_f64,
+    witness_goldilocks_basefold_from_f64, witness_goldilocks_from_f64,
 };
 use jstprove_circuits::runner::main_runner::read_circuit_msgpack;
+use jstprove_onnx::quantizer::N_BITS_GOLDILOCKS;
 
 fn lenet_model_path() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx")
@@ -260,9 +262,28 @@ fn flat_ref_verify_compressed_witness() {
     assert_eq!(ref_result.outputs, layered_result.outputs);
 }
 
+fn setup_onnx_context_goldilocks()
+-> jstprove_circuits::circuit_functions::utils::onnx_model::CircuitParams {
+    let model_path = lenet_model_path();
+    assert!(
+        model_path.exists(),
+        "lenet.onnx not found at {}",
+        model_path.display()
+    );
+    let metadata =
+        expander_metadata::generate_from_onnx_for_field(&model_path, N_BITS_GOLDILOCKS).unwrap();
+    let params = metadata.circuit_params.clone();
+    OnnxContext::set_all(
+        metadata.architecture,
+        metadata.circuit_params,
+        Some(metadata.wandb),
+    );
+    params
+}
+
 #[test]
 fn goldilocks_pipeline_lenet_prove_verify() {
-    let params = setup_onnx_context();
+    let params = setup_onnx_context_goldilocks();
     let activations = dummy_activations(&params);
 
     let tmp = tempfile::TempDir::new().unwrap();
@@ -284,4 +305,30 @@ fn goldilocks_pipeline_lenet_prove_verify() {
 
     let proof = prove_goldilocks(&bundle.circuit, &wb.witness, false).unwrap();
     assert!(verify_goldilocks(&bundle.circuit, &wb.witness, &proof).unwrap());
+}
+
+#[test]
+fn goldilocks_basefold_pipeline_lenet_prove_verify() {
+    let params = setup_onnx_context_goldilocks();
+    let activations = dummy_activations(&params);
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let circuit_path = tmp.path().join("circuit_bf.msgpack");
+    let circuit_path_str = circuit_path.to_str().unwrap();
+
+    compile_goldilocks_basefold(circuit_path_str, false, Some(params.clone())).unwrap();
+    let bundle = read_circuit_msgpack(circuit_path_str).unwrap();
+
+    let wb = witness_goldilocks_basefold_from_f64(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations,
+        &[],
+        false,
+    )
+    .unwrap();
+
+    let proof = prove_goldilocks_basefold(&bundle.circuit, &wb.witness, false).unwrap();
+    assert!(verify_goldilocks_basefold(&bundle.circuit, &wb.witness, &proof).unwrap());
 }
