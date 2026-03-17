@@ -308,7 +308,6 @@ fn goldilocks_pipeline_lenet_prove_verify() {
     assert!(verify_goldilocks(&bundle.circuit, &wb.witness, &proof).unwrap());
 }
 
-
 #[test]
 fn goldilocks_basefold_pipeline_lenet_prove_verify() {
     let params = setup_onnx_context_goldilocks();
