@@ -37,8 +37,11 @@ pub const SIGMOID_HINT_KEY: &str = "jstprove.sigmoid_hint";
 ///   `sigmoid(x) = 1 / (1 + exp(-x))`
 ///
 /// # Errors
-/// Returns [`Error::UserError`] when `inputs.len() != 2` or `outputs.len() != 1`.
-/// Out-of-range values are clamped, never an error.
+/// Returns [`Error::UserError`] when:
+/// - `inputs.len() != 2` or `outputs.len() != 1` (arity mismatch),
+/// - the scale field element exceeds `u64::MAX` (overflow guard), or
+/// - the scale decodes to zero (division by zero).
+/// Out-of-range output values are clamped, never an error.
 #[allow(
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
