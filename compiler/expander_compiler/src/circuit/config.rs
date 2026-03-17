@@ -70,12 +70,6 @@ impl Config for BabyBearConfig {
     const CONFIG_ID: usize = 5;
 }
 
-pub type Goldilocksx1RawConfig = Goldilocksx1ConfigSha2Raw;
-
-impl Config for Goldilocksx1RawConfig {
-    const CONFIG_ID: usize = 6;
-}
-
 pub type GoldilocksBasefoldConfig = Goldilocksx1ConfigSha2Basefold;
 
 impl Config for GoldilocksBasefoldConfig {
