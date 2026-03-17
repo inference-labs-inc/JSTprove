@@ -59,6 +59,19 @@ where
     let min_elems = min_tree_elems::<EvalF>();
     let codeword_log = num_vars + RATE_LOG;
 
+    if committed_rounds > 0 {
+        let last_folded_size = 1usize << (codeword_log - committed_rounds);
+        if last_folded_size < min_elems {
+            return false;
+        }
+    }
+    if committed_rounds < num_vars {
+        let next_folded_size = 1usize << (codeword_log - 1 - committed_rounds);
+        if next_folded_size >= min_elems {
+            return false;
+        }
+    }
+
     let mut challenges = Vec::with_capacity(num_vars);
     let mut running_claim = claimed_eval;
 
