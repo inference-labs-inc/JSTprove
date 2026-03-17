@@ -142,7 +142,13 @@ mod tests {
         inputs.push(field_pos(scale));
         let mut outputs = [F::zero()];
         gridsample_hint::<F>(&inputs, &mut outputs).unwrap();
-        outputs[0].to_u256().as_u64() as i64
+        let v = outputs[0].to_u256();
+        let p_half = F::MODULUS / 2;
+        if v > p_half {
+            -((F::MODULUS - v).as_u64() as i64)
+        } else {
+            v.as_u64() as i64
+        }
     }
 
     #[test]

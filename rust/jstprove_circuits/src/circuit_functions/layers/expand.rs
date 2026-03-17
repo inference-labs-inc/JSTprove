@@ -83,6 +83,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ExpandLayer {
                 layer: LayerKind::Expand,
                 param: "input tensor".to_string(),
             })?;
+
+        // Expand requires a second input (the target shape tensor).
+        if layer.inputs.len() < 2 {
+            return Err(LayerError::MissingParameter {
+                layer: LayerKind::Expand,
+                param: "shape tensor (inputs[1])".to_string(),
+            }
+            .into());
+        }
         let output_name = layer
             .outputs
             .first()

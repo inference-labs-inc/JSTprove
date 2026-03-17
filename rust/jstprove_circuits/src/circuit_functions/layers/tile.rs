@@ -150,18 +150,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TileLayer {
     }
 }
 
-#[allow(dead_code)]
-fn tile_shape(input_shape: &[usize], repeats: &[usize]) -> Vec<usize> {
-    input_shape
-        .iter()
-        .zip(repeats.iter())
-        .map(|(&d, &r)| d * r)
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    fn tile_shape(input_shape: &[usize], repeats: &[usize]) -> Vec<usize> {
+        input_shape
+            .iter()
+            .zip(repeats.iter())
+            .map(|(&d, &r)| d * r)
+            .collect()
+    }
 
     #[test]
     fn tile_shape_basic() {

@@ -18,7 +18,8 @@ mod macos {
     use std::time::Instant;
 
     fn fr_to_limbs(f: &Fr) -> [u64; 4] {
-        let repr: [u8; 32] = unsafe { std::mem::transmute_copy(f) };
+        use halo2curves::serde::SerdeObject;
+        let repr: [u8; 32] = f.to_raw_bytes();
         [
             u64::from_le_bytes(repr[0..8].try_into().unwrap()),
             u64::from_le_bytes(repr[8..16].try_into().unwrap()),
@@ -134,13 +135,26 @@ mod macos {
         let metal_us = start.elapsed().as_micros() / 5;
 
         let gpu_ptr = pool.eq_evals_rz0.contents() as *const [u64; 4];
-        let gpu_val = unsafe { *gpu_ptr };
-        let cpu_val = fr_to_limbs(&cpu_result[0]);
-        let match_str = if gpu_val == cpu_val {
+        let gpu_slice: &[[u64; 4]] = unsafe { std::slice::from_raw_parts(gpu_ptr, n) };
+        let cpu_limbs: Vec<[u64; 4]> = cpu_result.iter().map(fr_to_limbs).collect();
+        let match_str = if gpu_slice == cpu_limbs.as_slice() {
             "MATCH"
         } else {
-            eprintln!("    CPU[0]: {:?}", cpu_val);
-            eprintln!("    GPU[0]: {:?}", gpu_val);
+            if gpu_slice.len() != cpu_limbs.len() {
+                eprintln!(
+                    "    length mismatch: GPU={} CPU={}",
+                    gpu_slice.len(),
+                    cpu_limbs.len()
+                );
+            } else if let Some(i) = gpu_slice
+                .iter()
+                .zip(cpu_limbs.iter())
+                .position(|(g, c)| g != c)
+            {
+                eprintln!("    first mismatch at index {i}");
+                eprintln!("    CPU[{i}]: {:?}", cpu_limbs[i]);
+                eprintln!("    GPU[{i}]: {:?}", gpu_slice[i]);
+            }
             "MISMATCH"
         };
 
@@ -259,13 +273,26 @@ mod macos {
         let metal_us = start.elapsed().as_micros() / 5;
 
         let gpu_ptr = gpu_out.contents() as *const [u64; 4];
-        let gpu_val = unsafe { *gpu_ptr };
-        let cpu_val = fr_to_limbs(&cpu_data[0]);
-        let match_str = if gpu_val == cpu_val {
+        let gpu_slice: &[[u64; 4]] = unsafe { std::slice::from_raw_parts(gpu_ptr, eval_size) };
+        let cpu_limbs: Vec<[u64; 4]> = cpu_data[..eval_size].iter().map(fr_to_limbs).collect();
+        let match_str = if gpu_slice == cpu_limbs.as_slice() {
             "MATCH"
         } else {
-            eprintln!("    CPU[0]: {:?}", cpu_val);
-            eprintln!("    GPU[0]: {:?}", gpu_val);
+            if gpu_slice.len() != cpu_limbs.len() {
+                eprintln!(
+                    "    length mismatch: GPU={} CPU={}",
+                    gpu_slice.len(),
+                    cpu_limbs.len()
+                );
+            } else if let Some(i) = gpu_slice
+                .iter()
+                .zip(cpu_limbs.iter())
+                .position(|(g, c)| g != c)
+            {
+                eprintln!("    first mismatch at index {i}");
+                eprintln!("    CPU[{i}]: {:?}", cpu_limbs[i]);
+                eprintln!("    GPU[{i}]: {:?}", gpu_slice[i]);
+            }
             "MISMATCH"
         };
 

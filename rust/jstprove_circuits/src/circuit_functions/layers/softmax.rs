@@ -135,18 +135,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
             }
         }
 
-        // Guard: Softmax must produce exactly one output tensor.
-        if self.outputs.len() != 1 {
-            return Err(LayerError::MissingParameter {
-                layer: LayerKind::Softmax,
-                param: format!(
-                    "output Y: expected exactly 1 output, got {}",
-                    self.outputs.len()
-                ),
-            }
-            .into());
-        }
-
         Ok((self.outputs.clone(), out_array))
     }
 

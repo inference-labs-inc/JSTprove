@@ -219,7 +219,19 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherLayer {
             })?;
 
         let indices_rank = indices_array.ndim();
-        // data_rank = output_rank - indices_rank + 1
+        // data_rank = output_rank - indices_rank + 1  (from ONNX spec:
+        // output_rank = data_rank + indices_rank - 1)
+        if indices_rank > output_shape.len() + 1 {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::Gather,
+                msg: format!(
+                    "indices_rank ({indices_rank}) exceeds output_rank + 1 ({}); \
+                     cannot derive data_rank",
+                    output_shape.len() + 1
+                ),
+            }
+            .into());
+        }
         let data_rank = output_shape.len() + 1 - indices_rank;
 
         let axis = if raw_axis < 0 {

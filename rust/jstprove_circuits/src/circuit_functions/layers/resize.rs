@@ -96,8 +96,9 @@ fn output_to_input_coord(out_idx: usize, in_size: usize, out_size: usize, mode: 
             }
         }
         "tf_half_pixel_for_nn" => (o + 0.5) * in_f / out_f,
-        // Unknown modes fall back to asymmetric.
-        _ => o * in_f / out_f,
+        _ => unreachable!(
+            "coordinate_transformation_mode '{mode}' should have been rejected in build()"
+        ),
     }
 }
 
@@ -128,7 +129,7 @@ fn apply_nearest_rounding(x: f64, in_size: usize, nearest_mode: &str) -> Result<
         }
         "floor" => x.floor() as i64,
         "ceil" => x.ceil() as i64,
-        _ => x.floor() as i64,
+        _ => unreachable!("nearest_mode '{nearest_mode}' should have been rejected in build()"),
     };
     Ok(idx.clamp(0, in_size as i64 - 1) as usize)
 }
