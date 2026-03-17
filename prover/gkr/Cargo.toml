@@ -47,5 +47,10 @@ name = "gkr-hashes"
 harness = false
 path = "benches/gkr_hashes.rs"
 
+[[bench]]
+name = "gkr-square-pow5"
+harness = false
+path = "benches/gkr_square_pow5.rs"
+
 [lints.clippy]
 all = "allow"
