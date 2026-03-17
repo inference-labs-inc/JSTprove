@@ -84,7 +84,7 @@ fn generate_from_onnx_with_all_options(
         (Some(nb), None) => {
             let max_bound = quantizer::compute_max_bound(&graph)?;
             let max_exp = ScaleConfig::max_safe_exponent(nb, max_bound);
-            let exponent = quantizer::DEFAULT_SCALE_EXPONENT.min(max_exp);
+            let exponent = max_exp;
             let config = ScaleConfig::new(quantizer::DEFAULT_SCALE_BASE, exponent);
             quantizer::quantize_model(graph, &config).context("field-aware quantization")?
         }
@@ -434,7 +434,7 @@ mod tests {
     }
 
     #[test]
-    fn bn254_default_exponent_is_18() {
+    fn bn254_adaptive_exponent_exceeds_default() {
         let model_path =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
         if !model_path.exists() {
@@ -449,7 +449,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(metadata.circuit_params.scale_base, 2);
-        assert_eq!(metadata.circuit_params.scale_exponent, 18);
+        assert!(metadata.circuit_params.scale_exponent >= 18);
         assert!(!metadata.circuit_params.n_bits_config.is_empty());
         assert!(!metadata.circuit_params.rescale_config.is_empty());
     }
