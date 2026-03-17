@@ -53,7 +53,7 @@ impl ScaleConfig {
         } else {
             0
         };
-        n_bits.saturating_sub(log2_accum) / 2
+        n_bits.saturating_sub(log2_accum.saturating_add(1)) / 2
     }
 
     #[must_use]
