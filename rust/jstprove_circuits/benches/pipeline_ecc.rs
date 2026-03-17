@@ -3,7 +3,10 @@ use std::time::Instant;
 
 use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
-use jstprove_circuits::onnx::{compile_bn254, prove_bn254, verify_bn254, witness_bn254_from_f64};
+use jstprove_circuits::onnx::{
+    compile_bn254, compile_goldilocks, prove_bn254, prove_goldilocks, verify_bn254,
+    verify_goldilocks, witness_bn254_from_f64, witness_goldilocks_from_f64,
+};
 use jstprove_circuits::runner::main_runner::read_circuit_msgpack;
 
 fn fmt(ms: f64) -> String {
@@ -62,7 +65,7 @@ fn main() {
 
     println!("model: {model_file}\n{}", "=".repeat(55));
 
-    println!("\n--- ECC IR pipeline ---");
+    println!("\n--- BN254 pipeline ---");
     let t = Instant::now();
     compile_bn254(circuit_path_str, false, Some(params.clone())).unwrap();
     println!("compile: {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
@@ -88,6 +91,38 @@ fn main() {
     assert!(verify_bn254(&bundle.circuit, &wb.witness, &proof).unwrap());
     println!("verify:  {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
 
-    let rss = rss_bytes();
-    println!("peak RSS: {:.1} MiB", rss as f64 / 1048576.0);
+    let rss_bn254 = rss_bytes();
+    println!("peak RSS: {:.1} MiB", rss_bn254 as f64 / 1048576.0);
+
+    let gl_circuit_path = tmp.path().join("circuit_gl.bundle");
+    let gl_circuit_path_str = gl_circuit_path.to_str().unwrap();
+
+    println!("\n--- Goldilocks pipeline ---");
+    let t = Instant::now();
+    compile_goldilocks(gl_circuit_path_str, false, Some(params.clone())).unwrap();
+    println!("compile: {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+
+    let gl_bundle = read_circuit_msgpack(gl_circuit_path_str).unwrap();
+    let t = Instant::now();
+    let gl_wb = witness_goldilocks_from_f64(
+        &gl_bundle.circuit,
+        &gl_bundle.witness_solver,
+        &params,
+        &activations,
+        &[],
+        false,
+    )
+    .unwrap();
+    println!("witness: {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+
+    let t = Instant::now();
+    let gl_proof = prove_goldilocks(&gl_bundle.circuit, &gl_wb.witness, false).unwrap();
+    println!("prove:   {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+
+    let t = Instant::now();
+    assert!(verify_goldilocks(&gl_bundle.circuit, &gl_wb.witness, &gl_proof).unwrap());
+    println!("verify:  {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+
+    let rss_gl = rss_bytes();
+    println!("peak RSS: {:.1} MiB", rss_gl as f64 / 1048576.0);
 }
