@@ -51,8 +51,12 @@ where
         return false;
     }
 
-    let min_elems = min_tree_elems::<EvalF>();
     let committed_rounds = opening.round_commitments.len();
+    if committed_rounds > num_vars {
+        return false;
+    }
+
+    let min_elems = min_tree_elems::<EvalF>();
     let codeword_log = num_vars + RATE_LOG;
 
     let mut challenges = Vec::with_capacity(num_vars);
@@ -65,10 +69,6 @@ where
         transcript.append_field_element(&sc_msg.eval_at_2);
 
         let eval_at_0 = running_claim - sc_msg.eval_at_1;
-
-        if eval_at_0 + sc_msg.eval_at_1 != running_claim {
-            return false;
-        }
 
         let challenge: EvalF = transcript.generate_field_element();
         challenges.push(challenge);
@@ -112,6 +112,11 @@ where
     }
 
     let fri_constant = remaining_codeword[0];
+    for val in &remaining_codeword[1..] {
+        if *val != fri_constant {
+            return false;
+        }
+    }
 
     let eq_at_challenges = compute_eq_eval(&challenges, eval_point);
 
@@ -131,6 +136,10 @@ where
 
     for (qi, &query_idx) in query_indices.iter().enumerate() {
         let qp = &opening.query_proofs[qi];
+
+        if qp.round_proofs.len() != committed_rounds {
+            return false;
+        }
 
         if !qp.initial_leaf_proof.verify(&commitment.root) {
             return false;
@@ -174,10 +183,18 @@ where
         let level = codeword_log - 1;
         let pair_idx = even_idx / 2;
         let twiddle = verifier_folding_coeff::<F>(level, pair_idx);
-        let expected_folded = codeword_fold_single(left, right, challenges[0], twiddle);
-
+        let mut current_val = codeword_fold_single(left, right, challenges[0], twiddle);
         let mut result_idx = query_idx / 2;
-        let mut current_val = expected_folded;
+
+        if committed_rounds == 0 {
+            if result_idx < opening.final_poly.len() {
+                if opening.final_poly[result_idx] != current_val {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
 
         for round in 0..committed_rounds {
             let rp = &qp.round_proofs[round];
@@ -276,5 +293,9 @@ fn verify_leaf_values<EvalF: Field>(leaf_data: &[u8], values: &[EvalF]) -> bool 
 
 fn generate_query_indices(transcript: &mut impl Transcript, len: usize) -> Vec<usize> {
     let raw = transcript.generate_usize_vector(BASEFOLD_NUM_QUERIES);
-    raw.into_iter().map(|x| x % len).collect()
+    let mut seen = std::collections::HashSet::with_capacity(raw.len());
+    raw.into_iter()
+        .map(|x| x % len)
+        .filter(|idx| seen.insert(*idx))
+        .collect()
 }

@@ -226,5 +226,9 @@ where
 
 fn generate_query_indices(transcript: &mut impl Transcript, len: usize) -> Vec<usize> {
     let raw = transcript.generate_usize_vector(BASEFOLD_NUM_QUERIES);
-    raw.into_iter().map(|x| x % len).collect()
+    let mut seen = std::collections::HashSet::with_capacity(raw.len());
+    raw.into_iter()
+        .map(|x| x % len)
+        .filter(|idx| seen.insert(*idx))
+        .collect()
 }
