@@ -88,6 +88,7 @@ fn generate_from_onnx_with_all_options(
             let config = ScaleConfig::new(quantizer::DEFAULT_SCALE_BASE, exponent);
             quantizer::quantize_model(graph, &config).context("field-aware quantization")?
         }
+        (None, Some(_)) => anyhow::bail!("target_precision requires n_bits"),
         _ => {
             let config = ScaleConfig::default();
             quantizer::quantize_model(graph, &config).context("quantizing model")?
