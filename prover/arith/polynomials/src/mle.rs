@@ -145,11 +145,9 @@ impl<F: Field> MultiLinearPoly<F> {
             .sum()
     }
 
+    const BLOCK_ELEMS: usize = 1024;
+
     #[inline]
-    /// Expander's implementation
-    /// Generic method to evaluate a multilinear polynomial.
-    /// This is the preferred method to evaluate a multilinear polynomial
-    /// as it does not require additional memory.
     pub fn evaluate_with_buffer<ChallengeF, EvalF>(
         evals: &[F],
         point: &[ChallengeF],
@@ -167,21 +165,81 @@ impl<F: Field> MultiLinearPoly<F> {
         assert!(scratch.len() >= evals.len());
 
         if point.is_empty() {
-            evals[0].into()
-        } else {
-            for i in 0..(evals.len() >> 1) {
+            return evals[0].into();
+        }
+
+        let n = evals.len();
+        let num_vars = point.len();
+
+        if n <= Self::BLOCK_ELEMS * 2 {
+            for i in 0..(n >> 1) {
                 scratch[i] = point[0] * (evals[i * 2 + 1] - evals[i * 2]) + evals[i * 2];
             }
-
-            let mut cur_eval_size = evals.len() >> 2;
+            let mut cur_eval_size = n >> 2;
             for r in point.iter().skip(1) {
                 for i in 0..cur_eval_size {
                     scratch[i] = scratch[i * 2] + (scratch[i * 2 + 1] - scratch[i * 2]) * *r;
                 }
                 cur_eval_size >>= 1;
             }
-            scratch[0]
+            return scratch[0];
         }
+
+        let block = Self::BLOCK_ELEMS;
+        let local_rounds = {
+            let mut r = 0;
+            let mut s = block;
+            while s > 1 {
+                s >>= 1;
+                r += 1;
+            }
+            r
+        };
+        let local_rounds = local_rounds.min(num_vars);
+
+        let num_blocks = n / (block * 2);
+
+        for blk in 0..num_blocks {
+            let base = blk * block * 2;
+            for i in 0..block {
+                scratch[blk * block + i] = point[0]
+                    * (evals[base + i * 2 + 1] - evals[base + i * 2])
+                    + evals[base + i * 2];
+            }
+
+            let mut local_size = block >> 1;
+            let offset = blk * block;
+            for round in 1..local_rounds {
+                for i in 0..local_size {
+                    scratch[offset + i] = scratch[offset + i * 2]
+                        + (scratch[offset + i * 2 + 1] - scratch[offset + i * 2]) * point[round];
+                }
+                local_size >>= 1;
+            }
+        }
+
+        let remaining_per_block = block >> (local_rounds - 1);
+        let total_remaining = num_blocks * remaining_per_block;
+
+        if remaining_per_block < block {
+            let mut write = 0;
+            for blk in 0..num_blocks {
+                let src_offset = blk * block;
+                for i in 0..remaining_per_block {
+                    scratch[write] = scratch[src_offset + i];
+                    write += 1;
+                }
+            }
+        }
+
+        let mut cur_eval_size = total_remaining >> 1;
+        for r in point.iter().skip(local_rounds) {
+            for i in 0..cur_eval_size {
+                scratch[i] = scratch[i * 2] + (scratch[i * 2 + 1] - scratch[i * 2]) * *r;
+            }
+            cur_eval_size >>= 1;
+        }
+        scratch[0]
     }
 }
 
