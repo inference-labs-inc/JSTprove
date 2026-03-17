@@ -442,6 +442,10 @@ impl LogUpRangeProofTable {
     }
 
     pub fn final_check<C: Config, B: RootAPI<C>>(&mut self, builder: &mut B) {
+        if self.query_keys.is_empty() {
+            return;
+        }
+
         let alpha = builder.get_random_value();
         let inputs = self.query_keys.clone();
 
