@@ -1,12 +1,20 @@
 constant uint THREADGROUP_SIZE = 256;
 
+inline uint64_t shuffle_down_u64(uint64_t x, ushort delta) {
+    uint32_t lo = static_cast<uint32_t>(x);
+    uint32_t hi = static_cast<uint32_t>(x >> 32);
+    lo = simd_shuffle_down(lo, delta);
+    hi = simd_shuffle_down(hi, delta);
+    return static_cast<uint64_t>(hi) << 32 | static_cast<uint64_t>(lo);
+}
+
 inline BN254Fr simd_reduce_add(BN254Fr val) {
-    for (uint offset = 16; offset > 0; offset >>= 1) {
+    for (ushort offset = 16; offset > 0; offset >>= 1) {
         BN254Fr other;
-        other.v[0] = simd_shuffle_down(val.v[0], offset);
-        other.v[1] = simd_shuffle_down(val.v[1], offset);
-        other.v[2] = simd_shuffle_down(val.v[2], offset);
-        other.v[3] = simd_shuffle_down(val.v[3], offset);
+        other.v[0] = shuffle_down_u64(val.v[0], offset);
+        other.v[1] = shuffle_down_u64(val.v[1], offset);
+        other.v[2] = shuffle_down_u64(val.v[2], offset);
+        other.v[3] = shuffle_down_u64(val.v[3], offset);
         val = bn254_add(val, other);
     }
     return val;
