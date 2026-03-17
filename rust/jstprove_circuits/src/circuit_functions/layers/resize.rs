@@ -110,10 +110,13 @@ fn apply_nearest_rounding(x: f64, in_size: usize, nearest_mode: &str) -> Result<
             msg: "apply_nearest_rounding: source axis has size 0".to_string(),
         });
     }
+    // Epsilon for tie detection: large enough to absorb f64 rounding errors
+    // from coordinate transforms, small enough not to misclassify non-ties.
+    const TIE_EPSILON: f64 = 1e-10;
     let idx: i64 = match nearest_mode {
         "round_prefer_floor" => {
             let floor = x.floor();
-            if x - floor == 0.5 {
+            if ((x - floor) - 0.5).abs() < TIE_EPSILON {
                 floor as i64
             } else {
                 x.round() as i64
@@ -121,7 +124,7 @@ fn apply_nearest_rounding(x: f64, in_size: usize, nearest_mode: &str) -> Result<
         }
         "round_prefer_ceil" => {
             let floor = x.floor();
-            if x - floor == 0.5 {
+            if ((x - floor) - 0.5).abs() < TIE_EPSILON {
                 x.ceil() as i64
             } else {
                 x.round() as i64
