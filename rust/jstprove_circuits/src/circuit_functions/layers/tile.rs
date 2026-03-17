@@ -70,13 +70,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TileLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        if layer.inputs.len() < 2 {
-            return Err(LayerError::MissingParameter {
-                layer: LayerKind::Tile,
-                param: "repeats tensor (inputs[1])".to_string(),
-            }
-            .into());
-        }
         let input_name = layer
             .inputs
             .first()
@@ -84,6 +77,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TileLayer {
                 layer: LayerKind::Tile,
                 param: "input tensor".to_string(),
             })?;
+        if layer.inputs.len() < 2 {
+            return Err(LayerError::MissingParameter {
+                layer: LayerKind::Tile,
+                param: "repeats tensor (inputs[1])".to_string(),
+            }
+            .into());
+        }
         let output_name = layer
             .outputs
             .first()

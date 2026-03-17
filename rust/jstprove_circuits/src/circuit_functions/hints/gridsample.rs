@@ -71,19 +71,42 @@ pub fn gridsample_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result
 
     // n_corners = (inputs.len() - 1) / 2
     let n = (inputs.len() - 1) / 2;
-    let scale_u64: u64 = inputs[2 * n].to_u256().as_u64();
+    if n == 0 {
+        return Err(Error::UserError(
+            "gridsample_hint: expected at least one corner/weight pair, got 0".to_string(),
+        ));
+    }
+
+    let scale_u256 = inputs[2 * n].to_u256();
+    if scale_u256 > U256::from(u64::MAX) {
+        return Err(Error::UserError(format!(
+            "gridsample_hint: scale value {scale_u256} exceeds u64::MAX"
+        )));
+    }
+    let scale_u64 = scale_u256.as_u64();
     if scale_u64 == 0 {
         return Err(Error::UserError(
             "gridsample_hint: scale is zero; cannot compute interpolation".to_string(),
         ));
     }
 
-    // Compute weighted sum using i128 to avoid overflow.
+    // Compute weighted sum with checked arithmetic to catch adversarial overflow.
     let mut sum_i128: i128 = 0;
     for i in 0..n {
         let x_i64 = field_to_i64(inputs[i]);
-        let w_u64: u64 = inputs[n + i].to_u256().as_u64();
-        sum_i128 += x_i64 as i128 * w_u64 as i128;
+        let w_u256 = inputs[n + i].to_u256();
+        if w_u256 > U256::from(u64::MAX) {
+            return Err(Error::UserError(format!(
+                "gridsample_hint: weight[{i}] value {w_u256} exceeds u64::MAX"
+            )));
+        }
+        let w_u64 = w_u256.as_u64();
+        let product = (x_i64 as i128).checked_mul(w_u64 as i128).ok_or_else(|| {
+            Error::UserError("gridsample_hint: overflow in weighted sum".to_string())
+        })?;
+        sum_i128 = sum_i128.checked_add(product).ok_or_else(|| {
+            Error::UserError("gridsample_hint: overflow in weighted sum accumulation".to_string())
+        })?;
     }
 
     // y_q = round(sum / scale), clamped to [i64::MIN, i64::MAX].
@@ -105,6 +128,15 @@ pub fn gridsample_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result
             rounded as i64
         }
     };
+
+    // Reject negative results: the circuit applies a non-negative LogUp range
+    // check, so a negative y_q would produce an unprovable witness.
+    if y_q < 0 {
+        return Err(Error::UserError(format!(
+            "gridsample_hint: negative interpolation result {y_q} cannot be proven by the \
+             circuit's non-negative range check (liveness gap; planned fix: signed range check)"
+        )));
+    }
 
     // Encode result as field element (two's complement for negatives).
     outputs[0] = if y_q >= 0 {
@@ -149,7 +181,9 @@ mod tests {
         let v = outputs[0].to_u256();
         let p_half = F::MODULUS / 2;
         if v > p_half {
-            -((F::MODULUS - v).as_u64() as i64)
+            // Use i128 to avoid panic when raw magnitude == 1<<63 (i64::MIN).
+            let raw = (F::MODULUS - v).as_u64();
+            (-(raw as i128)) as i64
         } else {
             v.as_u64() as i64
         }

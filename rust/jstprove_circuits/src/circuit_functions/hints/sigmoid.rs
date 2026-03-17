@@ -61,8 +61,14 @@ pub fn sigmoid_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<()
 
     let x_i64 = field_to_i64(inputs[0]);
 
-    // Decode scale as u64 (always positive, fits in u64 for practical scales)
-    let scale_u64 = inputs[1].to_u256().as_u64();
+    // Decode scale as u64; reject field elements that don't fit in u64.
+    let scale_u256 = inputs[1].to_u256();
+    if scale_u256 > U256::from(u64::MAX) {
+        return Err(Error::UserError(format!(
+            "sigmoid_hint: scale value {scale_u256} exceeds u64::MAX"
+        )));
+    }
+    let scale_u64 = scale_u256.as_u64();
     if scale_u64 == 0 {
         return Err(Error::UserError(
             "sigmoid_hint: scale is zero; cannot de-quantise input".to_string(),

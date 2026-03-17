@@ -50,9 +50,9 @@ pub const RESIZE_HINT_KEY: &str = "jstprove.resize_hint";
     clippy::cast_sign_loss
 )]
 pub fn resize_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Error> {
-    if inputs.is_empty() || inputs.len() % 2 == 0 {
+    if inputs.len() < 3 || inputs.len() % 2 == 0 {
         return Err(Error::UserError(format!(
-            "resize_hint: expected 2*n+1 inputs (n corner values, n weights, scale), got {}",
+            "resize_hint: expected 2*n+1 inputs with n>=1 (n corner values, n weights, scale), got {}",
             inputs.len()
         )));
     }
@@ -63,22 +63,39 @@ pub fn resize_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(),
         )));
     }
 
-    // n_corners = (inputs.len() - 1) / 2
+    // n_corners = (inputs.len() - 1) / 2; guaranteed >= 1 by the check above.
     let n = (inputs.len() - 1) / 2;
-    let scale_u64: u64 = inputs[2 * n].to_u256().as_u64();
+
+    let scale_u256 = inputs[2 * n].to_u256();
+    if scale_u256 > U256::from(u64::MAX) {
+        return Err(Error::UserError(format!(
+            "resize_hint: scale value {scale_u256} exceeds u64::MAX"
+        )));
+    }
+    let scale_u64 = scale_u256.as_u64();
     if scale_u64 == 0 {
         return Err(Error::UserError(
             "resize_hint: scale is zero; cannot compute interpolation".to_string(),
         ));
     }
 
-    // Compute weighted sum using i128 to avoid overflow.
+    // Compute weighted sum with checked arithmetic to catch adversarial overflow.
     let mut sum_i128: i128 = 0;
     for i in 0..n {
         let x_i64 = field_to_i64(inputs[i]);
         let w_u256 = inputs[n + i].to_u256();
-        let w_u64: u64 = w_u256.as_u64();
-        sum_i128 += x_i64 as i128 * w_u64 as i128;
+        if w_u256 > U256::from(u64::MAX) {
+            return Err(Error::UserError(format!(
+                "resize_hint: weight[{i}] value {w_u256} exceeds u64::MAX"
+            )));
+        }
+        let w_u64 = w_u256.as_u64();
+        let product = (x_i64 as i128)
+            .checked_mul(w_u64 as i128)
+            .ok_or_else(|| Error::UserError("resize_hint: overflow in weighted sum".to_string()))?;
+        sum_i128 = sum_i128.checked_add(product).ok_or_else(|| {
+            Error::UserError("resize_hint: overflow in weighted sum accumulation".to_string())
+        })?;
     }
 
     // y_q = round(sum / scale), clamped to [0, i64::MAX]

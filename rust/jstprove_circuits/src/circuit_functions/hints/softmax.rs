@@ -59,7 +59,13 @@ pub fn softmax_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<()
         )));
     }
 
-    let scale_u64 = inputs[n].to_u256().as_u64();
+    let scale_u256 = inputs[n].to_u256();
+    if scale_u256 > U256::from(u64::MAX) {
+        return Err(Error::UserError(format!(
+            "softmax_hint: scale value {scale_u256} exceeds u64::MAX"
+        )));
+    }
+    let scale_u64 = scale_u256.as_u64();
     if scale_u64 == 0 {
         return Err(Error::UserError(
             "softmax_hint: scale is zero; cannot de-quantise input".to_string(),

@@ -365,13 +365,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ResizeLayer {
         }
 
         // Guard: exactly one output.
-        let output_name = layer
-            .outputs
-            .first()
-            .ok_or_else(|| LayerError::MissingParameter {
+        if layer.outputs.len() != 1 {
+            return Err(LayerError::MissingParameter {
                 layer: LayerKind::Resize,
-                param: "output tensor".to_string(),
-            })?;
+                param: format!(
+                    "output tensor: expected exactly 1 output, got {}",
+                    layer.outputs.len()
+                ),
+            }
+            .into());
+        }
+        let output_name = &layer.outputs[0];
 
         let output_shape = layer_context
             .shapes_map
