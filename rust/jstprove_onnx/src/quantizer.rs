@@ -10,6 +10,11 @@ pub const DEFAULT_SCALE_BASE: u64 = 2;
 pub const DEFAULT_SCALE_EXPONENT: u32 = 18;
 pub const N_BITS_GOLDILOCKS: u32 = 31;
 
+pub const N_BITS_BN254: u32 = 64;
+pub const N_BITS_GOLDILOCKS: u32 = 31;
+
+const ACCUMULATION_MARGIN: u32 = 2;
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ScaleConfig {
     pub base: u64,
@@ -37,6 +42,23 @@ impl ScaleConfig {
             alpha,
         }
     }
+
+    pub fn for_field(n_bits: u32) -> Self {
+        let exponent = n_bits / 2 - ACCUMULATION_MARGIN;
+        Self::new(DEFAULT_SCALE_BASE, exponent)
+    }
+
+    pub fn adaptive(n_bits: u32, max_bound: f64) -> Self {
+        let log2_accum = if max_bound > 1.0 {
+            max_bound.log2().ceil() as u32
+        } else {
+            0
+        };
+        let available = n_bits.saturating_sub(log2_accum + 1);
+        let exponent = available / 2;
+        let exponent = exponent.max(4);
+        Self::new(DEFAULT_SCALE_BASE, exponent)
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -56,6 +78,14 @@ impl QuantizedModel {
             }
         }
     }
+}
+
+/// # Errors
+/// Returns an error if ONNX graph analysis or quantization fails.
+pub fn quantize_model_adaptive(graph: LayerGraph, n_bits: u32) -> Result<QuantizedModel> {
+    let max_bound = compute_max_bound(&graph)?;
+    let config = ScaleConfig::adaptive(n_bits, max_bound);
+    quantize_model(graph, &config)
 }
 
 pub fn quantize_model(mut graph: LayerGraph, config: &ScaleConfig) -> Result<QuantizedModel> {
@@ -214,6 +244,33 @@ fn fold_batchnorm_params(layer: &mut LayerNode) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// # Errors
+/// Returns an error if layer bound propagation encounters invalid weight data.
+pub fn compute_max_bound(graph: &LayerGraph) -> Result<f64> {
+    let mut bounds: HashMap<String, f64> = HashMap::new();
+    let mut max_bound: f64 = 1.0;
+
+    for name in &graph.input_names {
+        bounds.insert(name.clone(), 1.0);
+    }
+
+    for layer in graph.iter_topo() {
+        let bound = compute_layer_bound(layer, &bounds)?;
+
+        if layer.needs_rescale {
+            max_bound = max_bound.max(bound);
+        }
+
+        let post_rescale_bound = if layer.needs_rescale { 1.0 } else { bound };
+
+        for out_name in &layer.outputs {
+            bounds.insert(out_name.clone(), post_rescale_bound);
+        }
+    }
+
+    Ok(max_bound)
 }
 
 fn compute_bounds(graph: &LayerGraph, config: &ScaleConfig) -> Result<HashMap<String, usize>> {

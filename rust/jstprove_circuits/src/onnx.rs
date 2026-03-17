@@ -763,6 +763,7 @@ pub fn verify_goldilocks_basefold(
     verify_from_bytes::<GoldilocksBasefoldConfig>(circuit_bytes, witness_bytes, proof_bytes)
 }
 
+
 fn get_architecture_and_wandb(
     params: &CircuitParams,
 ) -> Result<(Architecture, WANDB), crate::io::io_reader::onnx_context::OnnxContextError> {

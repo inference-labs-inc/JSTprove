@@ -9,7 +9,7 @@ use jstprove_circuits::onnx::{
     witness_bn254_from_f64, witness_goldilocks_basefold_from_f64, witness_goldilocks_from_f64,
 };
 use jstprove_circuits::runner::main_runner::read_circuit_msgpack;
-use jstprove_onnx::quantizer::N_BITS_GOLDILOCKS;
+use jstprove_onnx::quantizer::{N_BITS_BN254, N_BITS_GOLDILOCKS};
 
 fn fmt(ms: f64) -> String {
     if ms >= 1000.0 {
@@ -32,6 +32,120 @@ fn rss_bytes() -> u64 {
     } else {
         maxrss
     }
+}
+
+fn run_bn254_pipeline(model_path: &Path, label: &str, n_bits: Option<u32>, activations: &[f64]) {
+    let metadata = match n_bits {
+        Some(nb) => expander_metadata::generate_from_onnx_for_field(model_path, nb).unwrap(),
+        None => expander_metadata::generate_from_onnx(model_path).unwrap(),
+    };
+    let params = metadata.circuit_params.clone();
+    OnnxContext::set_all(
+        metadata.architecture,
+        metadata.circuit_params,
+        Some(metadata.wandb),
+    );
+
+    println!(
+        "\n--- BN254 {label} (exponent={}) ---",
+        params.scale_exponent
+    );
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let circuit_path = tmp.path().join("circuit.bundle");
+    let circuit_path_str = circuit_path.to_str().unwrap();
+
+    let t = Instant::now();
+    compile_bn254(circuit_path_str, false, Some(params.clone())).unwrap();
+    println!("compile: {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+
+    let bundle = read_circuit_msgpack(circuit_path_str).unwrap();
+    println!(
+        "circuit: {:>10}",
+        format!("{:.1} KiB", bundle.circuit.len() as f64 / 1024.0)
+    );
+
+    let t = Instant::now();
+    let wb = witness_bn254_from_f64(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        activations,
+        &[],
+        false,
+    )
+    .unwrap();
+    println!("witness: {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+
+    let t = Instant::now();
+    let proof = prove_bn254(&bundle.circuit, &wb.witness, false).unwrap();
+    println!("prove:   {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+    println!(
+        "proof:   {:>10}",
+        format!("{:.1} KiB", proof.len() as f64 / 1024.0)
+    );
+
+    let t = Instant::now();
+    assert!(verify_bn254(&bundle.circuit, &wb.witness, &proof).unwrap());
+    println!("verify:  {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+
+    println!("peak RSS: {:.1} MiB", rss_bytes() as f64 / 1048576.0);
+}
+
+fn run_goldilocks_pipeline(model_path: &Path, activations: &[f64]) {
+    let metadata =
+        expander_metadata::generate_from_onnx_for_field(model_path, N_BITS_GOLDILOCKS).unwrap();
+    let params = metadata.circuit_params.clone();
+    OnnxContext::set_all(
+        metadata.architecture,
+        metadata.circuit_params,
+        Some(metadata.wandb),
+    );
+
+    println!(
+        "\n--- Goldilocks adaptive (exponent={}) ---",
+        params.scale_exponent
+    );
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let circuit_path = tmp.path().join("circuit_gl.bundle");
+    let circuit_path_str = circuit_path.to_str().unwrap();
+
+    let t = Instant::now();
+    compile_goldilocks(circuit_path_str, false, Some(params.clone())).unwrap();
+    println!("compile: {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+
+    let bundle = read_circuit_msgpack(circuit_path_str).unwrap();
+    println!(
+        "circuit: {:>10}",
+        format!("{:.1} KiB", bundle.circuit.len() as f64 / 1024.0)
+    );
+
+    let t = Instant::now();
+    let wb = witness_goldilocks_from_f64(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        activations,
+        &[],
+        false,
+    )
+    .unwrap();
+    println!("witness: {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+
+    let t = Instant::now();
+    let proof = prove_goldilocks(&bundle.circuit, &wb.witness, false).unwrap();
+    println!("prove:   {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+    println!(
+        "proof:   {:>10}",
+        format!("{:.1} KiB", proof.len() as f64 / 1024.0)
+    );
+
+    let t = Instant::now();
+    assert!(verify_goldilocks(&bundle.circuit, &wb.witness, &proof).unwrap());
+    println!("verify:  {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+
+    println!("peak RSS: {:.1} MiB", rss_bytes() as f64 / 1048576.0);
 }
 
 fn main() {
@@ -175,4 +289,7 @@ fn main() {
     assert!(verify_goldilocks_basefold(&bf_bundle.circuit, &bf_wb.witness, &bf_proof).unwrap());
     println!("verify:  {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
     println!("peak RSS: {:.1} MiB", rss_bytes() as f64 / 1048576.0);
+
+    run_bn254_pipeline(&model_path, "adaptive", Some(N_BITS_BN254), &activations);
+    run_goldilocks_pipeline(&model_path, &activations);
 }

@@ -20,7 +20,7 @@ pub struct ExpanderMetadata {
 }
 
 pub fn generate_from_onnx(onnx_path: &Path) -> Result<ExpanderMetadata> {
-    generate_from_onnx_with_options(onnx_path, false)
+    generate_from_onnx_with_all_options(onnx_path, false, None)
 }
 
 /// # Errors
@@ -55,16 +55,40 @@ pub fn generate_from_onnx_with_options(
     onnx_path: &Path,
     weights_as_inputs: bool,
 ) -> Result<ExpanderMetadata> {
+    generate_from_onnx_with_all_options(onnx_path, weights_as_inputs, None)
+}
+
+/// # Errors
+/// Returns an error if ONNX parsing, quantization, or shape inference fails.
+pub fn generate_from_onnx_for_field(onnx_path: &Path, n_bits: u32) -> Result<ExpanderMetadata> {
+    generate_from_onnx_with_all_options(onnx_path, false, Some(n_bits))
+}
+
+fn generate_from_onnx_with_all_options(
+    onnx_path: &Path,
+    weights_as_inputs: bool,
+    n_bits: Option<u32>,
+) -> Result<ExpanderMetadata> {
     let parsed = parser::parse_onnx(onnx_path).context("parsing ONNX model")?;
     let graph = LayerGraph::from_parsed(&parsed).context("building layer graph")?;
-    let config = ScaleConfig::default();
-    let quantized = quantizer::quantize_model(graph, &config).context("quantizing model")?;
+
+    let quantized = match n_bits {
+        Some(nb) => {
+            quantizer::quantize_model_adaptive(graph, nb).context("adaptive quantization")?
+        }
+        None => {
+            let config = ScaleConfig::default();
+            quantizer::quantize_model(graph, &config).context("quantizing model")?
+        }
+    };
+    let config = &quantized.scale_config;
+
     let shapes = shape_inference::infer_all_shapes(&parsed, &quantized.graph)
         .context("inferring tensor shapes")?;
 
     let opset_version = parsed.opset_version as i16;
 
-    let circuit_params = build_circuit_params(&parsed, &quantized, &config, weights_as_inputs);
+    let circuit_params = build_circuit_params(&parsed, &quantized, config, weights_as_inputs);
     let architecture = build_architecture(&parsed, &quantized, &shapes, opset_version);
     let wandb = build_wandb(&quantized, &shapes).context("building weight/bias data")?;
 
@@ -394,6 +418,46 @@ mod tests {
         assert_eq!(metadata.circuit_params.scale_exponent, 18);
         assert!(!metadata.circuit_params.inputs.is_empty());
         assert!(!metadata.circuit_params.outputs.is_empty());
+    }
+
+    #[test]
+    fn lenet_metadata_generation_for_field_bn254() {
+        let model_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
+        if !model_path.exists() {
+            return;
+        }
+
+        let metadata = generate_from_onnx_for_field(
+            model_path.as_path(),
+            jstprove_onnx::quantizer::N_BITS_BN254,
+        )
+        .unwrap();
+
+        assert_eq!(metadata.circuit_params.scale_base, 2);
+        assert!(metadata.circuit_params.scale_exponent > 0);
+        assert!(metadata.circuit_params.scale_exponent <= 32);
+        assert!(!metadata.circuit_params.n_bits_config.is_empty());
+        assert!(!metadata.circuit_params.rescale_config.is_empty());
+    }
+
+    #[test]
+    fn lenet_metadata_generation_for_field_goldilocks() {
+        let model_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
+        if !model_path.exists() {
+            return;
+        }
+
+        let metadata = generate_from_onnx_for_field(
+            model_path.as_path(),
+            jstprove_onnx::quantizer::N_BITS_GOLDILOCKS,
+        )
+        .unwrap();
+
+        assert_eq!(metadata.circuit_params.scale_base, 2);
+        assert!(metadata.circuit_params.scale_exponent <= 15);
+        assert!(!metadata.circuit_params.n_bits_config.is_empty());
     }
 
     #[test]
