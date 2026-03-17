@@ -141,3 +141,21 @@ inline BN254Fr bn254_mul(BN254Fr a, BN254Fr b) {
     }
     return BN254Fr{{t[0], t[1], t[2], t[3]}};
 }
+
+inline BN254Fr bn254_simd_shuffle_down(BN254Fr val, ushort offset) {
+    for (int i = 0; i < 4; i++) {
+        uint32_t lo = (uint32_t)(val.v[i] & 0xFFFFFFFF);
+        uint32_t hi = (uint32_t)(val.v[i] >> 32);
+        lo = simd_shuffle_down(lo, offset);
+        hi = simd_shuffle_down(hi, offset);
+        val.v[i] = ((uint64_t)hi << 32) | (uint64_t)lo;
+    }
+    return val;
+}
+
+inline BN254Fr bn254_simd_sum(BN254Fr val) {
+    for (ushort offset = 16; offset > 0; offset >>= 1) {
+        val = bn254_add(val, bn254_simd_shuffle_down(val, offset));
+    }
+    return val;
+}
