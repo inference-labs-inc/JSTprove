@@ -47,6 +47,11 @@ where
         return false;
     }
 
+    let codeword_log = match num_vars.checked_add(RATE_LOG) {
+        Some(cl) if cl < usize::BITS as usize => cl,
+        _ => return false,
+    };
+
     if opening.sumcheck_messages.len() != num_vars {
         return false;
     }
@@ -57,7 +62,6 @@ where
     }
 
     let min_elems = min_tree_elems::<EvalF>();
-    let codeword_log = num_vars + RATE_LOG;
 
     if committed_rounds > 0 {
         let last_folded_size = 1usize << (codeword_log - committed_rounds);
