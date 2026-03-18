@@ -257,10 +257,39 @@ fn build_linear_per_output(
             corner_weights_f.push(w);
         }
 
-        let weights_q: Vec<i64> = corner_weights_f
+        // Scale each corner weight to fixed-point, then apply largest-remainder
+        // normalization to ensure weights_q.iter().sum() == scaling exactly.
+        // Independent rounding can make the sum differ from scaling by a few
+        // counts, which would corrupt constant-image interpolation.
+        let raw: Vec<f64> = corner_weights_f
             .iter()
-            .map(|&w| (w * scaling as f64).round() as i64)
+            .map(|&w| w * scaling as f64)
             .collect();
+        let mut weights_q: Vec<i64> = raw.iter().map(|&r| r.round() as i64).collect();
+        let current_sum: i64 = weights_q.iter().sum();
+        let residual = scaling as i64 - current_sum;
+        if residual != 0 {
+            // Fractional part of each raw value (distance from floor).
+            let mut fracs: Vec<(f64, usize)> = raw
+                .iter()
+                .enumerate()
+                .map(|(i, &r)| (r - r.floor(), i))
+                .collect();
+            let n_adjust = (residual.unsigned_abs() as usize).min(fracs.len());
+            if residual > 0 {
+                // Add +1 to the entries rounded down most (largest fractional parts).
+                fracs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+                for k in 0..n_adjust {
+                    weights_q[fracs[k].1] += 1;
+                }
+            } else {
+                // Subtract 1 from the entries rounded up most (smallest fractional parts).
+                fracs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+                for k in 0..n_adjust {
+                    weights_q[fracs[k].1] -= 1;
+                }
+            }
+        }
 
         per_output.push(LinearOutputSpec {
             corner_flat_indices,
@@ -412,35 +441,56 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ResizeLayer {
         }
 
         // Read string attributes (defaults per ONNX spec).
-        let params = extract_params(layer).ok();
-        let default_mode = "nearest".to_string();
-        let default_coord = "half_pixel".to_string();
-        let default_nearest = "round_prefer_floor".to_string();
+        // Use the softmax pattern: MissingParameter means no attribute block → use
+        // defaults; any other error (including type mismatch) is propagated.
+        let params_result = extract_params(layer);
+        let params_opt = match params_result {
+            Ok(p) => Some(p),
+            Err(LayerError::MissingParameter { .. }) => None,
+            Err(e) => return Err(e.into()),
+        };
 
-        let mode: String = params
-            .as_ref()
-            .and_then(|p| get_param_or_default(&layer.name, "mode", p, Some(&default_mode)).ok())
-            .unwrap_or(default_mode);
+        let mode: String =
+            {
+                let default = "nearest".to_string();
+                match params_opt.as_ref() {
+                    None => default,
+                    Some(p) => get_param_or_default(&layer.name, "mode", p, Some(&default))
+                        .map_err(|e| LayerError::Other {
+                            layer: LayerKind::Resize,
+                            msg: format!("failed to read 'mode' attribute: {e}"),
+                        })?,
+                }
+            };
 
-        let coord_mode: String = params
-            .as_ref()
-            .and_then(|p| {
-                get_param_or_default(
+        let coord_mode: String = {
+            let default = "half_pixel".to_string();
+            match params_opt.as_ref() {
+                None => default,
+                Some(p) => get_param_or_default(
                     &layer.name,
                     "coordinate_transformation_mode",
                     p,
-                    Some(&default_coord),
+                    Some(&default),
                 )
-                .ok()
-            })
-            .unwrap_or(default_coord);
+                .map_err(|e| LayerError::Other {
+                    layer: LayerKind::Resize,
+                    msg: format!("failed to read 'coordinate_transformation_mode' attribute: {e}"),
+                })?,
+            }
+        };
 
-        let nearest_mode: String = params
-            .as_ref()
-            .and_then(|p| {
-                get_param_or_default(&layer.name, "nearest_mode", p, Some(&default_nearest)).ok()
-            })
-            .unwrap_or(default_nearest);
+        let nearest_mode: String = {
+            let default = "round_prefer_floor".to_string();
+            match params_opt.as_ref() {
+                None => default,
+                Some(p) => get_param_or_default(&layer.name, "nearest_mode", p, Some(&default))
+                    .map_err(|e| LayerError::Other {
+                        layer: LayerKind::Resize,
+                        msg: format!("failed to read 'nearest_mode' attribute: {e}"),
+                    })?,
+            }
+        };
 
         // Validate attribute values against the allowed ONNX sets.
         const VALID_MODES: &[&str] = &["nearest", "linear", "bilinear", "trilinear", "cubic"];
