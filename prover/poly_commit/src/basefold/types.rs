@@ -261,11 +261,11 @@ impl Default for BasefoldScratchPad {
 }
 
 impl BasefoldScratchPad {
-    pub fn store_commit<F: Send + Sync + 'static>(&mut self, tree: Tree, codeword: Vec<F>) {
+    pub(crate) fn store_commit<F: Send + Sync + 'static>(&mut self, tree: Tree, codeword: Vec<F>) {
         self.commit_cache = Some(Arc::new((tree, ErasedCodeword(Box::new(codeword)))));
     }
 
-    pub fn take_commit<F: Send + Sync + 'static>(&self) -> Option<(&Tree, &Vec<F>)> {
+    pub(crate) fn take_commit<F: Send + Sync + 'static>(&self) -> Option<(&Tree, &Vec<F>)> {
         let arc = self.commit_cache.as_ref()?;
         let codeword = arc.1 .0.downcast_ref::<Vec<F>>()?;
         Some((&arc.0, codeword))

@@ -113,24 +113,28 @@ where
         };
 
         let base_evals = prepare_base_evals::<C>(poly, *params);
-
-        let (tree, codeword) = if let Some((t, c)) = scratch_pad.take_commit::<C::CircuitField>() {
-            (t.clone(), c.clone())
-        } else {
-            let (_commitment, tree, codeword) = basefold_commit(&base_evals);
-            (tree, codeword)
-        };
-
         let xs = effective_point.local_xs();
 
-        let opening = basefold_open::<C::CircuitField, C::ChallengeField>(
-            &base_evals,
-            &codeword,
-            &tree,
-            *params,
-            &xs,
-            transcript,
-        );
+        let opening = if let Some((tree, codeword)) = scratch_pad.take_commit::<C::CircuitField>() {
+            basefold_open::<C::CircuitField, C::ChallengeField>(
+                &base_evals,
+                codeword,
+                tree,
+                *params,
+                &xs,
+                transcript,
+            )
+        } else {
+            let (_commitment, tree, codeword) = basefold_commit(&base_evals);
+            basefold_open::<C::CircuitField, C::ChallengeField>(
+                &base_evals,
+                &codeword,
+                &tree,
+                *params,
+                &xs,
+                transcript,
+            )
+        };
 
         Some(opening)
     }
