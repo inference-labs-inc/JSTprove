@@ -60,6 +60,10 @@ where
             unimplemented!("Basefold MPI not yet supported");
         }
 
+        if poly.num_vars() > *params {
+            return None;
+        }
+
         let local_poly = if poly.num_vars() < *params {
             lift_poly_to_n_vars(poly, *params)
         } else {
@@ -85,6 +89,10 @@ where
     ) -> Option<Self::Opening> {
         if !mpi_engine.is_single_process() {
             unimplemented!("Basefold MPI not yet supported");
+        }
+
+        if poly.num_vars() > *params || eval_point.num_vars() > *params {
+            return None;
         }
 
         let effective_point = if eval_point.num_vars() < *params {
@@ -128,6 +136,10 @@ where
         transcript: &mut impl Transcript,
         opening: &Self::Opening,
     ) -> bool {
+        if eval_point.num_vars() > *params {
+            return false;
+        }
+
         let effective_point = if eval_point.num_vars() < *params {
             lift_expander_challenge_to_n_vars(eval_point, *params)
         } else {
