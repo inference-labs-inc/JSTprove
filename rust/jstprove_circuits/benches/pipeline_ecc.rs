@@ -98,7 +98,10 @@ fn run_bn254_pipeline(
     assert!(verify_bn254(&bundle.circuit, &wb.witness, &proof).unwrap());
     println!("verify:  {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
 
-    println!("peak RSS: {:.1} MiB", rss_bytes() as f64 / 1048576.0);
+    println!(
+        "peak RSS (cumulative): {:.1} MiB",
+        rss_bytes() as f64 / 1048576.0
+    );
 }
 
 fn run_goldilocks_pipeline(model_path: &Path, activations: &[f64]) {
@@ -155,7 +158,10 @@ fn run_goldilocks_pipeline(model_path: &Path, activations: &[f64]) {
     assert!(verify_goldilocks(&bundle.circuit, &wb.witness, &proof).unwrap());
     println!("verify:  {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
 
-    println!("peak RSS: {:.1} MiB", rss_bytes() as f64 / 1048576.0);
+    println!(
+        "peak RSS (cumulative): {:.1} MiB",
+        rss_bytes() as f64 / 1048576.0
+    );
 }
 
 fn main() {
@@ -221,7 +227,10 @@ fn main() {
     let t = Instant::now();
     assert!(verify_bn254(&bundle.circuit, &wb.witness, &proof).unwrap());
     println!("verify:  {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
-    println!("peak RSS: {:.1} MiB", rss_bytes() as f64 / 1048576.0);
+    println!(
+        "peak RSS (cumulative): {:.1} MiB",
+        rss_bytes() as f64 / 1048576.0
+    );
 
     let metadata_gl =
         expander_metadata::generate_from_onnx_for_field(&model_path, N_BITS_GOLDILOCKS, None)
@@ -265,7 +274,10 @@ fn main() {
     let t = Instant::now();
     assert!(verify_goldilocks(&gl_bundle.circuit, &gl_wb.witness, &gl_proof).unwrap());
     println!("verify:  {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
-    println!("peak RSS: {:.1} MiB", rss_bytes() as f64 / 1048576.0);
+    println!(
+        "peak RSS (cumulative): {:.1} MiB",
+        rss_bytes() as f64 / 1048576.0
+    );
 
     println!("\n--- Goldilocks Basefold PCS pipeline ---");
     let bf_circuit_path = tmp.path().join("circuit_bf.bundle");
@@ -299,7 +311,10 @@ fn main() {
     let t = Instant::now();
     assert!(verify_goldilocks_basefold(&bf_bundle.circuit, &bf_wb.witness, &bf_proof).unwrap());
     println!("verify:  {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
-    println!("peak RSS: {:.1} MiB", rss_bytes() as f64 / 1048576.0);
+    println!(
+        "peak RSS (cumulative): {:.1} MiB",
+        rss_bytes() as f64 / 1048576.0
+    );
 
     run_bn254_pipeline(&model_path, "default", None, None, &activations);
     run_bn254_pipeline(

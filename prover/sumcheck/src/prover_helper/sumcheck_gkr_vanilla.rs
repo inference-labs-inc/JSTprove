@@ -556,14 +556,14 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
         if !crate::metal_sumcheck::metal_available() {
             return false;
         }
-        if (1usize << self.input_var_num) < GPU_DISPATCH_THRESHOLD {
-            return false;
-        }
 
         let input_var_num = self.input_var_num;
         let Some(total) = 1usize.checked_shl(input_var_num as u32) else {
             return false;
         };
+        if total < GPU_DISPATCH_THRESHOLD {
+            return false;
+        }
         if total.checked_mul(BN254_ELEM_SIZE).is_none() {
             return false;
         }
@@ -717,14 +717,14 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
         if !crate::metal_sumcheck::metal_available() {
             return false;
         }
-        if (1usize << self.input_var_num) < GPU_DISPATCH_THRESHOLD {
-            return false;
-        }
 
         let input_var_num = self.input_var_num;
         let Some(total) = 1usize.checked_shl(input_var_num as u32) else {
             return false;
         };
+        if total < GPU_DISPATCH_THRESHOLD {
+            return false;
+        }
         if total.checked_mul(BN254_ELEM_SIZE).is_none() {
             return false;
         }

@@ -164,7 +164,7 @@ fn quantize_layer_weights(layer: &mut LayerNode, alpha: i64) -> Result<()> {
 
 fn fold_all_batchnorms(graph: &mut LayerGraph) -> Result<()> {
     for layer in &mut graph.layers {
-        if layer.op_type == OpType::BatchNormalization && layer.inputs.len() > 3 {
+        if layer.op_type == OpType::BatchNormalization && layer.inputs.len() >= 5 {
             fold_batchnorm_params(layer)?;
         }
     }

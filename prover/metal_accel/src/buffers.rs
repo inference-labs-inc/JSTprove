@@ -1,7 +1,10 @@
 use metal::{Buffer, Device, MTLResourceOptions};
 
+use crate::device::THREADGROUP_SIZE;
+
 pub const BN254_ELEM_SIZE: usize = 4 * std::mem::size_of::<u64>();
 pub const GOLDILOCKS_ELEM_SIZE: usize = std::mem::size_of::<u64>();
+const TG: usize = THREADGROUP_SIZE as usize;
 
 pub struct MetalBufferPool {
     max_input_size: usize,
@@ -38,9 +41,9 @@ impl MetalBufferPool {
             .checked_mul(BN254_ELEM_SIZE)
             .expect("half_size * BN254_ELEM_SIZE overflows usize");
         let max_blocks = max_input_size
-            .checked_add(255)
-            .expect("max_input_size + 255 overflows usize")
-            / 256;
+            .checked_add(TG - 1)
+            .expect("max_input_size + (TG-1) overflows usize")
+            / TG;
         let ge_bytes = max_input_size
             .checked_mul(4)
             .expect("max_input_size * 4 overflows usize");
@@ -140,9 +143,9 @@ impl GoldilocksBufferPool {
             .checked_mul(elem)
             .expect("half_size * GOLDILOCKS_ELEM_SIZE overflows usize");
         let max_blocks = max_input_size
-            .checked_add(255)
-            .expect("max_input_size + 255 overflows usize")
-            / 256;
+            .checked_add(TG - 1)
+            .expect("max_input_size + (TG-1) overflows usize")
+            / TG;
         let ge_bytes = max_input_size
             .checked_mul(4)
             .expect("max_input_size * 4 overflows usize");

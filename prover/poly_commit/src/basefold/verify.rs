@@ -220,7 +220,8 @@ where
                 return false;
             }
 
-            let result_leaf = result_idx / ext_elems_per_leaf;
+            let pair_even = (result_idx / 2) * 2;
+            let result_leaf = pair_even / ext_elems_per_leaf;
 
             if rp.leaf_proof.index != result_leaf {
                 return false;
@@ -238,8 +239,6 @@ where
             if actual_folded != current_val {
                 return false;
             }
-
-            let pair_even = (result_idx / 2) * 2;
             let pair_odd = pair_even + 1;
 
             let partner_leaf = pair_odd / ext_elems_per_leaf;
@@ -325,10 +324,20 @@ fn verify_leaf_values<EvalF: Field>(leaf_data: &[u8], values: &[EvalF]) -> bool 
 
 fn generate_query_indices(transcript: &mut impl Transcript, len: usize) -> Vec<usize> {
     assert!(len > 0, "generate_query_indices requires len > 0");
-    let raw = transcript.generate_usize_vector(BASEFOLD_NUM_QUERIES);
-    let mut seen = std::collections::HashSet::with_capacity(raw.len());
-    raw.into_iter()
-        .map(|x| x % len)
-        .filter(|idx| seen.insert(*idx))
-        .collect()
+    let target = BASEFOLD_NUM_QUERIES.min(len);
+    let mut seen = std::collections::HashSet::with_capacity(target);
+    let mut indices = Vec::with_capacity(target);
+    while indices.len() < target {
+        let batch = transcript.generate_usize_vector(target - indices.len());
+        for x in batch {
+            let idx = x % len;
+            if seen.insert(idx) {
+                indices.push(idx);
+                if indices.len() == target {
+                    break;
+                }
+            }
+        }
+    }
+    indices
 }

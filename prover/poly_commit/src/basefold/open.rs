@@ -180,16 +180,16 @@ where
             let re = &round_codewords[round];
             let re_len = re.len();
 
-            let result_even = (result_idx / 2) * 2;
-            let result_odd = result_even + 1;
+            let pair_even = (result_idx / 2) * 2;
+            let pair_odd = pair_even + 1;
 
-            let result_leaf = result_even / ext_elems_per_leaf;
+            let result_leaf = pair_even / ext_elems_per_leaf;
             let result_proof = round_trees[round].index_query(result_leaf);
             let result_start = result_leaf * ext_elems_per_leaf;
             let result_end = (result_start + ext_elems_per_leaf).min(re_len);
             let result_values = re[result_start..result_end].to_vec();
 
-            let partner_leaf = result_odd / ext_elems_per_leaf;
+            let partner_leaf = pair_odd / ext_elems_per_leaf;
             let (partner_proof, partner_values) = if partner_leaf != result_leaf {
                 let proof = round_trees[round].index_query(partner_leaf);
                 let partner_start = partner_leaf * ext_elems_per_leaf;
@@ -225,10 +225,21 @@ where
 }
 
 fn generate_query_indices(transcript: &mut impl Transcript, len: usize) -> Vec<usize> {
-    let raw = transcript.generate_usize_vector(BASEFOLD_NUM_QUERIES);
-    let mut seen = std::collections::HashSet::with_capacity(raw.len());
-    raw.into_iter()
-        .map(|x| x % len)
-        .filter(|idx| seen.insert(*idx))
-        .collect()
+    assert!(len > 0, "generate_query_indices: len must be > 0");
+    let target = BASEFOLD_NUM_QUERIES.min(len);
+    let mut seen = std::collections::HashSet::with_capacity(target);
+    let mut indices = Vec::with_capacity(target);
+    while indices.len() < target {
+        let batch = transcript.generate_usize_vector(target - indices.len());
+        for x in batch {
+            let idx = x % len;
+            if seen.insert(idx) {
+                indices.push(idx);
+                if indices.len() == target {
+                    break;
+                }
+            }
+        }
+    }
+    indices
 }
