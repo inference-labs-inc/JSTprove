@@ -60,6 +60,12 @@ impl ScaleConfig {
         (f64::from(max_exp) / std::f64::consts::LOG2_10).floor() as u32
     }
 
+    #[must_use]
+    pub fn adaptive(n_bits: u32, max_bound: f64) -> Self {
+        let exponent = Self::max_safe_exponent(n_bits, max_bound);
+        Self::new(DEFAULT_SCALE_BASE, exponent)
+    }
+
     pub fn for_precision(target_digits: u32, n_bits: u32, max_bound: f64) -> Result<Self> {
         let exponent = Self::exponent_for_digits(target_digits);
         let max_exp = Self::max_safe_exponent(n_bits, max_bound);

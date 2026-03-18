@@ -55,9 +55,7 @@ fn generate_from_onnx_with_all_options(
             .context("precision-targeted quantization")?,
         (Some(nb), None) => {
             let max_bound = quantizer::compute_max_bound(&mut graph)?;
-            let max_exp = ScaleConfig::max_safe_exponent(nb, max_bound);
-            let exponent = max_exp;
-            let config = ScaleConfig::new(quantizer::DEFAULT_SCALE_BASE, exponent);
+            let config = ScaleConfig::adaptive(nb, max_bound);
             quantizer::quantize_model(graph, &config).context("field-aware quantization")?
         }
         (None, Some(_)) => anyhow::bail!("target_precision requires n_bits"),
@@ -358,9 +356,11 @@ mod tests {
     fn lenet_metadata_generation() {
         let model_path =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
-        if !model_path.exists() {
-            return;
-        }
+        assert!(
+            model_path.exists(),
+            "missing test fixture: {}",
+            model_path.display()
+        );
         let model_path = model_path.as_path();
 
         let metadata = generate_from_onnx(model_path).unwrap();
@@ -392,9 +392,11 @@ mod tests {
     fn lenet_metadata_generation_weights_as_inputs() {
         let model_path =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
-        if !model_path.exists() {
-            return;
-        }
+        assert!(
+            model_path.exists(),
+            "missing test fixture: {}",
+            model_path.display()
+        );
 
         let metadata = generate_from_onnx_with_options(model_path.as_path(), true).unwrap();
 
@@ -409,9 +411,17 @@ mod tests {
     fn bn254_adaptive_exponent_at_least_default() {
         let model_path =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
-        if !model_path.exists() {
-            return;
-        }
+        assert!(
+            model_path.exists(),
+            "missing test fixture: {}",
+            model_path.display()
+        );
+
+        let parsed = parser::parse_onnx(&model_path).unwrap();
+        let mut graph = LayerGraph::from_parsed(&parsed).unwrap();
+        let max_bound = quantizer::compute_max_bound(&mut graph).unwrap();
+        let expected_exp =
+            ScaleConfig::max_safe_exponent(jstprove_onnx::quantizer::N_BITS_BN254, max_bound);
 
         let metadata = generate_from_onnx_for_field(
             model_path.as_path(),
@@ -421,7 +431,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(metadata.circuit_params.scale_base, 2);
-        assert!(metadata.circuit_params.scale_exponent >= 18);
+        assert_eq!(metadata.circuit_params.scale_exponent, expected_exp);
         assert!(!metadata.circuit_params.n_bits_config.is_empty());
         assert!(!metadata.circuit_params.rescale_config.is_empty());
     }
@@ -430,9 +440,11 @@ mod tests {
     fn bn254_5_digit_precision() {
         let model_path =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
-        if !model_path.exists() {
-            return;
-        }
+        assert!(
+            model_path.exists(),
+            "missing test fixture: {}",
+            model_path.display()
+        );
 
         let metadata = generate_from_onnx_for_field(
             model_path.as_path(),
@@ -450,9 +462,11 @@ mod tests {
     fn bn254_8_digit_precision() {
         let model_path =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
-        if !model_path.exists() {
-            return;
-        }
+        assert!(
+            model_path.exists(),
+            "missing test fixture: {}",
+            model_path.display()
+        );
 
         let metadata = generate_from_onnx_for_field(
             model_path.as_path(),
@@ -467,12 +481,20 @@ mod tests {
     }
 
     #[test]
-    fn goldilocks_default_exponent_capped() {
+    fn goldilocks_adaptive_exponent() {
         let model_path =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
-        if !model_path.exists() {
-            return;
-        }
+        assert!(
+            model_path.exists(),
+            "missing test fixture: {}",
+            model_path.display()
+        );
+
+        let parsed = parser::parse_onnx(&model_path).unwrap();
+        let mut graph = LayerGraph::from_parsed(&parsed).unwrap();
+        let max_bound = quantizer::compute_max_bound(&mut graph).unwrap();
+        let expected_exp =
+            ScaleConfig::max_safe_exponent(jstprove_onnx::quantizer::N_BITS_GOLDILOCKS, max_bound);
 
         let metadata = generate_from_onnx_for_field(
             model_path.as_path(),
@@ -482,7 +504,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(metadata.circuit_params.scale_base, 2);
-        assert!(metadata.circuit_params.scale_exponent <= 15);
+        assert_eq!(metadata.circuit_params.scale_exponent, expected_exp);
         assert!(!metadata.circuit_params.n_bits_config.is_empty());
     }
 
@@ -490,9 +512,11 @@ mod tests {
     fn precision_exceeds_goldilocks_capacity() {
         let model_path =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
-        if !model_path.exists() {
-            return;
-        }
+        assert!(
+            model_path.exists(),
+            "missing test fixture: {}",
+            model_path.display()
+        );
 
         let result = generate_from_onnx_for_field(
             model_path.as_path(),
