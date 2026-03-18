@@ -408,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn bn254_adaptive_exponent_at_least_default() {
+    fn bn254_adaptive_exponent_matches_safe_bound() {
         let model_path =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../jstprove_remainder/models/lenet.onnx");
         assert!(
