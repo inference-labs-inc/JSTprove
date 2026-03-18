@@ -9,6 +9,7 @@ use super::{ModelProto, TensorProto};
 
 const SUPPORTED_OPS: &[&str] = &[
     "Add",
+    "Cast",
     "Clip",
     "BatchNormalization",
     "Div",
@@ -25,6 +26,20 @@ const SUPPORTED_OPS: &[&str] = &[
     "Conv",
     "Squeeze",
     "Unsqueeze",
+    "Exp",
+    "Softmax",
+    "Sigmoid",
+    "Gelu",
+    "Tile",
+    "Gather",
+    "LayerNormalization",
+    "Resize",
+    "GridSample",
+    "Transpose",
+    "Concat",
+    "Slice",
+    "Shape",
+    "Expand",
 ];
 
 pub fn is_compatible(path: &Path) -> Result<(bool, Vec<String>)> {

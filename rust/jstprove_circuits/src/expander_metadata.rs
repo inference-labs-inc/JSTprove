@@ -272,6 +272,24 @@ fn op_type_to_string(op: OpType) -> String {
         OpType::Squeeze => "Squeeze",
         OpType::Unsqueeze => "Unsqueeze",
         OpType::Constant => "Constant",
+        OpType::Cast => "Cast",
+        OpType::Exp => "Exp",
+        OpType::Sigmoid => "Sigmoid",
+        OpType::Gelu => "Gelu",
+        OpType::Softmax => "Softmax",
+        OpType::Tile => "Tile",
+        OpType::Gather => "Gather",
+        OpType::LayerNormalization => "LayerNormalization",
+        OpType::Resize => "Resize",
+        OpType::GridSample => "GridSample",
+        OpType::Transpose => "Transpose",
+        OpType::Concat => "Concat",
+        OpType::Slice => "Slice",
+        OpType::TopK => "TopK",
+        OpType::Shape => "Shape",
+        OpType::Log => "Log",
+        OpType::Expand => "Expand",
+        OpType::ReduceMean => "ReduceMean",
     }
     .to_string()
 }
@@ -549,11 +567,57 @@ mod tests {
 
     #[test]
     fn op_type_string_conversion() {
-        assert_eq!(op_type_to_string(OpType::Conv), "Conv");
-        assert_eq!(op_type_to_string(OpType::Gemm), "Gemm");
-        assert_eq!(op_type_to_string(OpType::Relu), "ReLU");
-        assert_eq!(op_type_to_string(OpType::Add), "Add");
-        assert_eq!(op_type_to_string(OpType::Div), "Div");
-        assert_eq!(op_type_to_string(OpType::Reshape), "Reshape");
+        // Every OpType variant must round-trip through op_type_to_string.
+        let cases: &[(OpType, &str)] = &[
+            (OpType::Add, "Add"),
+            (OpType::Div, "Div"),
+            (OpType::Sub, "Sub"),
+            (OpType::Mul, "Mul"),
+            (OpType::Gemm, "Gemm"),
+            (OpType::Conv, "Conv"),
+            (OpType::Relu, "ReLU"),
+            (OpType::MaxPool, "MaxPool"),
+            (OpType::BatchNormalization, "BatchNormalization"),
+            (OpType::Max, "Max"),
+            (OpType::Min, "Min"),
+            (OpType::Clip, "Clip"),
+            (OpType::Reshape, "Reshape"),
+            (OpType::Flatten, "Flatten"),
+            (OpType::Squeeze, "Squeeze"),
+            (OpType::Unsqueeze, "Unsqueeze"),
+            (OpType::Constant, "Constant"),
+            (OpType::Cast, "Cast"),
+            (OpType::Exp, "Exp"),
+            (OpType::Sigmoid, "Sigmoid"),
+            (OpType::Gelu, "Gelu"),
+            (OpType::Softmax, "Softmax"),
+            (OpType::Tile, "Tile"),
+            (OpType::Gather, "Gather"),
+            (OpType::LayerNormalization, "LayerNormalization"),
+            (OpType::Resize, "Resize"),
+            (OpType::GridSample, "GridSample"),
+            (OpType::Transpose, "Transpose"),
+            (OpType::Concat, "Concat"),
+            (OpType::Slice, "Slice"),
+            (OpType::TopK, "TopK"),
+            (OpType::Shape, "Shape"),
+            (OpType::Log, "Log"),
+            (OpType::Expand, "Expand"),
+            (OpType::ReduceMean, "ReduceMean"),
+        ];
+
+        for &(op, expected_str) in cases {
+            // Forward: op → string
+            let s = op_type_to_string(op);
+            assert_eq!(s, expected_str, "op_type_to_string({op:?}) mismatch");
+
+            // Round-trip: string → op must recover the original variant
+            let recovered =
+                OpType::from_str(&s).unwrap_or_else(|e| panic!("from_str({s:?}) failed: {e}"));
+            assert_eq!(
+                recovered, op,
+                "OpType::from_str({s:?}) round-trip mismatch for {op:?}"
+            );
+        }
     }
 }

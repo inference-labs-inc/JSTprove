@@ -103,6 +103,258 @@ pub fn load_witness(path: &Path) -> Result<WitnessData> {
     jstprove_io::deserialize_from_file(path)
 }
 
+// -------- Resize coordinate helpers --------
+
+/// Convert a normalised grid coordinate in [-1, 1] to a continuous pixel
+/// coordinate (GridSample convention).
+fn gs_unnormalize(norm: f64, size: usize, align_corners: bool) -> f64 {
+    if align_corners {
+        (norm + 1.0) / 2.0 * (size.saturating_sub(1) as f64)
+    } else {
+        (norm + 1.0) / 2.0 * size as f64 - 0.5
+    }
+}
+
+/// Nearest-neighbour GridSample: resolve a continuous pixel coordinate under
+/// the given padding mode.  Returns `None` for zeros-padding out-of-bounds.
+fn gs_apply_padding_nearest(
+    x: f64,
+    size: usize,
+    padding_mode: &str,
+    align_corners: bool,
+) -> Option<usize> {
+    let pixel = match padding_mode {
+        "zeros" => {
+            if x < -0.5 || x > size as f64 - 0.5 {
+                return None;
+            }
+            (x + 0.5)
+                .floor()
+                .clamp(0.0, (size.saturating_sub(1)) as f64) as usize
+        }
+        "border" => (x + 0.5)
+            .floor()
+            .clamp(0.0, (size.saturating_sub(1)) as f64) as usize,
+        "reflection" => {
+            let reflected = gs_reflect(x, size, align_corners);
+            (reflected + 0.5)
+                .floor()
+                .clamp(0.0, (size.saturating_sub(1)) as f64) as usize
+        }
+        _ => (x + 0.5)
+            .floor()
+            .clamp(0.0, (size.saturating_sub(1)) as f64) as usize,
+    };
+    Some(pixel)
+}
+
+/// Reflect a continuous pixel coordinate at the boundary for GridSample.
+fn gs_reflect(x: f64, size: usize, align_corners: bool) -> f64 {
+    if size <= 1 {
+        return 0.0;
+    }
+    let (lo, range) = if align_corners {
+        (0.0f64, (size - 1) as f64)
+    } else {
+        (-0.5f64, size as f64)
+    };
+    let period = 2.0 * range;
+    let mut rel = (x - lo).rem_euclid(period);
+    if rel > range {
+        rel = period - rel;
+    }
+    (rel + lo).clamp(0.0, (size - 1) as f64)
+}
+
+fn unravel_index_witness(mut flat: usize, shape: &[usize]) -> Vec<usize> {
+    let mut coords = vec![0usize; shape.len()];
+    for i in (0..shape.len()).rev() {
+        if shape[i] > 0 {
+            coords[i] = flat % shape[i];
+            flat /= shape[i];
+        }
+    }
+    coords
+}
+
+fn ravel_index_witness(coords: &[usize], shape: &[usize]) -> usize {
+    let mut flat = 0usize;
+    let mut stride = 1usize;
+    for i in (0..shape.len()).rev() {
+        flat += coords[i] * stride;
+        stride *= shape[i];
+    }
+    flat
+}
+
+fn coord_to_input(out_idx: usize, in_size: usize, out_size: usize, mode: &str) -> f64 {
+    let o = out_idx as f64;
+    let in_f = in_size as f64;
+    let out_f = out_size as f64;
+    match mode {
+        "half_pixel" => (o + 0.5) * in_f / out_f - 0.5,
+        "asymmetric" => o * in_f / out_f,
+        "align_corners" => {
+            if out_size <= 1 {
+                0.0
+            } else {
+                o * (in_f - 1.0) / (out_f - 1.0)
+            }
+        }
+        "pytorch_half_pixel" => {
+            if out_size > 1 {
+                (o + 0.5) * in_f / out_f - 0.5
+            } else {
+                0.0
+            }
+        }
+        "tf_half_pixel_for_nn" => (o + 0.5) * in_f / out_f,
+        _ => o * in_f / out_f,
+    }
+}
+
+fn nearest_round(x: f64, in_size: usize, mode: &str) -> usize {
+    let idx: i64 = match mode {
+        "round_prefer_floor" => {
+            let f = x.floor();
+            if x - f == 0.5 {
+                f as i64
+            } else {
+                x.round() as i64
+            }
+        }
+        "round_prefer_ceil" => {
+            let f = x.floor();
+            if x - f == 0.5 {
+                x.ceil() as i64
+            } else {
+                x.round() as i64
+            }
+        }
+        "floor" => x.floor() as i64,
+        "ceil" => x.ceil() as i64,
+        _ => x.floor() as i64,
+    };
+    idx.clamp(0, in_size as i64 - 1) as usize
+}
+
+/// Returns (floor_idx, ceil_idx, weight_floor, weight_ceil).
+fn interp_corners(x: f64, in_size: usize) -> (usize, usize, f64, f64) {
+    let xc = x.clamp(0.0, (in_size.saturating_sub(1)) as f64);
+    let f = xc.floor() as usize;
+    let c = (xc.ceil() as usize).min(in_size - 1);
+    let frac = xc - xc.floor();
+    (f, c, 1.0 - frac, frac)
+}
+
+fn layout_from_output_shape_runtime(
+    output_shape: &[usize],
+    input_layout: Option<&SpatialInfo>,
+) -> Option<SpatialInfo> {
+    let chw = if output_shape.len() == 3 {
+        output_shape
+    } else if output_shape.len() == 4 {
+        &output_shape[1..]
+    } else {
+        return None;
+    };
+
+    match input_layout {
+        Some(SpatialInfo::HWC {
+            stride_c: existing_stride_c,
+            ..
+        }) => {
+            let c = chw[0];
+            // Keep the existing stride only when it is wide enough to hold all
+            // channels; if the output has more channels, fall back to tight packing.
+            let stride_c = if c <= *existing_stride_c {
+                *existing_stride_c
+            } else {
+                c
+            };
+            Some(SpatialInfo::HWC {
+                h: chw[1],
+                w: chw[2],
+                c,
+                stride_c,
+            })
+        }
+        _ => Some(SpatialInfo::CHW {
+            c: chw[0],
+            h: chw[1],
+            w: chw[2],
+        }),
+    }
+}
+
+fn transpose_layout_runtime(
+    input_layout: Option<&SpatialInfo>,
+    perm: &[usize],
+    output_shape: &[usize],
+) -> Option<SpatialInfo> {
+    let layout = input_layout?;
+
+    if output_shape.len() == 3 && perm.len() == 3 {
+        match layout {
+            SpatialInfo::CHW { c, h, w } => {
+                let in_dims = [*c, *h, *w];
+                if perm.iter().any(|&p| p >= 3) {
+                    return None;
+                }
+                let out_dims = [in_dims[perm[0]], in_dims[perm[1]], in_dims[perm[2]]];
+                Some(SpatialInfo::CHW {
+                    c: out_dims[0],
+                    h: out_dims[1],
+                    w: out_dims[2],
+                })
+            }
+            SpatialInfo::HWC { h, w, c, .. } => {
+                let in_dims = [*h, *w, *c];
+                if perm.iter().any(|&p| p >= 3) {
+                    return None;
+                }
+                let out_dims = [in_dims[perm[0]], in_dims[perm[1]], in_dims[perm[2]]];
+                Some(SpatialInfo::HWC {
+                    h: out_dims[0],
+                    w: out_dims[1],
+                    c: out_dims[2],
+                    stride_c: next_power_of_two(out_dims[2]),
+                })
+            }
+        }
+    } else if output_shape.len() == 4 && perm.len() == 4 {
+        let find_out_axis = |src_axis: usize| perm.iter().position(|&p| p == src_axis);
+        match layout {
+            SpatialInfo::CHW { .. } => {
+                let oc = find_out_axis(1)?;
+                let oh = find_out_axis(2)?;
+                let ow = find_out_axis(3)?;
+                Some(SpatialInfo::CHW {
+                    c: output_shape[oc],
+                    h: output_shape[oh],
+                    w: output_shape[ow],
+                })
+            }
+            SpatialInfo::HWC { .. } => {
+                let oh = find_out_axis(1)?;
+                let ow = find_out_axis(2)?;
+                let oc = find_out_axis(3)?;
+                let c = output_shape[oc];
+                Some(SpatialInfo::HWC {
+                    h: output_shape[oh],
+                    w: output_shape[ow],
+                    c,
+                    stride_c: next_power_of_two(c),
+                })
+            }
+        }
+    } else {
+        None
+    }
+}
+
+// -------- End Resize helpers --------
+
 pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Result<WitnessData> {
     anyhow::ensure!(
         model.scale_config.base == 2,
@@ -161,6 +413,23 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
     );
     let declared_output = &model.graph.output_names[0];
     let rescale_table_size = 1usize << model.scale_config.exponent;
+
+    let tensor_shape_for = |tensor_name: &str| -> Option<Vec<usize>> {
+        if let Some(shape) = model.graph.input_shapes.get(tensor_name) {
+            if shape.len() == 3 {
+                let mut with_batch = vec![1usize];
+                with_batch.extend(shape.iter().copied());
+                return Some(with_batch);
+            }
+            return Some(shape.clone());
+        }
+        model
+            .graph
+            .layers
+            .iter()
+            .find(|l| l.outputs.iter().any(|o| o == tensor_name))
+            .map(|l| l.output_shape.clone())
+    };
 
     for layer in model.graph.iter_topo() {
         match layer.op_type {
@@ -1000,7 +1269,34 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     }
                 }
             }
+            OpType::Cast => {
+                // Cast is ZK-typeless: preserve data and spatial layout unchanged.
+                let input_tensor_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("Cast {} has no input", layer.name))?;
+                let data = tensors
+                    .get(input_tensor_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Cast {} input {} not computed",
+                            layer.name,
+                            input_tensor_name
+                        )
+                    })?
+                    .clone();
+                let layout = tensor_layouts.get(input_tensor_name).cloned();
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), data.clone());
+                    if let Some(ref layout) = layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
+                }
+            }
             OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
+                // Shape-changing ops: data is reinterpreted in-place. Derive the output
+                // spatial layout from the new output_shape while preserving the input
+                // format (CHW vs HWC) so downstream ops use the correct stride.
                 let input_tensor_name = layer
                     .inputs
                     .first()
@@ -1015,12 +1311,1642 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                         )
                     })?
                     .clone();
-                let layout = tensor_layouts.get(input_tensor_name).cloned();
+                let input_layout = tensor_layouts.get(input_tensor_name);
+                let new_layout =
+                    layout_from_output_shape_runtime(&layer.output_shape, input_layout);
                 for out in &layer.outputs {
                     tensors.insert(out.clone(), data.clone());
+                    match &new_layout {
+                        Some(layout) => {
+                            tensor_layouts.insert(out.clone(), layout.clone());
+                        }
+                        None => {
+                            tensor_layouts.remove(out);
+                        }
+                    }
+                }
+            }
+            OpType::Exp => {
+                let input_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("Exp {} has no input", layer.name))?;
+                let input_data = tensors
+                    .get(input_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Exp {} input '{}' not computed", layer.name, input_name)
+                    })?
+                    .clone();
+
+                let output_total: usize = layer.output_shape.iter().product();
+                anyhow::ensure!(
+                    input_data.len() >= output_total,
+                    "Exp {} input too small: {} < {}",
+                    layer.name,
+                    input_data.len(),
+                    output_total
+                );
+
+                let result: Vec<i64> = (0..output_total)
+                    .map(|i| {
+                        let x = input_data[i] as f64 / alpha as f64;
+                        let y = x.exp();
+                        (y * alpha as f64)
+                            .round()
+                            .clamp(i64::MIN as f64, i64::MAX as f64) as i64
+                    })
+                    .collect();
+
+                let padded = pad_to_size(&result, next_power_of_two(output_total));
+                let out_name = format!("{}_out", layer.name);
+                shreds.insert(out_name, padded.clone());
+
+                let layout = tensor_layouts.get(input_name).cloned();
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
                     if let Some(ref layout) = layout {
                         tensor_layouts.insert(out.clone(), layout.clone());
                     }
+                }
+            }
+            OpType::Sigmoid => {
+                let input_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("Sigmoid {} has no input", layer.name))?;
+                let input_data = tensors
+                    .get(input_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Sigmoid {} input '{}' not computed",
+                            layer.name,
+                            input_name
+                        )
+                    })?
+                    .clone();
+
+                let output_total: usize = layer.output_shape.iter().product();
+                anyhow::ensure!(
+                    input_data.len() >= output_total,
+                    "Sigmoid {} input too small: {} < {}",
+                    layer.name,
+                    input_data.len(),
+                    output_total
+                );
+
+                let result: Vec<i64> = (0..output_total)
+                    .map(|i| {
+                        let x = input_data[i] as f64 / alpha as f64;
+                        let y = 1.0 / (1.0 + (-x).exp());
+                        (y * alpha as f64)
+                            .round()
+                            .clamp(i64::MIN as f64, i64::MAX as f64) as i64
+                    })
+                    .collect();
+
+                let padded = pad_to_size(&result, next_power_of_two(output_total));
+                let out_name = format!("{}_out", layer.name);
+                shreds.insert(out_name, padded.clone());
+
+                let layout = tensor_layouts.get(input_name).cloned();
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                    if let Some(ref layout) = layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
+                }
+            }
+            OpType::Gelu => {
+                let input_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("Gelu {} has no input", layer.name))?;
+                let input_data = tensors
+                    .get(input_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Gelu {} input '{}' not computed", layer.name, input_name)
+                    })?
+                    .clone();
+
+                let output_total: usize = layer.output_shape.iter().product();
+                anyhow::ensure!(
+                    input_data.len() >= output_total,
+                    "Gelu {} input too small: {} < {}",
+                    layer.name,
+                    input_data.len(),
+                    output_total
+                );
+
+                let result: Vec<i64> = (0..output_total)
+                    .map(|i| {
+                        let x = input_data[i] as f64 / alpha as f64;
+                        let inner = 0.797_884_560_8 * (x + 0.044_715 * x * x * x);
+                        let y = 0.5 * x * (1.0 + inner.tanh());
+                        (y * alpha as f64)
+                            .round()
+                            .clamp(i64::MIN as f64, i64::MAX as f64) as i64
+                    })
+                    .collect();
+
+                let padded = pad_to_size(&result, next_power_of_two(output_total));
+                let out_name = format!("{}_out", layer.name);
+                shreds.insert(out_name, padded.clone());
+
+                let layout = tensor_layouts.get(input_name).cloned();
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                    if let Some(ref layout) = layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
+                }
+            }
+            OpType::Softmax => {
+                let input_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("Softmax {} has no input", layer.name))?;
+                let input_data = tensors
+                    .get(input_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Softmax {} input '{}' not computed",
+                            layer.name,
+                            input_name
+                        )
+                    })?
+                    .clone();
+
+                let input_shape = tensor_shape_for(input_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Softmax {} cannot resolve shape for input '{}'",
+                        layer.name,
+                        input_name
+                    )
+                })?;
+                let rank = input_shape.len();
+                let raw_axis = layer.get_int_attr("axis").unwrap_or(-1);
+                let axis = if raw_axis < 0 {
+                    let a = rank as i64 + raw_axis;
+                    anyhow::ensure!(
+                        a >= 0,
+                        "Softmax {} axis {} out of range for rank {}",
+                        layer.name,
+                        raw_axis,
+                        rank
+                    );
+                    a as usize
+                } else {
+                    raw_axis as usize
+                };
+                anyhow::ensure!(
+                    axis < rank,
+                    "Softmax {} axis {} out of range for rank {}",
+                    layer.name,
+                    raw_axis,
+                    rank
+                );
+
+                let output_total: usize = layer.output_shape.iter().product();
+                anyhow::ensure!(
+                    input_data.len() >= output_total,
+                    "Softmax {} input too small: {} < {}",
+                    layer.name,
+                    input_data.len(),
+                    output_total
+                );
+
+                let axis_dim = input_shape[axis];
+                let inner: usize = input_shape[axis + 1..].iter().product();
+                let outer: usize = input_shape[..axis].iter().product();
+
+                let mut result = vec![0i64; output_total];
+                for o in 0..outer {
+                    for inr in 0..inner {
+                        let mut lane = Vec::with_capacity(axis_dim);
+                        for k in 0..axis_dim {
+                            let idx = (o * axis_dim + k) * inner + inr;
+                            lane.push(input_data[idx] as f64 / alpha as f64);
+                        }
+                        let max_x = lane.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+                        let exps: Vec<f64> = lane.iter().map(|&x| (x - max_x).exp()).collect();
+                        let denom: f64 = exps.iter().sum();
+                        for (k, e) in exps.into_iter().enumerate() {
+                            let idx = (o * axis_dim + k) * inner + inr;
+                            result[idx] = ((e / denom) * alpha as f64)
+                                .round()
+                                .clamp(i64::MIN as f64, i64::MAX as f64)
+                                as i64;
+                        }
+                    }
+                }
+
+                let padded = pad_to_size(&result, next_power_of_two(output_total));
+                let out_name = format!("{}_out", layer.name);
+                shreds.insert(out_name, padded.clone());
+
+                let layout = tensor_layouts.get(input_name).cloned();
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                    if let Some(ref layout) = layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
+                }
+            }
+            OpType::Tile => {
+                let input_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("Tile {} has no data input", layer.name))?;
+                let repeats_name = layer
+                    .inputs
+                    .get(1)
+                    .ok_or_else(|| anyhow::anyhow!("Tile {} has no repeats input", layer.name))?;
+
+                let input_data = tensors
+                    .get(input_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Tile {} input '{}' not computed", layer.name, input_name)
+                    })?
+                    .clone();
+                let input_shape = tensor_shape_for(input_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Tile {} cannot resolve shape for input '{}'",
+                        layer.name,
+                        input_name
+                    )
+                })?;
+                let repeats = layer
+                    .weights
+                    .get(repeats_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Tile {} repeats '{}' not found in weights",
+                            layer.name,
+                            repeats_name
+                        )
+                    })?
+                    .as_i64_vec();
+
+                anyhow::ensure!(
+                    repeats.len() == input_shape.len(),
+                    "Tile {} repeats rank {} does not match input rank {}",
+                    layer.name,
+                    repeats.len(),
+                    input_shape.len()
+                );
+
+                let output_shape = &layer.output_shape;
+                let output_total: usize = output_shape.iter().product();
+                let result: Vec<i64> = (0..output_total)
+                    .map(|out_flat| {
+                        let out_coords = unravel_index_witness(out_flat, output_shape);
+                        let in_coords: Vec<usize> = out_coords
+                            .iter()
+                            .enumerate()
+                            .map(|(d, &c)| {
+                                let dim = input_shape[d];
+                                if dim == 0 {
+                                    0
+                                } else {
+                                    c % dim
+                                }
+                            })
+                            .collect();
+                        let in_flat = ravel_index_witness(&in_coords, &input_shape);
+                        input_data.get(in_flat).copied().unwrap_or(0)
+                    })
+                    .collect();
+
+                let padded = pad_to_size(&result, next_power_of_two(output_total));
+                let out_name = format!("{}_out", layer.name);
+                shreds.insert(out_name, padded.clone());
+
+                let input_layout = tensor_layouts.get(input_name);
+                let new_layout =
+                    layout_from_output_shape_runtime(&layer.output_shape, input_layout);
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                    match &new_layout {
+                        Some(layout) => {
+                            tensor_layouts.insert(out.clone(), layout.clone());
+                        }
+                        None => {
+                            tensor_layouts.remove(out);
+                        }
+                    }
+                }
+            }
+            OpType::TopK => {
+                let input_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("TopK {} has no data input", layer.name))?;
+                let k_name = layer
+                    .inputs
+                    .get(1)
+                    .ok_or_else(|| anyhow::anyhow!("TopK {} has no K input", layer.name))?;
+
+                let input_data = tensors
+                    .get(input_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("TopK {} input '{}' not computed", layer.name, input_name)
+                    })?
+                    .clone();
+                let input_shape = tensor_shape_for(input_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "TopK {} cannot resolve shape for input '{}'",
+                        layer.name,
+                        input_name
+                    )
+                })?;
+
+                let k_vec = layer
+                    .weights
+                    .get(k_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("TopK {} K '{}' not found in weights", layer.name, k_name)
+                    })?
+                    .as_i64_vec();
+                let k_raw = *k_vec.first().ok_or_else(|| {
+                    anyhow::anyhow!("TopK {} K tensor '{}' is empty", layer.name, k_name)
+                })?;
+                anyhow::ensure!(
+                    k_raw > 0,
+                    "TopK {} requires K > 0, got {}",
+                    layer.name,
+                    k_raw
+                );
+                let k = k_raw as usize;
+
+                let rank = input_shape.len();
+                let raw_axis = layer.get_int_attr("axis").unwrap_or(-1);
+                let axis = if raw_axis < 0 {
+                    let a = rank as i64 + raw_axis;
+                    anyhow::ensure!(
+                        a >= 0,
+                        "TopK {} axis {} out of range for rank {}",
+                        layer.name,
+                        raw_axis,
+                        rank
+                    );
+                    a as usize
+                } else {
+                    raw_axis as usize
+                };
+                anyhow::ensure!(
+                    axis < rank,
+                    "TopK {} axis {} out of range for rank {}",
+                    layer.name,
+                    raw_axis,
+                    rank
+                );
+
+                let axis_dim = input_shape[axis];
+                anyhow::ensure!(
+                    k <= axis_dim,
+                    "TopK {} K={} exceeds axis dimension {}",
+                    layer.name,
+                    k,
+                    axis_dim
+                );
+
+                let output_shape = &layer.output_shape;
+                let output_total: usize = output_shape.iter().product();
+                let inner: usize = input_shape[axis + 1..].iter().product();
+                let outer: usize = input_shape[..axis].iter().product();
+
+                let mut values = vec![0i64; output_total];
+                let mut indices = vec![0i64; output_total];
+                for o in 0..outer {
+                    for inr in 0..inner {
+                        let mut lane: Vec<(i64, usize)> = (0..axis_dim)
+                            .map(|i| {
+                                let idx = (o * axis_dim + i) * inner + inr;
+                                (input_data[idx], i)
+                            })
+                            .collect();
+
+                        lane.sort_unstable_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+
+                        for i in 0..k {
+                            let out_idx = (o * k + i) * inner + inr;
+                            values[out_idx] = lane[i].0;
+                            indices[out_idx] = lane[i].1 as i64;
+                        }
+                    }
+                }
+
+                let padded_values = pad_to_size(&values, next_power_of_two(output_total));
+                let values_shred = format!("{}_out", layer.name);
+                shreds.insert(values_shred, padded_values.clone());
+
+                if let Some(values_out) = layer.outputs.first() {
+                    tensors.insert(values_out.clone(), padded_values.clone());
+                    let new_layout = layout_from_output_shape_runtime(&layer.output_shape, None);
+                    match new_layout {
+                        Some(layout) => {
+                            tensor_layouts.insert(values_out.clone(), layout);
+                        }
+                        None => {
+                            tensor_layouts.remove(values_out);
+                        }
+                    }
+                }
+
+                if let Some(indices_out) = layer.outputs.get(1) {
+                    let padded_indices = pad_to_size(&indices, next_power_of_two(output_total));
+                    let indices_shred = format!("{}_indices_out", layer.name);
+                    shreds.insert(indices_shred, padded_indices.clone());
+                    tensors.insert(indices_out.clone(), padded_indices);
+                    // Indices are integer positions, not spatial values; clear layout.
+                    tensor_layouts.remove(indices_out);
+                }
+            }
+            OpType::LayerNormalization => {
+                let x_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("LayerNorm {} has no input", layer.name))?;
+                let gamma_name = layer.inputs.get(1).ok_or_else(|| {
+                    anyhow::anyhow!("LayerNorm {} missing gamma input", layer.name)
+                })?;
+
+                let x_data = tensors
+                    .get(x_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("LayerNorm {} input '{}' not computed", layer.name, x_name)
+                    })?
+                    .clone();
+
+                let gamma_td = layer.weights.get(gamma_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "LayerNorm {} gamma '{}' not found in weights",
+                        layer.name,
+                        gamma_name
+                    )
+                })?;
+                let gamma = gamma_td.as_i64_vec();
+
+                let beta: Vec<i64> = if let Some(beta_name) = layer.inputs.get(2) {
+                    let beta_td = layer.weights.get(beta_name).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "LayerNorm {} beta '{}' not found in weights",
+                            layer.name,
+                            beta_name
+                        )
+                    })?;
+                    beta_td.as_i64_vec()
+                } else {
+                    vec![0i64; gamma.len()]
+                };
+
+                let raw_axis = layer.get_int_attr("axis").unwrap_or(-1);
+                let output_shape = &layer.output_shape;
+                let rank = output_shape.len();
+                let axis = if raw_axis < 0 {
+                    let a = rank as i64 + raw_axis;
+                    anyhow::ensure!(
+                        a >= 0,
+                        "LayerNorm {}: axis {} out of range for rank {}",
+                        layer.name,
+                        raw_axis,
+                        rank
+                    );
+                    a as usize
+                } else {
+                    let a = raw_axis as usize;
+                    anyhow::ensure!(
+                        a < rank,
+                        "LayerNorm {}: axis {} out of range for rank {}",
+                        layer.name,
+                        raw_axis,
+                        rank
+                    );
+                    a
+                };
+
+                let outer_size: usize = output_shape[..axis].iter().product();
+                let lane_size: usize = output_shape[axis..].iter().product();
+                let total_size = outer_size * lane_size;
+
+                anyhow::ensure!(
+                    gamma.len() == lane_size,
+                    "LayerNorm {}: gamma len {} != lane_size {}",
+                    layer.name,
+                    gamma.len(),
+                    lane_size
+                );
+                anyhow::ensure!(
+                    beta.len() == lane_size,
+                    "LayerNorm {}: beta len {} != lane_size {}",
+                    layer.name,
+                    beta.len(),
+                    lane_size
+                );
+
+                let scale_f64 = alpha as f64;
+                let scale_sq = scale_f64 * scale_f64;
+                const LN_EPSILON: f64 = 1e-5;
+
+                let gamma_f64: Vec<f64> = gamma.iter().map(|&g| g as f64 / scale_f64).collect();
+                let beta_f64: Vec<f64> = beta.iter().map(|&b| b as f64 / scale_sq).collect();
+
+                let mut result: Vec<i64> = Vec::with_capacity(total_size);
+
+                for outer_i in 0..outer_size {
+                    let start = outer_i * lane_size;
+                    let lane: Vec<f64> = x_data[start..start + lane_size]
+                        .iter()
+                        .map(|&v| v as f64 / scale_f64)
+                        .collect();
+
+                    let mean: f64 = lane.iter().sum::<f64>() / lane_size as f64;
+                    let var: f64 =
+                        lane.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / lane_size as f64;
+                    let inv_std = 1.0 / (var + LN_EPSILON).sqrt();
+
+                    for i in 0..lane_size {
+                        let normalized = (lane[i] - mean) * inv_std;
+                        let y_f = normalized * gamma_f64[i] + beta_f64[i];
+                        let y_q = (y_f * scale_f64).round() as i64;
+                        result.push(y_q);
+                    }
+                }
+
+                let padded = pad_to_size(&result, next_power_of_two(total_size));
+                let ln_out_name = format!("{}_out", layer.name);
+                shreds.insert(ln_out_name, padded.clone());
+
+                let layout = tensor_layouts.get(x_name).cloned();
+
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                    if let Some(ref layout) = layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
+                }
+            }
+            OpType::Gather => {
+                let data_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("Gather {} has no data input", layer.name))?;
+                let indices_name = layer
+                    .inputs
+                    .get(1)
+                    .ok_or_else(|| anyhow::anyhow!("Gather {} has no indices input", layer.name))?;
+
+                if let Some(SpatialInfo::HWC { stride_c, c, .. }) =
+                    tensor_layouts.get(data_name.as_str())
+                {
+                    if stride_c != c {
+                        anyhow::bail!(
+                            "Gather {} data '{}' is in padded HWC layout \
+                            (stride_c={} > c={}); the fast contiguous slice path \
+                            is incorrect for padded storage. Use a CHW-layout input.",
+                            layer.name,
+                            data_name,
+                            stride_c,
+                            c
+                        );
+                    }
+                }
+                let data_flat = tensors
+                    .get(data_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Gather {} data '{}' not computed", layer.name, data_name)
+                    })?
+                    .clone();
+
+                let indices_td = layer.weights.get(indices_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Gather {} indices '{}' not found in weights; \
+                            only constant (initializer) indices are supported",
+                        layer.name,
+                        indices_name
+                    )
+                })?;
+                let indices = indices_td.as_i64_vec();
+
+                let axis_raw = layer.get_int_attr("axis").unwrap_or(0);
+                // Normalize negative axis the same way build_circuit does.
+                let axis = if axis_raw < 0 {
+                    let output_rank = layer.output_shape.len();
+                    let indices_rank = indices_td.shape().len();
+                    let data_rank = (output_rank + 1).saturating_sub(indices_rank);
+                    axis_raw + data_rank as i64
+                } else {
+                    axis_raw
+                };
+                anyhow::ensure!(
+                    axis == 0,
+                    "Gather {}: only axis=0 is supported in the Remainder backend \
+                    (got axis={}, normalized={})",
+                    layer.name,
+                    axis_raw,
+                    axis
+                );
+
+                let output_total: usize = layer.output_shape.iter().product();
+                let slice_size = if indices.is_empty() {
+                    0
+                } else {
+                    output_total / indices.len()
+                };
+
+                let mut result: Vec<i64> = Vec::with_capacity(output_total);
+                for &idx in &indices {
+                    let idx = usize::try_from(idx).map_err(|_| {
+                        anyhow::anyhow!(
+                            "Gather {}: negative index {} is not supported",
+                            layer.name,
+                            idx
+                        )
+                    })?;
+                    let start = idx * slice_size;
+                    let end = start + slice_size;
+                    anyhow::ensure!(
+                        end <= data_flat.len(),
+                        "Gather {}: index {} out of bounds (data size {})",
+                        layer.name,
+                        idx,
+                        data_flat.len()
+                    );
+                    result.extend_from_slice(&data_flat[start..end]);
+                }
+
+                let padded = pad_to_size(&result, next_power_of_two(output_total));
+                let gather_out_name = format!("{}_out", layer.name);
+                shreds.insert(gather_out_name, padded.clone());
+
+                let input_layout = tensor_layouts.get(data_name).cloned();
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                    if let Some(ref layout) = input_layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
+                }
+            }
+            OpType::Resize => {
+                let input_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("Resize {} has no input", layer.name))?;
+                if let Some(SpatialInfo::HWC { .. }) = tensor_layouts.get(input_name.as_str()) {
+                    anyhow::bail!(
+                        "Resize {} input '{}' is in HWC layout, which is not supported \
+                        by the Remainder witness generator for Resize",
+                        layer.name,
+                        input_name
+                    );
+                }
+                let input_data = tensors
+                    .get(input_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Resize {} input '{}' not computed", layer.name, input_name)
+                    })?
+                    .clone();
+
+                let output_shape = &layer.output_shape;
+                let output_total: usize = output_shape.iter().product();
+
+                let input_shape = tensor_shape_for(input_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Resize {}: unable to resolve producer/input shape for '{}'",
+                        layer.name,
+                        input_name
+                    )
+                })?;
+                anyhow::ensure!(
+                    input_shape.len() == output_shape.len(),
+                    "Resize {}: input shape rank {} does not match output rank {} (input_shape={:?}, output_shape={:?})",
+                    layer.name,
+                    input_shape.len(),
+                    output_shape.len(),
+                    input_shape,
+                    output_shape
+                );
+
+                if let Some(sizes_name) = layer.inputs.get(3).filter(|n| !n.is_empty()) {
+                    let sizes_td = layer.weights.get(sizes_name).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Resize {}: sizes tensor '{}' not found in layer weights",
+                            layer.name,
+                            sizes_name
+                        )
+                    })?;
+                    let sizes = sizes_td.as_i64_vec();
+                    anyhow::ensure!(
+                        sizes.len() == output_shape.len(),
+                        "Resize {}: sizes tensor '{}' length {} != output rank {}",
+                        layer.name,
+                        sizes_name,
+                        sizes.len(),
+                        output_shape.len()
+                    );
+                    for (i, (&sz, &out_d)) in sizes.iter().zip(output_shape.iter()).enumerate() {
+                        anyhow::ensure!(
+                            sz >= 0,
+                            "Resize {}: sizes tensor '{}' has negative dimension {} at axis {}",
+                            layer.name,
+                            sizes_name,
+                            sz,
+                            i
+                        );
+                        anyhow::ensure!(
+                            sz as usize == out_d,
+                            "Resize {}: sizes tensor '{}' axis {} mismatch: {} vs output {}",
+                            layer.name,
+                            sizes_name,
+                            i,
+                            sz,
+                            out_d
+                        );
+                    }
+                } else {
+                    let scales_name = layer.inputs.get(2).filter(|n| !n.is_empty()).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Resize {}: missing scales input (input[2]); cannot validate resize parameters",
+                            layer.name
+                        )
+                    })?;
+                    let scales_td = layer.weights.get(scales_name).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Resize {}: scales tensor '{}' not found in layer weights",
+                            layer.name,
+                            scales_name
+                        )
+                    })?;
+                    let scales = &scales_td.float_data;
+                    anyhow::ensure!(
+                        scales.len() == output_shape.len(),
+                        "Resize {}: scales tensor '{}' length {} != output rank {}",
+                        layer.name,
+                        scales_name,
+                        scales.len(),
+                        output_shape.len()
+                    );
+                }
+
+                let mode = layer.get_string_attr("mode").unwrap_or("nearest");
+                let coord_mode = layer
+                    .get_string_attr("coordinate_transformation_mode")
+                    .unwrap_or("half_pixel");
+                let nearest_mode = layer
+                    .get_string_attr("nearest_mode")
+                    .unwrap_or("round_prefer_floor");
+
+                let result: Vec<i64> = if mode == "nearest" {
+                    (0..output_total)
+                        .map(|out_flat| {
+                            let out_coords = unravel_index_witness(out_flat, output_shape);
+                            let mut in_coords = vec![0usize; output_shape.len()];
+                            for d in 0..output_shape.len() {
+                                let x = coord_to_input(
+                                    out_coords[d],
+                                    input_shape[d],
+                                    output_shape[d],
+                                    coord_mode,
+                                );
+                                in_coords[d] = nearest_round(x, input_shape[d], nearest_mode);
+                            }
+                            let in_flat = ravel_index_witness(&in_coords, &input_shape);
+                            input_data.get(in_flat).copied().unwrap_or(0)
+                        })
+                        .collect()
+                } else {
+                    // Linear / bilinear interpolation.
+                    let alpha = model.scale_config.alpha;
+                    let resize_dims: Vec<usize> = (0..output_shape.len())
+                        .filter(|&d| input_shape[d] != output_shape[d])
+                        .collect();
+                    (0..output_total)
+                        .map(|out_flat| {
+                            let out_coords = unravel_index_witness(out_flat, output_shape);
+                            let dim_info: Vec<(usize, usize, f64, f64)> = resize_dims
+                                .iter()
+                                .map(|&d| {
+                                    let x = coord_to_input(
+                                        out_coords[d],
+                                        input_shape[d],
+                                        output_shape[d],
+                                        coord_mode,
+                                    );
+                                    interp_corners(x, input_shape[d])
+                                })
+                                .collect();
+
+                            let n_corners = 1usize << resize_dims.len();
+                            let mut sum_i128: i128 = 0;
+                            for mask in 0..n_corners {
+                                let mut in_coords = out_coords.clone();
+                                let mut w = 1.0f64;
+                                for (i, &d) in resize_dims.iter().enumerate() {
+                                    let (f_idx, c_idx, w_f, w_c) = dim_info[i];
+                                    if mask & (1 << i) == 0 {
+                                        in_coords[d] = f_idx;
+                                        w *= w_f;
+                                    } else {
+                                        in_coords[d] = c_idx;
+                                        w *= w_c;
+                                    }
+                                }
+                                let in_flat = ravel_index_witness(&in_coords, &input_shape);
+                                let x_q = input_data.get(in_flat).copied().unwrap_or(0);
+                                let w_q = (w * alpha as f64).round() as i128;
+                                sum_i128 += x_q as i128 * w_q;
+                            }
+                            let half = alpha as i128 / 2;
+                            let adj = if sum_i128 >= 0 { half } else { -half };
+                            let y = (sum_i128 + adj) / alpha as i128;
+                            y.clamp(i64::MIN as i128, i64::MAX as i128) as i64
+                        })
+                        .collect()
+                };
+
+                let padded = pad_to_size(&result, next_power_of_two(output_total));
+                let resize_out_name = format!("{}_out", layer.name);
+                shreds.insert(resize_out_name, padded.clone());
+
+                let input_layout = tensor_layouts.get(input_name);
+                let output_layout = layout_from_output_shape_runtime(output_shape, input_layout);
+
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                    if let Some(ref layout) = output_layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
+                }
+            }
+            OpType::GridSample => {
+                // Inputs: X [N, C, H_in, W_in], grid [N, H_out, W_out, 2] (constant).
+                let x_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("GridSample {} has no X input", layer.name))?;
+                if let Some(SpatialInfo::HWC { .. }) = tensor_layouts.get(x_name.as_str()) {
+                    anyhow::bail!(
+                        "GridSample {} input '{}' is in HWC layout, which is not supported \
+                        by the Remainder witness generator for GridSample",
+                        layer.name,
+                        x_name
+                    );
+                }
+                let x_data = tensors
+                    .get(x_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("GridSample {} input '{}' not computed", layer.name, x_name)
+                    })?
+                    .clone();
+
+                let grid_name = layer.inputs.get(1).ok_or_else(|| {
+                    anyhow::anyhow!("GridSample {} has no grid input", layer.name)
+                })?;
+                let grid_td = layer.weights.get(grid_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "GridSample {}: grid '{}' must be a compile-time constant (initializer)",
+                        layer.name,
+                        grid_name
+                    )
+                })?;
+                // Grid is quantised at α¹; int_data holds round(grid_f * alpha).
+                let grid_flat = grid_td.as_i64_vec();
+
+                let output_shape = &layer.output_shape;
+                anyhow::ensure!(
+                    output_shape.len() == 4,
+                    "GridSample {} output_shape must be 4-D, got {:?}",
+                    layer.name,
+                    output_shape
+                );
+                let [n, c, h_out, w_out] = [
+                    output_shape[0],
+                    output_shape[1],
+                    output_shape[2],
+                    output_shape[3],
+                ];
+                let output_total = n * c * h_out * w_out;
+
+                let alpha = model.scale_config.alpha as f64;
+
+                let mode = layer.get_string_attr("mode").unwrap_or("bilinear");
+                let padding_mode = layer.get_string_attr("padding_mode").unwrap_or("zeros");
+                let align_corners = layer.get_int_attr("align_corners").unwrap_or(0) != 0;
+
+                let x_shape = tensor_shape_for(x_name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "GridSample {}: unable to resolve shape for input '{}'",
+                        layer.name,
+                        x_name
+                    )
+                })?;
+                anyhow::ensure!(
+                    x_shape.len() == 4,
+                    "GridSample {}: input '{}' shape must be 4-D [N,C,H,W], got {:?}",
+                    layer.name,
+                    x_name,
+                    x_shape
+                );
+                let n_in = x_shape[0];
+                let c_in = x_shape[1];
+                let h_in = x_shape[2];
+                let w_in = x_shape[3];
+                anyhow::ensure!(
+                    n_in == n && c_in == c,
+                    "GridSample {}: output shape {:?} is inconsistent with input shape {:?}",
+                    layer.name,
+                    output_shape,
+                    x_shape
+                );
+
+                let grid_dims = grid_td.shape();
+                anyhow::ensure!(
+                    grid_dims.len() == 4
+                        && grid_dims[0] == n
+                        && grid_dims[1] == h_out
+                        && grid_dims[2] == w_out
+                        && grid_dims[3] == 2,
+                    "GridSample {}: grid must be [{}, {}, {}, 2], got {:?}",
+                    layer.name,
+                    n,
+                    h_out,
+                    w_out,
+                    grid_dims
+                );
+
+                let result: Vec<i64> = if mode == "nearest" {
+                    (0..output_total)
+                        .map(|out_flat| {
+                            // Unravel (n_i, c_i, h_i, w_i) from out_flat.
+                            let w_i = out_flat % w_out;
+                            let h_i = (out_flat / w_out) % h_out;
+                            let c_i = (out_flat / (w_out * h_out)) % c;
+                            let n_i = out_flat / (w_out * h_out * c);
+
+                            let sp = n_i * h_out * w_out + h_i * w_out + w_i;
+                            let x_norm = grid_flat[sp * 2] as f64 / alpha;
+                            let y_norm = grid_flat[sp * 2 + 1] as f64 / alpha;
+
+                            let x_cont = gs_unnormalize(x_norm, w_in, align_corners);
+                            let y_cont = gs_unnormalize(y_norm, h_in, align_corners);
+
+                            let (y_px, x_px) = match (
+                                gs_apply_padding_nearest(y_cont, h_in, padding_mode, align_corners),
+                                gs_apply_padding_nearest(x_cont, w_in, padding_mode, align_corners),
+                            ) {
+                                (Some(y), Some(x)) => (y, x),
+                                _ => return 0, // zeros padding, OOB
+                            };
+
+                            let in_flat =
+                                n_i * c * h_in * w_in + c_i * h_in * w_in + y_px * w_in + x_px;
+                            x_data.get(in_flat).copied().unwrap_or(0)
+                        })
+                        .collect()
+                } else {
+                    // Bilinear interpolation.
+                    let alpha_i = model.scale_config.alpha;
+                    (0..output_total)
+                        .map(|out_flat| {
+                            let w_i = out_flat % w_out;
+                            let h_i = (out_flat / w_out) % h_out;
+                            let c_i = (out_flat / (w_out * h_out)) % c;
+                            let n_i = out_flat / (w_out * h_out * c);
+
+                            let sp = n_i * h_out * w_out + h_i * w_out + w_i;
+                            let x_norm = grid_flat[sp * 2] as f64 / alpha;
+                            let y_norm = grid_flat[sp * 2 + 1] as f64 / alpha;
+
+                            let x_cont = gs_unnormalize(x_norm, w_in, align_corners);
+                            let y_cont = gs_unnormalize(y_norm, h_in, align_corners);
+
+                            let (x_adj, y_adj) = if padding_mode == "reflection" {
+                                (
+                                    gs_reflect(x_cont, w_in, align_corners),
+                                    gs_reflect(y_cont, h_in, align_corners),
+                                )
+                            } else {
+                                (x_cont, y_cont)
+                            };
+
+                            let (h_fl, h_ce, wh_fl, wh_ce) = interp_corners(y_adj, h_in);
+                            let (w_fl, w_ce, ww_fl, ww_ce) = interp_corners(x_adj, w_in);
+
+                            // 4 corners: (h_fl,w_fl),(h_fl,w_ce),(h_ce,w_fl),(h_ce,w_ce)
+                            let corners = [
+                                (h_fl, w_fl, wh_fl * ww_fl),
+                                (h_fl, w_ce, wh_fl * ww_ce),
+                                (h_ce, w_fl, wh_ce * ww_fl),
+                                (h_ce, w_ce, wh_ce * ww_ce),
+                            ];
+
+                            let mut sum_i128: i128 = 0;
+                            for (ch, cw, wf) in corners {
+                                // Check OOB for zeros padding.
+                                let valid = padding_mode != "zeros"
+                                    || (y_adj >= -0.5
+                                        && y_adj <= h_in as f64 - 0.5
+                                        && x_adj >= -0.5
+                                        && x_adj <= w_in as f64 - 0.5
+                                        && ch < h_in
+                                        && cw < w_in);
+                                if !valid {
+                                    continue;
+                                }
+                                let in_flat =
+                                    n_i * c * h_in * w_in + c_i * h_in * w_in + ch * w_in + cw;
+                                let x_q = x_data.get(in_flat).copied().unwrap_or(0);
+                                let w_q = (wf * alpha_i as f64).round() as i128;
+                                sum_i128 += x_q as i128 * w_q;
+                            }
+                            let half = alpha_i as i128 / 2;
+                            let adj = if sum_i128 >= 0 { half } else { -half };
+                            ((sum_i128 + adj) / alpha_i as i128)
+                                .clamp(i64::MIN as i128, i64::MAX as i128)
+                                as i64
+                        })
+                        .collect()
+                };
+
+                let padded = pad_to_size(&result, next_power_of_two(output_total));
+                let gridsample_out_name = format!("{}_out", layer.name);
+                shreds.insert(gridsample_out_name, padded.clone());
+
+                let input_layout = tensor_layouts.get(x_name);
+                let output_layout = layout_from_output_shape_runtime(output_shape, input_layout);
+
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                    if let Some(ref layout) = output_layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
+                }
+            }
+            OpType::Transpose => {
+                // Transpose reorders elements according to the `perm` attribute.
+                // Like Resize (nearest) this is a structural operation computed
+                // by the prover and supplied as a committed shred.
+                let input_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("Transpose {} has no input", layer.name))?;
+                if let Some(SpatialInfo::HWC { .. }) = tensor_layouts.get(input_name.as_str()) {
+                    anyhow::bail!(
+                        "Transpose {} input '{}' is in HWC layout, which is not supported \
+                        by the Remainder witness generator for Transpose",
+                        layer.name,
+                        input_name
+                    );
+                }
+                let input_data = tensors
+                    .get(input_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Transpose {} input '{}' not computed",
+                            layer.name,
+                            input_name
+                        )
+                    })?
+                    .clone();
+
+                let output_shape = &layer.output_shape;
+                let output_total: usize = output_shape.iter().product();
+
+                // Recover input shape from the output shape + perm.
+                // perm[i] = axis of the input that maps to output axis i.
+                let rank = output_shape.len();
+                let perm: Vec<usize> = if let Some(raw) = layer.get_ints_attr("perm") {
+                    raw.iter()
+                        .map(|&a| if a < 0 { rank as i64 + a } else { a } as usize)
+                        .collect()
+                } else {
+                    (0..rank).rev().collect()
+                };
+
+                // Reconstruct input_shape: input_shape[perm[i]] = output_shape[i]
+                let mut input_shape = vec![0usize; rank];
+                for (i, &p) in perm.iter().enumerate() {
+                    input_shape[p] = output_shape[i];
+                }
+
+                // Build inverse permutation: inv_perm[p] = i  (output axis i came from input axis p).
+                let mut inv_perm = vec![0usize; rank];
+                for (i, &p) in perm.iter().enumerate() {
+                    inv_perm[p] = i;
+                }
+
+                let result: Vec<i64> = (0..output_total)
+                    .map(|out_flat| {
+                        let out_coords = unravel_index_witness(out_flat, output_shape);
+                        // in_coords[p] = out_coords[inv_perm[p]]
+                        let in_coords: Vec<usize> =
+                            (0..rank).map(|p| out_coords[inv_perm[p]]).collect();
+                        let in_flat = ravel_index_witness(&in_coords, &input_shape);
+                        input_data.get(in_flat).copied().unwrap_or(0)
+                    })
+                    .collect();
+
+                let padded = pad_to_size(&result, next_power_of_two(output_total));
+                let transpose_out_name = format!("{}_out", layer.name);
+                shreds.insert(transpose_out_name, padded.clone());
+
+                let input_layout = tensor_layouts.get(input_name);
+                let output_layout = transpose_layout_runtime(input_layout, &perm, output_shape);
+
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                    if let Some(ref layout) = output_layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    } else {
+                        tensor_layouts.remove(out);
+                    }
+                }
+            }
+            OpType::Slice => {
+                // Slice extracts a sub-tensor — purely structural, committed shred.
+                let input_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("Slice {} has no data input", layer.name))?;
+                if let Some(SpatialInfo::HWC { .. }) = tensor_layouts.get(input_name.as_str()) {
+                    anyhow::bail!(
+                        "Slice {} input '{}' is in HWC layout, which is not supported \
+                        by the Remainder witness generator for Slice",
+                        layer.name,
+                        input_name
+                    );
+                }
+                let input_data = tensors
+                    .get(input_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Slice {} input '{}' not computed", layer.name, input_name)
+                    })?
+                    .clone();
+
+                // Resolve input shape from the producing layer.
+                let input_shape: Vec<usize> = model
+                    .graph
+                    .layers
+                    .iter()
+                    .find(|l| l.outputs.first().map(String::as_str) == Some(input_name.as_str()))
+                    .map(|l| l.output_shape.clone())
+                    .or_else(|| model.graph.input_shapes.get(input_name).cloned())
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Slice {} cannot determine input shape for '{}'",
+                            layer.name,
+                            input_name
+                        )
+                    })?;
+
+                let output_shape = &layer.output_shape;
+                let output_total: usize = output_shape.iter().product();
+                let rank = input_shape.len();
+
+                // Read starts (required, input[1]).
+                let starts_name = layer
+                    .inputs
+                    .get(1)
+                    .ok_or_else(|| anyhow::anyhow!("Slice {} missing starts input", layer.name))?;
+                let starts = layer
+                    .weights
+                    .get(starts_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Slice {} starts '{}' not found in weights",
+                            layer.name,
+                            starts_name
+                        )
+                    })?
+                    .as_i64_vec();
+
+                // Read ends (required, input[2]).
+                let ends_name = layer
+                    .inputs
+                    .get(2)
+                    .ok_or_else(|| anyhow::anyhow!("Slice {} missing ends input", layer.name))?;
+                let _ends = layer
+                    .weights
+                    .get(ends_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Slice {} ends '{}' not found in weights",
+                            layer.name,
+                            ends_name
+                        )
+                    })?
+                    .as_i64_vec();
+
+                // Read axes (optional, input[3]).
+                let axes: Vec<i64> = layer
+                    .inputs
+                    .get(3)
+                    .filter(|n| !n.is_empty())
+                    .and_then(|n| layer.weights.get(n))
+                    .map(|td| td.as_i64_vec())
+                    .unwrap_or_else(|| (0..starts.len() as i64).collect());
+
+                // Read steps (optional, input[4]).
+                let steps: Vec<i64> = layer
+                    .inputs
+                    .get(4)
+                    .filter(|n| !n.is_empty())
+                    .and_then(|n| layer.weights.get(n))
+                    .map(|td| td.as_i64_vec())
+                    .unwrap_or_else(|| vec![1i64; starts.len()]);
+
+                // Build per-axis start/step.
+                let mut axis_start = vec![0usize; rank];
+                let mut axis_step = vec![1usize; rank];
+                for (i, &ax_raw) in axes.iter().enumerate() {
+                    let ax = if ax_raw < 0 {
+                        (rank as i64 + ax_raw) as usize
+                    } else {
+                        ax_raw as usize
+                    };
+                    let dim = input_shape[ax] as i64;
+                    let s = starts.get(i).copied().unwrap_or(0);
+                    let s = if s < 0 { dim + s } else { s };
+                    axis_start[ax] = s.clamp(0, dim) as usize;
+                    let step = steps.get(i).copied().unwrap_or(1);
+                    anyhow::ensure!(
+                        step > 0,
+                        "Slice {}: unsupported non-positive step {} for axis {} (starts={:?}, steps={:?})",
+                        layer.name,
+                        step,
+                        ax,
+                        starts,
+                        steps
+                    );
+                    axis_step[ax] = step as usize;
+                }
+
+                let result: Vec<i64> = (0..output_total)
+                    .map(|out_flat| {
+                        let out_coords = unravel_index_witness(out_flat, output_shape);
+                        let in_coords: Vec<usize> = (0..rank)
+                            .map(|ax| axis_start[ax] + out_coords[ax] * axis_step[ax])
+                            .collect();
+                        let in_flat = ravel_index_witness(&in_coords, &input_shape);
+                        input_data.get(in_flat).copied().unwrap_or(0)
+                    })
+                    .collect();
+
+                let padded = pad_to_size(&result, next_power_of_two(output_total));
+                let slice_out_name = format!("{}_out", layer.name);
+                shreds.insert(slice_out_name, padded.clone());
+
+                let input_layout = tensor_layouts.get(input_name);
+                let output_layout = layout_from_output_shape_runtime(output_shape, input_layout);
+
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                    if let Some(ref layout) = output_layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
+                }
+            }
+            OpType::Concat => {
+                // Concat joins inputs along axis — purely structural, committed shred.
+                let output_shape = &layer.output_shape;
+                let output_total: usize = output_shape.iter().product();
+                let rank = output_shape.len();
+
+                let raw_axis = layer.get_int_attr("axis").unwrap_or(0);
+                let axis = if raw_axis < 0 {
+                    (rank as i64 + raw_axis) as usize
+                } else {
+                    raw_axis as usize
+                };
+
+                // Collect input data and shapes.
+                // Each input's actual shape is resolved by finding the producing layer
+                // in the graph (compile.rs stores the first-output shape in layer.output_shape).
+                let mut input_datas: Vec<Vec<i64>> = Vec::new();
+                let mut input_shapes: Vec<Vec<usize>> = Vec::new();
+
+                for input_name in &layer.inputs {
+                    if let Some(SpatialInfo::HWC { .. }) = tensor_layouts.get(input_name.as_str()) {
+                        anyhow::bail!(
+                            "Concat {} input '{}' is in HWC layout, which is not supported \
+                            by the Remainder witness generator for Concat",
+                            layer.name,
+                            input_name
+                        );
+                    }
+                    let data = tensors
+                        .get(input_name)
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "Concat {} input '{}' not computed",
+                                layer.name,
+                                input_name
+                            )
+                        })?
+                        .clone();
+
+                    // Resolve actual shape from the producing layer's recorded output_shape.
+                    let in_shape = model
+                        .graph
+                        .layers
+                        .iter()
+                        .find(|l| {
+                            l.outputs.first().map(String::as_str) == Some(input_name.as_str())
+                        })
+                        .map(|l| l.output_shape.clone())
+                        .or_else(|| model.graph.input_shapes.get(input_name).cloned())
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "Concat {}: could not resolve shape for input '{}' on axis {}",
+                                layer.name,
+                                input_name,
+                                axis
+                            )
+                        })?;
+
+                    input_shapes.push(in_shape);
+                    input_datas.push(data);
+                }
+
+                // Build cumulative axis offsets.
+                let mut axis_offsets = vec![0usize; input_shapes.len() + 1];
+                for (i, s) in input_shapes.iter().enumerate() {
+                    axis_offsets[i + 1] = axis_offsets[i] + s.get(axis).copied().unwrap_or(0);
+                }
+
+                let result: Vec<i64> = (0..output_total)
+                    .map(|out_flat| {
+                        let out_coords = unravel_index_witness(out_flat, output_shape);
+                        let ax_coord = out_coords[axis];
+                        let input_idx = axis_offsets
+                            .partition_point(|&o| o <= ax_coord)
+                            .saturating_sub(1)
+                            .min(input_datas.len() - 1);
+                        let local_ax = ax_coord - axis_offsets[input_idx];
+                        let mut in_coords = out_coords.clone();
+                        in_coords[axis] = local_ax;
+                        let in_flat = ravel_index_witness(&in_coords, &input_shapes[input_idx]);
+                        input_datas[input_idx].get(in_flat).copied().unwrap_or(0)
+                    })
+                    .collect();
+
+                let padded = pad_to_size(&result, next_power_of_two(output_total));
+                let concat_out_name = format!("{}_out", layer.name);
+                shreds.insert(concat_out_name, padded.clone());
+
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                    tensor_layouts.remove(out);
+                }
+            }
+            OpType::Shape => {
+                let input_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("Shape {} has no input", layer.name))?;
+                let input_data = tensors.get(input_name).ok_or_else(|| {
+                    anyhow::anyhow!("Shape {}: input '{}' not computed", layer.name, input_name)
+                })?;
+                // Resolve the actual input shape from the producing layer.
+                let actual_input_shape = model
+                    .graph
+                    .layers
+                    .iter()
+                    .find(|l| l.outputs.first().map(String::as_str) == Some(input_name.as_str()))
+                    .map(|l| l.output_shape.clone())
+                    .or_else(|| model.graph.input_shapes.get(input_name).cloned())
+                    .unwrap_or_else(|| vec![input_data.len()]);
+                let rank = actual_input_shape.len() as i64;
+                let start_raw = layer.get_int_attr("start").unwrap_or(0);
+                let end_raw = layer.get_int_attr("end").unwrap_or(rank);
+                let start = if start_raw < 0 {
+                    (rank + start_raw).max(0) as usize
+                } else {
+                    (start_raw as usize).min(actual_input_shape.len())
+                };
+                let end = if end_raw < 0 {
+                    (rank + end_raw).max(0) as usize
+                } else {
+                    (end_raw as usize).min(actual_input_shape.len())
+                };
+                let dims: Vec<i64> = if end > start {
+                    actual_input_shape[start..end]
+                        .iter()
+                        .map(|&d| d as i64)
+                        .collect()
+                } else {
+                    vec![]
+                };
+                let output_total: usize = layer.output_shape.iter().product();
+                let padded = pad_to_size(&dims, next_power_of_two(output_total.max(1)));
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                    // Shape output is integer metadata; clear spatial layout.
+                    tensor_layouts.remove(out);
+                }
+            }
+            OpType::Log => {
+                let input_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("Log {} has no input", layer.name))?;
+                let input_data = tensors
+                    .get(input_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Log {}: input '{}' not computed", layer.name, input_name)
+                    })?
+                    .clone();
+                let scale_f64 = model.scale_config.alpha as f64;
+                let result: Vec<i64> = input_data
+                    .iter()
+                    .map(|&x| {
+                        let x_real = x as f64 / scale_f64;
+                        if x_real > 0.0 {
+                            let y_real = x_real.ln();
+                            let y_scaled = y_real * scale_f64;
+                            if y_scaled >= i64::MAX as f64 {
+                                i64::MAX
+                            } else if y_scaled <= i64::MIN as f64 {
+                                i64::MIN
+                            } else {
+                                y_scaled.round() as i64
+                            }
+                        } else {
+                            i64::MIN
+                        }
+                    })
+                    .collect();
+                let output_total: usize = layer.output_shape.iter().product();
+                let padded = pad_to_size(&result, next_power_of_two(output_total.max(1)));
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                    if let Some(layout) = tensor_layouts.get(input_name).cloned() {
+                        tensor_layouts.insert(out.clone(), layout);
+                    }
+                }
+            }
+            OpType::Expand => {
+                let input_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("Expand {} has no input", layer.name))?;
+                let input_data = tensors
+                    .get(input_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Expand {}: input '{}' not computed",
+                            layer.name,
+                            input_name
+                        )
+                    })?
+                    .clone();
+                // Resolve input shape from the producing layer.
+                let in_shape = model
+                    .graph
+                    .layers
+                    .iter()
+                    .find(|l| l.outputs.first().map(String::as_str) == Some(input_name.as_str()))
+                    .map(|l| l.output_shape.clone())
+                    .or_else(|| model.graph.input_shapes.get(input_name).cloned())
+                    .unwrap_or_else(|| vec![input_data.len()]);
+                let out_shape = &layer.output_shape;
+                let out_total: usize = out_shape.iter().product();
+                let rank = out_shape.len();
+                let in_rank = in_shape.len();
+                let pad = rank.saturating_sub(in_rank);
+                let padded_in_shape: Vec<usize> = std::iter::repeat_n(1, pad)
+                    .take(pad)
+                    .chain(in_shape.iter().copied())
+                    .collect();
+                let mut result: Vec<i64> = Vec::with_capacity(out_total);
+                for out_flat in 0..out_total {
+                    let mut tmp = out_flat;
+                    let mut out_coords = vec![0usize; rank];
+                    for d in (0..rank).rev() {
+                        out_coords[d] = tmp % out_shape[d];
+                        tmp /= out_shape[d];
+                    }
+                    let in_coords: Vec<usize> = out_coords
+                        .iter()
+                        .enumerate()
+                        .map(|(i, &oc)| if padded_in_shape[i] == 1 { 0 } else { oc })
+                        .collect();
+                    let mut in_flat = 0usize;
+                    let mut stride = 1usize;
+                    for d in (0..rank).rev() {
+                        in_flat += in_coords[d] * stride;
+                        stride *= padded_in_shape[d];
+                    }
+                    result.push(if in_flat < input_data.len() {
+                        input_data[in_flat]
+                    } else {
+                        0
+                    });
+                }
+                let padded_out = pad_to_size(&result, next_power_of_two(out_total.max(1)));
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded_out.clone());
+                    if let Some(layout) = tensor_layouts.get(input_name).cloned() {
+                        tensor_layouts.insert(out.clone(), layout);
+                    }
+                }
+            }
+            OpType::ReduceMean => {
+                let input_name = layer
+                    .inputs
+                    .first()
+                    .ok_or_else(|| anyhow::anyhow!("ReduceMean {} has no input", layer.name))?;
+                let input_data = tensors
+                    .get(input_name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "ReduceMean {}: input '{}' not computed",
+                            layer.name,
+                            input_name
+                        )
+                    })?
+                    .clone();
+                let in_shape = model
+                    .graph
+                    .layers
+                    .iter()
+                    .find(|l| l.outputs.first().map(String::as_str) == Some(input_name.as_str()))
+                    .map(|l| l.output_shape.clone())
+                    .or_else(|| model.graph.input_shapes.get(input_name).cloned())
+                    .unwrap_or_else(|| vec![input_data.len()]);
+                let rank = in_shape.len() as i64;
+                // Try axes from input[1] initializer (opset 18+), then attribute, then all axes.
+                let axes_raw: Vec<i64> = layer
+                    .inputs
+                    .get(1)
+                    .and_then(|axes_name| layer.weights.get(axes_name))
+                    .map(|td| td.as_i64_vec())
+                    .or_else(|| layer.get_ints_attr("axes").map(|v| v.to_vec()))
+                    .unwrap_or_else(|| (0..rank).collect());
+                let mut axes: Vec<usize> = axes_raw
+                    .iter()
+                    .map(|&a| {
+                        let a = if a < 0 { a + rank } else { a };
+                        a as usize
+                    })
+                    .collect();
+                axes.sort_unstable();
+                axes.dedup();
+                let out_total: usize = layer.output_shape.iter().product();
+                let outer_shape: Vec<usize> = (0..in_shape.len())
+                    .filter(|i| !axes.contains(i))
+                    .map(|i| in_shape[i])
+                    .collect();
+                let lane_shape: Vec<usize> = axes.iter().map(|&a| in_shape[a]).collect();
+                let outer_total: usize = outer_shape.iter().product::<usize>().max(1);
+                let lane_size: usize = lane_shape.iter().product::<usize>().max(1);
+                let outer_axes: Vec<usize> =
+                    (0..in_shape.len()).filter(|i| !axes.contains(i)).collect();
+                let unravel_rm = |mut flat: usize, shape: &[usize]| -> Vec<usize> {
+                    let mut coords = vec![0usize; shape.len()];
+                    for i in (0..shape.len()).rev() {
+                        coords[i] = flat % shape[i];
+                        flat /= shape[i];
+                    }
+                    coords
+                };
+                let ravel_rm = |coords: &[usize], shape: &[usize]| -> usize {
+                    let mut idx = 0usize;
+                    let mut stride = 1usize;
+                    for i in (0..shape.len()).rev() {
+                        idx += coords[i] * stride;
+                        stride *= shape[i];
+                    }
+                    idx
+                };
+                let mut result: Vec<i64> = Vec::with_capacity(outer_total);
+                for outer_flat in 0..outer_total {
+                    let outer_coords = unravel_rm(outer_flat, &outer_shape);
+                    let mut sum = 0i128;
+                    for lane_flat in 0..lane_size {
+                        let lane_coords = unravel_rm(lane_flat, &lane_shape);
+                        let mut in_coords = vec![0usize; in_shape.len()];
+                        for (oi, &ax) in outer_axes.iter().enumerate() {
+                            in_coords[ax] = outer_coords[oi];
+                        }
+                        for (li, &ax) in axes.iter().enumerate() {
+                            in_coords[ax] = lane_coords[li];
+                        }
+                        let in_flat = ravel_rm(&in_coords, &in_shape);
+                        sum += if in_flat < input_data.len() {
+                            input_data[in_flat] as i128
+                        } else {
+                            0
+                        };
+                    }
+                    let mean = sum as f64 / lane_size as f64;
+                    result.push(mean.round() as i64);
+                }
+                let padded = pad_to_size(&result, next_power_of_two(out_total.max(1)));
+                for out in &layer.outputs {
+                    tensors.insert(out.clone(), padded.clone());
+                    // ReduceMean output doesn't have a meaningful spatial layout.
+                    tensor_layouts.remove(out);
                 }
             }
             other => {
@@ -1671,7 +3597,11 @@ pub fn prepare_public_shreds(
                     }
                 }
             }
-            OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
+            OpType::Cast
+            | OpType::Reshape
+            | OpType::Flatten
+            | OpType::Squeeze
+            | OpType::Unsqueeze => {
                 let input_tensor_name = layer
                     .inputs
                     .first()
@@ -1692,6 +3622,154 @@ pub fn prepare_public_shreds(
                     tensor_sizes.insert(out_name.clone(), sz);
                     if let Some(ref layout) = layout {
                         tensor_layouts.insert(out_name.clone(), layout.clone());
+                    }
+                }
+            }
+            OpType::Exp
+            | OpType::Sigmoid
+            | OpType::Gelu
+            | OpType::Softmax
+            | OpType::Tile
+            | OpType::TopK => {
+                let out_total: usize = layer.output_shape.iter().product();
+                let sz = next_power_of_two(out_total);
+
+                let input_name = layer.inputs.first().ok_or_else(|| {
+                    anyhow::anyhow!("{:?} {} has no input", layer.op_type, layer.name)
+                })?;
+                let layout = tensor_layouts.get(input_name).cloned();
+
+                for out_name in &layer.outputs {
+                    tensor_sizes.insert(out_name.clone(), sz);
+                    if let Some(ref layout) = layout {
+                        tensor_layouts.insert(out_name.clone(), layout.clone());
+                    }
+                }
+            }
+            OpType::Gather => {
+                // The gather output is a committed shred whose values are computed
+                // by the prover (compute_witness). Here we only track the output
+                // size so that downstream ops can derive their own sizes correctly.
+                let out_total: usize = layer.output_shape.iter().product();
+                let sz = next_power_of_two(out_total);
+                let input_layout = layer
+                    .inputs
+                    .first()
+                    .and_then(|n| tensor_layouts.get(n))
+                    .cloned();
+                for out_name in &layer.outputs {
+                    tensor_sizes.insert(out_name.clone(), sz);
+                    if let Some(ref layout) = input_layout {
+                        tensor_layouts.insert(out_name.clone(), layout.clone());
+                    }
+                }
+            }
+            OpType::LayerNormalization => {
+                // LayerNorm output is a committed shred computed by the prover.
+                // Output shape is the same as the input shape (passthrough shape).
+                let out_total: usize = layer.output_shape.iter().product();
+                let sz = next_power_of_two(out_total);
+                let input_layout = layer
+                    .inputs
+                    .first()
+                    .and_then(|n| tensor_layouts.get(n))
+                    .cloned();
+                for out_name in &layer.outputs {
+                    tensor_sizes.insert(out_name.clone(), sz);
+                    if let Some(ref layout) = input_layout {
+                        tensor_layouts.insert(out_name.clone(), layout.clone());
+                    }
+                }
+            }
+            OpType::Resize => {
+                let out_total: usize = layer.output_shape.iter().product();
+                let sz = next_power_of_two(out_total);
+                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
+                let output_layout =
+                    layout_from_output_shape_runtime(&layer.output_shape, input_layout);
+                for out_name in &layer.outputs {
+                    tensor_sizes.insert(out_name.clone(), sz);
+                    if let Some(ref layout) = output_layout {
+                        tensor_layouts.insert(out_name.clone(), layout.clone());
+                    }
+                }
+            }
+            OpType::GridSample => {
+                let out_total: usize = layer.output_shape.iter().product();
+                let sz = next_power_of_two(out_total);
+                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
+                let output_layout =
+                    layout_from_output_shape_runtime(&layer.output_shape, input_layout);
+                for out_name in &layer.outputs {
+                    tensor_sizes.insert(out_name.clone(), sz);
+                    if let Some(ref layout) = output_layout {
+                        tensor_layouts.insert(out_name.clone(), layout.clone());
+                    }
+                }
+            }
+            OpType::Transpose => {
+                let out_total: usize = layer.output_shape.iter().product();
+                let sz = next_power_of_two(out_total);
+                let rank = layer.output_shape.len();
+                let perm: Vec<usize> = if let Some(raw) = layer.get_ints_attr("perm") {
+                    raw.iter()
+                        .map(|&a| if a < 0 { rank as i64 + a } else { a } as usize)
+                        .collect()
+                } else {
+                    (0..rank).rev().collect()
+                };
+                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
+                let output_layout =
+                    transpose_layout_runtime(input_layout, &perm, &layer.output_shape);
+                for out_name in &layer.outputs {
+                    tensor_sizes.insert(out_name.clone(), sz);
+                    match &output_layout {
+                        Some(layout) => {
+                            tensor_layouts.insert(out_name.clone(), layout.clone());
+                        }
+                        None => {
+                            tensor_layouts.remove(out_name);
+                        }
+                    }
+                }
+            }
+            OpType::Concat => {
+                let out_total: usize = layer.output_shape.iter().product();
+                let sz = next_power_of_two(out_total);
+                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
+                let output_layout =
+                    layout_from_output_shape_runtime(&layer.output_shape, input_layout);
+                for out_name in &layer.outputs {
+                    tensor_sizes.insert(out_name.clone(), sz);
+                    if let Some(ref layout) = output_layout {
+                        tensor_layouts.insert(out_name.clone(), layout.clone());
+                    }
+                }
+            }
+            OpType::Slice => {
+                let out_total: usize = layer.output_shape.iter().product();
+                let sz = next_power_of_two(out_total);
+                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
+                let output_layout =
+                    layout_from_output_shape_runtime(&layer.output_shape, input_layout);
+                for out_name in &layer.outputs {
+                    tensor_sizes.insert(out_name.clone(), sz);
+                    if let Some(ref layout) = output_layout {
+                        tensor_layouts.insert(out_name.clone(), layout.clone());
+                    }
+                }
+            }
+            OpType::Shape | OpType::Log | OpType::Expand | OpType::ReduceMean => {
+                let out_total: usize = layer.output_shape.iter().product();
+                let sz = next_power_of_two(out_total.max(1));
+                let input_name = layer.inputs.first().ok_or_else(|| {
+                    anyhow::anyhow!("{:?} {} has no input", layer.op_type, layer.name)
+                })?;
+                let layout = tensor_layouts.get(input_name).cloned();
+                for out_name in &layer.outputs {
+                    tensor_sizes.insert(out_name.clone(), sz);
+                    if let Some(ref l) = layout {
+                        tensor_layouts.insert(out_name.clone(), l.clone());
                     }
                 }
             }

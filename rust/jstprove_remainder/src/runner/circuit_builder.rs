@@ -81,6 +81,220 @@ impl SpatialInfo {
 
 pub use range_checks::delta_table_nv;
 
+fn layout_from_output_shape(
+    output_shape: &[usize],
+    input_layout: Option<&SpatialInfo>,
+) -> Option<SpatialInfo> {
+    let chw = if output_shape.len() == 3 {
+        output_shape
+    } else if output_shape.len() == 4 {
+        &output_shape[1..]
+    } else {
+        return None;
+    };
+
+    match input_layout {
+        Some(SpatialInfo::HWC {
+            stride_c: existing_stride_c,
+            ..
+        }) => {
+            let c = chw[0];
+            // Keep the existing stride only when it is wide enough to hold all
+            // channels; if the output has more channels, fall back to tight packing.
+            let stride_c = if c <= *existing_stride_c {
+                *existing_stride_c
+            } else {
+                c
+            };
+            Some(SpatialInfo::HWC {
+                h: chw[1],
+                w: chw[2],
+                c,
+                stride_c,
+            })
+        }
+        _ => Some(SpatialInfo::CHW {
+            c: chw[0],
+            h: chw[1],
+            w: chw[2],
+        }),
+    }
+}
+
+/// Register a committed shred for a layer whose output is computed entirely by
+/// the prover (structural or hint-based ops). The shred is named
+/// `"{layer.name}_out"` and is sized to fit `layer.output_shape`.
+///
+/// When `preserve_layout` is `true` the first-input spatial layout (if any) is
+/// propagated to every output tensor. When `false` the layout is cleared for
+/// every output (used for Transpose, where the axis reorder invalidates the
+/// existing CHW/HWC mapping).
+fn add_committed_passthrough(
+    builder: &mut CircuitBuilder<Fr>,
+    committed: &frontend::layouter::builder::InputLayerNodeRef<Fr>,
+    layer: &crate::onnx::graph::LayerNode,
+    tensor_nodes: &mut HashMap<String, NodeRef<Fr>>,
+    tensor_num_vars: &mut HashMap<String, usize>,
+    tensor_layouts: &mut HashMap<String, SpatialInfo>,
+    manifest: &mut ShredManifest,
+    preserve_layout: bool,
+) {
+    let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
+    let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
+    // Derive allocation size from the chosen layout.  When preserve_layout is
+    // false the caller intentionally clears the spatial layout, so use the
+    // dense product of output_shape to avoid leaking stride_c padding into
+    // out_nv for ops like Transpose.  When preserve_layout is true, respect
+    // HWC stride_c so that H*W*stride_c slots are allocated, not the dense
+    // H*W*C count (which would undercount by the stride gap).
+    let out_capacity: usize = if preserve_layout {
+        match &output_layout {
+            Some(SpatialInfo::HWC { h, w, stride_c, .. }) => h * w * stride_c,
+            _ => layer.output_shape.iter().product(),
+        }
+    } else {
+        layer.output_shape.iter().product()
+    };
+    let out_nv = num_vars_for(out_capacity);
+    let shred_name = format!("{}_out", layer.name);
+    let node = builder.add_input_shred(&shred_name, out_nv, committed);
+    manifest.insert(
+        shred_name,
+        ShredEntry {
+            num_vars: out_nv,
+            visibility: Visibility::Committed,
+        },
+    );
+    for out in &layer.outputs {
+        tensor_nodes.insert(out.clone(), node.clone());
+        tensor_num_vars.insert(out.clone(), out_nv);
+        if preserve_layout {
+            if let Some(layout) = &output_layout {
+                tensor_layouts.insert(out.clone(), layout.clone());
+            }
+        } else {
+            tensor_layouts.remove(out);
+        }
+    }
+}
+
+pub fn compute_range_check_plan(model: &QuantizedModel) -> Result<BTreeMap<usize, Vec<String>>> {
+    let exponent = model.scale_config.exponent as usize;
+    let mut plan: BTreeMap<usize, Vec<String>> = BTreeMap::new();
+
+    for layer in model.graph.iter_topo() {
+        match layer.op_type {
+            OpType::Gemm | OpType::Conv | OpType::BatchNormalization => {
+                if exponent <= RANGE_CHECK_CHUNK_BITS {
+                    plan.entry(exponent)
+                        .or_default()
+                        .push(format!("{}_r", layer.name));
+                } else {
+                    anyhow::ensure!(
+                        exponent <= 2 * RANGE_CHECK_CHUNK_BITS,
+                        "layer {} exponent {} exceeds two-chunk range-check capacity (max {} bits)",
+                        layer.name,
+                        exponent,
+                        2 * RANGE_CHECK_CHUNK_BITS
+                    );
+                    plan.entry(RANGE_CHECK_CHUNK_BITS)
+                        .or_default()
+                        .push(format!("{}_r_c0", layer.name));
+                    plan.entry(exponent - RANGE_CHECK_CHUNK_BITS)
+                        .or_default()
+                        .push(format!("{}_r_c1", layer.name));
+                }
+            }
+            OpType::Relu => {
+                if let Some(n_bits) = layer.n_bits {
+                    let dnv = delta_table_nv(n_bits, exponent);
+                    if dnv > RANGE_CHECK_CHUNK_BITS {
+                        anyhow::ensure!(
+                            dnv <= 2 * RANGE_CHECK_CHUNK_BITS,
+                            "Relu layer {} delta nv {} exceeds two-chunk range-check capacity (max {} bits)",
+                            layer.name,
+                            dnv,
+                            2 * RANGE_CHECK_CHUNK_BITS
+                        );
+                        plan.entry(RANGE_CHECK_CHUNK_BITS)
+                            .or_default()
+                            .push(format!("{}_di_c0", layer.name));
+                        plan.entry(RANGE_CHECK_CHUNK_BITS)
+                            .or_default()
+                            .push(format!("{}_dz_c0", layer.name));
+                        plan.entry(dnv - RANGE_CHECK_CHUNK_BITS)
+                            .or_default()
+                            .push(format!("{}_di_c1", layer.name));
+                        plan.entry(dnv - RANGE_CHECK_CHUNK_BITS)
+                            .or_default()
+                            .push(format!("{}_dz_c1", layer.name));
+                    } else {
+                        let entry = plan.entry(dnv).or_default();
+                        entry.push(format!("{}_di", layer.name));
+                        entry.push(format!("{}_dz", layer.name));
+                    }
+                }
+            }
+            OpType::MaxPool => {
+                if let Some(n_bits) = layer.n_bits {
+                    let dnv = delta_table_nv(n_bits, exponent);
+                    let kernel_shape = layer.get_ints_attr("kernel_shape").ok_or_else(|| {
+                        anyhow::anyhow!("MaxPool {} missing kernel_shape attribute", layer.name)
+                    })?;
+                    anyhow::ensure!(
+                        kernel_shape.len() == 2,
+                        "MaxPool {} requires exactly 2D kernel_shape, got {} dims",
+                        layer.name,
+                        kernel_shape.len()
+                    );
+                    anyhow::ensure!(
+                        kernel_shape[0] > 0 && kernel_shape[1] > 0,
+                        "MaxPool {} kernel_shape values must be positive, got [{}, {}]",
+                        layer.name,
+                        kernel_shape[0],
+                        kernel_shape[1]
+                    );
+                    let window_size = (kernel_shape[0] as usize)
+                        .checked_mul(kernel_shape[1] as usize)
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "MaxPool {} kernel_shape overflow: {} * {}",
+                                layer.name,
+                                kernel_shape[0],
+                                kernel_shape[1]
+                            )
+                        })?;
+                    if dnv > RANGE_CHECK_CHUNK_BITS {
+                        anyhow::ensure!(
+                            dnv <= 2 * RANGE_CHECK_CHUNK_BITS,
+                            "MaxPool layer {} delta nv {} exceeds two-chunk range-check capacity (max {} bits)",
+                            layer.name,
+                            dnv,
+                            2 * RANGE_CHECK_CHUNK_BITS
+                        );
+                        for i in 0..window_size {
+                            plan.entry(RANGE_CHECK_CHUNK_BITS)
+                                .or_default()
+                                .push(format!("{}_d{}_c0", layer.name, i));
+                            plan.entry(dnv - RANGE_CHECK_CHUNK_BITS)
+                                .or_default()
+                                .push(format!("{}_d{}_c1", layer.name, i));
+                        }
+                    } else {
+                        let entry = plan.entry(dnv).or_default();
+                        for i in 0..window_size {
+                            entry.push(format!("{}_d{}", layer.name, i));
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(plan)
+}
+
 pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildResult> {
     let mut manifest = ShredManifest::new();
     let mut builder = CircuitBuilder::<Fr>::new();
@@ -238,7 +452,42 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                     &mut range_checks,
                 )?;
             }
-            OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
+            OpType::Exp | OpType::Softmax | OpType::Sigmoid | OpType::Gelu | OpType::Tile => {
+                anyhow::bail!(
+                    "circuit builder: {:?} op in layer '{}' is not yet constrained in the \
+                    Remainder backend; refusing to add unconstrained committed shred",
+                    layer.op_type,
+                    layer.name
+                );
+            }
+            OpType::TopK => {
+                if layer.outputs.len() > 1 {
+                    anyhow::bail!(
+                        "TopK layer '{}': indices output is not supported by the Remainder \
+                        backend (found {} outputs); only the values output is allowed",
+                        layer.name,
+                        layer.outputs.len()
+                    );
+                }
+                anyhow::bail!(
+                    "circuit builder: TopK op in layer '{}' is not yet constrained in the \
+                    Remainder backend; refusing to add unconstrained committed shred",
+                    layer.name
+                );
+            }
+            OpType::Shape | OpType::Log | OpType::Expand | OpType::ReduceMean => {
+                anyhow::bail!(
+                    "circuit builder: {:?} op in layer '{}' is not yet constrained in the \
+                    Remainder backend; refusing to add unconstrained committed shred",
+                    layer.op_type,
+                    layer.name
+                );
+            }
+            OpType::Cast
+            | OpType::Reshape
+            | OpType::Flatten
+            | OpType::Squeeze
+            | OpType::Unsqueeze => {
                 let input_name = layer
                     .inputs
                     .first()
@@ -268,6 +517,154 @@ pub fn build_circuit(model: &QuantizedModel, input_size: usize) -> Result<BuildR
                         tensor_layouts.insert(out.clone(), layout.clone());
                     }
                 }
+            }
+            OpType::Gather => {
+                // Gather selects elements using constant indices; no GKR constraint
+                // is added (selection is non-linear). The prover supplies the gathered
+                // output as a committed witness shred named "{layer.name}_out".
+                // Downstream arithmetic layers (e.g., Gemm) constrain the gathered
+                // values indirectly through the overall output equality check.
+
+                // Require constant (initializer) indices; dynamic indices are not supported.
+                anyhow::ensure!(
+                    layer
+                        .inputs
+                        .get(1)
+                        .and_then(|n| layer.weights.get(n))
+                        .is_some(),
+                    "Gather {}: indices must be a constant initializer; \
+                    dynamic indices are not supported in the Remainder backend",
+                    layer.name
+                );
+
+                let axis_raw = layer.get_int_attr("axis").unwrap_or(0);
+                // Normalize negative axis: recover data_rank from output_rank and indices_rank.
+                let normalized_axis = if axis_raw < 0 {
+                    let output_rank = layer.output_shape.len();
+                    let indices_rank = layer
+                        .inputs
+                        .get(1)
+                        .and_then(|n| layer.weights.get(n))
+                        .map(|td| td.shape().len())
+                        .unwrap_or(0);
+                    let data_rank = (output_rank + 1).saturating_sub(indices_rank);
+                    axis_raw + data_rank as i64
+                } else {
+                    axis_raw
+                };
+                anyhow::ensure!(
+                    normalized_axis == 0,
+                    "Gather {}: only axis=0 is supported in the Remainder backend \
+                    (got axis={}, normalized={})",
+                    layer.name,
+                    axis_raw,
+                    normalized_axis
+                );
+
+                let input_layout = layer.inputs.first().and_then(|n| tensor_layouts.get(n));
+                let output_layout = layout_from_output_shape(&layer.output_shape, input_layout);
+                let out_capacity: usize = match &output_layout {
+                    Some(SpatialInfo::HWC { h, w, stride_c, .. }) => h * w * stride_c,
+                    _ => layer.output_shape.iter().product(),
+                };
+                let out_nv = num_vars_for(out_capacity);
+                let gather_out_name = format!("{}_out", layer.name);
+                let node = builder.add_input_shred(&gather_out_name, out_nv, &committed);
+                manifest.insert(
+                    gather_out_name,
+                    ShredEntry {
+                        num_vars: out_nv,
+                        visibility: Visibility::Committed,
+                    },
+                );
+                for out in &layer.outputs {
+                    tensor_nodes.insert(out.clone(), node.clone());
+                    tensor_num_vars.insert(out.clone(), out_nv);
+                    if let Some(layout) = &output_layout {
+                        tensor_layouts.insert(out.clone(), layout.clone());
+                    }
+                }
+            }
+            OpType::LayerNormalization => {
+                // LayerNorm is computed outside the GKR circuit (via a hint)
+                // and supplied as a committed shred named "{layer.name}_out".
+                add_committed_passthrough(
+                    &mut builder,
+                    &committed,
+                    layer,
+                    &mut tensor_nodes,
+                    &mut tensor_num_vars,
+                    &mut tensor_layouts,
+                    &mut manifest,
+                    true,
+                );
+            }
+            OpType::Resize => {
+                // Resize output is a committed shred computed by the prover.
+                add_committed_passthrough(
+                    &mut builder,
+                    &committed,
+                    layer,
+                    &mut tensor_nodes,
+                    &mut tensor_num_vars,
+                    &mut tensor_layouts,
+                    &mut manifest,
+                    true,
+                );
+            }
+            OpType::GridSample => {
+                // GridSample output is a committed shred computed by the prover.
+                add_committed_passthrough(
+                    &mut builder,
+                    &committed,
+                    layer,
+                    &mut tensor_nodes,
+                    &mut tensor_num_vars,
+                    &mut tensor_layouts,
+                    &mut manifest,
+                    true,
+                );
+            }
+            OpType::Transpose => {
+                // Transpose output is a committed shred. The axis reorder
+                // invalidates the existing spatial layout, so preserve_layout=false
+                // clears it for every output.
+                add_committed_passthrough(
+                    &mut builder,
+                    &committed,
+                    layer,
+                    &mut tensor_nodes,
+                    &mut tensor_num_vars,
+                    &mut tensor_layouts,
+                    &mut manifest,
+                    false,
+                );
+            }
+            OpType::Concat => {
+                // Concat output is a committed shred computed by the prover.
+                add_committed_passthrough(
+                    &mut builder,
+                    &committed,
+                    layer,
+                    &mut tensor_nodes,
+                    &mut tensor_num_vars,
+                    &mut tensor_layouts,
+                    &mut manifest,
+                    true,
+                );
+            }
+            OpType::Slice => {
+                // Slice output is a committed shred computed by the prover.
+                add_committed_passthrough(
+                    &mut builder,
+                    &committed,
+                    layer,
+                    &mut tensor_nodes,
+                    &mut tensor_num_vars,
+                    &mut tensor_layouts,
+                    &mut manifest,
+                    true,
+                );
             }
             other => {
                 bail!(

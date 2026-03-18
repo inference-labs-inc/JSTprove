@@ -291,12 +291,16 @@ fn compute_max_bound_inner(graph: &LayerGraph) -> Result<f64> {
     let mut bounds: HashMap<String, f64> = HashMap::new();
     let mut max_bound: f64 = 1.0;
 
+    // compute_max_bound runs before the final ScaleConfig is known, so use the
+    // default alpha for Log-layer bound propagation (ln(2^18) ≈ 12.47).
+    let default_alpha_f64 = (DEFAULT_SCALE_BASE as f64).powi(DEFAULT_SCALE_EXPONENT as i32);
+
     for name in &graph.input_names {
         bounds.insert(name.clone(), 1.0);
     }
 
     for layer in graph.iter_topo() {
-        let bound = compute_layer_bound(layer, &bounds)?;
+        let bound = compute_layer_bound(layer, &bounds, default_alpha_f64)?;
 
         if layer.needs_rescale {
             max_bound = max_bound.max(bound);
@@ -321,23 +325,55 @@ fn compute_bounds(graph: &LayerGraph, config: &ScaleConfig) -> Result<HashMap<St
         bounds.insert(name.clone(), 1.0);
     }
 
+    let alpha_f64 = alpha as f64;
+
     for layer in graph.iter_topo() {
-        let bound = compute_layer_bound(layer, &bounds)?;
+        let bound = compute_layer_bound(layer, &bounds, alpha_f64)?;
 
         if layer.needs_rescale || is_range_check_op(layer.op_type) {
+            // Guard: compute_n_bits computes (alpha as f64 * bound).log2().
+            // If alpha * bound overflows f64 to +Inf, log2 returns +Inf and
+            // the subsequent `as usize` saturates, producing an incorrect n_bits.
+            // Catch this before it propagates.
+            let safe_max = f64::MAX / (alpha as f64);
+            if bound > safe_max {
+                anyhow::bail!(
+                    "layer {}: activation bound {bound:.3e} exceeds safe maximum {safe_max:.3e} \
+                    (alpha={alpha} * bound overflows f64 in n_bits sizing); \
+                    the model's activation range is too large to quantise safely",
+                    layer.name
+                );
+            }
             let n_bits = compute_n_bits(alpha, bound);
             n_bits_config.insert(layer.name.clone(), n_bits);
         }
 
-        for out_name in &layer.outputs {
-            bounds.insert(out_name.clone(), bound);
+        // TopK output[0] = values (bound = m_in), output[1] = indices
+        // (range [0, axis_len − 1], not quantised floats). Use a conservative
+        // index bound of 1.0 so downstream ops do not inflate their n_bits
+        // based on the values bound.
+        if layer.op_type == OpType::TopK {
+            if let Some(values_name) = layer.outputs.first() {
+                bounds.insert(values_name.clone(), bound);
+            }
+            if let Some(indices_name) = layer.outputs.get(1) {
+                bounds.insert(indices_name.clone(), 1.0_f64);
+            }
+        } else {
+            for out_name in &layer.outputs {
+                bounds.insert(out_name.clone(), bound);
+            }
         }
     }
 
     Ok(n_bits_config)
 }
 
-fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) -> Result<f64> {
+fn compute_layer_bound(
+    layer: &LayerNode,
+    prev_bounds: &HashMap<String, f64>,
+    alpha_f64: f64,
+) -> Result<f64> {
     let get_input_bound = |idx: usize| -> f64 {
         layer
             .inputs
@@ -524,18 +560,115 @@ fn compute_layer_bound(layer: &LayerNode, prev_bounds: &HashMap<String, f64>) ->
             let m_in = get_input_bound(0);
             Ok(m_in)
         }
-        OpType::Reshape | OpType::Flatten | OpType::Squeeze | OpType::Unsqueeze => {
+        OpType::Cast
+        | OpType::Reshape
+        | OpType::Flatten
+        | OpType::Squeeze
+        | OpType::Unsqueeze
+        | OpType::Tile
+        | OpType::Gather
+        | OpType::Resize
+        | OpType::GridSample
+        | OpType::Transpose
+        | OpType::Slice => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
+        OpType::Concat => {
+            let mut max_bound = 0.0_f64;
+            for i in 0..layer.inputs.len() {
+                max_bound = max_bound.max(get_input_bound(i));
+            }
+            Ok(max_bound)
+        }
+        // TopK selects K values from the input along an axis — output bound ≤ input bound.
+        OpType::TopK => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
+        // Shape outputs raw dimension integers (not quantized floats); bound is irrelevant.
+        OpType::Shape => Ok(1.0),
+        // Log output can be negative (for real values < 1). The output of
+        // log(x_q / α) * α for small positive inputs can be as large as
+        // |ln(α)| * α in the negative direction. We conservatively bound the
+        // magnitude as max(m_in, ln(α)) so downstream n_bits calculations
+        // are large enough to represent the actual output range.
+        OpType::Log => {
+            let m_in = get_input_bound(0);
+            Ok(m_in.max(alpha_f64.ln()))
+        }
+        // Expand is a broadcast passthrough — output bound equals input bound.
+        OpType::Expand => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
+        // ReduceMean: mean ≤ max input.
+        OpType::ReduceMean => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
+        // exp(x) is monotonically increasing; max output is exp(max_input).
+        OpType::Exp => {
+            let m_in = get_input_bound(0);
+            let bound = m_in.exp();
+            if !bound.is_finite() {
+                anyhow::bail!(
+                    "layer {}: Exp input bound {m_in} produces a non-finite exp result; \
+                    the model's activation range is too large to quantise safely",
+                    layer.name
+                );
+            }
+            Ok(bound)
+        }
+        // softmax / sigmoid outputs are in [0, 1].
+        OpType::Softmax | OpType::Sigmoid => Ok(1.0),
+        // GELU is not capped at 1.0; conservatively propagate input bound.
+        OpType::Gelu => {
             let m_in = get_input_bound(0);
             Ok(m_in)
         }
         OpType::Constant => Ok(1.0),
+        OpType::LayerNormalization => {
+            // After normalization the per-element output is bounded by roughly
+            // max|γ| * (x − μ) / σ + max|β|. In the worst case (two values
+            // symmetrically around the mean) the normalised value is bounded
+            // by 2 * m_in / sqrt(ε), where ε is the LayerNorm epsilon.
+            // We use that as a conservative normalization bound so that the
+            // final n_bits calculation covers the actual output range.
+            let m_in = get_input_bound(0);
+            let epsilon = layer.get_float_attr("epsilon").unwrap_or(1e-5_f32) as f64;
+            let epsilon = epsilon.max(1e-12); // guard against 0
+            let normalization_bound = 2.0 * m_in / epsilon.sqrt();
+            let max_gamma = layer
+                .inputs
+                .get(1)
+                .and_then(|name| layer.weights.get(name))
+                .map(|w| {
+                    let vals = w.as_f64_vec();
+                    vals.iter().map(|v| v.abs()).fold(0.0_f64, f64::max)
+                })
+                .unwrap_or(1.0);
+            let max_beta = get_bias_bound(2);
+            Ok(max_gamma * normalization_bound + max_beta)
+        }
     }
 }
 
 fn is_range_check_op(op: OpType) -> bool {
     matches!(
         op,
-        OpType::Relu | OpType::MaxPool | OpType::Max | OpType::Min | OpType::Clip
+        OpType::Relu
+            | OpType::MaxPool
+            | OpType::Max
+            | OpType::Min
+            | OpType::Clip
+            | OpType::Exp
+            | OpType::Softmax
+            | OpType::Sigmoid
+            | OpType::Gelu
+            | OpType::Resize
+            | OpType::GridSample
+            | OpType::TopK
     )
 }
 
