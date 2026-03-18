@@ -17,6 +17,25 @@ pub struct BasefoldPCSForGKR<C: FieldEngine> {
     _phantom: PhantomData<C>,
 }
 
+fn prepare_base_evals<C: FieldEngine>(
+    poly: &impl MultilinearExtension<C::SimdCircuitField>,
+    params: usize,
+) -> Vec<C::CircuitField>
+where
+    C::CircuitField: FFTField + SimdField<Scalar = C::CircuitField>,
+{
+    let local_poly = if poly.num_vars() < params {
+        lift_poly_to_n_vars(poly, params)
+    } else {
+        MultiLinearPoly::new(poly.hypercube_basis())
+    };
+    local_poly
+        .hypercube_basis()
+        .iter()
+        .flat_map(|simd| simd.unpack())
+        .collect()
+}
+
 impl<C> ExpanderPCS<C> for BasefoldPCSForGKR<C>
 where
     C: FieldEngine,
@@ -46,7 +65,7 @@ where
     }
 
     fn init_scratch_pad(_params: &Self::Params, _mpi_engine: &impl MPIEngine) -> Self::ScratchPad {
-        BasefoldScratchPad
+        BasefoldScratchPad::default()
     }
 
     fn commit(
@@ -54,7 +73,7 @@ where
         mpi_engine: &impl MPIEngine,
         _proving_key: &<Self::SRS as StructuredReferenceString>::PKey,
         poly: &impl MultilinearExtension<C::SimdCircuitField>,
-        _scratch_pad: &mut Self::ScratchPad,
+        scratch_pad: &mut Self::ScratchPad,
     ) -> Option<Self::Commitment> {
         if !mpi_engine.is_single_process() {
             unimplemented!("Basefold MPI not yet supported");
@@ -64,17 +83,9 @@ where
             return None;
         }
 
-        let local_poly = if poly.num_vars() < *params {
-            lift_poly_to_n_vars(poly, *params)
-        } else {
-            MultiLinearPoly::new(poly.hypercube_basis())
-        };
-
-        let evals = local_poly.hypercube_basis();
-        let base_evals: Vec<C::CircuitField> =
-            evals.iter().flat_map(|simd| simd.unpack()).collect();
-
-        let (commitment, _tree, _codeword) = basefold_commit(&base_evals);
+        let base_evals = prepare_base_evals::<C>(poly, *params);
+        let (commitment, tree, codeword) = basefold_commit(&base_evals);
+        scratch_pad.store_commit(tree, codeword);
         Some(commitment)
     }
 
@@ -85,7 +96,7 @@ where
         poly: &impl MultilinearExtension<C::SimdCircuitField>,
         eval_point: &ExpanderSingleVarChallenge<C>,
         transcript: &mut impl Transcript,
-        _scratch_pad: &Self::ScratchPad,
+        scratch_pad: &Self::ScratchPad,
     ) -> Option<Self::Opening> {
         if !mpi_engine.is_single_process() {
             unimplemented!("Basefold MPI not yet supported");
@@ -101,17 +112,14 @@ where
             eval_point.clone()
         };
 
-        let local_poly = if poly.num_vars() < *params {
-            lift_poly_to_n_vars(poly, *params)
+        let base_evals = prepare_base_evals::<C>(poly, *params);
+
+        let (tree, codeword) = if let Some((t, c)) = scratch_pad.take_commit::<C::CircuitField>() {
+            (t.clone(), c.clone())
         } else {
-            MultiLinearPoly::new(poly.hypercube_basis())
+            let (_commitment, tree, codeword) = basefold_commit(&base_evals);
+            (tree, codeword)
         };
-
-        let evals = local_poly.hypercube_basis();
-        let base_evals: Vec<C::CircuitField> =
-            evals.iter().flat_map(|simd| simd.unpack()).collect();
-
-        let (_commitment, tree, codeword) = basefold_commit(&base_evals);
 
         let xs = effective_point.local_xs();
 
