@@ -1,7 +1,9 @@
+use std::sync::Arc;
+
 use arith::ExtensionField;
 use ethnum::U256;
 use serdes::{ExpSerde, SerdeResult};
-use tree::{Node, Path};
+use tree::{Node, Path, Tree};
 
 pub const BASEFOLD_NUM_QUERIES: usize = 100;
 pub const RATE_LOG: usize = 1;
@@ -224,8 +226,66 @@ impl<F: ExtensionField> ExpSerde for FriRoundProof<F> {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct BasefoldScratchPad;
+struct ErasedCodeword(Box<dyn std::any::Any + Send + Sync>);
+
+impl std::fmt::Debug for ErasedCodeword {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ErasedCodeword")
+    }
+}
+
+pub struct BasefoldScratchPad {
+    commit_cache: Option<Arc<(Tree, ErasedCodeword, usize)>>,
+}
+
+impl Clone for BasefoldScratchPad {
+    fn clone(&self) -> Self {
+        Self {
+            commit_cache: self.commit_cache.clone(),
+        }
+    }
+}
+
+impl std::fmt::Debug for BasefoldScratchPad {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BasefoldScratchPad")
+            .field("cached", &self.commit_cache.is_some())
+            .finish()
+    }
+}
+
+impl Default for BasefoldScratchPad {
+    fn default() -> Self {
+        Self { commit_cache: None }
+    }
+}
+
+impl BasefoldScratchPad {
+    pub(crate) fn store_commit<F: Send + Sync + 'static>(
+        &mut self,
+        tree: Tree,
+        codeword: Vec<F>,
+        num_evals: usize,
+    ) {
+        self.commit_cache = Some(Arc::new((
+            tree,
+            ErasedCodeword(Box::new(codeword)),
+            num_evals,
+        )));
+    }
+
+    pub(crate) fn get_commit<F: Send + Sync + 'static>(
+        &self,
+        num_evals: usize,
+    ) -> Option<(&Tree, &Vec<F>)> {
+        let arc = self.commit_cache.as_ref()?;
+        if arc.2 != num_evals {
+            return None;
+        }
+        let codeword = arc.1 .0.downcast_ref::<Vec<F>>()?;
+        Some((&arc.0, codeword))
+    }
+}
 
 impl ExpSerde for BasefoldScratchPad {
     fn serialize_into<W: std::io::Write>(&self, _writer: W) -> SerdeResult<()> {
@@ -233,6 +293,6 @@ impl ExpSerde for BasefoldScratchPad {
     }
 
     fn deserialize_from<R: std::io::Read>(_reader: R) -> SerdeResult<Self> {
-        Ok(Self)
+        Ok(Self::default())
     }
 }
