@@ -117,6 +117,10 @@ fn parse_polynomial_commitment_type(
             "Orion".to_owned(),
             format!("OrionPCSForGKR::<{field_config}, M31x16>").to_owned(),
         ),
+        ("Basefold", "Goldilocksx1") => (
+            "FRI".to_owned(),
+            format!("BasefoldPCSForGKR::<{field_config}>").to_owned(),
+        ),
         ("Orion", "Goldilocksx8") => (
             "Orion".to_owned(),
             format!("OrionPCSForGKR::<{field_config}, Goldilocksx8>").to_owned(),

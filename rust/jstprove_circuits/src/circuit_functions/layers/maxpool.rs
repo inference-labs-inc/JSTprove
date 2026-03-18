@@ -434,7 +434,7 @@ pub fn maxpooling_2d<C: Config, Builder: RootAPI<C>>(
             msg: "Expected 4D input for maxpooling".to_string(),
         })?;
 
-    let context = ShiftRangeContext::new(api, shift_exponent)?;
+    let context = ShiftRangeContext::new(api, LayerKind::MaxPool, shift_exponent)?;
 
     for n in 0..batch {
         for c in 0..channels {

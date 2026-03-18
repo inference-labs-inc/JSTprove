@@ -1,8 +1,6 @@
-// Per-threadgroup partial sums for the 3-point polynomial evaluation.
-// Computes: p0 = sum hg[2i]*f[2i], p1 = sum hg[2i+1]*f[2i+1],
-//           p2 = sum (hg[2i]+hg[2i+1])*(f[2i]+f[2i+1])
-
 constant uint THREADGROUP_SIZE = 256;
+constant uint SIMDGROUP_SIZE = 32;
+constant uint SIMDGROUPS_PER_TG = THREADGROUP_SIZE / SIMDGROUP_SIZE;
 
 kernel void poly_eval_kernel(
     device const BN254Fr* bk_f [[buffer(0)]],
@@ -13,11 +11,13 @@ kernel void poly_eval_kernel(
     uint tid [[thread_position_in_grid]],
     uint lid [[thread_position_in_threadgroup]],
     uint gid [[threadgroup_position_in_grid]],
-    uint grid_size [[threads_per_grid]]
+    uint grid_size [[threads_per_grid]],
+    uint simd_lane [[thread_index_in_simdgroup]],
+    uint simd_id [[simdgroup_index_in_threadgroup]]
 ) {
-    threadgroup BN254Fr shared_p0[THREADGROUP_SIZE];
-    threadgroup BN254Fr shared_p1[THREADGROUP_SIZE];
-    threadgroup BN254Fr shared_p2[THREADGROUP_SIZE];
+    threadgroup BN254Fr shared_p0[SIMDGROUPS_PER_TG];
+    threadgroup BN254Fr shared_p1[SIMDGROUPS_PER_TG];
+    threadgroup BN254Fr shared_p2[SIMDGROUPS_PER_TG];
 
     BN254Fr local_p0 = bn254_zero();
     BN254Fr local_p1 = bn254_zero();
@@ -36,24 +36,31 @@ kernel void poly_eval_kernel(
         local_p2 = bn254_add(local_p2, bn254_mul(bn254_add(h0, h1), bn254_add(f0, f1)));
     }
 
-    shared_p0[lid] = local_p0;
-    shared_p1[lid] = local_p1;
-    shared_p2[lid] = local_p2;
+    local_p0 = bn254_simd_sum(local_p0);
+    local_p1 = bn254_simd_sum(local_p1);
+    local_p2 = bn254_simd_sum(local_p2);
+
+    if (simd_lane == 0) {
+        shared_p0[simd_id] = local_p0;
+        shared_p1[simd_id] = local_p1;
+        shared_p2[simd_id] = local_p2;
+    }
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    for (uint stride = THREADGROUP_SIZE / 2; stride > 0; stride >>= 1) {
-        if (lid < stride) {
-            shared_p0[lid] = bn254_add(shared_p0[lid], shared_p0[lid + stride]);
-            shared_p1[lid] = bn254_add(shared_p1[lid], shared_p1[lid + stride]);
-            shared_p2[lid] = bn254_add(shared_p2[lid], shared_p2[lid + stride]);
-        }
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-    }
+    if (simd_id == 0 && simd_lane < SIMDGROUPS_PER_TG) {
+        local_p0 = shared_p0[simd_lane];
+        local_p1 = shared_p1[simd_lane];
+        local_p2 = shared_p2[simd_lane];
 
-    if (lid == 0) {
-        block_results[gid * 3 + 0] = shared_p0[0];
-        block_results[gid * 3 + 1] = shared_p1[0];
-        block_results[gid * 3 + 2] = shared_p2[0];
+        local_p0 = bn254_simd_sum(local_p0);
+        local_p1 = bn254_simd_sum(local_p1);
+        local_p2 = bn254_simd_sum(local_p2);
+
+        if (simd_lane == 0) {
+            block_results[gid * 3 + 0] = local_p0;
+            block_results[gid * 3 + 1] = local_p1;
+            block_results[gid * 3 + 2] = local_p2;
+        }
     }
 }
 
@@ -61,11 +68,13 @@ kernel void reduce_blocks(
     device BN254Fr* block_results [[buffer(0)]],
     device BN254Fr* output [[buffer(1)]],
     constant uint32_t& num_blocks [[buffer(2)]],
-    uint lid [[thread_position_in_threadgroup]]
+    uint lid [[thread_position_in_threadgroup]],
+    uint simd_lane [[thread_index_in_simdgroup]],
+    uint simd_id [[simdgroup_index_in_threadgroup]]
 ) {
-    threadgroup BN254Fr shared_p0[THREADGROUP_SIZE];
-    threadgroup BN254Fr shared_p1[THREADGROUP_SIZE];
-    threadgroup BN254Fr shared_p2[THREADGROUP_SIZE];
+    threadgroup BN254Fr shared_p0[SIMDGROUPS_PER_TG];
+    threadgroup BN254Fr shared_p1[SIMDGROUPS_PER_TG];
+    threadgroup BN254Fr shared_p2[SIMDGROUPS_PER_TG];
 
     BN254Fr acc0 = bn254_zero();
     BN254Fr acc1 = bn254_zero();
@@ -77,23 +86,30 @@ kernel void reduce_blocks(
         acc2 = bn254_add(acc2, block_results[i * 3 + 2]);
     }
 
-    shared_p0[lid] = acc0;
-    shared_p1[lid] = acc1;
-    shared_p2[lid] = acc2;
+    acc0 = bn254_simd_sum(acc0);
+    acc1 = bn254_simd_sum(acc1);
+    acc2 = bn254_simd_sum(acc2);
+
+    if (simd_lane == 0) {
+        shared_p0[simd_id] = acc0;
+        shared_p1[simd_id] = acc1;
+        shared_p2[simd_id] = acc2;
+    }
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    for (uint stride = THREADGROUP_SIZE / 2; stride > 0; stride >>= 1) {
-        if (lid < stride) {
-            shared_p0[lid] = bn254_add(shared_p0[lid], shared_p0[lid + stride]);
-            shared_p1[lid] = bn254_add(shared_p1[lid], shared_p1[lid + stride]);
-            shared_p2[lid] = bn254_add(shared_p2[lid], shared_p2[lid + stride]);
-        }
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-    }
+    if (simd_id == 0 && simd_lane < SIMDGROUPS_PER_TG) {
+        acc0 = shared_p0[simd_lane];
+        acc1 = shared_p1[simd_lane];
+        acc2 = shared_p2[simd_lane];
 
-    if (lid == 0) {
-        output[0] = shared_p0[0];
-        output[1] = shared_p1[0];
-        output[2] = shared_p2[0];
+        acc0 = bn254_simd_sum(acc0);
+        acc1 = bn254_simd_sum(acc1);
+        acc2 = bn254_simd_sum(acc2);
+
+        if (simd_lane == 0) {
+            output[0] = acc0;
+            output[1] = acc1;
+            output[2] = acc2;
+        }
     }
 }

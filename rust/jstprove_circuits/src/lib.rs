@@ -28,6 +28,7 @@
 #![feature(min_specialization)]
 
 pub mod circuit_functions;
+pub mod curve;
 #[allow(clippy::pedantic)]
 pub mod expander_metadata;
 pub mod io;
@@ -36,5 +37,6 @@ pub mod proof_system;
 pub mod runner;
 
 pub use circuit_functions::layers::LayerKind;
+pub use curve::{Curve, CurveParseError};
 pub use proof_system::{ProofSystem, ProofSystemParseError};
 pub use runner::version::{ArtifactVersion, jstprove_artifact_version};

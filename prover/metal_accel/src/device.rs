@@ -1,7 +1,7 @@
 use metal::{CompileOptions, ComputePipelineState, Device, MTLSize};
 use std::collections::HashMap;
 
-const SHADER_SOURCE: &str = concat!(
+const SHADER_SOURCE_BN254: &str = concat!(
     include_str!("../shaders/field_bn254.metal"),
     "\n",
     include_str!("../shaders/eq_eval.metal"),
@@ -13,8 +13,18 @@ const SHADER_SOURCE: &str = concat!(
     include_str!("../shaders/sumcheck_fold.metal"),
 );
 
+const SHADER_SOURCE_GOLDILOCKS: &str = concat!(
+    include_str!("../shaders/field_goldilocks.metal"),
+    "\n",
+    include_str!("../shaders/eq_eval_gl.metal"),
+    "\n",
+    include_str!("../shaders/poly_eval_gl.metal"),
+    "\n",
+    include_str!("../shaders/sumcheck_fold_gl.metal"),
+);
+
 pub const THREADGROUP_SIZE: u64 = 256;
-pub const GPU_DISPATCH_THRESHOLD: usize = 1 << 12;
+pub const GPU_DISPATCH_THRESHOLD: usize = 1 << 18;
 
 pub struct MetalAccelerator {
     pub(crate) device: Device,
@@ -35,15 +45,24 @@ impl MetalAccelerator {
 
         let opts = CompileOptions::new();
         opts.set_language_version(metal::MTLLanguageVersion::V3_0);
-        let library = match device.new_library_with_source(SHADER_SOURCE, &opts) {
+
+        let bn254_library = match device.new_library_with_source(SHADER_SOURCE_BN254, &opts) {
             Ok(lib) => lib,
             Err(e) => {
-                eprintln!("Metal shader compilation failed: {e}");
+                eprintln!("Metal BN254 shader compilation failed: {e}");
                 return None;
             }
         };
 
-        let kernel_names = &[
+        let gl_library = match device.new_library_with_source(SHADER_SOURCE_GOLDILOCKS, &opts) {
+            Ok(lib) => lib,
+            Err(e) => {
+                eprintln!("Metal Goldilocks shader compilation failed: {e}");
+                return None;
+            }
+        };
+
+        let bn254_kernels: &[&str] = &[
             "build_eq_step",
             "cross_prod_eq",
             "vec_add",
@@ -53,8 +72,23 @@ impl MetalAccelerator {
             "fold_hg",
         ];
 
+        let gl_kernels: &[&str] = &[
+            "gl_build_eq_step",
+            "gl_cross_prod_eq",
+            "gl_vec_add",
+            "gl_poly_eval_kernel",
+            "gl_reduce_blocks",
+            "gl_fold_f",
+            "gl_fold_hg",
+        ];
+
         let mut pipelines = HashMap::new();
-        for &name in kernel_names {
+
+        for (&name, library) in bn254_kernels
+            .iter()
+            .map(|n| (n, &bn254_library))
+            .chain(gl_kernels.iter().map(|n| (n, &gl_library)))
+        {
             let func = match library.get_function(name, None) {
                 Ok(f) => f,
                 Err(e) => {

@@ -123,6 +123,10 @@ warp = "0.3.7"
 zerocopy = "0.8.26"
 zstd = "0.13.3"
 
+[profile.release]
+lto = "fat"
+codegen-units = 1
+
 [profile.test]
 opt-level = 3
 

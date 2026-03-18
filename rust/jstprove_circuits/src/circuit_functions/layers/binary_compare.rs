@@ -6,7 +6,7 @@ use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::{
     CircuitError,
-    gadgets::{LogupRangeCheckContext, ShiftRangeContext, constrained_max, constrained_min},
+    gadgets::{LogupRangeCheckContext, ShiftRangeContext, constrained_max_2, constrained_min_2},
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
@@ -53,11 +53,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BinaryCompareLayer 
 
         let (a_bc, b_bc) = broadcast_two_arrays(&a_input, &b_input)?;
 
-        let shift_ctx =
-            ShiftRangeContext::new(api, self.shift_exponent).map_err(|e| LayerError::Other {
-                layer: self.kind.clone(),
-                msg: format!("ShiftRangeContext::new failed: {e}"),
-            })?;
+        let shift_ctx = ShiftRangeContext::new(api, self.kind.clone(), self.shift_exponent)?;
 
         let shape = a_bc.shape().to_vec();
         if a_bc.len() != b_bc.len() {
@@ -76,8 +72,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BinaryCompareLayer 
 
         for (a_val, b_val) in a_bc.iter().zip(b_bc.iter()) {
             let result_var = match self.kind {
-                LayerKind::Max => constrained_max(api, &shift_ctx, logup_ctx, &[*a_val, *b_val])?,
-                LayerKind::Min => constrained_min(api, &shift_ctx, logup_ctx, &[*a_val, *b_val])?,
+                LayerKind::Max => constrained_max_2(api, &shift_ctx, logup_ctx, *a_val, *b_val)?,
+                LayerKind::Min => constrained_min_2(api, &shift_ctx, logup_ctx, *a_val, *b_val)?,
                 ref kind => {
                     return Err(LayerError::UnsupportedConfig {
                         layer: kind.clone(),
