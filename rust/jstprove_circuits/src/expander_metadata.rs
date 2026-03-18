@@ -48,13 +48,13 @@ fn generate_from_onnx_with_all_options(
     target_precision: Option<u32>,
 ) -> Result<ExpanderMetadata> {
     let parsed = parser::parse_onnx(onnx_path).context("parsing ONNX model")?;
-    let graph = LayerGraph::from_parsed(&parsed).context("building layer graph")?;
+    let mut graph = LayerGraph::from_parsed(&parsed).context("building layer graph")?;
 
     let quantized = match (n_bits, target_precision) {
         (Some(nb), Some(digits)) => quantizer::quantize_model_for_precision(graph, digits, nb)
             .context("precision-targeted quantization")?,
         (Some(nb), None) => {
-            let max_bound = quantizer::compute_max_bound(&graph)?;
+            let max_bound = quantizer::compute_max_bound(&mut graph)?;
             let max_exp = ScaleConfig::max_safe_exponent(nb, max_bound);
             let exponent = max_exp;
             let config = ScaleConfig::new(quantizer::DEFAULT_SCALE_BASE, exponent);

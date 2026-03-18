@@ -102,11 +102,11 @@ impl QuantizedModel {
 /// Returns an error if the requested precision exceeds the field capacity,
 /// or if ONNX graph analysis or quantization fails.
 pub fn quantize_model_for_precision(
-    graph: LayerGraph,
+    mut graph: LayerGraph,
     target_digits: u32,
     n_bits: u32,
 ) -> Result<QuantizedModel> {
-    let max_bound = compute_max_bound(&graph)?;
+    let max_bound = compute_max_bound(&mut graph)?;
     let config = ScaleConfig::for_precision(target_digits, n_bits, max_bound)?;
     quantize_model(graph, &config)
 }
@@ -114,11 +114,7 @@ pub fn quantize_model_for_precision(
 pub fn quantize_model(mut graph: LayerGraph, config: &ScaleConfig) -> Result<QuantizedModel> {
     let alpha = config.alpha;
 
-    for layer in &mut graph.layers {
-        if layer.op_type == OpType::BatchNormalization {
-            fold_batchnorm_params(layer)?;
-        }
-    }
+    fold_all_batchnorms(&mut graph)?;
 
     let n_bits_config = compute_bounds(&graph, config)?;
 
@@ -157,6 +153,15 @@ fn quantize_layer_weights(layer: &mut LayerNode, alpha: i64) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn fold_all_batchnorms(graph: &mut LayerGraph) -> Result<()> {
+    for layer in &mut graph.layers {
+        if layer.op_type == OpType::BatchNormalization && layer.inputs.len() > 3 {
+            fold_batchnorm_params(layer)?;
+        }
+    }
     Ok(())
 }
 
@@ -271,7 +276,12 @@ fn fold_batchnorm_params(layer: &mut LayerNode) -> Result<()> {
 
 /// # Errors
 /// Returns an error if layer bound propagation encounters invalid weight data.
-pub fn compute_max_bound(graph: &LayerGraph) -> Result<f64> {
+pub fn compute_max_bound(graph: &mut LayerGraph) -> Result<f64> {
+    fold_all_batchnorms(graph)?;
+    compute_max_bound_inner(graph)
+}
+
+fn compute_max_bound_inner(graph: &LayerGraph) -> Result<f64> {
     let mut bounds: HashMap<String, f64> = HashMap::new();
     let mut max_bound: f64 = 1.0;
 
