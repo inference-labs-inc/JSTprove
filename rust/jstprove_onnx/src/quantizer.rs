@@ -291,12 +291,16 @@ fn compute_max_bound_inner(graph: &LayerGraph) -> Result<f64> {
     let mut bounds: HashMap<String, f64> = HashMap::new();
     let mut max_bound: f64 = 1.0;
 
+    // compute_max_bound runs before the final ScaleConfig is known, so use the
+    // default alpha for Log-layer bound propagation (ln(2^18) ≈ 12.47).
+    let default_alpha_f64 = (DEFAULT_SCALE_BASE as f64).powi(DEFAULT_SCALE_EXPONENT as i32);
+
     for name in &graph.input_names {
         bounds.insert(name.clone(), 1.0);
     }
 
     for layer in graph.iter_topo() {
-        let bound = compute_layer_bound(layer, &bounds)?;
+        let bound = compute_layer_bound(layer, &bounds, default_alpha_f64)?;
 
         if layer.needs_rescale {
             max_bound = max_bound.max(bound);
