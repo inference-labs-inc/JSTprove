@@ -41,8 +41,8 @@ pub struct CircuitParams {
     pub weights_as_inputs: bool,
     #[serde(default, rename = "backend")]
     pub proof_system: ProofSystem,
-    #[serde(default)]
-    pub curve: Curve,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub curve: Option<Curve>,
 }
 
 impl CircuitParams {

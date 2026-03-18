@@ -1630,7 +1630,7 @@ pub fn get_curve(
             }
         }
     }
-    metadata.map_or(crate::curve::Curve::default(), |m| m.curve)
+    metadata.and_then(|m| m.curve).unwrap_or_default()
 }
 
 fn is_remainder_backend(matches: &clap::ArgMatches, metadata: Option<&CircuitParams>) -> bool {

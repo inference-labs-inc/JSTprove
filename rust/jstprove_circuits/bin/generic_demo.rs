@@ -223,7 +223,7 @@ fn main() {
             n_bits_config: std::collections::HashMap::new(),
             weights_as_inputs: false,
             proof_system: ProofSystem::Remainder,
-            curve: Curve::default(),
+            curve: Some(Curve::default()),
         })
     } else {
         OnnxContext::get_params().ok()
@@ -234,17 +234,18 @@ fn main() {
     if let Some(ref meta) = metadata {
         let cli_explicit =
             matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine);
-        if cli_explicit && meta.curve != curve {
-            eprintln!(
-                "Error: curve mismatch — circuit was compiled with '{}' but '{}' was requested",
-                meta.curve, curve
-            );
-            std::process::exit(1);
+        if let Some(bundle_curve) = meta.curve {
+            if cli_explicit && bundle_curve != curve {
+                eprintln!(
+                    "Error: curve mismatch — circuit was compiled with '{bundle_curve}' but '{curve}' was requested",
+                );
+                std::process::exit(1);
+            }
         }
     }
 
     if let Some(ref mut meta) = metadata {
-        meta.curve = curve;
+        meta.curve = Some(curve);
     }
 
     let result = match curve {

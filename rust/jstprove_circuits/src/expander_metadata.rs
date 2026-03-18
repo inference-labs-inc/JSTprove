@@ -11,6 +11,7 @@ use jstprove_onnx::shape_inference;
 
 use crate::circuit_functions::utils::onnx_model::{Architecture, CircuitParams, WANDB};
 use crate::circuit_functions::utils::onnx_types::{ONNXIO, ONNXLayer};
+use crate::curve::Curve;
 use crate::proof_system::ProofSystem;
 
 pub struct ExpanderMetadata {
@@ -71,7 +72,9 @@ fn generate_from_onnx_with_all_options(
 
     let opset_version = parsed.opset_version as i16;
 
-    let circuit_params = build_circuit_params(&parsed, &quantized, config, weights_as_inputs);
+    let curve = n_bits.map(infer_curve_from_n_bits);
+    let circuit_params =
+        build_circuit_params(&parsed, &quantized, config, weights_as_inputs, curve);
     let architecture = build_architecture(&parsed, &quantized, &shapes, opset_version);
     let wandb = build_wandb(&quantized, &shapes).context("building weight/bias data")?;
 
@@ -82,11 +85,20 @@ fn generate_from_onnx_with_all_options(
     })
 }
 
+fn infer_curve_from_n_bits(n_bits: u32) -> Curve {
+    if n_bits <= jstprove_onnx::quantizer::N_BITS_GOLDILOCKS {
+        Curve::Goldilocks
+    } else {
+        Curve::Bn254
+    }
+}
+
 fn build_circuit_params(
     parsed: &ParsedModel,
     quantized: &QuantizedModel,
     config: &ScaleConfig,
     weights_as_inputs: bool,
+    curve: Option<Curve>,
 ) -> CircuitParams {
     let initializer_names: std::collections::HashSet<&str> =
         parsed.initializers.keys().map(String::as_str).collect();
@@ -138,7 +150,7 @@ fn build_circuit_params(
         n_bits_config: quantized.n_bits_config.clone(),
         weights_as_inputs,
         proof_system: ProofSystem::Expander,
-        curve: crate::curve::Curve::default(),
+        curve,
     }
 }
 
@@ -433,6 +445,7 @@ mod tests {
 
         assert_eq!(metadata.circuit_params.scale_base, 2);
         assert_eq!(metadata.circuit_params.scale_exponent, expected_exp);
+        assert_eq!(metadata.circuit_params.curve, Some(Curve::Bn254));
         assert!(!metadata.circuit_params.n_bits_config.is_empty());
         assert!(!metadata.circuit_params.rescale_config.is_empty());
     }
@@ -506,6 +519,7 @@ mod tests {
 
         assert_eq!(metadata.circuit_params.scale_base, 2);
         assert_eq!(metadata.circuit_params.scale_exponent, expected_exp);
+        assert_eq!(metadata.circuit_params.curve, Some(Curve::Goldilocks));
         assert!(!metadata.circuit_params.n_bits_config.is_empty());
     }
 
