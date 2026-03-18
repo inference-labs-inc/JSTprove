@@ -1,7 +1,3 @@
-// Per-threadgroup partial sums for the 3-point polynomial evaluation.
-// Computes: p0 = sum hg[2i]*f[2i], p1 = sum hg[2i+1]*f[2i+1],
-//           p2 = sum (hg[2i]+hg[2i+1])*(f[2i]+f[2i+1])
-
 constant uint THREADGROUP_SIZE = 256;
 constant uint SIMDGROUP_SIZE = 32;
 constant uint SIMDGROUPS_PER_TG = THREADGROUP_SIZE / SIMDGROUP_SIZE;

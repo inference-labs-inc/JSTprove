@@ -1618,6 +1618,21 @@ pub fn get_arg(matches: &clap::ArgMatches, name: &'static str) -> Result<String,
         .ok_or(CliError::MissingArgument(name))
 }
 
+#[must_use]
+pub fn get_curve(
+    matches: &clap::ArgMatches,
+    metadata: Option<&CircuitParams>,
+) -> crate::curve::Curve {
+    if matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine) {
+        if let Some(s) = matches.get_one::<String>("curve") {
+            if let Ok(c) = s.parse::<crate::curve::Curve>() {
+                return c;
+            }
+        }
+    }
+    metadata.and_then(|m| m.curve).unwrap_or_default()
+}
+
 fn is_remainder_backend(matches: &clap::ArgMatches, metadata: Option<&CircuitParams>) -> bool {
     if matches.value_source("backend") == Some(clap::parser::ValueSource::CommandLine) {
         return matches
@@ -1905,6 +1920,14 @@ pub fn get_args() -> clap::ArgMatches {
                 .long("backend")
                 .value_parser(["expander", "remainder"])
                 .default_value("expander"),
+        )
+        .arg(
+            Arg::new("curve")
+                .help("Elliptic curve: 'bn254' (default), 'goldilocks', or 'goldilocks_basefold'")
+                .required(false)
+                .long("curve")
+                .value_parser(["bn254", "goldilocks", "goldilocks_basefold"])
+                .default_value("bn254"),
         )
         .arg(
             Arg::new("model")

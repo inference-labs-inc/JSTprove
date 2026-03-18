@@ -12,7 +12,15 @@ use crate::circuit_functions::{
 
 use expander_compiler::frontend::{Config, RootAPI};
 
-const DEFAULT_N_BITS: usize = 64;
+const DEFAULT_N_BITS_BN254: usize = 64;
+const DEFAULT_N_BITS_GOLDILOCKS: usize = 31;
+
+fn default_n_bits_for_config<C: Config>() -> usize {
+    match C::CONFIG_ID {
+        4 | 6 | 8 => DEFAULT_N_BITS_GOLDILOCKS,
+        _ => DEFAULT_N_BITS_BN254,
+    }
+}
 
 type BoxedDynLayer<C, B> = Box<dyn LayerOp<C, B>>;
 pub struct BuildLayerContext<'a> {
@@ -75,7 +83,7 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
         w_and_b_map: &w_and_b_map,
         shapes_map: &shapes_map,
         n_bits_config: &circuit_params.n_bits_config,
-        default_n_bits: DEFAULT_N_BITS,
+        default_n_bits: default_n_bits_for_config::<C>(),
         weights_as_inputs: circuit_params.weights_as_inputs,
     };
 

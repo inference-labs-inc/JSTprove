@@ -4,13 +4,16 @@ use jstprove_circuits::ProofSystem;
 use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::FileReader;
 use jstprove_circuits::runner::main_runner::{
-    get_arg, get_args, handle_args, try_load_metadata_from_circuit,
+    get_arg, get_args, get_curve, handle_args, try_load_metadata_from_circuit,
 };
 
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
 use jstprove_circuits::onnx::Circuit;
 
-use expander_compiler::frontend::{BN254Config, Variable};
+use expander_compiler::frontend::{
+    BN254Config, GoldilocksBasefoldConfig, GoldilocksConfig, Variable,
+};
+use jstprove_circuits::Curve;
 
 fn load_wandb(matches: &clap::ArgMatches) -> Result<Option<WANDB>, String> {
     let Ok(wandb_file_path) = get_arg(matches, "wandb") else {
@@ -209,7 +212,7 @@ fn main() {
         }
     }
 
-    let metadata = if is_remainder {
+    let mut metadata = if is_remainder {
         Some(CircuitParams {
             scale_base: 2,
             scale_exponent: 18,
@@ -220,16 +223,51 @@ fn main() {
             n_bits_config: std::collections::HashMap::new(),
             weights_as_inputs: false,
             proof_system: ProofSystem::Remainder,
+            curve: Some(Curve::default()),
         })
     } else {
         OnnxContext::get_params().ok()
     };
 
-    if let Err(err) = handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(
-        &matches,
-        &mut file_reader,
-        metadata,
-    ) {
+    let curve = get_curve(&matches, metadata.as_ref());
+
+    if let Some(ref meta) = metadata {
+        let cli_explicit =
+            matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine);
+        if let Some(bundle_curve) = meta.curve {
+            if cli_explicit && bundle_curve != curve {
+                eprintln!(
+                    "Error: curve mismatch — circuit was compiled with '{bundle_curve}' but '{curve}' was requested",
+                );
+                std::process::exit(1);
+            }
+        }
+    }
+
+    if let Some(ref mut meta) = metadata {
+        meta.curve = Some(curve);
+    }
+
+    let result = match curve {
+        Curve::Bn254 => handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(
+            &matches,
+            &mut file_reader,
+            metadata,
+        ),
+        Curve::Goldilocks => handle_args::<GoldilocksConfig, Circuit<Variable>, Circuit<_>, _>(
+            &matches,
+            &mut file_reader,
+            metadata,
+        ),
+        Curve::GoldilocksBasefold => handle_args::<
+            GoldilocksBasefoldConfig,
+            Circuit<Variable>,
+            Circuit<_>,
+            _,
+        >(&matches, &mut file_reader, metadata),
+    };
+
+    if let Err(err) = result {
         eprintln!("Error: {err}");
         std::process::exit(1);
     }
