@@ -84,8 +84,9 @@ where
         }
 
         let base_evals = prepare_base_evals::<C>(poly, *params);
+        let num_evals = base_evals.len();
         let (commitment, tree, codeword) = basefold_commit(&base_evals);
-        scratch_pad.store_commit(tree, codeword);
+        scratch_pad.store_commit(tree, codeword, num_evals);
         Some(commitment)
     }
 
@@ -115,7 +116,9 @@ where
         let base_evals = prepare_base_evals::<C>(poly, *params);
         let xs = effective_point.local_xs();
 
-        let opening = if let Some((tree, codeword)) = scratch_pad.take_commit::<C::CircuitField>() {
+        let opening = if let Some((tree, codeword)) =
+            scratch_pad.get_commit::<C::CircuitField>(base_evals.len())
+        {
             basefold_open::<C::CircuitField, C::ChallengeField>(
                 &base_evals,
                 codeword,

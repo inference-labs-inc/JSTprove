@@ -235,7 +235,7 @@ impl std::fmt::Debug for ErasedCodeword {
 }
 
 pub struct BasefoldScratchPad {
-    commit_cache: Option<Arc<(Tree, ErasedCodeword)>>,
+    commit_cache: Option<Arc<(Tree, ErasedCodeword, usize)>>,
 }
 
 impl Clone for BasefoldScratchPad {
@@ -261,12 +261,27 @@ impl Default for BasefoldScratchPad {
 }
 
 impl BasefoldScratchPad {
-    pub(crate) fn store_commit<F: Send + Sync + 'static>(&mut self, tree: Tree, codeword: Vec<F>) {
-        self.commit_cache = Some(Arc::new((tree, ErasedCodeword(Box::new(codeword)))));
+    pub(crate) fn store_commit<F: Send + Sync + 'static>(
+        &mut self,
+        tree: Tree,
+        codeword: Vec<F>,
+        num_evals: usize,
+    ) {
+        self.commit_cache = Some(Arc::new((
+            tree,
+            ErasedCodeword(Box::new(codeword)),
+            num_evals,
+        )));
     }
 
-    pub(crate) fn take_commit<F: Send + Sync + 'static>(&self) -> Option<(&Tree, &Vec<F>)> {
+    pub(crate) fn get_commit<F: Send + Sync + 'static>(
+        &self,
+        num_evals: usize,
+    ) -> Option<(&Tree, &Vec<F>)> {
         let arc = self.commit_cache.as_ref()?;
+        if arc.2 != num_evals {
+            return None;
+        }
         let codeword = arc.1 .0.downcast_ref::<Vec<F>>()?;
         Some((&arc.0, codeword))
     }
