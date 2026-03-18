@@ -138,6 +138,7 @@ fn build_circuit_params(
         n_bits_config: quantized.n_bits_config.clone(),
         weights_as_inputs,
         proof_system: ProofSystem::Expander,
+        curve: crate::curve::Curve::default(),
     }
 }
 
