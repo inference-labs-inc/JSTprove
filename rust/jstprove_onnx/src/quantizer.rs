@@ -8,6 +8,7 @@ use super::parser::TensorData;
 
 pub const DEFAULT_SCALE_BASE: u64 = 2;
 pub const DEFAULT_SCALE_EXPONENT: u32 = 18;
+pub const N_BITS_BN254: u32 = 64;
 pub const N_BITS_GOLDILOCKS: u32 = 31;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -37,6 +38,51 @@ impl ScaleConfig {
             alpha,
         }
     }
+
+    #[must_use]
+    pub fn exponent_for_digits(target_digits: u32) -> u32 {
+        (f64::from(target_digits) * std::f64::consts::LOG2_10).ceil() as u32
+    }
+
+    #[must_use]
+    pub fn max_safe_exponent(n_bits: u32, max_bound: f64) -> u32 {
+        let log2_accum = if max_bound > 1.0 {
+            max_bound.log2().ceil() as u32
+        } else {
+            0
+        };
+        n_bits.saturating_sub(log2_accum.saturating_add(1)) / 2
+    }
+
+    #[must_use]
+    pub fn max_safe_digits(n_bits: u32, max_bound: f64) -> u32 {
+        let max_exp = Self::max_safe_exponent(n_bits, max_bound);
+        (f64::from(max_exp) / std::f64::consts::LOG2_10).floor() as u32
+    }
+
+    #[must_use]
+    pub fn adaptive(n_bits: u32, max_bound: f64) -> Self {
+        let exponent = Self::max_safe_exponent(n_bits, max_bound);
+        Self::new(DEFAULT_SCALE_BASE, exponent)
+    }
+
+    pub fn for_precision(target_digits: u32, n_bits: u32, max_bound: f64) -> Result<Self> {
+        let exponent = Self::exponent_for_digits(target_digits);
+        let max_exp = Self::max_safe_exponent(n_bits, max_bound);
+        let max_digits = Self::max_safe_digits(n_bits, max_bound);
+        anyhow::ensure!(
+            exponent <= max_exp,
+            "requested {} decimal digits requires exponent={}, but field n_bits={} \
+             with max accumulation {:.2} only supports exponent up to {} ({} digits)",
+            target_digits,
+            exponent,
+            n_bits,
+            max_bound,
+            max_exp,
+            max_digits,
+        );
+        Ok(Self::new(DEFAULT_SCALE_BASE, exponent))
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -58,14 +104,23 @@ impl QuantizedModel {
     }
 }
 
+/// # Errors
+/// Returns an error if the requested precision exceeds the field capacity,
+/// or if ONNX graph analysis or quantization fails.
+pub fn quantize_model_for_precision(
+    mut graph: LayerGraph,
+    target_digits: u32,
+    n_bits: u32,
+) -> Result<QuantizedModel> {
+    let max_bound = compute_max_bound(&mut graph)?;
+    let config = ScaleConfig::for_precision(target_digits, n_bits, max_bound)?;
+    quantize_model(graph, &config)
+}
+
 pub fn quantize_model(mut graph: LayerGraph, config: &ScaleConfig) -> Result<QuantizedModel> {
     let alpha = config.alpha;
 
-    for layer in &mut graph.layers {
-        if layer.op_type == OpType::BatchNormalization {
-            fold_batchnorm_params(layer)?;
-        }
-    }
+    fold_all_batchnorms(&mut graph)?;
 
     let n_bits_config = compute_bounds(&graph, config)?;
 
@@ -104,6 +159,15 @@ fn quantize_layer_weights(layer: &mut LayerNode, alpha: i64) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn fold_all_batchnorms(graph: &mut LayerGraph) -> Result<()> {
+    for layer in &mut graph.layers {
+        if layer.op_type == OpType::BatchNormalization && layer.inputs.len() > 3 {
+            fold_batchnorm_params(layer)?;
+        }
+    }
     Ok(())
 }
 
@@ -214,6 +278,38 @@ fn fold_batchnorm_params(layer: &mut LayerNode) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// # Errors
+/// Returns an error if layer bound propagation encounters invalid weight data.
+pub fn compute_max_bound(graph: &mut LayerGraph) -> Result<f64> {
+    fold_all_batchnorms(graph)?;
+    compute_max_bound_inner(graph)
+}
+
+fn compute_max_bound_inner(graph: &LayerGraph) -> Result<f64> {
+    let mut bounds: HashMap<String, f64> = HashMap::new();
+    let mut max_bound: f64 = 1.0;
+
+    for name in &graph.input_names {
+        bounds.insert(name.clone(), 1.0);
+    }
+
+    for layer in graph.iter_topo() {
+        let bound = compute_layer_bound(layer, &bounds)?;
+
+        if layer.needs_rescale {
+            max_bound = max_bound.max(bound);
+        }
+
+        let post_rescale_bound = if layer.needs_rescale { 1.0 } else { bound };
+
+        for out_name in &layer.outputs {
+            bounds.insert(out_name.clone(), post_rescale_bound);
+        }
+    }
+
+    Ok(max_bound)
 }
 
 fn compute_bounds(graph: &LayerGraph, config: &ScaleConfig) -> Result<HashMap<String, usize>> {

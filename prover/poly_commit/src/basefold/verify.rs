@@ -300,6 +300,9 @@ fn extract_base_from_leaf<F: Field>(leaf_data: &[u8], offset: usize) -> Option<F
 
 fn verify_leaf_values<EvalF: Field>(leaf_data: &[u8], values: &[EvalF]) -> bool {
     let elems_per_leaf = LEAF_BYTES / EvalF::SIZE;
+    if leaf_data.len() < LEAF_BYTES {
+        return false;
+    }
     if values.len() != elems_per_leaf {
         return false;
     }
@@ -321,6 +324,7 @@ fn verify_leaf_values<EvalF: Field>(leaf_data: &[u8], values: &[EvalF]) -> bool 
 }
 
 fn generate_query_indices(transcript: &mut impl Transcript, len: usize) -> Vec<usize> {
+    assert!(len > 0, "generate_query_indices requires len > 0");
     let raw = transcript.generate_usize_vector(BASEFOLD_NUM_QUERIES);
     let mut seen = std::collections::HashSet::with_capacity(raw.len());
     raw.into_iter()
