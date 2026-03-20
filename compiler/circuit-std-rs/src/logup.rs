@@ -520,9 +520,9 @@ pub fn rangeproof_hint<F: Field>(inputs: &[F], outputs: &mut [F]) -> Result<(), 
             "rangeproof_hint requires at least 3 inputs".into(),
         ));
     }
-    let n = inputs[0].to_u256().as_i64();
-    let m = inputs[1].to_u256().as_i64();
-    if m <= 0 {
+    let n = inputs[0].to_u256().as_usize();
+    let m = inputs[1].to_u256().as_usize();
+    if m == 0 {
         return Err(Error::InternalError(
             "rangeproof_hint chunk size must be positive".into(),
         ));
@@ -533,7 +533,7 @@ pub fn rangeproof_hint<F: Field>(inputs: &[F], outputs: &mut [F]) -> Result<(), 
     let chunk_mod = U256::from(1_u64) << m;
 
     let num_chunks = n / m;
-    if num_chunks < 0 || num_chunks as usize > outputs.len() {
+    if num_chunks > outputs.len() {
         return Err(Error::InternalError(
             "rangeproof_hint chunk count exceeds output length".into(),
         ));
@@ -541,7 +541,7 @@ pub fn rangeproof_hint<F: Field>(inputs: &[F], outputs: &mut [F]) -> Result<(), 
     for i in 0..num_chunks {
         let r = a % chunk_mod;
         a /= chunk_mod;
-        outputs[i as usize] = F::from(r.as_u32());
+        outputs[i] = F::from(r.as_u32());
     }
     Ok(())
 }
