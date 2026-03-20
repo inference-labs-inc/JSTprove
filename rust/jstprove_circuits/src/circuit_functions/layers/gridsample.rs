@@ -85,6 +85,7 @@ pub struct GridSampleLayer {
 
 /// Convert a normalised grid coordinate in [-1, 1] to a continuous pixel
 /// coordinate in input space.
+#[allow(clippy::cast_precision_loss, clippy::manual_midpoint)]
 fn unnormalize(norm: f64, size: usize, align_corners: bool) -> f64 {
     if align_corners {
         (norm + 1.0) / 2.0 * (size.saturating_sub(1) as f64)
@@ -94,6 +95,7 @@ fn unnormalize(norm: f64, size: usize, align_corners: bool) -> f64 {
 }
 
 /// Apply `reflection` padding to a continuous pixel coordinate.
+#[allow(clippy::cast_precision_loss)]
 fn reflect_coord(x: f64, size: usize, align_corners: bool) -> f64 {
     if size <= 1 {
         return 0.0;
@@ -114,6 +116,7 @@ fn reflect_coord(x: f64, size: usize, align_corners: bool) -> f64 {
 
 /// Resolve a pixel coordinate under the given padding mode; returns `None`
 /// for out-of-bounds positions under `zeros` padding.
+#[allow(clippy::cast_precision_loss)]
 fn apply_padding_f(x: f64, size: usize, padding_mode: &str, align_corners: bool) -> Option<f64> {
     match padding_mode {
         "zeros" => {
@@ -123,13 +126,17 @@ fn apply_padding_f(x: f64, size: usize, padding_mode: &str, align_corners: bool)
                 Some(x.clamp(0.0, (size.saturating_sub(1)) as f64))
             }
         }
-        "border" => Some(x.clamp(0.0, (size.saturating_sub(1)) as f64)),
         "reflection" => Some(reflect_coord(x, size, align_corners)),
         _ => Some(x.clamp(0.0, (size.saturating_sub(1)) as f64)),
     }
 }
 
 /// Nearest-neighbour rounding: round to nearest integer (ties go to +∞).
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 fn nearest_px(x: f64, size: usize) -> usize {
     (x + 0.5)
         .floor()
@@ -138,6 +145,11 @@ fn nearest_px(x: f64, size: usize) -> usize {
 
 /// Returns `(floor_idx, ceil_idx, weight_floor, weight_ceil)` for a continuous
 /// pixel coordinate `x` in a dimension of size `size`.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 fn bilinear_corners_1d(x: f64, size: usize) -> (usize, usize, f64, f64) {
     let x_clamped = x.clamp(0.0, (size.saturating_sub(1)) as f64);
     let floor_f = x_clamped.floor();
@@ -152,7 +164,8 @@ fn bilinear_corners_1d(x: f64, size: usize) -> (usize, usize, f64, f64) {
 #[allow(
     clippy::too_many_arguments,
     clippy::cast_possible_truncation,
-    clippy::cast_sign_loss
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss
 )]
 fn build_nearest_index_map(
     grid_flat: &[i64],
@@ -202,7 +215,9 @@ fn build_nearest_index_map(
 #[allow(
     clippy::too_many_arguments,
     clippy::cast_possible_truncation,
-    clippy::cast_sign_loss
+    clippy::cast_sign_loss,
+    clippy::similar_names,
+    clippy::cast_precision_loss
 )]
 fn build_bilinear_per_output(
     grid_flat: &[i64],
@@ -279,6 +294,7 @@ fn build_bilinear_per_output(
 // -------- Implementation --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GridSampleLayer {
+    #[allow(clippy::cast_sign_loss)]
     fn apply(
         &self,
         api: &mut Builder,
@@ -362,6 +378,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GridSampleLayer {
         Ok((self.outputs.clone(), out_array))
     }
 
+    #[allow(clippy::too_many_lines, clippy::cast_precision_loss)]
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,

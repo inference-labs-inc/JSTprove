@@ -40,6 +40,10 @@ pub fn gkr_square_prove<F: FieldEngine>(
 
     log::trace!("Claimed v: {claimed_v:?}");
 
+    transcript.lock_proof();
+    transcript.append_field_element(&claimed_v);
+    transcript.unlock_proof();
+
     for i in (0..layer_num).rev() {
         sumcheck_prove_gkr_square_layer(
             &circuit.layers[i],

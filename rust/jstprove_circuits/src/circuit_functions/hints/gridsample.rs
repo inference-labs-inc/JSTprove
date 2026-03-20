@@ -51,9 +51,11 @@ pub const GRIDSAMPLE_HINT_KEY: &str = "jstprove.gridsample_hint";
 /// Returns [`Error::UserError`] when input/output lengths are invalid or the
 /// input count is even (expected 2*n+1).
 #[allow(
+    clippy::similar_names,
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
-    clippy::cast_sign_loss
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap
 )]
 pub fn gridsample_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Error> {
     if inputs.is_empty() || inputs.len() % 2 == 0 {
@@ -101,20 +103,22 @@ pub fn gridsample_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result
             )));
         }
         let w_u64 = w_u256.as_u64();
-        let product = (x_i64 as i128).checked_mul(w_u64 as i128).ok_or_else(|| {
-            Error::UserError("gridsample_hint: overflow in weighted sum".to_string())
-        })?;
+        let product = i128::from(x_i64)
+            .checked_mul(i128::from(w_u64))
+            .ok_or_else(|| {
+                Error::UserError("gridsample_hint: overflow in weighted sum".to_string())
+            })?;
         sum_i128 = sum_i128.checked_add(product).ok_or_else(|| {
             Error::UserError("gridsample_hint: overflow in weighted sum accumulation".to_string())
         })?;
     }
 
     // y_q = round(sum / scale), clamped to [i64::MIN, i64::MAX].
-    let scale_i128 = scale_u64 as i128;
+    let scale_i128 = i128::from(scale_u64);
     let half = scale_i128 / 2;
     let y_q: i64 = if sum_i128 >= 0 {
         let rounded = (sum_i128 + half) / scale_i128;
-        if rounded > i64::MAX as i128 {
+        if rounded > i128::from(i64::MAX) {
             i64::MAX
         } else {
             rounded as i64
@@ -122,7 +126,7 @@ pub fn gridsample_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result
     } else {
         // Negative sum — compute signed rounding (symmetric half-away-from-zero).
         let rounded = (sum_i128 - half) / scale_i128;
-        if rounded < i64::MIN as i128 {
+        if rounded < i128::from(i64::MIN) {
             i64::MIN
         } else {
             rounded as i64

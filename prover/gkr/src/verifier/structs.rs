@@ -92,6 +92,10 @@ pub fn parse_proof<F: FieldEngine>(
     let mut alpha = None;
     let mut claim_y = None;
 
+    transcript.lock_proof();
+    transcript.append_field_element(&claimed_v);
+    transcript.unlock_proof();
+
     for i in (0..circuit.layers.len()).rev() {
         let verification_unit = &mut verification_units[i];
         verification_unit.claim = SumcheckClaim {

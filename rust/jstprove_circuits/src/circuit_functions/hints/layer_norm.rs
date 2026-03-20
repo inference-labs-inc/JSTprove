@@ -47,6 +47,13 @@ const EPSILON: f64 = 1e-5;
 ///
 /// # Errors
 /// Returns [`Error::UserError`] when `inputs.len() != 3 * n + 1`.
+#[allow(
+    clippy::similar_names,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 pub fn layer_norm_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Error> {
     let n = outputs.len();
     let expected = 3 * n + 1;

@@ -41,6 +41,9 @@ pub fn gkr_square_verify<C: FieldEngine>(
 
     let mut verified = true;
     let mut current_claim = *claimed_v;
+    transcript.lock_proof();
+    transcript.append_field_element(claimed_v);
+    transcript.unlock_proof();
     log::trace!("Starting claim: {current_claim:?}",);
     for i in (0..layer_num).rev() {
         let cur_verified = sumcheck_verify_gkr_square_layer(

@@ -465,9 +465,12 @@ impl LogUpRangeProofTable {
 }
 
 pub fn query_count_hint<F: Field>(inputs: &[F], outputs: &mut [F]) -> Result<(), Error> {
-    let mut count = vec![0; outputs.len()];
+    let mut count = vec![0usize; outputs.len()];
     for input in inputs {
         let query_id = input.to_u256().as_usize();
+        if query_id >= count.len() {
+            return Err(Error::InternalError("query_id out of bounds".into()));
+        }
         count[query_id] += 1;
     }
     for i in 0..outputs.len() {
@@ -477,9 +480,14 @@ pub fn query_count_hint<F: Field>(inputs: &[F], outputs: &mut [F]) -> Result<(),
 }
 
 pub fn query_count_by_key_hint<F: Field>(inputs: &[F], outputs: &mut [F]) -> Result<(), Error> {
-    let mut outputs_u32 = vec![0; outputs.len()];
+    let mut outputs_u32 = vec![0u32; outputs.len()];
 
     let table_size = inputs[0].to_u256().as_usize();
+    if table_size >= inputs.len() {
+        return Err(Error::InternalError(
+            "table_size exceeds inputs length".into(),
+        ));
+    }
     let table = &inputs[1..=table_size];
     let query_keys = &inputs[(table_size + 1)..];
 
@@ -490,6 +498,11 @@ pub fn query_count_by_key_hint<F: Field>(inputs: &[F], outputs: &mut [F]) -> Res
     }
 
     for (i, value) in table.iter().enumerate() {
+        if i >= outputs_u32.len() {
+            return Err(Error::InternalError(
+                "table entry index exceeds output length".into(),
+            ));
+        }
         let key_value = value.to_u256().as_u32();
         let count = table_map.get(&key_value).copied().unwrap_or(0);
         outputs_u32[i] = count as u32;
@@ -502,20 +515,32 @@ pub fn query_count_by_key_hint<F: Field>(inputs: &[F], outputs: &mut [F]) -> Res
 }
 
 pub fn rangeproof_hint<F: Field>(inputs: &[F], outputs: &mut [F]) -> Result<(), Error> {
+    if inputs.len() < 3 {
+        return Err(Error::InternalError(
+            "rangeproof_hint requires at least 3 inputs".into(),
+        ));
+    }
     let n = inputs[0].to_u256().as_i64();
     let m = inputs[1].to_u256().as_i64();
+    if m <= 0 {
+        return Err(Error::InternalError(
+            "rangeproof_hint chunk size must be positive".into(),
+        ));
+    }
 
-    let mut a = inputs[2].to_u256(); // Value 'new_a' as U256
+    let mut a = inputs[2].to_u256();
 
     let chunk_mod = U256::from(1_u64) << m;
 
-    for i in 0..n / m {
+    let num_chunks = n / m;
+    if num_chunks < 0 || num_chunks as usize > outputs.len() {
+        return Err(Error::InternalError(
+            "rangeproof_hint chunk count exceeds output length".into(),
+        ));
+    }
+    for i in 0..num_chunks {
         let r = a % chunk_mod;
         a /= chunk_mod;
-        // println!(
-        //     "rangeproof_hint chunk {}: r = {}, a_remaining = {}",
-        //     i, r, a
-        // ); // Log chunks
         outputs[i as usize] = F::from(r.as_u32());
     }
     Ok(())

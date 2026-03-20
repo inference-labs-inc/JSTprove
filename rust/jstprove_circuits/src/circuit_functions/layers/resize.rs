@@ -74,6 +74,7 @@ pub struct ResizeLayer {
 
 /// Map output coordinate to continuous input coordinate using the specified
 /// coordinate transformation mode.
+#[allow(clippy::cast_precision_loss)]
 fn output_to_input_coord(out_idx: usize, in_size: usize, out_size: usize, mode: &str) -> f64 {
     let o = out_idx as f64;
     let in_f = in_size as f64;
@@ -103,6 +104,12 @@ fn output_to_input_coord(out_idx: usize, in_size: usize, out_size: usize, mode: 
 }
 
 /// Apply nearest-neighbour rounding to a continuous coordinate.
+#[allow(
+    clippy::items_after_statements,
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss
+)]
 fn apply_nearest_rounding(x: f64, in_size: usize, nearest_mode: &str) -> Result<usize, LayerError> {
     if in_size == 0 {
         return Err(LayerError::InvalidShape {
@@ -139,6 +146,11 @@ fn apply_nearest_rounding(x: f64, in_size: usize, nearest_mode: &str) -> Result<
 
 /// Return (floor_idx, ceil_idx, weight_floor, weight_ceil) for a continuous
 /// coordinate `x` into a dimension of size `in_size`.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 fn linear_corners(x: f64, in_size: usize) -> Result<(usize, usize, f64, f64), LayerError> {
     if in_size == 0 {
         return Err(LayerError::InvalidShape {
@@ -204,7 +216,12 @@ fn build_nearest_index_map(
     Ok(index_map)
 }
 
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap
+)]
 fn build_linear_per_output(
     input_shape: &[usize],
     output_shape: &[usize],
@@ -303,6 +320,7 @@ fn build_linear_per_output(
 // -------- Implementation --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ResizeLayer {
+    #[allow(clippy::cast_sign_loss)]
     fn apply(
         &self,
         api: &mut Builder,
@@ -379,6 +397,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ResizeLayer {
         Ok((self.outputs.clone(), out_array))
     }
 
+    #[allow(clippy::too_many_lines, clippy::items_after_statements)]
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
