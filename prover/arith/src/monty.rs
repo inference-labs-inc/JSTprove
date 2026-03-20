@@ -148,14 +148,15 @@ impl<MP: FieldParameters> ExpSerde for MontyField31<MP> {
         Ok(())
     }
 
-    /// Note: This function performs modular reduction on inputs and
-    /// converts from canonical to Montgomery form.
     #[inline(always)]
     #[allow(const_evaluatable_unchecked)]
     fn deserialize_from<R: Read>(mut reader: R) -> SerdeResult<Self> {
         let mut u = [0u8; 4];
         reader.read_exact(&mut u)?;
         let v = u32::from_le_bytes(u);
+        if v >= MP::PRIME {
+            return Err(serdes::SerdeError::DeserializeError);
+        }
         Ok(Self::new(v))
     }
 }

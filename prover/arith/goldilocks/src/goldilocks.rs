@@ -68,8 +68,10 @@ impl ExpSerde for Goldilocks {
     fn deserialize_from<R: Read>(mut reader: R) -> SerdeResult<Self> {
         let mut u = [0u8; 8];
         reader.read_exact(&mut u)?;
-        let mut v = u64::from_le_bytes(u);
-        v = mod_reduce_u64(v);
+        let v = u64::from_le_bytes(u);
+        if v >= GOLDILOCKS_MOD {
+            return Err(serdes::SerdeError::DeserializeError);
+        }
         Ok(Goldilocks { v })
     }
 }

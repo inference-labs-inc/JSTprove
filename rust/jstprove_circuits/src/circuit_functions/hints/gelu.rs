@@ -25,8 +25,8 @@ use expander_compiler::utils::error::Error;
 pub const GELU_HINT_KEY: &str = "jstprove.gelu_hint";
 
 // Constants for GELU approximation
-const SQRT_2_OVER_PI: f64 = 0.7978845608028654; // √(2/π)
-const GELU_COEF: f64 = 0.044715;
+const SQRT_2_OVER_PI: f64 = 0.797_884_560_802_865_4; // √(2/π)
+const GELU_COEF: f64 = 0.044_715;
 
 /// Hint function for elementwise `Gelu` over fixed-point integers.
 ///
@@ -44,6 +44,13 @@ const GELU_COEF: f64 = 0.044715;
 ///
 /// # Errors
 /// Returns [`Error::UserError`] when `inputs.len() != 2` or `outputs.len() != 1`.
+#[allow(
+    clippy::similar_names,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 pub fn gelu_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Error> {
     if inputs.len() != 2 {
         return Err(Error::UserError(format!(

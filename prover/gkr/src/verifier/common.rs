@@ -3,11 +3,18 @@ use std::{io::Read, vec};
 use arith::Field;
 use circuit::{CircuitLayer, RndCoefMap};
 use gkr_engine::{ExpanderDualVarChallenge, FieldEngine, Transcript};
-use serdes::ExpSerde;
 use sumcheck::{
     GKRVerifierHelper, VerifierScratchPad, SUMCHECK_GKR_DEGREE, SUMCHECK_GKR_SIMD_MPI_DEGREE,
     SUMCHECK_GKR_SQUARE_DEGREE,
 };
+
+#[inline(always)]
+pub(crate) fn try_deserialize_field<F: Field>(mut proof_reader: impl Read) -> (F, bool) {
+    match F::deserialize_from(&mut proof_reader) {
+        Ok(v) => (v, true),
+        Err(_) => (F::ZERO, false),
+    }
+}
 
 #[inline(always)]
 pub fn verify_sumcheck_step<F: FieldEngine>(
@@ -19,18 +26,19 @@ pub fn verify_sumcheck_step<F: FieldEngine>(
     sp: &VerifierScratchPad<F>,
 ) -> bool {
     let mut ps = vec![];
+    let mut deser_ok = true;
     for i in 0..(degree + 1) {
-        ps.push(F::ChallengeField::deserialize_from(&mut proof_reader).unwrap());
+        let (v, ok) = try_deserialize_field::<F::ChallengeField>(&mut proof_reader);
+        ps.push(v);
+        deser_ok &= ok;
         transcript.append_field_element(&ps[i]);
     }
 
     let r = transcript.generate_field_element::<F::ChallengeField>();
     randomness_vec.push(r);
 
-    let verified = (ps[0] + ps[1]) == *claimed_sum;
+    let verified = deser_ok && (ps[0] + ps[1]) == *claimed_sum;
 
-    // This assumes SUMCHECK_GKR_DEGREE == 2, SUMCHECK_GKR_SIMD_MPI_DEGREE == 3,
-    // SUMCHECK_GKR_SQUARE_DEGREE == 6
     if degree == SUMCHECK_GKR_DEGREE {
         *claimed_sum = GKRVerifierHelper::degree_2_eval(&ps, r, sp);
     } else if degree == SUMCHECK_GKR_SIMD_MPI_DEGREE {
@@ -38,13 +46,12 @@ pub fn verify_sumcheck_step<F: FieldEngine>(
     } else if degree == SUMCHECK_GKR_SQUARE_DEGREE {
         *claimed_sum = GKRVerifierHelper::degree_6_eval(&ps, r, sp);
     } else {
-        panic!("unsupported degree");
+        return false;
     }
 
     verified
 }
 
-// todo: FIXME
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::type_complexity)]
 #[allow(clippy::unnecessary_unwrap)]
@@ -64,6 +71,7 @@ pub fn sumcheck_verify_gkr_layer<F: FieldEngine>(
 ) -> bool {
     assert_eq!(challenge.rz_1.is_none(), claimed_v1.is_none());
     assert_eq!(challenge.rz_1.is_none(), alpha.is_none());
+    assert!(proving_time_mpi_size.is_power_of_two());
 
     if parallel_verify {
         GKRVerifierHelper::prepare_layer_non_sequential(layer, &alpha, challenge, sp);
@@ -97,7 +105,6 @@ pub fn sumcheck_verify_gkr_layer<F: FieldEngine>(
             &mut rx,
             sp,
         );
-        // println!("x {} var, verified? {}", _i_var, verified);
     }
     GKRVerifierHelper::set_rx(&rx, sp);
 
@@ -110,11 +117,10 @@ pub fn sumcheck_verify_gkr_layer<F: FieldEngine>(
             &mut r_simd_xy,
             sp,
         );
-        // println!("{} simd var, verified? {}", _i_var, verified);
     }
     GKRVerifierHelper::set_r_simd_xy(&r_simd_xy, sp);
 
-    for _i_var in 0..proving_time_mpi_size.ilog2() {
+    for _i_var in 0..proving_time_mpi_size.trailing_zeros() {
         verified &= verify_sumcheck_step::<F>(
             &mut proof_reader,
             SUMCHECK_GKR_SIMD_MPI_DEGREE,
@@ -123,11 +129,11 @@ pub fn sumcheck_verify_gkr_layer<F: FieldEngine>(
             &mut r_mpi_xy,
             sp,
         );
-        // println!("{} mpi var, verified? {}", _i_var, verified);
     }
     GKRVerifierHelper::set_r_mpi_xy(&r_mpi_xy, sp);
 
-    let vx_claim = F::ChallengeField::deserialize_from(&mut proof_reader).unwrap();
+    let (vx_claim, vx_ok) = try_deserialize_field::<F::ChallengeField>(&mut proof_reader);
+    verified &= vx_ok;
 
     sum -= vx_claim * GKRVerifierHelper::eval_add(&layer.add, sp);
     transcript.append_field_element(&vx_claim);
@@ -143,11 +149,11 @@ pub fn sumcheck_verify_gkr_layer<F: FieldEngine>(
                 ry.as_mut().unwrap(),
                 sp,
             );
-            // println!("y {} var, verified? {}", _i_var, verified);
         }
         GKRVerifierHelper::set_ry(ry.as_ref().unwrap(), sp);
 
-        let vy_claim = F::ChallengeField::deserialize_from(&mut proof_reader).unwrap();
+        let (vy_claim, vy_ok) = try_deserialize_field::<F::ChallengeField>(&mut proof_reader);
+        verified &= vy_ok;
         transcript.append_field_element(&vy_claim);
         verified &= sum == vx_claim * vy_claim * GKRVerifierHelper::eval_mul(&layer.mul, sp);
         Some(vy_claim)
@@ -184,6 +190,7 @@ pub fn sumcheck_verify_gkr_layer_ref<F: FieldEngine>(
 ) -> bool {
     assert_eq!(challenge.rz_1.is_none(), claimed_v1.is_none());
     assert_eq!(challenge.rz_1.is_none(), alpha.is_none());
+    assert!(proving_time_mpi_size.is_power_of_two());
 
     if parallel_verify {
         GKRVerifierHelper::prepare_layer_non_sequential(layer, &alpha, challenge, sp);
@@ -232,7 +239,7 @@ pub fn sumcheck_verify_gkr_layer_ref<F: FieldEngine>(
     }
     GKRVerifierHelper::set_r_simd_xy(&r_simd_xy, sp);
 
-    for _i_var in 0..proving_time_mpi_size.ilog2() {
+    for _i_var in 0..proving_time_mpi_size.trailing_zeros() {
         verified &= verify_sumcheck_step::<F>(
             &mut proof_reader,
             SUMCHECK_GKR_SIMD_MPI_DEGREE,
@@ -244,7 +251,8 @@ pub fn sumcheck_verify_gkr_layer_ref<F: FieldEngine>(
     }
     GKRVerifierHelper::set_r_mpi_xy(&r_mpi_xy, sp);
 
-    let vx_claim = F::ChallengeField::deserialize_from(&mut proof_reader).unwrap();
+    let (vx_claim, vx_ok) = try_deserialize_field::<F::ChallengeField>(&mut proof_reader);
+    verified &= vx_ok;
 
     sum -= vx_claim * GKRVerifierHelper::eval_add_ref(&layer.add, sp, layer_idx, rnd_map);
     transcript.append_field_element(&vx_claim);
@@ -263,7 +271,8 @@ pub fn sumcheck_verify_gkr_layer_ref<F: FieldEngine>(
         }
         GKRVerifierHelper::set_ry(ry.as_ref().unwrap(), sp);
 
-        let vy_claim = F::ChallengeField::deserialize_from(&mut proof_reader).unwrap();
+        let (vy_claim, vy_ok) = try_deserialize_field::<F::ChallengeField>(&mut proof_reader);
+        verified &= vy_ok;
         transcript.append_field_element(&vy_claim);
         verified &= sum
             == vx_claim

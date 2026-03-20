@@ -537,10 +537,13 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
         transcript: &mut impl Transcript,
         proof_reader: impl Read,
     ) -> bool {
-        let opening = <Cfg::PCSConfig as ExpanderPCS<Cfg::FieldConfig>>::Opening::deserialize_from(
-            proof_reader,
-        )
-        .unwrap();
+        let opening =
+            match <Cfg::PCSConfig as ExpanderPCS<Cfg::FieldConfig>>::Opening::deserialize_from(
+                proof_reader,
+            ) {
+                Ok(o) => o,
+                Err(_) => return false,
+            };
 
         transcript.lock_proof();
         let verified = Cfg::PCSConfig::verify(
@@ -555,7 +558,9 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
         transcript.unlock_proof();
 
         let mut buffer = vec![];
-        opening.serialize_into(&mut buffer).unwrap(); // TODO: error propagation
+        if opening.serialize_into(&mut buffer).is_err() {
+            return false;
+        }
         transcript.append_u8_slice(&buffer);
 
         verified

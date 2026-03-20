@@ -37,6 +37,10 @@ pub fn gkr_verify<F: FieldEngine>(
     let mut claimed_v0 = *claimed_v;
     let mut claimed_v1 = None;
 
+    transcript.lock_proof();
+    transcript.append_field_element(claimed_v);
+    transcript.unlock_proof();
+
     let mut verified = true;
     for i in (0..layer_num).rev() {
         let cur_verified = sumcheck_verify_gkr_layer(
@@ -102,6 +106,10 @@ pub fn gkr_verify_ref<F: FieldEngine>(
     let mut alpha = None;
     let mut claimed_v0 = *claimed_v;
     let mut claimed_v1 = None;
+
+    transcript.lock_proof();
+    transcript.append_field_element(claimed_v);
+    transcript.unlock_proof();
 
     let mut verified = true;
     for i in (0..layer_num).rev() {

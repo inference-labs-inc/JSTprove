@@ -66,6 +66,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ShapeLayer {
         Ok((self.outputs.clone(), result))
     }
 
+    #[allow(
+        clippy::cast_possible_wrap,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,

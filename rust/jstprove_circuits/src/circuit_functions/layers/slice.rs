@@ -68,6 +68,12 @@ fn ravel(coords: &[usize], shape: &[usize]) -> usize {
 ///
 /// `index_map[out_flat] = in_flat` maps every output position back to the
 /// corresponding input position given the slice parameters.
+#[allow(
+    clippy::similar_names,
+    clippy::cast_possible_wrap,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 fn build_index_map(
     layer_name: &str,
     input_shape: &[usize],
@@ -93,8 +99,7 @@ fn build_index_map(
             return Err(LayerError::InvalidShape {
                 layer: LayerKind::Slice,
                 msg: format!(
-                    "layer {layer_name}: Slice axis {} out of range for rank {}",
-                    axis_raw, rank
+                    "layer {layer_name}: Slice axis {axis_raw} out of range for rank {rank}"
                 ),
             });
         }
@@ -109,10 +114,7 @@ fn build_index_map(
         if step == 0 {
             return Err(LayerError::InvalidShape {
                 layer: LayerKind::Slice,
-                msg: format!(
-                    "layer {layer_name}: Slice step cannot be zero for axis {}",
-                    axis
-                ),
+                msg: format!("layer {layer_name}: Slice step cannot be zero for axis {axis}"),
             });
         }
         axis_step[axis] = step as isize;
@@ -204,6 +206,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SliceLayer {
         Ok((self.outputs.clone(), out_array))
     }
 
+    #[allow(clippy::too_many_lines, clippy::cast_possible_wrap)]
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,

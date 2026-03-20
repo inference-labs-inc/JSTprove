@@ -78,6 +78,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
         .into())
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        clippy::cast_possible_wrap,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
@@ -309,9 +315,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TopKLayer {
             return Err(LayerError::InvalidShape {
                 layer: LayerKind::TopK,
                 msg: format!(
-                    "output shape {:?} from shapes_map does not match expected {:?} \
-                     (input {:?}, axis {}, k {})",
-                    output_shape, expected_output_shape, input_shape, axis, k
+                    "output shape {output_shape:?} from shapes_map does not match expected {expected_output_shape:?} \
+                     (input {input_shape:?}, axis {axis}, k {k})"
                 ),
             }
             .into());

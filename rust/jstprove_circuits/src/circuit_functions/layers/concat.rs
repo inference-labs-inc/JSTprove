@@ -53,7 +53,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConcatLayer {
             })
             .collect::<Result<Vec<_>, LayerError>>()?;
 
-        let views: Vec<_> = input_arrays.iter().map(|a| a.view()).collect();
+        let views: Vec<_> = input_arrays.iter().map(ndarray::ArrayBase::view).collect();
         let result = ndarray::concatenate(Axis(self.axis), &views).map_err(|e| {
             LayerError::InvalidShape {
                 layer: LayerKind::Concat,
@@ -64,6 +64,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConcatLayer {
         Ok((self.outputs.clone(), result))
     }
 
+    #[allow(
+        clippy::cast_possible_wrap,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,

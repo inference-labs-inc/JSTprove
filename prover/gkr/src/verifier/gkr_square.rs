@@ -1,11 +1,10 @@
-use super::verify_sumcheck_step;
+use super::{common::try_deserialize_field, verify_sumcheck_step};
 use arith::Field;
 use ark_std::{end_timer, start_timer};
 use circuit::{Circuit, CircuitLayer};
 use gkr_engine::{
     ExpanderDualVarChallenge, ExpanderSingleVarChallenge, FieldEngine, FieldType, Transcript,
 };
-use serdes::ExpSerde;
 use std::io::Read;
 use sumcheck::{GKRVerifierHelper, VerifierScratchPad, SUMCHECK_GKR_SQUARE_DEGREE};
 
@@ -41,6 +40,9 @@ pub fn gkr_square_verify<C: FieldEngine>(
 
     let mut verified = true;
     let mut current_claim = *claimed_v;
+    transcript.lock_proof();
+    transcript.append_field_element(claimed_v);
+    transcript.unlock_proof();
     log::trace!("Starting claim: {current_claim:?}",);
     for i in (0..layer_num).rev() {
         let cur_verified = sumcheck_verify_gkr_square_layer(
@@ -134,7 +136,8 @@ pub fn sumcheck_verify_gkr_square_layer<C: FieldEngine>(
     }
     GKRVerifierHelper::set_r_mpi_xy(&challenge.r_mpi, sp);
 
-    let v_claim = C::ChallengeField::deserialize_from(&mut proof_reader).unwrap();
+    let (v_claim, v_ok) = try_deserialize_field::<C::ChallengeField>(&mut proof_reader);
+    verified &= v_ok;
     log::trace!("v_claim: {v_claim:?}");
 
     sum -= v_claim * GKRVerifierHelper::eval_pow_1(&layer.uni, sp)

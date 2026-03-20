@@ -38,6 +38,7 @@ pub const LOG_HINT_KEY: &str = "jstprove.log_hint";
 /// If `x_q <= 0` (i.e. the real value is non-positive), the output is clamped
 /// to `i64::MIN` to indicate an invalid domain.
 #[allow(
+    clippy::similar_names,
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss

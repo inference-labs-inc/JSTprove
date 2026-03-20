@@ -11,13 +11,6 @@ use serdes::{ExpSerde, SerdeResult};
 
 pub const M31_MOD: u32 = 2147483647;
 
-#[inline]
-// if x = MOD this will return MOD instead of 0
-// for absolute reduction, use mod_reduce_safe
-pub(crate) fn mod_reduce_u32(x: u32) -> u32 {
-    (x & M31_MOD) + (x >> 31)
-}
-
 pub(crate) fn mod_reduce_u32_safe(x: u32) -> u32 {
     let x = (x & M31_MOD) + (x >> 31);
     if x == M31_MOD {
@@ -65,18 +58,18 @@ field_common!(M31);
 impl ExpSerde for M31 {
     #[inline(always)]
     fn serialize_into<W: Write>(&self, mut writer: W) -> SerdeResult<()> {
-        writer.write_all(self.v.to_le_bytes().as_ref())?;
+        writer.write_all(mod_reduce_u32_safe(self.v).to_le_bytes().as_ref())?;
         Ok(())
     }
 
-    // FIXME: this deserialization function auto corrects invalid inputs.
-    // We should use separate APIs for this and for the actual deserialization.
     #[inline(always)]
     fn deserialize_from<R: Read>(mut reader: R) -> SerdeResult<Self> {
         let mut u = [0u8; 4];
         reader.read_exact(&mut u)?;
-        let mut v = u32::from_le_bytes(u);
-        v = mod_reduce_u32(v);
+        let v = u32::from_le_bytes(u);
+        if v >= M31_MOD {
+            return Err(serdes::SerdeError::DeserializeError);
+        }
         Ok(M31 { v })
     }
 }

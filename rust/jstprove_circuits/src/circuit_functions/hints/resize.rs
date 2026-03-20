@@ -45,9 +45,11 @@ pub const RESIZE_HINT_KEY: &str = "jstprove.resize_hint";
 /// Returns [`Error::UserError`] when input/output lengths are invalid or
 /// the input count is odd (expected 2*n+1).
 #[allow(
+    clippy::similar_names,
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
-    clippy::cast_sign_loss
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap
 )]
 pub fn resize_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Error> {
     if inputs.len() < 3 || inputs.len() % 2 == 0 {
@@ -90,8 +92,8 @@ pub fn resize_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(),
             )));
         }
         let w_u64 = w_u256.as_u64();
-        let product = (x_i64 as i128)
-            .checked_mul(w_u64 as i128)
+        let product = i128::from(x_i64)
+            .checked_mul(i128::from(w_u64))
             .ok_or_else(|| Error::UserError("resize_hint: overflow in weighted sum".to_string()))?;
         sum_i128 = sum_i128.checked_add(product).ok_or_else(|| {
             Error::UserError("resize_hint: overflow in weighted sum accumulation".to_string())
@@ -99,11 +101,11 @@ pub fn resize_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(),
     }
 
     // y_q = round(sum / scale), clamped to [0, i64::MAX]
-    let scale_i128 = scale_u64 as i128;
+    let scale_i128 = i128::from(scale_u64);
     let half = scale_i128 / 2;
     let y_q: i64 = if sum_i128 >= 0 {
         let rounded = (sum_i128 + half) / scale_i128;
-        if rounded > i64::MAX as i128 {
+        if rounded > i128::from(i64::MAX) {
             i64::MAX
         } else {
             rounded as i64

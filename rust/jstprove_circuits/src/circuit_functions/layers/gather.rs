@@ -53,6 +53,11 @@ pub struct GatherLayer {
 // -------- Implementation --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherLayer {
+    #[allow(
+        clippy::cast_possible_wrap,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     fn apply(
         &self,
         _api: &mut Builder,
@@ -100,9 +105,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherLayer {
             return Err(LayerError::InvalidShape {
                 layer: LayerKind::Gather,
                 msg: format!(
-                    "gather output element count mismatch: outer={} n_indices={} slice={} \
-                    expected={expected_out_elems}",
-                    outer_size, n_indices, slice_size
+                    "gather output element count mismatch: outer={outer_size} n_indices={n_indices} slice={slice_size} \
+                    expected={expected_out_elems}"
                 ),
             }
             .into());
@@ -158,6 +162,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherLayer {
         Ok((self.outputs.clone(), out_array))
     }
 
+    #[allow(
+        clippy::cast_possible_wrap,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
@@ -239,7 +248,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherLayer {
             if a < 0 {
                 return Err(LayerError::InvalidShape {
                     layer: LayerKind::Gather,
-                    msg: format!("axis {} out of range for data rank {}", raw_axis, data_rank),
+                    msg: format!("axis {raw_axis} out of range for data rank {data_rank}"),
                 }
                 .into());
             }
@@ -249,7 +258,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherLayer {
             if a >= data_rank {
                 return Err(LayerError::InvalidShape {
                     layer: LayerKind::Gather,
-                    msg: format!("axis {} out of range for data rank {}", raw_axis, data_rank),
+                    msg: format!("axis {raw_axis} out of range for data rank {data_rank}"),
                 }
                 .into());
             }

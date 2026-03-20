@@ -67,7 +67,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GeluLayer {
 
         let mut out_storage: Vec<Variable> = Vec::with_capacity(x_input.len());
 
-        for &x in x_input.iter() {
+        for &x in x_input {
             // Compute gelu(x_q / scale) * scale via the native-f64 hint.
             // No range check because GELU outputs can be negative.
             let hint_out = api.new_hint(GELU_HINT_KEY, &[x, scale_var], 1);
@@ -120,10 +120,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GeluLayer {
             return Err(LayerError::Other {
                 layer: LayerKind::Gelu,
                 msg: format!(
-                    "Gelu approximate='{}' is not supported in the Expander backend: \
+                    "Gelu approximate='{approximate}' is not supported in the Expander backend: \
                      only approximate='tanh' is implemented. The exact (erf-based) Gelu \
-                     requires a lookup-table constraint that is not yet available.",
-                    approximate
+                     requires a lookup-table constraint that is not yet available."
                 ),
             }
             .into());

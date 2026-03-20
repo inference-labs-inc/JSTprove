@@ -36,6 +36,10 @@ pub fn gkr_prove<F: FieldEngine>(
         mpi_config,
     );
 
+    transcript.lock_proof();
+    transcript.append_field_element(&claimed_v);
+    transcript.unlock_proof();
+
     for i in (0..layer_num).rev() {
         let timer = Timer::new(
             &format!(
