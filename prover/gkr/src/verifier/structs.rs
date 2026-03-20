@@ -23,19 +23,27 @@ pub struct SumcheckVerificationUnit<F: FieldEngine> {
     pub proof: Vec<u8>,
 }
 
-/// Read a challenge field from the proof reader and
-///   1. Append the bytes to the proof_bytes vector.
-///   2. Append the field element to the transcript.
 #[inline(always)]
 pub fn parse_challenge_field<ChallengeF: ExtensionField>(
     mut proof_reader: impl Read,
     transcript: &mut impl Transcript,
     proof_bytes: &mut Vec<u8>,
+    ok: &mut bool,
 ) -> ChallengeF {
     let mut buffer = vec![0; ChallengeF::SIZE];
-    proof_reader.read_exact(&mut buffer).unwrap();
+    if proof_reader.read_exact(&mut buffer).is_err() {
+        *ok = false;
+        transcript.append_field_element(&ChallengeF::ZERO);
+        return ChallengeF::ZERO;
+    }
     proof_bytes.extend_from_slice(&buffer);
-    let challenge = ChallengeF::deserialize_from(Cursor::new(buffer)).unwrap();
+    let challenge = match ChallengeF::deserialize_from(Cursor::new(buffer)) {
+        Ok(v) => v,
+        Err(_) => {
+            *ok = false;
+            ChallengeF::ZERO
+        }
+    };
     transcript.append_field_element(&challenge);
     challenge
 }
@@ -48,11 +56,17 @@ pub fn parse_sumcheck_rounds<F: FieldEngine>(
     challenge_vec: &mut Vec<F::ChallengeField>,
     proof_bytes: &mut Vec<u8>,
     random_tape: &mut RandomTape<F::ChallengeField>,
+    ok: &mut bool,
 ) {
     challenge_vec.clear();
     (0..n_rounds).for_each(|_| {
         (0..degree + 1).for_each(|_| {
-            parse_challenge_field::<F::ChallengeField>(&mut proof_reader, transcript, proof_bytes);
+            parse_challenge_field::<F::ChallengeField>(
+                &mut proof_reader,
+                transcript,
+                proof_bytes,
+                ok,
+            );
         });
 
         challenge_vec.push(transcript.generate_field_element());
@@ -61,7 +75,6 @@ pub fn parse_sumcheck_rounds<F: FieldEngine>(
 }
 
 #[allow(clippy::type_complexity)]
-/// Parse the proof into a vector of verification units.
 pub fn parse_proof<F: FieldEngine>(
     mut proof_reader: impl Read,
     circuit: &Circuit<F>,
@@ -74,12 +87,24 @@ pub fn parse_proof<F: FieldEngine>(
     ExpanderDualVarChallenge<F>,
     F::ChallengeField,
     Option<F::ChallengeField>,
+    bool,
 ) {
+    let Some(last_layer) = circuit.layers.last() else {
+        return (
+            vec![],
+            ExpanderDualVarChallenge::default(),
+            claimed_v,
+            None,
+            false,
+        );
+    };
+    let n_output_vars = last_layer.output_var_num;
+
     let mut verification_units =
         vec![SumcheckVerificationUnit::<F>::default(); circuit.layers.len()];
-    let n_output_vars = circuit.layers.last().unwrap().output_var_num;
     let n_simd_vars = <F::SimdCircuitField as SimdField>::PACK_SIZE.trailing_zeros() as usize;
     let n_mpi_vars = proving_time_mpi_size.trailing_zeros() as usize;
+    let mut ok = true;
 
     let mut challenge: ExpanderDualVarChallenge<F> =
         ExpanderSingleVarChallenge::sample_from_transcript(
@@ -104,7 +129,7 @@ pub fn parse_proof<F: FieldEngine>(
             alpha,
             claim_y,
         };
-        challenge = ExpanderDualVarChallenge::default(); // reset challenge for next layer
+        challenge = ExpanderDualVarChallenge::default();
 
         let layer = &circuit.layers[i];
         let sumcheck_proof = &mut verification_unit.proof;
@@ -119,6 +144,7 @@ pub fn parse_proof<F: FieldEngine>(
             &mut challenge.rz_0,
             sumcheck_proof,
             random_tape,
+            &mut ok,
         );
 
         parse_sumcheck_rounds::<F>(
@@ -129,6 +155,7 @@ pub fn parse_proof<F: FieldEngine>(
             &mut challenge.r_simd,
             sumcheck_proof,
             random_tape,
+            &mut ok,
         );
 
         parse_sumcheck_rounds::<F>(
@@ -139,12 +166,14 @@ pub fn parse_proof<F: FieldEngine>(
             &mut challenge.r_mpi,
             sumcheck_proof,
             random_tape,
+            &mut ok,
         );
 
         claim_x = parse_challenge_field::<F::ChallengeField>(
             &mut proof_reader,
             transcript,
             sumcheck_proof,
+            &mut ok,
         );
 
         if !layer.structure_info.skip_sumcheck_phase_two {
@@ -157,11 +186,13 @@ pub fn parse_proof<F: FieldEngine>(
                 challenge.rz_1.as_mut().unwrap(),
                 sumcheck_proof,
                 random_tape,
+                &mut ok,
             );
             claim_y = Some(parse_challenge_field::<F::ChallengeField>(
                 &mut proof_reader,
                 transcript,
                 sumcheck_proof,
+                &mut ok,
             ));
         } else {
             claim_y = None;
@@ -176,5 +207,5 @@ pub fn parse_proof<F: FieldEngine>(
         };
     }
 
-    (verification_units, challenge, claim_x, claim_y)
+    (verification_units, challenge, claim_x, claim_y, ok)
 }

@@ -49,26 +49,18 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
         circuit: &mut Circuit<Cfg::FieldConfig>,
         transcript: &mut Cfg::TranscriptConfig,
         proving_time_mpi_size: usize,
-    ) -> <Cfg::PCSConfig as ExpanderPCS<Cfg::FieldConfig>>::Commitment {
+    ) -> Option<<Cfg::PCSConfig as ExpanderPCS<Cfg::FieldConfig>>::Commitment> {
         let timer = Timer::new("pre_gkr", true);
         let commitment =
             <<Cfg::PCSConfig as ExpanderPCS<Cfg::FieldConfig>>::Commitment as ExpSerde>::deserialize_from(
                 &mut proof_reader,
             )
-            .unwrap();
+            .ok()?;
         let mut buffer = vec![];
-        commitment.serialize_into(&mut buffer).unwrap();
+        commitment.serialize_into(&mut buffer).ok()?;
 
-        // this function will iteratively hash the commitment, and append the
-        // final hash output to the transcript.
-        // this introduces a decent circuit depth for the FS transform.
-        //
-        // note that this function is almost identical to grind, except that grind uses a
-        // fixed hasher, where as this function uses the transcript hasher
         transcript.append_commitment(&buffer);
 
-        // ZZ: shall we use probabilistic grinding so the verifier can avoid this cost?
-        // (and also be recursion friendly)
         #[cfg(feature = "grinding")]
         grind::<Cfg>(transcript, &self.mpi_config);
 
@@ -77,7 +69,7 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
 
         timer.stop();
 
-        commitment
+        Some(commitment)
     }
 
     /// Main body of the GKR verification.
@@ -168,7 +160,7 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
             GKRScheme::GkrSquare => SUMCHECK_GKR_SQUARE_DEGREE,
         };
 
-        let (mut verification_units, challenge, claim_x, claim_y) = parse_proof(
+        let (mut verification_units, challenge, claim_x, claim_y, parse_ok) = parse_proof(
             &mut proof_reader,
             circuit,
             proving_time_mpi_size,
@@ -250,7 +242,13 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
         gkr_parallel_timer.stop();
         transcript_verifier_sync(transcript, proving_time_mpi_size);
 
-        (verified, challenge_x, challenge_y, claim_x, claim_y)
+        (
+            verified && parse_ok,
+            challenge_x,
+            challenge_y,
+            claim_x,
+            claim_y,
+        )
     }
 
     /// Verify the PCS opening against the commitment and the claim from GKR.
@@ -280,13 +278,13 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
             &mut proof_reader,
         );
 
-        if let Some(challenge_y) = challenge_y {
+        if let (Some(challenge_y), Some(claim_y)) = (challenge_y, claim_y) {
             verified &= self.get_pcs_opening_from_proof_and_verify(
                 pcs_params,
                 pcs_verification_key,
                 commitment,
                 challenge_y,
-                claim_y.as_ref().unwrap(),
+                claim_y,
                 transcript,
                 &mut proof_reader,
             );
@@ -314,7 +312,11 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
         let mut transcript = Cfg::TranscriptConfig::new();
         let mut cursor = Cursor::new(&proof.bytes);
 
-        let commitment = self.pre_gkr(&mut cursor, circuit, &mut transcript, proving_time_mpi_size);
+        let commitment =
+            match self.pre_gkr(&mut cursor, circuit, &mut transcript, proving_time_mpi_size) {
+                Some(c) => c,
+                None => return false,
+            };
 
         let (mut verified, mut challenge_x, mut challenge_y, claim_x, claim_y) = self.gkr(
             circuit,
@@ -357,7 +359,11 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
         let mut transcript = Cfg::TranscriptConfig::new();
         let mut cursor = Cursor::new(&proof.bytes);
 
-        let commitment = self.pre_gkr(&mut cursor, circuit, &mut transcript, proving_time_mpi_size);
+        let commitment =
+            match self.pre_gkr(&mut cursor, circuit, &mut transcript, proving_time_mpi_size) {
+                Some(c) => c,
+                None => return false,
+            };
 
         let (mut verified, mut challenge_x, mut challenge_y, claim_x, claim_y) = self.gkr_parallel(
             circuit,
@@ -391,18 +397,18 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
         circuit: &Circuit<Cfg::FieldConfig>,
         transcript: &mut Cfg::TranscriptConfig,
         proving_time_mpi_size: usize,
-    ) -> (
+    ) -> Option<(
         <Cfg::PCSConfig as ExpanderPCS<Cfg::FieldConfig>>::Commitment,
         RndCoefMap<<Cfg::FieldConfig as FieldEngine>::CircuitField>,
-    ) {
+    )> {
         let timer = Timer::new("pre_gkr_ref", true);
         let commitment =
             <<Cfg::PCSConfig as ExpanderPCS<Cfg::FieldConfig>>::Commitment as ExpSerde>::deserialize_from(
                 &mut proof_reader,
             )
-            .unwrap();
+            .ok()?;
         let mut buffer = vec![];
-        commitment.serialize_into(&mut buffer).unwrap();
+        commitment.serialize_into(&mut buffer).ok()?;
 
         transcript.append_commitment(&buffer);
 
@@ -414,7 +420,7 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
 
         timer.stop();
 
-        (commitment, rnd_map)
+        Some((commitment, rnd_map))
     }
 
     #[inline(always)]
@@ -495,7 +501,10 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
         let mut cursor = Cursor::new(&proof.bytes);
 
         let (commitment, rnd_map) =
-            self.pre_gkr_ref(&mut cursor, circuit, &mut transcript, proving_time_mpi_size);
+            match self.pre_gkr_ref(&mut cursor, circuit, &mut transcript, proving_time_mpi_size) {
+                Some(v) => v,
+                None => return false,
+            };
 
         let (mut verified, mut challenge_x, mut challenge_y, claim_x, claim_y) = self.gkr_ref(
             circuit,

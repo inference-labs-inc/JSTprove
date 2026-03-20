@@ -86,16 +86,31 @@ where
         return false;
     }
 
-    // NOTE: prepare the interleaved alphabets from the MT paths
     let num_simd_elems_per_leaf = vk.num_leaves_per_mt_query() * LEAF_BYTES / SimdF::SIZE;
-    let packed_interleaved_alphabets: Vec<Vec<SimdF>> = proof
+    let required_leaf_bytes = num_simd_elems_per_leaf * SimdF::SIZE;
+    let packed_interleaved_alphabets: Vec<Vec<SimdF>> = match proof
         .query_openings
         .iter()
-        .map(|c| unsafe {
-            let ptr = c.leaves.as_ptr();
-            std::slice::from_raw_parts(ptr as *const SimdF, num_simd_elems_per_leaf).to_vec()
+        .map(|c| {
+            let total_leaf_bytes = c.leaves.len() * LEAF_BYTES;
+            if total_leaf_bytes < required_leaf_bytes {
+                return None;
+            }
+            let mut result = vec![SimdF::ZERO; num_simd_elems_per_leaf];
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    c.leaves.as_ptr() as *const u8,
+                    result.as_mut_ptr() as *mut u8,
+                    required_leaf_bytes,
+                );
+            }
+            Some(result)
         })
-        .collect();
+        .collect::<Option<Vec<_>>>()
+    {
+        Some(v) => v,
+        None => return false,
+    };
 
     let eq_col_coeffs = {
         let mut eq_vars = point[..num_vars_in_com_simd].to_vec();
