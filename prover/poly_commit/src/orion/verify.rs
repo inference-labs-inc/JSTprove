@@ -96,10 +96,15 @@ where
             if total_leaf_bytes < required_leaf_bytes {
                 return None;
             }
-            Some(unsafe {
-                let ptr = c.leaves.as_ptr() as *const u8;
-                std::slice::from_raw_parts(ptr as *const SimdF, num_simd_elems_per_leaf).to_vec()
-            })
+            let mut result = vec![SimdF::ZERO; num_simd_elems_per_leaf];
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    c.leaves.as_ptr() as *const u8,
+                    result.as_mut_ptr() as *mut u8,
+                    required_leaf_bytes,
+                );
+            }
+            Some(result)
         })
         .collect::<Option<Vec<_>>>()
     {
