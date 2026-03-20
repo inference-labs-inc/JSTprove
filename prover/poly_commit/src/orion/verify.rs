@@ -92,11 +92,12 @@ where
         .query_openings
         .iter()
         .map(|c| {
-            if c.leaves.len() < required_leaf_bytes {
+            let total_leaf_bytes = c.leaves.len() * LEAF_BYTES;
+            if total_leaf_bytes < required_leaf_bytes {
                 return None;
             }
             Some(unsafe {
-                let ptr = c.leaves.as_ptr();
+                let ptr = c.leaves.as_ptr() as *const u8;
                 std::slice::from_raw_parts(ptr as *const SimdF, num_simd_elems_per_leaf).to_vec()
             })
         })
