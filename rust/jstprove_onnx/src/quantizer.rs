@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use super::graph::{LayerGraph, LayerNode, OpType};
 use super::ops;
-use super::parser::TensorData;
+use super::parser::{AttrValue, TensorData};
 
 pub const DEFAULT_SCALE_BASE: u64 = 2;
 pub const DEFAULT_SCALE_EXPONENT: u32 = 18;
@@ -326,10 +326,114 @@ fn compute_max_bound_inner(graph: &LayerGraph) -> Result<f64> {
     Ok(max_bound)
 }
 
+/// Build a map of tensor name → shape from the graph, using:
+/// - Input shapes (from `graph.input_shapes`)
+/// - Weight tensor shapes (from `layer.weights`)
+/// - Simple topological shape propagation for intermediate tensors
+///
+/// This is used by `compute_bounds` so that reduction ops (e.g. ReduceSum)
+/// can account for the actual number of elements being accumulated.
+fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
+    let mut shapes: HashMap<String, Vec<usize>> = HashMap::new();
+
+    // Seed with model-level input shapes.
+    for (name, shape) in &graph.input_shapes {
+        shapes.insert(name.clone(), shape.clone());
+    }
+
+    // Seed with all weight tensor shapes.
+    for layer in &graph.layers {
+        for (name, td) in &layer.weights {
+            shapes.insert(name.clone(), td.shape());
+        }
+    }
+
+    // Propagate shapes topologically.
+    for layer in graph.iter_topo() {
+        let input_shape: Option<Vec<usize>> = layer
+            .inputs
+            .first()
+            .and_then(|n| shapes.get(n.as_str()))
+            .cloned();
+
+        let out_shape: Vec<usize> = match layer.op_type {
+            OpType::ReduceSum => {
+                // Compute the output shape from axes + keepdims.
+                if let Some(ref in_shape) = input_shape {
+                    let rank = in_shape.len();
+
+                    // Collect axes (from input[1] weight or from attribute).
+                    let axes: Vec<usize> = {
+                        let from_weight = layer.inputs.get(1).and_then(|axes_name| {
+                            layer.weights.get(axes_name.as_str()).map(|td| {
+                                td.as_i64_vec()
+                                    .iter()
+                                    .map(|&a| {
+                                        let a = if a < 0 { a + rank as i64 } else { a };
+                                        (a as usize).min(rank.saturating_sub(1))
+                                    })
+                                    .collect::<Vec<usize>>()
+                            })
+                        });
+                        from_weight.unwrap_or_else(|| {
+                            // Fallback: try attributes.
+                            match layer.attributes.get("axes") {
+                                Some(AttrValue::Ints(v)) => v
+                                    .iter()
+                                    .map(|&a| {
+                                        let a = if a < 0 { a + rank as i64 } else { a };
+                                        (a as usize).min(rank.saturating_sub(1))
+                                    })
+                                    .collect(),
+                                // No axes = reduce all.
+                                _ => (0..rank).collect(),
+                            }
+                        })
+                    };
+
+                    let keepdims = match layer.attributes.get("keepdims") {
+                        Some(AttrValue::Int(v)) => *v != 0,
+                        _ => true,
+                    };
+
+                    if keepdims {
+                        in_shape
+                            .iter()
+                            .enumerate()
+                            .map(|(i, &d)| if axes.contains(&i) { 1 } else { d })
+                            .collect()
+                    } else {
+                        in_shape
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(i, &d)| if axes.contains(&i) { None } else { Some(d) })
+                            .collect()
+                    }
+                } else {
+                    vec![]
+                }
+            }
+            _ => {
+                // Default: output shape = input[0] shape (pass-through / structural op).
+                input_shape.unwrap_or_default()
+            }
+        };
+
+        for out_name in &layer.outputs {
+            shapes.insert(out_name.clone(), out_shape.clone());
+        }
+    }
+
+    shapes
+}
+
 fn compute_bounds(graph: &LayerGraph, config: &ScaleConfig) -> Result<HashMap<String, usize>> {
     let alpha = config.alpha;
     let mut bounds: HashMap<String, f64> = HashMap::new();
     let mut n_bits_config = HashMap::new();
+
+    // Pre-compute tensor shapes for reduction-size estimation.
+    let shapes = propagate_shapes(graph);
 
     for name in &graph.input_names {
         bounds.insert(name.clone(), 1.0);
@@ -338,7 +442,30 @@ fn compute_bounds(graph: &LayerGraph, config: &ScaleConfig) -> Result<HashMap<St
     let alpha_f64 = alpha as f64;
 
     for layer in graph.iter_topo() {
-        let bound = compute_layer_bound(layer, &bounds, alpha_f64)?;
+        let mut bound = compute_layer_bound(layer, &bounds, alpha_f64)?;
+
+        // ReduceSum accumulates values: its bound is N * m_in where N is the
+        // reduction factor.  The base compute_layer_bound conservatively
+        // returns just m_in; override that here now that we have shapes.
+        if layer.op_type == OpType::ReduceSum {
+            if let Some(in_name) = layer.inputs.first() {
+                let m_in = bounds.get(in_name.as_str()).copied().unwrap_or(1.0);
+                if let (Some(in_shape), Some(out_name)) =
+                    (shapes.get(in_name.as_str()), layer.outputs.first())
+                {
+                    let in_total: usize = in_shape.iter().product();
+                    let out_total: usize = shapes
+                        .get(out_name.as_str())
+                        .map(|s| s.iter().product())
+                        .unwrap_or(1);
+                    let factor = (in_total / out_total.max(1)).max(1) as f64;
+                    bound = m_in * factor;
+                }
+            }
+        }
+
+        // Similarly, Add/Sub can accumulate two different branches, but
+        // compute_layer_bound already returns m_a + m_b for those, which is correct.
 
         if layer.needs_rescale || is_range_check_op(layer.op_type) {
             // Guard: compute_n_bits computes (alpha as f64 * bound).log2().
@@ -611,6 +738,117 @@ fn compute_layer_bound(
             let m_in = get_input_bound(0);
             Ok(m_in)
         }
+        // MatMul: like Gemm — if input[1] is a weight, use L1 norm of that weight.
+        // If both inputs are runtime, use a conservative product bound.
+        OpType::MatMul => {
+            let m_in = get_input_bound(0);
+            // If weights exist for input[1], use L1 norm per output.
+            if let Some(weight_name) = layer.inputs.get(1) {
+                if let Some(w) = layer.weights.get(weight_name) {
+                    let vals = w.as_f64_vec();
+                    if !vals.is_empty() {
+                        let d = w.shape();
+                        let n_out = if d.len() >= 2 { d[d.len() - 1] } else { 1 };
+                        let per_out = if n_out > 0 { vals.len() / n_out } else { 1 };
+                        let max_l1 = if n_out > 0 && per_out > 0 {
+                            (0..n_out)
+                                .map(|c| {
+                                    vals.iter()
+                                        .skip(c)
+                                        .step_by(n_out)
+                                        .map(|v| v.abs())
+                                        .sum::<f64>()
+                                })
+                                .fold(0.0_f64, f64::max)
+                        } else {
+                            vals.iter().map(|v| v.abs()).fold(0.0_f64, f64::max)
+                        };
+                        return Ok(max_l1 * m_in);
+                    }
+                }
+            }
+            let m_b = get_input_bound(1);
+            Ok(m_in * m_b)
+        }
+        // AveragePool: averaging reduces magnitude — bound ≤ input bound.
+        OpType::AveragePool => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
+        // Pad: padding with zeros doesn't increase value range.
+        OpType::Pad => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
+        // Split: splitting doesn't change value range.
+        OpType::Split => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
+        // Where: output is one of X or Y.
+        OpType::Where => {
+            let m_x = get_input_bound(1);
+            let m_y = get_input_bound(2);
+            Ok(m_x.max(m_y))
+        }
+        // Pow: conservative bound — for x^2 the bound is m_in^2.
+        OpType::Pow => {
+            let m_in = get_input_bound(0);
+            Ok(m_in * m_in)
+        }
+        // Sqrt: sqrt(x*alpha)/alpha ≤ 1 for x in [0,1]. Conservatively bound as m_in.
+        OpType::Sqrt => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
+        // Tanh: output is in (-1, 1).
+        OpType::Tanh => Ok(1.0),
+        // ReduceSum: sum of values — bound ≤ input bound (conservative).
+        // The actual maximum is N * m_in where N is the reduction size,
+        // but we don't know N here. Conservatively use m_in.
+        OpType::ReduceSum => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
+        // Erf: output is in (-1, 1).
+        OpType::Erf => Ok(1.0),
+        // ConvTranspose: similar to Conv output bound.
+        OpType::ConvTranspose => {
+            let m_in = get_input_bound(0);
+            let weight_name = layer.inputs.get(1).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "layer {}: ConvTranspose missing weight input at index 1",
+                    layer.name
+                )
+            })?;
+            let w = layer.weights.get(weight_name).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "layer {}: ConvTranspose weight tensor '{}' not found",
+                    layer.name,
+                    weight_name,
+                )
+            })?;
+            let d = w.shape();
+            let c_out = if d.len() >= 2 { d[1] } else { 1 };
+            let vals = w.as_f64_vec();
+            if vals.is_empty() || c_out == 0 {
+                return Ok(m_in);
+            }
+            let per_channel = vals.len() / c_out;
+            if per_channel == 0 {
+                return Ok(m_in);
+            }
+            let max_l1 = (0..c_out)
+                .map(|oc| {
+                    vals[oc * per_channel..(oc + 1) * per_channel]
+                        .iter()
+                        .map(|v| v.abs())
+                        .sum::<f64>()
+                })
+                .fold(0.0_f64, f64::max);
+            let bias_bound = get_bias_bound(2);
+            Ok(max_l1 * m_in + bias_bound)
+        }
         // exp(x) is monotonically increasing; max output is exp(max_input).
         OpType::Exp => {
             let m_in = get_input_bound(0);
@@ -673,6 +911,8 @@ fn is_range_check_op(op: OpType) -> bool {
             | OpType::Resize
             | OpType::GridSample
             | OpType::TopK
+            | OpType::AveragePool
+            | OpType::Sqrt
     )
 }
 
