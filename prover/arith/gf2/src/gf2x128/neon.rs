@@ -80,7 +80,7 @@ impl Field for NeonGF2x128 {
         rng.fill_bytes(&mut u);
         unsafe {
             NeonGF2x128 {
-                v: *(u.as_ptr() as *const uint32x4_t),
+                v: std::ptr::read_unaligned(u.as_ptr() as *const uint32x4_t),
             }
         }
     }
@@ -91,7 +91,7 @@ impl Field for NeonGF2x128 {
         rng.fill_bytes(&mut u);
         unsafe {
             NeonGF2x128 {
-                v: *(u.as_ptr() as *const uint32x4_t),
+                v: std::ptr::read_unaligned(u.as_ptr() as *const uint32x4_t),
             }
         }
     }

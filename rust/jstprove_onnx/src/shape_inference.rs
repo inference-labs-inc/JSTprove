@@ -609,6 +609,16 @@ fn infer_layer_output_shape(
         OpType::Expand => infer_expand(layer, shapes, initializers, constant_tensors),
         OpType::Shape => infer_shape_op(layer, input_shape),
         OpType::ReduceMean => infer_reduce(layer, input_shape, initializers, constant_tensors),
+        OpType::MatMul => infer_matmul(layer, shapes),
+        OpType::AveragePool => infer_maxpool(layer, input_shape),
+        OpType::Pad => infer_pad(layer, input_shape, initializers, constant_tensors),
+        OpType::Split => infer_split(layer, input_shape, initializers, constant_tensors),
+        OpType::Where => infer_where(layer, shapes),
+        OpType::Pow | OpType::Sqrt | OpType::Tanh | OpType::Erf => {
+            passthrough_shape(layer, input_shape)
+        }
+        OpType::ReduceSum => infer_reduce(layer, input_shape, initializers, constant_tensors),
+        OpType::ConvTranspose => infer_conv_transpose(layer, shapes),
     }
 }
 
@@ -2140,6 +2150,397 @@ fn infer_reduce(
         .outputs
         .iter()
         .map(|o| (o.clone(), output_shape.clone()))
+        .collect())
+}
+
+/// Infer output shape for ONNX `MatMul`.
+///
+/// Supports 2-D matrix multiplication: [M, K] @ [K, N] → [M, N].
+/// For N-D inputs follows numpy broadcasting rules but we keep it simple
+/// and only handle the 2-D case in circuit (reject higher-rank at build time).
+fn infer_matmul(
+    layer: &LayerNode,
+    shapes: &HashMap<String, Vec<usize>>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let a_name = layer
+        .inputs
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("layer {}: MatMul missing input A", layer.name))?;
+    let b_name = layer
+        .inputs
+        .get(1)
+        .ok_or_else(|| anyhow::anyhow!("layer {}: MatMul missing input B", layer.name))?;
+
+    let a_shape = get_shape(shapes, a_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "layer {}: MatMul missing shape for A '{a_name}'",
+            layer.name
+        )
+    })?;
+    let b_shape = get_shape(shapes, b_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "layer {}: MatMul missing shape for B '{b_name}'",
+            layer.name
+        )
+    })?;
+
+    if a_shape.len() < 2 || b_shape.len() < 2 {
+        bail!(
+            "layer {}: MatMul inputs must be at least 2-D (A rank={}, B rank={})",
+            layer.name,
+            a_shape.len(),
+            b_shape.len()
+        );
+    }
+
+    // For 2D: [M, K] @ [K, N] → [M, N]
+    // For ND: batch dims are broadcast, last two dims do matmul.
+    let m = a_shape[a_shape.len() - 2];
+    let k_a = a_shape[a_shape.len() - 1];
+    let k_b = b_shape[b_shape.len() - 2];
+    let n = b_shape[b_shape.len() - 1];
+
+    if k_a != k_b {
+        bail!(
+            "layer {}: MatMul inner dimension mismatch: A.K={k_a} B.K={k_b}",
+            layer.name
+        );
+    }
+
+    // Batch dimensions: broadcast leading dims.
+    let a_batch = &a_shape[..a_shape.len() - 2];
+    let b_batch = &b_shape[..b_shape.len() - 2];
+    let batch_shape = if a_batch.is_empty() && b_batch.is_empty() {
+        vec![]
+    } else if a_batch.is_empty() {
+        b_batch.to_vec()
+    } else if b_batch.is_empty() {
+        a_batch.to_vec()
+    } else {
+        broadcast_shapes(a_batch, b_batch).map_err(|e| {
+            anyhow::anyhow!("layer {}: MatMul batch broadcast failed: {e}", layer.name)
+        })?
+    };
+
+    let mut out_shape = batch_shape;
+    out_shape.push(m);
+    out_shape.push(n);
+
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
+}
+
+/// Infer output shape for ONNX `Pad`.
+///
+/// Pads are either from attribute `pads` (opset < 11) or from `inputs[1]`
+/// (opset ≥ 11, must be a compile-time constant).
+/// `pads` is a flat vector [x1_begin, x2_begin, ..., x1_end, x2_end, ...].
+fn infer_pad(
+    layer: &LayerNode,
+    input_shape: Option<&Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let input_shape = input_shape
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Pad missing input shape", layer.name))?;
+    let rank = input_shape.len();
+
+    // Try to get pads from inputs[1] (opset 11+) then from attribute.
+    let pads: Vec<i64> = if let Some(pads_name) = layer.inputs.get(1).filter(|n| !n.is_empty()) {
+        initializers
+            .get(pads_name)
+            .or_else(|| constant_tensors.get(pads_name))
+            .map(|td| td.as_i64_vec())
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "layer {}: Pad pads input '{}' is not a compile-time constant",
+                    layer.name,
+                    pads_name
+                )
+            })?
+    } else if let Some(v) = layer.get_ints_attr("pads") {
+        v.to_vec()
+    } else {
+        bail!("layer {}: Pad has no pads attribute or input", layer.name);
+    };
+
+    if pads.len() != 2 * rank {
+        bail!(
+            "layer {}: Pad pads length {} != 2 * rank {}",
+            layer.name,
+            pads.len(),
+            rank
+        );
+    }
+
+    let out_shape: Vec<usize> = (0..rank)
+        .map(|i| {
+            let begin = pads[i];
+            let end = pads[rank + i];
+            if begin < 0 || end < 0 {
+                bail!(
+                    "layer {}: Pad negative pad values are not supported",
+                    layer.name
+                );
+            }
+            Ok(input_shape[i] + begin as usize + end as usize)
+        })
+        .collect::<Result<Vec<usize>>>()?;
+
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
+}
+
+/// Infer output shapes for ONNX `Split`.
+///
+/// Splits input along an axis into multiple outputs.
+/// Split sizes come from `inputs[1]` (opset 13+) or the `split` attribute,
+/// or default to equal splits.
+fn infer_split(
+    layer: &LayerNode,
+    input_shape: Option<&Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let input_shape = input_shape
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Split missing input shape", layer.name))?;
+    let rank = input_shape.len();
+    let num_outputs = layer.outputs.len();
+
+    let axis_raw = layer.get_int_attr("axis").unwrap_or(0);
+    let axis = if axis_raw < 0 {
+        let a = rank as i64 + axis_raw;
+        if a < 0 {
+            bail!(
+                "layer {}: Split axis {} out of range for rank {}",
+                layer.name,
+                axis_raw,
+                rank
+            );
+        }
+        a as usize
+    } else {
+        let a = axis_raw as usize;
+        if a >= rank {
+            bail!(
+                "layer {}: Split axis {} out of range for rank {}",
+                layer.name,
+                axis_raw,
+                rank
+            );
+        }
+        a
+    };
+
+    let axis_dim = input_shape[axis];
+
+    // Try to get split sizes from inputs[1] or from attribute.
+    let split_sizes: Vec<usize> =
+        if let Some(split_name) = layer.inputs.get(1).filter(|n| !n.is_empty()) {
+            let vals = initializers
+                .get(split_name)
+                .or_else(|| constant_tensors.get(split_name))
+                .map(|td| td.as_i64_vec())
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "layer {}: Split split input '{}' is not a compile-time constant",
+                        layer.name,
+                        split_name
+                    )
+                })?;
+            vals.iter().map(|&v| v as usize).collect()
+        } else if let Some(v) = layer.get_ints_attr("split") {
+            v.iter().map(|&v| v as usize).collect()
+        } else {
+            // Equal split.
+            if num_outputs == 0 {
+                bail!("layer {}: Split has no outputs", layer.name);
+            }
+            if axis_dim % num_outputs != 0 {
+                bail!(
+                    "layer {}: Split axis dim {} not divisible by num_outputs {}",
+                    layer.name,
+                    axis_dim,
+                    num_outputs
+                );
+            }
+            vec![axis_dim / num_outputs; num_outputs]
+        };
+
+    if split_sizes.len() != num_outputs {
+        bail!(
+            "layer {}: Split split_sizes length {} != num_outputs {}",
+            layer.name,
+            split_sizes.len(),
+            num_outputs
+        );
+    }
+
+    let results: Result<Vec<_>> = layer
+        .outputs
+        .iter()
+        .zip(split_sizes.iter())
+        .map(|(out, &sz)| {
+            let mut out_shape = input_shape.clone();
+            out_shape[axis] = sz;
+            Ok((out.clone(), out_shape))
+        })
+        .collect();
+    results
+}
+
+/// Infer output shape for ONNX `Where`.
+///
+/// Output shape is the broadcast of all three inputs: condition, X, Y.
+fn infer_where(
+    layer: &LayerNode,
+    shapes: &HashMap<String, Vec<usize>>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let cond_shape = layer.inputs.first().and_then(|n| get_shape(shapes, n));
+    let x_shape = layer.inputs.get(1).and_then(|n| get_shape(shapes, n));
+    let y_shape = layer.inputs.get(2).and_then(|n| get_shape(shapes, n));
+
+    let out_shape = match (cond_shape, x_shape, y_shape) {
+        (Some(c), Some(x), Some(y)) => {
+            let cx = broadcast_shapes(c, x).map_err(|e| {
+                anyhow::anyhow!("layer {}: Where broadcast cond/X: {e}", layer.name)
+            })?;
+            broadcast_shapes(&cx, y).map_err(|e| {
+                anyhow::anyhow!("layer {}: Where broadcast cond-x/Y: {e}", layer.name)
+            })?
+        }
+        (Some(s), _, _) | (_, Some(s), _) | (_, _, Some(s)) => s.clone(),
+        (None, None, None) => bail!("layer {}: Where has no input shapes", layer.name),
+    };
+
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
+}
+
+/// Infer output shape for ONNX `ConvTranspose`.
+///
+/// Formula: output_dim = stride * (input_dim - 1) + kernel_dim - 2*pad + output_padding
+fn infer_conv_transpose(
+    layer: &LayerNode,
+    shapes: &HashMap<String, Vec<usize>>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let input_name = layer
+        .inputs
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("layer {}: ConvTranspose missing input", layer.name))?;
+    let weight_name = layer
+        .inputs
+        .get(1)
+        .ok_or_else(|| anyhow::anyhow!("layer {}: ConvTranspose missing weight", layer.name))?;
+
+    let input_shape = get_shape(shapes, input_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "layer {}: ConvTranspose missing shape for input '{input_name}'",
+            layer.name
+        )
+    })?;
+    let weight_shape = get_shape(shapes, weight_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "layer {}: ConvTranspose missing shape for weight '{weight_name}'",
+            layer.name
+        )
+    })?;
+
+    if weight_shape.len() < 2 {
+        bail!(
+            "layer {}: ConvTranspose weight rank {} < 2",
+            layer.name,
+            weight_shape.len()
+        );
+    }
+
+    // Weight shape for ConvTranspose: [C_in, C_out/group, *kernel]
+    let c_out_per_group = weight_shape[1];
+    let group = layer.get_int_attr("group").unwrap_or(1) as usize;
+    let c_out = c_out_per_group * group;
+
+    let kernel_shape = if let Some(v) = layer.get_ints_attr("kernel_shape") {
+        nonneg_to_usize(v, "kernel_shape", &layer.name)?
+    } else if weight_shape.len() >= 3 {
+        weight_shape[2..].to_vec()
+    } else {
+        vec![1]
+    };
+
+    let spatial_dims = kernel_shape.len();
+
+    let strides = if let Some(v) = layer.get_ints_attr("strides") {
+        nonneg_to_usize(v, "strides", &layer.name)?
+    } else {
+        vec![1; spatial_dims]
+    };
+
+    let pads = if let Some(v) = layer.get_ints_attr("pads") {
+        nonneg_to_usize(v, "pads", &layer.name)?
+    } else {
+        vec![0; spatial_dims * 2]
+    };
+
+    let output_padding = if let Some(v) = layer.get_ints_attr("output_padding") {
+        nonneg_to_usize(v, "output_padding", &layer.name)?
+    } else {
+        vec![0; spatial_dims]
+    };
+
+    let dilations = if let Some(v) = layer.get_ints_attr("dilations") {
+        nonneg_to_usize(v, "dilations", &layer.name)?
+    } else {
+        vec![1; spatial_dims]
+    };
+
+    if input_shape.len() < 2 + spatial_dims {
+        bail!(
+            "layer {}: ConvTranspose input rank {} too small for {spatial_dims} spatial dims",
+            layer.name,
+            input_shape.len()
+        );
+    }
+
+    // Check if output_shape attribute is provided (overrides computed shape).
+    if let Some(out_shape_attr) = layer.get_ints_attr("output_shape") {
+        let spatial: Vec<usize> = nonneg_to_usize(out_shape_attr, "output_shape", &layer.name)?;
+        let mut out_shape = vec![input_shape[0], c_out];
+        out_shape.extend_from_slice(&spatial);
+        return Ok(layer
+            .outputs
+            .iter()
+            .map(|o| (o.clone(), out_shape.clone()))
+            .collect());
+    }
+
+    let mut out_shape = vec![input_shape[0], c_out];
+    for i in 0..spatial_dims {
+        let in_dim = input_shape[2 + i];
+        let pad = if pads.len() >= 2 * spatial_dims {
+            pads[i] + pads[spatial_dims + i]
+        } else {
+            0
+        };
+        let out_pad = output_padding.get(i).copied().unwrap_or(0);
+        let d = dilations.get(i).copied().unwrap_or(1);
+        let effective_kernel = (kernel_shape[i] - 1) * d + 1;
+        let out_dim = strides[i] * (in_dim - 1) + effective_kernel - pad + out_pad;
+        out_shape.push(out_dim);
+    }
+
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
         .collect())
 }
 

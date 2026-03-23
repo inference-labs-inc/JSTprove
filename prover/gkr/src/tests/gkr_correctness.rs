@@ -26,6 +26,7 @@ use transcript::BytesHashTranscript;
 use crate::{utils::*, Prover, Verifier};
 
 #[test]
+#[ignore = "requires external circuit/witness data files (run dev_env_data_setup first)"]
 fn test_gkr_correctness() {
     // Initialize logger
     env_logger::init();

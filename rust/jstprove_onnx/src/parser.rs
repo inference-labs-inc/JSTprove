@@ -121,6 +121,11 @@ fn extract_tensor_data(tensor: &TensorProto) -> Result<TensorData> {
                     int_data.push(i64::from_le_bytes(chunk.try_into().unwrap()));
                 }
             }
+            DataType::Bool => {
+                for &byte in raw.iter() {
+                    int_data.push(if byte != 0 { 1 } else { 0 });
+                }
+            }
             other => bail!("unsupported tensor data type in raw_data: {other:?}"),
         }
     } else {
