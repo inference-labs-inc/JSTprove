@@ -280,7 +280,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for PadLayer {
             .into());
         }
 
-        let pads_begin: Vec<usize> = pads[..rank].iter().map(|&v| v.max(0) as usize).collect();
+        if let Some(&neg) = pads.iter().find(|&&v| v < 0) {
+            return Err(LayerError::Other {
+                layer: LayerKind::Pad,
+                msg: format!(
+                    "Pad contains negative pad value {neg}; negative (cropping) pads are not supported"
+                ),
+            }
+            .into());
+        }
+
+        let pads_begin: Vec<usize> = pads[..rank].iter().map(|&v| v as usize).collect();
 
         let index_map = build_pad_index_map(&input_shape, &output_shape, &pads_begin);
 

@@ -829,21 +829,32 @@ fn compute_layer_bound(
                 )
             })?;
             let d = w.shape();
+            // ConvTranspose weights have layout [C_in, C_out/group, *kernel].
+            let c_in = if !d.is_empty() { d[0] } else { 1 };
             let c_out = if d.len() >= 2 { d[1] } else { 1 };
             let vals = w.as_f64_vec();
             if vals.is_empty() || c_out == 0 {
                 return Ok(m_in);
             }
-            let per_channel = vals.len() / c_out;
-            if per_channel == 0 {
+            let kernel_elems: usize = if d.len() > 2 {
+                d[2..].iter().product()
+            } else {
+                1
+            };
+            if kernel_elems == 0 {
                 return Ok(m_in);
             }
+            // For each output channel oc, sum abs over all input channels ci and kernel
+            // positions k using the flat index ((ci * c_out + oc) * kernel_elems + k).
             let max_l1 = (0..c_out)
                 .map(|oc| {
-                    vals[oc * per_channel..(oc + 1) * per_channel]
-                        .iter()
-                        .map(|v| v.abs())
-                        .sum::<f64>()
+                    let mut l1 = 0.0_f64;
+                    for ci in 0..c_in {
+                        for k in 0..kernel_elems {
+                            l1 += vals[(ci * c_out + oc) * kernel_elems + k].abs();
+                        }
+                    }
+                    l1
                 })
                 .fold(0.0_f64, f64::max);
             let bias_bound = get_bias_bound(2);

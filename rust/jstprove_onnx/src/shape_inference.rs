@@ -2354,8 +2354,23 @@ fn infer_split(
                         split_name
                     )
                 })?;
+            if let Some(&neg) = vals.iter().find(|&&v| v < 0) {
+                bail!(
+                    "layer {}: Split split input '{}' contains negative size {}",
+                    layer.name,
+                    split_name,
+                    neg
+                );
+            }
             vals.iter().map(|&v| v as usize).collect()
         } else if let Some(v) = layer.get_ints_attr("split") {
+            if let Some(&neg) = v.iter().find(|&&v| v < 0) {
+                bail!(
+                    "layer {}: Split 'split' attribute contains negative size {}",
+                    layer.name,
+                    neg
+                );
+            }
             v.iter().map(|&v| v as usize).collect()
         } else {
             // Equal split.

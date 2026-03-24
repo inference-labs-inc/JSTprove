@@ -137,4 +137,12 @@ mod tests {
         let result = run_hint(x_q, scale);
         assert_eq!(result, 0);
     }
+
+    #[test]
+    fn sqrt_hint_large_input_clamps() {
+        // Very large x_q should produce a finite, non-negative result ≤ i64::MAX.
+        let scale: u64 = 1 << 18;
+        let result = run_hint(i64::MAX, scale);
+        assert!(result >= 0, "expected non-negative, got {result}");
+    }
 }

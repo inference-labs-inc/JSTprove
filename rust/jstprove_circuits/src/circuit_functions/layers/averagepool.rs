@@ -53,7 +53,6 @@ pub struct AveragePoolLayer {
     input_shape: Vec<usize>,
     output_shape: Vec<usize>,
     n_bits: usize,
-    scaling: u64,
 }
 
 // -------- Helpers --------
@@ -126,7 +125,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AveragePoolLayer {
         let out_h = (h_in + ph_b + ph_e - k_h) / s_h + 1;
         let out_w = (w_in + pw_b + pw_e - k_w) / s_w + 1;
 
-        let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
         let n_bits = self.n_bits;
         let mut out_storage: Vec<Variable> = Vec::with_capacity(big_n * c * out_h * out_w);
 
@@ -174,9 +172,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AveragePoolLayer {
                         }
 
                         // ── Hint ────────────────────────────────────────────
-                        let mut hint_inputs = valid_vars.clone();
-                        hint_inputs.push(scale_var);
-                        let hint_out = api.new_hint(AVERAGEPOOL_HINT_KEY, &hint_inputs, 1);
+                        let hint_out = api.new_hint(AVERAGEPOOL_HINT_KEY, &valid_vars, 1);
                         let y = hint_out[0];
 
                         // ── Sum constraint ───────────────────────────────────
@@ -236,7 +232,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AveragePoolLayer {
     #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
-        circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
+        _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
         _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
         _is_rescale: bool,
         _index: usize,
@@ -283,15 +279,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AveragePoolLayer {
             parse_usize_list(layer, "pads").unwrap_or_else(|| vec![0; kernel_shape.len() * 2]);
 
         let n_bits = layer_context.n_bits_for(&layer.name);
-        let scaling: u64 = 1u64
-            .checked_shl(circuit_params.scale_exponent)
-            .ok_or_else(|| LayerError::Other {
-                layer: LayerKind::AveragePool,
-                msg: format!(
-                    "scale_exponent {} is too large to shift u64",
-                    circuit_params.scale_exponent
-                ),
-            })?;
 
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),
@@ -302,7 +289,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AveragePoolLayer {
             input_shape,
             output_shape,
             n_bits,
-            scaling,
         }))
     }
 }
@@ -321,7 +307,9 @@ pub(crate) fn parse_usize_list(
                                 .iter()
                                 .map(|x| {
                                     if let rmpv::Value::Integer(i) = x {
-                                        i.as_i64().map(|n| n as usize)
+                                        i.as_i64().and_then(|n| {
+                                            if n >= 0 { Some(n as usize) } else { None }
+                                        })
                                     } else {
                                         None
                                     }
@@ -329,7 +317,9 @@ pub(crate) fn parse_usize_list(
                                 .collect();
                             vals
                         }
-                        rmpv::Value::Integer(i) => i.as_i64().map(|n| vec![n as usize]),
+                        rmpv::Value::Integer(i) => i
+                            .as_i64()
+                            .and_then(|n| if n >= 0 { Some(vec![n as usize]) } else { None }),
                         _ => None,
                     }
                 } else {

@@ -93,8 +93,22 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for PowLayer {
             }
         };
 
+        // exp_vars was constructed as either a broadcast (len == x_input.len())
+        // or a direct copy. Validate they match before indexing.
+        if exp_vars.len() != x_input.len() {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::Pow,
+                msg: format!(
+                    "PowLayer: exponent length {} does not match input length {}",
+                    exp_vars.len(),
+                    x_input.len()
+                ),
+            }
+            .into());
+        }
+
         for (i, &x) in x_input.iter().enumerate() {
-            let exp_var = exp_vars[i.min(exp_vars.len() - 1)];
+            let exp_var = exp_vars[i];
             let hint_out = api.new_hint(POW_HINT_KEY, &[x, exp_var, scale_var], 1);
             out_storage.push(hint_out[0]);
         }

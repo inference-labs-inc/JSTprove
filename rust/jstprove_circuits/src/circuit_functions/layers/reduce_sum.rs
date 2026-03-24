@@ -14,7 +14,8 @@ use std::collections::HashMap;
 
 use ndarray::{ArrayD, IxDyn};
 
-use expander_compiler::frontend::{Config, RootAPI, Variable};
+use ethnum::U256;
+use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
 
 use crate::circuit_functions::{
     CircuitError,
@@ -91,11 +92,16 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceSumLayer {
             );
 
             // Sum all contributing input variables.
-            let mut acc = input_flat[input_indices[0]];
-            for &idx in &input_indices[1..] {
-                acc = api.add(acc, input_flat[idx]);
+            if input_indices.is_empty() {
+                // Empty reduction: sum over zero elements is zero.
+                out_storage.push(api.constant(CircuitField::<C>::from_u256(U256::from(0u64))));
+            } else {
+                let mut acc = input_flat[input_indices[0]];
+                for &idx in &input_indices[1..] {
+                    acc = api.add(acc, input_flat[idx]);
+                }
+                out_storage.push(acc);
             }
-            out_storage.push(acc);
         }
 
         let result =
