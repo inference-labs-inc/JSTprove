@@ -102,7 +102,7 @@ mod tests {
     }
 
     #[test]
-    fn averagepool_output_non_negative() {
+    fn averagepool_all_zeros() {
         assert_eq!(run_hint(&[0, 0, 0]), 0);
     }
 }
