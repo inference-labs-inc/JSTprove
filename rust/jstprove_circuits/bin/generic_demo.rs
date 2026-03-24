@@ -224,6 +224,7 @@ fn main() {
             weights_as_inputs: false,
             proof_system: ProofSystem::Remainder,
             curve: Some(Curve::default()),
+            logup_chunk_bits: None,
         })
     } else {
         OnnxContext::get_params().ok()

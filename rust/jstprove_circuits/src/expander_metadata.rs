@@ -151,6 +151,7 @@ fn build_circuit_params(
         weights_as_inputs,
         proof_system: ProofSystem::Expander,
         curve,
+        logup_chunk_bits: None,
     }
 }
 

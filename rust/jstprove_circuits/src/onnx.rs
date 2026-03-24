@@ -77,7 +77,10 @@ impl Circuit<Variable> {
 
         let layers = build_layers::<C, Builder>(params, architecture, w_and_b)?;
 
-        let mut logup_ctx = LogupRangeCheckContext::new_default();
+        let mut logup_ctx = match params.logup_chunk_bits {
+            Some(bits) => LogupRangeCheckContext::new(bits),
+            None => LogupRangeCheckContext::new_default(),
+        };
         logup_ctx.init::<C, Builder>(api);
 
         for layer in &layers {

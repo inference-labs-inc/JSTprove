@@ -153,7 +153,7 @@ pub fn range_check_pow2_unsigned<C: Config, Builder: RootAPI<C>>(
 /// A width of 10 yields a 1024-row table and reduces digits per 64-bit
 /// range check from 16 (at chunk=4) to 7, cutting per-element
 /// constraint cost at the expense of a larger finalization tree.
-pub const DEFAULT_LOGUP_CHUNK_BITS: usize = 10;
+pub const DEFAULT_LOGUP_CHUNK_BITS: usize = 12;
 
 // -----------------------------------------------------------------------------
 // STRUCT: LogupRangeCheckContext
@@ -295,4 +295,38 @@ pub fn logup_range_check_pow2_unsigned<C: Config, B: RootAPI<C>>(
     ctx.finalize::<C, B>(api);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn queries_per_element(
+        remainder_bits: usize,
+        quotient_bits: usize,
+        chunk_bits: usize,
+    ) -> usize {
+        remainder_bits.div_ceil(chunk_bits) + quotient_bits.div_ceil(chunk_bits)
+    }
+
+    #[test]
+    fn default_chunk_bits_is_12() {
+        assert_eq!(DEFAULT_LOGUP_CHUNK_BITS, 12);
+    }
+
+    #[test]
+    fn queries_per_element_decreases_with_larger_chunks() {
+        let q10 = queries_per_element(18, 64, 10);
+        let q12 = queries_per_element(18, 64, 12);
+        let q14 = queries_per_element(18, 64, 14);
+        assert!(q10 > q12, "q10={q10} should exceed q12={q12}");
+        assert!(q12 > q14, "q12={q12} should exceed q14={q14}");
+    }
+
+    #[test]
+    fn queries_per_element_bn254_typical() {
+        assert_eq!(queries_per_element(18, 64, 10), 9);
+        assert_eq!(queries_per_element(18, 64, 12), 8);
+        assert_eq!(queries_per_element(18, 64, 14), 7);
+    }
 }
