@@ -614,9 +614,9 @@ fn infer_layer_output_shape(
         OpType::Pad => infer_pad(layer, input_shape, initializers, constant_tensors),
         OpType::Split => infer_split(layer, input_shape, initializers, constant_tensors),
         OpType::Where => infer_where(layer, shapes),
-        OpType::Pow | OpType::Sqrt | OpType::Tanh | OpType::Erf => {
-            passthrough_shape(layer, input_shape)
-        }
+        OpType::Sqrt | OpType::Tanh | OpType::Erf => passthrough_shape(layer, input_shape),
+        // Pow is a binary op: output shape is the broadcast of base and exponent shapes.
+        OpType::Pow => infer_broadcast_binary(layer, shapes),
         OpType::ReduceSum => infer_reduce(layer, input_shape, initializers, constant_tensors),
         OpType::ConvTranspose => infer_conv_transpose(layer, shapes),
     }
@@ -2394,6 +2394,16 @@ fn infer_split(
             layer.name,
             split_sizes.len(),
             num_outputs
+        );
+    }
+
+    let total: usize = split_sizes.iter().sum();
+    if total != axis_dim {
+        bail!(
+            "layer {}: Split split_sizes sum {} != axis_dim {}",
+            layer.name,
+            total,
+            axis_dim
         );
     }
 

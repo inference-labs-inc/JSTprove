@@ -171,6 +171,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AveragePoolLayer {
                             continue;
                         }
 
+                        // ── Input range checks (enforce non-negative activations) ─
+                        // Sound because AveragePool is always after non-negative ops
+                        // (e.g. ReLU). Enforcing this in the circuit makes the y >= 0
+                        // range check sound; a malicious prover cannot supply negative
+                        // inputs that average to a clamped zero.
+                        for &var in &valid_vars {
+                            logup_ctx.range_check::<C, Builder>(api, var, n_bits)?;
+                        }
+
                         // ── Hint ────────────────────────────────────────────
                         let hint_out = api.new_hint(AVERAGEPOOL_HINT_KEY, &valid_vars, 1);
                         let y = hint_out[0];
@@ -272,11 +281,53 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AveragePoolLayer {
             .clone();
 
         // Parse kernel_shape from params.
-        let kernel_shape = parse_usize_list(layer, "kernel_shape").unwrap_or_else(|| vec![1]);
-        let strides =
-            parse_usize_list(layer, "strides").unwrap_or_else(|| vec![1; kernel_shape.len()]);
-        let pads =
-            parse_usize_list(layer, "pads").unwrap_or_else(|| vec![0; kernel_shape.len() * 2]);
+        let mk_err = |msg: String| LayerError::InvalidShape {
+            layer: LayerKind::AveragePool,
+            msg,
+        };
+        let kernel_shape = parse_usize_list(layer, "kernel_shape")
+            .map_err(mk_err)?
+            .unwrap_or_else(|| vec![1]);
+        let strides = parse_usize_list(layer, "strides")
+            .map_err(mk_err)?
+            .unwrap_or_else(|| vec![1; kernel_shape.len()]);
+        let pads = parse_usize_list(layer, "pads")
+            .map_err(mk_err)?
+            .unwrap_or_else(|| vec![0; kernel_shape.len() * 2]);
+
+        // Reject unsupported pooling attributes.
+        let ceil_mode = get_int_param(layer, "ceil_mode").unwrap_or(0);
+        if ceil_mode != 0 {
+            return Err(LayerError::Other {
+                layer: LayerKind::AveragePool,
+                msg: format!(
+                    "AveragePool ceil_mode={ceil_mode} is not supported; only ceil_mode=0 is implemented"
+                ),
+            }
+            .into());
+        }
+        let count_include_pad = get_int_param(layer, "count_include_pad").unwrap_or(0);
+        if count_include_pad != 0 {
+            return Err(LayerError::Other {
+                layer: LayerKind::AveragePool,
+                msg: "AveragePool count_include_pad=1 is not supported; only count_include_pad=0 is implemented".to_string(),
+            }
+            .into());
+        }
+        let auto_pad = get_str_param(layer, "auto_pad");
+        if auto_pad
+            .as_deref()
+            .is_some_and(|s| s != "NOTSET" && !s.is_empty())
+        {
+            return Err(LayerError::Other {
+                layer: LayerKind::AveragePool,
+                msg: format!(
+                    "AveragePool auto_pad='{}' is not supported; only auto_pad=NOTSET is implemented",
+                    auto_pad.unwrap()
+                ),
+            }
+            .into());
+        }
 
         let n_bits = layer_context.n_bits_for(&layer.name);
 
@@ -293,43 +344,89 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AveragePoolLayer {
     }
 }
 
+/// Returns `Ok(None)` when the key is absent, `Ok(Some(vals))` when valid,
+/// and `Err(message)` when the key is present but contains an invalid (negative) value.
 pub(crate) fn parse_usize_list(
     layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
     key: &str,
-) -> Option<Vec<usize>> {
-    layer.params.as_ref().and_then(|p| {
-        if let rmpv::Value::Map(m) = p {
-            m.iter().find_map(|(k, v)| {
-                if k == &rmpv::Value::String(key.into()) {
-                    match v {
-                        rmpv::Value::Array(arr) => {
-                            let vals: Option<Vec<usize>> = arr
-                                .iter()
-                                .map(|x| {
-                                    if let rmpv::Value::Integer(i) = x {
-                                        i.as_i64().and_then(|n| {
-                                            if n >= 0 { Some(n as usize) } else { None }
-                                        })
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect();
-                            vals
-                        }
-                        rmpv::Value::Integer(i) => i
-                            .as_i64()
-                            .and_then(|n| if n >= 0 { Some(vec![n as usize]) } else { None }),
-                        _ => None,
-                    }
+) -> Result<Option<Vec<usize>>, String> {
+    let map = match layer.params.as_ref() {
+        Some(rmpv::Value::Map(m)) => m,
+        _ => return Ok(None),
+    };
+    let entry = map
+        .iter()
+        .find(|(k, _)| k == &rmpv::Value::String(key.into()));
+    let v = match entry {
+        Some((_, v)) => v,
+        None => return Ok(None),
+    };
+    let parse_one = |x: &rmpv::Value| -> Result<usize, String> {
+        if let rmpv::Value::Integer(i) = x {
+            match i.as_i64() {
+                Some(n) if n >= 0 => Ok(n as usize),
+                Some(n) => Err(format!("'{key}' contains negative value {n}")),
+                None => Err(format!(
+                    "'{key}' contains an integer that cannot be read as i64"
+                )),
+            }
+        } else {
+            Err(format!("'{key}' contains a non-integer value"))
+        }
+    };
+    match v {
+        rmpv::Value::Array(arr) => arr
+            .iter()
+            .map(parse_one)
+            .collect::<Result<Vec<_>, _>>()
+            .map(Some),
+        rmpv::Value::Integer(_) => parse_one(v).map(|n| Some(vec![n])),
+        _ => Err(format!("'{key}' has an unexpected msgpack type")),
+    }
+}
+
+/// Returns the integer value of a scalar attribute, or `None` if absent/non-integer.
+fn get_int_param(
+    layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
+    key: &str,
+) -> Option<i64> {
+    if let Some(rmpv::Value::Map(m)) = layer.params.as_ref() {
+        m.iter().find_map(|(k, v)| {
+            if k == &rmpv::Value::String(key.into()) {
+                if let rmpv::Value::Integer(i) = v {
+                    i.as_i64()
                 } else {
                     None
                 }
-            })
-        } else {
-            None
-        }
-    })
+            } else {
+                None
+            }
+        })
+    } else {
+        None
+    }
+}
+
+/// Returns the string value of a scalar attribute, or `None` if absent/non-string.
+fn get_str_param(
+    layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
+    key: &str,
+) -> Option<String> {
+    if let Some(rmpv::Value::Map(m)) = layer.params.as_ref() {
+        m.iter().find_map(|(k, v)| {
+            if k == &rmpv::Value::String(key.into()) {
+                if let rmpv::Value::String(s) = v {
+                    s.as_str().map(|x| x.to_string())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -363,21 +460,21 @@ mod tests {
     fn parse_usize_list_array() {
         let layer = make_layer("kernel_shape", vec![3, 3]);
         let result = parse_usize_list(&layer, "kernel_shape");
-        assert_eq!(result, Some(vec![3, 3]));
+        assert_eq!(result, Ok(Some(vec![3, 3])));
     }
 
     #[test]
     fn parse_usize_list_missing_key() {
         let layer = make_layer("kernel_shape", vec![3, 3]);
         let result = parse_usize_list(&layer, "strides");
-        assert_eq!(result, None);
+        assert_eq!(result, Ok(None));
     }
 
     #[test]
     fn parse_usize_list_single_element() {
         let layer = make_layer("pads", vec![1]);
         let result = parse_usize_list(&layer, "pads");
-        assert_eq!(result, Some(vec![1]));
+        assert_eq!(result, Ok(Some(vec![1])));
     }
 
     #[test]
@@ -393,6 +490,13 @@ mod tests {
             params: None,
             opset_version_number: 13,
         };
-        assert_eq!(parse_usize_list(&layer, "kernel_shape"), None);
+        assert_eq!(parse_usize_list(&layer, "kernel_shape"), Ok(None));
+    }
+
+    #[test]
+    fn parse_usize_list_negative_value_is_err() {
+        let layer = make_layer("kernel_shape", vec![-1, 3]);
+        let result = parse_usize_list(&layer, "kernel_shape");
+        assert!(result.is_err());
     }
 }
