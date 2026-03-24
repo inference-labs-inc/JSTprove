@@ -51,6 +51,9 @@ const SUPPORTED_OPS: &[&str] = &[
     "ReduceSum",
     "Erf",
     "ConvTranspose",
+    "Log",
+    "ReduceMean",
+    "TopK",
 ];
 
 pub fn is_compatible(path: &Path) -> Result<(bool, Vec<String>)> {
