@@ -53,8 +53,10 @@ pub fn averagepool_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Resul
     let n = inputs.len();
     let sum: f64 = inputs.iter().map(|&x| field_to_i64(x) as f64).sum();
     let mean = sum / n as f64;
-    // Clamp to non-negative (AveragePool of non-negative activations is non-negative).
-    let y_q: i64 = mean.round().max(0.0) as i64;
+    // Inputs are circuit-enforced non-negative, so mean >= 0.
+    // No clamp: a negative result would produce a large field element that
+    // fails the output range check in the circuit.
+    let y_q = mean.round() as i64;
 
     outputs[0] = F::from_u256(U256::from(y_q as u64));
     Ok(())
@@ -100,7 +102,7 @@ mod tests {
     }
 
     #[test]
-    fn averagepool_output_non_negative() {
+    fn averagepool_all_zeros() {
         assert_eq!(run_hint(&[0, 0, 0]), 0);
     }
 }

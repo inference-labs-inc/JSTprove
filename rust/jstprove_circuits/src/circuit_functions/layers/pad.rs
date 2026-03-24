@@ -280,6 +280,23 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for PadLayer {
             .into());
         }
 
+        // Validate constant_value (input[2]): only zero padding is supported.
+        if let Some(cv_name) = layer.inputs.get(2).filter(|n| !n.is_empty()) {
+            if let Ok(cv) = get_w_or_b::<f64, _>(layer_context.w_and_b_map, cv_name) {
+                let has_nonzero = cv.iter().any(|&v| v != 0.0);
+                if has_nonzero {
+                    return Err(LayerError::Other {
+                        layer: LayerKind::Pad,
+                        msg: format!(
+                            "Pad constant_value input '{}' is non-zero; only zero padding is supported",
+                            cv_name
+                        ),
+                    }
+                    .into());
+                }
+            }
+        }
+
         if let Some(&neg) = pads.iter().find(|&&v| v < 0) {
             return Err(LayerError::Other {
                 layer: LayerKind::Pad,

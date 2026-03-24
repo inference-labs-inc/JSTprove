@@ -464,6 +464,25 @@ fn compute_bounds(graph: &LayerGraph, config: &ScaleConfig) -> Result<HashMap<St
             }
         }
 
+        // MatMul dynamic/dynamic: the base bound is m_in * m_b, but the dot product
+        // accumulates K terms, so multiply by K (the contracting dimension).
+        if layer.op_type == OpType::MatMul {
+            if let (Some(in0_name), Some(in1_name)) = (layer.inputs.first(), layer.inputs.get(1)) {
+                let no_weight = !layer.weights.contains_key(in0_name.as_str())
+                    && !layer.weights.contains_key(in1_name.as_str());
+                if no_weight {
+                    let m_in = bounds.get(in0_name.as_str()).copied().unwrap_or(1.0);
+                    let m_b = bounds.get(in1_name.as_str()).copied().unwrap_or(1.0);
+                    let k = shapes
+                        .get(in0_name.as_str())
+                        .and_then(|s| s.last().copied())
+                        .unwrap_or(1)
+                        .max(1) as f64;
+                    bound = m_in * m_b * k;
+                }
+            }
+        }
+
         // Similarly, Add/Sub can accumulate two different branches, but
         // compute_layer_bound already returns m_a + m_b for those, which is correct.
 
@@ -791,10 +810,32 @@ fn compute_layer_bound(
             let m_y = get_input_bound(2);
             Ok(m_x.max(m_y))
         }
-        // Pow: conservative bound — for x^2 the bound is m_in^2.
+        // Pow: bound depends on the exponent.
+        // If the exponent is a constant initializer scalar, use m_in^exponent.
+        // Otherwise fall back to m_in^2 (conservative: exponent=2 is the common case).
         OpType::Pow => {
             let m_in = get_input_bound(0);
-            Ok(m_in * m_in)
+            let exp = layer
+                .inputs
+                .get(1)
+                .and_then(|name| layer.weights.get(name))
+                .and_then(|td| {
+                    let vals = td.as_f64_vec();
+                    if vals.len() == 1 {
+                        Some(vals[0])
+                    } else {
+                        None
+                    }
+                });
+            match exp {
+                Some(e) if e >= 0.0 && e == e.floor() => Ok(m_in.powf(e)),
+                Some(e) => anyhow::bail!(
+                    "layer {}: Pow exponent {e} is non-integer or negative; \
+                     cannot compute a safe quantization bound",
+                    layer.name
+                ),
+                None => Ok(m_in * m_in),
+            }
         }
         // Sqrt: sqrt(x*alpha)/alpha ≤ 1 for x in [0,1]. Conservatively bound as m_in.
         OpType::Sqrt => {
