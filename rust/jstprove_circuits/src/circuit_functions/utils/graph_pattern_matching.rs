@@ -211,6 +211,8 @@ fn dfs<'a>(
 pub enum PatternRegistry {
     None,
     ConvRelu,
+    ConvBatchnorm,
+    ConvBatchnormRelu,
     GemmRelu,
     BatchnormRelu,
     MulRelu,
@@ -227,6 +229,14 @@ impl PatternRegistry {
             PatternRegistry::ConvRelu => GraphPattern {
                 name: "Conv+Relu",
                 ops: &["Conv", "Relu"],
+            },
+            PatternRegistry::ConvBatchnorm => GraphPattern {
+                name: "Conv+BatchNormalization",
+                ops: &["Conv", "BatchNormalization"],
+            },
+            PatternRegistry::ConvBatchnormRelu => GraphPattern {
+                name: "Conv+BatchNormalization+Relu",
+                ops: &["Conv", "BatchNormalization", "Relu"],
             },
             PatternRegistry::GemmRelu => GraphPattern {
                 name: "Gemm+Relu",

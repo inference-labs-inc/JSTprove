@@ -7,7 +7,9 @@ use crate::circuit_functions::layers::cast::CastLayer;
 use crate::circuit_functions::layers::concat::ConcatLayer;
 use crate::circuit_functions::layers::div::DivLayer;
 use crate::circuit_functions::layers::layer_ops::LayerOp;
+use crate::circuit_functions::layers::matmul::MatMulLayer;
 use crate::circuit_functions::layers::mul::MulLayer;
+use crate::circuit_functions::layers::pad::PadLayer;
 use crate::circuit_functions::utils::build_layers::BuildLayerContext;
 use crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry;
 use crate::circuit_functions::utils::onnx_model::CircuitParams;
@@ -157,6 +159,7 @@ define_layers! {
     GridSample => { name: "GridSample", builder: GridSampleLayer::build },
     Gemm      => { name: "Gemm", builder: GemmLayer::build },
     LayerNormalization => { name: "LayerNormalization", builder: LayerNormLayer::build },
+    MatMul    => { name: "MatMul", builder: MatMulLayer::build },
     MaxPool   => { name: "MaxPool", builder: MaxPoolLayer::build },
     Max       => { name: "Max", builder: BinaryCompareLayer::build },
     Min       => { name: "Min", builder: BinaryCompareLayer::build },
@@ -173,6 +176,7 @@ define_layers! {
     Unsqueeze => { name: "Unsqueeze", builder: UnsqueezeLayer::build },
     Expand    => { name: "Expand",     builder: ExpandLayer::build },
     Log       => { name: "Log",        builder: LogLayer::build },
+    Pad       => { name: "Pad", builder: PadLayer::build },
     ReduceMean => { name: "ReduceMean", builder: ReduceMeanLayer::build },
     Shape     => { name: "Shape",      builder: ShapeLayer::build },
 }
