@@ -187,23 +187,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for PadLayer {
         // Read pads from input[1] or from params.
         let pads: Vec<i64> = if let Some(pads_name) = layer.inputs.get(1).filter(|n| !n.is_empty())
         {
-            let parse_i64_vec = |v: &rmpv::Value| -> Option<Vec<i64>> {
-                match v {
-                    rmpv::Value::Array(xs) => xs
-                        .iter()
-                        .map(|x| {
-                            if let rmpv::Value::Integer(i) = x {
-                                i.as_i64()
-                            } else {
-                                None
-                            }
-                        })
-                        .collect(),
-                    rmpv::Value::Integer(i) => i.as_i64().map(|x| vec![x]),
-                    _ => None,
-                }
-            };
-
             if let Ok(arr) = get_w_or_b(layer_context.w_and_b_map, pads_name) {
                 arr.as_slice()
                     .ok_or_else(|| LayerError::Other {
@@ -245,19 +228,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for PadLayer {
                     if let rmpv::Value::Map(m) = p {
                         m.iter().find_map(|(k, v)| {
                             if k == &rmpv::Value::String("pads".into()) {
-                                match v {
-                                    rmpv::Value::Array(arr) => arr
-                                        .iter()
-                                        .map(|x| {
-                                            if let rmpv::Value::Integer(i) = x {
-                                                i.as_i64()
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                        .collect(),
-                                    _ => None,
-                                }
+                                parse_i64_vec(v)
                             } else {
                                 None
                             }
@@ -317,6 +288,23 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for PadLayer {
             output_shape,
             index_map,
         }))
+    }
+}
+
+fn parse_i64_vec(v: &rmpv::Value) -> Option<Vec<i64>> {
+    match v {
+        rmpv::Value::Array(xs) => xs
+            .iter()
+            .map(|x| {
+                if let rmpv::Value::Integer(i) = x {
+                    i.as_i64()
+                } else {
+                    None
+                }
+            })
+            .collect(),
+        rmpv::Value::Integer(i) => i.as_i64().map(|x| vec![x]),
+        _ => None,
     }
 }
 

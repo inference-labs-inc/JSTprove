@@ -2440,8 +2440,10 @@ fn infer_where(
                 anyhow::anyhow!("layer {}: Where broadcast cond-x/Y: {e}", layer.name)
             })?
         }
-        (Some(s), _, _) | (_, Some(s), _) | (_, _, Some(s)) => s.clone(),
-        (None, None, None) => bail!("layer {}: Where has no input shapes", layer.name),
+        _ => bail!(
+            "layer {}: Where requires all three input shapes (condition, X, Y) for correct broadcasting",
+            layer.name
+        ),
     };
 
     Ok(layer
@@ -2557,6 +2559,12 @@ fn infer_conv_transpose(
         };
         let out_pad = output_padding.get(i).copied().unwrap_or(0);
         let d = dilations.get(i).copied().unwrap_or(1);
+        if kernel_shape[i] == 0 {
+            bail!(
+                "layer {}: ConvTranspose kernel_shape[{i}] is 0; kernel dimensions must be positive",
+                layer.name
+            );
+        }
         let effective_kernel = (kernel_shape[i] - 1) * d + 1;
         let out_dim = strides[i] * (in_dim - 1) + effective_kernel - pad + out_pad;
         out_shape.push(out_dim);

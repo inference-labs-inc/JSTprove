@@ -413,6 +413,182 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
                     vec![]
                 }
             }
+            // MatMul: [.., M, K] × [.., K, N] → [.., M, N].
+            OpType::MatMul => {
+                let s0 = layer.inputs.first().and_then(|n| shapes.get(n.as_str()));
+                let s1 = layer.inputs.get(1).and_then(|n| shapes.get(n.as_str()));
+                match (s0, s1) {
+                    (Some(a), Some(b)) if a.len() >= 2 && b.len() >= 2 => {
+                        let mut out = a[..a.len() - 1].to_vec();
+                        out.push(*b.last().unwrap());
+                        out
+                    }
+                    _ => input_shape.unwrap_or_default(),
+                }
+            }
+            // Reshape: output shape is the target shape tensor (input[1]).
+            OpType::Reshape => {
+                if let Some(shape_name) = layer.inputs.get(1) {
+                    if let Some(td) = layer.weights.get(shape_name.as_str()) {
+                        let dims: Vec<usize> = td
+                            .as_i64_vec()
+                            .iter()
+                            .map(|&d| if d < 0 { 0 } else { d as usize })
+                            .collect();
+                        dims
+                    } else {
+                        input_shape.unwrap_or_default()
+                    }
+                } else {
+                    input_shape.unwrap_or_default()
+                }
+            }
+            // Concat: merge input shapes along the concat axis.
+            OpType::Concat => {
+                let axis = match layer.attributes.get("axis") {
+                    Some(AttrValue::Int(v)) => *v,
+                    _ => 0,
+                };
+                let in_shapes: Vec<&Vec<usize>> = layer
+                    .inputs
+                    .iter()
+                    .filter_map(|n| shapes.get(n.as_str()))
+                    .collect();
+                if let Some(first) = in_shapes.first() {
+                    let rank = first.len();
+                    let ax = if axis < 0 {
+                        (axis + rank as i64).max(0) as usize
+                    } else {
+                        (axis as usize).min(rank.saturating_sub(1))
+                    };
+                    let mut out = (*first).clone();
+                    out[ax] = in_shapes
+                        .iter()
+                        .map(|s| s.get(ax).copied().unwrap_or(0))
+                        .sum();
+                    out
+                } else {
+                    input_shape.unwrap_or_default()
+                }
+            }
+            // MaxPool/AveragePool: spatial dims shrink per kernel/stride/pad.
+            OpType::MaxPool | OpType::AveragePool => {
+                if let Some(ref in_shape) = input_shape {
+                    if in_shape.len() >= 2 {
+                        let kernel: Vec<usize> = match layer.attributes.get("kernel_shape") {
+                            Some(AttrValue::Ints(v)) => v.iter().map(|&k| k as usize).collect(),
+                            _ => vec![],
+                        };
+                        let strides: Vec<usize> = match layer.attributes.get("strides") {
+                            Some(AttrValue::Ints(v)) => {
+                                v.iter().map(|&s| s.max(1) as usize).collect()
+                            }
+                            _ => vec![1; kernel.len()],
+                        };
+                        let pads: Vec<usize> = match layer.attributes.get("pads") {
+                            Some(AttrValue::Ints(v)) => {
+                                v.iter().map(|&p| p.max(0) as usize).collect()
+                            }
+                            _ => vec![0; kernel.len() * 2],
+                        };
+                        let spatial_dims = kernel.len();
+                        let mut out = in_shape[..2].to_vec();
+                        for i in 0..spatial_dims {
+                            let in_d = in_shape.get(2 + i).copied().unwrap_or(1);
+                            let k = kernel.get(i).copied().unwrap_or(1).max(1);
+                            let s = strides.get(i).copied().unwrap_or(1).max(1);
+                            let ph = pads.get(i).copied().unwrap_or(0);
+                            let pe = pads.get(spatial_dims + i).copied().unwrap_or(0);
+                            let padded = in_d + ph + pe;
+                            let out_d = padded.saturating_sub(k) / s + 1;
+                            out.push(out_d);
+                        }
+                        out
+                    } else {
+                        in_shape.clone()
+                    }
+                } else {
+                    vec![]
+                }
+            }
+            // Conv: output = [N, C_out, H_out, W_out, ...].
+            OpType::Conv | OpType::ConvTranspose => {
+                if let Some(ref in_shape) = input_shape {
+                    if let Some(w_name) = layer.inputs.get(1) {
+                        if let Some(w) = layer.weights.get(w_name.as_str()) {
+                            let w_shape = w.shape();
+                            let c_out = if layer.op_type == OpType::ConvTranspose {
+                                // ConvTranspose weight: [C_in, C_out/groups, ...]
+                                w_shape.get(1).copied().unwrap_or(1)
+                            } else {
+                                // Conv weight: [C_out, C_in/groups, ...]
+                                w_shape.first().copied().unwrap_or(1)
+                            };
+                            let mut out = vec![in_shape.first().copied().unwrap_or(1), c_out];
+                            // Spatial dims: use input shape length - 2 if available.
+                            for i in 0..in_shape.len().saturating_sub(2) {
+                                out.push(in_shape[2 + i]); // approximate; correct enough for bounds
+                            }
+                            out
+                        } else {
+                            in_shape.clone()
+                        }
+                    } else {
+                        in_shape.clone()
+                    }
+                } else {
+                    vec![]
+                }
+            }
+            // Split: each output gets a slice along the split axis.
+            OpType::Split => {
+                if let Some(ref in_shape) = input_shape {
+                    let rank = in_shape.len();
+                    let axis_raw = match layer.attributes.get("axis") {
+                        Some(AttrValue::Int(v)) => *v,
+                        _ => 0,
+                    };
+                    let axis = if axis_raw < 0 {
+                        (axis_raw + rank as i64).max(0) as usize
+                    } else {
+                        (axis_raw as usize).min(rank.saturating_sub(1))
+                    };
+                    let axis_dim = in_shape.get(axis).copied().unwrap_or(0);
+                    let num_outputs = layer.outputs.len();
+                    let split_sizes: Vec<usize> = if let Some(split_name) = layer.inputs.get(1) {
+                        layer
+                            .weights
+                            .get(split_name.as_str())
+                            .map(|td| td.as_i64_vec().iter().map(|&v| v.max(0) as usize).collect())
+                    } else {
+                        None
+                    }
+                    .or_else(|| match layer.attributes.get("split") {
+                        Some(AttrValue::Ints(v)) => {
+                            Some(v.iter().map(|&v| v.max(0) as usize).collect())
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| {
+                        let each = if num_outputs > 0 {
+                            axis_dim / num_outputs
+                        } else {
+                            0
+                        };
+                        vec![each; num_outputs]
+                    });
+                    for (out_name, &sz) in layer.outputs.iter().zip(split_sizes.iter()) {
+                        let mut out = in_shape.clone();
+                        if axis < out.len() {
+                            out[axis] = sz;
+                        }
+                        shapes.insert(out_name.clone(), out);
+                    }
+                    continue;
+                } else {
+                    vec![]
+                }
+            }
             _ => {
                 // Default: output shape = input[0] shape (pass-through / structural op).
                 input_shape.unwrap_or_default()
@@ -834,7 +1010,12 @@ fn compute_layer_bound(
                      cannot compute a safe quantization bound",
                     layer.name
                 ),
-                None => Ok(m_in * m_in),
+                None => anyhow::bail!(
+                    "layer {}: Pow exponent is not a compile-time constant initializer; \
+                     dynamic exponents are unsupported for safe quantization — \
+                     provide a constant initializer for the exponent input",
+                    layer.name
+                ),
             }
         }
         // Sqrt: sqrt(x*alpha)/alpha ≤ 1 for x in [0,1]. Conservatively bound as m_in.

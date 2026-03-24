@@ -104,26 +104,28 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AveragePoolLayer {
             self.input_shape[2],
             self.input_shape[3],
         );
-        let (k_h, k_w) = (
-            self.kernel_shape.first().copied().unwrap_or(1),
-            self.kernel_shape.get(1).copied().unwrap_or(1),
-        );
-        let (s_h, s_w) = (
-            self.strides.first().copied().unwrap_or(1),
-            self.strides.get(1).copied().unwrap_or(1),
-        );
+        // build() guarantees kernel_shape/strides are length 2 with positive entries
+        // and pads is length 4.
+        let (k_h, k_w) = (self.kernel_shape[0], self.kernel_shape[1]);
+        let (s_h, s_w) = (self.strides[0], self.strides[1]);
         // ONNX pads: [begin_H, begin_W, end_H, end_W]
-        let (ph_b, pw_b) = (
-            self.pads.first().copied().unwrap_or(0),
-            self.pads.get(1).copied().unwrap_or(0),
-        );
-        let (ph_e, pw_e) = (
-            self.pads.get(2).copied().unwrap_or(0),
-            self.pads.get(3).copied().unwrap_or(0),
-        );
+        let (ph_b, pw_b) = (self.pads[0], self.pads[1]);
+        let (ph_e, pw_e) = (self.pads[2], self.pads[3]);
 
-        let out_h = (h_in + ph_b + ph_e - k_h) / s_h + 1;
-        let out_w = (w_in + pw_b + pw_e - k_w) / s_w + 1;
+        let padded_h = h_in + ph_b + ph_e;
+        let padded_w = w_in + pw_b + pw_e;
+        let out_h = padded_h.checked_sub(k_h).ok_or_else(|| LayerError::InvalidShape {
+            layer: LayerKind::AveragePool,
+            msg: format!(
+                "kernel height {k_h} exceeds padded input height {padded_h} ({h_in}+{ph_b}+{ph_e})"
+            ),
+        })? / s_h + 1;
+        let out_w = padded_w.checked_sub(k_w).ok_or_else(|| LayerError::InvalidShape {
+            layer: LayerKind::AveragePool,
+            msg: format!(
+                "kernel width {k_w} exceeds padded input width {padded_w} ({w_in}+{pw_b}+{pw_e})"
+            ),
+        })? / s_w + 1;
 
         let n_bits = self.n_bits;
         let mut out_storage: Vec<Variable> = Vec::with_capacity(big_n * c * out_h * out_w);
@@ -295,37 +297,59 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AveragePoolLayer {
             .map_err(mk_err)?
             .unwrap_or_else(|| vec![0; kernel_shape.len() * 2]);
 
+        // Validate spatial attribute arity and positivity so apply() can index directly.
+        let mk_other = |msg: String| LayerError::Other {
+            layer: LayerKind::AveragePool,
+            msg,
+        };
+        if kernel_shape.len() != 2 || kernel_shape.contains(&0) {
+            return Err(mk_other(format!(
+                "AveragePool kernel_shape must have exactly 2 positive entries, got {kernel_shape:?}"
+            ))
+            .into());
+        }
+        if strides.len() != 2 || strides.contains(&0) {
+            return Err(mk_other(format!(
+                "AveragePool strides must have exactly 2 positive entries, got {strides:?}"
+            ))
+            .into());
+        }
+        if pads.len() != 4 {
+            return Err(mk_other(format!(
+                "AveragePool pads must have exactly 4 entries, got {}",
+                pads.len()
+            ))
+            .into());
+        }
+
         // Reject unsupported pooling attributes.
-        let ceil_mode = get_int_param(layer, "ceil_mode").unwrap_or(0);
+        let ceil_mode = get_int_param(layer, "ceil_mode")
+            .map_err(mk_other)?
+            .unwrap_or(0);
         if ceil_mode != 0 {
-            return Err(LayerError::Other {
-                layer: LayerKind::AveragePool,
-                msg: format!(
-                    "AveragePool ceil_mode={ceil_mode} is not supported; only ceil_mode=0 is implemented"
-                ),
-            }
+            return Err(mk_other(format!(
+                "AveragePool ceil_mode={ceil_mode} is not supported; only ceil_mode=0 is implemented"
+            ))
             .into());
         }
-        let count_include_pad = get_int_param(layer, "count_include_pad").unwrap_or(0);
+        let count_include_pad = get_int_param(layer, "count_include_pad")
+            .map_err(mk_other)?
+            .unwrap_or(0);
         if count_include_pad != 0 {
-            return Err(LayerError::Other {
-                layer: LayerKind::AveragePool,
-                msg: "AveragePool count_include_pad=1 is not supported; only count_include_pad=0 is implemented".to_string(),
-            }
+            return Err(mk_other(
+                "AveragePool count_include_pad=1 is not supported; only count_include_pad=0 is implemented".to_string(),
+            )
             .into());
         }
-        let auto_pad = get_str_param(layer, "auto_pad");
+        let auto_pad = get_str_param(layer, "auto_pad").map_err(mk_other)?;
         if auto_pad
             .as_deref()
             .is_some_and(|s| s != "NOTSET" && !s.is_empty())
         {
-            return Err(LayerError::Other {
-                layer: LayerKind::AveragePool,
-                msg: format!(
-                    "AveragePool auto_pad='{}' is not supported; only auto_pad=NOTSET is implemented",
-                    auto_pad.unwrap()
-                ),
-            }
+            return Err(mk_other(format!(
+                "AveragePool auto_pad='{}' is not supported; only auto_pad=NOTSET is implemented",
+                auto_pad.unwrap()
+            ))
             .into());
         }
 
@@ -385,48 +409,48 @@ pub(crate) fn parse_usize_list(
     }
 }
 
-/// Returns the integer value of a scalar attribute, or `None` if absent/non-integer.
+/// Returns `Ok(None)` when the key is absent, `Ok(Some(i))` when valid,
+/// and `Err` when the key is present but has an unexpected type.
 fn get_int_param(
     layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
     key: &str,
-) -> Option<i64> {
+) -> Result<Option<i64>, String> {
     if let Some(rmpv::Value::Map(m)) = layer.params.as_ref() {
-        m.iter().find_map(|(k, v)| {
+        for (k, v) in m {
             if k == &rmpv::Value::String(key.into()) {
-                if let rmpv::Value::Integer(i) = v {
-                    i.as_i64()
-                } else {
-                    None
-                }
-            } else {
-                None
+                return match v {
+                    rmpv::Value::Integer(i) => i
+                        .as_i64()
+                        .map(Some)
+                        .ok_or_else(|| format!("'{key}' integer value is out of i64 range")),
+                    _ => Err(format!("'{key}' has unexpected type; expected integer")),
+                };
             }
-        })
-    } else {
-        None
+        }
     }
+    Ok(None)
 }
 
-/// Returns the string value of a scalar attribute, or `None` if absent/non-string.
+/// Returns `Ok(None)` when the key is absent, `Ok(Some(s))` when valid,
+/// and `Err` when the key is present but has an unexpected type.
 fn get_str_param(
     layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
     key: &str,
-) -> Option<String> {
+) -> Result<Option<String>, String> {
     if let Some(rmpv::Value::Map(m)) = layer.params.as_ref() {
-        m.iter().find_map(|(k, v)| {
+        for (k, v) in m {
             if k == &rmpv::Value::String(key.into()) {
-                if let rmpv::Value::String(s) = v {
-                    s.as_str().map(|x| x.to_string())
-                } else {
-                    None
-                }
-            } else {
-                None
+                return match v {
+                    rmpv::Value::String(s) => s
+                        .as_str()
+                        .map(|x| Some(x.to_string()))
+                        .ok_or_else(|| format!("'{key}' string value is not valid UTF-8")),
+                    _ => Err(format!("'{key}' has unexpected type; expected string")),
+                };
             }
-        })
-    } else {
-        None
+        }
     }
+    Ok(None)
 }
 
 #[cfg(test)]
