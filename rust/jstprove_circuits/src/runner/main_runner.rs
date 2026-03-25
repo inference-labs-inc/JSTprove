@@ -74,6 +74,19 @@ fn get_witness_solver_path(input: &str) -> PathBuf {
     PathBuf::from(file_name)
 }
 
+/// # Errors
+/// Returns `RunError` on compilation failure.
+pub fn compile_total_cost<C: Config, CircuitType>() -> Result<usize, RunError>
+where
+    CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone + MaybeConfigure,
+{
+    let mut circuit = CircuitType::default();
+    configure_if_possible::<CircuitType>(&mut circuit)?;
+    let compile_result = compile(&circuit, CompileOptions::default())
+        .map_err(|e| RunError::Compile(format!("{e:?}")))?;
+    Ok(compile_result.layered_circuit.get_stats().total_cost)
+}
+
 fn compile_to_bundle<C: Config, CircuitType>(
     metadata: Option<CircuitParams>,
 ) -> Result<CompiledCircuit, RunError>
