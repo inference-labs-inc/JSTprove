@@ -28,6 +28,12 @@
 #![feature(min_specialization)]
 
 pub mod circuit_functions;
+#[allow(
+    clippy::must_use_candidate,
+    clippy::missing_panics_doc,
+    clippy::cast_precision_loss
+)]
+pub mod cli;
 pub mod curve;
 #[allow(clippy::pedantic)]
 pub mod expander_metadata;

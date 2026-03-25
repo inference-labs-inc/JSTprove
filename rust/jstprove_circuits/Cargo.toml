@@ -35,6 +35,8 @@ tempfile = "3"
 tracing = "0.1"
 anyhow = "1"
 serde_json = "1.0"
+console = "0.15"
+indicatif = "0.17"
 
 [features]
 peak-mem = ["peakmem-alloc"]

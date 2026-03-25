@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::circuit_functions::hints::build_logup_hint_registry;
 use crate::circuit_functions::utils::onnx_model::CircuitParams;
+use crate::cli;
 use crate::io::io_reader;
 use crate::runner::errors::{CliError, RunError};
 use crate::runner::schema::{
@@ -195,7 +196,6 @@ where
         compress,
     )?;
 
-    println!("Witness Generated");
     Ok(())
 }
 
@@ -308,7 +308,6 @@ where
     let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
     let mut expander_circuit = layered_circuit.export_to_expander_flatten();
     prove_core::<C>(&mut expander_circuit, witness_path, proof_path, compress)?;
-    println!("Proved");
     Ok(())
 }
 
@@ -367,7 +366,6 @@ where
         witness_path,
         proof_path,
     )?;
-    println!("Verified");
     Ok(())
 }
 
@@ -1714,24 +1712,45 @@ where
         return super::remainder_dispatch::dispatch(matches, &command, compress);
     }
 
+    let is_interactive = !command.starts_with("run_pipe_") && !command.ends_with("_stdin");
+
+    if is_interactive {
+        let label = command
+            .strip_prefix("run_")
+            .or_else(|| command.strip_prefix("msgpack_"))
+            .unwrap_or(&command);
+        cli::header(label);
+    }
+
     match command.as_str() {
         "run_compile_circuit" => {
             let circuit_path = get_arg(matches, "circuit_path")?;
+            let mut steps = cli::StepPrinter::new(2);
+            steps.step("Compiling circuit");
             run_compile_and_serialize::<C, CircuitType>(&circuit_path, compress, metadata)?;
+            steps.step("Serializing");
+            steps.finish_ok("Compiled");
         }
         "run_gen_witness" => {
             let input_path = get_arg(matches, "input")?;
             let output_path = get_arg(matches, "output")?;
             let witness_path = get_arg(matches, "witness")?;
             let circuit_path = get_arg(matches, "circuit_path")?;
-            run_witness::<C, _, CircuitDefaultType>(
+            let mut steps = cli::StepPrinter::new(2);
+            steps.step("Loading circuit");
+            steps.step("Generating witness");
+            let sp = cli::spinner("solving assignments");
+            let result = run_witness::<C, _, CircuitDefaultType>(
                 file_reader,
                 &input_path,
                 &output_path,
                 &witness_path,
                 &circuit_path,
                 compress,
-            )?;
+            );
+            sp.finish_and_clear();
+            result?;
+            steps.finish_ok("Witness generated");
         }
         "run_debug_witness" => {
             let input_path = get_arg(matches, "input")?;
@@ -1750,12 +1769,19 @@ where
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
             let circuit_path = get_arg(matches, "circuit_path")?;
-            run_prove_witness::<C, CircuitDefaultType>(
+            let mut steps = cli::StepPrinter::new(2);
+            steps.step("Loading circuit and witness");
+            steps.step("Generating proof");
+            let sp = cli::spinner("running GKR prover");
+            let result = run_prove_witness::<C, CircuitDefaultType>(
                 &circuit_path,
                 &witness_path,
                 &proof_path,
                 compress,
-            )?;
+            );
+            sp.finish_and_clear();
+            result?;
+            steps.finish_ok("Proof generated");
         }
         "run_gen_verify" => {
             let input_path = get_arg(matches, "input")?;
@@ -1763,14 +1789,26 @@ where
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
             let circuit_path = get_arg(matches, "circuit_path")?;
-            run_verify_io::<C, Filereader, CircuitDefaultType>(
+            let mut steps = cli::StepPrinter::new(2);
+            steps.step("Loading circuit, witness, and proof");
+            steps.step("Verifying");
+            let sp = cli::spinner("checking GKR sumcheck transcript");
+            let result = run_verify_io::<C, Filereader, CircuitDefaultType>(
                 &circuit_path,
                 file_reader,
                 &input_path,
                 &output_path,
                 &witness_path,
                 &proof_path,
-            )?;
+            );
+            sp.finish_and_clear();
+            match result {
+                Ok(()) => steps.finish_ok("Verification passed"),
+                Err(e) => {
+                    steps.finish_err("Verification failed");
+                    return Err(e.into());
+                }
+            }
         }
         "run_batch_witness" => {
             let manifest_path = get_arg(matches, "manifest")?;
@@ -1825,25 +1863,49 @@ where
         }
         "msgpack_compile" => {
             let circuit_path = get_arg(matches, "circuit_path")?;
-            write_circuit_msgpack::<C, CircuitType>(&circuit_path, compress, metadata)?;
-            eprintln!("Compiled to {circuit_path}");
+            let mut steps = cli::StepPrinter::new(2);
+            steps.step("Compiling circuit");
+            let sp = cli::spinner("building layered circuit from ONNX graph");
+            let result = write_circuit_msgpack::<C, CircuitType>(&circuit_path, compress, metadata);
+            sp.finish_and_clear();
+            result?;
+            steps.step("Serializing");
+            steps.finish_ok("Compiled");
         }
         "msgpack_prove" => {
             let circuit_path = get_arg(matches, "circuit_path")?;
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
-            msgpack_prove_file::<C>(&circuit_path, &witness_path, &proof_path, compress)?;
-            eprintln!("Proved to {proof_path}");
+            let mut steps = cli::StepPrinter::new(2);
+            steps.step("Loading circuit and witness");
+            steps.step("Generating proof");
+            let sp = cli::spinner("running GKR prover");
+            let result =
+                msgpack_prove_file::<C>(&circuit_path, &witness_path, &proof_path, compress);
+            sp.finish_and_clear();
+            result?;
+            steps.finish_ok("Proof generated");
         }
         "msgpack_verify" => {
             let circuit_path = get_arg(matches, "circuit_path")?;
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
-            let valid = msgpack_verify_file::<C>(&circuit_path, &witness_path, &proof_path)?;
-            if valid {
-                eprintln!("Verified");
-            } else {
-                return Err(RunError::Verify("verification failed".into()).into());
+            let mut steps = cli::StepPrinter::new(2);
+            steps.step("Loading circuit, witness, and proof");
+            steps.step("Verifying");
+            let sp = cli::spinner("checking GKR sumcheck transcript");
+            let result = msgpack_verify_file::<C>(&circuit_path, &witness_path, &proof_path);
+            sp.finish_and_clear();
+            match result {
+                Ok(true) => steps.finish_ok("Verification passed"),
+                Ok(false) => {
+                    steps.finish_err("Verification failed");
+                    return Err(RunError::Verify("verification failed".into()).into());
+                }
+                Err(e) => {
+                    steps.finish_err("Verification failed");
+                    return Err(e.into());
+                }
             }
         }
         "msgpack_prove_stdin" => {
