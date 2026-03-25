@@ -289,7 +289,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AveragePoolLayer {
         };
         let kernel_shape = parse_usize_list(layer, "kernel_shape")
             .map_err(mk_err)?
-            .unwrap_or_else(|| vec![1]);
+            .unwrap_or_else(|| vec![1, 1]);
         let strides = parse_usize_list(layer, "strides")
             .map_err(mk_err)?
             .unwrap_or_else(|| vec![1; kernel_shape.len()]);
