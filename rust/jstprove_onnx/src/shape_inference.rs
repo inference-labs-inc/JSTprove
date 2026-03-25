@@ -2549,6 +2549,39 @@ fn infer_conv_transpose(
             .collect());
     }
 
+    if strides.len() != spatial_dims {
+        bail!(
+            "layer {}: ConvTranspose strides length {} != spatial_dims {}",
+            layer.name,
+            strides.len(),
+            spatial_dims
+        );
+    }
+    if !pads.is_empty() && pads.len() != 2 * spatial_dims {
+        bail!(
+            "layer {}: ConvTranspose pads length {} != 2 * spatial_dims {}",
+            layer.name,
+            pads.len(),
+            2 * spatial_dims
+        );
+    }
+    if dilations.len() != spatial_dims {
+        bail!(
+            "layer {}: ConvTranspose dilations length {} != spatial_dims {}",
+            layer.name,
+            dilations.len(),
+            spatial_dims
+        );
+    }
+    if output_padding.len() != spatial_dims {
+        bail!(
+            "layer {}: ConvTranspose output_padding length {} != spatial_dims {}",
+            layer.name,
+            output_padding.len(),
+            spatial_dims
+        );
+    }
+
     let mut out_shape = vec![input_shape[0], c_out];
     for i in 0..spatial_dims {
         let in_dim = input_shape[2 + i];

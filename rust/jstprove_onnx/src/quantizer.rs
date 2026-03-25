@@ -326,6 +326,26 @@ fn compute_max_bound_inner(graph: &LayerGraph) -> Result<f64> {
     Ok(max_bound)
 }
 
+/// Elementwise numpy-style broadcast of two shapes (no error on incompatible dims — takes max).
+fn broadcast_two(a: &[usize], b: &[usize]) -> Vec<usize> {
+    let len = a.len().max(b.len());
+    (0..len)
+        .map(|i| {
+            let ai = if i + a.len() >= len {
+                a[i + a.len() - len]
+            } else {
+                1
+            };
+            let bi = if i + b.len() >= len {
+                b[i + b.len() - len]
+            } else {
+                1
+            };
+            ai.max(bi)
+        })
+        .collect()
+}
+
 /// Build a map of tensor name → shape from the graph, using:
 /// - Input shapes (from `graph.input_shapes`)
 /// - Weight tensor shapes (from `layer.weights`)
@@ -475,22 +495,18 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
             OpType::MaxPool | OpType::AveragePool => {
                 if let Some(ref in_shape) = input_shape {
                     if in_shape.len() >= 2 {
-                        let kernel: Vec<usize> = match layer.attributes.get("kernel_shape") {
-                            Some(AttrValue::Ints(v)) => v.iter().map(|&k| k as usize).collect(),
-                            _ => vec![],
-                        };
-                        let strides: Vec<usize> = match layer.attributes.get("strides") {
-                            Some(AttrValue::Ints(v)) => {
-                                v.iter().map(|&s| s.max(1) as usize).collect()
-                            }
-                            _ => vec![1; kernel.len()],
-                        };
-                        let pads: Vec<usize> = match layer.attributes.get("pads") {
-                            Some(AttrValue::Ints(v)) => {
-                                v.iter().map(|&p| p.max(0) as usize).collect()
-                            }
-                            _ => vec![0; kernel.len() * 2],
-                        };
+                        let kernel: Vec<usize> = layer
+                            .get_ints_attr("kernel_shape")
+                            .map(|v| v.iter().map(|&k| k as usize).collect())
+                            .unwrap_or_default();
+                        let strides: Vec<usize> = layer
+                            .get_ints_attr("strides")
+                            .map(|v| v.iter().map(|&s| s.max(1) as usize).collect())
+                            .unwrap_or_else(|| vec![1; kernel.len()]);
+                        let pads: Vec<usize> = layer
+                            .get_ints_attr("pads")
+                            .map(|v| v.iter().map(|&p| p.max(0) as usize).collect())
+                            .unwrap_or_else(|| vec![0; kernel.len() * 2]);
                         let spatial_dims = kernel.len();
                         let mut out = in_shape[..2].to_vec();
                         for i in 0..spatial_dims {
@@ -512,22 +528,15 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
                 }
             }
             // Conv: output = [N, C_out, H_out, W_out, ...].
-            OpType::Conv | OpType::ConvTranspose => {
+            OpType::Conv => {
                 if let Some(ref in_shape) = input_shape {
                     if let Some(w_name) = layer.inputs.get(1) {
                         if let Some(w) = layer.weights.get(w_name.as_str()) {
                             let w_shape = w.shape();
-                            let c_out = if layer.op_type == OpType::ConvTranspose {
-                                // ConvTranspose weight: [C_in, C_out/groups, ...]
-                                w_shape.get(1).copied().unwrap_or(1)
-                            } else {
-                                // Conv weight: [C_out, C_in/groups, ...]
-                                w_shape.first().copied().unwrap_or(1)
-                            };
+                            let c_out = w_shape.first().copied().unwrap_or(1);
                             let mut out = vec![in_shape.first().copied().unwrap_or(1), c_out];
-                            // Spatial dims: use input shape length - 2 if available.
                             for i in 0..in_shape.len().saturating_sub(2) {
-                                out.push(in_shape[2 + i]); // approximate; correct enough for bounds
+                                out.push(in_shape[2 + i]);
                             }
                             out
                         } else {
@@ -538,6 +547,81 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
                     }
                 } else {
                     vec![]
+                }
+            }
+            // ConvTranspose: output = [N, C_out/group * group, out_H, out_W, ...].
+            OpType::ConvTranspose => {
+                if let Some(ref in_shape) = input_shape {
+                    if let Some(w_name) = layer.inputs.get(1) {
+                        if let Some(w) = layer.weights.get(w_name.as_str()) {
+                            let w_shape = w.shape();
+                            // Weight: [C_in, C_out/group, *kernel]
+                            let groups = layer.get_int_attr("group").unwrap_or(1).max(1) as usize;
+                            let c_out = w_shape.get(1).copied().unwrap_or(1) * groups;
+                            let spatial_dims = in_shape.len().saturating_sub(2);
+                            let kernel: Vec<usize> = layer
+                                .get_ints_attr("kernel_shape")
+                                .map(|v| v.iter().map(|&k| k as usize).collect())
+                                .unwrap_or_else(|| {
+                                    if w_shape.len() >= 3 {
+                                        w_shape[2..].to_vec()
+                                    } else {
+                                        vec![]
+                                    }
+                                });
+                            let strides: Vec<usize> = layer
+                                .get_ints_attr("strides")
+                                .map(|v| v.iter().map(|&s| s.max(1) as usize).collect())
+                                .unwrap_or_else(|| vec![1; spatial_dims]);
+                            let pads: Vec<usize> = layer
+                                .get_ints_attr("pads")
+                                .map(|v| v.iter().map(|&p| p.max(0) as usize).collect())
+                                .unwrap_or_else(|| vec![0; spatial_dims * 2]);
+                            let dilations: Vec<usize> = layer
+                                .get_ints_attr("dilations")
+                                .map(|v| v.iter().map(|&d| d.max(1) as usize).collect())
+                                .unwrap_or_else(|| vec![1; spatial_dims]);
+                            let out_padding: Vec<usize> = layer
+                                .get_ints_attr("output_padding")
+                                .map(|v| v.iter().map(|&p| p.max(0) as usize).collect())
+                                .unwrap_or_else(|| vec![0; spatial_dims]);
+                            let mut out = vec![in_shape.first().copied().unwrap_or(1), c_out];
+                            for i in 0..spatial_dims {
+                                let in_d = in_shape.get(2 + i).copied().unwrap_or(1);
+                                let k = kernel.get(i).copied().unwrap_or(1).max(1);
+                                let s = strides.get(i).copied().unwrap_or(1).max(1);
+                                let d = dilations.get(i).copied().unwrap_or(1).max(1);
+                                let pad = pads.get(i).copied().unwrap_or(0)
+                                    + pads.get(spatial_dims + i).copied().unwrap_or(0);
+                                let op = out_padding.get(i).copied().unwrap_or(0);
+                                let out_d = s * in_d.saturating_sub(1) + (k - 1) * d + 1 + op;
+                                out.push(out_d.saturating_sub(pad));
+                            }
+                            out
+                        } else {
+                            in_shape.clone()
+                        }
+                    } else {
+                        in_shape.clone()
+                    }
+                } else {
+                    vec![]
+                }
+            }
+            // Where: output shape is the broadcast of condition, X, and Y shapes.
+            OpType::Where => {
+                let s0 = layer.inputs.first().and_then(|n| shapes.get(n.as_str()));
+                let s1 = layer.inputs.get(1).and_then(|n| shapes.get(n.as_str()));
+                let s2 = layer.inputs.get(2).and_then(|n| shapes.get(n.as_str()));
+                match (s0, s1, s2) {
+                    (Some(c), Some(x), Some(y)) => broadcast_two(&broadcast_two(c, x), y),
+                    (Some(a), Some(b), None)
+                    | (Some(a), None, Some(b))
+                    | (None, Some(a), Some(b)) => broadcast_two(a, b),
+                    (Some(s), None, None) | (None, Some(s), None) | (None, None, Some(s)) => {
+                        s.clone()
+                    }
+                    _ => input_shape.unwrap_or_default(),
                 }
             }
             // Split: each output gets a slice along the split axis.
@@ -1018,10 +1102,10 @@ fn compute_layer_bound(
                 ),
             }
         }
-        // Sqrt: sqrt(x*alpha)/alpha ≤ 1 for x in [0,1]. Conservatively bound as m_in.
+        // Sqrt: sqrt(x) > x when 0 < x < 1, so the conservative bound is max(m_in, sqrt(m_in)).
         OpType::Sqrt => {
             let m_in = get_input_bound(0);
-            Ok(m_in)
+            Ok(m_in.max(m_in.sqrt()))
         }
         // Tanh: output is in (-1, 1).
         OpType::Tanh => Ok(1.0),
