@@ -545,6 +545,7 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
                         let in_shape: &[usize] = input_shape.as_deref().unwrap_or(&[]);
                         let input_total: usize = in_shape.iter().product();
 
+                        // First pass: resolve 0 → copy and positives; mark -1 as None.
                         let mut dims: Vec<Option<usize>> = raw
                             .iter()
                             .enumerate()
