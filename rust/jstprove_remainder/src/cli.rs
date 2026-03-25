@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use console::{style, Style};
+use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 
 pub struct StepPrinter {
@@ -27,32 +27,31 @@ impl StepPrinter {
     }
 
     pub fn detail(&self, msg: &str) {
-        let indent = Style::new().dim();
-        eprintln!("      {}", indent.apply_to(msg));
+        eprintln!("      {}", style(msg).dim());
     }
 
     pub fn finish_ok(&self, msg: &str) {
         let elapsed = self.start.elapsed();
-        let check = style("✓").green().bold();
-        let timing = style(format!("({:.2}s)", elapsed.as_secs_f64())).dim();
-        eprintln!("{check} {msg} {timing}");
+        let check = style("done").green().bold();
+        let timing = style(format!("{:.2}s", elapsed.as_secs_f64())).dim();
+        eprintln!("\n  {check} {msg} in {timing}");
     }
 
     pub fn finish_err(&self, msg: &str) {
-        let x = style("✗").red().bold();
-        eprintln!("{x} {msg}");
+        let x = style("fail").red().bold();
+        eprintln!("\n  {x} {msg}");
     }
 }
 
 pub fn spinner(msg: &str) -> ProgressBar {
     let pb = ProgressBar::new_spinner();
     pb.set_style(
-        ProgressStyle::with_template("{spinner:.cyan} {msg}")
+        ProgressStyle::with_template("      {spinner:.dim} {msg}")
             .unwrap()
-            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
+            .tick_strings(&[".", "..", "...", ""]),
     );
     pb.set_message(msg.to_string());
-    pb.enable_steady_tick(std::time::Duration::from_millis(80));
+    pb.enable_steady_tick(std::time::Duration::from_millis(300));
     pb
 }
 
@@ -60,13 +59,11 @@ pub fn progress_bar(len: u64, label: &str) -> ProgressBar {
     let pb = ProgressBar::new(len);
     pb.set_style(
         ProgressStyle::with_template(&format!(
-            "  {{spinner:.cyan}} {label} [{{bar:30.cyan/dim}}] {{pos}}/{{len}} {{msg}}"
+            "      {label} [{{bar:30.cyan/dim}}] {{pos}}/{{len}} {{msg}}"
         ))
         .unwrap()
-        .progress_chars("━╸─")
-        .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
+        .progress_chars("== "),
     );
-    pb.enable_steady_tick(std::time::Duration::from_millis(80));
     pb
 }
 
@@ -83,8 +80,6 @@ pub fn fmt_bytes(bytes: u64) -> String {
 }
 
 pub fn header(cmd: &str) {
-    let name = style("jstprove").bold();
-    let cmd = style(cmd).cyan().bold();
-    eprintln!("{name} {cmd}");
+    eprintln!("{} {}", style("jstprove").bold(), style(cmd).cyan().bold());
     eprintln!();
 }

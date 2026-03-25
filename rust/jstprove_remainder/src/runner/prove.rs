@@ -20,23 +20,17 @@ pub fn run(
     output_path: &Path,
     compress: bool,
 ) -> Result<()> {
-    let mut steps = StepPrinter::new(5);
+    let mut steps = StepPrinter::new(4);
 
-    steps.step("Loading compiled model");
-    steps.detail(&format!("source: {}", model_path.display()));
+    steps.step("Loading model");
     let mut model = super::compile::load_model(model_path)?;
     steps.detail(&format!("{} layers", model.graph.layers.len()));
 
     steps.step("Loading witness");
-    steps.detail(&format!("source: {}", witness_path.display()));
     let witness_data = super::witness::load_witness(witness_path)?;
     steps.detail(&format!("{} shreds", witness_data.shreds.len()));
 
     if !witness_data.observed_n_bits.is_empty() {
-        steps.detail(&format!(
-            "applying {} observed n_bits overrides",
-            witness_data.observed_n_bits.len()
-        ));
         for layer in &mut model.graph.layers {
             if let Some(&obs) = witness_data.observed_n_bits.get(&layer.name) {
                 layer.n_bits = Some(obs);
@@ -45,21 +39,15 @@ pub fn run(
         }
     }
 
-    steps.step("Building arithmetic circuit");
-    let sp = cli::spinner("Constructing GKR circuit from model graph...");
+    steps.step("Generating proof");
+    let sp = cli::spinner("building circuit and running GKR prover");
     let mut proof = generate_proof(&model, &witness_data.shreds)?;
     sp.finish_and_clear();
-
     proof.observed_n_bits = witness_data.observed_n_bits;
 
-    steps.step("Writing proof");
+    steps.step("Serializing");
     let size = jstprove_io::serialize_to_file(&proof, output_path, compress)?;
-    steps.detail(&format!(
-        "{} -> {}{}",
-        output_path.display(),
-        cli::fmt_bytes(size as u64),
-        if compress { " (compressed)" } else { "" }
-    ));
+    steps.detail(&cli::fmt_bytes(size as u64));
 
     steps.finish_ok("Proof generated");
     Ok(())

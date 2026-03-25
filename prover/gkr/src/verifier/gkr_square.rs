@@ -16,6 +16,7 @@ pub fn gkr_square_verify<C: FieldEngine>(
     claimed_v: &C::ChallengeField,
     transcript: &mut impl Transcript,
     mut proof_reader: impl Read,
+    on_layer_verified: Option<&dyn Fn(usize, usize, bool)>,
 ) -> (bool, ExpanderSingleVarChallenge<C>, C::ChallengeField) {
     assert_ne!(
         C::FIELD_TYPE,
@@ -59,6 +60,9 @@ pub fn gkr_square_verify<C: FieldEngine>(
         );
         log::trace!("Layer {i} verified? {cur_verified}");
         verified &= cur_verified;
+        if let Some(cb) = &on_layer_verified {
+            cb(layer_num - 1 - i, layer_num, cur_verified);
+        }
     }
     end_timer!(timer);
     (verified, challenge, current_claim)

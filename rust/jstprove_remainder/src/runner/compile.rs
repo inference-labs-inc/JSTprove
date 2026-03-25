@@ -12,22 +12,15 @@ pub fn run(model_path: &Path, output_path: &Path, compress: bool) -> Result<()> 
     let mut steps = StepPrinter::new(4);
 
     steps.step("Parsing ONNX model");
-    steps.detail(&format!("source: {}", model_path.display()));
     let parsed = parser::parse_onnx(model_path)?;
-    steps.detail(&format!("{} graph nodes found", parsed.nodes.len()));
+    steps.detail(&format!("{} nodes", parsed.nodes.len()));
 
     steps.step("Building layer graph");
     let graph = LayerGraph::from_parsed(&parsed)?;
-    steps.detail(&format!("{} layers constructed", graph.layers.len()));
 
     steps.step("Quantizing model");
     let config = ScaleConfig::default();
-    steps.detail(&format!(
-        "scale = {}^{} (alpha = {})",
-        config.base, config.exponent, config.alpha
-    ));
     let mut quantized = quantizer::quantize_model(graph, &config)?;
-
     let shapes = shape_inference::infer_all_shapes(&parsed, &quantized.graph)?;
     for layer in &mut quantized.graph.layers {
         if let Some(out_name) = layer.outputs.first() {
@@ -37,21 +30,17 @@ pub fn run(model_path: &Path, output_path: &Path, compress: bool) -> Result<()> 
         }
     }
     steps.detail(&format!(
-        "{} layers, {} n_bits entries",
+        "{} layers, scale={}^{}",
         quantized.graph.layers.len(),
-        quantized.n_bits_config.len()
+        config.base,
+        config.exponent,
     ));
 
-    steps.step("Writing compiled model");
+    steps.step("Serializing");
     let size = jstprove_io::serialize_to_file(&quantized, output_path, compress)?;
-    steps.detail(&format!(
-        "{} -> {}{}",
-        output_path.display(),
-        cli::fmt_bytes(size as u64),
-        if compress { " (compressed)" } else { "" }
-    ));
+    steps.detail(&cli::fmt_bytes(size as u64));
 
-    steps.finish_ok("Model compiled");
+    steps.finish_ok("Compiled");
     Ok(())
 }
 

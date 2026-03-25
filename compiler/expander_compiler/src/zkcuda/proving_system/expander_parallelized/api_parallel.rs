@@ -88,6 +88,7 @@ impl<C: GKREngine, ECCConfig: Config<FieldConfig = C::FieldConfig>> ProvingSyste
                         &<C::FieldConfig as FieldEngine>::ChallengeField::ZERO,
                         &mut transcript,
                         &mut cursor,
+                        None,
                     );
 
                     if !verified {

@@ -87,6 +87,7 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
         proving_time_mpi_size: usize,
         transcript: &mut Cfg::TranscriptConfig,
         mut proof_reader: impl Read,
+        on_layer_verified: Option<&dyn Fn(usize, usize, bool)>,
     ) -> (
         bool,
         ExpanderSingleVarChallenge<Cfg::FieldConfig>,
@@ -104,6 +105,7 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
                     claimed_v,
                     transcript,
                     &mut proof_reader,
+                    on_layer_verified,
                 );
 
                 (
@@ -122,6 +124,7 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
                     claimed_v,
                     transcript,
                     &mut proof_reader,
+                    on_layer_verified,
                 );
 
                 (gkr_verified, challenge_x, None, claim_x, None)
@@ -325,6 +328,57 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
             proving_time_mpi_size,
             &mut transcript,
             &mut cursor,
+            None,
+        );
+
+        verified &= self.post_gkr(
+            pcs_params,
+            pcs_verification_key,
+            &commitment,
+            &mut challenge_x,
+            &claim_x,
+            &mut challenge_y,
+            &claim_y,
+            &mut transcript,
+            &mut cursor,
+        );
+
+        timer.stop();
+
+        verified
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn verify_with_progress(
+        &self,
+        circuit: &mut Circuit<Cfg::FieldConfig>,
+        public_input: &[<Cfg::FieldConfig as FieldEngine>::SimdCircuitField],
+        claimed_v: &<Cfg::FieldConfig as FieldEngine>::ChallengeField,
+        pcs_params: &<Cfg::PCSConfig as ExpanderPCS<Cfg::FieldConfig>>::Params,
+        pcs_verification_key: &<<Cfg::PCSConfig as ExpanderPCS<Cfg::FieldConfig>>::SRS as StructuredReferenceString>::VKey,
+        proof: &Proof,
+        on_layer_verified: Option<&dyn Fn(usize, usize, bool)>,
+    ) -> bool {
+        let timer = Timer::new("snark verify", true);
+
+        let proving_time_mpi_size = self.mpi_config.world_size();
+        let mut transcript = Cfg::TranscriptConfig::new();
+        let mut cursor = Cursor::new(&proof.bytes);
+
+        let commitment =
+            match self.pre_gkr(&mut cursor, circuit, &mut transcript, proving_time_mpi_size) {
+                Some(c) => c,
+                None => return false,
+            };
+
+        let (mut verified, mut challenge_x, mut challenge_y, claim_x, claim_y) = self.gkr(
+            circuit,
+            public_input,
+            claimed_v,
+            proving_time_mpi_size,
+            &mut transcript,
+            &mut cursor,
+            on_layer_verified,
         );
 
         verified &= self.post_gkr(
@@ -435,6 +489,7 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
         transcript: &mut Cfg::TranscriptConfig,
         mut proof_reader: impl Read,
         rnd_map: &RndCoefMap<<Cfg::FieldConfig as FieldEngine>::CircuitField>,
+        on_layer_verified: Option<&dyn Fn(usize, usize, bool)>,
     ) -> (
         bool,
         ExpanderSingleVarChallenge<Cfg::FieldConfig>,
@@ -453,6 +508,7 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
                     transcript,
                     &mut proof_reader,
                     rnd_map,
+                    on_layer_verified,
                 );
 
                 (
@@ -471,6 +527,7 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
                     claimed_v,
                     transcript,
                     &mut proof_reader,
+                    on_layer_verified,
                 );
 
                 (gkr_verified, challenge_x, None, claim_x, None)
@@ -514,6 +571,58 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
             &mut transcript,
             &mut cursor,
             &rnd_map,
+            None,
+        );
+
+        verified &= self.post_gkr(
+            pcs_params,
+            pcs_verification_key,
+            &commitment,
+            &mut challenge_x,
+            &claim_x,
+            &mut challenge_y,
+            &claim_y,
+            &mut transcript,
+            &mut cursor,
+        );
+
+        timer.stop();
+
+        verified
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn verify_ref_with_progress(
+        &self,
+        circuit: &Circuit<Cfg::FieldConfig>,
+        public_input: &[<Cfg::FieldConfig as FieldEngine>::SimdCircuitField],
+        claimed_v: &<Cfg::FieldConfig as FieldEngine>::ChallengeField,
+        pcs_params: &<Cfg::PCSConfig as ExpanderPCS<Cfg::FieldConfig>>::Params,
+        pcs_verification_key: &<<Cfg::PCSConfig as ExpanderPCS<Cfg::FieldConfig>>::SRS as StructuredReferenceString>::VKey,
+        proof: &Proof,
+        on_layer_verified: Option<&dyn Fn(usize, usize, bool)>,
+    ) -> bool {
+        let timer = Timer::new("snark verify_ref", true);
+
+        let proving_time_mpi_size = self.mpi_config.world_size();
+        let mut transcript = Cfg::TranscriptConfig::new();
+        let mut cursor = Cursor::new(&proof.bytes);
+
+        let (commitment, rnd_map) =
+            match self.pre_gkr_ref(&mut cursor, circuit, &mut transcript, proving_time_mpi_size) {
+                Some(v) => v,
+                None => return false,
+            };
+
+        let (mut verified, mut challenge_x, mut challenge_y, claim_x, claim_y) = self.gkr_ref(
+            circuit,
+            public_input,
+            claimed_v,
+            proving_time_mpi_size,
+            &mut transcript,
+            &mut cursor,
+            &rnd_map,
+            on_layer_verified,
         );
 
         verified &= self.post_gkr(

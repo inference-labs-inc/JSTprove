@@ -665,8 +665,32 @@ where
             .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
 
     let mpi_config = MPIConfig::verifier_new(1);
-    if !executor::verify::<C>(expander_circuit, mpi_config, &proof, &claimed_v) {
-        return Err(RunError::Verify("Verification failed".into()));
+    let first_failure: std::cell::Cell<Option<(usize, usize)>> = std::cell::Cell::new(None);
+
+    let on_layer = |layer_idx: usize, total: usize, passed: bool| {
+        if !passed && first_failure.get().is_none() {
+            first_failure.set(Some((layer_idx, total)));
+        }
+    };
+
+    let valid = executor::verify_with_progress::<C>(
+        expander_circuit,
+        mpi_config,
+        &proof,
+        &claimed_v,
+        Some(&on_layer),
+    );
+
+    if !valid {
+        let msg = if let Some((idx, total)) = first_failure.get() {
+            format!(
+                "Verification failed: sumcheck rejected at layer {}/{total}",
+                idx + 1
+            )
+        } else {
+            "Verification failed".into()
+        };
+        return Err(RunError::Verify(msg));
     }
 
     Ok(())

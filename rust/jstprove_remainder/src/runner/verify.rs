@@ -16,20 +16,13 @@ use crate::util::i64_to_fr;
 pub fn run(model_path: &Path, proof_path: &Path, input_path: &Path) -> Result<()> {
     let mut steps = StepPrinter::new(4);
 
-    steps.step("Loading compiled model");
-    steps.detail(&format!("source: {}", model_path.display()));
+    steps.step("Loading model");
     let mut model = super::compile::load_model(model_path)?;
     steps.detail(&format!("{} layers", model.graph.layers.len()));
 
     steps.step("Loading proof");
-    steps.detail(&format!("source: {}", proof_path.display()));
     let proof = super::prove::load_proof(proof_path)?;
-
     if !proof.observed_n_bits.is_empty() {
-        steps.detail(&format!(
-            "applying {} observed n_bits overrides",
-            proof.observed_n_bits.len()
-        ));
         for layer in &mut model.graph.layers {
             if let Some(&obs) = proof.observed_n_bits.get(&layer.name) {
                 layer.n_bits = Some(obs);
@@ -37,24 +30,54 @@ pub fn run(model_path: &Path, proof_path: &Path, input_path: &Path) -> Result<()
         }
     }
 
-    steps.step("Loading and quantizing input");
-    steps.detail(&format!("input: {}", input_path.display()));
+    steps.step("Quantizing input");
     let quantized_input =
         super::witness::load_and_quantize_input(input_path, model.scale_config.alpha)?;
     steps.detail(&format!("{} elements", quantized_input.len()));
 
     steps.step("Verifying proof");
-    let sp = cli::spinner("Reconstructing circuit and checking transcript...");
-    let result = verify_with_model(&model, &proof, &quantized_input);
+    let input_padded_size = next_power_of_two(quantized_input.len());
+    let public_shreds = super::witness::prepare_public_shreds(
+        &model,
+        &quantized_input,
+        &proof.expected_output,
+        &proof.observed_n_bits,
+    )?;
+    let build_result = circuit_builder::build_circuit(&model, input_padded_size)?;
+    let mut circuit = build_result.circuit;
+    let public_count = build_result
+        .manifest
+        .values()
+        .filter(|e| e.visibility == Visibility::Public)
+        .count();
+    let committed_count = build_result.manifest.len() - public_count;
+    steps.detail(&format!(
+        "{public_count} public, {committed_count} committed shreds"
+    ));
+
+    for (name, entry) in &build_result.manifest {
+        if entry.visibility == Visibility::Public {
+            let values = public_shreds
+                .get(name)
+                .ok_or_else(|| anyhow::anyhow!("missing public input '{name}'"))?;
+            let mle = MultilinearExtension::new(values.iter().map(|&v| i64_to_fr(v)).collect());
+            circuit.set_input(name, mle);
+        }
+    }
+
+    let verifiable = circuit.gen_verifiable_circuit()?;
+    let sp = cli::spinner("checking GKR sumcheck transcript");
+    let result = run_verify(&verifiable, &proof);
     sp.finish_and_clear();
 
     match result {
         Ok(()) => {
-            steps.finish_ok("Verification PASSED");
+            steps.finish_ok("Verification passed");
             Ok(())
         }
         Err(ref e) => {
-            steps.finish_err(&format!("Verification FAILED: {e}"));
+            steps.finish_err("Verification failed");
+            steps.detail(&describe_verification_error(e));
             result
         }
     }
@@ -88,7 +111,13 @@ pub fn verify_with_model(
     }
 
     let verifiable = circuit.gen_verifiable_circuit()?;
+    run_verify(&verifiable, proof)
+}
 
+fn run_verify(
+    verifiable: &remainder::verifiable_circuit::VerifiableCircuit<Fr>,
+    proof: &super::prove::SerializableProof,
+) -> Result<()> {
     let mut transcript_reader =
         TranscriptReader::<Fr, PoseidonSponge<Fr>>::new(proof.transcript.clone());
 
@@ -98,7 +127,7 @@ pub fn verify_with_model(
     let result: std::result::Result<(), _> = perform_function_under_verifier_config!(
         verify_internal,
         &verifier_config,
-        &verifiable,
+        verifiable,
         &mut transcript_reader,
         &proof.proof_config
     );
@@ -118,4 +147,23 @@ fn verify_internal(
             proof_config,
         )
         .map_err(|e| anyhow::anyhow!("{e}"))
+}
+
+fn describe_verification_error(err: &anyhow::Error) -> String {
+    let msg = format!("{err}");
+    if msg.contains("PublicInputLayerValuesMismatch") || msg.contains("not as expected") {
+        "public inputs do not match the proof transcript".into()
+    } else if msg.contains("EvaluationMismatch") {
+        "input layer evaluation mismatch at GKR claim point".into()
+    } else if msg.contains("ErrorWhenVerifyingLayer") {
+        "sumcheck rejected at an intermediate layer — proof may be corrupted or from a different circuit".into()
+    } else if msg.contains("ErrorWhenVerifyingOutputLayer") {
+        "output layer invalid — claimed output does not match circuit computation".into()
+    } else if msg.contains("ClaimTrackerNotEmpty") {
+        "proof structurally incomplete — unresolved claims remain after verification".into()
+    } else if msg.contains("InputShredLengthMismatch") {
+        "input dimensions do not match circuit — witness may be from a different model".into()
+    } else {
+        msg
+    }
 }

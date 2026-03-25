@@ -15,6 +15,7 @@ pub fn gkr_verify<F: FieldEngine>(
     claimed_v: &F::ChallengeField,
     transcript: &mut impl Transcript,
     mut proof_reader: impl Read,
+    on_layer_verified: Option<&dyn Fn(usize, usize, bool)>,
 ) -> (
     bool,
     ExpanderDualVarChallenge<F>,
@@ -59,6 +60,9 @@ pub fn gkr_verify<F: FieldEngine>(
         );
 
         verified &= cur_verified;
+        if let Some(cb) = &on_layer_verified {
+            cb(layer_num - 1 - i, layer_num, cur_verified);
+        }
         alpha = if challenge.rz_1.is_some() {
             Some(transcript.generate_field_element::<F::ChallengeField>())
         } else {
@@ -85,6 +89,7 @@ pub fn gkr_verify_ref<F: FieldEngine>(
     transcript: &mut impl Transcript,
     mut proof_reader: impl Read,
     rnd_map: &RndCoefMap<F::CircuitField>,
+    on_layer_verified: Option<&dyn Fn(usize, usize, bool)>,
 ) -> (
     bool,
     ExpanderDualVarChallenge<F>,
@@ -131,6 +136,9 @@ pub fn gkr_verify_ref<F: FieldEngine>(
         );
 
         verified &= cur_verified;
+        if let Some(cb) = &on_layer_verified {
+            cb(layer_num - 1 - i, layer_num, cur_verified);
+        }
         alpha = if challenge.rz_1.is_some() {
             Some(transcript.generate_field_element::<F::ChallengeField>())
         } else {
