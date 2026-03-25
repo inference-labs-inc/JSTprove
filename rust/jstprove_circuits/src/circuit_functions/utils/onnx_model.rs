@@ -43,6 +43,8 @@ pub struct CircuitParams {
     pub proof_system: ProofSystem,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub curve: Option<Curve>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logup_chunk_bits: Option<usize>,
 }
 
 impl CircuitParams {
@@ -187,6 +189,29 @@ pub fn collect_all_shapes(layers: &[ONNXLayer], ios: &[ONNXIO]) -> HashMap<Strin
     }
 
     result
+}
+
+#[must_use]
+pub fn estimate_rescale_elements(params: &CircuitParams, architecture: &Architecture) -> usize {
+    let shapes = collect_all_shapes(&architecture.architecture, &params.inputs);
+    let mut total = 0usize;
+    for layer in &architecture.architecture {
+        let is_rescale = params
+            .rescale_config
+            .get(&layer.name)
+            .copied()
+            .unwrap_or(true);
+        if !is_rescale {
+            continue;
+        }
+        for output_name in &layer.outputs {
+            if let Some(shape) = shapes.get(output_name) {
+                let elems: usize = shape.iter().product();
+                total = total.saturating_add(elems);
+            }
+        }
+    }
+    total
 }
 
 /// Extracts parameters and the expected input shape for an ONNX layer.

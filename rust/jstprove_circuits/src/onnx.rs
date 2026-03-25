@@ -9,11 +9,12 @@ use expander_compiler::gkr_engine::GKREngine;
 
 use crate::circuit_functions::CircuitError;
 use crate::circuit_functions::gadgets::LogupRangeCheckContext;
+use crate::circuit_functions::gadgets::chunk_table;
 use crate::circuit_functions::hints::build_logup_hint_registry;
 use crate::circuit_functions::utils::ArrayConversionError;
-use crate::circuit_functions::utils::build_layers::build_layers;
+use crate::circuit_functions::utils::build_layers::{build_layers, default_n_bits_for_config};
 use crate::circuit_functions::utils::onnx_model::{
-    Architecture, CircuitParams, InputData, OutputData, WANDB,
+    Architecture, CircuitParams, InputData, OutputData, WANDB, estimate_rescale_elements,
 };
 use crate::circuit_functions::utils::shaping::get_inputs;
 use crate::circuit_functions::utils::tensor_ops::{
@@ -77,7 +78,14 @@ impl Circuit<Variable> {
 
         let layers = build_layers::<C, Builder>(params, architecture, w_and_b)?;
 
-        let mut logup_ctx = LogupRangeCheckContext::new_default();
+        let chunk_bits = if let Some(bits) = params.logup_chunk_bits {
+            bits
+        } else {
+            let n_bits = default_n_bits_for_config::<C>();
+            let estimated = estimate_rescale_elements(params, architecture);
+            chunk_table::lookup(params.scale_exponent as usize, n_bits, estimated)
+        };
+        let mut logup_ctx = LogupRangeCheckContext::new(chunk_bits);
         logup_ctx.init::<C, Builder>(api);
 
         for layer in &layers {

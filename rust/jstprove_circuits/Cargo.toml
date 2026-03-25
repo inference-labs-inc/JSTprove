@@ -56,6 +56,10 @@ harness = false
 name = "pipeline_ecc"
 harness = false
 
+[[bench]]
+name = "logup_chunking"
+harness = false
+
 [dependencies.serde]
 version = "1.0"
 features = [ "derive",]
@@ -63,6 +67,14 @@ features = [ "derive",]
 [[bin]]
 name = "simple_circuit"
 path = "bin/simple_circuit.rs"
+
+[[bin]]
+name = "logup_sweep"
+path = "bin/logup_sweep.rs"
+
+[[bin]]
+name = "logup_codegen"
+path = "bin/logup_codegen.rs"
 
 [[bin]]
 name = "jstprove"

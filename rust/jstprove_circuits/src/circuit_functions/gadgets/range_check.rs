@@ -150,10 +150,12 @@ pub fn range_check_pow2_unsigned<C: Config, Builder: RootAPI<C>>(
 /// 2^{chunk_bits}. Increasing chunk_bits reduces the number of digits but
 /// increases table size.
 ///
-/// A width of 10 yields a 1024-row table and reduces digits per 64-bit
-/// range check from 16 (at chunk=4) to 7, cutting per-element
-/// constraint cost at the expense of a larger finalization tree.
-pub const DEFAULT_LOGUP_CHUNK_BITS: usize = 10;
+/// A width of 12 yields a 4096-row table and reduces queries per
+/// rescaled element from 9 (at chunk=10) to 8 for BN254 circuits
+/// (kappa=18, s=63). The 2^12 row count aligns well with GKR
+/// power-of-two layer quantization, producing smaller compiled
+/// circuits than both the 10-bit and 11-bit alternatives.
+pub const DEFAULT_LOGUP_CHUNK_BITS: usize = 12;
 
 // -----------------------------------------------------------------------------
 // STRUCT: LogupRangeCheckContext
@@ -295,4 +297,62 @@ pub fn logup_range_check_pow2_unsigned<C: Config, B: RootAPI<C>>(
     ctx.finalize::<C, B>(api);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn queries_per_element(
+        remainder_bits: usize,
+        quotient_bits: usize,
+        chunk_bits: usize,
+    ) -> usize {
+        remainder_bits.div_ceil(chunk_bits) + quotient_bits.div_ceil(chunk_bits)
+    }
+
+    #[test]
+    fn default_chunk_bits_is_12() {
+        assert_eq!(DEFAULT_LOGUP_CHUNK_BITS, 12);
+    }
+
+    #[test]
+    fn queries_per_element_decreases_with_larger_chunks() {
+        let q10 = queries_per_element(18, 64, 10);
+        let q12 = queries_per_element(18, 64, 12);
+        let q14 = queries_per_element(18, 64, 14);
+        assert!(q10 > q12, "q10={q10} should exceed q12={q12}");
+        assert!(q12 > q14, "q12={q12} should exceed q14={q14}");
+    }
+
+    #[test]
+    fn queries_per_element_bn254_typical() {
+        assert_eq!(queries_per_element(18, 64, 10), 9);
+        assert_eq!(queries_per_element(18, 64, 12), 8);
+        assert_eq!(queries_per_element(18, 64, 14), 7);
+    }
+
+    #[test]
+    fn chunk_table_bn254_returns_default() {
+        assert_eq!(
+            super::super::chunk_table::lookup(18, 64, 6_500),
+            DEFAULT_LOGUP_CHUNK_BITS
+        );
+    }
+
+    #[test]
+    fn chunk_table_goldilocks_returns_default() {
+        assert_eq!(
+            super::super::chunk_table::lookup(18, 31, 5_000),
+            DEFAULT_LOGUP_CHUNK_BITS
+        );
+    }
+
+    #[test]
+    fn chunk_table_unknown_kappa_returns_default() {
+        assert_eq!(
+            super::super::chunk_table::lookup(22, 64, 1_000),
+            DEFAULT_LOGUP_CHUNK_BITS
+        );
+    }
 }
