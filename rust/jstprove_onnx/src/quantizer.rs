@@ -433,14 +433,17 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
                     vec![]
                 }
             }
-            // MatMul: [.., M, K] × [.., K, N] → [.., M, N].
+            // MatMul: [.., M, K] × [.., K, N] → [broadcast(..), M, N].
             OpType::MatMul => {
                 let s0 = layer.inputs.first().and_then(|n| shapes.get(n.as_str()));
                 let s1 = layer.inputs.get(1).and_then(|n| shapes.get(n.as_str()));
                 match (s0, s1) {
                     (Some(a), Some(b)) if a.len() >= 2 && b.len() >= 2 => {
-                        let mut out = a[..a.len() - 1].to_vec();
-                        out.push(*b.last().unwrap());
+                        let a_batch = &a[..a.len() - 2];
+                        let b_batch = &b[..b.len() - 2];
+                        let mut out = broadcast_two(a_batch, b_batch);
+                        out.push(a[a.len() - 2]); // M
+                        out.push(*b.last().unwrap()); // N
                         out
                     }
                     _ => input_shape.unwrap_or_default(),
