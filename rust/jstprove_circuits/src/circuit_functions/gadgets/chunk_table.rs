@@ -6,7 +6,8 @@ struct Entry {
 }
 
 // Generated from logup_sweep benchmark data.
-// To regenerate: cargo run --release --bin logup_sweep | python3 scripts/logup_codegen.py
+// To regenerate:
+//   cargo run --release --bin logup_sweep | cargo run --release --bin logup_codegen
 //
 // Entries are sorted by (kappa, n_bits, max_elements).
 // Lookup scans for the first entry matching (kappa, n_bits) whose

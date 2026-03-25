@@ -73,5 +73,9 @@ name = "logup_sweep"
 path = "bin/logup_sweep.rs"
 
 [[bin]]
+name = "logup_codegen"
+path = "bin/logup_codegen.rs"
+
+[[bin]]
 name = "jstprove"
 path = "bin/generic_demo.rs"
