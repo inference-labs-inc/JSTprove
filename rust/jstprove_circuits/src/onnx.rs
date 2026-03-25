@@ -9,12 +9,12 @@ use expander_compiler::gkr_engine::GKREngine;
 
 use crate::circuit_functions::CircuitError;
 use crate::circuit_functions::gadgets::LogupRangeCheckContext;
-use crate::circuit_functions::gadgets::chunk_table;
+use crate::circuit_functions::gadgets::autotuner;
 use crate::circuit_functions::hints::build_logup_hint_registry;
 use crate::circuit_functions::utils::ArrayConversionError;
 use crate::circuit_functions::utils::build_layers::{build_layers, default_n_bits_for_config};
 use crate::circuit_functions::utils::onnx_model::{
-    Architecture, CircuitParams, InputData, OutputData, WANDB, estimate_rescale_elements,
+    Architecture, CircuitParams, InputData, OutputData, WANDB,
 };
 use crate::circuit_functions::utils::shaping::get_inputs;
 use crate::circuit_functions::utils::tensor_ops::{
@@ -78,13 +78,9 @@ impl Circuit<Variable> {
 
         let layers = build_layers::<C, Builder>(params, architecture, w_and_b)?;
 
-        let chunk_bits = if let Some(bits) = params.logup_chunk_bits {
-            bits
-        } else {
-            let n_bits = default_n_bits_for_config::<C>();
-            let estimated = estimate_rescale_elements(params, architecture);
-            chunk_table::lookup(params.scale_exponent as usize, n_bits, estimated)
-        };
+        let chunk_bits = params
+            .logup_chunk_bits
+            .unwrap_or(crate::circuit_functions::gadgets::DEFAULT_LOGUP_CHUNK_BITS);
         let mut logup_ctx = LogupRangeCheckContext::new(chunk_bits);
         logup_ctx.init::<C, Builder>(api);
 
@@ -512,11 +508,49 @@ pub fn compile_bn254(
     compress: bool,
     metadata: Option<CircuitParams>,
 ) -> Result<(), RunError> {
+    if metadata.as_ref().and_then(|m| m.logup_chunk_bits).is_none() {
+        autotune_chunk_bits::<BN254Config>()?;
+    }
     crate::runner::main_runner::run_compile_and_serialize::<BN254Config, Circuit<Variable>>(
         circuit_path,
         compress,
         metadata,
     )
+}
+
+fn autotune_chunk_bits<C: Config>() -> Result<(), RunError> {
+    let params = OnnxContext::get_params()?;
+    let architecture = OnnxContext::get_architecture()?;
+    let n_bits = default_n_bits_for_config::<C>();
+
+    if let Some(bits) = autotuner::lookup_operator(&params, &architecture, n_bits) {
+        let mut p = params;
+        p.logup_chunk_bits = Some(bits);
+        OnnxContext::set_params(p);
+        return Ok(());
+    }
+
+    if let Some(bits) = autotuner::lookup_circuit(&params, &architecture) {
+        let mut p = params;
+        p.logup_chunk_bits = Some(bits);
+        OnnxContext::set_params(p);
+        return Ok(());
+    }
+
+    let winner = autotuner::sweep_and_select(autotuner::candidates(), |chunk_bits| {
+        let mut p = params.clone();
+        p.logup_chunk_bits = Some(chunk_bits);
+        OnnxContext::set_params(p);
+        crate::runner::main_runner::compile_total_cost::<C, Circuit<Variable>>().ok()
+    });
+
+    autotuner::store_circuit(&params, &architecture, winner);
+    autotuner::store_operator(&params, &architecture, n_bits, winner);
+
+    let mut p = params;
+    p.logup_chunk_bits = Some(winner);
+    OnnxContext::set_params(p);
+    Ok(())
 }
 
 /// # Errors

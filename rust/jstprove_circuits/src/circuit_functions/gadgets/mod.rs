@@ -2,6 +2,7 @@
 //!
 //! Re-exports all constraint-enforcing gadgets used by layers.
 
+pub mod autotuner;
 pub mod chunk_table;
 pub mod euclidean_division;
 pub mod linear_algebra;

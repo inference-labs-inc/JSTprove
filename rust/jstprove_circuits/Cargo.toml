@@ -60,6 +60,10 @@ harness = false
 name = "logup_chunking"
 harness = false
 
+[[bench]]
+name = "autotuner_strategies"
+harness = false
+
 [dependencies.serde]
 version = "1.0"
 features = [ "derive",]
