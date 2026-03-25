@@ -14,37 +14,25 @@ fn fmt(ms: f64) -> String {
     }
 }
 
-fn rss_bytes() -> u64 {
-    let mut u = std::mem::MaybeUninit::<libc::rusage>::uninit();
-    let ret = unsafe { libc::getrusage(libc::RUSAGE_SELF, u.as_mut_ptr()) };
-    if ret != 0 {
-        return 0;
-    }
-    let usage = unsafe { u.assume_init() };
-    let maxrss = usage.ru_maxrss as u64;
-    if cfg!(target_os = "linux") {
-        maxrss * 1024
-    } else {
-        maxrss
-    }
-}
-
 fn run_pipeline(
     model_path: &Path,
     label: &str,
     activations: &[f64],
     logup_chunk_bits: Option<usize>,
 ) {
+    let t_setup = Instant::now();
     let metadata = expander_metadata::generate_from_onnx(model_path).unwrap();
     let mut params = metadata.circuit_params.clone();
     params.logup_chunk_bits = logup_chunk_bits;
     OnnxContext::set_all(metadata.architecture, params.clone(), Some(metadata.wandb));
+    let setup_ms = t_setup.elapsed().as_secs_f64() * 1000.0;
 
     let chunk_label = match logup_chunk_bits {
         Some(b) => format!("chunk_bits={b}"),
         None => "adaptive".to_string(),
     };
     println!("\n--- {label} ({chunk_label}) ---");
+    println!("setup:   {:>10}", fmt(setup_ms));
 
     let tmp = tempfile::TempDir::new().unwrap();
     let circuit_path = tmp.path().join("circuit.bundle");
@@ -88,7 +76,6 @@ fn run_pipeline(
     let verify_ms = t.elapsed().as_secs_f64() * 1000.0;
     println!("verify:  {:>10}", fmt(verify_ms));
 
-    println!("peak RSS: {:.1} MiB", rss_bytes() as f64 / 1048576.0);
     println!(
         "total:   {:>10}",
         fmt(compile_ms + witness_ms + prove_ms + verify_ms)

@@ -331,4 +331,28 @@ mod tests {
         assert_eq!(queries_per_element(18, 64, 12), 8);
         assert_eq!(queries_per_element(18, 64, 14), 7);
     }
+
+    #[test]
+    fn chunk_table_bn254_returns_default() {
+        assert_eq!(
+            super::super::chunk_table::lookup(18, 64, 6_500),
+            DEFAULT_LOGUP_CHUNK_BITS
+        );
+    }
+
+    #[test]
+    fn chunk_table_goldilocks_returns_default() {
+        assert_eq!(
+            super::super::chunk_table::lookup(18, 31, 5_000),
+            DEFAULT_LOGUP_CHUNK_BITS
+        );
+    }
+
+    #[test]
+    fn chunk_table_unknown_kappa_returns_default() {
+        assert_eq!(
+            super::super::chunk_table::lookup(22, 64, 1_000),
+            DEFAULT_LOGUP_CHUNK_BITS
+        );
+    }
 }
