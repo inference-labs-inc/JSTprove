@@ -539,14 +539,7 @@ fn compute_layer_bound(
                         .fold(f64::INFINITY, f64::min)
                 })
                 .filter(|&v| v.is_finite() && v > 0.0);
-            let b = min_abs_b.unwrap_or_else(|| {
-                let dyn_bound = get_input_bound(1);
-                if dyn_bound > 0.0 {
-                    dyn_bound
-                } else {
-                    1.0
-                }
-            });
+            let b = min_abs_b.unwrap_or(1.0);
             Ok(m_a / b)
         }
         OpType::Relu => {
