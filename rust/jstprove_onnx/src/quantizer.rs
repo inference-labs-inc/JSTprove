@@ -472,8 +472,7 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
                             layer.attributes.get("allowzero"),
                             Some(AttrValue::Int(v)) if *v != 0
                         );
-                        let in_shape: &[usize] =
-                            input_shape.as_deref().unwrap_or(&[]);
+                        let in_shape: &[usize] = input_shape.as_deref().unwrap_or(&[]);
                         let input_total: usize = in_shape.iter().product();
 
                         // First pass: resolve 0 → copy and positives; mark -1 as None.
@@ -495,8 +494,7 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
                         if input_total > 0 {
                             let n_unknown = dims.iter().filter(|d| d.is_none()).count();
                             if n_unknown == 1 {
-                                let known: usize =
-                                    dims.iter().filter_map(|&d| d).product();
+                                let known: usize = dims.iter().filter_map(|&d| d).product();
                                 if known > 0 {
                                     let inferred = input_total / known;
                                     for d in &mut dims {
@@ -611,8 +609,7 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
                                 .get_ints_attr("pads")
                                 .map(|v| v.iter().map(|&p| p.max(0) as usize).collect())
                                 .unwrap_or_else(|| vec![0; spatial_dims * 2]);
-                            let mut out =
-                                vec![in_shape.first().copied().unwrap_or(1), c_out];
+                            let mut out = vec![in_shape.first().copied().unwrap_or(1), c_out];
                             for i in 0..spatial_dims {
                                 let in_d = in_shape.get(2 + i).copied().unwrap_or(1);
                                 let k = kernel.get(i).copied().unwrap_or(1).max(1);
@@ -621,8 +618,7 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
                                 let ph = pads.get(i).copied().unwrap_or(0);
                                 let pe = pads.get(spatial_dims + i).copied().unwrap_or(0);
                                 let effective_k = (k - 1) * d + 1;
-                                let out_d =
-                                    (in_d + ph + pe).saturating_sub(effective_k) / s + 1;
+                                let out_d = (in_d + ph + pe).saturating_sub(effective_k) / s + 1;
                                 out.push(out_d);
                             }
                             out
