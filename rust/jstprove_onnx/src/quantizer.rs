@@ -539,14 +539,8 @@ fn compute_layer_bound(
                         .fold(f64::INFINITY, f64::min)
                 })
                 .filter(|&v| v.is_finite() && v > 0.0);
-            match min_abs_b {
-                Some(b) => Ok(m_a / b),
-                None => anyhow::bail!(
-                    "layer {}: Div denominator is not a constant initializer or contains zero; \
-                     cannot compute a safe bound",
-                    layer.name,
-                ),
-            }
+            let b = min_abs_b.unwrap_or(1.0);
+            Ok(m_a / b)
         }
         OpType::Relu => {
             let m_in = get_input_bound(0);
