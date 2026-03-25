@@ -41,8 +41,9 @@ pub fn run(
 
     steps.step("Generating proof");
     let sp = cli::spinner("building circuit and running GKR prover");
-    let mut proof = generate_proof(&model, &witness_data.shreds)?;
+    let proof_result = generate_proof(&model, &witness_data.shreds);
     sp.finish_and_clear();
+    let mut proof = proof_result?;
     proof.observed_n_bits = witness_data.observed_n_bits;
 
     steps.step("Serializing");

@@ -47,7 +47,7 @@ fn print_batch_summary(result: &BatchResult) {
     eprintln!("  {ok}, {fail}");
 
     for (idx, msg) in &result.errors {
-        let label = style(format!("  job {idx}:")).red();
+        let label = style(format!("  job {}:", idx + 1)).red();
         eprintln!("{label} {msg}");
     }
 }

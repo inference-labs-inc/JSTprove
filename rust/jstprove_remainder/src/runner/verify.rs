@@ -67,8 +67,9 @@ pub fn run(model_path: &Path, proof_path: &Path, input_path: &Path) -> Result<()
 
     let verifiable = circuit.gen_verifiable_circuit()?;
     let sp = cli::spinner("checking GKR sumcheck transcript");
-    let result = run_verify(&verifiable, &proof);
+    let verify_result = run_verify(&verifiable, &proof);
     sp.finish_and_clear();
+    let result = verify_result;
 
     match result {
         Ok(()) => {
