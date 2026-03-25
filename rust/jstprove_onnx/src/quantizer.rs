@@ -383,32 +383,45 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
                     let rank = in_shape.len();
 
                     // Collect axes (from input[1] weight or from attribute).
+                    let normalize_axis = |a: i64| -> usize {
+                        let a = if a < 0 { a + rank as i64 } else { a };
+                        (a as usize).min(rank.saturating_sub(1))
+                    };
                     let axes: Vec<usize> = {
                         let from_weight = layer.inputs.get(1).and_then(|axes_name| {
                             layer.weights.get(axes_name.as_str()).map(|td| {
                                 td.as_i64_vec()
                                     .iter()
-                                    .map(|&a| {
-                                        let a = if a < 0 { a + rank as i64 } else { a };
-                                        (a as usize).min(rank.saturating_sub(1))
-                                    })
+                                    .map(|&a| normalize_axis(a))
                                     .collect::<Vec<usize>>()
                             })
                         });
-                        from_weight.unwrap_or_else(|| {
-                            // Fallback: try attributes.
-                            match layer.attributes.get("axes") {
-                                Some(AttrValue::Ints(v)) => v
-                                    .iter()
-                                    .map(|&a| {
-                                        let a = if a < 0 { a + rank as i64 } else { a };
-                                        (a as usize).min(rank.saturating_sub(1))
-                                    })
-                                    .collect(),
-                                // No axes = reduce all.
-                                _ => (0..rank).collect(),
+                        match from_weight {
+                            Some(v) if !v.is_empty() => v,
+                            Some(_) => {
+                                // Empty axes tensor: per ONNX spec, means reduce all
+                                // unless noop_with_empty_axes == 1.
+                                let noop = matches!(
+                                    layer.attributes.get("noop_with_empty_axes"),
+                                    Some(AttrValue::Int(1))
+                                );
+                                if noop {
+                                    vec![]
+                                } else {
+                                    (0..rank).collect()
+                                }
                             }
-                        })
+                            None => {
+                                // Fallback: try attributes.
+                                match layer.attributes.get("axes") {
+                                    Some(AttrValue::Ints(v)) => {
+                                        v.iter().map(|&a| normalize_axis(a)).collect()
+                                    }
+                                    // No axes = reduce all.
+                                    _ => (0..rank).collect(),
+                                }
+                            }
+                        }
                     };
 
                     let keepdims = match layer.attributes.get("keepdims") {
@@ -794,12 +807,21 @@ fn compute_layer_bound(
     alpha_f64: f64,
 ) -> Result<f64> {
     let get_input_bound = |idx: usize| -> f64 {
-        layer
-            .inputs
-            .get(idx)
-            .and_then(|name| prev_bounds.get(name))
-            .copied()
-            .unwrap_or(1.0)
+        let name = match layer.inputs.get(idx) {
+            Some(n) => n,
+            None => return 1.0,
+        };
+        if let Some(&b) = prev_bounds.get(name) {
+            return b;
+        }
+        // Constant initializer: return absolute-max value as the bound.
+        if let Some(w) = layer.weights.get(name.as_str()) {
+            let vals = w.as_f64_vec();
+            if !vals.is_empty() {
+                return vals.iter().map(|v| v.abs()).fold(0.0_f64, f64::max);
+            }
+        }
+        1.0
     };
 
     let get_bias_bound = |input_idx: usize| -> f64 {
@@ -1020,15 +1042,15 @@ fn compute_layer_bound(
             let m_in = get_input_bound(0);
             Ok(m_in)
         }
-        // MatMul: like Gemm — if input[1] is a weight, use L1 norm of that weight.
+        // MatMul: like Gemm — if a constant weight is present, use its L1 norm.
         // If both inputs are runtime, use a conservative product bound.
         OpType::MatMul => {
-            let m_in = get_input_bound(0);
-            // If weights exist for input[1], use L1 norm per output.
+            // Right factor constant [K, N]: max column-wise L1 * input[0] bound.
             if let Some(weight_name) = layer.inputs.get(1) {
                 if let Some(w) = layer.weights.get(weight_name) {
                     let vals = w.as_f64_vec();
                     if !vals.is_empty() {
+                        let m_in = get_input_bound(0);
                         let d = w.shape();
                         let n_out = if d.len() >= 2 { d[d.len() - 1] } else { 1 };
                         let per_out = if n_out > 0 { vals.len() / n_out } else { 1 };
@@ -1049,6 +1071,32 @@ fn compute_layer_bound(
                     }
                 }
             }
+            // Left factor constant [M, K]: max row-wise L1 * input[1] bound.
+            if let Some(weight_name) = layer.inputs.first() {
+                if let Some(w) = layer.weights.get(weight_name) {
+                    let vals = w.as_f64_vec();
+                    if !vals.is_empty() {
+                        let m_b = get_input_bound(1);
+                        let d = w.shape();
+                        let n_cols = if d.len() >= 2 { *d.last().unwrap() } else { 1 };
+                        let n_rows = if n_cols > 0 { vals.len() / n_cols } else { 1 };
+                        let max_row_l1 = if n_rows > 0 && n_cols > 0 {
+                            (0..n_rows)
+                                .map(|r| {
+                                    vals[r * n_cols..(r + 1) * n_cols]
+                                        .iter()
+                                        .map(|v| v.abs())
+                                        .sum::<f64>()
+                                })
+                                .fold(0.0_f64, f64::max)
+                        } else {
+                            vals.iter().map(|v| v.abs()).fold(0.0_f64, f64::max)
+                        };
+                        return Ok(max_row_l1 * m_b);
+                    }
+                }
+            }
+            let m_in = get_input_bound(0);
             let m_b = get_input_bound(1);
             Ok(m_in * m_b)
         }
@@ -1057,10 +1105,11 @@ fn compute_layer_bound(
             let m_in = get_input_bound(0);
             Ok(m_in)
         }
-        // Pad: padding with zeros doesn't increase value range.
+        // Pad: output is either from the input or from the constant fill value (input[2]).
         OpType::Pad => {
             let m_in = get_input_bound(0);
-            Ok(m_in)
+            let m_pad = get_input_bound(2).abs();
+            Ok(m_in.max(m_pad))
         }
         // Split: splitting doesn't change value range.
         OpType::Split => {
