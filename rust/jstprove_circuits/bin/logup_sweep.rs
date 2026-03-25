@@ -1,8 +1,12 @@
 use std::path::Path;
 
+use jstprove_circuits::circuit_functions::utils::build_layers::default_n_bits_for_config;
+use jstprove_circuits::circuit_functions::utils::onnx_model::estimate_rescale_elements;
 use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
 use jstprove_circuits::onnx::compile_bn254;
+
+use expander_compiler::frontend::BN254Config;
 
 const CHUNK_CANDIDATES: &[usize] = &[10, 11, 12, 13, 14, 15, 16];
 
@@ -11,23 +15,15 @@ fn sweep_model(model_path: &Path) {
     let base_params = metadata.circuit_params.clone();
 
     let kappa = base_params.scale_exponent;
-    let num_inputs: usize = base_params
-        .inputs
-        .iter()
-        .map(|io| io.shape.iter().product::<usize>())
-        .sum();
-    let num_outputs: usize = base_params
-        .outputs
-        .iter()
-        .map(|io| io.shape.iter().product::<usize>())
-        .sum();
+    let n_bits = default_n_bits_for_config::<BN254Config>();
+    let est_elems = estimate_rescale_elements(&base_params, &metadata.architecture);
 
     let model_name = model_path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("unknown");
 
-    eprintln!("sweeping {model_name}: kappa={kappa}, inputs={num_inputs}, outputs={num_outputs}");
+    eprintln!("sweeping {model_name}: kappa={kappa}, n_bits={n_bits}, est_elems={est_elems}");
 
     for &chunk_bits in CHUNK_CANDIDATES {
         let mut params = base_params.clone();
@@ -55,6 +51,8 @@ fn sweep_model(model_path: &Path) {
             "{{\
              \"model\":\"{model_name}\",\
              \"kappa\":{kappa},\
+             \"n_bits\":{n_bits},\
+             \"est_elems\":{est_elems},\
              \"chunk_bits\":{chunk_bits},\
              \"compile_secs\":{compile_secs:.3},\
              \"circuit_bytes\":{circuit_bytes}\
@@ -65,7 +63,11 @@ fn sweep_model(model_path: &Path) {
 
 fn main() {
     let models: Vec<String> = if let Ok(m) = std::env::var("MODEL") {
-        m.split(',').map(str::to_string).collect()
+        m.split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect()
     } else {
         vec!["lenet".to_string(), "mini_resnet".to_string()]
     };

@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::io::{self, BufRead};
 
+use serde::Deserialize;
+
 const ELEMENT_BUCKETS: &[(u64, &str)] = &[
     (10_000, "10_000"),
     (50_000, "50_000"),
@@ -9,11 +11,15 @@ const ELEMENT_BUCKETS: &[(u64, &str)] = &[
     (u32::MAX as u64, "u32::MAX"),
 ];
 
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::single_match_else
-)]
+#[derive(Deserialize)]
+struct SweepRecord {
+    kappa: u32,
+    #[allow(dead_code)]
+    model: String,
+    chunk_bits: usize,
+    circuit_bytes: usize,
+}
+
 fn main() {
     let stdin = io::stdin();
     let mut by_model: HashMap<(u32, String), Vec<(usize, usize)>> = HashMap::new();
@@ -25,19 +31,18 @@ fn main() {
             continue;
         }
 
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else {
-            continue;
+        let record: SweepRecord = match serde_json::from_str(&line) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("skipping malformed record: {e}");
+                continue;
+            }
         };
 
-        let kappa = v["kappa"].as_u64().unwrap() as u32;
-        let model = v["model"].as_str().unwrap().to_string();
-        let chunk_bits = v["chunk_bits"].as_u64().unwrap() as usize;
-        let circuit_bytes = v["circuit_bytes"].as_u64().unwrap() as usize;
-
         by_model
-            .entry((kappa, model))
+            .entry((record.kappa, record.model.clone()))
             .or_default()
-            .push((chunk_bits, circuit_bytes));
+            .push((record.chunk_bits, record.circuit_bytes));
     }
 
     if by_model.is_empty() {
@@ -63,7 +68,9 @@ fn main() {
         }
         let best = counts
             .into_iter()
-            .max_by_key(|(_chunk, count)| *count)
+            .max_by(|(chunk_a, count_a), (chunk_b, count_b)| {
+                count_a.cmp(count_b).then_with(|| chunk_a.cmp(chunk_b))
+            })
             .unwrap()
             .0;
         optimal.push((*kappa, best));

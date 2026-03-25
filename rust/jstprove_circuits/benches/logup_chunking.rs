@@ -127,7 +127,11 @@ fn bench_model(model_name: &str) {
 
 fn main() {
     let models: Vec<String> = if let Ok(m) = std::env::var("MODEL") {
-        m.split(',').map(str::to_string).collect()
+        m.split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect()
     } else {
         vec!["lenet".to_string(), "mini_resnet".to_string()]
     };
