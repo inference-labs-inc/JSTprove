@@ -76,21 +76,8 @@ where
     }
 }
 
-fn print_info(info: &str) {
-    print!(
-        "\x1b[90m{}\x1b[0m \x1b[32mINF\x1b[0m {} ",
-        chrono::Local::now().format("%H:%M:%S"),
-        info
-    );
-}
-
-fn print_stat(stat_name: &str, stat: usize, is_last: bool) {
-    print!("\x1b[36m{stat_name}=\x1b[0m{stat}");
-    if !is_last {
-        print!(" ");
-    } else {
-        println!();
-    }
+fn print_detail(msg: &str) {
+    eprintln!("      {}", console::style(msg).dim());
 }
 
 pub fn compile_step_1<C: Config>(
@@ -311,27 +298,19 @@ pub fn compile<C: Config, I: InputType>(
 }
 
 pub fn print_ir_stats<C: Config>(r_hint_normalized: &ir::hint_normalized::RootCircuit<C>) {
-    let ho_stats = r_hint_normalized.get_stats();
-    print_info("built hint normalized ir");
-    print_stat("numInputs", ho_stats.num_inputs, false);
-    print_stat("numConstraints", ho_stats.num_constraints, false);
-    print_stat("numInsns", ho_stats.num_insns, false);
-    print_stat("numVars", ho_stats.num_variables, false);
-    print_stat("numTerms", ho_stats.num_terms, true);
+    let s = r_hint_normalized.get_stats();
+    print_detail(&format!(
+        "{} inputs, {} constraints, {} vars",
+        s.num_inputs, s.num_constraints, s.num_variables,
+    ));
 }
 
 pub fn print_layered_circuit_stats<C: Config, I: InputType>(lc: &layered::Circuit<C, I>) {
-    let lc_stats = lc.get_stats();
-    print_info("built layered circuit");
-    print_stat("numSegment", lc_stats.num_segments, false);
-    print_stat("numLayer", lc_stats.num_layers, false);
-    print_stat("numUsedInputs", lc_stats.num_inputs, false);
-    print_stat("numUsedVariables", lc_stats.num_used_gates, false);
-    print_stat("numVariables", lc_stats.num_total_gates, false);
-    print_stat("numAdd", lc_stats.num_expanded_add, false);
-    print_stat("numCst", lc_stats.num_expanded_cst, false);
-    print_stat("numMul", lc_stats.num_expanded_mul, false);
-    print_stat("totalCost", lc_stats.total_cost, true);
+    let s = lc.get_stats();
+    print_detail(&format!(
+        "{} layers, {} segments, {} mul + {} add gates",
+        s.num_layers, s.num_segments, s.num_expanded_mul, s.num_expanded_add,
+    ));
 }
 
 pub fn compile_with_options<C: Config, I: InputType>(
