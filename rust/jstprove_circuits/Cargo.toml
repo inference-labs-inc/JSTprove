@@ -69,5 +69,9 @@ name = "simple_circuit"
 path = "bin/simple_circuit.rs"
 
 [[bin]]
+name = "logup_sweep"
+path = "bin/logup_sweep.rs"
+
+[[bin]]
 name = "jstprove"
 path = "bin/generic_demo.rs"

@@ -15,7 +15,8 @@ use expander_compiler::frontend::{Config, RootAPI};
 const DEFAULT_N_BITS_BN254: usize = 64;
 const DEFAULT_N_BITS_GOLDILOCKS: usize = 31;
 
-fn default_n_bits_for_config<C: Config>() -> usize {
+#[must_use]
+pub fn default_n_bits_for_config<C: Config>() -> usize {
     match C::CONFIG_ID {
         4 | 6 | 8 => DEFAULT_N_BITS_GOLDILOCKS,
         _ => DEFAULT_N_BITS_BN254,
