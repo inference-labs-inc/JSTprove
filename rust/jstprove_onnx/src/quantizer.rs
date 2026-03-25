@@ -463,15 +463,53 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
                 }
             }
             // Reshape: output shape is the target shape tensor (input[1]).
+            // Resolve ONNX semantics: 0 → copy from input, -1 → infer from total.
             OpType::Reshape => {
                 if let Some(shape_name) = layer.inputs.get(1) {
                     if let Some(td) = layer.weights.get(shape_name.as_str()) {
-                        let dims: Vec<usize> = td
-                            .as_i64_vec()
+                        let raw = td.as_i64_vec();
+                        let allowzero = matches!(
+                            layer.attributes.get("allowzero"),
+                            Some(AttrValue::Int(v)) if *v != 0
+                        );
+                        let in_shape: &[usize] =
+                            input_shape.as_deref().unwrap_or(&[]);
+                        let input_total: usize = in_shape.iter().product();
+
+                        // First pass: resolve 0 → copy and positives; mark -1 as None.
+                        let mut dims: Vec<Option<usize>> = raw
                             .iter()
-                            .map(|&d| if d < 0 { 0 } else { d as usize })
+                            .enumerate()
+                            .map(|(i, &d)| {
+                                if d == 0 && !allowzero {
+                                    Some(in_shape.get(i).copied().unwrap_or(0))
+                                } else if d > 0 {
+                                    Some(d as usize)
+                                } else {
+                                    None // -1 (infer) or allowzero 0
+                                }
+                            })
                             .collect();
-                        dims
+
+                        // Infer the single -1 dimension when input total is known.
+                        if input_total > 0 {
+                            let n_unknown = dims.iter().filter(|d| d.is_none()).count();
+                            if n_unknown == 1 {
+                                let known: usize =
+                                    dims.iter().filter_map(|&d| d).product();
+                                if known > 0 {
+                                    let inferred = input_total / known;
+                                    for d in &mut dims {
+                                        if d.is_none() {
+                                            *d = Some(inferred);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        dims.into_iter().map(|d| d.unwrap_or(0)).collect()
                     } else {
                         input_shape.unwrap_or_default()
                     }
@@ -544,15 +582,48 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
                 }
             }
             // Conv: output = [N, C_out, H_out, W_out, ...].
+            // Spatial dims computed via floor((in + 2*pad - dilation*(k-1) - 1)/stride) + 1.
             OpType::Conv => {
                 if let Some(ref in_shape) = input_shape {
                     if let Some(w_name) = layer.inputs.get(1) {
                         if let Some(w) = layer.weights.get(w_name.as_str()) {
                             let w_shape = w.shape();
                             let c_out = w_shape.first().copied().unwrap_or(1);
-                            let mut out = vec![in_shape.first().copied().unwrap_or(1), c_out];
-                            for i in 0..in_shape.len().saturating_sub(2) {
-                                out.push(in_shape[2 + i]);
+                            let spatial_dims = in_shape.len().saturating_sub(2);
+                            // Kernel spatial sizes from weight shape [C_out, C_in, k...].
+                            let kernel: Vec<usize> = if w_shape.len() > 2 {
+                                w_shape[2..].to_vec()
+                            } else {
+                                layer
+                                    .get_ints_attr("kernel_shape")
+                                    .map(|v| v.iter().map(|&k| k as usize).collect())
+                                    .unwrap_or_else(|| vec![1; spatial_dims])
+                            };
+                            let strides: Vec<usize> = layer
+                                .get_ints_attr("strides")
+                                .map(|v| v.iter().map(|&s| s.max(1) as usize).collect())
+                                .unwrap_or_else(|| vec![1; spatial_dims]);
+                            let dilations: Vec<usize> = layer
+                                .get_ints_attr("dilations")
+                                .map(|v| v.iter().map(|&d| d.max(1) as usize).collect())
+                                .unwrap_or_else(|| vec![1; spatial_dims]);
+                            let pads: Vec<usize> = layer
+                                .get_ints_attr("pads")
+                                .map(|v| v.iter().map(|&p| p.max(0) as usize).collect())
+                                .unwrap_or_else(|| vec![0; spatial_dims * 2]);
+                            let mut out =
+                                vec![in_shape.first().copied().unwrap_or(1), c_out];
+                            for i in 0..spatial_dims {
+                                let in_d = in_shape.get(2 + i).copied().unwrap_or(1);
+                                let k = kernel.get(i).copied().unwrap_or(1).max(1);
+                                let s = strides.get(i).copied().unwrap_or(1).max(1);
+                                let d = dilations.get(i).copied().unwrap_or(1).max(1);
+                                let ph = pads.get(i).copied().unwrap_or(0);
+                                let pe = pads.get(spatial_dims + i).copied().unwrap_or(0);
+                                let effective_k = (k - 1) * d + 1;
+                                let out_d =
+                                    (in_d + ph + pe).saturating_sub(effective_k) / s + 1;
+                                out.push(out_d);
                             }
                             out
                         } else {
