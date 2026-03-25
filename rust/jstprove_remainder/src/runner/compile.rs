@@ -2,23 +2,32 @@ use std::path::Path;
 
 use anyhow::Result;
 
+use crate::cli::{self, StepPrinter};
 use crate::onnx::graph::LayerGraph;
 use crate::onnx::parser;
 use crate::onnx::quantizer::{self, QuantizedModel, ScaleConfig};
 use crate::onnx::shape_inference;
 
 pub fn run(model_path: &Path, output_path: &Path, compress: bool) -> Result<()> {
-    tracing::info!("parsing ONNX model: {}", model_path.display());
+    let mut steps = StepPrinter::new(4);
+
+    steps.step("Parsing ONNX model");
+    steps.detail(&format!("source: {}", model_path.display()));
     let parsed = parser::parse_onnx(model_path)?;
+    steps.detail(&format!("{} graph nodes found", parsed.nodes.len()));
 
-    tracing::info!("building layer graph ({} nodes)", parsed.nodes.len());
+    steps.step("Building layer graph");
     let graph = LayerGraph::from_parsed(&parsed)?;
+    steps.detail(&format!("{} layers constructed", graph.layers.len()));
 
-    tracing::info!("quantizing model (scale=2^18)");
+    steps.step("Quantizing model");
     let config = ScaleConfig::default();
+    steps.detail(&format!(
+        "scale = {}^{} (alpha = {})",
+        config.base, config.exponent, config.alpha
+    ));
     let mut quantized = quantizer::quantize_model(graph, &config)?;
 
-    tracing::info!("inferring tensor shapes");
     let shapes = shape_inference::infer_all_shapes(&parsed, &quantized.graph)?;
     for layer in &mut quantized.graph.layers {
         if let Some(out_name) = layer.outputs.first() {
@@ -27,19 +36,22 @@ pub fn run(model_path: &Path, output_path: &Path, compress: bool) -> Result<()> 
             }
         }
     }
-
-    tracing::info!(
-        "quantized {} layers, {} n_bits entries",
+    steps.detail(&format!(
+        "{} layers, {} n_bits entries",
         quantized.graph.layers.len(),
         quantized.n_bits_config.len()
-    );
+    ));
 
+    steps.step("Writing compiled model");
     let size = jstprove_io::serialize_to_file(&quantized, output_path, compress)?;
-    tracing::info!(
-        "model written to {} ({} bytes)",
+    steps.detail(&format!(
+        "{} -> {}{}",
         output_path.display(),
-        size
-    );
+        cli::fmt_bytes(size as u64),
+        if compress { " (compressed)" } else { "" }
+    ));
+
+    steps.finish_ok("Model compiled");
     Ok(())
 }
 

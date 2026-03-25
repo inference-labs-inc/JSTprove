@@ -8,22 +8,28 @@ use shared_types::transcript::poseidon_sponge::PoseidonSponge;
 use shared_types::transcript::TranscriptReader;
 use shared_types::{perform_function_under_verifier_config, Fr};
 
+use crate::cli::{self, StepPrinter};
 use crate::padding::next_power_of_two;
 use crate::runner::circuit_builder::{self, Visibility};
 use crate::util::i64_to_fr;
 
 pub fn run(model_path: &Path, proof_path: &Path, input_path: &Path) -> Result<()> {
-    tracing::info!("loading model from {}", model_path.display());
-    let mut model = super::compile::load_model(model_path)?;
+    let mut steps = StepPrinter::new(4);
 
-    tracing::info!("loading proof from {}", proof_path.display());
+    steps.step("Loading compiled model");
+    steps.detail(&format!("source: {}", model_path.display()));
+    let mut model = super::compile::load_model(model_path)?;
+    steps.detail(&format!("{} layers", model.graph.layers.len()));
+
+    steps.step("Loading proof");
+    steps.detail(&format!("source: {}", proof_path.display()));
     let proof = super::prove::load_proof(proof_path)?;
 
     if !proof.observed_n_bits.is_empty() {
-        tracing::info!(
-            "applying {} observed n_bits overrides from proof",
+        steps.detail(&format!(
+            "applying {} observed n_bits overrides",
             proof.observed_n_bits.len()
-        );
+        ));
         for layer in &mut model.graph.layers {
             if let Some(&obs) = proof.observed_n_bits.get(&layer.name) {
                 layer.n_bits = Some(obs);
@@ -31,19 +37,27 @@ pub fn run(model_path: &Path, proof_path: &Path, input_path: &Path) -> Result<()
         }
     }
 
-    tracing::info!("loading input from {}", input_path.display());
+    steps.step("Loading and quantizing input");
+    steps.detail(&format!("input: {}", input_path.display()));
     let quantized_input =
         super::witness::load_and_quantize_input(input_path, model.scale_config.alpha)?;
+    steps.detail(&format!("{} elements", quantized_input.len()));
 
+    steps.step("Verifying proof");
+    let sp = cli::spinner("Reconstructing circuit and checking transcript...");
     let result = verify_with_model(&model, &proof, &quantized_input);
+    sp.finish_and_clear();
 
-    if let Err(ref e) = result {
-        tracing::error!("verification FAILED: {}", e);
-    } else {
-        tracing::info!("verification PASSED");
+    match result {
+        Ok(()) => {
+            steps.finish_ok("Verification PASSED");
+            Ok(())
+        }
+        Err(ref e) => {
+            steps.finish_err(&format!("Verification FAILED: {e}"));
+            result
+        }
     }
-
-    result
 }
 
 pub fn verify_with_model(

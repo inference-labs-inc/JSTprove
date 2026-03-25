@@ -23,6 +23,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rayon = "1.8"
 itertools = "0.14"
+console = "0.15"
+indicatif = "0.17"
 
 [features]
 parallel = [

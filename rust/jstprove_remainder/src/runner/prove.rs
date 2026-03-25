@@ -9,6 +9,7 @@ use shared_types::transcript::poseidon_sponge::PoseidonSponge;
 use shared_types::transcript::{Transcript, TranscriptWriter};
 use shared_types::{perform_function_under_prover_config, Fr};
 
+use crate::cli::{self, StepPrinter};
 use crate::padding::num_vars_for;
 use crate::runner::circuit_builder;
 use crate::util::i64_to_fr;
@@ -19,17 +20,23 @@ pub fn run(
     output_path: &Path,
     compress: bool,
 ) -> Result<()> {
-    tracing::info!("loading model from {}", model_path.display());
-    let mut model = super::compile::load_model(model_path)?;
+    let mut steps = StepPrinter::new(5);
 
-    tracing::info!("loading witness from {}", witness_path.display());
+    steps.step("Loading compiled model");
+    steps.detail(&format!("source: {}", model_path.display()));
+    let mut model = super::compile::load_model(model_path)?;
+    steps.detail(&format!("{} layers", model.graph.layers.len()));
+
+    steps.step("Loading witness");
+    steps.detail(&format!("source: {}", witness_path.display()));
     let witness_data = super::witness::load_witness(witness_path)?;
+    steps.detail(&format!("{} shreds", witness_data.shreds.len()));
 
     if !witness_data.observed_n_bits.is_empty() {
-        tracing::info!(
-            "applying {} observed n_bits overrides from witness",
+        steps.detail(&format!(
+            "applying {} observed n_bits overrides",
             witness_data.observed_n_bits.len()
-        );
+        ));
         for layer in &mut model.graph.layers {
             if let Some(&obs) = witness_data.observed_n_bits.get(&layer.name) {
                 layer.n_bits = Some(obs);
@@ -38,15 +45,23 @@ pub fn run(
         }
     }
 
+    steps.step("Building arithmetic circuit");
+    let sp = cli::spinner("Constructing GKR circuit from model graph...");
     let mut proof = generate_proof(&model, &witness_data.shreds)?;
+    sp.finish_and_clear();
+
     proof.observed_n_bits = witness_data.observed_n_bits;
 
+    steps.step("Writing proof");
     let size = jstprove_io::serialize_to_file(&proof, output_path, compress)?;
-    tracing::info!(
-        "proof written to {} ({} bytes)",
+    steps.detail(&format!(
+        "{} -> {}{}",
         output_path.display(),
-        size
-    );
+        cli::fmt_bytes(size as u64),
+        if compress { " (compressed)" } else { "" }
+    ));
+
+    steps.finish_ok("Proof generated");
     Ok(())
 }
 

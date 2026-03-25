@@ -1,5 +1,6 @@
 #![allow(clippy::pedantic)]
 
+pub mod cli;
 pub mod gadgets;
 #[allow(
     clippy::collapsible_if,

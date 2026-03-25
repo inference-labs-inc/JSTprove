@@ -1,7 +1,10 @@
 use std::path::Path;
 
 use anyhow::Result;
+use console::style;
 use serde::{Deserialize, Serialize};
+
+use crate::cli;
 
 #[derive(Debug, Deserialize)]
 pub struct BatchManifest<T> {
@@ -33,6 +36,22 @@ pub struct VerifyJob {
     pub proof: String,
 }
 
+fn print_batch_summary(result: &BatchResult) {
+    eprintln!();
+    let ok = style(format!("{} succeeded", result.succeeded)).green();
+    let fail = if result.failed > 0 {
+        style(format!("{} failed", result.failed)).red().to_string()
+    } else {
+        style(format!("{} failed", result.failed)).dim().to_string()
+    };
+    eprintln!("  {ok}, {fail}");
+
+    for (idx, msg) in &result.errors {
+        let label = style(format!("  job {idx}:")).red();
+        eprintln!("{label} {msg}");
+    }
+}
+
 pub fn run_batch_witness(
     model_path: &Path,
     manifest_path: &Path,
@@ -47,20 +66,23 @@ pub fn run_batch_witness(
         errors: vec![],
     };
     let alpha = model.scale_config.alpha;
+    let pb = cli::progress_bar(manifest.jobs.len() as u64, "witness");
 
     for (idx, job) in manifest.jobs.iter().enumerate() {
-        tracing::info!("batch witness job {}/{}", idx + 1, manifest.jobs.len());
+        pb.set_message(format!("job {}", idx + 1));
         match process_witness_job(&model, job, alpha, compress) {
             Ok(()) => result.succeeded += 1,
             Err(e) => {
                 let msg = format!("{e:#}");
-                tracing::error!("job {} failed: {}", idx, msg);
                 result.errors.push((idx, msg));
                 result.failed += 1;
             }
         }
+        pb.inc(1);
     }
 
+    pb.finish_and_clear();
+    print_batch_summary(&result);
     jstprove_io::write_msgpack_stdout(&result)?;
     Ok(result)
 }
@@ -78,20 +100,23 @@ pub fn run_batch_prove(
         failed: 0,
         errors: vec![],
     };
+    let pb = cli::progress_bar(manifest.jobs.len() as u64, "prove");
 
     for (idx, job) in manifest.jobs.iter().enumerate() {
-        tracing::info!("batch prove job {}/{}", idx + 1, manifest.jobs.len());
+        pb.set_message(format!("job {}", idx + 1));
         match process_prove_job(&model, job, compress) {
             Ok(()) => result.succeeded += 1,
             Err(e) => {
                 let msg = format!("{e:#}");
-                tracing::error!("job {} failed: {}", idx, msg);
                 result.errors.push((idx, msg));
                 result.failed += 1;
             }
         }
+        pb.inc(1);
     }
 
+    pb.finish_and_clear();
+    print_batch_summary(&result);
     jstprove_io::write_msgpack_stdout(&result)?;
     Ok(result)
 }
@@ -105,20 +130,23 @@ pub fn run_batch_verify(model_path: &Path, manifest_path: &Path) -> Result<Batch
         failed: 0,
         errors: vec![],
     };
+    let pb = cli::progress_bar(manifest.jobs.len() as u64, "verify");
 
     for (idx, job) in manifest.jobs.iter().enumerate() {
-        tracing::info!("batch verify job {}/{}", idx + 1, manifest.jobs.len());
+        pb.set_message(format!("job {}", idx + 1));
         match process_verify_job(&model, job) {
             Ok(()) => result.succeeded += 1,
             Err(e) => {
                 let msg = format!("{e:#}");
-                tracing::error!("job {} failed: {}", idx, msg);
                 result.errors.push((idx, msg));
                 result.failed += 1;
             }
         }
+        pb.inc(1);
     }
 
+    pb.finish_and_clear();
+    print_batch_summary(&result);
     jstprove_io::write_msgpack_stdout(&result)?;
     Ok(result)
 }
