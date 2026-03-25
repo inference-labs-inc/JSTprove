@@ -83,6 +83,10 @@ impl CircuitParams {
             dims
         }
     }
+
+    pub fn disable_autotune(&mut self) {
+        self.logup_chunk_bits = Some(crate::circuit_functions::gadgets::DEFAULT_LOGUP_CHUNK_BITS);
+    }
 }
 
 fn default_freivalds_reps() -> usize {
