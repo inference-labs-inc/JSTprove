@@ -2,6 +2,20 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
+fn push_len_prefixed(buf: &mut Vec<u8>, s: &[u8]) {
+    buf.extend_from_slice(&s.len().to_le_bytes());
+    buf.extend_from_slice(s);
+}
+
+fn push_sorted_map<V: serde::Serialize>(
+    buf: &mut Vec<u8>,
+    map: &std::collections::HashMap<String, V>,
+) {
+    let sorted: BTreeMap<&String, &V> = map.iter().collect();
+    let json = serde_json::to_string(&sorted).unwrap_or_default();
+    push_len_prefixed(buf, json.as_bytes());
+}
+
 use tiny_keccak::{Hasher, Sha3};
 
 use crate::circuit_functions::utils::onnx_model::{Architecture, CircuitParams};
@@ -55,32 +69,27 @@ fn version_tag() -> String {
 #[must_use]
 pub fn circuit_cache_key(params: &CircuitParams, architecture: &Architecture) -> String {
     let mut buf = Vec::new();
-    buf.extend_from_slice(version_tag().as_bytes());
-    buf.push(0);
+    push_len_prefixed(&mut buf, version_tag().as_bytes());
     buf.extend_from_slice(&params.scale_exponent.to_le_bytes());
     buf.extend_from_slice(&params.scale_base.to_le_bytes());
-    let rescale_json = serde_json::to_string(&params.rescale_config).unwrap_or_default();
-    buf.extend_from_slice(rescale_json.as_bytes());
-    buf.push(0);
-    let nbits_json = serde_json::to_string(&params.n_bits_config).unwrap_or_default();
-    buf.extend_from_slice(nbits_json.as_bytes());
-    buf.push(0);
+    push_sorted_map(&mut buf, &params.rescale_config);
+    push_sorted_map(&mut buf, &params.n_bits_config);
     buf.push(u8::from(params.weights_as_inputs));
     for layer in &architecture.architecture {
-        buf.extend_from_slice(layer.name.as_bytes());
-        buf.push(0);
-        buf.extend_from_slice(layer.op_type.as_bytes());
-        buf.push(0);
+        push_len_prefixed(&mut buf, layer.name.as_bytes());
+        push_len_prefixed(&mut buf, layer.op_type.as_bytes());
+        buf.extend_from_slice(&layer.outputs.len().to_le_bytes());
         for output_name in &layer.outputs {
-            buf.extend_from_slice(output_name.as_bytes());
+            push_len_prefixed(&mut buf, output_name.as_bytes());
             if let Some(shape) = layer.shape.get(output_name) {
+                buf.extend_from_slice(&shape.len().to_le_bytes());
                 for &dim in shape {
                     buf.extend_from_slice(&dim.to_le_bytes());
                 }
+            } else {
+                buf.extend_from_slice(&0usize.to_le_bytes());
             }
-            buf.push(0);
         }
-        buf.push(0);
     }
     sha3_hex(&buf)
 }
@@ -115,13 +124,13 @@ pub fn operator_cache_key(
     }
 
     let mut buf = Vec::new();
-    buf.extend_from_slice(version_tag().as_bytes());
-    buf.push(0);
+    push_len_prefixed(&mut buf, version_tag().as_bytes());
     buf.extend_from_slice(&params.scale_exponent.to_le_bytes());
     #[allow(clippy::cast_possible_truncation)]
     buf.extend_from_slice(&(n_bits as u32).to_le_bytes());
+    buf.extend_from_slice(&profile.len().to_le_bytes());
     for (op, count) in &profile {
-        buf.extend_from_slice(op.as_bytes());
+        push_len_prefixed(&mut buf, op.as_bytes());
         buf.extend_from_slice(&count.to_le_bytes());
     }
     sha3_hex(&buf)
@@ -131,13 +140,19 @@ fn read_cache(key: &str) -> Option<usize> {
     let dir = cache_dir()?;
     let path = dir.join(key);
     let contents = fs::read_to_string(path).ok()?;
-    contents.trim().parse().ok()
+    let chunk_bits: usize = contents.trim().parse().ok()?;
+    CANDIDATES.contains(&chunk_bits).then_some(chunk_bits)
 }
 
 fn write_cache(key: &str, chunk_bits: usize) {
     let Some(dir) = cache_dir() else { return };
-    let _ = fs::create_dir_all(&dir);
-    let _ = fs::write(dir.join(key), chunk_bits.to_string());
+    if fs::create_dir_all(&dir).is_err() || !CANDIDATES.contains(&chunk_bits) {
+        return;
+    }
+    let tmp = dir.join(format!("{key}.tmp.{}", std::process::id()));
+    if fs::write(&tmp, chunk_bits.to_string()).is_ok() {
+        let _ = fs::rename(tmp, dir.join(key));
+    }
 }
 
 pub fn sweep_and_select<F>(candidates: &[usize], mut compile_cost: F) -> usize
