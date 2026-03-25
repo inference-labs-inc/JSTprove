@@ -2492,7 +2492,14 @@ fn infer_conv_transpose(
 
     // Weight shape for ConvTranspose: [C_in, C_out/group, *kernel]
     let c_out_per_group = weight_shape[1];
-    let group = layer.get_int_attr("group").unwrap_or(1) as usize;
+    let group_raw = layer.get_int_attr("group").unwrap_or(1);
+    if group_raw <= 0 {
+        bail!(
+            "layer {}: ConvTranspose group={group_raw} must be positive",
+            layer.name
+        );
+    }
+    let group = group_raw as usize;
     let c_out = c_out_per_group * group;
 
     let kernel_shape = if let Some(v) = layer.get_ints_attr("kernel_shape") {
@@ -2540,6 +2547,14 @@ fn infer_conv_transpose(
     // Check if output_shape attribute is provided (overrides computed shape).
     if let Some(out_shape_attr) = layer.get_ints_attr("output_shape") {
         let spatial: Vec<usize> = nonneg_to_usize(out_shape_attr, "output_shape", &layer.name)?;
+        if spatial.len() != spatial_dims {
+            bail!(
+                "layer {}: ConvTranspose output_shape has {} spatial dims but expected {}",
+                layer.name,
+                spatial.len(),
+                spatial_dims
+            );
+        }
         let mut out_shape = vec![input_shape[0], c_out];
         out_shape.extend_from_slice(&spatial);
         return Ok(layer
@@ -2585,6 +2600,12 @@ fn infer_conv_transpose(
     let mut out_shape = vec![input_shape[0], c_out];
     for i in 0..spatial_dims {
         let in_dim = input_shape[2 + i];
+        if in_dim == 0 {
+            bail!(
+                "layer {}: ConvTranspose input spatial dim[{i}] is 0",
+                layer.name
+            );
+        }
         let pad = if pads.len() >= 2 * spatial_dims {
             pads[i] + pads[spatial_dims + i]
         } else {
@@ -2599,8 +2620,18 @@ fn infer_conv_transpose(
             );
         }
         let effective_kernel = (kernel_shape[i] - 1) * d + 1;
-        let out_dim = strides[i] * (in_dim - 1) + effective_kernel - pad + out_pad;
-        out_shape.push(out_dim);
+        // Compute in signed space to detect invalid (negative) output dims.
+        let out_dim_signed = strides[i] as i64 * (in_dim as i64 - 1) + effective_kernel as i64
+            - pad as i64
+            + out_pad as i64;
+        if out_dim_signed <= 0 {
+            bail!(
+                "layer {}: ConvTranspose output spatial dim[{i}] would be non-positive \
+                ({out_dim_signed}); check strides/pads/kernel",
+                layer.name
+            );
+        }
+        out_shape.push(out_dim_signed as usize);
     }
 
     Ok(layer
