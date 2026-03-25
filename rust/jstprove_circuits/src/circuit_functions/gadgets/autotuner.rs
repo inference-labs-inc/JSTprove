@@ -67,13 +67,18 @@ pub fn circuit_cache_key(params: &CircuitParams, architecture: &Architecture) ->
     buf.push(0);
     buf.push(u8::from(params.weights_as_inputs));
     for layer in &architecture.architecture {
+        buf.extend_from_slice(layer.name.as_bytes());
+        buf.push(0);
         buf.extend_from_slice(layer.op_type.as_bytes());
+        buf.push(0);
         for output_name in &layer.outputs {
+            buf.extend_from_slice(output_name.as_bytes());
             if let Some(shape) = layer.shape.get(output_name) {
                 for &dim in shape {
                     buf.extend_from_slice(&dim.to_le_bytes());
                 }
             }
+            buf.push(0);
         }
         buf.push(0);
     }
@@ -236,6 +241,76 @@ mod tests {
         let ck = circuit_cache_key(&params, &arch);
         let ok = operator_cache_key(&params, &arch, 64);
         assert_ne!(ck, ok);
+    }
+
+    fn make_conv_relu_slice(name_prefix: &str, output_elems: Vec<usize>) -> Architecture {
+        use crate::circuit_functions::utils::onnx_types::ONNXLayer;
+        let mut layers = Vec::new();
+        let conv_name = format!("{name_prefix}_conv");
+        let relu_name = format!("{name_prefix}_relu");
+        let conv_out = format!("{name_prefix}_conv_out");
+        let relu_out = format!("{name_prefix}_relu_out");
+        let mut conv_shape = std::collections::HashMap::new();
+        conv_shape.insert(conv_out.clone(), output_elems.clone());
+        layers.push(ONNXLayer {
+            id: 0,
+            name: conv_name,
+            op_type: "Conv".to_string(),
+            inputs: vec![],
+            outputs: vec![conv_out],
+            shape: conv_shape,
+            tensor: None,
+            params: None,
+            opset_version_number: 13,
+        });
+        let mut relu_shape = std::collections::HashMap::new();
+        relu_shape.insert(relu_out.clone(), output_elems);
+        layers.push(ONNXLayer {
+            id: 1,
+            name: relu_name,
+            op_type: "Relu".to_string(),
+            inputs: vec![],
+            outputs: vec![relu_out],
+            shape: relu_shape,
+            tensor: None,
+            params: None,
+            opset_version_number: 13,
+        });
+        Architecture {
+            architecture: layers,
+        }
+    }
+
+    #[test]
+    fn operator_key_transfers_across_slices_with_same_profile() {
+        let params = make_params();
+        let slice_a = make_conv_relu_slice("resnet_layer3", vec![1, 64, 16, 16]);
+        let slice_b = make_conv_relu_slice("efficientnet_block5", vec![1, 64, 16, 16]);
+
+        let op_key_a = operator_cache_key(&params, &slice_a, 64);
+        let op_key_b = operator_cache_key(&params, &slice_b, 64);
+        assert_eq!(
+            op_key_a, op_key_b,
+            "slices with same op profile must share operator key"
+        );
+
+        let circuit_key_a = circuit_cache_key(&params, &slice_a);
+        let circuit_key_b = circuit_cache_key(&params, &slice_b);
+        assert_ne!(
+            circuit_key_a, circuit_key_b,
+            "slices from different models must have distinct circuit keys"
+        );
+    }
+
+    #[test]
+    fn operator_key_differs_for_different_shapes() {
+        let params = make_params();
+        let slice_small = make_conv_relu_slice("layer", vec![1, 32, 8, 8]);
+        let slice_large = make_conv_relu_slice("layer", vec![1, 128, 32, 32]);
+
+        let key_small = operator_cache_key(&params, &slice_small, 64);
+        let key_large = operator_cache_key(&params, &slice_large, 64);
+        assert_ne!(key_small, key_large);
     }
 
     #[test]
