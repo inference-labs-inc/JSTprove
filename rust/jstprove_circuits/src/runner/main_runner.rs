@@ -8,8 +8,9 @@ use clap::{Arg, Command};
 use expander_compiler::circuit::layered::witness::Witness;
 use expander_compiler::circuit::layered::{Circuit, NormalInputType};
 use expander_compiler::frontend::{
-    ChallengeField, CircuitField, CompileOptions, Config, Define, Variable, WitnessSolver, compile,
-    extra::debug_eval, internal::DumpLoadTwoVariables,
+    ChallengeField, CircuitField, CompileOptions, CompileProgress, Config, Define, Variable,
+    WitnessSolver, compile, compile_with_progress, extra::debug_eval,
+    internal::DumpLoadTwoVariables,
 };
 use expander_compiler::gkr_engine::{FieldEngine, GKREngine, MPIConfig};
 use expander_compiler::serdes::ExpSerde;
@@ -90,6 +91,7 @@ where
 
 fn compile_to_bundle<C: Config, CircuitType>(
     metadata: Option<CircuitParams>,
+    on_progress: Option<&dyn Fn(CompileProgress)>,
 ) -> Result<CompiledCircuit, RunError>
 where
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone + MaybeConfigure,
@@ -97,7 +99,7 @@ where
     let mut circuit = CircuitType::default();
     configure_if_possible::<CircuitType>(&mut circuit)?;
 
-    let compile_result = compile(&circuit, CompileOptions::default())
+    let compile_result = compile_with_progress(&circuit, CompileOptions::default(), on_progress)
         .map_err(|e| RunError::Compile(format!("{e:?}")))?;
 
     let mut circuit_buf = Vec::new();
@@ -133,7 +135,7 @@ where
     #[cfg(feature = "peak-mem")]
     GLOBAL.reset_peak_memory();
 
-    let bundle = compile_to_bundle::<C, CircuitType>(metadata)?;
+    let bundle = compile_to_bundle::<C, CircuitType>(metadata, None)?;
     write_circuit_bundle(circuit_path, &bundle, compress)
 }
 
@@ -1239,11 +1241,12 @@ pub fn write_circuit_msgpack<C: Config, CircuitType>(
     path: &str,
     compress: bool,
     metadata: Option<CircuitParams>,
+    on_progress: Option<&dyn Fn(CompileProgress)>,
 ) -> Result<(), RunError>
 where
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone + MaybeConfigure,
 {
-    let bundle = compile_to_bundle::<C, CircuitType>(metadata)?;
+    let bundle = compile_to_bundle::<C, CircuitType>(metadata, on_progress)?;
     write_circuit_bundle(path, &bundle, compress)
 }
 
@@ -1865,10 +1868,29 @@ where
             let circuit_path = get_arg(matches, "circuit_path")?;
             let mut steps = cli::StepPrinter::new(2);
             steps.step("Compiling circuit");
-            let sp = cli::spinner("building layered circuit from ONNX graph");
-            let result = write_circuit_msgpack::<C, CircuitType>(&circuit_path, compress, metadata);
-            sp.finish_and_clear();
-            result?;
+            let on_compile = |phase: CompileProgress| match phase {
+                CompileProgress::IrBuilt {
+                    inputs,
+                    constraints,
+                    vars,
+                } => steps.detail(&format!(
+                    "{inputs} inputs, {constraints} constraints, {vars} vars"
+                )),
+                CompileProgress::LayeredCircuitBuilt {
+                    layers,
+                    segments,
+                    mul_gates,
+                    add_gates,
+                } => steps.detail(&format!(
+                    "{layers} layers, {segments} segments, {mul_gates} mul + {add_gates} add gates"
+                )),
+            };
+            write_circuit_msgpack::<C, CircuitType>(
+                &circuit_path,
+                compress,
+                metadata,
+                Some(&on_compile),
+            )?;
             steps.step("Serializing");
             steps.finish_ok("Compiled");
         }

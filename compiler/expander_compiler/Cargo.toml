@@ -11,7 +11,6 @@ axum.workspace = true
 babybear.workspace = true
 chrono.workspace = true
 clap.workspace = true
-console.workspace = true
 crosslayer_prototype.workspace = true
 macros = { path = "./macros" }
 ethnum.workspace = true

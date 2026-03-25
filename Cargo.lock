@@ -1245,7 +1245,6 @@ dependencies = [
  "chrono",
  "circuit",
  "clap",
- "console",
  "crosslayer_prototype",
  "ethnum",
  "gf2",

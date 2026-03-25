@@ -76,8 +76,18 @@ where
     }
 }
 
-fn print_detail(msg: &str) {
-    eprintln!("      {}", console::style(msg).dim());
+pub enum CompileProgress {
+    IrBuilt {
+        inputs: usize,
+        constraints: usize,
+        vars: usize,
+    },
+    LayeredCircuitBuilt {
+        layers: usize,
+        segments: usize,
+        mul_gates: usize,
+        add_gates: usize,
+    },
 }
 
 pub fn compile_step_1<C: Config>(
@@ -299,29 +309,46 @@ pub fn compile<C: Config, I: InputType>(
 
 pub fn print_ir_stats<C: Config>(r_hint_normalized: &ir::hint_normalized::RootCircuit<C>) {
     let s = r_hint_normalized.get_stats();
-    print_detail(&format!(
-        "{} inputs, {} constraints, {} vars",
+    eprintln!(
+        "      {} inputs, {} constraints, {} vars",
         s.num_inputs, s.num_constraints, s.num_variables,
-    ));
+    );
 }
 
 pub fn print_layered_circuit_stats<C: Config, I: InputType>(lc: &layered::Circuit<C, I>) {
     let s = lc.get_stats();
-    print_detail(&format!(
-        "{} layers, {} segments, {} mul + {} add gates",
+    eprintln!(
+        "      {} layers, {} segments, {} mul + {} add gates",
         s.num_layers, s.num_segments, s.num_expanded_mul, s.num_expanded_add,
-    ));
+    );
 }
 
 pub fn compile_with_options<C: Config, I: InputType>(
     r_source: &ir::source::RootCircuit<C>,
     options: CompileOptions,
 ) -> Result<(ir::hint_normalized::RootCircuit<C>, layered::Circuit<C, I>), Error> {
+    compile_with_options_and_progress(r_source, options, None)
+}
+
+pub fn compile_with_options_and_progress<C: Config, I: InputType>(
+    r_source: &ir::source::RootCircuit<C>,
+    options: CompileOptions,
+    on_progress: Option<&dyn Fn(CompileProgress)>,
+) -> Result<(ir::hint_normalized::RootCircuit<C>, layered::Circuit<C, I>), Error> {
     options.validate()?;
 
     let (r_hint_normalized_opt, mut src_im) = compile_step_1(r_source, options.clone())?;
 
-    print_ir_stats(&r_hint_normalized_opt);
+    if let Some(cb) = &on_progress {
+        let s = r_hint_normalized_opt.get_stats();
+        cb(CompileProgress::IrBuilt {
+            inputs: s.num_inputs,
+            constraints: s.num_constraints,
+            vars: s.num_variables,
+        });
+    } else {
+        print_ir_stats(&r_hint_normalized_opt);
+    }
 
     let (r_hint_less, mut r_hint_exported) = r_hint_normalized_opt.remove_and_export_hints();
     r_hint_exported
@@ -339,7 +366,17 @@ pub fn compile_with_options<C: Config, I: InputType>(
 
     let lc = compile_step_3(lc, options.clone())?;
 
-    print_layered_circuit_stats(&lc);
+    if let Some(cb) = &on_progress {
+        let s = lc.get_stats();
+        cb(CompileProgress::LayeredCircuitBuilt {
+            layers: s.num_layers,
+            segments: s.num_segments,
+            mul_gates: s.num_expanded_mul,
+            add_gates: s.num_expanded_add,
+        });
+    } else {
+        print_layered_circuit_stats(&lc);
+    }
 
     hl_im.compose_in_place(&dest_im);
 
