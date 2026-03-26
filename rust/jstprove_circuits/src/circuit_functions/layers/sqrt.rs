@@ -46,6 +46,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SqrtLayer {
         let mut out_storage: Vec<Variable> = Vec::with_capacity(x_input.len());
 
         for &x in x_input {
+            // Prove x >= 0 before invoking the hint.  Without this constraint a
+            // dishonest prover could supply a negative x; the hint clamps it to
+            // 0 and the output range-check still passes, creating a false proof.
+            logup_ctx.range_check::<C, Builder>(api, x, n_bits)?;
             let hint_out = api.new_hint(SQRT_HINT_KEY, &[x, scale_var], 1);
             let y = hint_out[0];
             logup_ctx.range_check::<C, Builder>(api, y, n_bits)?;
