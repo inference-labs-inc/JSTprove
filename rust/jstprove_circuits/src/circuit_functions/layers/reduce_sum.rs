@@ -247,23 +247,29 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceSumLayer {
 
             match raw {
                 Some(v) => {
-                    let mut axes: Vec<usize> = v
-                        .iter()
-                        .map(|&a| {
-                            let a = if a < 0 { a + rank as i64 } else { a };
-                            if a < 0 || a as usize >= rank {
-                                return Err(LayerError::InvalidShape {
-                                    layer: LayerKind::ReduceSum,
-                                    msg: format!("axis {a} out of range for rank {rank}"),
+                    // ONNX spec: explicit empty axes with noop_with_empty_axes=false
+                    // means reduce over all axes (same as omitting the axes input).
+                    if v.is_empty() && !noop_with_empty_axes {
+                        (0..rank).collect()
+                    } else {
+                        let mut axes: Vec<usize> = v
+                            .iter()
+                            .map(|&a| {
+                                let a = if a < 0 { a + rank as i64 } else { a };
+                                if a < 0 || a as usize >= rank {
+                                    return Err(LayerError::InvalidShape {
+                                        layer: LayerKind::ReduceSum,
+                                        msg: format!("axis {a} out of range for rank {rank}"),
+                                    }
+                                    .into());
                                 }
-                                .into());
-                            }
-                            Ok(a as usize)
-                        })
-                        .collect::<Result<Vec<usize>, CircuitError>>()?;
-                    axes.sort_unstable();
-                    axes.dedup();
-                    axes
+                                Ok(a as usize)
+                            })
+                            .collect::<Result<Vec<usize>, CircuitError>>()?;
+                        axes.sort_unstable();
+                        axes.dedup();
+                        axes
+                    }
                 }
                 None => {
                     if noop_with_empty_axes {

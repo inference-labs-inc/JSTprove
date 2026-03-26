@@ -50,7 +50,13 @@ pub fn tanh_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), E
 
     let x_i64 = field_to_i64(inputs[0]);
 
-    let scale_u64 = inputs[1].to_u256().as_u64();
+    let scale_u256 = inputs[1].to_u256();
+    if scale_u256 > U256::from(u64::MAX) {
+        return Err(Error::UserError(format!(
+            "tanh_hint: scale value {scale_u256} exceeds u64::MAX; cannot decode scaling factor",
+        )));
+    }
+    let scale_u64 = scale_u256.as_u64();
     if scale_u64 == 0 {
         return Err(Error::UserError(
             "tanh_hint: scale is zero; cannot de-quantise input".to_string(),
@@ -164,5 +170,28 @@ mod tests {
             (result + scale as i64).abs() <= 1,
             "should be ~-scale, got {result}"
         );
+    }
+
+    #[test]
+    fn tanh_wrong_input_count() {
+        let scale: u64 = 1 << 18;
+        let inputs = [F::from_u256(U256::from(scale))]; // only 1 input instead of 2
+        let mut outputs = [F::zero()];
+        assert!(tanh_hint::<F>(&inputs, &mut outputs).is_err());
+    }
+
+    #[test]
+    fn tanh_wrong_output_count() {
+        let scale: u64 = 1 << 18;
+        let inputs = [field(0), F::from_u256(U256::from(scale))];
+        let mut outputs = [F::zero(), F::zero()]; // 2 outputs instead of 1
+        assert!(tanh_hint::<F>(&inputs, &mut outputs).is_err());
+    }
+
+    #[test]
+    fn tanh_zero_scale() {
+        let inputs = [field(0), F::from_u256(U256::from(0u64))];
+        let mut outputs = [F::zero()];
+        assert!(tanh_hint::<F>(&inputs, &mut outputs).is_err());
     }
 }
