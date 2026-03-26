@@ -16,7 +16,7 @@ use crate::circuit_functions::{
     CircuitError,
     gadgets::LogupRangeCheckContext,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
-    utils::onnx_model::{get_input_name, get_w_or_b},
+    utils::onnx_model::{extract_params, get_input_name, get_param_or_default, get_w_or_b},
 };
 
 #[derive(Debug)]
@@ -104,19 +104,39 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for PadLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
+        // Reject non-constant padding modes early — only "constant" is implemented.
+        if let Ok(params) = extract_params(layer) {
+            let default_mode = "constant".to_string();
+            let mode =
+                get_param_or_default::<String>(&layer.name, "mode", &params, Some(&default_mode))
+                    .unwrap_or(default_mode);
+            if mode != "constant" {
+                return Err(LayerError::UnsupportedConfig {
+                    layer: LayerKind::Pad,
+                    msg: format!(
+                        "Pad mode '{mode}' is not supported; only 'constant' mode is implemented"
+                    ),
+                }
+                .into());
+            }
+        }
+
         // ONNX Pad: inputs are [data, pads, constant_value(optional)]
         // pads is an initializer tensor of shape [2*rank]
         let pads_name = get_input_name(&layer.inputs, 1, LayerKind::Pad, "pads")?;
         let pads_array = get_w_or_b(layer_context.w_and_b_map, pads_name)?;
         let pads: Vec<i64> = pads_array.as_slice().unwrap_or(&[]).to_vec();
 
-        let constant_value = if layer.inputs.len() > 2 {
+        let constant_value: i64 = if layer.inputs.len() > 2 {
             let cv_name = &layer.inputs[2];
             if !cv_name.is_empty() {
-                get_w_or_b(layer_context.w_and_b_map, cv_name)
-                    .ok()
-                    .and_then(|arr| arr.as_slice().map(|s| s.first().copied()).ok().flatten())
-                    .unwrap_or(0)
+                let arr = get_w_or_b(layer_context.w_and_b_map, cv_name)?;
+                arr.as_slice()
+                    .and_then(|s| s.first().copied())
+                    .ok_or_else(|| LayerError::Other {
+                        layer: LayerKind::Pad,
+                        msg: format!("cannot extract constant_value from initializer '{cv_name}'"),
+                    })?
             } else {
                 0
             }

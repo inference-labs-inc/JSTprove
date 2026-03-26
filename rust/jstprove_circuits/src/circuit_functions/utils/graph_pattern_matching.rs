@@ -321,6 +321,16 @@ impl PatternMatcher {
                     });
             }
         }
+
+        // Enforce longest-match precedence per anchor: when both ConvBatchnorm and
+        // ConvBatchnormRelu match the same Conv layer, keep only the longer pattern
+        // so that optimization_skip_layers never sees mismatched patterns and does
+        // not return PatternError::InconsistentPattern.
+        for matches in all_matches.values_mut() {
+            let max_len = matches.iter().map(|m| m.layers.len()).max().unwrap_or(0);
+            matches.retain(|m| m.layers.len() == max_len);
+        }
+
         Ok(all_matches)
     }
 }

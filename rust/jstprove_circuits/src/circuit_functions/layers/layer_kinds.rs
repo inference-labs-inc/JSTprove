@@ -223,6 +223,8 @@ mod tests {
             "Log",
             "ReduceMean",
             "Shape",
+            "MatMul",
+            "Pad",
         ];
         for name in ops {
             assert!(
@@ -275,6 +277,8 @@ mod tests {
             "Gemm",
             "Flatten",
             "LayerNormalization",
+            "MatMul",
+            "Pad",
             "Reshape",
             "MaxPool",
             "Clip",

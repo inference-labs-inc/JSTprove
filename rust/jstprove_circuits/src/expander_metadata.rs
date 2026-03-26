@@ -290,6 +290,8 @@ fn op_type_to_string(op: OpType) -> String {
         OpType::Log => "Log",
         OpType::Expand => "Expand",
         OpType::ReduceMean => "ReduceMean",
+        OpType::MatMul => "MatMul",
+        OpType::Pad => "Pad",
     }
     .to_string()
 }
