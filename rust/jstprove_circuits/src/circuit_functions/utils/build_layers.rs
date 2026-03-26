@@ -93,7 +93,7 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
 
     for (i, original_layer) in architecture.architecture.iter().enumerate() {
         /*
-           Track layer combo optimizations
+          Track layer combo optimizations
         */
         let mut layer = original_layer.clone();
         if *skip_next_layer.get(&layer.name).unwrap_or(&false) {
@@ -113,8 +113,31 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
         }
 
         layer.outputs = outputs;
+
+        // For ConvBatchnorm / ConvBatchnormRelu patterns the BatchNormalization
+        // layer is skipped; Conv must fuse it inline.  Append the BN scale and
+        // bias initializer names to layer.inputs (indices 3 and 4) so that
+        // ConvLayer::build can load them from w_and_b_map.
+        if matches!(
+            optimization_pattern,
+            PatternRegistry::ConvBatchnorm | PatternRegistry::ConvBatchnormRelu
+        ) {
+            if let Some(opt_match) = optimization_pattern_match {
+                if let Some(first_match) = opt_match.first() {
+                    if let Some(bn_layer) = first_match.layers.get(1) {
+                        if let Some(bn_scale_name) = bn_layer.inputs.get(1) {
+                            layer.inputs.push(bn_scale_name.clone());
+                        }
+                        if let Some(bn_bias_name) = bn_layer.inputs.get(2) {
+                            layer.inputs.push(bn_bias_name.clone());
+                        }
+                    }
+                }
+            }
+        }
+
         /*
-           End tracking layer combo optimizations
+          End tracking layer combo optimizations
         */
         let is_rescale = circuit_params
             .rescale_config
