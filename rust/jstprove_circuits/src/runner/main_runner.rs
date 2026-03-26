@@ -342,6 +342,7 @@ where
 /// - Deserialization of the circuit, witness, or proof fails (`RunError::Deserialize`)
 /// - The proof fails to verify (`RunError::Verify`)
 ///
+#[allow(dead_code)]
 fn run_verify_io<C: Config, I, CircuitDefaultType>(
     circuit_path: &str,
     io_reader: &mut I,
@@ -675,6 +676,74 @@ where
 
     let valid = executor::verify_with_progress::<C>(
         expander_circuit,
+        mpi_config,
+        &proof,
+        &claimed_v,
+        Some(&on_layer),
+    );
+
+    if !valid {
+        let msg = if let Some((idx, total)) = first_failure.get() {
+            format!(
+                "Verification failed: sumcheck rejected at layer {}/{total}",
+                idx + 1
+            )
+        } else {
+            "Verification failed".into()
+        };
+        return Err(RunError::Verify(msg));
+    }
+
+    Ok(())
+}
+
+/// # Errors
+/// Returns `RunError` on deserialization, verification, or I/O failure.
+pub fn verify_from_witness<C: Config>(
+    circuit_path: &str,
+    witness_path: &str,
+    proof_path: &str,
+) -> Result<(), RunError> {
+    let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
+    let mut expander_circuit = layered_circuit.export_to_expander_flatten();
+
+    let file = std::fs::File::open(witness_path).map_err(|e| RunError::Io {
+        source: e,
+        path: witness_path.into(),
+    })?;
+    let reader = auto_reader(file)?;
+    let witness = Witness::<C>::deserialize_from(reader)
+        .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+
+    let (simd_input, simd_public_input) = witness.to_simd();
+    expander_circuit.layers[0]
+        .input_vals
+        .clone_from(&simd_input);
+    expander_circuit.public_input.clone_from(&simd_public_input);
+
+    let file = std::fs::File::open(proof_path).map_err(|e| RunError::Io {
+        source: e,
+        path: proof_path.into(),
+    })?;
+    let reader = auto_reader(file)?;
+    let proof_and_claimed_v: Vec<u8> =
+        Vec::deserialize_from(reader).map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+
+    let (proof, claimed_v) =
+        executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v)
+            .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+
+    let mpi_config = MPIConfig::verifier_new(1);
+    let first_failure: std::cell::Cell<Option<(usize, usize)>> = std::cell::Cell::new(None);
+
+    let on_layer = |layer_idx: usize, total: usize, passed: bool| {
+        if !passed && first_failure.get().is_none() {
+            first_failure.set(Some((layer_idx, total)));
+        }
+    };
+
+    let valid = executor::verify_with_progress::<C>(
+        &mut expander_circuit,
         mpi_config,
         &proof,
         &claimed_v,
@@ -1868,8 +1937,6 @@ where
             steps.finish_ok("Proof generated");
         }
         "run_gen_verify" => {
-            let input_path = get_arg(matches, "input")?;
-            let output_path = get_arg(matches, "output")?;
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
             let circuit_path = get_arg(matches, "circuit_path")?;
@@ -1877,14 +1944,7 @@ where
             steps.step("Loading circuit, witness, and proof");
             steps.step("Verifying");
             let sp = cli::spinner("checking GKR sumcheck transcript", mode);
-            let result = run_verify_io::<C, Filereader, CircuitDefaultType>(
-                &circuit_path,
-                file_reader,
-                &input_path,
-                &output_path,
-                &witness_path,
-                &proof_path,
-            );
+            let result = verify_from_witness::<C>(&circuit_path, &witness_path, &proof_path);
             sp.finish_and_clear();
             match result {
                 Ok(()) => steps.finish_ok("Verification passed"),
