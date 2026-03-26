@@ -684,10 +684,7 @@ where
 
     if !valid {
         let msg = if let Some((idx, total)) = first_failure.get() {
-            format!(
-                "Verification failed: sumcheck rejected at layer {}/{total}",
-                idx + 1
-            )
+            format!("sumcheck rejected at layer {}/{total}", idx + 1)
         } else {
             "Verification failed".into()
         };
@@ -752,12 +749,9 @@ pub fn verify_from_witness<C: Config>(
 
     if !valid {
         let msg = if let Some((idx, total)) = first_failure.get() {
-            format!(
-                "Verification failed: sumcheck rejected at layer {}/{total}",
-                idx + 1
-            )
+            format!("sumcheck rejected at layer {}/{total}", idx + 1)
         } else {
-            "Verification failed".into()
+            "proof invalid".into()
         };
         return Err(RunError::Verify(msg));
     }
@@ -1949,9 +1943,12 @@ where
             match result {
                 Ok(()) => steps.finish_ok("Verification passed"),
                 Err(e) => {
-                    let msg = format!("{e}");
-                    steps.finish_err(&format!("Verification failed: {msg}"));
-                    return Err(CliError::AlreadyReported(msg));
+                    let detail = match &e {
+                        RunError::Verify(msg) => msg.clone(),
+                        other => format!("{other}"),
+                    };
+                    steps.finish_err(&format!("Verification failed: {detail}"));
+                    return Err(CliError::AlreadyReported(detail));
                 }
             }
         }
@@ -2068,9 +2065,12 @@ where
                     return Err(CliError::AlreadyReported(msg.into()));
                 }
                 Err(e) => {
-                    let msg = format!("{e}");
-                    steps.finish_err(&format!("Verification failed: {msg}"));
-                    return Err(CliError::AlreadyReported(msg));
+                    let detail = match &e {
+                        RunError::Verify(msg) => msg.clone(),
+                        other => format!("{other}"),
+                    };
+                    steps.finish_err(&format!("Verification failed: {detail}"));
+                    return Err(CliError::AlreadyReported(detail));
                 }
             }
         }
