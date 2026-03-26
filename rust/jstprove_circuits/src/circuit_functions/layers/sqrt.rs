@@ -2,7 +2,9 @@
 //
 // # ZK approach
 // 1. **Hint**: computes sqrt(x_q / scale) * scale in native f64.
-// 2. **Range check**: constrains output to [0, 2^n_bits).
+// 2. **Input non-negativity check**: constrains x to [0, 2^n_bits), which
+//    enforces x >= 0 before invoking the hint.
+// 3. **Output range check**: constrains sqrt result to [0, 2^n_bits).
 
 use std::collections::HashMap;
 

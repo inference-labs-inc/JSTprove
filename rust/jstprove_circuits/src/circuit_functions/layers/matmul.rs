@@ -155,15 +155,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MatMulLayer {
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
         let freivalds_reps = circuit_params.freivalds_reps;
-        if freivalds_reps == 0 {
-            return Err(LayerError::InvalidParameterValue {
-                layer: LayerKind::MatMul,
-                layer_name: layer.name.clone(),
-                param_name: "freivalds_reps".to_string(),
-                value: freivalds_reps.to_string(),
-            }
-            .into());
-        }
 
         // Validate we have two inputs.
         layer
@@ -255,8 +246,9 @@ mod tests {
 
     #[test]
     fn freivalds_single_row_not_beneficial() {
-        // ell=1: d = 2*(m+n+m*n) - (m+2) which may be negative for small m,n.
-        // For m=n=1: cost_full=1, s=3, d=4, 1*4=4 > 1 → not beneficial.
+        // ell=1: d = 2*(m+n+m*n) - (m+2), and for tiny matrices it is still
+        // too costly even when positive.
+        // For m=n=1: cost_full=1, s=3, d=3, 1*3=3 > 1 -> not beneficial.
         assert!(!freivalds_cheaper(1, 1, 1, 1));
     }
 }
