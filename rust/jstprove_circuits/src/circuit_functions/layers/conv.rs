@@ -165,7 +165,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
                     logup_ctx,
                     result,
                     &MaybeRescaleParams {
-                        is_rescale: true,
+                        is_rescale: self.is_rescale,
                         scaling_exponent: self.scaling,
                         n_bits: self.v_plus_one,
                         is_relu: is_bn_relu,

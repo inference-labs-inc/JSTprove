@@ -73,7 +73,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for PadLayer {
             new_shape.push((begin as usize) + shape[i] + (end as usize));
         }
 
-        let pad_val = api.constant(self.constant_value as u32);
+        let pad_val = api.constant(u32::try_from(self.constant_value).map_err(|_| {
+            LayerError::InvalidShape {
+                layer: LayerKind::Pad,
+                msg: format!("constant_value {} does not fit in u32", self.constant_value),
+            }
+        })?);
         let mut output = ArrayD::from_elem(IxDyn(&new_shape), pad_val);
 
         let mut indices = vec![0usize; rank];
@@ -105,17 +110,30 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for PadLayer {
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
         // Reject non-constant padding modes early — only "constant" is implemented.
-        if let Ok(params) = extract_params(layer) {
-            let default_mode = "constant".to_string();
-            let mode =
-                get_param_or_default::<String>(&layer.name, "mode", &params, Some(&default_mode))
-                    .unwrap_or(default_mode);
-            if mode != "constant" {
-                return Err(LayerError::UnsupportedConfig {
+        match extract_params(layer) {
+            Ok(params) => {
+                let default_mode = "constant".to_string();
+                let mode = get_param_or_default::<String>(
+                    &layer.name,
+                    "mode",
+                    &params,
+                    Some(&default_mode),
+                )
+                .unwrap_or(default_mode);
+                if mode != "constant" {
+                    return Err(LayerError::UnsupportedConfig {
+                        layer: LayerKind::Pad,
+                        msg: format!(
+                            "Pad mode '{mode}' is not supported; only 'constant' mode is implemented"
+                        ),
+                    }
+                    .into());
+                }
+            }
+            Err(e) => {
+                return Err(LayerError::Other {
                     layer: LayerKind::Pad,
-                    msg: format!(
-                        "Pad mode '{mode}' is not supported; only 'constant' mode is implemented"
-                    ),
+                    msg: format!("failed to extract params for mode check: {e}"),
                 }
                 .into());
             }
@@ -125,7 +143,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for PadLayer {
         // pads is an initializer tensor of shape [2*rank]
         let pads_name = get_input_name(&layer.inputs, 1, LayerKind::Pad, "pads")?;
         let pads_array = get_w_or_b(layer_context.w_and_b_map, pads_name)?;
-        let pads: Vec<i64> = pads_array.as_slice().unwrap_or(&[]).to_vec();
+        let pads: Vec<i64> = pads_array
+            .as_slice()
+            .ok_or_else(|| LayerError::Other {
+                layer: LayerKind::Pad,
+                msg: format!("pads initializer '{pads_name}' is not a contiguous i64 array"),
+            })?
+            .to_vec();
 
         let constant_value: i64 = if layer.inputs.len() > 2 {
             let cv_name = &layer.inputs[2];
