@@ -20,6 +20,9 @@ pub enum CliError {
 
     #[error("Other error: {0}")]
     Other(String),
+
+    #[error("{0}")]
+    AlreadyReported(String),
 }
 
 #[derive(Debug, Error)]

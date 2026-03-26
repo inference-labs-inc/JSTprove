@@ -8,8 +8,9 @@ use clap::{Arg, Command};
 use expander_compiler::circuit::layered::witness::Witness;
 use expander_compiler::circuit::layered::{Circuit, NormalInputType};
 use expander_compiler::frontend::{
-    ChallengeField, CircuitField, CompileOptions, Config, Define, Variable, WitnessSolver, compile,
-    extra::debug_eval, internal::DumpLoadTwoVariables,
+    ChallengeField, CircuitField, CompileOptions, CompileProgress, Config, Define, Variable,
+    WitnessSolver, compile, compile_with_progress, extra::debug_eval,
+    internal::DumpLoadTwoVariables,
 };
 use expander_compiler::gkr_engine::{FieldEngine, GKREngine, MPIConfig};
 use expander_compiler::serdes::ExpSerde;
@@ -21,6 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::circuit_functions::hints::build_logup_hint_registry;
 use crate::circuit_functions::utils::onnx_model::CircuitParams;
+use crate::cli;
 use crate::io::io_reader;
 use crate::runner::errors::{CliError, RunError};
 use crate::runner::schema::{
@@ -89,6 +91,7 @@ where
 
 fn compile_to_bundle<C: Config, CircuitType>(
     metadata: Option<CircuitParams>,
+    on_progress: Option<&dyn Fn(CompileProgress)>,
 ) -> Result<CompiledCircuit, RunError>
 where
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone + MaybeConfigure,
@@ -96,7 +99,7 @@ where
     let mut circuit = CircuitType::default();
     configure_if_possible::<CircuitType>(&mut circuit)?;
 
-    let compile_result = compile(&circuit, CompileOptions::default())
+    let compile_result = compile_with_progress(&circuit, CompileOptions::default(), on_progress)
         .map_err(|e| RunError::Compile(format!("{e:?}")))?;
 
     let mut circuit_buf = Vec::new();
@@ -132,7 +135,7 @@ where
     #[cfg(feature = "peak-mem")]
     GLOBAL.reset_peak_memory();
 
-    let bundle = compile_to_bundle::<C, CircuitType>(metadata)?;
+    let bundle = compile_to_bundle::<C, CircuitType>(metadata, None)?;
     write_circuit_bundle(circuit_path, &bundle, compress)
 }
 
@@ -195,7 +198,6 @@ where
         compress,
     )?;
 
-    println!("Witness Generated");
     Ok(())
 }
 
@@ -308,66 +310,6 @@ where
     let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
     let mut expander_circuit = layered_circuit.export_to_expander_flatten();
     prove_core::<C>(&mut expander_circuit, witness_path, proof_path, compress)?;
-    println!("Proved");
-    Ok(())
-}
-
-/// Verifies a proof against a circuit, witness, and expected I/O assignments.
-///
-/// This function loads a circuit definition, a witness, and a proof, and
-/// verifies that the proof is valid with respect to the circuit and
-/// provided inputs/outputs. It uses the given [`IOReader`] to deserialize the
-/// input/output assignments into the default circuit representation.
-///
-/// The verifier also performs consistency checks:
-/// - Ensures that public inputs derived from the witness match those from the
-///   expander circuit.
-/// - Ensures that the witness matches the claimed output values.
-///
-/// # Arguments
-///
-/// - `circuit_path` – Path to the serialized circuit file.
-/// - `io_reader` – The I/O reader used to load inputs and outputs.
-/// - `input_path` – Path to the msgpack-encoded input file.
-/// - `output_path` – Path to the msgpack-encoded output file.
-/// - `witness_path` – Path to the witness file.
-/// - `proof_path` – Path to the proof file.
-///
-/// # Errors
-///
-/// Returns a [`RunError`] if:
-///
-/// - The circuit, witness, or proof file cannot be opened (`RunError::Io`)
-/// - Deserialization of the circuit, witness, or proof fails (`RunError::Deserialize`)
-/// - The proof fails to verify (`RunError::Verify`)
-///
-fn run_verify_io<C: Config, I, CircuitDefaultType>(
-    circuit_path: &str,
-    io_reader: &mut I,
-    input_path: &str,
-    output_path: &str,
-    witness_path: &str,
-    proof_path: &str,
-) -> Result<(), RunError>
-where
-    I: IOReader<CircuitDefaultType, C>,
-    CircuitDefaultType: Default
-        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
-        + Clone,
-{
-    #[cfg(feature = "peak-mem")]
-    GLOBAL.reset_peak_memory();
-    let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
-    let mut expander_circuit = layered_circuit.export_to_expander_flatten();
-    verify_core::<C, I, CircuitDefaultType>(
-        &mut expander_circuit,
-        io_reader,
-        input_path,
-        output_path,
-        witness_path,
-        proof_path,
-    )?;
-    println!("Verified");
     Ok(())
 }
 
@@ -605,28 +547,12 @@ fn prove_core<C: Config>(
     Ok(())
 }
 
-fn verify_core<C: Config, I, CircuitDefaultType>(
+fn run_verification<C: Config>(
     expander_circuit: &mut expander_compiler::expander_circuit::Circuit<C::FieldConfig>,
-    io_reader: &mut I,
-    input_path: &str,
-    output_path: &str,
     witness_path: &str,
     proof_path: &str,
-) -> Result<(), RunError>
-where
-    I: IOReader<CircuitDefaultType, C>,
-    CircuitDefaultType: Default
-        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
-        + Clone,
-{
-    let assignment = CircuitDefaultType::default();
-    let assignment = io_reader.read_inputs(input_path, assignment)?;
-    let assignment = io_reader.read_outputs(output_path, assignment)?;
-
-    let mut vars: Vec<_> = Vec::new();
-    let mut public_vars: Vec<_> = Vec::new();
-    assignment.dump_into(&mut vars, &mut public_vars);
-
+    expected_public_inputs: Option<&[<C::FieldConfig as FieldEngine>::CircuitField]>,
+) -> Result<(), RunError> {
     let file = std::fs::File::open(witness_path).map_err(|e| RunError::Io {
         source: e,
         path: witness_path.into(),
@@ -641,15 +567,17 @@ where
         .clone_from(&simd_input);
     expander_circuit.public_input.clone_from(&simd_public_input);
 
-    if public_vars.len() != expander_circuit.public_input.len()
-        || public_vars
-            .iter()
-            .zip(&expander_circuit.public_input)
-            .any(|(pv, actual)| *actual != (*pv).into())
-    {
-        return Err(RunError::Verify(
-            "inputs/outputs don't match the witness".into(),
-        ));
+    if let Some(expected) = expected_public_inputs {
+        if expected.len() != expander_circuit.public_input.len()
+            || expected
+                .iter()
+                .zip(&expander_circuit.public_input)
+                .any(|(pv, actual)| *actual != (*pv).into())
+        {
+            return Err(RunError::Verify(
+                "public inputs from witness do not match the supplied inputs/outputs".into(),
+            ));
+        }
     }
 
     let file = std::fs::File::open(proof_path).map_err(|e| RunError::Io {
@@ -665,11 +593,44 @@ where
             .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
 
     let mpi_config = MPIConfig::verifier_new(1);
-    if !executor::verify::<C>(expander_circuit, mpi_config, &proof, &claimed_v) {
-        return Err(RunError::Verify("Verification failed".into()));
+    let first_failure: std::cell::Cell<Option<(usize, usize)>> = std::cell::Cell::new(None);
+
+    let on_layer = |layer_idx: usize, total: usize, passed: bool| {
+        if !passed && first_failure.get().is_none() {
+            first_failure.set(Some((layer_idx, total)));
+        }
+    };
+
+    let valid = executor::verify_with_progress::<C>(
+        expander_circuit,
+        mpi_config,
+        &proof,
+        &claimed_v,
+        Some(&on_layer),
+    );
+
+    if !valid {
+        let msg = if let Some((idx, total)) = first_failure.get() {
+            format!("sumcheck rejected at layer {}/{total}", idx + 1)
+        } else {
+            "proof invalid".into()
+        };
+        return Err(RunError::Verify(msg));
     }
 
     Ok(())
+}
+
+/// # Errors
+/// Returns `RunError` on deserialization, verification, or I/O failure.
+pub fn verify_from_witness<C: Config>(
+    circuit_path: &str,
+    witness_path: &str,
+    proof_path: &str,
+) -> Result<(), RunError> {
+    let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
+    let mut expander_circuit = layered_circuit.export_to_expander_flatten();
+    run_verification::<C>(&mut expander_circuit, witness_path, proof_path, None)
 }
 
 /// # Errors
@@ -729,6 +690,90 @@ where
         .finish()
         .map_err(|e| RunError::Serialize(format!("{e:?}")))?;
 
+    Ok(())
+}
+
+/// # Errors
+/// Returns `RunError` on deserialization, witness generation, or I/O failure.
+pub fn run_witness_from_inputs<C: Config>(
+    input_path: &str,
+    output_path: &str,
+    witness_path: &str,
+    circuit_path: &str,
+    compress: bool,
+) -> Result<(), RunError> {
+    let bundle = read_circuit_msgpack(circuit_path)?;
+    let params = bundle
+        .metadata
+        .ok_or_else(|| RunError::Deserialize("circuit bundle has no metadata".into()))?;
+
+    let raw = std::fs::read(input_path).map_err(|e| RunError::Io {
+        source: e,
+        path: input_path.into(),
+    })?;
+    let input_data: crate::circuit_functions::utils::onnx_model::InputData =
+        rmp_serde::from_slice(&raw).map_err(|e| RunError::Deserialize(format!("{e}")))?;
+
+    let mut activations = Vec::new();
+    flatten_rmpv_to_f64(&input_data.input, &mut activations)?;
+
+    let wb = crate::onnx::witness_from_f64_generic::<C>(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations,
+        &[],
+        compress,
+    )?;
+
+    std::fs::write(witness_path, &wb.witness).map_err(|e| RunError::Io {
+        source: e,
+        path: witness_path.into(),
+    })?;
+
+    let output_map: std::collections::HashMap<&str, Vec<i64>> =
+        [("output", wb.output_data.unwrap_or_default())]
+            .into_iter()
+            .collect();
+    let output_msgpack =
+        rmp_serde::to_vec_named(&output_map).map_err(|e| RunError::Serialize(format!("{e}")))?;
+    std::fs::write(output_path, &output_msgpack).map_err(|e| RunError::Io {
+        source: e,
+        path: output_path.into(),
+    })?;
+
+    Ok(())
+}
+
+fn flatten_rmpv_to_f64(val: &Value, out: &mut Vec<f64>) -> Result<(), RunError> {
+    match val {
+        Value::Integer(n) => {
+            let v = n
+                .as_f64()
+                .ok_or_else(|| RunError::Deserialize("msgpack: expected number".into()))?;
+            if let Some(i) = n.as_i64() {
+                const MAX_EXACT: i64 = 1_i64 << 53;
+                if !(-MAX_EXACT..=MAX_EXACT).contains(&i) {
+                    return Err(RunError::Deserialize(format!(
+                        "msgpack: integer {i} exceeds f64 exact range (±2^53)"
+                    )));
+                }
+            }
+            out.push(v);
+        }
+        Value::F32(f) => out.push(f64::from(*f)),
+        Value::F64(f) => out.push(*f),
+        Value::Array(arr) => {
+            for v in arr {
+                flatten_rmpv_to_f64(v, out)?;
+            }
+        }
+        _ => {
+            return Err(RunError::Deserialize(
+                "msgpack: input must contain numbers or arrays".into(),
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -1086,7 +1131,7 @@ where
 ///
 /// Returns a [`RunError`] if loading the manifest or circuit fails.
 pub fn run_batch_verify<C: Config, I, CircuitDefaultType>(
-    io_reader_factory: impl Fn() -> I,
+    _io_reader_factory: impl Fn() -> I,
     manifest_path: &str,
     circuit_path: &str,
 ) -> Result<BatchResult, RunError>
@@ -1104,17 +1149,9 @@ where
 
     Ok(run_batch_loop("verified", manifest.jobs, |_idx, job| {
         let mut circuit = layered_circuit.export_to_expander_flatten();
-        let mut io_reader = io_reader_factory();
-        verify_core::<C, I, CircuitDefaultType>(
-            &mut circuit,
-            &mut io_reader,
-            &job.input,
-            &job.output,
-            &job.witness,
-            &job.proof,
-        )
-        .map(|()| job.proof.clone())
-        .map_err(|e| e.to_string())
+        run_verification::<C>(&mut circuit, &job.witness, &job.proof, None)
+            .map(|()| job.proof.clone())
+            .map_err(|e| e.to_string())
     }))
 }
 
@@ -1217,11 +1254,12 @@ pub fn write_circuit_msgpack<C: Config, CircuitType>(
     path: &str,
     compress: bool,
     metadata: Option<CircuitParams>,
+    on_progress: Option<&dyn Fn(CompileProgress)>,
 ) -> Result<(), RunError>
 where
     CircuitType: Default + DumpLoadTwoVariables<Variable> + Define<C> + Clone + MaybeConfigure,
 {
-    let bundle = compile_to_bundle::<C, CircuitType>(metadata)?;
+    let bundle = compile_to_bundle::<C, CircuitType>(metadata, on_progress)?;
     write_circuit_bundle(path, &bundle, compress)
 }
 
@@ -1669,6 +1707,7 @@ pub fn handle_args<
     matches: &clap::ArgMatches,
     file_reader: &mut Filereader,
     metadata: Option<CircuitParams>,
+    mode: cli::OutputMode,
 ) -> Result<(), CliError>
 where
     CircuitDefaultType: std::default::Default
@@ -1690,24 +1729,49 @@ where
         return super::remainder_dispatch::dispatch(matches, &command, compress);
     }
 
+    let is_interactive = !command.starts_with("run_pipe_")
+        && !command.ends_with("_stdin")
+        && !command.starts_with("run_batch_");
+
+    if is_interactive {
+        let label = command
+            .strip_prefix("run_")
+            .or_else(|| command.strip_prefix("msgpack_"))
+            .unwrap_or(&command);
+        cli::header(label, mode);
+    }
+
     match command.as_str() {
         "run_compile_circuit" => {
             let circuit_path = get_arg(matches, "circuit_path")?;
+            let mut steps = cli::StepPrinter::new(2, mode);
+            steps.step("Compiling circuit");
             run_compile_and_serialize::<C, CircuitType>(&circuit_path, compress, metadata)?;
+            steps.step("Serializing");
+            steps.finish_ok("Compiled");
         }
         "run_gen_witness" => {
             let input_path = get_arg(matches, "input")?;
             let output_path = get_arg(matches, "output")?;
             let witness_path = get_arg(matches, "witness")?;
             let circuit_path = get_arg(matches, "circuit_path")?;
-            run_witness::<C, _, CircuitDefaultType>(
-                file_reader,
+            let mut steps = cli::StepPrinter::new(3, mode);
+            steps.step("Loading circuit");
+            steps.step("Computing witness");
+            let sp = cli::spinner("running inference and solving assignments", mode);
+            let result = run_witness_from_inputs::<C>(
                 &input_path,
                 &output_path,
                 &witness_path,
                 &circuit_path,
                 compress,
-            )?;
+            );
+            sp.finish_and_clear();
+            result?;
+            steps.step("Writing outputs");
+            steps.detail(&format!("witness: {witness_path}"));
+            steps.detail(&format!("output: {output_path}"));
+            steps.finish_ok("Witness generated");
         }
         "run_debug_witness" => {
             let input_path = get_arg(matches, "input")?;
@@ -1726,27 +1790,63 @@ where
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
             let circuit_path = get_arg(matches, "circuit_path")?;
-            run_prove_witness::<C, CircuitDefaultType>(
+            let mut steps = cli::StepPrinter::new(2, mode);
+            steps.step("Loading circuit and witness");
+            steps.step("Generating proof");
+            let sp = cli::spinner("running GKR prover", mode);
+            let result = run_prove_witness::<C, CircuitDefaultType>(
                 &circuit_path,
                 &witness_path,
                 &proof_path,
                 compress,
-            )?;
+            );
+            sp.finish_and_clear();
+            result?;
+            steps.finish_ok("Proof generated");
         }
         "run_gen_verify" => {
-            let input_path = get_arg(matches, "input")?;
-            let output_path = get_arg(matches, "output")?;
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
             let circuit_path = get_arg(matches, "circuit_path")?;
-            run_verify_io::<C, Filereader, CircuitDefaultType>(
-                &circuit_path,
-                file_reader,
-                &input_path,
-                &output_path,
+            let mut steps = cli::StepPrinter::new(2, mode);
+            steps.step("Loading circuit, witness, and proof");
+
+            let expected_public: Option<Vec<_>> = if let (Ok(input_path), Ok(output_path)) =
+                (get_arg(matches, "input"), get_arg(matches, "output"))
+            {
+                let assignment = CircuitDefaultType::default();
+                let assignment = file_reader.read_inputs(&input_path, assignment)?;
+                let assignment = file_reader.read_outputs(&output_path, assignment)?;
+                let mut vars = Vec::new();
+                let mut public_vars = Vec::new();
+                assignment.dump_into(&mut vars, &mut public_vars);
+                Some(public_vars)
+            } else {
+                None
+            };
+
+            steps.step("Verifying");
+            let sp = cli::spinner("checking GKR sumcheck transcript", mode);
+            let layered_circuit = load_layered_circuit::<C>(&circuit_path)?;
+            let mut expander_circuit = layered_circuit.export_to_expander_flatten();
+            let result = run_verification::<C>(
+                &mut expander_circuit,
                 &witness_path,
                 &proof_path,
-            )?;
+                expected_public.as_deref(),
+            );
+            sp.finish_and_clear();
+            match result {
+                Ok(()) => steps.finish_ok("Verification passed"),
+                Err(e) => {
+                    let detail = match &e {
+                        RunError::Verify(msg) => msg.clone(),
+                        other => format!("{other}"),
+                    };
+                    steps.finish_err(&format!("Verification failed: {detail}"));
+                    return Err(CliError::AlreadyReported(detail));
+                }
+            }
         }
         "run_batch_witness" => {
             let manifest_path = get_arg(matches, "manifest")?;
@@ -1801,25 +1901,68 @@ where
         }
         "msgpack_compile" => {
             let circuit_path = get_arg(matches, "circuit_path")?;
-            write_circuit_msgpack::<C, CircuitType>(&circuit_path, compress, metadata)?;
-            eprintln!("Compiled to {circuit_path}");
+            let mut steps = cli::StepPrinter::new(2, mode);
+            steps.step("Compiling circuit");
+            let on_compile = |phase: CompileProgress| match phase {
+                CompileProgress::IrBuilt {
+                    inputs,
+                    constraints,
+                    vars,
+                } => steps.detail(&format!(
+                    "{inputs} inputs, {constraints} constraints, {vars} vars"
+                )),
+                CompileProgress::LayeredCircuitBuilt {
+                    layers,
+                    segments,
+                    mul_gates,
+                    add_gates,
+                } => steps.detail(&format!(
+                    "{layers} layers, {segments} segments, {mul_gates} mul + {add_gates} add gates"
+                )),
+            };
+            write_circuit_msgpack::<C, CircuitType>(
+                &circuit_path,
+                compress,
+                metadata,
+                Some(&on_compile),
+            )?;
+            steps.step("Serializing");
+            steps.finish_ok("Compiled");
         }
         "msgpack_prove" => {
             let circuit_path = get_arg(matches, "circuit_path")?;
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
-            msgpack_prove_file::<C>(&circuit_path, &witness_path, &proof_path, compress)?;
-            eprintln!("Proved to {proof_path}");
+            let mut steps = cli::StepPrinter::new(2, mode);
+            steps.step("Loading circuit and witness");
+            steps.step("Generating proof");
+            let sp = cli::spinner("running GKR prover", mode);
+            let result =
+                msgpack_prove_file::<C>(&circuit_path, &witness_path, &proof_path, compress);
+            sp.finish_and_clear();
+            result?;
+            steps.finish_ok("Proof generated");
         }
         "msgpack_verify" => {
             let circuit_path = get_arg(matches, "circuit_path")?;
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
-            let valid = msgpack_verify_file::<C>(&circuit_path, &witness_path, &proof_path)?;
-            if valid {
-                eprintln!("Verified");
-            } else {
-                return Err(RunError::Verify("verification failed".into()).into());
+            let mut steps = cli::StepPrinter::new(2, mode);
+            steps.step("Loading circuit, witness, and proof");
+            steps.step("Verifying");
+            let sp = cli::spinner("checking GKR sumcheck transcript", mode);
+            let result = verify_from_witness::<C>(&circuit_path, &witness_path, &proof_path);
+            sp.finish_and_clear();
+            match result {
+                Ok(()) => steps.finish_ok("Verification passed"),
+                Err(e) => {
+                    let detail = match &e {
+                        RunError::Verify(msg) => msg.clone(),
+                        other => format!("{other}"),
+                    };
+                    steps.finish_err(&format!("Verification failed: {detail}"));
+                    return Err(CliError::AlreadyReported(detail));
+                }
             }
         }
         "msgpack_prove_stdin" => {
@@ -1953,6 +2096,22 @@ pub fn get_args() -> clap::ArgMatches {
                 .help("Path to ONNX model (generates metadata automatically)")
                 .required(false)
                 .long("onnx"),
+        )
+        .arg(
+            Arg::new("quiet")
+                .help("Suppress all output")
+                .required(false)
+                .long("quiet")
+                .action(clap::ArgAction::SetTrue)
+                .conflicts_with("json"),
+        )
+        .arg(
+            Arg::new("json")
+                .help("Emit JSON lines to stderr")
+                .required(false)
+                .long("json")
+                .action(clap::ArgAction::SetTrue)
+                .conflicts_with("quiet"),
         )
         .get_matches();
     matches

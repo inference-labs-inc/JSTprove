@@ -14,7 +14,7 @@ pub mod witness;
 pub use circuit::declare_circuit;
 pub type API<C> = builder::RootBuilder<C>;
 pub use crate::circuit::config::*;
-pub use crate::compile::CompileOptions;
+pub use crate::compile::{CompileOptions, CompileProgress};
 pub use crate::field::{BN254Fr, Field, FieldArith, GF2, M31};
 pub use crate::hints::registry::{EmptyHintCaller, HintCaller, HintRegistry};
 pub use crate::utils::error::Error;
@@ -106,6 +106,23 @@ pub fn compile<C: Config, Cir: internal::DumpLoadTwoVariables<Variable> + Define
 ) -> Result<CompileResult<C>, Error> {
     let root = build(circuit);
     let (irw, lc) = crate::compile::compile_with_options::<C, _>(&root, options)?;
+    Ok(CompileResult {
+        witness_solver: WitnessSolver { circuit: irw },
+        layered_circuit: lc,
+    })
+}
+
+pub fn compile_with_progress<
+    C: Config,
+    Cir: internal::DumpLoadTwoVariables<Variable> + Define<C> + Clone,
+>(
+    circuit: &Cir,
+    options: CompileOptions,
+    on_progress: Option<&dyn Fn(CompileProgress)>,
+) -> Result<CompileResult<C>, Error> {
+    let root = build(circuit);
+    let (irw, lc) =
+        crate::compile::compile_with_options_and_progress::<C, _>(&root, options, on_progress)?;
     Ok(CompileResult {
         witness_solver: WitnessSolver { circuit: irw },
         layered_circuit: lc,

@@ -138,7 +138,6 @@ where
             &mpi_config,
         );
 
-    eprintln!("proving");
     prover.prove(circuit, &pcs_params, &pcs_proving_key, &mut pcs_scratch)
 }
 
@@ -164,6 +163,30 @@ pub fn verify<Cfg: GKREngine>(
     )
 }
 
+pub fn verify_with_progress<Cfg: GKREngine>(
+    circuit: &mut Circuit<Cfg::FieldConfig>,
+    mpi_config: MPIConfig,
+    proof: &Proof,
+    claimed_v: &<<Cfg as GKREngine>::FieldConfig as FieldEngine>::ChallengeField,
+    on_layer_verified: Option<&dyn Fn(usize, usize, bool)>,
+) -> bool {
+    let (pcs_params, _, pcs_verification_key, _) = expander_pcs_init_testing_only::<
+        Cfg::FieldConfig,
+        Cfg::PCSConfig,
+    >(circuit.log_input_size(), &mpi_config);
+    let verifier = Verifier::<Cfg>::new(mpi_config);
+    let public_input = circuit.public_input.clone();
+    verifier.verify_with_progress(
+        circuit,
+        &public_input,
+        claimed_v,
+        &pcs_params,
+        &pcs_verification_key,
+        proof,
+        on_layer_verified,
+    )
+}
+
 pub fn verify_ref<Cfg: GKREngine>(
     circuit: &Circuit<Cfg::FieldConfig>,
     public_input: &[<Cfg::FieldConfig as FieldEngine>::SimdCircuitField],
@@ -183,6 +206,30 @@ pub fn verify_ref<Cfg: GKREngine>(
         &pcs_params,
         &pcs_verification_key,
         proof,
+    )
+}
+
+pub fn verify_ref_with_progress<Cfg: GKREngine>(
+    circuit: &Circuit<Cfg::FieldConfig>,
+    public_input: &[<Cfg::FieldConfig as FieldEngine>::SimdCircuitField],
+    mpi_config: MPIConfig,
+    proof: &Proof,
+    claimed_v: &<<Cfg as GKREngine>::FieldConfig as FieldEngine>::ChallengeField,
+    on_layer_verified: Option<&dyn Fn(usize, usize, bool)>,
+) -> bool {
+    let (pcs_params, _, pcs_verification_key, _) = expander_pcs_init_testing_only::<
+        Cfg::FieldConfig,
+        Cfg::PCSConfig,
+    >(circuit.log_input_size(), &mpi_config);
+    let verifier = Verifier::<Cfg>::new(mpi_config);
+    verifier.verify_ref_with_progress(
+        circuit,
+        public_input,
+        claimed_v,
+        &pcs_params,
+        &pcs_verification_key,
+        proof,
+        on_layer_verified,
     )
 }
 

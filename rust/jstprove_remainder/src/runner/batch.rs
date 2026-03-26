@@ -1,7 +1,10 @@
 use std::path::Path;
 
 use anyhow::Result;
+use console::style;
 use serde::{Deserialize, Serialize};
+
+use crate::cli::{self, OutputMode};
 
 #[derive(Debug, Deserialize)]
 pub struct BatchManifest<T> {
@@ -33,10 +36,42 @@ pub struct VerifyJob {
     pub proof: String,
 }
 
+fn print_batch_summary(result: &BatchResult, mode: OutputMode) {
+    match mode {
+        OutputMode::Human => {
+            eprintln!();
+            let ok = style(format!("{} succeeded", result.succeeded)).green();
+            let fail = if result.failed > 0 {
+                style(format!("{} failed", result.failed)).red().to_string()
+            } else {
+                style(format!("{} failed", result.failed)).dim().to_string()
+            };
+            eprintln!("  {ok}, {fail}");
+
+            for (idx, msg) in &result.errors {
+                let label = style(format!("  job {}:", idx + 1)).red();
+                eprintln!("{label} {msg}");
+            }
+        }
+        OutputMode::Json => {
+            let summary = serde_json::json!({
+                "succeeded": result.succeeded,
+                "failed": result.failed,
+                "errors": result.errors.iter().map(|(idx, msg)| {
+                    serde_json::json!({"job": idx + 1, "error": msg})
+                }).collect::<Vec<_>>(),
+            });
+            println!("{}", serde_json::to_string(&summary).unwrap_or_default());
+        }
+        OutputMode::Quiet => {}
+    }
+}
+
 pub fn run_batch_witness(
     model_path: &Path,
     manifest_path: &Path,
     compress: bool,
+    mode: OutputMode,
 ) -> Result<BatchResult> {
     let model = super::compile::load_model(model_path)?;
     let manifest: BatchManifest<WitnessJob> = jstprove_io::deserialize_from_file(manifest_path)?;
@@ -47,20 +82,23 @@ pub fn run_batch_witness(
         errors: vec![],
     };
     let alpha = model.scale_config.alpha;
+    let pb = cli::progress_bar(manifest.jobs.len() as u64, "witness", mode);
 
     for (idx, job) in manifest.jobs.iter().enumerate() {
-        tracing::info!("batch witness job {}/{}", idx + 1, manifest.jobs.len());
+        pb.set_message(format!("job {}", idx + 1));
         match process_witness_job(&model, job, alpha, compress) {
             Ok(()) => result.succeeded += 1,
             Err(e) => {
                 let msg = format!("{e:#}");
-                tracing::error!("job {} failed: {}", idx, msg);
                 result.errors.push((idx, msg));
                 result.failed += 1;
             }
         }
+        pb.inc(1);
     }
 
+    pb.finish_and_clear();
+    print_batch_summary(&result, mode);
     jstprove_io::write_msgpack_stdout(&result)?;
     Ok(result)
 }
@@ -69,6 +107,7 @@ pub fn run_batch_prove(
     model_path: &Path,
     manifest_path: &Path,
     compress: bool,
+    mode: OutputMode,
 ) -> Result<BatchResult> {
     let model = super::compile::load_model(model_path)?;
     let manifest: BatchManifest<ProveJob> = jstprove_io::deserialize_from_file(manifest_path)?;
@@ -78,25 +117,32 @@ pub fn run_batch_prove(
         failed: 0,
         errors: vec![],
     };
+    let pb = cli::progress_bar(manifest.jobs.len() as u64, "prove", mode);
 
     for (idx, job) in manifest.jobs.iter().enumerate() {
-        tracing::info!("batch prove job {}/{}", idx + 1, manifest.jobs.len());
+        pb.set_message(format!("job {}", idx + 1));
         match process_prove_job(&model, job, compress) {
             Ok(()) => result.succeeded += 1,
             Err(e) => {
                 let msg = format!("{e:#}");
-                tracing::error!("job {} failed: {}", idx, msg);
                 result.errors.push((idx, msg));
                 result.failed += 1;
             }
         }
+        pb.inc(1);
     }
 
+    pb.finish_and_clear();
+    print_batch_summary(&result, mode);
     jstprove_io::write_msgpack_stdout(&result)?;
     Ok(result)
 }
 
-pub fn run_batch_verify(model_path: &Path, manifest_path: &Path) -> Result<BatchResult> {
+pub fn run_batch_verify(
+    model_path: &Path,
+    manifest_path: &Path,
+    mode: OutputMode,
+) -> Result<BatchResult> {
     let model = super::compile::load_model(model_path)?;
     let manifest: BatchManifest<VerifyJob> = jstprove_io::deserialize_from_file(manifest_path)?;
 
@@ -105,20 +151,23 @@ pub fn run_batch_verify(model_path: &Path, manifest_path: &Path) -> Result<Batch
         failed: 0,
         errors: vec![],
     };
+    let pb = cli::progress_bar(manifest.jobs.len() as u64, "verify", mode);
 
     for (idx, job) in manifest.jobs.iter().enumerate() {
-        tracing::info!("batch verify job {}/{}", idx + 1, manifest.jobs.len());
+        pb.set_message(format!("job {}", idx + 1));
         match process_verify_job(&model, job) {
             Ok(()) => result.succeeded += 1,
             Err(e) => {
                 let msg = format!("{e:#}");
-                tracing::error!("job {} failed: {}", idx, msg);
                 result.errors.push((idx, msg));
                 result.failed += 1;
             }
         }
+        pb.inc(1);
     }
 
+    pb.finish_and_clear();
+    print_batch_summary(&result, mode);
     jstprove_io::write_msgpack_stdout(&result)?;
     Ok(result)
 }

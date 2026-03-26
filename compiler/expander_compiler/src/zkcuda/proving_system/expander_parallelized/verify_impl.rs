@@ -50,6 +50,7 @@ where
         &<C::FieldConfig as FieldEngine>::ChallengeField::ZERO,
         &mut transcript,
         &mut cursor,
+        None,
     );
 
     if !verified {

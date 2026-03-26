@@ -47,23 +47,32 @@ fn observed_n_bits_for_delta(max_val: u64, exponent: usize) -> usize {
     bits_needed + exponent
 }
 
-pub fn run(model_path: &Path, input_path: &Path, output_path: &Path, compress: bool) -> Result<()> {
-    tracing::info!("loading model from {}", model_path.display());
+pub fn run(
+    model_path: &Path,
+    input_path: &Path,
+    output_path: &Path,
+    compress: bool,
+    mode: crate::cli::OutputMode,
+) -> Result<()> {
+    let mut steps = crate::cli::StepPrinter::new(4, mode);
+
+    steps.step("Loading model");
     let model = super::compile::load_model(model_path)?;
+    steps.detail(&format!("{} layers", model.graph.layers.len()));
 
+    steps.step("Quantizing input");
     let quantized_input = load_and_quantize_input(input_path, model.scale_config.alpha)?;
+    steps.detail(&format!("{} elements", quantized_input.len()));
 
-    tracing::info!("computing witness for {} layers", model.graph.layers.len());
+    steps.step("Computing witness");
     let witness_data = compute_witness(&model, &quantized_input)?;
+    steps.detail(&format!("{} shreds", witness_data.shreds.len()));
 
+    steps.step("Serializing");
     let size = jstprove_io::serialize_to_file(&witness_data, output_path, compress)?;
-    tracing::info!(
-        "witness written to {} ({} shreds, {} observed_n_bits, {} bytes)",
-        output_path.display(),
-        witness_data.shreds.len(),
-        witness_data.observed_n_bits.len(),
-        size
-    );
+    steps.detail(&crate::cli::fmt_bytes(size as u64));
+
+    steps.finish_ok("Witness generated");
     Ok(())
 }
 

@@ -93,10 +93,19 @@ fn main() {
 
     let matches = get_args();
 
+    let mode = if matches.get_flag("json") {
+        jstprove_circuits::cli::OutputMode::Json
+    } else if matches.get_flag("quiet") {
+        jstprove_circuits::cli::OutputMode::Quiet
+    } else {
+        jstprove_circuits::cli::OutputMode::Human
+    };
+
     if let Err(err) = handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(
         &matches,
         &mut file_reader,
         None,
+        mode,
     ) {
         eprintln!("Error: {err}");
         std::process::exit(1);
