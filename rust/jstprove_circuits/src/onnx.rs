@@ -364,7 +364,7 @@ pub fn witness_bn254_from_f64(
     initializers: &[(Vec<f64>, Vec<usize>)],
     compress: bool,
 ) -> Result<WitnessBundle, RunError> {
-    witness_from_f64::<BN254Config>(
+    witness_from_f64_generic::<BN254Config>(
         circuit_bytes,
         solver_bytes,
         params,
@@ -381,7 +381,9 @@ fn quantize_f64_to_field<C: Config>(val: f64, scale: f64) -> CircuitField<C> {
     convert_val_to_field_element::<C>(truncated)
 }
 
-fn witness_from_f64<C: Config>(
+/// # Errors
+/// Returns `RunError` on witness generation, serialization, or activation mismatch.
+pub fn witness_from_f64_generic<C: Config>(
     circuit_bytes: &[u8],
     solver_bytes: &[u8],
     params: &CircuitParams,
@@ -466,6 +468,11 @@ fn witness_from_f64<C: Config>(
     let computed_outputs: Vec<CircuitField<C>> = actual_outputs[..num_outputs].to_vec();
 
     assignment.input_arr = input_arr;
+    let output_i64: Vec<i64> = computed_outputs
+        .iter()
+        .map(|v| crate::circuit_functions::hints::field_to_i64(*v))
+        .collect();
+
     assignment.outputs = computed_outputs;
 
     let witness = witness_solver
@@ -476,7 +483,7 @@ fn witness_from_f64<C: Config>(
 
     Ok(WitnessBundle {
         witness: witness_bytes,
-        output_data: None,
+        output_data: Some(output_i64),
         version: Some(crate::runner::version::jstprove_artifact_version()),
     })
 }
@@ -691,7 +698,7 @@ pub fn witness_goldilocks_from_f64(
     initializers: &[(Vec<f64>, Vec<usize>)],
     compress: bool,
 ) -> Result<WitnessBundle, RunError> {
-    witness_from_f64::<GoldilocksConfig>(
+    witness_from_f64_generic::<GoldilocksConfig>(
         circuit_bytes,
         solver_bytes,
         params,
@@ -775,7 +782,7 @@ pub fn witness_goldilocks_basefold_from_f64(
     initializers: &[(Vec<f64>, Vec<usize>)],
     compress: bool,
 ) -> Result<WitnessBundle, RunError> {
-    witness_from_f64::<GoldilocksBasefoldConfig>(
+    witness_from_f64_generic::<GoldilocksBasefoldConfig>(
         circuit_bytes,
         solver_bytes,
         params,

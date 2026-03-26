@@ -756,6 +756,82 @@ where
     Ok(())
 }
 
+/// # Errors
+/// Returns `RunError` on deserialization, witness generation, or I/O failure.
+pub fn run_witness_from_inputs<C: Config>(
+    input_path: &str,
+    output_path: &str,
+    witness_path: &str,
+    circuit_path: &str,
+    compress: bool,
+) -> Result<(), RunError> {
+    let bundle = read_circuit_msgpack(circuit_path)?;
+    let params = bundle
+        .metadata
+        .ok_or_else(|| RunError::Deserialize("circuit bundle has no metadata".into()))?;
+
+    let raw = std::fs::read(input_path).map_err(|e| RunError::Io {
+        source: e,
+        path: input_path.into(),
+    })?;
+    let input_data: crate::circuit_functions::utils::onnx_model::InputData =
+        rmp_serde::from_slice(&raw).map_err(|e| RunError::Deserialize(format!("{e}")))?;
+
+    let mut activations = Vec::new();
+    flatten_rmpv_to_f64(&input_data.input, &mut activations)?;
+
+    let wb = crate::onnx::witness_from_f64_generic::<C>(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations,
+        &[],
+        compress,
+    )?;
+
+    std::fs::write(witness_path, &wb.witness).map_err(|e| RunError::Io {
+        source: e,
+        path: witness_path.into(),
+    })?;
+
+    let output_map: std::collections::HashMap<&str, Vec<i64>> =
+        [("output", wb.output_data.unwrap_or_default())]
+            .into_iter()
+            .collect();
+    let output_msgpack =
+        rmp_serde::to_vec_named(&output_map).map_err(|e| RunError::Serialize(format!("{e}")))?;
+    std::fs::write(output_path, &output_msgpack).map_err(|e| RunError::Io {
+        source: e,
+        path: output_path.into(),
+    })?;
+
+    Ok(())
+}
+
+fn flatten_rmpv_to_f64(val: &Value, out: &mut Vec<f64>) -> Result<(), RunError> {
+    match val {
+        Value::Integer(n) => {
+            out.push(
+                n.as_f64()
+                    .ok_or_else(|| RunError::Json("expected number".into()))?,
+            );
+        }
+        Value::F32(f) => out.push(f64::from(*f)),
+        Value::F64(f) => out.push(*f),
+        Value::Array(arr) => {
+            for v in arr {
+                flatten_rmpv_to_f64(v, out)?;
+            }
+        }
+        _ => {
+            return Err(RunError::Json(
+                "input must contain numbers or arrays".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Generates witnesses for multiple inputs sequentially.
 ///
 /// # Errors
@@ -1742,12 +1818,11 @@ where
             let output_path = get_arg(matches, "output")?;
             let witness_path = get_arg(matches, "witness")?;
             let circuit_path = get_arg(matches, "circuit_path")?;
-            let mut steps = cli::StepPrinter::new(2, mode);
+            let mut steps = cli::StepPrinter::new(3, mode);
             steps.step("Loading circuit");
-            steps.step("Generating witness");
-            let sp = cli::spinner("solving assignments", mode);
-            let result = run_witness::<C, _, CircuitDefaultType>(
-                file_reader,
+            steps.step("Computing witness");
+            let sp = cli::spinner("running inference and solving assignments", mode);
+            let result = run_witness_from_inputs::<C>(
                 &input_path,
                 &output_path,
                 &witness_path,
@@ -1756,6 +1831,9 @@ where
             );
             sp.finish_and_clear();
             result?;
+            steps.step("Writing outputs");
+            steps.detail(&format!("witness: {witness_path}"));
+            steps.detail(&format!("output: {output_path}"));
             steps.finish_ok("Witness generated");
         }
         "run_debug_witness" => {
