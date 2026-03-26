@@ -551,6 +551,7 @@ fn run_verification<C: Config>(
     expander_circuit: &mut expander_compiler::expander_circuit::Circuit<C::FieldConfig>,
     witness_path: &str,
     proof_path: &str,
+    expected_public_inputs: Option<&[<C::FieldConfig as FieldEngine>::CircuitField]>,
 ) -> Result<(), RunError> {
     let file = std::fs::File::open(witness_path).map_err(|e| RunError::Io {
         source: e,
@@ -565,6 +566,19 @@ fn run_verification<C: Config>(
         .input_vals
         .clone_from(&simd_input);
     expander_circuit.public_input.clone_from(&simd_public_input);
+
+    if let Some(expected) = expected_public_inputs {
+        if expected.len() != expander_circuit.public_input.len()
+            || expected
+                .iter()
+                .zip(&expander_circuit.public_input)
+                .any(|(pv, actual)| *actual != (*pv).into())
+        {
+            return Err(RunError::Verify(
+                "public inputs from witness do not match the supplied inputs/outputs".into(),
+            ));
+        }
+    }
 
     let file = std::fs::File::open(proof_path).map_err(|e| RunError::Io {
         source: e,
@@ -616,7 +630,7 @@ pub fn verify_from_witness<C: Config>(
 ) -> Result<(), RunError> {
     let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
     let mut expander_circuit = layered_circuit.export_to_expander_flatten();
-    run_verification::<C>(&mut expander_circuit, witness_path, proof_path)
+    run_verification::<C>(&mut expander_circuit, witness_path, proof_path, None)
 }
 
 /// # Errors
@@ -1135,7 +1149,7 @@ where
 
     Ok(run_batch_loop("verified", manifest.jobs, |_idx, job| {
         let mut circuit = layered_circuit.export_to_expander_flatten();
-        run_verification::<C>(&mut circuit, &job.witness, &job.proof)
+        run_verification::<C>(&mut circuit, &job.witness, &job.proof, None)
             .map(|()| job.proof.clone())
             .map_err(|e| e.to_string())
     }))
@@ -1796,9 +1810,31 @@ where
             let circuit_path = get_arg(matches, "circuit_path")?;
             let mut steps = cli::StepPrinter::new(2, mode);
             steps.step("Loading circuit, witness, and proof");
+
+            let expected_public: Option<Vec<_>> = if let (Ok(input_path), Ok(output_path)) =
+                (get_arg(matches, "input"), get_arg(matches, "output"))
+            {
+                let assignment = CircuitDefaultType::default();
+                let assignment = file_reader.read_inputs(&input_path, assignment)?;
+                let assignment = file_reader.read_outputs(&output_path, assignment)?;
+                let mut vars = Vec::new();
+                let mut public_vars = Vec::new();
+                assignment.dump_into(&mut vars, &mut public_vars);
+                Some(public_vars)
+            } else {
+                None
+            };
+
             steps.step("Verifying");
             let sp = cli::spinner("checking GKR sumcheck transcript", mode);
-            let result = verify_from_witness::<C>(&circuit_path, &witness_path, &proof_path);
+            let layered_circuit = load_layered_circuit::<C>(&circuit_path)?;
+            let mut expander_circuit = layered_circuit.export_to_expander_flatten();
+            let result = run_verification::<C>(
+                &mut expander_circuit,
+                &witness_path,
+                &proof_path,
+                expected_public.as_deref(),
+            );
             sp.finish_and_clear();
             match result {
                 Ok(()) => steps.finish_ok("Verification passed"),
