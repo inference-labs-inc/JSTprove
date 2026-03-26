@@ -55,7 +55,13 @@ fn main() {
     println!("{}", "-".repeat(50));
 
     let t = Instant::now();
-    jstprove_remainder::runner::compile::run(&model_path, &compiled_path, false).unwrap();
+    jstprove_remainder::runner::compile::run(
+        &model_path,
+        &compiled_path,
+        false,
+        jstprove_remainder::cli::OutputMode::Quiet,
+    )
+    .unwrap();
     let compile_ms = t.elapsed().as_secs_f64() * 1000.0;
     let compiled_size = std::fs::metadata(&compiled_path).unwrap().len();
     println!(
@@ -65,8 +71,14 @@ fn main() {
     );
 
     let t = Instant::now();
-    jstprove_remainder::runner::witness::run(&compiled_path, &input_path, &witness_path, false)
-        .unwrap();
+    jstprove_remainder::runner::witness::run(
+        &compiled_path,
+        &input_path,
+        &witness_path,
+        false,
+        jstprove_remainder::cli::OutputMode::Quiet,
+    )
+    .unwrap();
     let witness_ms = t.elapsed().as_secs_f64() * 1000.0;
     let witness_size = std::fs::metadata(&witness_path).unwrap().len();
     println!(
@@ -76,8 +88,14 @@ fn main() {
     );
 
     let t = Instant::now();
-    jstprove_remainder::runner::prove::run(&compiled_path, &witness_path, &proof_path, false)
-        .unwrap();
+    jstprove_remainder::runner::prove::run(
+        &compiled_path,
+        &witness_path,
+        &proof_path,
+        false,
+        jstprove_remainder::cli::OutputMode::Quiet,
+    )
+    .unwrap();
     let prove_ms = t.elapsed().as_secs_f64() * 1000.0;
     let proof_size = std::fs::metadata(&proof_path).unwrap().len();
     println!(
@@ -87,7 +105,13 @@ fn main() {
     );
 
     let t = Instant::now();
-    jstprove_remainder::runner::verify::run(&compiled_path, &proof_path, &input_path).unwrap();
+    jstprove_remainder::runner::verify::run(
+        &compiled_path,
+        &proof_path,
+        &input_path,
+        jstprove_remainder::cli::OutputMode::Quiet,
+    )
+    .unwrap();
     let verify_ms = t.elapsed().as_secs_f64() * 1000.0;
     println!("verify:  {:>10}", fmt_duration(verify_ms));
 

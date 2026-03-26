@@ -11,10 +11,20 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-    #[arg(long, global = true, help = "Suppress all output")]
+    #[arg(
+        long,
+        global = true,
+        help = "Suppress all output",
+        conflicts_with = "json"
+    )]
     quiet: bool,
 
-    #[arg(long, global = true, help = "Emit JSON lines to stderr")]
+    #[arg(
+        long,
+        global = true,
+        help = "Emit JSON lines to stderr",
+        conflicts_with = "quiet"
+    )]
     json: bool,
 }
 

@@ -1716,7 +1716,9 @@ where
         return super::remainder_dispatch::dispatch(matches, &command, compress);
     }
 
-    let is_interactive = !command.starts_with("run_pipe_") && !command.ends_with("_stdin");
+    let is_interactive = !command.starts_with("run_pipe_")
+        && !command.ends_with("_stdin")
+        && !command.starts_with("run_batch_");
 
     if is_interactive {
         let label = command
@@ -2068,14 +2070,16 @@ pub fn get_args() -> clap::ArgMatches {
                 .help("Suppress all output")
                 .required(false)
                 .long("quiet")
-                .action(clap::ArgAction::SetTrue),
+                .action(clap::ArgAction::SetTrue)
+                .conflicts_with("json"),
         )
         .arg(
             Arg::new("json")
                 .help("Emit JSON lines to stderr")
                 .required(false)
                 .long("json")
-                .action(clap::ArgAction::SetTrue),
+                .action(clap::ArgAction::SetTrue)
+                .conflicts_with("quiet"),
         )
         .get_matches();
     matches

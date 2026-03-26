@@ -25,6 +25,7 @@ pub(super) fn dispatch(
                 Path::new(&model_path),
                 Path::new(&circuit_path),
                 compress,
+                jstprove_remainder::cli::OutputMode::Quiet,
             )
             .map_err(|e| RunError::Compile(format!("{e:#}")))?;
         }
@@ -37,6 +38,7 @@ pub(super) fn dispatch(
                 Path::new(&input_path),
                 Path::new(&witness_path),
                 compress,
+                jstprove_remainder::cli::OutputMode::Quiet,
             )
             .map_err(|e| RunError::Witness(format!("{e:#}")))?;
         }
@@ -49,6 +51,7 @@ pub(super) fn dispatch(
                 Path::new(&witness_path),
                 Path::new(&proof_path),
                 compress,
+                jstprove_remainder::cli::OutputMode::Quiet,
             )
             .map_err(|e| RunError::Prove(format!("{e:#}")))?;
         }
@@ -60,6 +63,7 @@ pub(super) fn dispatch(
                 Path::new(&model_path),
                 Path::new(&proof_path),
                 Path::new(&input_path),
+                jstprove_remainder::cli::OutputMode::Quiet,
             )
             .map_err(|e| RunError::Verify(format!("{e:#}")))?;
         }
@@ -70,6 +74,7 @@ pub(super) fn dispatch(
                 Path::new(&model_path),
                 Path::new(&manifest_path),
                 compress,
+                jstprove_remainder::cli::OutputMode::Quiet,
             )
             .map_err(|e| RunError::Witness(format!("{e:#}")))?;
         }
@@ -80,6 +85,7 @@ pub(super) fn dispatch(
                 Path::new(&model_path),
                 Path::new(&manifest_path),
                 compress,
+                jstprove_remainder::cli::OutputMode::Quiet,
             )
             .map_err(|e| RunError::Prove(format!("{e:#}")))?;
         }
@@ -89,6 +95,7 @@ pub(super) fn dispatch(
             jstprove_remainder::runner::batch::run_batch_verify(
                 Path::new(&model_path),
                 Path::new(&manifest_path),
+                jstprove_remainder::cli::OutputMode::Quiet,
             )
             .map_err(|e| RunError::Verify(format!("{e:#}")))?;
         }
@@ -122,6 +129,7 @@ pub(super) fn dispatch(
                 Path::new(&witness_path),
                 Path::new(&proof_path),
                 compress,
+                jstprove_remainder::cli::OutputMode::Quiet,
             )
             .map_err(|e| RunError::Prove(format!("{e:#}")))?;
         }
@@ -133,6 +141,7 @@ pub(super) fn dispatch(
                 Path::new(&model_path),
                 Path::new(&proof_path),
                 Path::new(&input_path),
+                jstprove_remainder::cli::OutputMode::Quiet,
             )
             .map_err(|e| RunError::Verify(format!("{e:#}")))?;
         }
