@@ -76,6 +76,7 @@ where
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum CompileProgress {
     IrBuilt {
         inputs: usize,

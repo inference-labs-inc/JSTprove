@@ -2336,6 +2336,7 @@ dependencies = [
  "rmp-serde",
  "rmpv",
  "serde",
+ "serde_json",
  "shared-types",
  "tempfile",
  "thiserror 2.0.18",

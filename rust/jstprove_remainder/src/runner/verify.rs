@@ -8,13 +8,18 @@ use shared_types::transcript::poseidon_sponge::PoseidonSponge;
 use shared_types::transcript::TranscriptReader;
 use shared_types::{perform_function_under_verifier_config, Fr};
 
-use crate::cli::{self, StepPrinter};
+use crate::cli::{self, OutputMode, StepPrinter};
 use crate::padding::next_power_of_two;
 use crate::runner::circuit_builder::{self, Visibility};
 use crate::util::i64_to_fr;
 
-pub fn run(model_path: &Path, proof_path: &Path, input_path: &Path) -> Result<()> {
-    let mut steps = StepPrinter::new(4);
+pub fn run(
+    model_path: &Path,
+    proof_path: &Path,
+    input_path: &Path,
+    mode: OutputMode,
+) -> Result<()> {
+    let mut steps = StepPrinter::new(4, mode);
 
     steps.step("Loading model");
     let mut model = super::compile::load_model(model_path)?;
@@ -66,7 +71,7 @@ pub fn run(model_path: &Path, proof_path: &Path, input_path: &Path) -> Result<()
     }
 
     let verifiable = circuit.gen_verifiable_circuit()?;
-    let sp = cli::spinner("checking GKR sumcheck transcript");
+    let sp = cli::spinner("checking GKR sumcheck transcript", mode);
     let verify_result = run_verify(&verifiable, &proof);
     sp.finish_and_clear();
     let result = verify_result;

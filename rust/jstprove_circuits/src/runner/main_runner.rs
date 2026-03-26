@@ -1694,6 +1694,7 @@ pub fn handle_args<
     matches: &clap::ArgMatches,
     file_reader: &mut Filereader,
     metadata: Option<CircuitParams>,
+    mode: cli::OutputMode,
 ) -> Result<(), CliError>
 where
     CircuitDefaultType: std::default::Default
@@ -1722,13 +1723,13 @@ where
             .strip_prefix("run_")
             .or_else(|| command.strip_prefix("msgpack_"))
             .unwrap_or(&command);
-        cli::header(label);
+        cli::header(label, mode);
     }
 
     match command.as_str() {
         "run_compile_circuit" => {
             let circuit_path = get_arg(matches, "circuit_path")?;
-            let mut steps = cli::StepPrinter::new(2);
+            let mut steps = cli::StepPrinter::new(2, mode);
             steps.step("Compiling circuit");
             run_compile_and_serialize::<C, CircuitType>(&circuit_path, compress, metadata)?;
             steps.step("Serializing");
@@ -1739,10 +1740,10 @@ where
             let output_path = get_arg(matches, "output")?;
             let witness_path = get_arg(matches, "witness")?;
             let circuit_path = get_arg(matches, "circuit_path")?;
-            let mut steps = cli::StepPrinter::new(2);
+            let mut steps = cli::StepPrinter::new(2, mode);
             steps.step("Loading circuit");
             steps.step("Generating witness");
-            let sp = cli::spinner("solving assignments");
+            let sp = cli::spinner("solving assignments", mode);
             let result = run_witness::<C, _, CircuitDefaultType>(
                 file_reader,
                 &input_path,
@@ -1772,10 +1773,10 @@ where
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
             let circuit_path = get_arg(matches, "circuit_path")?;
-            let mut steps = cli::StepPrinter::new(2);
+            let mut steps = cli::StepPrinter::new(2, mode);
             steps.step("Loading circuit and witness");
             steps.step("Generating proof");
-            let sp = cli::spinner("running GKR prover");
+            let sp = cli::spinner("running GKR prover", mode);
             let result = run_prove_witness::<C, CircuitDefaultType>(
                 &circuit_path,
                 &witness_path,
@@ -1792,10 +1793,10 @@ where
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
             let circuit_path = get_arg(matches, "circuit_path")?;
-            let mut steps = cli::StepPrinter::new(2);
+            let mut steps = cli::StepPrinter::new(2, mode);
             steps.step("Loading circuit, witness, and proof");
             steps.step("Verifying");
-            let sp = cli::spinner("checking GKR sumcheck transcript");
+            let sp = cli::spinner("checking GKR sumcheck transcript", mode);
             let result = run_verify_io::<C, Filereader, CircuitDefaultType>(
                 &circuit_path,
                 file_reader,
@@ -1866,7 +1867,7 @@ where
         }
         "msgpack_compile" => {
             let circuit_path = get_arg(matches, "circuit_path")?;
-            let mut steps = cli::StepPrinter::new(2);
+            let mut steps = cli::StepPrinter::new(2, mode);
             steps.step("Compiling circuit");
             let on_compile = |phase: CompileProgress| match phase {
                 CompileProgress::IrBuilt {
@@ -1898,10 +1899,10 @@ where
             let circuit_path = get_arg(matches, "circuit_path")?;
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
-            let mut steps = cli::StepPrinter::new(2);
+            let mut steps = cli::StepPrinter::new(2, mode);
             steps.step("Loading circuit and witness");
             steps.step("Generating proof");
-            let sp = cli::spinner("running GKR prover");
+            let sp = cli::spinner("running GKR prover", mode);
             let result =
                 msgpack_prove_file::<C>(&circuit_path, &witness_path, &proof_path, compress);
             sp.finish_and_clear();
@@ -1912,10 +1913,10 @@ where
             let circuit_path = get_arg(matches, "circuit_path")?;
             let witness_path = get_arg(matches, "witness")?;
             let proof_path = get_arg(matches, "proof")?;
-            let mut steps = cli::StepPrinter::new(2);
+            let mut steps = cli::StepPrinter::new(2, mode);
             steps.step("Loading circuit, witness, and proof");
             steps.step("Verifying");
-            let sp = cli::spinner("checking GKR sumcheck transcript");
+            let sp = cli::spinner("checking GKR sumcheck transcript", mode);
             let result = msgpack_verify_file::<C>(&circuit_path, &witness_path, &proof_path);
             sp.finish_and_clear();
             match result {
@@ -2061,6 +2062,20 @@ pub fn get_args() -> clap::ArgMatches {
                 .help("Path to ONNX model (generates metadata automatically)")
                 .required(false)
                 .long("onnx"),
+        )
+        .arg(
+            Arg::new("quiet")
+                .help("Suppress all output")
+                .required(false)
+                .long("quiet")
+                .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("json")
+                .help("Emit JSON lines to stderr")
+                .required(false)
+                .long("json")
+                .action(clap::ArgAction::SetTrue),
         )
         .get_matches();
     matches

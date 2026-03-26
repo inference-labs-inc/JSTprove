@@ -25,6 +25,7 @@ rayon = "1.8"
 itertools = "0.14"
 console.workspace = true
 indicatif = "0.17"
+serde_json.workspace = true
 
 [features]
 parallel = [

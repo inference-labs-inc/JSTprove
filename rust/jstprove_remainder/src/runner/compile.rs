@@ -2,14 +2,14 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::cli::{self, StepPrinter};
+use crate::cli::{self, OutputMode, StepPrinter};
 use crate::onnx::graph::LayerGraph;
 use crate::onnx::parser;
 use crate::onnx::quantizer::{self, QuantizedModel, ScaleConfig};
 use crate::onnx::shape_inference;
 
-pub fn run(model_path: &Path, output_path: &Path, compress: bool) -> Result<()> {
-    let mut steps = StepPrinter::new(4);
+pub fn run(model_path: &Path, output_path: &Path, compress: bool, mode: OutputMode) -> Result<()> {
+    let mut steps = StepPrinter::new(4, mode);
 
     steps.step("Parsing ONNX model");
     let parsed = parser::parse_onnx(model_path)?;

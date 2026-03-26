@@ -1,6 +1,7 @@
 use jstprove_circuits::circuit_functions::utils::onnx_model::{Architecture, CircuitParams, WANDB};
 
 use jstprove_circuits::ProofSystem;
+use jstprove_circuits::cli::OutputMode;
 use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::FileReader;
 use jstprove_circuits::runner::main_runner::{
@@ -249,23 +250,33 @@ fn main() {
         meta.curve = Some(curve);
     }
 
+    let mode = if matches.get_flag("json") {
+        OutputMode::Json
+    } else if matches.get_flag("quiet") {
+        OutputMode::Quiet
+    } else {
+        OutputMode::Human
+    };
+
     let result = match curve {
         Curve::Bn254 => handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(
             &matches,
             &mut file_reader,
             metadata,
+            mode,
         ),
         Curve::Goldilocks => handle_args::<GoldilocksConfig, Circuit<Variable>, Circuit<_>, _>(
             &matches,
             &mut file_reader,
             metadata,
+            mode,
         ),
         Curve::GoldilocksBasefold => handle_args::<
             GoldilocksBasefoldConfig,
             Circuit<Variable>,
             Circuit<_>,
             _,
-        >(&matches, &mut file_reader, metadata),
+        >(&matches, &mut file_reader, metadata, mode),
     };
 
     if let Err(err) = result {

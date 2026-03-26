@@ -9,7 +9,7 @@ use shared_types::transcript::poseidon_sponge::PoseidonSponge;
 use shared_types::transcript::{Transcript, TranscriptWriter};
 use shared_types::{perform_function_under_prover_config, Fr};
 
-use crate::cli::{self, StepPrinter};
+use crate::cli::{self, OutputMode, StepPrinter};
 use crate::padding::num_vars_for;
 use crate::runner::circuit_builder;
 use crate::util::i64_to_fr;
@@ -19,8 +19,9 @@ pub fn run(
     witness_path: &Path,
     output_path: &Path,
     compress: bool,
+    mode: OutputMode,
 ) -> Result<()> {
-    let mut steps = StepPrinter::new(4);
+    let mut steps = StepPrinter::new(4, mode);
 
     steps.step("Loading model");
     let mut model = super::compile::load_model(model_path)?;
@@ -40,7 +41,7 @@ pub fn run(
     }
 
     steps.step("Generating proof");
-    let sp = cli::spinner("building circuit and running GKR prover");
+    let sp = cli::spinner("building circuit and running GKR prover", mode);
     let proof_result = generate_proof(&model, &witness_data.shreds);
     sp.finish_and_clear();
     let mut proof = proof_result?;

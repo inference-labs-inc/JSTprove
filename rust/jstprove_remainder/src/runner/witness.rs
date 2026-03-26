@@ -47,8 +47,14 @@ fn observed_n_bits_for_delta(max_val: u64, exponent: usize) -> usize {
     bits_needed + exponent
 }
 
-pub fn run(model_path: &Path, input_path: &Path, output_path: &Path, compress: bool) -> Result<()> {
-    let mut steps = crate::cli::StepPrinter::new(4);
+pub fn run(
+    model_path: &Path,
+    input_path: &Path,
+    output_path: &Path,
+    compress: bool,
+    mode: crate::cli::OutputMode,
+) -> Result<()> {
+    let mut steps = crate::cli::StepPrinter::new(4, mode);
 
     steps.step("Loading model");
     let model = super::compile::load_model(model_path)?;
