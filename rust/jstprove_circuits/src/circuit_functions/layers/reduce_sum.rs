@@ -210,11 +210,34 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceSumLayer {
 
         // Parse axes from input[1] (opset 13+) or attribute.
         let axes: Vec<usize> = {
-            let from_input: Option<Vec<i64>> = layer.inputs.get(1).and_then(|axes_name| {
-                get_w_or_b(layer_context.w_and_b_map, axes_name)
-                    .ok()
-                    .map(|arr| arr.as_slice().unwrap_or(&[]).to_vec())
-            });
+            let from_input: Option<Vec<i64>> = if let Some(axes_name) = layer.inputs.get(1) {
+                let arr = get_w_or_b(layer_context.w_and_b_map, axes_name).map_err(|e| {
+                    LayerError::Other {
+                        layer: LayerKind::ReduceSum,
+                        msg: format!("invalid/missing axes input for ReduceSum '{axes_name}': {e}"),
+                    }
+                })?;
+
+                if arr.ndim() != 1 {
+                    return Err(LayerError::InvalidShape {
+                        layer: LayerKind::ReduceSum,
+                        msg: format!(
+                            "axes tensor '{axes_name}' must be 1D, got shape {:?}",
+                            arr.shape()
+                        ),
+                    }
+                    .into());
+                }
+
+                let slice = arr.as_slice().ok_or_else(|| LayerError::InvalidShape {
+                    layer: LayerKind::ReduceSum,
+                    msg: format!("axes tensor '{axes_name}' is not contiguous"),
+                })?;
+
+                Some(slice.to_vec())
+            } else {
+                None
+            };
 
             let raw: Option<Vec<i64>> = from_input.or_else(|| {
                 layer.params.as_ref().and_then(|p| {
@@ -369,6 +392,117 @@ pub(crate) fn collect_reduction_inputs(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+
+    use expander_compiler::frontend::{
+        BasicAPI, CircuitField, EmptyHintCaller, GoldilocksConfig, Variable, extra::DebugBuilder,
+    };
+    use rmpv::Value;
+
+    use crate::circuit_functions::{
+        gadgets::LogupRangeCheckContext,
+        layers::layer_ops::LayerOp,
+        utils::{
+            build_layers::{BuildLayerContext, default_n_bits_for_config},
+            graph_pattern_matching::PatternRegistry,
+            onnx_model::CircuitParams,
+            onnx_types::ONNXLayer,
+        },
+    };
+
+    type TestBuilder = DebugBuilder<GoldilocksConfig, EmptyHintCaller>;
+
+    fn test_params() -> CircuitParams {
+        CircuitParams {
+            scale_base: 2,
+            scale_exponent: 0,
+            rescale_config: HashMap::new(),
+            inputs: vec![],
+            outputs: vec![],
+            freivalds_reps: 1,
+            n_bits_config: HashMap::new(),
+            weights_as_inputs: false,
+            proof_system: crate::proof_system::ProofSystem::Expander,
+            curve: None,
+            logup_chunk_bits: None,
+        }
+    }
+
+    fn layer_with_params(inputs: Vec<String>, params: Value) -> ONNXLayer {
+        ONNXLayer {
+            id: 0,
+            name: "reduce_sum".to_string(),
+            op_type: "ReduceSum".to_string(),
+            inputs,
+            outputs: vec!["y".to_string()],
+            shape: HashMap::new(),
+            tensor: None,
+            params: Some(params),
+            opset_version_number: 13,
+        }
+    }
+
+    fn axes_initializer(name: &str, tensor: Value) -> ONNXLayer {
+        ONNXLayer {
+            id: 1,
+            name: name.to_string(),
+            op_type: "Constant".to_string(),
+            inputs: vec![],
+            outputs: vec![],
+            shape: HashMap::new(),
+            tensor: Some(tensor),
+            params: None,
+            opset_version_number: 13,
+        }
+    }
+
+    fn reduce_sum_build(
+        layer: &ONNXLayer,
+        w_and_b_map: &HashMap<String, &ONNXLayer>,
+        shapes_map: &HashMap<String, Vec<usize>>,
+        n_bits_config: &HashMap<String, usize>,
+    ) -> Result<
+        Box<dyn LayerOp<GoldilocksConfig, TestBuilder>>,
+        crate::circuit_functions::CircuitError,
+    > {
+        let ctx = BuildLayerContext {
+            w_and_b_map,
+            shapes_map,
+            n_bits_config,
+            default_n_bits: default_n_bits_for_config::<GoldilocksConfig>(),
+            weights_as_inputs: false,
+        };
+
+        <ReduceSumLayer as LayerOp<GoldilocksConfig, TestBuilder>>::build(
+            layer,
+            &test_params(),
+            PatternRegistry::None,
+            false,
+            0,
+            &ctx,
+        )
+    }
+
+    fn tensor_vars(api: &mut TestBuilder, values: &[u32], shape: &[usize]) -> ArrayD<Variable> {
+        let vars: Vec<Variable> = values
+            .iter()
+            .map(|&v| api.constant(CircuitField::<GoldilocksConfig>::from(v)))
+            .collect();
+        ArrayD::from_shape_vec(IxDyn(shape), vars).expect("shape must be valid")
+    }
+
+    fn reduce_sum_params(keepdims: i64, noop_with_empty_axes: i64) -> Value {
+        Value::Map(vec![
+            (
+                Value::String("keepdims".into()),
+                Value::Integer(keepdims.into()),
+            ),
+            (
+                Value::String("noop_with_empty_axes".into()),
+                Value::Integer(noop_with_empty_axes.into()),
+            ),
+        ])
+    }
 
     #[test]
     fn unravel_ravel_roundtrip() {
@@ -427,5 +561,172 @@ mod tests {
         let axes = [0, 1];
         let indices = collect_reduction_inputs(&[0, 0], &axes, true, &input_shape, 2);
         assert_eq!(indices, vec![0]);
+    }
+
+    #[test]
+    fn build_apply_reads_axes_from_input_tensor() {
+        let axes_layer =
+            axes_initializer("axes_input", Value::Array(vec![Value::Integer(1.into())]));
+        let mut w_and_b_map: HashMap<String, &ONNXLayer> = HashMap::new();
+        w_and_b_map.insert("axes_input".to_string(), &axes_layer);
+
+        let layer = layer_with_params(
+            vec!["x".to_string(), "axes_input".to_string()],
+            reduce_sum_params(0, 0),
+        );
+
+        let mut shapes_map = HashMap::new();
+        shapes_map.insert("x".to_string(), vec![2, 3]);
+        shapes_map.insert("y".to_string(), vec![2]);
+        let n_bits_config = HashMap::new();
+
+        let built = reduce_sum_build(&layer, &w_and_b_map, &shapes_map, &n_bits_config)
+            .expect("build should succeed when axes come from input tensor");
+
+        let (mut api, _, _) = TestBuilder::new(vec![], vec![], EmptyHintCaller::new());
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "x".to_string(),
+            tensor_vars(&mut api, &[1, 2, 3, 4, 5, 6], &[2, 3]),
+        );
+        let mut logup_ctx = LogupRangeCheckContext::new_default();
+
+        let (_, out) = built
+            .apply(&mut api, &mut logup_ctx, &inputs)
+            .expect("apply should succeed");
+
+        let got: Vec<CircuitField<GoldilocksConfig>> = out
+            .iter()
+            .map(|&v| {
+                api.constant_value(v)
+                    .expect("debug builder always has constants")
+            })
+            .collect();
+        let expected = vec![
+            CircuitField::<GoldilocksConfig>::from(6u32),
+            CircuitField::<GoldilocksConfig>::from(15u32),
+        ];
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn build_apply_empty_axes_noop_true_returns_input() {
+        let axes_layer = axes_initializer("axes_input", Value::Array(vec![]));
+        let mut w_and_b_map: HashMap<String, &ONNXLayer> = HashMap::new();
+        w_and_b_map.insert("axes_input".to_string(), &axes_layer);
+
+        let layer = layer_with_params(
+            vec!["x".to_string(), "axes_input".to_string()],
+            reduce_sum_params(1, 1),
+        );
+
+        let mut shapes_map = HashMap::new();
+        shapes_map.insert("x".to_string(), vec![2, 3]);
+        shapes_map.insert("y".to_string(), vec![2, 3]);
+        let n_bits_config = HashMap::new();
+
+        let built = reduce_sum_build(&layer, &w_and_b_map, &shapes_map, &n_bits_config)
+            .expect("build should succeed for noop_with_empty_axes=true");
+
+        let (mut api, _, _) = TestBuilder::new(vec![], vec![], EmptyHintCaller::new());
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "x".to_string(),
+            tensor_vars(&mut api, &[1, 2, 3, 4, 5, 6], &[2, 3]),
+        );
+        let mut logup_ctx = LogupRangeCheckContext::new_default();
+
+        let (_, out) = built
+            .apply(&mut api, &mut logup_ctx, &inputs)
+            .expect("apply should succeed");
+
+        let got: Vec<CircuitField<GoldilocksConfig>> = out
+            .iter()
+            .map(|&v| {
+                api.constant_value(v)
+                    .expect("debug builder always has constants")
+            })
+            .collect();
+        let expected = vec![
+            CircuitField::<GoldilocksConfig>::from(1u32),
+            CircuitField::<GoldilocksConfig>::from(2u32),
+            CircuitField::<GoldilocksConfig>::from(3u32),
+            CircuitField::<GoldilocksConfig>::from(4u32),
+            CircuitField::<GoldilocksConfig>::from(5u32),
+            CircuitField::<GoldilocksConfig>::from(6u32),
+        ];
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn build_apply_empty_axes_noop_false_reduces_all_axes() {
+        let axes_layer = axes_initializer("axes_input", Value::Array(vec![]));
+        let mut w_and_b_map: HashMap<String, &ONNXLayer> = HashMap::new();
+        w_and_b_map.insert("axes_input".to_string(), &axes_layer);
+
+        let layer = layer_with_params(
+            vec!["x".to_string(), "axes_input".to_string()],
+            reduce_sum_params(1, 0),
+        );
+
+        let mut shapes_map = HashMap::new();
+        shapes_map.insert("x".to_string(), vec![2, 3]);
+        shapes_map.insert("y".to_string(), vec![1, 1]);
+        let n_bits_config = HashMap::new();
+
+        let built = reduce_sum_build(&layer, &w_and_b_map, &shapes_map, &n_bits_config)
+            .expect("build should succeed for noop_with_empty_axes=false");
+
+        let (mut api, _, _) = TestBuilder::new(vec![], vec![], EmptyHintCaller::new());
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "x".to_string(),
+            tensor_vars(&mut api, &[1, 2, 3, 4, 5, 6], &[2, 3]),
+        );
+        let mut logup_ctx = LogupRangeCheckContext::new_default();
+
+        let (_, out) = built
+            .apply(&mut api, &mut logup_ctx, &inputs)
+            .expect("apply should succeed");
+
+        let got: Vec<CircuitField<GoldilocksConfig>> = out
+            .iter()
+            .map(|&v| {
+                api.constant_value(v)
+                    .expect("debug builder always has constants")
+            })
+            .collect();
+        let expected = vec![CircuitField::<GoldilocksConfig>::from(21u32)];
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn build_invalid_axes_input_tensor_errors() {
+        let axes_layer = axes_initializer(
+            "axes_input",
+            Value::Array(vec![Value::Array(vec![Value::Integer(1.into())])]),
+        );
+        let mut w_and_b_map: HashMap<String, &ONNXLayer> = HashMap::new();
+        w_and_b_map.insert("axes_input".to_string(), &axes_layer);
+
+        let layer = layer_with_params(
+            vec!["x".to_string(), "axes_input".to_string()],
+            reduce_sum_params(1, 0),
+        );
+
+        let mut shapes_map = HashMap::new();
+        shapes_map.insert("x".to_string(), vec![2, 3]);
+        shapes_map.insert("y".to_string(), vec![1, 1]);
+        let n_bits_config = HashMap::new();
+
+        let err = match reduce_sum_build(&layer, &w_and_b_map, &shapes_map, &n_bits_config) {
+            Ok(_) => panic!("build should fail for non-1D axes input tensor"),
+            Err(e) => e,
+        };
+        let err_msg = err.to_string();
+        assert!(
+            err_msg.contains("axes tensor 'axes_input' must be 1D"),
+            "unexpected error: {err_msg}"
+        );
     }
 }
