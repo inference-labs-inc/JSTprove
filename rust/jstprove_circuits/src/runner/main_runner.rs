@@ -686,7 +686,7 @@ where
         let msg = if let Some((idx, total)) = first_failure.get() {
             format!("sumcheck rejected at layer {}/{total}", idx + 1)
         } else {
-            "Verification failed".into()
+            "proof invalid".into()
         };
         return Err(RunError::Verify(msg));
     }
@@ -876,7 +876,7 @@ fn flatten_rmpv_to_f64(val: &Value, out: &mut Vec<f64>) -> Result<(), RunError> 
         Value::Integer(n) => {
             out.push(
                 n.as_f64()
-                    .ok_or_else(|| RunError::Json("expected number".into()))?,
+                    .ok_or_else(|| RunError::Deserialize("msgpack: expected number".into()))?,
             );
         }
         Value::F32(f) => out.push(f64::from(*f)),
@@ -887,8 +887,8 @@ fn flatten_rmpv_to_f64(val: &Value, out: &mut Vec<f64>) -> Result<(), RunError> 
             }
         }
         _ => {
-            return Err(RunError::Json(
-                "input must contain numbers or arrays".into(),
+            return Err(RunError::Deserialize(
+                "msgpack: input must contain numbers or arrays".into(),
             ));
         }
     }
