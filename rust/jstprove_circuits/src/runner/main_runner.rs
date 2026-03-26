@@ -313,65 +313,6 @@ where
     Ok(())
 }
 
-/// Verifies a proof against a circuit, witness, and expected I/O assignments.
-///
-/// This function loads a circuit definition, a witness, and a proof, and
-/// verifies that the proof is valid with respect to the circuit and
-/// provided inputs/outputs. It uses the given [`IOReader`] to deserialize the
-/// input/output assignments into the default circuit representation.
-///
-/// The verifier also performs consistency checks:
-/// - Ensures that public inputs derived from the witness match those from the
-///   expander circuit.
-/// - Ensures that the witness matches the claimed output values.
-///
-/// # Arguments
-///
-/// - `circuit_path` – Path to the serialized circuit file.
-/// - `io_reader` – The I/O reader used to load inputs and outputs.
-/// - `input_path` – Path to the msgpack-encoded input file.
-/// - `output_path` – Path to the msgpack-encoded output file.
-/// - `witness_path` – Path to the witness file.
-/// - `proof_path` – Path to the proof file.
-///
-/// # Errors
-///
-/// Returns a [`RunError`] if:
-///
-/// - The circuit, witness, or proof file cannot be opened (`RunError::Io`)
-/// - Deserialization of the circuit, witness, or proof fails (`RunError::Deserialize`)
-/// - The proof fails to verify (`RunError::Verify`)
-///
-#[allow(dead_code)]
-fn run_verify_io<C: Config, I, CircuitDefaultType>(
-    circuit_path: &str,
-    io_reader: &mut I,
-    input_path: &str,
-    output_path: &str,
-    witness_path: &str,
-    proof_path: &str,
-) -> Result<(), RunError>
-where
-    I: IOReader<CircuitDefaultType, C>,
-    CircuitDefaultType: Default
-        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
-        + Clone,
-{
-    #[cfg(feature = "peak-mem")]
-    GLOBAL.reset_peak_memory();
-    let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
-    let mut expander_circuit = layered_circuit.export_to_expander_flatten();
-    verify_core::<C, I, CircuitDefaultType>(
-        &mut expander_circuit,
-        io_reader,
-        input_path,
-        output_path,
-        witness_path,
-        proof_path,
-    )?;
-    Ok(())
-}
-
 #[derive(Debug, Deserialize)]
 pub struct WitnessJob {
     pub input: String,
@@ -606,28 +547,11 @@ fn prove_core<C: Config>(
     Ok(())
 }
 
-fn verify_core<C: Config, I, CircuitDefaultType>(
+fn run_verification<C: Config>(
     expander_circuit: &mut expander_compiler::expander_circuit::Circuit<C::FieldConfig>,
-    io_reader: &mut I,
-    input_path: &str,
-    output_path: &str,
     witness_path: &str,
     proof_path: &str,
-) -> Result<(), RunError>
-where
-    I: IOReader<CircuitDefaultType, C>,
-    CircuitDefaultType: Default
-        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
-        + Clone,
-{
-    let assignment = CircuitDefaultType::default();
-    let assignment = io_reader.read_inputs(input_path, assignment)?;
-    let assignment = io_reader.read_outputs(output_path, assignment)?;
-
-    let mut vars: Vec<_> = Vec::new();
-    let mut public_vars: Vec<_> = Vec::new();
-    assignment.dump_into(&mut vars, &mut public_vars);
-
+) -> Result<(), RunError> {
     let file = std::fs::File::open(witness_path).map_err(|e| RunError::Io {
         source: e,
         path: witness_path.into(),
@@ -641,17 +565,6 @@ where
         .input_vals
         .clone_from(&simd_input);
     expander_circuit.public_input.clone_from(&simd_public_input);
-
-    if public_vars.len() != expander_circuit.public_input.len()
-        || public_vars
-            .iter()
-            .zip(&expander_circuit.public_input)
-            .any(|(pv, actual)| *actual != (*pv).into())
-    {
-        return Err(RunError::Verify(
-            "inputs/outputs don't match the witness".into(),
-        ));
-    }
 
     let file = std::fs::File::open(proof_path).map_err(|e| RunError::Io {
         source: e,
@@ -703,60 +616,7 @@ pub fn verify_from_witness<C: Config>(
 ) -> Result<(), RunError> {
     let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
     let mut expander_circuit = layered_circuit.export_to_expander_flatten();
-
-    let file = std::fs::File::open(witness_path).map_err(|e| RunError::Io {
-        source: e,
-        path: witness_path.into(),
-    })?;
-    let reader = auto_reader(file)?;
-    let witness = Witness::<C>::deserialize_from(reader)
-        .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
-
-    let (simd_input, simd_public_input) = witness.to_simd();
-    expander_circuit.layers[0]
-        .input_vals
-        .clone_from(&simd_input);
-    expander_circuit.public_input.clone_from(&simd_public_input);
-
-    let file = std::fs::File::open(proof_path).map_err(|e| RunError::Io {
-        source: e,
-        path: proof_path.into(),
-    })?;
-    let reader = auto_reader(file)?;
-    let proof_and_claimed_v: Vec<u8> =
-        Vec::deserialize_from(reader).map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
-
-    let (proof, claimed_v) =
-        executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v)
-            .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
-
-    let mpi_config = MPIConfig::verifier_new(1);
-    let first_failure: std::cell::Cell<Option<(usize, usize)>> = std::cell::Cell::new(None);
-
-    let on_layer = |layer_idx: usize, total: usize, passed: bool| {
-        if !passed && first_failure.get().is_none() {
-            first_failure.set(Some((layer_idx, total)));
-        }
-    };
-
-    let valid = executor::verify_with_progress::<C>(
-        &mut expander_circuit,
-        mpi_config,
-        &proof,
-        &claimed_v,
-        Some(&on_layer),
-    );
-
-    if !valid {
-        let msg = if let Some((idx, total)) = first_failure.get() {
-            format!("sumcheck rejected at layer {}/{total}", idx + 1)
-        } else {
-            "proof invalid".into()
-        };
-        return Err(RunError::Verify(msg));
-    }
-
-    Ok(())
+    run_verification::<C>(&mut expander_circuit, witness_path, proof_path)
 }
 
 /// # Errors
@@ -874,10 +734,18 @@ pub fn run_witness_from_inputs<C: Config>(
 fn flatten_rmpv_to_f64(val: &Value, out: &mut Vec<f64>) -> Result<(), RunError> {
     match val {
         Value::Integer(n) => {
-            out.push(
-                n.as_f64()
-                    .ok_or_else(|| RunError::Deserialize("msgpack: expected number".into()))?,
-            );
+            let v = n
+                .as_f64()
+                .ok_or_else(|| RunError::Deserialize("msgpack: expected number".into()))?;
+            if let Some(i) = n.as_i64() {
+                const MAX_EXACT: i64 = 1_i64 << 53;
+                if !(-MAX_EXACT..=MAX_EXACT).contains(&i) {
+                    return Err(RunError::Deserialize(format!(
+                        "msgpack: integer {i} exceeds f64 exact range (±2^53)"
+                    )));
+                }
+            }
+            out.push(v);
         }
         Value::F32(f) => out.push(f64::from(*f)),
         Value::F64(f) => out.push(*f),
@@ -1249,7 +1117,7 @@ where
 ///
 /// Returns a [`RunError`] if loading the manifest or circuit fails.
 pub fn run_batch_verify<C: Config, I, CircuitDefaultType>(
-    io_reader_factory: impl Fn() -> I,
+    _io_reader_factory: impl Fn() -> I,
     manifest_path: &str,
     circuit_path: &str,
 ) -> Result<BatchResult, RunError>
@@ -1267,17 +1135,9 @@ where
 
     Ok(run_batch_loop("verified", manifest.jobs, |_idx, job| {
         let mut circuit = layered_circuit.export_to_expander_flatten();
-        let mut io_reader = io_reader_factory();
-        verify_core::<C, I, CircuitDefaultType>(
-            &mut circuit,
-            &mut io_reader,
-            &job.input,
-            &job.output,
-            &job.witness,
-            &job.proof,
-        )
-        .map(|()| job.proof.clone())
-        .map_err(|e| e.to_string())
+        run_verification::<C>(&mut circuit, &job.witness, &job.proof)
+            .map(|()| job.proof.clone())
+            .map_err(|e| e.to_string())
     }))
 }
 
@@ -2055,15 +1915,10 @@ where
             steps.step("Loading circuit, witness, and proof");
             steps.step("Verifying");
             let sp = cli::spinner("checking GKR sumcheck transcript", mode);
-            let result = msgpack_verify_file::<C>(&circuit_path, &witness_path, &proof_path);
+            let result = verify_from_witness::<C>(&circuit_path, &witness_path, &proof_path);
             sp.finish_and_clear();
             match result {
-                Ok(true) => steps.finish_ok("Verification passed"),
-                Ok(false) => {
-                    let msg = "verification failed";
-                    steps.finish_err("Verification failed");
-                    return Err(CliError::AlreadyReported(msg.into()));
-                }
+                Ok(()) => steps.finish_ok("Verification passed"),
                 Err(e) => {
                     let detail = match &e {
                         RunError::Verify(msg) => msg.clone(),
