@@ -406,13 +406,28 @@ fn infer_pad(
     let pads_vals: Vec<i64> = initializers
         .get(pads_name)
         .or_else(|| constant_tensors.get(pads_name))
-        .map(|td| td.as_f64_vec().iter().map(|&v| v as i64).collect())
         .ok_or_else(|| {
             anyhow::anyhow!(
                 "layer {}: Pad pads tensor '{}' not found",
                 layer.name,
                 pads_name
             )
+        })
+        .and_then(|td| {
+            td.as_f64_vec()
+                .iter()
+                .enumerate()
+                .map(|(i, &v)| {
+                    if v.fract() != 0.0 || v < i64::MIN as f64 || v > i64::MAX as f64 {
+                        anyhow::bail!(
+                            "layer {}: pads[{i}] value {v} is not a valid integer",
+                            layer.name
+                        )
+                    } else {
+                        Ok(v as i64)
+                    }
+                })
+                .collect()
         })?;
 
     if pads_vals.len() != 2 * rank {
@@ -434,7 +449,12 @@ fn infer_pad(
                 layer.name
             );
         }
-        out_shape[i] = input_shape[i] + begin as usize + end as usize;
+        out_shape[i] = input_shape[i]
+            .checked_add(begin as usize)
+            .and_then(|s| s.checked_add(end as usize))
+            .ok_or_else(|| {
+                anyhow::anyhow!("layer {}: Pad output shape overflow at dim {i}", layer.name)
+            })?;
     }
 
     Ok(layer

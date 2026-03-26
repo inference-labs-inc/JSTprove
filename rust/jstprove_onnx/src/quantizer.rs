@@ -634,6 +634,15 @@ fn compute_layer_bound(
                 let d = w.shape();
                 let max_col_l1 = if d.len() == 2 && d[0] > 0 {
                     let (rows, cols) = (d[0], d[1]);
+                    if vals.len() != rows * cols {
+                        anyhow::bail!(
+                            "layer {}: MatMul weight shape {:?} implies {} elements but got {}",
+                            layer.name,
+                            d,
+                            rows * cols,
+                            vals.len()
+                        );
+                    }
                     (0..cols)
                         .map(|c| (0..rows).map(|r| vals[r * cols + c].abs()).sum::<f64>())
                         .fold(0.0_f64, f64::max)
