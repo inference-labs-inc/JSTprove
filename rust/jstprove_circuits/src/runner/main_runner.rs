@@ -1811,8 +1811,9 @@ where
             match result {
                 Ok(()) => steps.finish_ok("Verification passed"),
                 Err(e) => {
-                    steps.finish_err("Verification failed");
-                    return Err(e.into());
+                    let msg = format!("{e}");
+                    steps.finish_err(&format!("Verification failed: {msg}"));
+                    return Err(CliError::AlreadyReported(msg));
                 }
             }
         }
@@ -1924,12 +1925,14 @@ where
             match result {
                 Ok(true) => steps.finish_ok("Verification passed"),
                 Ok(false) => {
+                    let msg = "verification failed";
                     steps.finish_err("Verification failed");
-                    return Err(RunError::Verify("verification failed".into()).into());
+                    return Err(CliError::AlreadyReported(msg.into()));
                 }
                 Err(e) => {
-                    steps.finish_err("Verification failed");
-                    return Err(e.into());
+                    let msg = format!("{e}");
+                    steps.finish_err(&format!("Verification failed: {msg}"));
+                    return Err(CliError::AlreadyReported(msg));
                 }
             }
         }

@@ -280,7 +280,12 @@ fn main() {
     };
 
     if let Err(err) = result {
-        eprintln!("Error: {err}");
+        if !matches!(
+            err,
+            jstprove_circuits::runner::errors::CliError::AlreadyReported(_)
+        ) {
+            eprintln!("Error: {err}");
+        }
         std::process::exit(1);
     }
 }

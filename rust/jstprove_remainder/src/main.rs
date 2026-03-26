@@ -123,6 +123,7 @@ fn main() -> anyhow::Result<()> {
         OutputMode::Human
     };
 
+    let mut error_already_reported = false;
     let result = match cli_args.command {
         Commands::Compile {
             model,
@@ -156,7 +157,11 @@ fn main() -> anyhow::Result<()> {
             input,
         } => {
             cli::header("verify", mode);
-            jstprove_remainder::runner::verify::run(&model, &proof, &input, mode)
+            let r = jstprove_remainder::runner::verify::run(&model, &proof, &input, mode);
+            if r.is_err() {
+                error_already_reported = true;
+            }
+            r
         }
         Commands::BatchWitness {
             model,
@@ -200,6 +205,9 @@ fn main() -> anyhow::Result<()> {
     };
 
     if let Err(ref e) = result {
+        if error_already_reported {
+            return result;
+        }
         match mode {
             OutputMode::Human => {
                 let x = console::style("error:").red().bold();

@@ -81,10 +81,10 @@ pub fn run(
             steps.finish_ok("Verification passed");
             Ok(())
         }
-        Err(ref e) => {
-            steps.finish_err("Verification failed");
-            steps.detail(&describe_verification_error(e));
-            result
+        Err(e) => {
+            let diagnostic = describe_verification_error(&e);
+            steps.finish_err(&format!("Verification failed: {diagnostic}"));
+            Err(anyhow::anyhow!("{diagnostic}"))
         }
     }
 }
