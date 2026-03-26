@@ -1,6 +1,9 @@
 use std::path::Path;
 
+use jstprove_remainder::cli::OutputMode;
 use pyo3::prelude::*;
+
+const MODE: OutputMode = OutputMode::Quiet;
 
 fn anyhow_to_pyerr(e: anyhow::Error) -> PyErr {
     pyo3::exceptions::PyRuntimeError::new_err(format!("{:#}", e))
@@ -38,7 +41,7 @@ impl Circuit {
         let model = model_path.to_string();
         let out = output_path.to_string();
         py.allow_threads(move || {
-            jstprove_remainder::runner::compile::run(Path::new(&model), Path::new(&out), true)
+            jstprove_remainder::runner::compile::run(Path::new(&model), Path::new(&out), true, MODE)
         })
         .map_err(anyhow_to_pyerr)?;
         Ok(Circuit {
@@ -68,6 +71,7 @@ impl Circuit {
                 Path::new(&input),
                 Path::new(&witness),
                 true,
+                MODE,
             )
         })
         .map_err(anyhow_to_pyerr)?;
@@ -92,6 +96,7 @@ impl Circuit {
                 Path::new(&witness),
                 Path::new(&proof),
                 true,
+                MODE,
             )
         })
         .map_err(anyhow_to_pyerr)?;
@@ -112,6 +117,7 @@ impl Circuit {
                 Path::new(&model),
                 Path::new(&proof),
                 Path::new(&input),
+                MODE,
             )
         })
         .map_err(anyhow_to_pyerr)?;
@@ -131,6 +137,7 @@ impl Circuit {
                     Path::new(&model),
                     Path::new(&manifest),
                     true,
+                    MODE,
                 )
             })
             .map_err(anyhow_to_pyerr)?;
@@ -150,6 +157,7 @@ impl Circuit {
                     Path::new(&model),
                     Path::new(&manifest),
                     true,
+                    MODE,
                 )
             })
             .map_err(anyhow_to_pyerr)?;
@@ -168,6 +176,7 @@ impl Circuit {
                 jstprove_remainder::runner::batch::run_batch_verify(
                     Path::new(&model),
                     Path::new(&manifest),
+                    MODE,
                 )
             })
             .map_err(anyhow_to_pyerr)?;
