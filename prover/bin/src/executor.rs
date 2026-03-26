@@ -138,7 +138,6 @@ where
             &mpi_config,
         );
 
-    eprintln!("proving");
     prover.prove(circuit, &pcs_params, &pcs_proving_key, &mut pcs_scratch)
 }
 
