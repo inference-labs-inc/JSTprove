@@ -813,13 +813,9 @@ pub fn verify_goldilocks_basefold(
 }
 
 fn get_architecture_and_wandb(
-    params: &CircuitParams,
+    _params: &CircuitParams,
 ) -> Result<(Architecture, WANDB), crate::io::io_reader::onnx_context::OnnxContextError> {
     let architecture = OnnxContext::get_architecture()?;
-    let wandb = if params.weights_as_inputs {
-        WANDB { w_and_b: vec![] }
-    } else {
-        OnnxContext::get_wandb()?
-    };
+    let wandb = OnnxContext::get_wandb()?;
     Ok((architecture, wandb))
 }
