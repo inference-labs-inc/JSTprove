@@ -274,30 +274,25 @@ fn infer_gemm(
         .map(|v| v != 0)
         .unwrap_or(false);
 
-    if a_shape.len() < 2 {
+    if a_shape.len() != 2 {
         bail!(
-            "layer {}: Gemm input A rank {} < 2",
+            "layer {}: Gemm input A rank {} != 2 (batched Gemm not yet supported in circuit runtime)",
             layer.name,
             a_shape.len()
         );
     }
-    if b_shape.len() < 2 {
+    if b_shape.len() != 2 {
         bail!(
-            "layer {}: Gemm input B rank {} < 2",
+            "layer {}: Gemm input B rank {} != 2 (batched Gemm not yet supported in circuit runtime)",
             layer.name,
             b_shape.len()
         );
     }
 
-    let a_rows = a_shape[a_shape.len() - 2];
-    let a_cols = a_shape[a_shape.len() - 1];
-    let b_rows = b_shape[b_shape.len() - 2];
-    let b_cols = b_shape[b_shape.len() - 1];
-
-    let m = if trans_a { a_cols } else { a_rows };
-    let k_a = if trans_a { a_rows } else { a_cols };
-    let k_b = if trans_b { b_cols } else { b_rows };
-    let n = if trans_b { b_rows } else { b_cols };
+    let m = if trans_a { a_shape[1] } else { a_shape[0] };
+    let k_a = if trans_a { a_shape[0] } else { a_shape[1] };
+    let k_b = if trans_b { b_shape[1] } else { b_shape[0] };
+    let n = if trans_b { b_shape[0] } else { b_shape[1] };
 
     if k_a != k_b {
         bail!(
@@ -306,40 +301,7 @@ fn infer_gemm(
         );
     }
 
-    let a_batch = &a_shape[..a_shape.len() - 2];
-    let b_batch = &b_shape[..b_shape.len() - 2];
-    let batch_prefix = if b_batch.is_empty() {
-        a_batch.to_vec()
-    } else if a_batch.is_empty() {
-        b_batch.to_vec()
-    } else {
-        let max_len = a_batch.len().max(b_batch.len());
-        let mut prefix = Vec::with_capacity(max_len);
-        for i in 0..max_len {
-            let da = if i < max_len - a_batch.len() {
-                1
-            } else {
-                a_batch[i - (max_len - a_batch.len())]
-            };
-            let db = if i < max_len - b_batch.len() {
-                1
-            } else {
-                b_batch[i - (max_len - b_batch.len())]
-            };
-            if da != db && da != 1 && db != 1 {
-                bail!(
-                    "layer {}: Gemm batch dimension mismatch at axis {i}: A={da} B={db}",
-                    layer.name
-                );
-            }
-            prefix.push(da.max(db));
-        }
-        prefix
-    };
-
-    let mut out_shape = batch_prefix;
-    out_shape.push(m);
-    out_shape.push(n);
+    let out_shape = vec![m, n];
     Ok(layer
         .outputs
         .iter()
@@ -631,16 +593,13 @@ fn resolve_axes_from_input(
     constant_tensors: &HashMap<String, TensorData>,
 ) -> Option<Vec<i64>> {
     let name = layer.inputs.get(input_idx)?;
-    if let Some(td) = initializers
+    if name.is_empty() {
+        return Some(vec![]);
+    }
+    initializers
         .get(name)
         .or_else(|| constant_tensors.get(name))
-    {
-        let vals = td.as_i64_vec();
-        if !vals.is_empty() {
-            return Some(vals);
-        }
-    }
-    None
+        .map(|td| td.as_i64_vec())
 }
 
 fn infer_squeeze(
@@ -1898,13 +1857,12 @@ mod tests {
     }
 
     #[test]
-    fn gemm_batched_3d_inputs() {
+    fn gemm_batched_3d_rejected() {
         let mut shapes = HashMap::new();
         shapes.insert("a".to_string(), vec![1, 300, 64]);
         shapes.insert("b".to_string(), vec![64, 64]);
         let layer = make_layer(OpType::Gemm, vec!["a", "b"], vec!["y"], HashMap::new());
-        let result = infer_gemm(&layer, &shapes).unwrap();
-        assert_eq!(result[0].1, vec![1, 300, 64]);
+        assert!(infer_gemm(&layer, &shapes).is_err());
     }
 
     #[test]
@@ -1929,5 +1887,30 @@ mod tests {
         let result =
             infer_slice(&layer, Some(&input_shape), &HashMap::new(), &HashMap::new()).unwrap();
         assert_eq!(result[0].1, vec![1, 300, 64, 8]);
+    }
+
+    #[test]
+    fn squeeze_reads_axes_from_input() {
+        let input_shape = vec![1, 300, 1, 64];
+        let attrs = HashMap::new();
+        let layer = make_layer(
+            OpType::Squeeze,
+            vec!["data", "axes_tensor"],
+            vec!["out"],
+            attrs,
+        );
+        let mut inits = HashMap::new();
+        inits.insert(
+            "axes_tensor".to_string(),
+            TensorData {
+                dims: vec![1],
+                float_data: vec![],
+                int_data: vec![2],
+                data_type: 7,
+                name: "axes_tensor".to_string(),
+            },
+        );
+        let result = infer_squeeze(&layer, Some(&input_shape), &inits, &HashMap::new()).unwrap();
+        assert_eq!(result[0].1, vec![1, 300, 64]);
     }
 }
