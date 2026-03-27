@@ -274,25 +274,30 @@ fn infer_gemm(
         .map(|v| v != 0)
         .unwrap_or(false);
 
-    if a_shape.len() != 2 {
+    if a_shape.len() < 2 {
         bail!(
-            "layer {}: Gemm input A rank {} != 2",
+            "layer {}: Gemm input A rank {} < 2",
             layer.name,
             a_shape.len()
         );
     }
-    if b_shape.len() != 2 {
+    if b_shape.len() < 2 {
         bail!(
-            "layer {}: Gemm input B rank {} != 2",
+            "layer {}: Gemm input B rank {} < 2",
             layer.name,
             b_shape.len()
         );
     }
 
-    let m = if trans_a { a_shape[1] } else { a_shape[0] };
-    let k_a = if trans_a { a_shape[0] } else { a_shape[1] };
-    let k_b = if trans_b { b_shape[1] } else { b_shape[0] };
-    let n = if trans_b { b_shape[0] } else { b_shape[1] };
+    let a_rows = a_shape[a_shape.len() - 2];
+    let a_cols = a_shape[a_shape.len() - 1];
+    let b_rows = b_shape[b_shape.len() - 2];
+    let b_cols = b_shape[b_shape.len() - 1];
+
+    let m = if trans_a { a_cols } else { a_rows };
+    let k_a = if trans_a { a_rows } else { a_cols };
+    let k_b = if trans_b { b_cols } else { b_rows };
+    let n = if trans_b { b_rows } else { b_cols };
 
     if k_a != k_b {
         bail!(
@@ -301,7 +306,9 @@ fn infer_gemm(
         );
     }
 
-    let out_shape = vec![m, n];
+    let mut out_shape: Vec<usize> = a_shape[..a_shape.len() - 2].to_vec();
+    out_shape.push(m);
+    out_shape.push(n);
     Ok(layer
         .outputs
         .iter()
@@ -1191,31 +1198,28 @@ fn infer_slice(
             .map(|td| td.as_i64_vec())
     };
 
-    // starts — required, input[1]
     let starts_name = layer
         .inputs
         .get(1)
         .ok_or_else(|| anyhow::anyhow!("layer {}: Slice missing starts input", layer.name))?;
-    let starts = get_i64(starts_name).ok_or_else(|| {
-        anyhow::anyhow!(
-            "layer {}: Slice starts '{}' not found; must be a compile-time constant",
-            layer.name,
-            starts_name
-        )
-    })?;
+    let starts_opt = get_i64(starts_name);
 
-    // ends — required, input[2]
     let ends_name = layer
         .inputs
         .get(2)
         .ok_or_else(|| anyhow::anyhow!("layer {}: Slice missing ends input", layer.name))?;
-    let ends = get_i64(ends_name).ok_or_else(|| {
-        anyhow::anyhow!(
-            "layer {}: Slice ends '{}' not found; must be a compile-time constant",
-            layer.name,
-            ends_name
-        )
-    })?;
+    let ends_opt = get_i64(ends_name);
+
+    if starts_opt.is_none() || ends_opt.is_none() {
+        return Ok(layer
+            .outputs
+            .iter()
+            .map(|o| (o.clone(), input_shape.clone()))
+            .collect());
+    }
+
+    let starts = starts_opt.unwrap();
+    let ends = ends_opt.unwrap();
 
     // Validate that starts and ends have the same length.
     if starts.len() != ends.len() {
@@ -1829,5 +1833,39 @@ mod tests {
         );
         let result = infer_unsqueeze(&layer, Some(&input_shape), &inits, &HashMap::new()).unwrap();
         assert_eq!(result[0].1, vec![1, 300, 64, 1]);
+    }
+
+    #[test]
+    fn gemm_batched_3d_inputs() {
+        let mut shapes = HashMap::new();
+        shapes.insert("a".to_string(), vec![1, 300, 64]);
+        shapes.insert("b".to_string(), vec![64, 64]);
+        let layer = make_layer(OpType::Gemm, vec!["a", "b"], vec!["y"], HashMap::new());
+        let result = infer_gemm(&layer, &shapes).unwrap();
+        assert_eq!(result[0].1, vec![1, 300, 64]);
+    }
+
+    #[test]
+    fn gemm_2d_unchanged() {
+        let mut shapes = HashMap::new();
+        shapes.insert("a".to_string(), vec![4, 3]);
+        shapes.insert("b".to_string(), vec![3, 5]);
+        let layer = make_layer(OpType::Gemm, vec!["a", "b"], vec!["y"], HashMap::new());
+        let result = infer_gemm(&layer, &shapes).unwrap();
+        assert_eq!(result[0].1, vec![4, 5]);
+    }
+
+    #[test]
+    fn slice_dynamic_bounds_passthrough() {
+        let input_shape = vec![1, 300, 64, 8];
+        let layer = make_layer(
+            OpType::Slice,
+            vec!["data", "dyn_starts", "dyn_ends"],
+            vec!["out"],
+            HashMap::new(),
+        );
+        let result =
+            infer_slice(&layer, Some(&input_shape), &HashMap::new(), &HashMap::new()).unwrap();
+        assert_eq!(result[0].1, vec![1, 300, 64, 8]);
     }
 }
