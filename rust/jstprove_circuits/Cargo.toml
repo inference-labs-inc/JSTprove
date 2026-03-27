@@ -84,4 +84,4 @@ path = "bin/logup_codegen.rs"
 
 [[bin]]
 name = "jstprove"
-path = "bin/generic_demo.rs"
+path = "bin/jstprove.rs"

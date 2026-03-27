@@ -98,7 +98,7 @@ const ONNX_FULL_COMMANDS: &[&str] = &[
 #[allow(clippy::too_many_lines)]
 fn main() {
     let mut file_reader = FileReader {
-        path: "demo_cnn".to_owned(),
+        path: "jstprove".to_owned(),
     };
 
     let matches = get_args();
