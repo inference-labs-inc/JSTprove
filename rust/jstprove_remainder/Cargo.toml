@@ -24,7 +24,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rayon = "1.8"
 itertools = "0.14"
 console.workspace = true
-indicatif = "0.17"
+indicatif = "0.18"
 serde_json.workspace = true
 
 [features]
