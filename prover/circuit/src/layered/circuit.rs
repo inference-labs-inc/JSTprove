@@ -124,6 +124,14 @@ impl<C: FieldEngine> CircuitLayer<C> {
     pub fn identify_structure_info(&mut self) {
         self.structure_info.skip_sumcheck_phase_two = self.mul.is_empty();
     }
+
+    pub fn sort_gates_for_locality(&mut self) {
+        self.mul
+            .sort_unstable_by_key(|g| (g.o_id, g.i_ids[0], g.i_ids[1]));
+        self.add.sort_unstable_by_key(|g| (g.o_id, g.i_ids[0]));
+        self.const_.sort_unstable_by_key(|g| g.o_id);
+        self.uni.sort_unstable_by_key(|g| (g.o_id, g.i_ids[0]));
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -338,7 +346,14 @@ impl<C: FieldEngine> Circuit<C> {
         );
     }
 
+    pub fn sort_all_gates_for_locality(&mut self) {
+        for layer in &mut self.layers {
+            layer.sort_gates_for_locality();
+        }
+    }
+
     pub fn pre_process_gkr(&mut self) {
+        self.sort_all_gates_for_locality();
         self.identify_rnd_coefs();
         self.identify_structure_info();
 
