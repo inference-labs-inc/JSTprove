@@ -306,7 +306,38 @@ fn infer_gemm(
         );
     }
 
-    let mut out_shape: Vec<usize> = a_shape[..a_shape.len() - 2].to_vec();
+    let a_batch = &a_shape[..a_shape.len() - 2];
+    let b_batch = &b_shape[..b_shape.len() - 2];
+    let batch_prefix = if b_batch.is_empty() {
+        a_batch.to_vec()
+    } else if a_batch.is_empty() {
+        b_batch.to_vec()
+    } else {
+        let max_len = a_batch.len().max(b_batch.len());
+        let mut prefix = Vec::with_capacity(max_len);
+        for i in 0..max_len {
+            let da = if i < max_len - a_batch.len() {
+                1
+            } else {
+                a_batch[i - (max_len - a_batch.len())]
+            };
+            let db = if i < max_len - b_batch.len() {
+                1
+            } else {
+                b_batch[i - (max_len - b_batch.len())]
+            };
+            if da != db && da != 1 && db != 1 {
+                bail!(
+                    "layer {}: Gemm batch dimension mismatch at axis {i}: A={da} B={db}",
+                    layer.name
+                );
+            }
+            prefix.push(da.max(db));
+        }
+        prefix
+    };
+
+    let mut out_shape = batch_prefix;
     out_shape.push(m);
     out_shape.push(n);
     Ok(layer
@@ -1236,18 +1267,21 @@ fn infer_slice(
         .ok_or_else(|| anyhow::anyhow!("layer {}: Slice missing ends input", layer.name))?;
     let ends_opt = get_i64(ends_name);
 
-    if starts_opt.is_none() || ends_opt.is_none() {
-        return Ok(layer
+    let passthrough = || {
+        Ok(layer
             .outputs
             .iter()
             .map(|o| (o.clone(), input_shape.clone()))
-            .collect());
+            .collect())
+    };
+
+    if starts_opt.is_none() || ends_opt.is_none() {
+        return passthrough();
     }
 
     let starts = starts_opt.unwrap();
     let ends = ends_opt.unwrap();
 
-    // Validate that starts and ends have the same length.
     if starts.len() != ends.len() {
         bail!(
             "layer {}: Slice starts and ends must have the same length (starts={}, ends={})",
@@ -1257,19 +1291,21 @@ fn infer_slice(
         );
     }
 
-    // axes — optional, input[3]; default is [0, 1, ..., len(starts)-1]
-    let axes_from_input: Option<Vec<i64>> = layer
-        .inputs
-        .get(3)
-        .filter(|n| !n.is_empty())
-        .and_then(|n| get_i64(n));
+    let axes_from_input: Option<Vec<i64>> = match layer.inputs.get(3).filter(|n| !n.is_empty()) {
+        Some(n) => match get_i64(n) {
+            Some(v) => Some(v),
+            None => return passthrough(),
+        },
+        None => None,
+    };
 
-    // steps — optional, input[4]; default is all 1s
-    let steps_from_input: Option<Vec<i64>> = layer
-        .inputs
-        .get(4)
-        .filter(|n| !n.is_empty())
-        .and_then(|n| get_i64(n));
+    let steps_from_input: Option<Vec<i64>> = match layer.inputs.get(4).filter(|n| !n.is_empty()) {
+        Some(n) => match get_i64(n) {
+            Some(v) => Some(v),
+            None => return passthrough(),
+        },
+        None => None,
+    };
 
     // Validate lengths when axes/steps are explicitly provided.
     if let Some(ref ax) = axes_from_input {
