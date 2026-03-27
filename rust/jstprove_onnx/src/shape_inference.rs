@@ -621,11 +621,24 @@ fn infer_squeeze(
     let input_shape = input_shape
         .ok_or_else(|| anyhow::anyhow!("layer {}: Squeeze missing input shape", layer.name))?;
 
-    let axes: Vec<i64> = layer
-        .get_ints_attr("axes")
-        .map(|v| v.to_vec())
-        .or_else(|| resolve_axes_from_input(layer, 1, initializers, constant_tensors))
-        .unwrap_or_default();
+    let axes: Vec<i64> = match layer.get_ints_attr("axes").map(|v| v.to_vec()) {
+        Some(v) => v,
+        None => {
+            if layer.inputs.len() > 1 {
+                resolve_axes_from_input(layer, 1, initializers, constant_tensors).ok_or_else(
+                    || {
+                        anyhow::anyhow!(
+                            "layer {}: Squeeze axes input '{}' could not be resolved from initializers or constants",
+                            layer.name,
+                            layer.inputs.get(1).map_or("", String::as_str)
+                        )
+                    },
+                )?
+            } else {
+                vec![]
+            }
+        }
+    };
 
     let out_shape: Vec<usize> = if axes.is_empty() {
         input_shape.iter().copied().filter(|&d| d != 1).collect()
@@ -685,11 +698,24 @@ fn infer_unsqueeze(
     let input_shape = input_shape
         .ok_or_else(|| anyhow::anyhow!("layer {}: Unsqueeze missing input shape", layer.name))?;
 
-    let axes: Vec<i64> = layer
-        .get_ints_attr("axes")
-        .map(|v| v.to_vec())
-        .or_else(|| resolve_axes_from_input(layer, 1, initializers, constant_tensors))
-        .unwrap_or_default();
+    let axes: Vec<i64> = match layer.get_ints_attr("axes").map(|v| v.to_vec()) {
+        Some(v) => v,
+        None => {
+            if layer.inputs.len() > 1 {
+                resolve_axes_from_input(layer, 1, initializers, constant_tensors).ok_or_else(
+                    || {
+                        anyhow::anyhow!(
+                            "layer {}: Unsqueeze axes input '{}' could not be resolved from initializers or constants",
+                            layer.name,
+                            layer.inputs.get(1).map_or("", String::as_str)
+                        )
+                    },
+                )?
+            } else {
+                vec![]
+            }
+        }
+    };
 
     let new_rank = input_shape.len() + axes.len();
     let r = new_rank as i64;
