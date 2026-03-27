@@ -4,8 +4,6 @@ use std::collections::HashMap;
 use crate::circuit::ir::common::{Instruction, RawConstraint};
 use crate::circuit::ir::expr::Expression;
 use crate::circuit::{config::Config, ir, layered::Coef};
-use crate::field::FieldArith;
-use crate::frontend::CircuitField;
 use crate::utils::error::Error;
 
 use super::basic::{
@@ -83,7 +81,8 @@ impl<'a, C: Config> Builder<'a, C> {
             to_really_single(&mut self.mid_vars, &self.out_var_exprs[self.in_to_out[*x]]);
         });
         for (i, expr) in self.mid_vars.vec().iter().enumerate().skip(out_var_max + 1) {
-            let non_iv = *expr == Expression::new_linear(CircuitField::<C>::one(), i);
+            let non_iv =
+                *expr == Expression::new_linear(crate::circuit::ir::expr::Coef::<C>::one(), i);
             if i <= last_subc_o_mid_id {
                 assert!(non_iv);
                 continue;
@@ -136,7 +135,7 @@ impl<'a, C: Config> Builder<'a, C> {
                         .collect();
                     fin_insns.push(ir::dest::Instruction::InternalVariable {
                         expr: Expression::new_custom(
-                            CircuitField::<C>::one(),
+                            crate::circuit::ir::expr::Coef::<C>::one(),
                             *gate_type,
                             fin_inputs,
                         ),
@@ -286,9 +285,9 @@ mod tests {
             c0.instructions[1],
             ir::dest::Instruction::InternalVariable {
                 expr: Expression::from_terms(vec![
-                    Term::new_linear(CField::one(), 1),
-                    Term::new_linear(CField::from(2), 2),
-                    Term::new_const(CField::from(3))
+                    Term::new_linear_field(CField::one(), 1),
+                    Term::new_linear_field(CField::from(2), 2),
+                    Term::new_const_field(CField::from(3))
                 ])
             }
         );

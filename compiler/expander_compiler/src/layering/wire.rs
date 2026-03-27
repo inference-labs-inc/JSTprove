@@ -301,14 +301,14 @@ impl<'a, C: Config, I: InputType> CompileContext<'a, C, I> {
                                     res.gate_consts.push(GateConst {
                                         inputs: [],
                                         output: pos,
-                                        coef: Coef::Constant(term.coef),
+                                        coef: Coef::Constant(term.coef.to_field()),
                                     });
                                 }
                                 VarSpec::Linear(vid) => {
                                     res.gate_adds.push(GateAdd {
                                         inputs: [I::Input::new(0, aq.var_pos[vid])],
                                         output: pos,
-                                        coef: Coef::Constant(term.coef),
+                                        coef: Coef::Constant(term.coef.to_field()),
                                     });
                                 }
                                 VarSpec::Quad(vid0, vid1) => {
@@ -321,7 +321,7 @@ impl<'a, C: Config, I: InputType> CompileContext<'a, C, I> {
                                             I::Input::new(0, inputs[1]),
                                         ],
                                         output: pos,
-                                        coef: Coef::Constant(term.coef),
+                                        coef: Coef::Constant(term.coef.to_field()),
                                     });
                                 }
                                 VarSpec::Custom { gate_type, inputs } => {
@@ -332,7 +332,7 @@ impl<'a, C: Config, I: InputType> CompileContext<'a, C, I> {
                                             .map(|x| I::Input::new(0, aq.var_pos[x]))
                                             .collect(),
                                         output: pos,
-                                        coef: Coef::Constant(term.coef),
+                                        coef: Coef::Constant(term.coef.to_field()),
                                     });
                                 }
                                 VarSpec::RandomLinear(vid) => {

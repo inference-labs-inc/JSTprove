@@ -5,10 +5,9 @@ use crate::{
     circuit::ir::{
         common::Instruction as _,
         dest::{CircuitRelaxed as IrCircuit, Instruction, RootCircuitRelaxed as IrRootCircuit},
-        expr::{Expression, Term, VarSpec},
+        expr::{Coef as ExprCoef, Expression, Term, VarSpec},
     },
-    field::FieldArith,
-    frontend::{CircuitField, Config},
+    frontend::Config,
     utils::pool::Pool,
 };
 
@@ -256,14 +255,14 @@ impl<'a, C: Config> SplitContext<'a, C> {
                     && min_layers[sub_combined_constraints[j]] == i
                 {
                     terms.push(Term::new_linear(
-                        CircuitField::<C>::one(),
+                        ExprCoef::<C>::one(),
                         sub_combined_constraints[j],
                     ));
                     j += 1;
                 }
                 while circuit_id == 0 && !add_outputs.is_empty() {
                     terms.push(Term::new_linear(
-                        CircuitField::<C>::one(),
+                        ExprCoef::<C>::one(),
                         add_outputs[add_outputs.len() - 1],
                     ));
                     add_outputs.pop();
@@ -273,10 +272,7 @@ impl<'a, C: Config> SplitContext<'a, C> {
                     k += 1;
                 }
                 if !terms.is_empty() {
-                    if terms.len() == 1
-                        && terms[0].coef == CircuitField::<C>::one()
-                        && lst_terms.is_some()
-                    {
+                    if terms.len() == 1 && terms[0].coef.is_one() && lst_terms.is_some() {
                         if let VarSpec::Linear(x) = terms[0].vars {
                             if lst == Some(x) {
                                 terms = lst_terms.clone().unwrap();
@@ -501,8 +497,9 @@ pub fn split_to_single_layer<C: Config>(root: &IrRootCircuit<C>) -> IrRootCircui
 #[cfg(test)]
 mod tests {
 
+    use crate::circuit::config::CircuitField;
     use crate::circuit::ir::common::rand_gen::{RandomCircuitConfig, RandomRange};
-    use crate::field::M31;
+    use crate::field::{FieldArith, M31};
     use crate::frontend::{GF2Config, M31Config};
 
     use super::*;
@@ -529,13 +526,13 @@ mod tests {
             IrCircuit {
                 instructions: vec![
                     InternalVariable {
-                        expr: Expression::from_terms(vec![Term::new_linear(M31::from(2), 1)]),
+                        expr: Expression::from_terms(vec![Term::new_linear_field(M31::from(2), 1)]),
                     },
                     InternalVariable {
-                        expr: Expression::from_terms(vec![Term::new_linear(M31::from(3), 2)]),
+                        expr: Expression::from_terms(vec![Term::new_linear_field(M31::from(3), 2)]),
                     },
                     InternalVariable {
-                        expr: Expression::from_terms(vec![Term::new_linear(M31::from(5), 3)]),
+                        expr: Expression::from_terms(vec![Term::new_linear_field(M31::from(5), 3)]),
                     },
                 ],
                 constraints: vec![],

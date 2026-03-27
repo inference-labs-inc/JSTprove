@@ -7,7 +7,7 @@ use crate::hints;
 use crate::utils::error::Error;
 
 use super::common::EvalResult;
-use super::expr::{Term, VarSpec};
+use super::expr::{Coef as ExprCoef, Term, VarSpec};
 use super::{
     common::{self, Instruction as _, IrConfig, RawConstraint},
     expr::Expression,
@@ -111,7 +111,10 @@ impl<C: Config> common::Instruction<C> for Instruction<C> {
     }
     fn from_kx_plus_b(x: usize, k: CircuitField<C>, b: CircuitField<C>) -> Self {
         Instruction::InternalVariable {
-            expr: Expression::from_terms(vec![Term::new_linear(k, x), Term::new_const(b)]),
+            expr: Expression::from_terms(vec![
+                Term::new_linear_field(k, x),
+                Term::new_const_field(b),
+            ]),
         }
     }
     fn validate(&self, num_public_inputs: usize) -> Result<(), Error> {
@@ -125,20 +128,21 @@ impl<C: Config> common::Instruction<C> for Instruction<C> {
             Instruction::InternalVariable { expr } => {
                 let mut sum = CircuitField::<C>::zero();
                 for term in expr.iter() {
+                    let coef = term.coef.to_field();
                     match &term.vars {
                         VarSpec::Const => {
-                            sum += term.coef;
+                            sum += coef;
                         }
                         VarSpec::Linear(i) => {
-                            sum += values[*i] * term.coef;
+                            sum += values[*i] * coef;
                         }
                         VarSpec::Quad(i, j) => {
-                            sum += values[*i] * values[*j] * term.coef;
+                            sum += values[*i] * values[*j] * coef;
                         }
                         VarSpec::Custom { gate_type, inputs } => {
                             let args: Vec<CircuitField<C>> =
                                 inputs.iter().map(|i| values[*i]).collect();
-                            sum += hints::stub_impl(*gate_type, &args, 1)[0] * term.coef;
+                            sum += hints::stub_impl(*gate_type, &args, 1)[0] * coef;
                         }
                         VarSpec::RandomLinear(i) => {
                             sum += values[*i] * Coef::<C>::Random.get_value_unsafe();
@@ -197,7 +201,7 @@ impl<C: Config> CircuitRelaxed<C> {
                             let copy_insn = match &insn_of_var[i] {
                                 Some(insn_id) => new_instructions[*insn_id].clone(),
                                 None => Instruction::InternalVariable {
-                                    expr: Expression::new_linear(CircuitField::<C>::one(), i),
+                                    expr: Expression::new_linear(ExprCoef::<C>::one(), i),
                                 },
                             };
                             new_var_max += 1;

@@ -164,8 +164,8 @@ fn cross_layer_circuit() {
             .instructions
             .push(IrInstruction::InternalVariable {
                 expr: Expression::from_terms(vec![
-                    Term::new_linear(CField::one(), N + i),
-                    Term::new_linear(CField::one(), N - i - 1),
+                    Term::new_linear_field(CField::one(), N + i),
+                    Term::new_linear_field(CField::one(), N - i - 1),
                 ]),
             });
     }

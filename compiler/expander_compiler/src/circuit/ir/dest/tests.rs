@@ -13,7 +13,7 @@ use crate::{
         config::Config,
         ir::{
             common::rand_gen::*,
-            expr::{Expression, Term},
+            expr::{Coef as ExprCoef, Expression, Term},
         },
         layered::Coef,
     },
@@ -33,7 +33,7 @@ fn validate_vars() {
                     value: Coef::Constant(CField::one()),
                 },
                 InternalVariable {
-                    expr: Expression::from_terms(vec![Term::new_linear(CField::one(), 4)]),
+                    expr: Expression::from_terms(vec![Term::new_linear_field(CField::one(), 4)]),
                 },
             ],
             constraints: vec![2],
@@ -43,7 +43,7 @@ fn validate_vars() {
     );
     assert!(root.validate().is_err());
     root.circuits.get_mut(&0).unwrap().instructions[1] = InternalVariable {
-        expr: Expression::from_terms(vec![Term::new_linear(CField::one(), 3)]),
+        expr: Expression::from_terms(vec![Term::new_linear_field(CField::one(), 3)]),
     };
     assert!(root.validate().is_ok());
     root.circuits.get_mut(&0).unwrap().constraints[0] = 10;
@@ -65,7 +65,7 @@ fn validate_vars_dup() {
                     value: Coef::Constant(CField::one()),
                 },
                 InternalVariable {
-                    expr: Expression::from_terms(vec![Term::new_linear(CField::one(), 1)]),
+                    expr: Expression::from_terms(vec![Term::new_linear_field(CField::one(), 1)]),
                 },
             ],
             constraints: vec![2],
@@ -169,8 +169,8 @@ fn eval_output() {
                 },
                 InternalVariable {
                     expr: Expression::from_terms(vec![
-                        Term::new_linear(CField::one(), 6),
-                        Term::new_linear(CField::from(9), 2),
+                        Term::new_linear_field(CField::one(), 6),
+                        Term::new_linear_field(CField::from(9), 2),
                     ]),
                 },
             ],
@@ -184,8 +184,8 @@ fn eval_output() {
         Circuit {
             instructions: vec![InternalVariable {
                 expr: Expression::from_terms(vec![
-                    Term::new_quad(CField::one(), 1, 1),
-                    Term::new_linear(CField::from(10), 2),
+                    Term::new_quad_field(CField::one(), 1, 1),
+                    Term::new_linear_field(CField::from(10), 2),
                 ]),
             }],
             constraints: vec![],
@@ -261,9 +261,9 @@ impl<C: Config> RandomInstruction for Instruction<C> {
                 let coef = CircuitField::<C>::from(rnd.next_u32());
                 let op = rnd.next_u64() as usize % 3;
                 terms.push(match op {
-                    0 => Term::new_const(coef),
-                    1 => Term::new_linear(coef, rnd.next_u64() as usize % num_vars + 1),
-                    2 => Term::new_quad(
+                    0 => Term::new_const_field(coef),
+                    1 => Term::new_linear_field(coef, rnd.next_u64() as usize % num_vars + 1),
+                    2 => Term::new_quad_field(
                         coef,
                         rnd.next_u64() as usize % num_vars + 1,
                         rnd.next_u64() as usize % num_vars + 1,
@@ -436,7 +436,7 @@ fn adjust_for_layering() {
         r2.circuits[&0].instructions,
         vec![
             InternalVariable {
-                expr: Expression::new_linear(CField::one(), 1)
+                expr: Expression::new_linear(ExprCoef::<C>::one(), 1)
             },
             SubCircuitCall {
                 sub_circuit_id: 1,
@@ -444,7 +444,7 @@ fn adjust_for_layering() {
                 num_outputs: 1,
             },
             InternalVariable {
-                expr: Expression::new_linear(CField::one(), 3)
+                expr: Expression::new_linear(ExprCoef::<C>::one(), 3)
             },
             SubCircuitCall {
                 sub_circuit_id: 1,

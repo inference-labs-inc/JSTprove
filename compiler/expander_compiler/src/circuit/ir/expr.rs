@@ -8,11 +8,14 @@ use std::{
 use serdes::{ExpSerde, SerdeResult};
 
 use crate::circuit::config::{CircuitField, Config};
+use crate::compact_coef::CompactCoef;
 use crate::field::FieldArith;
+
+pub type Coef<C> = CompactCoef<CircuitField<C>>;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Term<C: Config> {
-    pub coef: CircuitField<C>,
+    pub coef: Coef<C>,
     pub vars: VarSpec,
 }
 
@@ -95,12 +98,9 @@ impl VarSpec {
 
 impl<C: Config> Ord for Term<C> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        let res = self.vars.cmp(&other.vars);
-        if res == std::cmp::Ordering::Equal {
-            self.coef.cmp(&other.coef)
-        } else {
-            res
-        }
+        self.vars
+            .cmp(&other.vars)
+            .then_with(|| self.coef.cmp(&other.coef))
     }
 }
 
@@ -111,19 +111,31 @@ impl<C: Config> PartialOrd for Term<C> {
 }
 
 impl<C: Config> Term<C> {
-    pub fn new_const(value: CircuitField<C>) -> Self {
+    pub fn new_const(value: Coef<C>) -> Self {
         Term {
             coef: value,
             vars: VarSpec::Const,
         }
     }
-    pub fn new_linear(value: CircuitField<C>, index: usize) -> Self {
+    pub fn new_const_field(value: CircuitField<C>) -> Self {
+        Term {
+            coef: Coef::<C>::from_field(value),
+            vars: VarSpec::Const,
+        }
+    }
+    pub fn new_linear(value: Coef<C>, index: usize) -> Self {
         Term {
             coef: value,
             vars: VarSpec::Linear(index),
         }
     }
-    pub fn new_quad(value: CircuitField<C>, index1: usize, index2: usize) -> Self {
+    pub fn new_linear_field(value: CircuitField<C>, index: usize) -> Self {
+        Term {
+            coef: Coef::<C>::from_field(value),
+            vars: VarSpec::Linear(index),
+        }
+    }
+    pub fn new_quad(value: Coef<C>, index1: usize, index2: usize) -> Self {
         Term {
             coef: value,
             vars: if index1 < index2 {
@@ -133,9 +145,12 @@ impl<C: Config> Term<C> {
             },
         }
     }
+    pub fn new_quad_field(value: CircuitField<C>, index1: usize, index2: usize) -> Self {
+        Self::new_quad(Coef::<C>::from_field(value), index1, index2)
+    }
     pub fn new_random_linear(index: usize) -> Self {
         Term {
-            coef: CircuitField::<C>::one(),
+            coef: Coef::<C>::one(),
             vars: VarSpec::RandomLinear(index),
         }
     }
@@ -149,7 +164,7 @@ impl<C: Config> Term<C> {
 
 impl<C: Config> Default for Term<C> {
     fn default() -> Self {
-        Term::new_const(CircuitField::<C>::zero())
+        Term::new_const(Coef::<C>::zero())
     }
 }
 
@@ -164,7 +179,7 @@ impl<C: Config> Term<C> {
 
 impl<C: Config> fmt::Display for Term<C> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.coef == CircuitField::<C>::one() {
+        if self.coef.is_one() {
             match &self.vars {
                 VarSpec::Const => write!(f, "1"),
                 VarSpec::Linear(index) => write!(f, "v{index}"),
@@ -294,16 +309,25 @@ fn compress_identical_terms<C: Config>(terms: &mut Vec<Term<C>>) {
 }
 
 impl<C: Config> Expression<C> {
-    pub fn new_const(value: CircuitField<C>) -> Self {
+    pub fn new_const(value: Coef<C>) -> Self {
         Self::with_terms(vec![Term::new_const(value)])
     }
-    pub fn new_linear(value: CircuitField<C>, index: usize) -> Self {
+    pub fn new_const_field(value: CircuitField<C>) -> Self {
+        Self::with_terms(vec![Term::new_const_field(value)])
+    }
+    pub fn new_linear(value: Coef<C>, index: usize) -> Self {
         Self::with_terms(vec![Term::new_linear(value, index)])
     }
-    pub fn new_quad(value: CircuitField<C>, index1: usize, index2: usize) -> Self {
+    pub fn new_linear_field(value: CircuitField<C>, index: usize) -> Self {
+        Self::with_terms(vec![Term::new_linear_field(value, index)])
+    }
+    pub fn new_quad(value: Coef<C>, index1: usize, index2: usize) -> Self {
         Self::with_terms(vec![Term::new_quad(value, index1, index2)])
     }
-    pub fn new_custom(value: CircuitField<C>, gate_type: usize, inputs: Vec<usize>) -> Self {
+    pub fn new_quad_field(value: CircuitField<C>, index1: usize, index2: usize) -> Self {
+        Self::with_terms(vec![Term::new_quad_field(value, index1, index2)])
+    }
+    pub fn new_custom(value: Coef<C>, gate_type: usize, inputs: Vec<usize>) -> Self {
         Self::with_terms(vec![Term {
             coef: value,
             vars: VarSpec::Custom { gate_type, inputs },
@@ -407,14 +431,17 @@ impl<C: Config> Expression<C> {
         }
         res
     }
-    pub fn constant_value(&self) -> Option<CircuitField<C>> {
+    pub fn constant_value(&self) -> Option<Coef<C>> {
         if self.terms.len() == 1 && self.terms[0].vars == VarSpec::Const {
             Some(self.terms[0].coef)
         } else {
             None
         }
     }
-    pub fn mul_constant(&self, value: CircuitField<C>) -> Self {
+    pub fn constant_field_value(&self) -> Option<CircuitField<C>> {
+        self.constant_value().map(|c| c.to_field())
+    }
+    pub fn mul_constant(&self, value: Coef<C>) -> Self {
         if value.is_zero() {
             return Expression::default();
         }
@@ -426,6 +453,9 @@ impl<C: Config> Expression<C> {
                 })
                 .collect(),
         )
+    }
+    pub fn mul_constant_field(&self, value: CircuitField<C>) -> Self {
+        self.mul_constant(Coef::<C>::from_field(value))
     }
     pub fn to_terms(self) -> Vec<Term<C>> {
         self.terms
@@ -483,6 +513,11 @@ impl<C: Config> LinComb<C> {
             }
         }
     }
+    pub fn from_kx_plus_b_compact(x: usize, k: Coef<C>, b: Coef<C>) -> Self {
+        let k_field = k.to_field();
+        let b_field = b.to_field();
+        Self::from_kx_plus_b(x, k_field, b_field)
+    }
     pub fn eval(&self, values: &[CircuitField<C>]) -> CircuitField<C> {
         let mut res = self.constant;
         for term in self.terms.iter() {
@@ -505,7 +540,7 @@ impl<C: Config> fmt::Display for LinComb<C> {
             if i > 0 {
                 write!(f, " + ")?;
             }
-            if term.coef == CircuitField::<C>::one() {
+            if term.coef == CircuitField::<C>::ONE {
                 write!(f, "v{}", term.var)?;
             } else {
                 write!(f, "v{}*{}", term.var, term.coef.to_u256())?;

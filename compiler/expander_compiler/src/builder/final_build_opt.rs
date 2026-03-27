@@ -10,14 +10,14 @@ use crate::{
                 CircuitRelaxed as OutCircuit, Instruction as OutInstruction,
                 RootCircuitRelaxed as OutRootCircuit,
             },
-            expr::{Expression, LinComb, Term, VarSpec},
+            expr::{Coef as ExprCoef, Expression, LinComb, Term, VarSpec},
             hint_less::{
                 Circuit as InCircuit, Instruction as InInstruction, RootCircuit as InRootCircuit,
             },
         },
         layered::Coef,
     },
-    field::{Field, FieldArith},
+    field::FieldArith,
     frontend::CircuitField,
     utils::{error::Error, pool::Pool},
 };
@@ -105,7 +105,7 @@ impl<C: Config> Builder<C> {
         let id = self.stripped_mid_vars.len();
         assert_eq!(
             self.stripped_mid_vars.add(&MidVarKey {
-                expr: Expression::new_linear(CircuitField::<C>::one(), id),
+                expr: Expression::new_linear(ExprCoef::<C>::one(), id),
                 is_force_single: false
             }),
             id
@@ -120,12 +120,12 @@ impl<C: Config> Builder<C> {
         for i in 0..n {
             self.new_var(layer);
             self.in_var_exprs
-                .push(Expression::new_linear(CircuitField::<C>::one(), start + i));
+                .push(Expression::new_linear(ExprCoef::<C>::one(), start + i));
         }
     }
 
     fn add_const(&mut self, c: CircuitField<C>) {
-        self.in_var_exprs.push(Expression::new_const(c));
+        self.in_var_exprs.push(Expression::new_const_field(c));
     }
 
     fn make_single(&mut self, expr: Expression<C>) -> Expression<C> {
@@ -139,12 +139,12 @@ impl<C: Config> Builder<C> {
         });
         if idx == self.mid_var_coefs.len() {
             self.mid_var_coefs.push(MidVarCoef {
-                k: coef,
-                kinv: coef.optimistic_inv().unwrap(),
-                b: constant,
+                k: coef.to_field(),
+                kinv: coef.optimistic_inv().unwrap().to_field(),
+                b: constant.to_field(),
             });
             self.mid_var_layer.push(self.layer_of_expr(&e) + 1);
-            return Expression::new_linear(CircuitField::<C>::one(), idx);
+            return Expression::new_linear(ExprCoef::<C>::one(), idx);
         }
         unstrip_constants_single(idx, coef, constant, &self.mid_var_coefs[idx])
     }
@@ -164,7 +164,7 @@ impl<C: Config> Builder<C> {
     }
 
     fn make_really_single(&mut self, e: Expression<C>) -> usize {
-        if e.len() == 1 && e.degree() == 1 && e[0].coef == CircuitField::<C>::one() {
+        if e.len() == 1 && e.degree() == 1 && e[0].coef.is_one() {
             match e[0].vars {
                 VarSpec::Linear(v) => return v,
                 _ => unreachable!(),
@@ -177,14 +177,16 @@ impl<C: Config> Builder<C> {
         });
         if idx == self.mid_var_coefs.len() {
             self.mid_var_coefs.push(MidVarCoef {
-                k: coef,
-                kinv: coef.optimistic_inv().unwrap(),
-                b: constant,
+                k: coef.to_field(),
+                kinv: coef.optimistic_inv().unwrap().to_field(),
+                b: constant.to_field(),
             });
             self.mid_var_layer.push(self.layer_of_expr(&e) + 1);
             return idx;
         }
-        if coef == self.mid_var_coefs[idx].k && constant == self.mid_var_coefs[idx].b {
+        if coef.to_field() == self.mid_var_coefs[idx].k
+            && constant.to_field() == self.mid_var_coefs[idx].b
+        {
             return idx;
         }
         let e = self.make_single(e);
@@ -233,18 +235,18 @@ impl<C: Config> Builder<C> {
             .map(|lc| self.in_var_exprs[lc.var].clone())
             .collect();
         if !lcs.constant.is_zero() {
-            vars.push(Expression::new_const(lcs.constant));
+            vars.push(Expression::new_const_field(lcs.constant));
         }
         self.lin_comb_inner(vars, |i| {
             if i < lcs.terms.len() {
-                lcs.terms[i].coef
+                ExprCoef::<C>::from_field(lcs.terms[i].coef)
             } else {
-                CircuitField::<C>::one()
+                ExprCoef::<C>::one()
             }
         })
     }
 
-    fn lin_comb_inner<F: Fn(usize) -> CircuitField<C>>(
+    fn lin_comb_inner<F: Fn(usize) -> ExprCoef<C>>(
         &mut self,
         mut vars: Vec<Expression<C>>,
         var_coef: F,
@@ -463,7 +465,7 @@ impl<C: Config> Builder<C> {
                     expr2.iter().map(|x2| x1.mul(x2)).collect(),
                 ));
             }
-            exprs.push(self.lin_comb_inner(vars, |_| CircuitField::<C>::one()));
+            exprs.push(self.lin_comb_inner(vars, |_| ExprCoef::<C>::one()));
         }
         let final_pos = exprs_pos_heap.pop().unwrap();
         exprs.swap_remove(final_pos)
@@ -491,11 +493,9 @@ impl<C: Config> Builder<C> {
     }
 }
 
-fn strip_constants<C: Config>(
-    expr: &Expression<C>,
-) -> (Expression<C>, CircuitField<C>, CircuitField<C>) {
+fn strip_constants<C: Config>(expr: &Expression<C>) -> (Expression<C>, ExprCoef<C>, ExprCoef<C>) {
     let mut e = Vec::new();
-    let mut cst = CircuitField::<C>::zero();
+    let mut cst = ExprCoef::<C>::zero();
     for term in expr.iter() {
         if term.vars == VarSpec::Const {
             cst = term.coef;
@@ -504,7 +504,7 @@ fn strip_constants<C: Config>(
         }
     }
     if e.is_empty() {
-        return (Expression::default(), CircuitField::<C>::one(), cst);
+        return (Expression::default(), ExprCoef::<C>::one(), cst);
     }
     let v = e[0].coef;
     let vi = v.optimistic_inv().unwrap();
@@ -516,16 +516,15 @@ fn strip_constants<C: Config>(
 
 fn unstrip_constants_single<C: Config>(
     vid: usize,
-    coef: CircuitField<C>,
-    constant: CircuitField<C>,
+    coef: ExprCoef<C>,
+    constant: ExprCoef<C>,
     mid_var_coef: &MidVarCoef<C>,
 ) -> Expression<C> {
     assert_ne!(vid, 0);
-    // u=k1x+b1, v=k2x+b2
-    // x=(u-b1)*k1inv
-    // v=k2*(u-b1)*k1inv+b2
-    let new_coef = mid_var_coef.kinv * coef;
-    let new_constant = constant - mid_var_coef.b * new_coef;
+    let kinv = ExprCoef::<C>::from_field(mid_var_coef.kinv);
+    let b = ExprCoef::<C>::from_field(mid_var_coef.b);
+    let new_coef = kinv * coef;
+    let new_constant = constant - b * new_coef;
     let mut e = vec![Term::new_linear(new_coef, vid)];
     if !new_constant.is_zero() {
         e.push(Term::new_const(new_constant));
@@ -646,7 +645,7 @@ fn process_circuit<C: Config>(
                     .map(|&var| builder.make_really_single(builder.in_var_exprs[var].clone()))
                     .collect();
                 builder.add_and_check_if_should_make_single(Expression::new_custom(
-                    CircuitField::<C>::one(),
+                    ExprCoef::<C>::one(),
                     *gate_type,
                     single_inputs,
                 ));
@@ -687,17 +686,19 @@ fn process_circuit<C: Config>(
             oinsn_id += 1;
         }
         let mvk = builder.stripped_mid_vars.get(mid_var_id);
-        let non_iv = mvk.expr == Expression::new_linear(CircuitField::<C>::one(), mid_var_id);
+        let non_iv = mvk.expr == Expression::new_linear(ExprCoef::<C>::one(), mid_var_id);
         if non_iv {
             continue;
         }
-        let e2 = mvk.expr.mul_constant(builder.mid_var_coefs[mid_var_id].k);
+        let e2 = mvk
+            .expr
+            .mul_constant_field(builder.mid_var_coefs[mid_var_id].k);
         let constant = builder.mid_var_coefs[mid_var_id].b;
         let e3 = if constant.is_zero() {
             e2
         } else {
             let mut terms = e2.to_terms();
-            terms.push(Term::new_const(constant));
+            terms.push(Term::new_const_field(constant));
             Expression::from_terms(terms)
         };
         instructions.push(OutInstruction::InternalVariable { expr: e3 });
@@ -788,9 +789,9 @@ mod tests {
             c0.instructions[0],
             ir::dest::Instruction::InternalVariable {
                 expr: Expression::from_terms(vec![
-                    Term::new_linear(CField::one(), 1),
-                    Term::new_linear(CField::from(2), 2),
-                    Term::new_const(CField::from(3))
+                    Term::new_linear_field(CField::one(), 1),
+                    Term::new_linear_field(CField::from(2), 2),
+                    Term::new_const_field(CField::from(3))
                 ])
             }
         );

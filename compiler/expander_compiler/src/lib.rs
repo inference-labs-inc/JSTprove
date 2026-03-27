@@ -4,6 +4,7 @@
 
 pub mod builder;
 pub mod circuit;
+pub mod compact_coef;
 pub mod compile;
 pub mod field;
 pub mod frontend;
