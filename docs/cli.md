@@ -6,7 +6,7 @@ JSTprove provides two CLI binaries: **`jstprove`** (Expander backend) and **`jst
 
 ## `jstprove` (Expander backend)
 
-Built from `rust/jstprove_circuits/bin/generic_demo.rs`. Uses positional command dispatch (not subcommands).
+Built from `rust/jstprove_circuits/bin/jstprove.rs`. Uses positional command dispatch (not subcommands).
 
 ### Synopsis
 
@@ -32,6 +32,9 @@ jstprove <command> [options]
 | `--backend` | | Proving backend: `expander` (default) or `remainder` |
 | `--model` | | Path to quantized ONNX model (Remainder backend) |
 | `--onnx` | | Path to ONNX model (generates metadata automatically; requires the Cargo feature `remainder`, e.g. `cargo build --features remainder`) |
+| `--curve` | | Elliptic curve: `bn254` (default), `goldilocks`, or `goldilocks_basefold` |
+| `--quiet` | | Suppress all output |
+| `--json` | | Emit JSON lines to stderr |
 
 ### Commands
 
