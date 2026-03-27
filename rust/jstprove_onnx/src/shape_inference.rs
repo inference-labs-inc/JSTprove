@@ -586,20 +586,31 @@ fn infer_flatten(
         .collect())
 }
 
+enum AxesInput {
+    Omitted,
+    Resolved(Vec<i64>),
+    Unresolved(String),
+}
+
 fn resolve_axes_from_input(
     layer: &LayerNode,
     input_idx: usize,
     initializers: &HashMap<String, TensorData>,
     constant_tensors: &HashMap<String, TensorData>,
-) -> Option<Vec<i64>> {
-    let name = layer.inputs.get(input_idx)?;
+) -> AxesInput {
+    let Some(name) = layer.inputs.get(input_idx) else {
+        return AxesInput::Omitted;
+    };
     if name.is_empty() {
-        return Some(vec![]);
+        return AxesInput::Omitted;
     }
-    initializers
+    match initializers
         .get(name)
         .or_else(|| constant_tensors.get(name))
-        .map(|td| td.as_i64_vec())
+    {
+        Some(td) => AxesInput::Resolved(td.as_i64_vec()),
+        None => AxesInput::Unresolved(name.clone()),
+    }
 }
 
 fn infer_squeeze(
@@ -611,27 +622,35 @@ fn infer_squeeze(
     let input_shape = input_shape
         .ok_or_else(|| anyhow::anyhow!("layer {}: Squeeze missing input shape", layer.name))?;
 
+    let axes_omitted;
     let axes: Vec<i64> = match layer.get_ints_attr("axes").map(|v| v.to_vec()) {
-        Some(v) => v,
-        None => {
-            if layer.inputs.len() > 1 {
-                resolve_axes_from_input(layer, 1, initializers, constant_tensors).ok_or_else(
-                    || {
-                        anyhow::anyhow!(
-                            "layer {}: Squeeze axes input '{}' could not be resolved from initializers or constants",
-                            layer.name,
-                            layer.inputs.get(1).map_or("", String::as_str)
-                        )
-                    },
-                )?
-            } else {
+        Some(v) => {
+            axes_omitted = false;
+            v
+        }
+        None => match resolve_axes_from_input(layer, 1, initializers, constant_tensors) {
+            AxesInput::Resolved(v) => {
+                axes_omitted = false;
+                v
+            }
+            AxesInput::Omitted => {
+                axes_omitted = true;
                 vec![]
             }
-        }
+            AxesInput::Unresolved(name) => {
+                bail!(
+                    "layer {}: Squeeze axes input '{}' could not be resolved from initializers or constants",
+                    layer.name,
+                    name
+                );
+            }
+        },
     };
 
-    let out_shape: Vec<usize> = if axes.is_empty() {
+    let out_shape: Vec<usize> = if axes.is_empty() && axes_omitted {
         input_shape.iter().copied().filter(|&d| d != 1).collect()
+    } else if axes.is_empty() {
+        input_shape.to_vec()
     } else {
         let rank = input_shape.len() as i64;
         let mut seen = std::collections::HashSet::new();
@@ -690,21 +709,17 @@ fn infer_unsqueeze(
 
     let axes: Vec<i64> = match layer.get_ints_attr("axes").map(|v| v.to_vec()) {
         Some(v) => v,
-        None => {
-            if layer.inputs.len() > 1 {
-                resolve_axes_from_input(layer, 1, initializers, constant_tensors).ok_or_else(
-                    || {
-                        anyhow::anyhow!(
-                            "layer {}: Unsqueeze axes input '{}' could not be resolved from initializers or constants",
-                            layer.name,
-                            layer.inputs.get(1).map_or("", String::as_str)
-                        )
-                    },
-                )?
-            } else {
-                vec![]
+        None => match resolve_axes_from_input(layer, 1, initializers, constant_tensors) {
+            AxesInput::Resolved(v) => v,
+            AxesInput::Omitted => vec![],
+            AxesInput::Unresolved(name) => {
+                bail!(
+                    "layer {}: Unsqueeze axes input '{}' could not be resolved from initializers or constants",
+                    layer.name,
+                    name
+                );
             }
-        }
+        },
     };
 
     let new_rank = input_shape.len() + axes.len();
