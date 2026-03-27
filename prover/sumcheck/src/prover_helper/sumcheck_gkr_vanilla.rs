@@ -7,6 +7,30 @@ use polynomials::EqPolynomial;
 
 use crate::{unpack_and_combine, ProverScratchPad};
 
+#[inline(always)]
+fn prefetch_read<T>(ptr: *const T) {
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        std::arch::x86_64::_mm_prefetch(ptr as *const i8, std::arch::x86_64::_MM_HINT_T0);
+    }
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        std::arch::asm!("prfm pldl1keep, [{ptr}]", ptr = in(reg) ptr, options(nostack, preserves_flags));
+    }
+}
+
+#[inline(always)]
+fn prefetch_write<T>(ptr: *const T) {
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        std::arch::x86_64::_mm_prefetch(ptr as *const i8, std::arch::x86_64::_MM_HINT_T0);
+    }
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        std::arch::asm!("prfm pstl1keep, [{ptr}]", ptr = in(reg) ptr, options(nostack, preserves_flags));
+    }
+}
+
 use super::{product_gate::SumcheckProductGateHelper, simd_gate::SumcheckSimdProdGateHelper};
 
 pub(crate) struct SumcheckGkrVanillaHelper<'a, F: FieldEngine> {
@@ -287,14 +311,27 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
             }
         }
 
-        for g in mul.iter() {
+        let mul_slice = mul.as_slice();
+        for (idx, g) in mul_slice.iter().enumerate() {
+            if idx + 4 < mul_slice.len() {
+                let next = &mul_slice[idx + 4];
+                prefetch_read(eq_evals_at_rz0.as_ptr().wrapping_add(next.o_id));
+                prefetch_write(hg_vals.as_ptr().wrapping_add(next.i_ids[0]));
+                prefetch_read(vals.as_ptr().wrapping_add(next.i_ids[1]));
+            }
             let r = eq_evals_at_rz0[g.o_id] * g.coef;
             hg_vals[g.i_ids[0]] += r * vals[g.i_ids[1]];
 
             gate_exists[g.i_ids[0]] = true;
         }
 
-        for g in add.iter() {
+        let add_slice = add.as_slice();
+        for (idx, g) in add_slice.iter().enumerate() {
+            if idx + 4 < add_slice.len() {
+                let next = &add_slice[idx + 4];
+                prefetch_read(eq_evals_at_rz0.as_ptr().wrapping_add(next.o_id));
+                prefetch_write(hg_vals.as_ptr().wrapping_add(next.i_ids[0]));
+            }
             hg_vals[g.i_ids[0]] += F::Field::from(eq_evals_at_rz0[g.o_id] * g.coef);
             gate_exists[g.i_ids[0]] = true;
         }
@@ -366,8 +403,14 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
             &mut self.sp.eq_evals_second_half,
         );
 
-        // TODO-OPTIMIZATION: hg_vals does not have to be simd here
-        for g in mul.iter() {
+        let mul_slice = mul.as_slice();
+        for (idx, g) in mul_slice.iter().enumerate() {
+            if idx + 4 < mul_slice.len() {
+                let next = &mul_slice[idx + 4];
+                prefetch_read(eq_evals_at_rz0.as_ptr().wrapping_add(next.o_id));
+                prefetch_read(eq_evals_at_rx.as_ptr().wrapping_add(next.i_ids[0]));
+                prefetch_write(hg_vals.as_ptr().wrapping_add(next.i_ids[1]));
+            }
             hg_vals[g.i_ids[1]] +=
                 F::Field::from(eq_evals_at_rz0[g.o_id] * eq_evals_at_rx[g.i_ids[0]] * g.coef);
             gate_exists[g.i_ids[1]] = true;
@@ -656,12 +699,25 @@ impl<'a, F: FieldEngine> SumcheckGkrVanillaHelper<'a, F> {
                 std::ptr::write_bytes(hg_vals.as_mut_ptr(), 0, total);
                 std::ptr::write_bytes(gate_exists.as_mut_ptr(), 0, total);
             }
-            for g in mul.iter() {
+            let mul_slice = mul.as_slice();
+            for (idx, g) in mul_slice.iter().enumerate() {
+                if idx + 4 < mul_slice.len() {
+                    let next = &mul_slice[idx + 4];
+                    prefetch_read(eq_evals_at_rz0.as_ptr().wrapping_add(next.o_id));
+                    prefetch_write(hg_vals.as_ptr().wrapping_add(next.i_ids[0]));
+                    prefetch_read(vals.as_ptr().wrapping_add(next.i_ids[1]));
+                }
                 let r = eq_evals_at_rz0[g.o_id] * g.coef;
                 hg_vals[g.i_ids[0]] += r * vals[g.i_ids[1]];
                 gate_exists[g.i_ids[0]] = true;
             }
-            for g in add.iter() {
+            let add_slice = add.as_slice();
+            for (idx, g) in add_slice.iter().enumerate() {
+                if idx + 4 < add_slice.len() {
+                    let next = &add_slice[idx + 4];
+                    prefetch_read(eq_evals_at_rz0.as_ptr().wrapping_add(next.o_id));
+                    prefetch_write(hg_vals.as_ptr().wrapping_add(next.i_ids[0]));
+                }
                 hg_vals[g.i_ids[0]] += F::Field::from(eq_evals_at_rz0[g.o_id] * g.coef);
                 gate_exists[g.i_ids[0]] = true;
             }

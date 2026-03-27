@@ -60,12 +60,7 @@ pub(crate) const fn from_monty<MP: MontyParameters>(x: u32) -> u32 {
 pub(crate) const fn halve_u32<FP: FieldParameters>(input: u32) -> u32 {
     let shr = input >> 1;
     let lo_bit = input & 1;
-    let shr_corr = shr + FP::HALF_P_PLUS_1;
-    if lo_bit == 0 {
-        shr
-    } else {
-        shr_corr
-    }
+    shr + lo_bit * FP::HALF_P_PLUS_1
 }
 
 /// Montgomery reduction of a value in `0..P << MONTY_BITS`.
@@ -79,6 +74,6 @@ pub(crate) const fn monty_reduce<MP: MontyParameters>(x: u64) -> u32 {
 
     let (x_sub_u, over) = x.overflowing_sub(u);
     let x_sub_u_hi = (x_sub_u >> MP::MONTY_BITS) as u32;
-    let corr = if over { MP::PRIME } else { 0 };
+    let corr = (over as u32).wrapping_neg() & MP::PRIME;
     x_sub_u_hi.wrapping_add(corr)
 }
