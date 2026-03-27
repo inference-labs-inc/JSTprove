@@ -19,7 +19,7 @@ mod macos {
 
     fn fr_to_limbs(f: &Fr) -> [u64; 4] {
         use halo2curves::serde::SerdeObject;
-        let repr: [u8; 32] = f.to_raw_bytes();
+        let repr: [u8; 32] = f.to_raw_bytes().try_into().unwrap();
         [
             u64::from_le_bytes(repr[0..8].try_into().unwrap()),
             u64::from_le_bytes(repr[8..16].try_into().unwrap()),
