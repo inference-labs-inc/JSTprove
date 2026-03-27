@@ -95,8 +95,8 @@ fn infer_layer_output_shape(
         OpType::Mul => infer_broadcast_binary(layer, shapes),
         OpType::Reshape => infer_reshape(layer, input_shape, initializers, constant_tensors),
         OpType::Flatten => infer_flatten(layer, input_shape),
-        OpType::Squeeze => infer_squeeze(layer, input_shape),
-        OpType::Unsqueeze => infer_unsqueeze(layer, input_shape),
+        OpType::Squeeze => infer_squeeze(layer, input_shape, initializers, constant_tensors),
+        OpType::Unsqueeze => infer_unsqueeze(layer, input_shape, initializers, constant_tensors),
         OpType::Constant => Ok(vec![]),
         OpType::Cast | OpType::Exp | OpType::Softmax | OpType::Sigmoid | OpType::Gelu => {
             passthrough_shape(layer, input_shape)
@@ -586,9 +586,30 @@ fn infer_flatten(
         .collect())
 }
 
+fn resolve_axes_from_input(
+    layer: &LayerNode,
+    input_idx: usize,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Option<Vec<i64>> {
+    let name = layer.inputs.get(input_idx)?;
+    if let Some(td) = initializers
+        .get(name)
+        .or_else(|| constant_tensors.get(name))
+    {
+        let vals = td.as_i64_vec();
+        if !vals.is_empty() {
+            return Some(vals);
+        }
+    }
+    None
+}
+
 fn infer_squeeze(
     layer: &LayerNode,
     input_shape: Option<&Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
 ) -> Result<Vec<(String, Vec<usize>)>> {
     let input_shape = input_shape
         .ok_or_else(|| anyhow::anyhow!("layer {}: Squeeze missing input shape", layer.name))?;
@@ -596,6 +617,7 @@ fn infer_squeeze(
     let axes: Vec<i64> = layer
         .get_ints_attr("axes")
         .map(|v| v.to_vec())
+        .or_else(|| resolve_axes_from_input(layer, 1, initializers, constant_tensors))
         .unwrap_or_default();
 
     let out_shape: Vec<usize> = if axes.is_empty() {
@@ -650,6 +672,8 @@ fn infer_squeeze(
 fn infer_unsqueeze(
     layer: &LayerNode,
     input_shape: Option<&Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
 ) -> Result<Vec<(String, Vec<usize>)>> {
     let input_shape = input_shape
         .ok_or_else(|| anyhow::anyhow!("layer {}: Unsqueeze missing input shape", layer.name))?;
@@ -657,6 +681,7 @@ fn infer_unsqueeze(
     let axes: Vec<i64> = layer
         .get_ints_attr("axes")
         .map(|v| v.to_vec())
+        .or_else(|| resolve_axes_from_input(layer, 1, initializers, constant_tensors))
         .unwrap_or_default();
 
     let new_rank = input_shape.len() + axes.len();
@@ -1765,7 +1790,9 @@ mod tests {
         let mut attrs = HashMap::new();
         attrs.insert("axes".to_string(), AttrValue::Ints(vec![1]));
         let layer = make_layer(OpType::Squeeze, vec!["x"], vec!["y"], attrs);
-        assert!(infer_squeeze(&layer, Some(&input_shape)).is_err());
+        assert!(
+            infer_squeeze(&layer, Some(&input_shape), &HashMap::new(), &HashMap::new()).is_err()
+        );
     }
 
     #[test]
@@ -1774,6 +1801,33 @@ mod tests {
         let mut attrs = HashMap::new();
         attrs.insert("axes".to_string(), AttrValue::Ints(vec![0, 0]));
         let layer = make_layer(OpType::Unsqueeze, vec!["x"], vec!["y"], attrs);
-        assert!(infer_unsqueeze(&layer, Some(&input_shape)).is_err());
+        assert!(
+            infer_unsqueeze(&layer, Some(&input_shape), &HashMap::new(), &HashMap::new()).is_err()
+        );
+    }
+
+    #[test]
+    fn unsqueeze_reads_axes_from_input() {
+        let input_shape = vec![1, 300, 64];
+        let attrs = HashMap::new();
+        let layer = make_layer(
+            OpType::Unsqueeze,
+            vec!["data", "axes_tensor"],
+            vec!["out"],
+            attrs,
+        );
+        let mut inits = HashMap::new();
+        inits.insert(
+            "axes_tensor".to_string(),
+            TensorData {
+                dims: vec![1],
+                float_data: vec![],
+                int_data: vec![3],
+                data_type: 7,
+                name: "axes_tensor".to_string(),
+            },
+        );
+        let result = infer_unsqueeze(&layer, Some(&input_shape), &inits, &HashMap::new()).unwrap();
+        assert_eq!(result[0].1, vec![1, 300, 64, 1]);
     }
 }
