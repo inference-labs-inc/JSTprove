@@ -95,8 +95,8 @@ fn infer_layer_output_shape(
         OpType::Mul => infer_broadcast_binary(layer, shapes),
         OpType::Reshape => infer_reshape(layer, input_shape, initializers, constant_tensors),
         OpType::Flatten => infer_flatten(layer, input_shape),
-        OpType::Squeeze => infer_squeeze(layer, input_shape),
-        OpType::Unsqueeze => infer_unsqueeze(layer, input_shape),
+        OpType::Squeeze => infer_squeeze(layer, input_shape, initializers, constant_tensors),
+        OpType::Unsqueeze => infer_unsqueeze(layer, input_shape, initializers, constant_tensors),
         OpType::Constant => Ok(vec![]),
         OpType::Cast | OpType::Exp | OpType::Softmax | OpType::Sigmoid | OpType::Gelu => {
             passthrough_shape(layer, input_shape)
@@ -276,14 +276,14 @@ fn infer_gemm(
 
     if a_shape.len() != 2 {
         bail!(
-            "layer {}: Gemm input A rank {} != 2",
+            "layer {}: Gemm input A rank {} != 2 (batched Gemm not yet supported in circuit runtime)",
             layer.name,
             a_shape.len()
         );
     }
     if b_shape.len() != 2 {
         bail!(
-            "layer {}: Gemm input B rank {} != 2",
+            "layer {}: Gemm input B rank {} != 2 (batched Gemm not yet supported in circuit runtime)",
             layer.name,
             b_shape.len()
         );
@@ -586,20 +586,71 @@ fn infer_flatten(
         .collect())
 }
 
+enum AxesInput {
+    Omitted,
+    Resolved(Vec<i64>),
+    Unresolved(String),
+}
+
+fn resolve_axes_from_input(
+    layer: &LayerNode,
+    input_idx: usize,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> AxesInput {
+    let Some(name) = layer.inputs.get(input_idx) else {
+        return AxesInput::Omitted;
+    };
+    if name.is_empty() {
+        return AxesInput::Omitted;
+    }
+    match initializers
+        .get(name)
+        .or_else(|| constant_tensors.get(name))
+    {
+        Some(td) => AxesInput::Resolved(td.as_i64_vec()),
+        None => AxesInput::Unresolved(name.clone()),
+    }
+}
+
 fn infer_squeeze(
     layer: &LayerNode,
     input_shape: Option<&Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
 ) -> Result<Vec<(String, Vec<usize>)>> {
     let input_shape = input_shape
         .ok_or_else(|| anyhow::anyhow!("layer {}: Squeeze missing input shape", layer.name))?;
 
-    let axes: Vec<i64> = layer
-        .get_ints_attr("axes")
-        .map(|v| v.to_vec())
-        .unwrap_or_default();
+    let axes_omitted;
+    let axes: Vec<i64> = match layer.get_ints_attr("axes").map(|v| v.to_vec()) {
+        Some(v) => {
+            axes_omitted = false;
+            v
+        }
+        None => match resolve_axes_from_input(layer, 1, initializers, constant_tensors) {
+            AxesInput::Resolved(v) => {
+                axes_omitted = false;
+                v
+            }
+            AxesInput::Omitted => {
+                axes_omitted = true;
+                vec![]
+            }
+            AxesInput::Unresolved(name) => {
+                bail!(
+                    "layer {}: Squeeze axes input '{}' could not be resolved from initializers or constants",
+                    layer.name,
+                    name
+                );
+            }
+        },
+    };
 
-    let out_shape: Vec<usize> = if axes.is_empty() {
+    let out_shape: Vec<usize> = if axes.is_empty() && axes_omitted {
         input_shape.iter().copied().filter(|&d| d != 1).collect()
+    } else if axes.is_empty() {
+        input_shape.to_vec()
     } else {
         let rank = input_shape.len() as i64;
         let mut seen = std::collections::HashSet::new();
@@ -650,14 +701,31 @@ fn infer_squeeze(
 fn infer_unsqueeze(
     layer: &LayerNode,
     input_shape: Option<&Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
 ) -> Result<Vec<(String, Vec<usize>)>> {
     let input_shape = input_shape
         .ok_or_else(|| anyhow::anyhow!("layer {}: Unsqueeze missing input shape", layer.name))?;
 
-    let axes: Vec<i64> = layer
-        .get_ints_attr("axes")
-        .map(|v| v.to_vec())
-        .unwrap_or_default();
+    let axes: Vec<i64> = match layer.get_ints_attr("axes").map(|v| v.to_vec()) {
+        Some(v) => v,
+        None => match resolve_axes_from_input(layer, 1, initializers, constant_tensors) {
+            AxesInput::Resolved(v) => v,
+            AxesInput::Omitted => {
+                bail!(
+                    "layer {}: Unsqueeze requires axes (attribute or input tensor)",
+                    layer.name
+                );
+            }
+            AxesInput::Unresolved(name) => {
+                bail!(
+                    "layer {}: Unsqueeze axes input '{}' could not be resolved from initializers or constants",
+                    layer.name,
+                    name
+                );
+            }
+        },
+    };
 
     let new_rank = input_shape.len() + axes.len();
     let r = new_rank as i64;
@@ -1166,33 +1234,33 @@ fn infer_slice(
             .map(|td| td.as_i64_vec())
     };
 
-    // starts — required, input[1]
     let starts_name = layer
         .inputs
         .get(1)
         .ok_or_else(|| anyhow::anyhow!("layer {}: Slice missing starts input", layer.name))?;
-    let starts = get_i64(starts_name).ok_or_else(|| {
-        anyhow::anyhow!(
-            "layer {}: Slice starts '{}' not found; must be a compile-time constant",
-            layer.name,
-            starts_name
-        )
-    })?;
+    let starts_opt = get_i64(starts_name);
 
-    // ends — required, input[2]
     let ends_name = layer
         .inputs
         .get(2)
         .ok_or_else(|| anyhow::anyhow!("layer {}: Slice missing ends input", layer.name))?;
-    let ends = get_i64(ends_name).ok_or_else(|| {
-        anyhow::anyhow!(
-            "layer {}: Slice ends '{}' not found; must be a compile-time constant",
-            layer.name,
-            ends_name
-        )
-    })?;
+    let ends_opt = get_i64(ends_name);
 
-    // Validate that starts and ends have the same length.
+    let passthrough = || {
+        Ok(layer
+            .outputs
+            .iter()
+            .map(|o| (o.clone(), input_shape.clone()))
+            .collect())
+    };
+
+    if starts_opt.is_none() || ends_opt.is_none() {
+        return passthrough();
+    }
+
+    let starts = starts_opt.unwrap();
+    let ends = ends_opt.unwrap();
+
     if starts.len() != ends.len() {
         bail!(
             "layer {}: Slice starts and ends must have the same length (starts={}, ends={})",
@@ -1202,19 +1270,21 @@ fn infer_slice(
         );
     }
 
-    // axes — optional, input[3]; default is [0, 1, ..., len(starts)-1]
-    let axes_from_input: Option<Vec<i64>> = layer
-        .inputs
-        .get(3)
-        .filter(|n| !n.is_empty())
-        .and_then(|n| get_i64(n));
+    let axes_from_input: Option<Vec<i64>> = match layer.inputs.get(3).filter(|n| !n.is_empty()) {
+        Some(n) => match get_i64(n) {
+            Some(v) => Some(v),
+            None => return passthrough(),
+        },
+        None => None,
+    };
 
-    // steps — optional, input[4]; default is all 1s
-    let steps_from_input: Option<Vec<i64>> = layer
-        .inputs
-        .get(4)
-        .filter(|n| !n.is_empty())
-        .and_then(|n| get_i64(n));
+    let steps_from_input: Option<Vec<i64>> = match layer.inputs.get(4).filter(|n| !n.is_empty()) {
+        Some(n) => match get_i64(n) {
+            Some(v) => Some(v),
+            None => return passthrough(),
+        },
+        None => None,
+    };
 
     // Validate lengths when axes/steps are explicitly provided.
     if let Some(ref ax) = axes_from_input {
@@ -1765,7 +1835,9 @@ mod tests {
         let mut attrs = HashMap::new();
         attrs.insert("axes".to_string(), AttrValue::Ints(vec![1]));
         let layer = make_layer(OpType::Squeeze, vec!["x"], vec!["y"], attrs);
-        assert!(infer_squeeze(&layer, Some(&input_shape)).is_err());
+        assert!(
+            infer_squeeze(&layer, Some(&input_shape), &HashMap::new(), &HashMap::new()).is_err()
+        );
     }
 
     #[test]
@@ -1774,6 +1846,91 @@ mod tests {
         let mut attrs = HashMap::new();
         attrs.insert("axes".to_string(), AttrValue::Ints(vec![0, 0]));
         let layer = make_layer(OpType::Unsqueeze, vec!["x"], vec!["y"], attrs);
-        assert!(infer_unsqueeze(&layer, Some(&input_shape)).is_err());
+        assert!(
+            infer_unsqueeze(&layer, Some(&input_shape), &HashMap::new(), &HashMap::new()).is_err()
+        );
+    }
+
+    #[test]
+    fn unsqueeze_reads_axes_from_input() {
+        let input_shape = vec![1, 300, 64];
+        let attrs = HashMap::new();
+        let layer = make_layer(
+            OpType::Unsqueeze,
+            vec!["data", "axes_tensor"],
+            vec!["out"],
+            attrs,
+        );
+        let mut inits = HashMap::new();
+        inits.insert(
+            "axes_tensor".to_string(),
+            TensorData {
+                dims: vec![1],
+                float_data: vec![],
+                int_data: vec![3],
+                data_type: 7,
+                name: "axes_tensor".to_string(),
+            },
+        );
+        let result = infer_unsqueeze(&layer, Some(&input_shape), &inits, &HashMap::new()).unwrap();
+        assert_eq!(result[0].1, vec![1, 300, 64, 1]);
+    }
+
+    #[test]
+    fn gemm_batched_3d_rejected() {
+        let mut shapes = HashMap::new();
+        shapes.insert("a".to_string(), vec![1, 300, 64]);
+        shapes.insert("b".to_string(), vec![64, 64]);
+        let layer = make_layer(OpType::Gemm, vec!["a", "b"], vec!["y"], HashMap::new());
+        assert!(infer_gemm(&layer, &shapes).is_err());
+    }
+
+    #[test]
+    fn gemm_2d_unchanged() {
+        let mut shapes = HashMap::new();
+        shapes.insert("a".to_string(), vec![4, 3]);
+        shapes.insert("b".to_string(), vec![3, 5]);
+        let layer = make_layer(OpType::Gemm, vec!["a", "b"], vec!["y"], HashMap::new());
+        let result = infer_gemm(&layer, &shapes).unwrap();
+        assert_eq!(result[0].1, vec![4, 5]);
+    }
+
+    #[test]
+    fn slice_dynamic_bounds_passthrough() {
+        let input_shape = vec![1, 300, 64, 8];
+        let layer = make_layer(
+            OpType::Slice,
+            vec!["data", "dyn_starts", "dyn_ends"],
+            vec!["out"],
+            HashMap::new(),
+        );
+        let result =
+            infer_slice(&layer, Some(&input_shape), &HashMap::new(), &HashMap::new()).unwrap();
+        assert_eq!(result[0].1, vec![1, 300, 64, 8]);
+    }
+
+    #[test]
+    fn squeeze_reads_axes_from_input() {
+        let input_shape = vec![1, 300, 1, 64];
+        let attrs = HashMap::new();
+        let layer = make_layer(
+            OpType::Squeeze,
+            vec!["data", "axes_tensor"],
+            vec!["out"],
+            attrs,
+        );
+        let mut inits = HashMap::new();
+        inits.insert(
+            "axes_tensor".to_string(),
+            TensorData {
+                dims: vec![1],
+                float_data: vec![],
+                int_data: vec![2],
+                data_type: 7,
+                name: "axes_tensor".to_string(),
+            },
+        );
+        let result = infer_squeeze(&layer, Some(&input_shape), &inits, &HashMap::new()).unwrap();
+        assert_eq!(result[0].1, vec![1, 300, 64]);
     }
 }
