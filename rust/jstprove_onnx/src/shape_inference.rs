@@ -711,7 +711,12 @@ fn infer_unsqueeze(
         Some(v) => v,
         None => match resolve_axes_from_input(layer, 1, initializers, constant_tensors) {
             AxesInput::Resolved(v) => v,
-            AxesInput::Omitted => vec![],
+            AxesInput::Omitted => {
+                bail!(
+                    "layer {}: Unsqueeze requires axes (attribute or input tensor)",
+                    layer.name
+                );
+            }
             AxesInput::Unresolved(name) => {
                 bail!(
                     "layer {}: Unsqueeze axes input '{}' could not be resolved from initializers or constants",
