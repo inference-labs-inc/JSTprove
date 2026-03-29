@@ -20,6 +20,8 @@ use peakmem_alloc::{INSTRUMENTED_SYSTEM, PeakMemAlloc, PeakMemAllocTrait};
 use rmpv::Value;
 use serde::{Deserialize, Serialize};
 
+use rayon::prelude::*;
+
 use crate::circuit_functions::hints::build_logup_hint_registry;
 use crate::circuit_functions::utils::onnx_model::CircuitParams;
 use crate::cli;
@@ -412,6 +414,43 @@ fn run_batch_loop<J>(
     }
 }
 
+fn run_batch_loop_parallel<J: Send>(
+    operation: &str,
+    jobs: Vec<J>,
+    execute: impl Fn(usize, J) -> Result<String, String> + Send + Sync,
+) -> BatchResult {
+    let job_count = jobs.len();
+    let results: Vec<(usize, Result<String, String>)> = jobs
+        .into_par_iter()
+        .enumerate()
+        .map(|(idx, job)| (idx, execute(idx, job)))
+        .collect();
+
+    let mut succeeded = 0usize;
+    let mut failed = 0usize;
+    let mut errors: Vec<(usize, String)> = Vec::new();
+
+    for (idx, result) in results {
+        match result {
+            Ok(msg) => {
+                succeeded += 1;
+                println!("[{}/{}] {operation}: {msg}", idx + 1, job_count);
+            }
+            Err(msg) => {
+                failed += 1;
+                eprintln!("[{}/{}] FAILED: {msg}", idx + 1, job_count);
+                errors.push((idx, msg));
+            }
+        }
+    }
+
+    BatchResult {
+        succeeded,
+        failed,
+        errors,
+    }
+}
+
 fn load_manifest<T: serde::de::DeserializeOwned>(path: &str) -> Result<BatchManifest<T>, RunError> {
     let file = std::fs::File::open(path).map_err(|e| RunError::Io {
         source: e,
@@ -777,13 +816,18 @@ fn flatten_rmpv_to_f64(val: &Value, out: &mut Vec<f64>) -> Result<(), RunError> 
     Ok(())
 }
 
-/// Generates witnesses for multiple inputs sequentially.
+/// Generates witnesses for multiple inputs in parallel using Rayon work-stealing.
+///
+/// Shared circuit artifacts (`WitnessSolver`, `LayeredCircuit`, `HintRegistry`)
+/// are immutable and referenced concurrently from the thread pool. Each job
+/// creates its own `IOReader` and `CircuitDefaultType` assignment, so no
+/// mutable state is shared across threads.
 ///
 /// # Errors
 ///
 /// Returns a [`RunError`] if loading the manifest, circuit, or witness solver fails.
 pub fn run_batch_witness<C: Config, I, CircuitDefaultType>(
-    io_reader_factory: impl Fn() -> I,
+    io_reader_factory: impl Fn() -> I + Send + Sync,
     manifest_path: &str,
     circuit_path: &str,
     compress: bool,
@@ -799,38 +843,46 @@ where
     let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
 
     let job_count = manifest.jobs.len();
-    println!("Loaded circuit and witness solver. Processing {job_count} jobs.");
+    println!("Loaded circuit and witness solver. Processing {job_count} jobs in parallel.");
 
-    Ok(run_batch_loop("witness", manifest.jobs, |_idx, job| {
-        let mut io_reader = io_reader_factory();
-        let assignment = CircuitDefaultType::default();
-        let assignment = io_reader
-            .read_inputs(&job.input, assignment)
-            .map_err(|e| e.to_string())?;
-        let assignment = io_reader
-            .read_outputs(&job.output, assignment)
-            .map_err(|e| e.to_string())?;
+    Ok(run_batch_loop_parallel(
+        "witness",
+        manifest.jobs,
+        |_idx, job| {
+            let mut io_reader = io_reader_factory();
+            let assignment = CircuitDefaultType::default();
+            let assignment = io_reader
+                .read_inputs(&job.input, assignment)
+                .map_err(|e| e.to_string())?;
+            let assignment = io_reader
+                .read_outputs(&job.output, assignment)
+                .map_err(|e| e.to_string())?;
 
-        witness_core::<C, CircuitDefaultType>(
-            &witness_solver,
-            &layered_circuit,
-            &hint_registry,
-            &assignment,
-            &job.witness,
-            compress,
-        )
-        .map(|()| job.witness.clone())
-        .map_err(|e| e.to_string())
-    }))
+            witness_core::<C, CircuitDefaultType>(
+                &witness_solver,
+                &layered_circuit,
+                &hint_registry,
+                &assignment,
+                &job.witness,
+                compress,
+            )
+            .map(|()| job.witness.clone())
+            .map_err(|e| e.to_string())
+        },
+    ))
 }
 
-/// Generates witnesses for multiple inputs via stdin/stdout piping.
+/// Generates witnesses for multiple inputs via stdin/stdout piping, in parallel.
+///
+/// Shared circuit artifacts are referenced concurrently from the Rayon thread
+/// pool. Each job creates its own `IOReader`, assignment, and output file
+/// writer, so no mutable state is shared.
 ///
 /// # Errors
 ///
 /// Returns a [`RunError`] if loading the circuit, reading stdin, or witness generation fails.
 pub fn run_pipe_witness<C: Config, I, CircuitDefaultType>(
-    io_reader_factory: impl Fn() -> I,
+    io_reader_factory: impl Fn() -> I + Send + Sync,
     circuit_path: &str,
     compress: bool,
 ) -> Result<BatchResult, RunError>
@@ -848,74 +900,39 @@ where
         rmp_serde::from_read(stdin.lock()).map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
 
     let job_count = manifest.jobs.len();
-    eprintln!("Loaded circuit and witness solver. Processing {job_count} piped jobs.");
+    eprintln!("Loaded circuit and witness solver. Processing {job_count} piped jobs in parallel.");
+
+    let results: Vec<(usize, Result<String, String>)> = manifest
+        .jobs
+        .into_par_iter()
+        .enumerate()
+        .map(|(idx, job)| {
+            let outcome = pipe_witness_job::<C, I, CircuitDefaultType>(
+                &io_reader_factory,
+                &witness_solver,
+                &layered_circuit,
+                &hint_registry,
+                job,
+                compress,
+            );
+            (idx, outcome)
+        })
+        .collect();
 
     let mut succeeded = 0usize;
     let mut failed = 0usize;
     let mut errors: Vec<(usize, String)> = Vec::new();
 
-    for (idx, job) in manifest.jobs.into_iter().enumerate() {
-        let mut io_reader = io_reader_factory();
-        let assignment = CircuitDefaultType::default();
-        let assignment = match io_reader.apply_values(job.input, job.output, assignment) {
-            Ok(a) => a,
-            Err(e) => {
-                failed += 1;
-                eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
-                errors.push((idx, e.to_string()));
-                continue;
-            }
-        };
-
-        match solve_and_validate_witness::<C, CircuitDefaultType>(
-            &witness_solver,
-            &layered_circuit,
-            &hint_registry,
-            &assignment,
-        ) {
-            Ok(witness) => {
-                let file = match std::fs::File::create(&job.witness) {
-                    Ok(f) => f,
-                    Err(e) => {
-                        failed += 1;
-                        let msg = format!("witness I/O: {e:?}");
-                        eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, msg);
-                        errors.push((idx, msg));
-                        continue;
-                    }
-                };
-                let mut writer = match compressed_writer(file, compress) {
-                    Ok(w) => w,
-                    Err(e) => {
-                        failed += 1;
-                        let msg = format!("witness compress: {e:?}");
-                        eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, msg);
-                        errors.push((idx, msg));
-                        continue;
-                    }
-                };
-                if let Err(e) = witness
-                    .serialize_into(&mut writer)
-                    .map_err(|e| RunError::Serialize(format!("{e:?}")))
-                    .and_then(|()| {
-                        writer
-                            .finish()
-                            .map_err(|e| RunError::Serialize(format!("{e:?}")))
-                    })
-                {
-                    failed += 1;
-                    let msg = format!("witness serialize: {e:?}");
-                    eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, msg);
-                    errors.push((idx, msg));
-                    continue;
-                }
+    for (idx, result) in results {
+        match result {
+            Ok(msg) => {
                 succeeded += 1;
-                eprintln!("[{}/{}] witness: {}", idx + 1, job_count, job.witness);
+                eprintln!("[{}/{}] witness: {msg}", idx + 1, job_count);
             }
-            Err(e) => {
+            Err(msg) => {
                 failed += 1;
-                eprintln!("[{}/{}] FAILED: {}", idx + 1, job_count, e);
-                errors.push((idx, e.to_string()));
+                eprintln!("[{}/{}] FAILED: {msg}", idx + 1, job_count);
+                errors.push((idx, msg));
             }
         }
     }
@@ -928,6 +945,47 @@ where
     write_msgpack_stdout(&result)?;
 
     Ok(result)
+}
+
+fn pipe_witness_job<C: Config, I, CircuitDefaultType>(
+    io_reader_factory: &(impl Fn() -> I + Send + Sync),
+    witness_solver: &WitnessSolver<C>,
+    layered_circuit: &Circuit<C, NormalInputType>,
+    hint_registry: &expander_compiler::frontend::HintRegistry<CircuitField<C>>,
+    job: PipeWitnessJob,
+    compress: bool,
+) -> Result<String, String>
+where
+    I: IOReader<CircuitDefaultType, C>,
+    CircuitDefaultType: Default
+        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
+        + Clone,
+{
+    let mut io_reader = io_reader_factory();
+    let assignment = CircuitDefaultType::default();
+    let assignment = io_reader
+        .apply_values(job.input, job.output, assignment)
+        .map_err(|e| e.to_string())?;
+
+    let witness = solve_and_validate_witness::<C, CircuitDefaultType>(
+        witness_solver,
+        layered_circuit,
+        hint_registry,
+        &assignment,
+    )
+    .map_err(|e| e.to_string())?;
+
+    let file = std::fs::File::create(&job.witness).map_err(|e| format!("witness I/O: {e:?}"))?;
+    let mut writer =
+        compressed_writer(file, compress).map_err(|e| format!("witness compress: {e:?}"))?;
+    witness
+        .serialize_into(&mut writer)
+        .map_err(|e| format!("witness serialize: {e:?}"))?;
+    writer
+        .finish()
+        .map_err(|e| format!("witness serialize: {e:?}"))?;
+
+    Ok(job.witness)
 }
 
 /// Generates proofs for multiple witnesses via stdin/stdout piping.

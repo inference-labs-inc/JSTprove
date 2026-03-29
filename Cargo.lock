@@ -2384,6 +2384,7 @@ dependencies = [
  "openssl",
  "peakmem-alloc",
  "rand 0.8.5",
+ "rayon",
  "rmp-serde",
  "rmpv",
  "serde",
