@@ -234,6 +234,7 @@ impl<C: Config> CircuitRelaxed<C> {
             outputs: new_outputs,
             constraints: new_constraints,
             num_inputs: self.num_inputs,
+            hash_cache: 0,
         }
     }
 
@@ -299,6 +300,7 @@ impl<C: Config> CircuitRelaxed<C> {
                 instructions,
                 constraints: vec![],
                 outputs,
+                hash_cache: 0,
             },
             add,
         )
@@ -315,6 +317,7 @@ impl<C: Config> RootCircuitRelaxed<C> {
             num_public_inputs: self.num_public_inputs,
             expected_num_output_zeroes: self.expected_num_output_zeroes,
             circuits: new_circuits,
+            hash_cache: 0,
         }
     }
 
@@ -333,6 +336,7 @@ impl<C: Config> RootCircuitRelaxed<C> {
             num_public_inputs: self.num_public_inputs,
             expected_num_output_zeroes: expected_zeroes,
             circuits: exported_circuits,
+            hash_cache: 0,
         }
     }
 }

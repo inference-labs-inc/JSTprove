@@ -713,6 +713,7 @@ fn process_circuit<C: Config>(
             outputs,
             instructions,
             num_inputs: circuit.num_inputs,
+            hash_cache: 0,
         },
         builder,
     ))
@@ -734,6 +735,7 @@ pub fn process<C: Config>(rc: &InRootCircuit<C>) -> Result<OutRootCircuit<C>, Er
         num_public_inputs: rc.num_public_inputs,
         expected_num_output_zeroes: rc.expected_num_output_zeroes,
         circuits: root.out_circuits,
+        hash_cache: 0,
     })
 }
 

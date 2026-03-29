@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
-    hash::Hash,
+    hash::{Hash, Hasher},
 };
 
 use crate::{
@@ -84,19 +84,116 @@ impl<C: Config> ConstraintType<C> for RawConstraintType {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Circuit<Irc: IrConfig> {
     pub instructions: Vec<Irc::Instruction>,
     pub constraints: Vec<Irc::Constraint>,
     pub outputs: Vec<usize>,
     pub num_inputs: usize,
+    pub(crate) hash_cache: u64,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+impl<Irc: IrConfig> Circuit<Irc> {
+    fn compute_hash(
+        instructions: &[Irc::Instruction],
+        constraints: &[Irc::Constraint],
+        outputs: &[usize],
+        num_inputs: usize,
+    ) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        instructions.hash(&mut hasher);
+        constraints.hash(&mut hasher);
+        outputs.hash(&mut hasher);
+        num_inputs.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    pub fn recompute_hash(&mut self) {
+        self.hash_cache = Self::compute_hash(
+            &self.instructions,
+            &self.constraints,
+            &self.outputs,
+            self.num_inputs,
+        );
+    }
+}
+
+impl<Irc: IrConfig> Hash for Circuit<Irc> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.hash_cache.hash(state);
+    }
+}
+
+impl<Irc: IrConfig> PartialEq for Circuit<Irc> {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash_cache == other.hash_cache
+            && self.num_inputs == other.num_inputs
+            && self.outputs == other.outputs
+            && self.constraints == other.constraints
+            && self.instructions == other.instructions
+    }
+}
+
+impl<Irc: IrConfig> Eq for Circuit<Irc> {}
+
+#[derive(Debug, Clone)]
 pub struct RootCircuit<Irc: IrConfig> {
     pub num_public_inputs: usize,
     pub expected_num_output_zeroes: usize,
     pub circuits: HashMap<usize, Circuit<Irc>>,
+    pub(crate) hash_cache: u64,
+}
+
+impl<Irc: IrConfig> RootCircuit<Irc> {
+    fn compute_hash(
+        num_public_inputs: usize,
+        expected_num_output_zeroes: usize,
+        circuits: &HashMap<usize, Circuit<Irc>>,
+    ) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        num_public_inputs.hash(&mut hasher);
+        expected_num_output_zeroes.hash(&mut hasher);
+        let mut sorted_keys: Vec<_> = circuits.keys().collect();
+        sorted_keys.sort();
+        for key in sorted_keys {
+            key.hash(&mut hasher);
+            circuits[key].hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+
+    pub fn recompute_hash(&mut self) {
+        for circuit in self.circuits.values_mut() {
+            circuit.recompute_hash();
+        }
+        self.hash_cache = Self::compute_hash(
+            self.num_public_inputs,
+            self.expected_num_output_zeroes,
+            &self.circuits,
+        );
+    }
+}
+
+impl<Irc: IrConfig> PartialEq for RootCircuit<Irc> {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash_cache == other.hash_cache
+            && self.num_public_inputs == other.num_public_inputs
+            && self.expected_num_output_zeroes == other.expected_num_output_zeroes
+            && self.circuits == other.circuits
+    }
+}
+
+impl<Irc: IrConfig> Eq for RootCircuit<Irc> {}
+
+impl<Irc: IrConfig> Default for RootCircuit<Irc> {
+    fn default() -> Self {
+        Self {
+            num_public_inputs: 0,
+            expected_num_output_zeroes: 0,
+            circuits: HashMap::new(),
+            hash_cache: 0,
+        }
+    }
 }
 
 impl<Irc: IrConfig> Circuit<Irc> {

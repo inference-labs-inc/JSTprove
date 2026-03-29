@@ -30,6 +30,7 @@ where
             constraints,
             outputs,
             num_inputs,
+            hash_cache: 0,
         })
     }
 }
@@ -63,6 +64,7 @@ where
             num_public_inputs,
             expected_num_output_zeroes,
             circuits,
+            hash_cache: 0,
         })
     }
 }

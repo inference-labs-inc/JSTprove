@@ -204,6 +204,7 @@ impl<'a, C: Config> Builder<'a, C> {
             instructions: fin_insns,
             constraints,
             num_inputs: self.in_circuit.num_inputs,
+            hash_cache: 0,
         })
     }
 }
@@ -232,6 +233,7 @@ pub fn process<'a, C: Config>(
         num_public_inputs: rc.num_public_inputs,
         expected_num_output_zeroes: rc.expected_num_output_zeroes,
         circuits: out_circuits,
+        hash_cache: 0,
     })
 }
 

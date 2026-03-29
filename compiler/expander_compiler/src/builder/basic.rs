@@ -635,6 +635,7 @@ where
             .map(|x| builder.in_to_out[*x])
             .collect(),
         num_inputs: circuit.num_inputs,
+        hash_cache: 0,
     };
     Ok((new_circuit, builder))
 }
@@ -666,5 +667,6 @@ where
         num_public_inputs: rc.num_public_inputs,
         expected_num_output_zeroes: rc.expected_num_output_zeroes,
         circuits: root.out_circuits,
+        hash_cache: 0,
     })
 }

@@ -210,6 +210,7 @@ impl<'a, C: Config> SplitContext<'a, C> {
             instructions: new_insns,
             constraints: circuit.constraints.iter().map(|x| var_new_id[*x]).collect(),
             outputs: circuit.outputs.iter().map(|x| var_new_id[*x]).collect(),
+            hash_cache: 0,
         };
         (
             new_circuit,
@@ -444,6 +445,7 @@ impl<'a, C: Config> SplitContext<'a, C> {
                 instructions: new_insns,
                 constraints: vec![],
                 outputs,
+                hash_cache: 0,
             };
             let new_id = self.new_circuits.add(&new_circuit);
             assert_ne!(new_id, 0);
@@ -481,6 +483,7 @@ pub fn split_to_single_layer<C: Config>(root: &IrRootCircuit<C>) -> IrRootCircui
         instructions: vec![],
         constraints: vec![],
         outputs: vec![],
+        hash_cache: 0,
     });
     ctx.compute_output_layers(0, vec![0; root.circuits[&0].num_inputs]);
     ctx.split_circuit(0, vec![0; root.circuits[&0].num_inputs], &[0]);
@@ -495,6 +498,7 @@ pub fn split_to_single_layer<C: Config>(root: &IrRootCircuit<C>) -> IrRootCircui
         num_public_inputs: root.num_public_inputs,
         expected_num_output_zeroes: root.expected_num_output_zeroes
             + C::ENABLE_RANDOM_COMBINATION as usize,
+        hash_cache: 0,
     }
 }
 

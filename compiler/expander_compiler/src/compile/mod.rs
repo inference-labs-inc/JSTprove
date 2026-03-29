@@ -58,21 +58,35 @@ impl CompileOptions {
 
 fn optimize_until_fixed_point<T, F>(x: &T, im: &mut InputMapping, f: F) -> T
 where
-    T: Clone + Eq,
+    T: Clone + Eq + HashRecompute,
     F: Fn(&T) -> (T, InputMapping),
 {
+    let mut x_hashed = x.clone();
+    x_hashed.recompute_hash();
     let (mut y, imy) = f(x);
-    if *x == y {
+    y.recompute_hash();
+    if x_hashed == y {
         return y;
     }
     im.compose_in_place(&imy);
     loop {
-        let (z, imz) = f(&y);
+        let (mut z, imz) = f(&y);
+        z.recompute_hash();
         if y == z {
             return y;
         }
         y = z;
         im.compose_in_place(&imz);
+    }
+}
+
+trait HashRecompute {
+    fn recompute_hash(&mut self);
+}
+
+impl<Irc: ir::common::IrConfig> HashRecompute for ir::common::RootCircuit<Irc> {
+    fn recompute_hash(&mut self) {
+        self.recompute_hash();
     }
 }
 

@@ -215,6 +215,7 @@ impl<C: Config> CircuitRelaxed<C> {
                 .iter()
                 .map(|x| new_id[*x].default_id)
                 .collect(),
+            hash_cache: 0,
         }
     }
 }
@@ -233,6 +234,7 @@ impl<C: Config> RootCircuitRelaxed<C> {
             circuits,
             num_public_inputs: self.num_public_inputs,
             expected_num_output_zeroes: self.expected_num_output_zeroes,
+            hash_cache: 0,
         }
     }
 }

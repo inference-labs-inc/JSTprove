@@ -340,6 +340,7 @@ impl<C: Config> Circuit<C> {
             instructions,
             constraints: self.constraints.iter().map(|x| new_id[*x]).collect(),
             outputs: self.outputs.iter().map(|x| new_id[*x]).collect(),
+            hash_cache: 0,
         }
     }
 
@@ -414,6 +415,7 @@ impl<C: Config> Circuit<C> {
             instructions,
             constraints: if is_root { vec![1] } else { vec![] },
             outputs,
+            hash_cache: 0,
         }
     }
 
@@ -438,6 +440,7 @@ impl<C: Config> Circuit<C> {
             instructions,
             constraints: self.constraints.iter().map(|x| new_id[*x]).collect(),
             outputs: self.outputs.iter().map(|x| new_id[*x]).collect(),
+            hash_cache: 0,
         }
     }
 }
@@ -459,6 +462,7 @@ impl<C: Config> RootCircuit<C> {
             num_public_inputs: self.num_public_inputs,
             expected_num_output_zeroes: self.expected_num_output_zeroes,
             circuits,
+            hash_cache: 0,
         };
         let mut exported_circuits = HashMap::new();
         let order = self.topo_order();
@@ -473,6 +477,7 @@ impl<C: Config> RootCircuit<C> {
                 num_public_inputs: self.num_public_inputs,
                 expected_num_output_zeroes: 0,
                 circuits: exported_circuits,
+                hash_cache: 0,
             },
         )
     }

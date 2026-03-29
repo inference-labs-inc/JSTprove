@@ -357,6 +357,7 @@ impl<Irc: IrConfig> RootCircuit<Irc> {
                     num_inputs: (1..=circuit.num_inputs)
                         .filter(|x| var_map[*x] != EMPTY)
                         .count(),
+                    hash_cache: 0,
                 },
             );
         }
@@ -383,6 +384,7 @@ impl<Irc: IrConfig> RootCircuit<Irc> {
                 num_public_inputs: self.num_public_inputs,
                 expected_num_output_zeroes: self.expected_num_output_zeroes,
                 circuits: new_circuits,
+                hash_cache: 0,
             },
             InputMapping::new(new_input_size, input_mapping_vec),
         )
