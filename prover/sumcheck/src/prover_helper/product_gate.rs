@@ -25,6 +25,12 @@ impl SumcheckProductGateHelper {
     where
         EvalF: Field + Mul<VF, Output = EvalF>,
     {
+        // 3 field muls per element: the theoretical minimum for evaluating a
+        // degree-2 univariate from a product of two multilinear polynomials.
+        // The eq polynomial is already absorbed into bk_hg via gate-structure
+        // pre-processing in prepare_x_vals/prepare_y_vals, so Dao-Thaler /
+        // Gruen eq-factoring optimizations (ePrint 2024/1210, 2025/1117) do
+        // not apply to this inner loop.
         let mut p0 = EvalF::ZERO;
         let mut p1 = EvalF::ZERO;
         let mut p2 = EvalF::ZERO;
