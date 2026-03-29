@@ -3,7 +3,7 @@ use ndarray::{Array1, ArrayD, ArrayView1, Axis, Ix1, IxDyn, concatenate};
 use expander_compiler::expander_circuit;
 use expander_compiler::frontend::{
     BN254Config, CircuitField, Config, Define, FieldArith, GoldilocksBasefoldConfig,
-    GoldilocksConfig, RootAPI, Variable, declare_circuit,
+    GoldilocksConfig, M31x1Config, RootAPI, Variable, declare_circuit,
 };
 use expander_compiler::gkr_engine::GKREngine;
 
@@ -810,6 +810,102 @@ pub fn verify_goldilocks_basefold(
     proof_bytes: &[u8],
 ) -> Result<bool, RunError> {
     verify_from_bytes::<GoldilocksBasefoldConfig>(circuit_bytes, witness_bytes, proof_bytes)
+}
+
+/// # Errors
+/// Returns `RunError` on compilation or serialization failure.
+pub fn compile_m31(
+    circuit_path: &str,
+    compress: bool,
+    metadata: Option<CircuitParams>,
+) -> Result<(), RunError> {
+    crate::runner::main_runner::run_compile_and_serialize::<M31x1Config, Circuit<Variable>>(
+        circuit_path,
+        compress,
+        metadata,
+    )
+}
+
+/// # Errors
+/// Returns `RunError` on witness generation failure.
+pub fn witness_m31(req: &WitnessRequest, compress: bool) -> Result<WitnessBundle, RunError> {
+    let mut reader = ValueReader {
+        params: req.metadata.clone(),
+    };
+    witness_from_request::<M31x1Config, ValueReader, Circuit<CircuitField<M31x1Config>>>(
+        req,
+        &mut reader,
+        compress,
+    )
+}
+
+/// # Errors
+/// Returns `RunError` on witness generation or activation mismatch.
+pub fn witness_m31_from_f64(
+    circuit_bytes: &[u8],
+    solver_bytes: &[u8],
+    params: &CircuitParams,
+    activations: &[f64],
+    initializers: &[(Vec<f64>, Vec<usize>)],
+    compress: bool,
+) -> Result<WitnessBundle, RunError> {
+    witness_from_f64_generic::<M31x1Config>(
+        circuit_bytes,
+        solver_bytes,
+        params,
+        activations,
+        initializers,
+        compress,
+    )
+}
+
+/// # Errors
+/// Returns `RunError` on proof generation failure.
+pub fn prove_m31(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    compress: bool,
+) -> Result<Vec<u8>, RunError> {
+    prove_from_bytes::<M31x1Config>(circuit_bytes, witness_bytes, compress)
+}
+
+/// # Errors
+/// Returns `RunError` on verification failure.
+pub fn verify_m31(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+) -> Result<bool, RunError> {
+    verify_from_bytes::<M31x1Config>(circuit_bytes, witness_bytes, proof_bytes)
+}
+
+pub type LayeredCircuitM31 = expander_compiler::circuit::layered::Circuit<
+    M31x1Config,
+    expander_compiler::circuit::layered::NormalInputType,
+>;
+
+/// # Errors
+/// Returns `RunError` on decompression or deserialization failure.
+pub fn deserialize_circuit_m31(circuit_bytes: &[u8]) -> Result<LayeredCircuitM31, RunError> {
+    crate::runner::main_runner::load_circuit_from_bytes::<M31x1Config>(circuit_bytes)
+}
+
+/// # Errors
+/// Returns `RunError` on verification or output extraction failure.
+pub fn verify_and_extract_m31(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+    num_inputs: usize,
+    expected_inputs: Option<&[f64]>,
+) -> Result<VerifiedOutput, RunError> {
+    verify_and_extract_from_bytes::<M31x1Config>(
+        circuit_bytes,
+        witness_bytes,
+        proof_bytes,
+        num_inputs,
+        expected_inputs,
+    )
 }
 
 fn get_architecture_and_wandb(

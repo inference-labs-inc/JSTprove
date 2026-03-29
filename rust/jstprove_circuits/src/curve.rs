@@ -10,6 +10,8 @@ pub enum Curve {
     Goldilocks,
     #[serde(alias = "GoldilocksBasefold", alias = "goldilocks_basefold")]
     GoldilocksBasefold,
+    #[serde(alias = "M31", alias = "mersenne31")]
+    M31,
 }
 
 impl std::fmt::Display for Curve {
@@ -18,6 +20,7 @@ impl std::fmt::Display for Curve {
             Self::Bn254 => write!(f, "bn254"),
             Self::Goldilocks => write!(f, "goldilocks"),
             Self::GoldilocksBasefold => write!(f, "goldilocks_basefold"),
+            Self::M31 => write!(f, "m31"),
         }
     }
 }
@@ -40,6 +43,7 @@ impl std::str::FromStr for Curve {
             "bn254" => Ok(Self::Bn254),
             "goldilocks" => Ok(Self::Goldilocks),
             "goldilocks_basefold" => Ok(Self::GoldilocksBasefold),
+            "m31" | "mersenne31" => Ok(Self::M31),
             other => Err(CurveParseError(other.to_string())),
         }
     }
@@ -56,7 +60,12 @@ mod tests {
 
     #[test]
     fn round_trip_display_parse() {
-        for variant in [Curve::Bn254, Curve::Goldilocks, Curve::GoldilocksBasefold] {
+        for variant in [
+            Curve::Bn254,
+            Curve::Goldilocks,
+            Curve::GoldilocksBasefold,
+            Curve::M31,
+        ] {
             let s = variant.to_string();
             let parsed: Curve = s.parse().unwrap();
             assert_eq!(parsed, variant);

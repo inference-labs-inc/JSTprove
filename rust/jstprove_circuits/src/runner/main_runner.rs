@@ -2079,10 +2079,10 @@ pub fn get_args() -> clap::ArgMatches {
         )
         .arg(
             Arg::new("curve")
-                .help("Elliptic curve: 'bn254' (default), 'goldilocks', or 'goldilocks_basefold'")
+                .help("Field backend: 'bn254' (default), 'goldilocks', 'goldilocks_basefold', or 'm31'")
                 .required(false)
                 .long("curve")
-                .value_parser(["bn254", "goldilocks", "goldilocks_basefold"])
+                .value_parser(["bn254", "goldilocks", "goldilocks_basefold", "m31"])
                 .default_value("bn254"),
         )
         .arg(
