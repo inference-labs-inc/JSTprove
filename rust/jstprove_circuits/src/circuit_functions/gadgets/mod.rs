@@ -5,6 +5,7 @@
 pub mod autotuner;
 pub mod chunk_table;
 pub mod euclidean_division;
+pub mod lasso_analysis;
 pub mod linear_algebra;
 pub mod max_min_clip;
 pub mod range_check;
