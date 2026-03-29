@@ -70,7 +70,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for PadLayer {
                 }
                 .into());
             }
-            new_shape.push((begin as usize) + shape[i] + (end as usize));
+            new_shape.push(
+                (begin as usize)
+                    .checked_add(shape[i])
+                    .and_then(|s| s.checked_add(end as usize))
+                    .ok_or_else(|| LayerError::InvalidShape {
+                        layer: LayerKind::Pad,
+                        msg: format!("output shape overflow at dim {i}"),
+                    })?,
+            );
         }
 
         let pad_val = api.constant(u32::try_from(self.constant_value).map_err(|_| {
