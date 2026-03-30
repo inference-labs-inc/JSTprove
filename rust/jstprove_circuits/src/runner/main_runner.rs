@@ -1,6 +1,7 @@
 #[cfg(feature = "peak-mem")]
 use std::alloc::System;
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
@@ -460,6 +461,18 @@ fn load_manifest<T: serde::de::DeserializeOwned>(path: &str) -> Result<BatchMani
     rmp_serde::from_read(reader).map_err(|e| RunError::Deserialize(format!("{e:?}")))
 }
 
+fn ensure_unique_witness_paths(paths: &[&str]) -> Result<(), RunError> {
+    let mut seen = HashSet::with_capacity(paths.len());
+    for path in paths {
+        if !seen.insert(*path) {
+            return Err(RunError::Deserialize(format!(
+                "duplicate witness output path: {path}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 enum ResolvedCircuitPath {
     BundleDir(String),
     LegacyFile(String),
@@ -839,6 +852,13 @@ where
         + Clone,
 {
     let manifest: BatchManifest<WitnessJob> = load_manifest(manifest_path)?;
+    ensure_unique_witness_paths(
+        &manifest
+            .jobs
+            .iter()
+            .map(|j| j.witness.as_str())
+            .collect::<Vec<_>>(),
+    )?;
     let (layered_circuit, witness_solver) = load_circuit_and_solver::<C>(circuit_path)?;
     let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
 
@@ -898,6 +918,14 @@ where
     let stdin = std::io::stdin();
     let manifest: BatchManifest<PipeWitnessJob> =
         rmp_serde::from_read(stdin.lock()).map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+
+    ensure_unique_witness_paths(
+        &manifest
+            .jobs
+            .iter()
+            .map(|j| j.witness.as_str())
+            .collect::<Vec<_>>(),
+    )?;
 
     let job_count = manifest.jobs.len();
     eprintln!("Loaded circuit and witness solver. Processing {job_count} piped jobs in parallel.");

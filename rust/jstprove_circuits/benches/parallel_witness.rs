@@ -104,27 +104,23 @@ fn main() {
     );
 
     let t = Instant::now();
-    let results: Vec<_> = activation_sets
-        .par_iter()
-        .map(|acts| {
-            witness_bn254_from_f64(
-                &bundle.circuit,
-                &bundle.witness_solver,
-                &params,
-                acts,
-                &[],
-                false,
-            )
-            .unwrap()
-        })
-        .collect();
+    activation_sets.par_iter().for_each(|acts| {
+        let _wb = witness_bn254_from_f64(
+            &bundle.circuit,
+            &bundle.witness_solver,
+            &params,
+            acts,
+            &[],
+            false,
+        )
+        .unwrap();
+    });
     let parallel_ms = t.elapsed().as_secs_f64() * 1000.0;
     println!(
         "parallel batch   ({batch_size}): {:>10}  ({:.1}ms/witness)",
         fmt(parallel_ms),
         parallel_ms / batch_size as f64
     );
-    drop(results);
 
     let speedup = sequential_ms / parallel_ms;
     println!("\nspeedup: {speedup:.2}x");
