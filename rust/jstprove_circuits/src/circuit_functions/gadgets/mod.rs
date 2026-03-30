@@ -9,6 +9,9 @@ pub mod linear_algebra;
 pub mod max_min_clip;
 pub mod range_check;
 
+#[cfg(test)]
+mod data_parallel_gkr_analysis;
+
 pub use max_min_clip::{
     ShiftRangeContext, constrained_clip, constrained_max, constrained_max_2, constrained_min,
     constrained_min_2, constrained_relu,
