@@ -465,7 +465,7 @@ fn ensure_unique_witness_paths(paths: &[&str]) -> Result<(), RunError> {
     let mut seen = HashSet::with_capacity(paths.len());
     for path in paths {
         if !seen.insert(*path) {
-            return Err(RunError::Deserialize(format!(
+            return Err(RunError::Unsupported(format!(
                 "duplicate witness output path: {path}"
             )));
         }
