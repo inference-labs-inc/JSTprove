@@ -14,6 +14,15 @@ use jstprove_circuits::runner::main_runner::read_circuit_msgpack;
 /// α = 2^18, the fixed-point scale factor.
 const ALPHA: i64 = 262144;
 
+/// Build a 2-D nested `rmpv::Value` with shape [rows, cols], all elements set to `val`.
+fn make_weight_2d(rows: usize, cols: usize, val: i64) -> Value {
+    Value::Array(
+        (0..rows)
+            .map(|_| Value::Array((0..cols).map(|_| Value::from(val)).collect()))
+            .collect(),
+    )
+}
+
 /// Build a 4-D nested `rmpv::Value` with shape [oc, ic, kh, kw], all elements set to `val`.
 fn make_weight_4d(oc: usize, ic: usize, kh: usize, kw: usize, val: i64) -> Value {
     Value::Array(
@@ -228,5 +237,176 @@ fn conv_prove(c: &mut Criterion) {
     group.finish();
 }
 
+/// Construct a minimal single-Gemm-layer metadata triple without touching any ONNX file.
+///
+/// Spec:
+///   input  x: [1, 64]  — batch=1, in_features=64
+///   weight W: [32, 64] — out_features=32, in_features=64 (transB=1)
+///   bias   B: [32]     — zero biases; reshapes to [1,32] matching the core product
+///   output y: [1, 32]
+fn make_gemm_metadata() -> (CircuitParams, Architecture, WANDB) {
+    let params = CircuitParams {
+        scale_base: 2,
+        scale_exponent: 18,
+        rescale_config: [("gemm_0".to_string(), true)].into_iter().collect(),
+        inputs: vec![ONNXIO {
+            name: "x".into(),
+            elem_type: 1,
+            shape: vec![1, 64],
+        }],
+        outputs: vec![ONNXIO {
+            name: "y".into(),
+            elem_type: 1,
+            shape: vec![1, 32],
+        }],
+        freivalds_reps: 1,
+        n_bits_config: HashMap::new(),
+        weights_as_inputs: false,
+        proof_system: ProofSystem::Expander,
+        curve: None,
+        logup_chunk_bits: Some(12),
+    };
+
+    let gemm_layer = ONNXLayer {
+        id: 0,
+        name: "gemm_0".into(),
+        op_type: "Gemm".into(),
+        inputs: vec!["x".into(), "W".into(), "B".into()],
+        outputs: vec!["y".into()],
+        shape: [
+            ("x", vec![1usize, 64]),
+            ("W", vec![32, 64]),
+            ("B", vec![32]),
+            ("y", vec![1, 32]),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect(),
+        tensor: None,
+        params: Some(Value::Map(vec![
+            (Value::String("transA".into()), Value::from(0i64)),
+            (Value::String("transB".into()), Value::from(1i64)),
+            (Value::String("alpha".into()), Value::from(1.0f64)),
+            (Value::String("beta".into()), Value::from(1.0f64)),
+        ])),
+        opset_version_number: 17,
+    };
+
+    let arch = Architecture {
+        architecture: vec![gemm_layer],
+    };
+
+    // W: all weights = 1 * α (scaled by α¹ as required for Gemm weights)
+    let w_tensor = make_weight_2d(32, 64, ALPHA);
+    // B: zero bias (0 * α² = 0)
+    let b_tensor = Value::Array(vec![Value::from(0i64); 32]);
+
+    let w_layer = ONNXLayer {
+        id: 0,
+        name: "W".into(),
+        op_type: "Const".into(),
+        inputs: vec![],
+        outputs: vec![],
+        shape: [("W".to_string(), vec![32usize, 64])].into_iter().collect(),
+        tensor: Some(w_tensor),
+        params: None,
+        opset_version_number: -1,
+    };
+
+    let b_layer = ONNXLayer {
+        id: 1,
+        name: "B".into(),
+        op_type: "Const".into(),
+        inputs: vec![],
+        outputs: vec![],
+        shape: [("B".to_string(), vec![32usize])].into_iter().collect(),
+        tensor: Some(b_tensor),
+        params: None,
+        opset_version_number: -1,
+    };
+
+    let wandb = WANDB {
+        w_and_b: vec![w_layer, b_layer],
+    };
+
+    (params, arch, wandb)
+}
+
+fn gemm_compile(c: &mut Criterion) {
+    let (params, arch, wandb) = make_gemm_metadata();
+    let mut group = c.benchmark_group("gemm/compile");
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(120));
+
+    group.bench_function("bn254", |b| {
+        b.iter_batched(
+            || {
+                OnnxContext::set_all(arch.clone(), params.clone(), Some(wandb.clone()));
+                tempfile::TempDir::new().unwrap()
+            },
+            |tmp| {
+                let path = tmp.path().join("c.bundle").to_str().unwrap().to_string();
+                compile_bn254(&path, false, Some(black_box(params.clone()))).unwrap();
+            },
+            BatchSize::PerIteration,
+        );
+    });
+    group.finish();
+}
+
+fn gemm_witness(c: &mut Criterion) {
+    let (params, arch, wandb) = make_gemm_metadata();
+    OnnxContext::set_all(arch.clone(), params.clone(), Some(wandb.clone()));
+    let tmp = tempfile::TempDir::new().unwrap();
+    let path = tmp.path().join("c.bundle");
+    compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
+    let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
+    let activations = vec![0.0f64; 1 * 64];
+
+    let mut group = c.benchmark_group("gemm/witness");
+    group.sample_size(10);
+    group.bench_function("bn254", |b| {
+        b.iter(|| {
+            witness_bn254_from_f64(
+                &bundle.circuit,
+                &bundle.witness_solver,
+                &params,
+                &activations,
+                &[],
+                false,
+            )
+            .unwrap()
+        });
+    });
+    group.finish();
+}
+
+fn gemm_prove(c: &mut Criterion) {
+    let (params, arch, wandb) = make_gemm_metadata();
+    OnnxContext::set_all(arch, params.clone(), Some(wandb));
+    let tmp = tempfile::TempDir::new().unwrap();
+    let path = tmp.path().join("c.bundle");
+    compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
+    let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
+    let activations = vec![0.0f64; 1 * 64];
+    let wb = witness_bn254_from_f64(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations,
+        &[],
+        false,
+    )
+    .unwrap();
+
+    let mut group = c.benchmark_group("gemm/prove");
+    group.sample_size(10);
+    group.bench_function("bn254", |b| {
+        b.iter(|| prove_bn254(&bundle.circuit, &wb.witness, false).unwrap());
+    });
+    group.finish();
+}
+
 criterion_group!(conv_benches, conv_compile, conv_witness, conv_prove);
-criterion_main!(conv_benches);
+criterion_group!(gemm_benches, gemm_compile, gemm_witness, gemm_prove);
+criterion_main!(conv_benches, gemm_benches);
