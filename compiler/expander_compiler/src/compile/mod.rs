@@ -56,6 +56,21 @@ impl CompileOptions {
     }
 }
 
+/// Applies `f` exactly once. Only safe when `f` is single-pass
+/// idempotent: `remove_unreachable` + `reassign_duplicate_sub_circuit_outputs`
+/// without `detect_chains` or `solve_duplicates`.
+fn optimize_single_pass<T, F>(x: &T, im: &mut InputMapping, f: F) -> T
+where
+    T: Clone + Eq,
+    F: Fn(&T) -> (T, InputMapping),
+{
+    let (y, imy) = f(x);
+    if *x != y {
+        im.compose_in_place(&imy);
+    }
+    y
+}
+
 fn optimize_until_fixed_point<T, F>(x: &T, im: &mut InputMapping, f: F) -> T
 where
     T: Clone + Eq,
@@ -125,7 +140,7 @@ pub fn compile_step_1<C: Config>(
         .map_err(|e| e.prepend("hint normalization failed"))?;
 
     let r_hint_normalized_opt = if options.opt_level >= 2 {
-        optimize_until_fixed_point(&r_hint_normalized, &mut src_im, |r| {
+        optimize_single_pass(&r_hint_normalized, &mut src_im, |r| {
             let (mut r, im) = r.remove_unreachable();
             r.reassign_duplicate_sub_circuit_outputs(false);
             (r, im)
@@ -150,7 +165,7 @@ pub fn compile_step_2<C: Config, I: InputType>(
     let mut hl_im = InputMapping::new_identity(r_hint_less.input_size());
 
     let r_hint_less_opt = if options.opt_level >= 2 {
-        optimize_until_fixed_point(&r_hint_less, &mut hl_im, |r| {
+        optimize_single_pass(&r_hint_less, &mut hl_im, |r| {
             let (mut r, im) = r.remove_unreachable();
             r.reassign_duplicate_sub_circuit_outputs(false);
             (r, im)
@@ -211,7 +226,7 @@ pub fn compile_step_2<C: Config, I: InputType>(
             .map_err(|e| e.prepend("dest relaxed ir circuit invalid"))?;
 
         if options.opt_level >= 2 {
-            optimize_until_fixed_point(&r, &mut hl_im, |r| {
+            optimize_single_pass(&r, &mut hl_im, |r| {
                 let (mut r, im) = r.remove_unreachable();
                 r.reassign_duplicate_sub_circuit_outputs(false);
                 (r, im)
@@ -292,7 +307,7 @@ pub fn compile_step_4<C: Config>(
         .validate()
         .map_err(|e| e.prepend("final hint exported circuit invalid"))?;
     let r_hint_exported_opt = if options.opt_level >= 2 {
-        optimize_until_fixed_point(&r_hint_exported, src_im, |r| {
+        optimize_single_pass(&r_hint_exported, src_im, |r| {
             let (r, im) = r.remove_unreachable();
             (r, im)
         })

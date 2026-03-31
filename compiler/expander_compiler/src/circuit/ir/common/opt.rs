@@ -453,3 +453,135 @@ impl<Irc: IrConfig> RootCircuit<Irc> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::circuit::ir::{
+        expr,
+        source::{self, ConstraintType},
+    };
+    use crate::frontend::M31Config as C;
+    use mersenne31::M31;
+
+    type SourceCircuit = source::Circuit<C>;
+    type SourceRootCircuit = source::RootCircuit<C>;
+
+    fn assert_idempotent(root: &SourceRootCircuit, expected_circuits_after: usize) {
+        let (opt1, _) = root.remove_unreachable();
+        assert_eq!(opt1.validate(), Ok(()));
+        assert_eq!(
+            opt1.circuits.len(),
+            expected_circuits_after,
+            "first pass should reduce circuit count to {expected_circuits_after}, got {}",
+            opt1.circuits.len()
+        );
+        let (opt2, _) = opt1.remove_unreachable();
+        assert_eq!(opt2.validate(), Ok(()));
+        assert_eq!(opt1, opt2, "remove_unreachable is not idempotent");
+    }
+
+    #[test]
+    fn dead_subcircuit_call_with_constraints_is_idempotent() {
+        let circuit_1 = SourceCircuit {
+            num_inputs: 1,
+            instructions: vec![source::Instruction::LinComb(expr::LinComb {
+                terms: vec![expr::LinCombTerm {
+                    coef: M31::from(1u32),
+                    var: 1,
+                }],
+                constant: M31::from(0u32),
+            })],
+            constraints: vec![source::Constraint {
+                typ: ConstraintType::Zero,
+                var: 2,
+            }],
+            outputs: vec![2],
+        };
+
+        let circuit_0 = SourceCircuit {
+            num_inputs: 2,
+            instructions: vec![
+                source::Instruction::LinComb(expr::LinComb {
+                    terms: vec![expr::LinCombTerm {
+                        coef: M31::from(1u32),
+                        var: 1,
+                    }],
+                    constant: M31::from(0u32),
+                }),
+                source::Instruction::SubCircuitCall {
+                    sub_circuit_id: 1,
+                    inputs: vec![2],
+                    num_outputs: 1,
+                },
+            ],
+            constraints: vec![],
+            outputs: vec![3],
+        };
+
+        let mut root = SourceRootCircuit::default();
+        root.circuits.insert(0, circuit_0);
+        root.circuits.insert(1, circuit_1);
+        assert_eq!(root.validate(), Ok(()));
+        assert_idempotent(&root, 2);
+    }
+
+    #[test]
+    fn dead_subcircuit_chain_with_constraints_is_idempotent() {
+        let circuit_2 = SourceCircuit {
+            num_inputs: 1,
+            instructions: vec![source::Instruction::LinComb(expr::LinComb {
+                terms: vec![expr::LinCombTerm {
+                    coef: M31::from(1u32),
+                    var: 1,
+                }],
+                constant: M31::from(0u32),
+            })],
+            constraints: vec![source::Constraint {
+                typ: ConstraintType::Zero,
+                var: 2,
+            }],
+            outputs: vec![2],
+        };
+
+        let circuit_1 = SourceCircuit {
+            num_inputs: 1,
+            instructions: vec![source::Instruction::SubCircuitCall {
+                sub_circuit_id: 2,
+                inputs: vec![1],
+                num_outputs: 1,
+            }],
+            constraints: vec![source::Constraint {
+                typ: ConstraintType::NonZero,
+                var: 2,
+            }],
+            outputs: vec![2],
+        };
+
+        let circuit_0 = SourceCircuit {
+            num_inputs: 2,
+            instructions: vec![
+                source::Instruction::LinComb(expr::LinComb {
+                    terms: vec![expr::LinCombTerm {
+                        coef: M31::from(1u32),
+                        var: 1,
+                    }],
+                    constant: M31::from(0u32),
+                }),
+                source::Instruction::SubCircuitCall {
+                    sub_circuit_id: 1,
+                    inputs: vec![2],
+                    num_outputs: 1,
+                },
+            ],
+            constraints: vec![],
+            outputs: vec![3],
+        };
+
+        let mut root = SourceRootCircuit::default();
+        root.circuits.insert(0, circuit_0);
+        root.circuits.insert(1, circuit_1);
+        root.circuits.insert(2, circuit_2);
+        assert_eq!(root.validate(), Ok(()));
+        assert_idempotent(&root, 3);
+    }
+}
