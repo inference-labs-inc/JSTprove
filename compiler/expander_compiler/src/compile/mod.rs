@@ -56,6 +56,9 @@ impl CompileOptions {
     }
 }
 
+/// Applies `f` exactly once. Only safe when `f` is single-pass
+/// idempotent: `remove_unreachable` + `reassign_duplicate_sub_circuit_outputs`
+/// without `detect_chains` or `solve_duplicates`.
 fn optimize_single_pass<T, F>(x: &T, im: &mut InputMapping, f: F) -> T
 where
     T: Clone + Eq,
