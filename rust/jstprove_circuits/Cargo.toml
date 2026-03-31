@@ -92,6 +92,10 @@ harness = false
 name = "gemm_300_256_memory"
 harness = false
 
+[[bench]]
+name = "layer_bench"
+harness = false
+
 [dependencies.serde]
 version = "1.0"
 features = [ "derive",]
