@@ -466,9 +466,15 @@ mod tests {
     type SourceCircuit = source::Circuit<C>;
     type SourceRootCircuit = source::RootCircuit<C>;
 
-    fn assert_idempotent(root: &SourceRootCircuit) {
+    fn assert_idempotent(root: &SourceRootCircuit, expected_circuits_after: usize) {
         let (opt1, _) = root.remove_unreachable();
         assert_eq!(opt1.validate(), Ok(()));
+        assert_eq!(
+            opt1.circuits.len(),
+            expected_circuits_after,
+            "first pass should reduce circuit count to {expected_circuits_after}, got {}",
+            opt1.circuits.len()
+        );
         let (opt2, _) = opt1.remove_unreachable();
         assert_eq!(opt2.validate(), Ok(()));
         assert_eq!(opt1, opt2, "remove_unreachable is not idempotent");
@@ -516,7 +522,7 @@ mod tests {
         root.circuits.insert(0, circuit_0);
         root.circuits.insert(1, circuit_1);
         assert_eq!(root.validate(), Ok(()));
-        assert_idempotent(&root);
+        assert_idempotent(&root, 2);
     }
 
     #[test]
@@ -576,6 +582,6 @@ mod tests {
         root.circuits.insert(1, circuit_1);
         root.circuits.insert(2, circuit_2);
         assert_eq!(root.validate(), Ok(()));
-        assert_idempotent(&root);
+        assert_idempotent(&root, 3);
     }
 }
