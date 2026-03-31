@@ -200,6 +200,7 @@ pub enum PolynomialCommitmentType {
     Hyrax,
     Orion,
     FRI,
+    Lattice,
 }
 
 impl FromStr for PolynomialCommitmentType {
@@ -212,6 +213,7 @@ impl FromStr for PolynomialCommitmentType {
             "Hyrax" => Ok(PolynomialCommitmentType::Hyrax),
             "Orion" => Ok(PolynomialCommitmentType::Orion),
             "FRI" => Ok(PolynomialCommitmentType::FRI),
+            "Lattice" => Ok(PolynomialCommitmentType::Lattice),
             _ => Err(ExpErrors::PCSTypeError(s.to_string())),
         }
     }

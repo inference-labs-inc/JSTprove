@@ -4,9 +4,11 @@ use std::time::Instant;
 use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
 use jstprove_circuits::onnx::{
-    compile_bn254, compile_goldilocks, compile_goldilocks_basefold, prove_bn254, prove_goldilocks,
-    prove_goldilocks_basefold, verify_bn254, verify_goldilocks, verify_goldilocks_basefold,
+    compile_bn254, compile_goldilocks, compile_goldilocks_basefold, compile_goldilocks_lattice,
+    prove_bn254, prove_goldilocks, prove_goldilocks_basefold, prove_goldilocks_lattice,
+    verify_bn254, verify_goldilocks, verify_goldilocks_basefold, verify_goldilocks_lattice,
     witness_bn254_from_f64, witness_goldilocks_basefold_from_f64, witness_goldilocks_from_f64,
+    witness_goldilocks_lattice_from_f64,
 };
 use jstprove_circuits::runner::main_runner::read_circuit_msgpack;
 use jstprove_onnx::quantizer::{N_BITS_BN254, N_BITS_GOLDILOCKS};
@@ -310,6 +312,53 @@ fn main() {
 
     let t = Instant::now();
     assert!(verify_goldilocks_basefold(&bf_bundle.circuit, &bf_wb.witness, &bf_proof).unwrap());
+    println!("verify:  {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+    println!(
+        "peak RSS (cumulative): {:.1} MiB",
+        rss_bytes() as f64 / 1048576.0
+    );
+
+    println!("\n--- Goldilocks Lattice PCS pipeline ---");
+    let lat_circuit_path = tmp.path().join("circuit_lat.bundle");
+    let lat_circuit_path_str = lat_circuit_path.to_str().unwrap();
+
+    let metadata_lat =
+        expander_metadata::generate_from_onnx_for_field(&model_path, N_BITS_GOLDILOCKS, None)
+            .unwrap();
+    let params_lat = metadata_lat.circuit_params.clone();
+    OnnxContext::set_all(
+        metadata_lat.architecture,
+        metadata_lat.circuit_params,
+        Some(metadata_lat.wandb),
+    );
+
+    let t = Instant::now();
+    compile_goldilocks_lattice(lat_circuit_path_str, false, Some(params_lat.clone())).unwrap();
+    println!("compile: {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+
+    let lat_bundle = read_circuit_msgpack(lat_circuit_path_str).unwrap();
+    let t = Instant::now();
+    let lat_wb = witness_goldilocks_lattice_from_f64(
+        &lat_bundle.circuit,
+        &lat_bundle.witness_solver,
+        &params_lat,
+        &activations,
+        &[],
+        false,
+    )
+    .unwrap();
+    println!("witness: {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+
+    let t = Instant::now();
+    let lat_proof = prove_goldilocks_lattice(&lat_bundle.circuit, &lat_wb.witness, false).unwrap();
+    println!("prove:   {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+    println!(
+        "proof:   {:>10}",
+        format!("{:.1} KiB", lat_proof.len() as f64 / 1024.0)
+    );
+
+    let t = Instant::now();
+    assert!(verify_goldilocks_lattice(&lat_bundle.circuit, &lat_wb.witness, &lat_proof).unwrap());
     println!("verify:  {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
     println!(
         "peak RSS (cumulative): {:.1} MiB",

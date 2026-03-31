@@ -9,7 +9,8 @@ use goldilocks::Goldilocksx8;
 use halo2curves::bn256::{Bn256, G1Affine};
 use mersenne31::M31x16;
 use poly_commit::{
-    raw::RawExpanderGKR, BasefoldPCSForGKR, HyperBiKZGPCS, HyraxPCS, OrionPCSForGKR,
+    raw::RawExpanderGKR, BasefoldPCSForGKR, HyperBiKZGPCS, HyraxPCS, LatticePCSForGKR,
+    OrionPCSForGKR,
 };
 use transcript::BytesHashTranscript;
 
@@ -149,6 +150,15 @@ declare_gkr_config!(
     FieldType::Goldilocksx8,
     FiatShamirHashType::SHA256,
     PolynomialCommitmentType::Orion,
+    GKRScheme::Vanilla,
+);
+
+// ============== Goldilocks + Lattice ==============
+declare_gkr_config!(
+    pub Goldilocksx8ConfigSha2Lattice,
+    FieldType::Goldilocksx8,
+    FiatShamirHashType::SHA256,
+    PolynomialCommitmentType::Lattice,
     GKRScheme::Vanilla,
 );
 

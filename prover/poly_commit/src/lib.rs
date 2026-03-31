@@ -25,3 +25,6 @@ pub mod batching;
 
 pub mod basefold;
 pub use basefold::BasefoldPCSForGKR;
+
+pub mod lattice;
+pub use lattice::LatticePCSForGKR;
