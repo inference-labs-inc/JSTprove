@@ -456,7 +456,6 @@ impl<Irc: IrConfig> RootCircuit<Irc> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::circuit::ir::{
         expr,
         source::{self, ConstraintType},
@@ -467,18 +466,16 @@ mod tests {
     type SourceCircuit = source::Circuit<C>;
     type SourceRootCircuit = source::RootCircuit<C>;
 
+    fn assert_idempotent(root: &SourceRootCircuit) {
+        let (opt1, _) = root.remove_unreachable();
+        assert_eq!(opt1.validate(), Ok(()));
+        let (opt2, _) = opt1.remove_unreachable();
+        assert_eq!(opt2.validate(), Ok(()));
+        assert_eq!(opt1, opt2, "remove_unreachable is not idempotent");
+    }
+
     #[test]
     fn dead_subcircuit_call_with_constraints_is_idempotent() {
-        // Construct the exact scenario the reviewer described:
-        // - Circuit 0 has input 1, a live instruction using input 1,
-        //   and a DEAD sub-circuit call to circuit 1
-        // - Circuit 1 has constraints on its internal variables
-        //
-        // If remove_unreachable is not idempotent, circuit 1's constraints
-        // would seed the BFS and keep variables in circuit 0 falsely alive.
-        // A second pass would then remove them.
-
-        // Circuit 1: takes 1 input, has 1 instruction (LinComb), constrains its output
         let circuit_1 = SourceCircuit {
             num_inputs: 1,
             instructions: vec![source::Instruction::LinComb(expr::LinComb {
@@ -490,14 +487,11 @@ mod tests {
             })],
             constraints: vec![source::Constraint {
                 typ: ConstraintType::Zero,
-                var: 2, // constrain the output of the LinComb
+                var: 2,
             }],
             outputs: vec![2],
         };
 
-        // Circuit 0: takes 2 inputs
-        //   insn 0: LinComb using input 1 (LIVE - used by output)
-        //   insn 1: SubCircuitCall to circuit 1, passing input 2 (DEAD - output not used)
         let circuit_0 = SourceCircuit {
             num_inputs: 2,
             instructions: vec![
@@ -515,42 +509,18 @@ mod tests {
                 },
             ],
             constraints: vec![],
-            outputs: vec![3], // output is var 3 = result of insn 0
+            outputs: vec![3],
         };
 
         let mut root = SourceRootCircuit::default();
         root.circuits.insert(0, circuit_0);
         root.circuits.insert(1, circuit_1);
         assert_eq!(root.validate(), Ok(()));
-
-        // Single pass
-        let (opt1, im1) = root.remove_unreachable();
-        assert_eq!(opt1.validate(), Ok(()));
-
-        // Second pass on the result
-        let (opt2, im2) = opt1.remove_unreachable();
-        assert_eq!(opt2.validate(), Ok(()));
-
-        // The reviewer's claim: opt1 != opt2 (second pass removes more).
-        // Our claim: opt1 == opt2 (single pass is sufficient).
-        assert_eq!(
-            opt1.circuits.len(),
-            opt2.circuits.len(),
-            "circuit count differs between pass 1 ({}) and pass 2 ({})",
-            opt1.circuits.len(),
-            opt2.circuits.len()
-        );
-        assert_eq!(
-            opt1, opt2,
-            "remove_unreachable is not idempotent: pass 2 differs from pass 1"
-        );
+        assert_idempotent(&root);
     }
 
     #[test]
     fn dead_subcircuit_chain_with_constraints_is_idempotent() {
-        // Deeper scenario: circuit 0 -> dead call to circuit 1 -> circuit 1 calls circuit 2
-        // Circuit 2 has constraints. Tests transitive dead sub-circuit chains.
-
         let circuit_2 = SourceCircuit {
             num_inputs: 1,
             instructions: vec![source::Instruction::LinComb(expr::LinComb {
@@ -606,16 +576,6 @@ mod tests {
         root.circuits.insert(1, circuit_1);
         root.circuits.insert(2, circuit_2);
         assert_eq!(root.validate(), Ok(()));
-
-        let (opt1, _) = root.remove_unreachable();
-        assert_eq!(opt1.validate(), Ok(()));
-
-        let (opt2, _) = opt1.remove_unreachable();
-        assert_eq!(opt2.validate(), Ok(()));
-
-        assert_eq!(
-            opt1, opt2,
-            "remove_unreachable is not idempotent on transitive dead sub-circuit chain"
-        );
+        assert_idempotent(&root);
     }
 }
