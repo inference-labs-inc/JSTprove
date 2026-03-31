@@ -72,6 +72,10 @@ harness = false
 name = "parallel_witness"
 harness = false
 
+[[bench]]
+name = "layer_bench"
+harness = false
+
 [dependencies.serde]
 version = "1.0"
 features = [ "derive",]
