@@ -1,7 +1,11 @@
 [package]
 name = "jstprove_circuits"
+description = "Circuit compilation for zero-knowledge proofs of ML inference"
 version = "0.1.0"
 edition = "2024"
+authors = ["Inference Labs Inc"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/inference-labs-inc/JSTprove"
 
 [dependencies]
 ark-std.workspace = true

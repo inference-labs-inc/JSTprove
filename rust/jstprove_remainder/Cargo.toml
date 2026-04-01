@@ -1,8 +1,11 @@
 [package]
 name = "jstprove-remainder"
+description = "Remainder proof backend for JSTprove zero-knowledge proofs"
 version = "0.1.0"
 edition = "2021"
+authors = ["Inference Labs Inc"]
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/inference-labs-inc/JSTprove"
 
 [dependencies]
 frontend = { git = "https://github.com/inference-labs-inc/Remainder_CE.git", rev = "06a5f406" }

@@ -1,7 +1,11 @@
 [package]
 name = "utils"
+description = "Utility functions for Expander proof system"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 colored = { version = "2.0.0", default-features = false, optional = true}

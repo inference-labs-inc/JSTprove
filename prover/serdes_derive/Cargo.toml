@@ -1,7 +1,11 @@
- [package]
+[package]
 name = "serdes_derive"
+description = "Derive macros for Expander serialization"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [lib]
 proc-macro = true

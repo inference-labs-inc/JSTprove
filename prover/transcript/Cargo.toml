@@ -1,7 +1,11 @@
 [package]
 name = "transcript"
+description = "Fiat-Shamir transcript for Expander proof system"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 arith.workspace = true

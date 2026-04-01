@@ -36,6 +36,9 @@ exclude = ["rust/jstprove_pyo3", ".claude"]
 [workspace.package]
 version = "0.4.0"
 edition = "2021"
+authors = ["Inference Labs Inc"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/inference-labs-inc/JSTprove"
 
 [workspace.dependencies]
 # --- internal: prover crates ---

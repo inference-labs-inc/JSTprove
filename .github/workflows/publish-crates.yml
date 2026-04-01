@@ -1,0 +1,126 @@
+name: Publish to crates.io
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+env:
+  VERSION: ${{ github.event.release.tag_name }}
+
+jobs:
+  publish-crates-io:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: release
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7
+        with:
+          toolchain: nightly-2025-03-27
+
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libclang-dev clang protobuf-compiler
+
+      - uses: inference-labs-inc/set-toml-version@ff9a4b64df4ce91067737822d2811a69597bf688 # v1
+        with:
+          version: ${{ github.event.release.tag_name }}
+          files: |
+            prover/serdes_derive/Cargo.toml
+            prover/serdes/Cargo.toml
+            prover/arith/Cargo.toml
+            prover/utils/Cargo.toml
+            prover/metal_accel/Cargo.toml
+            prover/arith/babybear/Cargo.toml
+            prover/arith/gf2/Cargo.toml
+            prover/arith/gf2_128/Cargo.toml
+            prover/arith/goldilocks/Cargo.toml
+            prover/arith/mersenne31/Cargo.toml
+            prover/arith/polynomials/Cargo.toml
+            prover/hasher/Cargo.toml
+            prover/tree/Cargo.toml
+            prover/gkr_engine/Cargo.toml
+            prover/transcript/Cargo.toml
+            prover/circuit/Cargo.toml
+            prover/sumcheck/Cargo.toml
+            prover/poly_commit/Cargo.toml
+            prover/config_macros/Cargo.toml
+            prover/crosslayer_prototype/Cargo.toml
+            prover/gkr/Cargo.toml
+            prover/bin/Cargo.toml
+            compiler/expander_compiler/macros/Cargo.toml
+            compiler/expander_compiler/Cargo.toml
+            compiler/circuit-std-rs/Cargo.toml
+            rust/jstprove_io/Cargo.toml
+            rust/jstprove_onnx/Cargo.toml
+            rust/jstprove_remainder/Cargo.toml
+            rust/jstprove_circuits/Cargo.toml
+
+      - name: Update workspace dependency versions
+        run: cargo update -w
+
+      - name: Authenticate with crates.io
+        id: crates-io-auth
+        uses: rust-lang/crates-io-auth-action@b7e9a28eded4986ec6b1fa40eeee8f8f165559ec # v1.0.3
+
+      - name: Publish crates in topological order
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-io-auth.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          publish() {
+            local crate="$1"
+            echo "::group::Publishing $crate"
+            cargo publish -p "$crate" --allow-dirty
+            echo "::endgroup::"
+            sleep 15
+          }
+
+          publish serdes_derive
+          publish serdes
+          publish utils
+          publish metal_accel
+
+          publish arith
+
+          publish babybear
+          publish gf2
+          publish goldilocks
+          publish polynomials
+
+          publish gf2_128
+          publish mersenne31
+          publish gkr_hashers
+          publish tree
+
+          publish gkr_engine
+
+          publish transcript
+
+          publish circuit
+
+          publish sumcheck
+
+          publish poly_commit
+          publish config_macros
+          publish crosslayer_prototype
+
+          publish gkr
+
+          publish macros
+          publish expander_compiler
+          publish circuit-std-rs
+
+          publish jstprove-io
+          publish jstprove-onnx
+          publish jstprove-remainder
+          publish jstprove_circuits

@@ -1,7 +1,11 @@
 [package]
 name = "metal_accel"
+description = "Metal GPU acceleration for Expander proof system"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 log.workspace = true

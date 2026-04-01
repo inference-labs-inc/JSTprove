@@ -1,7 +1,11 @@
 [package]
 name = "crosslayer_prototype"
+description = "Cross-layer optimization prototype for Expander proof system"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 arith.workspace = true

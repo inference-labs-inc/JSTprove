@@ -1,7 +1,11 @@
 [package]
 name = "gkr_hashers"
+description = "Hash functions for Expander GKR protocol"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 arith.workspace = true
