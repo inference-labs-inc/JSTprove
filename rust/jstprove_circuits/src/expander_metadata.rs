@@ -152,6 +152,7 @@ pub fn generate_from_onnx_goldilocks_auto(
 
     let (curve, n_bits) = select_goldilocks_tier(max_bound, target_precision)?;
 
+    #[cfg(debug_assertions)]
     eprintln!(
         "goldilocks auto-select: {} (n_bits={}, max_bound={:.2})",
         curve, n_bits, max_bound

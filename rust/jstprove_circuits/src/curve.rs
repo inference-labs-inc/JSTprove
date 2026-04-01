@@ -8,9 +8,17 @@ pub enum Curve {
     Bn254,
     #[serde(alias = "Goldilocks")]
     Goldilocks,
-    #[serde(alias = "GoldilocksBasefold", alias = "goldilocks_basefold")]
+    #[serde(
+        rename = "goldilocks_basefold",
+        alias = "GoldilocksBasefold",
+        alias = "goldilocksbasefold"
+    )]
     GoldilocksBasefold,
-    #[serde(alias = "GoldilocksExt2", alias = "goldilocks_ext2")]
+    #[serde(
+        rename = "goldilocks_ext2",
+        alias = "GoldilocksExt2",
+        alias = "goldilocksext2"
+    )]
     GoldilocksExt2,
 }
 

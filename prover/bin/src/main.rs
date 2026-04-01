@@ -190,6 +190,8 @@ where
         (FieldType::M31x16, "keccak") => 2,
         (FieldType::M31x16, "poseidon") => 120,
         (FieldType::Goldilocksx8, "keccak") => 2,
+        (FieldType::Goldilocksx1, "keccak") => 2,
+        (FieldType::GoldilocksExt2x1, "keccak") => 2,
         (FieldType::BabyBearx16, "keccak") => 2,
         (FieldType::BN254, "keccak") => 2,
         _ => unreachable!(),

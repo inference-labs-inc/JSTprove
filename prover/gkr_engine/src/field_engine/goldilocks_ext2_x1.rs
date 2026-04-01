@@ -8,8 +8,10 @@ pub struct GoldilocksExt2x1Config;
 impl FieldEngine for GoldilocksExt2x1Config {
     const FIELD_TYPE: FieldType = FieldType::GoldilocksExt2x1;
 
+    // Goldilocks modulus (LE) in bytes [0..8], extension degree 2 in byte [8].
+    // Distinguishes from Goldilocksx1Config which has byte [8] = 0.
     const SENTINEL: [u8; 32] = [
-        1, 0, 0, 0, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        1, 0, 0, 0, 255, 255, 255, 255, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0,
     ];
 
