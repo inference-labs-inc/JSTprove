@@ -49,8 +49,17 @@ fn generate_from_onnx_with_all_options(
     target_precision: Option<u32>,
 ) -> Result<ExpanderMetadata> {
     let parsed = parser::parse_onnx(onnx_path).context("parsing ONNX model")?;
-    let mut graph = LayerGraph::from_parsed(&parsed).context("building layer graph")?;
+    let graph = LayerGraph::from_parsed(&parsed).context("building layer graph")?;
+    generate_from_parsed(parsed, graph, weights_as_inputs, n_bits, target_precision)
+}
 
+fn generate_from_parsed(
+    parsed: ParsedModel,
+    mut graph: LayerGraph,
+    weights_as_inputs: bool,
+    n_bits: Option<u32>,
+    target_precision: Option<u32>,
+) -> Result<ExpanderMetadata> {
     let quantized = match (n_bits, target_precision) {
         (Some(nb), Some(digits)) => quantizer::quantize_model_for_precision(graph, digits, nb)
             .context("precision-targeted quantization")?,
@@ -152,18 +161,14 @@ pub fn generate_from_onnx_goldilocks_auto(
 
     let (curve, n_bits) = select_goldilocks_tier(max_bound, target_precision)?;
 
-    #[cfg(debug_assertions)]
-    eprintln!(
-        "goldilocks auto-select: {} (n_bits={}, max_bound={:.2})",
-        curve, n_bits, max_bound
+    tracing::debug!(
+        %curve, n_bits, max_bound, "goldilocks auto-select"
     );
 
-    generate_from_onnx_with_all_options(onnx_path, false, Some(n_bits), target_precision).map(
-        |mut meta| {
-            meta.circuit_params.curve = Some(curve);
-            meta
-        },
-    )
+    generate_from_parsed(parsed, graph, false, Some(n_bits), target_precision).map(|mut meta| {
+        meta.circuit_params.curve = Some(curve);
+        meta
+    })
 }
 
 fn build_circuit_params(
