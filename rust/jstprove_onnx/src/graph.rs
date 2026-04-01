@@ -41,6 +41,8 @@ pub enum OpType {
     Log,
     Expand,
     ReduceMean,
+    MatMul,
+    Pad,
 }
 
 impl OpType {
@@ -81,6 +83,8 @@ impl OpType {
             "Log" => Ok(Self::Log),
             "Expand" => Ok(Self::Expand),
             "ReduceMean" => Ok(Self::ReduceMean),
+            "MatMul" => Ok(Self::MatMul),
+            "Pad" => Ok(Self::Pad),
             other => bail!("unsupported ONNX op: {other}"),
         }
     }
@@ -95,7 +99,7 @@ impl OpType {
     pub fn needs_rescale(&self) -> bool {
         matches!(
             self,
-            Self::Gemm | Self::Conv | Self::BatchNormalization | Self::Mul
+            Self::Gemm | Self::Conv | Self::BatchNormalization | Self::Mul | Self::MatMul
         )
     }
 }

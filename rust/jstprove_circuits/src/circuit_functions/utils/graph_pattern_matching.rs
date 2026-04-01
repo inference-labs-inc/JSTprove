@@ -211,6 +211,8 @@ fn dfs<'a>(
 pub enum PatternRegistry {
     None,
     ConvRelu,
+    ConvBatchnorm,
+    ConvBatchnormRelu,
     GemmRelu,
     BatchnormRelu,
     MulRelu,
@@ -227,6 +229,14 @@ impl PatternRegistry {
             PatternRegistry::ConvRelu => GraphPattern {
                 name: "Conv+Relu",
                 ops: &["Conv", "Relu"],
+            },
+            PatternRegistry::ConvBatchnorm => GraphPattern {
+                name: "Conv+BatchNormalization",
+                ops: &["Conv", "BatchNormalization"],
+            },
+            PatternRegistry::ConvBatchnormRelu => GraphPattern {
+                name: "Conv+BatchNormalization+Relu",
+                ops: &["Conv", "BatchNormalization", "Relu"],
             },
             PatternRegistry::GemmRelu => GraphPattern {
                 name: "Gemm+Relu",
@@ -311,6 +321,16 @@ impl PatternMatcher {
                     });
             }
         }
+
+        // Enforce longest-match precedence per anchor: when both ConvBatchnorm and
+        // ConvBatchnormRelu match the same Conv layer, keep only the longer pattern
+        // so that optimization_skip_layers never sees mismatched patterns and does
+        // not return PatternError::InconsistentPattern.
+        for matches in all_matches.values_mut() {
+            let max_len = matches.iter().map(|m| m.layers.len()).max().unwrap_or(0);
+            matches.retain(|m| m.layers.len() == max_len);
+        }
+
         Ok(all_matches)
     }
 }

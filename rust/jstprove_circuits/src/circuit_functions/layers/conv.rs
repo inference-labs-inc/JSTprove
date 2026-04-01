@@ -27,10 +27,14 @@ use crate::circuit_functions::{
 
 use crate::circuit_functions::{
     gadgets::LogupRangeCheckContext,
+    gadgets::linear_algebra::{matrix_addition, matrix_hadamard_product},
     layers::layer_ops::LayerOp,
     utils::{
         quantization::{MaybeRescaleParams, maybe_rescale},
-        tensor_ops::load_array_constants_or_get_inputs,
+        tensor_ops::{
+            broadcast_two_arrays, load_array_constants_or_get_inputs,
+            reshape_channel_vector_for_broadcast,
+        },
     },
 };
 
@@ -51,6 +55,14 @@ pub struct ConvLayer {
     is_rescale: bool,
     inputs: Vec<String>,
     outputs: Vec<String>,
+    /// Pre-loaded BatchNorm scale weights for ConvBatchnorm/ConvBatchnormRelu fusion.
+    bn_mul_weights: Option<ArrayD<i64>>,
+    /// Pre-loaded BatchNorm shift bias for ConvBatchnorm/ConvBatchnormRelu fusion.
+    bn_add_bias: Option<ArrayD<i64>>,
+    /// Input name for the BN scale tensor (used when weights_as_inputs is true).
+    bn_mul_name: Option<String>,
+    /// Input name for the BN bias tensor (used when weights_as_inputs is true).
+    bn_add_name: Option<String>,
 }
 
 // -------- Implementations --------
@@ -62,6 +74,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
         logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
+        // For ConvBatchnormRelu, ReLU is applied *after* the fused BN, not here.
         let is_relu = matches!(self.optimization_pattern, PatternRegistry::ConvRelu);
 
         let input_name = get_input_name(&self.inputs, 0, LayerKind::Conv, INPUT)?;
@@ -90,7 +103,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             .map(|&x| x.as_u32())
             .collect::<Result<Vec<u32>, UtilsError>>()?;
 
-        let out = conv_4d_run(
+        let mut out = conv_4d_run(
             api,
             logup_ctx,
             &layer_input,
@@ -111,6 +124,57 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
                 is_relu,
             },
         )?;
+
+        // Apply fused BatchNorm for ConvBatchnorm / ConvBatchnormRelu patterns.
+        // The BN layer is skipped during build; Conv performs its computation inline.
+        if matches!(
+            self.optimization_pattern,
+            PatternRegistry::ConvBatchnorm | PatternRegistry::ConvBatchnormRelu
+        ) {
+            if let (Some(bn_mul_name), Some(bn_add_name)) = (&self.bn_mul_name, &self.bn_add_name) {
+                let mul_raw = load_array_constants_or_get_inputs(
+                    api,
+                    input,
+                    bn_mul_name,
+                    &self.bn_mul_weights,
+                    LayerKind::Conv,
+                )?;
+                let add_raw = load_array_constants_or_get_inputs(
+                    api,
+                    input,
+                    bn_add_name,
+                    &self.bn_add_bias,
+                    LayerKind::Conv,
+                )?;
+
+                let mul_input = reshape_channel_vector_for_broadcast(&mul_raw, &out)?;
+                let add_input = reshape_channel_vector_for_broadcast(&add_raw, &out)?;
+
+                let (a_bc, b_bc) = broadcast_two_arrays(&out, &mul_input)?;
+                let mul_out = matrix_hadamard_product(api, &a_bc, b_bc, LayerKind::Conv)?;
+
+                let (a_bc, b_bc) = broadcast_two_arrays(&mul_out, &add_input)?;
+                let result = matrix_addition(api, &a_bc, b_bc, LayerKind::Conv)?;
+
+                let is_bn_relu = matches!(
+                    self.optimization_pattern,
+                    PatternRegistry::ConvBatchnormRelu
+                );
+                out = maybe_rescale(
+                    api,
+                    logup_ctx,
+                    result,
+                    &MaybeRescaleParams {
+                        is_rescale: self.is_rescale,
+                        scaling_exponent: self.scaling,
+                        n_bits: self.v_plus_one,
+                        is_relu: is_bn_relu,
+                        layer_kind: LayerKind::Conv,
+                        layer_name: "Conv+BN".into(),
+                    },
+                )?;
+            }
+        }
 
         Ok((self.outputs.clone(), out))
     }
@@ -156,6 +220,46 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
 
         let default_pads: Vec<u32> = vec![0; 2 * spatial_rank];
 
+        // Load BatchNorm scale / bias for ConvBatchnorm / ConvBatchnormRelu fusion.
+        // build_layers.rs appends the BN scale name at index 3 and BN bias name at
+        // index 4 when these patterns are detected, so we can look them up here.
+        let (bn_mul_weights, bn_add_bias, bn_mul_name, bn_add_name) = if matches!(
+            optimization_pattern,
+            PatternRegistry::ConvBatchnorm | PatternRegistry::ConvBatchnormRelu
+        ) {
+            let bn_w_name = get_optional_input_name(&layer.inputs, 3).cloned();
+            let bn_b_name = get_optional_input_name(&layer.inputs, 4).cloned();
+            if layer_context.weights_as_inputs {
+                (None, None, bn_w_name, bn_b_name)
+            } else {
+                let bn_w = bn_w_name
+                    .as_ref()
+                    .map(|n| {
+                        get_w_or_b(layer_context.w_and_b_map, n).map_err(|e| {
+                            LayerError::MissingParameter {
+                                layer: LayerKind::Conv,
+                                param: format!("BN scale (requested={n}): {e}"),
+                            }
+                        })
+                    })
+                    .transpose()?;
+                let bn_b = bn_b_name
+                    .as_ref()
+                    .map(|n| {
+                        get_w_or_b(layer_context.w_and_b_map, n).map_err(|e| {
+                            LayerError::MissingParameter {
+                                layer: LayerKind::Conv,
+                                param: format!("BN bias (requested={n}): {e}"),
+                            }
+                        })
+                    })
+                    .transpose()?;
+                (bn_w, bn_b, bn_w_name, bn_b_name)
+            }
+        } else {
+            (None, None, None, None)
+        };
+
         let conv = Self {
             weights,
             bias,
@@ -170,6 +274,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
             is_rescale,
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
+            bn_mul_weights,
+            bn_add_bias,
+            bn_mul_name,
+            bn_add_name,
         };
         Ok(Box::new(conv))
     }
