@@ -1,6 +1,7 @@
 [package]
 name = "gkr"
 description = "GKR prover for Expander proof system"
+publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

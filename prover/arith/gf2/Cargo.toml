@@ -1,6 +1,7 @@
 [package]
 name = "gf2"
 description = "GF(2) field arithmetic for Expander proof system"
+publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

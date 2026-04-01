@@ -1,6 +1,7 @@
 [package]
 name = "macros"
 description = "Procedural macros for Expander compiler"
+publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

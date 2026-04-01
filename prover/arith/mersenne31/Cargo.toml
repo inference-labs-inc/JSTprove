@@ -1,6 +1,7 @@
 [package]
 name = "mersenne31"
 description = "Mersenne-31 field arithmetic for Expander proof system"
+publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

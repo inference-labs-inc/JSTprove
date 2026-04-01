@@ -1,6 +1,7 @@
 [package]
 name = "gkr_engine"
 description = "GKR protocol engine for Expander proof system"
+publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

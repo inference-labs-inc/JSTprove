@@ -3,9 +3,10 @@ name = "jstprove-onnx"
 description = "ONNX model parsing for JSTprove zero-knowledge proofs"
 version = "0.1.0"
 edition = "2021"
-authors = ["Inference Labs Inc"]
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/inference-labs-inc/JSTprove"
+publish = false
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 prost = "0.13"

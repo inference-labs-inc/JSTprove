@@ -1,6 +1,7 @@
 [package]
 name = "serdes_derive"
 description = "Derive macros for Expander serialization"
+publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
