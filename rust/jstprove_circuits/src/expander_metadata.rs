@@ -665,30 +665,72 @@ mod tests {
 
     #[test]
     fn select_tier_base_sufficient_adaptive() {
-        let (curve, n_bits) = select_goldilocks_tier(100.0, None).unwrap();
+        use jstprove_onnx::quantizer::{MIN_USEFUL_EXPONENT, N_BITS_GOLDILOCKS};
+
+        // max_safe_exponent(31, 100) = (31 - 7 - 1) / 2 = 11 >= MIN_USEFUL (8)
+        let max_bound = 100.0;
+        assert!(
+            ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS, max_bound) >= MIN_USEFUL_EXPONENT
+        );
+
+        let (curve, n_bits) = select_goldilocks_tier(max_bound, None).unwrap();
         assert_eq!(curve, Curve::Goldilocks);
-        assert_eq!(n_bits, jstprove_onnx::quantizer::N_BITS_GOLDILOCKS);
+        assert_eq!(n_bits, N_BITS_GOLDILOCKS);
     }
 
     #[test]
     fn select_tier_promotes_to_ext2_adaptive() {
-        let large_bound = 2.0_f64.powi(20);
-        let (curve, n_bits) = select_goldilocks_tier(large_bound, None).unwrap();
+        use jstprove_onnx::quantizer::{
+            MIN_USEFUL_EXPONENT, N_BITS_GOLDILOCKS, N_BITS_GOLDILOCKS_EXT2,
+        };
+
+        // max_safe_exponent(31, 2^20) = (31 - 20 - 1) / 2 = 5 < MIN_USEFUL (8)
+        // max_safe_exponent(63, 2^20) = (63 - 20 - 1) / 2 = 21 >= MIN_USEFUL
+        let max_bound = 2.0_f64.powi(20);
+        assert!(ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS, max_bound) < MIN_USEFUL_EXPONENT);
+        assert!(
+            ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS_EXT2, max_bound)
+                >= MIN_USEFUL_EXPONENT
+        );
+
+        let (curve, n_bits) = select_goldilocks_tier(max_bound, None).unwrap();
         assert_eq!(curve, Curve::GoldilocksExt2);
-        assert_eq!(n_bits, jstprove_onnx::quantizer::N_BITS_GOLDILOCKS_EXT2);
+        assert_eq!(n_bits, N_BITS_GOLDILOCKS_EXT2);
     }
 
     #[test]
     fn select_tier_promotes_to_ext2_with_target_precision() {
-        let (curve, n_bits) = select_goldilocks_tier(100.0, Some(4)).unwrap();
+        use jstprove_onnx::quantizer::{N_BITS_GOLDILOCKS, N_BITS_GOLDILOCKS_EXT2};
+
+        let max_bound = 100.0;
+        let target_digits = 4;
+        // exponent_for_digits(4) = ceil(4 * log2(10)) = 14
+        // max_safe_exponent(31, 100) = 11 < 14 → base insufficient
+        // max_safe_exponent(63, 100) = 27 >= 14 → ext2 sufficient
+        let required = ScaleConfig::exponent_for_digits(target_digits);
+        assert!(ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS, max_bound) < required);
+        assert!(ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS_EXT2, max_bound) >= required);
+
+        let (curve, n_bits) = select_goldilocks_tier(max_bound, Some(target_digits)).unwrap();
         assert_eq!(curve, Curve::GoldilocksExt2);
-        assert_eq!(n_bits, jstprove_onnx::quantizer::N_BITS_GOLDILOCKS_EXT2);
+        assert_eq!(n_bits, N_BITS_GOLDILOCKS_EXT2);
     }
 
     #[test]
     fn select_tier_errors_when_both_insufficient() {
-        let extreme_bound = 2.0_f64.powi(50);
-        let result = select_goldilocks_tier(extreme_bound, None);
+        use jstprove_onnx::quantizer::{
+            MIN_USEFUL_EXPONENT, N_BITS_GOLDILOCKS, N_BITS_GOLDILOCKS_EXT2,
+        };
+
+        // max_safe_exponent(31, 2^50) = 0, max_safe_exponent(63, 2^50) = 6
+        // both below MIN_USEFUL_EXPONENT (8)
+        let max_bound = 2.0_f64.powi(50);
+        assert!(ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS, max_bound) < MIN_USEFUL_EXPONENT);
+        assert!(
+            ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS_EXT2, max_bound) < MIN_USEFUL_EXPONENT
+        );
+
+        let result = select_goldilocks_tier(max_bound, None);
         assert!(result.is_err());
         let msg = format!("{:#}", result.unwrap_err());
         assert!(
@@ -699,7 +741,16 @@ mod tests {
 
     #[test]
     fn select_tier_errors_precision_exceeds_ext2() {
-        let result = select_goldilocks_tier(100.0, Some(18));
+        use jstprove_onnx::quantizer::N_BITS_GOLDILOCKS_EXT2;
+
+        // exponent_for_digits(18) = ceil(18 * log2(10)) = 60
+        // max_safe_exponent(63, 100) = 27 < 60 → ext2 insufficient
+        let max_bound = 100.0;
+        let target_digits = 18;
+        let required = ScaleConfig::exponent_for_digits(target_digits);
+        assert!(ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS_EXT2, max_bound) < required);
+
+        let result = select_goldilocks_tier(max_bound, Some(target_digits));
         assert!(result.is_err());
         let msg = format!("{:#}", result.unwrap_err());
         assert!(
