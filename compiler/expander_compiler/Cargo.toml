@@ -1,7 +1,6 @@
 [package]
 name = "expander_compiler"
 description = "Compiler for Expander proof system"
-publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -17,7 +16,7 @@ babybear.workspace = true
 chrono.workspace = true
 clap.workspace = true
 crosslayer_prototype.workspace = true
-macros = { path = "./macros" }
+macros = { version = "0.4.0", path = "./macros" }
 ethnum.workspace = true
 expander_binary.workspace = true
 expander_circuit.workspace = true

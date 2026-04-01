@@ -1,8 +1,11 @@
 [package]
-name = "bin"
+name = "expander-bin"
 version.workspace = true
 edition = "2024"
 publish = false
+
+[lib]
+name = "bin"
 
 [dependencies]
 arith.workspace = true

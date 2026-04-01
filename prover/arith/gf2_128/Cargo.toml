@@ -1,7 +1,6 @@
 [package]
 name = "gf2_128"
 description = "GF(2^128) field arithmetic for Expander proof system"
-publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

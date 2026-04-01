@@ -116,21 +116,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arith"
-version = "0.4.0"
-dependencies = [
- "ark-std 0.4.0",
- "criterion",
- "ethnum",
- "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
- "itertools 0.13.0",
- "log",
- "rand 0.8.5",
- "serdes",
- "tynm",
-]
-
-[[package]]
 name = "ark-bls12-381"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -354,6 +339,17 @@ dependencies = [
 
 [[package]]
 name = "ark-std"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1df2c09229cbc5a028b1d70e00fdb2acee28b1055dfb5ca73eea49c5a25c4e7c"
+dependencies = [
+ "colored",
+ "num-traits",
+ "rand 0.8.5",
+]
+
+[[package]]
+name = "ark-std"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94893f1e0c6eeab764ade8dc4c0db24caf4fe7cbbaafc0eba0a9030f447b5185"
@@ -401,6 +397,17 @@ name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
+
+[[package]]
+name = "atty"
+version = "0.2.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9b39be18770d11421cdb1b9947a45dd3f37e93092cbf377614828a319d5fee8"
+dependencies = [
+ "hermit-abi 0.1.19",
+ "libc",
+ "winapi",
+]
 
 [[package]]
 name = "autocfg"
@@ -467,10 +474,10 @@ dependencies = [
 name = "babybear"
 version = "0.4.0"
 dependencies = [
- "arith",
  "ark-std 0.4.0",
- "criterion",
+ "criterion 0.5.1",
  "ethnum",
+ "expander-arith",
  "rand 0.8.5",
  "serdes",
 ]
@@ -505,35 +512,6 @@ checksum = "73cfa06eb56d71f2bb1874b101a50c3ba29fcf3ff7dd8de274e473929459863b"
 dependencies = [
  "quote",
  "syn 2.0.117",
-]
-
-[[package]]
-name = "bin"
-version = "0.4.0"
-dependencies = [
- "arith",
- "babybear",
- "bytes",
- "chrono",
- "circuit",
- "clap",
- "config_macros",
- "gf2",
- "gf2_128",
- "gkr",
- "gkr_engine",
- "gkr_hashers",
- "goldilocks",
- "log",
- "mersenne31",
- "poly_commit",
- "polynomials",
- "serdes",
- "sumcheck",
- "tokio",
- "transcript",
- "utils",
- "warp",
 ]
 
 [[package]]
@@ -714,47 +692,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57663b653d948a338bfb3eeba9bb2fd5fcfaecb9e199e87e1eda4d9e8b240fd9"
 dependencies = [
  "ciborium-io",
- "half",
-]
-
-[[package]]
-name = "circuit"
-version = "0.4.0"
-dependencies = [
- "arith",
- "ark-std 0.4.0",
- "bytes",
- "config_macros",
- "ethnum",
- "gkr_engine",
- "gkr_hashers",
- "log",
- "mersenne31",
- "poly_commit",
- "rand 0.8.5",
- "serdes",
- "thiserror 2.0.18",
- "transcript",
+ "half 2.7.1",
 ]
 
 [[package]]
 name = "circuit-std-rs"
 version = "0.4.0"
 dependencies = [
- "arith",
  "ark-bls12-381",
  "ark-ec 0.4.2",
  "ark-ff 0.4.2",
  "ark-serialize 0.4.2",
  "ark-std 0.4.0",
  "big-int",
- "circuit",
  "ethnum",
+ "expander-arith",
+ "expander-circuit",
+ "expander-gf2",
+ "expander-halo2curves",
  "expander_compiler",
- "gf2",
  "gkr",
  "gkr_hashers",
- "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
  "mersenne31",
  "num-bigint",
  "num-traits",
@@ -762,6 +720,17 @@ dependencies = [
  "serdes",
  "sha2",
  "tiny-keccak",
+]
+
+[[package]]
+name = "clap"
+version = "2.34.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0610544180c38b88101fecf2dd634b174a62eef6946f84dfc6a7127512b381c"
+dependencies = [
+ "bitflags 1.3.2",
+ "textwrap",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -825,17 +794,17 @@ name = "config_macros"
 version = "0.4.0"
 dependencies = [
  "babybear",
- "gf2",
+ "expander-gf2",
+ "expander-halo2curves",
+ "expander-poly-commit",
+ "expander-transcript",
  "gkr_engine",
  "gkr_hashers",
  "goldilocks",
- "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
  "mersenne31",
- "poly_commit",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
- "transcript",
 ]
 
 [[package]]
@@ -847,7 +816,7 @@ dependencies = [
  "encode_unicode",
  "libc",
  "once_cell",
- "unicode-width",
+ "unicode-width 0.2.2",
  "windows-sys 0.59.0",
 ]
 
@@ -859,7 +828,7 @@ checksum = "d64e8af5551369d19cf50138de61f1c42074ab970f74e99be916646777f8fc87"
 dependencies = [
  "encode_unicode",
  "libc",
- "unicode-width",
+ "unicode-width 0.2.2",
  "windows-sys 0.61.2",
 ]
 
@@ -941,6 +910,32 @@ dependencies = [
 
 [[package]]
 name = "criterion"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b01d6de93b2b6c65e17c634a26653a29d107b3c98c607c765bf38d041531cd8f"
+dependencies = [
+ "atty",
+ "cast",
+ "clap 2.34.0",
+ "criterion-plot 0.4.5",
+ "csv",
+ "itertools 0.10.5",
+ "lazy_static",
+ "num-traits",
+ "oorandom",
+ "plotters",
+ "rayon",
+ "regex",
+ "serde",
+ "serde_cbor",
+ "serde_derive",
+ "serde_json",
+ "tinytemplate",
+ "walkdir",
+]
+
+[[package]]
+name = "criterion"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2b12d017a929603d80db1831cd3a24082f8137ce19c69e6447f54f5fc8d692f"
@@ -948,8 +943,8 @@ dependencies = [
  "anes",
  "cast",
  "ciborium",
- "clap",
- "criterion-plot",
+ "clap 4.5.60",
+ "criterion-plot 0.5.0",
  "is-terminal",
  "itertools 0.10.5",
  "num-traits",
@@ -963,6 +958,16 @@ dependencies = [
  "serde_json",
  "tinytemplate",
  "walkdir",
+]
+
+[[package]]
+name = "criterion-plot"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2673cc8207403546f45f5fd319a974b1e6983ad1a3ee7e6041650013be041876"
+dependencies = [
+ "cast",
+ "itertools 0.10.5",
 ]
 
 [[package]]
@@ -1004,18 +1009,18 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 name = "crosslayer_prototype"
 version = "0.4.0"
 dependencies = [
- "arith",
  "env_logger 0.11.9",
  "ethnum",
+ "expander-arith",
+ "expander-polynomials",
+ "expander-transcript",
  "gkr_engine",
  "gkr_hashers",
  "log",
- "polynomials",
  "rand 0.8.5",
  "serdes",
  "sumcheck",
  "thiserror 2.0.18",
- "transcript",
 ]
 
 [[package]]
@@ -1032,6 +1037,27 @@ checksum = "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
 dependencies = [
  "generic-array",
  "typenum",
+]
+
+[[package]]
+name = "csv"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52cd9d68cf7efc6ddfaaee42e7288d3a99d613d4b50f76ce9827ae0c6e14f938"
+dependencies = [
+ "csv-core",
+ "itoa",
+ "ryu",
+ "serde_core",
+]
+
+[[package]]
+name = "csv-core"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "704a3c26996a80471189265814dbc2c257598b96b8a7feae2d31ace646bb9782"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
@@ -1246,31 +1272,225 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca81e6b4777c89fd810c25a4be2b1bd93ea034fbe58e6a75216a34c6b82c539b"
 
 [[package]]
-name = "expander_compiler"
+name = "expander-arith"
 version = "0.4.0"
 dependencies = [
- "arith",
  "ark-std 0.4.0",
- "axum",
- "babybear",
- "bin",
- "chrono",
- "circuit",
- "clap",
- "crosslayer_prototype",
+ "criterion 0.5.1",
  "ethnum",
- "gf2",
+ "expander-halo2curves",
+ "itertools 0.13.0",
+ "log",
+ "rand 0.8.5",
+ "serdes",
+ "tynm",
+]
+
+[[package]]
+name = "expander-bin"
+version = "0.4.0"
+dependencies = [
+ "babybear",
+ "bytes",
+ "chrono",
+ "clap 4.5.60",
+ "config_macros",
+ "expander-arith",
+ "expander-circuit",
+ "expander-gf2",
+ "expander-poly-commit",
+ "expander-polynomials",
+ "expander-transcript",
+ "expander-utils",
+ "gf2_128",
  "gkr",
  "gkr_engine",
  "gkr_hashers",
  "goldilocks",
- "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
+ "log",
+ "mersenne31",
+ "serdes",
+ "sumcheck",
+ "tokio",
+ "warp",
+]
+
+[[package]]
+name = "expander-circuit"
+version = "0.4.0"
+dependencies = [
+ "ark-std 0.4.0",
+ "bytes",
+ "config_macros",
+ "ethnum",
+ "expander-arith",
+ "expander-poly-commit",
+ "expander-transcript",
+ "gkr_engine",
+ "gkr_hashers",
+ "log",
+ "mersenne31",
+ "rand 0.8.5",
+ "serdes",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "expander-gf2"
+version = "0.4.0"
+dependencies = [
+ "ark-std 0.4.0",
+ "cfg-if",
+ "criterion 0.5.1",
+ "ethnum",
+ "expander-arith",
+ "expander-halo2curves",
+ "log",
+ "rand 0.8.5",
+ "raw-cpuid",
+ "serdes",
+ "thiserror 2.0.18",
+ "tynm",
+]
+
+[[package]]
+name = "expander-halo2curves"
+version = "0.4.0"
+dependencies = [
+ "ark-std 0.3.0",
+ "bincode",
+ "blake2",
+ "criterion 0.3.6",
+ "digest 0.10.7",
+ "ff 0.13.1",
+ "group",
+ "hex",
+ "impls",
+ "lazy_static",
+ "num-bigint",
+ "num-traits",
+ "pairing",
+ "pasta_curves",
+ "paste",
+ "rand 0.8.5",
+ "rand_chacha",
+ "rand_core 0.6.4",
+ "rand_xorshift",
+ "rayon",
+ "serde",
+ "serde_arrays",
+ "serde_json",
+ "sha2",
+ "static_assertions",
+ "subtle",
+ "unroll",
+]
+
+[[package]]
+name = "expander-poly-commit"
+version = "0.4.0"
+dependencies = [
+ "ark-std 0.4.0",
+ "criterion 0.5.1",
+ "derivative",
+ "ethnum",
+ "expander-arith",
+ "expander-gf2",
+ "expander-halo2curves",
+ "expander-polynomials",
+ "expander-transcript",
+ "expander-tree",
+ "expander-utils",
+ "gf2_128",
+ "gkr_engine",
+ "gkr_hashers",
+ "goldilocks",
+ "itertools 0.13.0",
+ "mersenne31",
+ "rand 0.8.5",
+ "rayon",
+ "serdes",
+ "sumcheck",
+ "thiserror 2.0.18",
+ "transpose",
+ "tynm",
+]
+
+[[package]]
+name = "expander-polynomials"
+version = "0.4.0"
+dependencies = [
+ "ark-std 0.4.0",
+ "criterion 0.5.1",
+ "expander-arith",
+ "expander-halo2curves",
+ "itertools 0.13.0",
+ "rand 0.8.5",
+ "serdes",
+]
+
+[[package]]
+name = "expander-transcript"
+version = "0.4.0"
+dependencies = [
+ "expander-arith",
+ "gkr_engine",
+ "gkr_hashers",
+ "mersenne31",
+ "serdes",
+ "sha2",
+ "tiny-keccak",
+]
+
+[[package]]
+name = "expander-tree"
+version = "0.4.0"
+dependencies = [
+ "ark-std 0.4.0",
+ "criterion 0.5.1",
+ "expander-arith",
+ "expander-gf2",
+ "gf2_128",
+ "serdes",
+ "tiny-keccak",
+ "tynm",
+]
+
+[[package]]
+name = "expander-utils"
+version = "0.4.0"
+dependencies = [
+ "colored",
+]
+
+[[package]]
+name = "expander_compiler"
+version = "0.4.0"
+dependencies = [
+ "ark-std 0.4.0",
+ "axum",
+ "babybear",
+ "chrono",
+ "clap 4.5.60",
+ "crosslayer_prototype",
+ "ethnum",
+ "expander-arith",
+ "expander-bin",
+ "expander-circuit",
+ "expander-gf2",
+ "expander-halo2curves",
+ "expander-poly-commit",
+ "expander-polynomials",
+ "expander-transcript",
+ "expander-utils",
+ "gkr",
+ "gkr_engine",
+ "gkr_hashers",
+ "goldilocks",
  "macros",
  "mersenne31",
  "num_cpus",
  "once_cell",
- "poly_commit",
- "polynomials",
  "rand 0.8.5",
  "rayon",
  "reqwest",
@@ -1282,8 +1502,6 @@ dependencies = [
  "sumcheck",
  "tiny-keccak",
  "tokio",
- "transcript",
- "utils",
 ]
 
 [[package]]
@@ -1408,8 +1626,8 @@ dependencies = [
  "ark-serialize 0.5.0",
  "ark-std 0.5.0",
  "bincode",
- "clap",
- "criterion",
+ "clap 4.5.60",
+ "criterion 0.5.1",
  "hyrax",
  "itertools 0.14.0",
  "ligero",
@@ -1538,32 +1756,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "gf2"
-version = "0.4.0"
-dependencies = [
- "arith",
- "ark-std 0.4.0",
- "cfg-if",
- "criterion",
- "ethnum",
- "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
- "log",
- "rand 0.8.5",
- "raw-cpuid",
- "serdes",
- "thiserror 2.0.18",
- "tynm",
-]
-
-[[package]]
 name = "gf2_128"
 version = "0.4.0"
 dependencies = [
- "arith",
  "ark-std 0.4.0",
- "criterion",
+ "criterion 0.5.1",
  "ethnum",
- "gf2",
+ "expander-arith",
+ "expander-gf2",
  "rand 0.8.5",
  "serdes",
  "tynm",
@@ -1573,47 +1773,47 @@ dependencies = [
 name = "gkr"
 version = "0.4.0"
 dependencies = [
- "arith",
  "ark-std 0.4.0",
  "babybear",
- "circuit",
  "config_macros",
- "criterion",
+ "criterion 0.5.1",
  "env_logger 0.11.9",
  "ethnum",
- "gf2",
+ "expander-arith",
+ "expander-circuit",
+ "expander-gf2",
+ "expander-halo2curves",
+ "expander-poly-commit",
+ "expander-polynomials",
+ "expander-transcript",
+ "expander-utils",
  "gf2_128",
  "gkr_engine",
  "gkr_hashers",
  "goldilocks",
- "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
  "log",
  "mersenne31",
- "poly_commit",
- "polynomials",
  "rand 0.8.5",
  "rayon",
  "serdes",
  "sha2",
  "sumcheck",
  "thiserror 2.0.18",
- "transcript",
- "utils",
 ]
 
 [[package]]
 name = "gkr_engine"
 version = "0.4.0"
 dependencies = [
- "arith",
  "ark-std 0.4.0",
  "babybear",
- "gf2",
+ "expander-arith",
+ "expander-gf2",
+ "expander-polynomials",
  "gf2_128",
  "goldilocks",
  "itertools 0.13.0",
  "mersenne31",
- "polynomials",
  "rand 0.8.5",
  "serdes",
  "thiserror 2.0.18",
@@ -1623,8 +1823,8 @@ dependencies = [
 name = "gkr_hashers"
 version = "0.4.0"
 dependencies = [
- "arith",
- "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
+ "expander-arith",
+ "expander-halo2curves",
  "serdes",
  "sha2",
  "tiny-keccak",
@@ -1634,10 +1834,10 @@ dependencies = [
 name = "goldilocks"
 version = "0.4.0"
 dependencies = [
- "arith",
  "ark-std 0.4.0",
- "criterion",
+ "criterion 0.5.1",
  "ethnum",
+ "expander-arith",
  "rand 0.8.5",
  "serdes",
 ]
@@ -1671,6 +1871,12 @@ dependencies = [
  "tokio-util",
  "tracing",
 ]
+
+[[package]]
+name = "half"
+version = "1.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b43ede17f21864e81be2fa654110bf1e793774238d86ef8555c37e6519c0403"
 
 [[package]]
 name = "half"
@@ -1767,30 +1973,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "halo2curves"
-version = "0.6.1"
-source = "git+https://github.com/PolyhedraZK/halo2curves#abb020f388b519c1f00033e267faa0709b1249e2"
-dependencies = [
- "blake2",
- "digest 0.10.7",
- "ff 0.13.1",
- "group",
- "lazy_static",
- "num-bigint",
- "num-traits",
- "pairing",
- "pasta_curves",
- "paste",
- "rand 0.8.5",
- "rand_core 0.6.4",
- "rayon",
- "sha2",
- "static_assertions",
- "subtle",
- "unroll",
-]
-
-[[package]]
 name = "hashbrown"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1844,6 +2026,15 @@ name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
+name = "hermit-abi"
+version = "0.1.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62b467343b94ba476dcb2500d242dadbb39557df889310ac77c5d99100aaac33"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "hermit-abi"
@@ -2014,8 +2205,8 @@ dependencies = [
  "anyhow",
  "ark-std 0.5.0",
  "bincode",
- "clap",
- "criterion",
+ "clap 4.5.60",
+ "criterion 0.5.1",
  "ff 0.13.1",
  "itertools 0.11.0",
  "ndarray 0.15.6",
@@ -2171,6 +2362,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "impls"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a46645bbd70538861a90d0f26c31537cdf1e44aae99a794fb75a664b70951bc"
+
+[[package]]
 name = "indexmap"
 version = "2.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2190,7 +2387,7 @@ checksum = "25470f23803092da7d239834776d653104d551bc4d7eacaf31e6837854b8e9eb"
 dependencies = [
  "console 0.16.3",
  "portable-atomic",
- "unicode-width",
+ "unicode-width 0.2.2",
  "unit-prefix",
  "web-time",
 ]
@@ -2207,7 +2404,7 @@ version = "0.4.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
- "hermit-abi",
+ "hermit-abi 0.5.2",
  "libc",
  "windows-sys 0.61.2",
 ]
@@ -2305,72 +2502,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "jstprove-io"
+name = "jstprove"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "crc32c",
- "rmp-serde",
- "serde",
- "tempfile",
- "zstd",
-]
-
-[[package]]
-name = "jstprove-onnx"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "prost",
- "prost-build",
- "serde",
- "tempfile",
-]
-
-[[package]]
-name = "jstprove-remainder"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "console 0.15.11",
- "criterion",
- "frontend",
- "hyrax",
- "indicatif",
- "itertools 0.14.0",
- "jstprove-io",
- "jstprove-onnx",
- "ligero",
- "ndarray 0.15.6",
- "rayon",
- "remainder",
- "rmp-serde",
- "rmpv",
- "serde",
- "serde_json",
- "shared-types",
- "tempfile",
- "thiserror 2.0.18",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "jstprove_circuits"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "arith",
  "ark-std 0.4.0",
  "chrono",
  "circuit-std-rs",
- "clap",
+ "clap 4.5.60",
  "console 0.15.11",
- "criterion",
+ "criterion 0.5.1",
  "ethnum",
+ "expander-arith",
+ "expander-halo2curves",
  "expander_compiler",
- "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
  "indicatif",
  "jstprove-io",
  "jstprove-onnx",
@@ -2398,6 +2543,58 @@ dependencies = [
  "tiny-keccak",
  "tracing",
  "zstd",
+]
+
+[[package]]
+name = "jstprove-io"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crc32c",
+ "rmp-serde",
+ "serde",
+ "tempfile",
+ "zstd",
+]
+
+[[package]]
+name = "jstprove-onnx"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "prost",
+ "prost-build",
+ "serde",
+ "tempfile",
+]
+
+[[package]]
+name = "jstprove-remainder"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap 4.5.60",
+ "console 0.15.11",
+ "criterion 0.5.1",
+ "frontend",
+ "hyrax",
+ "indicatif",
+ "itertools 0.14.0",
+ "jstprove-io",
+ "jstprove-onnx",
+ "ligero",
+ "ndarray 0.15.6",
+ "rayon",
+ "remainder",
+ "rmp-serde",
+ "rmpv",
+ "serde",
+ "serde_json",
+ "shared-types",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2560,13 +2757,13 @@ dependencies = [
 name = "mersenne31"
 version = "0.4.0"
 dependencies = [
- "arith",
  "ark-std 0.4.0",
  "cfg-if",
- "criterion",
+ "criterion 0.5.1",
  "ethnum",
+ "expander-arith",
+ "expander-halo2curves",
  "gkr_hashers",
- "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
  "log",
  "rand 0.8.5",
  "raw-cpuid",
@@ -2595,7 +2792,7 @@ name = "metal_accel"
 version = "0.4.0"
 dependencies = [
  "block",
- "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
+ "expander-halo2curves",
  "log",
  "metal",
  "objc",
@@ -2840,7 +3037,7 @@ version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "91df4bbde75afed763b708b7eee1e8e7651e02d97f6d5dd763e89367e957b23b"
 dependencies = [
- "hermit-abi",
+ "hermit-abi 0.5.2",
  "libc",
 ]
 
@@ -3118,49 +3315,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "poly_commit"
-version = "0.4.0"
-dependencies = [
- "arith",
- "ark-std 0.4.0",
- "criterion",
- "derivative",
- "ethnum",
- "gf2",
- "gf2_128",
- "gkr_engine",
- "gkr_hashers",
- "goldilocks",
- "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
- "itertools 0.13.0",
- "mersenne31",
- "polynomials",
- "rand 0.8.5",
- "rayon",
- "serdes",
- "sumcheck",
- "thiserror 2.0.18",
- "transcript",
- "transpose",
- "tree",
- "tynm",
- "utils",
-]
-
-[[package]]
-name = "polynomials"
-version = "0.4.0"
-dependencies = [
- "arith",
- "ark-std 0.4.0",
- "criterion",
- "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
- "itertools 0.13.0",
- "rand 0.8.5",
- "serdes",
-]
-
-[[package]]
 name = "portable-atomic"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3395,6 +3549,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c8d0fd677905edcbeedbf2edb6494d676f0e98d54d5cf9bda0b061cb8fb8aba"
 
 [[package]]
+name = "rand_xorshift"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d25bf25ec5ae4a3f1b92f929810509a2f53d7dca2f50b794ff57e3face536c8f"
+dependencies = [
+ "rand_core 0.6.4",
+]
+
+[[package]]
 name = "raw-cpuid"
 version = "11.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3478,8 +3641,8 @@ dependencies = [
  "ark-std 0.5.0",
  "base64 0.22.1",
  "chrono",
- "clap",
- "criterion",
+ "clap 4.5.60",
+ "criterion 0.5.1",
  "derive_more",
  "dyn-clonable",
  "dyn-clone",
@@ -3714,6 +3877,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_cbor"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2bef2ebfde456fb76bbcf9f59315333decc4fda0b2b44b420243c11e0f5ec1f5"
+dependencies = [
+ "half 1.8.3",
+ "serde",
+]
+
+[[package]]
 name = "serde_core"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3774,7 +3947,7 @@ name = "serdes"
 version = "0.4.0"
 dependencies = [
  "ethnum",
- "halo2curves 0.6.1 (git+https://github.com/PolyhedraZK/halo2curves)",
+ "expander-halo2curves",
  "rand 0.8.5",
  "serdes_derive",
  "thiserror 2.0.18",
@@ -3862,7 +4035,7 @@ source = "git+https://github.com/inference-labs-inc/Remainder_CE.git?rev=06a5f40
 dependencies = [
  "anyhow",
  "ark-std 0.5.0",
- "criterion",
+ "criterion 0.5.1",
  "ff 0.13.1",
  "halo2curves 0.6.1 (git+https://github.com/privacy-scaling-explorations/halo2curves?tag=v0.6.1)",
  "itertools 0.11.0",
@@ -4008,19 +4181,19 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 name = "sumcheck"
 version = "0.4.0"
 dependencies = [
- "arith",
  "ark-std 0.4.0",
- "circuit",
  "env_logger 0.11.9",
+ "expander-arith",
+ "expander-circuit",
+ "expander-polynomials",
+ "expander-transcript",
+ "expander-utils",
  "gkr_engine",
  "gkr_hashers",
  "log",
  "metal_accel",
- "polynomials",
  "rayon",
  "serdes",
- "transcript",
- "utils",
 ]
 
 [[package]]
@@ -4115,6 +4288,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "textwrap"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d326610f408c7a4eb6f51c37c330e496b08506c9457c9d34287ecc38809fb060"
+dependencies = [
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -4349,19 +4531,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "transcript"
-version = "0.4.0"
-dependencies = [
- "arith",
- "gkr_engine",
- "gkr_hashers",
- "mersenne31",
- "serdes",
- "sha2",
- "tiny-keccak",
-]
-
-[[package]]
 name = "transpose"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4369,20 +4538,6 @@ checksum = "1ad61aed86bc3faea4300c7aee358b4c6d0c8d6ccc36524c96e4c92ccf26e77e"
 dependencies = [
  "num-integer",
  "strength_reduce",
-]
-
-[[package]]
-name = "tree"
-version = "0.4.0"
-dependencies = [
- "arith",
- "ark-std 0.4.0",
- "criterion",
- "gf2",
- "gf2_128",
- "serdes",
- "tiny-keccak",
- "tynm",
 ]
 
 [[package]]
@@ -4445,6 +4600,12 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
 name = "unicode-width"
+version = "0.1.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
+
+[[package]]
+name = "unicode-width"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
@@ -4500,13 +4661,6 @@ name = "utf8parse"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
-
-[[package]]
-name = "utils"
-version = "0.4.0"
-dependencies = [
- "colored",
-]
 
 [[package]]
 name = "valuable"
@@ -4727,6 +4881,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "winapi"
+version = "0.3.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c839a674fcd7a98952e593242ea400abe93992746761e38641405d28b00f419"
+dependencies = [
+ "winapi-i686-pc-windows-gnu",
+ "winapi-x86_64-pc-windows-gnu",
+]
+
+[[package]]
+name = "winapi-i686-pc-windows-gnu"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac3b87c63620426dd9b991e5ce0329eff545bccbbb34f3be09ff6fb6ab51b7b6"
+
+[[package]]
 name = "winapi-util"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4734,6 +4904,12 @@ checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "winapi-x86_64-pc-windows-gnu"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "windows"

@@ -1,7 +1,6 @@
 [package]
-name = "circuit"
+name = "expander-circuit"
 description = "Circuit representation for Expander proof system"
-publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

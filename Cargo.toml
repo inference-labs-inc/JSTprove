@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "prover/halo2curves",
     "prover/arith",
     "prover/arith/babybear",
     "prover/arith/gf2",
@@ -42,37 +43,37 @@ repository = "https://github.com/inference-labs-inc/JSTprove"
 
 [workspace.dependencies]
 # --- internal: prover crates ---
-arith = { path = "prover/arith" }
-babybear = { path = "prover/arith/babybear" }
-gf2 = { path = "prover/arith/gf2" }
-gf2_128 = { path = "prover/arith/gf2_128" }
-goldilocks = { path = "prover/arith/goldilocks" }
-mersenne31 = { path = "prover/arith/mersenne31" }
-polynomials = { path = "prover/arith/polynomials" }
-config_macros = { path = "prover/config_macros" }
-crosslayer_prototype = { path = "prover/crosslayer_prototype" }
-gkr = { path = "prover/gkr" }
-gkr_engine = { path = "prover/gkr_engine" }
-gkr_hashers = { path = "prover/hasher" }
-poly_commit = { path = "prover/poly_commit" }
-serdes = { path = "prover/serdes" }
-serdes_derive = { path = "prover/serdes_derive" }
-sumcheck = { path = "prover/sumcheck" }
-metal_accel = { path = "prover/metal_accel" }
-tree = { path = "prover/tree" }
+arith = { version = "0.4.0", path = "prover/arith", package = "expander-arith" }
+babybear = { version = "0.4.0", path = "prover/arith/babybear" }
+gf2 = { version = "0.4.0", path = "prover/arith/gf2", package = "expander-gf2" }
+gf2_128 = { version = "0.4.0", path = "prover/arith/gf2_128" }
+goldilocks = { version = "0.4.0", path = "prover/arith/goldilocks" }
+mersenne31 = { version = "0.4.0", path = "prover/arith/mersenne31" }
+polynomials = { version = "0.4.0", path = "prover/arith/polynomials", package = "expander-polynomials" }
+config_macros = { version = "0.4.0", path = "prover/config_macros" }
+crosslayer_prototype = { version = "0.4.0", path = "prover/crosslayer_prototype" }
+gkr = { version = "0.4.0", path = "prover/gkr" }
+gkr_engine = { version = "0.4.0", path = "prover/gkr_engine" }
+gkr_hashers = { version = "0.4.0", path = "prover/hasher" }
+poly_commit = { version = "0.4.0", path = "prover/poly_commit", package = "expander-poly-commit" }
+serdes = { version = "0.4.0", path = "prover/serdes" }
+serdes_derive = { version = "0.4.0", path = "prover/serdes_derive" }
+sumcheck = { version = "0.4.0", path = "prover/sumcheck" }
+metal_accel = { version = "0.4.0", path = "prover/metal_accel" }
+tree = { version = "0.4.0", path = "prover/tree", package = "expander-tree" }
 
 # dual aliases: original names for prover crates, aliased names for compiler crates
-circuit = { path = "prover/circuit" }
-expander_circuit = { path = "prover/circuit", package = "circuit" }
-transcript = { path = "prover/transcript" }
-expander_transcript = { path = "prover/transcript", package = "transcript" }
-utils = { path = "prover/utils" }
-expander_utils = { path = "prover/utils", package = "utils" }
-expander_binary = { path = "prover/bin", package = "bin" }
+circuit = { version = "0.4.0", path = "prover/circuit", package = "expander-circuit" }
+expander_circuit = { version = "0.4.0", path = "prover/circuit", package = "expander-circuit" }
+transcript = { version = "0.4.0", path = "prover/transcript", package = "expander-transcript" }
+expander_transcript = { version = "0.4.0", path = "prover/transcript", package = "expander-transcript" }
+utils = { version = "0.4.0", path = "prover/utils", package = "expander-utils" }
+expander_utils = { version = "0.4.0", path = "prover/utils", package = "expander-utils" }
+expander_binary = { version = "0.4.0", path = "prover/bin", package = "expander-bin" }
 
 # --- internal: compiler crates ---
-expander_compiler = { path = "compiler/expander_compiler" }
-circuit-std-rs = { path = "compiler/circuit-std-rs" }
+expander_compiler = { version = "0.4.0", path = "compiler/expander_compiler" }
+circuit-std-rs = { version = "0.4.0", path = "compiler/circuit-std-rs" }
 
 # --- external ---
 ark-bls12-381 = "0.4.0"
@@ -93,7 +94,7 @@ csv = "1.1"
 derivative = "2.2.0"
 env_logger = "0.11.3"
 ethnum = "1.5.0"
-halo2curves = { git = "https://github.com/PolyhedraZK/halo2curves", default-features = false, features = ["bits"] }
+halo2curves = { version = "0.4.0", path = "prover/halo2curves", package = "expander-halo2curves", default-features = false, features = ["bits"] }
 itertools = "0.13.0"
 log = "0.4"
 ndarray = { version = "0.16.1", features = ["serde"] }

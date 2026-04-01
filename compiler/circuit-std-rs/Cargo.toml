@@ -1,7 +1,6 @@
 [package]
 name = "circuit-std-rs"
 description = "Standard circuit library for Expander proof system"
-publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

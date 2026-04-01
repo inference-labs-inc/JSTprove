@@ -1,7 +1,6 @@
 [package]
-name = "tree"
+name = "expander-tree"
 description = "Merkle tree implementation for Expander proof system"
-publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

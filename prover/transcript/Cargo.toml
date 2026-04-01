@@ -1,7 +1,6 @@
 [package]
-name = "transcript"
+name = "expander-transcript"
 description = "Fiat-Shamir transcript for Expander proof system"
-publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

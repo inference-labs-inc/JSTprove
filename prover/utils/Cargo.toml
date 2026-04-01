@@ -1,7 +1,6 @@
 [package]
-name = "utils"
+name = "expander-utils"
 description = "Utility functions for Expander proof system"
-publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

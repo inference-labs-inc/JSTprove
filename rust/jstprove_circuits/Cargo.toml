@@ -1,12 +1,14 @@
 [package]
-name = "jstprove_circuits"
-description = "Circuit compilation for zero-knowledge proofs of ML inference"
+name = "jstprove"
+description = "Zero-knowledge proofs of ML inference"
 version = "0.1.0"
 edition = "2024"
-publish = false
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+
+[lib]
+name = "jstprove_circuits"
 
 [dependencies]
 ark-std.workspace = true
@@ -32,9 +34,9 @@ rmp-serde = "1.3"
 serde_bytes = "0.11"
 num-bigint = "0.4"
 num-traits = "0.2"
-jstprove-io = { path = "../jstprove_io" }
-jstprove-onnx = { path = "../jstprove_onnx" }
-jstprove-remainder = { path = "../jstprove_remainder", optional = true }
+jstprove-io = { version = "0.1.0", path = "../jstprove_io" }
+jstprove-onnx = { version = "0.1.0", path = "../jstprove_onnx" }
+jstprove-remainder = { version = "0.1.0", path = "../jstprove_remainder", optional = true }
 arith.workspace = true
 tempfile = "3"
 tracing = "0.1"

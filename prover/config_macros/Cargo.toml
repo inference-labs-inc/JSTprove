@@ -1,7 +1,6 @@
 [package]
 name = "config_macros"
 description = "Configuration macros for Expander proof system"
-publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

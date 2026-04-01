@@ -3,7 +3,6 @@ name = "jstprove-onnx"
 description = "ONNX model parsing for JSTprove zero-knowledge proofs"
 version = "0.1.0"
 edition = "2021"
-publish = false
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
