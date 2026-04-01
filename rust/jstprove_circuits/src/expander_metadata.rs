@@ -184,10 +184,6 @@ pub fn generate_from_onnx_goldilocks_auto(
         target_precision,
         Some(max_bound),
     )
-    .map(|mut meta| {
-        meta.circuit_params.curve = Some(curve);
-        meta
-    })
 }
 
 fn build_circuit_params(
