@@ -68,6 +68,10 @@ jobs:
         run: |
           sed -i '/^jstprove-remainder/d' rust/jstprove_circuits/Cargo.toml
           sed -i '/^remainder = \["dep:jstprove-remainder"\]/d' rust/jstprove_circuits/Cargo.toml
+          if grep -q 'jstprove-remainder' rust/jstprove_circuits/Cargo.toml; then
+            echo "::error::Failed to strip jstprove-remainder dependency"
+            exit 1
+          fi
 
       - name: Authenticate with crates.io
         id: crates-io-auth

@@ -698,7 +698,7 @@ fn test_pairing() {
         g1.mul_assign(a);
 
         let mut g2 = G2::generator();
-        g1.mul_assign(b);
+        g2.mul_assign(b);
 
         let pair_ab = Bn256::pairing(&G1Affine::from(g1), &G2Affine::from(g2));
 
@@ -706,7 +706,7 @@ fn test_pairing() {
         g1.mul_assign(b);
 
         g2 = G2::generator();
-        g1.mul_assign(a);
+        g2.mul_assign(a);
 
         let pair_ba = Bn256::pairing(&G1Affine::from(g1), &G2Affine::from(g2));
 
