@@ -7,6 +7,9 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[lib]
+name = "arith"
+
 [dependencies]
 ark-std.workspace = true
 criterion.workspace = true

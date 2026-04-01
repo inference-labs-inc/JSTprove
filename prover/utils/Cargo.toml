@@ -3,6 +3,9 @@ name = "expander-utils"
 description = "Utility functions for Expander proof system"
 version.workspace = true
 edition.workspace = true
+
+[lib]
+name = "utils"
 authors.workspace = true
 license.workspace = true
 repository.workspace = true

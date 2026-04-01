@@ -7,6 +7,9 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[lib]
+name = "tree"
+
 [dependencies]
 arith.workspace = true
 serdes.workspace = true

@@ -58,7 +58,7 @@ jobs:
       - name: Run workspace tests
         run: >
           cargo test
-          -p jstprove_circuits
+          -p jstprove
           -p jstprove-io
           -p jstprove-onnx
           --lib --tests --bins

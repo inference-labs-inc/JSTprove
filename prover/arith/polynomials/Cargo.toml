@@ -7,6 +7,9 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[lib]
+name = "polynomials"
+
 [dependencies]
 arith.workspace = true
 serdes.workspace = true

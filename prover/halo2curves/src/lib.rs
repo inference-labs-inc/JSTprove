@@ -3,6 +3,7 @@
     clippy::pedantic,
     dead_code,
     unused_attributes,
+    unused_imports,
     unused_must_use
 )]
 

@@ -44,7 +44,6 @@ impls = "1"
 default = ["bits"]
 asm = []
 bits = ["ff/bits"]
-bn256-table = []
 derive_serde = ["serde/derive", "serde_arrays", "hex", "pasta_curves/serde"]
 print-trace = ["ark-std/print-trace"]
 

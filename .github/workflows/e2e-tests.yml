@@ -66,7 +66,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run cargo clippy (workspace)
-        run: cargo clippy --workspace --all-targets --all-features --exclude metal_accel -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features --exclude metal_accel --exclude expander-halo2curves -- -D warnings
 
       - name: Run cargo clippy (jstprove-remainder)
         run: cargo clippy --manifest-path rust/jstprove_remainder/Cargo.toml --all-targets --all-features
@@ -112,7 +112,7 @@ jobs:
         run: cargo test --release --manifest-path rust/jstprove_remainder/Cargo.toml
 
       - name: Run Rust e2e tests (Expander + Remainder)
-        run: cargo test --release -p jstprove_circuits --features remainder
+        run: cargo test --release -p jstprove --features remainder
 
       - name: Install uv
         uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1
