@@ -60,6 +60,10 @@ fn generate_from_onnx_with_all_options(
     )
 }
 
+/// When `precomputed_max_bound` is `Some`, the caller must have already called
+/// `quantizer::compute_max_bound` on `graph` (which applies `fold_all_batchnorms`).
+/// Passing a stale value from an unfolded graph produces incorrect scale configs.
+/// Pass `None` to let this function compute it on demand.
 fn generate_from_parsed(
     parsed: ParsedModel,
     mut graph: LayerGraph,
