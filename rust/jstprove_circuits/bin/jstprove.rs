@@ -12,7 +12,7 @@ use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
 use jstprove_circuits::onnx::Circuit;
 
 use expander_compiler::frontend::{
-    BN254Config, GoldilocksBasefoldConfig, GoldilocksConfig, Variable,
+    BN254Config, GoldilocksBasefoldConfig, GoldilocksConfig, GoldilocksExt2BasefoldConfig, Variable,
 };
 use jstprove_circuits::Curve;
 
@@ -273,6 +273,12 @@ fn main() {
         ),
         Curve::GoldilocksBasefold => handle_args::<
             GoldilocksBasefoldConfig,
+            Circuit<Variable>,
+            Circuit<_>,
+            _,
+        >(&matches, &mut file_reader, metadata, mode),
+        Curve::GoldilocksExt2 => handle_args::<
+            GoldilocksExt2BasefoldConfig,
             Circuit<Variable>,
             Circuit<_>,
             _,

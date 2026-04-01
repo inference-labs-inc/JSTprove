@@ -153,6 +153,9 @@ where
             FieldType::Goldilocksx8 => {
                 Circuit::<Cfg::FieldConfig>::load_circuit(KECCAK_GOLDILOCKS_CIRCUIT)
             }
+            FieldType::GoldilocksExt2x1 => {
+                Circuit::<Cfg::FieldConfig>::load_circuit(KECCAK_GOLDILOCKS_CIRCUIT)
+            }
         },
         "poseidon" => match Cfg::FieldConfig::FIELD_TYPE {
             FieldType::M31x16 => Circuit::<Cfg::FieldConfig>::load_circuit(POSEIDON_M31_CIRCUIT),
@@ -170,6 +173,7 @@ where
             FieldType::Goldilocksx1 => KECCAK_GOLDILOCKS_WITNESS,
             FieldType::Goldilocksx8 => KECCAK_GOLDILOCKS_WITNESS,
             FieldType::BabyBearx16 => KECCAK_BABYBEAR_WITNESS,
+            FieldType::GoldilocksExt2x1 => KECCAK_GOLDILOCKS_WITNESS,
         },
         "poseidon" => match Cfg::FieldConfig::FIELD_TYPE {
             FieldType::M31x16 => POSEIDON_M31_WITNESS,
@@ -186,6 +190,8 @@ where
         (FieldType::M31x16, "keccak") => 2,
         (FieldType::M31x16, "poseidon") => 120,
         (FieldType::Goldilocksx8, "keccak") => 2,
+        (FieldType::Goldilocksx1, "keccak") => 2,
+        (FieldType::GoldilocksExt2x1, "keccak") => 2,
         (FieldType::BabyBearx16, "keccak") => 2,
         (FieldType::BN254, "keccak") => 2,
         _ => unreachable!(),

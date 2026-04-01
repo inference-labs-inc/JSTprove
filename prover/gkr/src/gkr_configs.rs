@@ -2,7 +2,8 @@ use config_macros::declare_gkr_config;
 use gf2::GF2x128;
 use gkr_engine::{
     BN254Config, BabyBearx16Config, FieldEngine, GF2ExtConfig, GKREngine, GKRScheme,
-    Goldilocksx1Config, Goldilocksx8Config, M31x16Config, M31x1Config, MPIConfig,
+    GoldilocksExt2x1Config, Goldilocksx1Config, Goldilocksx8Config, M31x16Config, M31x1Config,
+    MPIConfig,
 };
 use gkr_hashers::{MiMC5FiatShamirHasher, PoseidonFiatShamirHasher, SHA256hasher};
 use goldilocks::Goldilocksx8;
@@ -149,6 +150,23 @@ declare_gkr_config!(
     FieldType::Goldilocksx8,
     FiatShamirHashType::SHA256,
     PolynomialCommitmentType::Orion,
+    GKRScheme::Vanilla,
+);
+
+// ============== GoldilocksExt2x1 (128-bit circuit field) ==============
+declare_gkr_config!(
+    pub GoldilocksExt2x1ConfigSha2Basefold,
+    FieldType::GoldilocksExt2x1,
+    FiatShamirHashType::SHA256,
+    PolynomialCommitmentType::Basefold,
+    GKRScheme::Vanilla,
+);
+
+declare_gkr_config!(
+    pub GoldilocksExt2x1ConfigSha2Raw,
+    FieldType::GoldilocksExt2x1,
+    FiatShamirHashType::SHA256,
+    PolynomialCommitmentType::Raw,
     GKRScheme::Vanilla,
 );
 

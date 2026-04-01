@@ -49,13 +49,37 @@ fn generate_from_onnx_with_all_options(
     target_precision: Option<u32>,
 ) -> Result<ExpanderMetadata> {
     let parsed = parser::parse_onnx(onnx_path).context("parsing ONNX model")?;
-    let mut graph = LayerGraph::from_parsed(&parsed).context("building layer graph")?;
+    let graph = LayerGraph::from_parsed(&parsed).context("building layer graph")?;
+    generate_from_parsed(
+        parsed,
+        graph,
+        weights_as_inputs,
+        n_bits,
+        target_precision,
+        None,
+    )
+}
 
+/// When `precomputed_max_bound` is `Some`, the caller must have already called
+/// `quantizer::compute_max_bound` on `graph` (which applies `fold_all_batchnorms`).
+/// Passing a stale value from an unfolded graph produces incorrect scale configs.
+/// Pass `None` to let this function compute it on demand.
+fn generate_from_parsed(
+    parsed: ParsedModel,
+    mut graph: LayerGraph,
+    weights_as_inputs: bool,
+    n_bits: Option<u32>,
+    target_precision: Option<u32>,
+    precomputed_max_bound: Option<f64>,
+) -> Result<ExpanderMetadata> {
     let quantized = match (n_bits, target_precision) {
         (Some(nb), Some(digits)) => quantizer::quantize_model_for_precision(graph, digits, nb)
             .context("precision-targeted quantization")?,
         (Some(nb), None) => {
-            let max_bound = quantizer::compute_max_bound(&mut graph)?;
+            let max_bound = match precomputed_max_bound {
+                Some(mb) => mb,
+                None => quantizer::compute_max_bound(&mut graph)?,
+            };
             let config = ScaleConfig::adaptive(nb, max_bound);
             quantizer::quantize_model(graph, &config).context("field-aware quantization")?
         }
@@ -88,9 +112,82 @@ fn generate_from_onnx_with_all_options(
 fn infer_curve_from_n_bits(n_bits: u32) -> Curve {
     if n_bits <= jstprove_onnx::quantizer::N_BITS_GOLDILOCKS {
         Curve::Goldilocks
+    } else if n_bits <= jstprove_onnx::quantizer::N_BITS_GOLDILOCKS_EXT2 {
+        Curve::GoldilocksExt2
     } else {
         Curve::Bn254
     }
+}
+
+pub fn select_goldilocks_tier(
+    max_bound: f64,
+    target_precision: Option<u32>,
+) -> Result<(Curve, u32)> {
+    use jstprove_onnx::quantizer::{
+        MIN_USEFUL_EXPONENT, N_BITS_GOLDILOCKS, N_BITS_GOLDILOCKS_EXT2,
+    };
+
+    let base_exp = ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS, max_bound);
+    let ext2_exp = ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS_EXT2, max_bound);
+
+    match target_precision {
+        Some(digits) => {
+            let required_exp = ScaleConfig::exponent_for_digits(digits);
+            if base_exp >= required_exp {
+                Ok((Curve::Goldilocks, N_BITS_GOLDILOCKS))
+            } else if ext2_exp >= required_exp {
+                Ok((Curve::GoldilocksExt2, N_BITS_GOLDILOCKS_EXT2))
+            } else {
+                let max_digits_ext2 =
+                    ScaleConfig::max_safe_digits(N_BITS_GOLDILOCKS_EXT2, max_bound);
+                anyhow::bail!(
+                    "requested {digits} decimal digits requires exponent={required_exp}, \
+                     but Goldilocks base (31-bit) supports exponent up to {base_exp} and \
+                     GoldilocksExt2 (63-bit) supports up to {ext2_exp} ({max_digits_ext2} digits) \
+                     for this model's accumulation bound {max_bound:.2}"
+                )
+            }
+        }
+        None => {
+            if base_exp >= MIN_USEFUL_EXPONENT {
+                Ok((Curve::Goldilocks, N_BITS_GOLDILOCKS))
+            } else if ext2_exp >= MIN_USEFUL_EXPONENT {
+                Ok((Curve::GoldilocksExt2, N_BITS_GOLDILOCKS_EXT2))
+            } else {
+                anyhow::bail!(
+                    "model accumulation bound {max_bound:.2} exceeds Goldilocks field family \
+                     capacity: base (31-bit) max exponent={base_exp}, ext2 (63-bit) max \
+                     exponent={ext2_exp}, minimum useful={MIN_USEFUL_EXPONENT}"
+                )
+            }
+        }
+    }
+}
+
+/// # Errors
+/// Returns an error if ONNX parsing, quantization, or shape inference fails.
+pub fn generate_from_onnx_goldilocks_auto(
+    onnx_path: &Path,
+    target_precision: Option<u32>,
+) -> Result<ExpanderMetadata> {
+    let parsed = parser::parse_onnx(onnx_path).context("parsing ONNX model")?;
+    let mut graph = LayerGraph::from_parsed(&parsed).context("building layer graph")?;
+    let max_bound = quantizer::compute_max_bound(&mut graph)?;
+
+    let (curve, n_bits) = select_goldilocks_tier(max_bound, target_precision)?;
+
+    tracing::debug!(
+        %curve, n_bits, max_bound, "goldilocks auto-select"
+    );
+
+    generate_from_parsed(
+        parsed,
+        graph,
+        false,
+        Some(n_bits),
+        target_precision,
+        Some(max_bound),
+    )
 }
 
 fn build_circuit_params(
@@ -563,6 +660,102 @@ mod tests {
         assert!(
             msg.contains("decimal digits"),
             "error should mention decimal digits: {msg}"
+        );
+    }
+
+    #[test]
+    fn select_tier_base_sufficient_adaptive() {
+        use jstprove_onnx::quantizer::{MIN_USEFUL_EXPONENT, N_BITS_GOLDILOCKS};
+
+        // max_safe_exponent(31, 100) = (31 - 7 - 1) / 2 = 11 >= MIN_USEFUL (8)
+        let max_bound = 100.0;
+        assert!(
+            ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS, max_bound) >= MIN_USEFUL_EXPONENT
+        );
+
+        let (curve, n_bits) = select_goldilocks_tier(max_bound, None).unwrap();
+        assert_eq!(curve, Curve::Goldilocks);
+        assert_eq!(n_bits, N_BITS_GOLDILOCKS);
+    }
+
+    #[test]
+    fn select_tier_promotes_to_ext2_adaptive() {
+        use jstprove_onnx::quantizer::{
+            MIN_USEFUL_EXPONENT, N_BITS_GOLDILOCKS, N_BITS_GOLDILOCKS_EXT2,
+        };
+
+        // max_safe_exponent(31, 2^20) = (31 - 20 - 1) / 2 = 5 < MIN_USEFUL (8)
+        // max_safe_exponent(63, 2^20) = (63 - 20 - 1) / 2 = 21 >= MIN_USEFUL
+        let max_bound = 2.0_f64.powi(20);
+        assert!(ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS, max_bound) < MIN_USEFUL_EXPONENT);
+        assert!(
+            ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS_EXT2, max_bound)
+                >= MIN_USEFUL_EXPONENT
+        );
+
+        let (curve, n_bits) = select_goldilocks_tier(max_bound, None).unwrap();
+        assert_eq!(curve, Curve::GoldilocksExt2);
+        assert_eq!(n_bits, N_BITS_GOLDILOCKS_EXT2);
+    }
+
+    #[test]
+    fn select_tier_promotes_to_ext2_with_target_precision() {
+        use jstprove_onnx::quantizer::{N_BITS_GOLDILOCKS, N_BITS_GOLDILOCKS_EXT2};
+
+        let max_bound = 100.0;
+        let target_digits = 4;
+        // exponent_for_digits(4) = ceil(4 * log2(10)) = 14
+        // max_safe_exponent(31, 100) = 11 < 14 → base insufficient
+        // max_safe_exponent(63, 100) = 27 >= 14 → ext2 sufficient
+        let required = ScaleConfig::exponent_for_digits(target_digits);
+        assert!(ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS, max_bound) < required);
+        assert!(ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS_EXT2, max_bound) >= required);
+
+        let (curve, n_bits) = select_goldilocks_tier(max_bound, Some(target_digits)).unwrap();
+        assert_eq!(curve, Curve::GoldilocksExt2);
+        assert_eq!(n_bits, N_BITS_GOLDILOCKS_EXT2);
+    }
+
+    #[test]
+    fn select_tier_errors_when_both_insufficient() {
+        use jstprove_onnx::quantizer::{
+            MIN_USEFUL_EXPONENT, N_BITS_GOLDILOCKS, N_BITS_GOLDILOCKS_EXT2,
+        };
+
+        // max_safe_exponent(31, 2^50) = 0, max_safe_exponent(63, 2^50) = 6
+        // both below MIN_USEFUL_EXPONENT (8)
+        let max_bound = 2.0_f64.powi(50);
+        assert!(ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS, max_bound) < MIN_USEFUL_EXPONENT);
+        assert!(
+            ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS_EXT2, max_bound) < MIN_USEFUL_EXPONENT
+        );
+
+        let result = select_goldilocks_tier(max_bound, None);
+        assert!(result.is_err());
+        let msg = format!("{:#}", result.unwrap_err());
+        assert!(
+            msg.contains("accumulation bound"),
+            "expected bound error: {msg}"
+        );
+    }
+
+    #[test]
+    fn select_tier_errors_precision_exceeds_ext2() {
+        use jstprove_onnx::quantizer::N_BITS_GOLDILOCKS_EXT2;
+
+        // exponent_for_digits(18) = ceil(18 * log2(10)) = 60
+        // max_safe_exponent(63, 100) = 27 < 60 → ext2 insufficient
+        let max_bound = 100.0;
+        let target_digits = 18;
+        let required = ScaleConfig::exponent_for_digits(target_digits);
+        assert!(ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS_EXT2, max_bound) < required);
+
+        let result = select_goldilocks_tier(max_bound, Some(target_digits));
+        assert!(result.is_err());
+        let msg = format!("{:#}", result.unwrap_err());
+        assert!(
+            msg.contains("decimal digits"),
+            "expected digits error: {msg}"
         );
     }
 

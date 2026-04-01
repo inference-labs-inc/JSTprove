@@ -9,6 +9,10 @@ pub use goldilocks::{Goldilocks, EPSILON, GOLDILOCKS_MOD};
 mod goldilocks_ext;
 pub use goldilocks_ext::GoldilocksExt2;
 
+/// GoldilocksExt2 as a standalone 128-bit scalar field (degree-1 self-extension)
+mod goldilocks_ext2_scalar;
+pub use goldilocks_ext2_scalar::GoldilocksExt2Scalar;
+
 /// Goldilocks x8
 mod goldilocksx8;
 pub use goldilocksx8::Goldilocksx8;

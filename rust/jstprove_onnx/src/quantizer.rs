@@ -9,7 +9,17 @@ use super::parser::TensorData;
 pub const DEFAULT_SCALE_BASE: u64 = 2;
 pub const DEFAULT_SCALE_EXPONENT: u32 = 18;
 pub const N_BITS_BN254: u32 = 64;
-pub const N_BITS_GOLDILOCKS: u32 = 31;
+
+// Goldilocks: 64-bit prime field. Intermediate products (alpha^2 * bound) must
+// not overflow, so usable bits = field_bits / 2 - 1.
+const GOLDILOCKS_FIELD_BITS: u32 = 64;
+pub const N_BITS_GOLDILOCKS: u32 = GOLDILOCKS_FIELD_BITS / 2 - 1;
+
+// GoldilocksExt2: degree-2 extension → 128-bit arithmetic. Same overflow rule.
+const GOLDILOCKS_EXT2_FIELD_BITS: u32 = GOLDILOCKS_FIELD_BITS * 2;
+pub const N_BITS_GOLDILOCKS_EXT2: u32 = GOLDILOCKS_EXT2_FIELD_BITS / 2 - 1;
+
+pub const MIN_USEFUL_EXPONENT: u32 = 8;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ScaleConfig {
