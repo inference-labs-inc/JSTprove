@@ -5,8 +5,16 @@ use ethnum::U256;
 use serdes::{ExpSerde, SerdeResult};
 use tree::{Node, Path, Tree};
 
-pub const BASEFOLD_NUM_QUERIES: usize = 100;
-pub const RATE_LOG: usize = 1;
+// Proven FRI/Basefold security (Johnson bound, ePrint 2024/1571):
+//   bits_per_query = log2(1/sqrt(rho)) = RATE_LOG / 2
+//   total_proven_bits = NUM_QUERIES * RATE_LOG / 2
+//
+// With RATE_LOG=2 (rho=1/4) and 128 queries: 128 * 2 / 2 = 128 bits proven.
+// The proximity gap conjecture (capacity bound) was disproved in Nov 2025
+// (ePrint 2025/2046, 2024/1351), so proven bounds at the Johnson bound are
+// the conservative baseline.
+pub const RATE_LOG: usize = 2;
+pub const BASEFOLD_NUM_QUERIES: usize = (crate::PCS_SOUNDNESS_BITS * 2 + RATE_LOG - 1) / RATE_LOG;
 
 #[derive(Clone, Debug, Default)]
 pub struct BasefoldSRS;
