@@ -88,9 +88,81 @@ fn generate_from_onnx_with_all_options(
 fn infer_curve_from_n_bits(n_bits: u32) -> Curve {
     if n_bits <= jstprove_onnx::quantizer::N_BITS_GOLDILOCKS {
         Curve::Goldilocks
+    } else if n_bits <= jstprove_onnx::quantizer::N_BITS_GOLDILOCKS_EXT2 {
+        Curve::GoldilocksExt2
     } else {
         Curve::Bn254
     }
+}
+
+pub fn select_goldilocks_tier(
+    max_bound: f64,
+    target_precision: Option<u32>,
+) -> Result<(Curve, u32)> {
+    use jstprove_onnx::quantizer::{
+        MIN_USEFUL_EXPONENT, N_BITS_GOLDILOCKS, N_BITS_GOLDILOCKS_EXT2,
+    };
+
+    let base_exp = ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS, max_bound);
+    let ext2_exp = ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS_EXT2, max_bound);
+
+    match target_precision {
+        Some(digits) => {
+            let required_exp = ScaleConfig::exponent_for_digits(digits);
+            if base_exp >= required_exp {
+                Ok((Curve::Goldilocks, N_BITS_GOLDILOCKS))
+            } else if ext2_exp >= required_exp {
+                Ok((Curve::GoldilocksExt2, N_BITS_GOLDILOCKS_EXT2))
+            } else {
+                let max_digits_ext2 =
+                    ScaleConfig::max_safe_digits(N_BITS_GOLDILOCKS_EXT2, max_bound);
+                anyhow::bail!(
+                    "requested {digits} decimal digits requires exponent={required_exp}, \
+                     but Goldilocks base (31-bit) supports exponent up to {base_exp} and \
+                     GoldilocksExt2 (63-bit) supports up to {ext2_exp} ({max_digits_ext2} digits) \
+                     for this model's accumulation bound {max_bound:.2}"
+                )
+            }
+        }
+        None => {
+            if base_exp >= MIN_USEFUL_EXPONENT {
+                Ok((Curve::Goldilocks, N_BITS_GOLDILOCKS))
+            } else if ext2_exp >= MIN_USEFUL_EXPONENT {
+                Ok((Curve::GoldilocksExt2, N_BITS_GOLDILOCKS_EXT2))
+            } else {
+                anyhow::bail!(
+                    "model accumulation bound {max_bound:.2} exceeds Goldilocks field family \
+                     capacity: base (31-bit) max exponent={base_exp}, ext2 (63-bit) max \
+                     exponent={ext2_exp}, minimum useful={MIN_USEFUL_EXPONENT}"
+                )
+            }
+        }
+    }
+}
+
+/// # Errors
+/// Returns an error if ONNX parsing, quantization, or shape inference fails.
+pub fn generate_from_onnx_goldilocks_auto(
+    onnx_path: &Path,
+    target_precision: Option<u32>,
+) -> Result<ExpanderMetadata> {
+    let parsed = parser::parse_onnx(onnx_path).context("parsing ONNX model")?;
+    let mut graph = LayerGraph::from_parsed(&parsed).context("building layer graph")?;
+    let max_bound = quantizer::compute_max_bound(&mut graph)?;
+
+    let (curve, n_bits) = select_goldilocks_tier(max_bound, target_precision)?;
+
+    eprintln!(
+        "goldilocks auto-select: {} (n_bits={}, max_bound={:.2})",
+        curve, n_bits, max_bound
+    );
+
+    generate_from_onnx_with_all_options(onnx_path, false, Some(n_bits), target_precision).map(
+        |mut meta| {
+            meta.circuit_params.curve = Some(curve);
+            meta
+        },
+    )
 }
 
 fn build_circuit_params(

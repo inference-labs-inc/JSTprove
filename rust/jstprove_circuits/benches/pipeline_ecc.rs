@@ -4,12 +4,14 @@ use std::time::Instant;
 use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
 use jstprove_circuits::onnx::{
-    compile_bn254, compile_goldilocks, compile_goldilocks_basefold, prove_bn254, prove_goldilocks,
-    prove_goldilocks_basefold, verify_bn254, verify_goldilocks, verify_goldilocks_basefold,
-    witness_bn254_from_f64, witness_goldilocks_basefold_from_f64, witness_goldilocks_from_f64,
+    compile_bn254, compile_goldilocks, compile_goldilocks_basefold, compile_goldilocks_ext2,
+    prove_bn254, prove_goldilocks, prove_goldilocks_basefold, prove_goldilocks_ext2, verify_bn254,
+    verify_goldilocks, verify_goldilocks_basefold, verify_goldilocks_ext2, witness_bn254_from_f64,
+    witness_goldilocks_basefold_from_f64, witness_goldilocks_ext2_from_f64,
+    witness_goldilocks_from_f64,
 };
 use jstprove_circuits::runner::main_runner::read_circuit_msgpack;
-use jstprove_onnx::quantizer::{N_BITS_BN254, N_BITS_GOLDILOCKS};
+use jstprove_onnx::quantizer::{N_BITS_BN254, N_BITS_GOLDILOCKS, N_BITS_GOLDILOCKS_EXT2};
 
 fn fmt(ms: f64) -> String {
     if ms >= 1000.0 {
@@ -310,6 +312,58 @@ fn main() {
 
     let t = Instant::now();
     assert!(verify_goldilocks_basefold(&bf_bundle.circuit, &bf_wb.witness, &bf_proof).unwrap());
+    println!("verify:  {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+    println!(
+        "peak RSS (cumulative): {:.1} MiB",
+        rss_bytes() as f64 / 1048576.0
+    );
+
+    println!("\n--- GoldilocksExt2 Basefold PCS pipeline (128-bit, PQ) ---");
+    let metadata_ext2 =
+        expander_metadata::generate_from_onnx_for_field(&model_path, N_BITS_GOLDILOCKS_EXT2, None)
+            .unwrap();
+    let params_ext2 = metadata_ext2.circuit_params.clone();
+    OnnxContext::set_all(
+        metadata_ext2.architecture,
+        metadata_ext2.circuit_params,
+        Some(metadata_ext2.wandb),
+    );
+
+    let ext2_circuit_path = tmp.path().join("circuit_ext2.bundle");
+    let ext2_circuit_path_str = ext2_circuit_path.to_str().unwrap();
+
+    let t = Instant::now();
+    compile_goldilocks_ext2(ext2_circuit_path_str, false, Some(params_ext2.clone())).unwrap();
+    println!("compile: {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+
+    let ext2_bundle = read_circuit_msgpack(ext2_circuit_path_str).unwrap();
+    println!(
+        "circuit: {:>10}",
+        format!("{:.1} KiB", ext2_bundle.circuit.len() as f64 / 1024.0)
+    );
+
+    let t = Instant::now();
+    let ext2_wb = witness_goldilocks_ext2_from_f64(
+        &ext2_bundle.circuit,
+        &ext2_bundle.witness_solver,
+        &params_ext2,
+        &activations,
+        &[],
+        false,
+    )
+    .unwrap();
+    println!("witness: {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+
+    let t = Instant::now();
+    let ext2_proof = prove_goldilocks_ext2(&ext2_bundle.circuit, &ext2_wb.witness, false).unwrap();
+    println!("prove:   {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
+    println!(
+        "proof:   {:>10}",
+        format!("{:.1} KiB", ext2_proof.len() as f64 / 1024.0)
+    );
+
+    let t = Instant::now();
+    assert!(verify_goldilocks_ext2(&ext2_bundle.circuit, &ext2_wb.witness, &ext2_proof).unwrap());
     println!("verify:  {:>10}", fmt(t.elapsed().as_secs_f64() * 1000.0));
     println!(
         "peak RSS (cumulative): {:.1} MiB",

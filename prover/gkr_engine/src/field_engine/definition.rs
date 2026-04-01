@@ -11,12 +11,13 @@ use crate::{ExpanderSingleVarChallenge, MPIEngine};
 pub enum FieldType {
     #[default]
     M31x16, // M31Ext3x16
-    M31x1,        // M31Ext3x1
-    BN254,        // BN254 scalar field
-    GF2Ext128,    // GF2Ext128x8
-    Goldilocksx8, // GoldilocksExt2x8
-    Goldilocksx1, // GoldilocksExt2x1
-    BabyBearx16,  // BabyBearExt3x16
+    M31x1,            // M31Ext3x1
+    BN254,            // BN254 scalar field
+    GF2Ext128,        // GF2Ext128x8
+    Goldilocksx8,     // GoldilocksExt2x8
+    Goldilocksx1,     // GoldilocksExt2x1
+    BabyBearx16,      // BabyBearExt3x16
+    GoldilocksExt2x1, // GoldilocksExt2 as circuit field
 }
 
 pub trait FieldEngine: Default + Debug + Clone + Send + Sync + PartialEq + 'static {
