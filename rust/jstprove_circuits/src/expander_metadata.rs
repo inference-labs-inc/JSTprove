@@ -50,7 +50,14 @@ fn generate_from_onnx_with_all_options(
 ) -> Result<ExpanderMetadata> {
     let parsed = parser::parse_onnx(onnx_path).context("parsing ONNX model")?;
     let graph = LayerGraph::from_parsed(&parsed).context("building layer graph")?;
-    generate_from_parsed(parsed, graph, weights_as_inputs, n_bits, target_precision)
+    generate_from_parsed(
+        parsed,
+        graph,
+        weights_as_inputs,
+        n_bits,
+        target_precision,
+        None,
+    )
 }
 
 fn generate_from_parsed(
@@ -59,12 +66,16 @@ fn generate_from_parsed(
     weights_as_inputs: bool,
     n_bits: Option<u32>,
     target_precision: Option<u32>,
+    precomputed_max_bound: Option<f64>,
 ) -> Result<ExpanderMetadata> {
     let quantized = match (n_bits, target_precision) {
         (Some(nb), Some(digits)) => quantizer::quantize_model_for_precision(graph, digits, nb)
             .context("precision-targeted quantization")?,
         (Some(nb), None) => {
-            let max_bound = quantizer::compute_max_bound(&mut graph)?;
+            let max_bound = match precomputed_max_bound {
+                Some(mb) => mb,
+                None => quantizer::compute_max_bound(&mut graph)?,
+            };
             let config = ScaleConfig::adaptive(nb, max_bound);
             quantizer::quantize_model(graph, &config).context("field-aware quantization")?
         }
@@ -165,7 +176,15 @@ pub fn generate_from_onnx_goldilocks_auto(
         %curve, n_bits, max_bound, "goldilocks auto-select"
     );
 
-    generate_from_parsed(parsed, graph, false, Some(n_bits), target_precision).map(|mut meta| {
+    generate_from_parsed(
+        parsed,
+        graph,
+        false,
+        Some(n_bits),
+        target_precision,
+        Some(max_bound),
+    )
+    .map(|mut meta| {
         meta.circuit_params.curve = Some(curve);
         meta
     })
@@ -641,6 +660,51 @@ mod tests {
         assert!(
             msg.contains("decimal digits"),
             "error should mention decimal digits: {msg}"
+        );
+    }
+
+    #[test]
+    fn select_tier_base_sufficient_adaptive() {
+        let (curve, n_bits) = select_goldilocks_tier(100.0, None).unwrap();
+        assert_eq!(curve, Curve::Goldilocks);
+        assert_eq!(n_bits, jstprove_onnx::quantizer::N_BITS_GOLDILOCKS);
+    }
+
+    #[test]
+    fn select_tier_promotes_to_ext2_adaptive() {
+        let large_bound = 2.0_f64.powi(20);
+        let (curve, n_bits) = select_goldilocks_tier(large_bound, None).unwrap();
+        assert_eq!(curve, Curve::GoldilocksExt2);
+        assert_eq!(n_bits, jstprove_onnx::quantizer::N_BITS_GOLDILOCKS_EXT2);
+    }
+
+    #[test]
+    fn select_tier_promotes_to_ext2_with_target_precision() {
+        let (curve, n_bits) = select_goldilocks_tier(100.0, Some(4)).unwrap();
+        assert_eq!(curve, Curve::GoldilocksExt2);
+        assert_eq!(n_bits, jstprove_onnx::quantizer::N_BITS_GOLDILOCKS_EXT2);
+    }
+
+    #[test]
+    fn select_tier_errors_when_both_insufficient() {
+        let extreme_bound = 2.0_f64.powi(50);
+        let result = select_goldilocks_tier(extreme_bound, None);
+        assert!(result.is_err());
+        let msg = format!("{:#}", result.unwrap_err());
+        assert!(
+            msg.contains("accumulation bound"),
+            "expected bound error: {msg}"
+        );
+    }
+
+    #[test]
+    fn select_tier_errors_precision_exceeds_ext2() {
+        let result = select_goldilocks_tier(100.0, Some(18));
+        assert!(result.is_err());
+        let msg = format!("{:#}", result.unwrap_err());
+        assert!(
+            msg.contains("decimal digits"),
+            "expected digits error: {msg}"
         );
     }
 
