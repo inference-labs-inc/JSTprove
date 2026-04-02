@@ -7,7 +7,7 @@ use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Var
 
 use crate::circuit_functions::{
     CircuitError,
-    gadgets::{FunctionLookupTable, function_lookup_bits, range_check::LogupRangeCheckContext},
+    gadgets::{DecomposedExpLookup, function_lookup_bits, range_check::LogupRangeCheckContext},
     hints::{exp::compute_exp_quantized, softmax_verified::SOFTMAX_VERIFIED_HINT_KEY},
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
@@ -92,11 +92,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
             .into());
         }
 
-        let mut exp_lookup = FunctionLookupTable::build_signed::<C, Builder>(
+        let mut exp_lookup = DecomposedExpLookup::build::<C, Builder>(
             api,
-            compute_exp_quantized,
             lookup_bits,
             self.scaling,
+            compute_exp_quantized,
         );
 
         let cross_tolerance = n as u64 * self.scaling;
@@ -118,7 +118,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
             let hint_out = api.new_hint(SOFTMAX_VERIFIED_HINT_KEY, &hint_inputs, 2 * n + 1);
             let y_vars = &hint_out[..n];
             let max_q = hint_out[n];
-            let e_vars = &hint_out[n + 1..];
 
             let mut max_product = api.sub(max_q, x_vars[0]);
             logup_ctx.range_check::<C, Builder>(api, max_product, max_diff_bits)?;
@@ -129,11 +128,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
             }
             api.assert_is_zero(max_product);
 
+            let mut exp_values = Vec::with_capacity(n);
             let mut sum_exp = zero_var;
-            for (i, &x_i) in x_vars.iter().enumerate() {
+            for &x_i in &x_vars {
                 let d_i = api.sub(x_i, max_q);
-                exp_lookup.query(d_i, e_vars[i]);
-                sum_exp = api.add(sum_exp, e_vars[i]);
+                let e_i = exp_lookup.verify_exp::<C, Builder>(api, logup_ctx, d_i)?;
+                sum_exp = api.add(sum_exp, e_i);
+                exp_values.push(e_i);
             }
 
             let mut lane_sum = zero_var;
@@ -144,7 +145,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
                 logup_ctx.range_check::<C, Builder>(api, upper_diff, n_bits)?;
 
                 let lhs = api.mul(y, sum_exp);
-                let rhs = api.mul(e_vars[i], scale_var);
+                let rhs = api.mul(exp_values[i], scale_var);
                 let cross_diff = api.sub(lhs, rhs);
                 let shifted = api.add(cross_diff, cross_tol_var);
                 logup_ctx.range_check::<C, Builder>(api, shifted, cross_tol_bits)?;

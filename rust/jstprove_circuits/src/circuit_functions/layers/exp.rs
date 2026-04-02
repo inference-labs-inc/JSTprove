@@ -1,14 +1,13 @@
 use std::collections::HashMap;
 
-use ethnum::U256;
 use ndarray::{ArrayD, IxDyn};
 
-use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
+use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::{
     CircuitError,
-    gadgets::{FunctionLookupTable, function_lookup_bits, range_check::LogupRangeCheckContext},
-    hints::exp::{EXP_HINT_KEY, compute_exp_quantized},
+    gadgets::{DecomposedExpLookup, function_lookup_bits, range_check::LogupRangeCheckContext},
+    hints::exp::compute_exp_quantized,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{constants::INPUT, onnx_model::get_input_name},
 };
@@ -27,7 +26,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ExpLayer {
     fn apply(
         &self,
         api: &mut Builder,
-        _logup_ctx: &mut LogupRangeCheckContext,
+        logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let x_name = get_input_name(&self.inputs, 0, LayerKind::Exp, INPUT)?;
@@ -37,26 +36,22 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ExpLayer {
         })?;
 
         let shape = x_input.shape().to_vec();
-        let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
-
         let lookup_bits = function_lookup_bits(self.scale_exponent);
-        let mut lookup = FunctionLookupTable::build_signed::<C, Builder>(
+        let mut decomposed = DecomposedExpLookup::build::<C, Builder>(
             api,
-            compute_exp_quantized,
             lookup_bits,
             self.scaling,
+            compute_exp_quantized,
         );
 
         let mut out_storage: Vec<Variable> = Vec::with_capacity(x_input.len());
 
         for &x in x_input {
-            let hint_out = api.new_hint(EXP_HINT_KEY, &[x, scale_var], 1);
-            let y = hint_out[0];
-            lookup.query(x, y);
+            let y = decomposed.verify_exp::<C, Builder>(api, logup_ctx, x)?;
             out_storage.push(y);
         }
 
-        lookup.finalize::<C, Builder>(api);
+        decomposed.finalize::<C, Builder>(api);
 
         let result = ArrayD::from_shape_vec(IxDyn(&shape), out_storage).map_err(|_| {
             LayerError::InvalidShape {
@@ -85,7 +80,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ExpLayer {
             })?;
 
         let n_bits = layer_context.n_bits_for(&layer.name);
-
         let scaling: u64 = 1u64
             .checked_shl(circuit_params.scale_exponent)
             .ok_or_else(|| LayerError::Other {

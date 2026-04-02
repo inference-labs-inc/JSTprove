@@ -7,8 +7,8 @@ use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Var
 
 use crate::circuit_functions::{
     CircuitError,
-    gadgets::{FunctionLookupTable, function_lookup_bits, range_check::LogupRangeCheckContext},
-    hints::sigmoid::{SIGMOID_HINT_KEY, compute_sigmoid_quantized},
+    gadgets::{DecomposedExpLookup, function_lookup_bits, range_check::LogupRangeCheckContext},
+    hints::{exp::compute_exp_quantized, sigmoid::SIGMOID_HINT_KEY},
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{constants::INPUT, onnx_model::get_input_name},
 };
@@ -17,17 +17,17 @@ use crate::circuit_functions::{
 pub struct SigmoidLayer {
     inputs: Vec<String>,
     outputs: Vec<String>,
-    #[allow(dead_code)]
     n_bits: usize,
     scaling: u64,
     scale_exponent: u32,
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SigmoidLayer {
+    #[allow(clippy::cast_possible_truncation)]
     fn apply(
         &self,
         api: &mut Builder,
-        _logup_ctx: &mut LogupRangeCheckContext,
+        logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let x_name = get_input_name(&self.inputs, 0, LayerKind::Sigmoid, INPUT)?;
@@ -38,13 +38,21 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SigmoidLayer {
 
         let shape = x_input.shape().to_vec();
         let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
+        let scale_sq = api.constant(CircuitField::<C>::from_u256(U256::from(
+            self.scaling * self.scaling,
+        )));
+        let zero_var = api.constant(CircuitField::<C>::from_u256(U256::from(0u64)));
+
+        let cross_tolerance = 2u64 * self.scaling;
+        let cross_tol_var = api.constant(CircuitField::<C>::from_u256(U256::from(cross_tolerance)));
+        let cross_tol_bits = (2 * cross_tolerance).next_power_of_two().trailing_zeros() as usize;
 
         let lookup_bits = function_lookup_bits(self.scale_exponent);
-        let mut lookup = FunctionLookupTable::build_signed::<C, Builder>(
+        let mut decomposed = DecomposedExpLookup::build::<C, Builder>(
             api,
-            compute_sigmoid_quantized,
             lookup_bits,
             self.scaling,
+            compute_exp_quantized,
         );
 
         let mut out_storage: Vec<Variable> = Vec::with_capacity(x_input.len());
@@ -52,11 +60,24 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SigmoidLayer {
         for &x in x_input {
             let hint_out = api.new_hint(SIGMOID_HINT_KEY, &[x, scale_var], 1);
             let y = hint_out[0];
-            lookup.query(x, y);
+
+            logup_ctx.range_check::<C, Builder>(api, y, self.n_bits)?;
+            let upper = api.sub(scale_var, y);
+            logup_ctx.range_check::<C, Builder>(api, upper, self.n_bits)?;
+
+            let neg_x = api.sub(zero_var, x);
+            let exp_neg_x = decomposed.verify_exp::<C, Builder>(api, logup_ctx, neg_x)?;
+
+            let denom = api.add(scale_var, exp_neg_x);
+            let lhs = api.mul(y, denom);
+            let diff = api.sub(lhs, scale_sq);
+            let shifted = api.add(diff, cross_tol_var);
+            logup_ctx.range_check::<C, Builder>(api, shifted, cross_tol_bits)?;
+
             out_storage.push(y);
         }
 
-        lookup.finalize::<C, Builder>(api);
+        decomposed.finalize::<C, Builder>(api);
 
         let result = ArrayD::from_shape_vec(IxDyn(&shape), out_storage).map_err(|_| {
             LayerError::InvalidShape {
@@ -85,7 +106,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SigmoidLayer {
             })?;
 
         let n_bits = layer_context.n_bits_for(&layer.name);
-
         let scaling: u64 = 1u64
             .checked_shl(circuit_params.scale_exponent)
             .ok_or_else(|| LayerError::Other {
