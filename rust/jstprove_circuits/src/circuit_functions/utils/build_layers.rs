@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 
+use arith::FFTField;
+use expander_compiler::frontend::CircuitField;
+
 use crate::circuit_functions::{
     layers::{LayerKind, layer_ops::LayerOp},
     utils::{
@@ -64,7 +67,10 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
     circuit_params: &CircuitParams,
     architecture: &Architecture,
     w_and_b: &WANDB,
-) -> Result<Vec<Box<dyn LayerOp<C, Builder>>>, BuildError> {
+) -> Result<Vec<Box<dyn LayerOp<C, Builder>>>, BuildError>
+where
+    CircuitField<C>: FFTField,
+{
     let mut layers: Vec<BoxedDynLayer<C, Builder>> = vec![];
 
     let w_and_b_map: HashMap<String, &ONNXLayer> = w_and_b

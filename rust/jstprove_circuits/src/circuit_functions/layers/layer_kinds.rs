@@ -40,7 +40,8 @@ use crate::circuit_functions::layers::topk::TopKLayer;
 use crate::circuit_functions::layers::transpose::TransposeLayer;
 use crate::circuit_functions::layers::unsqueeze::UnsqueezeLayer;
 
-use expander_compiler::frontend::{Config, RootAPI};
+use arith::FFTField;
+use expander_compiler::frontend::{CircuitField, Config, RootAPI};
 use std::str::FromStr;
 
 // Macro to define layers
@@ -101,7 +102,10 @@ macro_rules! define_layers {
                 bool,
                 usize,
                 &BuildLayerContext,
-            ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
+            ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError>
+            where
+                CircuitField<C>: FFTField,
+            {
                 match self {
                     $(
                         LayerKind::$variant => |layer, cp, opt, is_rescale, i, ctx| {

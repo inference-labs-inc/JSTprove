@@ -1,3 +1,4 @@
+use arith::FFTField;
 use ndarray::{Array1, ArrayD, ArrayView1, Axis, Ix1, IxDyn, concatenate};
 
 use expander_compiler::expander_circuit;
@@ -45,7 +46,10 @@ declare_circuit!(Circuit {
 /// Panics if OnnxContext is not populated. Callers must call
 /// `OnnxContext::set_all` (or the individual setters) before any
 /// compilation or evaluation path that invokes `define`/`try_define`.
-impl<C: Config> Define<C> for Circuit<Variable> {
+impl<C: Config> Define<C> for Circuit<Variable>
+where
+    CircuitField<C>: FFTField,
+{
     fn define<Builder: RootAPI<C>>(&self, api: &mut Builder) {
         if let Err(e) = self.try_define(api) {
             panic!("Circuit definition failed: {e}");
@@ -57,7 +61,10 @@ impl Circuit<Variable> {
     fn try_define<C: Config, Builder: RootAPI<C>>(
         &self,
         api: &mut Builder,
-    ) -> Result<(), CircuitError> {
+    ) -> Result<(), CircuitError>
+    where
+        CircuitField<C>: FFTField,
+    {
         let params = OnnxContext::get_params()?;
         let (architecture, w_and_b) = get_architecture_and_wandb(&params)?;
         self.try_define_impl::<C, Builder>(api, &params, &architecture, &w_and_b)
@@ -69,7 +76,10 @@ impl Circuit<Variable> {
         params: &CircuitParams,
         architecture: &Architecture,
         w_and_b: &WANDB,
-    ) -> Result<(), CircuitError> {
+    ) -> Result<(), CircuitError>
+    where
+        CircuitField<C>: FFTField,
+    {
         if architecture.architecture.is_empty() {
             return Err(CircuitError::EmptyArchitecture);
         }
@@ -525,7 +535,10 @@ pub fn compile_bn254(
     )
 }
 
-fn autotune_chunk_bits<C: Config>() -> Result<(), RunError> {
+fn autotune_chunk_bits<C: Config>() -> Result<(), RunError>
+where
+    CircuitField<C>: FFTField,
+{
     let params = OnnxContext::get_params()?;
     let architecture = OnnxContext::get_architecture()?;
     let n_bits = default_n_bits_for_config::<C>();

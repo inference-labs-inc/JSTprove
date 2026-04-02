@@ -8,7 +8,8 @@ use std::{
 use ndarray::{ArrayD, s};
 
 /// `ExpanderCompilerCollection` imports
-use expander_compiler::frontend::{Config, RootAPI, Variable};
+use arith::{FFTField, Field};
+use expander_compiler::frontend::{CircuitField, Config, RootAPI, Variable};
 
 use crate::circuit_functions::{
     CircuitError,
@@ -55,7 +56,10 @@ pub struct ConvLayer {
 
 // -------- Implementations --------
 
-impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer {
+impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvLayer
+where
+    CircuitField<C>: FFTField,
+{
     fn apply(
         &self,
         api: &mut Builder,
@@ -565,29 +569,240 @@ fn flatten_and_perform_dot<C: Config, Builder: RootAPI<C>>(
     sum
 }
 
-/// Executes a 4D convolution operation with optional quantization and `ReLU`.
-///
-/// Applies convolution over the input array using the given weights and bias,
-/// respecting the convolution parameters. If quantization is enabled, the output
-/// is rescaled according to the quantization parameters.
-///
-/// # Arguments
-/// - `api`: Mutable reference to the circuit builder api.
-/// - `logup_ctx`: Shared cross-layer LogUp range-check context.
-/// - `input_arr`: Input tensor.
-/// - `weights`: Convolution weights tensor.
-/// - `bias`: Convolution bias tensor.
-/// - `conv_params`: Convolution parameters such as kernel size, strides, pads, etc.
-/// - `quantization_params`: Quantization and activation parameters.
-///
-/// # Returns
-/// A 4D tensor containing the result of the convolution (and rescaling if applied).
-///
-/// # Errors
-/// - [`LayerError::InvalidShape`] if the input or weight shapes are incompatible.
-/// - [`LayerError::UnsupportedConfig`] if group > 1 or unsupported dilation is used.
-/// - [`LayerError::Other`] if scaling cannot be converted to `usize`.
-/// - [`CircuitError`] other errors that propogate through.
+fn bit_reverse(x: usize, log_n: usize) -> usize {
+    x.reverse_bits() >> (usize::BITS as usize - log_n)
+}
+
+fn ntt_1d<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    data: &mut [Variable],
+    omega: CircuitField<C>,
+) where
+    CircuitField<C>: FFTField,
+{
+    let n = data.len();
+    assert!(n.is_power_of_two());
+    let log_n = n.trailing_zeros() as usize;
+
+    for i in 0..n {
+        let j = bit_reverse(i, log_n);
+        if i < j {
+            data.swap(i, j);
+        }
+    }
+
+    for s in 0..log_n {
+        let half = 1 << s;
+        let full = half << 1;
+        let exp = n / full;
+        let mut w_step = CircuitField::<C>::ONE;
+        let mut base = omega;
+        let mut e = exp;
+        while e > 0 {
+            if e & 1 == 1 {
+                w_step *= base;
+            }
+            base = base * base;
+            e >>= 1;
+        }
+
+        let mut twiddles = Vec::with_capacity(half);
+        let mut tw = CircuitField::<C>::ONE;
+        for _ in 0..half {
+            twiddles.push(tw);
+            tw *= w_step;
+        }
+
+        for k in (0..n).step_by(full) {
+            for j in 0..half {
+                let u = data[k + j];
+                let t = api.mul(data[k + j + half], twiddles[j]);
+                data[k + j] = api.add(u, t);
+                data[k + j + half] = api.sub(u, t);
+            }
+        }
+    }
+}
+
+fn ntt_2d<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    data: &mut [Variable],
+    rows: usize,
+    cols: usize,
+) where
+    CircuitField<C>: FFTField,
+{
+    let omega_cols = CircuitField::<C>::two_adic_generator(cols.trailing_zeros() as usize);
+    for r in 0..rows {
+        let start = r * cols;
+        let end = start + cols;
+        ntt_1d(api, &mut data[start..end], omega_cols);
+    }
+
+    let omega_rows = CircuitField::<C>::two_adic_generator(rows.trailing_zeros() as usize);
+    let mut col_buf = vec![Variable::default(); rows];
+    for c in 0..cols {
+        for r in 0..rows {
+            col_buf[r] = data[r * cols + c];
+        }
+        ntt_1d(api, &mut col_buf, omega_rows);
+        for r in 0..rows {
+            data[r * cols + c] = col_buf[r];
+        }
+    }
+}
+
+fn intt_2d<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    data: &mut [Variable],
+    rows: usize,
+    cols: usize,
+) where
+    CircuitField<C>: FFTField,
+{
+    let omega_cols = CircuitField::<C>::two_adic_generator(cols.trailing_zeros() as usize);
+    let omega_cols_inv = omega_cols.inv().expect("omega must be invertible");
+    for r in 0..rows {
+        let start = r * cols;
+        let end = start + cols;
+        ntt_1d(api, &mut data[start..end], omega_cols_inv);
+    }
+
+    let omega_rows = CircuitField::<C>::two_adic_generator(rows.trailing_zeros() as usize);
+    let omega_rows_inv = omega_rows.inv().expect("omega must be invertible");
+    let mut col_buf = vec![Variable::default(); rows];
+    for c in 0..cols {
+        for r in 0..rows {
+            col_buf[r] = data[r * cols + c];
+        }
+        ntt_1d(api, &mut col_buf, omega_rows_inv);
+        for r in 0..rows {
+            data[r * cols + c] = col_buf[r];
+        }
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    let n_inv = CircuitField::<C>::from((rows * cols) as u32)
+        .inv()
+        .expect("n must be invertible in the field");
+    for x in data.iter_mut() {
+        *x = api.mul(*x, n_inv);
+    }
+}
+
+fn should_use_ntt(
+    h: usize,
+    w: usize,
+    kh: usize,
+    kw: usize,
+    stride_h: usize,
+    stride_w: usize,
+) -> bool {
+    if kh <= 1 && kw <= 1 {
+        return false;
+    }
+    if stride_h > 1 || stride_w > 1 {
+        return false;
+    }
+    if h < kh || w < kw {
+        return false;
+    }
+    let nh = (h + kh - 1).next_power_of_two();
+    let nw = (w + kw - 1).next_power_of_two();
+    let n_padded = nh * nw;
+    let h_out = h - kh + 1;
+    let w_out = w - kw + 1;
+    let direct_muls_per_pair = h_out * w_out * kh * kw;
+    n_padded < direct_muls_per_pair
+}
+
+#[allow(clippy::too_many_lines)]
+fn conv_ntt_4d<C: Config, Builder: RootAPI<C>>(
+    api: &mut Builder,
+    input_arr: &ArrayD<Variable>,
+    conv_params: &Conv2DParams,
+    weights: &ArrayD<Variable>,
+    bias: &ArrayD<Variable>,
+) -> Result<ArrayD<Variable>, CircuitError>
+where
+    CircuitField<C>: FFTField,
+{
+    let s_n = get_u(&conv_params.input_shape, 0, "input_shape[0]")?;
+    let s_c = get_u(&conv_params.input_shape, 1, "input_shape[1]")?;
+    let s_h = get_u(&conv_params.input_shape, 2, "input_shape[2]")?;
+    let s_w = get_u(&conv_params.input_shape, 3, "input_shape[3]")?;
+
+    let kh = get_u(&conv_params.kernel_shape, 0, "kernel_shape[0]")?;
+    let kw = get_u(&conv_params.kernel_shape, 1, "kernel_shape[1]")?;
+
+    let pad_0 = get_u(&conv_params.pads, 0, "pads[0]")?;
+    let pad_1 = get_u(&conv_params.pads, 1, "pads[1]")?;
+    let pad_2 = get_u(&conv_params.pads, 2, "pads[2]")?;
+    let pad_3 = get_u(&conv_params.pads, 3, "pads[3]")?;
+
+    let padded_h = s_h + pad_0 + pad_2;
+    let padded_w = s_w + pad_1 + pad_3;
+
+    let h_out = padded_h - kh + 1;
+    let w_out = padded_w - kw + 1;
+    let c_out = weights.shape()[0];
+
+    let nh = (padded_h + kh - 1).next_power_of_two();
+    let nw = (padded_w + kw - 1).next_power_of_two();
+
+    let mut res = conv_shape_4_setup_res(api, bias, s_n, c_out, h_out, w_out)?;
+    let zero = api.constant(0);
+
+    for n in 0..s_n {
+        let mut input_ntt = Vec::with_capacity(s_c);
+        for c in 0..s_c {
+            let mut buf = vec![zero; nh * nw];
+            for r in 0..s_h {
+                for col in 0..s_w {
+                    let pr = r + pad_0;
+                    let pc = col + pad_1;
+                    if pr < padded_h && pc < padded_w {
+                        buf[pr * nw + pc] = input_arr[[n, c, r, col]];
+                    }
+                }
+            }
+            ntt_2d(api, &mut buf, nh, nw);
+            input_ntt.push(buf);
+        }
+
+        for co in 0..c_out {
+            let mut accum = vec![zero; nh * nw];
+
+            for ci in 0..s_c {
+                let mut w_buf = vec![zero; nh * nw];
+                for r in 0..kh {
+                    for col in 0..kw {
+                        w_buf[r * nw + col] = weights[[co, ci, r, col]];
+                    }
+                }
+                ntt_2d(api, &mut w_buf, nh, nw);
+
+                for i in 0..nh * nw {
+                    let prod = api.mul(input_ntt[ci][i], w_buf[i]);
+                    accum[i] = api.add(accum[i], prod);
+                }
+            }
+
+            intt_2d(api, &mut accum, nh, nw);
+
+            for r in 0..h_out {
+                for col in 0..w_out {
+                    let val = accum[r * nw + col];
+                    res[[n, co, r, col]] = api.add(res[[n, co, r, col]], val);
+                }
+            }
+        }
+    }
+
+    Ok(res)
+}
+
+#[allow(clippy::missing_errors_doc)]
 pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     logup_ctx: &mut LogupRangeCheckContext,
@@ -596,7 +811,10 @@ pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(
     bias: &ArrayD<Variable>,
     conv_params: &Conv2DParams,
     quantization_params: &ConvQuantizationParams,
-) -> Result<ArrayD<Variable>, CircuitError> {
+) -> Result<ArrayD<Variable>, CircuitError>
+where
+    CircuitField<C>: FFTField,
+{
     let conv_params = set_default_params(conv_params)?;
     not_yet_implemented_conv(
         &conv_params.input_shape,
@@ -604,7 +822,24 @@ pub fn conv_4d_run<C: Config, Builder: RootAPI<C>>(
         &conv_params.dilations,
     )?;
 
-    let out = conv_shape_4(api, input_arr, &conv_params, weights, bias)?;
+    let s_h = get_u(&conv_params.input_shape, 2, "input_shape[2]").unwrap_or(0);
+    let s_w = get_u(&conv_params.input_shape, 3, "input_shape[3]").unwrap_or(0);
+    let kh = get_u(&conv_params.kernel_shape, 0, "kernel_shape[0]").unwrap_or(0);
+    let kw = get_u(&conv_params.kernel_shape, 1, "kernel_shape[1]").unwrap_or(0);
+    let stride_h = get_u(&conv_params.strides, 0, "strides[0]").unwrap_or(1);
+    let stride_w = get_u(&conv_params.strides, 1, "strides[1]").unwrap_or(1);
+    let pad_0 = get_u(&conv_params.pads, 0, "pads[0]").unwrap_or(0);
+    let pad_1 = get_u(&conv_params.pads, 1, "pads[1]").unwrap_or(0);
+    let pad_2 = get_u(&conv_params.pads, 2, "pads[2]").unwrap_or(0);
+    let pad_3 = get_u(&conv_params.pads, 3, "pads[3]").unwrap_or(0);
+    let padded_h = s_h + pad_0 + pad_2;
+    let padded_w = s_w + pad_1 + pad_3;
+
+    let out = if should_use_ntt(padded_h, padded_w, kh, kw, stride_h, stride_w) {
+        conv_ntt_4d(api, input_arr, &conv_params, weights, bias)?
+    } else {
+        conv_shape_4(api, input_arr, &conv_params, weights, bias)?
+    };
 
     maybe_rescale(
         api,
