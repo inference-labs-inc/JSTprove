@@ -51,7 +51,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ExpLayer {
             out_storage.push(y);
         }
 
-        decomposed.finalize::<C, Builder>(api);
+        if !x_input.is_empty() {
+            decomposed.finalize::<C, Builder>(api);
+        }
 
         let result = ArrayD::from_shape_vec(IxDyn(&shape), out_storage).map_err(|_| {
             LayerError::InvalidShape {

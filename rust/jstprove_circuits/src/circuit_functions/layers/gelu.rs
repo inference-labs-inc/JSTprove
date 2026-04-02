@@ -125,7 +125,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GeluLayer {
             out_storage.push(y);
         }
 
-        decomposed.finalize::<C, Builder>(api);
+        if !x_input.is_empty() {
+            decomposed.finalize::<C, Builder>(api);
+        }
 
         let result = ArrayD::from_shape_vec(IxDyn(&shape), out_storage).map_err(|_| {
             LayerError::InvalidShape {
@@ -168,6 +170,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GeluLayer {
                 msg: format!(
                     "Gelu approximate='{approximate}' is not supported in the Expander backend: \
                      only approximate='tanh' is implemented."
+                ),
+            }
+            .into());
+        }
+
+        if circuit_params.scale_exponent >= 32 {
+            return Err(LayerError::Other {
+                layer: LayerKind::Gelu,
+                msg: format!(
+                    "scale_exponent {} >= 32: scale^2 overflows u64 in GELU polynomial verification",
+                    circuit_params.scale_exponent
                 ),
             }
             .into());
