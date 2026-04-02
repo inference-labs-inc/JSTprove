@@ -1,27 +1,3 @@
-// ONNX `LayerNormalization` layer for ZK circuits (Expander backend).
-//
-// # ZK approach
-// LayerNormalization applies normalisation (mean/variance), a scale (gamma),
-// and a shift (beta) — operations involving square roots and divisions that
-// cannot be expressed as field polynomials.
-//
-// 1. **Hint**: `api.new_hint("jstprove.layer_norm_hint", inputs, n)` computes
-//    the full layer norm in native f64 for one normalisation lane and injects
-//    all `n` output elements as unconstrained witnesses.
-//    Input layout: [x_0..x_{n-1}, γ_0..γ_{n-1}, β_0..β_{n-1}, scale].
-// 2. **No range check**: the output can be negative, so the existing LogUp
-//    range check (which only handles [0, 2^n_bits)) cannot be applied.
-//    Downstream arithmetic layers (e.g. Gemm) constrain the outputs indirectly.
-//
-// # Axis handling
-// Normalization is applied along the specified axis and all trailing axes
-// (ONNX LayerNormalization semantics). Each "lane" — the slice starting from
-// `axis` — is processed by one hint call.
-//
-// # Weight quantisation
-// gamma (Scale) is quantised at α¹; beta (B) is quantised at α².  The hint
-// function decodes both accordingly.
-
 use std::collections::HashMap;
 
 use ethnum::U256;
@@ -31,8 +7,8 @@ use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Var
 
 use crate::circuit_functions::{
     CircuitError,
-    gadgets::LogupRangeCheckContext,
-    hints::layer_norm::LAYER_NORM_HINT_KEY,
+    gadgets::{LogupRangeCheckContext, i64_to_field},
+    hints::layer_norm_verified::LAYER_NORM_VERIFIED_HINT_KEY,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
@@ -40,33 +16,48 @@ use crate::circuit_functions::{
     },
 };
 
-// -------- Struct --------
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+fn compute_max_norm_bits(lane_size: usize, scale_exponent: u32) -> usize {
+    let n_f64 = lane_size as f64;
+    let alpha = (1u64 << scale_exponent) as f64;
+    let max_norm = n_f64.sqrt() * alpha;
+    let raw = (max_norm.ceil() as u64)
+        .next_power_of_two()
+        .trailing_zeros() as usize;
+    raw + 1
+}
 
 #[derive(Debug)]
 pub struct LayerNormLayer {
     inputs: Vec<String>,
     outputs: Vec<String>,
-    /// Resolved normalisation axis (non-negative index into tensor shape).
     axis: usize,
-    /// Scaling factor `2^scale_exponent`.
     scaling: u64,
-    /// Quantised gamma (scale) weights at α¹.
+    scale_exponent: u32,
+    n_bits: usize,
     gamma: Vec<i64>,
-    /// Quantised beta (bias) weights at α².
     beta: Vec<i64>,
 }
 
-// -------- Implementation --------
-
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
-    #[allow(clippy::cast_sign_loss)]
+    #[allow(
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        clippy::too_many_lines,
+        clippy::cast_precision_loss,
+        clippy::cast_possible_wrap,
+        clippy::similar_names
+    )]
     fn apply(
         &self,
         api: &mut Builder,
-        _logup_ctx: &mut LogupRangeCheckContext,
+        logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
-        // Guard: exactly one output tensor (fail fast before any computation).
         if self.outputs.len() != 1 {
             return Err(LayerError::MissingParameter {
                 layer: LayerKind::LayerNormalization,
@@ -96,77 +87,65 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
             .into());
         }
 
-        // lane_size = product(shape[axis..])
         let lane_size: usize = shape[axis..].iter().product();
 
-        if self.gamma.len() != lane_size {
+        if self.gamma.len() != lane_size || self.beta.len() != lane_size {
             return Err(LayerError::InvalidShape {
                 layer: LayerKind::LayerNormalization,
                 msg: format!(
-                    "gamma length {} != lane_size {}",
+                    "gamma/beta length mismatch: gamma={}, beta={}, lane_size={}",
                     self.gamma.len(),
+                    self.beta.len(),
                     lane_size
                 ),
             }
             .into());
         }
-        if self.beta.len() != lane_size {
-            return Err(LayerError::InvalidShape {
-                layer: LayerKind::LayerNormalization,
-                msg: format!("beta length {} != lane_size {}", self.beta.len(), lane_size),
-            }
-            .into());
-        }
 
-        // Encode gamma as constant Variables (signed i64 → field element).
         let gamma_vars: Vec<Variable> = self
             .gamma
             .iter()
-            .map(|&g| {
-                let field_val = if g >= 0 {
-                    CircuitField::<C>::from_u256(U256::from(g as u64))
-                } else {
-                    let mag = U256::from(g.unsigned_abs());
-                    CircuitField::<C>::from_u256(CircuitField::<C>::MODULUS - mag)
-                };
-                api.constant(field_val)
-            })
+            .map(|&g| api.constant(i64_to_field::<C>(g)))
             .collect();
 
-        // Encode beta as constant Variables.
         let beta_vars: Vec<Variable> = self
             .beta
             .iter()
-            .map(|&b| {
-                let field_val = if b >= 0 {
-                    CircuitField::<C>::from_u256(U256::from(b as u64))
-                } else {
-                    let mag = U256::from(b.unsigned_abs());
-                    CircuitField::<C>::from_u256(CircuitField::<C>::MODULUS - mag)
-                };
-                api.constant(field_val)
-            })
+            .map(|&b| api.constant(i64_to_field::<C>(b)))
             .collect();
 
         let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
-
-        // Pre-allocate output array.
+        let n_const = api.constant(CircuitField::<C>::from_u256(U256::from(lane_size as u64)));
         let zero_var = api.constant(CircuitField::<C>::from_u256(U256::from(0u64)));
-        let mut out_array = ArrayD::from_elem(IxDyn(&shape), zero_var);
 
-        // Iterate over lanes along the normalisation axis.
-        // For ONNX LayerNormalization, normalization is over [axis, rank).
-        // We treat the tensor as [outer, lane] where:
-        //   outer = product(shape[:axis]),  lane = product(shape[axis:]).
-        // ndarray's lanes(Axis(axis)) visits each axis-length slice; for
-        // multi-dimensional trailing axes we flatten via the outer iteration.
-        //
-        // However, ndarray's Axis(axis) only gives slices of shape[axis] elements
-        // (the single axis dimension), not the full trailing slice.  For a 3-D
-        // tensor [B, T, C] with axis=1, we want lanes of size T*C, not T.
-        //
-        // Strategy: reshape the tensor view to [outer, lane] for the hint loop,
-        // then write back into the original shape.
+        let n_bits = self.n_bits;
+        let signed_offset = {
+            let shift = U256::from(1u64) << (n_bits as u32 - 1);
+            CircuitField::<C>::from_u256(shift)
+        };
+        let offset_var = api.constant(signed_offset);
+
+        let max_norm_bits = compute_max_norm_bits(lane_size, self.scale_exponent);
+        let norm_offset = api.constant(CircuitField::<C>::from_u256(U256::from(
+            1u64 << max_norm_bits,
+        )));
+        let n_alpha_sq = api.constant(CircuitField::<C>::from_u256(U256::from(
+            lane_size as u64 * self.scaling * self.scaling,
+        )));
+        let norm_var_tolerance = api.constant(CircuitField::<C>::from_u256(U256::from(
+            lane_size as u64 * self.scaling,
+        )));
+        let norm_var_tol_bits = (2 * lane_size as u64 * self.scaling)
+            .next_power_of_two()
+            .trailing_zeros() as usize;
+
+        let mean_tolerance =
+            api.constant(CircuitField::<C>::from_u256(U256::from(lane_size as u64)));
+        let mean_tol_bits = (2 * lane_size + 1).next_power_of_two().trailing_zeros() as usize;
+
+        let per_elem_tolerance = api.constant(CircuitField::<C>::from_u256(U256::from(3u64)));
+        let per_elem_tol_bits: usize = 3;
+
         let outer_size: usize = shape[..axis].iter().product();
         let flat_input: Vec<Variable> = x_input
             .as_slice()
@@ -176,24 +155,71 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
             })?
             .to_vec();
 
+        let mut out_array = ArrayD::from_elem(IxDyn(&shape), zero_var);
         let mut flat_output: Vec<Variable> = Vec::with_capacity(flat_input.len());
 
         for outer_i in 0..outer_size {
             let start = outer_i * lane_size;
             let end = start + lane_size;
 
-            // Hint input layout: [x_0..x_{n-1}, γ_0..γ_{n-1}, β_0..β_{n-1}, scale]
             let mut hint_inputs: Vec<Variable> = flat_input[start..end].to_vec();
             hint_inputs.extend_from_slice(&gamma_vars);
             hint_inputs.extend_from_slice(&beta_vars);
             hint_inputs.push(scale_var);
 
-            // Invoke the LayerNorm hint; no range check (signed output).
-            let hint_out = api.new_hint(LAYER_NORM_HINT_KEY, &hint_inputs, lane_size);
-            flat_output.extend_from_slice(&hint_out);
+            let hint_out = api.new_hint(LAYER_NORM_VERIFIED_HINT_KEY, &hint_inputs, lane_size + 2);
+            let y_vars = &hint_out[..lane_size];
+            let mean_q = hint_out[lane_size];
+            let inv_std_q = hint_out[lane_size + 1];
+
+            logup_ctx.range_check::<C, Builder>(api, inv_std_q, n_bits)?;
+
+            let mut input_sum = zero_var;
+            for &x in &flat_input[start..end] {
+                input_sum = api.add(input_sum, x);
+            }
+            let n_times_mean = api.mul(n_const, mean_q);
+            let mean_diff = api.sub(input_sum, n_times_mean);
+            let mean_shifted = api.add(mean_diff, mean_tolerance);
+            logup_ctx.range_check::<C, Builder>(api, mean_shifted, mean_tol_bits)?;
+
+            let mut norm_sq_sum = zero_var;
+
+            for (i, &y) in y_vars.iter().enumerate() {
+                let shifted = api.add(y, offset_var);
+                logup_ctx.range_check::<C, Builder>(api, shifted, n_bits)?;
+
+                let dev = api.sub(flat_input[start + i], mean_q);
+                let norm_unscaled = api.mul(dev, inv_std_q);
+
+                let norm_q = api.unconstrained_int_div(norm_unscaled, scale_var);
+                let norm_rem = api.unconstrained_mod(norm_unscaled, scale_var);
+                let recon = api.mul(norm_q, scale_var);
+                let recon = api.add(recon, norm_rem);
+                api.assert_is_equal(recon, norm_unscaled);
+                logup_ctx.range_check::<C, Builder>(api, norm_rem, self.scale_exponent as usize)?;
+
+                let norm_shifted = api.add(norm_q, norm_offset);
+                logup_ctx.range_check::<C, Builder>(api, norm_shifted, max_norm_bits + 1)?;
+
+                let norm_sq = api.mul(norm_q, norm_q);
+                norm_sq_sum = api.add(norm_sq_sum, norm_sq);
+
+                let lhs = api.mul(y, scale_var);
+                let term = api.mul(norm_q, gamma_vars[i]);
+                let rhs = api.add(term, beta_vars[i]);
+                let elem_diff = api.sub(lhs, rhs);
+                let elem_shifted = api.add(elem_diff, per_elem_tolerance);
+                logup_ctx.range_check::<C, Builder>(api, elem_shifted, per_elem_tol_bits)?;
+            }
+
+            let var_diff = api.sub(norm_sq_sum, n_alpha_sq);
+            let var_shifted = api.add(var_diff, norm_var_tolerance);
+            logup_ctx.range_check::<C, Builder>(api, var_shifted, norm_var_tol_bits)?;
+
+            flat_output.extend_from_slice(y_vars);
         }
 
-        // Reshape flat output back into the original tensor shape.
         let out_flat_ref = out_array
             .as_slice_mut()
             .ok_or_else(|| LayerError::InvalidShape {
@@ -219,7 +245,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        // Guard: at least two inputs (data + gamma).
         if layer.inputs.len() < 2 {
             return Err(LayerError::MissingParameter {
                 layer: LayerKind::LayerNormalization,
@@ -231,7 +256,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
             .into());
         }
 
-        // Guard: exactly one output.
         let output_name = layer
             .outputs
             .first()
@@ -259,7 +283,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
                 ),
             })?;
 
-        // Read axis attribute (ONNX LayerNormalization default = -1).
         let default_axis: i64 = -1;
         let raw_axis: i64 = match extract_params(layer).ok() {
             Some(params) => get_param_or_default(&layer.name, "axis", &params, Some(&default_axis))
@@ -293,7 +316,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
             a
         };
 
-        // Load gamma (Scale) weights — quantised at α¹ by the scale plan.
         let gamma_name = &layer.inputs[1];
         let gamma_array: ndarray::ArrayD<i64> = get_w_or_b(layer_context.w_and_b_map, gamma_name)
             .map_err(|e| LayerError::Other {
@@ -308,7 +330,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
             })?
             .to_vec();
 
-        // Load beta (B) weights — quantised at α² by the scale plan.  Optional.
         let lane_size: usize = output_shape[axis..].iter().product();
         let beta: Vec<i64> = if let Some(beta_name) = layer.inputs.get(2) {
             let beta_array: ndarray::ArrayD<i64> = get_w_or_b(layer_context.w_and_b_map, beta_name)
@@ -327,11 +348,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
             vec![0i64; lane_size]
         };
 
+        let n_bits = layer_context.n_bits_for(&layer.name);
+
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
             axis,
             scaling,
+            scale_exponent: circuit_params.scale_exponent,
+            n_bits,
             gamma,
             beta,
         }))

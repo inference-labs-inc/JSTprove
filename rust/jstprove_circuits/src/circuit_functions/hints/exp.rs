@@ -23,22 +23,28 @@ use super::field_to_i64;
 /// Hint key used to register and look up this function.
 pub const EXP_HINT_KEY: &str = "jstprove.exp_hint";
 
-/// Hint function for elementwise `Exp` over fixed-point integers.
-///
-/// # Inputs
-/// - `inputs[0]`: quantised input `x_q` as a field element (may encode a
-///   negative integer in two's complement mod p: if `x_q >= p/2`, it is
-///   treated as negative).
-/// - `inputs[1]`: the scaling factor `scale = 2^scale_exponent` as a
-///   field element (always a positive integer less than p/2).
-///
-/// # Outputs
-/// - `outputs[0]`: `round(exp(x_q / scale) * scale)`, clamped to
-///   `[0, i64::MAX]`, stored as a field element.
-///
+#[must_use]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+pub fn compute_exp_quantized(x_q: i64, scale: u64) -> i64 {
+    let scale_f64 = scale as f64;
+    let x_real = x_q as f64 / scale_f64;
+    let y_real = x_real.exp();
+    let y_scaled = y_real * scale_f64;
+    if y_scaled >= i64::MAX as f64 {
+        i64::MAX
+    } else if y_scaled < 0.0 {
+        0
+    } else {
+        y_scaled.round() as i64
+    }
+}
+
 /// # Errors
-/// Returns [`Error::UserError`] when `inputs.len() != 2` or `outputs.len() != 1`.
-/// Out-of-range values are clamped, never an error.
+/// Returns `Error::UserError` on arity mismatch or zero scale.
 #[allow(
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
@@ -60,33 +66,14 @@ pub fn exp_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Er
     }
 
     let x_i64 = field_to_i64(inputs[0]);
-
-    // Decode scale as u64 (always positive, fits in u64 for practical scales)
-    let scale_u256 = inputs[1].to_u256();
-    let scale_u64: u64 = scale_u256.as_u64();
+    let scale_u64: u64 = inputs[1].to_u256().as_u64();
     if scale_u64 == 0 {
         return Err(Error::UserError(
             "exp_hint: scale is zero; cannot de-quantise input".to_string(),
         ));
     }
-    let scale_f64 = scale_u64 as f64;
 
-    // Compute exp in f64 on the real-valued (de-quantised) input
-    let x_real = x_i64 as f64 / scale_f64;
-    let y_real = x_real.exp();
-
-    // Re-quantise: y_q = round(exp(x_real) * scale), clamped to [0, i64::MAX]
-    let y_scaled = y_real * scale_f64;
-    let y_q: i64 = if y_scaled >= i64::MAX as f64 {
-        i64::MAX
-    } else if y_scaled < 0.0 {
-        // exp(x) > 0 for all real x, so this only fires on numerical
-        // underflow (extremely negative x_q); clamp to zero.
-        0
-    } else {
-        y_scaled.round() as i64
-    };
-
+    let y_q = compute_exp_quantized(x_i64, scale_u64);
     outputs[0] = F::from_u256(U256::from(y_q as u64));
     Ok(())
 }
@@ -180,10 +167,53 @@ mod tests {
 
     #[test]
     fn exp_hint_very_negative_clamps_to_zero() {
-        // exp(-1000) underflows to 0 after rounding
         let scale: u64 = 1 << 8;
         let x_q = -1000 * scale as i64;
         let result = run_hint(x_q, scale);
         assert_eq!(result, 0, "very negative input should produce 0");
+    }
+
+    #[test]
+    fn compute_exp_matches_hint() {
+        let scale: u64 = 1 << 18;
+        for &x_real in &[-5.0f64, -1.0, 0.0, 1.0, 3.0] {
+            let x_q = (x_real * scale as f64).round() as i64;
+            let from_compute = compute_exp_quantized(x_q, scale);
+            let from_hint = run_hint(x_q, scale);
+            assert_eq!(
+                from_compute, from_hint,
+                "compute_exp_quantized and exp_hint disagree for x_real={x_real}"
+            );
+        }
+    }
+
+    #[test]
+    fn compute_exp_output_always_non_negative() {
+        let scale: u64 = 1 << 18;
+        for x_q in -1_000_000i64..=1_000_000 {
+            let y = compute_exp_quantized(x_q, scale);
+            assert!(
+                y >= 0,
+                "exp output must be non-negative, got {y} for x_q={x_q}"
+            );
+        }
+    }
+
+    #[test]
+    fn compute_exp_monotonic() {
+        let scale: u64 = 1 << 18;
+        let mut prev = compute_exp_quantized(-500_000, scale);
+        for x_q in (-500_000i64 + 1)..=500_000 {
+            let curr = compute_exp_quantized(x_q, scale);
+            assert!(
+                curr >= prev,
+                "exp must be monotonically non-decreasing: f({}) = {} < f({}) = {}",
+                x_q - 1,
+                prev,
+                x_q,
+                curr
+            );
+            prev = curr;
+        }
     }
 }
