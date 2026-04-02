@@ -108,8 +108,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for UnsqueezeLayer {
             msg: format!("extract_params failed: {e}"),
         })?;
 
-        // Unsqueeze requires axes.
-        let axes: Vec<i64> = get_param(&layer.name, AXES, &params)?;
+        let axes: Vec<i64> = get_param(&layer.name, AXES, &params).or_else(|attr_err| {
+            let axes_input_name = layer.inputs.get(1).ok_or(attr_err)?;
+            get_param(&layer.name, axes_input_name, &params)
+        })?;
 
         let unsqueeze = Self {
             name: layer.name.clone(),

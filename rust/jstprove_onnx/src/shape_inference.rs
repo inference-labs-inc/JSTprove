@@ -54,9 +54,469 @@ pub fn infer_all_shapes(
         for (name, shape) in output_shapes {
             shapes.insert(name, shape);
         }
+        fold_constants(layer, &shapes, &model.initializers, &mut constant_tensors);
     }
 
     Ok(shapes)
+}
+
+fn lookup_constant<'a>(
+    name: &str,
+    initializers: &'a HashMap<String, TensorData>,
+    constant_tensors: &'a HashMap<String, TensorData>,
+) -> Option<&'a TensorData> {
+    initializers
+        .get(name)
+        .or_else(|| constant_tensors.get(name))
+}
+
+fn fold_constants(
+    layer: &LayerNode,
+    shapes: &HashMap<String, Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &mut HashMap<String, TensorData>,
+) {
+    let folded = match layer.op_type {
+        OpType::Shape => fold_shape(layer, shapes),
+        OpType::Gather => fold_gather(layer, initializers, constant_tensors),
+        OpType::Unsqueeze => fold_unsqueeze(layer, initializers, constant_tensors),
+        OpType::Squeeze => fold_squeeze(layer, initializers, constant_tensors),
+        OpType::Concat => fold_concat(layer, initializers, constant_tensors),
+        OpType::Slice => fold_slice(layer, initializers, constant_tensors),
+        OpType::Cast => fold_cast(layer, initializers, constant_tensors),
+        OpType::Reshape => fold_reshape(layer, initializers, constant_tensors),
+        _ => None,
+    };
+    if let Some(td) = folded {
+        for out_name in &layer.outputs {
+            let mut entry = td.clone();
+            entry.name = out_name.clone();
+            constant_tensors.insert(out_name.clone(), entry);
+        }
+    }
+}
+
+#[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+fn fold_shape(layer: &LayerNode, shapes: &HashMap<String, Vec<usize>>) -> Option<TensorData> {
+    let input_name = layer.inputs.first()?;
+    let input_shape = shapes.get(input_name.as_str())?;
+
+    let rank = input_shape.len() as i64;
+    let start_raw = layer.get_int_attr("start").unwrap_or(0);
+    let end_raw = layer.get_int_attr("end").unwrap_or(rank);
+    let start = if start_raw < 0 {
+        (rank + start_raw).max(0) as usize
+    } else {
+        (start_raw as usize).min(input_shape.len())
+    };
+    let end = if end_raw < 0 {
+        (rank + end_raw).max(0) as usize
+    } else {
+        (end_raw as usize).min(input_shape.len())
+    };
+
+    let dims: Vec<i64> = if end > start {
+        input_shape[start..end].iter().map(|&d| d as i64).collect()
+    } else {
+        vec![]
+    };
+
+    Some(TensorData {
+        name: String::new(),
+        dims: vec![dims.len() as i64],
+        data_type: 7, // INT64
+        float_data: vec![],
+        int_data: dims,
+    })
+}
+
+#[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+fn fold_gather(
+    layer: &LayerNode,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Option<TensorData> {
+    let data_name = layer.inputs.first()?;
+    let indices_name = layer.inputs.get(1)?;
+
+    let data_td = lookup_constant(data_name, initializers, constant_tensors)?;
+    let indices_td = lookup_constant(indices_name, initializers, constant_tensors)?;
+
+    let data_shape = data_td.shape();
+    if data_shape.is_empty() {
+        return None;
+    }
+
+    let axis_raw = layer.get_int_attr("axis").unwrap_or(0);
+    let rank = data_shape.len() as i64;
+    let axis = if axis_raw < 0 {
+        (axis_raw + rank) as usize
+    } else {
+        axis_raw as usize
+    };
+    if axis >= data_shape.len() {
+        return None;
+    }
+
+    let data_vals = data_td.as_i64_vec();
+    let indices_vals = indices_td.as_i64_vec();
+    let indices_shape = indices_td.shape();
+    let dim_size = data_shape[axis] as i64;
+
+    if data_shape.len() == 1 {
+        let gathered: Vec<i64> = indices_vals
+            .iter()
+            .map(|&idx| {
+                let idx = if idx < 0 { idx + dim_size } else { idx };
+                data_vals.get(idx as usize).copied().unwrap_or(0)
+            })
+            .collect();
+
+        let out_dims: Vec<i64> = indices_shape.iter().map(|&d| d as i64).collect();
+        return Some(TensorData {
+            name: String::new(),
+            dims: out_dims,
+            data_type: data_td.data_type,
+            float_data: vec![],
+            int_data: gathered,
+        });
+    }
+
+    let outer_size: usize = data_shape[..axis].iter().product();
+    let inner_size: usize = data_shape[axis + 1..].iter().product();
+    let axis_size = data_shape[axis];
+    let n_indices = indices_vals.len();
+
+    let mut gathered = Vec::with_capacity(outer_size * n_indices * inner_size);
+    for o in 0..outer_size {
+        for &idx_raw in &indices_vals {
+            let idx = if idx_raw < 0 {
+                (idx_raw + dim_size) as usize
+            } else {
+                idx_raw as usize
+            };
+            if idx >= axis_size {
+                return None;
+            }
+            let src_base = o * axis_size * inner_size + idx * inner_size;
+            gathered.extend_from_slice(&data_vals[src_base..src_base + inner_size]);
+        }
+    }
+
+    let mut out_dims: Vec<i64> = data_shape[..axis].iter().map(|&d| d as i64).collect();
+    out_dims.extend(indices_shape.iter().map(|&d| d as i64));
+    out_dims.extend(data_shape[axis + 1..].iter().map(|&d| d as i64));
+
+    Some(TensorData {
+        name: String::new(),
+        dims: out_dims,
+        data_type: data_td.data_type,
+        float_data: vec![],
+        int_data: gathered,
+    })
+}
+
+fn fold_unsqueeze(
+    layer: &LayerNode,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Option<TensorData> {
+    let input_name = layer.inputs.first()?;
+    let input_td = lookup_constant(input_name, initializers, constant_tensors)?;
+    let input_shape = input_td.shape();
+
+    let axes: Vec<i64> = match layer.get_ints_attr("axes").map(|v| v.to_vec()) {
+        Some(v) => v,
+        None => {
+            let axes_name = layer.inputs.get(1)?;
+            let axes_td = lookup_constant(axes_name, initializers, constant_tensors)?;
+            axes_td.as_i64_vec()
+        }
+    };
+
+    let new_rank = input_shape.len() + axes.len();
+    let r = new_rank as i64;
+    let mut seen = HashSet::new();
+    let mut normalized = Vec::new();
+    for &a in &axes {
+        let n = if a < 0 { (a + r) as usize } else { a as usize };
+        if n >= new_rank || !seen.insert(n) {
+            return None;
+        }
+        normalized.push(n);
+    }
+
+    let mut out_dims: Vec<i64> = Vec::with_capacity(new_rank);
+    let mut input_idx = 0;
+    let in_dims: Vec<i64> = input_shape.iter().map(|&d| d as i64).collect();
+    for i in 0..new_rank {
+        if seen.contains(&i) {
+            out_dims.push(1);
+        } else {
+            out_dims.push(*in_dims.get(input_idx)?);
+            input_idx += 1;
+        }
+    }
+
+    Some(TensorData {
+        name: String::new(),
+        dims: out_dims,
+        data_type: input_td.data_type,
+        float_data: input_td.float_data.clone(),
+        int_data: input_td.int_data.clone(),
+    })
+}
+
+fn fold_squeeze(
+    layer: &LayerNode,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Option<TensorData> {
+    let input_name = layer.inputs.first()?;
+    let input_td = lookup_constant(input_name, initializers, constant_tensors)?;
+    let input_shape = input_td.shape();
+    let rank = input_shape.len() as i64;
+
+    let axes_opt: Option<Vec<i64>> =
+        layer.get_ints_attr("axes").map(|v| v.to_vec()).or_else(|| {
+            let axes_name = layer.inputs.get(1)?;
+            let axes_td = lookup_constant(axes_name, initializers, constant_tensors)?;
+            Some(axes_td.as_i64_vec())
+        });
+
+    let out_dims: Vec<i64> = if let Some(axes) = axes_opt {
+        let mut squeeze_set = HashSet::new();
+        for &a in &axes {
+            let n = if a < 0 {
+                (a + rank) as usize
+            } else {
+                a as usize
+            };
+            squeeze_set.insert(n);
+        }
+        input_shape
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !squeeze_set.contains(i))
+            .map(|(_, &d)| d as i64)
+            .collect()
+    } else {
+        input_shape
+            .iter()
+            .filter(|&&d| d != 1)
+            .map(|&d| d as i64)
+            .collect()
+    };
+
+    Some(TensorData {
+        name: String::new(),
+        dims: out_dims,
+        data_type: input_td.data_type,
+        float_data: input_td.float_data.clone(),
+        int_data: input_td.int_data.clone(),
+    })
+}
+
+#[allow(clippy::cast_possible_wrap)]
+fn fold_concat(
+    layer: &LayerNode,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Option<TensorData> {
+    if layer.inputs.is_empty() {
+        return None;
+    }
+
+    let mut all_inputs: Vec<&TensorData> = Vec::new();
+    for name in &layer.inputs {
+        let td = lookup_constant(name, initializers, constant_tensors)?;
+        all_inputs.push(td);
+    }
+
+    let first = all_inputs[0];
+    let first_shape = first.shape();
+    let rank = first_shape.len();
+    if rank == 0 {
+        return None;
+    }
+
+    let raw_axis = layer.get_int_attr("axis").unwrap_or(0);
+    let axis = if raw_axis < 0 {
+        (raw_axis + rank as i64) as usize
+    } else {
+        raw_axis as usize
+    };
+    if axis >= rank {
+        return None;
+    }
+
+    if rank == 1 {
+        let mut concatenated = Vec::new();
+        let data_type = first.data_type;
+        for td in &all_inputs {
+            concatenated.extend_from_slice(&td.as_i64_vec());
+        }
+        let total_len = concatenated.len();
+        return Some(TensorData {
+            name: String::new(),
+            dims: vec![total_len as i64],
+            data_type,
+            float_data: vec![],
+            int_data: concatenated,
+        });
+    }
+
+    None
+}
+
+#[allow(
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_truncation
+)]
+fn fold_slice(
+    layer: &LayerNode,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Option<TensorData> {
+    let input_name = layer.inputs.first()?;
+    let input_td = lookup_constant(input_name, initializers, constant_tensors)?;
+    let input_shape = input_td.shape();
+    if input_shape.len() != 1 {
+        return None;
+    }
+
+    let starts_name = layer.inputs.get(1)?;
+    let ends_name = layer.inputs.get(2)?;
+    let starts_td = lookup_constant(starts_name, initializers, constant_tensors)?;
+    let ends_td = lookup_constant(ends_name, initializers, constant_tensors)?;
+
+    let starts = starts_td.as_i64_vec();
+    let ends = ends_td.as_i64_vec();
+    let data = input_td.as_i64_vec();
+    let dim = data.len() as i64;
+
+    let axes: Vec<i64> = if let Some(axes_name) = layer.inputs.get(3).filter(|n| !n.is_empty()) {
+        lookup_constant(axes_name, initializers, constant_tensors)?.as_i64_vec()
+    } else {
+        (0..starts.len() as i64).collect()
+    };
+
+    let steps: Vec<i64> = if let Some(steps_name) = layer.inputs.get(4).filter(|n| !n.is_empty()) {
+        lookup_constant(steps_name, initializers, constant_tensors)?.as_i64_vec()
+    } else {
+        vec![1; starts.len()]
+    };
+
+    if axes.len() != 1 || axes[0] != 0 {
+        return None;
+    }
+
+    let step = steps[0];
+    if step == 0 {
+        return None;
+    }
+
+    let mut start = starts[0];
+    let mut end = ends[0];
+    if start < 0 {
+        start += dim;
+    }
+    if end < 0 {
+        end += dim;
+    }
+    start = start.clamp(0, dim);
+    end = end.clamp(0, dim);
+
+    let sliced: Vec<i64> = if step > 0 {
+        let mut v = Vec::new();
+        let mut i = start;
+        while i < end {
+            v.push(data[i as usize]);
+            i += step;
+        }
+        v
+    } else {
+        let mut v = Vec::new();
+        let mut i = start;
+        while i > end {
+            v.push(data[i as usize]);
+            i += step;
+        }
+        v
+    };
+
+    Some(TensorData {
+        name: String::new(),
+        dims: vec![sliced.len() as i64],
+        data_type: input_td.data_type,
+        float_data: vec![],
+        int_data: sliced,
+    })
+}
+
+fn fold_cast(
+    layer: &LayerNode,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Option<TensorData> {
+    let input_name = layer.inputs.first()?;
+    let input_td = lookup_constant(input_name, initializers, constant_tensors)?;
+    let to = layer.get_int_attr("to")?;
+
+    Some(TensorData {
+        name: String::new(),
+        dims: input_td.dims.clone(),
+        data_type: to as i32,
+        float_data: input_td.float_data.clone(),
+        int_data: input_td.int_data.clone(),
+    })
+}
+
+fn fold_reshape(
+    layer: &LayerNode,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Option<TensorData> {
+    let input_name = layer.inputs.first()?;
+    let input_td = lookup_constant(input_name, initializers, constant_tensors)?;
+    let shape_name = layer.inputs.get(1)?;
+    let shape_td = lookup_constant(shape_name, initializers, constant_tensors)?;
+    let target = shape_td.as_i64_vec();
+
+    let input_size = input_td.as_i64_vec().len();
+    let mut out_dims = Vec::with_capacity(target.len());
+    let mut minus_one_idx = None;
+    let mut known_product: usize = 1;
+    for (i, &d) in target.iter().enumerate() {
+        if d == -1 {
+            minus_one_idx = Some(i);
+            out_dims.push(0i64);
+        } else if d == 0 {
+            let orig = input_td.shape();
+            out_dims.push(*orig.get(i)? as i64);
+            known_product *= orig[i];
+        } else if d > 0 {
+            out_dims.push(d);
+            known_product *= d as usize;
+        } else {
+            return None;
+        }
+    }
+    if let Some(idx) = minus_one_idx {
+        if known_product == 0 {
+            return None;
+        }
+        out_dims[idx] = (input_size / known_product) as i64;
+    }
+
+    Some(TensorData {
+        name: String::new(),
+        dims: out_dims,
+        data_type: input_td.data_type,
+        float_data: input_td.float_data.clone(),
+        int_data: input_td.int_data.clone(),
+    })
 }
 
 fn get_shape<'a>(shapes: &'a HashMap<String, Vec<usize>>, name: &str) -> Option<&'a Vec<usize>> {
@@ -1932,5 +2392,205 @@ mod tests {
         );
         let result = infer_squeeze(&layer, Some(&input_shape), &inits, &HashMap::new()).unwrap();
         assert_eq!(result[0].1, vec![1, 300, 64]);
+    }
+
+    #[test]
+    fn fold_shape_produces_dimension_values() {
+        let mut shapes = HashMap::new();
+        shapes.insert("x".to_string(), vec![1, 3, 224, 224]);
+        let layer = make_layer(OpType::Shape, vec!["x"], vec!["x_shape"], HashMap::new());
+        let result = fold_shape(&layer, &shapes).unwrap();
+        assert_eq!(result.int_data, vec![1, 3, 224, 224]);
+        assert_eq!(result.dims, vec![4]);
+    }
+
+    #[test]
+    fn fold_gather_scalar_index_from_shape() {
+        let mut constants = HashMap::new();
+        constants.insert(
+            "shape_out".to_string(),
+            TensorData {
+                name: "shape_out".to_string(),
+                dims: vec![4],
+                data_type: 7,
+                float_data: vec![],
+                int_data: vec![1, 3, 224, 224],
+            },
+        );
+        constants.insert(
+            "idx".to_string(),
+            TensorData {
+                name: "idx".to_string(),
+                dims: vec![],
+                data_type: 7,
+                float_data: vec![],
+                int_data: vec![2],
+            },
+        );
+        let layer = make_layer(
+            OpType::Gather,
+            vec!["shape_out", "idx"],
+            vec!["dim2"],
+            HashMap::new(),
+        );
+        let result = fold_gather(&layer, &HashMap::new(), &constants).unwrap();
+        assert_eq!(result.int_data, vec![224]);
+    }
+
+    #[test]
+    fn fold_unsqueeze_wraps_scalar() {
+        let mut constants = HashMap::new();
+        constants.insert(
+            "val".to_string(),
+            TensorData {
+                name: "val".to_string(),
+                dims: vec![],
+                data_type: 7,
+                float_data: vec![],
+                int_data: vec![42],
+            },
+        );
+        constants.insert(
+            "axes".to_string(),
+            TensorData {
+                name: "axes".to_string(),
+                dims: vec![1],
+                data_type: 7,
+                float_data: vec![],
+                int_data: vec![0],
+            },
+        );
+        let layer = make_layer(
+            OpType::Unsqueeze,
+            vec!["val", "axes"],
+            vec!["out"],
+            HashMap::new(),
+        );
+        let result = fold_unsqueeze(&layer, &HashMap::new(), &constants).unwrap();
+        assert_eq!(result.int_data, vec![42]);
+        assert_eq!(result.dims, vec![1]);
+    }
+
+    #[test]
+    fn fold_concat_1d_tensors() {
+        let mut constants = HashMap::new();
+        constants.insert(
+            "a".to_string(),
+            TensorData {
+                name: "a".to_string(),
+                dims: vec![1],
+                data_type: 7,
+                float_data: vec![],
+                int_data: vec![1],
+            },
+        );
+        constants.insert(
+            "b".to_string(),
+            TensorData {
+                name: "b".to_string(),
+                dims: vec![1],
+                data_type: 7,
+                float_data: vec![],
+                int_data: vec![3],
+            },
+        );
+        constants.insert(
+            "c".to_string(),
+            TensorData {
+                name: "c".to_string(),
+                dims: vec![1],
+                data_type: 7,
+                float_data: vec![],
+                int_data: vec![224],
+            },
+        );
+        let mut attrs = HashMap::new();
+        attrs.insert("axis".to_string(), AttrValue::Int(0));
+        let layer = make_layer(OpType::Concat, vec!["a", "b", "c"], vec!["out"], attrs);
+        let result = fold_concat(&layer, &HashMap::new(), &constants).unwrap();
+        assert_eq!(result.int_data, vec![1, 3, 224]);
+        assert_eq!(result.dims, vec![3]);
+    }
+
+    #[test]
+    fn fold_shape_gather_unsqueeze_concat_reshape_chain() {
+        let mut shapes: HashMap<String, Vec<usize>> = HashMap::new();
+        shapes.insert("input".to_string(), vec![1, 512, 7, 7]);
+
+        let mut constants: HashMap<String, TensorData> = HashMap::new();
+        constants.insert(
+            "idx0".to_string(),
+            TensorData {
+                name: "idx0".to_string(),
+                dims: vec![],
+                data_type: 7,
+                float_data: vec![],
+                int_data: vec![0],
+            },
+        );
+        constants.insert(
+            "minus_one".to_string(),
+            TensorData {
+                name: "minus_one".to_string(),
+                dims: vec![1],
+                data_type: 7,
+                float_data: vec![],
+                int_data: vec![-1],
+            },
+        );
+        constants.insert(
+            "unsqueeze_axes".to_string(),
+            TensorData {
+                name: "unsqueeze_axes".to_string(),
+                dims: vec![1],
+                data_type: 7,
+                float_data: vec![],
+                int_data: vec![0],
+            },
+        );
+
+        let shape_layer = make_layer(
+            OpType::Shape,
+            vec!["input"],
+            vec!["input_shape"],
+            HashMap::new(),
+        );
+        let shape_shapes = infer_shape_op(&shape_layer, Some(&vec![1, 512, 7, 7])).unwrap();
+        for (n, s) in &shape_shapes {
+            shapes.insert(n.clone(), s.clone());
+        }
+        fold_constants(&shape_layer, &shapes, &HashMap::new(), &mut constants);
+        assert_eq!(constants["input_shape"].int_data, vec![1, 512, 7, 7]);
+
+        let gather_layer = make_layer(
+            OpType::Gather,
+            vec!["input_shape", "idx0"],
+            vec!["batch_dim"],
+            HashMap::new(),
+        );
+        fold_constants(&gather_layer, &shapes, &HashMap::new(), &mut constants);
+        assert_eq!(constants["batch_dim"].int_data, vec![1]);
+
+        let unsqueeze_layer = make_layer(
+            OpType::Unsqueeze,
+            vec!["batch_dim", "unsqueeze_axes"],
+            vec!["batch_1d"],
+            HashMap::new(),
+        );
+        fold_constants(&unsqueeze_layer, &shapes, &HashMap::new(), &mut constants);
+        assert_eq!(constants["batch_1d"].int_data, vec![1]);
+        assert_eq!(constants["batch_1d"].dims, vec![1]);
+
+        let mut concat_attrs = HashMap::new();
+        concat_attrs.insert("axis".to_string(), AttrValue::Int(0));
+        let concat_layer = make_layer(
+            OpType::Concat,
+            vec!["batch_1d", "minus_one"],
+            vec!["new_shape"],
+            concat_attrs,
+        );
+        fold_constants(&concat_layer, &shapes, &HashMap::new(), &mut constants);
+        assert_eq!(constants["new_shape"].int_data, vec![1, -1]);
+        assert_eq!(constants["new_shape"].dims, vec![2]);
     }
 }
