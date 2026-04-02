@@ -609,6 +609,8 @@ fn infer_layer_output_shape(
         OpType::Expand => infer_expand(layer, shapes, initializers, constant_tensors),
         OpType::Shape => infer_shape_op(layer, input_shape),
         OpType::ReduceMean => infer_reduce(layer, input_shape, initializers, constant_tensors),
+        OpType::MatMul => infer_matmul(layer, shapes),
+        OpType::Pad => infer_pad(layer, input_shape, initializers, constant_tensors),
     }
 }
 
@@ -783,6 +785,159 @@ fn infer_gemm(
     }
 
     let out_shape = vec![m, n];
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
+}
+
+fn infer_matmul(
+    layer: &LayerNode,
+    shapes: &HashMap<String, Vec<usize>>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let a_shape = layer
+        .inputs
+        .first()
+        .and_then(|n| get_shape(shapes, n))
+        .ok_or_else(|| anyhow::anyhow!("layer {}: MatMul missing input A shape", layer.name))?;
+    let b_shape = layer
+        .inputs
+        .get(1)
+        .and_then(|n| get_shape(shapes, n))
+        .ok_or_else(|| anyhow::anyhow!("layer {}: MatMul missing input B shape", layer.name))?;
+
+    let a_rank = a_shape.len();
+    let b_rank = b_shape.len();
+    if a_rank < 2 {
+        bail!("layer {}: MatMul input A rank {} < 2", layer.name, a_rank);
+    }
+    if b_rank < 2 {
+        bail!("layer {}: MatMul input B rank {} < 2", layer.name, b_rank);
+    }
+
+    let m = a_shape[a_rank - 2];
+    let k_a = a_shape[a_rank - 1];
+    let k_b = b_shape[b_rank - 2];
+    let n = b_shape[b_rank - 1];
+
+    if k_a != k_b {
+        bail!(
+            "layer {}: MatMul inner dimension mismatch: A.shape[-1]={k_a} B.shape[-2]={k_b}",
+            layer.name
+        );
+    }
+
+    // Broadcast the leading batch dimensions (numpy rules).
+    let a_batch = &a_shape[..a_rank - 2];
+    let b_batch = &b_shape[..b_rank - 2];
+    let out_rank = a_batch.len().max(b_batch.len());
+    let mut out_shape: Vec<usize> = Vec::with_capacity(out_rank + 2);
+    for i in 0..out_rank {
+        let a_d = if i + a_batch.len() < out_rank {
+            1
+        } else {
+            a_batch[i + a_batch.len() - out_rank]
+        };
+        let b_d = if i + b_batch.len() < out_rank {
+            1
+        } else {
+            b_batch[i + b_batch.len() - out_rank]
+        };
+        let d = if a_d == b_d {
+            a_d
+        } else if a_d == 1 {
+            b_d
+        } else if b_d == 1 {
+            a_d
+        } else {
+            bail!(
+                "layer {}: MatMul batch dim {i} not broadcastable: {a_d} vs {b_d}",
+                layer.name
+            );
+        };
+        out_shape.push(d);
+    }
+    out_shape.push(m);
+    out_shape.push(n);
+
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
+}
+
+fn infer_pad(
+    layer: &LayerNode,
+    input_shape: Option<&Vec<usize>>,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let input_shape = input_shape
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Pad missing input shape", layer.name))?;
+    let rank = input_shape.len();
+
+    // The pads tensor is the second input (an initializer).
+    let pads_name = layer
+        .inputs
+        .get(1)
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Pad missing pads input", layer.name))?;
+
+    let pads_vals: Vec<i64> = initializers
+        .get(pads_name)
+        .or_else(|| constant_tensors.get(pads_name))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "layer {}: Pad pads tensor '{}' not found",
+                layer.name,
+                pads_name
+            )
+        })
+        .and_then(|td| {
+            td.as_f64_vec()
+                .iter()
+                .enumerate()
+                .map(|(i, &v)| {
+                    if v.fract() != 0.0 || v < i64::MIN as f64 || v > i64::MAX as f64 {
+                        anyhow::bail!(
+                            "layer {}: pads[{i}] value {v} is not a valid integer",
+                            layer.name
+                        )
+                    } else {
+                        Ok(v as i64)
+                    }
+                })
+                .collect()
+        })?;
+
+    if pads_vals.len() != 2 * rank {
+        bail!(
+            "layer {}: Pad pads length {} != 2 * rank {}",
+            layer.name,
+            pads_vals.len(),
+            rank
+        );
+    }
+
+    let mut out_shape = vec![0usize; rank];
+    for i in 0..rank {
+        let begin = pads_vals[i];
+        let end = pads_vals[i + rank];
+        if begin < 0 || end < 0 {
+            bail!(
+                "layer {}: Pad does not support negative pads (cropping) at dim {i}",
+                layer.name
+            );
+        }
+        out_shape[i] = input_shape[i]
+            .checked_add(begin as usize)
+            .and_then(|s| s.checked_add(end as usize))
+            .ok_or_else(|| {
+                anyhow::anyhow!("layer {}: Pad output shape overflow at dim {i}", layer.name)
+            })?;
+    }
+
     Ok(layer
         .outputs
         .iter()

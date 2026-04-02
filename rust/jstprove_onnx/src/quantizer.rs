@@ -631,6 +631,45 @@ fn compute_layer_bound(
             let m_in = get_input_bound(0);
             Ok(m_in)
         }
+        // MatMul: output bound ≈ k * max_weight * m_in (k = contraction dim).
+        // When the RHS is a constant weight tensor use the same column-L1 logic as
+        // Gemm; when it is a dynamic activation fall back to a product of both
+        // input bounds (conservative).
+        OpType::MatMul => {
+            let m_in = get_input_bound(0);
+            let weight_name = layer.inputs.get(1);
+            let rhs_weight = weight_name.and_then(|name| layer.weights.get(name));
+            if let Some(w) = rhs_weight {
+                let vals = w.as_f64_vec();
+                let d = w.shape();
+                let max_col_l1 = if d.len() == 2 && d[0] > 0 {
+                    let (rows, cols) = (d[0], d[1]);
+                    if vals.len() != rows * cols {
+                        anyhow::bail!(
+                            "layer {}: MatMul weight shape {:?} implies {} elements but got {}",
+                            layer.name,
+                            d,
+                            rows * cols,
+                            vals.len()
+                        );
+                    }
+                    (0..cols)
+                        .map(|c| (0..rows).map(|r| vals[r * cols + c].abs()).sum::<f64>())
+                        .fold(0.0_f64, f64::max)
+                } else {
+                    vals.iter().map(|v| v.abs()).sum::<f64>()
+                };
+                Ok(max_col_l1 * m_in)
+            } else {
+                let m_rhs = get_input_bound(1);
+                Ok(m_in * m_rhs)
+            }
+        }
+        // Pad is a data-movement op; constant padding preserves the input bound.
+        OpType::Pad => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
         OpType::Constant => Ok(1.0),
         OpType::LayerNormalization => {
             // After normalization the per-element output is bounded by roughly
