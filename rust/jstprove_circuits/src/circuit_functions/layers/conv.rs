@@ -713,7 +713,9 @@ fn should_use_ntt(
     let h_out = h - kh + 1;
     let w_out = w - kw + 1;
     let direct_muls_per_pair = h_out * w_out * kh * kw;
-    n_padded < direct_muls_per_pair
+    let ntt_add_overhead = nh * nw * ((nh.trailing_zeros() + nw.trailing_zeros()) as usize) * 2;
+    let add_cost_ratio = 4;
+    n_padded + ntt_add_overhead / add_cost_ratio < direct_muls_per_pair
 }
 
 #[allow(clippy::too_many_lines)]
