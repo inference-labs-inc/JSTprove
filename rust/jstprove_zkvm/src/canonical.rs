@@ -23,47 +23,6 @@ pub struct CanonicalLayer {
     pub int_attrs: Vec<i64>,
 }
 
-pub fn op_type_to_u8(op_name: &str) -> Result<u8> {
-    Ok(match op_name {
-        "Add" => guest::OP_ADD,
-        "Div" => guest::OP_DIV,
-        "Sub" => guest::OP_SUB,
-        "Mul" => guest::OP_MUL,
-        "Gemm" | "Int64Gemm" => guest::OP_GEMM,
-        "Conv" | "Int64Conv" => guest::OP_CONV,
-        "Relu" | "ReLU" | "Int64Relu" => guest::OP_RELU,
-        "MaxPool" | "Int64MaxPool" => guest::OP_MAXPOOL,
-        "BatchNormalization" | "Int64BatchNormalization" => guest::OP_BATCHNORM,
-        "Max" | "Int64Max" => guest::OP_MAX,
-        "Min" | "Int64Min" => guest::OP_MIN,
-        "Cast" => guest::OP_CAST,
-        "Clip" | "Int64Clip" => guest::OP_CLIP,
-        "Exp" => guest::OP_EXP,
-        "Reshape" => guest::OP_RESHAPE,
-        "Flatten" => guest::OP_FLATTEN,
-        "Squeeze" => guest::OP_SQUEEZE,
-        "Unsqueeze" => guest::OP_UNSQUEEZE,
-        "Constant" => guest::OP_CONSTANT,
-        "Softmax" => guest::OP_SOFTMAX,
-        "Sigmoid" => guest::OP_SIGMOID,
-        "Gelu" => guest::OP_GELU,
-        "Tile" => guest::OP_TILE,
-        "Gather" => guest::OP_GATHER,
-        "LayerNormalization" => guest::OP_LAYERNORM,
-        "Resize" => guest::OP_RESIZE,
-        "GridSample" => guest::OP_GRIDSAMPLE,
-        "Transpose" => guest::OP_TRANSPOSE,
-        "Concat" => guest::OP_CONCAT,
-        "Slice" => guest::OP_SLICE,
-        "TopK" => guest::OP_TOPK,
-        "Shape" => guest::OP_SHAPE,
-        "Log" => guest::OP_LOG,
-        "Expand" => guest::OP_EXPAND,
-        "ReduceMean" => guest::OP_REDUCEMEAN,
-        other => anyhow::bail!("unsupported op: {other}"),
-    })
-}
-
 impl CanonicalModel {
     pub fn encode(&self) -> Vec<u8> {
         let mut buf = Vec::new();
