@@ -1,0 +1,11 @@
+[package]
+name = "guest"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+guest = []
+
+[dependencies]
+jolt = { package = "jolt-sdk", git = "https://github.com/a16z/jolt" }
+jolt_inlines_sha2 = { package = "jolt-inlines-sha2", git = "https://github.com/a16z/jolt" }
