@@ -41,33 +41,23 @@ impl CanonicalModel {
             buf.push(u8::from(layer.needs_rescale));
             buf.extend_from_slice(&layer.n_inputs.to_le_bytes());
 
-            buf.extend_from_slice(
-                &(layer.weight_dims.len() as u32).to_le_bytes(),
-            );
+            buf.extend_from_slice(&(layer.weight_dims.len() as u32).to_le_bytes());
             for &d in &layer.weight_dims {
                 buf.extend_from_slice(&d.to_le_bytes());
             }
-            buf.extend_from_slice(
-                &(layer.weight_data.len() as u32).to_le_bytes(),
-            );
+            buf.extend_from_slice(&(layer.weight_data.len() as u32).to_le_bytes());
             for &v in &layer.weight_data {
                 buf.extend_from_slice(&v.to_le_bytes());
             }
-            buf.extend_from_slice(
-                &(layer.bias_dims.len() as u32).to_le_bytes(),
-            );
+            buf.extend_from_slice(&(layer.bias_dims.len() as u32).to_le_bytes());
             for &d in &layer.bias_dims {
                 buf.extend_from_slice(&d.to_le_bytes());
             }
-            buf.extend_from_slice(
-                &(layer.bias_data.len() as u32).to_le_bytes(),
-            );
+            buf.extend_from_slice(&(layer.bias_data.len() as u32).to_le_bytes());
             for &v in &layer.bias_data {
                 buf.extend_from_slice(&v.to_le_bytes());
             }
-            buf.extend_from_slice(
-                &(layer.int_attrs.len() as u32).to_le_bytes(),
-            );
+            buf.extend_from_slice(&(layer.int_attrs.len() as u32).to_le_bytes());
             for &v in &layer.int_attrs {
                 buf.extend_from_slice(&v.to_le_bytes());
             }
@@ -80,8 +70,7 @@ impl CanonicalModel {
         let model: QuantizedModelCompat =
             rmp_serde::from_slice(data).context("deserializing QuantizedModel")?;
 
-        let alpha = (model.scale_config.base as u64)
-            .pow(model.scale_config.exponent);
+        let alpha = (model.scale_config.base as u64).pow(model.scale_config.exponent);
 
         let input_dims: Vec<u32> = model
             .graph
@@ -123,11 +112,7 @@ impl CanonicalModel {
                 idx,
                 layers.len(),
             );
-            anyhow::ensure!(
-                !seen[idx],
-                "topo_order contains duplicate index {}",
-                idx,
-            );
+            anyhow::ensure!(!seen[idx], "topo_order contains duplicate index {}", idx,);
             seen[idx] = true;
         }
         let mut ordered_layers = Vec::with_capacity(layers.len());
@@ -177,9 +162,7 @@ fn extract_weights(
     (wd, wv, bd, bv)
 }
 
-fn extract_int_attrs(
-    attrs: &HashMap<String, AttrValueCompat>,
-) -> Vec<i64> {
+fn extract_int_attrs(attrs: &HashMap<String, AttrValueCompat>) -> Vec<i64> {
     let mut keys: Vec<&String> = attrs.keys().collect();
     keys.sort();
     let mut out = Vec::new();

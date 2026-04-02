@@ -66,10 +66,7 @@ fn max_channel_l1(weights: &[i64], out_channels: usize) -> u64 {
     for oc in 0..out_channels {
         let start = oc * per_channel;
         let end = start + per_channel;
-        let l1: u64 = weights[start..end]
-            .iter()
-            .map(|v| abs_u64(*v))
-            .sum();
+        let l1: u64 = weights[start..end].iter().map(|v| abs_u64(*v)).sum();
         if l1 > max_l1 {
             max_l1 = l1;
         }
@@ -78,10 +75,7 @@ fn max_channel_l1(weights: &[i64], out_channels: usize) -> u64 {
 }
 
 fn bias_max_abs(bias: &[i64]) -> u64 {
-    bias.iter()
-        .map(|v| abs_u64(*v))
-        .max()
-        .unwrap_or(0)
+    bias.iter().map(|v| abs_u64(*v)).max().unwrap_or(0)
 }
 
 fn integer_log2_ceil(val: u64) -> u32 {
@@ -102,10 +96,7 @@ fn compute_n_bits_int(_alpha: u64, bound_int: u64) -> u32 {
     integer_log2_ceil(val) + 1
 }
 
-fn compute_bounds_and_nbits(
-    layers: &[LayerDesc],
-    alpha: u64,
-) -> Vec<u32> {
+fn compute_bounds_and_nbits(layers: &[LayerDesc], alpha: u64) -> Vec<u32> {
     let mut nbits_out = Vec::with_capacity(layers.len());
     let mut prev_bound_scaled: u64 = alpha;
 
@@ -245,12 +236,7 @@ fn read_u32(data: &[u8], pos: &mut usize) -> u32 {
         *pos,
         data.len()
     );
-    let v = u32::from_le_bytes([
-        data[*pos],
-        data[*pos + 1],
-        data[*pos + 2],
-        data[*pos + 3],
-    ]);
+    let v = u32::from_le_bytes([data[*pos], data[*pos + 1], data[*pos + 2], data[*pos + 3]]);
     *pos += 4;
     v
 }
@@ -366,8 +352,6 @@ fn verify_compilation(model_bytes: &[u8]) -> [u8; 32] {
 
     let layers = decode_layers(model_bytes, &mut pos);
     let nbits = compute_bounds_and_nbits(&layers, alpha);
-    let canonical = canonical_output(
-        &layers, alpha, base, exponent, &input_dims, &nbits,
-    );
+    let canonical = canonical_output(&layers, alpha, base, exponent, &input_dims, &nbits);
     jolt_inlines_sha2::Sha256::digest(&canonical)
 }

@@ -25,10 +25,7 @@ enum Command {
     Prove {
         #[arg(long)]
         model: PathBuf,
-        #[arg(
-            long,
-            default_value = "/tmp/jolt-guest-targets"
-        )]
+        #[arg(long, default_value = "/tmp/jolt-guest-targets")]
         target_dir: PathBuf,
     },
     Hash {
@@ -55,10 +52,8 @@ fn load_canonical(model_path: &PathBuf) -> Result<(CanonicalModel, Vec<u8>)> {
 
 fn decompress_model_bytes(raw: &[u8]) -> Result<Vec<u8>> {
     if raw.len() >= 20 && &raw[..4] == b"JST\x01" {
-        let flags =
-            u32::from_le_bytes(raw[4..8].try_into().unwrap());
-        let payload_len =
-            u64::from_le_bytes(raw[8..16].try_into().unwrap()) as usize;
+        let flags = u32::from_le_bytes(raw[4..8].try_into().unwrap());
+        let payload_len = u64::from_le_bytes(raw[8..16].try_into().unwrap()) as usize;
         anyhow::ensure!(
             raw.len() >= 20 + payload_len,
             "truncated envelope: declared {} payload bytes but only {} available",
@@ -72,9 +67,7 @@ fn decompress_model_bytes(raw: &[u8]) -> Result<Vec<u8>> {
         } else {
             Ok(payload.to_vec())
         }
-    } else if raw.len() >= 4
-        && raw[..4] == [0x28, 0xB5, 0x2F, 0xFD]
-    {
+    } else if raw.len() >= 4 && raw[..4] == [0x28, 0xB5, 0x2F, 0xFD] {
         Ok(zstd::decode_all(raw.as_ref())?)
     } else {
         Ok(raw.to_vec())
@@ -88,10 +81,7 @@ fn sha256_bytes(data: &[u8]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-fn cmd_prove(
-    model_path: &PathBuf,
-    target_dir: &PathBuf,
-) -> Result<()> {
+fn cmd_prove(model_path: &PathBuf, target_dir: &PathBuf) -> Result<()> {
     let (_, model_bytes) = load_canonical(model_path)?;
 
     let input_hash = sha256_bytes(&model_bytes);
@@ -108,30 +98,15 @@ fn cmd_prove(
 
     info!("Preprocessing...");
     let now = Instant::now();
-    let shared = guest::preprocess_shared_verify_compilation(
-        &mut program,
-    )
-    .context("shared preprocessing")?;
-    let prover_pp =
-        guest::preprocess_prover_verify_compilation(shared.clone());
+    let shared = guest::preprocess_shared_verify_compilation(&mut program)
+        .context("shared preprocessing")?;
+    let prover_pp = guest::preprocess_prover_verify_compilation(shared.clone());
     let verifier_setup = prover_pp.generators.to_verifier_setup();
-    let verifier_pp =
-        guest::preprocess_verifier_verify_compilation(
-            shared,
-            verifier_setup,
-            None,
-        );
-    info!(
-        "Preprocessing: {:.2}s",
-        now.elapsed().as_secs_f64()
-    );
+    let verifier_pp = guest::preprocess_verifier_verify_compilation(shared, verifier_setup, None);
+    info!("Preprocessing: {:.2}s", now.elapsed().as_secs_f64());
 
-    let prove_fn = guest::build_prover_verify_compilation(
-        program,
-        prover_pp,
-    );
-    let verify_fn =
-        guest::build_verifier_verify_compilation(verifier_pp);
+    let prove_fn = guest::build_prover_verify_compilation(program, prover_pp);
+    let verify_fn = guest::build_verifier_verify_compilation(verifier_pp);
 
     info!("Proving compilation...");
     let now = Instant::now();
@@ -139,19 +114,11 @@ fn cmd_prove(
     let prove_secs = now.elapsed().as_secs_f64();
     info!("Prove time: {:.2}s", prove_secs);
     info!("Trace length: {} cycles", proof.trace_length);
-    info!(
-        "Compilation output hash: {}",
-        hex::encode(output_hash)
-    );
+    info!("Compilation output hash: {}", hex::encode(output_hash));
 
     info!("Verifying proof...");
     let now = Instant::now();
-    let valid = verify_fn(
-        &model_bytes,
-        output_hash,
-        program_io.panic,
-        proof,
-    );
+    let valid = verify_fn(&model_bytes, output_hash, program_io.panic, proof);
     let verify_secs = now.elapsed().as_secs_f64();
     info!("Verify time: {:.2}s", verify_secs);
 
@@ -185,9 +152,7 @@ pub fn main() {
     let cli = Cli::parse();
 
     let result = match &cli.command {
-        Command::Prove { model, target_dir } => {
-            cmd_prove(model, target_dir)
-        }
+        Command::Prove { model, target_dir } => cmd_prove(model, target_dir),
         Command::Hash { model } => cmd_hash(model),
     };
 
