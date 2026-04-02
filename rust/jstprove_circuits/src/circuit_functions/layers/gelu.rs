@@ -1,21 +1,3 @@
-// Elementwise ONNX `Gelu` layer for int64 fixed-point tensors.
-//
-// # ZK approach
-// 1. **Hint**: `api.new_hint("jstprove.gelu_hint", &[x, scale], 1)` computes
-//    `round(gelu(x_q / scale) * scale)` in native f64 and returns it as a
-//    field element. No circuit constraint is added by this step.
-// 2. **No range check**: GELU outputs can be negative (for negative inputs),
-//    so we do not apply a LogUp range check (which only supports non-negative
-//    values). The output is unconstrained beyond being a valid field element.
-//
-// # Soundness caveat
-// The output is NOT constrained. A malicious prover can substitute any value.
-// This is the same level of soundness used for LayerNorm in this codebase;
-// full lookup-table soundness is a future improvement.
-//
-// # GELU formula
-// gelu(x) ≈ 0.5 * x * (1 + tanh(√(2/π) * (x + 0.044715 * x³)))
-
 use std::collections::HashMap;
 
 use ethnum::U256;
@@ -25,8 +7,8 @@ use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Var
 
 use crate::circuit_functions::{
     CircuitError,
-    gadgets::LogupRangeCheckContext,
-    hints::gelu::GELU_HINT_KEY,
+    gadgets::{FunctionLookupTable, function_lookup_bits, range_check::LogupRangeCheckContext},
+    hints::gelu::{GELU_HINT_KEY, compute_gelu_quantized},
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::INPUT,
@@ -34,17 +16,13 @@ use crate::circuit_functions::{
     },
 };
 
-// -------- Struct --------
-
 #[derive(Debug)]
 pub struct GeluLayer {
     inputs: Vec<String>,
     outputs: Vec<String>,
-    /// Scaling factor `2^scale_exponent`, baked into the hint call.
     scaling: u64,
+    scale_exponent: u32,
 }
-
-// -------- Implementation --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GeluLayer {
     fn apply(
@@ -53,7 +31,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GeluLayer {
         _logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
-        // Resolve the single input tensor (no initializer — GELU has no weights).
         let x_name = get_input_name(&self.inputs, 0, LayerKind::Gelu, INPUT)?;
         let x_input = input.get(x_name).ok_or_else(|| LayerError::MissingInput {
             layer: LayerKind::Gelu,
@@ -61,20 +38,26 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GeluLayer {
         })?;
 
         let shape = x_input.shape().to_vec();
-
-        // Build a constant variable for the scaling factor, shared across elements.
         let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
+
+        let lookup_bits = function_lookup_bits(self.scale_exponent);
+        let mut lookup = FunctionLookupTable::build_signed::<C, Builder>(
+            api,
+            compute_gelu_quantized,
+            lookup_bits,
+            self.scaling,
+        );
 
         let mut out_storage: Vec<Variable> = Vec::with_capacity(x_input.len());
 
         for &x in x_input {
-            // Compute gelu(x_q / scale) * scale via the native-f64 hint.
-            // No range check because GELU outputs can be negative.
             let hint_out = api.new_hint(GELU_HINT_KEY, &[x, scale_var], 1);
             let y = hint_out[0];
-
+            lookup.query(x, y);
             out_storage.push(y);
         }
+
+        lookup.finalize::<C, Builder>(api);
 
         let result = ArrayD::from_shape_vec(IxDyn(&shape), out_storage).map_err(|_| {
             LayerError::InvalidShape {
@@ -94,7 +77,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GeluLayer {
         _index: usize,
         _layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        // GELU has exactly one data input and no weights.
         layer
             .inputs
             .first()
@@ -103,10 +85,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GeluLayer {
                 name: "input X".to_string(),
             })?;
 
-        // Validate the `approximate` attribute. Only the tanh approximation is
-        // implemented; the exact (erf-based) GELU requires a lookup table that is
-        // not yet available. Reject at build time so callers are not silently
-        // given the tanh result when they requested exact mode.
         let params = extract_params(layer).ok();
         let default_approximate = "none".to_string();
         let approximate: String = params
@@ -121,8 +99,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GeluLayer {
                 layer: LayerKind::Gelu,
                 msg: format!(
                     "Gelu approximate='{approximate}' is not supported in the Expander backend: \
-                     only approximate='tanh' is implemented. The exact (erf-based) Gelu \
-                     requires a lookup-table constraint that is not yet available."
+                     only approximate='tanh' is implemented."
                 ),
             }
             .into());
@@ -142,6 +119,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GeluLayer {
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
             scaling,
+            scale_exponent: circuit_params.scale_exponent,
         }))
     }
 }

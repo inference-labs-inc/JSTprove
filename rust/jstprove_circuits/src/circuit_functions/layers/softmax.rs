@@ -110,29 +110,31 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
         let zero_var = api.constant(CircuitField::<C>::from_u256(U256::from(0u64)));
         let mut out_array = ArrayD::from_elem(IxDyn(&shape), zero_var);
 
-        // Iterate over corresponding input and output lanes simultaneously.
-        // `lanes(Axis(axis))` / `lanes_mut(Axis(axis))` both visit slices in the
-        // same C-order over all other axes, so zip() pairs them correctly.
-        // Writing directly into out_array lanes avoids any index-ordering issues.
         let input_lanes: Vec<_> = x_input.lanes(Axis(axis)).into_iter().collect();
         for (in_lane, mut out_lane) in input_lanes
             .into_iter()
             .zip(out_array.lanes_mut(Axis(axis)).into_iter())
         {
-            // Hint layout: [x_0, ..., x_{n-1}, scale] → n outputs.
             let mut hint_inputs: Vec<Variable> = in_lane.iter().copied().collect();
             hint_inputs.push(scale_var);
 
             let hint_out = api.new_hint(SOFTMAX_HINT_KEY, &hint_inputs, n);
 
+            let mut lane_sum = api.constant(CircuitField::<C>::from_u256(U256::from(0u64)));
+
             for (out_elem, &y) in out_lane.iter_mut().zip(hint_out.iter()) {
                 logup_ctx.range_check::<C, Builder>(api, y, n_bits)?;
-                // Also bound y from above by scale_var: range-check (scale_var - y),
-                // which must be in [0, 2^n_bits) for the constraint y <= scale_var to hold.
                 let diff = api.sub(scale_var, y);
                 logup_ctx.range_check::<C, Builder>(api, diff, n_bits)?;
+                lane_sum = api.add(lane_sum, y);
                 *out_elem = y;
             }
+
+            let tolerance = api.constant(CircuitField::<C>::from_u256(U256::from(n as u64)));
+            let sum_diff_shifted = api.sub(lane_sum, scale_var);
+            let sum_diff_positive = api.add(sum_diff_shifted, tolerance);
+            let tolerance_bits = (2 * n + 1).next_power_of_two().trailing_zeros() as usize + 1;
+            logup_ctx.range_check::<C, Builder>(api, sum_diff_positive, tolerance_bits)?;
         }
 
         Ok((self.outputs.clone(), out_array))

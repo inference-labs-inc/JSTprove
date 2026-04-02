@@ -352,10 +352,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ResizeLayer {
                 scaling,
             } => {
                 let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(*scaling)));
+                let scale_exp = scaling.trailing_zeros() as usize;
+                let half_scale =
+                    api.constant(CircuitField::<C>::from_u256(U256::from(*scaling / 2)));
 
                 let mut out_vars = Vec::with_capacity(per_output.len());
                 for spec in per_output {
-                    // Build hint inputs: [x_corners..., w_corners..., scale]
                     let mut hint_inputs: Vec<Variable> = spec
                         .corner_flat_indices
                         .iter()
@@ -366,8 +368,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ResizeLayer {
                         .weights_q
                         .iter()
                         .map(|&w| {
-                            // Bilinear weights are derived from `(w_real * scale).round()` where
-                            // w_real ∈ [0, 1], so weights_q is always non-negative.
                             debug_assert!(w >= 0, "bilinear weight must be non-negative, got {w}");
                             let fv = CircuitField::<C>::from_u256(U256::from(w as u64));
                             api.constant(fv)
@@ -378,6 +378,19 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ResizeLayer {
 
                     let hint_out = api.new_hint(RESIZE_HINT_KEY, &hint_inputs, 1);
                     let y = hint_out[0];
+
+                    let mut weighted_sum =
+                        api.constant(CircuitField::<C>::from_u256(U256::from(0u64)));
+                    for (i, &idx) in spec.corner_flat_indices.iter().enumerate() {
+                        let product = api.mul(data_flat[idx], w_vars[i]);
+                        weighted_sum = api.add(weighted_sum, product);
+                    }
+
+                    let sum_plus_half = api.add(weighted_sum, half_scale);
+                    let y_times_scale = api.mul(y, scale_var);
+                    let remainder = api.sub(sum_plus_half, y_times_scale);
+                    logup_ctx.range_check::<C, Builder>(api, remainder, scale_exp)?;
+
                     logup_ctx.range_check::<C, Builder>(api, y, *n_bits)?;
                     out_vars.push(y);
                 }

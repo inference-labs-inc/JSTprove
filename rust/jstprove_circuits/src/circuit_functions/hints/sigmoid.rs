@@ -22,26 +22,28 @@ use super::field_to_i64;
 /// Hint key used to register and look up this function.
 pub const SIGMOID_HINT_KEY: &str = "jstprove.sigmoid_hint";
 
-/// Hint function for elementwise `Sigmoid` over fixed-point integers.
-///
-/// # Inputs
-/// - `inputs[0]`: quantised input `x_q` as a field element (may encode a
-///   negative integer in two's complement mod p: if `x_q >= p/2`, it is
-///   treated as negative).
-/// - `inputs[1]`: the scaling factor `scale = 2^scale_exponent` as a
-///   field element (always a positive integer less than p/2).
-///
-/// # Outputs
-/// - `outputs[0]`: `round(sigmoid(x_q / scale) * scale)`, clamped to
-///   `[0, i64::MAX]`, stored as a field element.
-///   `sigmoid(x) = 1 / (1 + exp(-x))`
-///
+#[must_use]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+pub fn compute_sigmoid_quantized(x_q: i64, scale: u64) -> i64 {
+    let scale_f64 = scale as f64;
+    let x_real = x_q as f64 / scale_f64;
+    let y_real = 1.0 / (1.0 + (-x_real).exp());
+    let y_scaled = y_real * scale_f64;
+    if y_scaled >= i64::MAX as f64 {
+        i64::MAX
+    } else if y_scaled < 0.0 {
+        0
+    } else {
+        y_scaled.round() as i64
+    }
+}
+
 /// # Errors
-/// Returns [`Error::UserError`] when:
-/// - `inputs.len() != 2` or `outputs.len() != 1` (arity mismatch),
-/// - the scale field element exceeds `u64::MAX` (overflow guard), or
-/// - the scale decodes to zero (division by zero).
-/// Out-of-range output values are clamped, never an error.
+/// Returns `Error::UserError` on arity mismatch or zero/overflowing scale.
 #[allow(
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
@@ -63,8 +65,6 @@ pub fn sigmoid_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<()
     }
 
     let x_i64 = field_to_i64(inputs[0]);
-
-    // Decode scale as u64; reject field elements that don't fit in u64.
     let scale_u256 = inputs[1].to_u256();
     if scale_u256 > U256::from(u64::MAX) {
         return Err(Error::UserError(format!(
@@ -77,24 +77,8 @@ pub fn sigmoid_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<()
             "sigmoid_hint: scale is zero; cannot de-quantise input".to_string(),
         ));
     }
-    let scale_f64 = scale_u64 as f64;
 
-    // Compute sigmoid in f64 on the real-valued (de-quantised) input.
-    // sigmoid(x) = 1 / (1 + exp(-x))
-    let x_real = x_i64 as f64 / scale_f64;
-    let y_real = 1.0 / (1.0 + (-x_real).exp());
-
-    // Re-quantise: y_q = round(sigmoid(x_real) * scale), clamped to [0, i64::MAX].
-    // sigmoid is always in (0, 1), so y_scaled is always in (0, scale).
-    let y_scaled = y_real * scale_f64;
-    let y_q: i64 = if y_scaled >= i64::MAX as f64 {
-        i64::MAX
-    } else if y_scaled < 0.0 {
-        0
-    } else {
-        y_scaled.round() as i64
-    };
-
+    let y_q = compute_sigmoid_quantized(x_i64, scale_u64);
     outputs[0] = F::from_u256(U256::from(y_q as u64));
     Ok(())
 }
@@ -219,6 +203,51 @@ mod tests {
             assert!(
                 result <= scale as i64,
                 "sigmoid output {result} should be <= scale {scale}"
+            );
+        }
+    }
+
+    #[test]
+    fn compute_sigmoid_matches_hint() {
+        let scale: u64 = 1 << 18;
+        for &x_real in &[-10.0f64, -1.0, 0.0, 1.0, 10.0] {
+            let x_q = (x_real * scale as f64).round() as i64;
+            let from_compute = compute_sigmoid_quantized(x_q, scale);
+            let from_hint = run_hint(x_q, scale);
+            assert_eq!(
+                from_compute, from_hint,
+                "compute_sigmoid_quantized and sigmoid_hint disagree for x_real={x_real}"
+            );
+        }
+    }
+
+    #[test]
+    fn compute_sigmoid_monotonic() {
+        let scale: u64 = 1 << 18;
+        let mut prev = compute_sigmoid_quantized(-500_000, scale);
+        for x_q in (-500_000i64 + 1)..=500_000 {
+            let curr = compute_sigmoid_quantized(x_q, scale);
+            assert!(
+                curr >= prev,
+                "sigmoid must be monotonically non-decreasing: f({}) = {} < f({}) = {}",
+                x_q - 1,
+                prev,
+                x_q,
+                curr
+            );
+            prev = curr;
+        }
+    }
+
+    #[test]
+    fn compute_sigmoid_bounded_in_zero_scale() {
+        let scale: u64 = 1 << 18;
+        for x_q in -1_000_000i64..=1_000_000 {
+            let y = compute_sigmoid_quantized(x_q, scale);
+            assert!(y >= 0, "sigmoid output must be >= 0, got {y}");
+            assert!(
+                y <= scale as i64,
+                "sigmoid output must be <= scale, got {y}"
             );
         }
     }

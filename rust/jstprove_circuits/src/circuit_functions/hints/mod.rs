@@ -7,13 +7,13 @@ pub mod bits;
 pub use bits::unconstrained_to_bits;
 
 pub mod exp;
-pub use exp::exp_hint;
+pub use exp::{compute_exp_quantized, exp_hint};
 
 pub mod gelu;
-pub use gelu::gelu_hint;
+pub use gelu::{compute_gelu_quantized, gelu_hint};
 
 pub mod sigmoid;
-pub use sigmoid::sigmoid_hint;
+pub use sigmoid::{compute_sigmoid_quantized, sigmoid_hint};
 
 pub mod softmax;
 pub use softmax::softmax_hint;
