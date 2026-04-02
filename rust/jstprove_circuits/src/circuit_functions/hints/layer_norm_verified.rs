@@ -186,7 +186,7 @@ mod tests {
         let mut outputs = vec![F::zero(); n + 2];
         layer_norm_verified_hint::<F>(&inputs, &mut outputs).unwrap();
 
-        let sum: i64 = outputs[..n].iter().map(|o| decode_signed(o)).sum();
+        let sum: i64 = outputs[..n].iter().map(decode_signed).sum();
         assert!(
             sum.abs() < s / 10,
             "sum of outputs should be near 0 with zero beta, got {sum}"
