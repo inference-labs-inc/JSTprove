@@ -715,6 +715,74 @@ pub fn build_debug_assignment<C: Config>(
     Ok(assignment)
 }
 
+/// Generate a witness from pre-quantized integer inputs (e.g. from input.msgpack).
+///
+/// Unlike [`witness_from_f64_generic`], this function does NOT apply alpha scaling
+/// to the inputs — they are already quantized `i64` values that map directly to
+/// circuit field elements via [`crate::circuit_functions::utils::tensor_ops::convert_val_to_field_element`].
+///
+/// # Errors
+/// Returns `RunError` on witness generation, serialization, or activation mismatch.
+pub fn witness_from_prequantized<C: Config>(
+    circuit_bytes: &[u8],
+    solver_bytes: &[u8],
+    params: &CircuitParams,
+    input_data: &InputData,
+    compress: bool,
+) -> Result<WitnessBundle, RunError> {
+    let layered_circuit = load_circuit_from_bytes::<C>(circuit_bytes)?;
+    let witness_solver = load_witness_solver_from_bytes::<C>(solver_bytes)?;
+    let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
+    let num_outputs = params.effective_output_dims();
+
+    // Build assignment with pre-quantized inputs (no alpha re-scaling)
+    let mut probe_assignment =
+        apply_input_data::<C>(input_data, Circuit::<CircuitField<C>>::default(), params)?;
+    // Outputs start at zero for the probe pass
+    probe_assignment.outputs = vec![CircuitField::<C>::zero(); num_outputs];
+
+    let probe_witness = witness_solver
+        .solve_witness_with_hints(&probe_assignment, &hint_registry)
+        .map_err(|e| RunError::Witness(format!("probe pass: {e:?}")))?;
+
+    let (private_inputs, public_inputs) = probe_witness
+        .iter_scalar()
+        .next()
+        .ok_or_else(|| RunError::Witness("empty probe witness".into()))?;
+
+    let (actual_outputs, _) =
+        layered_circuit.eval_with_public_inputs(private_inputs, &public_inputs);
+
+    if actual_outputs.len() < num_outputs {
+        return Err(RunError::Witness(format!(
+            "circuit actual outputs length {}: expected at least {num_outputs} (expected_num_output_zeroes={}, num_actual_outputs={})",
+            actual_outputs.len(),
+            layered_circuit.expected_num_output_zeroes,
+            layered_circuit.num_actual_outputs,
+        )));
+    }
+
+    let computed_outputs: Vec<CircuitField<C>> = actual_outputs[..num_outputs].to_vec();
+    let output_i64: Vec<i64> = computed_outputs
+        .iter()
+        .map(|v| crate::circuit_functions::hints::field_to_i64(*v))
+        .collect();
+
+    probe_assignment.outputs = computed_outputs;
+
+    let witness = witness_solver
+        .solve_witness_with_hints(&probe_assignment, &hint_registry)
+        .map_err(|e| RunError::Witness(format!("final pass: {e:?}")))?;
+
+    let witness_bytes = serialize_witness::<C>(&witness, compress)?;
+
+    Ok(WitnessBundle {
+        witness: witness_bytes,
+        output_data: Some(output_i64),
+        version: Some(crate::runner::version::jstprove_artifact_version()),
+    })
+}
+
 /// # Errors
 /// Returns `RunError` on proof generation failure.
 pub fn prove_bn254(

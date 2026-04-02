@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{BatchSize, Criterion, black_box, criterion_group, criterion_main};
 use rmpv::Value;
 
 use jstprove_circuits::circuit_functions::utils::onnx_model::{Architecture, CircuitParams, WANDB};
@@ -34,9 +34,7 @@ fn make_weight_4d(oc: usize, ic: usize, kh: usize, kw: usize, val: i64) -> Value
                             Value::Array(
                                 (0..kh)
                                     .map(|_| {
-                                        Value::Array(
-                                            (0..kw).map(|_| Value::from(val)).collect(),
-                                        )
+                                        Value::Array((0..kw).map(|_| Value::from(val)).collect())
                                     })
                                     .collect(),
                             )
@@ -742,13 +740,10 @@ fn make_averagepool_metadata() -> (CircuitParams, Architecture, WANDB) {
         op_type: "AveragePool".into(),
         inputs: vec!["x".into()],
         outputs: vec!["y".into()],
-        shape: [
-            ("x", vec![1usize, 1, 8, 8]),
-            ("y", vec![1, 1, 4, 4]),
-        ]
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v))
-        .collect(),
+        shape: [("x", vec![1usize, 1, 8, 8]), ("y", vec![1, 1, 4, 4])]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
         tensor: None,
         params: Some(Value::Map(vec![
             (
@@ -854,9 +849,206 @@ fn averagepool_prove(c: &mut Criterion) {
     group.finish();
 }
 
+/// Construct a minimal single-ConvTranspose-layer metadata triple without touching any ONNX file.
+///
+/// Spec:
+///   input  x: [1, 1, 4, 4]  — batch=1, C_in=1, 4×4 spatial
+///   weight W: [1, 1, 3, 3]  — C_in=1, C_out/group=1, 3×3 kernel (weights = ALPHA)
+///   bias   B: [1]           — zero bias
+///   output y: [1, 1, 6, 6]  — stride*(4-1)+3 = 6
+///   kernel_shape=[3,3], strides=[1,1], pads=[0,0,0,0], output_padding=[0,0], group=1, dilations=[1,1]
+fn make_conv_transpose_metadata() -> (CircuitParams, Architecture, WANDB) {
+    let params = CircuitParams {
+        scale_base: 2,
+        scale_exponent: 18,
+        rescale_config: [("conv_transpose_0".to_string(), true)]
+            .into_iter()
+            .collect(),
+        inputs: vec![ONNXIO {
+            name: "x".into(),
+            elem_type: 1,
+            shape: vec![1, 1, 4, 4],
+        }],
+        outputs: vec![ONNXIO {
+            name: "y".into(),
+            elem_type: 1,
+            shape: vec![1, 1, 6, 6],
+        }],
+        freivalds_reps: 1,
+        n_bits_config: HashMap::new(),
+        weights_as_inputs: false,
+        proof_system: ProofSystem::Expander,
+        curve: None,
+        logup_chunk_bits: Some(12),
+    };
+
+    let conv_transpose_layer = ONNXLayer {
+        id: 0,
+        name: "conv_transpose_0".into(),
+        op_type: "ConvTranspose".into(),
+        inputs: vec!["x".into(), "W".into(), "B".into()],
+        outputs: vec!["y".into()],
+        shape: [
+            ("x", vec![1usize, 1, 4, 4]),
+            ("W", vec![1, 1, 3, 3]),
+            ("B", vec![1]),
+            ("y", vec![1, 1, 6, 6]),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect(),
+        tensor: None,
+        params: Some(Value::Map(vec![
+            (
+                Value::String("kernel_shape".into()),
+                Value::Array(vec![Value::from(3i64), Value::from(3i64)]),
+            ),
+            (
+                Value::String("strides".into()),
+                Value::Array(vec![Value::from(1i64), Value::from(1i64)]),
+            ),
+            (
+                Value::String("pads".into()),
+                Value::Array(vec![Value::from(0i64); 4]),
+            ),
+            (
+                Value::String("output_padding".into()),
+                Value::Array(vec![Value::from(0i64), Value::from(0i64)]),
+            ),
+            (
+                Value::String("dilations".into()),
+                Value::Array(vec![Value::from(1i64), Value::from(1i64)]),
+            ),
+            (Value::String("group".into()), Value::from(1i64)),
+        ])),
+        opset_version_number: 17,
+    };
+
+    let arch = Architecture {
+        architecture: vec![conv_transpose_layer],
+    };
+
+    // W: [C_in=1, C_out/group=1, kH=3, kW=3], all weights = ALPHA (α¹)
+    let w_tensor = make_weight_4d(1, 1, 3, 3, ALPHA);
+    // B: zero bias (0 * α² = 0)
+    let b_tensor = Value::Array(vec![Value::from(0i64); 1]);
+
+    let w_layer = ONNXLayer {
+        id: 0,
+        name: "W".into(),
+        op_type: "Const".into(),
+        inputs: vec![],
+        outputs: vec![],
+        shape: [("W".to_string(), vec![1usize, 1, 3, 3])]
+            .into_iter()
+            .collect(),
+        tensor: Some(w_tensor),
+        params: None,
+        opset_version_number: -1,
+    };
+
+    let b_layer = ONNXLayer {
+        id: 1,
+        name: "B".into(),
+        op_type: "Const".into(),
+        inputs: vec![],
+        outputs: vec![],
+        shape: [("B".to_string(), vec![1usize])].into_iter().collect(),
+        tensor: Some(b_tensor),
+        params: None,
+        opset_version_number: -1,
+    };
+
+    let wandb = WANDB {
+        w_and_b: vec![w_layer, b_layer],
+    };
+
+    (params, arch, wandb)
+}
+
+fn conv_transpose_compile(c: &mut Criterion) {
+    let (params, arch, wandb) = make_conv_transpose_metadata();
+    let mut group = c.benchmark_group("conv_transpose/compile");
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(120));
+
+    group.bench_function("bn254", |b| {
+        b.iter_batched(
+            || {
+                OnnxContext::set_all(arch.clone(), params.clone(), Some(wandb.clone()));
+                tempfile::TempDir::new().unwrap()
+            },
+            |tmp| {
+                let path = tmp.path().join("c.bundle").to_str().unwrap().to_string();
+                compile_bn254(&path, false, Some(black_box(params.clone()))).unwrap();
+            },
+            BatchSize::PerIteration,
+        );
+    });
+    group.finish();
+}
+
+fn conv_transpose_witness(c: &mut Criterion) {
+    let (params, arch, wandb) = make_conv_transpose_metadata();
+    OnnxContext::set_all(arch.clone(), params.clone(), Some(wandb.clone()));
+    let tmp = tempfile::TempDir::new().unwrap();
+    let path = tmp.path().join("c.bundle");
+    compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
+    let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
+    let activations = vec![0.0f64; 1 * 1 * 4 * 4];
+
+    let mut group = c.benchmark_group("conv_transpose/witness");
+    group.sample_size(10);
+    group.bench_function("bn254", |b| {
+        b.iter(|| {
+            witness_bn254_from_f64(
+                &bundle.circuit,
+                &bundle.witness_solver,
+                &params,
+                &activations,
+                &[],
+                false,
+            )
+            .unwrap()
+        });
+    });
+    group.finish();
+}
+
+fn conv_transpose_prove(c: &mut Criterion) {
+    let (params, arch, wandb) = make_conv_transpose_metadata();
+    OnnxContext::set_all(arch, params.clone(), Some(wandb));
+    let tmp = tempfile::TempDir::new().unwrap();
+    let path = tmp.path().join("c.bundle");
+    compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
+    let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
+    let activations = vec![0.0f64; 1 * 1 * 4 * 4];
+    let wb = witness_bn254_from_f64(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations,
+        &[],
+        false,
+    )
+    .unwrap();
+
+    let mut group = c.benchmark_group("conv_transpose/prove");
+    group.sample_size(10);
+    group.bench_function("bn254", |b| {
+        b.iter(|| prove_bn254(&bundle.circuit, &wb.witness, false).unwrap());
+    });
+    group.finish();
+}
+
 criterion_group!(conv_benches, conv_compile, conv_witness, conv_prove);
 criterion_group!(gemm_benches, gemm_compile, gemm_witness, gemm_prove);
-criterion_group!(softmax_benches, softmax_compile, softmax_witness, softmax_prove);
+criterion_group!(
+    softmax_benches,
+    softmax_compile,
+    softmax_witness,
+    softmax_prove
+);
 criterion_group!(
     layer_norm_benches,
     layer_norm_compile,
@@ -869,10 +1061,17 @@ criterion_group!(
     averagepool_witness,
     averagepool_prove
 );
+criterion_group!(
+    conv_transpose_benches,
+    conv_transpose_compile,
+    conv_transpose_witness,
+    conv_transpose_prove
+);
 criterion_main!(
     conv_benches,
     gemm_benches,
     softmax_benches,
     layer_norm_benches,
-    averagepool_benches
+    averagepool_benches,
+    conv_transpose_benches
 );
