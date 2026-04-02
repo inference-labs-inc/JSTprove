@@ -1,25 +1,3 @@
-// ONNX `Softmax` layer for int64 fixed-point tensors.
-//
-// # ZK approach
-// 1. **Hint**: `api.new_hint("jstprove.softmax_hint", &[x_0, ..., x_{n-1}, scale], n)`
-//    computes the full numerically-stable softmax in native f64 and returns all
-//    `n` output elements as field elements. No circuit constraint is added by
-//    this step.
-// 2. **Range check**: each output element `y_i` is constrained to
-//    `[0, 2^n_bits)` via `logup_ctx.range_check`, ensuring values stay within
-//    the quantised range `[0, scale]`.
-//
-// # Soundness caveat
-// Each output is bounded but NOT proven to equal `softmax(input)[i]`. A
-// malicious prover can substitute any non-negative in-range value. This is the
-// same level of soundness used for Exp; full lookup-table soundness is a
-// planned future extension.
-//
-// # Axis handling
-// Softmax is applied independently along the specified axis (default -1, i.e.
-// the last axis, matching ONNX opset ≥ 13 semantics). The hint is called once
-// per lane along that axis, so batched inputs are handled correctly.
-
 use std::collections::HashMap;
 
 use ethnum::U256;
@@ -29,8 +7,8 @@ use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Var
 
 use crate::circuit_functions::{
     CircuitError,
-    gadgets::range_check::LogupRangeCheckContext,
-    hints::softmax::SOFTMAX_HINT_KEY,
+    gadgets::{FunctionLookupTable, function_lookup_bits, range_check::LogupRangeCheckContext},
+    hints::{exp::compute_exp_quantized, softmax_verified::SOFTMAX_VERIFIED_HINT_KEY},
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{
         constants::{AXIS, INPUT},
@@ -38,27 +16,21 @@ use crate::circuit_functions::{
     },
 };
 
-// -------- Struct --------
-
 #[derive(Debug)]
 pub struct SoftmaxLayer {
     inputs: Vec<String>,
     outputs: Vec<String>,
-    /// Number of bits used for the LogUp range check on each output element.
     n_bits: usize,
-    /// Scaling factor `2^scale_exponent`, baked into the hint call.
     scaling: u64,
-    /// Softmax axis (may be negative; -1 means the last axis).
     axis: i64,
 }
-
-// -------- Implementation --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
     #[allow(
         clippy::cast_possible_wrap,
         clippy::cast_sign_loss,
-        clippy::cast_possible_truncation
+        clippy::cast_possible_truncation,
+        clippy::too_many_lines
     )]
     fn apply(
         &self,
@@ -97,16 +69,25 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
             a
         };
 
-        // Number of elements along the softmax axis.
         let n = shape[axis];
-
-        // Build a constant variable for the scaling factor, shared across the call.
         let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
-
         let n_bits = self.n_bits;
+        let scale_exp = self.scaling.trailing_zeros();
+        let lookup_bits = function_lookup_bits(scale_exp);
+        let max_diff_bits = lookup_bits - 1;
 
-        // Pre-allocate the output array with a zero placeholder; each element
-        // will be overwritten by the corresponding hint output below.
+        let mut exp_lookup = FunctionLookupTable::build_signed::<C, Builder>(
+            api,
+            compute_exp_quantized,
+            lookup_bits,
+            self.scaling,
+        );
+
+        let cross_tolerance = n as u64 * self.scaling;
+        let cross_tol_var = api.constant(CircuitField::<C>::from_u256(U256::from(cross_tolerance)));
+        let cross_tol_bits =
+            (2 * cross_tolerance).next_power_of_two().trailing_zeros() as usize + 1;
+
         let zero_var = api.constant(CircuitField::<C>::from_u256(U256::from(0u64)));
         let mut out_array = ArrayD::from_elem(IxDyn(&shape), zero_var);
 
@@ -115,27 +96,56 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
             .into_iter()
             .zip(out_array.lanes_mut(Axis(axis)).into_iter())
         {
-            let mut hint_inputs: Vec<Variable> = in_lane.iter().copied().collect();
+            let x_vars: Vec<Variable> = in_lane.iter().copied().collect();
+            let mut hint_inputs = x_vars.clone();
             hint_inputs.push(scale_var);
 
-            let hint_out = api.new_hint(SOFTMAX_HINT_KEY, &hint_inputs, n);
+            let hint_out = api.new_hint(SOFTMAX_VERIFIED_HINT_KEY, &hint_inputs, 2 * n + 1);
+            let y_vars = &hint_out[..n];
+            let max_q = hint_out[n];
+            let e_vars = &hint_out[n + 1..];
 
-            let mut lane_sum = api.constant(CircuitField::<C>::from_u256(U256::from(0u64)));
+            let mut max_product = api.sub(max_q, x_vars[0]);
+            logup_ctx.range_check::<C, Builder>(api, max_product, max_diff_bits)?;
+            for &x_i in &x_vars[1..] {
+                let diff = api.sub(max_q, x_i);
+                logup_ctx.range_check::<C, Builder>(api, diff, max_diff_bits)?;
+                max_product = api.mul(max_product, diff);
+            }
+            api.assert_is_zero(max_product);
 
-            for (out_elem, &y) in out_lane.iter_mut().zip(hint_out.iter()) {
+            let mut sum_exp = zero_var;
+            for (i, &x_i) in x_vars.iter().enumerate() {
+                let d_i = api.sub(x_i, max_q);
+                exp_lookup.query(d_i, e_vars[i]);
+                sum_exp = api.add(sum_exp, e_vars[i]);
+            }
+
+            let mut lane_sum = zero_var;
+            for (i, out_elem) in out_lane.iter_mut().enumerate() {
+                let y = y_vars[i];
                 logup_ctx.range_check::<C, Builder>(api, y, n_bits)?;
-                let diff = api.sub(scale_var, y);
-                logup_ctx.range_check::<C, Builder>(api, diff, n_bits)?;
+                let upper_diff = api.sub(scale_var, y);
+                logup_ctx.range_check::<C, Builder>(api, upper_diff, n_bits)?;
+
+                let lhs = api.mul(y, sum_exp);
+                let rhs = api.mul(e_vars[i], scale_var);
+                let cross_diff = api.sub(lhs, rhs);
+                let shifted = api.add(cross_diff, cross_tol_var);
+                logup_ctx.range_check::<C, Builder>(api, shifted, cross_tol_bits)?;
+
                 lane_sum = api.add(lane_sum, y);
                 *out_elem = y;
             }
 
-            let tolerance = api.constant(CircuitField::<C>::from_u256(U256::from(n as u64)));
-            let sum_diff_shifted = api.sub(lane_sum, scale_var);
-            let sum_diff_positive = api.add(sum_diff_shifted, tolerance);
-            let tolerance_bits = (2 * n + 1).next_power_of_two().trailing_zeros() as usize + 1;
-            logup_ctx.range_check::<C, Builder>(api, sum_diff_positive, tolerance_bits)?;
+            let sum_tol = api.constant(CircuitField::<C>::from_u256(U256::from(n as u64)));
+            let sum_diff = api.sub(lane_sum, scale_var);
+            let sum_shifted = api.add(sum_diff, sum_tol);
+            let sum_tol_bits = (2 * n + 1).next_power_of_two().trailing_zeros() as usize + 1;
+            logup_ctx.range_check::<C, Builder>(api, sum_shifted, sum_tol_bits)?;
         }
+
+        exp_lookup.finalize::<C, Builder>(api);
 
         Ok((self.outputs.clone(), out_array))
     }
@@ -148,7 +158,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        // Softmax has exactly one data input and no weights.
         layer
             .inputs
             .first()
@@ -169,8 +178,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
         }
 
         let n_bits = layer_context.n_bits_for(&layer.name);
-
-        // scaling = 2^scale_exponent; fits comfortably in u64 for practical exponents.
         let scaling: u64 = 1u64
             .checked_shl(circuit_params.scale_exponent)
             .ok_or_else(|| LayerError::Other {
@@ -181,17 +188,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
                 ),
             })?;
 
-        // Reject opset < 13: apply() uses per-axis lanes semantics (opset ≥ 13).
-        // Opset < 13 requires 2D-coercion semantics (flatten to 2D then apply
-        // softmax along axis 1) which is not yet implemented; accepting such
-        // models would silently produce incorrect outputs.
         if layer.opset_version_number < 13 {
             return Err(LayerError::Other {
                 layer: LayerKind::Softmax,
                 msg: format!(
-                    "opset {} is not supported: apply() uses per-axis lanes semantics \
-                    (opset ≥ 13 only); 2D coercion required by opset < 13 is not yet \
-                    implemented",
+                    "opset {} not supported: per-axis lanes semantics requires opset ≥ 13",
                     layer.opset_version_number
                 ),
             }

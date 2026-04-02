@@ -18,8 +18,14 @@ pub use sigmoid::{compute_sigmoid_quantized, sigmoid_hint};
 pub mod softmax;
 pub use softmax::softmax_hint;
 
+pub mod softmax_verified;
+pub use softmax_verified::softmax_verified_hint;
+
 pub mod layer_norm;
 pub use layer_norm::layer_norm_hint;
+
+pub mod layer_norm_verified;
+pub use layer_norm_verified::layer_norm_verified_hint;
 
 pub mod max_min_clip;
 pub use max_min_clip::{unconstrained_clip, unconstrained_max, unconstrained_min};
@@ -81,7 +87,15 @@ pub fn build_logup_hint_registry<F: CompilerField>() -> HintRegistry<F> {
     registry.register(exp::EXP_HINT_KEY, exp_hint::<F>);
     registry.register(sigmoid::SIGMOID_HINT_KEY, sigmoid_hint::<F>);
     registry.register(softmax::SOFTMAX_HINT_KEY, softmax_hint::<F>);
+    registry.register(
+        softmax_verified::SOFTMAX_VERIFIED_HINT_KEY,
+        softmax_verified_hint::<F>,
+    );
     registry.register(layer_norm::LAYER_NORM_HINT_KEY, layer_norm_hint::<F>);
+    registry.register(
+        layer_norm_verified::LAYER_NORM_VERIFIED_HINT_KEY,
+        layer_norm_verified_hint::<F>,
+    );
     registry.register(gelu::GELU_HINT_KEY, gelu_hint::<F>);
     registry.register(gridsample::GRIDSAMPLE_HINT_KEY, gridsample_hint::<F>);
     registry.register(resize::RESIZE_HINT_KEY, resize_hint::<F>);
