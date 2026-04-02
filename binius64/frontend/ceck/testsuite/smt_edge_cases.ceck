@@ -1,0 +1,40 @@
+; Edge cases that are statistically unlikely to be caught by random testing
+; These demonstrate the value of SMT checking for complete verification
+
+; Test 1: Birthday paradox - unlikely to generate two equal values randomly
+(assert_not_eqv
+  (constraint_set
+    ; No constraint on relationship between v0 and v1
+    (mul $v0 $v1 $hi $lo)
+  )
+  (constraint_set
+    ; v0 must not equal v1
+    (mul $v0 $v1 $hi $lo)
+    (and (xor $v0 $v1) 0xFFFFFFFF_FFFFFFFF 0xFFFFFFFF_FFFFFFFF)
+  )
+)
+
+; Test 2: Constraint that excludes a single specific value
+; Probability of hitting this exact value is 1/2^64
+(assert_not_eqv
+  (constraint_set
+    ; Any value allowed
+  )
+  (constraint_set
+    ; v0 cannot be 0x123456789ABCDEF0
+    (and (xor $v0 0x123456789ABCDEF0) 0xFFFFFFFF_FFFFFFFF 0xFFFFFFFF_FFFFFFFF)
+  )
+)
+
+; Test 3: Mathematical properties that hold for most but not all values
+; v0 * v1 = 0 vs v0 & v1 = 0
+(assert_not_eqv
+  (constraint_set
+    ; At least one must be zero
+    (mul $v0 $v1 0x0 0x0)
+  )
+  (constraint_set
+    ; Must have no bits in common
+    (and $v0 $v1 0x0)
+  )
+)

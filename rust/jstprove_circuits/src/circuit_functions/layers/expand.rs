@@ -48,7 +48,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ExpandLayer {
         let x_name = get_input_name(&self.inputs, 0, LayerKind::Expand, INPUT)?;
         let x_input = input.get(x_name).ok_or_else(|| LayerError::MissingInput {
             layer: LayerKind::Expand,
-            name: x_name.to_string(),
+            name: x_name.clone(),
         })?;
 
         // Use ndarray broadcast to expand singleton dimensions.

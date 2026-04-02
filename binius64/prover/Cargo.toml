@@ -1,0 +1,90 @@
+[package]
+name = "binius-prover"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+binius-core = { path = "../core" }
+binius-field = { path = "../field" }
+binius-hash = { path = "../hash", default-features = false }
+binius-iop-prover = { path = "../iop-prover", default-features = false }
+binius-ip-prover = { path = "../ip-prover", default-features = false }
+binius-math = { path = "../math" }
+binius-transcript = { path = "../transcript" }
+binius-verifier = { path = "../verifier", default-features = false }
+binius-utils = { path = "../utils" }
+bytemuck.workspace = true
+bytes.workspace = true
+derive_more.workspace = true
+digest.workspace = true
+either.workspace = true
+getset.workspace = true
+itertools.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+rand.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
+binius-circuits = { path = "../circuits" }
+binius-frontend = { path = "../frontend" }
+binius-math = { path = "../math", features = ["test-utils"] }
+criterion.workspace = true
+proptest.workspace = true
+rand = { workspace = true, features = ["thread_rng"] }
+sha2.workspace = true
+
+[lib]
+bench = false
+
+[[bench]]
+name = "binary_merkle_tree"
+harness = false
+
+[[bench]]
+name = "sumcheck"
+harness = false
+
+[[bench]]
+name = "batch_quadratic_mle"
+harness = false
+
+[[bench]]
+name = "and_reduction"
+harness = false
+
+[[bench]]
+name = "shift_reduction"
+harness = false
+
+[[bench]]
+name = "intmul"
+harness = false
+
+[[bench]]
+name = "fold_words"
+harness = false
+
+[[bench]]
+name = "ring_switch"
+harness = false
+
+[[bench]]
+name = "vision"
+harness = false
+
+[[bench]]
+name = "prodcheck"
+harness = false
+
+[[bench]]
+name = "fracaddcheck"
+harness = false
+
+[features]
+default = ["rayon"]
+rayon = ["binius-utils/rayon", "binius-hash/rayon", "binius-iop-prover/rayon", "binius-ip-prover/rayon"]

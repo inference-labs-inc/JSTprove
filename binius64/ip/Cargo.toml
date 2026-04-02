@@ -1,0 +1,22 @@
+[package]
+name = "binius-ip"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+binius-field = { path = "../field" }
+binius-math = { path = "../math" }
+binius-transcript = { path = "../transcript" }
+thiserror.workspace = true
+
+[dev-dependencies]
+binius-math = { path = "../math", features = ["test-utils"] }
+rand.workspace = true
+sha2.workspace = true
+
+[features]
+default = []

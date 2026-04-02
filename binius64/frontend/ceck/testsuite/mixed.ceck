@@ -1,0 +1,63 @@
+; Mixed constraint tests
+; Tests combinations of AND and MUL constraints
+
+; AND and MUL constraints together
+(assert_eqv
+  (constraint_set
+    (and $v0 $v1 $v2)
+    (mul $v3 $v4 $v5 $v6)
+  )
+  (constraint_set
+    (and $v0 $v1 $v2)
+    (mul $v3 $v4 $v5 $v6)
+  )
+)
+
+; Same constraints in same order
+(assert_eqv
+  (constraint_set
+    (and $v0 $v1 $v2)
+    (mul $v3 $v4 $v5 $v6)
+  )
+  (constraint_set
+    (and $v0 $v1 $v2)
+    (mul $v3 $v4 $v5 $v6)
+  )
+)
+
+; Different number of constraints
+(assert_not_eqv
+  (constraint_set
+    (and $v0 $v1 $v2)
+  )
+  (constraint_set
+    (and $v0 $v1 $v2)
+    (mul $v3 $v4 $v5 $v6)  ; Additional constraint
+  )
+)
+
+; Complex system with multiple constraints
+(assert_eqv
+  (constraint_set
+    (and $v0 $v1 $v2)
+    (and (xor $v3 $v4) 0xFFFFFFFF_FFFFFFFF $v5)
+    (mul $v6 $v7 $v8 $v9)
+    (and (sll $v10 3) (slr $v11 5) $v12)
+  )
+  (constraint_set
+    (and $v0 $v1 $v2)
+    (and (xor $v3 $v4) 0xFFFFFFFF_FFFFFFFF $v5)
+    (mul $v6 $v7 $v8 $v9)
+    (and (sll $v10 3) (slr $v11 5) $v12)
+  )
+)
+
+; Empty vs non-empty are not equivalent
+(assert_not_eqv
+  (constraint_set
+    (and 0x0 0x0 0x0)  ; Trivial constraint instead of empty
+  )
+  (constraint_set
+    (and $v0 $v1 $v2)
+  )
+)

@@ -1,0 +1,54 @@
+; Basic AND constraint tests
+; Tests the fundamental AND constraint: A & B ^ C = 0
+
+; Simple equivalent AND constraints
+(assert_eqv
+  (constraint_set
+    (and $v0 $v1 $v2)
+  )
+  (constraint_set
+    (and $v0 $v1 $v2)
+  )
+)
+
+; AND with constants - ZERO
+(assert_eqv
+  (constraint_set
+    ; v0 & v1 ^ ZERO = 0 (forces v0 & v1 = 0)
+    (and $v0 $v1 0x0)
+  )
+  (constraint_set
+    (and $v0 $v1 0x0)
+  )
+)
+
+; AND with constants - ALL_ONE
+(assert_eqv
+  (constraint_set
+    ; v0 & v1 ^ ALL_ONE = 0 (forces v0 & v1 = ALL_ONE)
+    (and $v0 $v1 0xFFFFFFFF_FFFFFFFF)
+  )
+  (constraint_set
+    (and $v0 $v1 0xFFFFFFFF_FFFFFFFF)
+  )
+)
+
+; Different constants are not equivalent
+(assert_not_eqv
+  (constraint_set
+    (and $v0 $v1 0x0)
+  )
+  (constraint_set
+    (and $v0 $v1 0xFFFFFFFF_FFFFFFFF)
+  )
+)
+
+; Different variable ordering (should still be equivalent due to commutativity)
+(assert_eqv
+  (constraint_set
+    (and $v0 $v1 $v2)
+  )
+  (constraint_set
+    (and $v1 $v0 $v2)  ; v0 and v1 swapped in A & B
+  )
+)

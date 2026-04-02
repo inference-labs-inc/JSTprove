@@ -69,7 +69,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherLayer {
             .get(data_name)
             .ok_or_else(|| LayerError::MissingInput {
                 layer: LayerKind::Gather,
-                name: data_name.to_string(),
+                name: data_name.clone(),
             })?;
 
         let data_shape = data.shape();

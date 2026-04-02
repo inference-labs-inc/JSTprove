@@ -1,0 +1,30 @@
+# Copyright 2026 The Binius Developers
+
+[package]
+name = "binius-hash"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+binius-field = { path = "../field" }
+binius-math = { path = "../math" }
+binius-transcript = { path = "../transcript" }
+binius-utils = { path = "../utils" }
+bytemuck.workspace = true
+bytes.workspace = true
+digest.workspace = true
+itertools.workspace = true
+sha2 = { workspace = true, features = ["compress"] }
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+rand.workspace = true
+
+[features]
+default = ["rayon"]
+rayon = ["binius-utils/rayon"]

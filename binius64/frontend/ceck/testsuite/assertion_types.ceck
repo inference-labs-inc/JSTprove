@@ -1,0 +1,62 @@
+; Tests for assert_eqv and assert_not_eqv functionality
+; Verifies that the assertion types work correctly
+
+; Basic assert_eqv - should pass
+(assert_eqv
+  (constraint_set
+    (and $v0 $v1 $v2)
+  )
+  (constraint_set
+    (and $v0 $v1 $v2)
+  )
+)
+
+; Basic assert_not_eqv - should pass
+(assert_not_eqv
+  (constraint_set
+    (and $v0 $v1 $v2)
+  )
+  (constraint_set
+    (mul $v0 $v1 $v2 $v3)
+  )
+)
+
+; assert_not_eqv with different constants - should pass
+(assert_not_eqv
+  (constraint_set
+    (and $v0 $v1 0x0)
+  )
+  (constraint_set
+    (and $v0 $v1 0xFFFFFFFF_FFFFFFFF)
+  )
+)
+
+; assert_not_eqv with extra constraints - should pass
+(assert_not_eqv
+  (constraint_set
+    (and $v0 $v1 $v2)
+  )
+  (constraint_set
+    (and $v0 $v1 $v2)
+    (and $v3 $v4 $v5)
+  )
+)
+
+; Mixed assertions in one file
+(assert_eqv
+  (constraint_set
+    (mul $v0 $v1 $v2 $v3)
+  )
+  (constraint_set
+    (mul $v0 $v1 $v2 $v3)
+  )
+)
+
+(assert_not_eqv
+  (constraint_set
+    (and (xor $v0 $v1) $v2 $v3)
+  )
+  (constraint_set
+    (and $v0 $v1 $v2)
+  )
+)

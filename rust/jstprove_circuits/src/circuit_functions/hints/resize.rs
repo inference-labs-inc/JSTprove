@@ -52,7 +52,7 @@ pub const RESIZE_HINT_KEY: &str = "jstprove.resize_hint";
     clippy::cast_possible_wrap
 )]
 pub fn resize_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Error> {
-    if inputs.len() < 3 || inputs.len() % 2 == 0 {
+    if inputs.len() < 3 || inputs.len().is_multiple_of(2) {
         return Err(Error::UserError(format!(
             "resize_hint: expected 2*n+1 inputs with n>=1 (n corner values, n weights, scale), got {}",
             inputs.len()

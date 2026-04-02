@@ -1,0 +1,83 @@
+; Edge case tests
+; Tests various edge cases and corner scenarios
+
+; Self-referential constraints
+(assert_eqv
+  (constraint_set
+    ; v0 & v0 ^ v1 = 0
+    (and $v0 $v0 $v1)
+  )
+  (constraint_set
+    (and $v0 $v0 $v1)
+  )
+)
+
+; All zeros constraint
+(assert_eqv
+  (constraint_set
+    ; 0 & 0 ^ 0 = 0 (always satisfied)
+    (and 0x0 0x0 0x0)
+  )
+  (constraint_set
+    (and 0x0 0x0 0x0)
+  )
+)
+
+; All ones constraint
+(assert_eqv
+  (constraint_set
+    ; ALL_ONE & ALL_ONE ^ 0 = 0 (never satisfied)
+    (and 0xFFFFFFFF_FFFFFFFF 0xFFFFFFFF_FFFFFFFF 0x0)
+  )
+  (constraint_set
+    (and 0xFFFFFFFF_FFFFFFFF 0xFFFFFFFF_FFFFFFFF 0x0)
+  )
+)
+
+; Maximum shift amounts
+(assert_eqv
+  (constraint_set
+    ; v1 = v0 << 63 (maximum left shift)
+    (and (xor (sll $v0 63)) 0xFFFFFFFF_FFFFFFFF $v1)
+  )
+  (constraint_set
+    (and (xor (sll $v0 63)) 0xFFFFFFFF_FFFFFFFF $v1)
+  )
+)
+
+; Zero shift (identity)
+(assert_eqv
+  (constraint_set
+    ; v1 = v0 << 0 (no shift)
+    (and (xor (sll $v0 0)) 0xFFFFFFFF_FFFFFFFF $v1)
+  )
+  (constraint_set
+    ; Same constraint
+    (and (xor (sll $v0 0)) 0xFFFFFFFF_FFFFFFFF $v1)
+  )
+)
+
+; XOR with self equals zero
+(assert_eqv
+  (constraint_set
+    ; (v0 ^ v0) & ALL_ONE ^ v1 = 0
+    ; Since v0 ^ v0 = 0, this forces v1 = 0
+    (and (xor $v0 $v0) 0xFFFFFFFF_FFFFFFFF $v1)
+  )
+  (constraint_set
+    ; Same constraint - XOR with self is always 0
+    (and (xor $v0 $v0) 0xFFFFFFFF_FFFFFFFF $v1)
+  )
+)
+
+; Constraints that force contradiction
+(assert_not_eqv
+  (constraint_set
+    ; v0 & v0 ^ 0 = 0 (v0 must be 0)
+    (and $v0 $v0 0x0)
+  )
+  (constraint_set
+    ; v0 & v0 ^ ALL_ONE = 0 (v0 must be ALL_ONE)
+    (and $v0 $v0 0xFFFFFFFF_FFFFFFFF)
+  )
+)

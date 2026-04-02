@@ -51,7 +51,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for BatchnormLayer {
             .get(input_name)
             .ok_or_else(|| LayerError::MissingInput {
                 layer: LayerKind::Batchnorm,
-                name: input_name.to_string(),
+                name: input_name.clone(),
             })?
             .clone();
 

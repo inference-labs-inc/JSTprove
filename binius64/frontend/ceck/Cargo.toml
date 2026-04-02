@@ -1,0 +1,18 @@
+[package]
+name = "ceck"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow.workspace = true
+pest.workspace = true
+pest_derive.workspace = true
+z3 = { version = "0.13.3", optional = true }
+binius-core = { path = "../../core" }
+binius-frontend = { path = "../" }
+rand.workspace = true
+clap.workspace = true
+
+[features]
+default = []
+z3 = ["dep:z3"]

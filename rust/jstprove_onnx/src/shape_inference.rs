@@ -533,7 +533,7 @@ fn infer_reshape(
         .collect();
 
     if let Some(idx) = minus_one_idx {
-        if known_product == 0 || input_size % known_product != 0 {
+        if known_product == 0 || !input_size.is_multiple_of(known_product) {
             bail!(
                 "layer {}: Reshape incompatible sizes: input_size={input_size} known_product={known_product}",
                 layer.name

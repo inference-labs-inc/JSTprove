@@ -1,0 +1,37 @@
+[package]
+name = "binius-iop-prover"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+binius-field = { path = "../field" }
+binius-hash = { path = "../hash", default-features = false }
+binius-iop = { path = "../iop", default-features = false }
+binius-ip = { path = "../ip" }
+binius-ip-prover = { path = "../ip-prover", default-features = false }
+binius-math = { path = "../math" }
+binius-transcript = { path = "../transcript" }
+binius-utils = { path = "../utils" }
+bytes.workspace = true
+derive_more.workspace = true
+digest.workspace = true
+getset.workspace = true
+itertools.workspace = true
+rand.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
+binius-math = { path = "../math", features = ["test-utils"] }
+proptest.workspace = true
+rand = { workspace = true, features = ["thread_rng"] }
+sha2.workspace = true
+
+[features]
+default = ["rayon"]
+rayon = ["binius-utils/rayon", "binius-hash/rayon", "binius-iop/rayon", "binius-ip-prover/rayon"]

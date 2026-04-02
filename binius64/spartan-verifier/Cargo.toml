@@ -1,0 +1,25 @@
+[package]
+name = "binius-spartan-verifier"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+binius-field = { path = "../field" }
+binius-iop = { path = "../iop" }
+binius-ip = { path = "../ip" }
+binius-math = { path = "../math" }
+binius-transcript = { path = "../transcript" }
+binius-spartan-frontend = { path = "../spartan-frontend" }
+binius-utils = { path = "../utils" }
+# TODO: Refactor common protocols out into shared crate
+binius-verifier = { path = "../verifier" }
+digest.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+binius-spartan-frontend = { path = "../spartan-frontend" }

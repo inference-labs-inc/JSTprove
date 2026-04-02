@@ -184,7 +184,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SliceLayer {
         let x_name = get_input_name(&self.inputs, 0, LayerKind::Slice, INPUT)?;
         let x_input = input.get(x_name).ok_or_else(|| LayerError::MissingInput {
             layer: LayerKind::Slice,
-            name: x_name.to_string(),
+            name: x_name.clone(),
         })?;
 
         let data_flat = x_input.as_slice().ok_or_else(|| LayerError::InvalidShape {
@@ -282,10 +282,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SliceLayer {
 
             if let Some(rmpv::Value::Map(entries)) = layer.params.as_ref() {
                 let value = entries.iter().find_map(|(k, v)| {
-                    if let rmpv::Value::String(s) = k {
-                        if s.as_str() == Some(name.as_str()) {
-                            return Some(v);
-                        }
+                    if let rmpv::Value::String(s) = k
+                        && s.as_str() == Some(name.as_str())
+                    {
+                        return Some(v);
                     }
                     None
                 });

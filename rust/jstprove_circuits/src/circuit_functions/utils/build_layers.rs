@@ -109,7 +109,7 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
             };
         // Save layers to skip
         for item in layers_to_skip {
-            skip_next_layer.insert(item.to_string(), true);
+            skip_next_layer.insert(item.clone(), true);
         }
 
         layer.outputs = outputs;

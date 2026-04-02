@@ -332,7 +332,7 @@ pub fn infer_reshape_shape(input_size: usize, shape: &[isize]) -> Result<Vec<usi
         }
     })?;
 
-    if minus_one_index.is_some() && input_size % known_product != 0 {
+    if minus_one_index.is_some() && !input_size.is_multiple_of(known_product) {
         return Err(LayerError::InvalidShape {
             layer: LayerKind::Reshape,
             msg: format!(

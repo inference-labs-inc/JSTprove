@@ -58,7 +58,7 @@ pub const GRIDSAMPLE_HINT_KEY: &str = "jstprove.gridsample_hint";
     clippy::cast_possible_wrap
 )]
 pub fn gridsample_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Error> {
-    if inputs.is_empty() || inputs.len() % 2 == 0 {
+    if inputs.is_empty() || inputs.len().is_multiple_of(2) {
         return Err(Error::UserError(format!(
             "gridsample_hint: expected 2*n+1 inputs (n corner values, n weights, scale), got {}",
             inputs.len()

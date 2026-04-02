@@ -1,0 +1,29 @@
+[package]
+name = "binius-utils"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+build = "build.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+array-util.workspace = true
+bytemuck = { workspace = true, features = ["extern_crate_alloc"] }
+bytes.workspace = true
+cfg-if.workspace = true
+generic-array.workspace = true
+itertools.workspace = true
+rand.workspace = true
+rayon = { optional = true, workspace = true}
+regex = { workspace = true, optional = true }
+thiserror.workspace = true
+trait-set.workspace = true
+
+[dev-dependencies]
+
+[features]
+default = []
+rayon = ["dep:rayon"]
+platform-diagnostics = ["dep:regex"]

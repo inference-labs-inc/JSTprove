@@ -1,0 +1,87 @@
+; Shift operation tests
+; Tests shift operations: sll (logical left), slr (logical right), sar (arithmetic right)
+
+; Shift left by 1 is equivalent
+(assert_eqv
+  (constraint_set
+    ; v1 = v0 << 1
+    (and (xor (sll $v0 1)) 0xFFFFFFFF_FFFFFFFF $v1)
+  )
+  (constraint_set
+    (and (xor (sll $v0 1)) 0xFFFFFFFF_FFFFFFFF $v1)
+  )
+)
+
+; Different shift amounts are not equivalent
+(assert_not_eqv
+  (constraint_set
+    ; v1 = v0 << 1
+    (and (xor (sll $v0 1)) 0xFFFFFFFF_FFFFFFFF $v1)
+  )
+  (constraint_set
+    ; v1 = v0 << 2
+    (and (xor (sll $v0 2)) 0xFFFFFFFF_FFFFFFFF $v1)
+  )
+)
+
+; Different shift types are not equivalent
+(assert_not_eqv
+  (constraint_set
+    ; v1 = v0 << 5 (logical left)
+    (and (xor (sll $v0 5)) 0xFFFFFFFF_FFFFFFFF $v1)
+  )
+  (constraint_set
+    ; v1 = v0 >> 5 (logical right)
+    (and (xor (slr $v0 5)) 0xFFFFFFFF_FFFFFFFF $v1)
+  )
+)
+
+; Rotate left by combining shifts
+(assert_eqv
+  (constraint_set
+    ; v2 = rotate_left(v0, 3) = (v0 << 3) | (v0 >> 61)
+    (and
+      (xor (sll $v0 3) (slr $v0 61))
+      0xFFFFFFFF_FFFFFFFF
+      $v2
+    )
+  )
+  (constraint_set
+    ; Same rotation
+    (and
+      (xor (sll $v0 3) (slr $v0 61))
+      0xFFFFFFFF_FFFFFFFF
+      $v2
+    )
+  )
+)
+
+; Arithmetic right shift
+(assert_eqv
+  (constraint_set
+    ; v1 = v0 >>> 8 (arithmetic right shift)
+    (and (xor (sar $v0 8)) 0xFFFFFFFF_FFFFFFFF $v1)
+  )
+  (constraint_set
+    (and (xor (sar $v0 8)) 0xFFFFFFFF_FFFFFFFF $v1)
+  )
+)
+
+; Complex shift expression
+(assert_eqv
+  (constraint_set
+    ; v3 = (v0 << 4) ^ (v1 >> 2) ^ (v2 >>> 1)
+    (and
+      (xor (sll $v0 4) (slr $v1 2) (sar $v2 1))
+      0xFFFFFFFF_FFFFFFFF
+      $v3
+    )
+  )
+  (constraint_set
+    (and
+      (xor (sll $v0 4) (slr $v1 2) (sar $v2 1))
+      0xFFFFFFFF_FFFFFFFF
+      $v3
+    )
+  )
+)

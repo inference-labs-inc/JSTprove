@@ -304,7 +304,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GridSampleLayer {
         let x_name = get_input_name(&self.inputs, 0, LayerKind::GridSample, INPUT)?;
         let x_input = input.get(x_name).ok_or_else(|| LayerError::MissingInput {
             layer: LayerKind::GridSample,
-            name: x_name.to_string(),
+            name: x_name.clone(),
         })?;
 
         let data_flat = x_input.as_slice().ok_or_else(|| LayerError::InvalidShape {

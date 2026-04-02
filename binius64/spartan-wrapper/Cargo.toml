@@ -1,0 +1,19 @@
+[package]
+name = "binius-spartan-wrapper"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+binius-field = { path = "../field" }
+binius-iop = { path = "../iop" }
+binius-ip = { path = "../ip" }
+binius-spartan-frontend = { path = "../spartan-frontend" }
+
+[dev-dependencies]
+binius-hash = { path = "../hash" }
+binius-spartan-verifier = { path = "../spartan-verifier" }
+bytemuck.workspace = true
+
+[lints]
+workspace = true

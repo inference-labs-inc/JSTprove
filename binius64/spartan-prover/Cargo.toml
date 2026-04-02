@@ -1,0 +1,38 @@
+[package]
+name = "binius-spartan-prover"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+binius-field = { path = "../field" }
+binius-iop = { path = "../iop" }
+binius-iop-prover = { path = "../iop-prover" }
+binius-ip-prover = { path = "../ip-prover" }
+binius-math = { path = "../math" }
+binius-transcript = { path = "../transcript" }
+binius-spartan-frontend = { path = "../spartan-frontend" }
+binius-spartan-verifier = { path = "../spartan-verifier" }
+binius-utils = { path = "../utils" }
+# Reuse infrastructure from binius-prover
+binius-prover = { path = "../prover" }
+binius-verifier = { path = "../verifier" }
+digest.workspace = true
+itertools.workspace = true
+rand.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
+binius-hash = { path = "../hash" }
+binius-math = { path = "../math", features = ["test-utils"] }
+rand = { workspace = true, features = ["thread_rng"] }
+smallvec.workspace = true
+
+[features]
+default = ["rayon"]
+rayon = ["binius-utils/rayon"]

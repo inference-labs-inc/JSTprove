@@ -1,0 +1,27 @@
+blake2s circuit
+--
+Gates & Instructions
+├─ Number of gates: 18,488
+└─ Number of evaluation instructions: 18,488
+
+Constraints
+├─ AND constraints: 16,820 used (51.3% of 2^15)
+│  [▓▓▓▓▓░░░░░] spare: 15,948
+├─ MUL constraints: 0 used (0.0% of 2^0)
+│  [░░░░░░░░░░] spare: 1
+└─ Distinct value indices: 38,496
+   ├─ Distinct shifted value indices: 21,532
+   └─ Distinct unshifted value indices: 16,964
+
+Value Vector
+├─ Public Section: 28 used (87.5% of 2^5)
+│  [▓▓▓▓▓▓▓▓░░] spare: 4
+│  ├─ Constants: 28
+│  └─ Inout: 0
+├─ Private Section: 16,948 used (51.8%)
+│  [▓▓▓▓▓░░░░░] spare: 15,788
+│  ├─ Witness: 136
+│  └─ Internal: 16,812
+├─ Total Committed: 16,976 used (51.8% of 2^15)
+│  [▓▓▓▓▓░░░░░] spare: 15,792
+└─ Scratch (uncommitted): 9,348

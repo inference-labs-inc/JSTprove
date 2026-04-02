@@ -35,7 +35,7 @@ use crate::runner::schema::{
 use crate::runner::version::jstprove_artifact_version;
 use expander_compiler::expander_binary::executor;
 
-pub(crate) fn auto_decompress_bytes(data: &[u8]) -> Result<Cow<[u8]>, RunError> {
+pub(crate) fn auto_decompress_bytes(data: &[u8]) -> Result<Cow<'_, [u8]>, RunError> {
     jstprove_io::auto_decompress_bytes(data)
         .map_err(|e| RunError::Deserialize(format!("zstd decompress: {e}")))
 }
@@ -619,17 +619,16 @@ fn run_verification<C: Config>(
         .clone_from(&simd_input);
     expander_circuit.public_input.clone_from(&simd_public_input);
 
-    if let Some(expected) = expected_public_inputs {
-        if expected.len() != expander_circuit.public_input.len()
+    if let Some(expected) = expected_public_inputs
+        && (expected.len() != expander_circuit.public_input.len()
             || expected
                 .iter()
                 .zip(&expander_circuit.public_input)
-                .any(|(pv, actual)| *actual != (*pv).into())
-        {
-            return Err(RunError::Verify(
-                "public inputs from witness do not match the supplied inputs/outputs".into(),
-            ));
-        }
+                .any(|(pv, actual)| *actual != (*pv).into()))
+    {
+        return Err(RunError::Verify(
+            "public inputs from witness do not match the supplied inputs/outputs".into(),
+        ));
     }
 
     let file = std::fs::File::open(proof_path).map_err(|e| RunError::Io {
@@ -1760,12 +1759,11 @@ pub fn get_curve(
     matches: &clap::ArgMatches,
     metadata: Option<&CircuitParams>,
 ) -> crate::curve::Curve {
-    if matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine) {
-        if let Some(s) = matches.get_one::<String>("curve") {
-            if let Ok(c) = s.parse::<crate::curve::Curve>() {
-                return c;
-            }
-        }
+    if matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine)
+        && let Some(s) = matches.get_one::<String>("curve")
+        && let Ok(c) = s.parse::<crate::curve::Curve>()
+    {
+        return c;
     }
     metadata.and_then(|m| m.curve).unwrap_or_default()
 }
@@ -2060,7 +2058,7 @@ where
         "msgpack_witness_stdin" => {
             msgpack_witness_stdin::<C, _, CircuitDefaultType>(file_reader, compress)?;
         }
-        _ => return Err(CliError::UnknownCommand(command.to_string())),
+        _ => return Err(CliError::UnknownCommand(command.clone())),
     }
     Ok(())
 }

@@ -1,0 +1,58 @@
+; XOR operation tests
+; Tests XOR within operands of constraints
+
+; Simple XOR in operand
+(assert_eqv
+  (constraint_set
+    ; (v0 ^ v1) & ALL_ONE ^ v2 = 0
+    (and (xor $v0 $v1) 0xFFFFFFFF_FFFFFFFF $v2)
+  )
+  (constraint_set
+    (and (xor $v0 $v1) 0xFFFFFFFF_FFFFFFFF $v2)
+  )
+)
+
+; XOR with multiple terms
+(assert_eqv
+  (constraint_set
+    ; (v0 ^ v1 ^ v2) & ALL_ONE ^ v3 = 0
+    (and (xor $v0 $v1 $v2) 0xFFFFFFFF_FFFFFFFF $v3)
+  )
+  (constraint_set
+    (and (xor $v0 $v1 $v2) 0xFFFFFFFF_FFFFFFFF $v3)
+  )
+)
+
+; XOR vs non-XOR (not equivalent)
+(assert_not_eqv
+  (constraint_set
+    ; Regular AND
+    (and $v0 $v1 $v2)
+  )
+  (constraint_set
+    ; XOR in first operand
+    (and (xor $v0 $v1) 0xFFFFFFFF_FFFFFFFF $v2)
+  )
+)
+
+; XOR with constants
+(assert_eqv
+  (constraint_set
+    ; (v0 ^ 0xFF) & v1 ^ v2 = 0
+    (and (xor $v0 0xFF) $v1 $v2)
+  )
+  (constraint_set
+    (and (xor $v0 0xFF) $v1 $v2)
+  )
+)
+
+; Complex XOR expressions
+(assert_eqv
+  (constraint_set
+    ; v3 = (v0 ^ v1) & (v2 ^ 0xFF)
+    (and (xor $v0 $v1) (xor $v2 0xFF) $v3)
+  )
+  (constraint_set
+    (and (xor $v0 $v1) (xor $v2 0xFF) $v3)
+  )
+)

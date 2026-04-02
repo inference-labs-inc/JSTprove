@@ -30,8 +30,9 @@ members = [
     "rust/jstprove_io",
     "rust/jstprove_onnx",
     "rust/jstprove_remainder",
+    "rust/jstprove_binius",
 ]
-exclude = ["rust/jstprove_pyo3", ".claude"]
+exclude = ["rust/jstprove_pyo3", ".claude", "binius64"]
 
 [workspace.package]
 version = "0.4.0"

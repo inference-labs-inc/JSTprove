@@ -1,0 +1,102 @@
+[package]
+name = "binius-examples"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+base64.workspace = true
+binius-circuits = { path = "../circuits" }
+binius-core = { path = "../core" }
+binius-frontend = { path = "../frontend" }
+binius-hash = { path = "../hash", default-features = false }
+binius-prover = { path = "../prover", default-features = false }
+binius-transcript = { path = "../transcript" }
+binius-utils = { path = "../utils", features = ["platform-diagnostics"] }
+binius-verifier = { path = "../verifier", default-features = false }
+bitcoin_hashes.workspace = true
+bitcoin.workspace = true
+blake2.workspace = true
+clap.workspace = true
+digest.workspace = true
+ethsign = "0.9.0"
+hex.workspace = true
+jwt-simple.workspace = true
+peakmem-alloc = "0.2.0"
+rand.workspace = true
+sha2.workspace = true
+sha3.workspace = true
+tiny-keccak = "2.0.2"
+tracing-profile.workspace = true
+tracing.workspace = true
+ureq.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+hex-literal.workspace = true
+
+[[bench]]
+name = "blake2b"
+harness = false
+
+[[bench]]
+name = "keccak"
+harness = false
+
+[[bench]]
+name = "ethsign"
+harness = false
+
+[[bench]]
+name = "blake2s"
+harness = false
+
+[[bench]]
+name = "hashsign"
+harness = false
+
+[[bench]]
+name = "sha256"
+harness = false
+
+[[bench]]
+name = "sha512"
+harness = false
+
+[features]
+default = ["rayon"]
+perfetto = ["tracing-profile/perfetto"]
+rayon = ["binius-hash/rayon", "binius-prover/rayon", "binius-verifier/rayon"]
+
+# Tutorial examples
+[[example]]
+name = "basics_masked_and"
+path = "examples/tutorials/basics_masked_and.rs"
+
+[[example]]
+name = "basics_word_semantics"
+path = "examples/tutorials/basics_word_semantics.rs"
+
+[[example]]
+name = "basics_nondeterministic"
+path = "examples/tutorials/basics_nondeterministic.rs"
+
+[[example]]
+name = "basics_xor_packing"
+path = "examples/tutorials/basics_xor_packing.rs"
+
+[[example]]
+name = "circuits_control_flow"
+path = "examples/tutorials/circuits_control_flow.rs"
+
+[[example]]
+name = "circuits_gadgets"
+path = "examples/tutorials/circuits_gadgets.rs"
+
+[[example]]
+name = "end_to_end_example"
+path = "examples/tutorials/end_to_end_example.rs"

@@ -299,7 +299,7 @@ pub fn extract_params(
 /// - `UtilsError::MissingParam` if the parameter is absent.
 /// - `UtilsError::ParseError` if the parameter exists but cannot be deserialized into `I`.
 pub fn get_param<I: DeserializeOwned>(
-    layer_name: &String,
+    layer_name: &str,
     param_name: &str,
     params: &Value,
 ) -> Result<I, UtilsError> {
@@ -308,12 +308,12 @@ pub fn get_param<I: DeserializeOwned>(
         _ => None,
     }
     .ok_or_else(|| UtilsError::MissingParam {
-        layer: layer_name.to_string(),
+        layer: layer_name.to_owned(),
         param: param_name.to_string(),
     })?;
 
     rmpv::ext::from_value(param_value.clone()).map_err(|source| UtilsError::ParseError {
-        layer: layer_name.to_string(),
+        layer: layer_name.to_owned(),
         param: param_name.to_string(),
         source,
     })

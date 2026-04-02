@@ -1,0 +1,51 @@
+[package]
+name = "binius-math"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+binius-field = { path = "../field", default-features = false }
+binius-utils = { path = "../utils", default-features = false }
+bytemuck.workspace = true
+getset.workspace = true
+itertools.workspace = true
+rand.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uninit.workspace = true
+
+[dev-dependencies]
+assert_matches.workspace = true
+binius-math = { path = ".", features = ["test-utils"] }
+criterion.workspace = true
+proptest.workspace = true
+rand = { workspace = true, features = ["thread_rng"] }
+rstest.workspace = true
+
+[features]
+default = []
+test-utils = []
+rayon = ["binius-utils/rayon"]
+
+[lib]
+bench = false
+
+[[bench]]
+name = "batch_invert"
+harness = false
+
+[[bench]]
+name = "bit_reverse"
+harness = false
+
+[[bench]]
+name = "ntt"
+harness = false
+
+[[bench]]
+name = "multilinear_evaluate"
+harness = false

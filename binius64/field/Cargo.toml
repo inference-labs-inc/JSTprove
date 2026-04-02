@@ -1,0 +1,84 @@
+[package]
+name = "binius-field"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+binius-utils = { path = "../utils", default-features = false }
+bytemuck.workspace = true
+cfg-if.workspace = true
+derive_more.workspace = true
+rand.workspace = true
+seq-macro.workspace = true
+thiserror.workspace = true
+tracing = { workspace = true, optional = true }
+
+[dev-dependencies]
+criterion.workspace = true
+itertools.workspace = true
+paste.workspace = true
+proptest.workspace = true
+rand = { workspace = true, features = ["thread_rng"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+getrandom = { workspace = true, features = ["wasm_js"] }
+
+[features]
+default = []
+benchmark_alternative_strategies = []
+trace_multiplications = ["dep:tracing"]
+
+[lib]
+bench = false
+
+[[bench]]
+name = "binary_field"
+harness = false
+
+[[bench]]
+name = "packed_field_element_access"
+harness = false
+
+[[bench]]
+name = "packed_field_init"
+harness = false
+
+[[bench]]
+name = "packed_field_iter"
+harness = false
+
+[[bench]]
+name = "packed_field_invert"
+harness = false
+
+[[bench]]
+name = "packed_field_multiply"
+harness = false
+
+[[bench]]
+name = "packed_field_mul_alpha"
+harness = false
+
+[[bench]]
+name = "packed_field_slice_iter"
+harness = false
+
+[[bench]]
+name = "packed_field_square"
+harness = false
+
+[[bench]]
+name = "packed_field_spread"
+harness = false
+
+[[bench]]
+name = "main_field_unary_ops"
+harness = false
+
+[[bench]]
+name = "main_field_binary_ops"
+harness = false

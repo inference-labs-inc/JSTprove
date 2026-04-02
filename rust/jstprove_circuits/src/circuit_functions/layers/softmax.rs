@@ -69,7 +69,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
         let x_name = get_input_name(&self.inputs, 0, LayerKind::Softmax, INPUT)?;
         let x_input = input.get(x_name).ok_or_else(|| LayerError::MissingInput {
             layer: LayerKind::Softmax,
-            name: x_name.to_string(),
+            name: x_name.clone(),
         })?;
 
         let shape = x_input.shape().to_vec();

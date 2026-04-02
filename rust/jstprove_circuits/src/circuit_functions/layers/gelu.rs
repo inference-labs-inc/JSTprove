@@ -57,7 +57,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GeluLayer {
         let x_name = get_input_name(&self.inputs, 0, LayerKind::Gelu, INPUT)?;
         let x_input = input.get(x_name).ok_or_else(|| LayerError::MissingInput {
             layer: LayerKind::Gelu,
-            name: x_name.to_string(),
+            name: x_name.clone(),
         })?;
 
         let shape = x_input.shape().to_vec();

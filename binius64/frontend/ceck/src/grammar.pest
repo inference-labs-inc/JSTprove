@@ -1,0 +1,45 @@
+// S-expression grammar for constraint sets
+
+// Whitespace and comments
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+COMMENT    = _{ ";" ~ (!"\n" ~ ANY)* }
+
+// Literals
+hex_lit = @{ "0x" ~ ASCII_HEX_DIGIT+ ~ ("_" ~ ASCII_HEX_DIGIT+)* }
+dec_lit = @{ ASCII_DIGIT+ }
+literal =  { hex_lit | dec_lit }
+
+// Wire identifiers
+wire_id = @{ "$" ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+
+// Shift operations
+shift_op     =  { "sll" | "slr" | "sar" | "ror" }
+shift_amount = @{ ASCII_DIGIT+ }
+
+// Terms in XOR expressions
+shifted_term = { "(" ~ shift_op ~ wire_id ~ shift_amount ~ ")" }
+term         = { literal | wire_id | shifted_term }
+
+// Operands (XOR combinations or single terms)
+xor_expr = { "(" ~ "xor" ~ term* ~ ")" }
+operand  = { xor_expr | term }
+
+// Constraints
+and_constraint = { "(" ~ "and" ~ operand ~ operand ~ operand ~ ")" }
+mul_constraint = { "(" ~ "mul" ~ operand ~ operand ~ operand ~ operand ~ ")" }
+constraint     = { and_constraint | mul_constraint }
+
+// Top level constraint set
+constraint_set = { "(" ~ "constraint_set" ~ constraint* ~ ")" }
+
+// Assertion for equivalence
+assert_eqv = { "(" ~ "assert_eqv" ~ constraint_set ~ constraint_set ~ ")" }
+
+// Assertion for non-equivalence
+assert_not_eqv = { "(" ~ "assert_not_eqv" ~ constraint_set ~ constraint_set ~ ")" }
+
+// Test file can contain multiple assertions
+test_item = { assert_eqv | assert_not_eqv }
+
+// Entry point - now supports multiple test items
+file = { SOI ~ test_item* ~ EOI }

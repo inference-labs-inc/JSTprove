@@ -1,0 +1,24 @@
+[package]
+name = "binius-arith-bench"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+rand.workspace = true
+seq-macro.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+proptest.workspace = true
+rand = { workspace = true, features = ["thread_rng"] }
+
+[lib]
+bench = false
+
+[[bench]]
+name = "field_mul"
+harness = false
+
+[lints]
+workspace = true

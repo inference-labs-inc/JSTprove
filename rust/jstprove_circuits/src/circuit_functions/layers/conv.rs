@@ -288,7 +288,7 @@ pub fn not_yet_implemented_conv(
         }
         .into());
     }
-    if input_shape[1] % g != 0 {
+    if !input_shape[1].is_multiple_of(g) {
         return Err(LayerError::InvalidShape {
             layer: LayerKind::Conv,
             msg: format!(

@@ -316,7 +316,7 @@ impl<C: Config> common::Instruction<C> for Instruction<C> {
             _ => Ok(()),
         }
     }
-    fn eval_unsafe(&self, values: &[CircuitField<C>]) -> EvalResult<C> {
+    fn eval_unsafe(&self, values: &[CircuitField<C>]) -> EvalResult<'_, C> {
         match self {
             Instruction::LinComb(lc) => EvalResult::Value(lc.eval(values)),
             Instruction::Mul(inputs) => {

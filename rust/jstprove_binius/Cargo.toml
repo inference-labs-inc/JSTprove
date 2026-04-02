@@ -1,0 +1,43 @@
+[package]
+name = "jstprove-binius"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+binius-frontend = { path = "../../binius64/frontend" }
+binius-core = { path = "../../binius64/core" }
+binius-prover = { path = "../../binius64/prover" }
+binius-verifier = { path = "../../binius64/verifier" }
+binius-hash = { path = "../../binius64/hash", default-features = false }
+binius-field = { path = "../../binius64/field" }
+binius-transcript = { path = "../../binius64/transcript" }
+
+jstprove-onnx = { path = "../jstprove_onnx" }
+jstprove-io = { path = "../jstprove_io" }
+
+anyhow = "1"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+console.workspace = true
+indicatif = "0.18"
+
+[features]
+default = ["rayon"]
+rayon = ["binius-prover/rayon", "binius-verifier/rayon", "binius-hash/rayon"]
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+tempfile = "3"
+rand = "0.8"
+
+[[bin]]
+name = "jstprove-binius"
+path = "src/main.rs"
+
+[[bench]]
+name = "pipeline_binius"
+harness = false

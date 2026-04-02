@@ -1,0 +1,68 @@
+; Multiplication constraint tests
+; Tests the MUL constraint: A * B = (HI << 64) | LO
+
+; Simple multiplication constraint
+(assert_eqv
+  (constraint_set
+    ; v0 * v1 = v2:v3 (hi:lo)
+    (mul $v0 $v1 $v2 $v3)
+  )
+  (constraint_set
+    (mul $v0 $v1 $v2 $v3)
+  )
+)
+
+; Multiplication with constants
+(assert_eqv
+  (constraint_set
+    ; v0 * 0xFF = v1:v2
+    (mul $v0 0xFF $v1 $v2)
+  )
+  (constraint_set
+    (mul $v0 0xFF $v1 $v2)
+  )
+)
+
+; Different multiplications are not equivalent
+(assert_not_eqv
+  (constraint_set
+    (mul $v0 $v1 $v2 $v3)
+  )
+  (constraint_set
+    (mul $v0 0x2 $v2 $v3)  ; Different constant multiplier
+  )
+)
+
+; Multiplication vs AND constraint (not equivalent)
+(assert_not_eqv
+  (constraint_set
+    (mul $v0 $v1 $v2 $v3)
+  )
+  (constraint_set
+    (and $v0 $v1 $v2)
+    (and $v3 $v3 0x0)  ; Add constraint to include v3
+  )
+)
+
+; Multiple multiplication constraints
+(assert_eqv
+  (constraint_set
+    (mul $v0 $v1 $v2 $v3)
+    (mul $v4 $v5 $v6 $v7)
+  )
+  (constraint_set
+    (mul $v0 $v1 $v2 $v3)
+    (mul $v4 $v5 $v6 $v7)
+  )
+)
+
+; Multiplication with XOR operands
+(assert_eqv
+  (constraint_set
+    ; (v0 ^ v1) * v2 = v3:v4
+    (mul (xor $v0 $v1) $v2 $v3 $v4)
+  )
+  (constraint_set
+    (mul (xor $v0 $v1) $v2 $v3 $v4)
+  )
+)

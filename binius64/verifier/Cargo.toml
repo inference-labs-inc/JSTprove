@@ -1,0 +1,35 @@
+[package]
+name = "binius-verifier"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+binius-core = { path = "../core" }
+binius-field = { path = "../field" }
+binius-ip = { path = "../ip" }
+binius-hash = { path = "../hash", default-features = false }
+binius-iop = { path = "../iop", default-features = false }
+binius-math = { path = "../math" }
+binius-transcript = { path = "../transcript" }
+binius-utils = { path = "../utils" }
+bytemuck.workspace = true
+bytes.workspace = true
+digest.workspace = true
+getset.workspace = true
+itertools.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+binius-math = { path = "../math", features = ["test-utils"] }
+rand.workspace = true
+itertools.workspace = true
+sha2.workspace = true
+
+[features]
+default = ["rayon"]
+rayon = ["binius-utils/rayon", "binius-hash/rayon", "binius-iop/rayon"]
