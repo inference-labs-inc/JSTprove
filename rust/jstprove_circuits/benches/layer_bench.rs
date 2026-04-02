@@ -706,6 +706,154 @@ fn layer_norm_prove(c: &mut Criterion) {
     group.finish();
 }
 
+/// Construct a minimal single-AveragePool-layer metadata triple without touching any ONNX file.
+///
+/// Spec:
+///   input  x: [1,1,8,8]  — batch=1, channels=1, 8×8 spatial
+///   output y: [1,1,4,4]  — after 2×2 kernel, stride=2, no padding
+///   kernel_shape=[2,2], strides=[2,2], pads=[0,0,0,0]
+///   No weights. No rescale.
+fn make_averagepool_metadata() -> (CircuitParams, Architecture, WANDB) {
+    let params = CircuitParams {
+        scale_base: 2,
+        scale_exponent: 18,
+        rescale_config: HashMap::new(), // no rescale for AveragePool
+        inputs: vec![ONNXIO {
+            name: "x".into(),
+            elem_type: 1,
+            shape: vec![1, 1, 8, 8],
+        }],
+        outputs: vec![ONNXIO {
+            name: "y".into(),
+            elem_type: 1,
+            shape: vec![1, 1, 4, 4],
+        }],
+        freivalds_reps: 1,
+        n_bits_config: HashMap::new(),
+        weights_as_inputs: false,
+        proof_system: ProofSystem::Expander,
+        curve: None,
+        logup_chunk_bits: Some(12),
+    };
+
+    let averagepool_layer = ONNXLayer {
+        id: 0,
+        name: "averagepool_0".into(),
+        op_type: "AveragePool".into(),
+        inputs: vec!["x".into()],
+        outputs: vec!["y".into()],
+        shape: [
+            ("x", vec![1usize, 1, 8, 8]),
+            ("y", vec![1, 1, 4, 4]),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect(),
+        tensor: None,
+        params: Some(Value::Map(vec![
+            (
+                Value::String("kernel_shape".into()),
+                Value::Array(vec![Value::from(2i64), Value::from(2i64)]),
+            ),
+            (
+                Value::String("strides".into()),
+                Value::Array(vec![Value::from(2i64), Value::from(2i64)]),
+            ),
+            (
+                Value::String("pads".into()),
+                Value::Array(vec![Value::from(0i64); 4]),
+            ),
+            (
+                Value::String("dilations".into()),
+                Value::Array(vec![Value::from(1i64), Value::from(1i64)]),
+            ),
+        ])),
+        opset_version_number: 17,
+    };
+
+    let arch = Architecture {
+        architecture: vec![averagepool_layer],
+    };
+    let wandb = WANDB { w_and_b: vec![] }; // no weights
+
+    (params, arch, wandb)
+}
+
+fn averagepool_compile(c: &mut Criterion) {
+    let (params, arch, wandb) = make_averagepool_metadata();
+    let mut group = c.benchmark_group("averagepool/compile");
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(120));
+
+    group.bench_function("bn254", |b| {
+        b.iter_batched(
+            || {
+                OnnxContext::set_all(arch.clone(), params.clone(), Some(wandb.clone()));
+                tempfile::TempDir::new().unwrap()
+            },
+            |tmp| {
+                let path = tmp.path().join("c.bundle").to_str().unwrap().to_string();
+                compile_bn254(&path, false, Some(black_box(params.clone()))).unwrap();
+            },
+            BatchSize::PerIteration,
+        );
+    });
+    group.finish();
+}
+
+fn averagepool_witness(c: &mut Criterion) {
+    let (params, arch, wandb) = make_averagepool_metadata();
+    OnnxContext::set_all(arch.clone(), params.clone(), Some(wandb.clone()));
+    let tmp = tempfile::TempDir::new().unwrap();
+    let path = tmp.path().join("c.bundle");
+    compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
+    let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
+    let activations = vec![0.0f64; 1 * 1 * 8 * 8];
+
+    let mut group = c.benchmark_group("averagepool/witness");
+    group.sample_size(10);
+    group.bench_function("bn254", |b| {
+        b.iter(|| {
+            witness_bn254_from_f64(
+                &bundle.circuit,
+                &bundle.witness_solver,
+                &params,
+                &activations,
+                &[],
+                false,
+            )
+            .unwrap()
+        });
+    });
+    group.finish();
+}
+
+fn averagepool_prove(c: &mut Criterion) {
+    let (params, arch, wandb) = make_averagepool_metadata();
+    OnnxContext::set_all(arch, params.clone(), Some(wandb));
+    let tmp = tempfile::TempDir::new().unwrap();
+    let path = tmp.path().join("c.bundle");
+    compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
+    let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
+    let activations = vec![0.0f64; 1 * 1 * 8 * 8];
+    let wb = witness_bn254_from_f64(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations,
+        &[],
+        false,
+    )
+    .unwrap();
+
+    let mut group = c.benchmark_group("averagepool/prove");
+    group.sample_size(10);
+    group.bench_function("bn254", |b| {
+        b.iter(|| prove_bn254(&bundle.circuit, &wb.witness, false).unwrap());
+    });
+    group.finish();
+}
+
 criterion_group!(conv_benches, conv_compile, conv_witness, conv_prove);
 criterion_group!(gemm_benches, gemm_compile, gemm_witness, gemm_prove);
 criterion_group!(softmax_benches, softmax_compile, softmax_witness, softmax_prove);
@@ -715,4 +863,16 @@ criterion_group!(
     layer_norm_witness,
     layer_norm_prove
 );
-criterion_main!(conv_benches, gemm_benches, softmax_benches, layer_norm_benches);
+criterion_group!(
+    averagepool_benches,
+    averagepool_compile,
+    averagepool_witness,
+    averagepool_prove
+);
+criterion_main!(
+    conv_benches,
+    gemm_benches,
+    softmax_benches,
+    layer_norm_benches,
+    averagepool_benches
+);
