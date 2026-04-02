@@ -12,7 +12,7 @@ codegen-units = 1
 lto = "fat"
 
 [dependencies]
-jolt-sdk = { git = "https://github.com/a16z/jolt", features = ["host"] }
+jolt-sdk = { git = "https://github.com/a16z/jolt", rev = "ec5876c2749397204fe9e84d923c3acffb61867c", features = ["host"] }
 guest = { path = "./guest" }
 tracing = "0.1"
 tracing-subscriber = "0.3"

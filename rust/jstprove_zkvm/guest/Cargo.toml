@@ -7,5 +7,5 @@ edition = "2021"
 guest = []
 
 [dependencies]
-jolt = { package = "jolt-sdk", git = "https://github.com/a16z/jolt" }
-jolt_inlines_sha2 = { package = "jolt-inlines-sha2", git = "https://github.com/a16z/jolt" }
+jolt = { package = "jolt-sdk", git = "https://github.com/a16z/jolt", rev = "ec5876c2749397204fe9e84d923c3acffb61867c" }
+jolt_inlines_sha2 = { package = "jolt-inlines-sha2", git = "https://github.com/a16z/jolt", rev = "ec5876c2749397204fe9e84d923c3acffb61867c" }

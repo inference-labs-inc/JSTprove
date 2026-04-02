@@ -126,9 +126,9 @@ impl CanonicalModel {
 
         let input_dims: Vec<u32> = model
             .graph
-            .input_shapes
-            .values()
-            .next()
+            .input_names
+            .first()
+            .and_then(|name| model.graph.input_shapes.get(name))
             .map(|s| s.iter().map(|&d| d as u32).collect())
             .unwrap_or_default();
 
@@ -150,6 +150,27 @@ impl CanonicalModel {
         }
 
         let topo = &model.graph.topo_order;
+        anyhow::ensure!(
+            topo.len() == layers.len(),
+            "topo_order length {} != layers length {}",
+            topo.len(),
+            layers.len(),
+        );
+        let mut seen = vec![false; layers.len()];
+        for &idx in topo {
+            anyhow::ensure!(
+                idx < layers.len(),
+                "topo_order index {} out of bounds ({})",
+                idx,
+                layers.len(),
+            );
+            anyhow::ensure!(
+                !seen[idx],
+                "topo_order contains duplicate index {}",
+                idx,
+            );
+            seen[idx] = true;
+        }
         let mut ordered_layers = Vec::with_capacity(layers.len());
         for &idx in topo {
             ordered_layers.push(layers[idx].clone());
@@ -200,15 +221,15 @@ fn extract_weights(
 fn extract_int_attrs(
     attrs: &HashMap<String, AttrValueCompat>,
 ) -> Vec<i64> {
+    let mut keys: Vec<&String> = attrs.keys().collect();
+    keys.sort();
     let mut out = Vec::new();
-    if let Some(AttrValueCompat::Ints(v)) = attrs.get("kernel_shape") {
-        out.extend(v.iter().copied());
-    }
-    if let Some(AttrValueCompat::Ints(v)) = attrs.get("strides") {
-        out.extend(v.iter().copied());
-    }
-    if let Some(AttrValueCompat::Ints(v)) = attrs.get("pads") {
-        out.extend(v.iter().copied());
+    for key in keys {
+        match &attrs[key] {
+            AttrValueCompat::Int(v) => out.push(*v),
+            AttrValueCompat::Ints(v) => out.extend(v.iter().copied()),
+            _ => {}
+        }
     }
     out
 }

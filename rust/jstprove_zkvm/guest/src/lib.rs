@@ -53,17 +53,8 @@ pub struct LayerDesc {
     pub int_attrs: Vec<i64>,
 }
 
-fn abs_i64(x: i64) -> i64 {
-    if x < 0 { -x } else { x }
-}
-
-fn needs_range_check(op: u8) -> bool {
-    matches!(
-        op,
-        OP_RELU | OP_MAXPOOL | OP_MAX | OP_MIN | OP_CLIP | OP_EXP
-            | OP_SOFTMAX | OP_SIGMOID | OP_GELU | OP_RESIZE
-            | OP_GRIDSAMPLE | OP_TOPK
-    )
+fn abs_u64(x: i64) -> u64 {
+    x.unsigned_abs()
 }
 
 fn max_channel_l1(weights: &[i64], out_channels: usize) -> u64 {
@@ -77,7 +68,7 @@ fn max_channel_l1(weights: &[i64], out_channels: usize) -> u64 {
         let end = start + per_channel;
         let l1: u64 = weights[start..end]
             .iter()
-            .map(|v| abs_i64(*v) as u64)
+            .map(|v| abs_u64(*v))
             .sum();
         if l1 > max_l1 {
             max_l1 = l1;
@@ -88,7 +79,7 @@ fn max_channel_l1(weights: &[i64], out_channels: usize) -> u64 {
 
 fn bias_max_abs(bias: &[i64]) -> u64 {
     bias.iter()
-        .map(|v| abs_i64(*v) as u64)
+        .map(|v| abs_u64(*v))
         .max()
         .unwrap_or(0)
 }
@@ -100,7 +91,7 @@ fn integer_log2_ceil(val: u64) -> u32 {
     64 - (val - 1).leading_zeros()
 }
 
-fn compute_n_bits_int(alpha: u64, bound_int: u64) -> u32 {
+fn compute_n_bits_int(_alpha: u64, bound_int: u64) -> u32 {
     if bound_int == 0 {
         return 2;
     }
@@ -143,7 +134,7 @@ fn compute_bounds_and_nbits(
                     layer
                         .weight_data
                         .iter()
-                        .map(|v| abs_i64(*v) as u64)
+                        .map(|v| abs_u64(*v))
                         .max()
                         .unwrap_or(alpha)
                 } else {
@@ -248,6 +239,12 @@ pub fn canonical_output(
 }
 
 fn read_u32(data: &[u8], pos: &mut usize) -> u32 {
+    assert!(
+        data.len().saturating_sub(*pos) >= 4,
+        "read_u32: need 4 bytes at offset {}, have {}",
+        *pos,
+        data.len()
+    );
     let v = u32::from_le_bytes([
         data[*pos],
         data[*pos + 1],
@@ -259,6 +256,12 @@ fn read_u32(data: &[u8], pos: &mut usize) -> u32 {
 }
 
 fn read_u64(data: &[u8], pos: &mut usize) -> u64 {
+    assert!(
+        data.len().saturating_sub(*pos) >= 8,
+        "read_u64: need 8 bytes at offset {}, have {}",
+        *pos,
+        data.len()
+    );
     let v = u64::from_le_bytes([
         data[*pos],
         data[*pos + 1],
@@ -274,6 +277,12 @@ fn read_u64(data: &[u8], pos: &mut usize) -> u64 {
 }
 
 fn read_i64(data: &[u8], pos: &mut usize) -> i64 {
+    assert!(
+        data.len().saturating_sub(*pos) >= 8,
+        "read_i64: need 8 bytes at offset {}, have {}",
+        *pos,
+        data.len()
+    );
     let v = i64::from_le_bytes([
         data[*pos],
         data[*pos + 1],

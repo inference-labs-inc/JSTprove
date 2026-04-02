@@ -417,7 +417,7 @@ checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 [[package]]
 name = "common"
 version = "0.2.0"
-source = "git+https://github.com/a16z/jolt#ec5876c2749397204fe9e84d923c3acffb61867c"
+source = "git+https://github.com/a16z/jolt?rev=ec5876c2749397204fe9e84d923c3acffb61867c#ec5876c2749397204fe9e84d923c3acffb61867c"
 dependencies = [
  "allocative",
  "ark-serialize",
@@ -862,7 +862,7 @@ dependencies = [
 [[package]]
 name = "jolt-core"
 version = "0.1.0"
-source = "git+https://github.com/a16z/jolt#ec5876c2749397204fe9e84d923c3acffb61867c"
+source = "git+https://github.com/a16z/jolt?rev=ec5876c2749397204fe9e84d923c3acffb61867c#ec5876c2749397204fe9e84d923c3acffb61867c"
 dependencies = [
  "allocative",
  "ark-bn254",
@@ -906,7 +906,7 @@ dependencies = [
 [[package]]
 name = "jolt-inlines-keccak256"
 version = "0.1.0"
-source = "git+https://github.com/a16z/jolt#ec5876c2749397204fe9e84d923c3acffb61867c"
+source = "git+https://github.com/a16z/jolt?rev=ec5876c2749397204fe9e84d923c3acffb61867c#ec5876c2749397204fe9e84d923c3acffb61867c"
 dependencies = [
  "jolt-inlines-sdk",
 ]
@@ -914,7 +914,7 @@ dependencies = [
 [[package]]
 name = "jolt-inlines-sdk"
 version = "0.1.0"
-source = "git+https://github.com/a16z/jolt#ec5876c2749397204fe9e84d923c3acffb61867c"
+source = "git+https://github.com/a16z/jolt?rev=ec5876c2749397204fe9e84d923c3acffb61867c#ec5876c2749397204fe9e84d923c3acffb61867c"
 dependencies = [
  "inventory",
  "jolt-platform",
@@ -925,7 +925,7 @@ dependencies = [
 [[package]]
 name = "jolt-inlines-sha2"
 version = "0.1.0"
-source = "git+https://github.com/a16z/jolt#ec5876c2749397204fe9e84d923c3acffb61867c"
+source = "git+https://github.com/a16z/jolt?rev=ec5876c2749397204fe9e84d923c3acffb61867c#ec5876c2749397204fe9e84d923c3acffb61867c"
 dependencies = [
  "jolt-inlines-sdk",
 ]
@@ -951,7 +951,7 @@ dependencies = [
 [[package]]
 name = "jolt-platform"
 version = "0.1.0"
-source = "git+https://github.com/a16z/jolt#ec5876c2749397204fe9e84d923c3acffb61867c"
+source = "git+https://github.com/a16z/jolt?rev=ec5876c2749397204fe9e84d923c3acffb61867c#ec5876c2749397204fe9e84d923c3acffb61867c"
 dependencies = [
  "getrandom 0.2.17",
  "getrandom 0.3.4",
@@ -961,7 +961,7 @@ dependencies = [
 [[package]]
 name = "jolt-sdk"
 version = "0.1.0"
-source = "git+https://github.com/a16z/jolt#ec5876c2749397204fe9e84d923c3acffb61867c"
+source = "git+https://github.com/a16z/jolt?rev=ec5876c2749397204fe9e84d923c3acffb61867c#ec5876c2749397204fe9e84d923c3acffb61867c"
 dependencies = [
  "bytemuck",
  "cfg-if",
@@ -978,7 +978,7 @@ dependencies = [
 [[package]]
 name = "jolt-sdk-macros"
 version = "0.1.0"
-source = "git+https://github.com/a16z/jolt#ec5876c2749397204fe9e84d923c3acffb61867c"
+source = "git+https://github.com/a16z/jolt?rev=ec5876c2749397204fe9e84d923c3acffb61867c#ec5876c2749397204fe9e84d923c3acffb61867c"
 dependencies = [
  "common",
  "proc-macro2",
@@ -1649,7 +1649,7 @@ dependencies = [
 [[package]]
 name = "tracer"
 version = "0.2.0"
-source = "git+https://github.com/a16z/jolt#ec5876c2749397204fe9e84d923c3acffb61867c"
+source = "git+https://github.com/a16z/jolt?rev=ec5876c2749397204fe9e84d923c3acffb61867c#ec5876c2749397204fe9e84d923c3acffb61867c"
 dependencies = [
  "addr2line",
  "ark-serialize",

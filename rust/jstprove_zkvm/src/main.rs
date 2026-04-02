@@ -59,6 +59,12 @@ fn decompress_model_bytes(raw: &[u8]) -> Result<Vec<u8>> {
             u32::from_le_bytes(raw[4..8].try_into().unwrap());
         let payload_len =
             u64::from_le_bytes(raw[8..16].try_into().unwrap()) as usize;
+        anyhow::ensure!(
+            raw.len() >= 20 + payload_len,
+            "truncated envelope: declared {} payload bytes but only {} available",
+            payload_len,
+            raw.len().saturating_sub(20),
+        );
         let compressed = flags & 1 != 0;
         let payload = &raw[20..20 + payload_len];
         if compressed {
@@ -91,7 +97,9 @@ fn cmd_prove(
     let input_hash = sha256_bytes(&model_bytes);
     info!("Input hash (canonical): {}", hex::encode(input_hash));
 
-    let target_str = target_dir.to_str().unwrap();
+    let target_str = target_dir
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("target_dir is not valid UTF-8"))?;
 
     info!("Compiling guest program...");
     let now = Instant::now();
