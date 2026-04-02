@@ -33,6 +33,7 @@ rayon = ["binius-prover/rayon", "binius-verifier/rayon", "binius-hash/rayon"]
 criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3"
 rand = "0.8"
+libc = "0.2"
 
 [[bin]]
 name = "jstprove-binius"
@@ -40,4 +41,8 @@ path = "src/main.rs"
 
 [[bench]]
 name = "pipeline_binius"
+harness = false
+
+[[bench]]
+name = "lenet_binius"
 harness = false

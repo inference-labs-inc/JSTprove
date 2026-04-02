@@ -2606,6 +2606,7 @@ dependencies = [
  "indicatif",
  "jstprove-io",
  "jstprove-onnx",
+ "libc",
  "rand 0.8.5",
  "serde",
  "tempfile",
