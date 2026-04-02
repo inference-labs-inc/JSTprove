@@ -354,8 +354,14 @@ fn fold_concat(
     // Only fold 1-D shape tensors; multi-dimensional concat is left to the
     // normal shape-inference path which tracks shapes without needing values.
     if rank == 1 {
-        let mut concatenated = Vec::new();
         let data_type = first.data_type;
+        if all_inputs
+            .iter()
+            .any(|td| td.data_type != data_type || td.int_data.is_empty())
+        {
+            return None;
+        }
+        let mut concatenated = Vec::new();
         for td in &all_inputs {
             concatenated.extend_from_slice(&td.as_i64_vec());
         }
@@ -440,6 +446,18 @@ fn fold_slice(
         }
         v
     } else {
+        if dim == 0 {
+            return Some(TensorData {
+                name: String::new(),
+                dims: vec![0],
+                data_type: input_td.data_type,
+                float_data: vec![],
+                int_data: vec![],
+            });
+        }
+        if start >= dim {
+            start = dim.saturating_sub(1);
+        }
         let mut v = Vec::new();
         let mut i = start;
         while i > end {
