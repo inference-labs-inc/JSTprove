@@ -41,6 +41,7 @@ pub mod io;
 pub mod onnx;
 pub mod proof_system;
 pub mod runner;
+pub mod zkcuda_pipeline;
 
 pub use circuit_functions::layers::LayerKind;
 pub use curve::{Curve, CurveParseError};
