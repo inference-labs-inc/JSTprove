@@ -51,6 +51,7 @@ pub struct LayerDesc {
     pub bias_dims: Vec<u32>,
     pub bias_data: Vec<i64>,
     pub int_attrs: Vec<i64>,
+    pub extra_constant_data: Vec<i64>,
 }
 
 fn abs_u64(x: i64) -> u64 {
@@ -224,6 +225,10 @@ pub fn canonical_output(
         for &v in &layer.int_attrs {
             write_i64(&mut buf, v);
         }
+        write_u32(&mut buf, layer.extra_constant_data.len() as u32);
+        for &v in &layer.extra_constant_data {
+            write_i64(&mut buf, v);
+        }
         write_u32(&mut buf, nbits[i]);
     }
     buf
@@ -330,6 +335,11 @@ fn decode_layers(data: &[u8], pos: &mut usize) -> Vec<LayerDesc> {
         for _ in 0..na {
             int_attrs.push(read_i64(data, pos));
         }
+        let ne = read_u32(data, pos) as usize;
+        let mut extra_constant_data = Vec::with_capacity(ne);
+        for _ in 0..ne {
+            extra_constant_data.push(read_i64(data, pos));
+        }
         layers.push(LayerDesc {
             op_type,
             needs_rescale,
@@ -339,6 +349,7 @@ fn decode_layers(data: &[u8], pos: &mut usize) -> Vec<LayerDesc> {
             bias_dims,
             bias_data,
             int_attrs,
+            extra_constant_data,
         });
     }
     layers

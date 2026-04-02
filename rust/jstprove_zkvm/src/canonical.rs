@@ -21,6 +21,7 @@ pub struct CanonicalLayer {
     pub bias_dims: Vec<u32>,
     pub bias_data: Vec<i64>,
     pub int_attrs: Vec<i64>,
+    pub extra_constant_data: Vec<i64>,
 }
 
 impl CanonicalModel {
@@ -61,6 +62,10 @@ impl CanonicalModel {
             for &v in &layer.int_attrs {
                 buf.extend_from_slice(&v.to_le_bytes());
             }
+            buf.extend_from_slice(&(layer.extra_constant_data.len() as u32).to_le_bytes());
+            for &v in &layer.extra_constant_data {
+                buf.extend_from_slice(&v.to_le_bytes());
+            }
         }
 
         buf
@@ -92,6 +97,7 @@ impl CanonicalModel {
         for layer in model.graph.layers.iter() {
             let (weight_dims, weight_data, bias_dims, bias_data) =
                 extract_weights(&layer.weights, &layer.inputs);
+            let extra = extract_extra_constants(&layer.weights, &layer.inputs, &layer.attributes);
 
             layers.push(CanonicalLayer {
                 op_type: op_type_to_u8_from_enum(&layer.op_type),
@@ -102,6 +108,7 @@ impl CanonicalModel {
                 bias_dims,
                 bias_data,
                 int_attrs: extract_int_attrs(&layer.attributes),
+                extra_constant_data: extra,
             });
         }
 
@@ -181,6 +188,38 @@ fn extract_weights(
         None => (vec![], vec![]),
     };
     (wd, wv, bd, bv)
+}
+
+fn extract_extra_constants(
+    weights: &HashMap<String, TensorDataCompat>,
+    inputs: &[String],
+    attrs: &HashMap<String, AttrValueCompat>,
+) -> Vec<i64> {
+    let mut out = Vec::new();
+    for (pos, name) in inputs.iter().enumerate() {
+        if pos == 1 || pos == 2 {
+            continue;
+        }
+        if let Some(td) = weights.get(name) {
+            if !td.int_data.is_empty() {
+                out.extend_from_slice(&td.int_data);
+            } else {
+                out.extend(td.float_data.iter().map(|&f| f as i64));
+            }
+        }
+    }
+    let mut attr_keys: Vec<&String> = attrs.keys().collect();
+    attr_keys.sort();
+    for key in attr_keys {
+        if let AttrValueCompat::Tensor(td) = &attrs[key] {
+            if !td.int_data.is_empty() {
+                out.extend_from_slice(&td.int_data);
+            } else {
+                out.extend(td.float_data.iter().map(|&f| f as i64));
+            }
+        }
+    }
+    out
 }
 
 fn extract_int_attrs(attrs: &HashMap<String, AttrValueCompat>) -> Vec<i64> {
