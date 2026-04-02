@@ -537,7 +537,182 @@ fn softmax_prove(c: &mut Criterion) {
     group.finish();
 }
 
+/// Construct a minimal single-LayerNorm-layer metadata triple without touching any ONNX file.
+///
+/// Spec:
+///   input  x:     [1, 16]  — batch=1, feature_size=16
+///   gamma (Scale): [16]    — all = ALPHA (γ = 1.0 at α¹ scale)
+///   beta  (B):    [16]    — all = 0    (β = 0.0 at α² scale)
+///   output y:     [1, 16]
+///   axis = -1, opset 17
+fn make_layer_norm_metadata() -> (CircuitParams, Architecture, WANDB) {
+    let params = CircuitParams {
+        scale_base: 2,
+        scale_exponent: 18,
+        rescale_config: HashMap::new(), // no rescale for LayerNorm
+        inputs: vec![ONNXIO {
+            name: "x".into(),
+            elem_type: 1,
+            shape: vec![1, 16],
+        }],
+        outputs: vec![ONNXIO {
+            name: "y".into(),
+            elem_type: 1,
+            shape: vec![1, 16],
+        }],
+        freivalds_reps: 1,
+        n_bits_config: HashMap::new(),
+        weights_as_inputs: false,
+        proof_system: ProofSystem::Expander,
+        curve: None,
+        logup_chunk_bits: Some(12),
+    };
+
+    let layer_norm_layer = ONNXLayer {
+        id: 0,
+        name: "layer_norm_0".into(),
+        op_type: "LayerNormalization".into(),
+        inputs: vec!["x".into(), "Scale".into(), "B".into()],
+        outputs: vec!["y".into()],
+        shape: [
+            ("x", vec![1usize, 16]),
+            ("Scale", vec![16]),
+            ("B", vec![16]),
+            ("y", vec![1, 16]),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect(),
+        tensor: None,
+        params: Some(Value::Map(vec![(
+            Value::String("axis".into()),
+            Value::from(-1i64),
+        )])),
+        opset_version_number: 17,
+    };
+
+    let arch = Architecture {
+        architecture: vec![layer_norm_layer],
+    };
+
+    // Scale: γ = 1.0 → ALPHA (α¹ quantised)
+    let scale_tensor = Value::Array(vec![Value::from(ALPHA); 16]);
+    // B: β = 0.0 → 0 (α² quantised zero)
+    let b_tensor = Value::Array(vec![Value::from(0i64); 16]);
+
+    let scale_layer = ONNXLayer {
+        id: 0,
+        name: "Scale".into(),
+        op_type: "Const".into(),
+        inputs: vec![],
+        outputs: vec![],
+        shape: [("Scale".to_string(), vec![16usize])].into_iter().collect(),
+        tensor: Some(scale_tensor),
+        params: None,
+        opset_version_number: -1,
+    };
+
+    let b_layer = ONNXLayer {
+        id: 1,
+        name: "B".into(),
+        op_type: "Const".into(),
+        inputs: vec![],
+        outputs: vec![],
+        shape: [("B".to_string(), vec![16usize])].into_iter().collect(),
+        tensor: Some(b_tensor),
+        params: None,
+        opset_version_number: -1,
+    };
+
+    let wandb = WANDB {
+        w_and_b: vec![scale_layer, b_layer],
+    };
+
+    (params, arch, wandb)
+}
+
+fn layer_norm_compile(c: &mut Criterion) {
+    let (params, arch, wandb) = make_layer_norm_metadata();
+    let mut group = c.benchmark_group("layer_norm/compile");
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(120));
+
+    group.bench_function("bn254", |b| {
+        b.iter_batched(
+            || {
+                OnnxContext::set_all(arch.clone(), params.clone(), Some(wandb.clone()));
+                tempfile::TempDir::new().unwrap()
+            },
+            |tmp| {
+                let path = tmp.path().join("c.bundle").to_str().unwrap().to_string();
+                compile_bn254(&path, false, Some(black_box(params.clone()))).unwrap();
+            },
+            BatchSize::PerIteration,
+        );
+    });
+    group.finish();
+}
+
+fn layer_norm_witness(c: &mut Criterion) {
+    let (params, arch, wandb) = make_layer_norm_metadata();
+    OnnxContext::set_all(arch.clone(), params.clone(), Some(wandb.clone()));
+    let tmp = tempfile::TempDir::new().unwrap();
+    let path = tmp.path().join("c.bundle");
+    compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
+    let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
+    let activations = vec![0.0f64; 1 * 16];
+
+    let mut group = c.benchmark_group("layer_norm/witness");
+    group.sample_size(10);
+    group.bench_function("bn254", |b| {
+        b.iter(|| {
+            witness_bn254_from_f64(
+                &bundle.circuit,
+                &bundle.witness_solver,
+                &params,
+                &activations,
+                &[],
+                false,
+            )
+            .unwrap()
+        });
+    });
+    group.finish();
+}
+
+fn layer_norm_prove(c: &mut Criterion) {
+    let (params, arch, wandb) = make_layer_norm_metadata();
+    OnnxContext::set_all(arch, params.clone(), Some(wandb));
+    let tmp = tempfile::TempDir::new().unwrap();
+    let path = tmp.path().join("c.bundle");
+    compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
+    let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
+    let activations = vec![0.0f64; 1 * 16];
+    let wb = witness_bn254_from_f64(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations,
+        &[],
+        false,
+    )
+    .unwrap();
+
+    let mut group = c.benchmark_group("layer_norm/prove");
+    group.sample_size(10);
+    group.bench_function("bn254", |b| {
+        b.iter(|| prove_bn254(&bundle.circuit, &wb.witness, false).unwrap());
+    });
+    group.finish();
+}
+
 criterion_group!(conv_benches, conv_compile, conv_witness, conv_prove);
 criterion_group!(gemm_benches, gemm_compile, gemm_witness, gemm_prove);
 criterion_group!(softmax_benches, softmax_compile, softmax_witness, softmax_prove);
-criterion_main!(conv_benches, gemm_benches, softmax_benches);
+criterion_group!(
+    layer_norm_benches,
+    layer_norm_compile,
+    layer_norm_witness,
+    layer_norm_prove
+);
+criterion_main!(conv_benches, gemm_benches, softmax_benches, layer_norm_benches);
