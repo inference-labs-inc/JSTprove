@@ -109,12 +109,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SqueezeLayer {
             msg: format!("extract_params failed: {e}"),
         })?;
 
-        // axes may be missing (axes omitted semantics)
-        // When present, parse_attributes on Python side should serialize it as a list.
-        // `get_param` will error if missing, so we only call it if the key exists.
         let axes: Option<Vec<i64>> = if let rmpv::Value::Map(ref entries) = params {
             if map_get(entries, AXES).is_some() {
                 Some(get_param(&layer.name, AXES, &params)?)
+            } else if let Ok(axes_input_name) =
+                get_input_name(&layer.inputs, 1, LayerKind::Squeeze, AXES)
+            {
+                if map_get(entries, axes_input_name).is_some() {
+                    Some(get_param(&layer.name, axes_input_name, &params)?)
+                } else {
+                    None
+                }
             } else {
                 None
             }

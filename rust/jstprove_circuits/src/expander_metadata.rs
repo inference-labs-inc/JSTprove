@@ -410,6 +410,8 @@ fn attach_constant_inputs(
     parsed: &ParsedModel,
     entries: &mut Vec<(Value, Value)>,
 ) {
+    let mut attached: std::collections::HashSet<String> = std::collections::HashSet::new();
+
     for node in &parsed.nodes {
         if node.op_type != "Constant" {
             continue;
@@ -428,6 +430,23 @@ fn attach_constant_inputs(
                 Value::Array(td.int_data.iter().map(|&v| Value::from(v)).collect())
             };
             entries.push((Value::String(const_output.clone().into()), vals));
+            attached.insert(const_output.clone());
+        }
+    }
+
+    for input_name in &layer.inputs {
+        if attached.contains(input_name) {
+            continue;
+        }
+        if let Some(init) = parsed.initializers.get(input_name) {
+            let vals = if !init.float_data.is_empty() {
+                Value::Array(init.float_data.iter().map(|&v| Value::from(v)).collect())
+            } else if !init.int_data.is_empty() {
+                Value::Array(init.int_data.iter().map(|&v| Value::from(v)).collect())
+            } else {
+                continue;
+            };
+            entries.push((Value::String(input_name.clone().into()), vals));
         }
     }
 }
