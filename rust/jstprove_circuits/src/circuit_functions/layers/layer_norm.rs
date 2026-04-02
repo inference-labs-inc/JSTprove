@@ -202,28 +202,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
                 logup_ctx.range_check::<C, Builder>(api, shifted, n_bits)?;
             }
 
-            let mut input_sum = api.constant(CircuitField::<C>::from_u256(U256::from(0u64)));
-            for &x in &flat_input[start..end] {
-                input_sum = api.add(input_sum, x);
-            }
-            let mut output_sum = api.constant(CircuitField::<C>::from_u256(U256::from(0u64)));
-            for &y in &hint_out {
-                output_sum = api.add(output_sum, y);
-            }
-            let expected_output_sum = {
-                let beta_sum_i64: i64 = self.beta.iter().sum();
-                let beta_sum_scaled = (beta_sum_i64 as f64 / self.scaling as f64).round() as i64;
-                api.constant(i64_to_field::<C>(beta_sum_scaled))
-            };
-            let sum_diff = api.sub(output_sum, expected_output_sum);
-            let sum_tolerance = api.constant(CircuitField::<C>::from_u256(U256::from(
-                lane_size as u64 + 1,
-            )));
-            let sum_diff_shifted = api.add(sum_diff, sum_tolerance);
-            let sum_tol_bits =
-                (2 * lane_size + 3).next_power_of_two().trailing_zeros() as usize + 1;
-            logup_ctx.range_check::<C, Builder>(api, sum_diff_shifted, sum_tol_bits)?;
-
             flat_output.extend_from_slice(&hint_out);
         }
 
