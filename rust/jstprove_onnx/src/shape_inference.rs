@@ -164,13 +164,14 @@ fn fold_gather(
     let dim_size = data_shape[axis] as i64;
 
     if data_shape.len() == 1 {
-        let gathered: Vec<i64> = indices_vals
+        let gathered: Option<Vec<i64>> = indices_vals
             .iter()
             .map(|&idx| {
                 let idx = if idx < 0 { idx + dim_size } else { idx };
-                data_vals.get(idx as usize).copied().unwrap_or(0)
+                data_vals.get(idx as usize).copied()
             })
             .collect();
+        let gathered = gathered?;
 
         let out_dims: Vec<i64> = indices_shape.iter().map(|&d| d as i64).collect();
         return Some(TensorData {
@@ -350,6 +351,8 @@ fn fold_concat(
         return None;
     }
 
+    // Only fold 1-D shape tensors; multi-dimensional concat is left to the
+    // normal shape-inference path which tracks shapes without needing values.
     if rank == 1 {
         let mut concatenated = Vec::new();
         let data_type = first.data_type;
