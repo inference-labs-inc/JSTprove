@@ -287,8 +287,20 @@ fn decode_layers(data: &[u8], pos: &mut usize) -> Vec<LayerDesc> {
     let n = read_u32(data, pos) as usize;
     let mut layers = Vec::with_capacity(n);
     for _ in 0..n {
+        assert!(
+            *pos < data.len(),
+            "read_u8: need 1 byte at offset {}, have {}",
+            *pos,
+            data.len()
+        );
         let op_type = data[*pos];
         *pos += 1;
+        assert!(
+            *pos < data.len(),
+            "read_u8: need 1 byte at offset {}, have {}",
+            *pos,
+            data.len()
+        );
         let needs_rescale = data[*pos] != 0;
         *pos += 1;
         let n_inputs = read_u32(data, pos);

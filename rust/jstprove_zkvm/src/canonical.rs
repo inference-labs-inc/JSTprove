@@ -70,7 +70,15 @@ impl CanonicalModel {
         let model: QuantizedModelCompat =
             rmp_serde::from_slice(data).context("deserializing QuantizedModel")?;
 
-        let alpha = (model.scale_config.base as u64).pow(model.scale_config.exponent);
+        let alpha = (model.scale_config.base as u64)
+            .checked_pow(model.scale_config.exponent)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "alpha overflow: base={} exponent={}",
+                    model.scale_config.base,
+                    model.scale_config.exponent,
+                )
+            })?;
 
         let input_dims: Vec<u32> = model
             .graph
@@ -130,6 +138,19 @@ impl CanonicalModel {
     }
 }
 
+fn floats_to_i64(float_data: &[f64]) -> Vec<i64> {
+    float_data
+        .iter()
+        .map(|&f| {
+            debug_assert!(
+                f == f.floor(),
+                "non-integer float {f} in weight data; quantization may be incomplete",
+            );
+            f as i64
+        })
+        .collect()
+}
+
 fn extract_weights(
     weights: &HashMap<String, TensorDataCompat>,
     inputs: &[String],
@@ -143,7 +164,7 @@ fn extract_weights(
             if !td.int_data.is_empty() {
                 td.int_data.clone()
             } else {
-                td.float_data.iter().map(|&f| f as i64).collect()
+                floats_to_i64(&td.float_data)
             },
         ),
         None => (vec![], vec![]),
@@ -154,7 +175,7 @@ fn extract_weights(
             if !td.int_data.is_empty() {
                 td.int_data.clone()
             } else {
-                td.float_data.iter().map(|&f| f as i64).collect()
+                floats_to_i64(&td.float_data)
             },
         ),
         None => (vec![], vec![]),
