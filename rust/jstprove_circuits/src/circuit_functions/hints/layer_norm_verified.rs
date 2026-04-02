@@ -20,9 +20,9 @@ pub fn layer_norm_verified_hint<F: FieldArith>(
     outputs: &mut [F],
 ) -> Result<(), Error> {
     let total_out = outputs.len();
-    if total_out < 4 {
+    if total_out < 3 {
         return Err(Error::UserError(format!(
-            "layer_norm_verified_hint: expected n+2 outputs (n>=2), got {total_out}"
+            "layer_norm_verified_hint: expected n+2 outputs (n>=1), got {total_out}"
         )));
     }
     let n = total_out - 2;
@@ -145,7 +145,7 @@ mod tests {
         let scale: u64 = 1 << 18;
         let s = scale as i64;
         let n = 4;
-        let xs = vec![s, -s, 0, 2 * s];
+        let xs = [s, -s, 0, 2 * s];
         let gammas = vec![s; n];
         let betas = vec![0i64; n];
 
@@ -174,7 +174,7 @@ mod tests {
         let scale: u64 = 1 << 18;
         let s = scale as i64;
         let n = 4;
-        let xs = vec![s, -s, 0, 2 * s];
+        let xs = [s, -s, 0, 2 * s];
         let gammas = vec![s; n];
         let betas = vec![0i64; n];
 

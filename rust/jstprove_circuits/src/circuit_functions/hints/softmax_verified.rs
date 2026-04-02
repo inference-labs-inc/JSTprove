@@ -72,7 +72,13 @@ pub fn softmax_verified_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> 
         let y_q = (y_real * scale_f64).round().clamp(0.0, i64::MAX as f64) as i64;
         outputs[i] = F::from_u256(U256::from(y_q as u64));
 
-        let shifted_x_q = xs_i64[i] - max_val;
+        let shifted_128 = i128::from(xs_i64[i]) - i128::from(max_val);
+        if shifted_128 < i128::from(i64::MIN) || shifted_128 > i128::from(i64::MAX) {
+            return Err(Error::UserError(format!(
+                "softmax_verified_hint: shifted value {shifted_128} overflows i64 at index {i}"
+            )));
+        }
+        let shifted_x_q = shifted_128 as i64;
         let e_q = compute_exp_quantized(shifted_x_q, scale_u64);
         outputs[n + 1 + i] = F::from_u256(U256::from(e_q as u64));
     }
@@ -140,7 +146,7 @@ mod tests {
     fn verified_hint_exp_matches_compute() {
         let scale: u64 = 1 << 18;
         let n = 3;
-        let xs = [2i64 * scale as i64, 1 * scale as i64, 0];
+        let xs = [2i64 * scale as i64, scale as i64, 0];
         let mut inputs: Vec<F> = xs.iter().map(|&x| field(x)).collect();
         inputs.push(F::from_u256(U256::from(scale)));
         let mut outputs = vec![F::zero(); 2 * n + 1];

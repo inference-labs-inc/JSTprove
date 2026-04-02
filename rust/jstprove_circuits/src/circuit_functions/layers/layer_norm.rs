@@ -16,7 +16,20 @@ use crate::circuit_functions::{
     },
 };
 
-const MAX_NORM_BITS: usize = 22;
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+fn compute_max_norm_bits(lane_size: usize, scale_exponent: u32) -> usize {
+    let n_f64 = lane_size as f64;
+    let alpha = (1u64 << scale_exponent) as f64;
+    let max_norm = n_f64.sqrt() * alpha;
+    let raw = (max_norm.ceil() as u64)
+        .next_power_of_two()
+        .trailing_zeros() as usize;
+    raw + 1
+}
 
 #[derive(Debug)]
 pub struct LayerNormLayer {
@@ -106,11 +119,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
         let zero_var = api.constant(CircuitField::<C>::from_u256(U256::from(0u64)));
 
         let n_bits = self.n_bits;
-        let signed_offset = i64_to_field::<C>(1i64 << (n_bits as u32 - 1));
+        let signed_offset = {
+            let shift = U256::from(1u64) << (n_bits as u32 - 1);
+            CircuitField::<C>::from_u256(shift)
+        };
         let offset_var = api.constant(signed_offset);
 
+        let max_norm_bits = compute_max_norm_bits(lane_size, self.scale_exponent);
         let norm_offset = api.constant(CircuitField::<C>::from_u256(U256::from(
-            1u64 << MAX_NORM_BITS,
+            1u64 << max_norm_bits,
         )));
         let n_alpha_sq = api.constant(CircuitField::<C>::from_u256(U256::from(
             lane_size as u64 * self.scaling * self.scaling,
@@ -118,14 +135,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
         let norm_var_tolerance = api.constant(CircuitField::<C>::from_u256(U256::from(
             lane_size as u64 * self.scaling,
         )));
-        let norm_var_tol_bits = ((2 * lane_size as u64 * self.scaling)
+        let norm_var_tol_bits = (2 * lane_size as u64 * self.scaling)
             .next_power_of_two()
-            .trailing_zeros() as usize)
-            + 1;
+            .trailing_zeros() as usize;
 
         let mean_tolerance =
             api.constant(CircuitField::<C>::from_u256(U256::from(lane_size as u64)));
-        let mean_tol_bits = (2 * lane_size + 1).next_power_of_two().trailing_zeros() as usize + 1;
+        let mean_tol_bits = (2 * lane_size + 1).next_power_of_two().trailing_zeros() as usize;
 
         let per_elem_tolerance = api.constant(CircuitField::<C>::from_u256(U256::from(3u64)));
         let per_elem_tol_bits: usize = 3;
@@ -184,7 +200,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
                 logup_ctx.range_check::<C, Builder>(api, norm_rem, self.scale_exponent as usize)?;
 
                 let norm_shifted = api.add(norm_q, norm_offset);
-                logup_ctx.range_check::<C, Builder>(api, norm_shifted, MAX_NORM_BITS + 1)?;
+                logup_ctx.range_check::<C, Builder>(api, norm_shifted, max_norm_bits + 1)?;
 
                 let norm_sq = api.mul(norm_q, norm_q);
                 norm_sq_sum = api.add(norm_sq_sum, norm_sq);

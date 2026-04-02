@@ -70,11 +70,27 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
         };
 
         let n = shape[axis];
+        if n == 0 {
+            let zero = api.constant(CircuitField::<C>::from_u256(U256::from(0u64)));
+            let empty_out = ArrayD::from_elem(IxDyn(&shape), zero);
+            return Ok((self.outputs.clone(), empty_out));
+        }
         let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
         let n_bits = self.n_bits;
         let scale_exp = self.scaling.trailing_zeros();
         let lookup_bits = function_lookup_bits(scale_exp);
         let max_diff_bits = lookup_bits - 1;
+
+        if self.scaling > i64::MAX as u64 {
+            return Err(LayerError::Other {
+                layer: LayerKind::Softmax,
+                msg: format!(
+                    "scaling {} exceeds i64::MAX; compute_exp_quantized cannot represent exp(0)",
+                    self.scaling
+                ),
+            }
+            .into());
+        }
 
         let mut exp_lookup = FunctionLookupTable::build_signed::<C, Builder>(
             api,
@@ -85,8 +101,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
 
         let cross_tolerance = n as u64 * self.scaling;
         let cross_tol_var = api.constant(CircuitField::<C>::from_u256(U256::from(cross_tolerance)));
-        let cross_tol_bits =
-            (2 * cross_tolerance).next_power_of_two().trailing_zeros() as usize + 1;
+        let cross_tol_bits = (2 * cross_tolerance).next_power_of_two().trailing_zeros() as usize;
 
         let zero_var = api.constant(CircuitField::<C>::from_u256(U256::from(0u64)));
         let mut out_array = ArrayD::from_elem(IxDyn(&shape), zero_var);
@@ -141,7 +156,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SoftmaxLayer {
             let sum_tol = api.constant(CircuitField::<C>::from_u256(U256::from(n as u64)));
             let sum_diff = api.sub(lane_sum, scale_var);
             let sum_shifted = api.add(sum_diff, sum_tol);
-            let sum_tol_bits = (2 * n + 1).next_power_of_two().trailing_zeros() as usize + 1;
+            let sum_tol_bits = (2 * n + 1).next_power_of_two().trailing_zeros() as usize;
             logup_ctx.range_check::<C, Builder>(api, sum_shifted, sum_tol_bits)?;
         }
 
