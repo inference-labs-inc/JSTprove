@@ -5,18 +5,22 @@ use std::{
 };
 
 use super::gkr_square::sumcheck_verify_gkr_square_layer;
+use arith::Field;
 use circuit::{Circuit, RndCoefMap};
 use gkr_engine::{
     ExpanderPCS, ExpanderSingleVarChallenge, FieldEngine, GKREngine, GKRScheme, MPIConfig,
     MPIEngine, Proof, StructuredReferenceString, Transcript,
 };
+use polynomials::EqPolynomial;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
 use serdes::ExpSerde;
-use sumcheck::{VerifierScratchPad, SUMCHECK_GKR_DEGREE, SUMCHECK_GKR_SQUARE_DEGREE};
+use sumcheck::{SumCheck, VerifierScratchPad, SUMCHECK_GKR_DEGREE, SUMCHECK_GKR_SQUARE_DEGREE};
 use transcript::transcript_verifier_sync;
 use utils::timer::Timer;
+
+const SAME_POLY_REDUCTION_MIN_VARS: usize = 8;
 
 #[cfg(feature = "grinding")]
 use crate::grind;
@@ -271,27 +275,44 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
         mut proof_reader: impl Read,
     ) -> bool {
         let timer = Timer::new("post_gkr", true);
-        let mut verified = self.get_pcs_opening_from_proof_and_verify(
-            pcs_params,
-            pcs_verification_key,
-            commitment,
-            challenge_x,
-            claim_x,
-            transcript,
-            &mut proof_reader,
-        );
 
-        if let (Some(challenge_y), Some(claim_y)) = (challenge_y, claim_y) {
-            verified &= self.get_pcs_opening_from_proof_and_verify(
+        let use_reduction =
+            challenge_y.is_some() && challenge_x.num_vars() >= SAME_POLY_REDUCTION_MIN_VARS;
+
+        let verified = if use_reduction {
+            self.verify_reduced_pcs_opening(
                 pcs_params,
                 pcs_verification_key,
                 commitment,
-                challenge_y,
-                claim_y,
+                challenge_x,
+                challenge_y.as_ref().unwrap(),
+                transcript,
+                &mut proof_reader,
+            )
+        } else {
+            let mut v = self.get_pcs_opening_from_proof_and_verify(
+                pcs_params,
+                pcs_verification_key,
+                commitment,
+                challenge_x,
+                claim_x,
                 transcript,
                 &mut proof_reader,
             );
-        }
+
+            if let (Some(challenge_y), Some(claim_y)) = (challenge_y, claim_y) {
+                v &= self.get_pcs_opening_from_proof_and_verify(
+                    pcs_params,
+                    pcs_verification_key,
+                    commitment,
+                    challenge_y,
+                    claim_y,
+                    transcript,
+                    &mut proof_reader,
+                );
+            }
+            v
+        };
 
         timer.stop();
         verified
@@ -682,5 +703,99 @@ impl<Cfg: GKREngine> Verifier<Cfg> {
         transcript.append_u8_slice(&buffer);
 
         verified
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn verify_reduced_pcs_opening(
+        &self,
+        pcs_params: &<Cfg::PCSConfig as ExpanderPCS<Cfg::FieldConfig>>::Params,
+        pcs_verification_key: &<<Cfg::PCSConfig as ExpanderPCS<Cfg::FieldConfig>>::SRS as StructuredReferenceString>::VKey,
+        commitment: &<Cfg::PCSConfig as ExpanderPCS<Cfg::FieldConfig>>::Commitment,
+        challenge_x: &ExpanderSingleVarChallenge<Cfg::FieldConfig>,
+        challenge_y: &ExpanderSingleVarChallenge<Cfg::FieldConfig>,
+        transcript: &mut impl Transcript,
+        mut proof_reader: impl Read,
+    ) -> bool {
+        type CF<C> = <C as FieldEngine>::ChallengeField;
+
+        let num_vars = challenge_x.rz.len() + challenge_x.r_simd.len();
+
+        let evals = match Vec::<CF<Cfg::FieldConfig>>::deserialize_from(&mut proof_reader) {
+            Ok(v) => v,
+            Err(_) => return false,
+        };
+        if evals.len() != 2 {
+            return false;
+        }
+
+        let sumcheck_proof =
+            match sumcheck::IOPProof::<CF<Cfg::FieldConfig>>::deserialize_from(&mut proof_reader) {
+                Ok(p) => p,
+                Err(_) => return false,
+            };
+
+        let claimed_sum = match CF::<Cfg::FieldConfig>::deserialize_from(&mut proof_reader) {
+            Ok(v) => v,
+            Err(_) => return false,
+        };
+
+        let alpha: Vec<CF<Cfg::FieldConfig>> = transcript.generate_field_elements(1);
+        let eq_alpha_0 = CF::<Cfg::FieldConfig>::ONE - alpha[0];
+        let eq_alpha_1 = alpha[0];
+
+        let expected_sum = eq_alpha_0 * evals[0] + eq_alpha_1 * evals[1];
+        if expected_sum != claimed_sum {
+            return false;
+        }
+
+        {
+            let mut buffer = vec![];
+            if evals.serialize_into(&mut buffer).is_err() {
+                return false;
+            }
+            if sumcheck_proof.serialize_into(&mut buffer).is_err() {
+                return false;
+            }
+            if claimed_sum.serialize_into(&mut buffer).is_err() {
+                return false;
+            }
+            transcript.append_u8_slice(&buffer);
+        }
+
+        let (sc_verified, subclaim) =
+            SumCheck::verify(claimed_sum, &sumcheck_proof, num_vars, transcript);
+        if !sc_verified {
+            return false;
+        }
+
+        let mut r = subclaim.point.clone();
+        r.reverse();
+
+        let challenges = [challenge_x, challenge_y];
+        let weights = [eq_alpha_0, eq_alpha_1];
+        let mut g_at_r = CF::<Cfg::FieldConfig>::ZERO;
+        for (j, challenge) in challenges.iter().enumerate() {
+            let xs = challenge.local_xs();
+            g_at_r += weights[j] * EqPolynomial::eq_vec(&r, &xs);
+        }
+
+        let f_at_r = subclaim.expected_evaluation * g_at_r.inv().unwrap();
+
+        let r_simd_len = challenge_x.r_simd.len();
+        let mut reduced_challenge = ExpanderSingleVarChallenge::new(
+            r[r_simd_len..].to_vec(),
+            r[..r_simd_len].to_vec(),
+            vec![],
+        );
+
+        self.get_pcs_opening_from_proof_and_verify(
+            pcs_params,
+            pcs_verification_key,
+            commitment,
+            &mut reduced_challenge,
+            &f_at_r,
+            transcript,
+            proof_reader,
+        )
     }
 }

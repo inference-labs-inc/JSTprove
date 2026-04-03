@@ -26,7 +26,7 @@ use crate::{
                 server_ctrl::generate_local_mpi_config,
             },
             expander_pcs_defered::prove_impl::{
-                extract_pcs_claims, max_len_setup_commit_impl, open_defered_pcs,
+                extract_pcs_claims, max_len_setup_commit_impl, open_with_same_poly_reduction,
             },
             CombinedProof, Expander,
         },
@@ -66,96 +66,98 @@ where
 
     let mut vals_ref = vec![];
     let mut challenges = vec![];
+    let mut all_commitment_indices = vec![];
 
     let prove_timer = Timer::new("Prove all kernels", global_mpi_config.is_root());
-    let proofs =
-        computation_graph
-            .proof_templates()
-            .iter()
-            .map(|template| {
-                let commitment_values = template
-                    .commitment_indices()
-                    .iter()
-                    .map(|&idx| values[idx].as_ref())
-                    .collect::<Vec<_>>();
+    let proofs = computation_graph
+        .proof_templates()
+        .iter()
+        .map(|template| {
+            let commitment_values = template
+                .commitment_indices()
+                .iter()
+                .map(|&idx| values[idx].as_ref())
+                .collect::<Vec<_>>();
 
-                let single_kernel_gkr_timer =
-                    Timer::new("small gkr kernel", global_mpi_config.is_root());
-                let gkr_end_state = prove_kernel_gkr_no_oversubscribe::<
-                    GetFieldConfig<ZC>,
-                    GetTranscript<ZC>,
-                    ZC::ECCConfig,
-                >(
-                    global_mpi_config,
-                    &computation_graph.kernels()[template.kernel_id()],
-                    &commitment_values,
-                    next_power_of_two(template.parallel_count()),
-                    template.is_broadcast(),
-                    n_bytes_profiler,
-                );
-                single_kernel_gkr_timer.stop();
+            let single_kernel_gkr_timer =
+                Timer::new("small gkr kernel", global_mpi_config.is_root());
+            let gkr_end_state = prove_kernel_gkr_no_oversubscribe::<
+                GetFieldConfig<ZC>,
+                GetTranscript<ZC>,
+                ZC::ECCConfig,
+            >(
+                global_mpi_config,
+                &computation_graph.kernels()[template.kernel_id()],
+                &commitment_values,
+                next_power_of_two(template.parallel_count()),
+                template.is_broadcast(),
+                n_bytes_profiler,
+            );
+            single_kernel_gkr_timer.stop();
 
-                match ZC::BATCH_PCS {
-                    true => {
-                        if global_mpi_config.is_root() {
-                            let (mut transcript, challenge) = gkr_end_state.unwrap();
-                            assert!(challenge.challenge_y().is_none());
-                            let challenge = challenge.challenge_x();
+            match ZC::BATCH_PCS {
+                true => {
+                    if global_mpi_config.is_root() {
+                        let (mut transcript, challenge) = gkr_end_state.unwrap();
+                        assert!(challenge.challenge_y().is_none());
+                        let challenge = challenge.challenge_x();
 
-                            let (local_vals_ref, local_challenges) =
-                                extract_pcs_claims::<ZC::GKRConfig>(
-                                    &commitment_values,
-                                    &challenge,
-                                    template.is_broadcast(),
-                                    next_power_of_two(template.parallel_count()),
-                                );
+                        let (local_vals_ref, local_challenges, local_indices) =
+                            extract_pcs_claims::<ZC::GKRConfig>(
+                                &commitment_values,
+                                &challenge,
+                                template.is_broadcast(),
+                                next_power_of_two(template.parallel_count()),
+                                template.commitment_indices(),
+                            );
 
-                            vals_ref.extend(local_vals_ref);
-                            challenges.extend(local_challenges);
+                        vals_ref.extend(local_vals_ref);
+                        challenges.extend(local_challenges);
+                        all_commitment_indices.extend(local_indices);
 
-                            Some(ExpanderProof {
-                                data: vec![transcript.finalize_and_get_proof()],
-                            })
-                        } else {
-                            None
-                        }
-                    }
-                    false => {
-                        if global_mpi_config.is_root() {
-                            let pcs_open_timer = Timer::new("pcs open", true);
-                            let (mut transcript, challenge) = gkr_end_state.unwrap();
-                            let challenges = if let Some(challenge_y) = challenge.challenge_y() {
-                                vec![challenge.challenge_x(), challenge_y]
-                            } else {
-                                vec![challenge.challenge_x()]
-                            };
-
-                            challenges.iter().for_each(|c| {
-                                partition_single_gkr_claim_and_open_pcs_mpi::<ZC::GKRConfig>(
-                                    prover_setup,
-                                    &commitment_values,
-                                    &template
-                                        .commitment_indices()
-                                        .iter()
-                                        .map(|&idx| &states.as_ref().unwrap()[idx])
-                                        .collect::<Vec<_>>(),
-                                    c,
-                                    template.is_broadcast(),
-                                    &mut transcript,
-                                );
-                            });
-
-                            pcs_open_timer.stop();
-                            Some(ExpanderProof {
-                                data: vec![transcript.finalize_and_get_proof()],
-                            })
-                        } else {
-                            None
-                        }
+                        Some(ExpanderProof {
+                            data: vec![transcript.finalize_and_get_proof()],
+                        })
+                    } else {
+                        None
                     }
                 }
-            })
-            .collect::<Vec<_>>();
+                false => {
+                    if global_mpi_config.is_root() {
+                        let pcs_open_timer = Timer::new("pcs open", true);
+                        let (mut transcript, challenge) = gkr_end_state.unwrap();
+                        let challenges = if let Some(challenge_y) = challenge.challenge_y() {
+                            vec![challenge.challenge_x(), challenge_y]
+                        } else {
+                            vec![challenge.challenge_x()]
+                        };
+
+                        challenges.iter().for_each(|c| {
+                            partition_single_gkr_claim_and_open_pcs_mpi::<ZC::GKRConfig>(
+                                prover_setup,
+                                &commitment_values,
+                                &template
+                                    .commitment_indices()
+                                    .iter()
+                                    .map(|&idx| &states.as_ref().unwrap()[idx])
+                                    .collect::<Vec<_>>(),
+                                c,
+                                template.is_broadcast(),
+                                &mut transcript,
+                            );
+                        });
+
+                        pcs_open_timer.stop();
+                        Some(ExpanderProof {
+                            data: vec![transcript.finalize_and_get_proof()],
+                        })
+                    } else {
+                        None
+                    }
+                }
+            }
+        })
+        .collect::<Vec<_>>();
     prove_timer.stop();
 
     match ZC::BATCH_PCS {
@@ -163,11 +165,12 @@ where
             if global_mpi_config.is_root() {
                 let mut proofs = proofs.into_iter().map(|p| p.unwrap()).collect::<Vec<_>>();
 
-                let pcs_opening_timer = Timer::new("Batch PCS Opening for all kernels", true);
-                let pcs_batch_opening = open_defered_pcs::<ZC::GKRConfig, ZC::ECCConfig>(
+                let pcs_opening_timer = Timer::new("Same-poly reduction PCS Opening", true);
+                let pcs_batch_opening = open_with_same_poly_reduction::<ZC::GKRConfig, ZC::ECCConfig>(
                     prover_setup,
                     &vals_ref,
                     &challenges,
+                    &all_commitment_indices,
                 );
                 pcs_opening_timer.stop();
 

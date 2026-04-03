@@ -1,18 +1,21 @@
 //! This module implements the whole GKR prover, including the IOP and PCS.
 
-use arith::Field;
+use arith::{Field, SimdField};
 use circuit::Circuit;
 use gkr_engine::{
     ExpanderDualVarChallenge, ExpanderPCS, ExpanderSingleVarChallenge, FieldEngine, GKREngine,
     GKRScheme, MPIConfig, MPIEngine, Proof, StructuredReferenceString, Transcript,
 };
 use polynomials::{
-    MultilinearExtension, MutRefMultiLinearPoly, MutableMultilinearExtension, RefMultiLinearPoly,
+    EqPolynomial, MultiLinearPoly, MultilinearExtension, MutRefMultiLinearPoly,
+    MutableMultilinearExtension, RefMultiLinearPoly, SumOfProductsPoly,
 };
 use serdes::ExpSerde;
-use sumcheck::ProverScratchPad;
+use sumcheck::{ProverScratchPad, SumCheck};
 use transcript::transcript_root_broadcast;
 use utils::timer::Timer;
+
+const SAME_POLY_REDUCTION_MIN_VARS: usize = 8;
 
 use crate::{gkr_prove, gkr_square_prove};
 
@@ -142,28 +145,44 @@ impl<Cfg: GKREngine> Prover<Cfg> {
 
         let pcs_open_timer = Timer::new("pcs open", self.mpi_config.is_root());
 
-        // open
         let mut challenge_x = challenge.challenge_x();
         let mut mle_ref = MutRefMultiLinearPoly::from_ref(&mut c.layers[0].input_vals);
-        self.prove_input_layer_claim(
-            &mut mle_ref,
-            &mut challenge_x,
-            pcs_params,
-            pcs_proving_key,
-            pcs_scratch,
-            &mut transcript,
-        );
 
-        if let Some(mut challenge_y) = challenge.challenge_y() {
-            transcript_root_broadcast(&mut transcript, &self.mpi_config);
-            self.prove_input_layer_claim(
-                &mut mle_ref,
-                &mut challenge_y,
+        let use_reduction = challenge.challenge_y().is_some()
+            && challenge_x.num_vars() >= SAME_POLY_REDUCTION_MIN_VARS;
+
+        if use_reduction {
+            let challenge_y = challenge.challenge_y().unwrap();
+            self.prove_input_layer_claims_reduced(
+                &mle_ref,
+                &challenge_x,
+                &challenge_y,
                 pcs_params,
                 pcs_proving_key,
                 pcs_scratch,
                 &mut transcript,
             );
+        } else {
+            self.prove_input_layer_claim(
+                &mut mle_ref,
+                &mut challenge_x,
+                pcs_params,
+                pcs_proving_key,
+                pcs_scratch,
+                &mut transcript,
+            );
+
+            if let Some(mut challenge_y) = challenge.challenge_y() {
+                transcript_root_broadcast(&mut transcript, &self.mpi_config);
+                self.prove_input_layer_claim(
+                    &mut mle_ref,
+                    &mut challenge_y,
+                    pcs_params,
+                    pcs_proving_key,
+                    pcs_scratch,
+                    &mut transcript,
+                );
+            }
         }
 
         pcs_open_timer.stop();
@@ -211,6 +230,112 @@ impl<Cfg: GKREngine> Prover<Cfg> {
         if self.mpi_config.is_root() {
             let mut buffer = vec![];
             opening.unwrap().serialize_into(&mut buffer).unwrap(); // TODO: error propagation
+            transcript.append_u8_slice(&buffer);
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn prove_input_layer_claims_reduced(
+        &self,
+        inputs: &MutRefMultiLinearPoly<<Cfg::FieldConfig as FieldEngine>::SimdCircuitField>,
+        challenge_x: &ExpanderSingleVarChallenge<Cfg::FieldConfig>,
+        challenge_y: &ExpanderSingleVarChallenge<Cfg::FieldConfig>,
+        pcs_params: &<Cfg::PCSConfig as ExpanderPCS<Cfg::FieldConfig>>::Params,
+        pcs_proving_key: &<<Cfg::PCSConfig as ExpanderPCS<Cfg::FieldConfig>>::SRS as StructuredReferenceString>::PKey,
+        pcs_scratch: &mut <Cfg::PCSConfig as ExpanderPCS<Cfg::FieldConfig>>::ScratchPad,
+        transcript: &mut impl Transcript,
+    ) where
+        Cfg::FieldConfig: FieldEngine,
+    {
+        type CF<C> = <C as FieldEngine>::ChallengeField;
+
+        let challenges = [challenge_x, challenge_y];
+        let num_vars = challenge_x.rz.len() + challenge_x.r_simd.len();
+        let f_challenge_evals: Vec<CF<Cfg::FieldConfig>> = inputs
+            .hypercube_basis_ref()
+            .iter()
+            .flat_map(|simd| {
+                simd.unpack()
+                    .into_iter()
+                    .map(CF::<Cfg::FieldConfig>::from)
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+
+        let f_evals = &f_challenge_evals[..1 << num_vars];
+
+        let evals: Vec<CF<Cfg::FieldConfig>> = challenges
+            .iter()
+            .map(|c| {
+                let xs = c.local_xs();
+                let eq_evals = EqPolynomial::build_eq_x_r(&xs);
+                eq_evals
+                    .iter()
+                    .zip(f_evals.iter())
+                    .map(|(e, f)| *e * *f)
+                    .sum()
+            })
+            .collect();
+
+        let alpha: Vec<CF<Cfg::FieldConfig>> = transcript.generate_field_elements(1);
+
+        let eq_alpha_0 = CF::<Cfg::FieldConfig>::ONE - alpha[0];
+        let eq_alpha_1 = alpha[0];
+
+        let claimed_sum = eq_alpha_0 * evals[0] + eq_alpha_1 * evals[1];
+
+        let n = 1usize << num_vars;
+        let mut g_evals = vec![CF::<Cfg::FieldConfig>::ZERO; n];
+        for (j, challenge) in challenges.iter().enumerate() {
+            let xs = challenge.local_xs();
+            let eq_x_zj = EqPolynomial::build_eq_x_r(&xs);
+            let weight = if j == 0 { eq_alpha_0 } else { eq_alpha_1 };
+            for (i, g_eval) in g_evals.iter_mut().enumerate().take(n) {
+                *g_eval += weight * eq_x_zj[i];
+            }
+        }
+
+        let f_poly = MultiLinearPoly {
+            coeffs: f_evals.to_vec(),
+        };
+        let g_poly = MultiLinearPoly { coeffs: g_evals };
+
+        let mut sumcheck_poly = SumOfProductsPoly::new();
+        sumcheck_poly.add_pair(f_poly, g_poly);
+
+        let sumcheck_proof = SumCheck::prove(&sumcheck_poly, transcript);
+
+        let reduced_point = sumcheck_proof.export_point_to_expander();
+        let r_simd_len = challenge_x.r_simd.len();
+        let reduced_challenge = ExpanderSingleVarChallenge::new(
+            reduced_point[r_simd_len..].to_vec(),
+            reduced_point[..r_simd_len].to_vec(),
+            vec![],
+        );
+
+        if self.mpi_config.is_root() {
+            let mut buffer = vec![];
+            evals.serialize_into(&mut buffer).unwrap();
+            sumcheck_proof.serialize_into(&mut buffer).unwrap();
+            claimed_sum.serialize_into(&mut buffer).unwrap();
+            transcript.append_u8_slice(&buffer);
+        }
+
+        transcript.lock_proof();
+        let opening = Cfg::PCSConfig::open(
+            pcs_params,
+            &self.mpi_config,
+            pcs_proving_key,
+            inputs,
+            &reduced_challenge,
+            transcript,
+            pcs_scratch,
+        );
+        transcript.unlock_proof();
+
+        if self.mpi_config.is_root() {
+            let mut buffer = vec![];
+            opening.unwrap().serialize_into(&mut buffer).unwrap();
             transcript.append_u8_slice(&buffer);
         }
     }
