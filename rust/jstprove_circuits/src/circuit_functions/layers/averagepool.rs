@@ -94,6 +94,18 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AveragePoolLayer {
             msg: "input tensor is not contiguous".to_string(),
         })?;
 
+        if x_input.shape() != self.input_shape.as_slice() {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::AveragePool,
+                msg: format!(
+                    "AveragePool runtime input shape {:?} does not match expected {:?}",
+                    x_input.shape(),
+                    self.input_shape
+                ),
+            }
+            .into());
+        }
+
         // Require 4-D input [N, C, H, W].
         if self.input_shape.len() != 4 {
             return Err(LayerError::InvalidShape {
@@ -300,7 +312,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AveragePoolLayer {
         };
         let kernel_shape = parse_usize_list(layer, "kernel_shape")
             .map_err(mk_err)?
-            .unwrap_or_else(|| vec![1, 1]);
+            .ok_or_else(|| {
+                mk_err("AveragePool missing required 'kernel_shape' attribute".to_string())
+            })?;
         let strides = parse_usize_list(layer, "strides")
             .map_err(mk_err)?
             .unwrap_or_else(|| vec![1; kernel_shape.len()]);

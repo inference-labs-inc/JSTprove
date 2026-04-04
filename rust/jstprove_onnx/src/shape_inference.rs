@@ -2155,9 +2155,9 @@ fn infer_reduce(
 
 /// Infer output shape for ONNX `MatMul`.
 ///
-/// Supports 2-D matrix multiplication: [M, K] @ [K, N] → [M, N].
-/// For N-D inputs follows numpy broadcasting rules but we keep it simple
-/// and only handle the 2-D case in circuit (reject higher-rank at build time).
+/// Supports 1-D and higher operands per ONNX spec.  1-D inputs are promoted
+/// to 2-D ([1,K] for A, [K,1] for B), then the promoted dimension is removed
+/// from the result.  N-D batch dimensions are broadcast.
 fn infer_matmul(
     layer: &LayerNode,
     shapes: &HashMap<String, Vec<usize>>,
@@ -2184,21 +2184,30 @@ fn infer_matmul(
         )
     })?;
 
-    if a_shape.len() < 2 || b_shape.len() < 2 {
+    let (a_shape_2d, a_was_1d) = if a_shape.len() == 1 {
+        (vec![1, a_shape[0]], true)
+    } else {
+        (a_shape.clone(), false)
+    };
+    let (b_shape_2d, b_was_1d) = if b_shape.len() == 1 {
+        (vec![b_shape[0], 1], true)
+    } else {
+        (b_shape.clone(), false)
+    };
+
+    if a_shape_2d.len() < 2 || b_shape_2d.len() < 2 {
         bail!(
-            "layer {}: MatMul inputs must be at least 2-D (A rank={}, B rank={})",
+            "layer {}: MatMul inputs must be at least 1-D (A rank={}, B rank={})",
             layer.name,
             a_shape.len(),
             b_shape.len()
         );
     }
 
-    // For 2D: [M, K] @ [K, N] → [M, N]
-    // For ND: batch dims are broadcast, last two dims do matmul.
-    let m = a_shape[a_shape.len() - 2];
-    let k_a = a_shape[a_shape.len() - 1];
-    let k_b = b_shape[b_shape.len() - 2];
-    let n = b_shape[b_shape.len() - 1];
+    let m = a_shape_2d[a_shape_2d.len() - 2];
+    let k_a = a_shape_2d[a_shape_2d.len() - 1];
+    let k_b = b_shape_2d[b_shape_2d.len() - 2];
+    let n = b_shape_2d[b_shape_2d.len() - 1];
 
     if k_a != k_b {
         bail!(
@@ -2207,9 +2216,8 @@ fn infer_matmul(
         );
     }
 
-    // Batch dimensions: broadcast leading dims.
-    let a_batch = &a_shape[..a_shape.len() - 2];
-    let b_batch = &b_shape[..b_shape.len() - 2];
+    let a_batch = &a_shape_2d[..a_shape_2d.len() - 2];
+    let b_batch = &b_shape_2d[..b_shape_2d.len() - 2];
     let batch_shape = if a_batch.is_empty() && b_batch.is_empty() {
         vec![]
     } else if a_batch.is_empty() {
@@ -2225,6 +2233,13 @@ fn infer_matmul(
     let mut out_shape = batch_shape;
     out_shape.push(m);
     out_shape.push(n);
+
+    if a_was_1d {
+        out_shape.remove(out_shape.len() - 2);
+    }
+    if b_was_1d {
+        out_shape.pop();
+    }
 
     Ok(layer
         .outputs

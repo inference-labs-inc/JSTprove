@@ -19,6 +19,7 @@ pub struct SqrtLayer {
     outputs: Vec<String>,
     n_bits: usize,
     scaling: u64,
+    #[allow(dead_code)]
     scale_exponent: u32,
 }
 
@@ -39,7 +40,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SqrtLayer {
         let shape = x_input.shape().to_vec();
         let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
         let n_bits = self.n_bits;
-        let remainder_bits = (self.scale_exponent as usize) + n_bits + 1;
+        let remainder_bits = n_bits + 1;
         let mut out_storage: Vec<Variable> = Vec::with_capacity(x_input.len());
 
         for &x in x_input {
@@ -80,13 +81,20 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SqrtLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        layer
-            .inputs
-            .first()
-            .ok_or_else(|| LayerError::MissingInput {
+        if layer.inputs.len() != 1 {
+            return Err(LayerError::Other {
                 layer: LayerKind::Sqrt,
-                name: "input X".to_string(),
-            })?;
+                msg: format!("Sqrt expects exactly 1 input, got {}", layer.inputs.len()),
+            }
+            .into());
+        }
+        if layer.outputs.len() != 1 {
+            return Err(LayerError::Other {
+                layer: LayerKind::Sqrt,
+                msg: format!("Sqrt expects exactly 1 output, got {}", layer.outputs.len()),
+            }
+            .into());
+        }
 
         let n_bits = layer_context.n_bits_for(&layer.name);
         let scaling: u64 = 1u64

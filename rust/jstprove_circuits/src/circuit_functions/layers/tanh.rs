@@ -41,6 +41,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TanhLayer {
         let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(scale)));
         let cross_tolerance = 3u64 * scale;
         let cross_tol_var = api.constant(CircuitField::<C>::from_u256(U256::from(cross_tolerance)));
+        let two_cross_tol_var = api.constant(CircuitField::<C>::from_u256(U256::from(
+            2 * cross_tolerance,
+        )));
         let cross_tol_bits = (2 * cross_tolerance).next_power_of_two().trailing_zeros() as usize;
 
         let lookup_bits = function_lookup_bits(self.scale_exponent);
@@ -58,9 +61,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TanhLayer {
             let y = hint_out[0];
 
             let y_plus_scale = api.add(y, scale_var);
-            logup_ctx.range_check::<C, Builder>(api, y_plus_scale, self.n_bits)?;
+            logup_ctx.range_check::<C, Builder>(api, y_plus_scale, self.n_bits + 1)?;
             let scale_minus_y = api.sub(scale_var, y);
-            logup_ctx.range_check::<C, Builder>(api, scale_minus_y, self.n_bits)?;
+            logup_ctx.range_check::<C, Builder>(api, scale_minus_y, self.n_bits + 1)?;
 
             let two_x = api.add(x, x);
             let exp_2x = decomposed.verify_exp::<C, Builder>(api, logup_ctx, two_x)?;
@@ -72,6 +75,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TanhLayer {
             let diff = api.sub(lhs, rhs);
             let shifted = api.add(diff, cross_tol_var);
             logup_ctx.range_check::<C, Builder>(api, shifted, cross_tol_bits)?;
+            let upper_shifted = api.sub(two_cross_tol_var, shifted);
+            logup_ctx.range_check::<C, Builder>(api, upper_shifted, cross_tol_bits)?;
 
             out_storage.push(y);
         }

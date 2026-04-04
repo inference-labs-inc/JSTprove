@@ -61,6 +61,18 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceSumLayer {
                 name: input_name.clone(),
             })?;
 
+        if x_input.shape() != self.input_shape.as_slice() {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::ReduceSum,
+                msg: format!(
+                    "ReduceSum runtime input shape {:?} does not match expected {:?}",
+                    x_input.shape(),
+                    self.input_shape
+                ),
+            }
+            .into());
+        }
+
         let rank = self.input_shape.len();
 
         // Handle noop case.
@@ -132,6 +144,27 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceSumLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
+        if layer.inputs.is_empty() || layer.inputs.len() > 2 {
+            return Err(LayerError::Other {
+                layer: LayerKind::ReduceSum,
+                msg: format!(
+                    "ReduceSum expects 1 or 2 inputs (data + optional axes), got {}",
+                    layer.inputs.len()
+                ),
+            }
+            .into());
+        }
+        if layer.outputs.len() != 1 {
+            return Err(LayerError::Other {
+                layer: LayerKind::ReduceSum,
+                msg: format!(
+                    "ReduceSum expects exactly 1 output, got {}",
+                    layer.outputs.len()
+                ),
+            }
+            .into());
+        }
+
         let input_name = layer
             .inputs
             .first()
@@ -308,6 +341,29 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceSumLayer {
                 }
             }
         };
+
+        let expected_output_shape: Vec<usize> = if keepdims {
+            input_shape
+                .iter()
+                .enumerate()
+                .map(|(i, &d)| if axes.contains(&i) { 1 } else { d })
+                .collect()
+        } else {
+            input_shape
+                .iter()
+                .enumerate()
+                .filter_map(|(i, &d)| if axes.contains(&i) { None } else { Some(d) })
+                .collect()
+        };
+        if output_shape != expected_output_shape {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::ReduceSum,
+                msg: format!(
+                    "ReduceSum output shape {output_shape:?} does not match expected {expected_output_shape:?} (axes={axes:?}, keepdims={keepdims})"
+                ),
+            }
+            .into());
+        }
 
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),

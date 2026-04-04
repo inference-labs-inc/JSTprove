@@ -404,6 +404,16 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
         }
     }
 
+    for layer in &graph.layers {
+        if layer.op_type == OpType::Constant {
+            if let Some(AttrValue::Tensor(td)) = layer.attributes.get("value") {
+                for out_name in &layer.outputs {
+                    shapes.insert(out_name.clone(), td.shape());
+                }
+            }
+        }
+    }
+
     // Propagate shapes topologically.
     for layer in graph.iter_topo() {
         let input_shape: Option<Vec<usize>> = layer
@@ -511,17 +521,20 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
                         let in_shape: &[usize] = input_shape.as_deref().unwrap_or(&[]);
                         let input_total: usize = in_shape.iter().product();
 
-                        // First pass: resolve 0 → copy and positives; mark -1 as None.
                         let mut dims: Vec<Option<usize>> = raw
                             .iter()
                             .enumerate()
                             .map(|(i, &d)| {
-                                if d == 0 && !allowzero {
-                                    Some(in_shape.get(i).copied().unwrap_or(0))
+                                if d == 0 {
+                                    if allowzero {
+                                        Some(0)
+                                    } else {
+                                        Some(in_shape.get(i).copied().unwrap_or(0))
+                                    }
                                 } else if d > 0 {
                                     Some(d as usize)
                                 } else {
-                                    None // -1 (infer) or allowzero 0
+                                    None // -1 only
                                 }
                             })
                             .collect();

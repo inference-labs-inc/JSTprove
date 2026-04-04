@@ -72,10 +72,9 @@ pub fn pow_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Er
     } else if y_scaled <= i64::MIN as f64 {
         i64::MIN
     } else if y_scaled.is_nan() || y_scaled.is_infinite() {
-        // NaN arises for 0^0 or for a negative base with a fractional exponent
-        // (e.g. (-2)^1.5 is undefined over the reals). In both cases we map to 1.0
-        // (the fixed-point encoding of the identity element for multiplication).
-        scale_u64 as i64
+        return Err(Error::UserError(format!(
+            "pow_hint: invalid result for base={x_i64} exponent={exp_i64} (NaN or Inf)"
+        )));
     } else {
         y_scaled.round() as i64
     };

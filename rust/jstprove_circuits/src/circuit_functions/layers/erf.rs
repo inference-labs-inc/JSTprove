@@ -139,13 +139,20 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ErfLayer {
         _index: usize,
         layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
-        layer
-            .inputs
-            .first()
-            .ok_or_else(|| LayerError::MissingInput {
+        if layer.inputs.len() != 1 {
+            return Err(LayerError::Other {
                 layer: LayerKind::Erf,
-                name: "input X".to_string(),
-            })?;
+                msg: format!("Erf expects exactly 1 input, got {}", layer.inputs.len()),
+            }
+            .into());
+        }
+        if layer.outputs.len() != 1 {
+            return Err(LayerError::Other {
+                layer: LayerKind::Erf,
+                msg: format!("Erf expects exactly 1 output, got {}", layer.outputs.len()),
+            }
+            .into());
+        }
 
         let n_bits = layer_context.n_bits_for(&layer.name);
         let scaling: u64 = 1u64
