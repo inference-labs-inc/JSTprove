@@ -52,7 +52,7 @@ pub mod tanh;
 pub use tanh::tanh_hint;
 
 pub mod erf;
-pub use erf::{compute_erf_quantized, erf_hint};
+pub use erf::{compute_erf_quantized, erf_abs_hint, erf_hint};
 
 pub mod averagepool;
 pub use averagepool::averagepool_hint;
@@ -120,6 +120,7 @@ pub fn build_logup_hint_registry<F: CompilerField>() -> HintRegistry<F> {
     registry.register(sqrt::SQRT_HINT_KEY, sqrt_hint::<F>);
     registry.register(tanh::TANH_HINT_KEY, tanh_hint::<F>);
     registry.register(erf::ERF_HINT_KEY, erf_hint::<F>);
+    registry.register(erf::ERF_ABS_HINT_KEY, erf_abs_hint::<F>);
     registry.register(averagepool::AVERAGEPOOL_HINT_KEY, averagepool_hint::<F>);
     registry.register(pow::POW_HINT_KEY, pow_hint::<F>);
 

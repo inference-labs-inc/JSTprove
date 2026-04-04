@@ -5,6 +5,7 @@ use expander_compiler::utils::error::Error;
 use super::field_to_i64;
 
 pub const ERF_HINT_KEY: &str = "jstprove.erf_hint";
+pub const ERF_ABS_HINT_KEY: &str = "jstprove.erf_abs_hint";
 
 const P: f64 = 0.327_591_1;
 const A1: f64 = 0.254_829_592;
@@ -40,6 +41,29 @@ pub fn compute_erf_quantized(x_q: i64, scale: u64) -> i64 {
     } else {
         y_scaled.round() as i64
     }
+}
+
+/// # Errors
+/// Returns `Error::UserError` when `inputs.len() != 1` or `outputs.len() != 2`.
+#[allow(clippy::cast_sign_loss)]
+pub fn erf_abs_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Error> {
+    if inputs.len() != 1 {
+        return Err(Error::UserError(format!(
+            "erf_abs_hint: expected 1 input, got {}",
+            inputs.len()
+        )));
+    }
+    if outputs.len() != 2 {
+        return Err(Error::UserError(format!(
+            "erf_abs_hint: expected 2 outputs, got {}",
+            outputs.len()
+        )));
+    }
+    let x = field_to_i64(inputs[0]);
+    let abs_x = x.unsigned_abs();
+    outputs[0] = F::from_u256(U256::from(abs_x));
+    outputs[1] = F::from(u32::from(x >= 0));
+    Ok(())
 }
 
 /// # Errors
