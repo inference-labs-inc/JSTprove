@@ -169,22 +169,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for PowLayer {
                 ),
             })?;
 
-        let scale_f64 = scaling as f64;
         let mut const_exponents = Vec::new();
         for &val in &const_exponent {
-            let real_exp = val as f64 / scale_f64;
-            let int_exp = real_exp.round();
-            if (real_exp - int_exp).abs() > 1e-6 {
-                return Err(LayerError::Other {
-                    layer: LayerKind::Pow,
-                    msg: format!(
-                        "Pow exponent {real_exp} is not an integer; only integer exponents \
-                         are supported for sound constraint verification"
-                    ),
-                }
-                .into());
-            }
-            let int_exp = int_exp as i32;
+            let int_exp = i32::try_from(val).map_err(|_| LayerError::Other {
+                layer: LayerKind::Pow,
+                msg: format!(
+                    "Pow exponent {val} does not fit in i32; only integer exponents \
+                     are supported for sound constraint verification"
+                ),
+            })?;
             if int_exp.unsigned_abs() > 16 {
                 return Err(LayerError::Other {
                     layer: LayerKind::Pow,

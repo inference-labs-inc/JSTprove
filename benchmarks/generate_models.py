@@ -119,6 +119,89 @@ def make_gridsample():
     save("gridsample", graph, [1, 1, 8, 8])
 
 
+def make_sqrt():
+    X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, DIM])
+    Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, DIM])
+    node = helper.make_node("Sqrt", ["X"], ["Y"])
+    graph = helper.make_graph([node], "sqrt_graph", [X], [Y])
+    save("sqrt", graph, [1, DIM])
+
+
+def make_tanh():
+    X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, DIM])
+    Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, DIM])
+    node = helper.make_node("Tanh", ["X"], ["Y"])
+    graph = helper.make_graph([node], "tanh_graph", [X], [Y])
+    save("tanh", graph, [1, DIM])
+
+
+def make_erf():
+    X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, DIM])
+    Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, DIM])
+    node = helper.make_node("Erf", ["X"], ["Y"])
+    graph = helper.make_graph([node], "erf_graph", [X], [Y])
+    save("erf", graph, [1, DIM])
+
+
+def make_pow():
+    X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, DIM])
+    Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, DIM])
+    exp = numpy_helper.from_array(
+        np.array([2.0], dtype=np.float32), name="exp"
+    )
+    node = helper.make_node("Pow", ["X", "exp"], ["Y"])
+    graph = helper.make_graph([node], "pow_graph", [X], [Y], initializer=[exp])
+    save("pow", graph, [1, DIM])
+
+
+def make_matmul():
+    X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, DIM])
+    Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, DIM])
+    rng = np.random.default_rng(42)
+    W = numpy_helper.from_array(
+        rng.standard_normal((DIM, DIM)).astype(np.float32), name="W"
+    )
+    node = helper.make_node("MatMul", ["X", "W"], ["Y"])
+    graph = helper.make_graph([node], "matmul_graph", [X], [Y], initializer=[W])
+    save("matmul", graph, [1, DIM])
+
+
+def make_averagepool():
+    X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 1, 8, 8])
+    Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 1, 4, 4])
+    node = helper.make_node(
+        "AveragePool", ["X"], ["Y"],
+        kernel_shape=[2, 2], strides=[2, 2],
+    )
+    graph = helper.make_graph([node], "avgpool_graph", [X], [Y])
+    save("averagepool", graph, [1, 1, 8, 8])
+
+
+def make_pad():
+    X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 1, 8, 8])
+    Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 1, 10, 10])
+    pads = numpy_helper.from_array(
+        np.array([0, 0, 1, 1, 0, 0, 1, 1], dtype=np.int64), name="pads"
+    )
+    const_val = numpy_helper.from_array(
+        np.array([0.0], dtype=np.float32), name="constant_value"
+    )
+    node = helper.make_node("Pad", ["X", "pads", "constant_value"], ["Y"], mode="constant")
+    graph = helper.make_graph(
+        [node], "pad_graph", [X], [Y], initializer=[pads, const_val]
+    )
+    save("pad", graph, [1, 1, 8, 8])
+
+
+def make_reducesum():
+    X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, DIM])
+    Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 1])
+    axes = numpy_helper.from_array(np.array([1], dtype=np.int64), name="axes")
+    node = helper.make_node("ReduceSum", ["X", "axes"], ["Y"], keepdims=1)
+    graph = helper.make_graph([node], "reducesum_graph", [X], [Y], initializer=[axes])
+    save("reducesum", graph, [1, DIM])
+
+
 if __name__ == "__main__":
     print("Generating benchmark ONNX models...")
     make_exp()
@@ -128,4 +211,12 @@ if __name__ == "__main__":
     make_layer_norm()
     make_resize()
     make_gridsample()
+    make_sqrt()
+    make_tanh()
+    make_erf()
+    make_pow()
+    make_matmul()
+    make_averagepool()
+    make_pad()
+    make_reducesum()
     print("Done.")
