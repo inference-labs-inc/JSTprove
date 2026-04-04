@@ -69,7 +69,14 @@ fn ceil_log2(n: usize) -> usize {
 // -------- Implementation --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AveragePoolLayer {
-    #[allow(clippy::cast_possible_wrap)]
+    #[allow(
+        clippy::cast_possible_wrap,
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        clippy::too_many_lines,
+        clippy::similar_names,
+        clippy::many_single_char_names
+    )]
     fn apply(
         &self,
         api: &mut Builder,
@@ -240,7 +247,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AveragePoolLayer {
         Ok((self.outputs.clone(), result))
     }
 
-    #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+    #[allow(
+        clippy::cast_possible_wrap,
+        clippy::cast_sign_loss,
+        clippy::too_many_lines
+    )]
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
@@ -370,6 +381,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AveragePoolLayer {
 
 /// Returns `Ok(None)` when the key is absent, `Ok(Some(vals))` when valid,
 /// and `Err(message)` when the key is present but contains an invalid (negative) value.
+#[allow(
+    clippy::manual_let_else,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_truncation
+)]
 pub(crate) fn parse_usize_list(
     layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
     key: &str,

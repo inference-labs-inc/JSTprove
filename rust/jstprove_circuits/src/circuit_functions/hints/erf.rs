@@ -1,35 +1,17 @@
-// Hint function for the ONNX `Erf` operator.
-//
-// # ZK design
-// `Erf` (error function) is a transcendental function. This hint performs the
-// computation **outside** the circuit (native f64) and injects the result as an
-// unconstrained witness.
-//
-// # Implementation
-// We use the Abramowitz & Stegun approximation 7.1.26 (accurate to ~1.5×10⁻⁷):
-//   For x ≥ 0: t = 1/(1 + 0.3275911*x)
-//   erf(x) ≈ 1 - (a1*t + a2*t² + a3*t³ + a4*t⁴ + a5*t⁵) * exp(-x²)
-//   For x < 0: erf(x) = -erf(-x)
-//
-// # Soundness limitation
-// The output is NOT constrained (erf can be negative).
-
 use ethnum::U256;
 use expander_compiler::field::FieldArith;
 use expander_compiler::utils::error::Error;
 
 use super::field_to_i64;
 
-/// Hint key used to register and look up this function.
 pub const ERF_HINT_KEY: &str = "jstprove.erf_hint";
 
-// Abramowitz & Stegun 7.1.26 coefficients
-const P: f64 = 0.3275911;
-const A1: f64 = 0.254829592;
-const A2: f64 = -0.284496736;
-const A3: f64 = 1.421413741;
-const A4: f64 = -1.453152027;
-const A5: f64 = 1.061405429;
+const P: f64 = 0.327_591_1;
+const A1: f64 = 0.254_829_592;
+const A2: f64 = -0.284_496_736;
+const A3: f64 = 1.421_413_741;
+const A4: f64 = -1.453_152_027;
+const A5: f64 = 1.061_405_429;
 
 #[inline]
 fn erf_approx(x: f64) -> f64 {
@@ -40,17 +22,28 @@ fn erf_approx(x: f64) -> f64 {
     sign * (1.0 - poly * (-x * x).exp())
 }
 
-/// Hint function for elementwise `Erf` over fixed-point integers.
-///
-/// # Inputs
-/// - `inputs[0]`: quantised input `x_q` (signed fixed-point).
-/// - `inputs[1]`: the scaling factor `scale = 2^scale_exponent`.
-///
-/// # Outputs
-/// - `outputs[0]`: `round(erf(x_q / scale) * scale)`, signed two's complement encoding.
-///
+#[must_use]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+pub fn compute_erf_quantized(x_q: i64, scale: u64) -> i64 {
+    let scale_f64 = scale as f64;
+    let x_real = x_q as f64 / scale_f64;
+    let y_real = erf_approx(x_real);
+    let y_scaled = y_real * scale_f64;
+    if y_scaled >= i64::MAX as f64 {
+        i64::MAX
+    } else if y_scaled <= i64::MIN as f64 {
+        i64::MIN
+    } else {
+        y_scaled.round() as i64
+    }
+}
+
 /// # Errors
-/// Returns [`Error::UserError`] when `inputs.len() != 2` or `outputs.len() != 1`.
+/// Returns `Error::UserError` when `inputs.len() != 2` or `outputs.len() != 1`.
 #[allow(
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
@@ -72,28 +65,15 @@ pub fn erf_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Er
     }
 
     let x_i64 = field_to_i64(inputs[0]);
-
     let scale_u64 = inputs[1].to_u256().as_u64();
     if scale_u64 == 0 {
         return Err(Error::UserError(
             "erf_hint: scale is zero; cannot de-quantise input".to_string(),
         ));
     }
-    let scale_f64 = scale_u64 as f64;
 
-    let x_real = x_i64 as f64 / scale_f64;
-    let y_real = erf_approx(x_real);
+    let y_q = compute_erf_quantized(x_i64, scale_u64);
 
-    let y_scaled = y_real * scale_f64;
-    let y_q: i64 = if y_scaled >= i64::MAX as f64 {
-        i64::MAX
-    } else if y_scaled <= i64::MIN as f64 {
-        i64::MIN
-    } else {
-        y_scaled.round() as i64
-    };
-
-    // Encode signed result as field element.
     outputs[0] = if y_q >= 0 {
         F::from_u256(U256::from(y_q as u64))
     } else {
@@ -138,19 +118,16 @@ mod tests {
 
     #[test]
     fn erf_zero() {
-        // erf(0) = 0
         let scale: u64 = 1 << 18;
         assert_eq!(run_hint(0, scale), 0);
     }
 
     #[test]
     fn erf_positive_one() {
-        // erf(1.0) ≈ 0.8427
         let scale: u64 = 1 << 18;
         let x_q = scale as i64;
         let result = run_hint(x_q, scale);
         let expected = (0.8427_f64 * scale as f64).round() as i64;
-        // Allow 0.1% tolerance
         let tol = (scale as i64) / 1000 + 1;
         assert!(
             (result - expected).abs() <= tol,
@@ -160,7 +137,6 @@ mod tests {
 
     #[test]
     fn erf_antisymmetry() {
-        // erf(-x) = -erf(x)
         let scale: u64 = 1 << 18;
         let x_q = scale as i64;
         let pos = run_hint(x_q, scale);
@@ -180,5 +156,24 @@ mod tests {
             (result - scale as i64).abs() <= 1,
             "should be ~scale, got {result}"
         );
+    }
+
+    #[test]
+    fn compute_erf_quantized_matches_hint() {
+        let scale: u64 = 1 << 18;
+        for x_q in [
+            -2 * scale as i64,
+            -(scale as i64),
+            0,
+            scale as i64,
+            2 * scale as i64,
+        ] {
+            let hint_result = run_hint(x_q, scale);
+            let compute_result = compute_erf_quantized(x_q, scale);
+            assert_eq!(
+                hint_result, compute_result,
+                "mismatch at x_q={x_q}: hint={hint_result}, compute={compute_result}"
+            );
+        }
     }
 }

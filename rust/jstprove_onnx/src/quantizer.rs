@@ -305,12 +305,48 @@ fn compute_max_bound_inner(graph: &LayerGraph) -> Result<f64> {
     // default alpha for Log-layer bound propagation (ln(2^18) ≈ 12.47).
     let default_alpha_f64 = (DEFAULT_SCALE_BASE as f64).powi(DEFAULT_SCALE_EXPONENT as i32);
 
+    let shapes = propagate_shapes(graph);
+
     for name in &graph.input_names {
         bounds.insert(name.clone(), 1.0);
     }
 
     for layer in graph.iter_topo() {
-        let bound = compute_layer_bound(layer, &bounds, default_alpha_f64)?;
+        let mut bound = compute_layer_bound(layer, &bounds, default_alpha_f64)?;
+
+        if layer.op_type == OpType::ReduceSum {
+            if let Some(in_name) = layer.inputs.first() {
+                let m_in = bounds.get(in_name.as_str()).copied().unwrap_or(1.0);
+                if let (Some(in_shape), Some(out_name)) =
+                    (shapes.get(in_name.as_str()), layer.outputs.first())
+                {
+                    let in_total: usize = in_shape.iter().product();
+                    let out_total: usize = shapes
+                        .get(out_name.as_str())
+                        .map(|s| s.iter().product())
+                        .unwrap_or(1);
+                    let factor = (in_total / out_total.max(1)).max(1) as f64;
+                    bound = m_in * factor;
+                }
+            }
+        }
+
+        if layer.op_type == OpType::MatMul {
+            if let (Some(in0_name), Some(in1_name)) = (layer.inputs.first(), layer.inputs.get(1)) {
+                let no_weight = !layer.weights.contains_key(in0_name.as_str())
+                    && !layer.weights.contains_key(in1_name.as_str());
+                if no_weight {
+                    let m_in = bounds.get(in0_name.as_str()).copied().unwrap_or(1.0);
+                    let m_b = bounds.get(in1_name.as_str()).copied().unwrap_or(1.0);
+                    let k = shapes
+                        .get(in0_name.as_str())
+                        .and_then(|s| s.last().copied())
+                        .unwrap_or(1)
+                        .max(1) as f64;
+                    bound = m_in * m_b * k;
+                }
+            }
+        }
 
         if layer.needs_rescale {
             max_bound = max_bound.max(bound);
@@ -1349,6 +1385,9 @@ fn is_range_check_op(op: OpType) -> bool {
             | OpType::TopK
             | OpType::AveragePool
             | OpType::Sqrt
+            | OpType::Tanh
+            | OpType::Erf
+            | OpType::Pow
     )
 }
 

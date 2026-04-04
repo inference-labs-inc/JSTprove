@@ -43,6 +43,7 @@ pub struct MatMulLayer {
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MatMulLayer {
+    #[allow(clippy::too_many_lines)]
     fn apply(
         &self,
         api: &mut Builder,
@@ -146,6 +147,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MatMulLayer {
         Ok((self.outputs.clone(), out_array))
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        clippy::uninlined_format_args,
+        clippy::redundant_closure_for_method_calls
+    )]
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,

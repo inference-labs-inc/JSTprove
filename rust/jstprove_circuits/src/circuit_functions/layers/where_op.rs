@@ -128,6 +128,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for WhereLayer {
         Ok((self.outputs.clone(), out_array))
     }
 
+    #[allow(clippy::too_many_lines, clippy::uninlined_format_args)]
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,

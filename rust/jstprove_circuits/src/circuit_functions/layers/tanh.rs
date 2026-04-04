@@ -1,9 +1,3 @@
-// Elementwise ONNX `Tanh` layer for int64 fixed-point tensors.
-//
-// # ZK approach
-// 1. **Hint**: computes tanh(x_q / scale) * scale in native f64.
-// 2. **No range check**: tanh can be negative.
-
 use std::collections::HashMap;
 
 use ethnum::U256;
@@ -13,8 +7,8 @@ use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Var
 
 use crate::circuit_functions::{
     CircuitError,
-    gadgets::LogupRangeCheckContext,
-    hints::tanh::TANH_HINT_KEY,
+    gadgets::{DecomposedExpLookup, function_lookup_bits, range_check::LogupRangeCheckContext},
+    hints::{exp::compute_exp_quantized, tanh::TANH_HINT_KEY},
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::{constants::INPUT, onnx_model::get_input_name},
 };
@@ -23,14 +17,17 @@ use crate::circuit_functions::{
 pub struct TanhLayer {
     inputs: Vec<String>,
     outputs: Vec<String>,
+    n_bits: usize,
     scaling: u64,
+    scale_exponent: u32,
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TanhLayer {
+    #[allow(clippy::cast_possible_truncation)]
     fn apply(
         &self,
         api: &mut Builder,
-        _logup_ctx: &mut LogupRangeCheckContext,
+        logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let x_name = get_input_name(&self.inputs, 0, LayerKind::Tanh, INPUT)?;
@@ -40,12 +37,47 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TanhLayer {
         })?;
 
         let shape = x_input.shape().to_vec();
-        let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
+        let scale = self.scaling;
+        let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(scale)));
+        let cross_tolerance = 3u64 * scale;
+        let cross_tol_var = api.constant(CircuitField::<C>::from_u256(U256::from(cross_tolerance)));
+        let cross_tol_bits = (2 * cross_tolerance).next_power_of_two().trailing_zeros() as usize;
+
+        let lookup_bits = function_lookup_bits(self.scale_exponent);
+        let mut decomposed = DecomposedExpLookup::build::<C, Builder>(
+            api,
+            lookup_bits,
+            scale,
+            compute_exp_quantized,
+        );
+
         let mut out_storage: Vec<Variable> = Vec::with_capacity(x_input.len());
 
-        for &x in x_input.iter() {
+        for &x in x_input {
             let hint_out = api.new_hint(TANH_HINT_KEY, &[x, scale_var], 1);
-            out_storage.push(hint_out[0]);
+            let y = hint_out[0];
+
+            let y_plus_scale = api.add(y, scale_var);
+            logup_ctx.range_check::<C, Builder>(api, y_plus_scale, self.n_bits)?;
+            let scale_minus_y = api.sub(scale_var, y);
+            logup_ctx.range_check::<C, Builder>(api, scale_minus_y, self.n_bits)?;
+
+            let two_x = api.add(x, x);
+            let exp_2x = decomposed.verify_exp::<C, Builder>(api, logup_ctx, two_x)?;
+
+            let denom = api.add(exp_2x, scale_var);
+            let lhs = api.mul(y, denom);
+            let rhs = api.sub(exp_2x, scale_var);
+            let rhs = api.mul(rhs, scale_var);
+            let diff = api.sub(lhs, rhs);
+            let shifted = api.add(diff, cross_tol_var);
+            logup_ctx.range_check::<C, Builder>(api, shifted, cross_tol_bits)?;
+
+            out_storage.push(y);
+        }
+
+        if !x_input.is_empty() {
+            decomposed.finalize::<C, Builder>(api);
         }
 
         let result = ArrayD::from_shape_vec(IxDyn(&shape), out_storage).map_err(|_| {
@@ -64,7 +96,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TanhLayer {
         _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
         _is_rescale: bool,
         _index: usize,
-        _layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
+        layer_context: &crate::circuit_functions::utils::build_layers::BuildLayerContext,
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
         layer
             .inputs
@@ -74,6 +106,18 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TanhLayer {
                 name: "input X".to_string(),
             })?;
 
+        if circuit_params.scale_exponent >= 32 {
+            return Err(LayerError::Other {
+                layer: LayerKind::Tanh,
+                msg: format!(
+                    "scale_exponent {} >= 32: scale^2 overflows u64 in Tanh cross-multiplication",
+                    circuit_params.scale_exponent
+                ),
+            }
+            .into());
+        }
+
+        let n_bits = layer_context.n_bits_for(&layer.name);
         let scaling: u64 = 1u64
             .checked_shl(circuit_params.scale_exponent)
             .ok_or_else(|| LayerError::Other {
@@ -87,7 +131,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for TanhLayer {
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
+            n_bits,
             scaling,
+            scale_exponent: circuit_params.scale_exponent,
         }))
     }
 }

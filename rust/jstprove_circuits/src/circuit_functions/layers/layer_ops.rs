@@ -9,6 +9,7 @@ use crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry;
 use crate::circuit_functions::utils::onnx_model::CircuitParams;
 use crate::circuit_functions::utils::onnx_types::ONNXLayer;
 
+#[allow(clippy::missing_errors_doc)]
 pub trait LayerOp<C: Config, Builder: RootAPI<C>> {
     /// Instantiated by each layer op.
     /// Applies the operation relevant operation for that layer

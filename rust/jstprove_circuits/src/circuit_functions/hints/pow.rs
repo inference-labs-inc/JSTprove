@@ -33,6 +33,7 @@ pub const POW_HINT_KEY: &str = "jstprove.pow_hint";
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
     clippy::similar_names
 )]
 pub fn pow_hint<F: FieldArith>(inputs: &[F], outputs: &mut [F]) -> Result<(), Error> {

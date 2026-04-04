@@ -128,6 +128,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for PadLayer {
         Ok((self.outputs.clone(), out_array))
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        clippy::uninlined_format_args,
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        clippy::redundant_closure_for_method_calls
+    )]
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
@@ -308,6 +315,7 @@ fn parse_i64_vec(v: &rmpv::Value) -> Option<Vec<i64>> {
     }
 }
 
+#[allow(clippy::redundant_closure_for_method_calls)]
 fn get_mode_param(layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer) -> String {
     layer
         .params

@@ -52,7 +52,7 @@ pub mod tanh;
 pub use tanh::tanh_hint;
 
 pub mod erf;
-pub use erf::erf_hint;
+pub use erf::{compute_erf_quantized, erf_hint};
 
 pub mod averagepool;
 pub use averagepool::averagepool_hint;
