@@ -92,6 +92,7 @@ pub struct DecomposedExpLookup {
     high_table: FunctionLookupTable,
     low_table: FunctionLookupTable,
     chunk_bits: usize,
+    scale_bits: usize,
     half_var: Variable,
     chunk_var: Variable,
     scale_var: Variable,
@@ -129,10 +130,13 @@ impl DecomposedExpLookup {
             1u64 << (high_bits - 1),
         )));
 
+        let scale_bits = 64 - scale.leading_zeros() as usize;
+
         Self {
             high_table,
             low_table,
             chunk_bits,
+            scale_bits,
             half_var,
             chunk_var,
             scale_var,
@@ -178,7 +182,7 @@ impl DecomposedExpLookup {
         let y_recon = api.mul(y, self.scale_var);
         let y_recon = api.add(y_recon, remainder);
         api.assert_is_equal(y_recon, product);
-        logup_ctx.range_check::<C, B>(api, remainder, self.chunk_bits)?;
+        logup_ctx.range_check::<C, B>(api, remainder, self.scale_bits)?;
 
         Ok(y)
     }

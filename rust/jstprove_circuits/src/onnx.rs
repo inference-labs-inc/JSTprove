@@ -85,9 +85,8 @@ impl Circuit<Variable> {
         logup_ctx.init::<C, Builder>(api);
 
         for layer in &layers {
-            let (keys, value) = layer.apply(api, &mut logup_ctx, &out)?;
-            for key in keys {
-                out.insert(key, value.clone());
+            for (key, value) in layer.apply_multi(api, &mut logup_ctx, &out)? {
+                out.insert(key, value);
             }
         }
 

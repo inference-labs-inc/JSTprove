@@ -9,6 +9,7 @@ use crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry;
 use crate::circuit_functions::utils::onnx_model::CircuitParams;
 use crate::circuit_functions::utils::onnx_types::ONNXLayer;
 
+#[allow(clippy::missing_errors_doc)]
 pub trait LayerOp<C: Config, Builder: RootAPI<C>> {
     /// Instantiated by each layer op.
     /// Applies the operation relevant operation for that layer
@@ -35,6 +36,21 @@ pub trait LayerOp<C: Config, Builder: RootAPI<C>> {
         logup_ctx: &mut LogupRangeCheckContext,
         input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError>;
+
+    /// Applies the operation and returns all outputs as named tensors.
+    ///
+    /// Single-output layers inherit this default, which wraps the result of
+    /// `apply`.  Multi-output layers (e.g. Split) override this method
+    /// directly and may leave `apply` unimplemented.
+    fn apply_multi(
+        &self,
+        api: &mut Builder,
+        logup_ctx: &mut LogupRangeCheckContext,
+        input: &HashMap<String, ArrayD<Variable>>,
+    ) -> Result<Vec<(String, ArrayD<Variable>)>, CircuitError> {
+        let (names, value) = self.apply(api, logup_ctx, input)?;
+        Ok(names.into_iter().map(|n| (n, value.clone())).collect())
+    }
     /// Instantiated by each layer op.
     /// Builds a circuit layer from an ONNX definition.
     ///

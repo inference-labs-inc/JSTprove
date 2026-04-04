@@ -28,7 +28,7 @@ echo "Building jstprove (release)..."
 cargo build --release --bin jstprove --manifest-path "$REPO_ROOT/Cargo.toml" 2>&1 | tail -3
 echo ""
 
-OPS="exp sigmoid gelu softmax layer_norm resize gridsample"
+OPS="exp sigmoid gelu softmax layer_norm resize gridsample sqrt tanh erf pow matmul averagepool pad reducesum"
 
 printf "%-14s %10s %10s %14s %12s %12s %12s\n" \
     "Layer" "MulGates" "AddGates" "CircuitFile" "Compile" "Prove" "Verify"
@@ -63,26 +63,32 @@ for op in $OPS; do
         circuit_size=$(du -sk "$compiled_path" | awk '{printf "%dKB", $1}')
     fi
 
+    output_path="$WORK_DIR/${op}_output.msgpack"
     if [ -d "$compiled_path" ]; then
         witness_out=$("$BINARY" run_gen_witness \
-            --onnx "$onnx_path" -c "$compiled_path" \
+            -c "$compiled_path" \
             -i "$MODEL_DIR/${op}_input.msgpack" \
+            -o "$output_path" \
             -w "$witness_path" 2>&1) || true
     fi
 
     if [ -f "$witness_path" ] || [ -d "$witness_path" ]; then
-        prove_out=$("$BINARY" run_gen_prove \
+        prove_start=$(python3 -c 'import time; print(time.monotonic())')
+        prove_out=$("$BINARY" run_prove_witness \
             -c "$compiled_path" -w "$witness_path" \
             -p "$proof_path" 2>&1) || true
-        prove_t=$(echo "$prove_out" | grep -oE 'in [0-9.]+s' | grep -oE '[0-9.]+' || echo "-")
+        prove_end=$(python3 -c 'import time; print(time.monotonic())')
+        prove_t=$(python3 -c "print(f'{$prove_end - $prove_start:.2f}')")
     fi
 
     if [ -f "$proof_path" ] || [ -d "$proof_path" ]; then
+        verify_start=$(python3 -c 'import time; print(time.monotonic())')
         verify_out=$("$BINARY" run_gen_verify \
-            --onnx "$onnx_path" -c "$compiled_path" \
-            -i "$MODEL_DIR/${op}_input.msgpack" \
+            -c "$compiled_path" \
+            -w "$witness_path" \
             -p "$proof_path" 2>&1) || true
-        verify_t=$(echo "$verify_out" | grep -oE 'in [0-9.]+s' | grep -oE '[0-9.]+' || echo "-")
+        verify_end=$(python3 -c 'import time; print(time.monotonic())')
+        verify_t=$(python3 -c "print(f'{$verify_end - $verify_start:.2f}')")
     fi
 
     printf "%-14s %10s %10s %14s %12s %12s %12s\n" \

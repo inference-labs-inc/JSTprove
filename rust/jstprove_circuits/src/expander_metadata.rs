@@ -388,6 +388,17 @@ fn op_type_to_string(op: OpType) -> String {
         OpType::Log => "Log",
         OpType::Expand => "Expand",
         OpType::ReduceMean => "ReduceMean",
+        OpType::MatMul => "MatMul",
+        OpType::AveragePool => "AveragePool",
+        OpType::Pad => "Pad",
+        OpType::Split => "Split",
+        OpType::Where => "Where",
+        OpType::Pow => "Pow",
+        OpType::Sqrt => "Sqrt",
+        OpType::Tanh => "Tanh",
+        OpType::ReduceSum => "ReduceSum",
+        OpType::Erf => "Erf",
+        OpType::ConvTranspose => "ConvTranspose",
     }
     .to_string()
 }
@@ -817,6 +828,17 @@ mod tests {
             (OpType::Log, "Log"),
             (OpType::Expand, "Expand"),
             (OpType::ReduceMean, "ReduceMean"),
+            (OpType::MatMul, "MatMul"),
+            (OpType::AveragePool, "AveragePool"),
+            (OpType::Pad, "Pad"),
+            (OpType::Split, "Split"),
+            (OpType::Where, "Where"),
+            (OpType::Pow, "Pow"),
+            (OpType::Sqrt, "Sqrt"),
+            (OpType::Tanh, "Tanh"),
+            (OpType::ReduceSum, "ReduceSum"),
+            (OpType::Erf, "Erf"),
+            (OpType::ConvTranspose, "ConvTranspose"),
         ];
 
         for &(op, expected_str) in cases {

@@ -41,6 +41,17 @@ pub enum OpType {
     Log,
     Expand,
     ReduceMean,
+    MatMul,
+    AveragePool,
+    Pad,
+    Split,
+    Where,
+    Pow,
+    Sqrt,
+    Tanh,
+    ReduceSum,
+    Erf,
+    ConvTranspose,
 }
 
 impl OpType {
@@ -81,6 +92,17 @@ impl OpType {
             "Log" => Ok(Self::Log),
             "Expand" => Ok(Self::Expand),
             "ReduceMean" => Ok(Self::ReduceMean),
+            "MatMul" => Ok(Self::MatMul),
+            "AveragePool" => Ok(Self::AveragePool),
+            "Pad" => Ok(Self::Pad),
+            "Split" => Ok(Self::Split),
+            "Where" => Ok(Self::Where),
+            "Pow" => Ok(Self::Pow),
+            "Sqrt" => Ok(Self::Sqrt),
+            "Tanh" => Ok(Self::Tanh),
+            "ReduceSum" => Ok(Self::ReduceSum),
+            "Erf" => Ok(Self::Erf),
+            "ConvTranspose" => Ok(Self::ConvTranspose),
             other => bail!("unsupported ONNX op: {other}"),
         }
     }
@@ -95,7 +117,12 @@ impl OpType {
     pub fn needs_rescale(&self) -> bool {
         matches!(
             self,
-            Self::Gemm | Self::Conv | Self::BatchNormalization | Self::Mul
+            Self::Gemm
+                | Self::Conv
+                | Self::BatchNormalization
+                | Self::Mul
+                | Self::MatMul
+                | Self::ConvTranspose
         )
     }
 }
