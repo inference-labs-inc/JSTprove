@@ -13,7 +13,8 @@ OPSET = 17
 DIM = 32
 
 
-def save(name, graph, inputs_shape, extra_opsets=None, skip_check=False):
+def save(name, graph, inputs_shape, extra_opsets=None, skip_check=False,
+         nonneg=False):
     opsets = [helper.make_opsetid("", OPSET)]
     if extra_opsets:
         opsets.extend(extra_opsets)
@@ -28,7 +29,10 @@ def save(name, graph, inputs_shape, extra_opsets=None, skip_check=False):
     for d in inputs_shape:
         total *= d
     rng = np.random.default_rng(42)
-    data = rng.standard_normal(total).tolist()
+    if nonneg:
+        data = np.abs(rng.standard_normal(total)).tolist()
+    else:
+        data = rng.standard_normal(total).tolist()
     input_path = os.path.join(OUT, f"{name}_input.msgpack")
     with open(input_path, "wb") as f:
         f.write(msgpack.packb({"input": data}))
@@ -124,7 +128,7 @@ def make_sqrt():
     Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, DIM])
     node = helper.make_node("Sqrt", ["X"], ["Y"])
     graph = helper.make_graph([node], "sqrt_graph", [X], [Y])
-    save("sqrt", graph, [1, DIM])
+    save("sqrt", graph, [1, DIM], nonneg=True)
 
 
 def make_tanh():
@@ -174,7 +178,7 @@ def make_averagepool():
         kernel_shape=[2, 2], strides=[2, 2],
     )
     graph = helper.make_graph([node], "avgpool_graph", [X], [Y])
-    save("averagepool", graph, [1, 1, 8, 8])
+    save("averagepool", graph, [1, 1, 8, 8], nonneg=True)
 
 
 def make_pad():
