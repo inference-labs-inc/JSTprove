@@ -792,8 +792,302 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
                     vec![]
                 }
             }
+            // Gemm: [M, K] x [K, N] → [M, N] (with optional transA/transB).
+            OpType::Gemm => {
+                let trans_a = layer.get_int_attr("transA").unwrap_or(0) != 0;
+                let trans_b = layer.get_int_attr("transB").unwrap_or(0) != 0;
+                let s0 = layer.inputs.first().and_then(|n| shapes.get(n.as_str()));
+                let s1 = layer.inputs.get(1).and_then(|n| shapes.get(n.as_str()));
+                match (s0, s1) {
+                    (Some(a), Some(b)) if a.len() == 2 && b.len() == 2 => {
+                        let m = if trans_a { a[1] } else { a[0] };
+                        let n = if trans_b { b[0] } else { b[1] };
+                        vec![m, n]
+                    }
+                    _ => input_shape.unwrap_or_default(),
+                }
+            }
+            // Flatten: reshape to [d0*...*d_{axis-1}, d_{axis}*...*d_{n-1}].
+            OpType::Flatten => {
+                if let Some(ref in_shape) = input_shape {
+                    let axis_raw = layer.get_int_attr("axis").unwrap_or(1);
+                    let rank = in_shape.len();
+                    let axis = if axis_raw < 0 {
+                        (axis_raw + rank as i64).max(0) as usize
+                    } else {
+                        (axis_raw as usize).min(rank)
+                    };
+                    let d0: usize = in_shape[..axis].iter().product::<usize>().max(1);
+                    let d1: usize = in_shape[axis..].iter().product::<usize>().max(1);
+                    vec![d0, d1]
+                } else {
+                    vec![]
+                }
+            }
+            // Transpose: permute dimensions.
+            OpType::Transpose => {
+                if let Some(ref in_shape) = input_shape {
+                    if let Some(perm) = layer.get_ints_attr("perm") {
+                        perm.iter()
+                            .map(|&p| in_shape.get(p as usize).copied().unwrap_or(1))
+                            .collect()
+                    } else {
+                        in_shape.iter().rev().copied().collect()
+                    }
+                } else {
+                    vec![]
+                }
+            }
+            // Squeeze: remove axes of size 1.
+            OpType::Squeeze => {
+                if let Some(ref in_shape) = input_shape {
+                    let axes: Vec<usize> = layer
+                        .inputs
+                        .get(1)
+                        .and_then(|n| layer.weights.get(n.as_str()))
+                        .map(|td| {
+                            td.as_i64_vec()
+                                .iter()
+                                .map(|&a| {
+                                    if a < 0 {
+                                        (a + in_shape.len() as i64) as usize
+                                    } else {
+                                        a as usize
+                                    }
+                                })
+                                .collect()
+                        })
+                        .or_else(|| {
+                            layer.get_ints_attr("axes").map(|v| {
+                                v.iter()
+                                    .map(|&a| {
+                                        if a < 0 {
+                                            (a + in_shape.len() as i64) as usize
+                                        } else {
+                                            a as usize
+                                        }
+                                    })
+                                    .collect()
+                            })
+                        })
+                        .unwrap_or_default();
+                    if axes.is_empty() {
+                        in_shape.iter().copied().filter(|&d| d != 1).collect()
+                    } else {
+                        in_shape
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(i, &d)| if axes.contains(&i) { None } else { Some(d) })
+                            .collect()
+                    }
+                } else {
+                    vec![]
+                }
+            }
+            // Unsqueeze: insert axes of size 1.
+            OpType::Unsqueeze => {
+                if let Some(ref in_shape) = input_shape {
+                    let axes: Vec<i64> = layer
+                        .inputs
+                        .get(1)
+                        .and_then(|n| layer.weights.get(n.as_str()))
+                        .map(|td| td.as_i64_vec())
+                        .or_else(|| layer.get_ints_attr("axes").map(|v| v.to_vec()))
+                        .unwrap_or_default();
+                    let out_rank = in_shape.len() + axes.len();
+                    let mut normalized: Vec<usize> = axes
+                        .iter()
+                        .map(|&a| {
+                            if a < 0 {
+                                (a + out_rank as i64) as usize
+                            } else {
+                                a as usize
+                            }
+                        })
+                        .collect();
+                    normalized.sort_unstable();
+                    let mut out = in_shape.clone();
+                    for &ax in &normalized {
+                        let pos = ax.min(out.len());
+                        out.insert(pos, 1);
+                    }
+                    out
+                } else {
+                    vec![]
+                }
+            }
+            // Pad: adds padding to spatial dims.
+            OpType::Pad => {
+                if let Some(ref in_shape) = input_shape {
+                    let pads_raw: Vec<i64> = layer
+                        .inputs
+                        .get(1)
+                        .and_then(|n| layer.weights.get(n.as_str()))
+                        .map(|td| td.as_i64_vec())
+                        .unwrap_or_default();
+                    if pads_raw.is_empty() {
+                        in_shape.clone()
+                    } else {
+                        let rank = in_shape.len();
+                        in_shape
+                            .iter()
+                            .enumerate()
+                            .map(|(i, &d)| {
+                                let pad_begin =
+                                    pads_raw.get(i).copied().unwrap_or(0).max(0) as usize;
+                                let pad_end =
+                                    pads_raw.get(rank + i).copied().unwrap_or(0).max(0) as usize;
+                                d + pad_begin + pad_end
+                            })
+                            .collect()
+                    }
+                } else {
+                    vec![]
+                }
+            }
+            // Gather: index along axis — output has shape with axis dim replaced.
+            OpType::Gather => {
+                if let Some(ref in_shape) = input_shape {
+                    let axis_raw = layer.get_int_attr("axis").unwrap_or(0);
+                    let rank = in_shape.len();
+                    let axis = if axis_raw < 0 {
+                        (axis_raw + rank as i64).max(0) as usize
+                    } else {
+                        (axis_raw as usize).min(rank.saturating_sub(1))
+                    };
+                    let indices_shape = layer
+                        .inputs
+                        .get(1)
+                        .and_then(|n| shapes.get(n.as_str()))
+                        .cloned()
+                        .unwrap_or_else(|| vec![1]);
+                    let mut out: Vec<usize> = in_shape[..axis].to_vec();
+                    out.extend_from_slice(&indices_shape);
+                    if axis + 1 < in_shape.len() {
+                        out.extend_from_slice(&in_shape[axis + 1..]);
+                    }
+                    out
+                } else {
+                    vec![]
+                }
+            }
+            // Slice: reduces dims along sliced axes.
+            OpType::Slice => {
+                if let Some(ref in_shape) = input_shape {
+                    let starts: Vec<i64> = layer
+                        .inputs
+                        .get(1)
+                        .and_then(|n| layer.weights.get(n.as_str()))
+                        .map(|td| td.as_i64_vec())
+                        .unwrap_or_default();
+                    let ends: Vec<i64> = layer
+                        .inputs
+                        .get(2)
+                        .and_then(|n| layer.weights.get(n.as_str()))
+                        .map(|td| td.as_i64_vec())
+                        .unwrap_or_default();
+                    let axes: Vec<usize> = layer
+                        .inputs
+                        .get(3)
+                        .and_then(|n| layer.weights.get(n.as_str()))
+                        .map(|td| {
+                            td.as_i64_vec()
+                                .iter()
+                                .map(|&a| {
+                                    if a < 0 {
+                                        (a + in_shape.len() as i64) as usize
+                                    } else {
+                                        a as usize
+                                    }
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_else(|| (0..starts.len()).collect());
+                    let steps: Vec<i64> = layer
+                        .inputs
+                        .get(4)
+                        .and_then(|n| layer.weights.get(n.as_str()))
+                        .map(|td| td.as_i64_vec())
+                        .unwrap_or_else(|| vec![1; axes.len()]);
+                    let mut out = in_shape.clone();
+                    for (idx, &ax) in axes.iter().enumerate() {
+                        if ax >= out.len() {
+                            continue;
+                        }
+                        let dim = out[ax] as i64;
+                        let s = starts.get(idx).copied().unwrap_or(0).clamp(-dim, dim);
+                        let e = ends.get(idx).copied().unwrap_or(dim).clamp(-dim, dim);
+                        let step = steps.get(idx).copied().unwrap_or(1).max(1);
+                        let s_norm = if s < 0 { s + dim } else { s };
+                        let e_norm = if e < 0 { e + dim } else { e };
+                        let len = (e_norm - s_norm).max(0);
+                        out[ax] = ((len + step - 1) / step).max(0) as usize;
+                    }
+                    out
+                } else {
+                    vec![]
+                }
+            }
+            // Expand: broadcast to target shape.
+            OpType::Expand => {
+                if let Some(ref in_shape) = input_shape {
+                    let target = layer
+                        .inputs
+                        .get(1)
+                        .and_then(|n| layer.weights.get(n.as_str()))
+                        .map(|td| td.as_i64_vec().iter().map(|&v| v as usize).collect())
+                        .unwrap_or_else(|| in_shape.clone());
+                    broadcast_two(in_shape, &target)
+                } else {
+                    vec![]
+                }
+            }
+            // Tile: repeat tensor along each axis.
+            OpType::Tile => {
+                if let Some(ref in_shape) = input_shape {
+                    let repeats: Vec<usize> = layer
+                        .inputs
+                        .get(1)
+                        .and_then(|n| layer.weights.get(n.as_str()))
+                        .map(|td| td.as_i64_vec().iter().map(|&v| v.max(1) as usize).collect())
+                        .unwrap_or_default();
+                    in_shape
+                        .iter()
+                        .enumerate()
+                        .map(|(i, &d)| d * repeats.get(i).copied().unwrap_or(1))
+                        .collect()
+                } else {
+                    vec![]
+                }
+            }
+            // TopK: output shape = input shape with last dim replaced by k.
+            OpType::TopK => {
+                if let Some(ref in_shape) = input_shape {
+                    let axis_raw = layer.get_int_attr("axis").unwrap_or(-1);
+                    let rank = in_shape.len();
+                    let axis = if axis_raw < 0 {
+                        (axis_raw + rank as i64).max(0) as usize
+                    } else {
+                        (axis_raw as usize).min(rank.saturating_sub(1))
+                    };
+                    let k = layer
+                        .inputs
+                        .get(1)
+                        .and_then(|n| layer.weights.get(n.as_str()))
+                        .and_then(|td| td.as_i64_vec().first().copied())
+                        .unwrap_or(1)
+                        .max(1) as usize;
+                    let mut out = in_shape.clone();
+                    if axis < out.len() {
+                        out[axis] = k;
+                    }
+                    out
+                } else {
+                    vec![]
+                }
+            }
             _ => {
-                // Default: output shape = input[0] shape (pass-through / structural op).
+                // Default: output shape = input[0] shape (elementwise / structural op).
                 input_shape.unwrap_or_default()
             }
         };
@@ -883,20 +1177,22 @@ fn compute_bounds(graph: &LayerGraph, config: &ScaleConfig) -> Result<HashMap<St
             n_bits_config.insert(layer.name.clone(), n_bits);
         }
 
+        let post_rescale_bound = if layer.needs_rescale { 1.0 } else { bound };
+
         // TopK output[0] = values (bound = m_in), output[1] = indices
         // (range [0, axis_len − 1], not quantised floats). Use a conservative
         // index bound of 1.0 so downstream ops do not inflate their n_bits
         // based on the values bound.
         if layer.op_type == OpType::TopK {
             if let Some(values_name) = layer.outputs.first() {
-                bounds.insert(values_name.clone(), bound);
+                bounds.insert(values_name.clone(), post_rescale_bound);
             }
             if let Some(indices_name) = layer.outputs.get(1) {
                 bounds.insert(indices_name.clone(), 1.0_f64);
             }
         } else {
             for out_name in &layer.outputs {
-                bounds.insert(out_name.clone(), bound);
+                bounds.insert(out_name.clone(), post_rescale_bound);
             }
         }
     }
