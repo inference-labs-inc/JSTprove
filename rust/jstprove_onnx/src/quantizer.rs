@@ -1177,22 +1177,20 @@ fn compute_bounds(graph: &LayerGraph, config: &ScaleConfig) -> Result<HashMap<St
             n_bits_config.insert(layer.name.clone(), n_bits);
         }
 
-        let post_rescale_bound = if layer.needs_rescale { 1.0 } else { bound };
-
         // TopK output[0] = values (bound = m_in), output[1] = indices
         // (range [0, axis_len − 1], not quantised floats). Use a conservative
         // index bound of 1.0 so downstream ops do not inflate their n_bits
         // based on the values bound.
         if layer.op_type == OpType::TopK {
             if let Some(values_name) = layer.outputs.first() {
-                bounds.insert(values_name.clone(), post_rescale_bound);
+                bounds.insert(values_name.clone(), bound);
             }
             if let Some(indices_name) = layer.outputs.get(1) {
                 bounds.insert(indices_name.clone(), 1.0_f64);
             }
         } else {
             for out_name in &layer.outputs {
-                bounds.insert(out_name.clone(), post_rescale_bound);
+                bounds.insert(out_name.clone(), bound);
             }
         }
     }
