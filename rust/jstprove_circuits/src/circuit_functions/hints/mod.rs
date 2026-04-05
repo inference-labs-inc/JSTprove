@@ -48,9 +48,6 @@ pub use global_averagepool::global_averagepool_hint;
 pub mod instance_norm;
 pub use instance_norm::instance_norm_hint;
 
-pub mod leaky_relu;
-pub use leaky_relu::leaky_relu_hint;
-
 pub mod log;
 pub use log::log_hint;
 
@@ -135,7 +132,6 @@ pub fn build_logup_hint_registry<F: CompilerField>() -> HintRegistry<F> {
     registry.register(erf::ERF_ABS_HINT_KEY, erf_abs_hint::<F>);
     registry.register(averagepool::AVERAGEPOOL_HINT_KEY, averagepool_hint::<F>);
     registry.register(pow::POW_HINT_KEY, pow_hint::<F>);
-    registry.register(leaky_relu::LEAKY_RELU_HINT_KEY, leaky_relu_hint::<F>);
     registry.register(hardswish::HARDSWISH_HINT_KEY, hardswish_hint::<F>);
     registry.register(
         global_averagepool::GLOBAL_AVERAGEPOOL_HINT_KEY,

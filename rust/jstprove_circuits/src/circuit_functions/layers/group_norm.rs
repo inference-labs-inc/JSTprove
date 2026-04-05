@@ -10,6 +10,9 @@ use crate::circuit_functions::{
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
 };
 
+const GROUP_NORM_UNSUPPORTED: &str = "GroupNormalization is not yet supported in the circuit backend; \
+     use InstanceNormalization or LayerNormalization instead.";
+
 pub struct GroupNormLayer;
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GroupNormLayer {
@@ -21,9 +24,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GroupNormLayer {
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         Err(LayerError::Other {
             layer: LayerKind::GroupNormalization,
-            msg: "GroupNormalization is not yet supported in the circuit backend; \
-                  use InstanceNormalization or LayerNormalization instead."
-                .to_string(),
+            msg: GROUP_NORM_UNSUPPORTED.to_string(),
         }
         .into())
     }
@@ -38,9 +39,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GroupNormLayer {
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
         Err(LayerError::Other {
             layer: LayerKind::GroupNormalization,
-            msg: "GroupNormalization is not yet supported in the circuit backend; \
-                  use InstanceNormalization or LayerNormalization instead."
-                .to_string(),
+            msg: GROUP_NORM_UNSUPPORTED.to_string(),
         }
         .into())
     }

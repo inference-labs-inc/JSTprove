@@ -62,6 +62,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LogLayer {
 
             logup_ctx.range_check::<C, Builder>(api, x, self.n_bits)?;
 
+            let one_var = api.constant(CircuitField::<C>::from_u256(U256::from(1u64)));
+            let x_minus_one = api.sub(x, one_var);
+            logup_ctx.range_check::<C, Builder>(api, x_minus_one, self.n_bits)?;
+
             let exp_y = decomposed.verify_exp::<C, Builder>(api, logup_ctx, y)?;
 
             let lhs = api.mul(exp_y, scale_var);

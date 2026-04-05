@@ -33,7 +33,12 @@ pub fn global_averagepool_hint<F: FieldArith>(
     let mean = sum / n as f64;
     let y_q = mean.round() as i64;
 
-    outputs[0] = F::from_u256(U256::from(y_q as u64));
+    outputs[0] = if y_q >= 0 {
+        F::from_u256(U256::from(y_q as u64))
+    } else {
+        let mag = U256::from(y_q.unsigned_abs());
+        F::from_u256(F::MODULUS - mag)
+    };
     Ok(())
 }
 
@@ -45,14 +50,25 @@ mod tests {
     type F = BN254Fr;
 
     fn field(n: i64) -> F {
-        F::from_u256(U256::from(n as u64))
+        if n >= 0 {
+            F::from_u256(U256::from(n as u64))
+        } else {
+            let mag = U256::from(n.unsigned_abs());
+            F::from_u256(F::MODULUS - mag)
+        }
     }
 
     fn run_hint(values: &[i64]) -> i64 {
         let inputs: Vec<F> = values.iter().map(|&v| field(v)).collect();
         let mut outputs = [F::zero()];
         global_averagepool_hint::<F>(&inputs, &mut outputs).unwrap();
-        outputs[0].to_u256().as_u64() as i64
+        let p_half = F::MODULUS / 2;
+        let xu = outputs[0].to_u256();
+        if xu > p_half {
+            -((F::MODULUS - xu).as_u64() as i64)
+        } else {
+            xu.as_u64() as i64
+        }
     }
 
     #[test]

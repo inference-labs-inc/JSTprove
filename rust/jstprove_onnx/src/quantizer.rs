@@ -1099,10 +1099,20 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
                     vec![]
                 }
             }
-            _ => {
-                // Default: output shape = input[0] shape (elementwise / structural op).
-                input_shape.unwrap_or_default()
+            OpType::GlobalAveragePool => {
+                if let Some(ref in_shape) = input_shape {
+                    if in_shape.len() >= 2 {
+                        let mut out = in_shape[..2].to_vec();
+                        out.extend(std::iter::repeat_n(1, in_shape.len() - 2));
+                        out
+                    } else {
+                        in_shape.clone()
+                    }
+                } else {
+                    vec![]
+                }
             }
+            _ => input_shape.unwrap_or_default(),
         };
 
         for out_name in &layer.outputs {
@@ -1644,7 +1654,15 @@ fn compute_layer_bound(
         // softmax / sigmoid outputs are in [0, 1].
         OpType::LeakyRelu => {
             let m_in = get_input_bound(0);
-            Ok(m_in)
+            let alpha = layer
+                .attributes
+                .get("alpha")
+                .and_then(|v| match v {
+                    AttrValue::Float(f) => Some(*f as f64),
+                    _ => None,
+                })
+                .unwrap_or(0.01);
+            Ok(m_in.max(alpha.abs() * m_in))
         }
         OpType::Identity => {
             let m_in = get_input_bound(0);
