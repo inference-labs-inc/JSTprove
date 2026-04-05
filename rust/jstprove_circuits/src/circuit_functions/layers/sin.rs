@@ -71,7 +71,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SinLayer {
                 Some(upper_var),
             )?;
 
-            let hint_out = api.new_hint(SIN_HINT_KEY, &[x, scale_var], 1);
+            let hint_out = api.new_hint(SIN_HINT_KEY, &[clamped, scale_var], 1);
             let y = hint_out[0];
 
             table.query(clamped, y);

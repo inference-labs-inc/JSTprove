@@ -8,7 +8,7 @@ use crate::circuit_functions::{
     CircuitError,
     gadgets::LogupRangeCheckContext,
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
-    utils::{constants::INPUT, onnx_model::get_input_name},
+    utils::{constants::INPUT, onnx_model::get_input_name, tensor_ops::broadcast_two_arrays},
 };
 
 #[derive(Debug)]
@@ -36,26 +36,16 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for AndLayer {
             name: b_name.to_string(),
         })?;
 
-        if a_input.shape() != b_input.shape() {
-            return Err(LayerError::InvalidShape {
-                layer: LayerKind::And,
-                msg: format!(
-                    "AndLayer: input shapes must match, got {:?} and {:?}",
-                    a_input.shape(),
-                    b_input.shape()
-                ),
-            }
-            .into());
-        }
+        let (a_bc, b_bc) = broadcast_two_arrays(a_input, b_input)?;
 
-        let shape = a_input.shape().to_vec();
-        let a_flat = a_input.as_slice().ok_or_else(|| LayerError::InvalidShape {
+        let shape = a_bc.shape().to_vec();
+        let a_flat = a_bc.as_slice().ok_or_else(|| LayerError::InvalidShape {
             layer: LayerKind::And,
-            msg: "A tensor is not contiguous".to_string(),
+            msg: "A tensor is not contiguous after broadcast".to_string(),
         })?;
-        let b_flat = b_input.as_slice().ok_or_else(|| LayerError::InvalidShape {
+        let b_flat = b_bc.as_slice().ok_or_else(|| LayerError::InvalidShape {
             layer: LayerKind::And,
-            msg: "B tensor is not contiguous".to_string(),
+            msg: "B tensor is not contiguous after broadcast".to_string(),
         })?;
 
         let mut out_storage: Vec<Variable> = Vec::with_capacity(a_flat.len());

@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 
-use ethnum::U256;
 use ndarray::{ArrayD, IxDyn};
 
-use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
+use expander_compiler::frontend::{Config, RootAPI, Variable};
 
 use crate::circuit_functions::{
     CircuitError,
-    gadgets::LogupRangeCheckContext,
+    gadgets::{LogupRangeCheckContext, i64_to_field},
     layers::{LayerError, LayerKind, layer_ops::LayerOp},
     utils::onnx_model::get_w_or_b,
 };
@@ -28,10 +27,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConstantOfShapeLaye
         _input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
         let total: usize = self.output_shape.iter().product();
-        #[allow(clippy::cast_sign_loss)]
-        let val = api.constant(CircuitField::<C>::from_u256(U256::from(
-            self.fill_value as u64,
-        )));
+        let val = api.constant(i64_to_field::<C>(self.fill_value));
         let out_flat: Vec<Variable> = vec![val; total];
 
         let out_array =

@@ -113,18 +113,19 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for RangeLayer {
             .into());
         }
 
-        let mut sequence = Vec::new();
-        let mut current = start;
-        if delta > 0 {
-            while current < limit {
-                sequence.push(current);
-                current = current.saturating_add(delta);
-            }
+        let range_len: usize = if (delta > 0 && start < limit) || (delta < 0 && start > limit) {
+            let diff = (limit - start).unsigned_abs();
+            let step = delta.unsigned_abs();
+            diff.div_ceil(step) as usize
         } else {
-            while current > limit {
-                sequence.push(current);
-                current = current.saturating_add(delta);
-            }
+            0
+        };
+
+        let mut sequence = Vec::with_capacity(range_len);
+        let mut current = start;
+        for _ in 0..range_len {
+            sequence.push(current);
+            current = current.saturating_add(delta);
         }
 
         Ok(Box::new(Self {

@@ -49,11 +49,24 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherElementsLayer
             msg: "data tensor is not contiguous".to_string(),
         })?;
 
+        let data_len = data_flat.len();
         let out_flat: Vec<Variable> = self
             .flat_index_map
             .iter()
-            .map(|&idx| data_flat[idx])
-            .collect();
+            .enumerate()
+            .map(|(i, &idx)| {
+                if idx >= data_len {
+                    return Err(LayerError::InvalidShape {
+                        layer: LayerKind::GatherElements,
+                        msg: format!(
+                            "flat index {idx} (output position {i}) out of bounds for data of length {data_len}"
+                        ),
+                    }
+                    .into());
+                }
+                Ok(data_flat[idx])
+            })
+            .collect::<Result<Vec<_>, CircuitError>>()?;
 
         let out_array =
             ArrayD::from_shape_vec(IxDyn(&self.output_shape), out_flat).map_err(|e| {

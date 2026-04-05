@@ -99,13 +99,34 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LessLayer {
                 msg: format!("Less input B '{b_name}' must be a compile-time constant: {e}"),
             })?;
 
-        let a_flat = a_data.as_slice().ok_or_else(|| LayerError::InvalidShape {
+        let a_bc = a_data
+            .broadcast(IxDyn(&output_shape))
+            .ok_or_else(|| LayerError::InvalidShape {
+                layer: LayerKind::Less,
+                msg: format!(
+                    "cannot broadcast A {:?} to {output_shape:?}",
+                    a_data.shape()
+                ),
+            })?
+            .to_owned();
+        let b_bc = b_data
+            .broadcast(IxDyn(&output_shape))
+            .ok_or_else(|| LayerError::InvalidShape {
+                layer: LayerKind::Less,
+                msg: format!(
+                    "cannot broadcast B {:?} to {output_shape:?}",
+                    b_data.shape()
+                ),
+            })?
+            .to_owned();
+
+        let a_flat = a_bc.as_slice().ok_or_else(|| LayerError::InvalidShape {
             layer: LayerKind::Less,
-            msg: "A tensor is not contiguous".to_string(),
+            msg: "A tensor is not contiguous after broadcast".to_string(),
         })?;
-        let b_flat = b_data.as_slice().ok_or_else(|| LayerError::InvalidShape {
+        let b_flat = b_bc.as_slice().ok_or_else(|| LayerError::InvalidShape {
             layer: LayerKind::Less,
-            msg: "B tensor is not contiguous".to_string(),
+            msg: "B tensor is not contiguous after broadcast".to_string(),
         })?;
 
         let result: Vec<bool> = a_flat

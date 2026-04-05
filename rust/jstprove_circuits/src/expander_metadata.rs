@@ -867,6 +867,12 @@ mod tests {
             (OpType::Greater, "Greater"),
             (OpType::Less, "Less"),
             (OpType::ConstantOfShape, "ConstantOfShape"),
+            (OpType::Sin, "Sin"),
+            (OpType::Cos, "Cos"),
+            (OpType::Range, "Range"),
+            (OpType::ReduceMax, "ReduceMax"),
+            (OpType::ScatterND, "ScatterND"),
+            (OpType::GatherElements, "GatherElements"),
         ];
 
         for &(op, expected_str) in cases {

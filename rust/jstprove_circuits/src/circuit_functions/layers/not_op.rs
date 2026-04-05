@@ -37,6 +37,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for NotLayer {
         let mut out_storage: Vec<Variable> = Vec::with_capacity(x_input.len());
 
         for &x in x_input {
+            api.assert_is_bool(x);
             let y = api.sub(one_var, x);
             out_storage.push(y);
         }
