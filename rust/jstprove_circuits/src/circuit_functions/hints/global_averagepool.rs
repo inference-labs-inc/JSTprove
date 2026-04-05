@@ -32,7 +32,8 @@ pub fn global_averagepool_hint<F: FieldArith>(
     let sum: i128 = inputs.iter().map(|&x| i128::from(field_to_i64(x))).sum();
     let quotient = sum / n;
     let remainder = sum % n;
-    let y_q = if 2 * remainder.abs() > n {
+    let double_abs_rem = 2 * remainder.abs();
+    let y_q = if double_abs_rem > n || (double_abs_rem == n && remainder > 0) {
         (quotient + remainder.signum()) as i64
     } else {
         quotient as i64
@@ -82,7 +83,7 @@ mod tests {
 
     #[test]
     fn global_averagepool_rounding() {
-        assert_eq!(run_hint(&[1, 2]), 1);
+        assert_eq!(run_hint(&[1, 2]), 2);
     }
 
     #[test]
@@ -92,7 +93,7 @@ mod tests {
 
     #[test]
     fn global_averagepool_mixed_tie() {
-        assert_eq!(run_hint(&[-1, 2]), 0);
+        assert_eq!(run_hint(&[-1, 2]), 1);
     }
 
     #[test]
