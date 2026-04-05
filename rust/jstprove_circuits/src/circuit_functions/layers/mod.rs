@@ -53,5 +53,19 @@ pub mod transpose;
 pub mod unsqueeze;
 pub mod where_op;
 
+pub mod and_op;
+pub mod constant_of_shape;
+pub mod equal;
+pub mod greater;
+pub mod less;
+pub mod not_op;
+
+pub mod cos;
+pub mod gather_elements;
+pub mod range;
+pub mod reduce_max;
+pub mod scatter_nd;
+pub mod sin;
+
 pub use errors::LayerError;
 pub use layer_kinds::LayerKind;

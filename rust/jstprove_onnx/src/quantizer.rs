@@ -1721,6 +1721,31 @@ fn compute_layer_bound(
             let max_beta = get_bias_bound(2);
             Ok(max_gamma * normalization_bound + max_beta)
         }
+        OpType::Not
+        | OpType::And
+        | OpType::Equal
+        | OpType::Greater
+        | OpType::Less
+        | OpType::ConstantOfShape => Ok(1.0),
+        OpType::Sin | OpType::Cos => Ok(1.0),
+        OpType::Range => Ok(1.0),
+        OpType::ReduceMax => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
+        OpType::ScatterND => {
+            let m_in = get_input_bound(0);
+            let m_updates = if layer.inputs.len() > 2 {
+                get_input_bound(2)
+            } else {
+                m_in
+            };
+            Ok(m_in.max(m_updates))
+        }
+        OpType::GatherElements => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
         OpType::LayerNormalization => {
             // After normalization the per-element output is bounded by roughly
             // max|γ| * (x − μ) / σ + max|β|. In the worst case (two values
@@ -1770,6 +1795,8 @@ fn is_range_check_op(op: OpType) -> bool {
             | OpType::Pow
             | OpType::HardSwish
             | OpType::GlobalAveragePool
+            | OpType::Sin
+            | OpType::Cos
     )
 }
 

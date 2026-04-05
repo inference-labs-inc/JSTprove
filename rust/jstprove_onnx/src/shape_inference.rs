@@ -626,6 +626,19 @@ fn infer_layer_output_shape(
         OpType::InstanceNormalization | OpType::GroupNormalization => {
             passthrough_shape(layer, input_shape)
         }
+        OpType::Not => passthrough_shape(layer, input_shape),
+        OpType::And | OpType::Equal | OpType::Greater | OpType::Less => {
+            infer_broadcast_binary(layer, shapes)
+        }
+        OpType::ConstantOfShape => infer_constant_of_shape(layer, initializers, constant_tensors),
+        OpType::Sin | OpType::Cos => passthrough_shape(layer, input_shape),
+        OpType::Range => infer_range(layer, initializers, constant_tensors),
+        OpType::ReduceMax => infer_reduce(layer, input_shape, initializers, constant_tensors),
+        OpType::ScatterND => passthrough_shape(layer, input_shape),
+        OpType::GatherElements => {
+            let indices_shape = layer.inputs.get(1).and_then(|n| get_shape(shapes, n));
+            passthrough_shape_with(layer, indices_shape)
+        }
     }
 }
 
@@ -641,6 +654,54 @@ fn passthrough_shape(
         .iter()
         .map(|o| (o.clone(), shape.clone()))
         .collect())
+}
+
+fn passthrough_shape_with(
+    layer: &LayerNode,
+    shape: Option<&Vec<usize>>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let shape = shape
+        .ok_or_else(|| anyhow::anyhow!("layer {}: missing input shape", layer.name))?
+        .clone();
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), shape.clone()))
+        .collect())
+}
+
+fn infer_range(
+    layer: &LayerNode,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let resolve_scalar = |idx: usize| -> Option<f64> {
+        let name = layer.inputs.get(idx)?;
+        let td = lookup_constant(name, initializers, constant_tensors)?;
+        let vals = td.as_f64_vec();
+        if vals.len() == 1 {
+            Some(vals[0])
+        } else {
+            None
+        }
+    };
+    let start = resolve_scalar(0)
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Range missing constant start", layer.name))?;
+    let limit = resolve_scalar(1)
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Range missing constant limit", layer.name))?;
+    let delta = resolve_scalar(2)
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Range missing constant delta", layer.name))?;
+    anyhow::ensure!(
+        delta != 0.0,
+        "layer {}: Range delta must be non-zero",
+        layer.name
+    );
+    let n = ((limit - start) / delta).ceil().max(0.0) as usize;
+    let out_name = layer
+        .outputs
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("layer {}: Range has no outputs", layer.name))?;
+    Ok(vec![(out_name.clone(), vec![n])])
 }
 
 fn infer_conv(
@@ -800,6 +861,35 @@ fn infer_gemm(
     }
 
     let out_shape = vec![m, n];
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
+}
+
+fn infer_constant_of_shape(
+    layer: &LayerNode,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let shape_name = layer.inputs.first().ok_or_else(|| {
+        anyhow::anyhow!("layer {}: ConstantOfShape missing shape input", layer.name)
+    })?;
+
+    let shape_td = constant_tensors
+        .get(shape_name)
+        .or_else(|| initializers.get(shape_name))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "layer {}: ConstantOfShape shape input '{}' not found in constants/initializers",
+                layer.name,
+                shape_name
+            )
+        })?;
+
+    let out_shape: Vec<usize> = shape_td.int_data.iter().map(|&v| v as usize).collect();
+
     Ok(layer
         .outputs
         .iter()
