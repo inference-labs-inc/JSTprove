@@ -19,7 +19,9 @@ pub struct CosLayer {
     outputs: Vec<String>,
     n_bits: usize,
     scaling: u64,
+    #[allow(dead_code)]
     scale_exponent: u32,
+    table_bits: usize,
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for CosLayer {
@@ -39,7 +41,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for CosLayer {
         let shape = x_input.shape().to_vec();
         let scale_var = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
 
-        let table_bits = ((self.scale_exponent as usize) + 3).min(20);
+        let table_bits = self.table_bits;
 
         let mut table = FunctionLookupTable::build_signed::<C, Builder>(
             api,
@@ -118,7 +120,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for CosLayer {
             return Err(LayerError::Other {
                 layer: LayerKind::Cos,
                 msg: format!(
-                    "scale_exponent {} >= 32: overflows u64 in Cos lookup table",
+                    "scale_exponent {} >= 32: exceeds maximum allowed for Cos lookup table",
                     circuit_params.scale_exponent
                 ),
             }
@@ -164,6 +166,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for CosLayer {
             n_bits,
             scaling,
             scale_exponent: circuit_params.scale_exponent,
+            table_bits,
         }))
     }
 }
