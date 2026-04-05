@@ -23,6 +23,7 @@ use crate::circuit_functions::utils::onnx_model::{
     Architecture, CircuitParams, WANDB, collect_all_shapes,
 };
 use crate::circuit_functions::utils::onnx_types::ONNXLayer;
+use crate::circuit_functions::utils::tensor_ops::convert_val_to_field_element;
 use crate::expander_metadata;
 
 use jstprove_onnx::quantizer::N_BITS_GOLDILOCKS;
@@ -67,7 +68,7 @@ pub fn run_pipeline_goldilocks(onnx_path: &Path, input_data: &[f64]) -> Result<P
 
 fn run_pipeline<C: Config>(
     onnx_path: &Path,
-    _input_data: &[f64],
+    input_data: &[f64],
     n_bits: u32,
 ) -> Result<PipelineResult>
 where
@@ -95,8 +96,20 @@ where
     hint_registry.register("myhint.rangeproofhint", rangeproof_hint);
     let mut ctx: Context<C, _> = Context::new(hint_registry);
 
-    let zero = CircuitField::<C>::default();
-    let input_vals = vec![zero; pipeline.input_len];
+    anyhow::ensure!(
+        input_data.len() == pipeline.input_len,
+        "input_data length ({}) does not match model input length ({})",
+        input_data.len(),
+        pipeline.input_len
+    );
+    let input_vals: Vec<CircuitField<C>> = input_data
+        .iter()
+        .map(|&v| {
+            #[allow(clippy::cast_possible_truncation)]
+            let i = v as i64;
+            convert_val_to_field_element::<C>(i)
+        })
+        .collect();
     let mut activations: DeviceMemoryHandle = ctx.copy_to_device(&input_vals);
     activations = activations.reshape(&[1, pipeline.input_len]);
 
@@ -109,7 +122,7 @@ where
         let mut io_handles: Vec<_> = vec![activations.clone()];
 
         for (_wname, wlen) in &desc.weight_entries {
-            let wvals = vec![zero; *wlen];
+            let wvals = vec![CircuitField::<C>::default(); *wlen];
             let whandle = ctx.copy_to_device(&wvals);
             io_handles.push(whandle.reshape(&[1, *wlen]));
         }
@@ -223,20 +236,21 @@ fn compile_kernels<C: Config>(
 
         let act_in_len = prev_output_len;
 
-        let weight_entries: Vec<(String, usize)> = layer
-            .inputs
-            .iter()
-            .skip(1)
-            .filter_map(|name| {
-                w_and_b_map.get(name.as_str()).map(|wb| {
-                    let len: usize = wb
-                        .shape
-                        .get(name.as_str())
-                        .map_or(1, |s| s.iter().product());
-                    (name.clone(), len)
-                })
-            })
-            .collect();
+        let mut weight_entries: Vec<(String, usize)> = Vec::new();
+        for name in layer.inputs.iter().skip(1) {
+            let wb = w_and_b_map.get(name.as_str()).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "layer '{}' references input '{}' not found in initializer map",
+                    layer.name,
+                    name
+                )
+            })?;
+            let len: usize = wb
+                .shape
+                .get(name.as_str())
+                .map_or(1, |s| s.iter().product());
+            weight_entries.push((name.clone(), len));
+        }
 
         let act_out_shape: Vec<usize> = layer
             .outputs
@@ -316,7 +330,10 @@ fn compile_kernels<C: Config>(
                 let act_in = &io_vars[0];
                 let act_in_arr =
                     ArrayD::from_shape_vec(ndarray::IxDyn(&act_in_tensor_shape), act_in.clone())
-                        .expect("reshape input activations");
+                        .unwrap_or_else(|e| panic!(
+                            "reshape input activations for layer '{}' with shape {:?} and {} elements: {e}",
+                            layer_name, act_in_tensor_shape, act_in.len()
+                        ));
 
                 let mut tensor_map: HashMap<String, ArrayD<Variable>> = HashMap::new();
                 tensor_map.insert(input_activation_name.clone(), act_in_arr);
@@ -324,7 +341,10 @@ fn compile_kernels<C: Config>(
                 for (idx, (wname, wshape)) in weight_shapes.iter().enumerate() {
                     let wvars = &io_vars[1 + idx];
                     let warr = ArrayD::from_shape_vec(ndarray::IxDyn(wshape), wvars.clone())
-                        .expect("reshape weights");
+                        .unwrap_or_else(|e| panic!(
+                            "reshape weights '{}' for layer '{}' with shape {:?} and {} elements: {e}",
+                            wname, layer_name, wshape, wvars.len()
+                        ));
                     tensor_map.insert(wname.clone(), warr);
                 }
 
@@ -333,7 +353,9 @@ fn compile_kernels<C: Config>(
 
                 let (_, output_arr) = built_layer
                     .apply(api, &mut logup_ctx, &tensor_map)
-                    .expect("layer apply");
+                    .unwrap_or_else(|e| panic!(
+                        "apply failed for layer '{layer_name}': {e}"
+                    ));
 
                 logup_ctx.finalize::<C, API<C>>(api);
 
