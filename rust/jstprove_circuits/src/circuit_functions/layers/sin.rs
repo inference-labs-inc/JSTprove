@@ -52,7 +52,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SinLayer {
         let lower_var = api.constant(i64_to_field::<C>(-half));
         let upper_var = api.constant(i64_to_field::<C>(half - 1));
 
-        let shift_exponent = self.n_bits.saturating_sub(1);
+        let shift_exponent = table_bits.max(self.n_bits) + 4;
         let range_ctx = crate::circuit_functions::gadgets::ShiftRangeContext::new::<C, Builder>(
             api,
             LayerKind::Sin,
