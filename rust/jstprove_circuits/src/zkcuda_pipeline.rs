@@ -53,7 +53,7 @@ struct CompiledPipeline<C: Config> {
 
 pub struct PipelineResult {
     pub compile_ms: f64,
-    pub witness_ms: f64,
+    pub execution_ms: f64,
     pub prove_ms: f64,
     pub verify_ms: f64,
     pub num_kernels: usize,
@@ -148,7 +148,7 @@ where
         .map_err(|e| anyhow::anyhow!("compile_computation_graph: {e}"))?;
     ctx.solve_witness()
         .map_err(|e| anyhow::anyhow!("solve_witness: {e}"))?;
-    let witness_ms = t.elapsed().as_secs_f64() * 1000.0;
+    let execution_ms = t.elapsed().as_secs_f64() * 1000.0;
 
     let t = Instant::now();
     let (prover_setup, verifier_setup) =
@@ -167,7 +167,7 @@ where
 
     Ok(PipelineResult {
         compile_ms,
-        witness_ms,
+        execution_ms,
         prove_ms,
         verify_ms,
         num_kernels,
@@ -414,7 +414,7 @@ mod tests {
 
         println!("kernels:  {}", result.num_kernels);
         println!("compile:  {:.2}s", result.compile_ms / 1000.0);
-        println!("witness:  {:.1}ms", result.witness_ms);
+        println!("execution: {:.1}ms", result.execution_ms);
         println!("prove:    {:.1}ms", result.prove_ms);
         println!("verify:   {:.1}ms", result.verify_ms);
         println!("verified: {}", result.verified);
@@ -430,14 +430,14 @@ mod tests {
             return;
         }
 
-        let num_act: usize = 3072;
+        let num_act: usize = 224 * 224 * 3;
         let activations: Vec<f64> = (0..num_act).map(|i| i as f64 / num_act as f64).collect();
 
         let result = run_pipeline_goldilocks(model_path, &activations).unwrap();
 
         println!("kernels:  {}", result.num_kernels);
         println!("compile:  {:.2}s", result.compile_ms / 1000.0);
-        println!("witness:  {:.1}ms", result.witness_ms);
+        println!("execution: {:.1}ms", result.execution_ms);
         println!("prove:    {:.1}ms", result.prove_ms);
         println!("verify:   {:.1}ms", result.verify_ms);
         println!("verified: {}", result.verified);
