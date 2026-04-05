@@ -235,20 +235,25 @@ fn compile_kernels<C: Config>(
         let act_in_len = prev_output_len;
 
         let mut weight_entries: Vec<(String, usize)> = Vec::new();
+        let mut skip_inputs: Vec<&str> = Vec::new();
         for name in layer.inputs.iter().skip(1) {
-            let wb = w_and_b_map.get(name.as_str()).ok_or_else(|| {
-                anyhow::anyhow!(
-                    "layer '{}' references input '{}' not found in initializer map",
-                    layer.name,
-                    name
-                )
-            })?;
-            let len: usize = wb
-                .shape
-                .get(name.as_str())
-                .map_or(1, |s| s.iter().product());
-            weight_entries.push((name.clone(), len));
+            if let Some(wb) = w_and_b_map.get(name.as_str()) {
+                let len: usize = wb
+                    .shape
+                    .get(name.as_str())
+                    .map_or(1, |s| s.iter().product());
+                weight_entries.push((name.clone(), len));
+            } else {
+                skip_inputs.push(name);
+            }
         }
+        anyhow::ensure!(
+            skip_inputs.is_empty(),
+            "layer '{}' has non-initializer secondary inputs {:?} \
+             (skip connections are not yet supported in the zkCUDA pipeline)",
+            layer.name,
+            skip_inputs
+        );
 
         let act_out_shape: Vec<usize> = layer
             .outputs
