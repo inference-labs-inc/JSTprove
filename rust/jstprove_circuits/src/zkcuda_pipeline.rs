@@ -102,12 +102,14 @@ where
         input_data.len(),
         pipeline.input_len
     );
+    #[allow(clippy::cast_possible_wrap)]
+    let alpha = f64::from(params.scale_base).powi(params.scale_exponent as i32);
     let input_vals: Vec<CircuitField<C>> = input_data
         .iter()
         .map(|&v| {
             #[allow(clippy::cast_possible_truncation)]
-            let i = v as i64;
-            convert_val_to_field_element::<C>(i)
+            let scaled = (v * alpha) as i64;
+            convert_val_to_field_element::<C>(scaled)
         })
         .collect();
     let mut activations: DeviceMemoryHandle = ctx.copy_to_device(&input_vals);
