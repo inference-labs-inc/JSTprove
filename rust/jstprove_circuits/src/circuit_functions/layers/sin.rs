@@ -19,8 +19,6 @@ pub struct SinLayer {
     outputs: Vec<String>,
     n_bits: usize,
     scaling: u64,
-    #[allow(dead_code)]
-    scale_exponent: u32,
     table_bits: usize,
 }
 
@@ -165,7 +163,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for SinLayer {
             outputs: layer.outputs.clone(),
             n_bits,
             scaling,
-            scale_exponent: circuit_params.scale_exponent,
             table_bits,
         }))
     }
