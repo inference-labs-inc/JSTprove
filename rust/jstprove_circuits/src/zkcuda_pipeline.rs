@@ -5,15 +5,14 @@ use std::time::Instant;
 use anyhow::{Context as _, Result};
 use ndarray::ArrayD;
 
-use expander_compiler::frontend::{API, Config, GoldilocksConfig, HintRegistry, Variable};
+use expander_compiler::frontend::{API, Config, GoldilocksConfig, Variable};
 use expander_compiler::zkcuda::context::{Context, DeviceMemoryHandle};
 use expander_compiler::zkcuda::kernel::{IOVecSpec, KernelPrimitive, compile_with_spec_and_shapes};
 use expander_compiler::zkcuda::proving_system::{Expander, ProvingSystem};
 use expander_compiler::zkcuda::shape::Reshape;
 
-use circuit_std_rs::logup::{query_count_by_key_hint, query_count_hint, rangeproof_hint};
-
 use crate::circuit_functions::gadgets::LogupRangeCheckContext;
+use crate::circuit_functions::hints::build_logup_hint_registry;
 use crate::circuit_functions::layers::LayerKind;
 use crate::circuit_functions::utils::build_layers::{BuildLayerContext, default_n_bits_for_config};
 use crate::circuit_functions::utils::graph_pattern_matching::{
@@ -90,10 +89,7 @@ where
     let num_kernels = pipeline.kernels.len();
 
     let t = Instant::now();
-    let mut hint_registry = HintRegistry::<CircuitField<C>>::new();
-    hint_registry.register("myhint.querycounthint", query_count_hint);
-    hint_registry.register("myhint.querycountbykeyhint", query_count_by_key_hint);
-    hint_registry.register("myhint.rangeproofhint", rangeproof_hint);
+    let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
     let mut ctx: Context<C, _> = Context::new(hint_registry);
 
     anyhow::ensure!(
