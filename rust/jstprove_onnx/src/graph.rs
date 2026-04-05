@@ -65,6 +65,12 @@ pub enum OpType {
     Greater,
     Less,
     ConstantOfShape,
+    Sin,
+    Cos,
+    Range,
+    ReduceMax,
+    ScatterND,
+    GatherElements,
 }
 
 impl OpType {
@@ -129,6 +135,12 @@ impl OpType {
             "Greater" => Ok(Self::Greater),
             "Less" => Ok(Self::Less),
             "ConstantOfShape" => Ok(Self::ConstantOfShape),
+            "Sin" => Ok(Self::Sin),
+            "Cos" => Ok(Self::Cos),
+            "Range" => Ok(Self::Range),
+            "ReduceMax" => Ok(Self::ReduceMax),
+            "ScatterND" => Ok(Self::ScatterND),
+            "GatherElements" => Ok(Self::GatherElements),
             other => bail!("unsupported ONNX op: {other}"),
         }
     }

@@ -60,5 +60,12 @@ pub mod greater;
 pub mod less;
 pub mod not_op;
 
+pub mod cos;
+pub mod gather_elements;
+pub mod range;
+pub mod reduce_max;
+pub mod scatter_nd;
+pub mod sin;
+
 pub use errors::LayerError;
 pub use layer_kinds::LayerKind;

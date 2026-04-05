@@ -65,6 +65,13 @@ use crate::circuit_functions::layers::greater::GreaterLayer;
 use crate::circuit_functions::layers::less::LessLayer;
 use crate::circuit_functions::layers::not_op::NotLayer;
 
+use crate::circuit_functions::layers::cos::CosLayer;
+use crate::circuit_functions::layers::gather_elements::GatherElementsLayer;
+use crate::circuit_functions::layers::range::RangeLayer;
+use crate::circuit_functions::layers::reduce_max::ReduceMaxLayer;
+use crate::circuit_functions::layers::scatter_nd::ScatterNDLayer;
+use crate::circuit_functions::layers::sin::SinLayer;
+
 use expander_compiler::frontend::{Config, RootAPI};
 use std::str::FromStr;
 
@@ -224,6 +231,12 @@ define_layers! {
     Greater            => { name: "Greater", builder: GreaterLayer::build },
     Less               => { name: "Less", builder: LessLayer::build },
     ConstantOfShape    => { name: "ConstantOfShape", builder: ConstantOfShapeLayer::build },
+    Sin                => { name: "Sin", builder: SinLayer::build },
+    Cos                => { name: "Cos", builder: CosLayer::build },
+    Range              => { name: "Range", builder: RangeLayer::build },
+    ReduceMax          => { name: "ReduceMax", builder: ReduceMaxLayer::build },
+    ScatterND          => { name: "ScatterND", builder: ScatterNDLayer::build },
+    GatherElements     => { name: "GatherElements", builder: GatherElementsLayer::build },
 }
 
 #[cfg(test)]
@@ -292,6 +305,12 @@ mod tests {
             "Greater",
             "Less",
             "ConstantOfShape",
+            "Sin",
+            "Cos",
+            "Range",
+            "ReduceMax",
+            "ScatterND",
+            "GatherElements",
         ];
         for name in ops {
             assert!(
@@ -390,6 +409,12 @@ mod tests {
             "Greater",
             "Less",
             "ConstantOfShape",
+            "Sin",
+            "Cos",
+            "Range",
+            "ReduceMax",
+            "ScatterND",
+            "GatherElements",
         ];
         for name in expected {
             assert!(
