@@ -619,6 +619,13 @@ fn infer_layer_output_shape(
         OpType::Pow => infer_broadcast_binary(layer, shapes),
         OpType::ReduceSum => infer_reduce(layer, input_shape, initializers, constant_tensors),
         OpType::ConvTranspose => infer_conv_transpose(layer, shapes),
+        OpType::LeakyRelu | OpType::Identity | OpType::Neg | OpType::HardSwish => {
+            passthrough_shape(layer, input_shape)
+        }
+        OpType::GlobalAveragePool => infer_global_averagepool(layer, input_shape),
+        OpType::InstanceNormalization | OpType::GroupNormalization => {
+            passthrough_shape(layer, input_shape)
+        }
     }
 }
 
@@ -793,6 +800,32 @@ fn infer_gemm(
     }
 
     let out_shape = vec![m, n];
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
+}
+
+fn infer_global_averagepool(
+    layer: &LayerNode,
+    input_shape: Option<&Vec<usize>>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let input_shape = input_shape.ok_or_else(|| {
+        anyhow::anyhow!(
+            "layer {}: GlobalAveragePool missing input shape",
+            layer.name
+        )
+    })?;
+    if input_shape.len() < 3 {
+        bail!(
+            "layer {}: GlobalAveragePool requires at least 3-D input [N,C,spatial...], got rank {}",
+            layer.name,
+            input_shape.len()
+        );
+    }
+    let mut out_shape = vec![input_shape[0], input_shape[1]];
+    out_shape.extend(std::iter::repeat_n(1, input_shape.len() - 2));
     Ok(layer
         .outputs
         .iter()

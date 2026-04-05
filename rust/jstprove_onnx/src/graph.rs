@@ -52,6 +52,13 @@ pub enum OpType {
     ReduceSum,
     Erf,
     ConvTranspose,
+    LeakyRelu,
+    Identity,
+    Neg,
+    HardSwish,
+    GlobalAveragePool,
+    InstanceNormalization,
+    GroupNormalization,
 }
 
 impl OpType {
@@ -103,6 +110,13 @@ impl OpType {
             "ReduceSum" => Ok(Self::ReduceSum),
             "Erf" => Ok(Self::Erf),
             "ConvTranspose" => Ok(Self::ConvTranspose),
+            "LeakyRelu" | "LeakyReLU" => Ok(Self::LeakyRelu),
+            "Identity" => Ok(Self::Identity),
+            "Neg" => Ok(Self::Neg),
+            "HardSwish" | "Hardswish" => Ok(Self::HardSwish),
+            "GlobalAveragePool" => Ok(Self::GlobalAveragePool),
+            "InstanceNormalization" => Ok(Self::InstanceNormalization),
+            "GroupNormalization" => Ok(Self::GroupNormalization),
             other => bail!("unsupported ONNX op: {other}"),
         }
     }

@@ -1642,6 +1642,18 @@ fn compute_layer_bound(
             Ok(bound)
         }
         // softmax / sigmoid outputs are in [0, 1].
+        OpType::LeakyRelu => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
+        OpType::Identity => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
+        OpType::Neg => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
         OpType::Softmax | OpType::Sigmoid => Ok(1.0),
         // GELU is not capped at 1.0; conservatively propagate input bound.
         OpType::Gelu => {
@@ -1649,6 +1661,48 @@ fn compute_layer_bound(
             Ok(m_in)
         }
         OpType::Constant => Ok(1.0),
+        OpType::HardSwish => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
+        OpType::GlobalAveragePool => {
+            let m_in = get_input_bound(0);
+            Ok(m_in)
+        }
+        OpType::InstanceNormalization => {
+            let m_in = get_input_bound(0);
+            let epsilon = layer.get_float_attr("epsilon").unwrap_or(1e-5_f32) as f64;
+            let epsilon = epsilon.max(1e-12);
+            let normalization_bound = 2.0 * m_in / epsilon.sqrt();
+            let max_gamma = layer
+                .inputs
+                .get(1)
+                .and_then(|name| layer.weights.get(name))
+                .map(|w| {
+                    let vals = w.as_f64_vec();
+                    vals.iter().map(|v| v.abs()).fold(0.0_f64, f64::max)
+                })
+                .unwrap_or(1.0);
+            let max_beta = get_bias_bound(2);
+            Ok(max_gamma * normalization_bound + max_beta)
+        }
+        OpType::GroupNormalization => {
+            let m_in = get_input_bound(0);
+            let epsilon = layer.get_float_attr("epsilon").unwrap_or(1e-5_f32) as f64;
+            let epsilon = epsilon.max(1e-12);
+            let normalization_bound = 2.0 * m_in / epsilon.sqrt();
+            let max_gamma = layer
+                .inputs
+                .get(1)
+                .and_then(|name| layer.weights.get(name))
+                .map(|w| {
+                    let vals = w.as_f64_vec();
+                    vals.iter().map(|v| v.abs()).fold(0.0_f64, f64::max)
+                })
+                .unwrap_or(1.0);
+            let max_beta = get_bias_bound(2);
+            Ok(max_gamma * normalization_bound + max_beta)
+        }
         OpType::LayerNormalization => {
             // After normalization the per-element output is bounded by roughly
             // max|γ| * (x − μ) / σ + max|β|. In the worst case (two values
@@ -1679,6 +1733,7 @@ fn is_range_check_op(op: OpType) -> bool {
     matches!(
         op,
         OpType::Relu
+            | OpType::LeakyRelu
             | OpType::MaxPool
             | OpType::Max
             | OpType::Min
@@ -1695,6 +1750,8 @@ fn is_range_check_op(op: OpType) -> bool {
             | OpType::Tanh
             | OpType::Erf
             | OpType::Pow
+            | OpType::HardSwish
+            | OpType::GlobalAveragePool
     )
 }
 
