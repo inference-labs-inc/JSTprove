@@ -31,8 +31,14 @@ use expander_compiler::circuit::config::CircuitField;
 
 fn cap_n_bits_config(params: &mut CircuitParams, n_bits_field: u32) {
     let max_n_bits = 63_usize;
-    for nb in params.n_bits_config.values_mut() {
+    for (key, nb) in &mut params.n_bits_config {
         if *nb > max_n_bits {
+            tracing::warn!(
+                layer = %key,
+                original = *nb,
+                capped = n_bits_field,
+                "n_bits exceeds u64 safe limit (63), capping to field width"
+            );
             *nb = n_bits_field as usize;
         }
     }
@@ -218,7 +224,9 @@ fn compile_kernels<C: Config>(
         let outputs = layer.outputs.clone();
         let optimization_pattern_match = opt_patterns_by_layername.get(&layer.name);
         let (optimization_pattern, outputs, layers_to_skip) =
-            match optimization_skip_layers(optimization_pattern_match, &outputs).unwrap_or(None) {
+            match optimization_skip_layers(optimization_pattern_match, &outputs)
+                .map_err(|e| anyhow::anyhow!("pattern matching for layer '{}': {e}", layer.name))?
+            {
                 Some(opt) => opt,
                 None => (PatternRegistry::None, outputs.clone(), vec![]),
             };
@@ -255,12 +263,17 @@ fn compile_kernels<C: Config>(
             skip_inputs
         );
 
-        let act_out_shape: Vec<usize> = layer
+        let output_name = layer
             .outputs
             .first()
-            .and_then(|oname| shapes_map.get(oname))
-            .cloned()
-            .unwrap_or_else(|| vec![act_in_len]);
+            .ok_or_else(|| anyhow::anyhow!("layer '{}' has no outputs", layer.name))?;
+        let act_out_shape: Vec<usize> = shapes_map.get(output_name).cloned().ok_or_else(|| {
+            anyhow::anyhow!(
+                "layer '{}' output '{}' not found in shapes_map",
+                layer.name,
+                output_name
+            )
+        })?;
         let act_out_len: usize = act_out_shape.iter().product();
 
         let mut io_specs = vec![IOVecSpec {
