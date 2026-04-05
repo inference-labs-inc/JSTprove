@@ -32,7 +32,7 @@ pub fn global_averagepool_hint<F: FieldArith>(
     let sum: i128 = inputs.iter().map(|&x| i128::from(field_to_i64(x))).sum();
     let quotient = sum / n;
     let remainder = sum % n;
-    let y_q = if 2 * remainder.abs() >= n.abs() {
+    let y_q = if 2 * remainder.abs() >= n {
         (quotient + remainder.signum()) as i64
     } else {
         quotient as i64
