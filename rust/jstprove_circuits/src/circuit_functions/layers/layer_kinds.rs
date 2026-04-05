@@ -58,6 +58,13 @@ use crate::circuit_functions::layers::transpose::TransposeLayer;
 use crate::circuit_functions::layers::unsqueeze::UnsqueezeLayer;
 use crate::circuit_functions::layers::where_op::WhereLayer;
 
+use crate::circuit_functions::layers::and_op::AndLayer;
+use crate::circuit_functions::layers::constant_of_shape::ConstantOfShapeLayer;
+use crate::circuit_functions::layers::equal::EqualLayer;
+use crate::circuit_functions::layers::greater::GreaterLayer;
+use crate::circuit_functions::layers::less::LessLayer;
+use crate::circuit_functions::layers::not_op::NotLayer;
+
 use expander_compiler::frontend::{Config, RootAPI};
 use std::str::FromStr;
 
@@ -211,6 +218,12 @@ define_layers! {
     GlobalAveragePool  => { name: "GlobalAveragePool", builder: GlobalAveragePoolLayer::build },
     InstanceNormalization => { name: "InstanceNormalization", builder: InstanceNormLayer::build },
     GroupNormalization => { name: "GroupNormalization", builder: GroupNormLayer::build },
+    Not                => { name: "Not", builder: NotLayer::build },
+    And                => { name: "And", builder: AndLayer::build },
+    Equal              => { name: "Equal", builder: EqualLayer::build },
+    Greater            => { name: "Greater", builder: GreaterLayer::build },
+    Less               => { name: "Less", builder: LessLayer::build },
+    ConstantOfShape    => { name: "ConstantOfShape", builder: ConstantOfShapeLayer::build },
 }
 
 #[cfg(test)]
@@ -273,6 +286,12 @@ mod tests {
             "GlobalAveragePool",
             "InstanceNormalization",
             "GroupNormalization",
+            "Not",
+            "And",
+            "Equal",
+            "Greater",
+            "Less",
+            "ConstantOfShape",
         ];
         for name in ops {
             assert!(
@@ -365,6 +384,12 @@ mod tests {
             "GlobalAveragePool",
             "InstanceNormalization",
             "GroupNormalization",
+            "Not",
+            "And",
+            "Equal",
+            "Greater",
+            "Less",
+            "ConstantOfShape",
         ];
         for name in expected {
             assert!(

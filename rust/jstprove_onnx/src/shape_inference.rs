@@ -626,6 +626,11 @@ fn infer_layer_output_shape(
         OpType::InstanceNormalization | OpType::GroupNormalization => {
             passthrough_shape(layer, input_shape)
         }
+        OpType::Not => passthrough_shape(layer, input_shape),
+        OpType::And | OpType::Equal | OpType::Greater | OpType::Less => {
+            infer_broadcast_binary(layer, shapes)
+        }
+        OpType::ConstantOfShape => infer_constant_of_shape(layer, initializers, constant_tensors),
     }
 }
 
@@ -800,6 +805,35 @@ fn infer_gemm(
     }
 
     let out_shape = vec![m, n];
+    Ok(layer
+        .outputs
+        .iter()
+        .map(|o| (o.clone(), out_shape.clone()))
+        .collect())
+}
+
+fn infer_constant_of_shape(
+    layer: &LayerNode,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Result<Vec<(String, Vec<usize>)>> {
+    let shape_name = layer.inputs.first().ok_or_else(|| {
+        anyhow::anyhow!("layer {}: ConstantOfShape missing shape input", layer.name)
+    })?;
+
+    let shape_td = constant_tensors
+        .get(shape_name)
+        .or_else(|| initializers.get(shape_name))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "layer {}: ConstantOfShape shape input '{}' not found in constants/initializers",
+                layer.name,
+                shape_name
+            )
+        })?;
+
+    let out_shape: Vec<usize> = shape_td.int_data.iter().map(|&v| v as usize).collect();
+
     Ok(layer
         .outputs
         .iter()

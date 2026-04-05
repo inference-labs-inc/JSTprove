@@ -406,6 +406,12 @@ fn op_type_to_string(op: OpType) -> String {
         OpType::GlobalAveragePool => "GlobalAveragePool",
         OpType::InstanceNormalization => "InstanceNormalization",
         OpType::GroupNormalization => "GroupNormalization",
+        OpType::Not => "Not",
+        OpType::And => "And",
+        OpType::Equal => "Equal",
+        OpType::Greater => "Greater",
+        OpType::Less => "Less",
+        OpType::ConstantOfShape => "ConstantOfShape",
     }
     .to_string()
 }
@@ -849,6 +855,12 @@ mod tests {
             (OpType::LeakyRelu, "LeakyRelu"),
             (OpType::Identity, "Identity"),
             (OpType::Neg, "Neg"),
+            (OpType::Not, "Not"),
+            (OpType::And, "And"),
+            (OpType::Equal, "Equal"),
+            (OpType::Greater, "Greater"),
+            (OpType::Less, "Less"),
+            (OpType::ConstantOfShape, "ConstantOfShape"),
         ];
 
         for &(op, expected_str) in cases {

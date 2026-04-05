@@ -1721,6 +1721,12 @@ fn compute_layer_bound(
             let max_beta = get_bias_bound(2);
             Ok(max_gamma * normalization_bound + max_beta)
         }
+        OpType::Not
+        | OpType::And
+        | OpType::Equal
+        | OpType::Greater
+        | OpType::Less
+        | OpType::ConstantOfShape => Ok(1.0),
         OpType::LayerNormalization => {
             // After normalization the per-element output is bounded by roughly
             // max|γ| * (x − μ) / σ + max|β|. In the worst case (two values
