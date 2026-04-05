@@ -249,7 +249,15 @@ fn compile_kernels<C: Config>(
                 let len: usize = wb
                     .shape
                     .get(name.as_str())
-                    .map_or(1, |s| s.iter().product());
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "layer '{}' weight '{}' has no shape entry in initializer",
+                            layer.name,
+                            name
+                        )
+                    })?
+                    .iter()
+                    .product();
                 weight_entries.push((name.clone(), len));
             } else {
                 skip_inputs.push(name);
@@ -327,16 +335,22 @@ fn compile_kernels<C: Config>(
         let act_in_tensor_shape: Vec<usize> = shapes_map
             .get(&input_activation_name)
             .cloned()
-            .unwrap_or_else(|| vec![act_in_len]);
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "layer '{}' input activation '{}' not found in shapes_map",
+                    layer.name,
+                    input_activation_name
+                )
+            })?;
 
         let weight_shapes: Vec<(String, Vec<usize>)> = weight_entries
             .iter()
-            .map(|(wname, wlen)| {
-                let shape = w_and_b_map
+            .map(|(wname, _wlen)| {
+                let shape = w_and_b_map[wname.as_str()]
+                    .shape
                     .get(wname.as_str())
-                    .and_then(|wb| wb.shape.get(wname.as_str()))
-                    .cloned()
-                    .unwrap_or_else(|| vec![*wlen]);
+                    .expect("weight shape already validated in weight_entries construction")
+                    .clone();
                 (wname.clone(), shape)
             })
             .collect();
