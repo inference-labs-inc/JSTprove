@@ -88,10 +88,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for CosLayer {
             table.finalize::<C, Builder>(api);
         }
 
-        let result = ArrayD::from_shape_vec(IxDyn(&shape), out_storage).map_err(|_| {
+        let result = ArrayD::from_shape_vec(IxDyn(&shape), out_storage).map_err(|e| {
             LayerError::InvalidShape {
                 layer: LayerKind::Cos,
-                msg: format!("CosLayer: cannot reshape result into shape {shape:?}"),
+                msg: format!("CosLayer: cannot reshape result into shape {shape:?}: {e}"),
             }
         })?;
 
