@@ -99,4 +99,19 @@ mod tests {
     fn global_averagepool_negative_half_tie() {
         assert_eq!(run_hint(&[-2, 1]), -1);
     }
+
+    #[test]
+    fn global_averagepool_i64_min() {
+        assert_eq!(run_hint(&[i64::MIN]), i64::MIN);
+    }
+
+    #[test]
+    fn global_averagepool_i64_max() {
+        assert_eq!(run_hint(&[i64::MAX]), i64::MAX);
+    }
+
+    #[test]
+    fn global_averagepool_i64_extrema_pair() {
+        assert_eq!(run_hint(&[i64::MIN, i64::MAX]), -1);
+    }
 }
