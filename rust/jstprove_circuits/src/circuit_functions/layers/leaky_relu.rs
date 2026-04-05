@@ -126,17 +126,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LeakyReluLayer {
                 ),
             })?;
 
-        if circuit_params.scale_exponent >= 32 {
-            return Err(LayerError::Other {
-                layer: LayerKind::LeakyRelu,
-                msg: format!(
-                    "scale_exponent {} >= 32: scaling as f64 loses precision in alpha_q calculation",
-                    circuit_params.scale_exponent
-                ),
-            }
-            .into());
-        }
-
         let (params, _) = extract_params_and_expected_shape(layer_context, layer).map_err(|e| {
             LayerError::Other {
                 layer: LayerKind::LeakyRelu,
@@ -159,7 +148,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LeakyReluLayer {
         }
 
         let scaled = (alpha_f64 * scaling as f64).round();
-        if scaled > i64::MAX as f64 || scaled < i64::MIN as f64 {
+        if scaled >= 2_f64.powi(63) || scaled < -(2_f64.powi(63)) {
             return Err(LayerError::Other {
                 layer: LayerKind::LeakyRelu,
                 msg: format!("alpha {alpha_f64} * scale {scaling} = {scaled} overflows i64"),

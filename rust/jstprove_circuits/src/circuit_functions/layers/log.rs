@@ -44,7 +44,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LogLayer {
         let double_tol_var = api.constant(CircuitField::<C>::from_u256(U256::from(
             2u64 * cross_tolerance,
         )));
-        let cross_tol_bits = (2 * cross_tolerance).next_power_of_two().trailing_zeros() as usize;
+        let cross_tol_bits =
+            (2 * cross_tolerance).next_power_of_two().trailing_zeros() as usize + 1;
 
         let lookup_bits = function_lookup_bits(self.scale_exponent);
         let mut decomposed = DecomposedExpLookup::build::<C, Builder>(
@@ -93,6 +94,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LogLayer {
         Ok((self.outputs.clone(), result))
     }
 
+    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
         circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
@@ -130,6 +132,21 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LogLayer {
                     circuit_params.scale_exponent
                 ),
             })?;
+
+        let lookup_bits = function_lookup_bits(circuit_params.scale_exponent);
+        let max_lookup = 1i64 << (lookup_bits - 1);
+        let worst_y = (scaling as f64 * (scaling as f64).ln()).ceil() as i64;
+        if worst_y >= max_lookup {
+            return Err(LayerError::Other {
+                layer: LayerKind::Log,
+                msg: format!(
+                    "scale_exponent {}: worst-case |y_q| = {worst_y} exceeds \
+                     DecomposedExpLookup signed range [-{max_lookup}, {max_lookup})",
+                    circuit_params.scale_exponent
+                ),
+            }
+            .into());
+        }
 
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),

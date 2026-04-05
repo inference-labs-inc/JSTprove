@@ -67,13 +67,7 @@ mod tests {
         let inputs: Vec<F> = values.iter().map(|&v| field(v)).collect();
         let mut outputs = [F::zero()];
         global_averagepool_hint::<F>(&inputs, &mut outputs).unwrap();
-        let p_half = F::MODULUS / 2;
-        let xu = outputs[0].to_u256();
-        if xu > p_half {
-            -((F::MODULUS - xu).as_u64() as i64)
-        } else {
-            xu.as_u64() as i64
-        }
+        field_to_i64(outputs[0])
     }
 
     #[test]
@@ -99,5 +93,10 @@ mod tests {
     #[test]
     fn global_averagepool_mixed_tie() {
         assert_eq!(run_hint(&[-1, 2]), 1);
+    }
+
+    #[test]
+    fn global_averagepool_negative_half_tie() {
+        assert_eq!(run_hint(&[-2, 1]), -1);
     }
 }
