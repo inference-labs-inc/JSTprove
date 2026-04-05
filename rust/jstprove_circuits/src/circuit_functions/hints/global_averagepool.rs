@@ -28,10 +28,15 @@ pub fn global_averagepool_hint<F: FieldArith>(
         )));
     }
 
-    let n = inputs.len();
-    let sum: f64 = inputs.iter().map(|&x| field_to_i64(x) as f64).sum();
-    let mean = sum / n as f64;
-    let y_q = mean.round() as i64;
+    let n = inputs.len() as i128;
+    let sum: i128 = inputs.iter().map(|&x| i128::from(field_to_i64(x))).sum();
+    let quotient = sum / n;
+    let remainder = sum % n;
+    let y_q = if 2 * remainder.abs() >= n.abs() {
+        (quotient + remainder.signum()) as i64
+    } else {
+        quotient as i64
+    };
 
     outputs[0] = if y_q >= 0 {
         F::from_u256(U256::from(y_q as u64))
@@ -84,5 +89,15 @@ mod tests {
     #[test]
     fn global_averagepool_rounding() {
         assert_eq!(run_hint(&[1, 2]), 2);
+    }
+
+    #[test]
+    fn global_averagepool_negative() {
+        assert_eq!(run_hint(&[-100, -100, -100]), -100);
+    }
+
+    #[test]
+    fn global_averagepool_mixed_tie() {
+        assert_eq!(run_hint(&[-1, 2]), 1);
     }
 }

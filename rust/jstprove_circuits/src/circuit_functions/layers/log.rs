@@ -54,6 +54,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LogLayer {
             compute_exp_quantized,
         );
 
+        let one_var = api.constant(CircuitField::<C>::from_u256(U256::from(1u64)));
         let mut out_storage: Vec<Variable> = Vec::with_capacity(x_input.len());
 
         for &x in x_input {
@@ -62,7 +63,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LogLayer {
 
             logup_ctx.range_check::<C, Builder>(api, x, self.n_bits)?;
 
-            let one_var = api.constant(CircuitField::<C>::from_u256(U256::from(1u64)));
             let x_minus_one = api.sub(x, one_var);
             logup_ctx.range_check::<C, Builder>(api, x_minus_one, self.n_bits)?;
 

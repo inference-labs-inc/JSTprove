@@ -24,8 +24,6 @@ pub struct LeakyReluLayer {
     outputs: Vec<String>,
     n_bits: usize,
     alpha_q: i64,
-    #[allow(dead_code)]
-    scaling: u64,
     scale_exponent: u32,
 }
 
@@ -152,14 +150,29 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LeakyReluLayer {
             msg: format!("failed to read 'alpha' attribute: {e}"),
         })?;
 
-        let alpha_q = (alpha_f64 * scaling as f64).round() as i64;
+        if !alpha_f64.is_finite() {
+            return Err(LayerError::Other {
+                layer: LayerKind::LeakyRelu,
+                msg: format!("invalid 'alpha' attribute: not finite: {alpha_f64}"),
+            }
+            .into());
+        }
+
+        let scaled = (alpha_f64 * scaling as f64).round();
+        if scaled > i64::MAX as f64 || scaled < i64::MIN as f64 {
+            return Err(LayerError::Other {
+                layer: LayerKind::LeakyRelu,
+                msg: format!("alpha {alpha_f64} * scale {scaling} = {scaled} overflows i64"),
+            }
+            .into());
+        }
+        let alpha_q = scaled as i64;
 
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
             n_bits,
             alpha_q,
-            scaling,
             scale_exponent: circuit_params.scale_exponent,
         }))
     }
