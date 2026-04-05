@@ -25,11 +25,18 @@ use crate::circuit_functions::layers::flatten::FlattenLayer;
 use crate::circuit_functions::layers::gather::GatherLayer;
 use crate::circuit_functions::layers::gelu::GeluLayer;
 use crate::circuit_functions::layers::gemm::GemmLayer;
+use crate::circuit_functions::layers::global_averagepool::GlobalAveragePoolLayer;
 use crate::circuit_functions::layers::gridsample::GridSampleLayer;
+use crate::circuit_functions::layers::group_norm::GroupNormLayer;
+use crate::circuit_functions::layers::hardswish::HardSwishLayer;
+use crate::circuit_functions::layers::identity::IdentityLayer;
+use crate::circuit_functions::layers::instance_norm::InstanceNormLayer;
 use crate::circuit_functions::layers::layer_norm::LayerNormLayer;
+use crate::circuit_functions::layers::leaky_relu::LeakyReluLayer;
 use crate::circuit_functions::layers::log::LogLayer;
 use crate::circuit_functions::layers::matmul::MatMulLayer;
 use crate::circuit_functions::layers::maxpool::MaxPoolLayer;
+use crate::circuit_functions::layers::neg::NegLayer;
 use crate::circuit_functions::layers::pad::PadLayer;
 use crate::circuit_functions::layers::pow::PowLayer;
 use crate::circuit_functions::layers::reduce_mean::ReduceMeanLayer;
@@ -197,6 +204,13 @@ define_layers! {
     ReduceSum          => { name: "ReduceSum", builder: ReduceSumLayer::build },
     Erf                => { name: "Erf", builder: ErfLayer::build },
     ConvTranspose      => { name: "ConvTranspose", builder: ConvTransposeLayer::build },
+    LeakyRelu          => { name: "LeakyRelu", builder: LeakyReluLayer::build, aliases: ["LeakyReLU"] },
+    Identity           => { name: "Identity", builder: IdentityLayer::build },
+    Neg                => { name: "Neg", builder: NegLayer::build },
+    HardSwish          => { name: "HardSwish", builder: HardSwishLayer::build, aliases: ["Hardswish"] },
+    GlobalAveragePool  => { name: "GlobalAveragePool", builder: GlobalAveragePoolLayer::build },
+    InstanceNormalization => { name: "InstanceNormalization", builder: InstanceNormLayer::build },
+    GroupNormalization => { name: "GroupNormalization", builder: GroupNormLayer::build },
 }
 
 #[cfg(test)]
@@ -252,6 +266,13 @@ mod tests {
             "ReduceSum",
             "Erf",
             "ConvTranspose",
+            "LeakyRelu",
+            "Identity",
+            "Neg",
+            "HardSwish",
+            "GlobalAveragePool",
+            "InstanceNormalization",
+            "GroupNormalization",
         ];
         for name in ops {
             assert!(
@@ -337,6 +358,13 @@ mod tests {
             "ReduceSum",
             "Erf",
             "ConvTranspose",
+            "LeakyRelu",
+            "Identity",
+            "Neg",
+            "HardSwish",
+            "GlobalAveragePool",
+            "InstanceNormalization",
+            "GroupNormalization",
         ];
         for name in expected {
             assert!(

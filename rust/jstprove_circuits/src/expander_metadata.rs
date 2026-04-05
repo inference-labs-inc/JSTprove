@@ -399,6 +399,13 @@ fn op_type_to_string(op: OpType) -> String {
         OpType::ReduceSum => "ReduceSum",
         OpType::Erf => "Erf",
         OpType::ConvTranspose => "ConvTranspose",
+        OpType::LeakyRelu => "LeakyRelu",
+        OpType::Identity => "Identity",
+        OpType::Neg => "Neg",
+        OpType::HardSwish => "HardSwish",
+        OpType::GlobalAveragePool => "GlobalAveragePool",
+        OpType::InstanceNormalization => "InstanceNormalization",
+        OpType::GroupNormalization => "GroupNormalization",
     }
     .to_string()
 }
@@ -839,6 +846,9 @@ mod tests {
             (OpType::ReduceSum, "ReduceSum"),
             (OpType::Erf, "Erf"),
             (OpType::ConvTranspose, "ConvTranspose"),
+            (OpType::LeakyRelu, "LeakyRelu"),
+            (OpType::Identity, "Identity"),
+            (OpType::Neg, "Neg"),
         ];
 
         for &(op, expected_str) in cases {
