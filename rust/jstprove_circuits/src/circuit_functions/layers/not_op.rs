@@ -42,10 +42,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for NotLayer {
             out_storage.push(y);
         }
 
-        let result = ArrayD::from_shape_vec(IxDyn(&shape), out_storage).map_err(|_| {
+        let result = ArrayD::from_shape_vec(IxDyn(&shape), out_storage).map_err(|e| {
             LayerError::InvalidShape {
                 layer: LayerKind::Not,
-                msg: format!("NotLayer: cannot reshape result into shape {shape:?}"),
+                msg: format!("NotLayer: cannot reshape result into shape {shape:?}: {e}"),
             }
         })?;
 
