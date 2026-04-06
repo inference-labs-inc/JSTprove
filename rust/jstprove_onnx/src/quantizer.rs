@@ -312,9 +312,8 @@ fn rewrite_pow_sqrt(graph: &mut LayerGraph) {
                 vals.len() == 1 && (vals[0] - 0.5).abs() < 1e-9
             });
         if is_sqrt {
-            if let Some(exp_name) = layer.inputs.get(1).cloned() {
-                layer.weights.remove(&exp_name);
-            }
+            let exp_name = layer.inputs[1].clone();
+            layer.weights.remove(&exp_name);
             layer.inputs.truncate(1);
             layer.op_type = OpType::Sqrt;
         }
