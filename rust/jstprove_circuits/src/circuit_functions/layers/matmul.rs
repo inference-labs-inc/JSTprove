@@ -158,6 +158,18 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MatMulLayer {
             .into());
         }
 
+        if a_shape.len() == 2 && b_shape.len() == 3 {
+            return Err(LayerError::Other {
+                layer: LayerKind::MatMul,
+                msg: format!(
+                    "MatMul: rank-2 input A (shape {:?}) with rank-3 input B (shape {:?}) \
+                     is not supported; reshape A to rank-3 or B to rank-2.",
+                    a_shape, b_shape
+                ),
+            }
+            .into());
+        }
+
         let weights = if layer_context.weights_as_inputs {
             None
         } else {
@@ -363,10 +375,104 @@ fn stack_batch_slices(
 
 #[cfg(test)]
 mod tests {
-    /// Evaluate the Freivalds cost check used in MatMulLayer::apply.
-    ///
-    /// Returns `true` when Freivalds verification with `reps` repetitions is
-    /// cheaper than computing the full matrix product directly.
+    use std::collections::HashMap;
+
+    use expander_compiler::frontend::{
+        BasicAPI, CircuitField, EmptyHintCaller, GoldilocksConfig, Variable, extra::DebugBuilder,
+    };
+    use ndarray::{ArrayD, IxDyn};
+
+    use crate::circuit_functions::{
+        gadgets::LogupRangeCheckContext,
+        layers::layer_ops::LayerOp,
+        utils::{
+            build_layers::{BuildLayerContext, default_n_bits_for_config},
+            graph_pattern_matching::PatternRegistry,
+            onnx_model::CircuitParams,
+            onnx_types::ONNXLayer,
+        },
+    };
+
+    use super::MatMulLayer;
+
+    type TestBuilder = DebugBuilder<GoldilocksConfig, EmptyHintCaller>;
+
+    fn test_params() -> CircuitParams {
+        CircuitParams {
+            scale_base: 2,
+            scale_exponent: 0,
+            rescale_config: HashMap::new(),
+            inputs: vec![],
+            outputs: vec![],
+            freivalds_reps: 0,
+            n_bits_config: HashMap::new(),
+            weights_as_inputs: true,
+            proof_system: crate::proof_system::ProofSystem::Expander,
+            curve: None,
+            logup_chunk_bits: None,
+        }
+    }
+
+    fn matmul_layer(
+        inputs: Vec<String>,
+        shapes_map: &HashMap<String, Vec<usize>>,
+    ) -> Result<
+        Box<dyn LayerOp<GoldilocksConfig, TestBuilder>>,
+        crate::circuit_functions::CircuitError,
+    > {
+        let layer = ONNXLayer {
+            id: 0,
+            name: "test_matmul".to_string(),
+            op_type: "MatMul".to_string(),
+            inputs,
+            outputs: vec!["y".to_string()],
+            shape: HashMap::new(),
+            tensor: None,
+            params: None,
+            opset_version_number: 13,
+        };
+        let w_and_b_map: HashMap<String, &ONNXLayer> = HashMap::new();
+        let n_bits_config = HashMap::new();
+        let ctx = BuildLayerContext {
+            w_and_b_map: &w_and_b_map,
+            shapes_map,
+            n_bits_config: &n_bits_config,
+            default_n_bits: default_n_bits_for_config::<GoldilocksConfig>(),
+            weights_as_inputs: true,
+        };
+        <MatMulLayer as LayerOp<GoldilocksConfig, TestBuilder>>::build(
+            &layer,
+            &test_params(),
+            PatternRegistry::None,
+            false,
+            0,
+            &ctx,
+        )
+    }
+
+    fn tensor_vars(api: &mut TestBuilder, values: &[u32], shape: &[usize]) -> ArrayD<Variable> {
+        let vars: Vec<Variable> = values
+            .iter()
+            .map(|&v| api.constant(CircuitField::<GoldilocksConfig>::from(v)))
+            .collect();
+        ArrayD::from_shape_vec(IxDyn(shape), vars).expect("shape must be valid")
+    }
+
+    type F = CircuitField<GoldilocksConfig>;
+
+    fn extract_values(api: &mut TestBuilder, arr: &ArrayD<Variable>) -> Vec<F> {
+        arr.iter()
+            .map(|&v| {
+                api.constant_value(v)
+                    .expect("debug builder always has constants")
+            })
+            .collect()
+    }
+
+    fn expected_fields(vals: &[u32]) -> Vec<F> {
+        vals.iter().map(|&v| F::from(v)).collect()
+    }
+
     fn freivalds_cheaper(ell: u128, m: u128, n: u128, reps: u128) -> bool {
         if reps == 0 {
             return false;
@@ -379,15 +485,11 @@ mod tests {
 
     #[test]
     fn freivalds_beneficial_for_large_matrices() {
-        // 100×100 × 100×100 with 3 reps — Freivalds should win.
         assert!(freivalds_cheaper(100, 100, 100, 3));
     }
 
     #[test]
     fn freivalds_not_beneficial_for_tiny_matrices() {
-        // 2×2 × 2×2 with 3 reps — Freivalds is more expensive.
-        // cost_full = 2*2*2*2 - 2*2 = 12
-        // s = 4+4+4 = 12, d = 24 - 6 = 18, 3*18=54 > 12
         assert!(!freivalds_cheaper(2, 2, 2, 3));
     }
 
@@ -398,9 +500,118 @@ mod tests {
 
     #[test]
     fn freivalds_single_row_not_beneficial() {
-        // ell=1: d = 2*(m+n+m*n) - (m+2), and for tiny matrices it is still
-        // too costly even when positive.
-        // For m=n=1: cost_full=1, s=3, d=3, 1*3=3 > 1 -> not beneficial.
         assert!(!freivalds_cheaper(1, 1, 1, 1));
+    }
+
+    #[test]
+    fn batched_matmul_broadcast_rhs() {
+        // A: [2, 3, 4] × B: [4, 5] → [2, 3, 5]
+        // B is broadcast across the batch dimension.
+        let mut shapes_map = HashMap::new();
+        shapes_map.insert("a".to_string(), vec![2, 3, 4]);
+        shapes_map.insert("b".to_string(), vec![4, 5]);
+        shapes_map.insert("y".to_string(), vec![2, 3, 5]);
+
+        let built = matmul_layer(vec!["a".to_string(), "b".to_string()], &shapes_map)
+            .expect("build should succeed for rank-3 × rank-2");
+
+        let (mut api, _, _) = TestBuilder::new(vec![], vec![], EmptyHintCaller::new());
+
+        // A[0] = [[1,0,0,0],[0,1,0,0],[0,0,1,0]]  (3×4, first 3 rows of identity)
+        // A[1] = [[0,0,0,1],[0,0,1,0],[0,1,0,0]]  (3×4, reversed selection)
+        #[rustfmt::skip]
+        let a_vals: Vec<u32> = vec![
+            1,0,0,0, 0,1,0,0, 0,0,1,0,
+            0,0,0,1, 0,0,1,0, 0,1,0,0,
+        ];
+        // B = [[1,2,3,4,5],[6,7,8,9,10],[11,12,13,14,15],[16,17,18,19,20]]
+        #[rustfmt::skip]
+        let b_vals: Vec<u32> = vec![
+            1,2,3,4,5,
+            6,7,8,9,10,
+            11,12,13,14,15,
+            16,17,18,19,20,
+        ];
+
+        let mut inputs = HashMap::new();
+        inputs.insert("a".to_string(), tensor_vars(&mut api, &a_vals, &[2, 3, 4]));
+        inputs.insert("b".to_string(), tensor_vars(&mut api, &b_vals, &[4, 5]));
+        let mut logup_ctx = LogupRangeCheckContext::new_default();
+
+        let (_, out) = built
+            .apply(&mut api, &mut logup_ctx, &inputs)
+            .expect("apply should succeed");
+
+        assert_eq!(out.shape(), &[2, 3, 5]);
+
+        // A[0] selects rows 0,1,2 of B; A[1] selects rows 3,2,1 of B.
+        #[rustfmt::skip]
+        let expected: &[u32] = &[
+            1,2,3,4,5,       6,7,8,9,10,     11,12,13,14,15,
+            16,17,18,19,20,   11,12,13,14,15,  6,7,8,9,10,
+        ];
+        assert_eq!(extract_values(&mut api, &out), expected_fields(expected));
+    }
+
+    #[test]
+    fn batched_matmul_both_batched() {
+        // A: [2, 3, 4] × B: [2, 4, 5] → [2, 3, 5]
+        let mut shapes_map = HashMap::new();
+        shapes_map.insert("a".to_string(), vec![2, 3, 4]);
+        shapes_map.insert("b".to_string(), vec![2, 4, 5]);
+        shapes_map.insert("y".to_string(), vec![2, 3, 5]);
+
+        let built = matmul_layer(vec!["a".to_string(), "b".to_string()], &shapes_map)
+            .expect("build should succeed for rank-3 × rank-3");
+
+        let (mut api, _, _) = TestBuilder::new(vec![], vec![], EmptyHintCaller::new());
+
+        // A[0] = identity-like 3×4, A[1] = all-ones 3×4
+        #[rustfmt::skip]
+        let a_vals: Vec<u32> = vec![
+            1,0,0,0, 0,1,0,0, 0,0,1,0,
+            1,1,1,1, 1,1,1,1, 1,1,1,1,
+        ];
+        // B[0] same as before, B[1] = all-twos 4×5
+        #[rustfmt::skip]
+        let b_vals: Vec<u32> = vec![
+            1,2,3,4,5, 6,7,8,9,10, 11,12,13,14,15, 16,17,18,19,20,
+            2,2,2,2,2, 2,2,2,2,2,  2,2,2,2,2,      2,2,2,2,2,
+        ];
+
+        let mut inputs = HashMap::new();
+        inputs.insert("a".to_string(), tensor_vars(&mut api, &a_vals, &[2, 3, 4]));
+        inputs.insert("b".to_string(), tensor_vars(&mut api, &b_vals, &[2, 4, 5]));
+        let mut logup_ctx = LogupRangeCheckContext::new_default();
+
+        let (_, out) = built
+            .apply(&mut api, &mut logup_ctx, &inputs)
+            .expect("apply should succeed");
+
+        assert_eq!(out.shape(), &[2, 3, 5]);
+
+        // Batch 0: identity-like × B[0] → rows 0,1,2 of B[0]
+        // Batch 1: all-ones × all-twos → each element = 4*2 = 8
+        #[rustfmt::skip]
+        let expected: &[u32] = &[
+            1,2,3,4,5,   6,7,8,9,10,   11,12,13,14,15,
+            8,8,8,8,8,   8,8,8,8,8,    8,8,8,8,8,
+        ];
+        assert_eq!(extract_values(&mut api, &out), expected_fields(expected));
+    }
+
+    #[test]
+    fn build_rejects_rank2_a_rank3_b() {
+        let mut shapes_map = HashMap::new();
+        shapes_map.insert("a".to_string(), vec![3, 4]);
+        shapes_map.insert("b".to_string(), vec![2, 4, 5]);
+
+        let result = matmul_layer(vec!["a".to_string(), "b".to_string()], &shapes_map);
+        let err = result.err().expect("should fail for rank-2 A × rank-3 B");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("rank-2 input A") && msg.contains("rank-3 input B"),
+            "unexpected error: {msg}"
+        );
     }
 }
