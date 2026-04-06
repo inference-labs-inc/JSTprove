@@ -287,16 +287,18 @@ fn square_internal(a: &[Goldilocks; 3]) -> [Goldilocks; 3] {
 
 impl Ord for GoldilocksExt3 {
     #[inline(always)]
-    fn cmp(&self, _: &Self) -> std::cmp::Ordering {
-        unimplemented!("Ord for GoldilocksExt3 is not supported")
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.v[2]
+            .cmp(&other.v[2])
+            .then(self.v[1].cmp(&other.v[1]))
+            .then(self.v[0].cmp(&other.v[0]))
     }
 }
 
-#[allow(clippy::non_canonical_partial_ord_impl)]
 impl PartialOrd for GoldilocksExt3 {
     #[inline(always)]
-    fn partial_cmp(&self, _: &Self) -> Option<std::cmp::Ordering> {
-        unimplemented!("PartialOrd for GoldilocksExt3 is not supported")
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 

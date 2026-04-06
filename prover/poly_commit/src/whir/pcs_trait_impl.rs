@@ -502,9 +502,30 @@ where
         return false;
     }
 
-    let n_committed = num_committed_rounds(num_vars);
     let committed_rounds = opening.round_commitments.len();
-    if committed_rounds != n_committed {
+    let n_committed_expected = num_committed_rounds(num_vars);
+    let min_elems = min_tree_elems::<EvalF>();
+
+    let mut expected_committed = 0;
+    {
+        let mut folds_done = 0;
+        for cr in 0..=n_committed_expected {
+            let folds = if cr < n_committed_expected {
+                WHIR_FOLDING_FACTOR
+            } else {
+                num_vars - folds_done
+            };
+            folds_done += folds;
+            if cr < n_committed_expected {
+                let cw_len = 1usize << (codeword_log - folds_done);
+                if cw_len >= min_elems {
+                    expected_committed += 1;
+                }
+            }
+        }
+    }
+
+    if committed_rounds != expected_committed {
         return false;
     }
     if opening.round_query_proofs.len() != committed_rounds
@@ -514,12 +535,18 @@ where
         return false;
     }
 
+    let expected_final_len = 1usize << (codeword_log - num_vars);
+    if opening.final_poly.len() != expected_final_len {
+        return false;
+    }
+
     let mut challenges = Vec::with_capacity(num_vars);
     let mut running_claim = claimed_eval;
     let mut total_folds_done = 0;
+    let mut commit_idx = 0;
 
-    for cr in 0..=n_committed {
-        let folds_this_round = if cr < n_committed {
+    for cr in 0..=n_committed_expected {
+        let folds_this_round = if cr < n_committed_expected {
             WHIR_FOLDING_FACTOR
         } else {
             num_vars - total_folds_done
@@ -540,20 +567,24 @@ where
 
         total_folds_done += folds_this_round;
 
-        if cr < n_committed {
-            transcript.append_commitment(opening.round_commitments[cr].as_bytes());
+        if cr < n_committed_expected {
+            let cw_len = 1usize << (codeword_log - total_folds_done);
+            if cw_len >= min_elems && commit_idx < committed_rounds {
+                transcript.append_commitment(opening.round_commitments[commit_idx].as_bytes());
 
-            let ood_evals = &opening.ood_evaluations[cr];
-            if ood_evals.len() != WHIR_OOD_SAMPLES {
-                return false;
-            }
-            for ood_val in ood_evals {
-                let _z: EvalF = transcript.generate_field_element();
-                transcript.append_field_element(ood_val);
-            }
+                let ood_evals = &opening.ood_evaluations[commit_idx];
+                if ood_evals.len() != WHIR_OOD_SAMPLES {
+                    return false;
+                }
+                for ood_val in ood_evals {
+                    let _z: EvalF = transcript.generate_field_element();
+                    transcript.append_field_element(ood_val);
+                }
 
-            if !verify_pow(transcript, WHIR_POW_BITS, opening.pow_nonces[cr]) {
-                return false;
+                if !verify_pow(transcript, WHIR_POW_BITS, opening.pow_nonces[commit_idx]) {
+                    return false;
+                }
+                commit_idx += 1;
             }
         } else {
             for f in &opening.final_poly {
@@ -562,9 +593,6 @@ where
         }
     }
 
-    if opening.final_poly.is_empty() {
-        return false;
-    }
     let fri_constant = opening.final_poly[0];
     for val in &opening.final_poly[1..] {
         if *val != fri_constant {
