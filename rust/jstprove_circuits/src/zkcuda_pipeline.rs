@@ -19,7 +19,7 @@ use crate::circuit_functions::utils::graph_pattern_matching::{
     PatternMatcher, PatternRegistry, optimization_skip_layers,
 };
 use crate::circuit_functions::utils::onnx_model::{
-    Architecture, CircuitParams, WANDB, collect_all_shapes, get_w_or_b,
+    Architecture, CircuitParams, WANDB, collect_all_shapes,
 };
 use crate::circuit_functions::utils::onnx_types::ONNXLayer;
 use crate::circuit_functions::utils::tensor_ops::convert_val_to_field_element;
@@ -44,15 +44,15 @@ fn cap_n_bits_config(params: &mut CircuitParams, n_bits_field: u32) {
     }
 }
 
-struct LayerDescriptor<C: Config> {
+struct LayerDescriptor {
     name: String,
     output_activation_len: usize,
-    weight_entries: Vec<(String, Vec<CircuitField<C>>)>,
+    weight_entries: Vec<(String, usize)>,
 }
 
 struct CompiledPipeline<C: Config> {
     kernels: Vec<KernelPrimitive<C>>,
-    layer_descriptors: Vec<LayerDescriptor<C>>,
+    layer_descriptors: Vec<LayerDescriptor>,
     input_len: usize,
 }
 
@@ -125,9 +125,10 @@ where
     {
         let mut io_handles: Vec<_> = vec![activations.clone()];
 
-        for (_wname, wvals) in &desc.weight_entries {
-            let whandle = ctx.copy_to_device(wvals);
-            io_handles.push(whandle.reshape(&[1, wvals.len()]));
+        for (_wname, wlen) in &desc.weight_entries {
+            let wvals = vec![CircuitField::<C>::default(); *wlen];
+            let whandle = ctx.copy_to_device(&wvals);
+            io_handles.push(whandle.reshape(&[1, *wlen]));
         }
 
         let mut out_handle = None;
@@ -205,7 +206,7 @@ fn compile_kernels<C: Config>(
 
     let mut skip_next_layer: HashMap<String, bool> = HashMap::new();
     let mut kernels: Vec<KernelPrimitive<C>> = Vec::new();
-    let mut descriptors: Vec<LayerDescriptor<C>> = Vec::new();
+    let mut descriptors: Vec<LayerDescriptor> = Vec::new();
 
     let input_len: usize = params
         .inputs
@@ -241,21 +242,23 @@ fn compile_kernels<C: Config>(
 
         let act_in_len = prev_output_len;
 
-        let mut weight_entries: Vec<(String, Vec<CircuitField<C>>)> = Vec::new();
-        let mut weight_lens: Vec<(String, usize)> = Vec::new();
+        let mut weight_entries: Vec<(String, usize)> = Vec::new();
         let mut skip_inputs: Vec<&str> = Vec::new();
         for name in layer.inputs.iter().skip(1) {
-            if w_and_b_map.contains_key(name.as_str()) {
-                let tensor: ndarray::ArrayD<i64> = get_w_or_b(&w_and_b_map, name).map_err(|e| {
-                    anyhow::anyhow!("layer '{}' weight '{}': {e}", layer.name, name)
-                })?;
-                let field_vals: Vec<CircuitField<C>> = tensor
+            if let Some(wb) = w_and_b_map.get(name.as_str()) {
+                let len: usize = wb
+                    .shape
+                    .get(name.as_str())
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "layer '{}' weight '{}' has no shape entry in initializer",
+                            layer.name,
+                            name
+                        )
+                    })?
                     .iter()
-                    .map(|&v| convert_val_to_field_element::<C>(v))
-                    .collect();
-                let len = field_vals.len();
-                weight_lens.push((name.clone(), len));
-                weight_entries.push((name.clone(), field_vals));
+                    .product();
+                weight_entries.push((name.clone(), len));
             } else {
                 skip_inputs.push(name);
             }
@@ -288,7 +291,7 @@ fn compile_kernels<C: Config>(
         }];
         let mut io_shapes: Vec<Vec<usize>> = vec![vec![act_in_len]];
 
-        for (_wname, wlen) in &weight_lens {
+        for (_wname, wlen) in &weight_entries {
             io_specs.push(IOVecSpec {
                 len: *wlen,
                 is_input: true,
@@ -340,7 +343,7 @@ fn compile_kernels<C: Config>(
                 )
             })?;
 
-        let weight_shapes: Vec<(String, Vec<usize>)> = weight_lens
+        let weight_shapes: Vec<(String, Vec<usize>)> = weight_entries
             .iter()
             .map(|(wname, _wlen)| {
                 let shape = w_and_b_map[wname.as_str()]
