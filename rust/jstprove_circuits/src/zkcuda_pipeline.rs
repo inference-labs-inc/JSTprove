@@ -47,7 +47,6 @@ fn cap_n_bits_config(params: &mut CircuitParams, n_bits_field: u32) {
 struct LayerDescriptor {
     name: String,
     output_activation_len: usize,
-    weight_entries: Vec<(String, usize)>,
 }
 
 struct CompiledPipeline<C: Config> {
@@ -124,12 +123,6 @@ where
         .enumerate()
     {
         let mut io_handles: Vec<_> = vec![activations.clone()];
-
-        for (_wname, wlen) in &desc.weight_entries {
-            let wvals = vec![CircuitField::<C>::default(); *wlen];
-            let whandle = ctx.copy_to_device(&wvals);
-            io_handles.push(whandle.reshape(&[1, *wlen]));
-        }
 
         let mut out_handle = None;
         io_handles.push(out_handle.clone());
@@ -242,34 +235,26 @@ fn compile_kernels<C: Config>(
 
         let act_in_len = prev_output_len;
 
-        let mut weight_entries: Vec<(String, usize)> = Vec::new();
-        let mut skip_inputs: Vec<&str> = Vec::new();
-        for name in layer.inputs.iter().skip(1) {
-            if let Some(wb) = w_and_b_map.get(name.as_str()) {
-                let len: usize = wb
-                    .shape
-                    .get(name.as_str())
-                    .ok_or_else(|| {
-                        anyhow::anyhow!(
-                            "layer '{}' weight '{}' has no shape entry in initializer",
-                            layer.name,
-                            name
-                        )
-                    })?
-                    .iter()
-                    .product();
-                weight_entries.push((name.clone(), len));
-            } else {
-                skip_inputs.push(name);
-            }
+        let has_skip_connections = layer
+            .inputs
+            .iter()
+            .skip(1)
+            .any(|name| !w_and_b_map.contains_key(name.as_str()));
+        if has_skip_connections {
+            let skip_inputs: Vec<&str> = layer
+                .inputs
+                .iter()
+                .skip(1)
+                .filter(|name| !w_and_b_map.contains_key(name.as_str()))
+                .map(String::as_str)
+                .collect();
+            anyhow::bail!(
+                "layer '{}' has non-initializer secondary inputs {:?} \
+                 (skip connections are not yet supported in the zkCUDA pipeline)",
+                layer.name,
+                skip_inputs
+            );
         }
-        anyhow::ensure!(
-            skip_inputs.is_empty(),
-            "layer '{}' has non-initializer secondary inputs {:?} \
-             (skip connections are not yet supported in the zkCUDA pipeline)",
-            layer.name,
-            skip_inputs
-        );
 
         let output_name = layer
             .outputs
@@ -290,15 +275,6 @@ fn compile_kernels<C: Config>(
             is_output: false,
         }];
         let mut io_shapes: Vec<Vec<usize>> = vec![vec![act_in_len]];
-
-        for (_wname, wlen) in &weight_entries {
-            io_specs.push(IOVecSpec {
-                len: *wlen,
-                is_input: true,
-                is_output: false,
-            });
-            io_shapes.push(vec![*wlen]);
-        }
 
         io_specs.push(IOVecSpec {
             len: act_out_len,
@@ -343,18 +319,6 @@ fn compile_kernels<C: Config>(
                 )
             })?;
 
-        let weight_shapes: Vec<(String, Vec<usize>)> = weight_entries
-            .iter()
-            .map(|(wname, _wlen)| {
-                let shape = w_and_b_map[wname.as_str()]
-                    .shape
-                    .get(wname.as_str())
-                    .expect("weight shape already validated in weight_entries construction")
-                    .clone();
-                (wname.clone(), shape)
-            })
-            .collect();
-
         let kernel = compile_with_spec_and_shapes::<C, _>(
             |api: &mut API<C>, io_vars: &mut Vec<Vec<Variable>>| {
                 let act_in = &io_vars[0];
@@ -367,16 +331,6 @@ fn compile_kernels<C: Config>(
 
                 let mut tensor_map: HashMap<String, ArrayD<Variable>> = HashMap::new();
                 tensor_map.insert(input_activation_name.clone(), act_in_arr);
-
-                for (idx, (wname, wshape)) in weight_shapes.iter().enumerate() {
-                    let wvars = &io_vars[1 + idx];
-                    let warr = ArrayD::from_shape_vec(ndarray::IxDyn(wshape), wvars.clone())
-                        .unwrap_or_else(|e| panic!(
-                            "reshape weights '{}' for layer '{}' with shape {:?} and {} elements: {e}",
-                            wname, layer_name, wshape, wvars.len()
-                        ));
-                    tensor_map.insert(wname.clone(), warr);
-                }
 
                 let mut logup_ctx = LogupRangeCheckContext::new(chunk_bits);
                 logup_ctx.init::<C, API<C>>(api);
@@ -403,7 +357,6 @@ fn compile_kernels<C: Config>(
             name = %layer_name,
             act_in = act_in_len,
             act_out = act_out_len,
-            weights = weight_entries.len(),
             "compiled kernel"
         );
 
@@ -412,7 +365,6 @@ fn compile_kernels<C: Config>(
         descriptors.push(LayerDescriptor {
             name: layer_name,
             output_activation_len: act_out_len,
-            weight_entries,
         });
         kernels.push(kernel);
     }
