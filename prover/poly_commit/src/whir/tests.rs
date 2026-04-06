@@ -1,7 +1,6 @@
-use arith::{FFTField, Field};
+use arith::Field;
 use goldilocks::{Goldilocks, GoldilocksExt2};
 
-use super::pcs_trait_impl::WhirPCSForGKR;
 use super::types::WhirCommitment;
 
 fn eval_mle_lsb_first(evals: &[GoldilocksExt2], point: &[GoldilocksExt2]) -> GoldilocksExt2 {
@@ -25,7 +24,7 @@ fn whir_commit_open_verify_roundtrip() {
     use gkr_hashers::SHA256hasher;
     use transcript::BytesHashTranscript;
 
-    let num_vars = 6;
+    let num_vars = 8;
     let n = 1 << num_vars;
 
     let base_evals: Vec<Goldilocks> = (0..n).map(|i| Goldilocks::from(i as u32 + 1)).collect();
@@ -78,7 +77,7 @@ fn whir_rejects_wrong_evaluation() {
     use gkr_hashers::SHA256hasher;
     use transcript::BytesHashTranscript;
 
-    let num_vars = 4;
+    let num_vars = 8;
     let n = 1 << num_vars;
 
     let base_evals: Vec<Goldilocks> = (0..n).map(|i| Goldilocks::from(i as u32 + 1)).collect();

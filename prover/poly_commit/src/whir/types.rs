@@ -52,54 +52,40 @@ impl ExpSerde for WhirCommitment {
 
 #[derive(Clone, Debug, Default)]
 pub struct WhirRoundQueryProof<F: ExtensionField> {
-    pub source_leaf_proof: Path,
-    pub source_sibling_proof: Path,
+    pub source_leaf_proofs: Vec<Path>,
     pub target_leaf_proof: Path,
-    pub target_sibling_proof: Path,
     pub target_leaf_values: Vec<F>,
-    pub target_sibling_values: Vec<F>,
 }
 
 impl<F: ExtensionField> ExpSerde for WhirRoundQueryProof<F> {
     fn serialize_into<W: std::io::Write>(&self, mut writer: W) -> SerdeResult<()> {
-        self.source_leaf_proof.serialize_into(&mut writer)?;
-        self.source_sibling_proof.serialize_into(&mut writer)?;
-        self.target_leaf_proof.serialize_into(&mut writer)?;
-        self.target_sibling_proof.serialize_into(&mut writer)?;
-        let tlen = U256::from(self.target_leaf_values.len() as u64);
-        tlen.serialize_into(&mut writer)?;
-        for v in &self.target_leaf_values {
-            v.serialize_into(&mut writer)?;
+        U256::from(self.source_leaf_proofs.len() as u64).serialize_into(&mut writer)?;
+        for p in &self.source_leaf_proofs {
+            p.serialize_into(&mut writer)?;
         }
-        let slen = U256::from(self.target_sibling_values.len() as u64);
-        slen.serialize_into(&mut writer)?;
-        for v in &self.target_sibling_values {
+        self.target_leaf_proof.serialize_into(&mut writer)?;
+        U256::from(self.target_leaf_values.len() as u64).serialize_into(&mut writer)?;
+        for v in &self.target_leaf_values {
             v.serialize_into(&mut writer)?;
         }
         Ok(())
     }
     fn deserialize_from<R: std::io::Read>(mut reader: R) -> SerdeResult<Self> {
-        let source_leaf_proof = Path::deserialize_from(&mut reader)?;
-        let source_sibling_proof = Path::deserialize_from(&mut reader)?;
+        let slen = U256::deserialize_from(&mut reader)?.as_usize();
+        let mut source_leaf_proofs = Vec::with_capacity(slen);
+        for _ in 0..slen {
+            source_leaf_proofs.push(Path::deserialize_from(&mut reader)?);
+        }
         let target_leaf_proof = Path::deserialize_from(&mut reader)?;
-        let target_sibling_proof = Path::deserialize_from(&mut reader)?;
         let tlen = U256::deserialize_from(&mut reader)?.as_usize();
         let mut target_leaf_values = Vec::with_capacity(tlen);
         for _ in 0..tlen {
             target_leaf_values.push(F::deserialize_from(&mut reader)?);
         }
-        let slen = U256::deserialize_from(&mut reader)?.as_usize();
-        let mut target_sibling_values = Vec::with_capacity(slen);
-        for _ in 0..slen {
-            target_sibling_values.push(F::deserialize_from(&mut reader)?);
-        }
         Ok(Self {
-            source_leaf_proof,
-            source_sibling_proof,
+            source_leaf_proofs,
             target_leaf_proof,
-            target_sibling_proof,
             target_leaf_values,
-            target_sibling_values,
         })
     }
 }
