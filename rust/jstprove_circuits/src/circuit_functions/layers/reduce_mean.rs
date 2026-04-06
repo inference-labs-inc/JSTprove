@@ -24,7 +24,7 @@ pub struct ReduceMeanLayer {
     keepdims: bool,
     input_shape: Vec<usize>,
     output_shape: Vec<usize>,
-    scaling: u64,
+    n_bits: usize,
     lane_size: usize,
 }
 
@@ -69,16 +69,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
         })?;
 
         let n = self.lane_size;
-        let half_n = n / 2;
         let total_out: usize = self.output_shape.iter().product();
 
         let n_const = api.constant(CircuitField::<C>::from_u256(U256::from(n as u64)));
-        let bias = self.scaling * n as u64;
-        let bias_const = api.constant(CircuitField::<C>::from_u256(U256::from(
-            bias + half_n as u64,
-        )));
-        let bias_div_n = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
-        let remainder_bits = usize::BITS as usize - n.leading_zeros() as usize + 1;
+        let tolerance = api.constant(CircuitField::<C>::from_u256(U256::from(n as u64)));
+        let tol_bits = (2 * n + 1).next_power_of_two().trailing_zeros() as usize;
+
+        let n_bits_u32 = u32::try_from(self.n_bits).unwrap_or(u32::MAX);
+        let offset = U256::from(1u64) << (n_bits_u32 - 1);
+        let offset_var = api.constant(CircuitField::<C>::from_u256(offset));
 
         let mut out_storage: Vec<Variable> = Vec::with_capacity(total_out);
 
@@ -102,23 +101,27 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
                 acc
             };
 
-            let shifted_sum = api.add(sum, bias_const);
-            let shifted_q = api.unconstrained_int_div(shifted_sum, n_const);
-            let remainder = api.unconstrained_mod(shifted_sum, n_const);
+            let mean_q = api.unconstrained_int_div(sum, n_const);
 
-            let rhs_mul = api.mul(n_const, shifted_q);
-            let rhs = api.add(rhs_mul, remainder);
-            api.assert_is_equal(shifted_sum, rhs);
-
+            let n_times_mean = api.mul(n_const, mean_q);
+            let diff = api.sub(sum, n_times_mean);
+            let shifted_diff = api.add(diff, tolerance);
             logup_ctx
-                .range_check::<C, Builder>(api, remainder, remainder_bits)
+                .range_check::<C, Builder>(api, shifted_diff, tol_bits)
                 .map_err(|e| LayerError::Other {
                     layer: LayerKind::ReduceMean,
-                    msg: format!("remainder range check: {e}"),
+                    msg: format!("mean tolerance range check: {e}"),
                 })?;
 
-            let mean = api.sub(shifted_q, bias_div_n);
-            out_storage.push(mean);
+            let mean_shifted = api.add(mean_q, offset_var);
+            logup_ctx
+                .range_check::<C, Builder>(api, mean_shifted, self.n_bits)
+                .map_err(|e| LayerError::Other {
+                    layer: LayerKind::ReduceMean,
+                    msg: format!("mean output range check: {e}"),
+                })?;
+
+            out_storage.push(mean_q);
         }
 
         let result =
@@ -140,7 +143,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
     )]
     fn build(
         layer: &crate::circuit_functions::utils::onnx_types::ONNXLayer,
-        circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
+        _circuit_params: &crate::circuit_functions::utils::onnx_model::CircuitParams,
         _optimization_pattern: crate::circuit_functions::utils::graph_pattern_matching::PatternRegistry,
         _is_rescale: bool,
         _index: usize,
@@ -284,16 +287,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
             .into());
         }
 
-        let scaling: u64 = 1u64
-            .checked_shl(circuit_params.scale_exponent)
-            .ok_or_else(|| LayerError::Other {
-                layer: LayerKind::ReduceMean,
-                msg: format!(
-                    "scale_exponent {} is too large to shift u64",
-                    circuit_params.scale_exponent
-                ),
-            })?;
-
         let lane_size: usize = axes.iter().map(|&a| input_shape[a]).product();
         if lane_size == 0 {
             return Err(LayerError::InvalidShape {
@@ -303,6 +296,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
             .into());
         }
 
+        let n_bits = layer_context.n_bits_for(&layer.name);
+
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
@@ -310,7 +305,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
             keepdims,
             input_shape,
             output_shape,
-            scaling,
+            n_bits,
             lane_size,
         }))
     }
