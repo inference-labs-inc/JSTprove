@@ -7,11 +7,12 @@
 //
 // # Supported configurations
 // - 2D: [M, K] @ [K, N] → [M, N]
-// - Higher-rank inputs are rejected at build time.
+// - 3D: [B, M, K] @ [K, N] → [B, M, N]  (B broadcast over batch)
+//        [B, M, K] @ [B, K, N] → [B, M, N]  (batched both)
 
 use std::collections::HashMap;
 
-use ndarray::{ArrayD, Ix2};
+use ndarray::{ArrayD, Ix2, Ix3, IxDyn, s};
 
 use expander_compiler::frontend::{Config, RootAPI, Variable};
 
@@ -59,75 +60,19 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MatMulLayer {
             })?
             .clone();
 
-        let input_array =
-            layer_input
-                .into_dimensionality::<Ix2>()
-                .map_err(|_| LayerError::InvalidShape {
-                    layer: LayerKind::MatMul,
-                    msg: format!("Expected 2D input for MatMul layer {}", self.name),
-                })?;
-
         let w_name = get_input_name(&self.inputs, 1, LayerKind::MatMul, "weights")?;
-        let weights_array = load_array_constants_or_get_inputs(
+        let weights_dyn = load_array_constants_or_get_inputs(
             api,
             input,
             w_name,
             &self.weights,
             LayerKind::MatMul,
-        )?
-        .into_dimensionality::<Ix2>()
-        .map_err(|_| LayerError::InvalidShape {
-            layer: LayerKind::MatMul,
-            msg: format!("Expected 2D weights for MatMul layer {}", self.name),
-        })?;
+        )?;
 
-        let (ell, m) = input_array.dim();
-        let (m2, n) = weights_array.dim();
-        if m != m2 {
-            return Err(LayerError::ShapeMismatch {
-                layer: LayerKind::MatMul,
-                expected: vec![m],
-                got: vec![m2],
-                var_name: "MatMul: A.cols != B.rows".to_string(),
-            }
-            .into());
-        }
-
-        let use_freivalds = self.freivalds_reps > 0 && {
-            let ell_u = ell as u128;
-            let m_u = m as u128;
-            let n_u = n as u128;
-            let reps_u = self.freivalds_reps as u128;
-            let cost_full = 2u128 * ell_u * m_u * n_u - ell_u * n_u;
-            let s = ell_u * m_u + ell_u * n_u + m_u * n_u;
-            let d = 2u128 * s - (m_u + 2u128 * ell_u);
-            d > 0 && reps_u * d < cost_full
-        };
-
-        let core = if use_freivalds {
-            let core_dyn = unconstrained_matrix_multiplication(
-                api,
-                input_array.clone().into_dyn(),
-                weights_array.clone().into_dyn(),
-                LayerKind::MatMul,
-            )?;
-            freivalds_verify_matrix_product(
-                api,
-                &input_array.clone().into_dyn(),
-                &weights_array.clone().into_dyn(),
-                &core_dyn,
-                LayerKind::MatMul,
-                self.freivalds_reps,
-            )?;
-            core_dyn
+        let core = if layer_input.ndim() == 3 {
+            self.apply_batched(api, layer_input, weights_dyn)?
         } else {
-            matrix_multiplication(
-                api,
-                input_array.clone().into_dyn(),
-                weights_array.clone().into_dyn(),
-                LayerKind::MatMul,
-            )
-            .map_err(CircuitError::from)?
+            self.apply_2d(api, layer_input, weights_dyn)?
         };
 
         let out_array = maybe_rescale(
@@ -162,7 +107,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MatMulLayer {
     ) -> Result<Box<dyn LayerOp<C, Builder>>, CircuitError> {
         let freivalds_reps = circuit_params.freivalds_reps;
 
-        // Validate we have two inputs.
         layer
             .inputs
             .first()
@@ -172,7 +116,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MatMulLayer {
             })?;
         let w_name = get_input_name(&layer.inputs, 1, LayerKind::MatMul, "input B")?;
 
-        // Validate 2D shapes.
         let input_name = layer.inputs.first().unwrap();
         let a_shape = layer_context
             .shapes_map
@@ -181,14 +124,35 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MatMulLayer {
                 layer: LayerKind::MatMul,
                 msg: format!("missing input shape for '{input_name}'"),
             })?;
-        if a_shape.len() != 2 {
+        if a_shape.len() != 2 && a_shape.len() != 3 {
             return Err(LayerError::Other {
                 layer: LayerKind::MatMul,
                 msg: format!(
-                    "MatMul only supports 2D inputs in the Expander backend; \
-                     input A has rank {} (shape {:?}). Use Gemm for 2D or reshape inputs.",
+                    "MatMul supports rank-2 and rank-3 inputs in the Expander backend; \
+                     input A has rank {} (shape {:?}).",
                     a_shape.len(),
                     a_shape
+                ),
+            }
+            .into());
+        }
+
+        let b_shape =
+            layer_context
+                .shapes_map
+                .get(w_name)
+                .ok_or_else(|| LayerError::InvalidShape {
+                    layer: LayerKind::MatMul,
+                    msg: format!("missing input shape for '{w_name}'"),
+                })?;
+        if b_shape.len() != 2 && b_shape.len() != 3 {
+            return Err(LayerError::Other {
+                layer: LayerKind::MatMul,
+                msg: format!(
+                    "MatMul supports rank-2 and rank-3 inputs in the Expander backend; \
+                     input B has rank {} (shape {:?}).",
+                    b_shape.len(),
+                    b_shape
                 ),
             }
             .into());
@@ -213,6 +177,188 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MatMulLayer {
             freivalds_reps,
         }))
     }
+}
+
+impl MatMulLayer {
+    fn matmul_2d_core<C: Config, Builder: RootAPI<C>>(
+        &self,
+        api: &mut Builder,
+        a_2d: ArrayD<Variable>,
+        b_2d: ArrayD<Variable>,
+    ) -> Result<ArrayD<Variable>, CircuitError> {
+        let (ell, m) = {
+            let sh = a_2d.shape();
+            (sh[0], sh[1])
+        };
+        let n = b_2d.shape()[1];
+
+        let use_freivalds = self.freivalds_reps > 0 && {
+            let ell_u = ell as u128;
+            let m_u = m as u128;
+            let n_u = n as u128;
+            let reps_u = self.freivalds_reps as u128;
+            let cost_full = 2u128 * ell_u * m_u * n_u - ell_u * n_u;
+            let s = ell_u * m_u + ell_u * n_u + m_u * n_u;
+            let d = 2u128 * s - (m_u + 2u128 * ell_u);
+            d > 0 && reps_u * d < cost_full
+        };
+
+        if use_freivalds {
+            let core_dyn = unconstrained_matrix_multiplication(
+                api,
+                a_2d.clone(),
+                b_2d.clone(),
+                LayerKind::MatMul,
+            )?;
+            freivalds_verify_matrix_product(
+                api,
+                &a_2d,
+                &b_2d,
+                &core_dyn,
+                LayerKind::MatMul,
+                self.freivalds_reps,
+            )?;
+            Ok(core_dyn)
+        } else {
+            matrix_multiplication(api, a_2d, b_2d, LayerKind::MatMul).map_err(CircuitError::from)
+        }
+    }
+
+    fn apply_2d<C: Config, Builder: RootAPI<C>>(
+        &self,
+        api: &mut Builder,
+        layer_input: ArrayD<Variable>,
+        weights_dyn: ArrayD<Variable>,
+    ) -> Result<ArrayD<Variable>, CircuitError> {
+        let input_array =
+            layer_input
+                .into_dimensionality::<Ix2>()
+                .map_err(|_| LayerError::InvalidShape {
+                    layer: LayerKind::MatMul,
+                    msg: format!("Expected 2D input for MatMul layer {}", self.name),
+                })?;
+
+        let weights_array =
+            weights_dyn
+                .into_dimensionality::<Ix2>()
+                .map_err(|_| LayerError::InvalidShape {
+                    layer: LayerKind::MatMul,
+                    msg: format!("Expected 2D weights for MatMul layer {}", self.name),
+                })?;
+
+        let (_, m) = input_array.dim();
+        let (m2, _) = weights_array.dim();
+        if m != m2 {
+            return Err(LayerError::ShapeMismatch {
+                layer: LayerKind::MatMul,
+                expected: vec![m],
+                got: vec![m2],
+                var_name: "MatMul: A.cols != B.rows".to_string(),
+            }
+            .into());
+        }
+
+        self.matmul_2d_core(api, input_array.into_dyn(), weights_array.into_dyn())
+    }
+
+    fn apply_batched<C: Config, Builder: RootAPI<C>>(
+        &self,
+        api: &mut Builder,
+        layer_input: ArrayD<Variable>,
+        weights_dyn: ArrayD<Variable>,
+    ) -> Result<ArrayD<Variable>, CircuitError> {
+        let input_3d =
+            layer_input
+                .into_dimensionality::<Ix3>()
+                .map_err(|_| LayerError::InvalidShape {
+                    layer: LayerKind::MatMul,
+                    msg: format!("Expected 3D input for batched MatMul layer {}", self.name),
+                })?;
+
+        let (batch, rows_a, k_a) = input_3d.dim();
+        let b_is_batched = weights_dyn.ndim() == 3;
+
+        if b_is_batched {
+            let weights_3d =
+                weights_dyn
+                    .into_dimensionality::<Ix3>()
+                    .map_err(|_| LayerError::InvalidShape {
+                        layer: LayerKind::MatMul,
+                        msg: format!("Expected 3D weights for batched MatMul layer {}", self.name),
+                    })?;
+            let (batch_b, k_b, cols_b) = weights_3d.dim();
+            if batch != batch_b {
+                return Err(LayerError::ShapeMismatch {
+                    layer: LayerKind::MatMul,
+                    expected: vec![batch],
+                    got: vec![batch_b],
+                    var_name: "MatMul: A.batch != B.batch".to_string(),
+                }
+                .into());
+            }
+            if k_a != k_b {
+                return Err(LayerError::ShapeMismatch {
+                    layer: LayerKind::MatMul,
+                    expected: vec![k_a],
+                    got: vec![k_b],
+                    var_name: "MatMul: A.K != B.K".to_string(),
+                }
+                .into());
+            }
+
+            let mut slices: Vec<ArrayD<Variable>> = Vec::with_capacity(batch);
+            for b in 0..batch {
+                let a_slice = input_3d.slice(s![b, .., ..]).into_owned().into_dyn();
+                let b_slice = weights_3d.slice(s![b, .., ..]).into_owned().into_dyn();
+                slices.push(self.matmul_2d_core(api, a_slice, b_slice)?);
+            }
+            stack_batch_slices(batch, rows_a, cols_b, &slices)
+        } else {
+            let weights_2d =
+                weights_dyn
+                    .into_dimensionality::<Ix2>()
+                    .map_err(|_| LayerError::InvalidShape {
+                        layer: LayerKind::MatMul,
+                        msg: format!("Expected 2D weights for MatMul layer {}", self.name),
+                    })?;
+            let (k_b, cols_b) = weights_2d.dim();
+            if k_a != k_b {
+                return Err(LayerError::ShapeMismatch {
+                    layer: LayerKind::MatMul,
+                    expected: vec![k_a],
+                    got: vec![k_b],
+                    var_name: "MatMul: A.K != B.K".to_string(),
+                }
+                .into());
+            }
+
+            let b_dyn = weights_2d.into_dyn();
+            let mut slices: Vec<ArrayD<Variable>> = Vec::with_capacity(batch);
+            for b_idx in 0..batch {
+                let a_slice = input_3d.slice(s![b_idx, .., ..]).into_owned().into_dyn();
+                slices.push(self.matmul_2d_core(api, a_slice, b_dyn.clone())?);
+            }
+            stack_batch_slices(batch, rows_a, cols_b, &slices)
+        }
+    }
+}
+
+fn stack_batch_slices(
+    batch: usize,
+    rows: usize,
+    cols: usize,
+    slices: &[ArrayD<Variable>],
+) -> Result<ArrayD<Variable>, CircuitError> {
+    let mut flat: Vec<Variable> = Vec::with_capacity(batch * rows * cols);
+    for slice in slices {
+        flat.extend(slice.iter().copied());
+    }
+    ArrayD::from_shape_vec(IxDyn(&[batch, rows, cols]), flat).map_err(|_| {
+        CircuitError::from(LayerError::InvalidShape {
+            layer: LayerKind::MatMul,
+            msg: "Failed to stack batched MatMul results".to_string(),
+        })
+    })
 }
 
 #[cfg(test)]
