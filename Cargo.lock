@@ -2305,6 +2305,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "jst_gkr"
+version = "0.4.0"
+dependencies = [
+ "arith",
+ "goldilocks",
+ "jst_gkr_engine",
+ "rand 0.8.5",
+ "rand_chacha",
+ "sha2",
+]
+
+[[package]]
+name = "jst_gkr_engine"
+version = "0.4.0"
+dependencies = [
+ "arith",
+]
+
+[[package]]
 name = "jstprove-io"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,10 @@
+[package]
+name = "jst_gkr_engine"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arith.workspace = true
+
+[lints.clippy]
+all = "allow"

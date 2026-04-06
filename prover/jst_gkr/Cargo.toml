@@ -1,0 +1,18 @@
+[package]
+name = "jst_gkr"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arith.workspace = true
+jst_gkr_engine.workspace = true
+sha2.workspace = true
+rand.workspace = true
+
+[dev-dependencies]
+rand.workspace = true
+rand_chacha.workspace = true
+goldilocks.workspace = true
+
+[lints.clippy]
+all = "allow"
