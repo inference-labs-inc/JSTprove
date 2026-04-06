@@ -1,9 +1,10 @@
+use std::cmp::max;
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Instant;
 
 use anyhow::{Context as _, Result};
-use ndarray::ArrayD;
+use ndarray::{Array4, ArrayD};
 
 use expander_compiler::frontend::{API, Config, GoldilocksConfig, Variable};
 use expander_compiler::zkcuda::context::{Context, DeviceMemoryHandle};
@@ -19,7 +20,7 @@ use crate::circuit_functions::utils::graph_pattern_matching::{
     PatternMatcher, PatternRegistry, optimization_skip_layers,
 };
 use crate::circuit_functions::utils::onnx_model::{
-    Architecture, CircuitParams, WANDB, collect_all_shapes,
+    Architecture, CircuitParams, WANDB, collect_all_shapes, get_w_or_b,
 };
 use crate::circuit_functions::utils::onnx_types::ONNXLayer;
 use crate::circuit_functions::utils::tensor_ops::convert_val_to_field_element;
@@ -38,10 +39,44 @@ fn cap_n_bits_config(params: &mut CircuitParams, n_bits_field: u32) {
     }
 }
 
+#[derive(Clone, Debug)]
+enum NativeLayerOp {
+    Conv2D {
+        weights: ArrayD<i64>,
+        bias: Option<ArrayD<i64>>,
+        kernel_shape: Vec<usize>,
+        strides: Vec<usize>,
+        pads: Vec<usize>,
+        dilation: Vec<usize>,
+        scaling_exponent: usize,
+        is_rescale: bool,
+        apply_relu: bool,
+    },
+    Gemm {
+        weights: ArrayD<i64>,
+        bias: ArrayD<i64>,
+        transa: bool,
+        transb: bool,
+        scaling_exponent: usize,
+        is_rescale: bool,
+        apply_relu: bool,
+    },
+    Relu,
+    MaxPool2D {
+        kernel_shape: Vec<usize>,
+        strides: Vec<usize>,
+        pads: Vec<usize>,
+        dilation: Vec<usize>,
+    },
+    Flatten,
+}
+
 struct LayerDescriptor {
     name: String,
     output_activation_len: usize,
+    output_shape: Vec<usize>,
     weight_entries: Vec<(String, usize)>,
+    native_op: NativeLayerOp,
 }
 
 struct CompiledPipeline<C: Config> {
@@ -63,6 +98,282 @@ pub struct PipelineResult {
 /// Returns an error if ONNX parsing, kernel compilation, or proving fails.
 pub fn run_pipeline_goldilocks(onnx_path: &Path, input_data: &[f64]) -> Result<PipelineResult> {
     run_pipeline::<GoldilocksConfig>(onnx_path, input_data, N_BITS_GOLDILOCKS)
+}
+
+fn native_forward_i64(op: &NativeLayerOp, input: &[i64], input_shape: &[usize]) -> Vec<i64> {
+    match op {
+        NativeLayerOp::Conv2D {
+            weights,
+            bias,
+            kernel_shape,
+            strides,
+            pads,
+            dilation,
+            scaling_exponent,
+            is_rescale,
+            apply_relu,
+        } => native_conv2d(
+            input,
+            input_shape,
+            weights,
+            bias.as_ref(),
+            kernel_shape,
+            strides,
+            pads,
+            dilation,
+            *scaling_exponent,
+            *is_rescale,
+            *apply_relu,
+        ),
+        NativeLayerOp::Gemm {
+            weights,
+            bias,
+            transa,
+            transb,
+            scaling_exponent,
+            is_rescale,
+            apply_relu,
+        } => native_gemm(
+            input,
+            input_shape,
+            weights,
+            bias,
+            *transa,
+            *transb,
+            *scaling_exponent,
+            *is_rescale,
+            *apply_relu,
+        ),
+        NativeLayerOp::Relu => input.iter().map(|&v| max(0, v)).collect(),
+        NativeLayerOp::MaxPool2D {
+            kernel_shape,
+            strides,
+            pads,
+            dilation,
+        } => native_maxpool2d(input, input_shape, kernel_shape, strides, pads, dilation),
+        NativeLayerOp::Flatten => input.to_vec(),
+    }
+}
+
+#[allow(clippy::cast_possible_truncation)]
+fn native_rescale(value: i128, scaling_exponent: usize, is_rescale: bool, apply_relu: bool) -> i64 {
+    let mut v = value;
+    if is_rescale {
+        let alpha = 1i128 << scaling_exponent;
+        v = v.div_euclid(alpha);
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    let result = v as i64;
+    if apply_relu { max(0, result) } else { result }
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap
+)]
+fn native_conv2d(
+    input: &[i64],
+    input_shape: &[usize],
+    weights: &ArrayD<i64>,
+    bias: Option<&ArrayD<i64>>,
+    kernel_shape: &[usize],
+    strides: &[usize],
+    pads: &[usize],
+    dilation: &[usize],
+    scaling_exponent: usize,
+    is_rescale: bool,
+    apply_relu: bool,
+) -> Vec<i64> {
+    let n = input_shape[0];
+    let c_in = input_shape[1];
+    let h_in = input_shape[2];
+    let w_in = input_shape[3];
+    let input_arr = Array4::from_shape_vec((n, c_in, h_in, w_in), input.to_vec())
+        .expect("native_conv2d: input reshape");
+
+    let w_shape = weights.shape();
+    let c_out = w_shape[0];
+    let kh = kernel_shape[0];
+    let kw = kernel_shape[1];
+    let sh = strides[0];
+    let sw = strides[1];
+    let dh = dilation[0];
+    let dw = dilation[1];
+    let pad_top = pads[0];
+    let pad_left = pads[1];
+
+    let h_out = (h_in + pads[0] + pads[2] - dh * (kh - 1) - 1) / sh + 1;
+    let w_out = (w_in + pads[1] + pads[3] - dw * (kw - 1) - 1) / sw + 1;
+
+    let weights_4d = weights
+        .clone()
+        .into_shape_with_order((c_out, c_in, kh, kw))
+        .expect("native_conv2d: weights reshape");
+
+    let mut output = Vec::with_capacity(n * c_out * h_out * w_out);
+    for b in 0..n {
+        for oc in 0..c_out {
+            for oh in 0..h_out {
+                for ow in 0..w_out {
+                    let mut acc: i128 = 0;
+                    for ic in 0..c_in {
+                        for khi in 0..kh {
+                            for kwi in 0..kw {
+                                let ih = (oh * sh + khi * dh) as isize - pad_top as isize;
+                                let iw = (ow * sw + kwi * dw) as isize - pad_left as isize;
+                                if ih >= 0
+                                    && (ih as usize) < h_in
+                                    && iw >= 0
+                                    && (iw as usize) < w_in
+                                {
+                                    let iv = input_arr[[b, ic, ih as usize, iw as usize]];
+                                    let wv = weights_4d[[oc, ic, khi, kwi]];
+                                    acc += i128::from(iv) * i128::from(wv);
+                                }
+                            }
+                        }
+                    }
+                    if let Some(b_arr) = bias {
+                        acc += i128::from(b_arr[oc]);
+                    }
+                    output.push(native_rescale(
+                        acc,
+                        scaling_exponent,
+                        is_rescale,
+                        apply_relu,
+                    ));
+                }
+            }
+        }
+    }
+    output
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    clippy::cast_sign_loss,
+    clippy::fn_params_excessive_bools,
+    clippy::similar_names
+)]
+fn native_gemm(
+    input: &[i64],
+    input_shape: &[usize],
+    weights: &ArrayD<i64>,
+    bias: &ArrayD<i64>,
+    transa: bool,
+    transb: bool,
+    scaling_exponent: usize,
+    is_rescale: bool,
+    apply_relu: bool,
+) -> Vec<i64> {
+    let (m, k) = if input_shape.len() >= 2 {
+        (input_shape[0], input_shape[1])
+    } else {
+        (1, input_shape[0])
+    };
+    let (m_a, k_a) = if transa { (k, m) } else { (m, k) };
+    let _ = (m_a, k_a);
+
+    let w_shape = weights.shape();
+    let (k_w, n_w) = (w_shape[0], w_shape[1]);
+    let (k_b, n_b) = if transb { (n_w, k_w) } else { (k_w, n_w) };
+
+    let k_eff = if transa { m } else { k };
+    assert_eq!(k_eff, k_b, "native_gemm: inner dimension mismatch");
+
+    let weights_flat: Vec<i64> = weights.iter().copied().collect();
+
+    let mut output = Vec::with_capacity(m * n_b);
+    let (m_eff, _) = if transa { (k, m) } else { (m, k) };
+
+    for i in 0..m_eff {
+        for j in 0..n_b {
+            let mut acc: i128 = 0;
+            for p in 0..k_eff {
+                let a_val = if transa {
+                    input[p * m + i]
+                } else {
+                    input[i * k + p]
+                };
+                let b_val = if transb {
+                    weights_flat[j * n_w + p]
+                } else {
+                    weights_flat[p * n_w + j]
+                };
+                acc += i128::from(a_val) * i128::from(b_val);
+            }
+            let bias_val = if bias.is_empty() {
+                0
+            } else if bias.len() == n_b {
+                i128::from(bias[j])
+            } else {
+                i128::from(bias[[i, j]])
+            };
+            acc += bias_val;
+            output.push(native_rescale(
+                acc,
+                scaling_exponent,
+                is_rescale,
+                apply_relu,
+            ));
+        }
+    }
+    output
+}
+
+#[allow(clippy::cast_sign_loss, clippy::cast_possible_wrap)]
+fn native_maxpool2d(
+    input: &[i64],
+    input_shape: &[usize],
+    kernel_shape: &[usize],
+    strides: &[usize],
+    pads: &[usize],
+    dilation: &[usize],
+) -> Vec<i64> {
+    let n = input_shape[0];
+    let c = input_shape[1];
+    let h_in = input_shape[2];
+    let w_in = input_shape[3];
+    let input_arr = Array4::from_shape_vec((n, c, h_in, w_in), input.to_vec())
+        .expect("native_maxpool2d: input reshape");
+
+    let kh = kernel_shape[0];
+    let kw = kernel_shape[1];
+    let sh = strides[0];
+    let sw = strides[1];
+    let dh = dilation[0];
+    let dw = dilation[1];
+    let pad_top = pads[0];
+    let pad_left = pads[1];
+
+    let h_out = (h_in + pads[0] + pads[2] - dh * (kh - 1) - 1) / sh + 1;
+    let w_out = (w_in + pads[1] + pads[3] - dw * (kw - 1) - 1) / sw + 1;
+
+    let mut output = Vec::with_capacity(n * c * h_out * w_out);
+    for b in 0..n {
+        for ch in 0..c {
+            for oh in 0..h_out {
+                for ow in 0..w_out {
+                    let mut max_val = i64::MIN;
+                    for khi in 0..kh {
+                        for kwi in 0..kw {
+                            let ih = (oh * sh + khi * dh) as isize - pad_top as isize;
+                            let iw = (ow * sw + kwi * dw) as isize - pad_left as isize;
+                            if ih >= 0 && (ih as usize) < h_in && iw >= 0 && (iw as usize) < w_in {
+                                let v = input_arr[[b, ch, ih as usize, iw as usize]];
+                                if v > max_val {
+                                    max_val = v;
+                                }
+                            }
+                        }
+                    }
+                    output.push(max_val);
+                }
+            }
+        }
+    }
+    output
 }
 
 fn run_pipeline<C: Config>(
@@ -98,18 +409,24 @@ where
         input_data.len(),
         pipeline.input_len
     );
-    #[allow(clippy::cast_possible_wrap)]
+    #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
     let alpha = f64::from(params.scale_base).powi(params.scale_exponent as i32);
-    let input_vals: Vec<CircuitField<C>> = input_data
+
+    #[allow(clippy::cast_possible_truncation)]
+    let input_i64: Vec<i64> = input_data.iter().map(|&v| (v * alpha) as i64).collect();
+    let input_vals: Vec<CircuitField<C>> = input_i64
         .iter()
-        .map(|&v| {
-            #[allow(clippy::cast_possible_truncation)]
-            let scaled = (v * alpha) as i64;
-            convert_val_to_field_element::<C>(scaled)
-        })
+        .map(|&v| convert_val_to_field_element::<C>(v))
         .collect();
     let mut activations: DeviceMemoryHandle = ctx.copy_to_device(&input_vals);
     activations = activations.reshape(&[1, pipeline.input_len]);
+
+    let first_input_shape: Vec<usize> = params
+        .inputs
+        .first()
+        .map_or_else(|| vec![pipeline.input_len], |io| io.shape.clone());
+    let mut current_i64: Vec<i64> = input_i64;
+    let mut current_shape: Vec<usize> = first_input_shape;
 
     for (i, (kernel, desc)) in pipeline
         .kernels
@@ -117,6 +434,13 @@ where
         .zip(pipeline.layer_descriptors.iter())
         .enumerate()
     {
+        let output_i64 = native_forward_i64(&desc.native_op, &current_i64, &current_shape);
+
+        let output_field: Vec<CircuitField<C>> = output_i64
+            .iter()
+            .map(|&v| convert_val_to_field_element::<C>(v))
+            .collect();
+
         let mut io_handles: Vec<_> = vec![activations.clone()];
 
         for (_wname, wlen) in &desc.weight_entries {
@@ -125,18 +449,23 @@ where
             io_handles.push(whandle.reshape(&[1, *wlen]));
         }
 
-        let mut out_handle = None;
-        io_handles.push(out_handle.clone());
+        let out_handle_dev = ctx.copy_to_device(&output_field);
+        io_handles.push(out_handle_dev.reshape(&[1, desc.output_activation_len]));
 
         let io_slice: &mut [_] = &mut io_handles;
-        ctx.call_kernel(kernel, 1, io_slice)
-            .map_err(|e| anyhow::anyhow!("kernel {i} ({}) call failed: {e}", desc.name))?;
+        ctx.register_kernel_io(kernel, 1, io_slice)
+            .map_err(|e| anyhow::anyhow!("kernel {i} ({}) register failed: {e}", desc.name))?;
 
-        out_handle = io_slice.last().cloned().unwrap_or(None);
-        anyhow::ensure!(out_handle.is_some(), "kernel {i} produced no output");
-        activations = out_handle.reshape(&[1, desc.output_activation_len]);
+        activations = io_slice
+            .last()
+            .cloned()
+            .unwrap_or(None)
+            .reshape(&[1, desc.output_activation_len]);
 
-        tracing::info!(kernel = i, name = %desc.name, "kernel executed");
+        current_i64 = output_i64;
+        current_shape.clone_from(&desc.output_shape);
+
+        tracing::info!(kernel = i, name = %desc.name, "kernel registered");
     }
 
     let computation_graph = ctx
@@ -169,6 +498,24 @@ where
         num_kernels,
         verified,
     })
+}
+
+fn extract_onnx_param_vec<T: serde::de::DeserializeOwned + Clone>(
+    params: &rmpv::Value,
+    key: &str,
+    default: &[T],
+) -> Vec<T> {
+    use crate::circuit_functions::utils::onnx_model::get_param_or_default;
+    get_param_or_default::<Vec<T>>("", key, params, Some(&default.to_vec())).unwrap_or_default()
+}
+
+fn extract_onnx_param_scalar<T: serde::de::DeserializeOwned + Clone>(
+    params: &rmpv::Value,
+    key: &str,
+    default: T,
+) -> T {
+    use crate::circuit_functions::utils::onnx_model::get_param_or_default;
+    get_param_or_default::<T>("", key, params, Some(&default)).unwrap_or(default)
 }
 
 #[allow(clippy::too_many_lines)]
@@ -208,6 +555,12 @@ fn compile_kernels<C: Config>(
         .map(|io| io.shape.iter().product::<usize>())
         .sum();
     let mut prev_output_len = input_len;
+
+    let first_input_shape: Vec<usize> = params
+        .inputs
+        .first()
+        .map_or_else(|| vec![input_len], |io| io.shape.clone());
+    let mut prev_output_shape = first_input_shape;
 
     for (i, original_layer) in architecture.architecture.iter().enumerate() {
         let mut layer = original_layer.clone();
@@ -294,7 +647,7 @@ fn compile_kernels<C: Config>(
         let built_layer = builder(
             &layer_clone,
             &params_clone,
-            optimization_pattern,
+            optimization_pattern.clone(),
             is_rescale,
             i,
             &layer_context,
@@ -371,9 +724,20 @@ fn compile_kernels<C: Config>(
         )
         .map_err(|e| anyhow::anyhow!("compile kernel for layer {layer_name}: {e}"))?;
 
+        let native_op = build_native_op(
+            &layer,
+            &layer_kind,
+            &optimization_pattern,
+            is_rescale,
+            params,
+            &w_and_b_map,
+            &prev_output_shape,
+            &layer_context,
+        )?;
+
         tracing::info!(
             layer = i,
-            name = %layer_name,
+            name = %layer.name,
             act_in = act_in_len,
             act_out = act_out_len,
             weights = weight_entries.len(),
@@ -381,11 +745,14 @@ fn compile_kernels<C: Config>(
         );
 
         prev_output_len = act_out_len;
+        prev_output_shape.clone_from(&act_out_shape);
 
         descriptors.push(LayerDescriptor {
-            name: layer_name,
+            name: layer.name.clone(),
             output_activation_len: act_out_len,
+            output_shape: act_out_shape,
             weight_entries,
+            native_op,
         });
         kernels.push(kernel);
     }
@@ -395,6 +762,140 @@ fn compile_kernels<C: Config>(
         layer_descriptors: descriptors,
         input_len,
     })
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    clippy::too_many_lines,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_truncation,
+    clippy::similar_names
+)]
+fn build_native_op(
+    layer: &ONNXLayer,
+    _layer_kind: &LayerKind,
+    optimization_pattern: &PatternRegistry,
+    is_rescale: bool,
+    params: &CircuitParams,
+    w_and_b_map: &HashMap<String, &ONNXLayer>,
+    _input_shape: &[usize],
+    _layer_context: &BuildLayerContext,
+) -> Result<NativeLayerOp> {
+    use crate::circuit_functions::utils::onnx_model::extract_params;
+
+    let op_type = layer.op_type.as_str();
+    match op_type {
+        "Conv" => {
+            let lp = extract_params(layer).map_err(|e| anyhow::anyhow!("{e}"))?;
+            let kernel_shape: Vec<usize> = extract_onnx_param_vec::<i64>(&lp, "kernel_shape", &[])
+                .into_iter()
+                .map(|v| v as usize)
+                .collect();
+            let strides: Vec<usize> = extract_onnx_param_vec::<i64>(&lp, "strides", &[1, 1])
+                .into_iter()
+                .map(|v| v as usize)
+                .collect();
+            let spatial_rank = kernel_shape.len();
+            let default_pads: Vec<i64> = vec![0; 2 * spatial_rank];
+            let pads: Vec<usize> = extract_onnx_param_vec::<i64>(&lp, "pads", &default_pads)
+                .into_iter()
+                .map(|v| v as usize)
+                .collect();
+            let dilation: Vec<usize> = extract_onnx_param_vec::<i64>(&lp, "dilations", &[1, 1])
+                .into_iter()
+                .map(|v| v as usize)
+                .collect();
+
+            let w_name = layer
+                .inputs
+                .get(1)
+                .ok_or_else(|| anyhow::anyhow!("Conv layer missing weight input"))?;
+            let weights: ArrayD<i64> = get_w_or_b(w_and_b_map, w_name)
+                .map_err(|e| anyhow::anyhow!("Conv weights: {e}"))?;
+            let bias: Option<ArrayD<i64>> = layer
+                .inputs
+                .get(2)
+                .and_then(|b_name| get_w_or_b::<i64, _>(w_and_b_map, b_name).ok());
+
+            let apply_relu = matches!(optimization_pattern, PatternRegistry::ConvRelu);
+
+            Ok(NativeLayerOp::Conv2D {
+                weights,
+                bias,
+                kernel_shape,
+                strides,
+                pads,
+                dilation,
+                scaling_exponent: params.scale_exponent as usize,
+                is_rescale,
+                apply_relu,
+            })
+        }
+        "Gemm" => {
+            let lp = extract_params(layer).map_err(|e| anyhow::anyhow!("{e}"))?;
+            let transa: usize = extract_onnx_param_scalar(&lp, "transA", 0);
+            let transb: usize = extract_onnx_param_scalar(&lp, "transB", 0);
+
+            let w_name = layer
+                .inputs
+                .get(1)
+                .ok_or_else(|| anyhow::anyhow!("Gemm layer missing weight input"))?;
+            let weights: ArrayD<i64> = get_w_or_b(w_and_b_map, w_name)
+                .map_err(|e| anyhow::anyhow!("Gemm weights: {e}"))?;
+            let b_name = layer
+                .inputs
+                .get(2)
+                .ok_or_else(|| anyhow::anyhow!("Gemm layer missing bias input"))?;
+            let bias: ArrayD<i64> =
+                get_w_or_b(w_and_b_map, b_name).map_err(|e| anyhow::anyhow!("Gemm bias: {e}"))?;
+
+            let apply_relu = matches!(optimization_pattern, PatternRegistry::GemmRelu);
+
+            Ok(NativeLayerOp::Gemm {
+                weights,
+                bias,
+                transa: transa != 0,
+                transb: transb != 0,
+                scaling_exponent: params.scale_exponent as usize,
+                is_rescale,
+                apply_relu,
+            })
+        }
+        "Relu" | "ReLU" => Ok(NativeLayerOp::Relu),
+        "MaxPool" => {
+            let lp = extract_params(layer).map_err(|e| anyhow::anyhow!("{e}"))?;
+            let kernel_shape: Vec<usize> = extract_onnx_param_vec::<i64>(&lp, "kernel_shape", &[])
+                .into_iter()
+                .map(|v| v as usize)
+                .collect();
+            let strides: Vec<usize> = extract_onnx_param_vec::<i64>(&lp, "strides", &[1, 1])
+                .into_iter()
+                .map(|v| v as usize)
+                .collect();
+            let spatial_rank = kernel_shape.len();
+            let default_pads: Vec<i64> = vec![0; 2 * spatial_rank];
+            let pads: Vec<usize> = extract_onnx_param_vec::<i64>(&lp, "pads", &default_pads)
+                .into_iter()
+                .map(|v| v as usize)
+                .collect();
+            let dilation: Vec<usize> = extract_onnx_param_vec::<i64>(&lp, "dilations", &[1, 1])
+                .into_iter()
+                .map(|v| v as usize)
+                .collect();
+
+            Ok(NativeLayerOp::MaxPool2D {
+                kernel_shape,
+                strides,
+                pads,
+                dilation,
+            })
+        }
+        "Flatten" => Ok(NativeLayerOp::Flatten),
+        _ => anyhow::bail!(
+            "native forward pass not implemented for layer type '{op_type}'; \
+             falling back to call_kernel would be needed"
+        ),
+    }
 }
 
 #[cfg(test)]

@@ -302,6 +302,120 @@ impl<C: Config, H: HintCaller<CircuitField<C>>> Context<C, H> {
         }
     }
 
+    pub fn register_kernel_io(
+        &mut self,
+        kernel: &KernelPrimitive<C>,
+        num_parallel: usize,
+        ios: &mut [DeviceMemoryHandle],
+    ) -> Result<(), Error> {
+        assert_eq!(self.state, ContextState::ComputationGraphNotDone);
+        if kernel.io_shapes().len() != ios.len() {
+            panic!("Invalid number of inputs/outputs");
+        }
+        let mut is_broadcast = Vec::with_capacity(ios.len());
+        for (i, ((kernel_shape, io), spec)) in kernel
+            .io_shapes()
+            .iter()
+            .zip(ios.iter())
+            .zip(kernel.io_specs().iter())
+            .enumerate()
+        {
+            if !spec.is_input {
+                is_broadcast.push(false);
+                continue;
+            }
+            let io_shape = if let Some(handle) = io {
+                handle.shape_history.shape()
+            } else {
+                panic!("Missing input at index {i}")
+            };
+            match check_shape_compat(kernel_shape, &io_shape, num_parallel) {
+                Some(ib) => {
+                    let isl = io
+                        .as_ref()
+                        .unwrap()
+                        .shape_history
+                        .get_initial_split_list(!ib);
+                    let t = io.as_ref().unwrap().id;
+                    self.device_memories[t].required_shape_products = merge_shape_products(
+                        &isl,
+                        &self.device_memories[t].required_shape_products,
+                    );
+                    is_broadcast.push(ib)
+                }
+                None => {
+                    panic!(
+                        "Incompatible shapes: want {:?}, got {:?}, num_parallel={} (Hint: if you want to broadcast, use {:?}, otherwise use {:?})",
+                        kernel_shape,
+                        io_shape,
+                        num_parallel,
+                        kernel_shape,
+                        shape_prepend(kernel_shape, num_parallel)
+                    );
+                }
+            }
+        }
+        for (io_spec, ib) in kernel.io_specs().iter().zip(is_broadcast.iter()) {
+            if io_spec.is_output && *ib {
+                panic!("Output is broadcasted, but it shouldn't be");
+            }
+        }
+
+        let kernel_id = self.kernel_primitives.add(kernel);
+
+        let input_handles = ios.to_vec();
+        let mut output_handles = vec![None; kernel.io_specs().len()];
+
+        for ((((output, out2), spec), _io_handle), shape) in ios
+            .iter_mut()
+            .zip(output_handles.iter_mut())
+            .zip(kernel.io_specs().iter())
+            .zip(input_handles.iter())
+            .zip(kernel.io_shapes().iter())
+        {
+            if !spec.is_output {
+                *output = None;
+                continue;
+            }
+            if output.is_some() {
+                let handle_ref = output.as_ref().unwrap();
+                let id = handle_ref.id;
+                self.device_memories[id].required_shape_products = merge_shape_products(
+                    &handle_ref.shape_history.get_initial_split_list(true),
+                    &self.device_memories[id].required_shape_products,
+                );
+                *out2 = output.clone();
+            } else {
+                let out_len = shape_vec_len(&shape_prepend(shape, num_parallel));
+                let ov = vec![SIMDField::<C>::zero(); out_len];
+                let handle = make_device_mem(
+                    &mut self.device_memories,
+                    ov,
+                    shape_prepend(shape, num_parallel),
+                );
+                let id = handle.as_ref().unwrap().id;
+                self.device_memories[id].required_shape_products = merge_shape_products(
+                    &handle
+                        .as_ref()
+                        .unwrap()
+                        .shape_history
+                        .get_initial_split_list(true),
+                    &self.device_memories[id].required_shape_products,
+                );
+                *output = handle.clone();
+                *out2 = handle;
+            }
+        }
+        self.kernel_calls.push(KernelCall {
+            kernel_id,
+            num_parallel,
+            input_handles,
+            output_handles,
+            is_broadcast,
+        });
+        Ok(())
+    }
+
     pub fn call_kernel(
         &mut self,
         kernel: &KernelPrimitive<C>,
