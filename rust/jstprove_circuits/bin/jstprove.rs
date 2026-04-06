@@ -12,7 +12,8 @@ use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
 use jstprove_circuits::onnx::Circuit;
 
 use expander_compiler::frontend::{
-    BN254Config, GoldilocksBasefoldConfig, GoldilocksConfig, GoldilocksExt2BasefoldConfig, Variable,
+    BN254Config, GoldilocksBasefoldConfig, GoldilocksConfig, GoldilocksExt2BasefoldConfig,
+    GoldilocksWhirConfig, Variable,
 };
 use jstprove_circuits::Curve;
 use jstprove_onnx::quantizer::{N_BITS_GOLDILOCKS, N_BITS_GOLDILOCKS_EXT2};
@@ -150,7 +151,7 @@ fn main() {
             .unwrap_or_default();
         let result = match early_curve {
             Curve::Bn254 => expander_metadata::generate_from_onnx(onnx_path),
-            Curve::Goldilocks | Curve::GoldilocksBasefold => {
+            Curve::Goldilocks | Curve::GoldilocksBasefold | Curve::GoldilocksWhir => {
                 expander_metadata::generate_from_onnx_for_field(onnx_path, N_BITS_GOLDILOCKS, None)
             }
             Curve::GoldilocksExt2 => expander_metadata::generate_from_onnx_for_field(
@@ -253,7 +254,7 @@ fn main() {
         let cli_explicit =
             matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine);
         if let Some(bundle_curve) = meta.curve {
-            if cli_explicit && bundle_curve != curve {
+            if cli_explicit && !bundle_curve.is_field_compatible(&curve) {
                 eprintln!(
                     "Error: curve mismatch — circuit was compiled with '{bundle_curve}' but '{curve}' was requested",
                 );
@@ -295,6 +296,12 @@ fn main() {
         >(&matches, &mut file_reader, metadata, mode),
         Curve::GoldilocksExt2 => handle_args::<
             GoldilocksExt2BasefoldConfig,
+            Circuit<Variable>,
+            Circuit<_>,
+            _,
+        >(&matches, &mut file_reader, metadata, mode),
+        Curve::GoldilocksWhir => handle_args::<
+            GoldilocksWhirConfig,
             Circuit<Variable>,
             Circuit<_>,
             _,

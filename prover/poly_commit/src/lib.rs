@@ -25,3 +25,6 @@ pub mod batching;
 
 pub mod basefold;
 pub use basefold::BasefoldPCSForGKR;
+
+pub mod whir;
+pub use whir::WhirPCSForGKR;

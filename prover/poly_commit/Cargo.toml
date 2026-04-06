@@ -16,6 +16,9 @@ sumcheck.workspace = true
 
 ethnum.workspace = true
 ark-std.workspace = true
+whir = { git = "https://github.com/WizardOfMenlo/whir", rev = "0aeaa7f337c743d9ddfcb9d909628d6491e3355c", default-features = false }
+ark-ff-05 = { package = "ark-ff", version = "0.5", features = ["std"] }
+serde_json = "1.0"
 derivative.workspace = true
 halo2curves.workspace = true
 itertools.workspace = true

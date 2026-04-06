@@ -3,7 +3,8 @@ use ndarray::{Array1, ArrayD, ArrayView1, Axis, Ix1, IxDyn, concatenate};
 use expander_compiler::expander_circuit;
 use expander_compiler::frontend::{
     BN254Config, CircuitField, Config, Define, FieldArith, GoldilocksBasefoldConfig,
-    GoldilocksConfig, GoldilocksExt2BasefoldConfig, RootAPI, Variable, declare_circuit,
+    GoldilocksConfig, GoldilocksExt2BasefoldConfig, GoldilocksWhirConfig, RootAPI, Variable,
+    declare_circuit,
 };
 use expander_compiler::gkr_engine::GKREngine;
 
@@ -809,6 +810,60 @@ pub fn verify_goldilocks_basefold(
     proof_bytes: &[u8],
 ) -> Result<bool, RunError> {
     verify_from_bytes::<GoldilocksBasefoldConfig>(circuit_bytes, witness_bytes, proof_bytes)
+}
+
+/// # Errors
+/// Returns `RunError` on compilation or serialization failure.
+pub fn compile_goldilocks_whir(
+    circuit_path: &str,
+    compress: bool,
+    metadata: Option<CircuitParams>,
+) -> Result<(), RunError> {
+    crate::runner::main_runner::run_compile_and_serialize::<GoldilocksWhirConfig, Circuit<Variable>>(
+        circuit_path,
+        compress,
+        metadata,
+    )
+}
+
+/// # Errors
+/// Returns `RunError` on witness generation failure.
+pub fn witness_goldilocks_whir_from_f64(
+    circuit_bytes: &[u8],
+    solver_bytes: &[u8],
+    params: &CircuitParams,
+    activations: &[f64],
+    initializers: &[(Vec<f64>, Vec<usize>)],
+    compress: bool,
+) -> Result<WitnessBundle, RunError> {
+    witness_from_f64_generic::<GoldilocksWhirConfig>(
+        circuit_bytes,
+        solver_bytes,
+        params,
+        activations,
+        initializers,
+        compress,
+    )
+}
+
+/// # Errors
+/// Returns `RunError` on proof generation failure.
+pub fn prove_goldilocks_whir(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    compress: bool,
+) -> Result<Vec<u8>, RunError> {
+    prove_from_bytes::<GoldilocksWhirConfig>(circuit_bytes, witness_bytes, compress)
+}
+
+/// # Errors
+/// Returns `RunError` on verification failure.
+pub fn verify_goldilocks_whir(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+) -> Result<bool, RunError> {
+    verify_from_bytes::<GoldilocksWhirConfig>(circuit_bytes, witness_bytes, proof_bytes)
 }
 
 /// # Errors
