@@ -41,12 +41,12 @@ fn test_eq_table_consistency() {
     let r = rand_field_vec(&mut rng, n);
     let table = build_eq_table(&r);
 
-    for idx in 0..(1 << n) {
+    for (idx, entry) in table.iter().enumerate() {
         let bits: Vec<F> = (0..n)
             .map(|j| if (idx >> j) & 1 == 1 { F::ONE } else { F::ZERO })
             .collect();
         let expected = eq_eval(&r, &bits);
-        assert_eq!(table[idx], expected, "mismatch at index {idx}");
+        assert_eq!(*entry, expected, "mismatch at index {idx}");
     }
 }
 

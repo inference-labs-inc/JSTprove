@@ -18,6 +18,7 @@ use transcript::BytesHashTranscript;
 
 use jst_gkr::prover::prove as jst_prove;
 use jst_gkr::transcript::Sha256Transcript;
+use jst_gkr::verifier::verify as jst_verify;
 use jst_gkr_engine::{
     AddGate as JstAddGate, CircuitLayer as JstCircuitLayer, LayeredCircuit, MulGate as JstMulGate,
 };
@@ -185,6 +186,16 @@ fn bench_one(label: &str, log_size: usize, depth: usize, warmup: usize, iters: u
 
     {
         let (jst_circuit, witness) = build_jst_circuit(depth, log_size);
+
+        {
+            let mut t = Sha256Transcript::default();
+            let proof = jst_prove::<Goldilocks, Sha256Transcript>(&jst_circuit, &witness, &mut t);
+            let mut vt = Sha256Transcript::default();
+            assert!(
+                jst_verify::<Goldilocks, Sha256Transcript>(&jst_circuit, &witness, &proof, &mut vt),
+                "jst_gkr proof verification failed at log_size={log_size} depth={depth}"
+            );
+        }
 
         for _ in 0..warmup {
             let mut t = Sha256Transcript::default();

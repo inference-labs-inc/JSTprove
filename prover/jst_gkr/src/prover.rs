@@ -53,7 +53,7 @@ pub fn prove<F: Field, T: FiatShamirTranscript>(
             const_contribution += eq_combined[g.o_id] * g.coef;
         }
 
-        let _phase1_sum = combined_claim - const_contribution;
+        let phase1_sum = combined_claim - const_contribution;
 
         let mut hg_x = vec![F::ZERO; input_size];
         for g in &layer.add_gates {
@@ -65,6 +65,16 @@ pub fn prove<F: Field, T: FiatShamirTranscript>(
 
         let mut bk_f = next_vals[..input_size].to_vec();
         let mut bk_hg = hg_x;
+
+        debug_assert_eq!(
+            bk_hg
+                .iter()
+                .zip(bk_f.iter())
+                .map(|(h, f)| *h * *f)
+                .fold(F::ZERO, |a, b| a + b),
+            phase1_sum,
+        );
+
         let (_, challenges_x) = prove_sumcheck(&mut bk_f, &mut bk_hg, input_var_num, transcript);
 
         let vx = evaluate_mle(&next_vals[..input_size], &challenges_x);

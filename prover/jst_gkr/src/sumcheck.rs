@@ -59,6 +59,9 @@ pub fn verify_sumcheck<F: Field, T: FiatShamirTranscript>(
     num_vars: usize,
     transcript: &mut T,
 ) -> Option<(F, Vec<F>)> {
+    if proof.round_polys.len() < num_vars {
+        return None;
+    }
     let mut current_sum = claimed_sum;
     let mut challenges = Vec::with_capacity(num_vars);
 
