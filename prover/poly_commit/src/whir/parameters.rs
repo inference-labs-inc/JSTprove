@@ -1,11 +1,16 @@
 pub const WHIR_RATE_LOG: usize = 1;
 pub const WHIR_FOLDING_FACTOR: usize = 4;
-pub const WHIR_OOD_SAMPLES: usize = 0;
+pub const WHIR_OOD_SAMPLES: usize = 2;
 pub const WHIR_POW_BITS: usize = 0;
 pub const WHIR_TARGET_SECURITY_BITS: f64 = 128.0;
 
-pub fn whir_queries_for_committed_round(_cr: usize) -> usize {
-    let rate: f64 = (0.5_f64).powi(WHIR_RATE_LOG as i32);
+pub fn effective_rate_log(cr: usize) -> usize {
+    WHIR_RATE_LOG + (cr + 1) * (WHIR_FOLDING_FACTOR - 1)
+}
+
+pub fn whir_queries_for_committed_round(cr: usize) -> usize {
+    let log_inv_rate = effective_rate_log(cr);
+    let rate: f64 = (0.5_f64).powi(log_inv_rate as i32);
     let eta = rate.sqrt() / 20.0;
     let per_sample = rate.sqrt() + eta;
     let bits_per_query = -per_sample.log2();

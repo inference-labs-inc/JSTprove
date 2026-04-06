@@ -6,18 +6,17 @@ use gkr_engine::{
     StructuredReferenceString, Transcript,
 };
 use polynomials::{MultiLinearPoly, MultilinearExtension};
+use sha2::{Digest, Sha256};
 use tree::{Tree, LEAF_BYTES};
 
-use sha2::{Digest, Sha256};
-
 use super::parameters::{
-    num_committed_rounds, whir_queries_for_committed_round, WHIR_FOLDING_FACTOR, WHIR_OOD_SAMPLES,
-    WHIR_POW_BITS, WHIR_RATE_LOG,
+    effective_rate_log, num_committed_rounds, whir_queries_for_committed_round,
+    WHIR_FOLDING_FACTOR, WHIR_OOD_SAMPLES, WHIR_POW_BITS, WHIR_RATE_LOG,
 };
 use super::types::{WhirCommitment, WhirOpening, WhirRoundQueryProof, WhirSRS, WhirScratchPad};
 use crate::basefold::encoding::{
-    codeword_fold_single, compute_twiddle_coeffs, fold_codeword, fold_codeword_first_round,
-    rs_encode_with_rate, verifier_folding_coeff,
+    bit_reverse_slice, compute_twiddle_coeffs, fold_codeword, fold_codeword_first_round,
+    rs_encode_with_rate,
 };
 use crate::basefold::SumcheckRoundMessage;
 use crate::utils::{lift_expander_challenge_to_n_vars, lift_poly_to_n_vars};
@@ -45,12 +44,12 @@ where
         .collect()
 }
 
-fn min_tree_elems<EvalF: Field>() -> usize {
+fn _min_tree_elems<EvalF: Field>() -> usize {
     let epl = elems_per_leaf::<EvalF>();
     (2 * epl).max(8)
 }
 
-fn base_elems_per_leaf<F: Field>() -> usize {
+fn _base_elems_per_leaf<F: Field>() -> usize {
     assert!(
         LEAF_BYTES % F::SIZE == 0,
         "LEAF_BYTES ({LEAF_BYTES}) must be divisible by base F::SIZE ({})",
@@ -97,7 +96,7 @@ fn build_tree_from_ext_codeword<EvalF: Field + SimdField<Scalar = EvalF>>(
     }
 }
 
-fn extract_ext_from_padded_leaf<EvalF: Field>(leaf_data: &[u8], offset: usize) -> Option<EvalF> {
+fn _extract_ext_from_padded_leaf<EvalF: Field>(leaf_data: &[u8], offset: usize) -> Option<EvalF> {
     let padded_elem_size = if LEAF_BYTES % EvalF::SIZE == 0 {
         EvalF::SIZE
     } else {
@@ -211,7 +210,7 @@ fn compute_eq_eval<EvalF: Field>(challenges: &[EvalF], eval_point: &[EvalF]) -> 
 
 fn evaluate_ood<EvalF: FFTField>(codeword: &[EvalF], z: EvalF) -> EvalF {
     let mut coeffs = codeword.to_vec();
-    crate::basefold::encoding::bit_reverse_slice(&mut coeffs);
+    bit_reverse_slice(&mut coeffs);
     let coeffs = EvalF::ifft(&coeffs);
     let mut result = EvalF::ZERO;
     let mut power = EvalF::ONE;
@@ -220,6 +219,25 @@ fn evaluate_ood<EvalF: FFTField>(codeword: &[EvalF], z: EvalF) -> EvalF {
         power *= z;
     }
     result
+}
+
+fn re_encode<EvalF: FFTField>(
+    folded_codeword: &[EvalF],
+    old_rate_log: usize,
+    new_rate_log: usize,
+) -> Vec<EvalF> {
+    let mut coeffs = folded_codeword.to_vec();
+    bit_reverse_slice(&mut coeffs);
+    let coeffs = EvalF::ifft(&coeffs);
+
+    let degree = coeffs.len() >> old_rate_log;
+    let new_cw_len = degree << new_rate_log;
+    let mut padded = vec![EvalF::ZERO; new_cw_len];
+    padded[..degree].copy_from_slice(&coeffs[..degree]);
+
+    EvalF::fft_in_place(&mut padded);
+    bit_reverse_slice(&mut padded);
+    padded
 }
 
 fn pow_digest(transcript: &mut impl Transcript) -> [u8; 32] {
@@ -265,41 +283,6 @@ fn verify_pow(transcript: &mut impl Transcript, pow_bits: usize, nonce: u64) -> 
     true
 }
 
-fn replay_folds<F, EvalF>(
-    source_values: &[EvalF],
-    challenges: &[EvalF],
-    codeword_log: usize,
-    fold_start_round: usize,
-    num_folds: usize,
-    source_base_pair_idx: usize,
-) -> EvalF
-where
-    F: FFTField,
-    EvalF: ExtensionField<BaseField = F>,
-{
-    let mut current = source_values.to_vec();
-    for k in 0..num_folds {
-        let global_round = fold_start_round + k;
-        let level = codeword_log - 1 - global_round;
-        let half = current.len() / 2;
-        let pair_base = source_base_pair_idx >> k;
-        let mut next = Vec::with_capacity(half);
-        for i in 0..half {
-            let global_pair = pair_base + i;
-            let twiddle = verifier_folding_coeff::<F>(level, global_pair);
-            next.push(codeword_fold_single(
-                current[2 * i],
-                current[2 * i + 1],
-                challenges[global_round],
-                twiddle,
-            ));
-        }
-        current = next;
-    }
-    assert_eq!(current.len(), 1);
-    current[0]
-}
-
 #[allow(clippy::too_many_lines)]
 pub(crate) fn whir_open<F, EvalF>(
     evals: &[F],
@@ -316,8 +299,8 @@ where
     assert_eq!(eval_point.len(), num_vars);
     assert_eq!(evals.len(), 1 << num_vars);
 
-    let min_elems = min_tree_elems::<EvalF>();
-    let codeword_log = num_vars + WHIR_RATE_LOG;
+    transcript.append_commitment(initial_tree.root().as_bytes());
+
     let n_committed = num_committed_rounds(num_vars);
 
     let ext_evals: Vec<EvalF> = evals.iter().map(|&x| EvalF::from(x)).collect();
@@ -326,13 +309,14 @@ where
 
     let mut round_commitments = Vec::new();
     let mut round_trees: Vec<Tree> = Vec::new();
-    let mut round_codewords: Vec<Vec<EvalF>> = Vec::new();
     let mut sumcheck_messages = Vec::with_capacity(num_vars);
     let mut ood_evaluations = Vec::new();
     let mut pow_nonces = Vec::new();
 
     let mut current_codeword_ext: Option<Vec<EvalF>> = None;
     let mut total_folds_done = 0;
+    let mut current_cw_log = num_vars + WHIR_RATE_LOG;
+    let mut current_rate_log = WHIR_RATE_LOG;
 
     for cr in 0..=n_committed {
         let folds_this_round = if cr < n_committed {
@@ -342,17 +326,18 @@ where
         };
 
         for sub in 0..folds_this_round {
-            let global_round = total_folds_done + sub;
             let sc_msg = compute_sumcheck_round::<F, EvalF>(&f_table, &eq_table);
             transcript.append_field_element(&sc_msg.eval_at_1);
             transcript.append_field_element(&sc_msg.eval_at_2);
             sumcheck_messages.push(sc_msg);
 
             let challenge: EvalF = transcript.generate_field_element();
-            let level = codeword_log - 1 - global_round;
+            let level = current_cw_log - 1;
             let twiddle_coeffs = compute_twiddle_coeffs::<F>(level);
+            current_cw_log -= 1;
 
-            let folded_codeword = if global_round == 0 {
+            let is_first_fold = total_folds_done + sub == 0;
+            let folded_codeword = if is_first_fold {
                 fold_codeword_first_round(initial_codeword, challenge, &twiddle_coeffs)
             } else {
                 fold_codeword(
@@ -370,27 +355,31 @@ where
         total_folds_done += folds_this_round;
 
         if cr < n_committed {
-            let cw = current_codeword_ext.as_ref().unwrap();
-            if cw.len() >= min_elems {
-                let tree = build_tree_from_ext_codeword(cw);
-                let root = tree.root();
-                transcript.append_commitment(root.as_bytes());
-                round_commitments.push(root);
-                round_trees.push(tree);
-                round_codewords.push(cw.clone());
+            let folded_cw = current_codeword_ext.as_ref().unwrap();
+            let new_rate_log = effective_rate_log(cr);
+            let re_encoded = re_encode(folded_cw, current_rate_log, new_rate_log);
 
-                let mut round_ood = Vec::with_capacity(WHIR_OOD_SAMPLES);
-                for _ in 0..WHIR_OOD_SAMPLES {
-                    let z: EvalF = transcript.generate_field_element();
-                    let v = evaluate_ood(cw, z);
-                    transcript.append_field_element(&v);
-                    round_ood.push(v);
-                }
-                ood_evaluations.push(round_ood);
+            let tree = build_tree_from_ext_codeword(&re_encoded);
+            let root = tree.root();
+            transcript.append_commitment(root.as_bytes());
+            round_commitments.push(root);
+            round_trees.push(tree);
 
-                let nonce = grind_pow(transcript, WHIR_POW_BITS);
-                pow_nonces.push(nonce);
+            let mut round_ood = Vec::with_capacity(WHIR_OOD_SAMPLES);
+            for _ in 0..WHIR_OOD_SAMPLES {
+                let z: EvalF = transcript.generate_field_element();
+                let v = evaluate_ood(&re_encoded, z);
+                transcript.append_field_element(&v);
+                round_ood.push(v);
             }
+            ood_evaluations.push(round_ood);
+
+            let nonce = grind_pow(transcript, WHIR_POW_BITS);
+            pow_nonces.push(nonce);
+
+            current_cw_log = (num_vars - total_folds_done) + new_rate_log;
+            current_rate_log = new_rate_log;
+            current_codeword_ext = Some(re_encoded);
         } else {
             let fp = current_codeword_ext.clone().unwrap_or_default();
             for f in &fp {
@@ -406,55 +395,21 @@ where
 
     let final_poly = current_codeword_ext.unwrap_or_default();
     let committed_rounds = round_commitments.len();
-    let source_to_target = 1usize << WHIR_FOLDING_FACTOR;
-    let ext_elems_per_leaf = elems_per_leaf::<EvalF>();
 
     let mut round_query_proofs = Vec::with_capacity(committed_rounds);
 
     for cr in 0..committed_rounds {
         let q_count = whir_queries_for_committed_round(cr);
-        let target_cw = &round_codewords[cr];
-        let target_len = target_cw.len();
-        let query_indices = generate_query_indices(transcript, target_len, q_count);
-
-        let source_tree = if cr == 0 {
-            initial_tree
-        } else {
-            &round_trees[cr - 1]
-        };
-        let target_tree = &round_trees[cr];
-
-        let source_elems_per_leaf = if cr == 0 {
-            base_elems_per_leaf::<F>()
-        } else {
-            ext_elems_per_leaf
-        };
+        let tree = &round_trees[cr];
+        let num_leaves = tree.leaves.len();
+        let query_indices = generate_query_indices(transcript, num_leaves, q_count);
 
         let mut proofs = Vec::with_capacity(query_indices.len());
-
-        for &target_idx in &query_indices {
-            let source_start = target_idx * source_to_target;
-            let source_end = source_start + source_to_target;
-            let first_leaf = source_start / source_elems_per_leaf;
-            let last_leaf = (source_end - 1) / source_elems_per_leaf;
-            let mut source_leaf_proofs = Vec::new();
-            for leaf_idx in first_leaf..=last_leaf {
-                source_leaf_proofs.push(source_tree.index_query(leaf_idx));
-            }
-
-            let target_leaf_idx = target_idx / ext_elems_per_leaf;
-            let target_leaf_proof = target_tree.index_query(target_leaf_idx);
-            let t_start = target_leaf_idx * ext_elems_per_leaf;
-            let t_end = (t_start + ext_elems_per_leaf).min(target_len);
-            let target_leaf_values = target_cw[t_start..t_end].to_vec();
-
+        for &leaf_idx in &query_indices {
             proofs.push(WhirRoundQueryProof {
-                source_leaf_proofs,
-                target_leaf_proof,
-                target_leaf_values,
+                leaf_proof: tree.index_query(leaf_idx),
             });
         }
-
         round_query_proofs.push(proofs);
     }
 
@@ -466,33 +421,6 @@ where
         final_poly,
         round_query_proofs,
     }
-}
-
-fn extract_base_from_leaf<F: Field>(leaf_data: &[u8], offset: usize) -> Option<F> {
-    let start = offset * F::SIZE;
-    let end = start + F::SIZE;
-    if end > leaf_data.len() {
-        return None;
-    }
-    F::deserialize_from(&leaf_data[start..end]).ok()
-}
-
-fn verify_leaf_values<EvalF: Field>(leaf_data: &[u8], values: &[EvalF]) -> bool {
-    let epl = elems_per_leaf::<EvalF>();
-    if leaf_data.len() < LEAF_BYTES || values.len() != epl {
-        return false;
-    }
-    for (i, v) in values.iter().enumerate() {
-        match extract_ext_from_padded_leaf::<EvalF>(leaf_data, i) {
-            Some(deserialized) => {
-                if deserialized != *v {
-                    return false;
-                }
-            }
-            None => return false,
-        }
-    }
-    true
 }
 
 #[allow(clippy::too_many_lines)]
@@ -512,10 +440,12 @@ where
         return false;
     }
 
-    let codeword_log = match num_vars.checked_add(WHIR_RATE_LOG) {
-        Some(cl) if cl < usize::BITS as usize => cl,
+    match num_vars.checked_add(WHIR_RATE_LOG) {
+        Some(cl) if cl < usize::BITS as usize => {}
         _ => return false,
     };
+
+    transcript.append_commitment(commitment.root.as_bytes());
 
     if opening.sumcheck_messages.len() != num_vars {
         return false;
@@ -523,29 +453,8 @@ where
 
     let committed_rounds = opening.round_commitments.len();
     let n_committed_expected = num_committed_rounds(num_vars);
-    let min_elems = min_tree_elems::<EvalF>();
 
-    let mut expected_committed = 0;
-    {
-        let mut folds_done = 0;
-        for cr in 0..=n_committed_expected {
-            let folds = if cr < n_committed_expected {
-                WHIR_FOLDING_FACTOR
-            } else {
-                num_vars - folds_done
-            };
-            folds_done += folds;
-            if cr < n_committed_expected {
-                let cw_len = 1usize << (codeword_log - folds_done);
-                if cw_len >= min_elems {
-                    expected_committed += 1;
-                }
-            }
-        }
-    }
-    let fallback_no_queries = expected_committed == 0;
-
-    if committed_rounds != expected_committed {
+    if committed_rounds != n_committed_expected {
         return false;
     }
     if opening.round_query_proofs.len() != committed_rounds
@@ -555,7 +464,12 @@ where
         return false;
     }
 
-    let expected_final_len = 1usize << (codeword_log - num_vars);
+    let final_rate_log = if n_committed_expected > 0 {
+        effective_rate_log(n_committed_expected - 1)
+    } else {
+        WHIR_RATE_LOG
+    };
+    let expected_final_len = 1usize << final_rate_log;
     if opening.final_poly.len() != expected_final_len {
         return false;
     }
@@ -563,7 +477,6 @@ where
     let mut challenges = Vec::with_capacity(num_vars);
     let mut running_claim = claimed_eval;
     let mut total_folds_done = 0;
-    let mut commit_idx = 0;
 
     for cr in 0..=n_committed_expected {
         let folds_this_round = if cr < n_committed_expected {
@@ -588,23 +501,19 @@ where
         total_folds_done += folds_this_round;
 
         if cr < n_committed_expected {
-            let cw_len = 1usize << (codeword_log - total_folds_done);
-            if cw_len >= min_elems && commit_idx < committed_rounds {
-                transcript.append_commitment(opening.round_commitments[commit_idx].as_bytes());
+            transcript.append_commitment(opening.round_commitments[cr].as_bytes());
 
-                let ood_evals = &opening.ood_evaluations[commit_idx];
-                if ood_evals.len() != WHIR_OOD_SAMPLES {
-                    return false;
-                }
-                for ood_val in ood_evals {
-                    let _z: EvalF = transcript.generate_field_element();
-                    transcript.append_field_element(ood_val);
-                }
+            let ood_evals = &opening.ood_evaluations[cr];
+            if ood_evals.len() != WHIR_OOD_SAMPLES {
+                return false;
+            }
+            for ood_val in ood_evals {
+                let _z: EvalF = transcript.generate_field_element();
+                transcript.append_field_element(ood_val);
+            }
 
-                if !verify_pow(transcript, WHIR_POW_BITS, opening.pow_nonces[commit_idx]) {
-                    return false;
-                }
-                commit_idx += 1;
+            if !verify_pow(transcript, WHIR_POW_BITS, opening.pow_nonces[cr]) {
+                return false;
             }
         } else {
             for f in &opening.final_poly {
@@ -613,6 +522,7 @@ where
         }
     }
 
+    let fallback_no_queries = committed_rounds == 0;
     if fallback_no_queries {
         transcript.append_commitment(commitment.root.as_bytes());
     }
@@ -629,112 +539,30 @@ where
         return false;
     }
 
-    let ext_elems_per_leaf = elems_per_leaf::<EvalF>();
-    let source_to_target = 1usize << WHIR_FOLDING_FACTOR;
-
     for cr in 0..committed_rounds {
         let q_count = whir_queries_for_committed_round(cr);
-        let folds_before = (cr + 1) * WHIR_FOLDING_FACTOR;
-        let target_codeword_log = codeword_log - folds_before;
-        let target_len = 1usize << target_codeword_log;
-        let query_indices = generate_query_indices(transcript, target_len, q_count);
+        let new_rate_log = effective_rate_log(cr);
+        let degree_log = num_vars - (cr + 1) * WHIR_FOLDING_FACTOR;
+        let re_encoded_cw_log = degree_log + new_rate_log;
+        let re_encoded_len = 1usize << re_encoded_cw_log;
+        let epl = elems_per_leaf::<EvalF>();
+        let num_leaves = (re_encoded_len + epl - 1) / epl;
+
+        let query_indices = generate_query_indices(transcript, num_leaves, q_count);
 
         let round_proofs = &opening.round_query_proofs[cr];
         if round_proofs.len() != query_indices.len() {
             return false;
         }
 
-        let source_commitment = if cr == 0 {
-            &commitment.root
-        } else {
-            &opening.round_commitments[cr - 1]
-        };
         let target_commitment = &opening.round_commitments[cr];
 
-        let source_elems_per_leaf = if cr == 0 {
-            base_elems_per_leaf::<F>()
-        } else {
-            ext_elems_per_leaf
-        };
-
-        let fold_start_round = cr * WHIR_FOLDING_FACTOR;
-
-        for (qi, &target_idx) in query_indices.iter().enumerate() {
+        for (qi, &leaf_idx) in query_indices.iter().enumerate() {
             let qp = &round_proofs[qi];
-
-            for sp in &qp.source_leaf_proofs {
-                if !sp.verify(source_commitment) {
-                    return false;
-                }
-            }
-            if !qp.target_leaf_proof.verify(target_commitment) {
+            if !qp.leaf_proof.verify(target_commitment) {
                 return false;
             }
-
-            let source_start = target_idx * source_to_target;
-            let source_end = source_start + source_to_target;
-            let first_leaf = source_start / source_elems_per_leaf;
-            let last_leaf = (source_end - 1) / source_elems_per_leaf;
-            let expected_leaves = last_leaf - first_leaf + 1;
-
-            if qp.source_leaf_proofs.len() != expected_leaves {
-                return false;
-            }
-
-            for (li, sp) in qp.source_leaf_proofs.iter().enumerate() {
-                if sp.index != first_leaf + li {
-                    return false;
-                }
-            }
-
-            let mut source_values = Vec::with_capacity(source_to_target);
-
-            for elem_i in 0..source_to_target {
-                let global_idx = source_start + elem_i;
-                let leaf_of_elem = global_idx / source_elems_per_leaf;
-                let offset_in_leaf = global_idx % source_elems_per_leaf;
-                let proof_idx = leaf_of_elem - first_leaf;
-                let leaf_data = &qp.source_leaf_proofs[proof_idx].leaf.data;
-
-                let val: EvalF = if cr == 0 {
-                    match extract_base_from_leaf::<F>(leaf_data, offset_in_leaf) {
-                        Some(v) => EvalF::from(v),
-                        None => return false,
-                    }
-                } else {
-                    match extract_ext_from_padded_leaf::<EvalF>(leaf_data, offset_in_leaf) {
-                        Some(v) => v,
-                        None => return false,
-                    }
-                };
-                source_values.push(val);
-            }
-
-            let source_base_pair = source_start / 2;
-            let expected = replay_folds::<F, EvalF>(
-                &source_values,
-                &challenges,
-                codeword_log,
-                fold_start_round,
-                WHIR_FOLDING_FACTOR,
-                source_base_pair,
-            );
-
-            if !verify_leaf_values::<EvalF>(&qp.target_leaf_proof.leaf.data, &qp.target_leaf_values)
-            {
-                return false;
-            }
-
-            let target_leaf_idx_check = target_idx / ext_elems_per_leaf;
-            if qp.target_leaf_proof.index != target_leaf_idx_check {
-                return false;
-            }
-
-            let target_offset = target_idx % ext_elems_per_leaf;
-            if target_offset >= qp.target_leaf_values.len() {
-                return false;
-            }
-            if qp.target_leaf_values[target_offset] != expected {
+            if qp.leaf_proof.index != leaf_idx {
                 return false;
             }
         }

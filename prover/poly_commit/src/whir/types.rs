@@ -51,42 +51,18 @@ impl ExpSerde for WhirCommitment {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct WhirRoundQueryProof<F: ExtensionField> {
-    pub source_leaf_proofs: Vec<Path>,
-    pub target_leaf_proof: Path,
-    pub target_leaf_values: Vec<F>,
+pub struct WhirRoundQueryProof {
+    pub leaf_proof: Path,
 }
 
-impl<F: ExtensionField> ExpSerde for WhirRoundQueryProof<F> {
+impl ExpSerde for WhirRoundQueryProof {
     fn serialize_into<W: std::io::Write>(&self, mut writer: W) -> SerdeResult<()> {
-        U256::from(self.source_leaf_proofs.len() as u64).serialize_into(&mut writer)?;
-        for p in &self.source_leaf_proofs {
-            p.serialize_into(&mut writer)?;
-        }
-        self.target_leaf_proof.serialize_into(&mut writer)?;
-        U256::from(self.target_leaf_values.len() as u64).serialize_into(&mut writer)?;
-        for v in &self.target_leaf_values {
-            v.serialize_into(&mut writer)?;
-        }
+        self.leaf_proof.serialize_into(&mut writer)?;
         Ok(())
     }
     fn deserialize_from<R: std::io::Read>(mut reader: R) -> SerdeResult<Self> {
-        let slen = U256::deserialize_from(&mut reader)?.as_usize();
-        let mut source_leaf_proofs = Vec::with_capacity(slen);
-        for _ in 0..slen {
-            source_leaf_proofs.push(Path::deserialize_from(&mut reader)?);
-        }
-        let target_leaf_proof = Path::deserialize_from(&mut reader)?;
-        let tlen = U256::deserialize_from(&mut reader)?.as_usize();
-        let mut target_leaf_values = Vec::with_capacity(tlen);
-        for _ in 0..tlen {
-            target_leaf_values.push(F::deserialize_from(&mut reader)?);
-        }
-        Ok(Self {
-            source_leaf_proofs,
-            target_leaf_proof,
-            target_leaf_values,
-        })
+        let leaf_proof = Path::deserialize_from(&mut reader)?;
+        Ok(Self { leaf_proof })
     }
 }
 
@@ -97,7 +73,7 @@ pub struct WhirOpening<F: ExtensionField> {
     pub ood_evaluations: Vec<Vec<F>>,
     pub pow_nonces: Vec<u64>,
     pub final_poly: Vec<F>,
-    pub round_query_proofs: Vec<Vec<WhirRoundQueryProof<F>>>,
+    pub round_query_proofs: Vec<Vec<WhirRoundQueryProof>>,
 }
 
 impl<F: ExtensionField> ExpSerde for WhirOpening<F> {
