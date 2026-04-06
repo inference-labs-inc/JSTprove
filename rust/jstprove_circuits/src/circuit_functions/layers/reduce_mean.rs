@@ -74,8 +74,8 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
         let n_const = api.constant(CircuitField::<C>::from_u256(U256::from(n as u64)));
         let half_n = n / 2;
         let half_n_const = api.constant(CircuitField::<C>::from_u256(U256::from(half_n as u64)));
-        let two_half_n = api.constant(CircuitField::<C>::from_u256(U256::from(2 * half_n as u64)));
-        let tol_bits = (2 * half_n + 1).next_power_of_two().trailing_zeros() as usize;
+        let remainder_bits = n.next_power_of_two().trailing_zeros() as usize;
+        let remainder_bits = remainder_bits.max(1);
 
         let n_bits_u32 = u32::try_from(self.n_bits).unwrap_or(u32::MAX);
         let offset = U256::from(1u64) << (n_bits_u32 - 1);
@@ -103,25 +103,32 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
                 acc
             };
 
-            let mean_q = api.unconstrained_int_div(sum, n_const);
+            let biased_sum = api.add(sum, half_n_const);
+            let mean_q = api.unconstrained_int_div(biased_sum, n_const);
+            let remainder = api.unconstrained_mod(biased_sum, n_const);
 
-            let n_times_mean = api.mul(n_const, mean_q);
-            let diff = api.sub(sum, n_times_mean);
-            let shifted_diff = api.add(diff, half_n_const);
+            let rhs = api.mul(n_const, mean_q);
+            let rhs = api.add(rhs, remainder);
+            api.assert_is_equal(biased_sum, rhs);
+
             logup_ctx
-                .range_check::<C, Builder>(api, shifted_diff, tol_bits)
+                .range_check::<C, Builder>(api, remainder, remainder_bits)
                 .map_err(|e| LayerError::Other {
                     layer: LayerKind::ReduceMean,
-                    msg: format!("mean tolerance lower bound: {e}"),
+                    msg: format!("remainder range check: {e}"),
                 })?;
 
-            let upper_check = api.sub(two_half_n, shifted_diff);
-            logup_ctx
-                .range_check::<C, Builder>(api, upper_check, tol_bits)
-                .map_err(|e| LayerError::Other {
-                    layer: LayerKind::ReduceMean,
-                    msg: format!("mean tolerance upper bound: {e}"),
-                })?;
+            if !n.is_power_of_two() {
+                let n_minus_one =
+                    api.constant(CircuitField::<C>::from_u256(U256::from(n as u64 - 1)));
+                let upper = api.sub(n_minus_one, remainder);
+                logup_ctx
+                    .range_check::<C, Builder>(api, upper, remainder_bits)
+                    .map_err(|e| LayerError::Other {
+                        layer: LayerKind::ReduceMean,
+                        msg: format!("remainder upper bound: {e}"),
+                    })?;
+            }
 
             let mean_shifted = api.add(mean_q, offset_var);
             logup_ctx
