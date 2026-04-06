@@ -23,6 +23,14 @@ pub fn prove_with_evaluations<F: Field, T: FiatShamirTranscript>(
     let output_vals = &layer_vals[depth];
 
     let output_var_num = circuit.layers[0].output_var_num;
+    assert_eq!(
+        output_vals.len(),
+        1 << output_var_num,
+        "output layer size mismatch at depth {depth}: expected {} elements, got {}",
+        1 << output_var_num,
+        output_vals.len(),
+    );
+
     let output_r: Vec<F> = (0..output_var_num)
         .map(|_| transcript.challenge_field_element())
         .collect();
