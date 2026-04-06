@@ -3,14 +3,14 @@ use goldilocks::{Goldilocks, GoldilocksExt2, GoldilocksExt3};
 
 use super::types::WhirCommitment;
 
-fn eval_mle_lsb_first(evals: &[GoldilocksExt2], point: &[GoldilocksExt2]) -> GoldilocksExt2 {
+fn eval_mle_lsb_first<F: Field + Copy>(evals: &[F], point: &[F]) -> F {
     let n = point.len();
     assert_eq!(evals.len(), 1 << n);
     let mut scratch = evals.to_vec();
     for (k, &r) in point.iter().enumerate() {
         let half = 1 << (n - 1 - k);
         for i in 0..half {
-            scratch[i] = scratch[i * 2] * (GoldilocksExt2::ONE - r) + scratch[i * 2 + 1] * r;
+            scratch[i] = scratch[i * 2] * (F::ONE - r) + scratch[i * 2 + 1] * r;
         }
     }
     scratch[0]
@@ -82,19 +82,6 @@ fn whir_commit_open_verify_roundtrip() {
     ));
 }
 
-fn eval_mle_lsb_first_ext3(evals: &[GoldilocksExt3], point: &[GoldilocksExt3]) -> GoldilocksExt3 {
-    let n = point.len();
-    assert_eq!(evals.len(), 1 << n);
-    let mut scratch = evals.to_vec();
-    for (k, &r) in point.iter().enumerate() {
-        let half = 1 << (n - 1 - k);
-        for i in 0..half {
-            scratch[i] = scratch[i * 2] * (GoldilocksExt3::ONE - r) + scratch[i * 2 + 1] * r;
-        }
-    }
-    scratch[0]
-}
-
 #[test]
 fn whir_ext3_commit_open_verify_roundtrip() {
     use super::parameters::WHIR_RATE_LOG;
@@ -114,7 +101,7 @@ fn whir_ext3_commit_open_verify_roundtrip() {
         .iter()
         .map(|&x| GoldilocksExt3::from(x))
         .collect();
-    let claimed_eval = eval_mle_lsb_first_ext3(&ext_evals, &point);
+    let claimed_eval = eval_mle_lsb_first(&ext_evals, &point);
 
     let codeword = rs_encode_with_rate(&base_evals, WHIR_RATE_LOG);
     let tree = tree::Tree::compact_new_with_field_elems::<Goldilocks, Goldilocks>(codeword.clone());
@@ -252,9 +239,11 @@ fn adversarial_tampered_final_poly() {
         &mut pt,
     );
 
-    if !opening.final_poly.is_empty() {
-        opening.final_poly[0] += GoldilocksExt2::ONE;
-    }
+    assert!(
+        !opening.final_poly.is_empty(),
+        "final_poly must be non-empty for tampering test"
+    );
+    opening.final_poly[0] += GoldilocksExt2::ONE;
 
     let mut vt = BytesHashTranscript::<SHA256hasher>::new();
     let result = super::pcs_trait_impl::whir_verify_for_test(
@@ -286,12 +275,13 @@ fn adversarial_swapped_query_proofs() {
         &mut pt,
     );
 
-    if !opening.round_query_proofs.is_empty() {
-        let proofs = &mut opening.round_query_proofs[0];
-        if proofs.len() >= 2 {
-            proofs.swap(0, 1);
-        }
-    }
+    assert!(
+        !opening.round_query_proofs.is_empty(),
+        "round_query_proofs must be non-empty for swap test"
+    );
+    let proofs = &mut opening.round_query_proofs[0];
+    assert!(proofs.len() >= 2, "need >= 2 proofs to swap");
+    proofs.swap(0, 1);
 
     let mut vt = BytesHashTranscript::<SHA256hasher>::new();
     let result = super::pcs_trait_impl::whir_verify_for_test(
@@ -323,9 +313,11 @@ fn adversarial_truncated_proof() {
         &mut pt,
     );
 
-    if !opening.round_query_proofs.is_empty() {
-        opening.round_query_proofs[0].pop();
-    }
+    assert!(
+        !opening.round_query_proofs.is_empty() && !opening.round_query_proofs[0].is_empty(),
+        "round_query_proofs must be non-empty for truncation test"
+    );
+    opening.round_query_proofs[0].pop();
 
     let mut vt = BytesHashTranscript::<SHA256hasher>::new();
     let result = super::pcs_trait_impl::whir_verify_for_test(
@@ -402,6 +394,8 @@ fn adversarial_zero_polynomial() {
 
 #[test]
 fn fuzz_random_evaluations_all_rejected() {
+    use rand::SeedableRng;
+
     let num_vars = 8;
     let (base_evals, point, claimed_eval, codeword, tree, commitment) = make_test_data(num_vars);
 
@@ -415,7 +409,7 @@ fn fuzz_random_evaluations_all_rejected() {
         claimed_eval,
     ));
 
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     for _ in 0..50 {
         let random_eval = GoldilocksExt2::random_unsafe(&mut rng);
         if random_eval == claimed_eval {
@@ -438,7 +432,9 @@ fn fuzz_random_evaluations_all_rejected() {
 
 #[test]
 fn fuzz_random_polynomials_verify() {
-    let mut rng = rand::thread_rng();
+    use rand::SeedableRng;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(1337);
     for _ in 0..5 {
         let num_vars = 8;
         let n = 1 << num_vars;
