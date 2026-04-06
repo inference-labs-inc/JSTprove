@@ -51,7 +51,12 @@ fn min_tree_elems<EvalF: Field>() -> usize {
 }
 
 fn elems_per_leaf<EvalF: Field>() -> usize {
-    if EvalF::SIZE > 0 && LEAF_BYTES % EvalF::SIZE == 0 {
+    assert!(
+        EvalF::SIZE <= LEAF_BYTES,
+        "WHIR PCS requires EvalF::SIZE ({}) <= LEAF_BYTES ({LEAF_BYTES})",
+        EvalF::SIZE,
+    );
+    if LEAF_BYTES % EvalF::SIZE == 0 {
         LEAF_BYTES / EvalF::SIZE
     } else {
         LEAF_BYTES / EvalF::SIZE.next_power_of_two()
@@ -385,6 +390,18 @@ where
         }
     }
 
+    if round_commitments.is_empty() {
+        let cw: Vec<EvalF> = initial_codeword.iter().map(|&x| EvalF::from(x)).collect();
+        let tree = build_tree_from_ext_codeword(&cw);
+        let root = tree.root();
+        transcript.append_commitment(root.as_bytes());
+        round_commitments.push(root);
+        round_trees.push(tree);
+        round_codewords.push(cw);
+        ood_evaluations.push(Vec::new());
+        pow_nonces.push(0);
+    }
+
     let final_poly = current_codeword_ext.unwrap_or_default();
     let committed_rounds = round_commitments.len();
     let source_to_target = 1usize << WHIR_FOLDING_FACTOR;
@@ -524,6 +541,9 @@ where
             }
         }
     }
+    if expected_committed == 0 {
+        expected_committed = 1;
+    }
 
     if committed_rounds != expected_committed {
         return false;
@@ -591,6 +611,10 @@ where
                 transcript.append_field_element(f);
             }
         }
+    }
+
+    if commit_idx == 0 && committed_rounds > 0 {
+        transcript.append_commitment(opening.round_commitments[0].as_bytes());
     }
 
     let fri_constant = opening.final_poly[0];
