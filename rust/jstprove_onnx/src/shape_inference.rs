@@ -3251,4 +3251,20 @@ mod tests {
         assert_eq!(constants["new_shape"].int_data, vec![1, -1]);
         assert_eq!(constants["new_shape"].dims, vec![2]);
     }
+
+    #[test]
+    fn infer_gather_promotes_scalar_data_to_rank1() {
+        let mut shapes: HashMap<String, Vec<usize>> = HashMap::new();
+        shapes.insert("scalar_data".to_string(), vec![]);
+        shapes.insert("idx".to_string(), vec![]);
+
+        let layer = make_layer(
+            OpType::Gather,
+            vec!["scalar_data", "idx"],
+            vec!["out"],
+            HashMap::new(),
+        );
+        let result = infer_gather(&layer, &shapes, &HashMap::new(), &HashMap::new()).unwrap();
+        assert_eq!(result[0].1, vec![]);
+    }
 }

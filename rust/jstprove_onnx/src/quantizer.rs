@@ -309,7 +309,7 @@ fn rewrite_pow_sqrt(graph: &mut LayerGraph) {
             .and_then(|name| layer.weights.get(name))
             .is_some_and(|td| {
                 let vals = td.as_f64_vec();
-                vals.len() == 1 && (vals[0] - 0.5).abs() < f64::EPSILON
+                vals.len() == 1 && (vals[0] - 0.5).abs() < 1e-9
             });
         if is_sqrt {
             if let Some(exp_name) = layer.inputs.get(1).cloned() {
