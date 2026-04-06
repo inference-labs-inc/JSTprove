@@ -101,6 +101,7 @@ impl Circuit<Variable> {
             }
         }
 
+        api.display("[logup finalize]", 0);
         logup_ctx.finalize::<C, Builder>(api);
 
         if params.outputs.is_empty() {
@@ -143,6 +144,7 @@ impl Circuit<Variable> {
                 params.total_output_dims()
             )));
         }
+        api.display("[output assertions]", 0);
         for (&out, &combined) in self.outputs.iter().zip(combined_output.iter()) {
             api.assert_is_equal(out, combined);
         }
