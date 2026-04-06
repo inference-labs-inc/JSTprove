@@ -142,9 +142,9 @@ fn fold_gather(
     let data_td = lookup_constant(data_name, initializers, constant_tensors)?;
     let indices_td = lookup_constant(indices_name, initializers, constant_tensors)?;
 
-    let data_shape = data_td.shape();
+    let mut data_shape = data_td.shape();
     if data_shape.is_empty() {
-        return None;
+        data_shape = vec![1];
     }
 
     let axis_raw = layer.get_int_attr("axis").unwrap_or(0);
@@ -1492,12 +1492,14 @@ fn infer_gather(
             )
         })?;
 
+    let scalar_promoted;
+    let data_shape: &[usize] = if data_shape.is_empty() {
+        scalar_promoted = [1_usize];
+        &scalar_promoted
+    } else {
+        data_shape.as_slice()
+    };
     let rank = data_shape.len();
-    anyhow::ensure!(
-        rank > 0,
-        "layer {}: Gather data input must have rank >= 1",
-        layer.name
-    );
 
     let raw_axis = layer.get_int_attr("axis").unwrap_or(0);
     let axis = if raw_axis < 0 {
@@ -1522,7 +1524,6 @@ fn infer_gather(
         a
     };
 
-    // output_shape = data_shape[:axis] + indices_shape + data_shape[axis+1:]
     let mut out_shape = Vec::with_capacity(rank - 1 + indices_shape.len());
     out_shape.extend_from_slice(&data_shape[..axis]);
     out_shape.extend_from_slice(&indices_shape);

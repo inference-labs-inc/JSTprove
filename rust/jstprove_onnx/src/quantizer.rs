@@ -294,7 +294,31 @@ fn fold_batchnorm_params(layer: &mut LayerNode) -> Result<()> {
 /// Returns an error if layer bound propagation encounters invalid weight data.
 pub fn compute_max_bound(graph: &mut LayerGraph) -> Result<f64> {
     fold_all_batchnorms(graph)?;
+    rewrite_pow_sqrt(graph);
     compute_max_bound_inner(graph)
+}
+
+fn rewrite_pow_sqrt(graph: &mut LayerGraph) {
+    for layer in &mut graph.layers {
+        if layer.op_type != OpType::Pow {
+            continue;
+        }
+        let is_sqrt = layer
+            .inputs
+            .get(1)
+            .and_then(|name| layer.weights.get(name))
+            .is_some_and(|td| {
+                let vals = td.as_f64_vec();
+                vals.len() == 1 && (vals[0] - 0.5).abs() < f64::EPSILON
+            });
+        if is_sqrt {
+            if let Some(exp_name) = layer.inputs.get(1).cloned() {
+                layer.weights.remove(&exp_name);
+            }
+            layer.inputs.truncate(1);
+            layer.op_type = OpType::Sqrt;
+        }
+    }
 }
 
 fn compute_max_bound_inner(graph: &LayerGraph) -> Result<f64> {
@@ -1560,9 +1584,10 @@ fn compute_layer_bound(
                     }
                 });
             match exp {
-                Some(e) if e >= 0.0 && e == e.floor() => Ok(m_in.powf(e)),
+                Some(e) if e >= 1.0 => Ok(m_in.powf(e)),
+                Some(e) if e >= 0.0 => Ok(m_in.max(m_in.powf(e))),
                 Some(e) => anyhow::bail!(
-                    "layer {}: Pow exponent {e} is non-integer or negative; \
+                    "layer {}: Pow exponent {e} is negative; \
                      cannot compute a safe quantization bound",
                     layer.name
                 ),
