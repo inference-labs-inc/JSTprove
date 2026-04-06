@@ -894,9 +894,6 @@ where
 
     if mode == cli::OutputMode::Human {
         eprintln!("  {}", style("ONNX Constraint Tracing").bold().underlined());
-        eprintln!("    evaluating circuit definition with concrete values...");
-        eprintln!("    (display markers printed to stdout identify each ONNX layer)");
-        eprintln!();
     }
 
     let params = crate::io::io_reader::onnx_context::OnnxContext::get_params()?;
@@ -924,15 +921,20 @@ where
 
     let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
 
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         debug_eval(&circuit, &assignment, hint_registry.clone())
     }));
+
+    std::panic::set_hook(prev_hook);
 
     match result {
         Ok(_outputs) => {
             if mode == cli::OutputMode::Human {
                 eprintln!(
-                    "    {} all ONNX layer constraints satisfied",
+                    "    {} all constraints satisfied",
                     style("pass").green().bold()
                 );
             }
@@ -947,9 +949,6 @@ where
                 eprintln!(
                     "    {} constraint violated: {msg}",
                     style("FAIL").red().bold()
-                );
-                eprintln!(
-                    "    the last [layer N/M] line printed above identifies the failing ONNX operation"
                 );
             }
             if mode == cli::OutputMode::Json {

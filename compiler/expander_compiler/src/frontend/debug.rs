@@ -32,9 +32,13 @@ pub struct DebugBuilder<C: Config, H: HintCaller<CircuitField<C>>> {
 }
 
 impl<C: Config, H: HintCaller<CircuitField<C>>> BasicAPI<C> for DebugBuilder<C, H> {
-    fn display(&self, str: &str, x: impl ToVariableOrValue<CircuitField<C>>) {
+    fn display(&self, label: &str, x: impl ToVariableOrValue<CircuitField<C>>) {
         let x = self.convert_to_value(x);
-        println!("{str}: {x:?}");
+        if x.is_zero() {
+            eprintln!("{label}");
+        } else {
+            eprintln!("{label}: {x:?}");
+        }
     }
 
     fn add(
