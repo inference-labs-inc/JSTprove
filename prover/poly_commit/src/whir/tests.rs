@@ -1,9 +1,10 @@
+use arith::{FFTField, Field};
 use goldilocks::{Goldilocks, GoldilocksExt2};
 
-use super::adapter;
+use super::pcs_trait_impl::WhirPCSForGKR;
+use super::types::WhirCommitment;
 
 fn eval_mle_lsb_first(evals: &[GoldilocksExt2], point: &[GoldilocksExt2]) -> GoldilocksExt2 {
-    use arith::Field;
     let n = point.len();
     assert_eq!(evals.len(), 1 << n);
     let mut scratch = evals.to_vec();
@@ -17,69 +18,105 @@ fn eval_mle_lsb_first(evals: &[GoldilocksExt2], point: &[GoldilocksExt2]) -> Gol
 }
 
 #[test]
-fn whir_field_conversion_roundtrip() {
-    use ark_ff_05::PrimeField;
-    for v in [0u64, 1, 42, 1000000007, 0xFFFFFFFF00000000] {
-        let whir_f = adapter::goldilocks_u64_to_whir(v);
-        let back: u64 = whir_f.into_bigint().0[0];
-        assert_eq!(v, back, "roundtrip failed for {v}");
-    }
-}
-
-#[test]
-fn whir_ext2_conversion_roundtrip() {
-    use ark_ff_05::PrimeField;
-    let pairs = [(0u64, 0u64), (1, 0), (0, 1), (42, 999), (0xFFFFFFFE, 7)];
-    for (c0, c1) in pairs {
-        let whir_f = adapter::goldilocks_ext2_to_whir(c0, c1);
-        let back0: u64 = whir_f.c0.into_bigint().0[0];
-        let back1: u64 = whir_f.c1.into_bigint().0[0];
-        assert_eq!((c0, c1), (back0, back1), "ext2 roundtrip failed");
-    }
-}
-
-#[test]
 fn whir_commit_open_verify_roundtrip() {
+    use super::parameters::WHIR_RATE_LOG;
+    use crate::basefold::encoding::rs_encode_with_rate;
+    use gkr_engine::Transcript;
+    use gkr_hashers::SHA256hasher;
+    use transcript::BytesHashTranscript;
+
     let num_vars = 6;
     let n = 1 << num_vars;
 
-    let base_evals: Vec<u64> = (0..n).map(|i| (i as u64) + 1).collect();
+    let base_evals: Vec<Goldilocks> = (0..n).map(|i| Goldilocks::from(i as u32 + 1)).collect();
 
-    let point_pairs: Vec<(u64, u64)> = (0..num_vars).map(|i| ((i as u64) + 10, 0u64)).collect();
-
-    let proof = adapter::whir_commit_and_open(&base_evals, &point_pairs, num_vars);
+    let point: Vec<GoldilocksExt2> = (0..num_vars)
+        .map(|i| GoldilocksExt2::from(Goldilocks::from(i as u32 + 10)))
+        .collect();
 
     let ext_evals: Vec<GoldilocksExt2> = base_evals
         .iter()
-        .map(|&x| GoldilocksExt2::from(Goldilocks { v: x }))
-        .collect();
-    let point: Vec<GoldilocksExt2> = point_pairs
-        .iter()
-        .map(|&(c0, _)| GoldilocksExt2::from(Goldilocks { v: c0 }))
+        .map(|&x| GoldilocksExt2::from(x))
         .collect();
     let claimed_eval = eval_mle_lsb_first(&ext_evals, &point);
 
-    let mut eval_buf = [0u8; 16];
-    serdes::ExpSerde::serialize_into(&claimed_eval, &mut eval_buf[..]).unwrap();
-    let eval_c0 = u64::from_le_bytes(eval_buf[..8].try_into().unwrap());
-    let eval_c1 = u64::from_le_bytes(eval_buf[8..16].try_into().unwrap());
+    let codeword = rs_encode_with_rate(&base_evals, WHIR_RATE_LOG);
+    let tree = tree::Tree::compact_new_with_field_elems::<Goldilocks, Goldilocks>(codeword.clone());
+    let root = tree.root();
+    let commitment = WhirCommitment { root, num_vars };
 
-    let result = adapter::whir_verify(&point_pairs, (eval_c0, eval_c1), num_vars, &proof);
+    let mut prover_transcript = BytesHashTranscript::<SHA256hasher>::new();
+    let opening = super::pcs_trait_impl::whir_open_for_test(
+        &base_evals,
+        &codeword,
+        &tree,
+        num_vars,
+        &point,
+        &mut prover_transcript,
+    );
+
+    assert!(!opening.final_poly.is_empty());
+    assert_eq!(opening.sumcheck_messages.len(), num_vars);
+
+    let mut verifier_transcript = BytesHashTranscript::<SHA256hasher>::new();
+    let result = super::pcs_trait_impl::whir_verify_for_test(
+        &commitment,
+        &point,
+        claimed_eval,
+        &opening,
+        &mut verifier_transcript,
+    );
 
     assert!(result, "WHIR verification failed");
 }
 
 #[test]
 fn whir_rejects_wrong_evaluation() {
+    use super::parameters::WHIR_RATE_LOG;
+    use crate::basefold::encoding::rs_encode_with_rate;
+    use gkr_engine::Transcript;
+    use gkr_hashers::SHA256hasher;
+    use transcript::BytesHashTranscript;
+
     let num_vars = 4;
     let n = 1 << num_vars;
 
-    let base_evals: Vec<u64> = (0..n).map(|i| (i as u64) + 1).collect();
-    let point_pairs: Vec<(u64, u64)> = (0..num_vars).map(|i| ((i as u64) + 10, 0u64)).collect();
+    let base_evals: Vec<Goldilocks> = (0..n).map(|i| Goldilocks::from(i as u32 + 1)).collect();
 
-    let proof = adapter::whir_commit_and_open(&base_evals, &point_pairs, num_vars);
+    let point: Vec<GoldilocksExt2> = (0..num_vars)
+        .map(|i| GoldilocksExt2::from(Goldilocks::from(i as u32 + 10)))
+        .collect();
 
-    let result = adapter::whir_verify(&point_pairs, (999, 0), num_vars, &proof);
+    let ext_evals: Vec<GoldilocksExt2> = base_evals
+        .iter()
+        .map(|&x| GoldilocksExt2::from(x))
+        .collect();
+    let real_eval = eval_mle_lsb_first(&ext_evals, &point);
+    let wrong_eval = real_eval + GoldilocksExt2::ONE;
+
+    let codeword = rs_encode_with_rate(&base_evals, WHIR_RATE_LOG);
+    let tree = tree::Tree::compact_new_with_field_elems::<Goldilocks, Goldilocks>(codeword.clone());
+    let root = tree.root();
+    let commitment = WhirCommitment { root, num_vars };
+
+    let mut prover_transcript = BytesHashTranscript::<SHA256hasher>::new();
+    let opening = super::pcs_trait_impl::whir_open_for_test(
+        &base_evals,
+        &codeword,
+        &tree,
+        num_vars,
+        &point,
+        &mut prover_transcript,
+    );
+
+    let mut verifier_transcript = BytesHashTranscript::<SHA256hasher>::new();
+    let result = super::pcs_trait_impl::whir_verify_for_test(
+        &commitment,
+        &point,
+        wrong_eval,
+        &opening,
+        &mut verifier_transcript,
+    );
 
     assert!(!result, "WHIR should reject wrong evaluation");
 }

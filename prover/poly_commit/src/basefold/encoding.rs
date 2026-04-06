@@ -24,10 +24,14 @@ pub fn bit_reverse_slice<T: Copy>(v: &mut [T]) {
 }
 
 pub fn rs_encode<F: FFTField>(evals: &[F]) -> Vec<F> {
+    rs_encode_with_rate(evals, RATE_LOG)
+}
+
+pub fn rs_encode_with_rate<F: FFTField>(evals: &[F], rate_log: usize) -> Vec<F> {
     let n = evals.len();
     assert!(n.is_power_of_two());
 
-    let codeword_len = n << RATE_LOG;
+    let codeword_len = n << rate_log;
     let mut padded = vec![F::ZERO; codeword_len];
     padded[..n].copy_from_slice(evals);
 

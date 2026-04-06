@@ -2,7 +2,7 @@ mod types;
 pub use types::*;
 
 mod commit;
-mod encoding;
+pub(crate) mod encoding;
 mod open;
 mod pcs_trait_impl;
 mod verify;
