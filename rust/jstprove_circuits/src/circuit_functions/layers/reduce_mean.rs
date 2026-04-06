@@ -72,9 +72,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
         let total_out: usize = self.output_shape.iter().product();
 
         let n_const = api.constant(CircuitField::<C>::from_u256(U256::from(n as u64)));
-        let tolerance = api.constant(CircuitField::<C>::from_u256(U256::from(n as u64)));
-        let two_n = api.constant(CircuitField::<C>::from_u256(U256::from(2 * n as u64)));
-        let tol_bits = (2 * n + 1).next_power_of_two().trailing_zeros() as usize;
+        let half_n = n / 2;
+        let half_n_const = api.constant(CircuitField::<C>::from_u256(U256::from(half_n as u64)));
+        let two_half_n = api.constant(CircuitField::<C>::from_u256(U256::from(2 * half_n as u64)));
+        let tol_bits = (2 * half_n + 1).next_power_of_two().trailing_zeros() as usize;
 
         let n_bits_u32 = u32::try_from(self.n_bits).unwrap_or(u32::MAX);
         let offset = U256::from(1u64) << (n_bits_u32 - 1);
@@ -106,7 +107,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
 
             let n_times_mean = api.mul(n_const, mean_q);
             let diff = api.sub(sum, n_times_mean);
-            let shifted_diff = api.add(diff, tolerance);
+            let shifted_diff = api.add(diff, half_n_const);
             logup_ctx
                 .range_check::<C, Builder>(api, shifted_diff, tol_bits)
                 .map_err(|e| LayerError::Other {
@@ -114,7 +115,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
                     msg: format!("mean tolerance lower bound: {e}"),
                 })?;
 
-            let upper_check = api.sub(two_n, shifted_diff);
+            let upper_check = api.sub(two_half_n, shifted_diff);
             logup_ctx
                 .range_check::<C, Builder>(api, upper_check, tol_bits)
                 .map_err(|e| LayerError::Other {
@@ -358,6 +359,43 @@ mod tests {
     fn reduce_mean_signed() {
         let vals = [-100i64, 100];
         let result = compute_expected_mean(&vals, 2);
+        assert_eq!(result, vec![0i64]);
+    }
+
+    #[test]
+    fn reduce_mean_rounding() {
+        // sum=7, n=3, 7/3 = 2.333 → round → 2
+        let vals = [1i64, 2, 4];
+        let result = compute_expected_mean(&vals, 3);
+        assert_eq!(result, vec![2i64]);
+
+        // sum=8, n=3, 8/3 = 2.667 → round → 3
+        let vals = [1i64, 3, 4];
+        let result = compute_expected_mean(&vals, 3);
+        assert_eq!(result, vec![3i64]);
+
+        // sum=5, n=2, 5/2 = 2.5 → round → 2 (banker's rounds to even? no, f64 rounds to 3)
+        // Actually f64 2.5.round() = 3 in Rust (round half away from zero)
+        let vals = [2i64, 3];
+        let result = compute_expected_mean(&vals, 2);
+        assert_eq!(result, vec![3i64]);
+    }
+
+    #[test]
+    fn reduce_mean_tolerance_boundary() {
+        // Exact division: sum=12, n=4, mean=3, remainder=0
+        let vals = [1i64, 2, 4, 5];
+        let result = compute_expected_mean(&vals, 4);
+        assert_eq!(result, vec![3i64]);
+
+        // Off-by-one from exact: sum=13, n=4, mean=3.25→3, remainder=1 ≤ floor(4/2)=2 ✓
+        let vals = [1i64, 3, 4, 5];
+        let result = compute_expected_mean(&vals, 4);
+        assert_eq!(result, vec![3i64]);
+
+        // Mixed sign, non-exact: sum=-1, n=3, mean=-0.333→0
+        let vals = [-2i64, 0, 1];
+        let result = compute_expected_mean(&vals, 3);
         assert_eq!(result, vec![0i64]);
     }
 }
