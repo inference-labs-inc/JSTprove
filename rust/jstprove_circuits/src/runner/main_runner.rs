@@ -685,6 +685,286 @@ pub fn verify_from_witness<C: Config>(
     run_verification::<C>(&mut expander_circuit, witness_path, proof_path, None)
 }
 
+#[allow(clippy::too_many_lines)]
+fn run_debug_verification<C: Config>(
+    circuit_path: &str,
+    witness_path: &str,
+    proof_path: &str,
+    metadata: Option<&CircuitParams>,
+    mode: cli::OutputMode,
+) -> Result<(), RunError> {
+    use console::style;
+
+    let layered_circuit = load_layered_circuit::<C>(circuit_path)?;
+
+    if mode == cli::OutputMode::Human {
+        let stats = layered_circuit.get_stats();
+        eprintln!("  {}", style("Circuit").bold().underlined());
+        eprintln!("    path:       {circuit_path}");
+        eprintln!("    total cost: {}", stats.total_cost);
+        if let Some(params) = metadata {
+            eprintln!("    curve:      {}", params.curve.unwrap_or_default());
+            eprintln!(
+                "    scale:      {}^{}",
+                params.scale_base, params.scale_exponent
+            );
+            eprintln!(
+                "    inputs:     {} tensor(s), {} element(s)",
+                params.inputs.len(),
+                params.effective_input_dims()
+            );
+            eprintln!(
+                "    outputs:    {} tensor(s), {} element(s)",
+                params.outputs.len(),
+                params.effective_output_dims()
+            );
+        }
+        eprintln!();
+    }
+
+    let file = std::fs::File::open(witness_path).map_err(|e| RunError::Io {
+        source: e,
+        path: witness_path.into(),
+    })?;
+    let reader = auto_reader(file)?;
+    let witness = Witness::<C>::deserialize_from(reader)
+        .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+
+    let output = layered_circuit.run(&witness);
+    let pass_count = output.iter().filter(|&&x| x).count();
+    let total_count = output.len();
+    let witness_valid = output.iter().all(|&x| x);
+
+    if mode == cli::OutputMode::Human {
+        eprintln!("  {}", style("Witness Evaluation").bold().underlined());
+        if witness_valid {
+            eprintln!(
+                "    {} {pass_count}/{total_count} output assertions satisfied",
+                style("pass").green().bold()
+            );
+        } else {
+            eprintln!(
+                "    {} {pass_count}/{total_count} output assertions satisfied",
+                style("FAIL").red().bold()
+            );
+            let failing: Vec<usize> = output
+                .iter()
+                .enumerate()
+                .filter(|&(_, &v)| !v)
+                .map(|(i, _)| i)
+                .collect();
+            let display_count = failing.len().min(20);
+            let suffix = if failing.len() > 20 {
+                format!(" ... and {} more", failing.len() - 20)
+            } else {
+                String::new()
+            };
+            eprintln!(
+                "    failing indices: {:?}{suffix}",
+                &failing[..display_count]
+            );
+        }
+        eprintln!();
+    }
+
+    let mut expander_circuit = layered_circuit.export_to_expander_flatten();
+
+    let (simd_input, simd_public_input) = witness.to_simd();
+    expander_circuit.layers[0]
+        .input_vals
+        .clone_from(&simd_input);
+    expander_circuit.public_input.clone_from(&simd_public_input);
+
+    let file = std::fs::File::open(proof_path).map_err(|e| RunError::Io {
+        source: e,
+        path: proof_path.into(),
+    })?;
+    let reader = auto_reader(file)?;
+    let proof_and_claimed_v: Vec<u8> =
+        Vec::deserialize_from(reader).map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+
+    let (proof, claimed_v) =
+        executor::load_proof_and_claimed_v::<ChallengeField<C>>(&proof_and_claimed_v)
+            .map_err(|e| RunError::Deserialize(format!("{e:?}")))?;
+
+    let mpi_config = MPIConfig::verifier_new(1);
+    let layer_results: std::cell::RefCell<Vec<(usize, usize, bool)>> =
+        std::cell::RefCell::new(Vec::new());
+
+    let on_layer = |layer_idx: usize, total: usize, passed: bool| {
+        layer_results.borrow_mut().push((layer_idx, total, passed));
+    };
+
+    let valid = executor::verify_with_progress::<C>(
+        &mut expander_circuit,
+        mpi_config,
+        &proof,
+        &claimed_v,
+        Some(&on_layer),
+    );
+
+    let results = layer_results.into_inner();
+
+    if mode == cli::OutputMode::Human {
+        eprintln!(
+            "  {}",
+            style("GKR Sumcheck Verification").bold().underlined()
+        );
+        let total_layers = results
+            .last()
+            .map_or(expander_circuit.layers.len(), |(_, t, _)| *t);
+        let passed_layers = results.iter().filter(|(_, _, p)| *p).count();
+
+        if valid {
+            eprintln!(
+                "    {} all {total_layers} layer(s) passed",
+                style("pass").green().bold()
+            );
+        } else {
+            eprintln!(
+                "    {} {passed_layers}/{total_layers} layer(s) passed",
+                style("FAIL").red().bold()
+            );
+            eprintln!();
+            eprintln!(
+                "  {}",
+                style("Failing GKR Layers").red().bold().underlined()
+            );
+            for (idx, total, passed) in &results {
+                if !passed {
+                    eprintln!(
+                        "    layer {}/{total}: {}",
+                        idx + 1,
+                        style("sumcheck rejected").red()
+                    );
+                }
+            }
+        }
+        eprintln!();
+    }
+
+    if mode == cli::OutputMode::Json {
+        let first_fail = results.iter().find(|(_, _, p)| !*p);
+        let obj = serde_json::json!({
+            "event": "debug_verify",
+            "witness_valid": witness_valid,
+            "witness_pass_count": pass_count,
+            "witness_total_count": total_count,
+            "proof_valid": valid,
+            "gkr_layers_total": results.last().map_or(0, |(_, t, _)| *t),
+            "gkr_layers_passed": results.iter().filter(|(_, _, p)| *p).count(),
+            "first_failing_layer": first_fail.map(|(idx, _, _)| idx + 1),
+        });
+        eprintln!("{obj}");
+    }
+
+    if !valid {
+        let first_fail = results.iter().find(|(_, _, p)| !*p);
+        let msg = if let Some((idx, total, _)) = first_fail {
+            format!("sumcheck rejected at GKR layer {}/{total}", idx + 1)
+        } else {
+            "proof invalid".into()
+        };
+        return Err(RunError::Verify(msg));
+    }
+
+    if !witness_valid {
+        let failing_count = total_count - pass_count;
+        return Err(RunError::Verify(format!(
+            "GKR proof valid but witness fails {failing_count}/{total_count} output assertion(s)"
+        )));
+    }
+
+    Ok(())
+}
+
+fn run_debug_verify_onnx<C: Config, CircuitType>(
+    input_path: &str,
+    circuit_path: &str,
+    mode: cli::OutputMode,
+) -> Result<(), RunError>
+where
+    CircuitType: Default
+        + DumpLoadTwoVariables<Variable>
+        + expander_compiler::frontend::Define<C>
+        + Clone
+        + MaybeConfigure,
+{
+    use console::style;
+
+    if mode == cli::OutputMode::Human {
+        eprintln!("  {}", style("ONNX Constraint Tracing").bold().underlined());
+    }
+
+    let params = crate::io::io_reader::onnx_context::OnnxContext::get_params()?;
+    let bundle = read_circuit_bundle(circuit_path)?;
+
+    let raw = std::fs::read(input_path).map_err(|e| RunError::Io {
+        source: e,
+        path: input_path.into(),
+    })?;
+    let input_data: crate::circuit_functions::utils::onnx_model::InputData =
+        rmp_serde::from_slice(&raw).map_err(|e| RunError::Deserialize(format!("{e}")))?;
+
+    let mut activations = Vec::new();
+    flatten_rmpv_to_f64(&input_data.input, &mut activations)?;
+
+    let assignment = crate::onnx::build_debug_assignment::<C>(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations,
+    )?;
+
+    let mut circuit = CircuitType::default();
+    configure_if_possible::<CircuitType>(&mut circuit)?;
+
+    let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
+
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        debug_eval(&circuit, &assignment, hint_registry.clone())
+    }));
+
+    std::panic::set_hook(prev_hook);
+
+    match result {
+        Ok(_outputs) => {
+            if mode == cli::OutputMode::Human {
+                eprintln!(
+                    "    {} all constraints satisfied",
+                    style("pass").green().bold()
+                );
+            }
+        }
+        Err(panic_info) => {
+            let msg = panic_info
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| panic_info.downcast_ref::<&str>().copied())
+                .unwrap_or("unknown assertion");
+            if mode == cli::OutputMode::Human {
+                eprintln!(
+                    "    {} constraint violated: {msg}",
+                    style("FAIL").red().bold()
+                );
+            }
+            if mode == cli::OutputMode::Json {
+                let obj = serde_json::json!({
+                    "event": "onnx_constraint_failure",
+                    "message": msg,
+                });
+                eprintln!("{obj}");
+            }
+        }
+    }
+
+    eprintln!();
+    Ok(())
+}
+
 /// # Errors
 /// Returns `RunError` on witness solving or validation failure.
 pub fn solve_and_validate_witness<C: Config, CircuitDefaultType>(
@@ -1871,6 +2151,49 @@ where
                 &witness_path,
                 &circuit_path,
             )?;
+        }
+        "run_debug_verify" => {
+            let witness_path = get_arg(matches, "witness")?;
+            let proof_path = get_arg(matches, "proof")?;
+            let circuit_path = get_arg(matches, "circuit_path")?;
+
+            let bundle_params = try_load_metadata_from_circuit(&circuit_path);
+
+            let result = run_debug_verification::<C>(
+                &circuit_path,
+                &witness_path,
+                &proof_path,
+                bundle_params.as_ref(),
+                mode,
+            );
+
+            let has_onnx_context =
+                crate::io::io_reader::onnx_context::OnnxContext::get_architecture().is_ok();
+            if let Ok(input_path) = get_arg(matches, "input") {
+                if has_onnx_context {
+                    run_debug_verify_onnx::<C, CircuitType>(&input_path, &circuit_path, mode)?;
+                }
+            }
+
+            match result {
+                Ok(()) => {
+                    if mode == cli::OutputMode::Human {
+                        let elapsed_label = console::style("done").green().bold();
+                        eprintln!("  {elapsed_label} Debug verification passed");
+                    }
+                }
+                Err(e) => {
+                    let detail = match &e {
+                        RunError::Verify(msg) => msg.clone(),
+                        other => format!("{other}"),
+                    };
+                    if mode == cli::OutputMode::Human {
+                        let x = console::style("fail").red().bold();
+                        eprintln!("  {x} Debug verification failed: {detail}");
+                    }
+                    return Err(CliError::AlreadyReported(detail));
+                }
+            }
         }
         "run_prove_witness" => {
             let witness_path = get_arg(matches, "witness")?;
