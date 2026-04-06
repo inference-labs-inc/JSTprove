@@ -16,7 +16,7 @@ use gkr_hashers::SHA256hasher;
 use poly_commit::{expander_pcs_init_testing_only, raw::RawExpanderGKR};
 use transcript::BytesHashTranscript;
 
-use jst_gkr::prover::prove as jst_prove;
+use jst_gkr::prover::prove_with_evaluations as jst_prove_eval;
 use jst_gkr::transcript::Sha256Transcript;
 use jst_gkr::verifier::verify as jst_verify;
 use jst_gkr_engine::{
@@ -170,8 +170,8 @@ fn bench_one(label: &str, log_size: usize, depth: usize, warmup: usize, iters: u
         let mut times = Vec::with_capacity(iters);
         for _ in 0..iters {
             let mut c = circuit.clone();
-            c.evaluate();
             let start = Instant::now();
+            c.evaluate();
             prover.prove(&mut c, &pcs_params, &pcs_pk, &mut pcs_scratch);
             times.push(start.elapsed());
         }
@@ -186,10 +186,12 @@ fn bench_one(label: &str, log_size: usize, depth: usize, warmup: usize, iters: u
 
     {
         let (jst_circuit, witness) = build_jst_circuit(depth, log_size);
+        let layer_vals = jst_circuit.evaluate(&witness);
 
         {
             let mut t = Sha256Transcript::default();
-            let proof = jst_prove::<Goldilocks, Sha256Transcript>(&jst_circuit, &witness, &mut t);
+            let proof =
+                jst_prove_eval::<Goldilocks, Sha256Transcript>(&jst_circuit, &layer_vals, &mut t);
             let mut vt = Sha256Transcript::default();
             assert!(
                 jst_verify::<Goldilocks, Sha256Transcript>(&jst_circuit, &witness, &proof, &mut vt),
@@ -199,14 +201,15 @@ fn bench_one(label: &str, log_size: usize, depth: usize, warmup: usize, iters: u
 
         for _ in 0..warmup {
             let mut t = Sha256Transcript::default();
-            jst_prove::<Goldilocks, Sha256Transcript>(&jst_circuit, &witness, &mut t);
+            jst_prove_eval::<Goldilocks, Sha256Transcript>(&jst_circuit, &layer_vals, &mut t);
         }
 
         let mut times = Vec::with_capacity(iters);
         for _ in 0..iters {
             let mut t = Sha256Transcript::default();
             let start = Instant::now();
-            jst_prove::<Goldilocks, Sha256Transcript>(&jst_circuit, &witness, &mut t);
+            let layer_vals = jst_circuit.evaluate(&witness);
+            jst_prove_eval::<Goldilocks, Sha256Transcript>(&jst_circuit, &layer_vals, &mut t);
             times.push(start.elapsed());
         }
 

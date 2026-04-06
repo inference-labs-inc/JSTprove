@@ -11,6 +11,13 @@ pub fn prove_sumcheck<F: Field, T: FiatShamirTranscript>(
     num_vars: usize,
     transcript: &mut T,
 ) -> (SumcheckProof<F>, Vec<F>) {
+    assert!(
+        bk_f.len() >= (1 << num_vars) && bk_hg.len() >= (1 << num_vars),
+        "sumcheck bookkeeping tables too small: need {} elements, got f={} hg={}",
+        1 << num_vars,
+        bk_f.len(),
+        bk_hg.len(),
+    );
     let mut round_polys = Vec::with_capacity(num_vars);
     let mut challenges = Vec::with_capacity(num_vars);
 

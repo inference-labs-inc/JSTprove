@@ -10,6 +10,14 @@ pub fn prove<F: Field, T: FiatShamirTranscript>(
     transcript: &mut T,
 ) -> Proof {
     let layer_vals = circuit.evaluate(witness);
+    prove_with_evaluations(circuit, &layer_vals, transcript)
+}
+
+pub fn prove_with_evaluations<F: Field, T: FiatShamirTranscript>(
+    circuit: &LayeredCircuit<F>,
+    layer_vals: &[Vec<F>],
+    transcript: &mut T,
+) -> Proof {
     let depth = circuit.depth();
 
     let output_vals = &layer_vals[depth];
