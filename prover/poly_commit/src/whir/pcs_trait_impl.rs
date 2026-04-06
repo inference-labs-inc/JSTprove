@@ -698,7 +698,7 @@ where
         scratch_pad: &mut Self::ScratchPad,
     ) -> Option<Self::Commitment> {
         if !mpi_engine.is_single_process() {
-            unimplemented!("WHIR MPI not yet supported");
+            return None;
         }
         if poly.num_vars() > *params {
             return None;
@@ -720,7 +720,7 @@ where
         scratch_pad: &Self::ScratchPad,
     ) -> Option<Self::Opening> {
         if !mpi_engine.is_single_process() {
-            unimplemented!("WHIR MPI not yet supported");
+            return None;
         }
         if poly.num_vars() > *params || eval_point.num_vars() > *params {
             return None;

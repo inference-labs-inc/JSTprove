@@ -402,8 +402,6 @@ fn adversarial_zero_polynomial() {
 
 #[test]
 fn fuzz_random_evaluations_all_rejected() {
-    use rand::Rng;
-
     let num_vars = 8;
     let (base_evals, point, claimed_eval, codeword, tree, commitment) = make_test_data(num_vars);
 
@@ -440,8 +438,6 @@ fn fuzz_random_evaluations_all_rejected() {
 
 #[test]
 fn fuzz_random_polynomials_verify() {
-    use rand::Rng;
-
     let mut rng = rand::thread_rng();
     for _ in 0..5 {
         let num_vars = 8;
