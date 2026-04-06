@@ -1,4 +1,4 @@
-#![allow(clippy::pedantic, clippy::all)]
+#![allow(clippy::pedantic)]
 
 pub mod mle;
 pub mod prover;

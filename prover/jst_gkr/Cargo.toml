@@ -10,9 +10,26 @@ sha2.workspace = true
 rand.workspace = true
 
 [dev-dependencies]
-rand.workspace = true
 rand_chacha.workspace = true
 goldilocks.workspace = true
+criterion.workspace = true
+ark-std.workspace = true
+circuit.workspace = true
+config_macros.workspace = true
+gkr.workspace = true
+gkr_engine.workspace = true
+poly_commit.workspace = true
+transcript.workspace = true
+gkr_hashers.workspace = true
+env_logger.workspace = true
+
+[[bench]]
+name = "gkr_bench"
+harness = false
+
+[[bench]]
+name = "comparison"
+harness = false
 
 [lints.clippy]
-all = "allow"
+module_name_repetitions = "allow"

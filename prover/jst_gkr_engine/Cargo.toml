@@ -5,6 +5,3 @@ edition.workspace = true
 
 [dependencies]
 arith.workspace = true
-
-[lints.clippy]
-all = "allow"

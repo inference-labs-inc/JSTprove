@@ -22,8 +22,11 @@ pub fn prove<F: Field, T: FiatShamirTranscript>(
     let claimed_v = evaluate_mle(output_vals, &output_r);
     transcript.append_field_element(&claimed_v);
 
-    let mut r_x = output_r;
-    let mut claimed_val = claimed_v;
+    let mut rz_0 = output_r;
+    let mut rz_1: Option<Vec<F>> = None;
+    let mut alpha: Option<F> = None;
+    let mut vx_claim = claimed_v;
+    let mut vy_claim: Option<F> = None;
 
     for layer_idx in 0..depth {
         let layer = &circuit.layers[layer_idx];
@@ -31,43 +34,72 @@ pub fn prove<F: Field, T: FiatShamirTranscript>(
         let input_var_num = layer.input_var_num;
         let input_size = 1 << input_var_num;
 
-        let eq_table = build_eq_table(&r_x);
-
-        let mut hg_add = vec![F::ZERO; input_size];
-        let mut hg_mul = vec![F::ZERO; input_size];
-
-        for g in &layer.add_gates {
-            hg_add[g.i_id] += eq_table[g.o_id] * g.coef;
+        let eq_rz0 = build_eq_table(&rz_0);
+        let mut eq_combined = eq_rz0;
+        if let (Some(ref rz1), Some(a)) = (&rz_1, alpha) {
+            let eq_rz1 = build_eq_table(rz1);
+            for i in 0..eq_combined.len() {
+                eq_combined[i] += a * eq_rz1[i];
+            }
         }
 
-        for g in &layer.mul_gates {
-            hg_mul[g.i_ids[0]] += eq_table[g.o_id] * g.coef * next_vals[g.i_ids[1]];
-            hg_mul[g.i_ids[1]] += eq_table[g.o_id] * g.coef * next_vals[g.i_ids[0]];
+        let mut combined_claim = vx_claim;
+        if let (Some(vy), Some(a)) = (vy_claim, alpha) {
+            combined_claim += a * vy;
         }
-
-        let mut bk_hg: Vec<F> = (0..input_size).map(|i| hg_add[i] + hg_mul[i]).collect();
-        let mut bk_f: Vec<F> = next_vals[..input_size].to_vec();
 
         let mut const_contribution = F::ZERO;
         for g in &layer.const_gates {
-            const_contribution += eq_table[g.o_id] * g.coef;
+            const_contribution += eq_combined[g.o_id] * g.coef;
         }
 
-        transcript.append_field_element(&claimed_val);
+        let _phase1_sum = combined_claim - const_contribution;
 
-        let (sc_proof, challenges) =
-            prove_sumcheck(&mut bk_f, &mut bk_hg, input_var_num, transcript);
+        let mut hg_x = vec![F::ZERO; input_size];
+        for g in &layer.add_gates {
+            hg_x[g.i_id] += eq_combined[g.o_id] * g.coef;
+        }
+        for g in &layer.mul_gates {
+            hg_x[g.i_ids[0]] += eq_combined[g.o_id] * g.coef * next_vals[g.i_ids[1]];
+        }
 
-        let _ = sc_proof;
+        let mut bk_f = next_vals[..input_size].to_vec();
+        let mut bk_hg = hg_x;
+        let (_, challenges_x) = prove_sumcheck(&mut bk_f, &mut bk_hg, input_var_num, transcript);
 
-        let r_y = challenges;
+        let vx = evaluate_mle(&next_vals[..input_size], &challenges_x);
+        transcript.append_field_element(&vx);
 
-        let vy = evaluate_mle(&next_vals[..input_size], &r_y);
+        let has_mul = !layer.mul_gates.is_empty();
+        if has_mul {
+            let eq_rx = build_eq_table(&challenges_x);
 
-        transcript.append_field_element(&vy);
+            let mut hg_y = vec![F::ZERO; input_size];
+            for g in &layer.mul_gates {
+                hg_y[g.i_ids[1]] += eq_combined[g.o_id] * g.coef * eq_rx[g.i_ids[0]] * vx;
+            }
 
-        r_x = r_y;
-        claimed_val = vy;
+            let mut bk_f_y = next_vals[..input_size].to_vec();
+            let (_, challenges_y) =
+                prove_sumcheck(&mut bk_f_y, &mut hg_y, input_var_num, transcript);
+
+            let vy = evaluate_mle(&next_vals[..input_size], &challenges_y);
+            transcript.append_field_element(&vy);
+
+            let new_alpha: F = transcript.challenge_field_element();
+
+            rz_0 = challenges_x;
+            rz_1 = Some(challenges_y);
+            alpha = Some(new_alpha);
+            vx_claim = vx;
+            vy_claim = Some(vy);
+        } else {
+            rz_0 = challenges_x;
+            rz_1 = None;
+            alpha = None;
+            vx_claim = vx;
+            vy_claim = None;
+        }
     }
 
     transcript.finalize_proof()

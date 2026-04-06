@@ -8,6 +8,7 @@ use crate::mle::{build_eq_table, eq_eval, evaluate_mle};
 use crate::prover::prove;
 use crate::sumcheck::{prove_sumcheck, verify_sumcheck};
 use crate::transcript::Sha256Transcript;
+use crate::verifier::verify;
 
 type F = Goldilocks;
 
@@ -114,7 +115,7 @@ fn test_sumcheck_known_polynomial() {
 }
 
 #[test]
-fn test_gkr_two_layer_circuit() {
+fn test_gkr_single_layer_mul_add() {
     let layer = CircuitLayer {
         input_var_num: 1,
         output_var_num: 1,
@@ -144,11 +145,18 @@ fn test_gkr_two_layer_circuit() {
 
     let mut prover_transcript = Sha256Transcript::default();
     let proof = prove::<F, Sha256Transcript>(&circuit, &witness, &mut prover_transcript);
-    assert!(!proof.data.is_empty());
+
+    let mut verifier_transcript = Sha256Transcript::default();
+    assert!(verify::<F, Sha256Transcript>(
+        &circuit,
+        &witness,
+        &proof,
+        &mut verifier_transcript
+    ));
 }
 
 #[test]
-fn test_gkr_addition_circuit() {
+fn test_gkr_addition_only() {
     let layer = CircuitLayer {
         input_var_num: 1,
         output_var_num: 0,
@@ -174,6 +182,182 @@ fn test_gkr_addition_circuit() {
 
     let witness = vec![F::from(7u32), F::from(11u32)];
     let layer_vals = circuit.evaluate(&witness);
-
     assert_eq!(layer_vals[1][0], F::from(18u32));
+
+    let mut prover_transcript = Sha256Transcript::default();
+    let proof = prove::<F, Sha256Transcript>(&circuit, &witness, &mut prover_transcript);
+
+    let mut verifier_transcript = Sha256Transcript::default();
+    assert!(verify::<F, Sha256Transcript>(
+        &circuit,
+        &witness,
+        &proof,
+        &mut verifier_transcript
+    ));
+}
+
+#[test]
+fn test_gkr_two_layer_circuit() {
+    let layer_0 = CircuitLayer {
+        input_var_num: 2,
+        output_var_num: 1,
+        mul_gates: vec![
+            MulGate {
+                o_id: 0,
+                i_ids: [0, 1],
+                coef: F::ONE,
+            },
+            MulGate {
+                o_id: 1,
+                i_ids: [2, 3],
+                coef: F::ONE,
+            },
+        ],
+        add_gates: vec![],
+        const_gates: vec![],
+    };
+
+    let layer_1 = CircuitLayer {
+        input_var_num: 1,
+        output_var_num: 1,
+        mul_gates: vec![],
+        add_gates: vec![
+            AddGate {
+                o_id: 0,
+                i_id: 0,
+                coef: F::ONE,
+            },
+            AddGate {
+                o_id: 0,
+                i_id: 1,
+                coef: F::ONE,
+            },
+        ],
+        const_gates: vec![],
+    };
+
+    let circuit = LayeredCircuit {
+        layers: vec![layer_1, layer_0],
+    };
+
+    let witness = vec![F::from(2u32), F::from(3u32), F::from(4u32), F::from(5u32)];
+    let layer_vals = circuit.evaluate(&witness);
+    assert_eq!(layer_vals[1][0], F::from(6u32));
+    assert_eq!(layer_vals[1][1], F::from(20u32));
+    assert_eq!(layer_vals[2][0], F::from(26u32));
+
+    let mut prover_transcript = Sha256Transcript::default();
+    let proof = prove::<F, Sha256Transcript>(&circuit, &witness, &mut prover_transcript);
+
+    let mut verifier_transcript = Sha256Transcript::default();
+    assert!(verify::<F, Sha256Transcript>(
+        &circuit,
+        &witness,
+        &proof,
+        &mut verifier_transcript
+    ));
+}
+
+#[test]
+fn test_gkr_const_gates() {
+    let layer = CircuitLayer {
+        input_var_num: 1,
+        output_var_num: 1,
+        mul_gates: vec![],
+        add_gates: vec![AddGate {
+            o_id: 0,
+            i_id: 0,
+            coef: F::ONE,
+        }],
+        const_gates: vec![ConstGate {
+            o_id: 1,
+            coef: F::from(42u32),
+        }],
+    };
+
+    let circuit = LayeredCircuit {
+        layers: vec![layer],
+    };
+
+    let witness = vec![F::from(10u32), F::from(0u32)];
+    let layer_vals = circuit.evaluate(&witness);
+    assert_eq!(layer_vals[1][0], F::from(10u32));
+    assert_eq!(layer_vals[1][1], F::from(42u32));
+
+    let mut prover_transcript = Sha256Transcript::default();
+    let proof = prove::<F, Sha256Transcript>(&circuit, &witness, &mut prover_transcript);
+
+    let mut verifier_transcript = Sha256Transcript::default();
+    assert!(verify::<F, Sha256Transcript>(
+        &circuit,
+        &witness,
+        &proof,
+        &mut verifier_transcript
+    ));
+}
+
+#[test]
+fn test_gkr_wrong_witness_rejects() {
+    let layer = CircuitLayer {
+        input_var_num: 1,
+        output_var_num: 1,
+        mul_gates: vec![MulGate {
+            o_id: 0,
+            i_ids: [0, 1],
+            coef: F::ONE,
+        }],
+        add_gates: vec![AddGate {
+            o_id: 1,
+            i_id: 0,
+            coef: F::ONE,
+        }],
+        const_gates: vec![],
+    };
+
+    let circuit = LayeredCircuit {
+        layers: vec![layer],
+    };
+
+    let witness = vec![F::from(3u32), F::from(5u32)];
+    let mut prover_transcript = Sha256Transcript::default();
+    let proof = prove::<F, Sha256Transcript>(&circuit, &witness, &mut prover_transcript);
+
+    let wrong_witness = vec![F::from(4u32), F::from(5u32)];
+    let mut verifier_transcript = Sha256Transcript::default();
+    assert!(!verify::<F, Sha256Transcript>(
+        &circuit,
+        &wrong_witness,
+        &proof,
+        &mut verifier_transcript
+    ));
+}
+
+#[test]
+fn test_gkr_truncated_proof_rejects() {
+    let layer = CircuitLayer {
+        input_var_num: 1,
+        output_var_num: 0,
+        mul_gates: vec![],
+        add_gates: vec![AddGate {
+            o_id: 0,
+            i_id: 0,
+            coef: F::ONE,
+        }],
+        const_gates: vec![],
+    };
+
+    let circuit = LayeredCircuit {
+        layers: vec![layer],
+    };
+
+    let witness = vec![F::from(7u32), F::from(11u32)];
+
+    let truncated_proof = Proof { data: vec![0u8; 4] };
+    let mut verifier_transcript = Sha256Transcript::default();
+    assert!(!verify::<F, Sha256Transcript>(
+        &circuit,
+        &witness,
+        &truncated_proof,
+        &mut verifier_transcript
+    ));
 }

@@ -6,8 +6,8 @@ pub struct SumcheckProof<F: Field> {
 }
 
 pub fn prove_sumcheck<F: Field, T: FiatShamirTranscript>(
-    bk_f: &mut Vec<F>,
-    bk_hg: &mut Vec<F>,
+    bk_f: &mut [F],
+    bk_hg: &mut [F],
     num_vars: usize,
     transcript: &mut T,
 ) -> (SumcheckProof<F>, Vec<F>) {

@@ -1,4 +1,6 @@
-#![allow(clippy::pedantic, clippy::all)]
+#![allow(clippy::pedantic)]
+
+use std::fmt::Debug;
 
 use arith::Field;
 
@@ -125,5 +127,3 @@ pub trait ProofSystem {
     type F: Field;
     type Transcript: FiatShamirTranscript;
 }
-
-use std::fmt::Debug;
