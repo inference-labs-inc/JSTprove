@@ -3,11 +3,13 @@ use std::path::Path;
 use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
 use jstprove_circuits::onnx::{
-    compile_bn254, compile_goldilocks, compile_goldilocks_basefold, deserialize_circuit_bn254,
-    flatten_circuit_bn254, prove_bn254, prove_goldilocks, prove_goldilocks_basefold,
-    verify_and_extract_bn254_with_flat_ref, verify_and_extract_bn254_with_layered, verify_bn254,
-    verify_goldilocks, verify_goldilocks_basefold, witness_bn254_from_f64,
+    compile_bn254, compile_goldilocks, compile_goldilocks_basefold, compile_goldilocks_whir,
+    deserialize_circuit_bn254, flatten_circuit_bn254, prove_bn254, prove_goldilocks,
+    prove_goldilocks_basefold, prove_goldilocks_whir, verify_and_extract_bn254_with_flat_ref,
+    verify_and_extract_bn254_with_layered, verify_bn254, verify_goldilocks,
+    verify_goldilocks_basefold, verify_goldilocks_whir, witness_bn254_from_f64,
     witness_goldilocks_basefold_from_f64, witness_goldilocks_from_f64,
+    witness_goldilocks_whir_from_f64,
 };
 use jstprove_circuits::runner::main_runner::read_circuit_msgpack;
 use jstprove_onnx::quantizer::N_BITS_GOLDILOCKS;
@@ -332,4 +334,30 @@ fn goldilocks_basefold_pipeline_lenet_prove_verify() {
 
     let proof = prove_goldilocks_basefold(&bundle.circuit, &wb.witness, false).unwrap();
     assert!(verify_goldilocks_basefold(&bundle.circuit, &wb.witness, &proof).unwrap());
+}
+
+#[test]
+fn goldilocks_whir_pipeline_lenet_prove_verify() {
+    let params = setup_onnx_context_goldilocks();
+    let activations = dummy_activations(&params);
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let circuit_path = tmp.path().join("circuit_whir.msgpack");
+    let circuit_path_str = circuit_path.to_str().unwrap();
+
+    compile_goldilocks_whir(circuit_path_str, false, Some(params.clone())).unwrap();
+    let bundle = read_circuit_msgpack(circuit_path_str).unwrap();
+
+    let wb = witness_goldilocks_whir_from_f64(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations,
+        &[],
+        false,
+    )
+    .unwrap();
+
+    let proof = prove_goldilocks_whir(&bundle.circuit, &wb.witness, false).unwrap();
+    assert!(verify_goldilocks_whir(&bundle.circuit, &wb.witness, &proof).unwrap());
 }

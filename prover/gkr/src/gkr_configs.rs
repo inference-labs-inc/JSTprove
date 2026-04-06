@@ -2,15 +2,15 @@ use config_macros::declare_gkr_config;
 use gf2::GF2x128;
 use gkr_engine::{
     BN254Config, BabyBearx16Config, FieldEngine, GF2ExtConfig, GKREngine, GKRScheme,
-    GoldilocksExt2x1Config, Goldilocksx1Config, Goldilocksx8Config, M31x16Config, M31x1Config,
-    MPIConfig,
+    GoldilocksExt2x1Config, GoldilocksExt3x1Config, Goldilocksx1Config, Goldilocksx8Config,
+    M31x16Config, M31x1Config, MPIConfig,
 };
 use gkr_hashers::{MiMC5FiatShamirHasher, PoseidonFiatShamirHasher, SHA256hasher};
 use goldilocks::Goldilocksx8;
 use halo2curves::bn256::{Bn256, G1Affine};
 use mersenne31::M31x16;
 use poly_commit::{
-    raw::RawExpanderGKR, BasefoldPCSForGKR, HyperBiKZGPCS, HyraxPCS, OrionPCSForGKR,
+    raw::RawExpanderGKR, BasefoldPCSForGKR, HyperBiKZGPCS, HyraxPCS, OrionPCSForGKR, WhirPCSForGKR,
 };
 use transcript::BytesHashTranscript;
 
@@ -150,6 +150,15 @@ declare_gkr_config!(
     FieldType::Goldilocksx8,
     FiatShamirHashType::SHA256,
     PolynomialCommitmentType::Orion,
+    GKRScheme::Vanilla,
+);
+
+// ============== Goldilocks WHIR (192-bit ext3 challenge field) ==============
+declare_gkr_config!(
+    pub GoldilocksExt3x1ConfigSha2Whir,
+    FieldType::GoldilocksExt3x1,
+    FiatShamirHashType::SHA256,
+    PolynomialCommitmentType::Whir,
     GKRScheme::Vanilla,
 );
 
