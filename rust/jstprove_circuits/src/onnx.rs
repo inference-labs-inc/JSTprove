@@ -498,6 +498,57 @@ pub fn witness_from_f64_generic<C: Config>(
     })
 }
 
+/// Builds a quantized assignment from raw f64 activations with auto-computed outputs.
+///
+/// Performs a probe pass through the compiled circuit to determine the correct
+/// output values, then returns a complete assignment suitable for `debug_eval`.
+///
+/// # Errors
+/// Returns `RunError` on quantization, deserialization, or witness solving failure.
+pub fn build_debug_assignment<C: Config>(
+    circuit_bytes: &[u8],
+    solver_bytes: &[u8],
+    params: &CircuitParams,
+    activations: &[f64],
+) -> Result<Circuit<CircuitField<C>>, RunError> {
+    #[allow(clippy::cast_possible_wrap)]
+    let alpha = f64::from(params.scale_base).powi(params.scale_exponent as i32);
+
+    let input_arr: Vec<CircuitField<C>> = activations
+        .iter()
+        .map(|&v| quantize_f64_to_field::<C>(v, alpha))
+        .collect();
+
+    let layered_circuit = load_circuit_from_bytes::<C>(circuit_bytes)?;
+    let witness_solver = load_witness_solver_from_bytes::<C>(solver_bytes)?;
+    let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
+    let num_outputs = params.effective_output_dims();
+
+    let mut assignment = Circuit::<CircuitField<C>> {
+        input_arr: input_arr.clone(),
+        outputs: vec![CircuitField::<C>::zero(); num_outputs],
+        ..Default::default()
+    };
+    init_circuit_fields::<C>(&mut assignment, params);
+
+    let probe_witness = witness_solver
+        .solve_witness_with_hints(&assignment, &hint_registry)
+        .map_err(|e| RunError::Witness(format!("probe pass: {e:?}")))?;
+
+    let (private_inputs, public_inputs) = probe_witness
+        .iter_scalar()
+        .next()
+        .ok_or_else(|| RunError::Witness("empty probe witness".into()))?;
+
+    let (actual_outputs, _) =
+        layered_circuit.eval_with_public_inputs(private_inputs, &public_inputs);
+
+    assignment.input_arr = input_arr;
+    assignment.outputs = actual_outputs[..num_outputs].to_vec();
+
+    Ok(assignment)
+}
+
 /// # Errors
 /// Returns `RunError` on proof generation failure.
 pub fn prove_bn254(

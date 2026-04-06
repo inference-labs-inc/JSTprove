@@ -878,18 +878,12 @@ fn run_debug_verification<C: Config>(
     Ok(())
 }
 
-fn run_debug_verify_onnx<C: Config, I, CircuitDefaultType, CircuitType>(
-    io_reader: &mut I,
+fn run_debug_verify_onnx<C: Config, CircuitType>(
     input_path: &str,
-    output_path: &str,
     circuit_path: &str,
     mode: cli::OutputMode,
 ) -> Result<(), RunError>
 where
-    I: IOReader<CircuitDefaultType, C>,
-    CircuitDefaultType: Default
-        + DumpLoadTwoVariables<<<C as GKREngine>::FieldConfig as FieldEngine>::CircuitField>
-        + Clone,
     CircuitType: Default
         + DumpLoadTwoVariables<Variable>
         + expander_compiler::frontend::Define<C>
@@ -905,11 +899,25 @@ where
         eprintln!();
     }
 
-    let (layered_circuit, witness_solver) = load_circuit_and_solver::<C>(circuit_path)?;
+    let params = crate::io::io_reader::onnx_context::OnnxContext::get_params()?;
+    let bundle = read_circuit_bundle(circuit_path)?;
 
-    let assignment = CircuitDefaultType::default();
-    let assignment = io_reader.read_inputs(input_path, assignment)?;
-    let assignment = io_reader.read_outputs(output_path, assignment)?;
+    let raw = std::fs::read(input_path).map_err(|e| RunError::Io {
+        source: e,
+        path: input_path.into(),
+    })?;
+    let input_data: crate::circuit_functions::utils::onnx_model::InputData =
+        rmp_serde::from_slice(&raw).map_err(|e| RunError::Deserialize(format!("{e}")))?;
+
+    let mut activations = Vec::new();
+    flatten_rmpv_to_f64(&input_data.input, &mut activations)?;
+
+    let assignment = crate::onnx::build_debug_assignment::<C>(
+        &bundle.circuit,
+        &bundle.witness_solver,
+        &params,
+        &activations,
+    )?;
 
     let mut circuit = CircuitType::default();
     configure_if_possible::<CircuitType>(&mut circuit)?;
@@ -952,26 +960,6 @@ where
                 eprintln!("{obj}");
             }
         }
-    }
-
-    let hint_registry = build_logup_hint_registry::<CircuitField<C>>();
-    let witness = witness_solver
-        .solve_witness_with_hints(&assignment, &hint_registry)
-        .map_err(|e| RunError::Witness(format!("{e:?}")))?;
-    let output = layered_circuit.run(&witness);
-    if output.iter().all(|&x| x) {
-        if mode == cli::OutputMode::Human {
-            eprintln!(
-                "    {} witness satisfies compiled circuit",
-                style("pass").green().bold()
-            );
-        }
-    } else if mode == cli::OutputMode::Human {
-        let failing_count = output.iter().filter(|&&x| !x).count();
-        eprintln!(
-            "    {} witness fails {failing_count} compiled circuit assertion(s)",
-            style("FAIL").red().bold()
-        );
     }
 
     eprintln!();
@@ -2182,17 +2170,9 @@ where
 
             let has_onnx_context =
                 crate::io::io_reader::onnx_context::OnnxContext::get_architecture().is_ok();
-            if let (Ok(input_path), Ok(output_path)) =
-                (get_arg(matches, "input"), get_arg(matches, "output"))
-            {
+            if let Ok(input_path) = get_arg(matches, "input") {
                 if has_onnx_context {
-                    run_debug_verify_onnx::<C, _, CircuitDefaultType, CircuitType>(
-                        file_reader,
-                        &input_path,
-                        &output_path,
-                        &circuit_path,
-                        mode,
-                    )?;
+                    run_debug_verify_onnx::<C, CircuitType>(&input_path, &circuit_path, mode)?;
                 }
             }
 
