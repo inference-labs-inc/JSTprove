@@ -2,9 +2,18 @@ use ndarray::{Array1, ArrayD, ArrayView1, Axis, Ix1, IxDyn, concatenate};
 
 use expander_compiler::expander_circuit;
 use expander_compiler::frontend::{
-    BN254Config, CircuitField, Config, Define, FieldArith, GoldilocksBasefoldConfig,
-    GoldilocksConfig, GoldilocksExt2BasefoldConfig, GoldilocksWhirConfig, RootAPI, Variable,
-    declare_circuit,
+    BN254Config,
+    CircuitField,
+    Config,
+    Define,
+    FieldArith,
+    GoldilocksBasefoldConfig,
+    GoldilocksConfig,
+    GoldilocksExt2BasefoldConfig,
+    GoldilocksWhirConfig,
+    RootAPI,
+    Variable,
+    declare_circuit, // GoldilocksWhirConfig = GoldilocksExt3x1ConfigSha2Whir
 };
 use expander_compiler::gkr_engine::GKREngine;
 

@@ -5,9 +5,13 @@
 mod goldilocks;
 pub use goldilocks::{Goldilocks, EPSILON, GOLDILOCKS_MOD};
 
-/// Goldilocks extension field
+/// Goldilocks extension field (degree 2)
 mod goldilocks_ext;
 pub use goldilocks_ext::GoldilocksExt2;
+
+/// Goldilocks extension field (degree 3, 192-bit)
+mod goldilocks_ext3;
+pub use goldilocks_ext3::GoldilocksExt3;
 
 /// GoldilocksExt2 as a standalone 128-bit scalar field (degree-1 self-extension)
 mod goldilocks_ext2_scalar;

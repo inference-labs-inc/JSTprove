@@ -46,8 +46,55 @@ where
 }
 
 fn min_tree_elems<EvalF: Field>() -> usize {
-    let elems_per_leaf = LEAF_BYTES / EvalF::SIZE;
-    (2 * elems_per_leaf).max(4)
+    let epl = elems_per_leaf::<EvalF>();
+    (2 * epl).max(8)
+}
+
+fn elems_per_leaf<EvalF: Field>() -> usize {
+    if EvalF::SIZE > 0 && LEAF_BYTES % EvalF::SIZE == 0 {
+        LEAF_BYTES / EvalF::SIZE
+    } else {
+        LEAF_BYTES / EvalF::SIZE.next_power_of_two()
+    }
+}
+
+fn build_tree_from_ext_codeword<EvalF: Field + SimdField<Scalar = EvalF>>(
+    codeword: &[EvalF],
+) -> Tree {
+    if EvalF::SIZE > 0 && LEAF_BYTES % EvalF::SIZE == 0 {
+        Tree::compact_new_with_field_elems::<EvalF, EvalF>(codeword.to_vec())
+    } else {
+        let epl = elems_per_leaf::<EvalF>();
+        let padded_elem_size = EvalF::SIZE.next_power_of_two();
+        let num_leaves = (codeword.len() + epl - 1) / epl;
+        assert!(num_leaves.is_power_of_two());
+        let mut leaves = Vec::with_capacity(num_leaves);
+        for chunk in codeword.chunks(epl) {
+            let mut data = [0u8; LEAF_BYTES];
+            for (i, elem) in chunk.iter().enumerate() {
+                let start = i * padded_elem_size;
+                let mut buf = vec![0u8; EvalF::SIZE];
+                elem.serialize_into(&mut buf[..]).unwrap();
+                data[start..start + EvalF::SIZE].copy_from_slice(&buf);
+            }
+            leaves.push(tree::Leaf::new(data));
+        }
+        Tree::new_with_leaves(leaves)
+    }
+}
+
+fn extract_ext_from_padded_leaf<EvalF: Field>(leaf_data: &[u8], offset: usize) -> Option<EvalF> {
+    let padded_elem_size = if LEAF_BYTES % EvalF::SIZE == 0 {
+        EvalF::SIZE
+    } else {
+        EvalF::SIZE.next_power_of_two()
+    };
+    let start = offset * padded_elem_size;
+    let end = start + EvalF::SIZE;
+    if end > leaf_data.len() {
+        return None;
+    }
+    EvalF::deserialize_from(&leaf_data[start..end]).ok()
 }
 
 fn compute_sumcheck_round<F, EvalF>(
@@ -311,7 +358,7 @@ where
         if cr < n_committed {
             let cw = current_codeword_ext.as_ref().unwrap();
             if cw.len() >= min_elems {
-                let tree = Tree::compact_new_with_field_elems::<EvalF, EvalF>(cw.clone());
+                let tree = build_tree_from_ext_codeword(cw);
                 let root = tree.root();
                 transcript.append_commitment(root.as_bytes());
                 round_commitments.push(root);
@@ -341,7 +388,7 @@ where
     let final_poly = current_codeword_ext.unwrap_or_default();
     let committed_rounds = round_commitments.len();
     let source_to_target = 1usize << WHIR_FOLDING_FACTOR;
-    let ext_elems_per_leaf = LEAF_BYTES / EvalF::SIZE;
+    let ext_elems_per_leaf = elems_per_leaf::<EvalF>();
 
     let mut round_query_proofs = Vec::with_capacity(committed_rounds);
 
@@ -412,22 +459,18 @@ fn extract_base_from_leaf<F: Field>(leaf_data: &[u8], offset: usize) -> Option<F
 }
 
 fn verify_leaf_values<EvalF: Field>(leaf_data: &[u8], values: &[EvalF]) -> bool {
-    let elems_per_leaf = LEAF_BYTES / EvalF::SIZE;
-    if leaf_data.len() < LEAF_BYTES || values.len() != elems_per_leaf {
+    let epl = elems_per_leaf::<EvalF>();
+    if leaf_data.len() < LEAF_BYTES || values.len() != epl {
         return false;
     }
     for (i, v) in values.iter().enumerate() {
-        let start = i * EvalF::SIZE;
-        let end = start + EvalF::SIZE;
-        if end > leaf_data.len() {
-            return false;
-        }
-        let deserialized = match EvalF::deserialize_from(&leaf_data[start..end]) {
-            Ok(val) => val,
-            Err(_) => return false,
-        };
-        if deserialized != *v {
-            return false;
+        match extract_ext_from_padded_leaf::<EvalF>(leaf_data, i) {
+            Some(deserialized) => {
+                if deserialized != *v {
+                    return false;
+                }
+            }
+            None => return false,
         }
     }
     true
@@ -534,7 +577,7 @@ where
         return false;
     }
 
-    let ext_elems_per_leaf = LEAF_BYTES / EvalF::SIZE;
+    let ext_elems_per_leaf = elems_per_leaf::<EvalF>();
     let source_to_target = 1usize << WHIR_FOLDING_FACTOR;
 
     for cr in 0..committed_rounds {
@@ -607,7 +650,7 @@ where
                         None => return false,
                     }
                 } else {
-                    match extract_base_from_leaf::<EvalF>(leaf_data, offset_in_leaf) {
+                    match extract_ext_from_padded_leaf::<EvalF>(leaf_data, offset_in_leaf) {
                         Some(v) => v,
                         None => return false,
                     }

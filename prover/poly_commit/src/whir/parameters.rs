@@ -1,8 +1,8 @@
 pub const WHIR_RATE_LOG: usize = 1;
 pub const WHIR_FOLDING_FACTOR: usize = 4;
-pub const WHIR_FIELD_SIZE_BITS: f64 = 128.0;
+pub const WHIR_FIELD_SIZE_BITS: f64 = 192.0;
 pub const WHIR_OOD_SAMPLES: usize = 2;
-pub const WHIR_POW_BITS: usize = 22;
+pub const WHIR_POW_BITS: usize = 0;
 
 pub fn whir_fold_security() -> f64 {
     let log_inv_rate = WHIR_RATE_LOG as f64;
