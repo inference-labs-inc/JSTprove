@@ -59,6 +59,18 @@ pub enum OpType {
     GlobalAveragePool,
     InstanceNormalization,
     GroupNormalization,
+    Not,
+    And,
+    Equal,
+    Greater,
+    Less,
+    ConstantOfShape,
+    Sin,
+    Cos,
+    Range,
+    ReduceMax,
+    ScatterND,
+    GatherElements,
 }
 
 impl OpType {
@@ -117,6 +129,18 @@ impl OpType {
             "GlobalAveragePool" => Ok(Self::GlobalAveragePool),
             "InstanceNormalization" => Ok(Self::InstanceNormalization),
             "GroupNormalization" => Ok(Self::GroupNormalization),
+            "Not" => Ok(Self::Not),
+            "And" => Ok(Self::And),
+            "Equal" => Ok(Self::Equal),
+            "Greater" => Ok(Self::Greater),
+            "Less" => Ok(Self::Less),
+            "ConstantOfShape" => Ok(Self::ConstantOfShape),
+            "Sin" => Ok(Self::Sin),
+            "Cos" => Ok(Self::Cos),
+            "Range" => Ok(Self::Range),
+            "ReduceMax" => Ok(Self::ReduceMax),
+            "ScatterND" => Ok(Self::ScatterND),
+            "GatherElements" => Ok(Self::GatherElements),
             other => bail!("unsupported ONNX op: {other}"),
         }
     }

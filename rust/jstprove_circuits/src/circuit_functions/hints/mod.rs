@@ -69,6 +69,13 @@ pub use averagepool::averagepool_hint;
 pub mod pow;
 pub use pow::pow_hint;
 
+pub mod sin;
+pub use sin::sin_hint;
+pub mod cos;
+pub use cos::cos_hint;
+pub mod reduce_max;
+pub use reduce_max::reduce_max_hint;
+
 /// LogUp hint registration
 use circuit_std_rs::logup::{query_count_by_key_hint, query_count_hint, rangeproof_hint};
 use expander_compiler::field::Field as CompilerField;
@@ -141,6 +148,9 @@ pub fn build_logup_hint_registry<F: CompilerField>() -> HintRegistry<F> {
         instance_norm::INSTANCE_NORM_HINT_KEY,
         instance_norm_hint::<F>,
     );
+    registry.register(sin::SIN_HINT_KEY, sin_hint::<F>);
+    registry.register(cos::COS_HINT_KEY, cos_hint::<F>);
+    registry.register(reduce_max::REDUCE_MAX_HINT_KEY, reduce_max_hint::<F>);
 
     registry
 }
