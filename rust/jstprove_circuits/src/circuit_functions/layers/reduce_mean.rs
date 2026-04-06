@@ -73,6 +73,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
 
         let n_const = api.constant(CircuitField::<C>::from_u256(U256::from(n as u64)));
         let tolerance = api.constant(CircuitField::<C>::from_u256(U256::from(n as u64)));
+        let two_n = api.constant(CircuitField::<C>::from_u256(U256::from(2 * n as u64)));
         let tol_bits = (2 * n + 1).next_power_of_two().trailing_zeros() as usize;
 
         let n_bits_u32 = u32::try_from(self.n_bits).unwrap_or(u32::MAX);
@@ -110,7 +111,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
                 .range_check::<C, Builder>(api, shifted_diff, tol_bits)
                 .map_err(|e| LayerError::Other {
                     layer: LayerKind::ReduceMean,
-                    msg: format!("mean tolerance range check: {e}"),
+                    msg: format!("mean tolerance lower bound: {e}"),
+                })?;
+
+            let upper_check = api.sub(two_n, shifted_diff);
+            logup_ctx
+                .range_check::<C, Builder>(api, upper_check, tol_bits)
+                .map_err(|e| LayerError::Other {
+                    layer: LayerKind::ReduceMean,
+                    msg: format!("mean tolerance upper bound: {e}"),
                 })?;
 
             let mean_shifted = api.add(mean_q, offset_var);
@@ -297,6 +306,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
         }
 
         let n_bits = layer_context.n_bits_for(&layer.name);
+        if n_bits == 0 || n_bits > 128 {
+            return Err(LayerError::Other {
+                layer: LayerKind::ReduceMean,
+                msg: format!("n_bits={n_bits} out of supported range 1..=128"),
+            }
+            .into());
+        }
 
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),
