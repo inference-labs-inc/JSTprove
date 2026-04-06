@@ -1,7 +1,7 @@
 use arith::Field;
-use goldilocks::{Goldilocks, GoldilocksExt2};
+use goldilocks::{Goldilocks, GoldilocksExt2, GoldilocksExt3};
 
-use super::types::{WhirCommitment, WhirOpening};
+use super::types::WhirCommitment;
 
 fn eval_mle_lsb_first(evals: &[GoldilocksExt2], point: &[GoldilocksExt2]) -> GoldilocksExt2 {
     let n = point.len();
@@ -79,6 +79,76 @@ fn whir_commit_open_verify_roundtrip() {
         &point,
         &commitment,
         claimed_eval,
+    ));
+}
+
+fn eval_mle_lsb_first_ext3(evals: &[GoldilocksExt3], point: &[GoldilocksExt3]) -> GoldilocksExt3 {
+    let n = point.len();
+    assert_eq!(evals.len(), 1 << n);
+    let mut scratch = evals.to_vec();
+    for (k, &r) in point.iter().enumerate() {
+        let half = 1 << (n - 1 - k);
+        for i in 0..half {
+            scratch[i] = scratch[i * 2] * (GoldilocksExt3::ONE - r) + scratch[i * 2 + 1] * r;
+        }
+    }
+    scratch[0]
+}
+
+#[test]
+fn whir_ext3_commit_open_verify_roundtrip() {
+    use super::parameters::WHIR_RATE_LOG;
+    use crate::basefold::encoding::rs_encode_with_rate;
+    use gkr_engine::Transcript;
+    use gkr_hashers::SHA256hasher;
+    use transcript::BytesHashTranscript;
+
+    let num_vars = 8;
+    let n = 1 << num_vars;
+
+    let base_evals: Vec<Goldilocks> = (0..n).map(|i| Goldilocks::from(i as u32 + 1)).collect();
+    let point: Vec<GoldilocksExt3> = (0..num_vars)
+        .map(|i| GoldilocksExt3::from(Goldilocks::from(i as u32 + 10)))
+        .collect();
+    let ext_evals: Vec<GoldilocksExt3> = base_evals
+        .iter()
+        .map(|&x| GoldilocksExt3::from(x))
+        .collect();
+    let claimed_eval = eval_mle_lsb_first_ext3(&ext_evals, &point);
+
+    let codeword = rs_encode_with_rate(&base_evals, WHIR_RATE_LOG);
+    let tree = tree::Tree::compact_new_with_field_elems::<Goldilocks, Goldilocks>(codeword.clone());
+    let commitment = WhirCommitment {
+        root: tree.root(),
+        num_vars,
+    };
+
+    let mut pt = BytesHashTranscript::<SHA256hasher>::new();
+    let opening = super::pcs_trait_impl::whir_open_for_test_ext3(
+        &base_evals,
+        &codeword,
+        &tree,
+        num_vars,
+        &point,
+        &mut pt,
+    );
+
+    let mut vt = BytesHashTranscript::<SHA256hasher>::new();
+    assert!(super::pcs_trait_impl::whir_verify_for_test_ext3(
+        &commitment,
+        &point,
+        claimed_eval,
+        &opening,
+        &mut vt,
+    ));
+
+    let mut vt2 = BytesHashTranscript::<SHA256hasher>::new();
+    assert!(!super::pcs_trait_impl::whir_verify_for_test_ext3(
+        &commitment,
+        &point,
+        claimed_eval + GoldilocksExt3::ONE,
+        &opening,
+        &mut vt2,
     ));
 }
 

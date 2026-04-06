@@ -111,12 +111,23 @@ impl<F: ExtensionField> ExpSerde for WhirOpening<F> {
         Ok(())
     }
     fn deserialize_from<R: std::io::Read>(mut reader: R) -> SerdeResult<Self> {
+        const MAX_ROUNDS: usize = 64;
+        const MAX_SUMCHECK: usize = 256;
+        const MAX_QUERIES_PER_ROUND: usize = 1 << 16;
+        const MAX_FINAL_POLY: usize = 1 << 20;
+
         let rc_len = U256::deserialize_from(&mut reader)?.as_usize();
+        if rc_len > MAX_ROUNDS {
+            return Err(serdes::SerdeError::DeserializeError);
+        }
         let mut round_commitments = Vec::with_capacity(rc_len);
         for _ in 0..rc_len {
             round_commitments.push(Node::deserialize_from(&mut reader)?);
         }
         let sm_len = U256::deserialize_from(&mut reader)?.as_usize();
+        if sm_len > MAX_SUMCHECK {
+            return Err(serdes::SerdeError::DeserializeError);
+        }
         let mut sumcheck_messages = Vec::with_capacity(sm_len);
         for _ in 0..sm_len {
             sumcheck_messages.push(crate::basefold::SumcheckRoundMessage::deserialize_from(
@@ -124,9 +135,15 @@ impl<F: ExtensionField> ExpSerde for WhirOpening<F> {
             )?);
         }
         let ood_len = U256::deserialize_from(&mut reader)?.as_usize();
+        if ood_len > MAX_ROUNDS {
+            return Err(serdes::SerdeError::DeserializeError);
+        }
         let mut ood_evaluations = Vec::with_capacity(ood_len);
         for _ in 0..ood_len {
             let e_len = U256::deserialize_from(&mut reader)?.as_usize();
+            if e_len > MAX_SUMCHECK {
+                return Err(serdes::SerdeError::DeserializeError);
+            }
             let mut evals = Vec::with_capacity(e_len);
             for _ in 0..e_len {
                 evals.push(F::deserialize_from(&mut reader)?);
@@ -134,19 +151,31 @@ impl<F: ExtensionField> ExpSerde for WhirOpening<F> {
             ood_evaluations.push(evals);
         }
         let pn_len = U256::deserialize_from(&mut reader)?.as_usize();
+        if pn_len > MAX_ROUNDS {
+            return Err(serdes::SerdeError::DeserializeError);
+        }
         let mut pow_nonces = Vec::with_capacity(pn_len);
         for _ in 0..pn_len {
             pow_nonces.push(u64::deserialize_from(&mut reader)?);
         }
         let fp_len = U256::deserialize_from(&mut reader)?.as_usize();
+        if fp_len > MAX_FINAL_POLY {
+            return Err(serdes::SerdeError::DeserializeError);
+        }
         let mut final_poly = Vec::with_capacity(fp_len);
         for _ in 0..fp_len {
             final_poly.push(F::deserialize_from(&mut reader)?);
         }
         let rq_len = U256::deserialize_from(&mut reader)?.as_usize();
+        if rq_len > MAX_ROUNDS {
+            return Err(serdes::SerdeError::DeserializeError);
+        }
         let mut round_query_proofs = Vec::with_capacity(rq_len);
         for _ in 0..rq_len {
             let q_len = U256::deserialize_from(&mut reader)?.as_usize();
+            if q_len > MAX_QUERIES_PER_ROUND {
+                return Err(serdes::SerdeError::DeserializeError);
+            }
             let mut proofs = Vec::with_capacity(q_len);
             for _ in 0..q_len {
                 proofs.push(WhirRoundQueryProof::deserialize_from(&mut reader)?);

@@ -622,6 +622,42 @@ pub fn whir_verify_for_test(
     )
 }
 
+#[cfg(test)]
+pub fn whir_open_for_test_ext3(
+    evals: &[goldilocks::Goldilocks],
+    initial_codeword: &[goldilocks::Goldilocks],
+    initial_tree: &Tree,
+    num_vars: usize,
+    eval_point: &[goldilocks::GoldilocksExt3],
+    transcript: &mut impl Transcript,
+) -> WhirOpening<goldilocks::GoldilocksExt3> {
+    whir_open::<goldilocks::Goldilocks, goldilocks::GoldilocksExt3>(
+        evals,
+        initial_codeword,
+        initial_tree,
+        num_vars,
+        eval_point,
+        transcript,
+    )
+}
+
+#[cfg(test)]
+pub fn whir_verify_for_test_ext3(
+    commitment: &WhirCommitment,
+    eval_point: &[goldilocks::GoldilocksExt3],
+    claimed_eval: goldilocks::GoldilocksExt3,
+    opening: &WhirOpening<goldilocks::GoldilocksExt3>,
+    transcript: &mut impl Transcript,
+) -> bool {
+    whir_verify::<goldilocks::Goldilocks, goldilocks::GoldilocksExt3>(
+        commitment,
+        eval_point,
+        claimed_eval,
+        opening,
+        transcript,
+    )
+}
+
 impl<C> ExpanderPCS<C> for WhirPCSForGKR<C>
 where
     C: FieldEngine,
