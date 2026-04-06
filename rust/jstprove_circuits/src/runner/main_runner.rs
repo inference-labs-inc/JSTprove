@@ -858,17 +858,24 @@ fn run_debug_verification<C: Config>(
         eprintln!("{obj}");
     }
 
-    if valid {
-        Ok(())
-    } else {
+    if !valid {
         let first_fail = results.iter().find(|(_, _, p)| !*p);
         let msg = if let Some((idx, total, _)) = first_fail {
             format!("sumcheck rejected at GKR layer {}/{total}", idx + 1)
         } else {
             "proof invalid".into()
         };
-        Err(RunError::Verify(msg))
+        return Err(RunError::Verify(msg));
     }
+
+    if !witness_valid {
+        let failing_count = total_count - pass_count;
+        return Err(RunError::Verify(format!(
+            "GKR proof valid but witness fails {failing_count}/{total_count} output assertion(s)"
+        )));
+    }
+
+    Ok(())
 }
 
 fn run_debug_verify_onnx<C: Config, I, CircuitDefaultType, CircuitType>(
