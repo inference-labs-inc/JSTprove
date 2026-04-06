@@ -1,13 +1,15 @@
 pub const WHIR_RATE_LOG: usize = 1;
 pub const WHIR_FOLDING_FACTOR: usize = 4;
 pub const WHIR_FIELD_SIZE_BITS: f64 = 128.0;
+pub const WHIR_OOD_SAMPLES: usize = 2;
+pub const WHIR_POW_BITS: usize = 22;
 
 pub fn whir_fold_security() -> f64 {
     let log_inv_rate = WHIR_RATE_LOG as f64;
     let log_k = (1u64 << WHIR_FOLDING_FACTOR) as f64;
     let log_k = log_k.log2();
     let error = 7.0 * std::f64::consts::LOG2_10 + 3.5 * log_inv_rate + 2.0 * log_k;
-    WHIR_FIELD_SIZE_BITS - error
+    WHIR_FIELD_SIZE_BITS - error + WHIR_POW_BITS as f64
 }
 
 pub fn whir_queries_for_committed_round(cr: usize) -> usize {

@@ -16,6 +16,7 @@ sumcheck.workspace = true
 
 ethnum.workspace = true
 ark-std.workspace = true
+sha2.workspace = true
 derivative.workspace = true
 halo2curves.workspace = true
 itertools.workspace = true

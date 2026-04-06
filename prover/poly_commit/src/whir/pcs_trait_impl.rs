@@ -8,8 +8,11 @@ use gkr_engine::{
 use polynomials::{MultiLinearPoly, MultilinearExtension};
 use tree::{Tree, LEAF_BYTES};
 
+use sha2::{Digest, Sha256};
+
 use super::parameters::{
-    num_committed_rounds, whir_queries_for_committed_round, WHIR_FOLDING_FACTOR, WHIR_RATE_LOG,
+    num_committed_rounds, whir_queries_for_committed_round, WHIR_FOLDING_FACTOR, WHIR_OOD_SAMPLES,
+    WHIR_POW_BITS, WHIR_RATE_LOG,
 };
 use super::types::{WhirCommitment, WhirOpening, WhirRoundQueryProof, WhirSRS, WhirScratchPad};
 use crate::basefold::encoding::{
@@ -145,6 +148,62 @@ fn compute_eq_eval<EvalF: Field>(challenges: &[EvalF], eval_point: &[EvalF]) -> 
     result
 }
 
+fn evaluate_ood<EvalF: FFTField>(codeword: &[EvalF], z: EvalF) -> EvalF {
+    let mut coeffs = codeword.to_vec();
+    crate::basefold::encoding::bit_reverse_slice(&mut coeffs);
+    let coeffs = EvalF::ifft(&coeffs);
+    let mut result = EvalF::ZERO;
+    let mut power = EvalF::ONE;
+    for c in &coeffs {
+        result += *c * power;
+        power *= z;
+    }
+    result
+}
+
+fn pow_digest(transcript: &mut impl Transcript) -> [u8; 32] {
+    let state = transcript.hash_and_return_state();
+    Sha256::digest(&state).into()
+}
+
+fn grind_pow(transcript: &mut impl Transcript, pow_bits: usize) -> u64 {
+    if pow_bits == 0 {
+        return 0;
+    }
+    let digest = pow_digest(transcript);
+    let threshold = u64::MAX >> pow_bits;
+    for nonce in 0u64.. {
+        let mut hasher = Sha256::new();
+        hasher.update(digest);
+        hasher.update(nonce.to_le_bytes());
+        let result = hasher.finalize();
+        let val = u64::from_be_bytes(result[..8].try_into().unwrap());
+        if val <= threshold {
+            transcript.append_u8_slice(&nonce.to_le_bytes());
+            return nonce;
+        }
+    }
+    unreachable!()
+}
+
+fn verify_pow(transcript: &mut impl Transcript, pow_bits: usize, nonce: u64) -> bool {
+    if pow_bits == 0 {
+        return true;
+    }
+    let digest = pow_digest(transcript);
+    let threshold = u64::MAX >> pow_bits;
+    let mut hasher = Sha256::new();
+    hasher.update(digest);
+    hasher.update(nonce.to_le_bytes());
+    let result = hasher.finalize();
+    let val = u64::from_be_bytes(result[..8].try_into().unwrap());
+    if val > threshold {
+        return false;
+    }
+    transcript.append_u8_slice(&nonce.to_le_bytes());
+    true
+}
+
 fn replay_folds<F, EvalF>(
     source_values: &[EvalF],
     challenges: &[EvalF],
@@ -208,6 +267,8 @@ where
     let mut round_trees: Vec<Tree> = Vec::new();
     let mut round_codewords: Vec<Vec<EvalF>> = Vec::new();
     let mut sumcheck_messages = Vec::with_capacity(num_vars);
+    let mut ood_evaluations = Vec::new();
+    let mut pow_nonces = Vec::new();
 
     let mut current_codeword_ext: Option<Vec<EvalF>> = None;
     let mut total_folds_done = 0;
@@ -256,6 +317,18 @@ where
                 round_commitments.push(root);
                 round_trees.push(tree);
                 round_codewords.push(cw.clone());
+
+                let mut round_ood = Vec::with_capacity(WHIR_OOD_SAMPLES);
+                for _ in 0..WHIR_OOD_SAMPLES {
+                    let z: EvalF = transcript.generate_field_element();
+                    let v = evaluate_ood(cw, z);
+                    transcript.append_field_element(&v);
+                    round_ood.push(v);
+                }
+                ood_evaluations.push(round_ood);
+
+                let nonce = grind_pow(transcript, WHIR_POW_BITS);
+                pow_nonces.push(nonce);
             }
         } else {
             let fp = current_codeword_ext.clone().unwrap_or_default();
@@ -322,6 +395,8 @@ where
     WhirOpening {
         round_commitments,
         sumcheck_messages,
+        ood_evaluations,
+        pow_nonces,
         final_poly,
         round_query_proofs,
     }
@@ -389,7 +464,10 @@ where
     if committed_rounds != n_committed {
         return false;
     }
-    if opening.round_query_proofs.len() != committed_rounds {
+    if opening.round_query_proofs.len() != committed_rounds
+        || opening.ood_evaluations.len() != committed_rounds
+        || opening.pow_nonces.len() != committed_rounds
+    {
         return false;
     }
 
@@ -421,6 +499,19 @@ where
 
         if cr < n_committed {
             transcript.append_commitment(opening.round_commitments[cr].as_bytes());
+
+            let ood_evals = &opening.ood_evaluations[cr];
+            if ood_evals.len() != WHIR_OOD_SAMPLES {
+                return false;
+            }
+            for ood_val in ood_evals {
+                let _z: EvalF = transcript.generate_field_element();
+                transcript.append_field_element(ood_val);
+            }
+
+            if !verify_pow(transcript, WHIR_POW_BITS, opening.pow_nonces[cr]) {
+                return false;
+            }
         } else {
             for f in &opening.final_poly {
                 transcript.append_field_element(f);

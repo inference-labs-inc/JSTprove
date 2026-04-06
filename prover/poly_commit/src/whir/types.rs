@@ -94,6 +94,8 @@ impl<F: ExtensionField> ExpSerde for WhirRoundQueryProof<F> {
 pub struct WhirOpening<F: ExtensionField> {
     pub round_commitments: Vec<Node>,
     pub sumcheck_messages: Vec<crate::basefold::SumcheckRoundMessage<F>>,
+    pub ood_evaluations: Vec<Vec<F>>,
+    pub pow_nonces: Vec<u64>,
     pub final_poly: Vec<F>,
     pub round_query_proofs: Vec<Vec<WhirRoundQueryProof<F>>>,
 }
@@ -107,6 +109,17 @@ impl<F: ExtensionField> ExpSerde for WhirOpening<F> {
         U256::from(self.sumcheck_messages.len() as u64).serialize_into(&mut writer)?;
         for m in &self.sumcheck_messages {
             m.serialize_into(&mut writer)?;
+        }
+        U256::from(self.ood_evaluations.len() as u64).serialize_into(&mut writer)?;
+        for evals in &self.ood_evaluations {
+            U256::from(evals.len() as u64).serialize_into(&mut writer)?;
+            for e in evals {
+                e.serialize_into(&mut writer)?;
+            }
+        }
+        U256::from(self.pow_nonces.len() as u64).serialize_into(&mut writer)?;
+        for &n in &self.pow_nonces {
+            n.serialize_into(&mut writer)?;
         }
         U256::from(self.final_poly.len() as u64).serialize_into(&mut writer)?;
         for f in &self.final_poly {
@@ -134,6 +147,21 @@ impl<F: ExtensionField> ExpSerde for WhirOpening<F> {
                 &mut reader,
             )?);
         }
+        let ood_len = U256::deserialize_from(&mut reader)?.as_usize();
+        let mut ood_evaluations = Vec::with_capacity(ood_len);
+        for _ in 0..ood_len {
+            let e_len = U256::deserialize_from(&mut reader)?.as_usize();
+            let mut evals = Vec::with_capacity(e_len);
+            for _ in 0..e_len {
+                evals.push(F::deserialize_from(&mut reader)?);
+            }
+            ood_evaluations.push(evals);
+        }
+        let pn_len = U256::deserialize_from(&mut reader)?.as_usize();
+        let mut pow_nonces = Vec::with_capacity(pn_len);
+        for _ in 0..pn_len {
+            pow_nonces.push(u64::deserialize_from(&mut reader)?);
+        }
         let fp_len = U256::deserialize_from(&mut reader)?.as_usize();
         let mut final_poly = Vec::with_capacity(fp_len);
         for _ in 0..fp_len {
@@ -152,6 +180,8 @@ impl<F: ExtensionField> ExpSerde for WhirOpening<F> {
         Ok(Self {
             round_commitments,
             sumcheck_messages,
+            ood_evaluations,
+            pow_nonces,
             final_poly,
             round_query_proofs,
         })
