@@ -131,6 +131,7 @@ pub fn quantize_model(mut graph: LayerGraph, config: &ScaleConfig) -> Result<Qua
     let alpha = config.alpha;
 
     fold_all_batchnorms(&mut graph)?;
+    rewrite_pow_sqrt(&mut graph);
 
     let n_bits_config = compute_bounds(&graph, config)?;
 
