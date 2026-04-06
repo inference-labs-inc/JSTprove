@@ -379,7 +379,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceSumLayer {
 
 // -------- Helpers --------
 
-fn unravel(mut flat: usize, shape: &[usize]) -> Vec<usize> {
+pub(crate) fn unravel(mut flat: usize, shape: &[usize]) -> Vec<usize> {
     let mut coords = vec![0usize; shape.len()];
     for i in (0..shape.len()).rev() {
         if shape[i] > 0 {

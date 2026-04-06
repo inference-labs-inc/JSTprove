@@ -1,76 +1,135 @@
-// ONNX `ReduceMean` layer for ZK circuits.
-//
-// # ZK approach
-// ReduceMean computes the arithmetic mean along specified axes. Division is
-// not expressible as a low-degree polynomial, so a hint is used:
-//
-// 1. **Hint**: for each "lane" of n values along the reduced axes, call
-//    `api.new_hint("jstprove.reduce_mean_hint", &[x_0, ..., x_{n-1}, scale], 1)`
-//    which returns `round(sum(x_i) / n)` in the field. No constraint is added.
-//
-// 2. **No range check**: mean of signed values can be negative, so the LogUp
-//    range check (which only supports non-negative values) is not applied.
-//    The output is unconstrained beyond being a valid field element.
-//
-// # Supported attributes
-// - `axes`     (default: all axes): axes along which to reduce.
-// - `keepdims` (default 1): if 1, keep reduced dims as size 1; if 0, remove them.
-
 use std::collections::HashMap;
 
-use ndarray::ArrayD;
+use ethnum::U256;
+use ndarray::{ArrayD, IxDyn};
 
-use expander_compiler::frontend::{Config, RootAPI, Variable};
+use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
 
 use crate::circuit_functions::{
     CircuitError,
     gadgets::LogupRangeCheckContext,
-    layers::{LayerError, LayerKind, layer_ops::LayerOp},
+    layers::{
+        LayerError, LayerKind,
+        layer_ops::LayerOp,
+        reduce_sum::{collect_reduction_inputs, unravel},
+    },
     utils::onnx_model::get_w_or_b,
 };
 
-// -------- Struct --------
-
-// Fields populated by `build` are kept for when a sound mean constraint is
-// eventually implemented. `apply` always returns an error in the meantime.
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct ReduceMeanLayer {
     inputs: Vec<String>,
     outputs: Vec<String>,
-    /// Axes to reduce over (sorted, non-negative, within rank).
     axes: Vec<usize>,
-    /// If true, keep the reduced dimensions as size 1 in the output.
     keepdims: bool,
-    /// Input shape.
     input_shape: Vec<usize>,
-    /// Output shape.
     output_shape: Vec<usize>,
-    /// Scaling factor `2^scale_exponent`.
     scaling: u64,
+    lane_size: usize,
 }
-
-// -------- Implementation --------
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
     fn apply(
         &self,
-        _api: &mut Builder,
-        _logup_ctx: &mut LogupRangeCheckContext,
-        _input: &HashMap<String, ArrayD<Variable>>,
+        api: &mut Builder,
+        logup_ctx: &mut LogupRangeCheckContext,
+        input: &HashMap<String, ArrayD<Variable>>,
     ) -> Result<(Vec<String>, ArrayD<Variable>), CircuitError> {
-        // ReduceMean is not soundly implementable via hint alone: the hint
-        // produces an unconstrained output that a malicious prover can set to
-        // any value. Full soundness requires a verifiable mean constraint
-        // (e.g., sum check + range proof), which is not yet implemented.
-        Err(LayerError::Other {
-            layer: LayerKind::ReduceMean,
-            msg: "ReduceMean is not yet supported in the Expander backend: soundly \
-                  proving the mean relation requires constraints that are not yet \
-                  implemented."
-                .to_string(),
+        let input_name = self
+            .inputs
+            .first()
+            .ok_or_else(|| LayerError::MissingParameter {
+                layer: LayerKind::ReduceMean,
+                param: "input tensor".to_string(),
+            })?;
+
+        let x_input = input
+            .get(input_name)
+            .ok_or_else(|| LayerError::MissingInput {
+                layer: LayerKind::ReduceMean,
+                name: input_name.clone(),
+            })?;
+
+        if x_input.shape() != self.input_shape.as_slice() {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::ReduceMean,
+                msg: format!(
+                    "runtime input shape {:?} does not match expected {:?}",
+                    x_input.shape(),
+                    self.input_shape
+                ),
+            }
+            .into());
         }
-        .into())
+
+        let rank = self.input_shape.len();
+        let input_flat = x_input.as_slice().ok_or_else(|| LayerError::InvalidShape {
+            layer: LayerKind::ReduceMean,
+            msg: "input tensor is not contiguous".to_string(),
+        })?;
+
+        let n = self.lane_size;
+        let half_n = n / 2;
+        let total_out: usize = self.output_shape.iter().product();
+
+        let n_const = api.constant(CircuitField::<C>::from_u256(U256::from(n as u64)));
+        let bias = self.scaling * n as u64;
+        let bias_const = api.constant(CircuitField::<C>::from_u256(U256::from(
+            bias + half_n as u64,
+        )));
+        let bias_div_n = api.constant(CircuitField::<C>::from_u256(U256::from(self.scaling)));
+        let remainder_bits = usize::BITS as usize - n.leading_zeros() as usize + 1;
+
+        let mut out_storage: Vec<Variable> = Vec::with_capacity(total_out);
+
+        for out_flat in 0..total_out {
+            let out_coords = unravel(out_flat, &self.output_shape);
+            let input_indices = collect_reduction_inputs(
+                &out_coords,
+                &self.axes,
+                self.keepdims,
+                &self.input_shape,
+                rank,
+            );
+
+            let sum = if input_indices.is_empty() {
+                api.constant(CircuitField::<C>::from_u256(U256::from(0u64)))
+            } else {
+                let mut acc = input_flat[input_indices[0]];
+                for &idx in &input_indices[1..] {
+                    acc = api.add(acc, input_flat[idx]);
+                }
+                acc
+            };
+
+            let shifted_sum = api.add(sum, bias_const);
+            let shifted_q = api.unconstrained_int_div(shifted_sum, n_const);
+            let remainder = api.unconstrained_mod(shifted_sum, n_const);
+
+            let rhs_mul = api.mul(n_const, shifted_q);
+            let rhs = api.add(rhs_mul, remainder);
+            api.assert_is_equal(shifted_sum, rhs);
+
+            logup_ctx
+                .range_check::<C, Builder>(api, remainder, remainder_bits)
+                .map_err(|e| LayerError::Other {
+                    layer: LayerKind::ReduceMean,
+                    msg: format!("remainder range check: {e}"),
+                })?;
+
+            let mean = api.sub(shifted_q, bias_div_n);
+            out_storage.push(mean);
+        }
+
+        let result =
+            ArrayD::from_shape_vec(IxDyn(&self.output_shape), out_storage).map_err(|_| {
+                LayerError::InvalidShape {
+                    layer: LayerKind::ReduceMean,
+                    msg: format!("cannot reshape result into shape {:?}", self.output_shape),
+                }
+            })?;
+
+        Ok((self.outputs.clone(), result))
     }
 
     #[allow(
@@ -144,10 +203,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
             .unwrap_or(1)
             != 0;
 
-        // Parse axes from input[1] initializer (opset 18+), then from params attribute
-        // (opset ≤ 17), defaulting to all axes if neither is present.
         let axes: Vec<usize> = {
-            // Try input[1] from w_and_b_map first (opset 18+ style).
             let from_input: Option<Vec<i64>> = layer.inputs.get(1).and_then(|axes_name| {
                 get_w_or_b(layer_context.w_and_b_map, axes_name)
                     .ok()
@@ -207,8 +263,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
             }
         };
 
-        // Validate that the output shape from shapes_map matches what the
-        // axes+keepdims combination implies from the input shape.
         let expected_output_shape: Vec<usize> = if keepdims {
             (0..rank)
                 .map(|i| if axes.contains(&i) { 1 } else { input_shape[i] })
@@ -223,8 +277,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
             return Err(LayerError::InvalidShape {
                 layer: LayerKind::ReduceMean,
                 msg: format!(
-                    "output shape {output_shape:?} from shapes_map does not match \
-                     expected {expected_output_shape:?} \
+                    "output shape {output_shape:?} does not match expected {expected_output_shape:?} \
                      (input={input_shape:?}, axes={axes:?}, keepdims={keepdims})"
                 ),
             }
@@ -241,6 +294,15 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
                 ),
             })?;
 
+        let lane_size: usize = axes.iter().map(|&a| input_shape[a]).product();
+        if lane_size == 0 {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::ReduceMean,
+                msg: "reduction lane size is zero".to_string(),
+            }
+            .into());
+        }
+
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),
             outputs: layer.outputs.clone(),
@@ -249,13 +311,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
             input_shape,
             output_shape,
             scaling,
+            lane_size,
         }))
     }
 }
 
 #[cfg(test)]
 mod tests {
-
     fn compute_expected_mean(values: &[i64], lane_size: usize) -> Vec<i64> {
         values
             .chunks(lane_size)
@@ -269,7 +331,6 @@ mod tests {
 
     #[test]
     fn reduce_mean_uniform_lane() {
-        // mean([100, 200, 300, 400]) = 250
         let vals = [100i64, 200, 300, 400];
         let result = compute_expected_mean(&vals, 4);
         assert_eq!(result, vec![250i64]);
@@ -277,9 +338,6 @@ mod tests {
 
     #[test]
     fn reduce_mean_two_lanes() {
-        // shape [2, 4], reduce axis 1 → [2]
-        // lane 0: mean([100, 200, 300, 400]) = 250
-        // lane 1: mean([10, 20, 30, 40])     = 25
         let vals = [100i64, 200, 300, 400, 10, 20, 30, 40];
         let result = compute_expected_mean(&vals, 4);
         assert_eq!(result, vec![250i64, 25]);
@@ -287,7 +345,6 @@ mod tests {
 
     #[test]
     fn reduce_mean_signed() {
-        // mean([-100, 100]) = 0
         let vals = [-100i64, 100];
         let result = compute_expected_mean(&vals, 2);
         assert_eq!(result, vec![0i64]);
