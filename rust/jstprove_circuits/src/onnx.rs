@@ -77,6 +77,7 @@ impl Circuit<Variable> {
         let mut out = get_inputs(&self.input_arr, &params.inputs)?;
 
         let layers = build_layers::<C, Builder>(params, architecture, w_and_b)?;
+        let total_layers = layers.len();
 
         let chunk_bits = params
             .logup_chunk_bits
@@ -84,8 +85,18 @@ impl Circuit<Variable> {
         let mut logup_ctx = LogupRangeCheckContext::new(chunk_bits);
         logup_ctx.init::<C, Builder>(api);
 
-        for layer in &layers {
-            for (key, value) in layer.apply_multi(api, &mut logup_ctx, &out)? {
+        for (pos, built) in layers.iter().enumerate() {
+            api.display(
+                &format!(
+                    "[layer {}/{}] {} ({})",
+                    pos + 1,
+                    total_layers,
+                    built.name,
+                    built.op_type
+                ),
+                0,
+            );
+            for (key, value) in built.layer.apply_multi(api, &mut logup_ctx, &out)? {
                 out.insert(key, value);
             }
         }

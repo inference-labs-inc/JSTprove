@@ -114,9 +114,9 @@ pub(super) fn dispatch(
             jstprove_remainder::runner::pipe::run_pipe_verify(Path::new(&model_path))
                 .map_err(|e| RunError::Verify(format!("{e:#}")))?;
         }
-        "run_debug_witness" => {
+        "run_debug_witness" | "run_debug_verify" => {
             return Err(RunError::Unsupported(
-                "debug witness not supported for Remainder backend".into(),
+                "debug commands not yet supported for Remainder backend".into(),
             )
             .into());
         }

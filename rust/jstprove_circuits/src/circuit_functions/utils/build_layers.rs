@@ -23,7 +23,13 @@ pub fn default_n_bits_for_config<C: Config>() -> usize {
     }
 }
 
-type BoxedDynLayer<C, B> = Box<dyn LayerOp<C, B>>;
+pub struct BuiltLayer<C: Config, Builder: RootAPI<C>> {
+    pub name: String,
+    pub op_type: String,
+    pub arch_index: usize,
+    pub layer: Box<dyn LayerOp<C, Builder>>,
+}
+
 pub struct BuildLayerContext<'a> {
     pub w_and_b_map: &'a HashMap<String, &'a ONNXLayer>,
     pub shapes_map: &'a HashMap<String, Vec<usize>>,
@@ -64,8 +70,8 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
     circuit_params: &CircuitParams,
     architecture: &Architecture,
     w_and_b: &WANDB,
-) -> Result<Vec<Box<dyn LayerOp<C, Builder>>>, BuildError> {
-    let mut layers: Vec<BoxedDynLayer<C, Builder>> = vec![];
+) -> Result<Vec<BuiltLayer<C, Builder>>, BuildError> {
+    let mut layers: Vec<BuiltLayer<C, Builder>> = vec![];
 
     let w_and_b_map: HashMap<String, &ONNXLayer> = w_and_b
         .w_and_b
@@ -135,8 +141,12 @@ pub fn build_layers<C: Config, Builder: RootAPI<C>>(
             &layer_context,
         )
         .map_err(|e| BuildError::LayerBuild(format!("Failed to build {}: {}", layer.name, e)))?;
-        layers.push(built);
-        // tracing::info!("Layer added: {}", layer.op_type);
+        layers.push(BuiltLayer {
+            name: layer.name.clone(),
+            op_type: layer.op_type.clone(),
+            arch_index: i,
+            layer: built,
+        });
     }
     Ok(layers)
 }
