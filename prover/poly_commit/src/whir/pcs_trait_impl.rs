@@ -50,6 +50,15 @@ fn min_tree_elems<EvalF: Field>() -> usize {
     (2 * epl).max(8)
 }
 
+fn base_elems_per_leaf<F: Field>() -> usize {
+    assert!(
+        LEAF_BYTES % F::SIZE == 0,
+        "LEAF_BYTES ({LEAF_BYTES}) must be divisible by base F::SIZE ({})",
+        F::SIZE,
+    );
+    LEAF_BYTES / F::SIZE
+}
+
 fn elems_per_leaf<EvalF: Field>() -> usize {
     assert!(
         EvalF::SIZE <= LEAF_BYTES,
@@ -390,16 +399,9 @@ where
         }
     }
 
-    if round_commitments.is_empty() {
-        let cw: Vec<EvalF> = initial_codeword.iter().map(|&x| EvalF::from(x)).collect();
-        let tree = build_tree_from_ext_codeword(&cw);
-        let root = tree.root();
-        transcript.append_commitment(root.as_bytes());
-        round_commitments.push(root);
-        round_trees.push(tree);
-        round_codewords.push(cw);
-        ood_evaluations.push(Vec::new());
-        pow_nonces.push(0);
+    let fallback_no_queries = round_commitments.is_empty();
+    if fallback_no_queries {
+        transcript.append_commitment(initial_tree.root().as_bytes());
     }
 
     let final_poly = current_codeword_ext.unwrap_or_default();
@@ -423,7 +425,7 @@ where
         let target_tree = &round_trees[cr];
 
         let source_elems_per_leaf = if cr == 0 {
-            LEAF_BYTES / F::SIZE
+            base_elems_per_leaf::<F>()
         } else {
             ext_elems_per_leaf
         };
@@ -541,9 +543,7 @@ where
             }
         }
     }
-    if expected_committed == 0 {
-        expected_committed = 1;
-    }
+    let fallback_no_queries = expected_committed == 0;
 
     if committed_rounds != expected_committed {
         return false;
@@ -613,8 +613,8 @@ where
         }
     }
 
-    if commit_idx == 0 && committed_rounds > 0 {
-        transcript.append_commitment(opening.round_commitments[0].as_bytes());
+    if fallback_no_queries {
+        transcript.append_commitment(commitment.root.as_bytes());
     }
 
     let fri_constant = opening.final_poly[0];
@@ -652,7 +652,7 @@ where
         let target_commitment = &opening.round_commitments[cr];
 
         let source_elems_per_leaf = if cr == 0 {
-            LEAF_BYTES / F::SIZE
+            base_elems_per_leaf::<F>()
         } else {
             ext_elems_per_leaf
         };
@@ -744,6 +744,12 @@ where
 }
 
 fn whir_commit<F: FFTField + SimdField<Scalar = F>>(evals: &[F]) -> (WhirCommitment, Tree, Vec<F>) {
+    assert!(!evals.is_empty(), "whir_commit: evals must not be empty");
+    assert!(
+        LEAF_BYTES % F::SIZE == 0,
+        "whir_commit: LEAF_BYTES ({LEAF_BYTES}) must be divisible by F::SIZE ({})",
+        F::SIZE,
+    );
     let num_vars = evals.len().ilog2() as usize;
     assert_eq!(evals.len(), 1 << num_vars);
     let codeword = rs_encode_with_rate(evals, WHIR_RATE_LOG);
