@@ -189,7 +189,7 @@ fn conv_witness(c: &mut Criterion) {
     let path = tmp.path().join("c.bundle");
     compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
     let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
-    let activations = vec![0.0f64; 1 * 1 * 8 * 8];
+    let activations = vec![0.0f64; 8 * 8];
 
     let mut group = c.benchmark_group("conv/witness");
     group.sample_size(10);
@@ -216,7 +216,7 @@ fn conv_prove(c: &mut Criterion) {
     let path = tmp.path().join("c.bundle");
     compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
     let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
-    let activations = vec![0.0f64; 1 * 1 * 8 * 8];
+    let activations = vec![0.0f64; 8 * 8];
     let wb = witness_bn254_from_f64(
         &bundle.circuit,
         &bundle.witness_solver,
@@ -359,7 +359,7 @@ fn gemm_witness(c: &mut Criterion) {
     let path = tmp.path().join("c.bundle");
     compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
     let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
-    let activations = vec![0.0f64; 1 * 64];
+    let activations = vec![0.0f64; 64];
 
     let mut group = c.benchmark_group("gemm/witness");
     group.sample_size(10);
@@ -386,7 +386,7 @@ fn gemm_prove(c: &mut Criterion) {
     let path = tmp.path().join("c.bundle");
     compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
     let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
-    let activations = vec![0.0f64; 1 * 64];
+    let activations = vec![0.0f64; 64];
     let wb = witness_bn254_from_f64(
         &bundle.circuit,
         &bundle.witness_solver,
@@ -489,7 +489,7 @@ fn softmax_witness(c: &mut Criterion) {
     let path = tmp.path().join("c.bundle");
     compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
     let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
-    let activations = vec![0.0f64; 1 * 16];
+    let activations = vec![0.0f64; 16];
 
     let mut group = c.benchmark_group("softmax/witness");
     group.sample_size(10);
@@ -516,7 +516,7 @@ fn softmax_prove(c: &mut Criterion) {
     let path = tmp.path().join("c.bundle");
     compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
     let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
-    let activations = vec![0.0f64; 1 * 16];
+    let activations = vec![0.0f64; 16];
     let wb = witness_bn254_from_f64(
         &bundle.circuit,
         &bundle.witness_solver,
@@ -658,7 +658,7 @@ fn layer_norm_witness(c: &mut Criterion) {
     let path = tmp.path().join("c.bundle");
     compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
     let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
-    let activations = vec![0.0f64; 1 * 16];
+    let activations = vec![0.0f64; 16];
 
     let mut group = c.benchmark_group("layer_norm/witness");
     group.sample_size(10);
@@ -685,7 +685,7 @@ fn layer_norm_prove(c: &mut Criterion) {
     let path = tmp.path().join("c.bundle");
     compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
     let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
-    let activations = vec![0.0f64; 1 * 16];
+    let activations = vec![0.0f64; 16];
     let wb = witness_bn254_from_f64(
         &bundle.circuit,
         &bundle.witness_solver,
@@ -803,7 +803,7 @@ fn averagepool_witness(c: &mut Criterion) {
     let path = tmp.path().join("c.bundle");
     compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
     let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
-    let activations = vec![0.0f64; 1 * 1 * 8 * 8];
+    let activations = vec![0.0f64; 8 * 8];
 
     let mut group = c.benchmark_group("averagepool/witness");
     group.sample_size(10);
@@ -830,7 +830,7 @@ fn averagepool_prove(c: &mut Criterion) {
     let path = tmp.path().join("c.bundle");
     compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
     let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
-    let activations = vec![0.0f64; 1 * 1 * 8 * 8];
+    let activations = vec![0.0f64; 8 * 8];
     let wb = witness_bn254_from_f64(
         &bundle.circuit,
         &bundle.witness_solver,
@@ -995,7 +995,7 @@ fn conv_transpose_witness(c: &mut Criterion) {
     let path = tmp.path().join("c.bundle");
     compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
     let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
-    let activations = vec![0.0f64; 1 * 1 * 4 * 4];
+    let activations = vec![0.0f64; 4 * 4];
 
     let mut group = c.benchmark_group("conv_transpose/witness");
     group.sample_size(10);
@@ -1022,7 +1022,7 @@ fn conv_transpose_prove(c: &mut Criterion) {
     let path = tmp.path().join("c.bundle");
     compile_bn254(path.to_str().unwrap(), false, Some(params.clone())).unwrap();
     let bundle = read_circuit_msgpack(path.to_str().unwrap()).unwrap();
-    let activations = vec![0.0f64; 1 * 1 * 4 * 4];
+    let activations = vec![0.0f64; 4 * 4];
     let wb = witness_bn254_from_f64(
         &bundle.circuit,
         &bundle.witness_solver,
