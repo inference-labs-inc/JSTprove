@@ -174,4 +174,32 @@ mod tests {
             "(-2)^3: got {result}, expected {expected}"
         );
     }
+
+    #[test]
+    fn pow_zero_zero() {
+        // 0^0 → 0.0_f64.powf(0.0) = NaN → fallback to 1.0 (scale_u64 as i64)
+        let scale: u64 = 1 << 18;
+        let x_q = 0i64;
+        let exp_q = 0i64;
+        let result = run_hint(x_q, exp_q, scale);
+        assert_eq!(
+            result, scale as i64,
+            "0^0: expected 1.0 encoded as {}, got {result}",
+            scale
+        );
+    }
+
+    #[test]
+    fn pow_negative_fractional_exponent() {
+        // (-2)^0.5 → (-2.0_f64).powf(0.5) = NaN → fallback to 1.0 (scale_u64 as i64)
+        let scale: u64 = 1 << 18;
+        let x_q = -2 * scale as i64;
+        let exp_q = scale as i64 / 2; // 0.5 in fixed-point
+        let result = run_hint(x_q, exp_q, scale);
+        assert_eq!(
+            result, scale as i64,
+            "(-2)^0.5: expected 1.0 encoded as {}, got {result}",
+            scale
+        );
+    }
 }

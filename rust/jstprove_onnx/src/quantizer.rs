@@ -329,7 +329,7 @@ fn compute_max_bound_inner(graph: &LayerGraph) -> Result<f64> {
     // default alpha for Log-layer bound propagation (ln(2^18) ≈ 12.47).
     let default_alpha_f64 = (DEFAULT_SCALE_BASE as f64).powi(DEFAULT_SCALE_EXPONENT as i32);
 
-    let shapes = propagate_shapes(graph);
+    let shapes = propagate_shapes(graph)?;
 
     for name in &graph.input_names {
         bounds.insert(name.clone(), 1.0);
@@ -413,7 +413,7 @@ fn broadcast_two(a: &[usize], b: &[usize]) -> Vec<usize> {
 ///
 /// This is used by `compute_bounds` so that reduction ops (e.g. ReduceSum)
 /// can account for the actual number of elements being accumulated.
-fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
+fn propagate_shapes(graph: &LayerGraph) -> Result<HashMap<String, Vec<usize>>> {
     let mut shapes: HashMap<String, Vec<usize>> = HashMap::new();
 
     // Seed with model-level input shapes.
@@ -545,43 +545,68 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
                         let in_shape: &[usize] = input_shape.as_deref().unwrap_or(&[]);
                         let input_total: usize = in_shape.iter().product();
 
-                        // First pass: resolve 0 → copy and positives; mark -1 as None.
-                        let mut dims: Vec<Option<usize>> = raw
-                            .iter()
-                            .enumerate()
-                            .map(|(i, &d)| {
-                                if d == 0 {
-                                    if allowzero {
-                                        Some(0)
-                                    } else {
-                                        Some(in_shape.get(i).copied().unwrap_or(0))
-                                    }
-                                } else if d > 0 {
-                                    Some(d as usize)
+                        // First pass: resolve 0 → copy and positives; -1 → infer; other negatives are invalid.
+                        let mut dims: Vec<Option<usize>> = Vec::with_capacity(raw.len());
+                        for (i, &d) in raw.iter().enumerate() {
+                            if d == 0 {
+                                dims.push(if allowzero {
+                                    Some(0)
                                 } else {
-                                    None // -1 only
-                                }
-                            })
-                            .collect();
-
-                        // Infer the single -1 dimension when input total is known.
-                        if input_total > 0 {
-                            let n_unknown = dims.iter().filter(|d| d.is_none()).count();
-                            if n_unknown == 1 {
-                                let known: usize = dims.iter().filter_map(|&d| d).product();
-                                if known > 0 {
-                                    let inferred = input_total / known;
-                                    for d in &mut dims {
-                                        if d.is_none() {
-                                            *d = Some(inferred);
-                                            break;
-                                        }
-                                    }
-                                }
+                                    Some(in_shape.get(i).copied().unwrap_or(0))
+                                });
+                            } else if d > 0 {
+                                dims.push(Some(d as usize));
+                            } else if d == -1 {
+                                dims.push(None); // infer sentinel
+                            } else {
+                                anyhow::bail!(
+                                    "Reshape layer '{}': invalid dimension {} at index {} (only -1 is a valid infer sentinel)",
+                                    layer.name, d, i
+                                );
                             }
                         }
 
-                        dims.into_iter().map(|d| d.unwrap_or(0)).collect()
+                        // Infer the single -1 dimension when input total is known.
+                        let n_unknown = dims.iter().filter(|d| d.is_none()).count();
+                        if n_unknown == 1 && input_total > 0 {
+                            let known: usize = dims.iter().filter_map(|&d| d).product();
+                            if known == 0 {
+                                anyhow::bail!(
+                                    "Reshape layer '{}': cannot infer -1 dimension when known product is 0",
+                                    layer.name
+                                );
+                            }
+                            if input_total % known != 0 {
+                                anyhow::bail!(
+                                    "Reshape layer '{}': input total {} is not divisible by known dims product {}",
+                                    layer.name, input_total, known
+                                );
+                            }
+                            let inferred = input_total / known;
+                            for d in &mut dims {
+                                if d.is_none() {
+                                    *d = Some(inferred);
+                                    break;
+                                }
+                            }
+                        } else if n_unknown > 1 {
+                            anyhow::bail!(
+                                "Reshape layer '{}': more than one -1 dimension is not allowed",
+                                layer.name
+                            );
+                        }
+
+                        // All None should be resolved by now; any remaining None is an error.
+                        dims.into_iter()
+                            .map(|d| {
+                                d.ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Reshape layer '{}': could not infer -1 dimension (input shape unknown)",
+                                        layer.name
+                                    )
+                                })
+                            })
+                            .collect::<Result<Vec<usize>>>()?
                     } else {
                         input_shape.unwrap_or_default()
                     }
@@ -1145,7 +1170,7 @@ fn propagate_shapes(graph: &LayerGraph) -> HashMap<String, Vec<usize>> {
         }
     }
 
-    shapes
+    Ok(shapes)
 }
 
 fn compute_bounds(graph: &LayerGraph, config: &ScaleConfig) -> Result<HashMap<String, usize>> {
@@ -1154,7 +1179,7 @@ fn compute_bounds(graph: &LayerGraph, config: &ScaleConfig) -> Result<HashMap<St
     let mut n_bits_config = HashMap::new();
 
     // Pre-compute tensor shapes for reduction-size estimation.
-    let shapes = propagate_shapes(graph);
+    let shapes = propagate_shapes(graph)?;
 
     for name in &graph.input_names {
         bounds.insert(name.clone(), 1.0);

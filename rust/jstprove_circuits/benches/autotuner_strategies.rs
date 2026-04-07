@@ -23,11 +23,14 @@ fn clear_cache() {
     }
 }
 
+fn model_name() -> String {
+    std::env::var("MODEL").unwrap_or_else(|_| "lenet".to_string())
+}
+
 fn model_path() -> std::path::PathBuf {
-    let model_name = std::env::var("MODEL").unwrap_or_else(|_| "lenet".to_string());
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../jstprove_remainder/models")
-        .join(format!("{model_name}.onnx"))
+        .join(format!("{}.onnx", model_name()))
 }
 
 /// Benchmark cold compile: the autotuner cache is cleared before every iteration,
@@ -47,7 +50,7 @@ fn bench_cold_compile(c: &mut Criterion) {
     group.sample_size(10);
     group.measurement_time(Duration::from_secs(120));
 
-    group.bench_function("lenet", |b| {
+    group.bench_function(model_name(), |b| {
         b.iter_batched(
             || {
                 clear_cache();
@@ -103,7 +106,7 @@ fn bench_warm_compile(c: &mut Criterion) {
     group.sample_size(10);
     group.measurement_time(Duration::from_secs(120));
 
-    group.bench_function("lenet", |b| {
+    group.bench_function(model_name(), |b| {
         b.iter_batched(
             || {
                 OnnxContext::set_all(arch.clone(), params.clone(), Some(wandb.clone()));

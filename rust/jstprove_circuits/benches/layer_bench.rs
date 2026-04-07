@@ -758,10 +758,6 @@ fn make_averagepool_metadata() -> (CircuitParams, Architecture, WANDB) {
                 Value::String("pads".into()),
                 Value::Array(vec![Value::from(0i64); 4]),
             ),
-            (
-                Value::String("dilations".into()),
-                Value::Array(vec![Value::from(1i64), Value::from(1i64)]),
-            ),
         ])),
         opset_version_number: 17,
     };
