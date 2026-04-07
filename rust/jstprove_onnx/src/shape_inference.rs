@@ -250,7 +250,13 @@ fn fold_gather_elements(
         return None;
     }
 
-    let is_float = data_td.float_data.len() > data_td.int_data.len();
+    for i in 0..rank {
+        if i != axis && data_shape[i] != indices_shape[i] {
+            return None;
+        }
+    }
+
+    let is_float = matches!(data_td.data_type, 1 | 11);
     let indices_vals = indices_td.as_i64_vec();
     let total: usize = indices_shape.iter().product();
     let data_total: usize = data_shape.iter().product();

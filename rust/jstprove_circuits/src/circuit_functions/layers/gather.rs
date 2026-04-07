@@ -36,6 +36,8 @@ use crate::circuit_functions::{
     },
 };
 
+const MAX_AXIS_PAD: usize = 4;
+
 // -------- Struct --------
 
 #[derive(Debug)]
@@ -74,6 +76,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherLayer {
 
         let axis = self.axis;
         let data = if axis >= data.ndim() {
+            if axis >= data.ndim() + MAX_AXIS_PAD {
+                return Err(LayerError::InvalidShape {
+                    layer: LayerKind::Gather,
+                    msg: format!(
+                        "axis {} exceeds data rank {} by more than {MAX_AXIS_PAD}",
+                        axis,
+                        data.ndim()
+                    ),
+                }
+                .into());
+            }
             let mut new_shape = data.shape().to_vec();
             while new_shape.len() <= axis {
                 new_shape.push(1);
