@@ -29,6 +29,7 @@ pub struct DivLayer {
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
+    #[allow(clippy::too_many_lines)]
     fn apply(
         &self,
         api: &mut Builder,
@@ -54,13 +55,32 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
             })?;
 
         let a_shape = a_input.shape().to_vec();
+        let b_shape = divisor_constants.shape().to_vec();
 
-        let broadcasted_divisors = divisor_constants
-            .broadcast(IxDyn(&a_shape))
-            .ok_or_else(|| LayerError::ShapeMismatch {
+        let out_shape =
+            broadcast_shape(&a_shape, &b_shape).ok_or_else(|| LayerError::ShapeMismatch {
                 layer: LayerKind::Div,
                 expected: a_shape.clone(),
-                got: divisor_constants.shape().to_vec(),
+                got: b_shape.clone(),
+                var_name: "divisor (broadcast)".to_string(),
+            })?;
+
+        let broadcasted_a =
+            a_input
+                .broadcast(IxDyn(&out_shape))
+                .ok_or_else(|| LayerError::ShapeMismatch {
+                    layer: LayerKind::Div,
+                    expected: out_shape.clone(),
+                    got: a_shape.clone(),
+                    var_name: "dividend".to_string(),
+                })?;
+
+        let broadcasted_divisors = divisor_constants
+            .broadcast(IxDyn(&out_shape))
+            .ok_or_else(|| LayerError::ShapeMismatch {
+                layer: LayerKind::Div,
+                expected: out_shape.clone(),
+                got: b_shape,
                 var_name: "divisor".to_string(),
             })?
             .to_owned();
@@ -97,7 +117,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
                 })?;
         let shift_var = api.constant(CircuitField::<C>::from_u256(U256::from(shift_native)));
 
-        let result: Result<Vec<Variable>, CircuitError> = a_input
+        let result: Result<Vec<Variable>, CircuitError> = broadcasted_a
             .iter()
             .zip(&broadcasted_divisors)
             .map(|(&dividend, &divisor_val)| {
@@ -137,7 +157,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
             .collect();
         let result = result?;
 
-        let output = ArrayD::from_shape_vec(IxDyn(&a_shape), result).map_err(|_| {
+        let output = ArrayD::from_shape_vec(IxDyn(&out_shape), result).map_err(|_| {
             LayerError::InvalidShape {
                 layer: LayerKind::Div,
                 msg: "Failed to build result array".to_string(),
@@ -170,6 +190,33 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
             scaling: circuit_params.scale_exponent.into(),
         }))
     }
+}
+
+fn broadcast_shape(a: &[usize], b: &[usize]) -> Option<Vec<usize>> {
+    let max_rank = a.len().max(b.len());
+    let mut result = Vec::with_capacity(max_rank);
+    for i in 0..max_rank {
+        let da = if i < max_rank - a.len() {
+            1
+        } else {
+            a[i - (max_rank - a.len())]
+        };
+        let db = if i < max_rank - b.len() {
+            1
+        } else {
+            b[i - (max_rank - b.len())]
+        };
+        if da == db {
+            result.push(da);
+        } else if da == 1 {
+            result.push(db);
+        } else if db == 1 {
+            result.push(da);
+        } else {
+            return None;
+        }
+    }
+    Some(result)
 }
 
 fn validate_divisors(divisors: &ArrayD<i64>) -> Result<(), CircuitError> {

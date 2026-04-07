@@ -72,20 +72,22 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherLayer {
                 name: data_name.to_string(),
             })?;
 
-        let data_shape = data.shape();
         let axis = self.axis;
-
-        if axis >= data_shape.len() {
-            return Err(LayerError::InvalidShape {
-                layer: LayerKind::Gather,
-                msg: format!(
-                    "axis {} out of range for data rank {}",
-                    axis,
-                    data_shape.len()
-                ),
+        let data = if axis >= data.ndim() {
+            let mut new_shape = data.shape().to_vec();
+            while new_shape.len() <= axis {
+                new_shape.push(1);
             }
-            .into());
-        }
+            data.clone()
+                .into_shape_with_order(IxDyn(&new_shape))
+                .map_err(|_| LayerError::InvalidShape {
+                    layer: LayerKind::Gather,
+                    msg: format!("cannot promote data rank {} to axis {}", data.ndim(), axis),
+                })?
+        } else {
+            data.clone()
+        };
+        let data_shape = data.shape();
 
         let d_axis = data_shape[axis];
         // Product of dims before the gather axis.
