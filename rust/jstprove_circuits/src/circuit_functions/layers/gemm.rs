@@ -105,22 +105,52 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             })?
             .clone();
 
-        // Load and shape input and weights as 2D matrices.
-        let mut input_array =
-            layer_input
-                .into_dimensionality::<Ix2>()
-                .map_err(|_| LayerError::InvalidShape {
+        let promote_to_2d = |arr: ArrayD<Variable>,
+                             label: &str,
+                             as_column: bool|
+         -> Result<ndarray::Array2<Variable>, CircuitError> {
+            match arr.ndim() {
+                1 => {
+                    let n = arr.len();
+                    let shape = if as_column {
+                        ndarray::Ix2(n, 1)
+                    } else {
+                        ndarray::Ix2(1, n)
+                    };
+                    arr.into_shape_with_order(shape).map_err(|_| {
+                            LayerError::InvalidShape {
+                                layer: LayerKind::Gemm,
+                                msg: format!(
+                                    "Failed to promote 1D {label} of length {n} to [{}, {}] for layer {}",
+                                    shape[0], shape[1], self.name
+                                ),
+                            }
+                            .into()
+                        })
+                }
+                2 => arr.into_dimensionality::<Ix2>().map_err(|_| {
+                    LayerError::InvalidShape {
+                        layer: LayerKind::Gemm,
+                        msg: format!("Expected 2D {label} for layer {}", self.name),
+                    }
+                    .into()
+                }),
+                other => Err(LayerError::InvalidShape {
                     layer: LayerKind::Gemm,
-                    msg: format!("Expected 2D input for layer {}", self.name),
-                })?;
+                    msg: format!(
+                        "{label} has rank {other}, expected 1 or 2 for layer {}",
+                        self.name
+                    ),
+                }
+                .into()),
+            }
+        };
+
+        let mut input_array = promote_to_2d(layer_input, "input", false)?;
         let w_name = get_input_name(&self.inputs, 1, LayerKind::Gemm, "weights")?;
-        let mut weights_array =
-            load_array_constants_or_get_inputs(api, input, w_name, &self.weights, LayerKind::Gemm)?
-                .into_dimensionality::<Ix2>()
-                .map_err(|_| LayerError::InvalidShape {
-                    layer: LayerKind::Gemm,
-                    msg: format!("Expected 2D weights array for layer {}", self.name),
-                })?;
+        let weights_loaded =
+            load_array_constants_or_get_inputs(api, input, w_name, &self.weights, LayerKind::Gemm)?;
+        let mut weights_array = promote_to_2d(weights_loaded, "weights", true)?;
 
         // Apply transposes according to ONNX attributes.
         input_array = check_and_apply_transpose_array(

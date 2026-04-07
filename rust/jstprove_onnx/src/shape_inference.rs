@@ -85,6 +85,7 @@ fn fold_constants(
         OpType::Slice => fold_slice(layer, initializers, constant_tensors),
         OpType::Cast => fold_cast(layer, initializers, constant_tensors),
         OpType::Reshape => fold_reshape(layer, initializers, constant_tensors),
+        OpType::GatherElements => fold_gather_elements(layer, initializers, constant_tensors),
         _ => None,
     };
     if let Some(td) = folded {
@@ -215,6 +216,119 @@ fn fold_gather(
         float_data: vec![],
         int_data: gathered,
     })
+}
+
+#[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+fn fold_gather_elements(
+    layer: &LayerNode,
+    initializers: &HashMap<String, TensorData>,
+    constant_tensors: &HashMap<String, TensorData>,
+) -> Option<TensorData> {
+    let data_name = layer.inputs.first()?;
+    let indices_name = layer.inputs.get(1)?;
+
+    let data_td = lookup_constant(data_name, initializers, constant_tensors)?;
+    let indices_td = lookup_constant(indices_name, initializers, constant_tensors)?;
+
+    let data_shape = data_td.shape();
+    let indices_shape = indices_td.shape();
+    if data_shape.is_empty() || indices_shape.is_empty() {
+        return None;
+    }
+    let rank = data_shape.len();
+    if indices_shape.len() != rank {
+        return None;
+    }
+
+    let axis_raw = layer.get_int_attr("axis").unwrap_or(0);
+    let axis = if axis_raw < 0 {
+        (axis_raw + rank as i64) as usize
+    } else {
+        axis_raw as usize
+    };
+    if axis >= rank {
+        return None;
+    }
+
+    for i in 0..rank {
+        if i != axis && data_shape[i] != indices_shape[i] {
+            return None;
+        }
+    }
+
+    let is_float = matches!(data_td.data_type, 1 | 11);
+    let indices_vals = indices_td.as_i64_vec();
+    let total: usize = indices_shape.iter().product();
+    let data_total: usize = data_shape.iter().product();
+
+    if indices_vals.len() < total {
+        return None;
+    }
+
+    let mut data_strides = vec![1usize; rank];
+    for i in (0..rank - 1).rev() {
+        data_strides[i] = data_strides[i + 1] * data_shape[i + 1];
+    }
+    let mut indices_strides = vec![1usize; rank];
+    for i in (0..rank - 1).rev() {
+        indices_strides[i] = indices_strides[i + 1] * indices_shape[i + 1];
+    }
+
+    let mut index_map = Vec::with_capacity(total);
+    for (flat_idx, &idx_val) in indices_vals.iter().enumerate().take(total) {
+        let mut remaining = flat_idx;
+        let mut data_flat_idx = 0usize;
+        for dim in 0..rank {
+            let coord = remaining / indices_strides[dim];
+            remaining %= indices_strides[dim];
+            if dim == axis {
+                let resolved = if idx_val < 0 {
+                    (idx_val + data_shape[axis] as i64) as usize
+                } else {
+                    idx_val as usize
+                };
+                if resolved >= data_shape[axis] {
+                    return None;
+                }
+                data_flat_idx += resolved * data_strides[dim];
+            } else {
+                data_flat_idx += coord * data_strides[dim];
+            }
+        }
+        if data_flat_idx >= data_total {
+            return None;
+        }
+        index_map.push(data_flat_idx);
+    }
+
+    let out_dims: Vec<i64> = indices_shape.iter().map(|&d| d as i64).collect();
+    if is_float {
+        let data_vals = &data_td.float_data;
+        if data_vals.len() < data_total {
+            return None;
+        }
+        let gathered: Vec<f64> = index_map.iter().map(|&i| data_vals[i]).collect();
+        Some(TensorData {
+            name: String::new(),
+            dims: out_dims,
+            data_type: data_td.data_type,
+            float_data: gathered,
+            int_data: vec![],
+        })
+    } else {
+        let data_vals = &data_td.int_data;
+        if data_vals.len() < data_total {
+            return None;
+        }
+        let gathered: Vec<i64> = index_map.iter().map(|&i| data_vals[i]).collect();
+        Some(TensorData {
+            name: String::new(),
+            dims: out_dims,
+            data_type: data_td.data_type,
+            float_data: vec![],
+            int_data: gathered,
+        })
+    }
 }
 
 fn fold_unsqueeze(
@@ -833,25 +947,45 @@ fn infer_gemm(
         .map(|v| v != 0)
         .unwrap_or(false);
 
-    if a_shape.len() != 2 {
-        bail!(
-            "layer {}: Gemm input A rank {} != 2 (batched Gemm not yet supported in circuit runtime)",
+    let a_shape_2d = match a_shape.len() {
+        1 => vec![1, a_shape[0]],
+        2 => a_shape.clone(),
+        _ => bail!(
+            "layer {}: Gemm input A rank {} > 2 (batched Gemm not yet supported in circuit runtime)",
             layer.name,
             a_shape.len()
-        );
-    }
-    if b_shape.len() != 2 {
-        bail!(
-            "layer {}: Gemm input B rank {} != 2 (batched Gemm not yet supported in circuit runtime)",
+        ),
+    };
+    let b_shape_2d = match b_shape.len() {
+        1 => vec![b_shape[0], 1],
+        2 => b_shape.clone(),
+        _ => bail!(
+            "layer {}: Gemm input B rank {} > 2 (batched Gemm not yet supported in circuit runtime)",
             layer.name,
             b_shape.len()
-        );
-    }
+        ),
+    };
 
-    let m = if trans_a { a_shape[1] } else { a_shape[0] };
-    let k_a = if trans_a { a_shape[0] } else { a_shape[1] };
-    let k_b = if trans_b { b_shape[1] } else { b_shape[0] };
-    let n = if trans_b { b_shape[0] } else { b_shape[1] };
+    let m = if trans_a {
+        a_shape_2d[1]
+    } else {
+        a_shape_2d[0]
+    };
+    let k_a = if trans_a {
+        a_shape_2d[0]
+    } else {
+        a_shape_2d[1]
+    };
+    let k_b = if trans_b {
+        b_shape_2d[1]
+    } else {
+        b_shape_2d[0]
+    };
+    let n = if trans_b {
+        b_shape_2d[0]
+    } else {
+        b_shape_2d[1]
+    };
 
     if k_a != k_b {
         bail!(
@@ -999,7 +1133,7 @@ fn infer_maxpool(
         .collect())
 }
 
-fn broadcast_shapes(a: &[usize], b: &[usize]) -> Result<Vec<usize>> {
+pub fn broadcast_shapes(a: &[usize], b: &[usize]) -> Result<Vec<usize>> {
     let max_rank = a.len().max(b.len());
     let mut result = Vec::with_capacity(max_rank);
 
@@ -1492,37 +1626,42 @@ fn infer_gather(
             )
         })?;
 
-    let scalar_promoted;
-    let data_shape: &[usize] = if data_shape.is_empty() {
-        scalar_promoted = [1_usize];
-        &scalar_promoted
+    let mut data_shape_vec = if data_shape.is_empty() {
+        vec![1_usize]
     } else {
-        data_shape.as_slice()
+        data_shape.clone()
     };
-    let rank = data_shape.len();
 
     let raw_axis = layer.get_int_attr("axis").unwrap_or(0);
-    let axis = if raw_axis < 0 {
-        let a = rank as i64 + raw_axis;
+    let target_axis = if raw_axis < 0 {
+        let a = data_shape_vec.len() as i64 + raw_axis;
         anyhow::ensure!(
             a >= 0,
             "layer {}: Gather axis {} out of range for data rank {}",
             layer.name,
             raw_axis,
-            rank
+            data_shape_vec.len()
         );
         a as usize
     } else {
-        let a = raw_axis as usize;
-        anyhow::ensure!(
-            a < rank,
-            "layer {}: Gather axis {} out of range for data rank {}",
+        raw_axis as usize
+    };
+
+    const MAX_AXIS_PAD: usize = 4;
+    if target_axis >= data_shape_vec.len() + MAX_AXIS_PAD {
+        bail!(
+            "layer {}: Gather axis {} exceeds data rank {} by more than {MAX_AXIS_PAD}",
             layer.name,
             raw_axis,
-            rank
+            data_shape_vec.len()
         );
-        a
-    };
+    }
+    while data_shape_vec.len() <= target_axis {
+        data_shape_vec.push(1);
+    }
+    let data_shape: &[usize] = &data_shape_vec;
+    let rank = data_shape.len();
+    let axis = target_axis;
 
     let mut out_shape = Vec::with_capacity(rank - 1 + indices_shape.len());
     out_shape.extend_from_slice(&data_shape[..axis]);

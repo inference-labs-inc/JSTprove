@@ -5,6 +5,8 @@ use ndarray::{ArrayD, IxDyn};
 use ethnum::U256;
 use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
 
+use jstprove_onnx::shape_inference::broadcast_shapes;
+
 use crate::circuit_functions::gadgets::euclidean_division::div_pos_integer_pow2_constant;
 use crate::circuit_functions::gadgets::range_check::LogupRangeCheckContext;
 use crate::circuit_functions::utils::RescaleError;
@@ -29,6 +31,7 @@ pub struct DivLayer {
 }
 
 impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
+    #[allow(clippy::too_many_lines)]
     fn apply(
         &self,
         api: &mut Builder,
@@ -54,13 +57,32 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
             })?;
 
         let a_shape = a_input.shape().to_vec();
+        let b_shape = divisor_constants.shape().to_vec();
 
-        let broadcasted_divisors = divisor_constants
-            .broadcast(IxDyn(&a_shape))
-            .ok_or_else(|| LayerError::ShapeMismatch {
+        let out_shape =
+            broadcast_shapes(&a_shape, &b_shape).map_err(|_| LayerError::ShapeMismatch {
                 layer: LayerKind::Div,
                 expected: a_shape.clone(),
-                got: divisor_constants.shape().to_vec(),
+                got: b_shape.clone(),
+                var_name: "divisor (broadcast)".to_string(),
+            })?;
+
+        let broadcasted_a =
+            a_input
+                .broadcast(IxDyn(&out_shape))
+                .ok_or_else(|| LayerError::ShapeMismatch {
+                    layer: LayerKind::Div,
+                    expected: out_shape.clone(),
+                    got: a_shape.clone(),
+                    var_name: "dividend".to_string(),
+                })?;
+
+        let broadcasted_divisors = divisor_constants
+            .broadcast(IxDyn(&out_shape))
+            .ok_or_else(|| LayerError::ShapeMismatch {
+                layer: LayerKind::Div,
+                expected: out_shape.clone(),
+                got: b_shape,
                 var_name: "divisor".to_string(),
             })?
             .to_owned();
@@ -97,7 +119,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
                 })?;
         let shift_var = api.constant(CircuitField::<C>::from_u256(U256::from(shift_native)));
 
-        let result: Result<Vec<Variable>, CircuitError> = a_input
+        let result: Result<Vec<Variable>, CircuitError> = broadcasted_a
             .iter()
             .zip(&broadcasted_divisors)
             .map(|(&dividend, &divisor_val)| {
@@ -137,7 +159,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
             .collect();
         let result = result?;
 
-        let output = ArrayD::from_shape_vec(IxDyn(&a_shape), result).map_err(|_| {
+        let output = ArrayD::from_shape_vec(IxDyn(&out_shape), result).map_err(|_| {
             LayerError::InvalidShape {
                 layer: LayerKind::Div,
                 msg: "Failed to build result array".to_string(),
