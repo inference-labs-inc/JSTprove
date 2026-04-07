@@ -2,8 +2,8 @@ use config_macros::declare_gkr_config;
 use gf2::GF2x128;
 use gkr_engine::{
     BN254Config, BabyBearx16Config, FieldEngine, GF2ExtConfig, GKREngine, GKRScheme,
-    GoldilocksExt2x1Config, GoldilocksExt3x1Config, Goldilocksx1Config, Goldilocksx8Config,
-    M31x16Config, M31x1Config, MPIConfig,
+    GoldilocksExt2x1Config, GoldilocksExt3x1Config, GoldilocksExt4x1Config, Goldilocksx1Config,
+    Goldilocksx8Config, M31x16Config, M31x1Config, MPIConfig,
 };
 use gkr_hashers::{MiMC5FiatShamirHasher, PoseidonFiatShamirHasher, SHA256hasher};
 use goldilocks::Goldilocksx8;
@@ -157,6 +157,15 @@ declare_gkr_config!(
 declare_gkr_config!(
     pub GoldilocksExt3x1ConfigSha2Whir,
     FieldType::GoldilocksExt3x1,
+    FiatShamirHashType::SHA256,
+    PolynomialCommitmentType::Whir,
+    GKRScheme::Vanilla,
+);
+
+// ============== Goldilocks WHIR (256-bit ext4 challenge field, 128-bit PQ) ==============
+declare_gkr_config!(
+    pub GoldilocksExt4x1ConfigSha2Whir,
+    FieldType::GoldilocksExt4x1,
     FiatShamirHashType::SHA256,
     PolynomialCommitmentType::Whir,
     GKRScheme::Vanilla,

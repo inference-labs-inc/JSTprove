@@ -13,7 +13,7 @@ use jstprove_circuits::onnx::Circuit;
 
 use expander_compiler::frontend::{
     BN254Config, GoldilocksBasefoldConfig, GoldilocksConfig, GoldilocksExt2BasefoldConfig,
-    GoldilocksWhirConfig, Variable,
+    GoldilocksWhirConfig, GoldilocksWhirPQConfig, Variable,
 };
 use jstprove_circuits::Curve;
 use jstprove_onnx::quantizer::{N_BITS_GOLDILOCKS, N_BITS_GOLDILOCKS_EXT2};
@@ -151,7 +151,10 @@ fn main() {
             .unwrap_or_default();
         let result = match early_curve {
             Curve::Bn254 => expander_metadata::generate_from_onnx(onnx_path),
-            Curve::Goldilocks | Curve::GoldilocksBasefold | Curve::GoldilocksWhir => {
+            Curve::Goldilocks
+            | Curve::GoldilocksBasefold
+            | Curve::GoldilocksWhir
+            | Curve::GoldilocksWhirPQ => {
                 expander_metadata::generate_from_onnx_for_field(onnx_path, N_BITS_GOLDILOCKS, None)
             }
             Curve::GoldilocksExt2 => expander_metadata::generate_from_onnx_for_field(
@@ -302,6 +305,12 @@ fn main() {
         >(&matches, &mut file_reader, metadata, mode),
         Curve::GoldilocksWhir => handle_args::<
             GoldilocksWhirConfig,
+            Circuit<Variable>,
+            Circuit<_>,
+            _,
+        >(&matches, &mut file_reader, metadata, mode),
+        Curve::GoldilocksWhirPQ => handle_args::<
+            GoldilocksWhirPQConfig,
             Circuit<Variable>,
             Circuit<_>,
             _,

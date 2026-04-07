@@ -1,5 +1,5 @@
 use arith::Field;
-use goldilocks::{Goldilocks, GoldilocksExt2, GoldilocksExt3};
+use goldilocks::{Goldilocks, GoldilocksExt2, GoldilocksExt3, GoldilocksExt4};
 
 use super::types::WhirCommitment;
 
@@ -473,4 +473,61 @@ fn fuzz_random_polynomials_verify() {
             "random polynomial should verify"
         );
     }
+}
+
+#[test]
+fn whir_ext4_commit_open_verify_roundtrip() {
+    use super::parameters::WHIR_RATE_LOG;
+    use crate::basefold::encoding::rs_encode_with_rate;
+    use gkr_engine::Transcript;
+    use gkr_hashers::SHA256hasher;
+    use transcript::BytesHashTranscript;
+
+    let num_vars = 8;
+    let n = 1 << num_vars;
+
+    let base_evals: Vec<Goldilocks> = (0..n).map(|i| Goldilocks::from(i as u32 + 1)).collect();
+    let point: Vec<GoldilocksExt4> = (0..num_vars)
+        .map(|i| GoldilocksExt4::from(Goldilocks::from(i as u32 + 10)))
+        .collect();
+    let ext_evals: Vec<GoldilocksExt4> = base_evals
+        .iter()
+        .map(|&x| GoldilocksExt4::from(x))
+        .collect();
+    let claimed_eval = eval_mle_lsb_first(&ext_evals, &point);
+
+    let codeword = rs_encode_with_rate(&base_evals, WHIR_RATE_LOG);
+    let tree = tree::Tree::compact_new_with_field_elems::<Goldilocks, Goldilocks>(codeword.clone());
+    let commitment = WhirCommitment {
+        root: tree.root(),
+        num_vars,
+    };
+
+    let mut pt = BytesHashTranscript::<SHA256hasher>::new();
+    let opening = super::pcs_trait_impl::whir_open_for_test_ext4(
+        &base_evals,
+        &codeword,
+        &tree,
+        num_vars,
+        &point,
+        &mut pt,
+    );
+
+    let mut vt = BytesHashTranscript::<SHA256hasher>::new();
+    assert!(super::pcs_trait_impl::whir_verify_for_test_ext4(
+        &commitment,
+        &point,
+        claimed_eval,
+        &opening,
+        &mut vt,
+    ));
+
+    let mut vt2 = BytesHashTranscript::<SHA256hasher>::new();
+    assert!(!super::pcs_trait_impl::whir_verify_for_test_ext4(
+        &commitment,
+        &point,
+        claimed_eval + GoldilocksExt4::ONE,
+        &opening,
+        &mut vt2,
+    ));
 }

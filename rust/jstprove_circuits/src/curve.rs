@@ -26,6 +26,12 @@ pub enum Curve {
         alias = "goldilockswhir"
     )]
     GoldilocksWhir,
+    #[serde(
+        rename = "goldilocks_whir_pq",
+        alias = "GoldilocksWhirPQ",
+        alias = "goldilockswhirpq"
+    )]
+    GoldilocksWhirPQ,
 }
 
 impl Curve {
@@ -37,7 +43,10 @@ impl Curve {
     fn base_field_id(self) -> u8 {
         match self {
             Self::Bn254 => 0,
-            Self::Goldilocks | Self::GoldilocksBasefold | Self::GoldilocksWhir => 1,
+            Self::Goldilocks
+            | Self::GoldilocksBasefold
+            | Self::GoldilocksWhir
+            | Self::GoldilocksWhirPQ => 1,
             Self::GoldilocksExt2 => 2,
         }
     }
@@ -51,6 +60,7 @@ impl std::fmt::Display for Curve {
             Self::GoldilocksBasefold => write!(f, "goldilocks_basefold"),
             Self::GoldilocksExt2 => write!(f, "goldilocks_ext2"),
             Self::GoldilocksWhir => write!(f, "goldilocks_whir"),
+            Self::GoldilocksWhirPQ => write!(f, "goldilocks_whir_pq"),
         }
     }
 }
@@ -75,6 +85,7 @@ impl std::str::FromStr for Curve {
             "goldilocks_basefold" => Ok(Self::GoldilocksBasefold),
             "goldilocks_ext2" => Ok(Self::GoldilocksExt2),
             "goldilocks_whir" => Ok(Self::GoldilocksWhir),
+            "goldilocks_whir_pq" => Ok(Self::GoldilocksWhirPQ),
             other => Err(CurveParseError(other.to_string())),
         }
     }
@@ -97,6 +108,7 @@ mod tests {
             Curve::GoldilocksBasefold,
             Curve::GoldilocksExt2,
             Curve::GoldilocksWhir,
+            Curve::GoldilocksWhirPQ,
         ] {
             let s = variant.to_string();
             let parsed: Curve = s.parse().unwrap();
