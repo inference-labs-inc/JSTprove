@@ -2488,10 +2488,10 @@ pub fn get_args() -> clap::ArgMatches {
         )
         .arg(
             Arg::new("curve")
-                .help("Elliptic curve: 'bn254' (default), 'goldilocks', 'goldilocks_basefold', or 'goldilocks_whir'")
+                .help("Elliptic curve: 'bn254' (default), 'goldilocks', 'goldilocks_basefold', 'goldilocks_whir', or 'goldilocks_whir_pq'")
                 .required(false)
                 .long("curve")
-                .value_parser(["bn254", "goldilocks", "goldilocks_basefold", "goldilocks_whir"])
+                .value_parser(["bn254", "goldilocks", "goldilocks_basefold", "goldilocks_whir", "goldilocks_whir_pq"])
                 .default_value("bn254"),
         )
         .arg(

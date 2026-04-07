@@ -19,6 +19,7 @@ pub enum FieldType {
     BabyBearx16,      // BabyBearExt3x16
     GoldilocksExt2x1, // GoldilocksExt2 as circuit field
     GoldilocksExt3x1, // Goldilocks base with GoldilocksExt3 challenge (192-bit)
+    GoldilocksExt4x1, // Goldilocks base with GoldilocksExt4 challenge (256-bit)
 }
 
 pub trait FieldEngine: Default + Debug + Clone + Send + Sync + PartialEq + 'static {

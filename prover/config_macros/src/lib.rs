@@ -59,6 +59,10 @@ fn parse_field_type(field_expr: ExprPath) -> (String, String) {
             "GoldilocksExt3x1".to_owned(),
             "GoldilocksExt3x1Config".to_owned(),
         ),
+        "GoldilocksExt4x1" => (
+            "GoldilocksExt4x1".to_owned(),
+            "GoldilocksExt4x1Config".to_owned(),
+        ),
         _ => panic!("Unknown field type"),
     }
 }
@@ -129,7 +133,7 @@ fn parse_polynomial_commitment_type(
             "FRI".to_owned(),
             format!("BasefoldPCSForGKR::<{field_config}>").to_owned(),
         ),
-        ("Whir", "Goldilocksx1") | ("Whir", "GoldilocksExt2x1") | ("Whir", "GoldilocksExt3x1") => (
+        ("Whir", "Goldilocksx1") | ("Whir", "GoldilocksExt2x1") | ("Whir", "GoldilocksExt3x1") | ("Whir", "GoldilocksExt4x1") => (
             "Whir".to_owned(),
             format!("WhirPCSForGKR::<{field_config}>").to_owned(),
         ),
