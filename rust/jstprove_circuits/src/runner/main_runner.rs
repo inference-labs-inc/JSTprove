@@ -1793,6 +1793,58 @@ fn natural_key_cmp(a: &str, b: &str) -> std::cmp::Ordering {
         .then_with(|| a.cmp(b))
 }
 
+fn flatten_rmpv_to_f64(val: &Value, out: &mut Vec<f64>) -> Result<(), RunError> {
+    match val {
+        Value::Array(arr) => {
+            for item in arr {
+                flatten_rmpv_to_f64(item, out)?;
+            }
+            Ok(())
+        }
+        Value::Map(entries) => {
+            let mut pairs: Vec<_> = entries
+                .iter()
+                .filter_map(|(k, v)| k.as_str().map(|s| (s.to_string(), v)))
+                .collect();
+            pairs.sort_by(|(a, _), (b, _)| natural_key_cmp(a, b));
+            for (_, v) in pairs {
+                flatten_rmpv_to_f64(v, out)?;
+            }
+            Ok(())
+        }
+        Value::Integer(n) => {
+            let i = n
+                .as_i64()
+                .ok_or_else(|| RunError::Deserialize("integer value out of i64 range".into()))?;
+            out.push(i as f64);
+            Ok(())
+        }
+        Value::F64(f) => {
+            if f.is_finite() {
+                out.push(*f);
+                Ok(())
+            } else {
+                Err(RunError::Deserialize(
+                    "non-finite f64 value in input".into(),
+                ))
+            }
+        }
+        Value::F32(f) => {
+            if f.is_finite() {
+                out.push(f64::from(*f));
+                Ok(())
+            } else {
+                Err(RunError::Deserialize(
+                    "non-finite f32 value in input".into(),
+                ))
+            }
+        }
+        other => Err(RunError::Deserialize(format!(
+            "unsupported input value type for debug assignment: {other:?}"
+        ))),
+    }
+}
+
 #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
 fn flatten_value_to_i64(val: &Value) -> Vec<i64> {
     match val {

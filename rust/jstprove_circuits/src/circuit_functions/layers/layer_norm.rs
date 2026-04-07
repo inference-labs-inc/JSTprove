@@ -136,10 +136,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for LayerNormLayer {
         let n_alpha_sq = api.constant(CircuitField::<C>::from_u256(U256::from(
             lane_size as u64 * self.scaling * self.scaling,
         )));
+        let norm_var_tol_native = lane_size as u64 * self.scaling * self.scaling;
         let norm_var_tolerance = api.constant(CircuitField::<C>::from_u256(U256::from(
-            lane_size as u64 * self.scaling,
+            norm_var_tol_native,
         )));
-        let norm_var_tol_bits = (2 * lane_size as u64 * self.scaling)
+        let norm_var_tol_bits = (2 * norm_var_tol_native)
             .next_power_of_two()
             .trailing_zeros() as usize;
 
