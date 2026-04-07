@@ -1099,7 +1099,7 @@ fn infer_maxpool(
         .collect())
 }
 
-fn broadcast_shapes(a: &[usize], b: &[usize]) -> Result<Vec<usize>> {
+pub fn broadcast_shapes(a: &[usize], b: &[usize]) -> Result<Vec<usize>> {
     let max_rank = a.len().max(b.len());
     let mut result = Vec::with_capacity(max_rank);
 

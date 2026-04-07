@@ -5,6 +5,8 @@ use ndarray::{ArrayD, IxDyn};
 use ethnum::U256;
 use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Variable};
 
+use jstprove_onnx::shape_inference::broadcast_shapes;
+
 use crate::circuit_functions::gadgets::euclidean_division::div_pos_integer_pow2_constant;
 use crate::circuit_functions::gadgets::range_check::LogupRangeCheckContext;
 use crate::circuit_functions::utils::RescaleError;
@@ -58,7 +60,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
         let b_shape = divisor_constants.shape().to_vec();
 
         let out_shape =
-            broadcast_shape(&a_shape, &b_shape).ok_or_else(|| LayerError::ShapeMismatch {
+            broadcast_shapes(&a_shape, &b_shape).map_err(|_| LayerError::ShapeMismatch {
                 layer: LayerKind::Div,
                 expected: a_shape.clone(),
                 got: b_shape.clone(),
@@ -190,33 +192,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
             scaling: circuit_params.scale_exponent.into(),
         }))
     }
-}
-
-fn broadcast_shape(a: &[usize], b: &[usize]) -> Option<Vec<usize>> {
-    let max_rank = a.len().max(b.len());
-    let mut result = Vec::with_capacity(max_rank);
-    for i in 0..max_rank {
-        let da = if i < max_rank - a.len() {
-            1
-        } else {
-            a[i - (max_rank - a.len())]
-        };
-        let db = if i < max_rank - b.len() {
-            1
-        } else {
-            b[i - (max_rank - b.len())]
-        };
-        if da == db {
-            result.push(da);
-        } else if da == 1 {
-            result.push(db);
-        } else if db == 1 {
-            result.push(da);
-        } else {
-            return None;
-        }
-    }
-    Some(result)
 }
 
 fn validate_divisors(divisors: &ArrayD<i64>) -> Result<(), CircuitError> {

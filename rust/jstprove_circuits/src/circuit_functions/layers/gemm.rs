@@ -106,17 +106,23 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             .clone();
 
         let promote_to_2d = |arr: ArrayD<Variable>,
-                             label: &str|
+                             label: &str,
+                             as_column: bool|
          -> Result<ndarray::Array2<Variable>, CircuitError> {
             match arr.ndim() {
                 1 => {
                     let n = arr.len();
-                    arr.into_shape_with_order(ndarray::Ix2(1, n)).map_err(|_| {
+                    let shape = if as_column {
+                        ndarray::Ix2(n, 1)
+                    } else {
+                        ndarray::Ix2(1, n)
+                    };
+                    arr.into_shape_with_order(shape).map_err(|_| {
                             LayerError::InvalidShape {
                                 layer: LayerKind::Gemm,
                                 msg: format!(
-                                    "Failed to promote 1D {label} of length {n} to [1, {n}] for layer {}",
-                                    self.name
+                                    "Failed to promote 1D {label} of length {n} to [{}, {}] for layer {}",
+                                    shape[0], shape[1], self.name
                                 ),
                             }
                             .into()
@@ -140,11 +146,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
             }
         };
 
-        let mut input_array = promote_to_2d(layer_input, "input")?;
+        let mut input_array = promote_to_2d(layer_input, "input", false)?;
         let w_name = get_input_name(&self.inputs, 1, LayerKind::Gemm, "weights")?;
         let weights_loaded =
             load_array_constants_or_get_inputs(api, input, w_name, &self.weights, LayerKind::Gemm)?;
-        let mut weights_array = promote_to_2d(weights_loaded, "weights")?;
+        let mut weights_array = promote_to_2d(weights_loaded, "weights", true)?;
 
         // Apply transposes according to ONNX attributes.
         input_array = check_and_apply_transpose_array(
