@@ -250,9 +250,14 @@ fn fold_gather_elements(
         return None;
     }
 
-    let data_vals = data_td.as_i64_vec();
+    let is_float = data_td.float_data.len() > data_td.int_data.len();
     let indices_vals = indices_td.as_i64_vec();
     let total: usize = indices_shape.iter().product();
+    let data_total: usize = data_shape.iter().product();
+
+    if indices_vals.len() < total {
+        return None;
+    }
 
     let mut data_strides = vec![1usize; rank];
     for i in (0..rank - 1).rev() {
@@ -263,7 +268,7 @@ fn fold_gather_elements(
         indices_strides[i] = indices_strides[i + 1] * indices_shape[i + 1];
     }
 
-    let mut gathered = Vec::with_capacity(total);
+    let mut index_map = Vec::with_capacity(total);
     for (flat_idx, &idx_val) in indices_vals.iter().enumerate().take(total) {
         let mut remaining = flat_idx;
         let mut data_flat_idx = 0usize;
@@ -284,17 +289,40 @@ fn fold_gather_elements(
                 data_flat_idx += coord * data_strides[dim];
             }
         }
-        gathered.push(*data_vals.get(data_flat_idx)?);
+        if data_flat_idx >= data_total {
+            return None;
+        }
+        index_map.push(data_flat_idx);
     }
 
     let out_dims: Vec<i64> = indices_shape.iter().map(|&d| d as i64).collect();
-    Some(TensorData {
-        name: String::new(),
-        dims: out_dims,
-        data_type: data_td.data_type,
-        float_data: vec![],
-        int_data: gathered,
-    })
+    if is_float {
+        let data_vals = &data_td.float_data;
+        if data_vals.len() < data_total {
+            return None;
+        }
+        let gathered: Vec<f64> = index_map.iter().map(|&i| data_vals[i]).collect();
+        Some(TensorData {
+            name: String::new(),
+            dims: out_dims,
+            data_type: data_td.data_type,
+            float_data: gathered,
+            int_data: vec![],
+        })
+    } else {
+        let data_vals = &data_td.int_data;
+        if data_vals.len() < data_total {
+            return None;
+        }
+        let gathered: Vec<i64> = index_map.iter().map(|&i| data_vals[i]).collect();
+        Some(TensorData {
+            name: String::new(),
+            dims: out_dims,
+            data_type: data_td.data_type,
+            float_data: vec![],
+            int_data: gathered,
+        })
+    }
 }
 
 fn fold_unsqueeze(
@@ -1613,6 +1641,15 @@ fn infer_gather(
         raw_axis as usize
     };
 
+    const MAX_AXIS_PAD: usize = 4;
+    if target_axis >= data_shape_vec.len() + MAX_AXIS_PAD {
+        bail!(
+            "layer {}: Gather axis {} exceeds data rank {} by more than {MAX_AXIS_PAD}",
+            layer.name,
+            raw_axis,
+            data_shape_vec.len()
+        );
+    }
     while data_shape_vec.len() <= target_axis {
         data_shape_vec.push(1);
     }
