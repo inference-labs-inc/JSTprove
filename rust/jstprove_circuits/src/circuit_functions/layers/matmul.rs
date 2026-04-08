@@ -664,4 +664,40 @@ mod tests {
             "unexpected error: {msg}"
         );
     }
+
+    #[test]
+    fn build_infers_missing_a_shape_from_b_and_output() {
+        let mut shapes_map = HashMap::new();
+        shapes_map.insert("b".to_string(), vec![4, 5]);
+        shapes_map.insert("y".to_string(), vec![3, 5]);
+
+        matmul_layer(vec!["a".to_string(), "b".to_string()], &shapes_map)
+            .expect("build should infer A shape [3, 4] from B=[4, 5] and Y=[3, 5]");
+    }
+
+    #[test]
+    fn build_infers_missing_b_shape_from_a_and_output() {
+        let mut shapes_map = HashMap::new();
+        shapes_map.insert("a".to_string(), vec![3, 4]);
+        shapes_map.insert("y".to_string(), vec![3, 5]);
+
+        matmul_layer(vec!["a".to_string(), "b".to_string()], &shapes_map)
+            .expect("build should infer B shape [4, 5] from A=[3, 4] and Y=[3, 5]");
+    }
+
+    #[test]
+    fn build_fails_when_a_and_output_both_missing() {
+        let mut shapes_map = HashMap::new();
+        shapes_map.insert("b".to_string(), vec![4, 5]);
+
+        let result = matmul_layer(vec!["a".to_string(), "b".to_string()], &shapes_map);
+        let err = result
+            .err()
+            .expect("should fail when A and Y shapes both missing");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("missing input shape"),
+            "unexpected error: {msg}"
+        );
+    }
 }
