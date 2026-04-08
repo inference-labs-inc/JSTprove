@@ -57,6 +57,28 @@ fn generate_from_onnx_with_all_options(
         n_bits,
         target_precision,
         None,
+        None,
+    )
+}
+
+/// Generate metadata using externally-resolved tensor shapes instead of
+/// running jstprove's internal shape inference. The caller (typically
+/// dsperse via tract) provides a complete shape map that is trusted
+/// as the single source of truth.
+pub fn generate_from_onnx_with_shapes(
+    onnx_path: &Path,
+    precomputed_shapes: HashMap<String, Vec<usize>>,
+) -> Result<ExpanderMetadata> {
+    let parsed = parser::parse_onnx(onnx_path).context("parsing ONNX model")?;
+    let graph = LayerGraph::from_parsed(&parsed).context("building layer graph")?;
+    generate_from_parsed(
+        parsed,
+        graph,
+        false,
+        None,
+        None,
+        None,
+        Some(precomputed_shapes),
     )
 }
 
@@ -64,6 +86,11 @@ fn generate_from_onnx_with_all_options(
 /// `quantizer::compute_max_bound` on `graph` (which applies `fold_all_batchnorms`).
 /// Passing a stale value from an unfolded graph produces incorrect scale configs.
 /// Pass `None` to let this function compute it on demand.
+///
+/// When `precomputed_shapes` is `Some`, the provided shape map is used directly
+/// instead of running `infer_all_shapes`. This allows an external shape oracle
+/// (e.g. tract) to serve as the single source of truth, eliminating dual
+/// shape inference between jstprove and its callers.
 fn generate_from_parsed(
     parsed: ParsedModel,
     mut graph: LayerGraph,
@@ -71,6 +98,7 @@ fn generate_from_parsed(
     n_bits: Option<u32>,
     target_precision: Option<u32>,
     precomputed_max_bound: Option<f64>,
+    precomputed_shapes: Option<HashMap<String, Vec<usize>>>,
 ) -> Result<ExpanderMetadata> {
     let quantized = match (n_bits, target_precision) {
         (Some(nb), Some(digits)) => quantizer::quantize_model_for_precision(graph, digits, nb)
@@ -91,8 +119,31 @@ fn generate_from_parsed(
     };
     let config = &quantized.scale_config;
 
-    let shapes = shape_inference::infer_all_shapes(&parsed, &quantized.graph)
-        .context("inferring tensor shapes")?;
+    let shapes = match precomputed_shapes {
+        Some(s) => {
+            let mut missing = Vec::new();
+            for layer in &quantized.graph.layers {
+                for name in layer.inputs.iter().chain(layer.outputs.iter()) {
+                    if !s.contains_key(name) && !parsed.initializers.contains_key(name) {
+                        missing.push(name.clone());
+                    }
+                }
+            }
+            if !missing.is_empty() {
+                missing.sort();
+                missing.dedup();
+                tracing::warn!(
+                    count = missing.len(),
+                    names = ?missing,
+                    "precomputed shape map missing tensor entries; \
+                     downstream metadata may be incomplete"
+                );
+            }
+            s
+        }
+        None => shape_inference::infer_all_shapes(&parsed, &quantized.graph)
+            .context("inferring tensor shapes")?,
+    };
 
     let opset_version = parsed.opset_version as i16;
 
@@ -187,6 +238,7 @@ pub fn generate_from_onnx_goldilocks_auto(
         Some(n_bits),
         target_precision,
         Some(max_bound),
+        None,
     )
 }
 

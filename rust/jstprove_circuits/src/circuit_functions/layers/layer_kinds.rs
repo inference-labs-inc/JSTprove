@@ -124,6 +124,13 @@ macro_rules! define_layers {
         impl LayerKind {
             pub const SUPPORTED_OP_NAMES: &[&str] = &[ $( $name, )* ];
 
+            #[must_use]
+            pub const fn name(&self) -> &'static str {
+                match self {
+                    $( LayerKind::$variant => $name, )*
+                }
+            }
+
             #[must_use] pub fn builder<C: Config, Builder: RootAPI<C>>(
                 &self
             ) -> fn(
