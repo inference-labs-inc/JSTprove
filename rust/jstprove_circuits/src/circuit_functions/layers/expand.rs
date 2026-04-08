@@ -55,6 +55,11 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ExpandLayer {
         let out_rank = self.output_shape.len();
         let in_rank = x_input.ndim();
 
+        debug_assert!(
+            in_rank <= out_rank,
+            "shape inference invariant violated: in_rank={in_rank}, out_rank={out_rank}"
+        );
+
         let result = match in_rank.cmp(&out_rank) {
             std::cmp::Ordering::Greater => {
                 let in_shape = x_input.shape();

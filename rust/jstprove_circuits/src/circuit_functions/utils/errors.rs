@@ -95,6 +95,9 @@ pub enum RescaleError {
 
     #[error("Bit reconstruction failed for {var_name} into {n_bits} bits")]
     BitReconstructionError { var_name: String, n_bits: usize },
+
+    #[error("Invalid divisor: {divisor_val} (must be > 0)")]
+    InvalidDivisor { divisor_val: u32 },
 }
 
 #[derive(thiserror::Error, Debug)]

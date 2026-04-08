@@ -132,11 +132,17 @@ pub(crate) fn div_pos_integer_pow2_constant_inner<C: Config, Builder: RootAPI<C>
 /// Performs division of a positive integer variable by an **arbitrary positive
 /// constant** inside the circuit, with range-checked quotient and remainder.
 ///
+/// When `divisor_val == 1`, returns `dividend` directly (identity division).
 /// For divisors that are powers of two this delegates to
 /// [`div_pos_integer_pow2_constant`]. For other divisors, the remainder
 /// constraint `0 <= r < d` is enforced by range-checking both `r` and
 /// `d - 1 - r` in `ceil(log2(d))` bits.
-#[allow(clippy::too_many_arguments, clippy::missing_errors_doc)]
+///
+/// # Errors
+///
+/// Returns [`RescaleError::InvalidDivisor`] if `divisor_val` is zero.
+/// Returns [`RescaleError`] if any LogUp range check or overflow guard fails.
+#[allow(clippy::too_many_arguments)]
 pub fn div_pos_integer_constant<C: Config, Builder: RootAPI<C>>(
     api: &mut Builder,
     logup_ctx: &mut LogupRangeCheckContext,
@@ -147,6 +153,10 @@ pub fn div_pos_integer_constant<C: Config, Builder: RootAPI<C>>(
     shift_exponent: usize,
     shift: Variable,
 ) -> Result<Variable, RescaleError> {
+    if divisor_val == 0 {
+        return Err(RescaleError::InvalidDivisor { divisor_val });
+    }
+
     if divisor_val == 1 {
         return Ok(dividend);
     }
