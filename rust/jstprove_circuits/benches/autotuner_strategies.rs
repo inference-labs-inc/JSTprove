@@ -37,9 +37,12 @@ fn model_path() -> std::path::PathBuf {
 /// forcing a full sweep each time.
 fn bench_cold_compile(c: &mut Criterion) {
     let path = model_path();
-    if !path.exists() {
-        return;
-    }
+    assert!(
+        path.exists(),
+        "MODEL='{}' resolved to '{}' — ONNX file not found; set the MODEL env var to a model in jstprove_remainder/models/",
+        model_name(),
+        path.display()
+    );
 
     let metadata = expander_metadata::generate_from_onnx(&path).unwrap();
     // Force logup_chunk_bits = None so compile_bn254 always invokes the autotuner
@@ -80,9 +83,12 @@ fn bench_cold_compile(c: &mut Criterion) {
 /// every subsequent iteration hits the cache and skips the sweep.
 fn bench_warm_compile(c: &mut Criterion) {
     let path = model_path();
-    if !path.exists() {
-        return;
-    }
+    assert!(
+        path.exists(),
+        "MODEL='{}' resolved to '{}' — ONNX file not found; set the MODEL env var to a model in jstprove_remainder/models/",
+        model_name(),
+        path.display()
+    );
 
     // Pre-populate the cache with one cold compile.
     {

@@ -25,12 +25,18 @@ fn model_path() -> std::path::PathBuf {
 
 fn bench_bn254(c: &mut Criterion) {
     let path = model_path();
-    if !path.exists() {
-        return;
-    }
+    assert!(
+        path.exists(),
+        "MODEL='{}' resolved to '{}' — ONNX file not found; set the MODEL env var to a model in jstprove_remainder/models/",
+        model_name(),
+        path.display()
+    );
 
     let metadata = expander_metadata::generate_from_onnx(&path).unwrap();
-    let params = metadata.circuit_params.clone();
+    // Pin a fixed chunk width so every compile iteration runs in the same warm-cache
+    // regime without triggering the adaptive autotuner sweep on the first iteration.
+    let mut params = metadata.circuit_params.clone();
+    params.logup_chunk_bits = params.logup_chunk_bits.or(Some(12));
     let arch = metadata.architecture.clone();
     let wandb = metadata.wandb.clone();
     OnnxContext::set_all(arch.clone(), params.clone(), Some(wandb.clone()));
@@ -104,13 +110,17 @@ fn bench_bn254(c: &mut Criterion) {
 
 fn bench_goldilocks(c: &mut Criterion) {
     let path = model_path();
-    if !path.exists() {
-        return;
-    }
+    assert!(
+        path.exists(),
+        "MODEL='{}' resolved to '{}' — ONNX file not found; set the MODEL env var to a model in jstprove_remainder/models/",
+        model_name(),
+        path.display()
+    );
 
     let metadata =
         expander_metadata::generate_from_onnx_for_field(&path, N_BITS_GOLDILOCKS, None).unwrap();
-    let params = metadata.circuit_params.clone();
+    let mut params = metadata.circuit_params.clone();
+    params.logup_chunk_bits = params.logup_chunk_bits.or(Some(12));
     let arch = metadata.architecture.clone();
     let wandb = metadata.wandb.clone();
     OnnxContext::set_all(arch.clone(), params.clone(), Some(wandb.clone()));
@@ -184,13 +194,17 @@ fn bench_goldilocks(c: &mut Criterion) {
 
 fn bench_goldilocks_basefold(c: &mut Criterion) {
     let path = model_path();
-    if !path.exists() {
-        return;
-    }
+    assert!(
+        path.exists(),
+        "MODEL='{}' resolved to '{}' — ONNX file not found; set the MODEL env var to a model in jstprove_remainder/models/",
+        model_name(),
+        path.display()
+    );
 
     let metadata =
         expander_metadata::generate_from_onnx_for_field(&path, N_BITS_GOLDILOCKS, None).unwrap();
-    let params = metadata.circuit_params.clone();
+    let mut params = metadata.circuit_params.clone();
+    params.logup_chunk_bits = params.logup_chunk_bits.or(Some(12));
     let arch = metadata.architecture.clone();
     let wandb = metadata.wandb.clone();
     OnnxContext::set_all(arch.clone(), params.clone(), Some(wandb.clone()));

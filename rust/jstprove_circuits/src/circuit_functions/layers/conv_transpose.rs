@@ -181,6 +181,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvTransposeLayer 
         let mut res = if bias.is_empty() {
             ArrayD::from_elem(vec![n_batch, c_out, out_h, out_w], zero)
         } else {
+            if bias.ndim() != 1 {
+                return Err(LayerError::InvalidShape {
+                    layer: LayerKind::ConvTranspose,
+                    msg: format!("bias must be 1-D, got {}D", bias.ndim()),
+                }
+                .into());
+            }
             if bias.shape()[0] != c_out {
                 return Err(LayerError::InvalidShape {
                     layer: LayerKind::ConvTranspose,
@@ -361,6 +368,18 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvTransposeLayer 
                 }
                 .into());
             }
+        }
+
+        // Guard against zero strides: the apply method uses stride as a divisor.
+        if strides.contains(&0) {
+            return Err(LayerError::UnsupportedConfig {
+                layer: LayerKind::ConvTranspose,
+                msg: format!(
+                    "layer '{}': strides must all be > 0, got {:?}",
+                    layer.name, strides
+                ),
+            }
+            .into());
         }
 
         let conv_transpose = Self {
