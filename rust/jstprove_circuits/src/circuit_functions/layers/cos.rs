@@ -137,16 +137,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for CosLayer {
             .into());
         }
 
-        let table_bits = ((circuit_params.scale_exponent as usize) + 3).min(20);
-        if n_bits < table_bits {
-            return Err(LayerError::Other {
-                layer: LayerKind::Cos,
-                msg: format!(
-                    "n_bits ({n_bits}) must be >= table_bits ({table_bits}) for clamp range context"
-                ),
-            }
-            .into());
-        }
+        let table_bits = ((circuit_params.scale_exponent as usize) + 3)
+            .min(20)
+            .min(n_bits);
 
         let scaling: u64 = 1u64
             .checked_shl(circuit_params.scale_exponent)
