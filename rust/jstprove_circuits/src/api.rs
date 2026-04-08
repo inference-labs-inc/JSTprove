@@ -38,9 +38,7 @@ pub fn compile(
     wandb: WANDB,
     compress: bool,
 ) -> Result<(), RunError> {
-    OnnxContext::set_params(params.clone());
-    OnnxContext::set_architecture(architecture);
-    OnnxContext::set_wandb(wandb);
+    OnnxContext::set_all(architecture, params.clone(), Some(wandb));
 
     match curve {
         Curve::Bn254 => crate::onnx::compile_bn254(circuit_path, compress, Some(params)),
@@ -239,47 +237,47 @@ pub struct OpInfo {
     pub is_elementwise: bool,
 }
 
+pub const SPATIAL_OPS: &[&str] = &[
+    "Conv",
+    "ConvTranspose",
+    "MaxPool",
+    "AveragePool",
+    "GlobalAveragePool",
+];
+
+pub const ELEMENTWISE_OPS: &[&str] = &[
+    "Add",
+    "Sub",
+    "Mul",
+    "Div",
+    "Pow",
+    "Max",
+    "Min",
+    "ReLU",
+    "LeakyRelu",
+    "Sigmoid",
+    "Tanh",
+    "Exp",
+    "Log",
+    "Sqrt",
+    "Erf",
+    "Neg",
+    "Clip",
+    "HardSwish",
+    "Gelu",
+    "Sin",
+    "Cos",
+    "Not",
+    "And",
+    "Equal",
+    "Greater",
+    "Less",
+    "Identity",
+    "Cast",
+];
+
 static OP_REGISTRY: LazyLock<Vec<OpInfo>> = LazyLock::new(|| {
     use crate::circuit_functions::layers::LayerKind;
-
-    const SPATIAL_OPS: &[&str] = &[
-        "Conv",
-        "ConvTranspose",
-        "MaxPool",
-        "AveragePool",
-        "GlobalAveragePool",
-    ];
-
-    const ELEMENTWISE_OPS: &[&str] = &[
-        "Add",
-        "Sub",
-        "Mul",
-        "Div",
-        "Pow",
-        "Max",
-        "Min",
-        "ReLU",
-        "LeakyRelu",
-        "Sigmoid",
-        "Tanh",
-        "Exp",
-        "Log",
-        "Sqrt",
-        "Erf",
-        "Neg",
-        "Clip",
-        "HardSwish",
-        "Gelu",
-        "Sin",
-        "Cos",
-        "Not",
-        "And",
-        "Equal",
-        "Greater",
-        "Less",
-        "Identity",
-        "Cast",
-    ];
 
     LayerKind::SUPPORTED_OP_NAMES
         .iter()
@@ -364,45 +362,6 @@ mod tests {
     #[test]
     fn hardcoded_ops_exist_in_supported() {
         use crate::circuit_functions::layers::LayerKind;
-
-        const SPATIAL_OPS: &[&str] = &[
-            "Conv",
-            "ConvTranspose",
-            "MaxPool",
-            "AveragePool",
-            "GlobalAveragePool",
-        ];
-
-        const ELEMENTWISE_OPS: &[&str] = &[
-            "Add",
-            "Sub",
-            "Mul",
-            "Div",
-            "Pow",
-            "Max",
-            "Min",
-            "ReLU",
-            "LeakyRelu",
-            "Sigmoid",
-            "Tanh",
-            "Exp",
-            "Log",
-            "Sqrt",
-            "Erf",
-            "Neg",
-            "Clip",
-            "HardSwish",
-            "Gelu",
-            "Sin",
-            "Cos",
-            "Not",
-            "And",
-            "Equal",
-            "Greater",
-            "Less",
-            "Identity",
-            "Cast",
-        ];
 
         let supported = LayerKind::SUPPORTED_OP_NAMES;
         for &op in SPATIAL_OPS {
