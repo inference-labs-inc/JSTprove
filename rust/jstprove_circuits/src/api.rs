@@ -225,6 +225,21 @@ pub fn generate_metadata_with_options(
         .map_err(|e| RunError::Compile(format!("{e:#}")))
 }
 
+/// Generate metadata using externally-resolved tensor shapes, bypassing
+/// jstprove's internal shape inference. The provided shape map is trusted
+/// as the single source of truth.
+///
+/// # Errors
+/// Returns `RunError` if ONNX parsing or quantization fails.
+#[allow(clippy::implicit_hasher)]
+pub fn generate_metadata_with_shapes(
+    onnx_path: &Path,
+    precomputed_shapes: std::collections::HashMap<String, Vec<usize>>,
+) -> Result<crate::expander_metadata::ExpanderMetadata, RunError> {
+    crate::expander_metadata::generate_from_onnx_with_shapes(onnx_path, precomputed_shapes)
+        .map_err(|e| RunError::Compile(format!("{e:#}")))
+}
+
 #[must_use]
 pub fn supported_ops(proof_system: ProofSystem) -> &'static [&'static str] {
     proof_system.supported_ops()
@@ -237,48 +252,48 @@ pub struct OpInfo {
     pub is_elementwise: bool,
 }
 
+use crate::circuit_functions::layers::LayerKind;
+
 pub const SPATIAL_OPS: &[&str] = &[
-    "Conv",
-    "ConvTranspose",
-    "MaxPool",
-    "AveragePool",
-    "GlobalAveragePool",
+    LayerKind::Conv.name(),
+    LayerKind::ConvTranspose.name(),
+    LayerKind::MaxPool.name(),
+    LayerKind::AveragePool.name(),
+    LayerKind::GlobalAveragePool.name(),
 ];
 
 pub const ELEMENTWISE_OPS: &[&str] = &[
-    "Add",
-    "Sub",
-    "Mul",
-    "Div",
-    "Pow",
-    "Max",
-    "Min",
-    "ReLU",
-    "LeakyRelu",
-    "Sigmoid",
-    "Tanh",
-    "Exp",
-    "Log",
-    "Sqrt",
-    "Erf",
-    "Neg",
-    "Clip",
-    "HardSwish",
-    "Gelu",
-    "Sin",
-    "Cos",
-    "Not",
-    "And",
-    "Equal",
-    "Greater",
-    "Less",
-    "Identity",
-    "Cast",
+    LayerKind::Add.name(),
+    LayerKind::Sub.name(),
+    LayerKind::Mul.name(),
+    LayerKind::Div.name(),
+    LayerKind::Pow.name(),
+    LayerKind::Max.name(),
+    LayerKind::Min.name(),
+    LayerKind::ReLU.name(),
+    LayerKind::LeakyRelu.name(),
+    LayerKind::Sigmoid.name(),
+    LayerKind::Tanh.name(),
+    LayerKind::Exp.name(),
+    LayerKind::Log.name(),
+    LayerKind::Sqrt.name(),
+    LayerKind::Erf.name(),
+    LayerKind::Neg.name(),
+    LayerKind::Clip.name(),
+    LayerKind::HardSwish.name(),
+    LayerKind::Gelu.name(),
+    LayerKind::Sin.name(),
+    LayerKind::Cos.name(),
+    LayerKind::Not.name(),
+    LayerKind::And.name(),
+    LayerKind::Equal.name(),
+    LayerKind::Greater.name(),
+    LayerKind::Less.name(),
+    LayerKind::Identity.name(),
+    LayerKind::Cast.name(),
 ];
 
 static OP_REGISTRY: LazyLock<Vec<OpInfo>> = LazyLock::new(|| {
-    use crate::circuit_functions::layers::LayerKind;
-
     LayerKind::SUPPORTED_OP_NAMES
         .iter()
         .map(|&name| OpInfo {
