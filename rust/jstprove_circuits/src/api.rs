@@ -298,24 +298,31 @@ pub fn op_registry() -> &'static [OpInfo] {
 
 const ONNX_ELEM_TYPE_FLOAT: i16 = 1;
 
+/// # Errors
+/// Returns `RunError` if a WANDB entry is missing its shape.
 pub fn populate_wai_inputs<S: BuildHasher>(
     params: &mut CircuitParams,
     wandb: &WANDB,
     exclude: &HashSet<String, S>,
-) {
+) -> Result<(), RunError> {
     params.weights_as_inputs = true;
     for wb in &wandb.w_and_b {
         if exclude.contains(&wb.name) {
             continue;
         }
-        if let Some(shape) = wb.shape.get(&wb.name).cloned() {
-            params.inputs.push(ONNXIO {
-                name: wb.name.clone(),
-                elem_type: ONNX_ELEM_TYPE_FLOAT,
-                shape,
-            });
-        }
+        let shape = wb.shape.get(&wb.name).cloned().ok_or_else(|| {
+            RunError::Compile(format!(
+                "wandb entry '{}' missing shape for WAI input population",
+                wb.name
+            ))
+        })?;
+        params.inputs.push(ONNXIO {
+            name: wb.name.clone(),
+            elem_type: ONNX_ELEM_TYPE_FLOAT,
+            shape,
+        });
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -351,6 +358,64 @@ mod tests {
         let expander = supported_ops(ProofSystem::Expander);
         for &op in supported_ops(ProofSystem::Remainder) {
             assert!(expander.contains(&op), "{op} missing from Expander");
+        }
+    }
+
+    #[test]
+    fn hardcoded_ops_exist_in_supported() {
+        use crate::circuit_functions::layers::LayerKind;
+
+        const SPATIAL_OPS: &[&str] = &[
+            "Conv",
+            "ConvTranspose",
+            "MaxPool",
+            "AveragePool",
+            "GlobalAveragePool",
+        ];
+
+        const ELEMENTWISE_OPS: &[&str] = &[
+            "Add",
+            "Sub",
+            "Mul",
+            "Div",
+            "Pow",
+            "Max",
+            "Min",
+            "ReLU",
+            "LeakyRelu",
+            "Sigmoid",
+            "Tanh",
+            "Exp",
+            "Log",
+            "Sqrt",
+            "Erf",
+            "Neg",
+            "Clip",
+            "HardSwish",
+            "Gelu",
+            "Sin",
+            "Cos",
+            "Not",
+            "And",
+            "Equal",
+            "Greater",
+            "Less",
+            "Identity",
+            "Cast",
+        ];
+
+        let supported = LayerKind::SUPPORTED_OP_NAMES;
+        for &op in SPATIAL_OPS {
+            assert!(
+                supported.contains(&op),
+                "SPATIAL_OPS entry {op:?} not in LayerKind::SUPPORTED_OP_NAMES"
+            );
+        }
+        for &op in ELEMENTWISE_OPS {
+            assert!(
+                supported.contains(&op),
+                "ELEMENTWISE_OPS entry {op:?} not in LayerKind::SUPPORTED_OP_NAMES"
+            );
         }
     }
 }
