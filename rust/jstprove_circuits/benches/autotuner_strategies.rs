@@ -42,7 +42,10 @@ fn bench_cold_compile(c: &mut Criterion) {
     }
 
     let metadata = expander_metadata::generate_from_onnx(&path).unwrap();
-    let params = metadata.circuit_params.clone();
+    // Force logup_chunk_bits = None so compile_bn254 always invokes the autotuner
+    // sweep rather than using a pre-set fixed width from the model metadata.
+    let mut params = metadata.circuit_params.clone();
+    params.logup_chunk_bits = None;
     let arch = metadata.architecture.clone();
     let wandb = metadata.wandb.clone();
 
@@ -98,7 +101,10 @@ fn bench_warm_compile(c: &mut Criterion) {
     }
 
     let metadata = expander_metadata::generate_from_onnx(&path).unwrap();
-    let params = metadata.circuit_params.clone();
+    // Force logup_chunk_bits = None so the measured iterations hit the autotuner
+    // cache path rather than bypassing the autotuner with a fixed chunk width.
+    let mut params = metadata.circuit_params.clone();
+    params.logup_chunk_bits = None;
     let arch = metadata.architecture.clone();
     let wandb = metadata.wandb.clone();
 

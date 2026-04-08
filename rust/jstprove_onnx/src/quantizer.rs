@@ -566,7 +566,7 @@ fn propagate_shapes(graph: &LayerGraph) -> Result<HashMap<String, Vec<usize>>> {
                             }
                         }
 
-                        // Infer the single -1 dimension when input total is known.
+                        // Infer or validate dimensions based on how many are unknown.
                         let n_unknown = dims.iter().filter(|d| d.is_none()).count();
                         if n_unknown == 1 && input_total > 0 {
                             let known: usize = dims.iter().filter_map(|&d| d).product();
@@ -593,6 +593,14 @@ fn propagate_shapes(graph: &LayerGraph) -> Result<HashMap<String, Vec<usize>>> {
                             anyhow::bail!(
                                 "Reshape layer '{}': more than one -1 dimension is not allowed",
                                 layer.name
+                            );
+                        } else if n_unknown == 0 && input_total > 0 {
+                            // All dimensions are fixed; validate that their product matches the input.
+                            let target_total: usize = dims.iter().filter_map(|&d| d).product();
+                            anyhow::ensure!(
+                                target_total == input_total,
+                                "Reshape layer '{}': target shape product {} != input total {}",
+                                layer.name, target_total, input_total
                             );
                         }
 

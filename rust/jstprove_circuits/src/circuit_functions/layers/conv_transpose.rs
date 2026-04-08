@@ -105,25 +105,71 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvTransposeLayer 
         let w_in = layer_input.shape()[3];
 
         // Weight shape: [C_in, C_out/group, kH, kW]
-        let c_out = weights.shape()[1] * self.group as usize;
         let kh = self.kernel_shape[0] as usize;
         let kw = self.kernel_shape[1] as usize;
 
-        let stride_h = self.strides[0] as usize;
-        let stride_w = self.strides[1] as usize;
-        let dil_h = self.dilation[0] as usize;
-        let dil_w = self.dilation[1] as usize;
-        let pad_h_begin = self.pads[0] as usize;
-        let pad_w_begin = self.pads[1] as usize;
-        let pad_h_end = self.pads[2] as usize;
-        let pad_w_end = self.pads[3] as usize;
-        let out_pad_h = self.output_padding[0] as usize;
-        let out_pad_w = self.output_padding[1] as usize;
+        // Validate weight tensor shape before any indexing.
+        if weights.ndim() != 4 {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::ConvTranspose,
+                msg: format!("weights must be 4-D [C_in, C_out/group, kH, kW], got {}D", weights.ndim()),
+            }
+            .into());
+        }
+        let w_shape = weights.shape();
+        let c_out = w_shape[1] * self.group as usize;
+        if w_shape[0] != c_in {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::ConvTranspose,
+                msg: format!("weights C_in dim {} != input C_in {c_in}", w_shape[0]),
+            }
+            .into());
+        }
+        if w_shape[2] != kh || w_shape[3] != kw {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::ConvTranspose,
+                msg: format!(
+                    "weights spatial shape [{}, {}] != kernel_shape [{kh}, {kw}]",
+                    w_shape[2], w_shape[3]
+                ),
+            }
+            .into());
+        }
 
-        let eff_kh = (kh - 1) * dil_h + 1;
-        let eff_kw = (kw - 1) * dil_w + 1;
-        let out_h = stride_h * (h_in - 1) + eff_kh + out_pad_h - (pad_h_begin + pad_h_end);
-        let out_w = stride_w * (w_in - 1) + eff_kw + out_pad_w - (pad_w_begin + pad_w_end);
+        let stride_h = self.strides[0] as i64;
+        let stride_w = self.strides[1] as i64;
+        let dil_h = self.dilation[0] as i64;
+        let dil_w = self.dilation[1] as i64;
+        let pad_h_begin = self.pads[0] as i64;
+        let pad_w_begin = self.pads[1] as i64;
+        let pad_h_end = self.pads[2] as i64;
+        let pad_w_end = self.pads[3] as i64;
+        let out_pad_h = self.output_padding[0] as i64;
+        let out_pad_w = self.output_padding[1] as i64;
+
+        let eff_kh = (kh as i64 - 1) * dil_h + 1;
+        let eff_kw = (kw as i64 - 1) * dil_w + 1;
+        let out_h_i64 = stride_h * (h_in as i64 - 1) + eff_kh + out_pad_h - (pad_h_begin + pad_h_end);
+        let out_w_i64 = stride_w * (w_in as i64 - 1) + eff_kw + out_pad_w - (pad_w_begin + pad_w_end);
+        if out_h_i64 <= 0 || out_w_i64 <= 0 {
+            return Err(LayerError::InvalidShape {
+                layer: LayerKind::ConvTranspose,
+                msg: format!(
+                    "computed output spatial size ({out_h_i64} × {out_w_i64}) is non-positive; check kernel/stride/pad/output_padding"
+                ),
+            }
+            .into());
+        }
+        let out_h = out_h_i64 as usize;
+        let out_w = out_w_i64 as usize;
+
+        // Convert back to usize for the inner loop.
+        let stride_h = stride_h as usize;
+        let stride_w = stride_w as usize;
+        let dil_h = dil_h as usize;
+        let dil_w = dil_w as usize;
+        let pad_h_begin = pad_h_begin as usize;
+        let pad_w_begin = pad_w_begin as usize;
 
         // Initialise result array; populate bias along the output-channel dimension.
         let zero = api.constant(0);
@@ -247,6 +293,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvTransposeLayer 
         let kernel_shape: Vec<u32> = get_param(&layer.name, KERNEL_SHAPE, &params)?;
         let spatial_rank = kernel_shape.len();
 
+        if spatial_rank != 2 {
+            return Err(LayerError::UnsupportedConfig {
+                layer: LayerKind::ConvTranspose,
+                msg: format!(
+                    "layer '{}': only 2-D spatial ConvTranspose is supported, got spatial_rank={}",
+                    layer.name, spatial_rank
+                ),
+            }
+            .into());
+        }
+
         let default_zeros: Vec<u32> = vec![0; 2 * spatial_rank];
         let default_op: Vec<u32> = vec![0; spatial_rank];
         let default_ones: Vec<u32> = vec![1; spatial_rank];
@@ -272,20 +329,44 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvTransposeLayer 
             .into());
         }
 
+        let strides: Vec<u32> =
+            get_param_or_default(&layer.name, STRIDES, &params, Some(&default_ones))?;
+        let pads: Vec<u32> =
+            get_param_or_default(&layer.name, PADS, &params, Some(&default_zeros))?;
+        let output_padding: Vec<u32> =
+            get_param_or_default(&layer.name, "output_padding", &params, Some(&default_op))?;
+
+        // Validate that all spatial parameter vectors match the expected 2-D lengths.
+        for (param_name, vec, expected_len) in [
+            (STRIDES, &strides, 2usize),
+            (DILATION, &dilation, 2),
+            ("output_padding", &output_padding, 2),
+            (PADS, &pads, 4),
+        ] {
+            if vec.len() != expected_len {
+                return Err(LayerError::UnsupportedConfig {
+                    layer: LayerKind::ConvTranspose,
+                    msg: format!(
+                        "layer '{}': parameter '{}' has length {} but expected {}",
+                        layer.name,
+                        param_name,
+                        vec.len(),
+                        expected_len
+                    ),
+                }
+                .into());
+            }
+        }
+
         let conv_transpose = Self {
             weights,
             bias,
-            strides: get_param_or_default(&layer.name, STRIDES, &params, Some(&default_ones))?,
+            strides,
             kernel_shape,
             group,
             dilation,
-            pads: get_param_or_default(&layer.name, PADS, &params, Some(&default_zeros))?,
-            output_padding: get_param_or_default(
-                &layer.name,
-                "output_padding",
-                &params,
-                Some(&default_op),
-            )?,
+            pads,
+            output_padding,
             scaling: circuit_params.scale_exponent.into(),
             v_plus_one: layer_context.n_bits_for(&layer.name),
             is_rescale,

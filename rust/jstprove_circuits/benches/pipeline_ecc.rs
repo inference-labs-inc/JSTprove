@@ -13,11 +13,14 @@ use jstprove_circuits::onnx::{
 use jstprove_circuits::runner::main_runner::read_circuit_msgpack;
 use jstprove_onnx::quantizer::N_BITS_GOLDILOCKS;
 
+fn model_name() -> String {
+    std::env::var("MODEL").unwrap_or_else(|_| "lenet".to_string())
+}
+
 fn model_path() -> std::path::PathBuf {
-    let model_name = std::env::var("MODEL").unwrap_or_else(|_| "lenet".to_string());
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../jstprove_remainder/models")
-        .join(format!("{model_name}.onnx"))
+        .join(format!("{}.onnx", model_name()))
 }
 
 fn bench_bn254(c: &mut Criterion) {
@@ -39,7 +42,7 @@ fn bench_bn254(c: &mut Criterion) {
         .sum();
     let activations: Vec<f64> = (0..num_act).map(|i| i as f64 / num_act as f64).collect();
 
-    let mut group = c.benchmark_group("pipeline/bn254");
+    let mut group = c.benchmark_group(format!("pipeline/bn254/{}", model_name()));
     group.sample_size(10);
     group.measurement_time(Duration::from_secs(120));
 
@@ -119,7 +122,7 @@ fn bench_goldilocks(c: &mut Criterion) {
         .sum();
     let activations: Vec<f64> = (0..num_act).map(|i| i as f64 / num_act as f64).collect();
 
-    let mut group = c.benchmark_group("pipeline/goldilocks");
+    let mut group = c.benchmark_group(format!("pipeline/goldilocks/{}", model_name()));
     group.sample_size(10);
     group.measurement_time(Duration::from_secs(120));
 
@@ -199,7 +202,7 @@ fn bench_goldilocks_basefold(c: &mut Criterion) {
         .sum();
     let activations: Vec<f64> = (0..num_act).map(|i| i as f64 / num_act as f64).collect();
 
-    let mut group = c.benchmark_group("pipeline/goldilocks_basefold");
+    let mut group = c.benchmark_group(format!("pipeline/goldilocks_basefold/{}", model_name()));
     group.sample_size(10);
     group.measurement_time(Duration::from_secs(120));
 

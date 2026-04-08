@@ -7,6 +7,22 @@ use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
 use jstprove_circuits::onnx::compile_bn254;
 
+fn clear_autotuner_cache() {
+    if let Some(dir) = std::env::var("HOME").ok().map(|h| {
+        let base = if cfg!(target_os = "macos") {
+            std::path::PathBuf::from(&h).join("Library/Caches")
+        } else {
+            std::env::var("XDG_CACHE_HOME")
+                .ok()
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::path::PathBuf::from(&h).join(".cache"))
+        };
+        base.join("jstprove/chunk_width")
+    }) {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
 fn bench_compile_chunk_bits(c: &mut Criterion) {
     let model_name = std::env::var("MODEL").unwrap_or_else(|_| "lenet".to_string());
     let model_file = format!("{model_name}.onnx");
@@ -27,19 +43,27 @@ fn bench_compile_chunk_bits(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(120));
 
     for chunk_bits in [Some(10usize), Some(11), Some(12), Some(13), Some(14), None] {
+        // Include both the model name and the chunk width so IDs are unique across MODEL runs.
         let label = match chunk_bits {
-            Some(b) => format!("chunk_bits_{b}"),
-            None => "adaptive".to_string(),
+            Some(b) => format!("{model_name}/chunk_bits_{b}"),
+            None => format!("{model_name}/adaptive"),
         };
 
         let mut params_it = params_base.clone();
         params_it.logup_chunk_bits = chunk_bits;
         let arch_it = arch.clone();
         let wandb_it = wandb.clone();
+        let is_adaptive = chunk_bits.is_none();
 
         group.bench_with_input(BenchmarkId::new("compile", &label), &label, |b, _| {
             b.iter_batched(
                 || {
+                    // For the adaptive (None) case the autotuner sweeps and caches the result.
+                    // Clear the cache in the setup so every measured iteration starts cold and
+                    // produces a comparable result to the fixed-width Some(_) runs.
+                    if is_adaptive {
+                        clear_autotuner_cache();
+                    }
                     OnnxContext::set_all(
                         arch_it.clone(),
                         params_it.clone(),
