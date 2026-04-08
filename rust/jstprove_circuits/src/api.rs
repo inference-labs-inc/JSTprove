@@ -194,7 +194,7 @@ pub fn extract_outputs(
     witness_bytes: &[u8],
     num_model_inputs: usize,
 ) -> Result<ExtractedOutput, RunError> {
-    crate::onnx::extract_outputs_bn254(witness_bytes, num_model_inputs)
+    crate::runner::verify_extract::extract_outputs_from_witness(witness_bytes, num_model_inputs)
 }
 
 /// # Errors
@@ -209,20 +209,22 @@ pub fn try_load_metadata(circuit_path: &str) -> Option<CircuitParams> {
 }
 
 /// # Errors
-/// Returns an error if ONNX parsing, quantization, or shape inference fails.
+/// Returns `RunError` if ONNX parsing, quantization, or shape inference fails.
 pub fn generate_metadata(
     onnx_path: &Path,
-) -> Result<crate::expander_metadata::ExpanderMetadata, anyhow::Error> {
+) -> Result<crate::expander_metadata::ExpanderMetadata, RunError> {
     crate::expander_metadata::generate_from_onnx(onnx_path)
+        .map_err(|e| RunError::Compile(format!("{e:#}")))
 }
 
 /// # Errors
-/// Returns an error if ONNX parsing, quantization, or shape inference fails.
+/// Returns `RunError` if ONNX parsing, quantization, or shape inference fails.
 pub fn generate_metadata_with_options(
     onnx_path: &Path,
     weights_as_inputs: bool,
-) -> Result<crate::expander_metadata::ExpanderMetadata, anyhow::Error> {
+) -> Result<crate::expander_metadata::ExpanderMetadata, RunError> {
     crate::expander_metadata::generate_from_onnx_with_options(onnx_path, weights_as_inputs)
+        .map_err(|e| RunError::Compile(format!("{e:#}")))
 }
 
 #[must_use]
@@ -294,6 +296,8 @@ pub fn op_registry() -> &'static [OpInfo] {
     &OP_REGISTRY
 }
 
+const ONNX_ELEM_TYPE_FLOAT: i16 = 1;
+
 pub fn populate_wai_inputs<S: BuildHasher>(
     params: &mut CircuitParams,
     wandb: &WANDB,
@@ -307,7 +311,7 @@ pub fn populate_wai_inputs<S: BuildHasher>(
         if let Some(shape) = wb.shape.get(&wb.name).cloned() {
             params.inputs.push(ONNXIO {
                 name: wb.name.clone(),
-                elem_type: 1,
+                elem_type: ONNX_ELEM_TYPE_FLOAT,
                 shape,
             });
         }
