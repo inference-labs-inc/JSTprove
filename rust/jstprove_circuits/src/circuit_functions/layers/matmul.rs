@@ -117,13 +117,38 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MatMulLayer {
         let w_name = get_input_name(&layer.inputs, 1, LayerKind::MatMul, "input B")?;
 
         let input_name = layer.inputs.first().unwrap();
-        let a_shape = layer_context
-            .shapes_map
-            .get(input_name.as_str())
-            .ok_or_else(|| LayerError::InvalidShape {
-                layer: LayerKind::MatMul,
-                msg: format!("missing input shape for '{input_name}'"),
-            })?;
+        let a_shape: Vec<usize> = if let Some(s) = layer_context.shapes_map.get(input_name.as_str())
+        {
+            s.clone()
+        } else {
+            let out_name = layer
+                .outputs
+                .first()
+                .ok_or_else(|| LayerError::InvalidShape {
+                    layer: LayerKind::MatMul,
+                    msg: format!("missing input shape for '{input_name}'"),
+                })?;
+            let out_shape = layer_context.shapes_map.get(out_name.as_str());
+            let b_shape_ref = layer_context.shapes_map.get(w_name);
+            match (out_shape, b_shape_ref) {
+                (Some(os), Some(bs)) if os.len() >= 2 && !bs.is_empty() => {
+                    let k = bs[bs.len().saturating_sub(2)];
+                    let m = os[os.len() - 2];
+                    let batch = &os[..os.len() - 2];
+                    let mut shape = batch.to_vec();
+                    shape.push(m);
+                    shape.push(k);
+                    shape
+                }
+                _ => {
+                    return Err(LayerError::InvalidShape {
+                        layer: LayerKind::MatMul,
+                        msg: format!("missing input shape for '{input_name}'"),
+                    }
+                    .into());
+                }
+            }
+        };
         if a_shape.len() != 2 && a_shape.len() != 3 {
             return Err(LayerError::Other {
                 layer: LayerKind::MatMul,
@@ -137,14 +162,36 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MatMulLayer {
             .into());
         }
 
-        let b_shape =
-            layer_context
-                .shapes_map
-                .get(w_name)
+        let b_shape: Vec<usize> = if let Some(s) = layer_context.shapes_map.get(w_name) {
+            s.clone()
+        } else {
+            let out_name = layer
+                .outputs
+                .first()
                 .ok_or_else(|| LayerError::InvalidShape {
                     layer: LayerKind::MatMul,
                     msg: format!("missing input shape for '{w_name}'"),
                 })?;
+            let out_shape = layer_context.shapes_map.get(out_name.as_str());
+            match out_shape {
+                Some(os) if os.len() >= 2 => {
+                    let k = a_shape[a_shape.len() - 1];
+                    let n = os[os.len() - 1];
+                    if a_shape.len() == 3 {
+                        vec![a_shape[0], k, n]
+                    } else {
+                        vec![k, n]
+                    }
+                }
+                _ => {
+                    return Err(LayerError::InvalidShape {
+                        layer: LayerKind::MatMul,
+                        msg: format!("missing input shape for '{w_name}'"),
+                    }
+                    .into());
+                }
+            }
+        };
         if b_shape.len() != 2 && b_shape.len() != 3 {
             return Err(LayerError::Other {
                 layer: LayerKind::MatMul,

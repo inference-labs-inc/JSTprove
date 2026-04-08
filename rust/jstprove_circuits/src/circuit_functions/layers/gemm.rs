@@ -232,8 +232,21 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         let (weights, bias) = if layer_context.weights_as_inputs {
             (None, None)
         } else {
+            let mut w: ndarray::ArrayD<i64> = get_w_or_b(layer_context.w_and_b_map, w_name)?;
+            if w.ndim() == 1 {
+                if let Some(expected) = layer_context.shapes_map.get(w_name) {
+                    if expected.len() == 2 && expected.iter().product::<usize>() == w.len() {
+                        w = w
+                            .into_shape_with_order(ndarray::IxDyn(expected))
+                            .map_err(|e| LayerError::InvalidShape {
+                                layer: LayerKind::Gemm,
+                                msg: format!("reshaping 1D weight '{w_name}' to {expected:?}: {e}"),
+                            })?;
+                    }
+                }
+            }
             (
-                Some(get_w_or_b(layer_context.w_and_b_map, w_name)?),
+                Some(w),
                 Some(get_w_or_b(layer_context.w_and_b_map, b_name)?),
             )
         };
