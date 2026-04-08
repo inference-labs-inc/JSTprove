@@ -594,15 +594,12 @@ fn propagate_shapes(graph: &LayerGraph) -> Result<HashMap<String, Vec<usize>>> {
                                 "Reshape layer '{}': more than one -1 dimension is not allowed",
                                 layer.name
                             );
-                        } else if n_unknown == 0 && input_total > 0 {
-                            // All dimensions are fixed; validate that their product matches the input.
-                            let target_total: usize = dims.iter().filter_map(|&d| d).product();
-                            anyhow::ensure!(
-                                target_total == input_total,
-                                "Reshape layer '{}': target shape product {} != input total {}",
-                                layer.name, target_total, input_total
-                            );
                         }
+                        // n_unknown == 0: all dimensions are fixed. We intentionally do not
+                        // validate target product == input_total here because propagate_shapes
+                        // uses best-effort fallback shapes for ops it does not fully model
+                        // (e.g. Resize), so input_total can be stale or wrong; checking it
+                        // would produce false errors for valid models.
 
                         // All None should be resolved by now; any remaining None is an error.
                         dims.into_iter()

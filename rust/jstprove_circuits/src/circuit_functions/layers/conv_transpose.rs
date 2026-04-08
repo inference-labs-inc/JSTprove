@@ -112,7 +112,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvTransposeLayer 
         if weights.ndim() != 4 {
             return Err(LayerError::InvalidShape {
                 layer: LayerKind::ConvTranspose,
-                msg: format!("weights must be 4-D [C_in, C_out/group, kH, kW], got {}D", weights.ndim()),
+                msg: format!(
+                    "weights must be 4-D [C_in, C_out/group, kH, kW], got {}D",
+                    weights.ndim()
+                ),
             }
             .into());
         }
@@ -149,8 +152,10 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvTransposeLayer 
 
         let eff_kh = (kh as i64 - 1) * dil_h + 1;
         let eff_kw = (kw as i64 - 1) * dil_w + 1;
-        let out_h_i64 = stride_h * (h_in as i64 - 1) + eff_kh + out_pad_h - (pad_h_begin + pad_h_end);
-        let out_w_i64 = stride_w * (w_in as i64 - 1) + eff_kw + out_pad_w - (pad_w_begin + pad_w_end);
+        let out_h_i64 =
+            stride_h * (h_in as i64 - 1) + eff_kh + out_pad_h - (pad_h_begin + pad_h_end);
+        let out_w_i64 =
+            stride_w * (w_in as i64 - 1) + eff_kw + out_pad_w - (pad_w_begin + pad_w_end);
         if out_h_i64 <= 0 || out_w_i64 <= 0 {
             return Err(LayerError::InvalidShape {
                 layer: LayerKind::ConvTranspose,
