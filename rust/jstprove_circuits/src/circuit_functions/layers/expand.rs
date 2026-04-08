@@ -51,19 +51,71 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ExpandLayer {
             name: x_name.to_string(),
         })?;
 
-        // Use ndarray broadcast to expand singleton dimensions.
         let target = IxDyn(&self.output_shape);
-        let result = x_input
-            .broadcast(target)
-            .ok_or_else(|| LayerError::InvalidShape {
-                layer: LayerKind::Expand,
-                msg: format!(
-                    "cannot broadcast shape {:?} to {:?}",
-                    x_input.shape(),
-                    self.output_shape
-                ),
-            })?
-            .into_owned();
+        let out_rank = self.output_shape.len();
+        let in_rank = x_input.ndim();
+
+        debug_assert!(
+            in_rank <= out_rank,
+            "shape inference invariant violated: in_rank={in_rank}, out_rank={out_rank}"
+        );
+
+        let result = match in_rank.cmp(&out_rank) {
+            std::cmp::Ordering::Greater => {
+                let in_shape = x_input.shape();
+                let offset = in_rank - out_rank;
+                let mut merged = Vec::with_capacity(in_rank);
+                merged.extend_from_slice(&in_shape[..offset]);
+                for (i, &out_d) in self.output_shape.iter().enumerate() {
+                    let in_d = in_shape[offset + i];
+                    merged.push(if in_d == 1 { out_d } else { in_d });
+                }
+                x_input
+                    .broadcast(IxDyn(&merged))
+                    .ok_or_else(|| LayerError::InvalidShape {
+                        layer: LayerKind::Expand,
+                        msg: format!("cannot broadcast shape {in_shape:?} to {merged:?}"),
+                    })?
+                    .into_owned()
+            }
+            std::cmp::Ordering::Less => {
+                let mut padded_input_shape = vec![1usize; out_rank];
+                let offset = out_rank - in_rank;
+                padded_input_shape[offset..].copy_from_slice(x_input.shape());
+                let reshaped = x_input
+                    .clone()
+                    .into_shape_with_order(IxDyn(&padded_input_shape))
+                    .map_err(|_| LayerError::InvalidShape {
+                        layer: LayerKind::Expand,
+                        msg: format!(
+                            "cannot reshape input {:?} to {:?} for rank alignment",
+                            x_input.shape(),
+                            padded_input_shape
+                        ),
+                    })?;
+                reshaped
+                    .broadcast(target.clone())
+                    .ok_or_else(|| LayerError::InvalidShape {
+                        layer: LayerKind::Expand,
+                        msg: format!(
+                            "cannot broadcast shape {:?} to {:?}",
+                            padded_input_shape, self.output_shape
+                        ),
+                    })?
+                    .into_owned()
+            }
+            std::cmp::Ordering::Equal => x_input
+                .broadcast(target)
+                .ok_or_else(|| LayerError::InvalidShape {
+                    layer: LayerKind::Expand,
+                    msg: format!(
+                        "cannot broadcast shape {:?} to {:?}",
+                        x_input.shape(),
+                        self.output_shape
+                    ),
+                })?
+                .into_owned(),
+        };
 
         Ok((self.outputs.clone(), result))
     }

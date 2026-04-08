@@ -270,10 +270,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GatherLayer {
             a as usize
         } else {
             let a = raw_axis as usize;
-            if a >= data_rank {
+            if a >= data_rank + MAX_AXIS_PAD {
                 return Err(LayerError::InvalidShape {
                     layer: LayerKind::Gather,
-                    msg: format!("axis {raw_axis} out of range for data rank {data_rank}"),
+                    msg: format!(
+                        "axis {raw_axis} exceeds data rank {data_rank} by more than {MAX_AXIS_PAD}"
+                    ),
                 }
                 .into());
             }

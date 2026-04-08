@@ -7,7 +7,7 @@ use expander_compiler::frontend::{CircuitField, Config, FieldArith, RootAPI, Var
 
 use jstprove_onnx::shape_inference::broadcast_shapes;
 
-use crate::circuit_functions::gadgets::euclidean_division::div_pos_integer_pow2_constant;
+use crate::circuit_functions::gadgets::euclidean_division::div_pos_integer_constant;
 use crate::circuit_functions::gadgets::range_check::LogupRangeCheckContext;
 use crate::circuit_functions::utils::RescaleError;
 use crate::circuit_functions::utils::onnx_model::get_optional_w_or_b;
@@ -134,8 +134,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
                     .entry(div_u32)
                     .or_insert_with(|| api.constant(div_u32));
 
-                let remainder_bits = div_u32.trailing_zeros() as usize;
-
                 let scaled_shift_u256 = U256::from(shift_native) * U256::from(div_u32);
                 let scaled_shift =
                     *scaled_shift_cache
@@ -144,13 +142,13 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for DivLayer {
                             api.constant(CircuitField::<C>::from_u256(scaled_shift_u256))
                         });
 
-                let out = div_pos_integer_pow2_constant(
+                let out = div_pos_integer_constant::<C, Builder>(
                     api,
                     logup_ctx,
                     dividend,
                     div,
+                    div_u32,
                     scaled_shift,
-                    remainder_bits,
                     context.shift_exponent,
                     shift_var,
                 )?;
@@ -200,14 +198,6 @@ fn validate_divisors(divisors: &ArrayD<i64>) -> Result<(), CircuitError> {
             return Err(LayerError::Other {
                 layer: LayerKind::Div,
                 msg: format!("Divisor must be in range [1, 2^32), got {d}"),
-            }
-            .into());
-        }
-
-        if (d & (d - 1)) != 0 {
-            return Err(LayerError::Other {
-                layer: LayerKind::Div,
-                msg: format!("Divisor must be a power of 2, got {d}"),
             }
             .into());
         }

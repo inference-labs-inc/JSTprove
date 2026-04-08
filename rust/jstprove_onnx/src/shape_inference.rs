@@ -2298,40 +2298,29 @@ fn infer_expand(
         })
         .collect::<Result<Vec<usize>>>()?;
 
-    // Validate broadcast compatibility with input shape.
-    if let Some(input_shape) = layer.inputs.first().and_then(|n| get_shape(shapes, n)) {
-        let in_rank = input_shape.len();
-        let out_rank = target_shape.len();
-        if in_rank > out_rank {
-            bail!(
-                "layer {}: Expand input rank {} > target shape rank {} (cannot broadcast)",
-                layer.name,
-                in_rank,
-                out_rank
-            );
-        }
-        // Check broadcast compatibility from the right.
-        let pad = out_rank - in_rank;
-        for (i, &out_d) in target_shape.iter().enumerate() {
-            if i < pad {
-                continue; // prepended dim — input treated as size 1
-            }
-            let in_d = input_shape[i - pad];
-            if in_d != 1 && in_d != out_d {
-                bail!(
-                    "layer {}: Expand broadcast mismatch at dim {i}: input {} != target {}",
-                    layer.name,
-                    in_d,
-                    out_d
-                );
-            }
-        }
-    }
+    let input_shape = layer
+        .inputs
+        .first()
+        .and_then(|n| get_shape(shapes, n))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "layer {}: Expand cannot infer output because input shape is unknown",
+                layer.name
+            )
+        })?;
+    let output_shape = broadcast_shapes(input_shape, &target_shape).map_err(|e| {
+        anyhow::anyhow!(
+            "layer {}: Expand broadcast incompatible: input {:?} vs target {:?}: {e}",
+            layer.name,
+            input_shape,
+            target_shape
+        )
+    })?;
 
     Ok(layer
         .outputs
         .iter()
-        .map(|o| (o.clone(), target_shape.clone()))
+        .map(|o| (o.clone(), output_shape.clone()))
         .collect())
 }
 
