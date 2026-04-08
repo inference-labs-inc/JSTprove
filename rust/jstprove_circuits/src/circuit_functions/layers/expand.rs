@@ -57,18 +57,19 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ExpandLayer {
 
         let result = match in_rank.cmp(&out_rank) {
             std::cmp::Ordering::Greater => {
-                let mut padded_shape = vec![1usize; in_rank];
+                let in_shape = x_input.shape();
                 let offset = in_rank - out_rank;
-                padded_shape[offset..].copy_from_slice(&self.output_shape);
+                let mut merged = Vec::with_capacity(in_rank);
+                merged.extend_from_slice(&in_shape[..offset]);
+                for (i, &out_d) in self.output_shape.iter().enumerate() {
+                    let in_d = in_shape[offset + i];
+                    merged.push(if in_d == 1 { out_d } else { in_d });
+                }
                 x_input
-                    .broadcast(IxDyn(&padded_shape))
+                    .broadcast(IxDyn(&merged))
                     .ok_or_else(|| LayerError::InvalidShape {
                         layer: LayerKind::Expand,
-                        msg: format!(
-                            "cannot broadcast shape {:?} to {:?}",
-                            x_input.shape(),
-                            padded_shape
-                        ),
+                        msg: format!("cannot broadcast shape {in_shape:?} to {merged:?}"),
                     })?
                     .into_owned()
             }

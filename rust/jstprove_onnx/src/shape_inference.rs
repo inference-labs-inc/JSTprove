@@ -2298,19 +2298,24 @@ fn infer_expand(
         })
         .collect::<Result<Vec<usize>>>()?;
 
-    let output_shape =
-        if let Some(input_shape) = layer.inputs.first().and_then(|n| get_shape(shapes, n)) {
-            broadcast_shapes(input_shape, &target_shape).map_err(|e| {
-                anyhow::anyhow!(
-                    "layer {}: Expand broadcast incompatible: input {:?} vs target {:?}: {e}",
-                    layer.name,
-                    input_shape,
-                    target_shape
-                )
-            })?
-        } else {
+    let input_shape = layer
+        .inputs
+        .first()
+        .and_then(|n| get_shape(shapes, n))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "layer {}: Expand cannot infer output because input shape is unknown",
+                layer.name
+            )
+        })?;
+    let output_shape = broadcast_shapes(input_shape, &target_shape).map_err(|e| {
+        anyhow::anyhow!(
+            "layer {}: Expand broadcast incompatible: input {:?} vs target {:?}: {e}",
+            layer.name,
+            input_shape,
             target_shape
-        };
+        )
+    })?;
 
     Ok(layer
         .outputs

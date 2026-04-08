@@ -147,6 +147,10 @@ pub fn div_pos_integer_constant<C: Config, Builder: RootAPI<C>>(
     shift_exponent: usize,
     shift: Variable,
 ) -> Result<Variable, RescaleError> {
+    if divisor_val == 1 {
+        return Ok(dividend);
+    }
+
     if divisor_val.is_power_of_two() {
         let divisor_exponent = divisor_val.trailing_zeros() as usize;
         return div_pos_integer_pow2_constant::<C, Builder>(
