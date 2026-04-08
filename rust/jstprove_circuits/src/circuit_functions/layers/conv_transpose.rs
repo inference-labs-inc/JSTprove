@@ -216,7 +216,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvTransposeLayer 
                     for ow in 0..out_w {
                         for ci in 0..c_in {
                             for ki_h in 0..kh {
-                                let ih_num = oh as i32 + pad_h_begin as i32 - (ki_h * dil_h) as i32;
+                                let ih_num = oh as i64 + pad_h_begin as i64 - (ki_h * dil_h) as i64;
                                 if ih_num < 0 || (ih_num as usize) % stride_h != 0 {
                                     continue;
                                 }
@@ -226,7 +226,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvTransposeLayer 
                                 }
                                 for ki_w in 0..kw {
                                     let iw_num =
-                                        ow as i32 + pad_w_begin as i32 - (ki_w * dil_w) as i32;
+                                        ow as i64 + pad_w_begin as i64 - (ki_w * dil_w) as i64;
                                     if iw_num < 0 || (iw_num as usize) % stride_w != 0 {
                                         continue;
                                     }
@@ -311,6 +311,17 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ConvTransposeLayer 
                 msg: format!(
                     "layer '{}': only 2-D spatial ConvTranspose is supported, got spatial_rank={}",
                     layer.name, spatial_rank
+                ),
+            }
+            .into());
+        }
+
+        if kernel_shape.contains(&0) {
+            return Err(LayerError::UnsupportedConfig {
+                layer: LayerKind::ConvTranspose,
+                msg: format!(
+                    "layer '{}': kernel_shape contains a zero dimension: {:?}",
+                    layer.name, kernel_shape
                 ),
             }
             .into());
