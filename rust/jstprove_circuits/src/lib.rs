@@ -27,6 +27,7 @@
 )]
 #![feature(min_specialization)]
 
+pub mod api;
 pub mod circuit_functions;
 #[allow(
     clippy::must_use_candidate,
