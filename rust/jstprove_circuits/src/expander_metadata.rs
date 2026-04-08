@@ -120,7 +120,27 @@ fn generate_from_parsed(
     let config = &quantized.scale_config;
 
     let shapes = match precomputed_shapes {
-        Some(s) => s,
+        Some(s) => {
+            let mut missing = Vec::new();
+            for layer in &quantized.graph.layers {
+                for name in layer.inputs.iter().chain(layer.outputs.iter()) {
+                    if !s.contains_key(name) && !parsed.initializers.contains_key(name) {
+                        missing.push(name.clone());
+                    }
+                }
+            }
+            if !missing.is_empty() {
+                missing.sort();
+                missing.dedup();
+                tracing::warn!(
+                    count = missing.len(),
+                    names = ?missing,
+                    "precomputed shape map missing tensor entries; \
+                     downstream metadata may be incomplete"
+                );
+            }
+            s
+        }
         None => shape_inference::infer_all_shapes(&parsed, &quantized.graph)
             .context("inferring tensor shapes")?,
     };
