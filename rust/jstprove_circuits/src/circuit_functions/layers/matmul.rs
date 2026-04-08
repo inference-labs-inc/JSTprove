@@ -117,13 +117,38 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MatMulLayer {
         let w_name = get_input_name(&layer.inputs, 1, LayerKind::MatMul, "input B")?;
 
         let input_name = layer.inputs.first().unwrap();
-        let a_shape = layer_context
-            .shapes_map
-            .get(input_name.as_str())
-            .ok_or_else(|| LayerError::InvalidShape {
-                layer: LayerKind::MatMul,
-                msg: format!("missing input shape for '{input_name}'"),
-            })?;
+        let a_shape: Vec<usize> = if let Some(s) = layer_context.shapes_map.get(input_name.as_str())
+        {
+            s.clone()
+        } else {
+            let out_name = layer
+                .outputs
+                .first()
+                .ok_or_else(|| LayerError::InvalidShape {
+                    layer: LayerKind::MatMul,
+                    msg: format!("missing input shape for '{input_name}'"),
+                })?;
+            let out_shape = layer_context.shapes_map.get(out_name.as_str());
+            let b_shape_ref = layer_context.shapes_map.get(w_name);
+            match (out_shape, b_shape_ref) {
+                (Some(os), Some(bs)) if os.len() >= 2 && bs.len() >= 2 => {
+                    let k = bs[bs.len().saturating_sub(2)];
+                    let m = os[os.len() - 2];
+                    let batch = &os[..os.len() - 2];
+                    let mut shape = batch.to_vec();
+                    shape.push(m);
+                    shape.push(k);
+                    shape
+                }
+                _ => {
+                    return Err(LayerError::InvalidShape {
+                        layer: LayerKind::MatMul,
+                        msg: format!("missing input shape for '{input_name}'"),
+                    }
+                    .into());
+                }
+            }
+        };
         if a_shape.len() != 2 && a_shape.len() != 3 {
             return Err(LayerError::Other {
                 layer: LayerKind::MatMul,
@@ -137,14 +162,39 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MatMulLayer {
             .into());
         }
 
-        let b_shape =
-            layer_context
-                .shapes_map
-                .get(w_name)
+        let b_shape: Vec<usize> = if let Some(s) = layer_context.shapes_map.get(w_name) {
+            s.clone()
+        } else {
+            let out_name = layer
+                .outputs
+                .first()
                 .ok_or_else(|| LayerError::InvalidShape {
                     layer: LayerKind::MatMul,
                     msg: format!("missing input shape for '{w_name}'"),
                 })?;
+            let out_shape = layer_context.shapes_map.get(out_name.as_str());
+            // When B's shape is missing from shapes_map, assume batched B if A
+            // is rank-3 so that the rank validation below passes. apply_batched
+            // handles the actual rank-2 broadcast case at runtime.
+            match out_shape {
+                Some(os) if os.len() >= 2 => {
+                    let k = a_shape[a_shape.len() - 1];
+                    let n = os[os.len() - 1];
+                    if a_shape.len() == 3 {
+                        vec![a_shape[0], k, n]
+                    } else {
+                        vec![k, n]
+                    }
+                }
+                _ => {
+                    return Err(LayerError::InvalidShape {
+                        layer: LayerKind::MatMul,
+                        msg: format!("missing input shape for '{w_name}'"),
+                    }
+                    .into());
+                }
+            }
+        };
         if b_shape.len() != 2 && b_shape.len() != 3 {
             return Err(LayerError::Other {
                 layer: LayerKind::MatMul,
@@ -611,6 +661,42 @@ mod tests {
         let msg = format!("{err}");
         assert!(
             msg.contains("rank-2 input A") && msg.contains("rank-3 input B"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn build_infers_missing_a_shape_from_b_and_output() {
+        let mut shapes_map = HashMap::new();
+        shapes_map.insert("b".to_string(), vec![4, 5]);
+        shapes_map.insert("y".to_string(), vec![3, 5]);
+
+        matmul_layer(vec!["a".to_string(), "b".to_string()], &shapes_map)
+            .expect("build should infer A shape [3, 4] from B=[4, 5] and Y=[3, 5]");
+    }
+
+    #[test]
+    fn build_infers_missing_b_shape_from_a_and_output() {
+        let mut shapes_map = HashMap::new();
+        shapes_map.insert("a".to_string(), vec![3, 4]);
+        shapes_map.insert("y".to_string(), vec![3, 5]);
+
+        matmul_layer(vec!["a".to_string(), "b".to_string()], &shapes_map)
+            .expect("build should infer B shape [4, 5] from A=[3, 4] and Y=[3, 5]");
+    }
+
+    #[test]
+    fn build_fails_when_a_and_output_both_missing() {
+        let mut shapes_map = HashMap::new();
+        shapes_map.insert("b".to_string(), vec![4, 5]);
+
+        let result = matmul_layer(vec!["a".to_string(), "b".to_string()], &shapes_map);
+        let err = result
+            .err()
+            .expect("should fail when A and Y shapes both missing");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("missing input shape"),
             "unexpected error: {msg}"
         );
     }

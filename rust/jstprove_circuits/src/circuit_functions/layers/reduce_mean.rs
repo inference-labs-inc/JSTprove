@@ -173,29 +173,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
                 layer: LayerKind::ReduceMean,
                 param: "input tensor".to_string(),
             })?;
-        let output_name = layer
-            .outputs
-            .first()
-            .ok_or_else(|| LayerError::MissingParameter {
-                layer: LayerKind::ReduceMean,
-                param: "output tensor".to_string(),
-            })?;
-
         let input_shape = layer_context
             .shapes_map
             .get(input_name.as_str())
             .ok_or_else(|| LayerError::InvalidShape {
                 layer: LayerKind::ReduceMean,
                 msg: format!("missing input shape for '{input_name}'"),
-            })?
-            .clone();
-
-        let output_shape = layer_context
-            .shapes_map
-            .get(output_name.as_str())
-            .ok_or_else(|| LayerError::InvalidShape {
-                layer: LayerKind::ReduceMean,
-                msg: format!("missing output shape for '{output_name}'"),
             })?
             .clone();
 
@@ -283,7 +266,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
             }
         };
 
-        let expected_output_shape: Vec<usize> = if keepdims {
+        let computed_output_shape: Vec<usize> = if keepdims {
             (0..rank)
                 .map(|i| if axes.contains(&i) { 1 } else { input_shape[i] })
                 .collect()
@@ -293,16 +276,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
                 .map(|i| input_shape[i])
                 .collect()
         };
-        if output_shape != expected_output_shape {
-            return Err(LayerError::InvalidShape {
-                layer: LayerKind::ReduceMean,
-                msg: format!(
-                    "output shape {output_shape:?} does not match expected {expected_output_shape:?} \
-                     (input={input_shape:?}, axes={axes:?}, keepdims={keepdims})"
-                ),
-            }
-            .into());
-        }
 
         let lane_size: usize = axes.iter().map(|&a| input_shape[a]).product();
         if lane_size == 0 {
@@ -328,7 +301,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceMeanLayer {
             axes,
             keepdims,
             input_shape,
-            output_shape,
+            output_shape: computed_output_shape,
             n_bits,
             lane_size,
         }))

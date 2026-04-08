@@ -172,29 +172,12 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceSumLayer {
                 layer: LayerKind::ReduceSum,
                 param: "input tensor".to_string(),
             })?;
-        let output_name = layer
-            .outputs
-            .first()
-            .ok_or_else(|| LayerError::MissingParameter {
-                layer: LayerKind::ReduceSum,
-                param: "output tensor".to_string(),
-            })?;
-
         let input_shape = layer_context
             .shapes_map
             .get(input_name.as_str())
             .ok_or_else(|| LayerError::InvalidShape {
                 layer: LayerKind::ReduceSum,
                 msg: format!("missing input shape for '{input_name}'"),
-            })?
-            .clone();
-
-        let output_shape = layer_context
-            .shapes_map
-            .get(output_name.as_str())
-            .ok_or_else(|| LayerError::InvalidShape {
-                layer: LayerKind::ReduceSum,
-                msg: format!("missing output shape for '{output_name}'"),
             })?
             .clone();
 
@@ -342,7 +325,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceSumLayer {
             }
         };
 
-        let expected_output_shape: Vec<usize> = if keepdims {
+        let computed_output_shape: Vec<usize> = if keepdims {
             input_shape
                 .iter()
                 .enumerate()
@@ -355,15 +338,6 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceSumLayer {
                 .filter_map(|(i, &d)| if axes.contains(&i) { None } else { Some(d) })
                 .collect()
         };
-        if output_shape != expected_output_shape {
-            return Err(LayerError::InvalidShape {
-                layer: LayerKind::ReduceSum,
-                msg: format!(
-                    "ReduceSum output shape {output_shape:?} does not match expected {expected_output_shape:?} (axes={axes:?}, keepdims={keepdims})"
-                ),
-            }
-            .into());
-        }
 
         Ok(Box::new(Self {
             inputs: layer.inputs.clone(),
@@ -372,7 +346,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for ReduceSumLayer {
             keepdims,
             noop_with_empty_axes,
             input_shape,
-            output_shape,
+            output_shape: computed_output_shape,
         }))
     }
 }
