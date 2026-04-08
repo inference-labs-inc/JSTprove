@@ -131,7 +131,7 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MatMulLayer {
             let out_shape = layer_context.shapes_map.get(out_name.as_str());
             let b_shape_ref = layer_context.shapes_map.get(w_name);
             match (out_shape, b_shape_ref) {
-                (Some(os), Some(bs)) if os.len() >= 2 && !bs.is_empty() => {
+                (Some(os), Some(bs)) if os.len() >= 2 && bs.len() >= 2 => {
                     let k = bs[bs.len().saturating_sub(2)];
                     let m = os[os.len() - 2];
                     let batch = &os[..os.len() - 2];
@@ -173,6 +173,9 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for MatMulLayer {
                     msg: format!("missing input shape for '{w_name}'"),
                 })?;
             let out_shape = layer_context.shapes_map.get(out_name.as_str());
+            // When B's shape is missing from shapes_map, assume batched B if A
+            // is rank-3 so that the rank validation below passes. apply_batched
+            // handles the actual rank-2 broadcast case at runtime.
             match out_shape {
                 Some(os) if os.len() >= 2 => {
                     let k = a_shape[a_shape.len() - 1];
