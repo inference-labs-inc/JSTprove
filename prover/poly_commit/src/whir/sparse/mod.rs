@@ -24,6 +24,7 @@
 //! of Arnon, Chiesa, Fenzi, and Yogev (2024), "WHIR: Reed-Solomon
 //! Proximity Testing with Super-Fast Verification", §5.2.
 
+mod combined_point;
 mod commit;
 mod eval_sumcheck;
 mod memcheck;
@@ -35,6 +36,7 @@ mod types;
 #[cfg(test)]
 mod tests;
 
+pub use combined_point::combined_eval_point;
 pub use commit::{sparse_commit, SparseConstituentSlot, SparseLayout};
 pub use eval_sumcheck::{
     product_arity, prove_eval_sumcheck, round_poly_degree, verify_eval_sumcheck, EvalSumcheckClaim,
