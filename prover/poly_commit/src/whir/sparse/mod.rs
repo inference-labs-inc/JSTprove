@@ -35,6 +35,7 @@ mod multiset_open;
 mod open;
 mod product_argument;
 mod types;
+mod verify;
 mod whir_glue;
 
 #[cfg(test)]
@@ -69,6 +70,9 @@ pub use product_argument::{
 pub use types::{
     SparseArity, SparseMle3, SparseMle3Commitment, SparseMle3Opening, SparseMleError,
     SparseMleScratchPad,
+};
+pub use verify::{
+    sparse_verify_full, AxisLabel, ConstituentLabel, ProductCircuitWhich, SparseVerifyError,
 };
 pub use whir_glue::{
     evaluate_constituent_at_sub_point, pad_sub_point, whir_open_at_combined_point,
