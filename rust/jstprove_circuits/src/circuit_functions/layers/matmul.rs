@@ -458,7 +458,7 @@ mod tests {
             n_bits_config: HashMap::new(),
             weights_as_inputs: true,
             proof_system: crate::proof_system::ProofSystem::Expander,
-            curve: None,
+            proof_config: None,
             logup_chunk_bits: None,
         }
     }

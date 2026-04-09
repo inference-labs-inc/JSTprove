@@ -703,7 +703,10 @@ fn run_debug_verification<C: Config>(
         eprintln!("    path:       {circuit_path}");
         eprintln!("    total cost: {}", stats.total_cost);
         if let Some(params) = metadata {
-            eprintln!("    curve:      {}", params.curve.unwrap_or_default());
+            let pc = params
+                .proof_config
+                .map_or_else(|| "unknown".to_string(), |s| s.config.to_string());
+            eprintln!("    config:     {pc}");
             eprintln!(
                 "    scale:      {}^{}",
                 params.scale_base, params.scale_exponent
@@ -2035,19 +2038,35 @@ pub fn get_arg(matches: &clap::ArgMatches, name: &'static str) -> Result<String,
         .ok_or(CliError::MissingArgument(name))
 }
 
-#[must_use]
-pub fn get_curve(
+/// Resolve the [`crate::proof_config::ProofConfig`] for the current
+/// invocation, preferring an explicit `--curve` flag, then the stamped
+/// manifest. Returns an error if metadata is present but unstamped, or
+/// if the CLI value cannot be parsed.
+///
+/// # Errors
+/// Returns a human-readable error string for an invalid `--curve`
+/// value or a manifest missing its `proof_config` stamp.
+pub fn get_proof_config(
     matches: &clap::ArgMatches,
     metadata: Option<&CircuitParams>,
-) -> crate::curve::Curve {
+) -> Result<crate::proof_config::ProofConfig, String> {
     if matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine) {
         if let Some(s) = matches.get_one::<String>("curve") {
-            if let Ok(c) = s.parse::<crate::curve::Curve>() {
-                return c;
-            }
+            return s
+                .parse::<crate::proof_config::ProofConfig>()
+                .map_err(|e| format!("invalid --curve '{s}': {e}"));
         }
     }
-    metadata.and_then(|m| m.curve).unwrap_or_default()
+    match metadata {
+        Some(meta) => match meta.proof_config {
+            Some(stamped) => Ok(stamped.config),
+            None => Err(
+                "circuit manifest has no stamped proof_config; this bundle was compiled with an unstamped prover and must be recompiled"
+                    .to_string(),
+            ),
+        },
+        None => Ok(crate::proof_config::ProofConfig::default()),
+    }
 }
 
 fn is_remainder_backend(matches: &clap::ArgMatches, metadata: Option<&CircuitParams>) -> bool {

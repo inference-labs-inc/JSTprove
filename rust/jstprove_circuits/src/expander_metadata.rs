@@ -11,7 +11,7 @@ use jstprove_onnx::shape_inference;
 
 use crate::circuit_functions::utils::onnx_model::{Architecture, CircuitParams, WANDB};
 use crate::circuit_functions::utils::onnx_types::{ONNXIO, ONNXLayer};
-use crate::curve::Curve;
+use crate::proof_config::ProofConfig;
 use crate::proof_system::ProofSystem;
 
 pub struct ExpanderMetadata {
@@ -147,9 +147,9 @@ fn generate_from_parsed(
 
     let opset_version = parsed.opset_version as i16;
 
-    let curve = n_bits.map(infer_curve_from_n_bits);
+    let proof_config = n_bits.map(infer_proof_config_from_n_bits);
     let circuit_params =
-        build_circuit_params(&parsed, &quantized, config, weights_as_inputs, curve);
+        build_circuit_params(&parsed, &quantized, config, weights_as_inputs, proof_config);
     let architecture = build_architecture(&parsed, &quantized, &shapes, opset_version);
     let wandb = build_wandb(&quantized, &shapes).context("building weight/bias data")?;
 
@@ -160,20 +160,24 @@ fn generate_from_parsed(
     })
 }
 
-fn infer_curve_from_n_bits(n_bits: u32) -> Curve {
+/// Pick a default proof config for a given quantization bit-width.
+/// The mapping reflects the field tier required to represent values
+/// at that precision; the PCS choice is the conventional default for
+/// each field (Basefold for Goldilocks variants, Raw for BN254).
+fn infer_proof_config_from_n_bits(n_bits: u32) -> ProofConfig {
     if n_bits <= jstprove_onnx::quantizer::N_BITS_GOLDILOCKS {
-        Curve::Goldilocks
+        ProofConfig::GoldilocksBasefold
     } else if n_bits <= jstprove_onnx::quantizer::N_BITS_GOLDILOCKS_EXT2 {
-        Curve::GoldilocksExt2
+        ProofConfig::GoldilocksExt2Basefold
     } else {
-        Curve::Bn254
+        ProofConfig::Bn254Raw
     }
 }
 
 pub fn select_goldilocks_tier(
     max_bound: f64,
     target_precision: Option<u32>,
-) -> Result<(Curve, u32)> {
+) -> Result<(ProofConfig, u32)> {
     use jstprove_onnx::quantizer::{
         MIN_USEFUL_EXPONENT, N_BITS_GOLDILOCKS, N_BITS_GOLDILOCKS_EXT2,
     };
@@ -185,9 +189,9 @@ pub fn select_goldilocks_tier(
         Some(digits) => {
             let required_exp = ScaleConfig::exponent_for_digits(digits);
             if base_exp >= required_exp {
-                Ok((Curve::Goldilocks, N_BITS_GOLDILOCKS))
+                Ok((ProofConfig::GoldilocksBasefold, N_BITS_GOLDILOCKS))
             } else if ext2_exp >= required_exp {
-                Ok((Curve::GoldilocksExt2, N_BITS_GOLDILOCKS_EXT2))
+                Ok((ProofConfig::GoldilocksExt2Basefold, N_BITS_GOLDILOCKS_EXT2))
             } else {
                 let max_digits_ext2 =
                     ScaleConfig::max_safe_digits(N_BITS_GOLDILOCKS_EXT2, max_bound);
@@ -201,9 +205,9 @@ pub fn select_goldilocks_tier(
         }
         None => {
             if base_exp >= MIN_USEFUL_EXPONENT {
-                Ok((Curve::Goldilocks, N_BITS_GOLDILOCKS))
+                Ok((ProofConfig::GoldilocksBasefold, N_BITS_GOLDILOCKS))
             } else if ext2_exp >= MIN_USEFUL_EXPONENT {
-                Ok((Curve::GoldilocksExt2, N_BITS_GOLDILOCKS_EXT2))
+                Ok((ProofConfig::GoldilocksExt2Basefold, N_BITS_GOLDILOCKS_EXT2))
             } else {
                 anyhow::bail!(
                     "model accumulation bound {max_bound:.2} exceeds Goldilocks field family \
@@ -225,10 +229,10 @@ pub fn generate_from_onnx_goldilocks_auto(
     let mut graph = LayerGraph::from_parsed(&parsed).context("building layer graph")?;
     let max_bound = quantizer::compute_max_bound(&mut graph)?;
 
-    let (curve, n_bits) = select_goldilocks_tier(max_bound, target_precision)?;
+    let (proof_config, n_bits) = select_goldilocks_tier(max_bound, target_precision)?;
 
     tracing::debug!(
-        %curve, n_bits, max_bound, "goldilocks auto-select"
+        %proof_config, n_bits, max_bound, "goldilocks auto-select"
     );
 
     generate_from_parsed(
@@ -247,8 +251,9 @@ fn build_circuit_params(
     quantized: &QuantizedModel,
     config: &ScaleConfig,
     weights_as_inputs: bool,
-    curve: Option<Curve>,
+    proof_config: Option<ProofConfig>,
 ) -> CircuitParams {
+    use crate::proof_config::StampedProofConfig;
     let initializer_names: std::collections::HashSet<&str> =
         parsed.initializers.keys().map(String::as_str).collect();
 
@@ -299,7 +304,7 @@ fn build_circuit_params(
         n_bits_config: quantized.n_bits_config.clone(),
         weights_as_inputs,
         proof_system: ProofSystem::Expander,
-        curve,
+        proof_config: proof_config.map(StampedProofConfig::current),
         logup_chunk_bits: None,
     }
 }
@@ -662,7 +667,10 @@ mod tests {
 
         assert_eq!(metadata.circuit_params.scale_base, 2);
         assert_eq!(metadata.circuit_params.scale_exponent, expected_exp);
-        assert_eq!(metadata.circuit_params.curve, Some(Curve::Bn254));
+        assert_eq!(
+            metadata.circuit_params.proof_config.map(|s| s.config),
+            Some(ProofConfig::Bn254Raw)
+        );
         assert!(!metadata.circuit_params.n_bits_config.is_empty());
         assert!(!metadata.circuit_params.rescale_config.is_empty());
     }
@@ -736,7 +744,10 @@ mod tests {
 
         assert_eq!(metadata.circuit_params.scale_base, 2);
         assert_eq!(metadata.circuit_params.scale_exponent, expected_exp);
-        assert_eq!(metadata.circuit_params.curve, Some(Curve::Goldilocks));
+        assert_eq!(
+            metadata.circuit_params.proof_config.map(|s| s.config),
+            Some(ProofConfig::GoldilocksBasefold)
+        );
         assert!(!metadata.circuit_params.n_bits_config.is_empty());
     }
 
@@ -774,8 +785,8 @@ mod tests {
             ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS, max_bound) >= MIN_USEFUL_EXPONENT
         );
 
-        let (curve, n_bits) = select_goldilocks_tier(max_bound, None).unwrap();
-        assert_eq!(curve, Curve::Goldilocks);
+        let (config, n_bits) = select_goldilocks_tier(max_bound, None).unwrap();
+        assert_eq!(config, ProofConfig::GoldilocksBasefold);
         assert_eq!(n_bits, N_BITS_GOLDILOCKS);
     }
 
@@ -794,8 +805,8 @@ mod tests {
                 >= MIN_USEFUL_EXPONENT
         );
 
-        let (curve, n_bits) = select_goldilocks_tier(max_bound, None).unwrap();
-        assert_eq!(curve, Curve::GoldilocksExt2);
+        let (config, n_bits) = select_goldilocks_tier(max_bound, None).unwrap();
+        assert_eq!(config, ProofConfig::GoldilocksExt2Basefold);
         assert_eq!(n_bits, N_BITS_GOLDILOCKS_EXT2);
     }
 
@@ -812,8 +823,8 @@ mod tests {
         assert!(ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS, max_bound) < required);
         assert!(ScaleConfig::max_safe_exponent(N_BITS_GOLDILOCKS_EXT2, max_bound) >= required);
 
-        let (curve, n_bits) = select_goldilocks_tier(max_bound, Some(target_digits)).unwrap();
-        assert_eq!(curve, Curve::GoldilocksExt2);
+        let (config, n_bits) = select_goldilocks_tier(max_bound, Some(target_digits)).unwrap();
+        assert_eq!(config, ProofConfig::GoldilocksExt2Basefold);
         assert_eq!(n_bits, N_BITS_GOLDILOCKS_EXT2);
     }
 

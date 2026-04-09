@@ -13,7 +13,7 @@ use crate::circuit_functions::utils::constants::VALUE;
 use crate::circuit_functions::utils::onnx_types::{ONNXIO, ONNXLayer};
 use crate::circuit_functions::utils::value_array::FromMsgpackValue;
 use crate::circuit_functions::utils::value_array::{map_get, value_to_arrayd};
-use crate::curve::Curve;
+use crate::proof_config::StampedProofConfig;
 use crate::proof_system::ProofSystem;
 
 #[derive(Deserialize, Clone, Debug)]
@@ -42,7 +42,7 @@ pub struct CircuitParams {
     #[serde(default, rename = "backend")]
     pub proof_system: ProofSystem,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub curve: Option<Curve>,
+    pub proof_config: Option<StampedProofConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logup_chunk_bits: Option<usize>,
 }

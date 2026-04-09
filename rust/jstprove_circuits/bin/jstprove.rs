@@ -5,7 +5,7 @@ use jstprove_circuits::cli::OutputMode;
 use jstprove_circuits::expander_metadata;
 use jstprove_circuits::io::io_reader::FileReader;
 use jstprove_circuits::runner::main_runner::{
-    get_arg, get_args, get_curve, handle_args, try_load_metadata_from_circuit,
+    get_arg, get_args, get_proof_config, handle_args, try_load_metadata_from_circuit,
 };
 
 use jstprove_circuits::io::io_reader::onnx_context::OnnxContext;
@@ -15,7 +15,7 @@ use expander_compiler::frontend::{
     BN254Config, GoldilocksBasefoldConfig, GoldilocksConfig, GoldilocksExt2BasefoldConfig,
     GoldilocksWhirConfig, GoldilocksWhirPQConfig, Variable,
 };
-use jstprove_circuits::Curve;
+use jstprove_circuits::{ProofConfig, StampedProofConfig};
 use jstprove_onnx::quantizer::{N_BITS_GOLDILOCKS, N_BITS_GOLDILOCKS_EXT2};
 
 fn load_wandb(matches: &clap::ArgMatches) -> Result<Option<WANDB>, String> {
@@ -145,26 +145,37 @@ fn main() {
     if has_onnx && !is_remainder {
         let onnx_path_str = get_arg(&matches, "onnx").unwrap();
         let onnx_path = std::path::Path::new(&onnx_path_str);
-        let early_curve = matches
-            .get_one::<String>("curve")
-            .and_then(|s| s.parse::<Curve>().ok())
-            .unwrap_or_default();
-        let result = match early_curve {
-            Curve::Bn254 => expander_metadata::generate_from_onnx(onnx_path),
-            Curve::Goldilocks
-            | Curve::GoldilocksBasefold
-            | Curve::GoldilocksWhir
-            | Curve::GoldilocksWhirPQ => {
+        let early_config = match get_proof_config(&matches, None) {
+            Ok(c) => c,
+            Err(msg) => {
+                eprintln!("Error: {msg}");
+                std::process::exit(1);
+            }
+        };
+        let result = match early_config {
+            ProofConfig::Bn254Raw => expander_metadata::generate_from_onnx(onnx_path),
+            ProofConfig::GoldilocksRaw
+            | ProofConfig::GoldilocksBasefold
+            | ProofConfig::GoldilocksExt3Whir
+            | ProofConfig::GoldilocksExt4Whir => {
                 expander_metadata::generate_from_onnx_for_field(onnx_path, N_BITS_GOLDILOCKS, None)
             }
-            Curve::GoldilocksExt2 => expander_metadata::generate_from_onnx_for_field(
+            ProofConfig::GoldilocksExt2Basefold => expander_metadata::generate_from_onnx_for_field(
                 onnx_path,
                 N_BITS_GOLDILOCKS_EXT2,
                 None,
             ),
         };
         match result {
-            Ok(meta) => {
+            Ok(mut meta) => {
+                // expander_metadata::generate_from_onnx leaves
+                // proof_config unset when no n_bits is supplied (the
+                // BN254 path), and the field-keyed inference cannot
+                // distinguish between Goldilocks variants. Stamp the
+                // metadata with the same early_config that drove the
+                // dispatch so downstream get_proof_config calls have
+                // the authoritative resolved config to read.
+                meta.circuit_params.proof_config = Some(StampedProofConfig::current(early_config));
                 OnnxContext::set_all(meta.architecture, meta.circuit_params, Some(meta.wandb));
             }
             Err(e) => {
@@ -234,6 +245,9 @@ fn main() {
     }
 
     let mut metadata = if is_remainder {
+        // Remainder mode dispatches via meta.proof_system and never
+        // consults proof_config; leave it unset so we don't fabricate
+        // a stamp that downstream validation would treat as real.
         Some(CircuitParams {
             scale_base: 2,
             scale_exponent: 18,
@@ -244,30 +258,76 @@ fn main() {
             n_bits_config: std::collections::HashMap::new(),
             weights_as_inputs: false,
             proof_system: ProofSystem::Remainder,
-            curve: Some(Curve::default()),
+            proof_config: None,
             logup_chunk_bits: None,
         })
     } else {
         OnnxContext::get_params().ok()
     };
 
-    let curve = get_curve(&matches, metadata.as_ref());
-
-    if let Some(ref meta) = metadata {
-        let cli_explicit =
-            matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine);
-        if let Some(bundle_curve) = meta.curve {
-            if cli_explicit && !bundle_curve.is_field_compatible(&curve) {
+    // Reject unstamped manifests up-front, before any resolution or
+    // mutation. A loaded manifest with no proof_config is a
+    // legacy/unstamped bundle and we refuse to operate on it:
+    // --curve cannot reliably override the unknown original config
+    // because picking the wrong one would silently produce or verify
+    // proofs against the wrong prover. The bundle must be recompiled
+    // with a stamping prover. Remainder mode is exempt because it
+    // dispatches via meta.proof_system and never consults
+    // proof_config.
+    if !is_remainder {
+        if let Some(ref meta) = metadata {
+            if meta.proof_config.is_none() {
                 eprintln!(
-                    "Error: curve mismatch — circuit was compiled with '{bundle_curve}' but '{curve}' was requested",
+                    "Error: circuit manifest has no stamped proof_config; this bundle was compiled with an unstamped prover and must be recompiled. --curve cannot override an unstamped manifest because the original config is unknown."
                 );
                 std::process::exit(1);
             }
         }
     }
 
-    if let Some(ref mut meta) = metadata {
-        meta.curve = Some(curve);
+    // Remainder bypasses the ProofConfig dispatch entirely; pick a
+    // placeholder so the match below has something to drive the
+    // (unused) handle_args type parameter.
+    let proof_config = if is_remainder {
+        ProofConfig::default()
+    } else {
+        match get_proof_config(&matches, metadata.as_ref()) {
+            Ok(config) => config,
+            Err(msg) => {
+                eprintln!("Error: {msg}");
+                std::process::exit(1);
+            }
+        }
+    };
+
+    if !is_remainder {
+        if let Some(ref meta) = metadata {
+            let cli_explicit =
+                matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine);
+            // The unstamped check above guarantees proof_config is
+            // Some here when metadata is Some.
+            let stamped = meta
+                .proof_config
+                .expect("unstamped manifests are rejected before this point");
+            if let Err(e) = stamped.ensure_current() {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
+            if cli_explicit && stamped.config != proof_config {
+                eprintln!(
+                    "Error: proof config mismatch — circuit was compiled with '{}' but '{proof_config}' was requested",
+                    stamped.config,
+                );
+                std::process::exit(1);
+            }
+        }
+
+        if let Some(ref mut meta) = metadata {
+            // The unstamped check above exits before we get here, so
+            // this assignment refreshes the version stamp without
+            // changing the resolved config.
+            meta.proof_config = Some(StampedProofConfig::current(proof_config));
+        }
     }
 
     let mode = if matches.get_flag("json") {
@@ -278,38 +338,38 @@ fn main() {
         OutputMode::Human
     };
 
-    let result = match curve {
-        Curve::Bn254 => handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(
+    let result = match proof_config {
+        ProofConfig::Bn254Raw => handle_args::<BN254Config, Circuit<Variable>, Circuit<_>, _>(
             &matches,
             &mut file_reader,
             metadata,
             mode,
         ),
-        Curve::Goldilocks => handle_args::<GoldilocksConfig, Circuit<Variable>, Circuit<_>, _>(
-            &matches,
-            &mut file_reader,
-            metadata,
-            mode,
-        ),
-        Curve::GoldilocksBasefold => handle_args::<
+        ProofConfig::GoldilocksRaw => handle_args::<
+            GoldilocksConfig,
+            Circuit<Variable>,
+            Circuit<_>,
+            _,
+        >(&matches, &mut file_reader, metadata, mode),
+        ProofConfig::GoldilocksBasefold => handle_args::<
             GoldilocksBasefoldConfig,
             Circuit<Variable>,
             Circuit<_>,
             _,
         >(&matches, &mut file_reader, metadata, mode),
-        Curve::GoldilocksExt2 => handle_args::<
+        ProofConfig::GoldilocksExt2Basefold => handle_args::<
             GoldilocksExt2BasefoldConfig,
             Circuit<Variable>,
             Circuit<_>,
             _,
         >(&matches, &mut file_reader, metadata, mode),
-        Curve::GoldilocksWhir => handle_args::<
+        ProofConfig::GoldilocksExt3Whir => handle_args::<
             GoldilocksWhirConfig,
             Circuit<Variable>,
             Circuit<_>,
             _,
         >(&matches, &mut file_reader, metadata, mode),
-        Curve::GoldilocksWhirPQ => handle_args::<
+        ProofConfig::GoldilocksExt4Whir => handle_args::<
             GoldilocksWhirPQConfig,
             Circuit<Variable>,
             Circuit<_>,
