@@ -7,6 +7,7 @@ fn make_compiled_circuit(size: usize) -> CompiledCircuit {
         circuit: vec![0xAB; size],
         witness_solver: vec![0xCD; size / 2],
         metadata: None,
+        curve: None,
         version: None,
     }
 }

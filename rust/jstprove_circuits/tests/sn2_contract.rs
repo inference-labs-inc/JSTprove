@@ -124,6 +124,7 @@ fn compiled_circuit_msgpack_roundtrip() {
         circuit: vec![10, 20, 30],
         witness_solver: vec![40, 50, 60],
         metadata: Some(sample_circuit_params()),
+        curve: None,
         version: None,
     };
 
@@ -426,6 +427,7 @@ fn compiled_circuit_field_names_stable() {
         circuit: vec![],
         witness_solver: vec![],
         metadata: None,
+        curve: None,
         version: None,
     };
 

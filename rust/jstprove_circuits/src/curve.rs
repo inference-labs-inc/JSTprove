@@ -50,6 +50,81 @@ impl Curve {
             Self::GoldilocksExt2 => 2,
         }
     }
+
+    /// Canonical default curve variant for a given base field identifier.
+    ///
+    /// When detecting a curve from serialized circuit bytes alone, only the
+    /// base field can be determined — multiple curve variants may share the
+    /// same field but differ in PCS. This returns a sensible default for
+    /// callers that lack additional context (e.g., bundles missing the
+    /// `curve` manifest field).
+    #[must_use]
+    fn default_for_base_field(base_field_id: u8) -> Option<Self> {
+        match base_field_id {
+            0 => Some(Self::Bn254),
+            1 => Some(Self::GoldilocksWhirPQ),
+            2 => Some(Self::GoldilocksExt2),
+            _ => None,
+        }
+    }
+
+    /// Detect the base field of a serialized circuit by inspecting the
+    /// embedded field modulus. Returns the canonical default curve variant
+    /// for the detected field.
+    ///
+    /// This is a best-effort primitive intended as a fallback when bundle
+    /// metadata does not carry an explicit curve. Callers that know the
+    /// specific curve variant (e.g., from `CircuitParams.curve`) should
+    /// prefer that.
+    ///
+    /// # Errors
+    /// Returns `RunError::Deserialize` if the bytes cannot be decompressed,
+    /// are too short to contain a modulus, or encode an unknown field.
+    pub fn detect_base_field(
+        circuit_bytes: &[u8],
+    ) -> Result<Self, crate::runner::errors::RunError> {
+        use crate::runner::errors::RunError;
+        use expander_compiler::frontend::{
+            BN254Config, CircuitField, FieldArith, GoldilocksConfig,
+        };
+        use expander_compiler::serdes::ExpSerde;
+        use jstprove_io::auto_decompress_bytes;
+        use std::io::Cursor;
+
+        const MAGIC_SIZE: usize = 8;
+        const MODULUS_SIZE: usize = 32;
+        const HEADER_SIZE: usize = MAGIC_SIZE + MODULUS_SIZE;
+
+        let data = auto_decompress_bytes(circuit_bytes)
+            .map_err(|e| RunError::Deserialize(format!("circuit decompress: {e:?}")))?;
+
+        if data.len() < HEADER_SIZE {
+            return Err(RunError::Deserialize(format!(
+                "circuit bytes too short for header: {} < {HEADER_SIZE}",
+                data.len()
+            )));
+        }
+
+        let mut cursor = Cursor::new(&data[MAGIC_SIZE..HEADER_SIZE]);
+        let modulus = ethnum::U256::deserialize_from(&mut cursor)
+            .map_err(|e| RunError::Deserialize(format!("modulus: {e:?}")))?;
+
+        let bn254_modulus = <CircuitField<BN254Config> as FieldArith>::MODULUS;
+        let goldilocks_modulus = <CircuitField<GoldilocksConfig> as FieldArith>::MODULUS;
+
+        if modulus == bn254_modulus {
+            return Self::default_for_base_field(0)
+                .ok_or_else(|| RunError::Deserialize("unmapped base field".into()));
+        }
+        if modulus == goldilocks_modulus {
+            return Self::default_for_base_field(1)
+                .ok_or_else(|| RunError::Deserialize("unmapped base field".into()));
+        }
+
+        Err(RunError::Deserialize(format!(
+            "unknown circuit field modulus: {modulus:?}"
+        )))
+    }
 }
 
 impl std::fmt::Display for Curve {

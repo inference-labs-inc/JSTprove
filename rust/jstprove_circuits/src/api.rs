@@ -26,6 +26,7 @@ pub use crate::runner::schema::{
     CompiledCircuit as CompiledCircuitType, WitnessBundle as WitnessBundleType,
 };
 pub use crate::runner::verify_extract::ExtractedOutput as ExtractedOutputType;
+pub use crate::runner::verify_extract::VerifiedOutput as VerifiedOutputType;
 pub use crate::runner::version::{ArtifactVersion, jstprove_artifact_version};
 
 /// # Errors
@@ -183,6 +184,62 @@ pub fn verify(
         Curve::GoldilocksWhirPQ => {
             crate::onnx::verify_goldilocks_whir_pq(circuit_bytes, witness_bytes, proof_bytes)
         }
+    }
+}
+
+/// # Errors
+/// Returns `RunError` on verification or output extraction failure.
+pub fn verify_and_extract(
+    curve: Curve,
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+    num_inputs: usize,
+    expected_inputs: Option<&[f64]>,
+) -> Result<VerifiedOutputType, RunError> {
+    match curve {
+        Curve::Bn254 => crate::onnx::verify_and_extract_bn254(
+            circuit_bytes,
+            witness_bytes,
+            proof_bytes,
+            num_inputs,
+            expected_inputs,
+        ),
+        Curve::Goldilocks => crate::onnx::verify_and_extract_goldilocks(
+            circuit_bytes,
+            witness_bytes,
+            proof_bytes,
+            num_inputs,
+            expected_inputs,
+        ),
+        Curve::GoldilocksBasefold => crate::onnx::verify_and_extract_goldilocks_basefold(
+            circuit_bytes,
+            witness_bytes,
+            proof_bytes,
+            num_inputs,
+            expected_inputs,
+        ),
+        Curve::GoldilocksExt2 => crate::onnx::verify_and_extract_goldilocks_ext2(
+            circuit_bytes,
+            witness_bytes,
+            proof_bytes,
+            num_inputs,
+            expected_inputs,
+        ),
+        Curve::GoldilocksWhir => crate::onnx::verify_and_extract_goldilocks_whir(
+            circuit_bytes,
+            witness_bytes,
+            proof_bytes,
+            num_inputs,
+            expected_inputs,
+        ),
+        Curve::GoldilocksWhirPQ => crate::onnx::verify_and_extract_goldilocks_whir_pq(
+            circuit_bytes,
+            witness_bytes,
+            proof_bytes,
+            num_inputs,
+            expected_inputs,
+        ),
     }
 }
 

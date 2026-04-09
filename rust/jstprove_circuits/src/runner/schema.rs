@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::version::ArtifactVersion;
 use crate::circuit_functions::utils::onnx_model::CircuitParams;
+use crate::curve::Curve;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompiledCircuit {
@@ -12,7 +13,27 @@ pub struct CompiledCircuit {
     #[serde(default)]
     pub metadata: Option<CircuitParams>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub curve: Option<Curve>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<ArtifactVersion>,
+}
+
+impl CompiledCircuit {
+    /// Resolve the curve this circuit was compiled with. Prefers the
+    /// top-level `curve` field, falls back to `metadata.curve`, then to
+    /// field-level detection from the serialized circuit bytes. Returns
+    /// `None` only for bundles that predate curve stamping and whose
+    /// serialized field modulus does not match any known curve.
+    #[must_use]
+    pub fn resolved_curve(&self) -> Option<Curve> {
+        if let Some(c) = self.curve {
+            return Some(c);
+        }
+        if let Some(c) = self.metadata.as_ref().and_then(|m| m.curve) {
+            return Some(c);
+        }
+        Curve::detect_base_field(&self.circuit).ok()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

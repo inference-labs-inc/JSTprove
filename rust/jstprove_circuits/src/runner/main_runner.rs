@@ -117,10 +117,12 @@ where
         .serialize_into(&mut ws_buf)
         .map_err(|e| RunError::Serialize(format!("witness_solver: {e:?}")))?;
 
+    let curve = metadata.as_ref().and_then(|m| m.curve);
     Ok(CompiledCircuit {
         circuit: circuit_buf,
         witness_solver: ws_buf,
         metadata,
+        curve,
         version: Some(jstprove_artifact_version()),
     })
 }
@@ -1690,10 +1692,12 @@ fn jstprove_io_to_run_error(e: jstprove_io::Error, path: &str, is_write: bool) -
 pub fn read_circuit_bundle(path: &str) -> Result<CompiledCircuit, RunError> {
     let blobs = jstprove_io::bundle::read_bundle::<CircuitParams>(Path::new(path))
         .map_err(|e| jstprove_io_to_run_error(e, path, false))?;
+    let curve = blobs.metadata.as_ref().and_then(|m| m.curve);
     Ok(CompiledCircuit {
         circuit: blobs.circuit,
         witness_solver: blobs.witness_solver,
         metadata: blobs.metadata,
+        curve,
         version: blobs.version,
     })
 }
@@ -2591,6 +2595,7 @@ mod tests {
             circuit: vec![1, 2, 3, 4],
             witness_solver: vec![5, 6, 7, 8],
             metadata: None,
+            curve: None,
             version: None,
         };
         write_circuit_bundle(tmp.path(), &bundle, false).unwrap();
@@ -2608,6 +2613,7 @@ mod tests {
             circuit: vec![10; 1024],
             witness_solver: vec![20; 512],
             metadata: None,
+            curve: None,
             version: None,
         };
         write_circuit_bundle(tmp.path(), &bundle, true).unwrap();
@@ -2634,6 +2640,7 @@ mod tests {
             circuit: vec![0xAA; 64],
             witness_solver: vec![0xBB; 64],
             metadata: Some(meta),
+            curve: None,
             version: None,
         };
         write_circuit_bundle(tmp.path(), &bundle, true).unwrap();
