@@ -24,12 +24,17 @@
 //! of Arnon, Chiesa, Fenzi, and Yogev (2024), "WHIR: Reed-Solomon
 //! Proximity Testing with Super-Fast Verification", §5.2.
 
+mod eval_sumcheck;
 mod memcheck;
 mod types;
 
 #[cfg(test)]
 mod tests;
 
+pub use eval_sumcheck::{
+    product_arity, prove_eval_sumcheck, round_poly_degree, verify_eval_sumcheck, EvalSumcheckClaim,
+    EvalSumcheckProof, EvalSumcheckRound,
+};
 pub use memcheck::{
     build_memcheck_sets, multiset_hash, AddrTimestamps, MemcheckSets, MemoryHashParams,
     MEMCHECK_HASH_VARS,
