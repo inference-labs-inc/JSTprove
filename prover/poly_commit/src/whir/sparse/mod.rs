@@ -26,6 +26,7 @@
 
 mod eval_sumcheck;
 mod memcheck;
+mod product_argument;
 mod types;
 
 #[cfg(test)]
@@ -38,6 +39,10 @@ pub use eval_sumcheck::{
 pub use memcheck::{
     build_memcheck_sets, multiset_hash, AddrTimestamps, MemcheckSets, MemoryHashParams,
     MEMCHECK_HASH_VARS,
+};
+pub use product_argument::{
+    prove_product_circuit, verify_product_circuit, ProductCircuitClaim, ProductCircuitProof,
+    ProductLayerProof, ProductRound,
 };
 pub use types::{
     SparseArity, SparseMle3, SparseMle3Commitment, SparseMle3Opening, SparseMleError,
