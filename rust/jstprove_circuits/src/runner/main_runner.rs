@@ -703,7 +703,10 @@ fn run_debug_verification<C: Config>(
         eprintln!("    path:       {circuit_path}");
         eprintln!("    total cost: {}", stats.total_cost);
         if let Some(params) = metadata {
-            eprintln!("    curve:      {}", params.curve.unwrap_or_default());
+            let pc = params
+                .proof_config
+                .map_or_else(|| "unknown".to_string(), |s| s.config.to_string());
+            eprintln!("    config:     {pc}");
             eprintln!(
                 "    scale:      {}^{}",
                 params.scale_base, params.scale_exponent
@@ -2036,18 +2039,20 @@ pub fn get_arg(matches: &clap::ArgMatches, name: &'static str) -> Result<String,
 }
 
 #[must_use]
-pub fn get_curve(
+pub fn get_proof_config(
     matches: &clap::ArgMatches,
     metadata: Option<&CircuitParams>,
-) -> crate::curve::Curve {
+) -> crate::proof_config::ProofConfig {
     if matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine) {
         if let Some(s) = matches.get_one::<String>("curve") {
-            if let Ok(c) = s.parse::<crate::curve::Curve>() {
+            if let Ok(c) = s.parse::<crate::proof_config::ProofConfig>() {
                 return c;
             }
         }
     }
-    metadata.and_then(|m| m.curve).unwrap_or_default()
+    metadata
+        .and_then(|m| m.proof_config.map(|s| s.config))
+        .unwrap_or_default()
 }
 
 fn is_remainder_backend(matches: &clap::ArgMatches, metadata: Option<&CircuitParams>) -> bool {

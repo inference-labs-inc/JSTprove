@@ -582,6 +582,21 @@ pub fn verify_bn254(
     verify_from_bytes::<BN254Config>(circuit_bytes, witness_bytes, proof_bytes)
 }
 
+/// Stamp the manifest with the proof config that is about to compile
+/// it. New compilations always carry an explicit, versioned config so
+/// downstream consumers can resolve the correct prover variant without
+/// guessing. Bundles compiled with no metadata at all keep the legacy
+/// `None` behaviour.
+fn stamp_proof_config(
+    metadata: Option<CircuitParams>,
+    config: crate::proof_config::ProofConfig,
+) -> Option<CircuitParams> {
+    metadata.map(|mut params| {
+        params.proof_config = Some(crate::proof_config::StampedProofConfig::current(config));
+        params
+    })
+}
+
 /// # Errors
 /// Returns `RunError` on compilation or serialization failure.
 pub fn compile_bn254(
@@ -592,6 +607,7 @@ pub fn compile_bn254(
     if metadata.as_ref().and_then(|m| m.logup_chunk_bits).is_none() {
         autotune_chunk_bits::<BN254Config>()?;
     }
+    let metadata = stamp_proof_config(metadata, crate::proof_config::ProofConfig::Bn254Raw);
     crate::runner::main_runner::run_compile_and_serialize::<BN254Config, Circuit<Variable>>(
         circuit_path,
         compress,
@@ -742,6 +758,7 @@ pub fn compile_goldilocks(
     compress: bool,
     metadata: Option<CircuitParams>,
 ) -> Result<(), RunError> {
+    let metadata = stamp_proof_config(metadata, crate::proof_config::ProofConfig::GoldilocksRaw);
     crate::runner::main_runner::run_compile_and_serialize::<GoldilocksConfig, Circuit<Variable>>(
         circuit_path,
         compress,
@@ -840,6 +857,10 @@ pub fn compile_goldilocks_basefold(
     compress: bool,
     metadata: Option<CircuitParams>,
 ) -> Result<(), RunError> {
+    let metadata = stamp_proof_config(
+        metadata,
+        crate::proof_config::ProofConfig::GoldilocksBasefold,
+    );
     crate::runner::main_runner::run_compile_and_serialize::<
         GoldilocksBasefoldConfig,
         Circuit<Variable>,
@@ -887,12 +908,34 @@ pub fn verify_goldilocks_basefold(
 }
 
 /// # Errors
+/// Returns `RunError` on verification or output extraction failure.
+pub fn verify_and_extract_goldilocks_basefold(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+    num_inputs: usize,
+    expected_inputs: Option<&[f64]>,
+) -> Result<VerifiedOutput, RunError> {
+    verify_and_extract_from_bytes::<GoldilocksBasefoldConfig>(
+        circuit_bytes,
+        witness_bytes,
+        proof_bytes,
+        num_inputs,
+        expected_inputs,
+    )
+}
+
+/// # Errors
 /// Returns `RunError` on compilation or serialization failure.
 pub fn compile_goldilocks_whir(
     circuit_path: &str,
     compress: bool,
     metadata: Option<CircuitParams>,
 ) -> Result<(), RunError> {
+    let metadata = stamp_proof_config(
+        metadata,
+        crate::proof_config::ProofConfig::GoldilocksExt3Whir,
+    );
     crate::runner::main_runner::run_compile_and_serialize::<GoldilocksWhirConfig, Circuit<Variable>>(
         circuit_path,
         compress,
@@ -941,12 +984,34 @@ pub fn verify_goldilocks_whir(
 }
 
 /// # Errors
+/// Returns `RunError` on verification or output extraction failure.
+pub fn verify_and_extract_goldilocks_whir(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+    num_inputs: usize,
+    expected_inputs: Option<&[f64]>,
+) -> Result<VerifiedOutput, RunError> {
+    verify_and_extract_from_bytes::<GoldilocksWhirConfig>(
+        circuit_bytes,
+        witness_bytes,
+        proof_bytes,
+        num_inputs,
+        expected_inputs,
+    )
+}
+
+/// # Errors
 /// Returns `RunError` on compilation or serialization failure.
 pub fn compile_goldilocks_whir_pq(
     circuit_path: &str,
     compress: bool,
     metadata: Option<CircuitParams>,
 ) -> Result<(), RunError> {
+    let metadata = stamp_proof_config(
+        metadata,
+        crate::proof_config::ProofConfig::GoldilocksExt4Whir,
+    );
     crate::runner::main_runner::run_compile_and_serialize::<GoldilocksWhirPQConfig, Circuit<Variable>>(
         circuit_path,
         compress,
@@ -995,12 +1060,34 @@ pub fn verify_goldilocks_whir_pq(
 }
 
 /// # Errors
+/// Returns `RunError` on verification or output extraction failure.
+pub fn verify_and_extract_goldilocks_whir_pq(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+    num_inputs: usize,
+    expected_inputs: Option<&[f64]>,
+) -> Result<VerifiedOutput, RunError> {
+    verify_and_extract_from_bytes::<GoldilocksWhirPQConfig>(
+        circuit_bytes,
+        witness_bytes,
+        proof_bytes,
+        num_inputs,
+        expected_inputs,
+    )
+}
+
+/// # Errors
 /// Returns `RunError` on compilation or serialization failure.
 pub fn compile_goldilocks_ext2(
     circuit_path: &str,
     compress: bool,
     metadata: Option<CircuitParams>,
 ) -> Result<(), RunError> {
+    let metadata = stamp_proof_config(
+        metadata,
+        crate::proof_config::ProofConfig::GoldilocksExt2Basefold,
+    );
     crate::runner::main_runner::run_compile_and_serialize::<
         GoldilocksExt2BasefoldConfig,
         Circuit<Variable>,
@@ -1045,6 +1132,24 @@ pub fn verify_goldilocks_ext2(
     proof_bytes: &[u8],
 ) -> Result<bool, RunError> {
     verify_from_bytes::<GoldilocksExt2BasefoldConfig>(circuit_bytes, witness_bytes, proof_bytes)
+}
+
+/// # Errors
+/// Returns `RunError` on verification or output extraction failure.
+pub fn verify_and_extract_goldilocks_ext2(
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+    num_inputs: usize,
+    expected_inputs: Option<&[f64]>,
+) -> Result<VerifiedOutput, RunError> {
+    verify_and_extract_from_bytes::<GoldilocksExt2BasefoldConfig>(
+        circuit_bytes,
+        witness_bytes,
+        proof_bytes,
+        num_inputs,
+        expected_inputs,
+    )
 }
 
 fn get_architecture_and_wandb(

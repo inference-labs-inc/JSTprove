@@ -35,15 +35,15 @@ pub mod circuit_functions;
     clippy::cast_precision_loss
 )]
 pub mod cli;
-pub mod curve;
 #[allow(clippy::pedantic)]
 pub mod expander_metadata;
 pub mod io;
 pub mod onnx;
+pub mod proof_config;
 pub mod proof_system;
 pub mod runner;
 
 pub use circuit_functions::layers::LayerKind;
-pub use curve::{Curve, CurveParseError};
+pub use proof_config::{Field, ProofConfig, ProofConfigError, StampedProofConfig};
 pub use proof_system::{ProofSystem, ProofSystemParseError};
 pub use runner::version::{ArtifactVersion, jstprove_artifact_version};

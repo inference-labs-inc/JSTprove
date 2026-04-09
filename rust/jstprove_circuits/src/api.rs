@@ -7,60 +7,91 @@ use std::sync::LazyLock;
 
 use crate::circuit_functions::utils::onnx_model::{Architecture, CircuitParams, WANDB};
 use crate::circuit_functions::utils::onnx_types::ONNXIO;
-use crate::curve::Curve;
 use crate::io::io_reader::onnx_context::OnnxContext;
+use crate::proof_config::ProofConfig;
 use crate::proof_system::ProofSystem;
 use crate::runner::errors::RunError;
 use crate::runner::schema::{CompiledCircuit, WitnessBundle, WitnessRequest};
-use crate::runner::verify_extract::ExtractedOutput;
+use crate::runner::verify_extract::{ExtractedOutput, VerifiedOutput};
 
 pub use crate::circuit_functions::utils::onnx_model::{
     Architecture as ArchitectureType, CircuitParams as CircuitParamsType, WANDB as WANDBType,
 };
 pub use crate::circuit_functions::utils::onnx_types::ONNXIO as ONNXIOType;
-pub use crate::curve::{Curve as CurveType, CurveParseError};
 pub use crate::expander_metadata::ExpanderMetadata;
+pub use crate::proof_config::{
+    Field as FieldType, ProofConfig as ProofConfigType, ProofConfigError,
+    StampedProofConfig as StampedProofConfigType,
+};
 pub use crate::proof_system::{ProofSystem as ProofSystemType, ProofSystemParseError};
 pub use crate::runner::errors::RunError as ApiError;
 pub use crate::runner::schema::{
     CompiledCircuit as CompiledCircuitType, WitnessBundle as WitnessBundleType,
 };
 pub use crate::runner::verify_extract::ExtractedOutput as ExtractedOutputType;
+pub use crate::runner::verify_extract::VerifiedOutput as VerifiedOutputType;
 pub use crate::runner::version::{ArtifactVersion, jstprove_artifact_version};
+
+/// Invoke the per-config implementation closure for the given proof
+/// configuration.
+///
+/// Centralizes the [`ProofConfig`] → concrete-implementation mapping
+/// so that all per-config dispatchers (`compile`, `witness`,
+/// `witness_f64`, `prove`, `verify`, `verify_and_extract`) share a
+/// single authoritative routing table. Adding a new variant requires
+/// updating one place.
+fn dispatch_by_proof_config<R>(
+    config: ProofConfig,
+    bn254_raw: impl FnOnce() -> R,
+    goldilocks_raw: impl FnOnce() -> R,
+    goldilocks_basefold: impl FnOnce() -> R,
+    goldilocks_ext2_basefold: impl FnOnce() -> R,
+    goldilocks_ext3_whir: impl FnOnce() -> R,
+    goldilocks_ext4_whir: impl FnOnce() -> R,
+) -> R {
+    match config {
+        ProofConfig::Bn254Raw => bn254_raw(),
+        ProofConfig::GoldilocksRaw => goldilocks_raw(),
+        ProofConfig::GoldilocksBasefold => goldilocks_basefold(),
+        ProofConfig::GoldilocksExt2Basefold => goldilocks_ext2_basefold(),
+        ProofConfig::GoldilocksExt3Whir => goldilocks_ext3_whir(),
+        ProofConfig::GoldilocksExt4Whir => goldilocks_ext4_whir(),
+    }
+}
 
 /// # Errors
 /// Returns `RunError` on compilation or serialization failure.
 pub fn compile(
     circuit_path: &str,
-    curve: Curve,
+    config: ProofConfig,
     params: CircuitParams,
     architecture: Architecture,
     wandb: WANDB,
     compress: bool,
 ) -> Result<(), RunError> {
     OnnxContext::set_all(architecture, params.clone(), Some(wandb));
+    let p = Some(params);
+    dispatch_by_proof_config(
+        config,
+        || crate::onnx::compile_bn254(circuit_path, compress, p.clone()),
+        || crate::onnx::compile_goldilocks(circuit_path, compress, p.clone()),
+        || crate::onnx::compile_goldilocks_basefold(circuit_path, compress, p.clone()),
+        || crate::onnx::compile_goldilocks_ext2(circuit_path, compress, p.clone()),
+        || crate::onnx::compile_goldilocks_whir(circuit_path, compress, p.clone()),
+        || crate::onnx::compile_goldilocks_whir_pq(circuit_path, compress, p.clone()),
+    )
+}
 
-    match curve {
-        Curve::Bn254 => crate::onnx::compile_bn254(circuit_path, compress, Some(params)),
-        Curve::Goldilocks | Curve::GoldilocksBasefold => {
-            crate::onnx::compile_goldilocks(circuit_path, compress, Some(params))
-        }
-        Curve::GoldilocksExt2 => {
-            crate::onnx::compile_goldilocks_ext2(circuit_path, compress, Some(params))
-        }
-        Curve::GoldilocksWhir => {
-            crate::onnx::compile_goldilocks_whir(circuit_path, compress, Some(params))
-        }
-        Curve::GoldilocksWhirPQ => {
-            crate::onnx::compile_goldilocks_whir_pq(circuit_path, compress, Some(params))
-        }
-    }
+fn unsupported_witness(config: ProofConfig) -> Result<WitnessBundle, RunError> {
+    Err(RunError::Unsupported(format!(
+        "{config} raw JSON witness not supported; use witness_f64"
+    )))
 }
 
 /// # Errors
 /// Returns `RunError` on witness generation failure.
 pub fn witness(
-    curve: Curve,
+    config: ProofConfig,
     req: &WitnessRequest,
     compress: bool,
 ) -> Result<WitnessBundle, RunError> {
@@ -68,23 +99,22 @@ pub fn witness(
         OnnxContext::set_params(params.clone());
     }
 
-    match curve {
-        Curve::Bn254 => crate::onnx::witness_bn254(req, compress),
-        Curve::Goldilocks | Curve::GoldilocksBasefold => {
-            crate::onnx::witness_goldilocks(req, compress)
-        }
-        Curve::GoldilocksExt2 | Curve::GoldilocksWhir | Curve::GoldilocksWhirPQ => {
-            Err(RunError::Unsupported(format!(
-                "{curve} raw JSON witness not supported; use witness_f64"
-            )))
-        }
-    }
+    dispatch_by_proof_config(
+        config,
+        || crate::onnx::witness_bn254(req, compress),
+        || crate::onnx::witness_goldilocks(req, compress),
+        || unsupported_witness(config),
+        || unsupported_witness(config),
+        || unsupported_witness(config),
+        || unsupported_witness(config),
+    )
 }
 
 /// # Errors
 /// Returns `RunError` on witness generation or activation mismatch.
+#[allow(clippy::too_many_arguments)]
 pub fn witness_f64(
-    curve: Curve,
+    config: ProofConfig,
     circuit_bytes: &[u8],
     solver_bytes: &[u8],
     params: &CircuitParams,
@@ -92,98 +122,176 @@ pub fn witness_f64(
     initializers: &[(Vec<f64>, Vec<usize>)],
     compress: bool,
 ) -> Result<WitnessBundle, RunError> {
-    match curve {
-        Curve::Bn254 => crate::onnx::witness_bn254_from_f64(
-            circuit_bytes,
-            solver_bytes,
-            params,
-            activations,
-            initializers,
-            compress,
-        ),
-        Curve::Goldilocks | Curve::GoldilocksBasefold => crate::onnx::witness_goldilocks_from_f64(
-            circuit_bytes,
-            solver_bytes,
-            params,
-            activations,
-            initializers,
-            compress,
-        ),
-        Curve::GoldilocksExt2 => crate::onnx::witness_goldilocks_ext2_from_f64(
-            circuit_bytes,
-            solver_bytes,
-            params,
-            activations,
-            initializers,
-            compress,
-        ),
-        Curve::GoldilocksWhir => crate::onnx::witness_goldilocks_whir_from_f64(
-            circuit_bytes,
-            solver_bytes,
-            params,
-            activations,
-            initializers,
-            compress,
-        ),
-        Curve::GoldilocksWhirPQ => crate::onnx::witness_goldilocks_whir_pq_from_f64(
-            circuit_bytes,
-            solver_bytes,
-            params,
-            activations,
-            initializers,
-            compress,
-        ),
-    }
+    dispatch_by_proof_config(
+        config,
+        || {
+            crate::onnx::witness_bn254_from_f64(
+                circuit_bytes,
+                solver_bytes,
+                params,
+                activations,
+                initializers,
+                compress,
+            )
+        },
+        || {
+            crate::onnx::witness_goldilocks_from_f64(
+                circuit_bytes,
+                solver_bytes,
+                params,
+                activations,
+                initializers,
+                compress,
+            )
+        },
+        || {
+            crate::onnx::witness_goldilocks_basefold_from_f64(
+                circuit_bytes,
+                solver_bytes,
+                params,
+                activations,
+                initializers,
+                compress,
+            )
+        },
+        || {
+            crate::onnx::witness_goldilocks_ext2_from_f64(
+                circuit_bytes,
+                solver_bytes,
+                params,
+                activations,
+                initializers,
+                compress,
+            )
+        },
+        || {
+            crate::onnx::witness_goldilocks_whir_from_f64(
+                circuit_bytes,
+                solver_bytes,
+                params,
+                activations,
+                initializers,
+                compress,
+            )
+        },
+        || {
+            crate::onnx::witness_goldilocks_whir_pq_from_f64(
+                circuit_bytes,
+                solver_bytes,
+                params,
+                activations,
+                initializers,
+                compress,
+            )
+        },
+    )
 }
 
 /// # Errors
 /// Returns `RunError` on proof generation failure.
 pub fn prove(
-    curve: Curve,
+    config: ProofConfig,
     circuit_bytes: &[u8],
     witness_bytes: &[u8],
     compress: bool,
 ) -> Result<Vec<u8>, RunError> {
-    match curve {
-        Curve::Bn254 => crate::onnx::prove_bn254(circuit_bytes, witness_bytes, compress),
-        Curve::Goldilocks | Curve::GoldilocksBasefold => {
-            crate::onnx::prove_goldilocks(circuit_bytes, witness_bytes, compress)
-        }
-        Curve::GoldilocksExt2 => {
-            crate::onnx::prove_goldilocks_ext2(circuit_bytes, witness_bytes, compress)
-        }
-        Curve::GoldilocksWhir => {
-            crate::onnx::prove_goldilocks_whir(circuit_bytes, witness_bytes, compress)
-        }
-        Curve::GoldilocksWhirPQ => {
-            crate::onnx::prove_goldilocks_whir_pq(circuit_bytes, witness_bytes, compress)
-        }
-    }
+    dispatch_by_proof_config(
+        config,
+        || crate::onnx::prove_bn254(circuit_bytes, witness_bytes, compress),
+        || crate::onnx::prove_goldilocks(circuit_bytes, witness_bytes, compress),
+        || crate::onnx::prove_goldilocks_basefold(circuit_bytes, witness_bytes, compress),
+        || crate::onnx::prove_goldilocks_ext2(circuit_bytes, witness_bytes, compress),
+        || crate::onnx::prove_goldilocks_whir(circuit_bytes, witness_bytes, compress),
+        || crate::onnx::prove_goldilocks_whir_pq(circuit_bytes, witness_bytes, compress),
+    )
 }
 
 /// # Errors
 /// Returns `RunError` on verification failure.
 pub fn verify(
-    curve: Curve,
+    config: ProofConfig,
     circuit_bytes: &[u8],
     witness_bytes: &[u8],
     proof_bytes: &[u8],
 ) -> Result<bool, RunError> {
-    match curve {
-        Curve::Bn254 => crate::onnx::verify_bn254(circuit_bytes, witness_bytes, proof_bytes),
-        Curve::Goldilocks | Curve::GoldilocksBasefold => {
-            crate::onnx::verify_goldilocks(circuit_bytes, witness_bytes, proof_bytes)
-        }
-        Curve::GoldilocksExt2 => {
-            crate::onnx::verify_goldilocks_ext2(circuit_bytes, witness_bytes, proof_bytes)
-        }
-        Curve::GoldilocksWhir => {
-            crate::onnx::verify_goldilocks_whir(circuit_bytes, witness_bytes, proof_bytes)
-        }
-        Curve::GoldilocksWhirPQ => {
-            crate::onnx::verify_goldilocks_whir_pq(circuit_bytes, witness_bytes, proof_bytes)
-        }
-    }
+    dispatch_by_proof_config(
+        config,
+        || crate::onnx::verify_bn254(circuit_bytes, witness_bytes, proof_bytes),
+        || crate::onnx::verify_goldilocks(circuit_bytes, witness_bytes, proof_bytes),
+        || crate::onnx::verify_goldilocks_basefold(circuit_bytes, witness_bytes, proof_bytes),
+        || crate::onnx::verify_goldilocks_ext2(circuit_bytes, witness_bytes, proof_bytes),
+        || crate::onnx::verify_goldilocks_whir(circuit_bytes, witness_bytes, proof_bytes),
+        || crate::onnx::verify_goldilocks_whir_pq(circuit_bytes, witness_bytes, proof_bytes),
+    )
+}
+
+/// # Errors
+/// Returns `RunError` on verification or output extraction failure.
+pub fn verify_and_extract(
+    config: ProofConfig,
+    circuit_bytes: &[u8],
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+    num_inputs: usize,
+    expected_inputs: Option<&[f64]>,
+) -> Result<VerifiedOutput, RunError> {
+    dispatch_by_proof_config(
+        config,
+        || {
+            crate::onnx::verify_and_extract_bn254(
+                circuit_bytes,
+                witness_bytes,
+                proof_bytes,
+                num_inputs,
+                expected_inputs,
+            )
+        },
+        || {
+            crate::onnx::verify_and_extract_goldilocks(
+                circuit_bytes,
+                witness_bytes,
+                proof_bytes,
+                num_inputs,
+                expected_inputs,
+            )
+        },
+        || {
+            crate::onnx::verify_and_extract_goldilocks_basefold(
+                circuit_bytes,
+                witness_bytes,
+                proof_bytes,
+                num_inputs,
+                expected_inputs,
+            )
+        },
+        || {
+            crate::onnx::verify_and_extract_goldilocks_ext2(
+                circuit_bytes,
+                witness_bytes,
+                proof_bytes,
+                num_inputs,
+                expected_inputs,
+            )
+        },
+        || {
+            crate::onnx::verify_and_extract_goldilocks_whir(
+                circuit_bytes,
+                witness_bytes,
+                proof_bytes,
+                num_inputs,
+                expected_inputs,
+            )
+        },
+        || {
+            crate::onnx::verify_and_extract_goldilocks_whir_pq(
+                circuit_bytes,
+                witness_bytes,
+                proof_bytes,
+                num_inputs,
+                expected_inputs,
+            )
+        },
+    )
 }
 
 /// # Errors
