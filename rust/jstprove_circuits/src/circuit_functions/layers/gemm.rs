@@ -242,12 +242,26 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
                     .or_else(|| {
                         let input_name = layer.inputs.first()?;
                         let a_shape = layer_context.shapes_map.get(input_name)?;
-                        let k = *a_shape.last()?;
-                        if k > 0 && w.len() % k == 0 {
-                            let n = w.len() / k;
-                            Some(vec![k, n])
+                        if a_shape.len() < 2 {
+                            return None;
+                        }
+                        let trans_a: usize =
+                            get_param_or_default(&layer.name, TRANS_A, &params, Some(&0)).ok()?;
+                        let trans_b: usize =
+                            get_param_or_default(&layer.name, TRANS_B, &params, Some(&0)).ok()?;
+                        let k = if trans_a != 0 {
+                            a_shape[a_shape.len() - 2]
                         } else {
-                            None
+                            *a_shape.last()?
+                        };
+                        if k == 0 || w.len() % k != 0 {
+                            return None;
+                        }
+                        let n = w.len() / k;
+                        if trans_b != 0 {
+                            Some(vec![n, k])
+                        } else {
+                            Some(vec![k, n])
                         }
                     });
                 if let Some(shape) = target_shape {
