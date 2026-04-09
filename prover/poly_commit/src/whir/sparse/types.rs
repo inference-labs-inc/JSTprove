@@ -40,9 +40,14 @@ pub const SPARSE_MLE_MAX_LOG_DOMAIN: usize = 32;
 /// arity is recorded explicitly in the commitment so the verifier can
 /// route to the right number of memory-checking sumchecks without
 /// having to inspect the polynomial.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum SparseArity {
+    /// Two-axis (`add(z, x)`-style) wiring selector. Default since
+    /// it is the simpler protocol case and only needs the y-axis
+    /// machinery to be opted into.
+    #[default]
     Two,
+    /// Three-axis (`mul(z, x, y)`-style) wiring selector.
     Three,
 }
 

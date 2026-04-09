@@ -26,6 +26,7 @@
 
 mod combined_point;
 mod commit;
+mod eval_commit;
 mod eval_sumcheck;
 mod memcheck;
 mod multiset_open;
@@ -38,6 +39,10 @@ mod tests;
 
 pub use combined_point::combined_eval_point;
 pub use commit::{sparse_commit, SparseConstituentSlot, SparseLayout};
+pub use eval_commit::{
+    eval_combined_point, sparse_commit_eval_tables, SparseEvalCommitment, SparseEvalLayout,
+    SparseEvalScratch, SparseEvalSlot,
+};
 pub use eval_sumcheck::{
     product_arity, prove_eval_sumcheck, round_poly_degree, verify_eval_sumcheck, EvalSumcheckClaim,
     EvalSumcheckProof, EvalSumcheckRound,
