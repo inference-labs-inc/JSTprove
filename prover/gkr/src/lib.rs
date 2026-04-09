@@ -7,6 +7,8 @@ pub use prover::*;
 pub mod verifier;
 pub use verifier::*;
 
+pub mod holographic;
+
 pub mod utils;
 
 pub mod gkr_configs;
