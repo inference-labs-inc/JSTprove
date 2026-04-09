@@ -27,6 +27,7 @@
 mod commit;
 mod eval_sumcheck;
 mod memcheck;
+mod multiset_open;
 mod open;
 mod product_argument;
 mod types;
@@ -42,6 +43,9 @@ pub use eval_sumcheck::{
 pub use memcheck::{
     build_memcheck_sets, multiset_hash, AddrTimestamps, MemcheckSets, MemoryHashParams,
     MEMCHECK_HASH_VARS,
+};
+pub use multiset_open::{
+    compute_axis_memory, sparse_open_multiset, PerAxisMultisetProof, SparseMultisetOpening,
 };
 pub use open::{compute_eq_table_from_addresses, sparse_open_evalclaim, SparseEvalClaimOpening};
 pub use product_argument::{
