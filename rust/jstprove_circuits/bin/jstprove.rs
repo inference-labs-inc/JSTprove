@@ -145,10 +145,13 @@ fn main() {
     if has_onnx && !is_remainder {
         let onnx_path_str = get_arg(&matches, "onnx").unwrap();
         let onnx_path = std::path::Path::new(&onnx_path_str);
-        let early_config = matches
-            .get_one::<String>("curve")
-            .and_then(|s| s.parse::<ProofConfig>().ok())
-            .unwrap_or_default();
+        let early_config = match get_proof_config(&matches, None) {
+            Ok(c) => c,
+            Err(msg) => {
+                eprintln!("Error: {msg}");
+                std::process::exit(1);
+            }
+        };
         let result = match early_config {
             ProofConfig::Bn254Raw => expander_metadata::generate_from_onnx(onnx_path),
             ProofConfig::GoldilocksRaw
