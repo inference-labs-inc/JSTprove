@@ -76,9 +76,13 @@ impl<E: ExtensionField> ExpSerde for SparseFullOpening<E> {
 /// random point can be served from the same WHIR Merkle tree
 /// `sparse_commit_eval_tables` already built) and the materialized
 /// per-axis eq tables (so the multiset arguments do not have to
-/// re-derive them when computing leaf openings).
-pub struct SparseFullOpeningScratch<E: Field> {
-    pub eval_scratch: SparseEvalScratch<E>,
+/// re-derive them when computing leaf openings). The eval scratch
+/// is parameterized over the base field `F` because the per-eval
+/// commitment uses limb decomposition: each extension-field eq
+/// table is split into `E::DEGREE` base-field limb vectors before
+/// being committed via `whir_commit::<F>`.
+pub struct SparseFullOpeningScratch<F: Field, E: Field> {
+    pub eval_scratch: SparseEvalScratch<F>,
     pub e_z: Vec<E>,
     pub e_x: Vec<E>,
     pub e_y: Option<Vec<E>>,
@@ -110,9 +114,9 @@ pub fn sparse_open_skeleton<F, E>(
     x: &[E],
     y: &[E],
     transcript: &mut impl Transcript,
-) -> (SparseFullOpening<E>, SparseFullOpeningScratch<E>)
+) -> (SparseFullOpening<E>, SparseFullOpeningScratch<F, E>)
 where
-    F: Field,
+    F: FFTField + SimdField<Scalar = F>,
     E: ExtensionField<BaseField = F> + FFTField + SimdField<Scalar = E>,
 {
     assert_eq!(z.len(), scratch.n_z, "outer z length mismatch");
@@ -168,7 +172,7 @@ where
     // so the (γ_1, γ_2) samples drawn by the multiset arguments
     // depend on the eval commitment.
     let (eval_commitment, eval_scratch) =
-        sparse_commit_eval_tables::<E>(scratch.arity, &e_z, &e_x, e_y_opt.as_deref());
+        sparse_commit_eval_tables::<F, E>(scratch.arity, &e_z, &e_x, e_y_opt.as_deref());
     transcript.append_u8_slice(eval_commitment.root.as_bytes());
 
     // Step 4: per-axis multiset arguments. Internally re-derives
