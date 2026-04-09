@@ -85,7 +85,7 @@ impl Curve {
     ) -> Result<Self, crate::runner::errors::RunError> {
         use crate::runner::errors::RunError;
         use expander_compiler::frontend::{
-            BN254Config, CircuitField, FieldArith, GoldilocksConfig,
+            BN254Config, CircuitField, FieldArith, GoldilocksConfig, GoldilocksExt2BasefoldConfig,
         };
         use expander_compiler::serdes::ExpSerde;
         use jstprove_io::auto_decompress_bytes;
@@ -111,6 +111,8 @@ impl Curve {
 
         let bn254_modulus = <CircuitField<BN254Config> as FieldArith>::MODULUS;
         let goldilocks_modulus = <CircuitField<GoldilocksConfig> as FieldArith>::MODULUS;
+        let goldilocks_ext2_modulus =
+            <CircuitField<GoldilocksExt2BasefoldConfig> as FieldArith>::MODULUS;
 
         if modulus == bn254_modulus {
             return Self::default_for_base_field(0)
@@ -118,6 +120,10 @@ impl Curve {
         }
         if modulus == goldilocks_modulus {
             return Self::default_for_base_field(1)
+                .ok_or_else(|| RunError::Deserialize("unmapped base field".into()));
+        }
+        if modulus == goldilocks_ext2_modulus {
+            return Self::default_for_base_field(2)
                 .ok_or_else(|| RunError::Deserialize("unmapped base field".into()));
         }
 

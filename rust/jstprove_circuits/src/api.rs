@@ -205,20 +205,15 @@ pub fn verify_and_extract(
             num_inputs,
             expected_inputs,
         ),
-        Curve::Goldilocks => crate::onnx::verify_and_extract_goldilocks(
-            circuit_bytes,
-            witness_bytes,
-            proof_bytes,
-            num_inputs,
-            expected_inputs,
-        ),
-        Curve::GoldilocksBasefold => crate::onnx::verify_and_extract_goldilocks_basefold(
-            circuit_bytes,
-            witness_bytes,
-            proof_bytes,
-            num_inputs,
-            expected_inputs,
-        ),
+        Curve::Goldilocks | Curve::GoldilocksBasefold => {
+            crate::onnx::verify_and_extract_goldilocks(
+                circuit_bytes,
+                witness_bytes,
+                proof_bytes,
+                num_inputs,
+                expected_inputs,
+            )
+        }
         Curve::GoldilocksExt2 => crate::onnx::verify_and_extract_goldilocks_ext2(
             circuit_bytes,
             witness_bytes,
