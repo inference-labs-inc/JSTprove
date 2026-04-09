@@ -29,6 +29,30 @@ pub use crate::runner::verify_extract::ExtractedOutput as ExtractedOutputType;
 pub use crate::runner::verify_extract::VerifiedOutput as VerifiedOutputType;
 pub use crate::runner::version::{ArtifactVersion, jstprove_artifact_version};
 
+/// Invoke the per-curve implementation closure for the given curve.
+///
+/// Centralizes the `Curve` → concrete-implementation mapping so that all
+/// per-curve dispatchers (`compile`, `witness`, `witness_f64`, `prove`,
+/// `verify`, `verify_and_extract`) share a single authoritative routing
+/// table. `GoldilocksBasefold` shares the `Goldilocks` closure to match
+/// the historical alias semantics in this API surface.
+fn dispatch_by_curve<R>(
+    curve: Curve,
+    bn254: impl FnOnce() -> R,
+    goldilocks: impl FnOnce() -> R,
+    goldilocks_ext2: impl FnOnce() -> R,
+    goldilocks_whir: impl FnOnce() -> R,
+    goldilocks_whir_pq: impl FnOnce() -> R,
+) -> R {
+    match curve {
+        Curve::Bn254 => bn254(),
+        Curve::Goldilocks | Curve::GoldilocksBasefold => goldilocks(),
+        Curve::GoldilocksExt2 => goldilocks_ext2(),
+        Curve::GoldilocksWhir => goldilocks_whir(),
+        Curve::GoldilocksWhirPQ => goldilocks_whir_pq(),
+    }
+}
+
 /// # Errors
 /// Returns `RunError` on compilation or serialization failure.
 pub fn compile(
@@ -40,22 +64,21 @@ pub fn compile(
     compress: bool,
 ) -> Result<(), RunError> {
     OnnxContext::set_all(architecture, params.clone(), Some(wandb));
+    let p = Some(params);
+    dispatch_by_curve(
+        curve,
+        || crate::onnx::compile_bn254(circuit_path, compress, p.clone()),
+        || crate::onnx::compile_goldilocks(circuit_path, compress, p.clone()),
+        || crate::onnx::compile_goldilocks_ext2(circuit_path, compress, p.clone()),
+        || crate::onnx::compile_goldilocks_whir(circuit_path, compress, p.clone()),
+        || crate::onnx::compile_goldilocks_whir_pq(circuit_path, compress, p.clone()),
+    )
+}
 
-    match curve {
-        Curve::Bn254 => crate::onnx::compile_bn254(circuit_path, compress, Some(params)),
-        Curve::Goldilocks | Curve::GoldilocksBasefold => {
-            crate::onnx::compile_goldilocks(circuit_path, compress, Some(params))
-        }
-        Curve::GoldilocksExt2 => {
-            crate::onnx::compile_goldilocks_ext2(circuit_path, compress, Some(params))
-        }
-        Curve::GoldilocksWhir => {
-            crate::onnx::compile_goldilocks_whir(circuit_path, compress, Some(params))
-        }
-        Curve::GoldilocksWhirPQ => {
-            crate::onnx::compile_goldilocks_whir_pq(circuit_path, compress, Some(params))
-        }
-    }
+fn unsupported_witness(curve: Curve) -> Result<WitnessBundle, RunError> {
+    Err(RunError::Unsupported(format!(
+        "{curve} raw JSON witness not supported; use witness_f64"
+    )))
 }
 
 /// # Errors
@@ -69,17 +92,14 @@ pub fn witness(
         OnnxContext::set_params(params.clone());
     }
 
-    match curve {
-        Curve::Bn254 => crate::onnx::witness_bn254(req, compress),
-        Curve::Goldilocks | Curve::GoldilocksBasefold => {
-            crate::onnx::witness_goldilocks(req, compress)
-        }
-        Curve::GoldilocksExt2 | Curve::GoldilocksWhir | Curve::GoldilocksWhirPQ => {
-            Err(RunError::Unsupported(format!(
-                "{curve} raw JSON witness not supported; use witness_f64"
-            )))
-        }
-    }
+    dispatch_by_curve(
+        curve,
+        || crate::onnx::witness_bn254(req, compress),
+        || crate::onnx::witness_goldilocks(req, compress),
+        || unsupported_witness(curve),
+        || unsupported_witness(curve),
+        || unsupported_witness(curve),
+    )
 }
 
 /// # Errors
@@ -93,48 +113,59 @@ pub fn witness_f64(
     initializers: &[(Vec<f64>, Vec<usize>)],
     compress: bool,
 ) -> Result<WitnessBundle, RunError> {
-    match curve {
-        Curve::Bn254 => crate::onnx::witness_bn254_from_f64(
-            circuit_bytes,
-            solver_bytes,
-            params,
-            activations,
-            initializers,
-            compress,
-        ),
-        Curve::Goldilocks | Curve::GoldilocksBasefold => crate::onnx::witness_goldilocks_from_f64(
-            circuit_bytes,
-            solver_bytes,
-            params,
-            activations,
-            initializers,
-            compress,
-        ),
-        Curve::GoldilocksExt2 => crate::onnx::witness_goldilocks_ext2_from_f64(
-            circuit_bytes,
-            solver_bytes,
-            params,
-            activations,
-            initializers,
-            compress,
-        ),
-        Curve::GoldilocksWhir => crate::onnx::witness_goldilocks_whir_from_f64(
-            circuit_bytes,
-            solver_bytes,
-            params,
-            activations,
-            initializers,
-            compress,
-        ),
-        Curve::GoldilocksWhirPQ => crate::onnx::witness_goldilocks_whir_pq_from_f64(
-            circuit_bytes,
-            solver_bytes,
-            params,
-            activations,
-            initializers,
-            compress,
-        ),
-    }
+    dispatch_by_curve(
+        curve,
+        || {
+            crate::onnx::witness_bn254_from_f64(
+                circuit_bytes,
+                solver_bytes,
+                params,
+                activations,
+                initializers,
+                compress,
+            )
+        },
+        || {
+            crate::onnx::witness_goldilocks_from_f64(
+                circuit_bytes,
+                solver_bytes,
+                params,
+                activations,
+                initializers,
+                compress,
+            )
+        },
+        || {
+            crate::onnx::witness_goldilocks_ext2_from_f64(
+                circuit_bytes,
+                solver_bytes,
+                params,
+                activations,
+                initializers,
+                compress,
+            )
+        },
+        || {
+            crate::onnx::witness_goldilocks_whir_from_f64(
+                circuit_bytes,
+                solver_bytes,
+                params,
+                activations,
+                initializers,
+                compress,
+            )
+        },
+        || {
+            crate::onnx::witness_goldilocks_whir_pq_from_f64(
+                circuit_bytes,
+                solver_bytes,
+                params,
+                activations,
+                initializers,
+                compress,
+            )
+        },
+    )
 }
 
 /// # Errors
@@ -145,21 +176,14 @@ pub fn prove(
     witness_bytes: &[u8],
     compress: bool,
 ) -> Result<Vec<u8>, RunError> {
-    match curve {
-        Curve::Bn254 => crate::onnx::prove_bn254(circuit_bytes, witness_bytes, compress),
-        Curve::Goldilocks | Curve::GoldilocksBasefold => {
-            crate::onnx::prove_goldilocks(circuit_bytes, witness_bytes, compress)
-        }
-        Curve::GoldilocksExt2 => {
-            crate::onnx::prove_goldilocks_ext2(circuit_bytes, witness_bytes, compress)
-        }
-        Curve::GoldilocksWhir => {
-            crate::onnx::prove_goldilocks_whir(circuit_bytes, witness_bytes, compress)
-        }
-        Curve::GoldilocksWhirPQ => {
-            crate::onnx::prove_goldilocks_whir_pq(circuit_bytes, witness_bytes, compress)
-        }
-    }
+    dispatch_by_curve(
+        curve,
+        || crate::onnx::prove_bn254(circuit_bytes, witness_bytes, compress),
+        || crate::onnx::prove_goldilocks(circuit_bytes, witness_bytes, compress),
+        || crate::onnx::prove_goldilocks_ext2(circuit_bytes, witness_bytes, compress),
+        || crate::onnx::prove_goldilocks_whir(circuit_bytes, witness_bytes, compress),
+        || crate::onnx::prove_goldilocks_whir_pq(circuit_bytes, witness_bytes, compress),
+    )
 }
 
 /// # Errors
@@ -170,21 +194,14 @@ pub fn verify(
     witness_bytes: &[u8],
     proof_bytes: &[u8],
 ) -> Result<bool, RunError> {
-    match curve {
-        Curve::Bn254 => crate::onnx::verify_bn254(circuit_bytes, witness_bytes, proof_bytes),
-        Curve::Goldilocks | Curve::GoldilocksBasefold => {
-            crate::onnx::verify_goldilocks(circuit_bytes, witness_bytes, proof_bytes)
-        }
-        Curve::GoldilocksExt2 => {
-            crate::onnx::verify_goldilocks_ext2(circuit_bytes, witness_bytes, proof_bytes)
-        }
-        Curve::GoldilocksWhir => {
-            crate::onnx::verify_goldilocks_whir(circuit_bytes, witness_bytes, proof_bytes)
-        }
-        Curve::GoldilocksWhirPQ => {
-            crate::onnx::verify_goldilocks_whir_pq(circuit_bytes, witness_bytes, proof_bytes)
-        }
-    }
+    dispatch_by_curve(
+        curve,
+        || crate::onnx::verify_bn254(circuit_bytes, witness_bytes, proof_bytes),
+        || crate::onnx::verify_goldilocks(circuit_bytes, witness_bytes, proof_bytes),
+        || crate::onnx::verify_goldilocks_ext2(circuit_bytes, witness_bytes, proof_bytes),
+        || crate::onnx::verify_goldilocks_whir(circuit_bytes, witness_bytes, proof_bytes),
+        || crate::onnx::verify_goldilocks_whir_pq(circuit_bytes, witness_bytes, proof_bytes),
+    )
 }
 
 /// # Errors
@@ -197,15 +214,18 @@ pub fn verify_and_extract(
     num_inputs: usize,
     expected_inputs: Option<&[f64]>,
 ) -> Result<VerifiedOutputType, RunError> {
-    match curve {
-        Curve::Bn254 => crate::onnx::verify_and_extract_bn254(
-            circuit_bytes,
-            witness_bytes,
-            proof_bytes,
-            num_inputs,
-            expected_inputs,
-        ),
-        Curve::Goldilocks | Curve::GoldilocksBasefold => {
+    dispatch_by_curve(
+        curve,
+        || {
+            crate::onnx::verify_and_extract_bn254(
+                circuit_bytes,
+                witness_bytes,
+                proof_bytes,
+                num_inputs,
+                expected_inputs,
+            )
+        },
+        || {
             crate::onnx::verify_and_extract_goldilocks(
                 circuit_bytes,
                 witness_bytes,
@@ -213,29 +233,35 @@ pub fn verify_and_extract(
                 num_inputs,
                 expected_inputs,
             )
-        }
-        Curve::GoldilocksExt2 => crate::onnx::verify_and_extract_goldilocks_ext2(
-            circuit_bytes,
-            witness_bytes,
-            proof_bytes,
-            num_inputs,
-            expected_inputs,
-        ),
-        Curve::GoldilocksWhir => crate::onnx::verify_and_extract_goldilocks_whir(
-            circuit_bytes,
-            witness_bytes,
-            proof_bytes,
-            num_inputs,
-            expected_inputs,
-        ),
-        Curve::GoldilocksWhirPQ => crate::onnx::verify_and_extract_goldilocks_whir_pq(
-            circuit_bytes,
-            witness_bytes,
-            proof_bytes,
-            num_inputs,
-            expected_inputs,
-        ),
-    }
+        },
+        || {
+            crate::onnx::verify_and_extract_goldilocks_ext2(
+                circuit_bytes,
+                witness_bytes,
+                proof_bytes,
+                num_inputs,
+                expected_inputs,
+            )
+        },
+        || {
+            crate::onnx::verify_and_extract_goldilocks_whir(
+                circuit_bytes,
+                witness_bytes,
+                proof_bytes,
+                num_inputs,
+                expected_inputs,
+            )
+        },
+        || {
+            crate::onnx::verify_and_extract_goldilocks_whir_pq(
+                circuit_bytes,
+                witness_bytes,
+                proof_bytes,
+                num_inputs,
+                expected_inputs,
+            )
+        },
+    )
 }
 
 /// # Errors

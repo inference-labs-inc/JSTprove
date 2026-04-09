@@ -45,9 +45,9 @@ impl Curve {
             Self::Bn254 => 0,
             Self::Goldilocks
             | Self::GoldilocksBasefold
+            | Self::GoldilocksExt2
             | Self::GoldilocksWhir
             | Self::GoldilocksWhirPQ => 1,
-            Self::GoldilocksExt2 => 2,
         }
     }
 
@@ -63,7 +63,6 @@ impl Curve {
         match base_field_id {
             0 => Some(Self::Bn254),
             1 => Some(Self::GoldilocksWhirPQ),
-            2 => Some(Self::GoldilocksExt2),
             _ => None,
         }
     }
@@ -85,7 +84,7 @@ impl Curve {
     ) -> Result<Self, crate::runner::errors::RunError> {
         use crate::runner::errors::RunError;
         use expander_compiler::frontend::{
-            BN254Config, CircuitField, FieldArith, GoldilocksConfig, GoldilocksExt2BasefoldConfig,
+            BN254Config, CircuitField, FieldArith, GoldilocksConfig,
         };
         use expander_compiler::serdes::ExpSerde;
         use jstprove_io::auto_decompress_bytes;
@@ -111,19 +110,18 @@ impl Curve {
 
         let bn254_modulus = <CircuitField<BN254Config> as FieldArith>::MODULUS;
         let goldilocks_modulus = <CircuitField<GoldilocksConfig> as FieldArith>::MODULUS;
-        let goldilocks_ext2_modulus =
-            <CircuitField<GoldilocksExt2BasefoldConfig> as FieldArith>::MODULUS;
 
+        // All Goldilocks-family curves (including GoldilocksExt2) share
+        // the same circuit-level field modulus — the extension is built
+        // above the base field rather than changing its modulus. Field
+        // detection cannot distinguish them; callers that need the
+        // specific variant must rely on the bundle manifest.
         if modulus == bn254_modulus {
             return Self::default_for_base_field(0)
                 .ok_or_else(|| RunError::Deserialize("unmapped base field".into()));
         }
         if modulus == goldilocks_modulus {
             return Self::default_for_base_field(1)
-                .ok_or_else(|| RunError::Deserialize("unmapped base field".into()));
-        }
-        if modulus == goldilocks_ext2_modulus {
-            return Self::default_for_base_field(2)
                 .ok_or_else(|| RunError::Deserialize("unmapped base field".into()));
         }
 
@@ -200,5 +198,93 @@ mod tests {
     #[test]
     fn parse_unknown_errors() {
         assert!("unknown".parse::<Curve>().is_err());
+    }
+
+    mod detect_base_field {
+        use super::*;
+        use crate::runner::errors::RunError;
+        use expander_compiler::frontend::{
+            BN254Config, CircuitField, FieldArith, GoldilocksConfig, GoldilocksExt2BasefoldConfig,
+            GoldilocksWhirPQConfig,
+        };
+        use expander_compiler::serdes::ExpSerde;
+
+        /// Build a synthetic circuit payload containing only the 8-byte
+        /// magic followed by the 32-byte modulus, matching the header
+        /// layout the detection primitive reads.
+        fn header_with_modulus(modulus: ethnum::U256) -> Vec<u8> {
+            let mut buf = vec![0u8; 8];
+            modulus.serialize_into(&mut buf).unwrap();
+            buf
+        }
+
+        #[test]
+        fn decompression_failure_returns_deserialize_error() {
+            // Bytes that look like they start a zstd/gzip stream but are
+            // truncated should fail during auto_decompress.
+            let bytes = vec![0x28, 0xb5, 0x2f, 0xfd, 0x00, 0x00];
+            let err = Curve::detect_base_field(&bytes).unwrap_err();
+            assert!(matches!(err, RunError::Deserialize(_)));
+        }
+
+        #[test]
+        fn short_header_returns_deserialize_error() {
+            // Fewer bytes than HEADER_SIZE (magic + modulus = 40) must
+            // fail fast with a "too short" message.
+            let bytes = vec![0u8; 10];
+            let err = Curve::detect_base_field(&bytes).unwrap_err();
+            match err {
+                RunError::Deserialize(msg) => assert!(msg.contains("too short"), "{msg}"),
+                other => panic!("expected Deserialize, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn detects_bn254_modulus() {
+            let modulus = <CircuitField<BN254Config> as FieldArith>::MODULUS;
+            let bytes = header_with_modulus(modulus);
+            let curve = Curve::detect_base_field(&bytes).unwrap();
+            assert_eq!(curve, Curve::Bn254);
+        }
+
+        #[test]
+        fn detects_goldilocks_modulus() {
+            let modulus = <CircuitField<GoldilocksConfig> as FieldArith>::MODULUS;
+            let bytes = header_with_modulus(modulus);
+            let curve = Curve::detect_base_field(&bytes).unwrap();
+            assert_eq!(curve, Curve::GoldilocksWhirPQ);
+        }
+
+        /// All Goldilocks-family configs share the same circuit-level
+        /// modulus (the field extension is built above the base field).
+        /// Detection collapses them to the canonical default variant.
+        #[test]
+        fn goldilocks_family_shares_modulus() {
+            let g_mod = <CircuitField<GoldilocksConfig> as FieldArith>::MODULUS;
+            let ext2_mod = <CircuitField<GoldilocksExt2BasefoldConfig> as FieldArith>::MODULUS;
+            let whir_pq_mod = <CircuitField<GoldilocksWhirPQConfig> as FieldArith>::MODULUS;
+            assert_eq!(g_mod, ext2_mod);
+            assert_eq!(g_mod, whir_pq_mod);
+
+            for modulus in [g_mod, ext2_mod, whir_pq_mod] {
+                let bytes = header_with_modulus(modulus);
+                let curve = Curve::detect_base_field(&bytes).unwrap();
+                assert_eq!(curve, Curve::GoldilocksWhirPQ);
+            }
+        }
+
+        #[test]
+        fn unknown_modulus_returns_deserialize_error() {
+            // Valid-length header whose modulus matches no known field.
+            let bogus = ethnum::U256::from_words(0xdead_beef_u128, 0xcafe_babe_u128);
+            let bytes = header_with_modulus(bogus);
+            let err = Curve::detect_base_field(&bytes).unwrap_err();
+            match err {
+                RunError::Deserialize(msg) => {
+                    assert!(msg.contains("unknown circuit field modulus"), "{msg}")
+                }
+                other => panic!("expected Deserialize, got {other:?}"),
+            }
+        }
     }
 }
