@@ -571,7 +571,9 @@ where
     true
 }
 
-fn whir_commit<F: FFTField + SimdField<Scalar = F>>(evals: &[F]) -> (WhirCommitment, Tree, Vec<F>) {
+pub(crate) fn whir_commit<F: FFTField + SimdField<Scalar = F>>(
+    evals: &[F],
+) -> (WhirCommitment, Tree, Vec<F>) {
     assert!(!evals.is_empty(), "whir_commit: evals must not be empty");
     assert!(
         LEAF_BYTES % F::SIZE == 0,
