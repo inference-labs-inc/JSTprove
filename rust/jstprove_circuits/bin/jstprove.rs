@@ -263,6 +263,10 @@ fn main() {
         let cli_explicit =
             matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine);
         if let Some(stamped) = meta.proof_config {
+            if let Err(e) = stamped.ensure_current() {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
             if cli_explicit && stamped.config != proof_config {
                 eprintln!(
                     "Error: proof config mismatch — circuit was compiled with '{}' but '{proof_config}' was requested",
