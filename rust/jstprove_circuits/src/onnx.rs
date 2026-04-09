@@ -583,18 +583,34 @@ pub fn verify_bn254(
 }
 
 /// Stamp the manifest with the proof config that is about to compile
-/// it. New compilations always carry an explicit, versioned config so
-/// downstream consumers can resolve the correct prover variant without
-/// guessing. Bundles compiled with no metadata at all keep the legacy
-/// `None` behaviour.
+/// it. Always returns `Some(CircuitParams)` — every compiled bundle
+/// must carry an explicit, versioned proof config so downstream
+/// consumers can resolve the correct prover variant without guessing.
+///
+/// If the caller passes `None` (e.g. low-level test fixtures that
+/// bypass the high-level `api::compile` entry point), a minimal
+/// placeholder `CircuitParams` is fabricated solely to carry the stamp
+/// — its other fields default to zero/empty and are not meaningful for
+/// real runtime use.
 fn stamp_proof_config(
     metadata: Option<CircuitParams>,
     config: crate::proof_config::ProofConfig,
-) -> Option<CircuitParams> {
-    metadata.map(|mut params| {
-        params.proof_config = Some(crate::proof_config::StampedProofConfig::current(config));
-        params
-    })
+) -> CircuitParams {
+    let mut params = metadata.unwrap_or_else(|| CircuitParams {
+        scale_base: 0,
+        scale_exponent: 0,
+        rescale_config: std::collections::HashMap::new(),
+        inputs: Vec::new(),
+        outputs: Vec::new(),
+        freivalds_reps: 0,
+        n_bits_config: std::collections::HashMap::new(),
+        weights_as_inputs: false,
+        proof_system: crate::proof_system::ProofSystem::Expander,
+        proof_config: None,
+        logup_chunk_bits: None,
+    });
+    params.proof_config = Some(crate::proof_config::StampedProofConfig::current(config));
+    params
 }
 
 /// # Errors
@@ -611,7 +627,7 @@ pub fn compile_bn254(
     crate::runner::main_runner::run_compile_and_serialize::<BN254Config, Circuit<Variable>>(
         circuit_path,
         compress,
-        metadata,
+        Some(metadata),
     )
 }
 
@@ -762,7 +778,7 @@ pub fn compile_goldilocks(
     crate::runner::main_runner::run_compile_and_serialize::<GoldilocksConfig, Circuit<Variable>>(
         circuit_path,
         compress,
-        metadata,
+        Some(metadata),
     )
 }
 
@@ -864,7 +880,7 @@ pub fn compile_goldilocks_basefold(
     crate::runner::main_runner::run_compile_and_serialize::<
         GoldilocksBasefoldConfig,
         Circuit<Variable>,
-    >(circuit_path, compress, metadata)
+    >(circuit_path, compress, Some(metadata))
 }
 
 /// # Errors
@@ -939,7 +955,7 @@ pub fn compile_goldilocks_whir(
     crate::runner::main_runner::run_compile_and_serialize::<GoldilocksWhirConfig, Circuit<Variable>>(
         circuit_path,
         compress,
-        metadata,
+        Some(metadata),
     )
 }
 
@@ -1015,7 +1031,7 @@ pub fn compile_goldilocks_whir_pq(
     crate::runner::main_runner::run_compile_and_serialize::<GoldilocksWhirPQConfig, Circuit<Variable>>(
         circuit_path,
         compress,
-        metadata,
+        Some(metadata),
     )
 }
 
@@ -1091,7 +1107,7 @@ pub fn compile_goldilocks_ext2(
     crate::runner::main_runner::run_compile_and_serialize::<
         GoldilocksExt2BasefoldConfig,
         Circuit<Variable>,
-    >(circuit_path, compress, metadata)
+    >(circuit_path, compress, Some(metadata))
 }
 
 /// # Errors

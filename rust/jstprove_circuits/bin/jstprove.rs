@@ -251,18 +251,22 @@ fn main() {
         OnnxContext::get_params().ok()
     };
 
-    let proof_config = get_proof_config(&matches, metadata.as_ref());
+    let proof_config = match get_proof_config(&matches, metadata.as_ref()) {
+        Ok(config) => config,
+        Err(msg) => {
+            eprintln!("Error: {msg}");
+            std::process::exit(1);
+        }
+    };
 
     if let Some(ref meta) = metadata {
         let cli_explicit =
             matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine);
         if let Some(stamped) = meta.proof_config {
-            if cli_explicit && stamped.config.field() != proof_config.field() {
+            if cli_explicit && stamped.config != proof_config {
                 eprintln!(
-                    "Error: field mismatch — circuit was compiled with '{}' (field {:?}) but '{proof_config}' (field {:?}) was requested",
+                    "Error: proof config mismatch — circuit was compiled with '{}' but '{proof_config}' was requested",
                     stamped.config,
-                    stamped.config.field(),
-                    proof_config.field(),
                 );
                 std::process::exit(1);
             }

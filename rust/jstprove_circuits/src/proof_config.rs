@@ -257,11 +257,14 @@ impl Field {
         use expander_compiler::serdes::ExpSerde;
         use jstprove_io::auto_decompress_bytes;
         use std::io::Cursor;
-        use std::mem::size_of;
 
-        const MAGIC_SIZE: usize = size_of::<usize>();
-        // U256 serializes as 4 little-endian u64 limbs.
-        const MODULUS_SIZE: usize = 4 * size_of::<u64>();
+        // The expander_compiler layered-circuit wire format always
+        // emits the 8-byte magic followed by a 32-byte modulus
+        // (U256 serialized as four little-endian u64 limbs). These
+        // sizes are properties of the on-disk format and must not
+        // depend on the host architecture.
+        const MAGIC_SIZE: usize = 8;
+        const MODULUS_SIZE: usize = 32;
         const HEADER_SIZE: usize = MAGIC_SIZE + MODULUS_SIZE;
 
         let data = auto_decompress_bytes(circuit_bytes)
