@@ -1546,14 +1546,23 @@ fn infer_tile(
             )
         })?;
 
-    if repeats_data.len() != input_shape.len() {
+    if repeats_data.len() > input_shape.len() {
         bail!(
-            "layer {}: Tile repeats length {} != input rank {}",
+            "layer {}: Tile repeats length {} > input rank {}",
             layer.name,
             repeats_data.len(),
             input_shape.len()
         );
     }
+
+    let repeats_data = if repeats_data.len() < input_shape.len() {
+        let pad = input_shape.len() - repeats_data.len();
+        let mut padded = vec![1i64; pad];
+        padded.extend_from_slice(&repeats_data);
+        padded
+    } else {
+        repeats_data
+    };
 
     let out_shape: Vec<usize> = input_shape
         .iter()
@@ -3394,5 +3403,61 @@ mod tests {
         );
         let result = infer_gather(&layer, &shapes, &HashMap::new(), &HashMap::new()).unwrap();
         assert_eq!(result[0].1, vec![]);
+    }
+
+    #[test]
+    fn tile_shorter_repeats_padded() {
+        let input_shape = vec![2, 3, 4];
+        let layer = make_layer(OpType::Tile, vec!["x", "reps"], vec!["y"], HashMap::new());
+        let mut inits = HashMap::new();
+        inits.insert(
+            "reps".to_string(),
+            TensorData {
+                name: "reps".to_string(),
+                dims: vec![1],
+                data_type: 7,
+                float_data: vec![],
+                int_data: vec![2],
+            },
+        );
+        let result = infer_tile(&layer, Some(&input_shape), &inits, &HashMap::new()).unwrap();
+        assert_eq!(result[0].1, vec![2, 3, 8]);
+    }
+
+    #[test]
+    fn tile_equal_length_repeats() {
+        let input_shape = vec![2, 3];
+        let layer = make_layer(OpType::Tile, vec!["x", "reps"], vec!["y"], HashMap::new());
+        let mut inits = HashMap::new();
+        inits.insert(
+            "reps".to_string(),
+            TensorData {
+                name: "reps".to_string(),
+                dims: vec![2],
+                data_type: 7,
+                float_data: vec![],
+                int_data: vec![3, 4],
+            },
+        );
+        let result = infer_tile(&layer, Some(&input_shape), &inits, &HashMap::new()).unwrap();
+        assert_eq!(result[0].1, vec![6, 12]);
+    }
+
+    #[test]
+    fn tile_longer_repeats_rejected() {
+        let input_shape = vec![2];
+        let layer = make_layer(OpType::Tile, vec!["x", "reps"], vec!["y"], HashMap::new());
+        let mut inits = HashMap::new();
+        inits.insert(
+            "reps".to_string(),
+            TensorData {
+                name: "reps".to_string(),
+                dims: vec![3],
+                data_type: 7,
+                float_data: vec![],
+                int_data: vec![1, 2, 3],
+            },
+        );
+        assert!(infer_tile(&layer, Some(&input_shape), &inits, &HashMap::new()).is_err());
     }
 }

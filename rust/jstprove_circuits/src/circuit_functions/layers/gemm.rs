@@ -234,15 +234,43 @@ impl<C: Config, Builder: RootAPI<C>> LayerOp<C, Builder> for GemmLayer {
         } else {
             let mut w: ndarray::ArrayD<i64> = get_w_or_b(layer_context.w_and_b_map, w_name)?;
             if w.ndim() == 1 {
-                if let Some(expected) = layer_context.shapes_map.get(w_name) {
-                    if expected.len() == 2 && expected.iter().product::<usize>() == w.len() {
-                        w = w
-                            .into_shape_with_order(ndarray::IxDyn(expected))
-                            .map_err(|e| LayerError::InvalidShape {
-                                layer: LayerKind::Gemm,
-                                msg: format!("reshaping 1D weight '{w_name}' to {expected:?}: {e}"),
-                            })?;
-                    }
+                let target_shape: Option<Vec<usize>> = layer_context
+                    .shapes_map
+                    .get(w_name)
+                    .filter(|s| s.len() == 2 && s.iter().product::<usize>() == w.len())
+                    .cloned()
+                    .or_else(|| {
+                        let input_name = layer.inputs.first()?;
+                        let a_shape = layer_context.shapes_map.get(input_name)?;
+                        if a_shape.len() < 2 {
+                            return None;
+                        }
+                        let trans_a: usize =
+                            get_param_or_default(&layer.name, TRANS_A, &params, Some(&0)).ok()?;
+                        let trans_b: usize =
+                            get_param_or_default(&layer.name, TRANS_B, &params, Some(&0)).ok()?;
+                        let k = if trans_a != 0 {
+                            a_shape[a_shape.len() - 2]
+                        } else {
+                            *a_shape.last()?
+                        };
+                        if k == 0 || w.len() % k != 0 {
+                            return None;
+                        }
+                        let n = w.len() / k;
+                        if trans_b != 0 {
+                            Some(vec![n, k])
+                        } else {
+                            Some(vec![k, n])
+                        }
+                    });
+                if let Some(shape) = target_shape {
+                    w = w
+                        .into_shape_with_order(ndarray::IxDyn(&shape))
+                        .map_err(|e| LayerError::InvalidShape {
+                            layer: LayerKind::Gemm,
+                            msg: format!("reshaping 1D weight '{w_name}' to {shape:?}: {e}"),
+                        })?;
                 }
             }
             (

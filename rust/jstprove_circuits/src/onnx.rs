@@ -994,6 +994,46 @@ pub fn verify_goldilocks_whir_pq(
     verify_from_bytes::<GoldilocksWhirPQConfig>(circuit_bytes, witness_bytes, proof_bytes)
 }
 
+pub type FlatCircuitGoldilocksWhirPQ = expander_circuit::Circuit<FC<GoldilocksWhirPQConfig>>;
+
+pub type LayeredCircuitGoldilocksWhirPQ = expander_compiler::circuit::layered::Circuit<
+    GoldilocksWhirPQConfig,
+    expander_compiler::circuit::layered::NormalInputType,
+>;
+
+/// # Errors
+/// Returns `RunError` on decompression or deserialization failure.
+pub fn deserialize_circuit_goldilocks_whir_pq(
+    circuit_bytes: &[u8],
+) -> Result<LayeredCircuitGoldilocksWhirPQ, RunError> {
+    crate::runner::main_runner::load_circuit_from_bytes::<GoldilocksWhirPQConfig>(circuit_bytes)
+}
+
+#[must_use]
+pub fn flatten_circuit_goldilocks_whir_pq(
+    layered: &LayeredCircuitGoldilocksWhirPQ,
+) -> FlatCircuitGoldilocksWhirPQ {
+    layered.export_to_expander_flatten()
+}
+
+/// # Errors
+/// Returns `RunError` on verification or output extraction failure.
+pub fn verify_and_extract_goldilocks_whir_pq_with_flat_ref(
+    circuit: &FlatCircuitGoldilocksWhirPQ,
+    witness_bytes: &[u8],
+    proof_bytes: &[u8],
+    num_inputs: usize,
+    expected_inputs: Option<&[f64]>,
+) -> Result<VerifiedOutput, RunError> {
+    verify_and_extract_with_flat_ref::<GoldilocksWhirPQConfig>(
+        circuit,
+        witness_bytes,
+        proof_bytes,
+        num_inputs,
+        expected_inputs,
+    )
+}
+
 /// # Errors
 /// Returns `RunError` on compilation or serialization failure.
 pub fn compile_goldilocks_ext2(

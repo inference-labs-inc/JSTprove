@@ -1597,8 +1597,8 @@ pub fn compute_witness(model: &QuantizedModel, quantized_input: &[i64]) -> Resul
                     .as_i64_vec();
 
                 anyhow::ensure!(
-                    repeats.len() == input_shape.len(),
-                    "Tile {} repeats rank {} does not match input rank {}",
+                    repeats.len() <= input_shape.len(),
+                    "Tile {} repeats rank {} > input rank {}",
                     layer.name,
                     repeats.len(),
                     input_shape.len()
