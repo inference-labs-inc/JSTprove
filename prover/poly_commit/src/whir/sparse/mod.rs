@@ -27,6 +27,7 @@
 mod commit;
 mod eval_sumcheck;
 mod memcheck;
+mod open;
 mod product_argument;
 mod types;
 
@@ -42,6 +43,7 @@ pub use memcheck::{
     build_memcheck_sets, multiset_hash, AddrTimestamps, MemcheckSets, MemoryHashParams,
     MEMCHECK_HASH_VARS,
 };
+pub use open::{compute_eq_table_from_addresses, sparse_open_evalclaim, SparseEvalClaimOpening};
 pub use product_argument::{
     prove_product_circuit, verify_product_circuit, ProductCircuitClaim, ProductCircuitProof,
     ProductLayerProof, ProductRound,
