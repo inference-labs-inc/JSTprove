@@ -26,6 +26,7 @@
 
 mod combined_point;
 mod commit;
+mod constituent_opens;
 mod eval_commit;
 mod eval_sumcheck;
 mod full_open;
@@ -41,6 +42,9 @@ mod tests;
 
 pub use combined_point::combined_eval_point;
 pub use commit::{sparse_commit, SparseConstituentSlot, SparseLayout};
+pub use constituent_opens::{
+    sparse_open_full, PerAxisConstituentOpens, SparseConstituentOpens, SparseMle3FullOpening,
+};
 pub use eval_commit::{
     eval_combined_point, reconstruct_ext_eval, sparse_commit_eval_tables, EvalConstituent,
     SparseEvalCommitment, SparseEvalLayout, SparseEvalScratch, SparseEvalSlot,
