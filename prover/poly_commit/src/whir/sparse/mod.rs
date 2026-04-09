@@ -28,6 +28,7 @@ mod combined_point;
 mod commit;
 mod eval_commit;
 mod eval_sumcheck;
+mod full_open;
 mod memcheck;
 mod multiset_open;
 mod open;
@@ -47,6 +48,7 @@ pub use eval_sumcheck::{
     product_arity, prove_eval_sumcheck, round_poly_degree, verify_eval_sumcheck, EvalSumcheckClaim,
     EvalSumcheckProof, EvalSumcheckRound,
 };
+pub use full_open::{sparse_open_skeleton, SparseFullOpening, SparseFullOpeningScratch};
 pub use memcheck::{
     build_memcheck_sets, multiset_hash, AddrTimestamps, MemcheckSets, MemoryHashParams,
     MEMCHECK_HASH_VARS,
