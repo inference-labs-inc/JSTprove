@@ -167,7 +167,15 @@ fn main() {
             ),
         };
         match result {
-            Ok(meta) => {
+            Ok(mut meta) => {
+                // expander_metadata::generate_from_onnx leaves
+                // proof_config unset when no n_bits is supplied (the
+                // BN254 path), and the field-keyed inference cannot
+                // distinguish between Goldilocks variants. Stamp the
+                // metadata with the same early_config that drove the
+                // dispatch so downstream get_proof_config calls have
+                // the authoritative resolved config to read.
+                meta.circuit_params.proof_config = Some(StampedProofConfig::current(early_config));
                 OnnxContext::set_all(meta.architecture, meta.circuit_params, Some(meta.wandb));
             }
             Err(e) => {
@@ -237,6 +245,9 @@ fn main() {
     }
 
     let mut metadata = if is_remainder {
+        // Remainder mode dispatches via meta.proof_system and never
+        // consults proof_config; leave it unset so we don't fabricate
+        // a stamp that downstream validation would treat as real.
         Some(CircuitParams {
             scale_base: 2,
             scale_exponent: 18,
@@ -247,41 +258,50 @@ fn main() {
             n_bits_config: std::collections::HashMap::new(),
             weights_as_inputs: false,
             proof_system: ProofSystem::Remainder,
-            proof_config: Some(StampedProofConfig::current(ProofConfig::default())),
+            proof_config: None,
             logup_chunk_bits: None,
         })
     } else {
         OnnxContext::get_params().ok()
     };
 
-    let proof_config = match get_proof_config(&matches, metadata.as_ref()) {
-        Ok(config) => config,
-        Err(msg) => {
-            eprintln!("Error: {msg}");
-            std::process::exit(1);
+    // Remainder bypasses the ProofConfig dispatch entirely; pick a
+    // placeholder so the match below has something to drive the
+    // (unused) handle_args type parameter.
+    let proof_config = if is_remainder {
+        ProofConfig::default()
+    } else {
+        match get_proof_config(&matches, metadata.as_ref()) {
+            Ok(config) => config,
+            Err(msg) => {
+                eprintln!("Error: {msg}");
+                std::process::exit(1);
+            }
         }
     };
 
-    if let Some(ref meta) = metadata {
-        let cli_explicit =
-            matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine);
-        if let Some(stamped) = meta.proof_config {
-            if let Err(e) = stamped.ensure_current() {
-                eprintln!("Error: {e}");
-                std::process::exit(1);
-            }
-            if cli_explicit && stamped.config != proof_config {
-                eprintln!(
-                    "Error: proof config mismatch — circuit was compiled with '{}' but '{proof_config}' was requested",
-                    stamped.config,
-                );
-                std::process::exit(1);
+    if !is_remainder {
+        if let Some(ref meta) = metadata {
+            let cli_explicit =
+                matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine);
+            if let Some(stamped) = meta.proof_config {
+                if let Err(e) = stamped.ensure_current() {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+                if cli_explicit && stamped.config != proof_config {
+                    eprintln!(
+                        "Error: proof config mismatch — circuit was compiled with '{}' but '{proof_config}' was requested",
+                        stamped.config,
+                    );
+                    std::process::exit(1);
+                }
             }
         }
-    }
 
-    if let Some(ref mut meta) = metadata {
-        meta.proof_config = Some(StampedProofConfig::current(proof_config));
+        if let Some(ref mut meta) = metadata {
+            meta.proof_config = Some(StampedProofConfig::current(proof_config));
+        }
     }
 
     let mode = if matches.get_flag("json") {
