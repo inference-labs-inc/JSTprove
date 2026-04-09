@@ -265,6 +265,26 @@ fn main() {
         OnnxContext::get_params().ok()
     };
 
+    // Reject unstamped manifests up-front, before any resolution or
+    // mutation. A loaded manifest with no proof_config is a
+    // legacy/unstamped bundle and we refuse to operate on it:
+    // --curve cannot reliably override the unknown original config
+    // because picking the wrong one would silently produce or verify
+    // proofs against the wrong prover. The bundle must be recompiled
+    // with a stamping prover. Remainder mode is exempt because it
+    // dispatches via meta.proof_system and never consults
+    // proof_config.
+    if !is_remainder {
+        if let Some(ref meta) = metadata {
+            if meta.proof_config.is_none() {
+                eprintln!(
+                    "Error: circuit manifest has no stamped proof_config; this bundle was compiled with an unstamped prover and must be recompiled. --curve cannot override an unstamped manifest because the original config is unknown."
+                );
+                std::process::exit(1);
+            }
+        }
+    }
+
     // Remainder bypasses the ProofConfig dispatch entirely; pick a
     // placeholder so the match below has something to drive the
     // (unused) handle_args type parameter.
@@ -284,18 +304,11 @@ fn main() {
         if let Some(ref meta) = metadata {
             let cli_explicit =
                 matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine);
-            // A loaded manifest with no proof_config is a
-            // legacy/unstamped bundle. We refuse to operate on it:
-            // --curve cannot reliably override the unknown original
-            // config because picking the wrong one would silently
-            // produce or verify proofs against the wrong prover. The
-            // bundle must be recompiled with a stamping prover.
-            let Some(stamped) = meta.proof_config else {
-                eprintln!(
-                    "Error: circuit manifest has no stamped proof_config; this bundle was compiled with an unstamped prover and must be recompiled. --curve cannot override an unstamped manifest because the original config is unknown."
-                );
-                std::process::exit(1);
-            };
+            // The unstamped check above guarantees proof_config is
+            // Some here when metadata is Some.
+            let stamped = meta
+                .proof_config
+                .expect("unstamped manifests are rejected before this point");
             if let Err(e) = stamped.ensure_current() {
                 eprintln!("Error: {e}");
                 std::process::exit(1);
@@ -310,10 +323,9 @@ fn main() {
         }
 
         if let Some(ref mut meta) = metadata {
-            // At this point meta.proof_config is guaranteed to be Some
-            // (the None branch above exited the process), so this
-            // assignment refreshes the version stamp without changing
-            // the resolved config.
+            // The unstamped check above exits before we get here, so
+            // this assignment refreshes the version stamp without
+            // changing the resolved config.
             meta.proof_config = Some(StampedProofConfig::current(proof_config));
         }
     }

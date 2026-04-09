@@ -2061,7 +2061,7 @@ pub fn get_proof_config(
         Some(meta) => match meta.proof_config {
             Some(stamped) => Ok(stamped.config),
             None => Err(
-                "circuit metadata has no stamped proof_config; recompile the bundle or pass --curve explicitly"
+                "circuit manifest has no stamped proof_config; this bundle was compiled with an unstamped prover and must be recompiled"
                     .to_string(),
             ),
         },
