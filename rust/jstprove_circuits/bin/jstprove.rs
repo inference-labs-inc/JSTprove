@@ -284,22 +284,36 @@ fn main() {
         if let Some(ref meta) = metadata {
             let cli_explicit =
                 matches.value_source("curve") == Some(clap::parser::ValueSource::CommandLine);
-            if let Some(stamped) = meta.proof_config {
-                if let Err(e) = stamped.ensure_current() {
-                    eprintln!("Error: {e}");
-                    std::process::exit(1);
-                }
-                if cli_explicit && stamped.config != proof_config {
-                    eprintln!(
-                        "Error: proof config mismatch — circuit was compiled with '{}' but '{proof_config}' was requested",
-                        stamped.config,
-                    );
-                    std::process::exit(1);
-                }
+            // A loaded manifest with no proof_config is a
+            // legacy/unstamped bundle. We refuse to operate on it:
+            // --curve cannot reliably override the unknown original
+            // config because picking the wrong one would silently
+            // produce or verify proofs against the wrong prover. The
+            // bundle must be recompiled with a stamping prover.
+            let Some(stamped) = meta.proof_config else {
+                eprintln!(
+                    "Error: circuit manifest has no stamped proof_config; this bundle was compiled with an unstamped prover and must be recompiled. --curve cannot override an unstamped manifest because the original config is unknown."
+                );
+                std::process::exit(1);
+            };
+            if let Err(e) = stamped.ensure_current() {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
+            if cli_explicit && stamped.config != proof_config {
+                eprintln!(
+                    "Error: proof config mismatch — circuit was compiled with '{}' but '{proof_config}' was requested",
+                    stamped.config,
+                );
+                std::process::exit(1);
             }
         }
 
         if let Some(ref mut meta) = metadata {
+            // At this point meta.proof_config is guaranteed to be Some
+            // (the None branch above exited the process), so this
+            // assignment refreshes the version stamp without changing
+            // the resolved config.
             meta.proof_config = Some(StampedProofConfig::current(proof_config));
         }
     }
