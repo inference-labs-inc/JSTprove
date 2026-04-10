@@ -9,6 +9,7 @@ pub struct PerLayerWiringClaims<E: Field> {
     pub eval_cst: E,
     pub eval_add: E,
     pub eval_mul: E,
+    pub eval_uni: E,
 }
 
 pub struct CombinedHolographicProof<E: ExtensionField> {
@@ -29,6 +30,7 @@ impl<E: ExtensionField> ExpSerde for CombinedHolographicProof<E> {
             claim.eval_cst.serialize_into(&mut writer)?;
             claim.eval_add.serialize_into(&mut writer)?;
             claim.eval_mul.serialize_into(&mut writer)?;
+            claim.eval_uni.serialize_into(&mut writer)?;
         }
         Ok(())
     }
@@ -47,11 +49,13 @@ impl<E: ExtensionField> ExpSerde for CombinedHolographicProof<E> {
             let eval_cst = E::deserialize_from(&mut reader)?;
             let eval_add = E::deserialize_from(&mut reader)?;
             let eval_mul = E::deserialize_from(&mut reader)?;
+            let eval_uni = E::deserialize_from(&mut reader)?;
             wiring_claims.push(PerLayerWiringClaims {
                 layer_index,
                 eval_cst,
                 eval_add,
                 eval_mul,
+                eval_uni,
             });
         }
         Ok(Self {

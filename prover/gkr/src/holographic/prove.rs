@@ -35,21 +35,16 @@ use super::setup::{HolographicProvingKey, LayerProvingWiring};
 #[derive(Debug, Clone)]
 pub struct LayerEvalPoint<E: Field> {
     pub layer_index: usize,
-    /// Eval point for the mul wiring polynomial. `mul_z` has length
-    /// `output_var_num`, `mul_x` and `mul_y` each have length
-    /// `input_var_num`. Ignored if the layer has no mul wiring.
     pub mul_z: Vec<E>,
     pub mul_x: Vec<E>,
     pub mul_y: Vec<E>,
-    /// Eval point for the add wiring polynomial. `add_z` has length
-    /// `output_var_num`, `add_x` has length `input_var_num`. Ignored
-    /// if the layer has no add wiring.
     pub add_z: Vec<E>,
     pub add_x: Vec<E>,
-    /// Claimed evaluations the prover asserts at the supplied
-    /// points. Used as the eval-claim sumcheck starting value.
+    pub uni_z: Vec<E>,
+    pub uni_x: Vec<E>,
     pub mul_claim: E,
     pub add_claim: E,
+    pub uni_claim: E,
 }
 
 /// One layer's contribution to a holographic GKR proof.
@@ -58,42 +53,51 @@ pub struct LayerHolographicOpening<E: ExtensionField> {
     pub layer_index: usize,
     pub mul: Option<SparseMle3FullOpening<E>>,
     pub add: Option<SparseMle3FullOpening<E>>,
+    pub uni: Option<SparseMle3FullOpening<E>>,
+}
+
+fn serialize_optional_opening<E: ExtensionField, W: std::io::Write>(
+    opening: &Option<SparseMle3FullOpening<E>>,
+    mut writer: W,
+) -> SerdeResult<()> {
+    let has: u8 = u8::from(opening.is_some());
+    has.serialize_into(&mut writer)?;
+    if let Some(o) = opening {
+        o.serialize_into(&mut writer)?;
+    }
+    Ok(())
+}
+
+fn deserialize_optional_opening<E: ExtensionField, R: std::io::Read>(
+    mut reader: R,
+) -> SerdeResult<Option<SparseMle3FullOpening<E>>> {
+    let has = u8::deserialize_from(&mut reader)?;
+    match has {
+        1 => Ok(Some(SparseMle3FullOpening::deserialize_from(&mut reader)?)),
+        0 => Ok(None),
+        _ => Err(SerdeError::DeserializeError),
+    }
 }
 
 impl<E: ExtensionField> ExpSerde for LayerHolographicOpening<E> {
     fn serialize_into<W: std::io::Write>(&self, mut writer: W) -> SerdeResult<()> {
         (self.layer_index as u64).serialize_into(&mut writer)?;
-        let has_mul: u8 = u8::from(self.mul.is_some());
-        has_mul.serialize_into(&mut writer)?;
-        if let Some(m) = &self.mul {
-            m.serialize_into(&mut writer)?;
-        }
-        let has_add: u8 = u8::from(self.add.is_some());
-        has_add.serialize_into(&mut writer)?;
-        if let Some(a) = &self.add {
-            a.serialize_into(&mut writer)?;
-        }
+        serialize_optional_opening(&self.mul, &mut writer)?;
+        serialize_optional_opening(&self.add, &mut writer)?;
+        serialize_optional_opening(&self.uni, &mut writer)?;
         Ok(())
     }
 
     fn deserialize_from<R: std::io::Read>(mut reader: R) -> SerdeResult<Self> {
         let layer_index = u64::deserialize_from(&mut reader)? as usize;
-        let has_mul = u8::deserialize_from(&mut reader)?;
-        let mul = match has_mul {
-            1 => Some(SparseMle3FullOpening::deserialize_from(&mut reader)?),
-            0 => None,
-            _ => return Err(SerdeError::DeserializeError),
-        };
-        let has_add = u8::deserialize_from(&mut reader)?;
-        let add = match has_add {
-            1 => Some(SparseMle3FullOpening::deserialize_from(&mut reader)?),
-            0 => None,
-            _ => return Err(SerdeError::DeserializeError),
-        };
+        let mul = deserialize_optional_opening(&mut reader)?;
+        let add = deserialize_optional_opening(&mut reader)?;
+        let uni = deserialize_optional_opening(&mut reader)?;
         Ok(Self {
             layer_index,
             mul,
             add,
+            uni,
         })
     }
 }
@@ -245,10 +249,25 @@ where
             None
         };
 
+        let uni_opening = if let Some(uni_wiring) = &layer_pk.uni {
+            check_add_eval_point_shape_uni(layer_pk.layer_index, uni_wiring, eval_point)?;
+            Some(open_layer_wiring::<C::CircuitField, E, T>(
+                uni_wiring,
+                eval_point.uni_claim,
+                &eval_point.uni_z,
+                &eval_point.uni_x,
+                &[],
+                transcript,
+            ))
+        } else {
+            None
+        };
+
         layer_openings.push(LayerHolographicOpening {
             layer_index: layer_pk.layer_index,
             mul: mul_opening,
             add: add_opening,
+            uni: uni_opening,
         });
     }
 
@@ -323,6 +342,23 @@ fn check_add_eval_point_shape<F: Field>(
         return Err(ProveError::EvalPointShapeMismatch {
             layer: layer_idx,
             which: "add",
+            expected_n_z: wiring.poly.n_z,
+            expected_n_x: wiring.poly.n_x,
+            expected_n_y: 0,
+        });
+    }
+    Ok(())
+}
+
+fn check_add_eval_point_shape_uni<F: Field>(
+    layer_idx: usize,
+    wiring: &LayerProvingWiring<F>,
+    eval_point: &LayerEvalPoint<impl Field>,
+) -> Result<(), ProveError> {
+    if eval_point.uni_z.len() != wiring.poly.n_z || eval_point.uni_x.len() != wiring.poly.n_x {
+        return Err(ProveError::EvalPointShapeMismatch {
+            layer: layer_idx,
+            which: "uni",
             expected_n_z: wiring.poly.n_z,
             expected_n_x: wiring.poly.n_x,
             expected_n_y: 0,
@@ -442,6 +478,17 @@ mod tests {
                     .as_ref()
                     .map(|w| w.poly.evaluate::<GoldilocksExt4>(&add_z, &add_x, &[]))
                     .unwrap_or(GoldilocksExt4::ZERO);
+                let uni_z: Vec<GoldilocksExt4> = (0..n_z)
+                    .map(|_| GoldilocksExt4::random_unsafe(&mut *rng))
+                    .collect();
+                let uni_x: Vec<GoldilocksExt4> = (0..n_x)
+                    .map(|_| GoldilocksExt4::random_unsafe(&mut *rng))
+                    .collect();
+                let uni_claim = layer
+                    .uni
+                    .as_ref()
+                    .map(|w| w.poly.evaluate::<GoldilocksExt4>(&uni_z, &uni_x, &[]))
+                    .unwrap_or(GoldilocksExt4::ZERO);
                 LayerEvalPoint {
                     layer_index: layer.layer_index,
                     mul_z,
@@ -449,8 +496,11 @@ mod tests {
                     mul_y,
                     add_z,
                     add_x,
+                    uni_z,
+                    uni_x,
                     mul_claim,
                     add_claim,
+                    uni_claim,
                 }
             })
             .collect()

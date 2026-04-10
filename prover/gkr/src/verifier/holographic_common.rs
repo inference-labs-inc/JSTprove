@@ -39,6 +39,11 @@ pub struct WiringEvals<F: FieldEngine> {
     /// `eval_mul`: the mul-wiring polynomial evaluated at `(r_z, r_x, r_y)`.
     /// Only used when `!structure_info.skip_sumcheck_phase_two`.
     pub eval_mul: F::ChallengeField,
+    /// `eval_uni`: the uni-12345 (x^5 S-box) wiring polynomial
+    /// evaluated at `(r_z, r_x)`. The sumcheck constraint
+    /// multiplies this by `vx_claim^4` to account for the x^5
+    /// nonlinearity.
+    pub eval_uni: F::ChallengeField,
 }
 
 /// Circuit-free variant of
@@ -171,8 +176,7 @@ pub fn sumcheck_verify_gkr_layer_holographic<F: FieldEngine>(
     let (vx_claim, vx_ok) = try_deserialize_field::<F::ChallengeField>(&mut proof_reader);
     verified &= vx_ok;
 
-    // Replace eval_add(layer.add, sp) with supplied value
-    sum -= vx_claim * wiring.eval_add;
+    sum -= vx_claim * wiring.eval_add + vx_claim.exp(5) * wiring.eval_uni;
     transcript.append_field_element(&vx_claim);
 
     let vy_claim = if !shape.structure_info.skip_sumcheck_phase_two {

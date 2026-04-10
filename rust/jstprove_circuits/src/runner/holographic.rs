@@ -120,6 +120,7 @@ where
             eval_cst: ch.eval_cst,
             eval_add: ch.eval_add,
             eval_mul: ch.eval_mul,
+            eval_uni: ch.eval_uni,
         })
         .collect();
 
@@ -209,6 +210,7 @@ where
                 eval_cst: claims.eval_cst,
                 eval_add: claims.eval_add,
                 eval_mul: claims.eval_mul,
+                eval_uni: claims.eval_uni,
             },
         });
     }
@@ -493,8 +495,9 @@ where
         let mul_z = rz_0.clone();
         let mul_x = rx.clone();
         let mul_y = ry.clone().unwrap_or_default();
-        let add_z = rz_0;
+        let add_z = rz_0.clone();
         let add_x = rx.clone();
+        let rz_0_copy = rz_0;
 
         let holo_layer = combined
             .holographic_proof
@@ -514,6 +517,14 @@ where
                 opening.skeleton.evalclaim.claimed_eval
             });
 
+        let uni_z = rz_0_copy.clone();
+        let uni_x = rx.clone();
+        let uni_claim = holo_layer
+            .and_then(|l| l.uni.as_ref())
+            .map_or(CF::<C>::ZERO, |opening| {
+                opening.skeleton.evalclaim.claimed_eval
+            });
+
         per_layer_points.push(gkr::holographic::LayerEvalPoint {
             layer_index: i,
             mul_z,
@@ -521,8 +532,11 @@ where
             mul_y,
             add_z,
             add_x,
+            uni_z,
+            uni_x,
             mul_claim,
             add_claim,
+            uni_claim,
         });
 
         challenge = ExpanderDualVarChallenge::new(rx, ry, r_simd_xy, r_mpi_xy);

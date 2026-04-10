@@ -39,6 +39,7 @@ pub use setup::{
 };
 pub use verify::{verify, VerifyError};
 pub use wiring::{
-    extract_circuit_wiring, extract_layer_add_wiring, extract_layer_mul_wiring, CircuitWiring,
-    GateKindLabel, LayerWiring, WiringExtractError,
+    extract_circuit_wiring, extract_layer_add_wiring, extract_layer_mul_wiring,
+    extract_layer_uni_wiring, CircuitWiring, GateKindLabel, LayerWiring, VariableCoefEntry,
+    WiringExtractError,
 };

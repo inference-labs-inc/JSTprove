@@ -26,7 +26,7 @@ use poly_commit::whir::{
 use serdes::{ExpSerde, SerdeError, SerdeResult};
 use tree::Tree;
 
-use super::wiring::{extract_circuit_wiring, LayerWiring, WiringExtractError};
+use super::wiring::{extract_circuit_wiring, LayerWiring, VariableCoefEntry, WiringExtractError};
 
 /// Errors raised by holographic GKR setup.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -121,6 +121,87 @@ pub struct LayerVerifyingEntry {
     pub n_x: usize,
     pub mul: Option<LayerWiringCommitment>,
     pub add: Option<LayerWiringCommitment>,
+    pub uni: Option<LayerWiringCommitment>,
+    pub mul_variable_coefs: Vec<VariableCoefEntry>,
+    pub add_variable_coefs: Vec<VariableCoefEntry>,
+    pub uni_variable_coefs: Vec<VariableCoefEntry>,
+    pub const_variable_coefs: Vec<VariableCoefEntry>,
+}
+
+fn serialize_variable_coefs<W: std::io::Write>(
+    coefs: &[VariableCoefEntry],
+    mut writer: W,
+) -> SerdeResult<()> {
+    (coefs.len() as u64).serialize_into(&mut writer)?;
+    for entry in coefs {
+        match entry {
+            VariableCoefEntry::Random { sparse_idx } => {
+                0u8.serialize_into(&mut writer)?;
+                (*sparse_idx as u64).serialize_into(&mut writer)?;
+            }
+            VariableCoefEntry::PublicInput {
+                sparse_idx,
+                input_idx,
+            } => {
+                1u8.serialize_into(&mut writer)?;
+                (*sparse_idx as u64).serialize_into(&mut writer)?;
+                (*input_idx as u64).serialize_into(&mut writer)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn deserialize_variable_coefs<R: std::io::Read>(
+    mut reader: R,
+) -> SerdeResult<Vec<VariableCoefEntry>> {
+    let count = u64::deserialize_from(&mut reader)? as usize;
+    if count > (1 << 20) {
+        return Err(SerdeError::DeserializeError);
+    }
+    let mut coefs = Vec::with_capacity(count);
+    for _ in 0..count {
+        let tag = u8::deserialize_from(&mut reader)?;
+        match tag {
+            0 => {
+                let sparse_idx = u64::deserialize_from(&mut reader)? as usize;
+                coefs.push(VariableCoefEntry::Random { sparse_idx });
+            }
+            1 => {
+                let sparse_idx = u64::deserialize_from(&mut reader)? as usize;
+                let input_idx = u64::deserialize_from(&mut reader)? as usize;
+                coefs.push(VariableCoefEntry::PublicInput {
+                    sparse_idx,
+                    input_idx,
+                });
+            }
+            _ => return Err(SerdeError::DeserializeError),
+        }
+    }
+    Ok(coefs)
+}
+
+fn serialize_optional_wiring<W: std::io::Write>(
+    w: &Option<LayerWiringCommitment>,
+    mut writer: W,
+) -> SerdeResult<()> {
+    let has: u8 = u8::from(w.is_some());
+    has.serialize_into(&mut writer)?;
+    if let Some(c) = w {
+        c.serialize_into(&mut writer)?;
+    }
+    Ok(())
+}
+
+fn deserialize_optional_wiring<R: std::io::Read>(
+    mut reader: R,
+) -> SerdeResult<Option<LayerWiringCommitment>> {
+    let has = u8::deserialize_from(&mut reader)?;
+    match has {
+        1 => Ok(Some(LayerWiringCommitment::deserialize_from(&mut reader)?)),
+        0 => Ok(None),
+        _ => Err(SerdeError::DeserializeError),
+    }
 }
 
 impl ExpSerde for LayerVerifyingEntry {
@@ -128,16 +209,13 @@ impl ExpSerde for LayerVerifyingEntry {
         (self.layer_index as u64).serialize_into(&mut writer)?;
         (self.n_z as u64).serialize_into(&mut writer)?;
         (self.n_x as u64).serialize_into(&mut writer)?;
-        let has_mul: u8 = u8::from(self.mul.is_some());
-        has_mul.serialize_into(&mut writer)?;
-        if let Some(m) = &self.mul {
-            m.serialize_into(&mut writer)?;
-        }
-        let has_add: u8 = u8::from(self.add.is_some());
-        has_add.serialize_into(&mut writer)?;
-        if let Some(a) = &self.add {
-            a.serialize_into(&mut writer)?;
-        }
+        serialize_optional_wiring(&self.mul, &mut writer)?;
+        serialize_optional_wiring(&self.add, &mut writer)?;
+        serialize_optional_wiring(&self.uni, &mut writer)?;
+        serialize_variable_coefs(&self.mul_variable_coefs, &mut writer)?;
+        serialize_variable_coefs(&self.add_variable_coefs, &mut writer)?;
+        serialize_variable_coefs(&self.uni_variable_coefs, &mut writer)?;
+        serialize_variable_coefs(&self.const_variable_coefs, &mut writer)?;
         Ok(())
     }
 
@@ -145,24 +223,24 @@ impl ExpSerde for LayerVerifyingEntry {
         let layer_index = u64::deserialize_from(&mut reader)? as usize;
         let n_z = u64::deserialize_from(&mut reader)? as usize;
         let n_x = u64::deserialize_from(&mut reader)? as usize;
-        let has_mul = u8::deserialize_from(&mut reader)?;
-        let mul = match has_mul {
-            1 => Some(LayerWiringCommitment::deserialize_from(&mut reader)?),
-            0 => None,
-            _ => return Err(SerdeError::DeserializeError),
-        };
-        let has_add = u8::deserialize_from(&mut reader)?;
-        let add = match has_add {
-            1 => Some(LayerWiringCommitment::deserialize_from(&mut reader)?),
-            0 => None,
-            _ => return Err(SerdeError::DeserializeError),
-        };
+        let mul = deserialize_optional_wiring(&mut reader)?;
+        let add = deserialize_optional_wiring(&mut reader)?;
+        let uni = deserialize_optional_wiring(&mut reader)?;
+        let mul_variable_coefs = deserialize_variable_coefs(&mut reader)?;
+        let add_variable_coefs = deserialize_variable_coefs(&mut reader)?;
+        let uni_variable_coefs = deserialize_variable_coefs(&mut reader)?;
+        let const_variable_coefs = deserialize_variable_coefs(&mut reader)?;
         Ok(Self {
             layer_index,
             n_z,
             n_x,
             mul,
             add,
+            uni,
+            mul_variable_coefs,
+            add_variable_coefs,
+            uni_variable_coefs,
+            const_variable_coefs,
         })
     }
 }
@@ -192,7 +270,7 @@ pub struct HolographicVerifyingKey {
 impl HolographicVerifyingKey {
     /// Current wire format version. Loaders refuse keys with a
     /// different version.
-    pub const CURRENT_VERSION: u32 = 1;
+    pub const CURRENT_VERSION: u32 = 2;
 }
 
 impl ExpSerde for HolographicVerifyingKey {
@@ -247,6 +325,7 @@ pub struct LayerProvingEntry<F: Field + Send + Sync + 'static> {
     pub n_x: usize,
     pub mul: Option<LayerProvingWiring<F>>,
     pub add: Option<LayerProvingWiring<F>>,
+    pub uni: Option<LayerProvingWiring<F>>,
 }
 
 /// Prover-side scratch for one wiring polynomial. The
@@ -310,7 +389,12 @@ where
             n_x,
             mul,
             add,
+            uni,
             const_wiring: _const_wiring,
+            mul_variable_coefs,
+            add_variable_coefs,
+            uni_variable_coefs,
+            const_variable_coefs,
         } = layer_wiring;
 
         let mul_committed = if let Some(poly) = mul {
@@ -319,6 +403,11 @@ where
             None
         };
         let add_committed = if let Some(poly) = add {
+            Some(commit_layer_wiring::<C::CircuitField>(layer_index, poly)?)
+        } else {
+            None
+        };
+        let uni_committed = if let Some(poly) = uni {
             Some(commit_layer_wiring::<C::CircuitField>(layer_index, poly)?)
         } else {
             None
@@ -336,6 +425,14 @@ where
                 commitment: w.commitment.clone(),
                 layout: w.layout,
             }),
+            uni: uni_committed.as_ref().map(|w| LayerWiringCommitment {
+                commitment: w.commitment.clone(),
+                layout: w.layout,
+            }),
+            mul_variable_coefs,
+            add_variable_coefs,
+            uni_variable_coefs,
+            const_variable_coefs,
         };
         vk_layers.push(vk_entry);
 
@@ -345,6 +442,7 @@ where
             n_x,
             mul: mul_committed.map(|w| w.proving),
             add: add_committed.map(|w| w.proving),
+            uni: uni_committed.map(|w| w.proving),
         };
         pk_layers.push(pk_entry);
     }
@@ -548,11 +646,12 @@ mod tests {
     }
 
     #[test]
-    fn setup_propagates_wiring_extraction_errors() {
+    fn setup_accepts_random_coefficients_with_variable_entries() {
         let mut layer = make_layer(2, 2);
-        let mut bad = mul_gate(0, 1, 2, 1);
-        bad.coef_type = CoefType::Random;
-        layer.mul.push(bad);
+        let mut rnd = mul_gate(0, 1, 2, 1);
+        rnd.coef_type = CoefType::Random;
+        layer.mul.push(rnd);
+        layer.add.push(add_gate(1, 0, 5));
         let circuit: Circuit<C> = Circuit {
             layers: vec![layer],
             public_input: Vec::new(),
@@ -560,12 +659,8 @@ mod tests {
             rnd_coefs_identified: false,
             rnd_coefs: Vec::new(),
         };
-        let result = setup::<C>(circuit);
-        match result {
-            Ok(_) => panic!("setup must reject random coefficients"),
-            Err(SetupError::WiringExtraction(_)) => {}
-            Err(other) => panic!("unexpected error: {other:?}"),
-        }
+        let (_pk, vk) = setup::<C>(circuit).expect("setup must accept random coefs");
+        assert_eq!(vk.layers[0].mul_variable_coefs.len(), 1);
     }
 
     #[test]

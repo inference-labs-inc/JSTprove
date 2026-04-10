@@ -203,7 +203,7 @@ where
                 proof_add,
                 vk_entry.n_z,
                 vk_entry.n_x,
-                0, // add has n_y = 0
+                0,
                 &eval_point.add_z,
                 &eval_point.add_x,
                 &[],
@@ -216,6 +216,33 @@ where
             return Err(VerifyError::LayerOpeningSchemaMismatch {
                 layer: layer_idx,
                 which: "add",
+            });
+        }
+    }
+
+    // uni wiring (x^5 S-box)
+    match (&vk_entry.uni, &proof_entry.uni) {
+        (Some(vk_uni), Some(proof_uni)) => {
+            verify_one_wiring::<C, E, T>(
+                layer_idx,
+                "uni",
+                vk_uni,
+                proof_uni,
+                vk_entry.n_z,
+                vk_entry.n_x,
+                0,
+                &eval_point.uni_z,
+                &eval_point.uni_x,
+                &[],
+                poly_commit::whir::SparseArity::Two,
+                transcript,
+            )?;
+        }
+        (None, None) => {}
+        _ => {
+            return Err(VerifyError::LayerOpeningSchemaMismatch {
+                layer: layer_idx,
+                which: "uni",
             });
         }
     }
@@ -383,6 +410,17 @@ mod tests {
                     .as_ref()
                     .map(|w| w.poly.evaluate::<GoldilocksExt4>(&add_z, &add_x, &[]))
                     .unwrap_or(GoldilocksExt4::ZERO);
+                let uni_z: Vec<GoldilocksExt4> = (0..n_z)
+                    .map(|_| GoldilocksExt4::random_unsafe(&mut *rng))
+                    .collect();
+                let uni_x: Vec<GoldilocksExt4> = (0..n_x)
+                    .map(|_| GoldilocksExt4::random_unsafe(&mut *rng))
+                    .collect();
+                let uni_claim = layer
+                    .uni
+                    .as_ref()
+                    .map(|w| w.poly.evaluate::<GoldilocksExt4>(&uni_z, &uni_x, &[]))
+                    .unwrap_or(GoldilocksExt4::ZERO);
                 LayerEvalPoint {
                     layer_index: layer.layer_index,
                     mul_z,
@@ -390,8 +428,11 @@ mod tests {
                     mul_y,
                     add_z,
                     add_x,
+                    uni_z,
+                    uni_x,
                     mul_claim,
                     add_claim,
+                    uni_claim,
                 }
             })
             .collect()

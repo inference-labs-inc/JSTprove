@@ -12,24 +12,25 @@
 //! distinguishes a fixed `Constant` coefficient from a `Random`
 //! coefficient sampled at proving time and from a `PublicInput`
 //! coefficient that depends on a per-inference public input slot.
-//! Only the `Constant` case can be folded into a wiring polynomial
-//! committed at setup time — the other two cases need separate
-//! handling that is layered on in subsequent phases (typically by
-//! proving an auxiliary sumcheck against fresh randomness during
-//! the prove phase). For now, [`extract_layer_mul_wiring`] and
-//! [`extract_layer_add_wiring`] return [`WiringExtractError::NonConstantCoefficient`]
-//! when they encounter a non-`Constant` coefficient, with the
-//! offending layer / gate index reported in the error so the caller
-//! can either rewrite the circuit or fall back to the existing
-//! non-holographic GKR path for that layer.
 //!
-//! `const_` and `uni` gates. The standard GKR protocol's per-layer
-//! sumcheck reduction only addresses `mul` and `add` gate lists;
-//! `const_` and `uni` gates require additional structure that is
-//! out of scope for Phase 2a. Layers carrying non-empty `const_`
-//! or `uni` gate lists trigger [`WiringExtractError::UnsupportedGateKind`]
-//! and the caller must use the non-holographic path for those
-//! layers until a future phase brings them in.
+//! For `Constant` coefficients the value is baked directly into the
+//! wiring polynomial committed at setup time.
+//!
+//! For `Random` and `PublicInput` coefficients the *structural*
+//! wiring (gate positions) is committed with `coef = F::ONE`. The
+//! actual coefficient is multiplied in at prove/verify time: the
+//! prover fills random coefs from the Fiat-Shamir transcript and
+//! public-input coefs from the witness; the verifier re-derives
+//! both identically. The [`LayerWiring`] struct records which gate
+//! indices carry variable coefficients via [`VariableCoefEntry`]
+//! vectors so the runtime can look up the correct multiplier.
+//!
+//! `const_` and `uni` gates. Constant gates are extracted into a
+//! degenerate 2-arity wiring polynomial. Uni-12346 (identity)
+//! gates are promoted into the add wiring. Uni-12345 (x^5 S-box)
+//! gates are extracted into a separate 2-arity `uni` wiring
+//! polynomial; the sumcheck constraint multiplies the evaluation
+//! by `V(rx)^4` to account for the x^5 nonlinearity.
 //!
 //! Padding. Sparse-MLE commit requires `nnz` to be a power of two.
 //! When the gate list length is not already a power of two we pad
@@ -47,16 +48,7 @@ use poly_commit::whir::{SparseArity, SparseMle3};
 /// Errors raised by sparse wiring extraction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WiringExtractError {
-    /// A gate in the source layer carries a non-`Constant`
-    /// coefficient (`Random` or `PublicInput`). Such coefficients
-    /// cannot be baked into a setup-time wiring commitment.
-    NonConstantCoefficient {
-        layer: usize,
-        kind: GateKindLabel,
-        gate: usize,
-    },
-    /// The source layer carries `const_` or `uni` gates which are
-    /// not yet handled by the holographic wiring extractor.
+    /// The source layer carries an unsupported uni gate_type.
     UnsupportedGateKind { layer: usize, kind: GateKindLabel },
     /// The layer's declared dimensions exceed
     /// `poly_commit::SPARSE_MLE_MAX_LOG_DOMAIN` (currently 32 bits
@@ -73,16 +65,9 @@ pub enum WiringExtractError {
 impl std::fmt::Display for WiringExtractError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NonConstantCoefficient { layer, kind, gate } => write!(
-                f,
-                "layer {layer} gate {gate} ({kind:?}) has a non-constant coefficient; \
-                 holographic wiring requires fixed coefficients at setup time"
-            ),
-            Self::UnsupportedGateKind { layer, kind } => write!(
-                f,
-                "layer {layer} carries unsupported gate kind {kind:?}; \
-                 holographic wiring currently handles only `mul` and `add`"
-            ),
+            Self::UnsupportedGateKind { layer, kind } => {
+                write!(f, "layer {layer} carries unsupported gate kind {kind:?}")
+            }
             Self::LayerDimensionsTooLarge {
                 layer,
                 n_z,
@@ -109,13 +94,24 @@ pub enum GateKindLabel {
     Uni,
 }
 
+/// Records a gate whose coefficient is not fixed at setup time.
+/// The `sparse_idx` is the position in the SparseMle3 val vector
+/// (which carries `F::ONE` as a placeholder); at runtime the
+/// actual coefficient is multiplied into the evaluation claim.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VariableCoefEntry {
+    Random { sparse_idx: usize },
+    PublicInput { sparse_idx: usize, input_idx: usize },
+}
+
 /// Sparse wiring polynomials for one circuit layer.
 ///
 /// `mul` is the 3-arity wiring polynomial committing the layer's
 /// multiplication gates, `add` is the 2-arity wiring polynomial
 /// committing the addition gates (including uni-12346 identity
-/// gates), and `const_wiring` is a degenerate 2-arity polynomial
-/// with `n_x = 0` committing the constant gates. Either may be
+/// gates), `uni` is a 2-arity polynomial for uni-12345 (x^5 S-box)
+/// gates, and `const_wiring` is a degenerate 2-arity polynomial
+/// with `n_x = 0` committing the constant gates. Any may be
 /// `None` if the corresponding gate list is empty after extraction.
 #[derive(Debug, Clone)]
 pub struct LayerWiring<F: Field> {
@@ -124,10 +120,15 @@ pub struct LayerWiring<F: Field> {
     pub n_x: usize,
     pub mul: Option<SparseMle3<F>>,
     pub add: Option<SparseMle3<F>>,
+    pub uni: Option<SparseMle3<F>>,
     /// Degenerate 2-arity polynomial for const gates (n_x = 0,
     /// col_x = [0; nnz]). eval_cst at point z equals the MLE
     /// evaluation of this polynomial at (z, []).
     pub const_wiring: Option<SparseMle3<F>>,
+    pub mul_variable_coefs: Vec<VariableCoefEntry>,
+    pub add_variable_coefs: Vec<VariableCoefEntry>,
+    pub uni_variable_coefs: Vec<VariableCoefEntry>,
+    pub const_variable_coefs: Vec<VariableCoefEntry>,
 }
 
 /// Sparse wiring polynomials for an entire circuit.
@@ -137,27 +138,20 @@ pub struct CircuitWiring<F: Field> {
 }
 
 /// Extract the 3-arity sparse wiring polynomial committing the
-/// `mul` gates of `layer`. Returns `Ok(None)` if the gate list is
-/// empty after applying the rules below; otherwise returns a
-/// validated [`SparseMle3`] suitable for `sparse_commit`.
-///
-/// Each `mul` gate `(o_id, [i_x, i_y], coef)` becomes a non-zero
-/// entry `M(o_id, i_x, i_y) += coef` in the wiring polynomial. If
-/// two gates share the same `(o_id, i_x, i_y)` triple their
-/// coefficients are summed — this matches the semantics of the
-/// expander circuit evaluator, which folds duplicate gates by
-/// repeated addition into the output cell.
+/// `mul` gates of `layer`. Returns `Ok((None, vec![]))` if the
+/// gate list is empty; otherwise returns a validated [`SparseMle3`]
+/// and a vector of [`VariableCoefEntry`] for any gates with
+/// `Random` or `PublicInput` coefficients (which are stored as
+/// `F::ONE` in the polynomial and adjusted at runtime).
 pub fn extract_layer_mul_wiring<C>(
     layer: &CircuitLayer<C>,
-    layer_idx: usize,
-) -> Result<Option<SparseMle3<C::CircuitField>>, WiringExtractError>
+    _layer_idx: usize,
+) -> Result<(Option<SparseMle3<C::CircuitField>>, Vec<VariableCoefEntry>), WiringExtractError>
 where
     C: FieldEngine,
 {
-    // const_ and uni gates are handled by separate extractors;
-    // mul only processes layer.mul.
     if layer.mul.is_empty() {
-        return Ok(None);
+        return Ok((None, vec![]));
     }
 
     let n_z = layer.output_var_num;
@@ -169,12 +163,28 @@ where
     let mut col_x = Vec::with_capacity(row_capacity);
     let mut col_y = Vec::with_capacity(row_capacity);
     let mut val = Vec::with_capacity(row_capacity);
+    let mut var_coefs = Vec::new();
+
     for (gate_idx, gate) in layer.mul.iter().enumerate() {
-        check_constant_coef(gate.coef_type, layer_idx, gate_idx, GateKindLabel::Mul)?;
         row.push(gate.o_id);
         col_x.push(gate.i_ids[0]);
         col_y.push(gate.i_ids[1]);
-        val.push(gate.coef);
+        match gate.coef_type {
+            CoefType::Constant => val.push(gate.coef),
+            CoefType::Random => {
+                val.push(C::CircuitField::ONE);
+                var_coefs.push(VariableCoefEntry::Random {
+                    sparse_idx: gate_idx,
+                });
+            }
+            CoefType::PublicInput(idx) => {
+                val.push(C::CircuitField::ONE);
+                var_coefs.push(VariableCoefEntry::PublicInput {
+                    sparse_idx: gate_idx,
+                    input_idx: idx,
+                });
+            }
+        }
     }
     pad_to_power_of_two_3::<C::CircuitField>(&mut row, &mut col_x, &mut col_y, &mut val);
 
@@ -190,43 +200,35 @@ where
     };
     poly.validate()
         .map_err(|_| WiringExtractError::LayerDimensionsTooLarge {
-            layer: layer_idx,
+            layer: _layer_idx,
             n_z,
             n_x,
             n_y,
         })?;
-    Ok(Some(poly))
+    Ok((Some(poly), var_coefs))
 }
 
 /// Extract the 2-arity sparse wiring polynomial committing the
 /// `add` gates of `layer`, plus any uni-12346 (identity-with-coef)
 /// gates which are semantically equivalent to add gates. Returns
-/// `Ok(None)` if the combined list is empty.
+/// `Ok((None, vec![]))` if the combined list is empty.
 ///
-/// Uni-12345 (x^5 S-box) gates are NOT promotable to add and are
-/// rejected with [`WiringExtractError::UnsupportedGateKind`].
+/// Uni-12345 (x^5 S-box) gates are extracted separately via
+/// [`extract_layer_uni_wiring`].
 pub fn extract_layer_add_wiring<C>(
     layer: &CircuitLayer<C>,
     layer_idx: usize,
-) -> Result<Option<SparseMle3<C::CircuitField>>, WiringExtractError>
+) -> Result<(Option<SparseMle3<C::CircuitField>>, Vec<VariableCoefEntry>), WiringExtractError>
 where
     C: FieldEngine,
 {
-    // Count uni-12346 (identity) gates that we'll promote to add.
-    // Reject uni-12345 (x^5) since it needs a custom sumcheck.
     let mut uni_identity_count = 0usize;
-    for (gate_idx, gate) in layer.uni.iter().enumerate() {
+    for gate in layer.uni.iter() {
         match gate.gate_type {
             12346 => {
-                check_constant_coef(gate.coef_type, layer_idx, gate_idx, GateKindLabel::Uni)?;
                 uni_identity_count += 1;
             }
-            12345 => {
-                return Err(WiringExtractError::UnsupportedGateKind {
-                    layer: layer_idx,
-                    kind: GateKindLabel::Uni,
-                });
-            }
+            12345 => {}
             _ => {
                 return Err(WiringExtractError::UnsupportedGateKind {
                     layer: layer_idx,
@@ -238,7 +240,7 @@ where
 
     let total = layer.add.len() + uni_identity_count;
     if total == 0 {
-        return Ok(None);
+        return Ok((None, vec![]));
     }
 
     let n_z = layer.output_var_num;
@@ -248,18 +250,47 @@ where
     let mut row = Vec::with_capacity(row_capacity);
     let mut col_x = Vec::with_capacity(row_capacity);
     let mut val = Vec::with_capacity(row_capacity);
+    let mut var_coefs = Vec::new();
+    let mut sparse_idx = 0usize;
 
-    for (gate_idx, gate) in layer.add.iter().enumerate() {
-        check_constant_coef(gate.coef_type, layer_idx, gate_idx, GateKindLabel::Add)?;
+    for gate in layer.add.iter() {
         row.push(gate.o_id);
         col_x.push(gate.i_ids[0]);
-        val.push(gate.coef);
+        match gate.coef_type {
+            CoefType::Constant => val.push(gate.coef),
+            CoefType::Random => {
+                val.push(C::CircuitField::ONE);
+                var_coefs.push(VariableCoefEntry::Random { sparse_idx });
+            }
+            CoefType::PublicInput(idx) => {
+                val.push(C::CircuitField::ONE);
+                var_coefs.push(VariableCoefEntry::PublicInput {
+                    sparse_idx,
+                    input_idx: idx,
+                });
+            }
+        }
+        sparse_idx += 1;
     }
     for gate in &layer.uni {
         if gate.gate_type == 12346 {
             row.push(gate.o_id);
             col_x.push(gate.i_ids[0]);
-            val.push(gate.coef);
+            match gate.coef_type {
+                CoefType::Constant => val.push(gate.coef),
+                CoefType::Random => {
+                    val.push(C::CircuitField::ONE);
+                    var_coefs.push(VariableCoefEntry::Random { sparse_idx });
+                }
+                CoefType::PublicInput(idx) => {
+                    val.push(C::CircuitField::ONE);
+                    var_coefs.push(VariableCoefEntry::PublicInput {
+                        sparse_idx,
+                        input_idx: idx,
+                    });
+                }
+            }
+            sparse_idx += 1;
         }
     }
 
@@ -283,23 +314,92 @@ where
             n_x,
             n_y: 0,
         })?;
-    Ok(Some(poly))
+    Ok((Some(poly), var_coefs))
+}
+
+/// Extract the 2-arity sparse wiring polynomial for uni-12345
+/// (x^5 S-box) gates. Returns `Ok((None, vec![]))` if the layer
+/// has no such gates.
+pub fn extract_layer_uni_wiring<C>(
+    layer: &CircuitLayer<C>,
+    layer_idx: usize,
+) -> Result<(Option<SparseMle3<C::CircuitField>>, Vec<VariableCoefEntry>), WiringExtractError>
+where
+    C: FieldEngine,
+{
+    let x5_count = layer.uni.iter().filter(|g| g.gate_type == 12345).count();
+    if x5_count == 0 {
+        return Ok((None, vec![]));
+    }
+
+    let n_z = layer.output_var_num;
+    let n_x = layer.input_var_num;
+
+    let row_capacity = x5_count.next_power_of_two();
+    let mut row = Vec::with_capacity(row_capacity);
+    let mut col_x = Vec::with_capacity(row_capacity);
+    let mut val = Vec::with_capacity(row_capacity);
+    let mut var_coefs = Vec::new();
+    let mut sparse_idx = 0usize;
+
+    for gate in &layer.uni {
+        if gate.gate_type == 12345 {
+            row.push(gate.o_id);
+            col_x.push(gate.i_ids[0]);
+            match gate.coef_type {
+                CoefType::Constant => val.push(gate.coef),
+                CoefType::Random => {
+                    val.push(C::CircuitField::ONE);
+                    var_coefs.push(VariableCoefEntry::Random { sparse_idx });
+                }
+                CoefType::PublicInput(idx) => {
+                    val.push(C::CircuitField::ONE);
+                    var_coefs.push(VariableCoefEntry::PublicInput {
+                        sparse_idx,
+                        input_idx: idx,
+                    });
+                }
+            }
+            sparse_idx += 1;
+        }
+    }
+
+    pad_to_power_of_two_2::<C::CircuitField>(&mut row, &mut col_x, &mut val);
+    let col_y = vec![0usize; row.len()];
+
+    let poly = SparseMle3 {
+        n_z,
+        n_x,
+        n_y: 0,
+        arity: SparseArity::Two,
+        row,
+        col_x,
+        col_y,
+        val,
+    };
+    poly.validate()
+        .map_err(|_| WiringExtractError::LayerDimensionsTooLarge {
+            layer: layer_idx,
+            n_z,
+            n_x,
+            n_y: 0,
+        })?;
+    Ok((Some(poly), var_coefs))
 }
 
 /// Extract the degenerate 2-arity constant-gate wiring polynomial.
 /// `n_x = 0`, `col_x = [0; nnz]` — the "input" axis is trivially
-/// a single point. Returns `Ok(None)` if the layer has no constant
-/// gates (Constant coef type only; PublicInput coef types are
-/// rejected).
+/// a single point. Returns `Ok((None, vec![]))` if the layer has
+/// no constant gates.
 pub fn extract_layer_const_wiring<C>(
     layer: &CircuitLayer<C>,
-    layer_idx: usize,
-) -> Result<Option<SparseMle3<C::CircuitField>>, WiringExtractError>
+    _layer_idx: usize,
+) -> Result<(Option<SparseMle3<C::CircuitField>>, Vec<VariableCoefEntry>), WiringExtractError>
 where
     C: FieldEngine,
 {
     if layer.const_.is_empty() {
-        return Ok(None);
+        return Ok((None, vec![]));
     }
 
     let n_z = layer.output_var_num;
@@ -307,12 +407,25 @@ where
     let row_capacity = layer.const_.len().next_power_of_two();
     let mut row = Vec::with_capacity(row_capacity);
     let mut val = Vec::with_capacity(row_capacity);
-    for (gate_idx, gate) in layer.const_.iter().enumerate() {
-        check_constant_coef(gate.coef_type, layer_idx, gate_idx, GateKindLabel::Const)?;
+    let mut var_coefs = Vec::new();
+
+    for (sparse_idx, gate) in layer.const_.iter().enumerate() {
         row.push(gate.o_id);
-        val.push(gate.coef);
+        match gate.coef_type {
+            CoefType::Constant => val.push(gate.coef),
+            CoefType::Random => {
+                val.push(C::CircuitField::ONE);
+                var_coefs.push(VariableCoefEntry::Random { sparse_idx });
+            }
+            CoefType::PublicInput(idx) => {
+                val.push(C::CircuitField::ONE);
+                var_coefs.push(VariableCoefEntry::PublicInput {
+                    sparse_idx,
+                    input_idx: idx,
+                });
+            }
+        }
     }
-    // Pad row + val to power of two; col_x and col_y are all-zero.
     let target = row.len().next_power_of_two();
     while row.len() < target {
         row.push(0);
@@ -333,12 +446,12 @@ where
     };
     poly.validate()
         .map_err(|_| WiringExtractError::LayerDimensionsTooLarge {
-            layer: layer_idx,
+            layer: _layer_idx,
             n_z,
             n_x: 0,
             n_y: 0,
         })?;
-    Ok(Some(poly))
+    Ok((Some(poly), var_coefs))
 }
 
 /// Extract the wiring polynomials for every layer of `circuit`.
@@ -357,32 +470,26 @@ where
 {
     let mut layers = Vec::with_capacity(circuit.layers.len());
     for (layer_idx, layer) in circuit.layers.iter().enumerate() {
-        let mul = extract_layer_mul_wiring::<C>(layer, layer_idx)?;
-        let add = extract_layer_add_wiring::<C>(layer, layer_idx)?;
-        let const_wiring = extract_layer_const_wiring::<C>(layer, layer_idx)?;
+        let (mul, mul_variable_coefs) = extract_layer_mul_wiring::<C>(layer, layer_idx)?;
+        let (add, add_variable_coefs) = extract_layer_add_wiring::<C>(layer, layer_idx)?;
+        let (uni, uni_variable_coefs) = extract_layer_uni_wiring::<C>(layer, layer_idx)?;
+        let (const_wiring, const_variable_coefs) =
+            extract_layer_const_wiring::<C>(layer, layer_idx)?;
         layers.push(LayerWiring {
             layer_index: layer_idx,
             n_z: layer.output_var_num,
             n_x: layer.input_var_num,
             mul,
             add,
+            uni,
             const_wiring,
+            mul_variable_coefs,
+            add_variable_coefs,
+            uni_variable_coefs,
+            const_variable_coefs,
         });
     }
     Ok(CircuitWiring { layers })
-}
-
-#[inline]
-fn check_constant_coef(
-    coef_type: CoefType,
-    layer: usize,
-    gate: usize,
-    kind: GateKindLabel,
-) -> Result<(), WiringExtractError> {
-    match coef_type {
-        CoefType::Constant => Ok(()),
-        _ => Err(WiringExtractError::NonConstantCoefficient { layer, kind, gate }),
-    }
 }
 
 /// Pad three address vectors plus a value vector to the next power
@@ -466,21 +573,20 @@ mod tests {
         layer.mul.push(mul_gate(1, 2, 3, 7));
         layer.mul.push(mul_gate(2, 0, 1, 11));
 
-        let poly = extract_layer_mul_wiring::<C>(&layer, 0).unwrap().unwrap();
-        // Padded to next power of two = 4
+        let (poly, var_coefs) = extract_layer_mul_wiring::<C>(&layer, 0).unwrap();
+        let poly = poly.unwrap();
+        assert!(var_coefs.is_empty());
         assert_eq!(poly.nnz(), 4);
         assert_eq!(poly.n_z, 2);
         assert_eq!(poly.n_x, 2);
         assert_eq!(poly.n_y, 2);
         assert_eq!(poly.arity, SparseArity::Three);
-        // Original entries verbatim
         assert_eq!(poly.row[0..3], [0, 1, 2]);
         assert_eq!(poly.col_x[0..3], [1, 2, 0]);
         assert_eq!(poly.col_y[0..3], [2, 3, 1]);
         assert_eq!(poly.val[0], Goldilocks::from(5u64));
         assert_eq!(poly.val[1], Goldilocks::from(7u64));
         assert_eq!(poly.val[2], Goldilocks::from(11u64));
-        // Padding entry
         assert_eq!(poly.row[3], 0);
         assert_eq!(poly.col_x[3], 0);
         assert_eq!(poly.col_y[3], 0);
@@ -493,7 +599,9 @@ mod tests {
         layer.add.push(add_gate(0, 1, 3));
         layer.add.push(add_gate(2, 3, 9));
 
-        let poly = extract_layer_add_wiring::<C>(&layer, 0).unwrap().unwrap();
+        let (poly, var_coefs) = extract_layer_add_wiring::<C>(&layer, 0).unwrap();
+        let poly = poly.unwrap();
+        assert!(var_coefs.is_empty());
         assert_eq!(poly.nnz(), 2);
         assert_eq!(poly.n_z, 2);
         assert_eq!(poly.n_x, 2);
@@ -509,8 +617,10 @@ mod tests {
     #[test]
     fn extract_empty_returns_none() {
         let layer = make_layer(2, 2);
-        assert!(extract_layer_mul_wiring::<C>(&layer, 0).unwrap().is_none());
-        assert!(extract_layer_add_wiring::<C>(&layer, 0).unwrap().is_none());
+        let (mul, _) = extract_layer_mul_wiring::<C>(&layer, 0).unwrap();
+        assert!(mul.is_none());
+        let (add, _) = extract_layer_add_wiring::<C>(&layer, 0).unwrap();
+        assert!(add.is_none());
     }
 
     #[test]
@@ -519,10 +629,9 @@ mod tests {
         for i in 0..5 {
             layer.mul.push(mul_gate(i, i, (i + 1) % 8, 1));
         }
-        let poly = extract_layer_mul_wiring::<C>(&layer, 0).unwrap().unwrap();
-        // 5 → 8
+        let (poly, _) = extract_layer_mul_wiring::<C>(&layer, 0).unwrap();
+        let poly = poly.unwrap();
         assert_eq!(poly.nnz(), 8);
-        // Padding entries are zero-coef at address (0, 0, 0)
         for i in 5..8 {
             assert_eq!(poly.row[i], 0);
             assert_eq!(poly.col_x[i], 0);
@@ -537,40 +646,44 @@ mod tests {
         for i in 0..4 {
             layer.mul.push(mul_gate(i, i, (i + 1) % 8, 1));
         }
-        let poly = extract_layer_mul_wiring::<C>(&layer, 0).unwrap().unwrap();
+        let (poly, _) = extract_layer_mul_wiring::<C>(&layer, 0).unwrap();
+        let poly = poly.unwrap();
         assert_eq!(poly.nnz(), 4);
     }
 
     #[test]
-    fn extract_rejects_random_coefficient() {
+    fn extract_random_coefficient_records_variable_entry() {
         let mut layer = make_layer(2, 2);
         let mut gate = mul_gate(0, 1, 2, 1);
         gate.coef_type = CoefType::Random;
         layer.mul.push(gate);
-        let err = extract_layer_mul_wiring::<C>(&layer, 7).unwrap_err();
+        layer.mul.push(mul_gate(1, 0, 1, 5));
+        let (poly, var_coefs) = extract_layer_mul_wiring::<C>(&layer, 0).unwrap();
+        let poly = poly.unwrap();
+        assert_eq!(poly.val[0], Goldilocks::ONE);
+        assert_eq!(poly.val[1], Goldilocks::from(5u64));
+        assert_eq!(var_coefs.len(), 1);
         assert!(matches!(
-            err,
-            WiringExtractError::NonConstantCoefficient {
-                layer: 7,
-                kind: GateKindLabel::Mul,
-                gate: 0,
-            }
+            var_coefs[0],
+            VariableCoefEntry::Random { sparse_idx: 0 }
         ));
     }
 
     #[test]
-    fn extract_rejects_public_input_coefficient() {
+    fn extract_public_input_coefficient_records_variable_entry() {
         let mut layer = make_layer(2, 2);
         let mut gate = add_gate(0, 1, 1);
-        gate.coef_type = CoefType::PublicInput(0);
+        gate.coef_type = CoefType::PublicInput(42);
         layer.add.push(gate);
-        let err = extract_layer_add_wiring::<C>(&layer, 3).unwrap_err();
+        let (poly, var_coefs) = extract_layer_add_wiring::<C>(&layer, 0).unwrap();
+        let poly = poly.unwrap();
+        assert_eq!(poly.val[0], Goldilocks::ONE);
+        assert_eq!(var_coefs.len(), 1);
         assert!(matches!(
-            err,
-            WiringExtractError::NonConstantCoefficient {
-                layer: 3,
-                kind: GateKindLabel::Add,
-                gate: 0,
+            var_coefs[0],
+            VariableCoefEntry::PublicInput {
+                sparse_idx: 0,
+                input_idx: 42,
             }
         ));
     }
@@ -595,11 +708,12 @@ mod tests {
         });
         // mul extraction should not be affected by const_
         layer.mul.push(mul_gate(0, 1, 2, 1));
-        let mul = extract_layer_mul_wiring::<C>(&layer, 0).unwrap();
+        let (mul, _) = extract_layer_mul_wiring::<C>(&layer, 0).unwrap();
         assert!(mul.is_some());
 
-        // const extraction produces a degenerate polynomial
-        let const_poly = extract_layer_const_wiring::<C>(&layer, 0).unwrap().unwrap();
+        let (const_poly, var_coefs) = extract_layer_const_wiring::<C>(&layer, 0).unwrap();
+        let const_poly = const_poly.unwrap();
+        assert!(var_coefs.is_empty());
         assert_eq!(const_poly.arity, SparseArity::Two);
         assert_eq!(const_poly.n_x, 0);
         assert_eq!(const_poly.n_z, 2);
@@ -621,15 +735,15 @@ mod tests {
             gate_type: 12346,
         });
         layer.add.push(add_gate(0, 3, 11));
-        let add_poly = extract_layer_add_wiring::<C>(&layer, 0).unwrap().unwrap();
-        // 1 add + 1 uni-12346 = 2 entries → padded to 2
+        let (add_poly, _) = extract_layer_add_wiring::<C>(&layer, 0).unwrap();
+        let add_poly = add_poly.unwrap();
         assert_eq!(add_poly.nnz(), 2);
-        assert_eq!(add_poly.row[0], 0); // from add gate
-        assert_eq!(add_poly.row[1], 1); // from uni-12346
+        assert_eq!(add_poly.row[0], 0);
+        assert_eq!(add_poly.row[1], 1);
     }
 
     #[test]
-    fn extract_rejects_uni_x5_gates() {
+    fn extract_uni_x5_separate_from_add() {
         use circuit::GateUni;
         let mut layer = make_layer(2, 2);
         layer.uni.push(GateUni {
@@ -639,14 +753,26 @@ mod tests {
             coef: Goldilocks::ONE,
             gate_type: 12345,
         });
-        let err = extract_layer_add_wiring::<C>(&layer, 9).unwrap_err();
-        assert!(matches!(
-            err,
-            WiringExtractError::UnsupportedGateKind {
-                layer: 9,
-                kind: GateKindLabel::Uni,
-            }
-        ));
+        layer.uni.push(GateUni {
+            i_ids: [1],
+            o_id: 1,
+            coef_type: CoefType::Constant,
+            coef: Goldilocks::from(3u64),
+            gate_type: 12346,
+        });
+        layer.add.push(add_gate(2, 0, 7));
+
+        let (add_poly, _) = extract_layer_add_wiring::<C>(&layer, 0).unwrap();
+        let add_poly = add_poly.unwrap();
+        assert_eq!(add_poly.nnz(), 2);
+
+        let (uni_poly, _) = extract_layer_uni_wiring::<C>(&layer, 0).unwrap();
+        let uni_poly = uni_poly.unwrap();
+        assert_eq!(uni_poly.nnz(), 1);
+        assert_eq!(uni_poly.row[0], 0);
+        assert_eq!(uni_poly.col_x[0], 0);
+        assert_eq!(uni_poly.val[0], Goldilocks::ONE);
+        assert_eq!(uni_poly.arity, SparseArity::Two);
     }
 
     #[test]
@@ -717,8 +843,10 @@ mod tests {
         // coefficient for the output bit pattern z and input bit
         // patterns x, y. Output[z] = Σ_{x,y} M_mul(z,x,y) · in[x] · in[y]
         //                          + Σ_x   M_add(z,x)    · in[x]
-        let mul_poly = extract_layer_mul_wiring::<C>(&layer, 0).unwrap().unwrap();
-        let add_poly = extract_layer_add_wiring::<C>(&layer, 0).unwrap().unwrap();
+        let (mul_poly, _) = extract_layer_mul_wiring::<C>(&layer, 0).unwrap();
+        let mul_poly = mul_poly.unwrap();
+        let (add_poly, _) = extract_layer_add_wiring::<C>(&layer, 0).unwrap();
+        let add_poly = add_poly.unwrap();
 
         // Helper: enumerate all (z, x, y) triples explicitly
         // because the dense oracle path goes through MLEs over

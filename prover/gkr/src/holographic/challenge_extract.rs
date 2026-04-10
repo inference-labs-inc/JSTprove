@@ -23,6 +23,7 @@ pub struct PerLayerChallenge<F: FieldEngine> {
     pub eval_cst: F::ChallengeField,
     pub eval_add: F::ChallengeField,
     pub eval_mul: F::ChallengeField,
+    pub eval_uni: F::ChallengeField,
     pub eq_simd_simd_xy: F::ChallengeField,
     pub eq_mpi_mpi_xy: F::ChallengeField,
 }
@@ -210,6 +211,8 @@ where
             None
         };
 
+        let eval_uni = GKRVerifierHelper::eval_pow_5(&layer.uni, &sp);
+
         layers.push(PerLayerChallenge {
             layer_index: i,
             rz_0: rz_0_before,
@@ -221,6 +224,7 @@ where
             eval_cst,
             eval_add,
             eval_mul,
+            eval_uni,
             eq_simd_simd_xy: sp.eq_r_simd_r_simd_xy,
             eq_mpi_mpi_xy: sp.eq_r_mpi_r_mpi_xy,
         });
@@ -275,6 +279,16 @@ pub fn build_eval_points_from_challenges<F: FieldEngine>(
             F::ChallengeField::ZERO
         };
 
+        let uni_z = ch.rz_0.clone();
+        let uni_x = ch.rx.clone();
+        let uni_claim = if let Some(ref uni_wiring) = pk_layer.uni {
+            uni_wiring
+                .poly
+                .evaluate::<F::ChallengeField>(&uni_z, &uni_x, &[])
+        } else {
+            F::ChallengeField::ZERO
+        };
+
         eval_points.push(LayerEvalPoint {
             layer_index: pk_layer.layer_index,
             mul_z,
@@ -282,8 +296,11 @@ pub fn build_eval_points_from_challenges<F: FieldEngine>(
             mul_y,
             add_z,
             add_x,
+            uni_z,
+            uni_x,
             mul_claim,
             add_claim,
+            uni_claim,
         });
     }
 
